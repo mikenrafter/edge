@@ -789,7 +789,10 @@ void main() {
         final got = Substrate.fromTransfer(m);
 
         expect(jsonEncode(_derive(got)), direct);
-        _expectSameColumns(got, f.value.build(), f.key);
+        // The oracle is fromJson (it fills an absent step_count / hr_valid with
+        // -1), not the built substrate, whose constructor keeps them empty.
+        _expectSameColumns(
+            got, Substrate.fromJson(f.value.build().toJson()), f.key);
       });
     }
 

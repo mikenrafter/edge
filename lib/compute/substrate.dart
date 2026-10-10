@@ -316,8 +316,8 @@ class Substrate {
     required List<int> spo2Ir,
     required List<int> skinTemp,
     required List<int> skinContact,
-    List<int>? stepCount,
-    List<int>? hrValid,
+    List<int> stepCount = const [],
+    List<int> hrValid = const [],
     String? deviceFamily,
     Set<String> deviceIds = const {},
   }) =>
@@ -335,11 +335,8 @@ class Substrate {
         spo2Ir: spo2Ir,
         skinTemp: skinTemp,
         skinContact: skinContact,
-        // An omitted optional column means absent for each second. Keep that
-        // representation parallel to tsSec; callers that intentionally carry
-        // an empty slice can still pass an explicit empty list.
-        stepCount: stepCount ?? List<int>.filled(tsSec.length, -1),
-        hrValid: hrValid ?? List<int>.filled(tsSec.length, -1),
+        stepCount: stepCount,
+        hrValid: hrValid,
       );
 
   const Substrate._({
