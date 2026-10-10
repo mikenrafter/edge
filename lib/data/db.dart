@@ -5273,32 +5273,14 @@ class LocalDb {
       END
     ''');
 
-    // Existing wake rows predate this source's revision triggers. Assign their
-    // first stable revisions in SQL, without rewriting the stored JSON text.
-    await db.execute('''
-      INSERT INTO store_rev (id)
-      SELECT NULL
-      FROM wake_day_features w
-      LEFT JOIN row_rev v
-        ON v.kind = 'wake_day_features' AND v.k1 = w.day_id AND v.k2 = w.algo_version
-      WHERE v.rev IS NULL
-      ORDER BY w.day_id, w.algo_version
-    ''');
-    await db.execute('''
-      INSERT OR IGNORE INTO row_rev (kind, k1, k2, rev)
-      SELECT 'wake_day_features', missing.day_id, missing.algo_version,
-             seq.seq - missing.total + missing.n
-      FROM (
-        SELECT w.day_id, w.algo_version,
-               ROW_NUMBER() OVER (ORDER BY w.day_id, w.algo_version) AS n,
-               COUNT(*) OVER () AS total
-        FROM wake_day_features w
-        LEFT JOIN row_rev v
-          ON v.kind = 'wake_day_features' AND v.k1 = w.day_id AND v.k2 = w.algo_version
-        WHERE v.rev IS NULL
-      ) AS missing
-      JOIN sqlite_sequence AS seq ON seq.name = 'store_rev'
-    ''');
+    // NO BACKFILL of `row_rev` for wake rows written before these triggers
+    // existed. The only way to number them in one statement is a window
+    // function (ROW_NUMBER() OVER), which is SQLite 3.25; minSdk 26 ships 3.18,
+    // and this runs on every open (`_repairOpenSchema`), so it would stop the
+    // database opening on Android 8-10. A legacy row simply has no revision
+    // (the same as `day_result` rows from before P2.1, never backfilled): the
+    // JSON lane never caches a revision-less row and compares its text when it
+    // revalidates, and the row gains a revision the next time it is written.
   }
 
   /// journal_metric — the numeric half of a journal entry.

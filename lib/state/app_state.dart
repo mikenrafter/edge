@@ -2882,9 +2882,12 @@ class AppState extends ChangeNotifier {
   /// wake into a new day and your recovery is ready.
   static const String _kLastRecoveryNotifDay = 'last_recovery_notif_day';
   Future<void> _maybeNotifyRecoveryReady() async {
+    // A wipe (or merge, or rebuild) while anything below is awaited means the
+    // score read above it is deleted data: say nothing and claim nothing.
+    final generation = LocalDb.storeGeneration;
     try {
       final row = await LocalDb.latestDayResult();
-      if (row == null) return;
+      if (row == null || LocalDb.storeReplacedSince(generation)) return;
       final dayId = (row['day_id'] ?? row['date'])?.toString();
       if (dayId == null || dayId.isEmpty) return;
       final score = (row['readiness'] as num?)?.round();
@@ -2896,6 +2899,7 @@ class AppState extends ChangeNotifier {
       if (prefs.getString(_kLastRecoveryNotifDay) == dayId) {
         return; // already fired
       }
+      if (LocalDb.storeReplacedSince(generation)) return;
 
       // Sleep hours from the day's bundle accounting (tst), for the body copy.
       String slept = '';
@@ -2913,6 +2917,7 @@ class AppState extends ChangeNotifier {
       } catch (_) {
         /* body just omits the slept-for clause */
       }
+      if (LocalDb.storeReplacedSince(generation)) return;
 
       // GUARD AFTER PRESENT. Writing _kLastRecoveryNotifDay before the emit
       // burned the once-per-day guard on an event that never reached the user:
