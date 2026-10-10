@@ -659,6 +659,9 @@ class Substrate {
           .toSet(),
     );
   }
+
+  static Substrate fromTransfer(Map<String, dynamic> m) =>
+      throw UnimplementedError('P2.4');
 }
 
 /// Decode the WHOLE retained raw ledger into one continuous, time-sorted
