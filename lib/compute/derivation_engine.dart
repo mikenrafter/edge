@@ -4333,7 +4333,7 @@ class DerivationEngine {
           if (!result.isCompleted) {
             // P2.0a: what the UI isolate pays to adopt the worker's map.
             final adoptStartedAt = DateTime.now().millisecondsSinceEpoch;
-            final adopted = Substrate.fromJson(payload);
+            final adopted = Substrate.fromTransfer(payload);
             perf.addStage('substrate_adopt_$label',
                 DateTime.now().millisecondsSinceEpoch - adoptStartedAt);
             perf.addCount('substrate_adopt_samples_$label', adopted.length);

@@ -316,8 +316,8 @@ class Substrate {
     required List<int> spo2Ir,
     required List<int> skinTemp,
     required List<int> skinContact,
-    List<int> stepCount = const [],
-    List<int> hrValid = const [],
+    List<int>? stepCount,
+    List<int>? hrValid,
     String? deviceFamily,
     Set<String> deviceIds = const {},
   }) =>
@@ -335,8 +335,11 @@ class Substrate {
         spo2Ir: spo2Ir,
         skinTemp: skinTemp,
         skinContact: skinContact,
-        stepCount: stepCount,
-        hrValid: hrValid,
+        // An omitted optional column means absent for each second. Keep that
+        // representation parallel to tsSec; callers that intentionally carry
+        // an empty slice can still pass an explicit empty list.
+        stepCount: stepCount ?? List<int>.filled(tsSec.length, -1),
+        hrValid: hrValid ?? List<int>.filled(tsSec.length, -1),
       );
 
   const Substrate._({
@@ -660,8 +663,70 @@ class Substrate {
     );
   }
 
-  static Substrate fromTransfer(Map<String, dynamic> m) =>
-      throw UnimplementedError('P2.4');
+  static List<int> _transferInts(Map<String, dynamic> m, String key) {
+    final value = m[key];
+    if (value is List<int>) return value;
+    final src = (value as List?) ?? const [];
+    return src.map((e) => (e as num).toInt()).toList();
+  }
+
+  static Float64List _transferDoubles(Map<String, dynamic> m, String key) {
+    final value = m[key];
+    if (value is Float64List) return value;
+    final src = (value as List?) ?? const [];
+    final out = Float64List(src.length);
+    for (var i = 0; i < src.length; i++) {
+      out[i] = (src[i] as num).toDouble();
+    }
+    return out;
+  }
+
+  static List<int> _transferSafeInts(
+      Map<String, dynamic> m, String key, int length) {
+    final values = _transferInts(m, key);
+    return values.isEmpty && length > 0
+        ? List<int>.filled(length, 0)
+        : values;
+  }
+
+  static Float64List _transferSafeDoubles(
+      Map<String, dynamic> m, String key, int length) {
+    final values = _transferDoubles(m, key);
+    return values.isEmpty && length > 0 ? Float64List(length) : values;
+  }
+
+  static List<int> _transferAbsentMarkerInts(
+      Map<String, dynamic> m, String key, int length) {
+    final values = _transferInts(m, key);
+    return values.length == length
+        ? values
+        : List<int>.filled(length, -1);
+  }
+
+  static Substrate fromTransfer(Map<String, dynamic> m) {
+    final tsSec = _transferInts(m, 'ts_sec');
+    final n = tsSec.length;
+
+    return Substrate(
+      tsSec: tsSec,
+      hr: _transferSafeInts(m, 'hr', n),
+      rrTsMs: _transferDoubles(m, 'rr_ts_ms'),
+      rrMs: _transferDoubles(m, 'rr_ms'),
+      ax: _transferSafeDoubles(m, 'ax', n),
+      ay: _transferSafeDoubles(m, 'ay', n),
+      az: _transferSafeDoubles(m, 'az', n),
+      spo2Red: _transferSafeInts(m, 'spo2_red', n),
+      spo2Ir: _transferSafeInts(m, 'spo2_ir', n),
+      skinTemp: _transferSafeInts(m, 'skin_temp', n),
+      skinContact: _transferSafeInts(m, 'skin_contact', n),
+      stepCount: _transferAbsentMarkerInts(m, 'step_count', n),
+      hrValid: _transferAbsentMarkerInts(m, 'hr_valid', n),
+      deviceFamily: m['device_family'] as String?,
+      deviceIds: ((m['device_ids'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toSet(),
+    );
+  }
 }
 
 /// Decode the WHOLE retained raw ledger into one continuous, time-sorted
