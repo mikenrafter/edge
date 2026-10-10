@@ -63,6 +63,11 @@ enum ProjectionId {
   /// nothing else: what the freshness refresh reads (P2.3). A key absent from
   /// the stored payload stays absent.
   freshness,
+
+  /// `{skipped, sleep.window.value.{onset_ms, offset_ms}}` and nothing else:
+  /// what the Android health export reads to find the newest night with a
+  /// sleep session without decoding (or holding) the whole bundle (P2.5).
+  sleepWindow,
 }
 
 /// The stored row a read is about: a served day, or one baseline.
@@ -234,11 +239,14 @@ Object? _bundleViewOwned(BundleView view, Object? root, String path) {
   return copy;
 }
 
-/// A caller-owned expanded bundle for consumers that need the legacy shape.
-/// This is deliberately outside [BundleView]'s projection accessor surface:
-/// exporting a whole day is explicit and the cached graph never escapes.
-Map<String, dynamic> materialiseBundleView(BundleView view) =>
-    _bundleViewMaterialise(view, view._root);
+/// A caller-owned, LAZY map over [view]: a subtree is copied (and a curve
+/// expanded) only when a reader touches it, and what was touched is the same
+/// object next time. The cached graph never escapes. For consumers that need
+/// the legacy map shape but read a handful of keys (the health export reads
+/// `skipped`, `scalars`, `sleep.window.value` and `series.hypnogram`); copying
+/// the whole bundle would expand every curve on the UI isolate.
+Map<String, dynamic> bundleReaderMap(BundleView view) =>
+    BundleReaderMap(view, '', view._root as Map);
 
 Object? _bundleViewCurve(BundleView view, Object? root, String path) {
   final value = _bundleAtPath(root, path);
@@ -411,6 +419,22 @@ DecodedChunk decodeDayPayloadsHeavy(
             },
           },
         if (root.containsKey('flags')) 'flags': root['flags'],
+      };
+    } else if (input.projections[i] == 'sleepWindow') {
+      final rawSleep = root['sleep'];
+      final rawWindow = rawSleep is Map ? rawSleep['window'] : null;
+      final rawValue = rawWindow is Map ? rawWindow['value'] : null;
+      graph = {
+        if (root.containsKey('skipped')) 'skipped': root['skipped'],
+        if (rawValue is Map)
+          'sleep': {
+            'window': {
+              'value': {
+                for (final key in const ['onset_ms', 'offset_ms'])
+                  if (rawValue.containsKey(key)) key: rawValue[key],
+              },
+            },
+          },
       };
     } else if (input.projections[i] == 'legacy') {
       graph = SeriesCodec.decodePayload(root.cast<String, dynamic>());
@@ -625,6 +649,7 @@ class BundleStore {
   Future<BundleRead> readOnce(
     BundleSource source, {
     ProjectionId projection = ProjectionId.full,
+    bool cacheResult = true,
   }) async {
     final prepared = await _prepare(source, projection);
     if (prepared == null) return const BundleAbsent();
@@ -648,7 +673,13 @@ class BundleStore {
       if (text == null) return const BundleAbsent();
       final waited = _cachedOrJoined(prepared);
       if (waited != null) return waited;
-      final flight = _newFlight(prepared, text, warm: false, reservation: payload.reservation);
+      final flight = _newFlight(
+        prepared,
+        text,
+        warm: false,
+        cacheResult: cacheResult,
+        reservation: payload.reservation,
+      );
       return _withFreshAsOf(flight.done.future, prepared.asOfMs);
     } finally {
       _release(payload.reservation); // no-op once the flight took it over
@@ -657,13 +688,18 @@ class BundleStore {
 
   /// [readOnce], and when it answers [BundleStale] one more attempt that starts
   /// from the meta again. Throws [BundleRetryable] on a second stale.
+  ///
+  /// [cacheResult] false keeps the decode out of the retained cache on every
+  /// attempt (a one-pass consumer such as the health export must not evict what
+  /// the screens warmed, not even on its retry of a day replaced meanwhile).
   Future<BundleRead> read(
     BundleSource source, {
     ProjectionId projection = ProjectionId.full,
+    bool cacheResult = true,
   }) async {
-    final first = await readOnce(source, projection: projection);
+    final first = await readOnce(source, projection: projection, cacheResult: cacheResult);
     if (first is! BundleStale) return first;
-    final second = await readOnce(source, projection: projection);
+    final second = await readOnce(source, projection: projection, cacheResult: cacheResult);
     if (second is BundleStale) throw BundleRetryable(source);
     return second;
   }
@@ -827,7 +863,11 @@ class BundleStore {
     }
     for (var i = 0; i < results.length; i++) {
       if (results[i] is BundleStale) {
-        results[i] = await read(sources[i], projection: projection);
+        results[i] = await read(
+          sources[i],
+          projection: projection,
+          cacheResult: cacheResults,
+        );
       }
     }
     return [for (final result in results) result ?? const BundleAbsent()];
@@ -838,7 +878,13 @@ class BundleStore {
   Future<List<BundleRead>> readStream(
     List<BundleSource> sources, {
     int chunkRows = maxChunkRows,
-  }) => readAll(sources, chunkRows: chunkRows, cacheResults: false);
+    ProjectionId projection = ProjectionId.full,
+  }) => readAll(
+    sources,
+    projection: projection,
+    chunkRows: chunkRows,
+    cacheResults: false,
+  );
 
   /// Fills the cache for [sources] at low priority. An absent source is
   /// skipped; a lane over its limits refuses the whole warm.
@@ -1280,4 +1326,64 @@ final class _BundleFlight {
   final bool cacheResult;
   final Completer<BundleRead> done = Completer<BundleRead>();
   int get sourceBytes => payload.length;
+}
+
+/// Mutable caller-owned map that copies only the subtrees a reader touches.
+final class BundleReaderMap extends MapBase<String, dynamic> {
+  BundleReaderMap(this._view, this._path, this._source);
+
+  final BundleView _view;
+  final String _path;
+  final Map _source;
+  final Map<String, dynamic> _changed = {};
+  final Set<String> _removed = {};
+
+  String _child(String key) => _path.isEmpty ? key : '$_path.$key';
+
+  @override
+  dynamic operator [](Object? key) {
+    if (key is! String || _removed.contains(key)) return null;
+    if (_changed.containsKey(key)) return _changed[key];
+    if (!_source.containsKey(key)) return null;
+    final path = _child(key);
+    final raw = _source[key];
+    // Memoised in [_changed] on first access: a child handed out once must be
+    // the same object next time, or `out['a']['b']['c'] = x` followed by a
+    // re-read would lose the write. Copying the whole graph at the boundary
+    // instead would expand every curve on the UI isolate.
+    return _changed[key] = raw is Map && !_isCurve(path)
+        ? BundleReaderMap(_view, path, raw)
+        : _view.owned(path);
+  }
+
+  @override
+  Iterable<String> get keys => <String>{
+    ..._source.keys.cast<String>(),
+    ..._changed.keys,
+  }.where((key) => !_removed.contains(key));
+
+  @override
+  void operator []=(String key, dynamic value) {
+    _removed.remove(key);
+    _changed[key] = value;
+  }
+
+  @override
+  void clear() {
+    _changed.clear();
+    _removed.addAll(_source.keys.cast<String>());
+  }
+
+  @override
+  dynamic remove(Object? key) {
+    if (key is! String || !containsKey(key)) return null;
+    final old = this[key];
+    _changed.remove(key);
+    _removed.add(key);
+    return old;
+  }
+
+  static bool _isCurve(String path) => path.startsWith('series.')
+      ? SeriesCodec.seriesCurves.containsKey(path.substring(7))
+      : SeriesCodec.rootCurves.containsKey(path);
 }

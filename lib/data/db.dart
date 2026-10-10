@@ -9541,6 +9541,17 @@ class LocalDb {
     );
   }
 
+  /// [sleepWindowRows] for one [day]: `{day_id, window_json, rev}`, or null
+  /// when the day has no served, non-skipped row (now).
+  static Future<Map<String, dynamic>?> sleepWindowRow(String day) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      "SELECT r.day_id AS day_id, r.window_json AS window_json, v.rev AS rev FROM day_result r $_servedDayJoin LEFT JOIN row_rev v ON v.kind = 'day_result' AND v.k1 = r.day_id AND v.k2 = r.algo_version WHERE r.skipped = 0 AND r.day_id = ? AND m.day_id = ? LIMIT 1",
+      [day, day],
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
   /// Every day_id that has a `day_result` row at its LATEST algo_version, newest
   /// first — WITHOUT touching `payload_json`.
   ///

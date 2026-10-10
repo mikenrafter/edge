@@ -277,8 +277,23 @@ class _AsyncMutex {
   }
 }
 
+/// Which platform the EXPORT path (the Android priority-sleep scan and the
+/// per-day Android sleep write) branches on. An interface so a test can drive
+/// the Android path on a desktop host; everything else keeps asking
+/// [Platform] directly.
+abstract interface class HealthExportPlatform {
+  bool get isAndroid;
+}
+
+final class SystemHealthExportPlatform implements HealthExportPlatform {
+  const SystemHealthExportPlatform();
+  @override
+  bool get isAndroid => Platform.isAndroid;
+}
+
 class HealthExporter {
   final _health = Health();
+  final HealthExportPlatform _platform;
   final _workoutLock = _AsyncMutex();
   final _androidSleep = HealthConnectSleepSessionExporter(
     writer: MethodChannelHealthConnectSleepSessionWriter(),
@@ -289,9 +304,12 @@ class HealthExporter {
   final HealthConnectHeartRateWriter _androidHeartRate;
   bool _configured = false;
 
-  HealthExporter({HealthConnectHeartRateWriter? androidHeartRate})
-    : _androidHeartRate =
-          androidHeartRate ?? MethodChannelHealthConnectHeartRateWriter();
+  HealthExporter({
+    HealthConnectHeartRateWriter? androidHeartRate,
+    HealthExportPlatform platform = const SystemHealthExportPlatform(),
+  }) : _androidHeartRate =
+           androidHeartRate ?? MethodChannelHealthConnectHeartRateWriter(),
+       _platform = platform;
 
   /// The process-wide exporter. `AppState` holds this one, and so does every
   /// seam that lands a session without a widget tree to read AppState from —
@@ -670,36 +688,59 @@ class HealthExporter {
         ));
       }
 
-      /// One day's bundle, or null if it is missing or undecodable. Never hold
-      /// two of these at once.
+      /// One day's bundle, or null if it is missing or undecodable: a LAZY
+      /// caller-owned map (only the subtrees the export touches are copied).
+      /// Never hold two of these at once, except the Android priority night,
+      /// which is kept separately so the bulk pass does not decode it again.
       final oneShotBundles = <String, Map<String, dynamic>?>{};
+      String? retainedDate;
+      Map<String, dynamic>? retainedBundle;
       Future<Map<String, dynamic>?> bundleFor(String date) async {
+        if (date == retainedDate) return retainedBundle;
         if (oneShotBundles.containsKey(date)) return oneShotBundles[date];
         final reads = await BundleStore.shared.readStream(
           [BundleSource.day(date)],
           chunkRows: 8,
         );
         final read = reads.single;
-        final bundle = read is BundleOk ? materialiseBundleView(read.view) : null;
+        final bundle = read is BundleOk ? bundleReaderMap(read.view) : null;
         oneShotBundles.clear();
         oneShotBundles[date] = bundle;
         return bundle;
       }
 
+      /// Whether [date] carries a sleep session, from a few scalars of the
+      /// stored bundle only (the `sleepWindow` projection): the scan below
+      /// looks at up to 400 days and must not decode, copy or hold any of them.
+      Future<bool> hasSleepSession(String date) async {
+        final reads = await BundleStore.shared.readStream(
+          [BundleSource.day(date)],
+          chunkRows: 1,
+          projection: ProjectionId.sleepWindow,
+        );
+        final read = reads.single;
+        if (read is! BundleOk) return false;
+        final light = bundleReaderMap(read.view);
+        return light['skipped'] != true && normalizeHealthSleepSession(light) != null;
+      }
+
       late final Future<int> Function(String? androidSleepAlreadyWritten)
       exportBulk;
       Future<int> exportPriorityOrBulk() async {
-        if (Platform.isAndroid) {
-          // Walk candidates one bundle at a time and stop at the first with a
-          // sleep session, rather than decoding every pending day up front.
+        if (_platform.isAndroid) {
+          // Walk candidates through the light projection and stop at the first
+          // with a sleep session, rather than decoding every pending day up
+          // front; then decode THAT day's bundle once and keep it for the bulk
+          // pass.
           MapEntry<String, Map<String, dynamic>>? priorityDay;
           for (final day in pendingDays.where((d) => !d.skipped)) {
+            if (!await hasSleepSession(day.date)) continue;
             final bundle = await bundleFor(day.date);
             if (bundle == null || bundle['skipped'] == true) continue;
-            if (normalizeHealthSleepSession(bundle) != null) {
-              priorityDay = MapEntry(day.date, bundle);
-              break;
-            }
+            retainedDate = day.date;
+            retainedBundle = bundle;
+            priorityDay = MapEntry(day.date, bundle);
+            break;
           }
           if (priorityDay != null) {
             final pendingPriorityDay = pendingDays.firstWhere(
@@ -951,7 +992,7 @@ class HealthExporter {
 
     // Sleep is the smallest, highest-value write. Native replace owns cleanup
     // on both stores (Health Connect SleepSessionRecord; HealthKit inBed+Core).
-    if (Platform.isAndroid && !androidSleepAlreadyWritten) {
+    if (_platform.isAndroid && !androidSleepAlreadyWritten) {
       try {
         if (!await _androidSleep.replace(b)) {
           debugPrint('[health] write Android sleep session returned false');
@@ -1208,7 +1249,7 @@ class HealthExporter {
         rows: hrRows,
         start: dayStart,
         end: dayEnd,
-        useAndroidBatch: Platform.isAndroid,
+        useAndroidBatch: _platform.isAndroid,
         androidWriter: _androidHeartRate,
         writeGeneric: (sample, sampleEnd) async =>
             !Prefs.getBool(Prefs.demoModeEnabled, false) &&

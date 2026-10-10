@@ -54,6 +54,11 @@ import 'support/p25_support.dart';
 const _name = 'p25_golden.db';
 const _goldenPath = 'test/step2/golden/p25_reader_outputs.json';
 
+/// Curve origins of the two relative-label days in the wake scenario (2023-11-13
+/// and 2023-11-12, 00:00 UTC): constants, never derived from the run date.
+const _t0Day1 = 1699833600;
+const _t0Day2 = 1699747200;
+
 Future<String> _run(Future<Object?> Function() read) async {
   try {
     // The served algo version is a build constant, not a reader's output.
@@ -172,8 +177,11 @@ void main() {
     // -- wake-only today (b) -----------------------------------------------------
     db = await p21Fresh(_name);
     final today = p23Day(0);
-    await p22Seed(db, p23Day(1), p22DayBundle(p23Day(1), i: 2), computedAt: 1002);
-    await p22Seed(db, p23Day(2), p22DayBundle(p23Day(2), i: 3), computedAt: 1003);
+    // FIXED curve origins: the labels are relative to today (and tokenised), but
+    // the epoch timestamps inside the bundles must not be (they used to come
+    // from the label's midnight and moved by 86400 s every day).
+    await p22Seed(db, p23Day(1), p22DayBundle(p23Day(1), i: 2, t0: _t0Day1), computedAt: 1002);
+    await p22Seed(db, p23Day(2), p22DayBundle(p23Day(2), i: 3, t0: _t0Day2), computedAt: 1003);
     await p25Wake(db, today, {
       'strain': 7.5,
       'wear_min': 612.0,
@@ -234,5 +242,18 @@ void main() {
     expect(want['wake_today.getToday']!, contains('5123'),
         reason: 'the wake estimate reached Home');
     expect(want['health.calls']!.split('\n').length, greaterThan(20));
+
+    // By construction, nothing the run date decides is left in what was
+    // recorded: after the label tokens, no epoch (seconds or ms) lies within
+    // the window around the real clock that a today-relative timestamp would.
+    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    for (final k in got.keys) {
+      for (final m in RegExp(r'(?<![\d.])\d{10,13}(?![\d.])').allMatches(got[k]!)) {
+        final n = int.parse(m.group(0)!);
+        final sec = n > 99999999999 ? n ~/ 1000 : n;
+        expect((sec - nowSec).abs() > 60 * 86400, isTrue,
+            reason: '$k holds $n, a timestamp near the run date');
+      }
+    }
   });
 }

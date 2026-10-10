@@ -14,7 +14,6 @@
 // Profile-gated metrics are null when the profile field is missing.
 
 import 'dart:async';
-import 'dart:collection' show MapBase;
 import 'dart:convert';
 import 'dart:isolate';
 import 'dart:math' as math;
@@ -149,8 +148,11 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>?> _wakeFeatures(String dayId) async {
     final row = await LocalDb.wakeDayFeatures(dayId, kAlgoVersion);
     final out = row == null ? null : await JsonPayloadLane.shared.decode(
-      'wake|$dayId|${row['algo_version']}', (row['rev'] as num?)?.toInt(), row['payload_json']);
-    return out is Map ? out.cast<String, dynamic>() : null;
+      WakeFeaturesRowSource(dayId, row['algo_version']),
+      WakeFeaturesRowSource.stateOf(row),
+    );
+    final value = out?.value;
+    return value is Map ? value.cast<String, dynamic>() : null;
   }
 
   String _todayLocalLabel() => LocalDb.localDayLabelNow();
@@ -206,7 +208,7 @@ class LocalRepositoryImpl extends LocalRepository {
       cacheHit: read.fromCache,
       crossday: crossday,
     );
-    return _BundleReaderMap(view, '', view.debugFrozenRoot as Map);
+    return bundleReaderMap(view);
   }
 
   /// Pull a sub-map by dotted path (e.g. 'clinical.hrv_time').
@@ -1826,9 +1828,8 @@ class LocalRepositoryImpl extends LocalRepository {
     final decoded = await JsonPayloadLane.shared.decodeMany([
       for (final row in rows)
         (
-          key: 'window|${row['day_id']}',
-          revision: (row['rev'] as num?)?.toInt(),
-          text: row['window_json'],
+          source: SleepWindowRowSource('${row['day_id']}'),
+          state: SleepWindowRowSource.stateOf(row),
         ),
     ]);
     final out = <Map<String, dynamic>>[];
@@ -1844,7 +1845,7 @@ class LocalRepositoryImpl extends LocalRepository {
       // anyone. Take the envelope's `value` when there is one, else the map
       // itself. (`value` is the string '—' on a night with no sleep, so it
       // only counts when it is a Map.)
-      final raw = decoded[i];
+      final raw = decoded[i]?.value;
       final env = raw is Map ? raw.cast<String, dynamic>() : null;
       final v = env?['value'];
       final val = v is Map
@@ -3934,8 +3935,12 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>?> getDayCalorieCurve(String day) async {
     final row = await LocalDb.lastResult('kcal_minutes|$day');
     if (row == null) return null;
-    final decoded = await JsonPayloadLane.shared.decode(
-      'kcal|$day', row.computedAt, row.payload, cache: false);
+    final result = await JsonPayloadLane.shared.decode(
+      LastResultRowSource('kcal|$day', 'kcal_minutes|$day'),
+      LastResultRowSource.stateOf(row),
+      cache: false,
+    );
+    final decoded = result?.value;
     if (decoded is! Map) return null;
     final p = decoded;
     return {
@@ -3950,7 +3955,7 @@ class LocalRepositoryImpl extends LocalRepository {
       ],
       'basal_kcal_per_min': p['basal_kcal_per_min'],
       'covered_minutes': p['covered_minutes'],
-      'computed_at': row.computedAt,
+      'computed_at': result!.state.revision,
     };
   }
 
@@ -4556,66 +4561,6 @@ class _ZoneAnchors {
     this.observedCeilingBpm,
     this.restingHrHistory = const [],
   });
-}
-
-/// Mutable caller-owned map that copies only the subtrees a reader touches.
-final class _BundleReaderMap extends MapBase<String, dynamic> {
-  _BundleReaderMap(this._view, this._path, this._source);
-
-  final BundleView _view;
-  final String _path;
-  final Map _source;
-  final Map<String, dynamic> _changed = {};
-  final Set<String> _removed = {};
-
-  String _child(String key) => _path.isEmpty ? key : '$_path.$key';
-
-  @override
-  dynamic operator [](Object? key) {
-    if (key is! String || _removed.contains(key)) return null;
-    if (_changed.containsKey(key)) return _changed[key];
-    if (!_source.containsKey(key)) return null;
-    final path = _child(key);
-    final raw = _source[key];
-    // Memoised in [_changed] on first access: a child handed out once must be
-    // the same object next time, or `out['a']['b']['c'] = x` followed by a
-    // re-read would lose the write. Copying the whole graph at the boundary
-    // instead would expand every curve on the UI isolate.
-    return _changed[key] = raw is Map && !_isCurve(path)
-        ? _BundleReaderMap(_view, path, raw)
-        : _view.owned(path);
-  }
-
-  @override
-  Iterable<String> get keys => <String>{
-    ..._source.keys.cast<String>(),
-    ..._changed.keys,
-  }.where((key) => !_removed.contains(key));
-
-  @override
-  void operator []=(String key, dynamic value) {
-    _removed.remove(key);
-    _changed[key] = value;
-  }
-
-  @override
-  void clear() {
-    _changed.clear();
-    _removed.addAll(_source.keys.cast<String>());
-  }
-
-  @override
-  dynamic remove(Object? key) {
-    if (key is! String || !containsKey(key)) return null;
-    final old = this[key];
-    _changed.remove(key);
-    _removed.add(key);
-    return old;
-  }
-
-  static bool _isCurve(String path) => path.startsWith('series.')
-      ? SeriesCodec.seriesCurves.containsKey(path.substring(7))
-      : SeriesCodec.rootCurves.containsKey(path);
 }
 
 /// A decoded day bundle and the computed time (epoch ms) of the day_result row

@@ -125,14 +125,27 @@ class LastResultCache {
           generation != LocalDb.storeGeneration) {
         return null;
       }
-      final v = await JsonPayloadLane.shared.decode(
-        'last_result|$key', row.computedAt, row.payload, cache: false);
+      final decoded = await JsonPayloadLane.shared.decode(
+        LastResultRowSource('last_result|$key', key),
+        LastResultRowSource.stateOf(row),
+        cache: false,
+      );
+      // The lane answers absence for a row deleted, or a store wiped, while the
+      // worker ran. The generation is checked again here: the decode is the
+      // last await, and nothing may be returned or stored across a wipe.
+      if (decoded == null || generation != LocalDb.storeGeneration) return null;
+      final v = decoded.value;
       if (v == null || v is! T) return null;
-      ReadPerf.lastResultRead(key, row.payload, v);
-      final at = DateTime.fromMillisecondsSinceEpoch(row.computedAt);
+      // The lane may have decoded a NEWER row than the one first read (it
+      // re-decodes a replaced row once): its time and signature travel with it.
+      final state = decoded.state;
+      final computedAt = state.revision ?? row.computedAt;
+      final sig = state.tag as String?;
+      ReadPerf.lastResultRead(key, state.text as String, v);
+      final at = DateTime.fromMillisecondsSinceEpoch(computedAt);
       // A newer result put while the table was read stays.
-      if (!_m.containsKey(key)) _store(key, v, at, generation, row.sig);
-      return CachedResult<T>(v as T, at, sig: row.sig);
+      if (!_m.containsKey(key)) _store(key, v, at, generation, sig);
+      return CachedResult<T>(v as T, at, sig: sig);
     } catch (_) {
       return null; // unreadable or corrupt: a miss
     }
