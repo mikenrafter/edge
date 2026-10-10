@@ -34,11 +34,9 @@ const _name = 'p22_decode_guard.db';
 const Map<String, String> _legacyCallers = {
   'data/series_codec.dart': 'the codec itself',
   'data/bundle_store.dart': 'the one door (P2.2)',
-  'data/db.dart': 'P2.3 refreshComputeFreshness, P2.5 recentDayDiagnostics, P2.10 putDayResult',
+  'data/db.dart': 'P2.10 putDayResult and the import/measured predicates',
   'compute/derivation_engine.dart': 'P2.9 _decodeBundle and the derive-side reads',
   'compute/crossday_input.dart': 'P2.9 assembleCrossDayInput',
-  'health/health_export.dart': 'P2.5 HealthExporter streaming',
-  'state/app_state.dart': 'P2.5 _maybeNotifyRecoveryReady',
 };
 
 /// Files that always exempt: the codec defines it, the store may use it.

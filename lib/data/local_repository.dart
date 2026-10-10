@@ -64,6 +64,9 @@ abstract class LocalRepository {
   Future<List<Map<String, dynamic>>> sleepWindows({int days = 60}) =>
       throw UnimplementedError('re-layer: sleepWindows');
 
+  Future<Map<String, dynamic>> getDayBlock(String day, List<String> keys) =>
+      throw UnimplementedError('P2.5');
+
   /// Saved sessions in the window, merged with unconfirmed auto-detected bouts.
   ///
   /// Pass `includeDetected: false` when only saved sessions are wanted: the
