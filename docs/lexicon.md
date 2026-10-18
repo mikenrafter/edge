@@ -64,4 +64,5 @@ in the same change that introduces it (AGENTS.md §6).
 - **Interaction window** — the time after a user action in which a shift is expected and costs less.
 - **Intent pair** — an action's source element and the element it is meant to change (copy button → copied text).
 - **Animation chain** — animation spans sharing a chain id, played back to back to hold attention instead of a delay.
+- **Settle time** — ms from an interaction until the screen last changed (move, resize, recolour, appear, disappear); scored as load time. Still changing when observation ends = unsettled, full cost.
 - **Flashbang** — a bright frame before the app's own background; the launch window is never brighter than #222.
