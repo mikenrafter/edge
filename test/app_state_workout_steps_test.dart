@@ -124,8 +124,7 @@ void main() {
       _Timeline(app, frames: 600).walk(1);
       expect(app.workoutStepsMeasured, isNull);
       expect(app.liveStepsAbsentReason,
-          startsWith('Steps are only counted from the strap while you are on '
-              'foot'));
+          startsWith('The strap counts steps only while you are on foot'));
       await finish(app);
     });
 

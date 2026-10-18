@@ -8,6 +8,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/findings.dart';
+import 'package:openstrap_edge/l10n/app_localizations_en.dart';
 
 Map<String, dynamic> _cd(List<Map<String, dynamic>> recent) => {
       'recent': recent,
@@ -53,6 +54,7 @@ void main() {
     // Detection, never diagnosis — the screen wording carries it.
     expect(f[3].detail, contains('not a diagnosis'));
     expect(f[4].score, 21);
+    expect(findingDetail(AppLocalizationsEn(), f[3]), contains('not a diagnosis'));
   });
 
   test('newest day first', () {
@@ -102,7 +104,7 @@ void main() {
         .where((f) => f.kind == FindingKind.rhrShift);
     expect(shifts, isNotEmpty);
     expect(shifts.first.risen, isTrue);
-    expect(shifts.first.detail, contains('risen'));
+    expect(findingDetail(AppLocalizationsEn(), shifts.first), contains('risen'));
     // Nothing before the step is called a shift.
     expect(shifts.every((f) => f.date.compareTo('2026-08-14') > 0), isTrue);
   });

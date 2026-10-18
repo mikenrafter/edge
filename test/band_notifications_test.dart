@@ -66,7 +66,7 @@ void main() {
     ) async {
       await _pump(t, const BandNotificationsView(enabled: true, granted: true));
       expect(find.text('No app has notified you yet'), findsOneWidget);
-      expect(find.textContaining('the first time each one notifies'),
+      expect(find.textContaining('after its first notification'),
           findsOneWidget);
       expect(find.text('—'), findsNothing);
     });
@@ -90,7 +90,7 @@ void main() {
       expect(find.text('com.whatsapp'), findsOneWidget);
       expect(find.text('Buzzes'), findsOneWidget);
       // The count is the one number that says whether this does anything.
-      expect(find.text('Apps armed'), findsOneWidget);
+      expect(find.text('Apps that can buzz'), findsOneWidget);
       expect(find.text('1'), findsOneWidget);
 
       await t.tap(find.text('Messenger'));
@@ -99,7 +99,7 @@ void main() {
 
     testWidgets('iOS gets a reason, not a dead switch', (t) async {
       await _pump(t, const BandNotificationsView(supported: false));
-      expect(find.text('This phone cannot do it'), findsOneWidget);
+      expect(find.text('Not available on this phone'), findsOneWidget);
       expect(find.text('Buzz on app notifications'), findsNothing);
     });
 

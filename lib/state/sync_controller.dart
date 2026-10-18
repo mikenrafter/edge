@@ -1,23 +1,43 @@
-// Session and reconnect orchestration extracted from AppState.
+// The sync-session seam, moved out of AppState with no behaviour
+// change. It owns the orchestration around the BLE link, never the engine: the
+// session start (openSession, the headless background start, the resume-link
+// check), the reconnect loop and the level-triggered supervisor that backstops
+// it, the 10 minute backfill timer and the single-flight history burst, the
+// foreground catch-up and forced re-sync, the foreground / background flag and
+// what a transition does, the foreground band lease, the manual sync and its
+// coordinator, the sync activity window the "syncing now" indicator reads, the
+// data edge (`lastRecTs`) and the busy flag.
 //
-// The engine owns transport, drain durability, and ACK ordering. This class
-// only asks the existing engine to connect and sync. It has no AppState or UI
-// dependency; its host supplies the narrow callbacks shared with other areas.
+// The engine and everything inside it (the drain, the ACK, the policies) stay
+// with the engine. So do _onRecord, _onLiveEvent, the rest of _onEngineState,
+// the data-reset gate, pairing, the alarm arming machinery and the band-prompt
+// refresh (`refreshHighFreqWakeWindow`, shared with the alarm and sleep paths):
+// they arrive here as callbacks. The headless entries do not use AppState at
+// all. It holds no reference to AppState.
+//
+// AppState.dispose calls [dispose], which cancels the quiet timer, the
+// backfill timer and the supervisor, stops wanting a link, and marks the
+// object disposed; releasing the foreground lease is the host's separate call.
+// After that nothing new starts here (pinned by
+// test/app_state_sync_dispose_test.dart).
 import 'dart:async';
 import 'dart:io';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../ble/accessory_setup.dart';
 import '../ble/ble_engine.dart';
 import '../ble/ble_state.dart' show SyncActivityWindow;
 import '../ble/ios_ble_restore.dart';
+import '../compute/derivation_engine.dart';
 import '../compute/derive_scheduler.dart';
 import '../data/db.dart';
 import '../data/models.dart';
 import '../sync/band_ownership.dart';
 import '../sync/edge_tracking.dart';
 import '../sync/paired_device.dart';
-import '../sync/reset_gate.dart';
 import '../sync/shortcut_sync_task.dart';
+import '../sync/reset_gate.dart';
 import '../sync/sync_policy.dart'
     show
         ReconnectSupervisorAction,
@@ -25,35 +45,44 @@ import '../sync/sync_policy.dart'
         kIosBackgroundPromptIntervalSeconds,
         resumeLinkAction,
         superviseReconnect;
+import 'control_operations.dart';
+import 'derive_coordinator.dart';
 
 class SyncController {
   SyncController({
     required BleEngine Function() engine,
     required PairedDevice? Function() paired,
-    required void Function(String) log,
+    required void Function(String line) log,
     required void Function() notify,
     required bool Function() isDisposed,
-    required bool Function() initialized,
-    required String? Function() initError,
-    required DeriveScheduler Function() deriveScheduler,
+    required bool Function() isConnected,
+    required DeriveCoordinator Function() deriveCoordinator,
+    required DerivationEngine Function() deriveEngine,
+    required bool Function() reanalyzing,
+    required Future<void> Function() waitForDerivation,
     required bool Function() phoneStepsEnabled,
     required Future<void> Function() syncPhoneSteps,
-    required Future<void>? Function() ecgOnAppPaused,
+    required Future<void> Function() ecgOnAppPaused,
     required void Function() nudgeLive,
     required Future<void> Function() recoverOrphanedLiveSession,
     required void Function() resetLivePedometer,
     required Future<void> Function() refreshHighFreqWakeWindow,
     required Future<void> Function() armNextAlarmOccurrence,
-    required void Function() resetActivityReviewAttempts,
-    required Future<void> Function() refreshActivityReviews,
-  })  : _engine = engine,
+    required void Function() bumpInsights,
+    required bool Function() initialized,
+    required String? Function() initError,
+  })  : _initialized = initialized,
+        _initError = initError,
+        _engine = engine,
         _paired = paired,
         _log = log,
         _notify = notify,
-        _hostDisposed = isDisposed,
-        _initialized = initialized,
-        _initError = initError,
-        _deriveScheduler = deriveScheduler,
+        _isDisposed = isDisposed,
+        _isConnected = isConnected,
+        _coordinator = deriveCoordinator,
+        _deriveEngine = deriveEngine,
+        _reanalyzing = reanalyzing,
+        _waitForDerivation = waitForDerivation,
         _phoneStepsEnabled = phoneStepsEnabled,
         _syncPhoneSteps = syncPhoneSteps,
         _ecgOnAppPaused = ecgOnAppPaused,
@@ -62,62 +91,112 @@ class SyncController {
         _resetLivePedometer = resetLivePedometer,
         _refreshHighFreqWakeWindow = refreshHighFreqWakeWindow,
         _armNextAlarmOccurrence = armNextAlarmOccurrence,
-        _resetActivityReviewAttempts = resetActivityReviewAttempts,
-        _refreshActivityReviews = refreshActivityReviews;
+        _bumpInsights = bumpInsights;
 
+  // The engine and the pairing are the host's; read on use, never cached.
   final BleEngine Function() _engine;
   BleEngine get engine => _engine();
-  DeviceState get device => engine.state;
   final PairedDevice? Function() _paired;
   PairedDevice? get paired => _paired();
-  final void Function(String) _log;
+  bool get isPaired => paired != null;
+  DeviceState get device => engine.state;
+
+  final void Function(String line) _log;
   final void Function() _notify;
-  final bool Function() _hostDisposed;
-  bool get _isDisposed => _hostDisposed();
+  final bool Function() _isDisposed;
   final bool Function() _initialized;
   final String? Function() _initError;
-  final DeriveScheduler Function() _deriveScheduler;
-  DeriveScheduler get _scheduler => _deriveScheduler();
+  final bool Function() _isConnected;
+
+  // The derive side, resolved on use (AppState builds both lazily).
+  final DeriveCoordinator Function() _coordinator;
+  DeriveCoordinator get _deriveCoordinator => _coordinator();
+  DeriveScheduler get _deriveScheduler => _deriveCoordinator.scheduler;
+  final DerivationEngine Function() _deriveEngine;
+  DerivationEngine get _derive => _deriveEngine();
+  final bool Function() _reanalyzing;
+  final Future<void> Function() _waitForDerivation;
+
+  // Work the session paths trigger that belongs to other concerns.
   final bool Function() _phoneStepsEnabled;
   final Future<void> Function() _syncPhoneSteps;
-  final Future<void>? Function() _ecgOnAppPaused;
+  final Future<void> Function() _ecgOnAppPaused;
   final void Function() _nudgeLive;
   final Future<void> Function() _recoverOrphanedLiveSession;
   final void Function() _resetLivePedometer;
+
+  // The ONE band-prompt programmer stays with the alarm / sleep code that also
+  // calls it ([AppState._refreshHighFreqWakeWindow]).
   final Future<void> Function() _refreshHighFreqWakeWindow;
   final Future<void> Function() _armNextAlarmOccurrence;
-  final void Function() _resetActivityReviewAttempts;
-  final Future<void> Function() _refreshActivityReviews;
+  final void Function() _bumpInsights;
 
+  // REAL device time (epoch SECONDS) of the newest record we hold — the band's
+  // own clock, NOT when the BLE frame arrived. During a flash backfill, frames
+  // land "just now" but carry hours-old records; THIS is the timestamp the
+  // "last data: …" indicator must show. Seeded from the DB at init, advanced as
+  // records (drained + live) flow in.
   int? lastRecTs;
+
   bool busy = false;
+
   bool _keepAlive = false;
   bool _reconnecting = false;
+  bool _disposed = false;
+
+  /// When the current reconnect ATTEMPT started, for the supervisor's
+  /// staleness check (issue #208). Per-attempt, not per-loop: a loop against a
+  /// band left at home legitimately runs for hours, so loop age says nothing
+  /// about whether anything is stuck — only an attempt that never returns does.
   DateTime? _attemptStartedAt;
+
+  /// Which reconnect loop is the live one. Bumped whenever a loop starts, so a
+  /// loop that was declared wedged and replaced can recognise itself as
+  /// superseded if it ever unblocks: without this its `finally` would clear the
+  /// REPLACEMENT's `_reconnecting`/`_attemptStartedAt`, and the supervisor
+  /// would then start a third loop while two are already connecting.
   int _reconnectGeneration = 0;
+
+  /// Level-triggered reconnect supervision. The loop's only trigger used to be
+  /// the `connected → disconnected` edge, so any abandoned loop was permanent.
+  /// This ticks regardless of edges and re-arms — see [superviseReconnect].
   Timer? _reconnectSupervisor;
   Timer? _backfillTimer;
-  BandLease? _foregroundLease;
-  DateTime? _lastBackgroundHeavyAt;
-  DateTime? _lastWakeWindowRefreshAt;
-  bool background = false;
 
   static const Duration _backfillInterval = Duration(minutes: 10);
 
-  /// Cadence of the reconnect supervisor. Cheap — the tick reads local flags
-  /// and does nothing at all unless the app is paired, wants a link, and does
-  /// not have one.
+  BandLease? _foregroundLease;
+
+  /// Last backgrounded heavy-derive request — throttles reconnect-driven heavy
+  /// passes while a flappy link churns in the background (30-min floor).
+  DateTime? _lastBackgroundHeavyAt;
+
+  /// Last backgrounded wake-window re-plan (its inputs change at most daily;
+  /// see the throttle in [_runPeriodicBackfill]).
+  DateTime? _lastWakeWindowRefreshAt;
+
+  /// True while the app is backgrounded. On iOS we KEEP the BLE connection alive in
+  /// this state (see [pauseForBackground]) so the OS keeps resuming us per BLE
+  /// notification and the live drain continues.
+  bool background = false;
+
+  /// Called when the app goes to the background.
   ///
-  /// Deliberately 1 min, not lengthened for battery: this supervisor is what
-  /// restarts a dead link (#208), and stretching it trades a few free boolean
-  /// reads inside an already-doze-exempt, link-holding process for up to 5
-  /// minutes of lost sync after exactly the failure it exists to catch.
-  static const Duration _reconnectSupervisorInterval = Duration(minutes: 1);
-
-  /// Direct connect attempts before handing the pending connect to the OS
-  /// bluetooth stack (Android autoConnect fallback) — see [_reconnect].
-  static const int _directAttemptsBeforeOsFallback = 4;
-
+  /// iOS keeps an app alive in the background ONLY while it holds an active BLE
+  /// connection with a subscribed characteristic (UIBackgroundModes: bluetooth-central).
+  /// So we DELIBERATELY keep the live CONNECTION up here instead of
+  /// disconnecting — but not the live STREAMS. The 1 Hz realtime-HR stream
+  /// used to be held purely so iOS would resume us once a second; that was
+  /// ~86,400 wakes a day and most of a day's battery. Now the band is asked
+  /// to prompt us every [kIosBackgroundPromptIntervalSeconds] (its
+  /// HIGH_FREQ_SYNC mode); each prompt event resumes the process, the engine
+  /// drains the flash, and the process suspends again.
+  ///
+  /// We still own the band, so the restore central must NOT arm a competing connect.
+  /// `BleRestoreManager` is armed only as a RECOVERY path if the connection actually
+  /// drops (band out of range / app jettisoned) — see [_onEngineState] / [_armRecovery].
+  ///
+  /// On Android the Edge Tracking foreground service keeps the process + connection alive.
   Future<void> pauseForBackground() async {
     background = true;
     // A WHOOP MG ECG reading stops on pause (the official screen does the
@@ -130,10 +209,10 @@ class SyncController {
     // Defer derivation while backgrounded — running the heavy derive pass on a
     // short background BLE wake gets the app killed (iOS CPU watchdog / jetsam).
     // Capture keeps running; queued derive jobs drain on foreground return.
-    _scheduler.setBackground(true);
+    _deriveScheduler.setBackground(true);
     // `background` is an owner input (foreground gait IMU, the gen4 bundle,
     // the iOS keepalive): let the engine step the streams to what the
-    // remaining owners call for. See [_liveOwners].
+    // remaining owners call for. See [LiveStreamController.owners].
     _nudgeLive();
     if (Platform.isAndroid) {
       // Android: ensure the Edge Tracking foreground service is up (idempotent) so the
@@ -146,7 +225,7 @@ class SyncController {
       IosBleRestore.foregroundActive =
           true; // "app owns the band" — don't let restore compete
       await IosBleRestore.setOwnsBand(true);
-      // The live stream is off now (see _liveOwners); ask the band to prompt
+      // The live stream is off now (see LiveStreamController.owners); ask the band to prompt
       // us instead. Each prompt is one BLE notification → one wake → one
       // flash offload → suspend again. This is what keeps continuous capture
       // going without the 1 Hz stream.
@@ -176,6 +255,16 @@ class SyncController {
     if (!Platform.isIOS || paired == null) return;
     await IosBleRestore.armRecoveryNow(paired!.remoteId);
   }
+
+  /// Cadence of the reconnect supervisor. Cheap — the tick reads local flags
+  /// and does nothing at all unless the app is paired, wants a link, and does
+  /// not have one.
+  ///
+  /// Deliberately 1 min, not lengthened for battery: this supervisor is what
+  /// restarts a dead link (#208), and stretching it trades a few free boolean
+  /// reads inside an already-doze-exempt, link-holding process for up to 5
+  /// minutes of lost sync after exactly the failure it exists to catch.
+  static const Duration _reconnectSupervisorInterval = Duration(minutes: 1);
 
   /// Start the level-triggered reconnect supervision (issue #208).
   ///
@@ -212,7 +301,7 @@ class SyncController {
   }
 
   void _superviseReconnect() {
-    if (_isDisposed) return;
+    if (_isDisposed()) return;
     // Expire a bond-refusal pause whose cooldown has run out before deciding —
     // otherwise the supervisor faithfully observes a flag that nothing can ever
     // clear (issue #208).
@@ -255,10 +344,6 @@ class SyncController {
   void _stopBackfillTimer() {
     _backfillTimer?.cancel();
     _backfillTimer = null;
-  }
-
-  void debugArmBackfillTimer() {
-    _backfillTimer ??= Timer.periodic(_backfillInterval, (_) {});
   }
 
   Future<void> _runPeriodicBackfill() async {
@@ -312,7 +397,7 @@ class SyncController {
         '(${report.complete ? "complete" : "stopped early"}).',
       );
       if (report.records > 0) {
-        _scheduler.markStoredData();
+        _deriveScheduler.markStoredData();
       }
     } catch (e) {
       _log('Periodic history refresh failed: $e');
@@ -337,6 +422,10 @@ class SyncController {
     return fut;
   }
 
+  /// True when the last burst moved the rec_ts frontier in any session — it
+  /// banked data even if it did not run to the band's "complete".
+  bool _lastBurstAdvanced = false;
+
   Future<SyncReport> _runSyncBurst({
     required bool kickFirst,
     // A band that hasn't synced for days can hold a HUGE flash backlog (observed:
@@ -347,8 +436,10 @@ class SyncController {
     // real progress, so this only runs long when there's genuinely a lot to pull.
     int maxSessions = 20,
   }) async {
-    // Totals for the whole burst; `complete` is the final session's.
-    var total = SyncReport(0, 0, false);
+    var last = SyncReport(0, 0, false);
+    _lastBurstAdvanced = false;
+    // The burst ended on a clean HISTORY_END with nothing left behind it.
+    var clean = false;
     for (var i = 0; i < maxSessions && engine.isConnected; i++) {
       // Terminal `Stuck`: a burst failed validation
       // 15 times and the abort went out, so this connection's history is over.
@@ -397,11 +488,9 @@ class SyncController {
           strapNewest != null &&
           frontierAfter != null &&
           (strapNewest - frontierAfter) > 300;
-      total = SyncReport(
-        total.records + report.records,
-        total.batches + report.batches,
-        report.complete,
-      );
+      last = report;
+      clean = report.complete && !backlogRemains;
+      if (frontierAdvanced) _lastBurstAdvanced = true;
       await LocalDb.upsertSyncLedgerEntry(
         status: report.complete ? 'complete' : 'session_end',
         metaPatch: {
@@ -462,9 +551,144 @@ class SyncController {
         'frontier still behind strap newest ($strapNewest > $frontierAfter).',
       );
     }
-    return total;
+    // Every caller of the burst (connect, reconnect, the backfill timer, a
+    // foreground catch-up, Sync now) lands here, so a drain the user never asked
+    // for still counts as the last sync. A failed, partial or dropped drain is
+    // not `clean`; a throw above never reaches this line.
+    if (clean && !_disposed && !_isDisposed()) {
+      syncOperations.noteBackgroundSuccess(DateTime.now());
+    }
+    return last;
   }
 
+  /// The sync side of a link that just dropped ([AppState._onEngineState]'s
+  /// `connected → disconnected` edge): start the reconnect loop if a session
+  /// still wants a link, otherwise let go of the foreground claim.
+  void onLinkDropped() {
+    if (_keepAlive && isPaired && !_reconnecting && !device.autoReconnectPaused) {
+      _log('Connection dropped. Reconnecting…');
+      _stopBackfillTimer();
+      if (background) {
+        // Backgrounded: arm the OS-durable restore path FIRST and wait for it to
+        // confirm-armed before spending any Dart cycles on the in-process retry —
+        // the restore central's no-timeout pending connect is the only piece of
+        // this that survives a full process suspension, so it must land before we
+        // risk `_reconnect()`'s own delay/backoff getting cut off mid-flight (that
+        // loop needs the Dart run loop to keep being scheduled; the armed native
+        // connect does not). Still fire-and-forget from the caller's perspective —
+        // `_onEngineState` itself stays synchronous.
+        unawaited(_armRecovery().then((_) => _reconnect()));
+      } else {
+        _reconnect();
+      }
+    } else {
+      // Nothing to reconnect (bond-refusal pause, or no session): let go of the
+      // claim. A running loop owns the intent, so only clear it when none is.
+      if (!_reconnecting) BandOwnership.markForegroundIntent(false);
+      _releaseForegroundLease();
+    }
+  }
+
+  /// Tear down a link whose setup threw, so a half-set-up link (no drain, no
+  /// backfill timer) is never left up: the disconnect edge restarts the loop.
+  Future<void> _dropHalfOpenLink() async {
+    try {
+      await engine.disconnect();
+    } catch (e) {
+      _log('Teardown of a half-set-up link failed: $e');
+    }
+  }
+
+  /// Give back what a failed session start took (restore flag, intent, lease),
+  /// unless a reconnect loop is running: that loop owns them.
+  void _releaseClaimsUnlessLooping() {
+    if (_keepAlive && _reconnecting) return;
+    IosBleRestore.foregroundActive = false;
+    BandOwnership.markForegroundIntent(false);
+    _log('[OWNERSHIP] foreground intent off (${BandOwnership.debugState})');
+    _releaseForegroundLease();
+  }
+
+  /// The headless / background cold start of a paired install ([AppState]'s
+  /// init, when the process began backgrounded): want a link from here on, run
+  /// the supervisor, and connect — or arm the iOS recovery if that fails.
+  Future<void> startBackgroundSession() async {
+    _keepAlive = true;
+    _startReconnectSupervisor();
+    if (Platform.isAndroid) EdgeTracking.start();
+    if (Platform.isIOS) {
+      IosBleRestore.foregroundActive = true;
+      IosBleRestore.arm(paired!.remoteId);
+    }
+    _log('===== BACKGROUND SESSION START =====');
+    try {
+      await _ensureForegroundLease();
+      if (await engine.connectToRemoteId(paired!.remoteId,
+          generationHint: paired!.generation)) {
+        // A process kill followed by an iOS BLE-restore relaunch lands
+        // HERE, not in openSession() — this is the primary case the live
+        // step checkpoint exists for, so recovery has to run on this path
+        // too or those steps sit in prefs forever. Counters are fresh on a
+        // cold launch, so there is nothing to double-count.
+        // The alarm first, as in every other connect flow. A relaunch here used
+        // to arm nothing at all: tonight's alarm waited for somebody to open
+        // the app.
+        await _armNextAlarmOccurrence();
+        await _recoverOrphanedLiveSession();
+        _resetLivePedometer();
+        // Apply the owners' intent to the fresh link: backgrounded owns
+        // no live stream on either platform (see [LiveStreamController.owners]). On iOS
+        // the band's HIGH_FREQ_SYNC prompt is what wakes the suspended
+        // process, so it must be armed HERE too — this path is the
+        // relaunch after a process kill, and with no stream and no
+        // prompt nothing would ever schedule this process again.
+        await engine.reconcileLiveStreams();
+        await _refreshHighFreqWakeWindow();
+        _startBackfillTimer();
+      } else {
+        // Connect attempt didn't succeed on this background cold-launch —
+        // fall back to the recovery arm so `foregroundActive` resets and
+        // native re-arms a fresh pending connect. Without this, a single
+        // failed connect here permanently wedges every future
+        // restore-wake for this process's lifetime: foregroundActive was
+        // already set true above, and it's the master gate on the native
+        // wake handler (ios_ble_restore.dart) — stuck true with no live
+        // connection means every subsequent wake silently no-ops forever,
+        // and the only way back is the user manually opening the app.
+        _log('[init] bg connect returned false — arming recovery');
+        await _armRecovery();
+        // The lease and intent taken above must not outlive the failed start
+        // (they refuse every later headless wake); the supervisor retries.
+        _releaseClaimsUnlessLooping();
+      }
+    } catch (e) {
+      _log('[init] bg connect failed: $e — arming recovery');
+      if (engine.isConnected) await _dropHalfOpenLink();
+      await _armRecovery();
+      _releaseClaimsUnlessLooping();
+    }
+  }
+
+  /// The link half of AppState.unpair: stop wanting a link, stop both timers,
+  /// release the iOS / Android keep-alive, deprovision the accessory,
+  /// disconnect and let go of the foreground claim. Forgetting the pairing
+  /// itself is the host's, after this.
+  Future<void> unpairSession() async {
+    _keepAlive = false;
+    BandOwnership.markForegroundIntent(false);
+    _stopBackfillTimer();
+    _stopReconnectSupervisor();
+    IosBleRestore.foregroundActive = false;
+    await EdgeTracking.stop();
+    await IosBleRestore.disarm();
+    // Deprovision the ASK accessory (iOS 18+) so a future pair re-shows the picker and
+    // re-establishes iOS-26 relaunch eligibility. No-op on Android / iOS < 18.
+    await AccessorySetup.removeAll();
+    await engine.disconnect();
+    _releaseForegroundLease();
+  }
+
+  // ── session: drain history, go live, stay connected ──────────────────────────
   /// Whether a link that still reports connected may be reused after the
   /// process was not watching it (foreground resume, BG-task wake).
   /// Fresh → yes. Quiet with a live stream armed → no: a stream that stopped
@@ -494,8 +718,58 @@ class SyncController {
     }
   }
 
+  /// An iOS Shortcut's sync (upstream): waits for init and for any session in
+  /// flight, opens the link without foreground work when backgrounded, and
+  /// returns the burst's report, or an empty one once the task stops.
+  Future<SyncReport> syncForShortcut(ShortcutSyncTask task) async {
+    if (ResetGate.active) throw StateError('data reset in progress');
+    if (!_initialized()) task.update('starting');
+    while (!_initialized() &&
+        _initError() == null &&
+        !_isDisposed() &&
+        !task.stopped) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    if (_initError() != null || _isDisposed()) throw StateError('Edge is not ready');
+    if (busy) task.update('waiting');
+    while (busy && !task.stopped) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    if (task.stopped) return SyncReport(0, 0, false);
+    if (ResetGate.active || _isDisposed()) throw StateError('Edge is not ready');
+    if (engine.isConnected) {
+      final usable = await _linkUsableAfterResume('Shortcut');
+      if (task.stopped) return SyncReport(0, 0, false);
+      if (ResetGate.active || _isDisposed()) throw StateError('Edge is not ready');
+      if (!usable) await engine.disconnect();
+    }
+    if (!engine.isConnected) {
+      task.update('connecting');
+      // A background Shortcut must not enable the UI's high-rate live streams.
+      await openSession(foreground: !background);
+    }
+    if (task.stopped || !engine.isConnected) return SyncReport(0, 0, false);
+    // The waits above left 'starting'/'waiting', which a deadline reads as
+    // timedOut even though the burst is banking records.
+    task.update('syncing');
+    final burst = _kickSyncBurst(kickFirst: _syncBurst == null).then((report) {
+      if (_isDisposed()) return report;
+      if (report.records > 0) _deriveScheduler.markStoredData();
+      _notify();
+      return report;
+    });
+    // The burst is the app's and can run for many minutes; a stopped Shortcut
+    // stops waiting so it releases the headless gate, not the transfer.
+    return Future.any([
+      burst,
+      task.whenStopped.then((_) => SyncReport(0, 0, false)),
+    ]);
+  }
+
+  /// [foreground] false: a background iOS Shortcut opening the link (upstream).
+  /// It must not leave the background state or start the UI's foreground work.
   Future<void> openSession({bool foreground = true}) async {
-    if (paired == null) return;
+    if (paired == null || _disposed) return;
     // Returning to the foreground with the connection still alive (kept during
     // background): don't tear it down and reconnect — just reclaim ownership.
     final wasBackground = background;
@@ -507,15 +781,9 @@ class SyncController {
     if (foreground) {
       background = false;
       engine.setBackground(false);
-      _scheduler.setBackground(false);
+      _deriveScheduler.setBackground(false);
     }
-    if (busy) {
-      if (foreground && wasBackground) {
-        _nudgeLive();
-        unawaited(_refreshHighFreqWakeWindow());
-      }
-      return;
-    }
+    if (busy) return;
     BandOwnership.markForegroundIntent(true);
     _log('[OWNERSHIP] foreground intent on (${BandOwnership.debugState})');
     // Coming back after hours (or days) suspended: re-read the phone's steps
@@ -523,9 +791,6 @@ class SyncController {
     if (foreground && _phoneStepsEnabled()) {
       unawaited(_syncPhoneSteps());
     }
-    // Fresh backoff budget per resume, so a chain that gave up earlier retries.
-    _resetActivityReviewAttempts();
-    unawaited(_refreshActivityReviews());
     if (foreground && wasBackground && engine.isConnected) {
       IosBleRestore.foregroundActive = true;
       await IosBleRestore.setOwnsBand(true);
@@ -553,6 +818,9 @@ class SyncController {
         // `background` flipped: the foreground owners (gen4 bundle, a gait
         // workout's IMU) apply again.
         _nudgeLive();
+        // The alarm first: the fast path skips the connect flow's arm, and an
+        // occurrence that fired while backgrounded is otherwise unarmed.
+        unawaited(_armNextAlarmOccurrence());
         // …and the background band prompt is dropped (the smart-wake window,
         // if open, keeps its own).
         unawaited(_refreshHighFreqWakeWindow());
@@ -610,16 +878,23 @@ class SyncController {
         _log('Session start: could not reach the band.');
         return;
       }
+      if (_disposed) {
+        // Parked in the connect past dispose: start nothing; the finally lets go.
+        _log('Session start abandoned — disposed while connecting.');
+        await _dropHalfOpenLink();
+        return;
+      }
       await engine.getBattery();
       await engine.getStrapName(); // populate strap name for the Profile UI
       // Alarm is displayed from the locally-set/persisted value (authoritative);
       // the GET_ALARM readback is parked (unconfirmed format) — see ble_engine.
       // Arm the strap's high-frequency sync window when a wake alarm is near
       // (denser flushes → fresher overnight data ahead of the alarm).
-      await _refreshHighFreqWakeWindow();
-      // Compute + arm the next weekly-schedule occurrence on every successful
-      // connect (Feature 1's arming engine) — see _armNextAlarmOccurrence.
+      // The alarm FIRST: nothing it needs depends on the wake window, and the
+      // window's plan reads the database and writes to the band, either of
+      // which can stall. The wake alarm must never wait behind them.
       await _armNextAlarmOccurrence();
+      await _refreshHighFreqWakeWindow();
       _log('Listening — live streams per owners, historical burst runs concurrently.');
       // Enable live streams PROMPTLY, then let the historical burst run
       // CONCURRENTLY (unawaited, single-flight via _kickSyncBurst). History and
@@ -639,18 +914,19 @@ class SyncController {
       await engine.reconcileLiveStreams(); // the owners' intent, not full live
       unawaited(
         _kickSyncBurst(kickFirst: false).then((report) async {
+          if (_disposed) return;
           _log(
             'Backlog drained: ${report.records} records in ${report.batches} '
             'batches (${report.complete ? "complete" : "stopped early"}).',
           );
-          // Re-evaluate the high-frequency wake window now the backlog landed.
-          await _refreshHighFreqWakeWindow();
           // Re-arm the weekly schedule now the sync completed (Feature 1: "on
-          // every successful connect AND after each sync").
+          // every successful connect AND after each sync"), then re-evaluate
+          // the high-frequency wake window now the backlog landed. Alarm first.
           await _armNextAlarmOccurrence();
+          await _refreshHighFreqWakeWindow();
           // The whole backlog landed → heavy foreground finalize (full sleep
           // staging + 24-h spectra over every stale day).
-          _scheduler.requestHeavy();
+          _deriveScheduler.requestHeavy();
           _notify();
         }).catchError((Object e) {
           _log('Background sync burst failed: $e');
@@ -659,29 +935,24 @@ class SyncController {
       _startBackfillTimer();
     } catch (e) {
       _log('Session start failed: $e');
+      // A throw after the link came up is a failed setup: drop the link so the
+      // loop the disconnect edge starts redoes it, rather than a half-open one.
+      if (engine.isConnected) await _dropHalfOpenLink();
     } finally {
       if (!engine.isConnected || !_keepAlive) {
         _stopBackfillTimer();
-        BandOwnership.markForegroundIntent(false);
-        _log('[OWNERSHIP] foreground intent off (${BandOwnership.debugState})');
-        _releaseForegroundLease();
-      }
-      // A background connect that failed (a Shortcut while the band is out of
-      // range) left foregroundActive true with no link, and no later
-      // background transition will clear it: every restore wake and BG-task
-      // sync would skip until the user next opens the app. Hand the band back
-      // to the restore path, same as the background cold-launch does.
-      // Not after unpair/endSession dropped keep-alive mid-connect: that would
-      // re-arm a pending connect for a session nobody wants.
-      if (_keepAlive && background && !engine.isConnected) {
-        await _armRecovery();
+        _releaseClaimsUnlessLooping();
       }
       _setBusy(false);
     }
   }
 
+  /// Direct connect attempts before handing the pending connect to the OS
+  /// bluetooth stack (Android autoConnect fallback) — see [_reconnect].
+  static const int _directAttemptsBeforeOsFallback = 4;
+
   Future<void> _reconnect() async {
-    if (_reconnecting || paired == null) return;
+    if (_reconnecting || paired == null || _disposed) return;
     // Bond-refusal give-up: a band that keeps refusing the bond will never accept
     // commands, so the auto-reconnect loop is paused (surfaced as needsRepairGuide).
     // A manual user connect / re-pair clears the pause on the next successful bond.
@@ -753,6 +1024,14 @@ class SyncController {
           connected = await engine.connectToRemoteId(paired!.remoteId,
               generationHint: paired!.generation);
         }
+        // The loop was retired (endSession / unpair / superseded) while the
+        // connect was in flight: no post-connect block for a session nobody wants.
+        if (generation != _reconnectGeneration) {
+          // No session wants a link any more: the one the connect won is dropped.
+          // (Superseded by a live replacement, _keepAlive is still true: leave it.)
+          if (!_keepAlive && engine.isConnected) await _dropHalfOpenLink();
+          break;
+        }
         if (connected) {
           // Reclaim the band from the iOS restore central so it stops competing.
           if (Platform.isIOS) {
@@ -762,11 +1041,11 @@ class SyncController {
           EdgeTracking.start(); // ensure the Android foreground service is up too
           // Arm the strap's high-frequency sync window when a wake alarm is
           // near (denser flushes ahead of the alarm).
-          await _refreshHighFreqWakeWindow();
-          // Compute + arm the next weekly-schedule occurrence on every
-          // successful (re)connect — see _armNextAlarmOccurrence.
+          // The alarm FIRST (see openSession): the wake window's database read
+          // and band write must never delay it.
           await _armNextAlarmOccurrence();
-          // Live streams come up per the current owners (see _liveOwners:
+          await _refreshHighFreqWakeWindow();
+          // Live streams come up per the current owners (see LiveStreamController.owners:
           // backgrounded with no owner is OFF on both platforms);
           // the FULL drain (no short timeout — the ENTIRE offline backlog the
           // band flashed while out of range) runs concurrently, single-flight,
@@ -777,26 +1056,19 @@ class SyncController {
           await engine.reconcileLiveStreams();
           await engine.getBattery();
           await engine.getStrapName();
-          // the link can drop inside the awaits above. _onEngineState ignored
-          // that drop because _reconnecting is still set, so nobody else arms
-          // recovery or retries: do it here instead of breaking as connected.
-          if (!engine.isConnected) {
-            _log('Link dropped during reconnect setup — retrying.');
-            if (background) await _armRecovery();
-            continue;
-          }
           // Alarm display comes from the locally-set/persisted value; the
           // GET_ALARM readback is parked (unconfirmed format) — see ble_engine.
           _log('Reconnected — live on; draining backlog in background.');
           unawaited(
             _kickSyncBurst(kickFirst: false).then((report) async {
+              if (_disposed) return;
               _log('Reconnect backlog drained: ${report.records} records.');
-              // Re-evaluate the high-frequency wake window now the backlog
-              // landed.
-              await _refreshHighFreqWakeWindow();
               // Re-arm the weekly schedule now the sync completed (Feature 1:
-              // "on every successful connect AND after each sync").
+              // "on every successful connect AND after each sync"), then
+              // re-evaluate the high-frequency wake window now the backlog
+              // landed. Alarm first.
               await _armNextAlarmOccurrence();
+              await _refreshHighFreqWakeWindow();
               // Backlog (often an overnight gap) just landed → derive it.
               // Backgrounded, a flappy link (routine arm-swing dropouts)
               // reconnects many times an hour; each heavy pass spawns an
@@ -809,10 +1081,10 @@ class SyncController {
               if (background &&
                   lastHeavy != null &&
                   now.difference(lastHeavy) < const Duration(minutes: 30)) {
-                _scheduler.markStoredData();
+                _deriveScheduler.markStoredData();
               } else {
                 if (background) _lastBackgroundHeavyAt = now;
-                _scheduler.requestHeavy();
+                _deriveScheduler.requestHeavy();
               }
               _notify();
             }).catchError((Object e) {
@@ -824,6 +1096,11 @@ class SyncController {
           }
         } catch (e) {
           _log('Reconnect attempt $attempt failed: $e — retrying.');
+          // A throw once the link is up is a failed attempt too: drop the link
+          // so the next iteration redoes the whole setup.
+          if (engine.isConnected && generation == _reconnectGeneration) {
+            await _dropHalfOpenLink();
+          }
         }
       }
     } catch (e) {
@@ -867,12 +1144,15 @@ class SyncController {
       // re-trigger a fresh offload over the live connection (no reconnect) and
       // wait for it to fully hand over. Live streams stay on; no mode change.
       while (_syncBurst != null) {
-        await _syncBurst;
+        // The burst's owner logs its own failure; this caller still re-triggers.
+        try {
+          await _syncBurst;
+        } catch (_) {}
       }
       await _kickSyncBurst(kickFirst: true);
       _notify();
       // A just-finished workout window landed from flash → derive it (light).
-      _scheduler.markStoredData();
+      _deriveScheduler.markStoredData();
     } catch (e) {
       _log('Resync failed: $e');
     }
@@ -911,7 +1191,7 @@ class SyncController {
       if (!await engine.requestForegroundSync()) return;
       final report = await _kickSyncBurst(kickFirst: false);
       if (report.records > 0) {
-        _scheduler.markStoredData();
+        _deriveScheduler.markStoredData();
         _notify();
       }
       _log('Foreground catch-up: ${report.records} records pulled.');
@@ -920,73 +1200,115 @@ class SyncController {
     }
   }
 
-  /// "Sync the band". On a link that is already up in the foreground,
-  /// [openSession] just reuses it and joins an offload nobody asked the band
-  /// for, so the tap pulled nothing: ask for one over the current link, then
-  /// finalize whatever landed. Floored like [foregroundCatchUp]: on a band
-  /// that just drained, a few quick taps would each come back empty, and the
-  /// empty-sync detector reads three of those as a lost clock and backs the
-  /// periodic pull off.
-  Future<void> syncNow() async {
-    if (background || !engine.isConnected) return openSession();
+  late final SyncCoordinator syncOperations = SyncCoordinator(
+    run: _manualSync,
+    isConnected: () => _isConnected(),
+    reloadLocal: () async { _bumpInsights(); },
+    log: _log,
+  )..addListener(_notify);
+
+  /// Feed the sync panel from one committed history chunk. Called strictly
+  /// AFTER the chunk's atomic commit returned, so it is progress reporting and
+  /// nothing else; it swallows every error so a UI counter can never turn a
+  /// durable commit into a "failed" one (which would block the ACK).
+  void reportSyncCommit(int records, Iterable<int?> recTs) {
     try {
-      final running = _syncBurst;
-      if (running != null) {
-        await running;
-      } else if (await engine.requestForegroundSync()) {
-        await _kickSyncBurst(kickFirst: false);
-        _notify();
-        _scheduler.markStoredData();
+      int? newest;
+      for (final t in recTs) {
+        if (t != null && (newest == null || t > newest)) newest = t;
       }
-    } catch (e) {
-      _log('Sync failed: $e');
-    }
-    _scheduler.requestHeavy();
+      DateTime? at(int? sec) =>
+          sec == null ? null : DateTime.fromMillisecondsSinceEpoch(sec * 1000);
+      syncOperations.reportCommit(
+        records: records,
+        newest: at(newest),
+        bandNewest: at(engine.strapHistoryNewestTs),
+      );
+    } catch (_) {}
   }
 
-  Future<SyncReport> syncForShortcut(ShortcutSyncTask task) async {
-    if (ResetGate.active) throw StateError('data reset in progress');
-    if (!_initialized()) task.update('starting');
-    while (!_initialized() &&
-        _initError() == null &&
-        !_isDisposed &&
-        !task.stopped) {
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    }
-    if (_initError() != null || _isDisposed) throw StateError('Edge is not ready');
-    if (busy) task.update('waiting');
-    while (busy && !task.stopped) {
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    }
-    if (task.stopped) return SyncReport(0, 0, false);
-    if (ResetGate.active || _isDisposed) throw StateError('Edge is not ready');
-    if (engine.isConnected) {
-      final usable = await _linkUsableAfterResume('Shortcut');
-      if (task.stopped) return SyncReport(0, 0, false);
-      if (ResetGate.active || _isDisposed) throw StateError('Edge is not ready');
-      if (!usable) await engine.disconnect();
-    }
+  Future<void> _manualSync(void Function(String) progress) async {
+    // The coordinator cancels this when it times the run out. Checked between
+    // steps, so a retired run stops instead of carrying on beside its retry.
+    final cancel = syncOperations.cancelToken;
+    // A link that is already up never announces 'connecting': the panel then
+    // shows "Already connected" instead of timing a step that did not happen.
     if (!engine.isConnected) {
-      task.update('connecting');
-      // A background Shortcut must not enable the UI's high-rate live streams.
-      await openSession(foreground: !background);
+      progress('connecting');
+      if (paired == null) throw StateError('Pair a band before syncing');
+      await openSession();
+      cancel.throwIfCancelled();
+      if (!engine.isConnected) throw StateError('Could not connect to the band');
     }
-    if (task.stopped || !engine.isConnected) return SyncReport(0, 0, false);
-    // The waits above left 'starting'/'waiting', which a deadline reads as
-    // timedOut even though the burst is banking records.
-    task.update('syncing');
-    final burst = _kickSyncBurst(kickFirst: _syncBurst == null).then((report) {
-      if (_isDisposed) return report;
-      if (report.records > 0) _scheduler.markStoredData();
-      _notify();
-      return report;
-    });
-    // The burst is the app's and can run for many minutes; a stopped Shortcut
-    // stops waiting so it releases the headless gate, not the transfer.
-    return Future.any([
-      burst,
-      task.whenStopped.then((_) => SyncReport(0, 0, false)),
-    ]);
+    progress('downloading');
+    // This sync is the one deriving what its download stores, so the debounced
+    // light derive those commits arm stands down for the duration. Handed back
+    // on EVERY exit; the queued light job is dropped only if this sync's own
+    // derive completed (see DeriveScheduler.endManualSync).
+    final hold = _deriveScheduler.beginManualSync();
+    var derived = false;
+    try {
+      final report = await _kickSyncBurst(kickFirst: true);
+      cancel.throwIfCancelled();
+      if (!engine.isConnected) throw StateError('Band disconnected during sync');
+      final verdict = classifyDownload(
+        connected: true,
+        complete: report.complete,
+        progressed: _lastBurstAdvanced ||
+            (syncOperations.presentation.download?.records ?? 0) > 0,
+        stuck: engine.historyStuckThisSession,
+      );
+      switch (verdict) {
+        case DownloadVerdict.failed:
+          throw StateError('Download stopped before completion. Retry sync.');
+        case DownloadVerdict.partial:
+          // Stopped at the time cap with data banked: not an error. What
+          // arrived is calculated below and the rest is the next sync's.
+          _log('[sync] download ended before the band finished — partial');
+          syncOperations.reportPartialDownload();
+        case DownloadVerdict.complete:
+          break;
+      }
+      progress('deriving');
+      // Blocked behind another calculation? Say so, and clear the flag on every
+      // exit (the wait throws on its own 10-minute deadline).
+      final blocked = _derive.running || _reanalyzing();
+      if (blocked) syncOperations.reportWaitingForCalculation(true);
+      try {
+        await _waitForDerivation();
+      } finally {
+        if (blocked) syncOperations.reportWaitingForCalculation(false);
+      }
+      cancel.throwIfCancelled();
+      _deriveScheduler.markManualDeriveStarted(hold);
+      int? scoped;
+      await _deriveCoordinator.afterDrain(
+        heavy: true,
+        changedOnly: true,
+        onScope: (total) {
+          scoped = total;
+          syncOperations.reportScope(total);
+        },
+        onDay: (day, index, total) =>
+            syncOperations.reportDay(day, index, total),
+      );
+      final error = _derive.snapshot()['last_error'];
+      if (error != null) throw StateError('$error');
+      // The engine refuses a pass while another holds its lock; saying "done"
+      // over a calculation that never ran would be false.
+      if (scoped == null) {
+        throw StateError('Another calculation was running. Retry sync.');
+      }
+      derived = true;
+    } finally {
+      await _deriveScheduler.endManualSync(hold, absorb: derived);
+    }
+  }
+
+  /// Arm the backfill timer without a session. Tests only.
+  @visibleForTesting
+  void debugArmBackfillTimer() {
+    _backfillTimer ??= Timer.periodic(_backfillInterval, (_) {});
   }
 
   Future<void> endSession() async {
@@ -1009,6 +1331,9 @@ class SyncController {
     );
   }
 
+  /// Give the foreground claim back ([AppState.dispose]).
+  void releaseForegroundLease() => _releaseForegroundLease();
+
   void _releaseForegroundLease() {
     final lease = _foregroundLease;
     if (lease == null) return;
@@ -1019,8 +1344,6 @@ class SyncController {
     BandOwnership.release(lease);
     _foregroundLease = null;
   }
-
-  void releaseForegroundLease() => _releaseForegroundLease();
 
   final SyncActivityWindow _syncActivity = SyncActivityWindow();
 
@@ -1039,14 +1362,10 @@ class SyncController {
   bool get syncingNow =>
       _syncActivity.isActive(DateTime.now().millisecondsSinceEpoch);
 
-  String get status => device.connection;
-
-  DateTime? get lastDataAt => engine.lastRxAt;
-
-  DateTime? get lastRecordAt => lastRecTs == null
-      ? null
-      : DateTime.fromMillisecondsSinceEpoch(lastRecTs! * 1000);
-
+  /// Records reached durable storage. Called from the durable-write callback —
+  /// NOT inferred from a sync burst finishing, because `_onDataStored` has
+  /// already advanced the frontier by then, so the burst's own "did the
+  /// frontier move" test is false exactly when data has just landed.
   void markSyncActivity() {
     final now = DateTime.now().millisecondsSinceEpoch;
     _syncActivity.mark(now);
@@ -1060,109 +1379,26 @@ class SyncController {
     );
   }
 
+  /// REAL device timestamp of the newest record we hold (the band's own clock),
+  /// NOT when the BLE frame arrived. This is what "last data: …" displays — a
+  /// flash backfill arrives "now" but carries hours-old records. `null` until any
+  /// record exists.
+  DateTime? get lastRecordAt => lastRecTs == null
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(lastRecTs! * 1000);
+
   void _setBusy(bool b) {
     busy = b;
     _notify();
   }
 
-  /// The background cold-launch connect that `_initSteps` runs when the process
-  /// starts backgrounded (an iOS BLE-restore relaunch lands here, not in
-  /// [openSession]).
-  Future<void> startBackgroundSession() async {
-    _keepAlive = true;
-    _startReconnectSupervisor();
-    if (Platform.isAndroid) EdgeTracking.start();
-    if (Platform.isIOS) {
-      IosBleRestore.foregroundActive = true;
-      IosBleRestore.arm(paired!.remoteId);
-    }
-    _log('===== BACKGROUND SESSION START =====');
-    try {
-      await _ensureForegroundLease();
-      if (await engine.connectToRemoteId(paired!.remoteId,
-          generationHint: paired!.generation)) {
-        // A process kill followed by an iOS BLE-restore relaunch lands
-        // HERE, not in openSession() — this is the primary case the live
-        // step checkpoint exists for, so recovery has to run on this path
-        // too or those steps sit in prefs forever. Counters are fresh on a
-        // cold launch, so there is nothing to double-count.
-        await _recoverOrphanedLiveSession();
-        _resetLivePedometer();
-        // Apply the owners' intent to the fresh link: backgrounded owns
-        // no live stream on either platform (see [_liveOwners]). On iOS
-        // the band's HIGH_FREQ_SYNC prompt is what wakes the suspended
-        // process, so it must be armed HERE too — this path is the
-        // relaunch after a process kill, and with no stream and no
-        // prompt nothing would ever schedule this process again.
-        await engine.reconcileLiveStreams();
-        await _refreshHighFreqWakeWindow();
-        _startBackfillTimer();
-      } else {
-        // Connect attempt didn't succeed on this background cold-launch —
-        // fall back to the recovery arm so `foregroundActive` resets and
-        // native re-arms a fresh pending connect. Without this, a single
-        // failed connect here permanently wedges every future
-        // restore-wake for this process's lifetime: foregroundActive was
-        // already set true above, and it's the master gate on the native
-        // wake handler (ios_ble_restore.dart) — stuck true with no live
-        // connection means every subsequent wake silently no-ops forever,
-        // and the only way back is the user manually opening the app.
-        _log('[init] bg connect returned false — arming recovery');
-        await _armRecovery();
-      }
-    } catch (e) {
-      _log('[init] bg connect failed: $e — arming recovery');
-      await _armRecovery();
-    }
-  }
-
-  /// The `connected -> disconnected` branch of `_onEngineState`: reconnect while
-  /// a session is wanted, otherwise hand the foreground lease back.
-  void onLinkDropped() {
-    if (_keepAlive && paired != null && !_reconnecting && !device.autoReconnectPaused) {
-      _log('Connection dropped — reconnecting…');
-      _stopBackfillTimer();
-      if (background) {
-        // Backgrounded: arm the OS-durable restore path FIRST and wait for it to
-        // confirm-armed before spending any Dart cycles on the in-process retry —
-        // the restore central's no-timeout pending connect is the only piece of
-        // this that survives a full process suspension, so it must land before we
-        // risk `_reconnect()`'s own delay/backoff getting cut off mid-flight (that
-        // loop needs the Dart run loop to keep being scheduled; the armed native
-        // connect does not). Still fire-and-forget from the caller's perspective —
-        // `_onEngineState` itself stays synchronous.
-        unawaited(_armRecovery().then((_) => _reconnect()));
-      } else {
-        _reconnect();
-      }
-    } else {
-      _releaseForegroundLease();
-    }
-  }
-
-  Future<void> unpairSession() async {
+  /// The quiet timer, the backfill timer and the supervisor, and the wish for a
+  /// link: after this nothing new starts (see the header).
+  void dispose() {
+    _disposed = true;
     _keepAlive = false;
-    BandOwnership.markForegroundIntent(false);
-    _stopBackfillTimer();
-    _stopReconnectSupervisor();
-    IosBleRestore.foregroundActive = false;
-    await EdgeTracking.stop();
-    await IosBleRestore.disarm();
-    // Deprovision the ASK accessory (iOS 18+) so a future pair re-shows the picker and
-    // re-establishes iOS-26 relaunch eligibility. No-op on Android / iOS < 18.
-    await AccessorySetup.removeAll();
-    await engine.disconnect();
-    _releaseForegroundLease();
-  }
-
-  /// AppState cancels this first in its dispose, before anything that can
-  /// throw, as it did when it owned the timer.
-  void cancelQuietTimer() {
     _syncQuietTimer?.cancel();
     _syncQuietTimer = null;
-  }
-
-  void dispose() {
     _stopBackfillTimer();
     _stopReconnectSupervisor();
   }

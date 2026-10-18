@@ -3,12 +3,12 @@
 // Native (BgSyncScheduler.swift) calls the `openstrap/bg_task` channel method
 // `run` when iOS opportunistically wakes the app for a background task.
 //   - BGProcessingTask (no arguments): FULL profile — runHeadlessSync()
-//     (connect → flash offload → local store → disconnect → light derive)
-//     followed by a heavy DerivationEngine pass (full sleep staging + 24h
-//     spectra).
+//     (connect → flash offload → local store → disconnect, plus an allowed
+//     automatic light derive) followed by a heavy DerivationEngine pass when
+//     the saved calculation-power policy allows it.
 //   - BGAppRefreshTask ({'mode': 'sync'}): LIGHT profile — headless sync only,
 //     NO heavy derivation (a refresh task's ~30 s budget can't fit it; the
-//     light per-drain derive inside runHeadlessSync still runs).
+//     automatic light derive inside runHeadlessSync may run).
 // Returns true to signal completion.
 //
 // iOS gives BGProcessingTask a longer wall-clock budget than BGAppRefreshTask
@@ -30,13 +30,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../compute/derivation_engine.dart';
 import '../compute/profile.dart';
 import '../ble/ios_ble_restore.dart';
 import '../data/local_repository_impl.dart';
 import '../widget/widget_service.dart';
 import 'background_sync.dart';
 import 'headless_gate.dart';
+
+bool _platformIsIOS() => Platform.isIOS;
 
 class IosBgTask {
   static const _ch = MethodChannel('openstrap/bg_task');
@@ -48,10 +49,26 @@ class IosBgTask {
   /// here (see AppState.foregroundCatchUp); null until an AppState exists.
   static Future<void> Function()? foregroundPull;
 
-  /// Register the method call handler. Call once at startup from main().
-  /// No-op on Android.
-  static Future<void> init() async {
+  /// Asks iOS to run the BGProcessingTask only on external power (the Eager
+  /// Calculations mode) or lifts that. Dart half only: the native request in
+  /// ios/Runner/BgSyncScheduler.swift still hard-codes
+  /// `requiresExternalPower = false` and has no handler for this call, so until
+  /// it does (TODO, needs a device to verify) the call is a swallowed
+  /// MissingPluginException. No-op off iOS; never throws.
+  static Future<void> requestExternalPower(bool required) async {
     if (!Platform.isIOS) return;
+    try {
+      await _ch.invokeMethod<void>('setRequiresExternalPower', required);
+    } catch (e) {
+      debugPrint('[ios-bgtask] external power request not applied: $e');
+    }
+  }
+
+  /// Register the method call handler. Call once at startup from main().
+  /// No-op unless [isIOS] says so (design 02, rev 6: the platform check is an
+  /// injectable seam so the real handler can be driven on a CI host).
+  static Future<void> install({bool Function() isIOS = _platformIsIOS}) async {
+    if (!isIOS()) return;
     _ch.setMethodCallHandler((call) async {
       if (call.method != 'run') return null;
       // BGAppRefreshTask passes {'mode': 'sync'} → LIGHT profile (sync only).
@@ -60,6 +77,13 @@ class IosBgTask {
       return _run(syncOnly: mode == 'sync');
     });
   }
+
+  /// Production entry point (main.dart): [install] with the real platform check.
+  static Future<void> init() => install();
+
+  @visibleForTesting
+  static Future<bool> runForTest({required bool syncOnly}) =>
+      _run(syncOnly: syncOnly);
 
   static Future<bool> _run({required bool syncOnly}) async {
     // ONE shared gate across every headless entry point (BGProcessingTask,
@@ -84,35 +108,38 @@ class IosBgTask {
             debugPrint('[ios-bgtask] foreground pull failed (ignored): $e');
           }
         }
-        if (!syncOnly) {
-          // Heavy derive pass (full sleep staging + 24h spectra, stale days).
-          try {
-            final profile = await _loadProfile();
-            final engine = DerivationEngine(
-                log: (l) => debugPrint('[ios-bgtask-derive] $l'),
-                background: true);
-            await engine.run(profile, heavy: true);
-            // Baseline-dirty rescan on the iOS BGTask tick: refresh
-            // baseline-dependent scalars on recent finalized days if the
-            // rolling baseline moved. Cheap no-op when unchanged.
-            await engine.rescanRecent(profile);
-            await _refreshWidgetSnapshot(profile);
-          } catch (e) {
-            debugPrint('[ios-bgtask] heavy derive skipped: $e');
+        if (await mayRunHeadlessAutomaticDerive()) {
+          if (!syncOnly) {
+            // Heavy derive pass (full sleep staging + 24h spectra, stale days).
+            try {
+              final profile = await _loadProfile();
+              final engine = await newHeadlessDerivationEngine(
+                  (l) => debugPrint('[ios-bgtask-derive] $l'));
+              await engine.run(profile, heavy: true);
+              // Baseline-dirty rescan on the iOS BGTask tick: refresh
+              // baseline-dependent scalars on recent finalized days if the
+              // rolling baseline moved. Cheap no-op when unchanged.
+              await engine.rescanRecent(profile);
+              await _refreshWidgetSnapshot(profile);
+            } catch (e) {
+              debugPrint('[ios-bgtask] heavy derive skipped: $e');
+            }
+          } else {
+            // Honest best attempt: run a light derive pass during BGAppRefreshTask.
+            // This keeps today's metrics fresh without tripping the CPU watchdog.
+            try {
+              final profile = await _loadProfile();
+              final engine = await newHeadlessDerivationEngine(
+                  (l) => debugPrint('[ios-bgrefresh-derive] $l'));
+              await engine.run(profile, heavy: false);
+              await _refreshWidgetSnapshot(profile);
+            } catch (e) {
+              debugPrint('[ios-bgrefresh] light derive skipped: $e');
+            }
           }
         } else {
-          // Honest best attempt: run a light derive pass during BGAppRefreshTask.
-          // This keeps today's metrics fresh without tripping the CPU watchdog.
-          try {
-            final profile = await _loadProfile();
-            final engine = DerivationEngine(
-                log: (l) => debugPrint('[ios-bgrefresh-derive] $l'),
-                background: true);
-            await engine.run(profile, heavy: false);
-            await _refreshWidgetSnapshot(profile);
-          } catch (e) {
-            debugPrint('[ios-bgrefresh] light derive skipped: $e');
-          }
+          debugPrint(
+              '[ios-bgtask] automatic derive held by Maximum battery mode.');
         }
         debugPrint('[ios-bgtask] done (syncOnly=$syncOnly)');
         return true;

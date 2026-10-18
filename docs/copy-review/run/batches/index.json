@@ -1,0 +1,482 @@
+[
+  {
+    "file": "000.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:appTitle",
+    "last": "lib/l10n/app_en.arb:bandNotifEmptyTitle"
+  },
+  {
+    "file": "001.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:bandNotifEmptyBody",
+    "last": "lib/l10n/app_en.arb:devicesLastData"
+  },
+  {
+    "file": "002.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:devicesNothingBankedYet",
+    "last": "lib/l10n/app_en.arb:welcomeHeadline"
+  },
+  {
+    "file": "003.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:welcomeSubhead",
+    "last": "lib/l10n/app_en.arb:aiBriefingCloudBody"
+  },
+  {
+    "file": "004.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:aiBriefingNoneCardTitle",
+    "last": "lib/l10n/app_en.arb:driverBreakdownContributionNotReported"
+  },
+  {
+    "file": "005.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:driverBreakdownRelativeUncalibrated",
+    "last": "lib/l10n/app_en.arb:beatsMeasuredOn"
+  },
+  {
+    "file": "006.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:beatsVariabilitySection",
+    "last": "lib/l10n/app_en.arb:logFoodBreakfast"
+  },
+  {
+    "file": "007.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:logFoodLunch",
+    "last": "lib/l10n/app_en.arb:nutritionFloorTitle"
+  },
+  {
+    "file": "008.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:nutritionFloorBody",
+    "last": "lib/l10n/app_en.arb:coachNewChat"
+  },
+  {
+    "file": "009.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:coachNoChatsYet",
+    "last": "lib/l10n/app_en.arb:investigateIrregularRhythmScreen"
+  },
+  {
+    "file": "010.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:investigateOneSquarePerDay",
+    "last": "lib/l10n/app_en.arb:calmBreathingVerdictCouldNotScore"
+  },
+  {
+    "file": "011.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:calmBreathingVerdictTied",
+    "last": "lib/l10n/app_en.arb:cyclePhaseFollicular"
+  },
+  {
+    "file": "012.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:cyclePhaseOvulation",
+    "last": "lib/l10n/app_en.arb:healthNapsTitle"
+  },
+  {
+    "file": "013.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:healthNoNapReading",
+    "last": "lib/l10n/app_en.arb:homeOvernightNothingYet"
+  },
+  {
+    "file": "014.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:homeMonthJanuary",
+    "last": "lib/l10n/app_en.arb:homeIllnessBodyBelow"
+  },
+  {
+    "file": "015.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:homeIllnessAdvice",
+    "last": "lib/l10n/app_en.arb:wellnessAdd"
+  },
+  {
+    "file": "016.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:wellnessEveryDay",
+    "last": "lib/l10n/app_en.arb:sleepDetailAtLeastWakeups"
+  },
+  {
+    "file": "017.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:sleepDetailLongestStretch",
+    "last": "lib/l10n/app_en.arb:workoutReviewFix"
+  },
+  {
+    "file": "018.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:workoutLogPastTitle",
+    "last": "lib/l10n/app_en.arb:dayStrainWearBandFix"
+  },
+  {
+    "file": "019.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:dayStrainChartTitle",
+    "last": "lib/l10n/app_en.arb:activitySummaryRouteTitle"
+  },
+  {
+    "file": "020.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:activitySummarySlower",
+    "last": "lib/l10n/app_en.arb:activityLiveMatchSetSubtitle"
+  },
+  {
+    "file": "021.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:activityLiveMetrePoolLabel",
+    "last": "lib/l10n/app_en.arb:settingsHealthShareOnBody"
+  },
+  {
+    "file": "022.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:settingsNo",
+    "last": "lib/l10n/app_en.arb:settingsImportNoPermission"
+  },
+  {
+    "file": "023.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:settingsImportEmptyWithBirthday",
+    "last": "lib/l10n/app_en.arb:nudgeDiscordTitle"
+  },
+  {
+    "file": "024.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:nudgeDiscordBody",
+    "last": "lib/l10n/app_en.arb:ecgWaveformLabel"
+  },
+  {
+    "file": "025.jsonl",
+    "items": 100,
+    "first": "lib/l10n/app_en.arb:ecgSampleNote",
+    "last": "lib/ble/adapters/garmin.dart:offset-1824"
+  },
+  {
+    "file": "026.jsonl",
+    "items": 100,
+    "first": "lib/ble/adapters/garmin.dart:offset-5333",
+    "last": "lib/ble/adapters/smaq2oss.dart:offset-743"
+  },
+  {
+    "file": "027.jsonl",
+    "items": 100,
+    "first": "lib/ble/adapters/tlw64.dart:offset-1321",
+    "last": "lib/ble/ble_engine.dart:offset-143451"
+  },
+  {
+    "file": "028.jsonl",
+    "items": 100,
+    "first": "lib/ble/ble_engine.dart:offset-143765",
+    "last": "lib/ble/ble_engine.dart:offset-280610"
+  },
+  {
+    "file": "029.jsonl",
+    "items": 100,
+    "first": "lib/ble/ble_engine.dart:offset-282741",
+    "last": "lib/ble/ble_state.dart:offset-10078"
+  },
+  {
+    "file": "030.jsonl",
+    "items": 100,
+    "first": "lib/ble/ble_state.dart:offset-10243",
+    "last": "lib/ble/hrs_link.dart:offset-44764"
+  },
+  {
+    "file": "031.jsonl",
+    "items": 100,
+    "first": "lib/ble/hrs_link.dart:offset-46273",
+    "last": "lib/ble/oura_link.dart:offset-35441"
+  },
+  {
+    "file": "032.jsonl",
+    "items": 100,
+    "first": "lib/ble/pebble_link.dart:offset-1543",
+    "last": "lib/ble/xwatch_link.dart:offset-762"
+  },
+  {
+    "file": "033.jsonl",
+    "items": 100,
+    "first": "lib/ble/xwatch_link.dart:offset-3028",
+    "last": "lib/coach/coach_engine.dart:offset-8866"
+  },
+  {
+    "file": "034.jsonl",
+    "items": 100,
+    "first": "lib/coach/coach_engine.dart:offset-10946",
+    "last": "lib/compute/derivation_engine.dart:offset-166633"
+  },
+  {
+    "file": "035.jsonl",
+    "items": 100,
+    "first": "lib/compute/derivation_engine.dart:offset-166817",
+    "last": "lib/compute/findings.dart:offset-3616"
+  },
+  {
+    "file": "036.jsonl",
+    "items": 100,
+    "first": "lib/compute/findings.dart:offset-3723",
+    "last": "lib/data/db.dart:offset-36920"
+  },
+  {
+    "file": "037.jsonl",
+    "items": 100,
+    "first": "lib/data/db.dart:offset-37090",
+    "last": "lib/data/db.dart:offset-170382"
+  },
+  {
+    "file": "038.jsonl",
+    "items": 100,
+    "first": "lib/data/db.dart:offset-171407",
+    "last": "lib/data/db.dart:offset-248914"
+  },
+  {
+    "file": "039.jsonl",
+    "items": 100,
+    "first": "lib/data/db.dart:offset-248967",
+    "last": "lib/data/db.dart:offset-364241"
+  },
+  {
+    "file": "040.jsonl",
+    "items": 100,
+    "first": "lib/data/db.dart:offset-367041",
+    "last": "lib/data/db.dart:offset-484362"
+  },
+  {
+    "file": "041.jsonl",
+    "items": 100,
+    "first": "lib/data/db.dart:offset-488483",
+    "last": "lib/ecg/ecg_recovery.dart:offset-1467"
+  },
+  {
+    "file": "042.jsonl",
+    "items": 100,
+    "first": "lib/ecg/ecg_transport.dart:offset-207",
+    "last": "lib/health/health_measurement_import.dart:offset-1406"
+  },
+  {
+    "file": "043.jsonl",
+    "items": 100,
+    "first": "lib/health/health_measurement_import.dart:offset-3889",
+    "last": "lib/import/noop_backup_import.dart:offset-24894"
+  },
+  {
+    "file": "044.jsonl",
+    "items": 100,
+    "first": "lib/import/noop_backup_import.dart:offset-25113",
+    "last": "lib/models/metric.dart:offset-7997"
+  },
+  {
+    "file": "045.jsonl",
+    "items": 100,
+    "first": "lib/models/metric.dart:offset-8124",
+    "last": "lib/platform/tasker_bridge.dart:offset-40"
+  },
+  {
+    "file": "046.jsonl",
+    "items": 100,
+    "first": "lib/platform/tasker_bridge.dart:offset-82",
+    "last": "lib/state/app_state.dart:offset-225613"
+  },
+  {
+    "file": "047.jsonl",
+    "items": 100,
+    "first": "lib/state/app_state.dart:offset-225712",
+    "last": "lib/stress/breath_phases.dart:offset-5805"
+  },
+  {
+    "file": "048.jsonl",
+    "items": 100,
+    "first": "lib/stress/session_effect.dart:offset-1469",
+    "last": "lib/telemetry/error_classification.dart:offset-1677"
+  },
+  {
+    "file": "049.jsonl",
+    "items": 100,
+    "first": "lib/telemetry/error_classification.dart:offset-1721",
+    "last": "lib/ui2/activity/live.dart:offset-1046"
+  },
+  {
+    "file": "050.jsonl",
+    "items": 100,
+    "first": "lib/ui2/activity/live.dart:offset-1067",
+    "last": "lib/ui2/activity/setup.dart:offset-12830"
+  },
+  {
+    "file": "051.jsonl",
+    "items": 100,
+    "first": "lib/ui2/activity/setup.dart:offset-12922",
+    "last": "lib/ui2/activity/summary.dart:offset-64454"
+  },
+  {
+    "file": "052.jsonl",
+    "items": 100,
+    "first": "lib/ui2/activity/summary.dart:offset-64578",
+    "last": "lib/ui2/grammar.dart:offset-1609"
+  },
+  {
+    "file": "053.jsonl",
+    "items": 100,
+    "first": "lib/ui2/grammar.dart:offset-6476",
+    "last": "lib/ui2/onboarding/welcome.dart:offset-6459"
+  },
+  {
+    "file": "054.jsonl",
+    "items": 100,
+    "first": "lib/ui2/onboarding/welcome.dart:offset-6979",
+    "last": "lib/ui2/profile/alarm.dart:offset-6690"
+  },
+  {
+    "file": "055.jsonl",
+    "items": 100,
+    "first": "lib/ui2/profile/alarm.dart:offset-6791",
+    "last": "lib/ui2/profile/data.dart:offset-13157"
+  },
+  {
+    "file": "056.jsonl",
+    "items": 100,
+    "first": "lib/ui2/profile/data.dart:offset-13455",
+    "last": "lib/ui2/profile/devices.dart:offset-68699"
+  },
+  {
+    "file": "057.jsonl",
+    "items": 100,
+    "first": "lib/ui2/profile/devices.dart:offset-68799",
+    "last": "lib/ui2/profile/gallery.dart:offset-9627"
+  },
+  {
+    "file": "058.jsonl",
+    "items": 100,
+    "first": "lib/ui2/profile/gallery.dart:offset-10011",
+    "last": "lib/ui2/profile/gallery.dart:offset-44381"
+  },
+  {
+    "file": "059.jsonl",
+    "items": 100,
+    "first": "lib/ui2/profile/gallery.dart:offset-44557",
+    "last": "lib/ui2/profile/gallery.dart:offset-91741"
+  },
+  {
+    "file": "060.jsonl",
+    "items": 100,
+    "first": "lib/ui2/profile/gallery.dart:offset-91787",
+    "last": "lib/ui2/profile/settings.dart:offset-13477"
+  },
+  {
+    "file": "061.jsonl",
+    "items": 100,
+    "first": "lib/ui2/profile/settings.dart:offset-13621",
+    "last": "lib/ui2/profile/settings.dart:offset-74988"
+  },
+  {
+    "file": "062.jsonl",
+    "items": 100,
+    "first": "lib/ui2/profile/settings.dart:offset-75393",
+    "last": "lib/ui2/screens/calm_breathing.dart:offset-35369"
+  },
+  {
+    "file": "063.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/calm_breathing.dart:offset-36180",
+    "last": "lib/ui2/screens/coach.dart:offset-16322"
+  },
+  {
+    "file": "064.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/coach.dart:offset-16406",
+    "last": "lib/ui2/screens/cycle_screen.dart:offset-21107"
+  },
+  {
+    "file": "065.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/cycle_screen.dart:offset-23806",
+    "last": "lib/ui2/screens/driver_breakdown.dart:offset-1599"
+  },
+  {
+    "file": "066.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/driver_breakdown.dart:offset-1639",
+    "last": "lib/ui2/screens/findings_log.dart:offset-1650"
+  },
+  {
+    "file": "067.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/findings_log.dart:offset-1690",
+    "last": "lib/ui2/screens/health_screen.dart:offset-68956"
+  },
+  {
+    "file": "068.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/health_screen.dart:offset-69695",
+    "last": "lib/ui2/screens/investigate.dart:offset-1323"
+  },
+  {
+    "file": "069.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/investigate.dart:offset-1354",
+    "last": "lib/ui2/screens/investigate.dart:offset-50541"
+  },
+  {
+    "file": "070.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/investigate.dart:offset-51124",
+    "last": "lib/ui2/screens/log_workout.dart:offset-24142"
+  },
+  {
+    "file": "071.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/log_workout.dart:offset-24475",
+    "last": "lib/ui2/screens/metric_detail.dart:offset-64615"
+  },
+  {
+    "file": "072.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/metric_detail.dart:offset-64977",
+    "last": "lib/ui2/screens/nutrition_screen.dart:offset-26477"
+  },
+  {
+    "file": "073.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/nutrition_screen.dart:offset-26583",
+    "last": "lib/ui2/screens/sleep_detail.dart:offset-29022"
+  },
+  {
+    "file": "074.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/sleep_detail.dart:offset-29241",
+    "last": "lib/ui2/screens/wellness_screen.dart:offset-22391"
+  },
+  {
+    "file": "075.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/wellness_screen.dart:offset-22691",
+    "last": "lib/ui2/screens/workout_screen.dart:offset-14506"
+  },
+  {
+    "file": "076.jsonl",
+    "items": 100,
+    "first": "lib/ui2/screens/workout_screen.dart:offset-16499",
+    "last": "docs/index.html:html-34"
+  },
+  {
+    "file": "077.jsonl",
+    "items": 100,
+    "first": "docs/index.html:html-35",
+    "last": "docs/privacy.html:html-4"
+  },
+  {
+    "file": "078.jsonl",
+    "items": 100,
+    "first": "docs/privacy.html:html-5",
+    "last": "docs/terms.html:html-18"
+  },
+  {
+    "file": "079.jsonl",
+    "items": 26,
+    "first": "docs/terms.html:html-19",
+    "last": "docs/terms.html:html-44"
+  }
+]

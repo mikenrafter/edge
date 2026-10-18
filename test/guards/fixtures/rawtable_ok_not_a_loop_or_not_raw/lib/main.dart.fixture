@@ -1,0 +1,52 @@
+// FIXTURE: rawtable_ok_not_a_loop_or_not_raw
+// No finding: a loop over a non-raw table's rows; a raw-table query that is only
+// sized or peeked at (length / isEmpty / isNotEmpty / first / firstOrNull / last
+// / single); and, per call, a raw-table query without a loop next to a loop over
+// another table's rows.
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+}
+
+class Screen {
+  Future<int> days(Database db) async {
+    final rows = await db.query('day_result');
+    var n = 0;
+    for (final r in rows) {
+      n += (r['skipped'] as num).toInt();
+    }
+    return n;
+  }
+
+  Future<bool> has(Database db) async {
+    final rows = await db.rawQuery('SELECT 1 FROM decoded_onehz LIMIT 1');
+    return rows.isNotEmpty;
+  }
+
+  Future<num?> oldest(Database db) async {
+    final rows = await db.rawQuery('SELECT MIN(rec_ts) AS m FROM decoded_onehz');
+    return rows.firstOrNull?['m'] as num?;
+  }
+
+  Future<Row> latest(Database db) async {
+    final rows = await db.rawQuery('SELECT * FROM decoded_rr ORDER BY rec_ts');
+    return rows.isEmpty ? const {} : rows.last;
+  }
+
+  Future<int> count(Database db) async {
+    final rows = await db.query('decoded_rr');
+    return rows.length;
+  }
+
+  Future<int> mixed(Database db) async {
+    final raw = await db.rawQuery('SELECT COUNT(*) AS n FROM decoded_onehz');
+    final days = await db.query('day_result');
+    var n = (raw.single['n'] as num).toInt();
+    for (final r in days) {
+      n += (r['skipped'] as num).toInt();
+    }
+    return n;
+  }
+}

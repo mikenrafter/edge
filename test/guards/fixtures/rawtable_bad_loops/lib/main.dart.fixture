@@ -1,0 +1,67 @@
+// FIXTURE: rawtable_bad_loops
+// rawTableRowLoopOutsideHeavy: a row loop over a Database.query / rawQuery result
+// on a raw table (decoded_onehz, decoded_rr, raw_records, raw_archive) in a
+// non-@heavy function outside LocalDb. chart() is getDeviceChart's shape and
+// archive() is SampleArchiver._archiveDevice's. One finding per loop; the
+// element is the table name.
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table,
+          {List<String>? columns, String? where, List<Object?>? whereArgs}) async =>
+      const [];
+  Future<List<Row>> rawQuery(String sql, [List<Object?>? args]) async => const [];
+}
+
+const kArchiveTable = 'raw_archive';
+
+class Screen {
+  Future<int> chart(Database db) async {
+    final rows = await db.rawQuery(
+        'SELECT rec_ts, hr FROM decoded_onehz WHERE hr > 0 ORDER BY rec_ts');
+    var n = 0;
+    for (final r in rows) {
+      n += (r['hr'] as num).toInt();
+    }
+    return n;
+  }
+
+  Future<double> archive(Database db) async {
+    final rows = await db.query('decoded_onehz',
+        columns: const ['rec_ts', 'hr'], where: 'rec_ts >= ?', whereArgs: [0]);
+    var s = 0.0;
+    for (final r in rows) {
+      s += (r['hr'] as num).toDouble();
+    }
+    return s;
+  }
+
+  Future<int> direct(Database db) async {
+    var n = 0;
+    for (final r in await db.query('decoded_rr')) {
+      n += (r['rr_ms'] as num).toInt();
+    }
+    return n;
+  }
+
+  Future<List<Object?>> mapped(Database db) async =>
+      (await db.query('raw_records')).map((r) => r['hex']).toList();
+
+  Future<int> viaConst(Database db) async {
+    final rows = await db.query(kArchiveTable);
+    var n = 0;
+    for (final r in rows) {
+      n += (r['n'] as num).toInt();
+    }
+    return n;
+  }
+
+  Future<int> forEachLoop(Database db) async {
+    final rows = await db.query('decoded_rr');
+    var n = 0;
+    rows.forEach((r) {
+      n += 1;
+    });
+    return n;
+  }
+}

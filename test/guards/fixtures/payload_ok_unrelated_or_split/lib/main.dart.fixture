@@ -1,0 +1,37 @@
+// FIXTURE: payload_ok_unrelated_or_split
+// None of these functions has BOTH a decode/encode and a payload marker (a column
+// literal or a call to a registered payload reader), so none is a finding. A
+// column name in a comment is not a literal.
+import 'dart:convert';
+import 'package:openstrap_edge/util/raw_readers.dart';
+
+const kRawReaders = <RawReader>[
+  RawReader(#LocalDb.dayPayload, reason: 'fixture: stored day payload'),
+];
+
+typedef Row = Map<String, Object?>;
+
+class LocalDb {
+  Future<RowBatch<Row>> dayPayload(String day) async =>
+      RowBatch.wrap(const <Row>[]);
+}
+
+class Repo {
+  // Decodes something that is not a stored payload. payload_json is only a comment.
+  Object? settings(String raw) => jsonDecode(raw);
+
+  String theme(Map<String, Object?> prefs) =>
+      jsonEncode({'theme': prefs['theme']});
+
+  // The literal without a decode: hands the string on.
+  String rawText(Row row) => row['payload_json'] as String;
+
+  // A registered reader without a decode.
+  Future<bool> has(LocalDb db, String day) async =>
+      (await db.dayPayload(day)).isNotEmpty;
+
+  // The decode and the literal live in different functions.
+  Object? decodeOnly(String s) => jsonDecode(s);
+
+  String column() => 'window_json';
+}

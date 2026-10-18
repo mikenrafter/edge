@@ -76,7 +76,7 @@ void main() {
     // that the headline ellipsised. Finding the exact string is the check;
     // an ellipsised RenderParagraph would not match it.
     expect(find.text('71 activities'), findsOneWidget);
-    expect(find.text('Pick one and go'), findsOneWidget);
+    expect(find.text('Pick a session'), findsOneWidget);
   });
 
   testWidgets('nothing overflows at 2.0x text', (t) async {
@@ -108,4 +108,48 @@ void main() {
     expect(find.text('3 exercises'), findsOneWidget);
     expect(find.text('START A SITTING'), findsOneWidget);
   });
+
+  // Both real call sites (Workout, Wellness Mind) put the card in a ListView,
+  // which hands its children an UNBOUNDED height. A Spacer in the card's Column
+  // asserted there ("RenderFlex children have non-zero flex but incoming height
+  // constraints are unbounded"); the Scaffold-body pumps above never see it
+  // because the body is bounded.
+  for (final scale in [1.0, 2.0]) {
+    testWidgets('in a ListView (unbounded height) it lays out, ${scale}x text',
+        (t) async {
+      t.view.physicalSize = const Size(360 * 2, 800 * 2);
+      t.view.devicePixelRatio = 2;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: Scaffold(
+          body: MediaQuery(
+            data: MediaQueryData(
+                size: const Size(360, 800),
+                textScaler: TextScaler.linear(scale)),
+            child: ListView(children: const [
+              StartCard(
+                label: 'START A SITTING',
+                count: 3,
+                noun: 'exercises',
+                asset: 'mascot_wellness.png',
+                accent: C.domMind,
+                deep: C.teal,
+                mascotHeight: 145,
+              ),
+            ]),
+          ),
+        ),
+      ));
+      expect(t.takeException(), isNull);
+      final card = t.getRect(find.byType(StartCard));
+      expect(card.height, greaterThanOrEqualTo(190));
+      // The Spacer's job is kept: overline at the top, count and play button
+      // pushed down toward the bottom edge.
+      final top = t.getTopLeft(find.text('START A SITTING')).dy;
+      final count = t.getTopLeft(find.text('3 exercises')).dy;
+      expect(top - card.top, lessThan(40));
+      expect(count - top, greaterThan(20));
+    });
+  }
 }

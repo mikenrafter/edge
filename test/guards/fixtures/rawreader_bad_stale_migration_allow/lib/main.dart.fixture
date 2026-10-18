@@ -1,0 +1,17 @@
+// FIXTURE: rawreader_bad_stale_migration_allow
+// `LocalDb.upgradeRows` is in the fixture config's kMigrationMethods but no
+// longer returns rows, so the exemption is dead weight: it must be removed.
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<int> upgradeRows() async => (await _db.query('decoded_rr')).length;
+}

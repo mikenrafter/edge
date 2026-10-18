@@ -28,10 +28,19 @@ class Seam {
 }
 
 const seams = [
+  // P2.2 removed LocalRepositoryImpl._decode: the read seam is BundleStore now.
+  // The worker entry is the one decode point for stored payload text; the
+  // retained graph stays compact, so the expansion a caller sees happens in
+  // BundleView (_bundleExpand), which must go through SeriesCodec too.
   Seam(
-    'lib/data/local_repository_impl.dart',
-    '_decode',
-    'the read seam every screen is served from',
+    'lib/data/bundle_store.dart',
+    'decodeDayPayloadsHeavy',
+    'the one decode of a stored day/baselines payload, behind every screen',
+  ),
+  Seam(
+    'lib/data/bundle_store.dart',
+    '_bundleExpand',
+    'the read seam expands stored curves for the caller from the compact graph',
   ),
   Seam(
     'lib/compute/derivation_engine.dart',
@@ -39,9 +48,9 @@ const seams = [
     'the re-derive path merges a previous bundle into a fresh one',
   ),
   Seam(
-    'lib/health/health_export.dart',
-    '_decode',
-    'the Apple Health sleep export reads hypnogram out of a bundle',
+    'lib/data/bundle_store.dart',
+    '_bundleExpand',
+    'the Apple Health sleep export now reads through BundleStore and expands its view here',
   ),
 ];
 

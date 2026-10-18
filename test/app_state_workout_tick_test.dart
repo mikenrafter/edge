@@ -1,6 +1,6 @@
-// The 1 Hz workout tick through AppState: what one tick bills from the live
-// heart rate, what it pushes to the lock-screen activity and the tally table,
-// how many times it notifies, and what a paused session's tick does instead.
+// Workout area: the 1 Hz workout tick. What one tick bills from
+// the live heart rate, what it pushes to the lock-screen activity and the tally
+// table, and how many times it notifies.
 //
 // The tick is fired two ways, both through AppState: by hand through the
 // periodic timer the app armed (TimerProbe), or through debugTickWorkout.
@@ -10,9 +10,9 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/app_state.dart';
-import 'package:openstrap_edge/state/prefs.dart';
-import 'package:openstrap_edge/ui2/activity/catalogue.dart';
 import 'package:openstrap_edge/ui2/activity/live.dart';
+import 'package:openstrap_edge/ui2/activity/catalogue.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 
 import 'support/app_state_workout_harness.dart';
 
@@ -30,12 +30,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late PlatformSpies spies;
   setUp(() async {
-    await workoutDbSetUp(_db);
+    await deriveDbSetUp(_db);
     spies = PlatformSpies();
   });
   tearDown(() async {
     spies.dispose();
-    await workoutDbTearDown(_db);
+    await deriveDbTearDown(_db);
   });
 
   /// A started session on a stamped gen4 band for a profiled user, ticking

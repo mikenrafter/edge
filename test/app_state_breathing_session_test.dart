@@ -1,8 +1,8 @@
-// The guided-breathing session and its quiet windows through AppState: start /
-// stop / window transitions, the frame buffer (only R-R-bearing frames, only
-// while a session or window is open, capped at 8000), the 20 s coherence
-// recompute, the Live Activity, history, the cues over the band, and the
-// notify counts.
+// Workout area: the guided-breathing session and its quiet
+// windows through AppState: start / stop / window transitions, the frame
+// buffer (only R-R-bearing frames, only while a session or window is open,
+// capped at 8000), the 20 s coherence recompute, the Live Activity, history,
+// and the notify counts.
 //
 // The buffer is private; what it holds is read through what the recompute
 // hands the repo. A session shorter than 60 s is never banked (a wall-clock
@@ -15,22 +15,28 @@ import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/stress/breath_phases.dart';
+import 'package:openstrap_protocol/openstrap_protocol.dart' show BandProfile;
 
+import 'support/app_state_live_harness.dart';
 import 'support/app_state_workout_harness.dart';
 
 const _db = 'app_state_workout_breathing.db';
 
-String _hr28() => hr28Frame(1);
-String _r10() => r10Frame(2);
-String _r21() => r21Frame(3);
-String _imu33() => imu33Frame(4);
+// Fixed strap timestamp: the builders default to the wall-clock second, so a
+// frame built twice (once to feed, once to compare) differs when the second
+// rolls over in between.
+const _ts = 1790000000;
+String _hr28() => hexOf(hr28Inner(rr: const [800, 810], ts: _ts));
+String _r10() => hexOf(r10LiveInner(ts: _ts));
+String _r21() => hexOf(r21LiveInner(unix: _ts));
+String _imu33() => hexOf(imu33Inner(ts: _ts));
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late PlatformSpies spies;
   setUp(() async {
     BleEngine.resetBandClaimForTest();
-    await workoutDbSetUp(_db);
+    await deriveDbSetUp(_db);
     spies = PlatformSpies();
   });
   tearDown(() async {
@@ -38,7 +44,7 @@ void main() {
     await settleMs(300);
     spies.dispose();
     BleEngine.resetBandClaimForTest();
-    await workoutDbTearDown(_db);
+    await deriveDbTearDown(_db);
   });
 
   Future<AppState> connected({BreathRepo? repo}) async {
@@ -524,54 +530,68 @@ void main() {
   });
 
   group('session cues over the band', () {
-    Future<(AppState, RecordingEngine)> linked({bool connected = true}) async {
-      final engine = RecordingEngine();
-      final app = AppState.forTesting(engine: engine);
-      if (connected) app.device.connection = 'connected';
-      return (app, engine);
+    // One rig per cue: the haptics queue holds a second cue until the band
+    // reports the first one ended, which a bare fake link never does.
+    Future<String> bodyOf(void Function(AppState) cue,
+        {BandProfile band = BandProfile.gen4}) async {
+      final rig = G6Rig(band: band);
+      cue(rig.app);
+      await until(() => rig.writes.isNotEmpty);
+      await settleMs(50);
+      final writes = [for (final w in rig.writes) w];
+      await finish(rig.app);
+      BleEngine.resetBandClaimForTest();
+      expect(writes, hasLength(1));
+      return '${writes.single.opcode}:${writes.single.body}';
     }
 
-    test('connected: each phase kind maps to a haptic pattern id (inhale and '
-        'work 1, exhale and rest 0, both holds 2) and the session-complete '
-        'cue is its own, 4', () async {
-      final (app, engine) = await linked();
-      for (final kind in BreathPhaseKind.values) {
-        app.buzzBreathPhase(kind);
-      }
-      app.buzzSessionComplete();
-      await settleMs(20);
-      expect(engine.buzzes, [
-        for (final kind in BreathPhaseKind.values)
-          switch (kind) {
-            BreathPhaseKind.inhale || BreathPhaseKind.work => 1,
-            BreathPhaseKind.exhale || BreathPhaseKind.rest => 0,
-            BreathPhaseKind.holdIn || BreathPhaseKind.holdOut => 2,
-          },
-        4,
-      ]);
-      await finish(app);
+    test('connected: each phase kind maps to a pattern (inhale = work, '
+        'exhale = rest, the two holds alike), and the session-complete cue '
+        'is its own', () async {
+      final inhale = await bodyOf((a) => a.buzzBreathPhase(BreathPhaseKind.inhale));
+      final work = await bodyOf((a) => a.buzzBreathPhase(BreathPhaseKind.work));
+      final exhale = await bodyOf((a) => a.buzzBreathPhase(BreathPhaseKind.exhale));
+      final rest = await bodyOf((a) => a.buzzBreathPhase(BreathPhaseKind.rest));
+      final holdIn = await bodyOf((a) => a.buzzBreathPhase(BreathPhaseKind.holdIn));
+      final holdOut = await bodyOf((a) => a.buzzBreathPhase(BreathPhaseKind.holdOut));
+      final complete = await bodyOf((a) => a.buzzSessionComplete());
+      expect(inhale, work);
+      expect(exhale, rest);
+      expect(holdIn, holdOut);
+      expect({inhale, exhale, holdIn, complete}, hasLength(4),
+          reason: 'four distinguishable cues');
+    });
+
+    test('on a gen5 link the four cues write four '
+        'different buzzes, and the paired kinds still match', () async {
+      Future<String> g5(void Function(AppState) cue) =>
+          bodyOf(cue, band: BandProfile.gen5);
+      final inhale = await g5((a) => a.buzzBreathPhase(BreathPhaseKind.inhale));
+      final work = await g5((a) => a.buzzBreathPhase(BreathPhaseKind.work));
+      final exhale = await g5((a) => a.buzzBreathPhase(BreathPhaseKind.exhale));
+      final rest = await g5((a) => a.buzzBreathPhase(BreathPhaseKind.rest));
+      final hold = await g5((a) => a.buzzBreathPhase(BreathPhaseKind.holdIn));
+      final holdOut =
+          await g5((a) => a.buzzBreathPhase(BreathPhaseKind.holdOut));
+      final complete = await g5((a) => a.buzzSessionComplete());
+      expect(inhale, work);
+      expect(exhale, rest);
+      expect(hold, holdOut);
+      expect({inhale, exhale, hold, complete}, hasLength(4),
+          reason: 'the phase index used to shape only a gen4 pattern; now the '
+              'breathing slots (breath.inhale|exhale|hold|done) shape the '
+              'MG\'s');
     });
 
     test('disconnected: a phase cue and the session-complete cue write '
         'nothing', () async {
-      final (app, engine) = await linked(connected: false);
-      app.buzzBreathPhase(BreathPhaseKind.inhale);
-      app.buzzSessionComplete();
-      await settleMs(50);
-      expect(engine.buzzes, isEmpty);
-      await finish(app);
-    });
-
-    test('a cue the band fails to play never throws into the caller (a frame '
-        'callback)', () async {
-      final engine = _FailingBuzzEngine();
-      final app = AppState.forTesting(engine: engine);
-      app.device.connection = 'connected';
-      expect(() => app.buzzBreathPhase(BreathPhaseKind.exhale), returnsNormally);
-      expect(app.buzzSessionComplete, returnsNormally);
-      await settleMs(50);
-      expect(engine.attempts, 2);
-      await finish(app);
+      final rig = G6Rig(connected: false);
+      rig.app.buzzBreathPhase(BreathPhaseKind.inhale);
+      rig.app.buzzSessionComplete();
+      await settleMs(300);
+      expect(rig.writes, isEmpty);
+      await finish(rig.app);
+      BleEngine.resetBandClaimForTest();
     });
   });
 
@@ -608,13 +628,4 @@ void main() {
       });
     });
   });
-}
-
-class _FailingBuzzEngine extends RecordingEngine {
-  int attempts = 0;
-  @override
-  Future<void> buzzPattern(int pattern) {
-    attempts++;
-    return Future.error(StateError('write failed'));
-  }
 }

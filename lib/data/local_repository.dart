@@ -38,6 +38,24 @@ class RepositoryException implements Exception {
   String toString() => 'Repository error $status: $body';
 }
 
+/// Everything the Sleep detail screen reads for one night, from ONE call.
+/// `charts` is keyed by the same names [LocalRepository.getChart] takes and each
+/// value is exactly what `getChart(name)` returns.
+class SleepDetailBundle {
+  final Map<String, dynamic> night, timeline, insights;
+  final Map<String, Map<String, dynamic>> charts;
+  final List<Map<String, dynamic>> windows;
+  const SleepDetailBundle({
+    required this.night,
+    required this.timeline,
+    required this.insights,
+    required this.charts,
+    required this.windows,
+  });
+}
+
+/// The local data contract for every insights screen + the AI Coach.
+/// Return types mirror the cloud ApiClient exactly (defensive Map/List blobs).
 /// Whether a stored `rmssd` came from the sleep-session estimator: its
 /// envelope ([sessionEnvelope] = `clinical.rmssd_sleep_session`) holds a value.
 /// A bundle derived before `rmssd` became that single estimator can hold an
@@ -46,8 +64,6 @@ class RepositoryException implements Exception {
 bool rmssdFromSessionEstimator(Object? sessionEnvelope) =>
     sessionEnvelope is Map && sessionEnvelope['value'] is num;
 
-/// The local data contract for every insights screen + the AI Coach.
-/// Return types mirror the cloud ApiClient exactly (defensive Map/List blobs).
 abstract class LocalRepository {
   Future<int> pendingActivityCount() async => (await pendingActivities()).length;
 
@@ -68,6 +84,16 @@ abstract class LocalRepository {
   Future<Map<String, dynamic>> getToday() =>
       throw UnimplementedError('re-layer: getToday');
 
+  /// [getToday] without waiting for the freshness refresh: for a screen's first
+  /// paint. `status.refresh_pending` is true when the stored row named another
+  /// day; nothing of that row is then presented as today's. Default: the full
+  /// read (a repository with no refresh to defer).
+  Future<Map<String, dynamic>> getTodayStored() => getToday();
+
+  /// Runs the freshness refresh `getToday` would have run, single-flight.
+  /// Default: nothing to refresh.
+  Future<void> refreshTodayFreshness() async {}
+
   /// Sleep ONSET/OFFSET for the most recent [days] days, newest first.
   ///
   /// One projected query over `day_result.window_json` — no bundle decode and
@@ -79,11 +105,12 @@ abstract class LocalRepository {
   /// double?, tier: String?}` — epoch SECONDS. A night with no detected sleep
   /// still appears, with null times; the caller decides what an absent night
   /// looks like rather than being handed a silently shorter list.
-  ///
-  /// [before] keeps only days strictly earlier than that 'YYYY-MM-DD' label.
   Future<List<Map<String, dynamic>>> sleepWindows(
           {int days = 60, String? before}) =>
       throw UnimplementedError('re-layer: sleepWindows');
+
+  Future<Map<String, dynamic>> getDayBlock(String day, List<String> keys) =>
+      throw UnimplementedError('P2.5');
 
   /// Saved sessions in the window, merged with unconfirmed auto-detected bouts.
   ///
@@ -103,6 +130,22 @@ abstract class LocalRepository {
       throw UnimplementedError('re-layer: getInsights');
 
   // ── day drill-down detail ────────────────────────────────────────────────────
+  /// One read for the whole Sleep detail screen: the night, its timeline, the
+  /// insights, every named chart and the sleep windows ([windowDays] newest).
+  Future<SleepDetailBundle> getSleepDetailBundle(
+    String day, {
+    required List<String> chartKeys,
+    required int windowDays,
+  }) async => SleepDetailBundle(
+    // The piece-by-piece composition, for repositories (fakes) without a
+    // cheaper combined read. LocalRepositoryImpl overrides it.
+    night: await getDaySleepV2(day),
+    timeline: await getDayTimeline(day),
+    insights: await getInsights(),
+    charts: {for (final k in chartKeys) k: await getChart(k)},
+    windows: await sleepWindows(days: windowDays),
+  );
+
   Future<Map<String, dynamic>> getDaySleepV2(String date) =>
       throw UnimplementedError('re-layer: getDaySleepV2');
   Future<Map<String, dynamic>> getDayStrain(String date) =>
@@ -171,9 +214,8 @@ abstract class LocalRepository {
   /// The spans are post-ladder (see `resolveDaySteps`), so they sum to `total`
   /// and never show the same walk twice. `day_total`/`day_source` are the
   /// number the day actually published, which is NOT always this sum: with no
-  /// span source at all a gen5 day falls back to the strap's on-chip counter.
-  /// That day's spans are the counter's own hourly ones from the derive, all
-  /// 'band'; only a bundle derived before those were stored has none.
+  /// span source at all a gen5 day falls back to the strap's on-chip counter,
+  /// a whole-day figure with no times behind it and therefore no spans.
   Future<Map<String, dynamic>> getDaySteps(String date) =>
       throw UnimplementedError('re-layer: getDaySteps');
 
@@ -204,7 +246,7 @@ abstract class LocalRepository {
   /// point list with the reason it is empty.
   ///
   /// RETENTION-BOUNDED AND SAYS SO. This reads `decoded_onehz`, which prunes at
-  /// `rawRetentionDays` (held to `_maxRawHoldDays = 14` for a day that has
+  /// `rawRetentionDays = 3` (held to `_maxRawHoldDays = 14` for a day that has
   /// not produced a complete result). Outside that window there is nothing to
   /// read and the honest answer is `bounded: true` with `oldest` naming the
   /// edge — never an empty chart with no explanation, and never a per-device
@@ -254,8 +296,8 @@ abstract class LocalRepository {
   /// The default MUST match the implementation's: Dart resolves an omitted
   /// optional from the STATIC receiver type, and every caller holds this
   /// interface — so a different default here is the one that actually runs.
-  /// Three days sits inside `rawRetentionDays`; nothing past the retention
-  /// edge has substrate left to re-score from.
+  /// Three days is the raw-retention horizon; nothing older has substrate left
+  /// to re-score from.
   Future<int> rescoreRecentSessions({int sinceDays = 3}) =>
       throw UnimplementedError('re-layer: rescoreRecentSessions');
   Future<Map<String, dynamic>> startWorkout(String type, {String? title}) =>
@@ -307,6 +349,30 @@ abstract class LocalRepository {
   /// metrics. Empty map when there is nothing to say.
   Future<Map<String, dynamic>> getWeekdayEffect({String key = 'readiness'}) =>
       throw UnimplementedError('re-layer: getWeekdayEffect');
+
+  // ── persisted artifacts ─────────────────────────────────────────
+
+  /// The CURRENT signature of the inputs the artifact [key] is computed from
+  /// (`journal_insights|90d`, `weekday_effect`, `beats|<day>`,
+  /// `workout|<id>`, `circadian`, `kcal_minutes|<day>`), or null when none can
+  /// be given. A stored result whose signature equals this one is fresh. The
+  /// default is null: a repository that cannot sign is never fresh.
+  Future<String?> artifactSignature(String key) async => null;
+
+  /// The value to store for [key]: exactly what the matching reader returns, so
+  /// a warmed row and an on-open row are the same thing. Null = nothing to
+  /// store. Throws on a failure. The default has nothing to compute.
+  Future<Map<String, dynamic>?> computeArtifact(String key) async => null;
+
+  /// The newest recording the stored result of [day] covers (local time), for
+  /// the staleness line; null when unknown. The default knows nothing.
+  Future<DateTime?> dayRecordingsThrough(String day) async => null;
+
+  /// A day's intraday calories `{minutes: [{t, total, active, basal}],
+  /// basal_kcal_per_min, covered_minutes, computed_at}` (`t` epoch seconds, a
+  /// minute nobody measured has null figures, never an interpolated one), or
+  /// null when none is stored. A read, no compute.
+  Future<Map<String, dynamic>?> getDayCalorieCurve(String day) async => null;
 
   /// One day's numeric journal fields, keyed by field name.
   Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) =>

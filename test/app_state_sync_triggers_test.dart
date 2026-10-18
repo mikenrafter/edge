@@ -1,10 +1,12 @@
 // Sync area: the ways a sync is started over a live link
-// (forceResync, foregroundCatchUp, syncNow, the burst loop they share), the
-// single-flight rule, and what each leaves behind: the derive trigger, the data
-// edge, the log and the notify count. Through AppState with a [SyncFakeEngine].
+// (forceResync, foregroundCatchUp, the manual / pull-to-sync path, the burst
+// loop they share), the single-flight rule, and what each leaves behind: the
+// derive trigger, the data edge, the log and the notify count. Through
+// AppState with a [SyncFakeEngine].
 //
 // IosBgTask.foregroundPull is assigned only by the real AppState constructor
-// (forTesting does not), so that hook is only checked to be unwired here.
+// (forTesting does not), so the BGTask -> foregroundCatchUp hook is pinned by
+// source in app_state_sync_delegation_test.dart.
 
 import 'dart:async';
 
@@ -55,7 +57,7 @@ void main() {
       await rig.settleDerive(const Duration(seconds: 8));
       await rig.quiesce();
       expect(await rig.jobTypes(), ['derive_light']);
-      expect(ticks.ticks, 3, reason: 'its own notify and two from the scheduler queueing the job');
+      expect(ticks.ticks, 4, reason: 'its own notify, the clean drain\'s last-sync stamp, and two from the scheduler queueing the job');
       ticks.stop();
     }));
 
@@ -101,9 +103,14 @@ void main() {
       ticks.stop();
     }));
 
-    test('if the burst it waits on fails, that failure is its own: logged as '
-        'a failed resync, with no offload of its own and no light derive',
+    test('if the burst it waits on fails, that failure is not its own: it '
+        'goes on to run its own offload and the light derive',
         syncCase((rig, timers) async {
+      // the awaited burst's throw used to surface as
+      // "Resync failed" and skip the caller's own offload, so a workout
+      // window the failed burst never pulled stayed unpulled until the next
+      // periodic tick. The code's own comment is "wait out the burst, THEN
+      // re-trigger"; the burst's owner already logged its failure.
       rig.engine.syncGate = Completer<void>();
       rig.engine.syncScript.add(StateError('first burst failed'));
       await rig.app.openSession();
@@ -111,12 +118,27 @@ void main() {
       final resync = rig.app.forceResync();
       rig.engine.syncGate!.complete();
       await resync;
-      expect(_logged(rig, 'Resync failed: Bad state: first burst failed'), isTrue);
+      expect(_logged(rig, 'Resync failed'), isFalse);
       await rig.waitFor(() => _logged(rig, 'Background sync burst failed: Bad state: first burst failed'));
+      expect(rig.engine.count('requestHistorySync'), 1);
+      expect(rig.engine.count('runSync'), 2, reason: 'the failed one, then its own');
+      await rig.jobQueued('derive_light');
       await rig.quiesce();
-      expect(rig.engine.count('requestHistorySync'), 0);
-      expect(rig.engine.count('runSync'), 1);
-      expect(await rig.jobTypes(), isEmpty);
+    }));
+
+    test('after waiting out a failed burst, a failure of its OWN offload is '
+        'still logged, never thrown', syncCase((rig, timers) async {
+      rig.engine.syncGate = Completer<void>();
+      rig.engine.syncScript
+          .addAll([StateError('first burst failed'), StateError('own failed')]);
+      await rig.app.openSession();
+      await rig.waitFor(() => rig.engine.count('runSync') == 1);
+      final resync = rig.app.forceResync();
+      rig.engine.syncGate!.complete();
+      await resync;
+      expect(_logged(rig, 'Resync failed: Bad state: own failed'), isTrue);
+      expect(rig.engine.count('requestHistorySync'), 1);
+      await rig.quiesce();
     }));
   });
 
@@ -136,11 +158,12 @@ void main() {
       await rig.jobQueued('derive_light');
       await rig.settleDerive(const Duration(seconds: 8));
       await rig.quiesce();
-      expect(ticks.ticks, 3, reason: 'its own notify and two from the scheduler queueing the job');
+      expect(ticks.ticks, 4, reason: 'its own notify, the clean drain\'s last-sync stamp, and two from the scheduler queueing the job');
       ticks.stop();
     }));
 
-    test('a catch-up that brought nothing queues nothing and notifies nobody',
+    test('a catch-up that brought nothing queues nothing; its only notify is '
+        'the clean drain\'s last-sync stamp',
         syncCase((rig, timers) async {
       await _open(rig);
       rig.engine.syncScript.add(SyncReport(0, 1, true));
@@ -148,7 +171,7 @@ void main() {
       await rig.app.foregroundCatchUp();
       await rig.quiesce();
       expect(await rig.jobTypes(), isEmpty);
-      expect(ticks.ticks, 0);
+      expect(ticks.ticks, 1);
       expect(_logged(rig, 'Foreground catch-up: 0 records pulled.'), isTrue);
       ticks.stop();
     }));
@@ -297,72 +320,138 @@ void main() {
     }));
   });
 
-  group('syncNow', () {
-    test('over a live link in the foreground: the engine\'s floored pull, '
-        'then a light derive mark and the heavy request on top (one heavy '
-        'job queued)', syncCase((rig, timers) async {
+  group('the manual sync (Sync now, pull-to-sync)', () {
+    test('over a live link: kicked offload, then the changed-only HEAVY derive; '
+        'the presentation settles on completed', syncCase((rig, timers) async {
       await _open(rig);
-      await rig.app.syncNow();
-      expect(rig.engine.events, ['requestForegroundSync', 'runSync:180']);
-      await rig.jobQueued('derive_heavy');
-      expect(await rig.jobTypes(), ['derive_heavy']);
+      expect(rig.app.syncPresentation.phase, 'idle');
+      await rig.app.syncNow(); // the AppState entry: same coordinator
+      expect(rig.engine.events, ['requestHistorySync', 'runSync:180']);
+      expect(rig.passes, hasLength(1));
+      expect(rig.passes.single.heavy, isTrue);
+      expect(rig.passes.single.changedOnly, isTrue);
+      expect(rig.app.syncPresentation.phase, 'completed');
+      expect(rig.app.syncPresentation.busy, isFalse);
+      expect(rig.app.syncPresentation.lastSuccess, isNotNull);
     }));
 
-    test('the pull is floored by the engine: asked, no drain, and the heavy '
-        'derive is still requested', syncCase((rig, timers) async {
-      await _open(rig);
-      rig.engine.foregroundSyncAllowed = false;
-      await rig.app.syncNow();
-      expect(rig.engine.events, ['requestForegroundSync']);
-      await rig.jobQueued('derive_heavy');
-    }));
-
-    test('a burst already in flight is awaited, not joined by a second pull: '
-        'the engine is not asked and the heavy derive follows',
-        syncCase((rig, timers) async {
-      rig.engine.syncGate = Completer<void>();
-      await rig.app.openSession();
-      await rig.waitFor(() => rig.engine.count('runSync') == 1);
-      rig.engine.events.clear();
-      var done = false;
-      final sync = rig.app.syncNow().then((_) => done = true);
-      await rig.quiesce();
-      expect(done, isFalse);
-      rig.engine.syncGate!.complete();
-      await sync;
-      expect(rig.engine.events, isEmpty);
-      await rig.jobQueued('derive_heavy');
-    }));
-
-    test('a failure is logged, never thrown, and the heavy derive is still '
-        'requested', syncCase((rig, timers) async {
-      await _open(rig);
-      rig.engine.syncScript.add(StateError('burst failed'));
-      await rig.app.syncNow();
-      expect(_logged(rig, 'Sync failed: Bad state: burst failed'), isTrue);
-      await rig.jobQueued('derive_heavy');
-    }));
-
-    test('with the link down it is openSession: connect, join the burst it '
-        'starts, no pull of its own and no heavy request from syncNow itself',
-        syncCase((rig, timers) async {
-      await rig.app.syncNow();
+    test('with the link down it opens the session first, then JOINS the burst '
+        'openSession already started (single flight): no history request of '
+        'its own, one drain', syncCase((rig, timers) async {
+      final result = await rig.app.syncOperations.syncNow();
+      expect(result.success, isTrue);
       expect(rig.engine.count('connect'), 1);
-      expect(rig.engine.count('requestForegroundSync'), 0);
       expect(rig.engine.count('requestHistorySync'), 0);
-      await rig.waitFor(() => rig.engine.count('runSync') == 1);
+      expect(rig.engine.count('runSync'), 1);
       await rig.quiesce();
     }));
 
-    test('backgrounded it is openSession too, even over a live link: the '
-        'foreground reclaim, not a pull', syncCase((rig, timers) async {
+    test('no band paired: a failure with the reason, no engine call',
+        syncCase((rig, timers) async {
+      final result = await rig.app.syncOperations.syncNow();
+      expect(result.success, isFalse);
+      expect(result.error, contains('Pair a band before syncing'));
+      expect(rig.app.syncPresentation.phase, 'failed');
+      expect(rig.engine.events, isEmpty);
+    }, paired: false));
+
+    test('the band cannot be reached: a failure', syncCase((rig, timers) async {
+      rig.engine.connectScript.add(false);
+      final result = await rig.app.syncOperations.syncNow();
+      expect(result.success, isFalse);
+      expect(result.error, contains('Could not connect to the band'));
+      expect(rig.app.syncPresentation.phase, 'failed');
+      expect(rig.engine.count('requestHistorySync'), 0);
+    }));
+
+    test('a download that stopped with nothing banked is a failure and runs '
+        'no derive', syncCase((rig, timers) async {
       await _open(rig);
-      await rig.app.pauseForBackground();
-      rig.engine.events.clear();
-      await rig.app.syncNow();
-      expect(rig.engine.events.first, 'setBackground:false');
-      expect(rig.app.debugLiveOwners.foreground, isTrue);
+      rig.engine.syncScript.add(SyncReport(0, 0, false));
+      final result = await rig.app.syncOperations.syncNow();
+      expect(result.success, isFalse);
+      expect(result.error, contains('Download stopped before completion. Retry sync.'));
+      expect(rig.passes, isEmpty);
+    }));
+
+    test('a download that stopped early WITH progress is a partial success '
+        'and still calculates', syncCase((rig, timers) async {
+      await _open(rig);
+      var n = 0;
+      rig.engine.onRunSync = () async =>
+          LocalDb.setCursor('rec_ts_hw', '${1750000000 + ++n}');
+      rig.engine.syncScript.add(SyncReport(10, 1, false));
+      final result = await rig.app.syncOperations.syncNow();
+      expect(result.success, isTrue);
+      expect(result.partial, isTrue);
+      expect(rig.passes, hasLength(1));
+      expect(rig.app.syncPresentation.partial, isTrue);
+    }));
+
+    test('a terminal Stuck connection is a failure even with progress',
+        syncCase((rig, timers) async {
+      await _open(rig);
+      rig.engine.stuck = true;
+      final result = await rig.app.syncOperations.syncNow();
+      expect(result.success, isFalse);
+    }));
+
+    test('a derive that never reports its scope is reported as another '
+        'calculation holding the lock', syncCase((rig, timers) async {
+      await _open(rig);
+      rig.app.debugDeriveRun = deriveHook(reportScope: false, calls: rig.passes);
+      final result = await rig.app.syncOperations.syncNow();
+      expect(result.success, isFalse);
+      expect(result.error, contains('Another calculation was running. Retry sync.'));
+    }));
+
+    test('a second call while one runs joins it (one download)',
+        syncCase((rig, timers) async {
+      await _open(rig);
+      rig.engine.syncGate = Completer<void>();
+      final a = rig.app.syncOperations.syncNow();
+      await rig.waitFor(() => rig.engine.count('runSync') == 1);
+      final b = rig.app.syncOperations.syncNow();
+      rig.engine.syncGate!.complete();
+      final ra = await a;
+      final rb = await b;
+      expect(identical(ra, rb), isTrue);
+      expect(rig.engine.count('runSync'), 1);
+    }));
+
+    test('the coordinator\'s deadline: the run is retired, the presentation '
+        'fails and is not busy, and a later sync runs normally',
+        syncCase((rig, timers) async {
+      await _open(rig);
+      rig.engine.syncGate = Completer<void>();
+      final first = rig.app.syncOperations.syncNow();
+      await rig.waitFor(() => rig.engine.count('runSync') == 1);
+      timers.activeOneShot(const Duration(minutes: 65)).single.fire();
+      final r = await first;
+      expect(r.success, isFalse);
+      expect(rig.app.syncPresentation.busy, isFalse);
+      expect(rig.app.syncPresentation.phase, 'failed');
+      rig.engine.syncGate!.complete();
       await rig.quiesce();
+      rig.engine.syncGate = null;
+      final again = await rig.app.syncOperations.syncNow();
+      expect(again.success, isTrue);
+    }));
+
+    test('refreshData (pull-to-refresh) with no link reloads local data and '
+        'never touches the band', syncCase((rig, timers) async {
+      final before = rig.app.insightsRevision.value;
+      await rig.app.refreshData();
+      expect(rig.app.syncPresentation.phase, 'offline');
+      expect(rig.app.insightsRevision.value, before + 1);
+      expect(rig.engine.events, isEmpty);
+    }));
+
+    test('refreshData over a live link is a real sync', syncCase((rig, timers) async {
+      await _open(rig);
+      await rig.app.refreshData();
+      expect(rig.engine.count('runSync'), 1);
+      expect(rig.app.syncPresentation.phase, 'completed');
     }));
   });
 }

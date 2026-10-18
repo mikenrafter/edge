@@ -42,6 +42,8 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_analytics/onehz.dart';
 
+import 'support/cadence_night_window.dart';
+
 /// Cadences under test, seconds per record. 1 is the ground truth.
 ///
 /// 301 is not a typo and not decoration: the median-interval helpers in
@@ -142,36 +144,10 @@ class _Cell {
     _extremeHrWindow(all, spanSec, lowest: false);
 
 (int, int) _extremeHrWindow(List<_Row> all, int spanSec,
-    {required bool lowest}) {
-  final t0 = all.first.recTs, t1 = all.last.recTs;
-  final n = t1 - t0 + 1;
-  // Second-indexed prefix sums so every candidate window is O(1).
-  final sum = List<double>.filled(n + 1, 0);
-  final cnt = List<int>.filled(n + 1, 0);
-  final hrAt = List<double>.filled(n, 0);
-  for (final r in all) {
-    if (r.hr > 0) hrAt[r.recTs - t0] = r.hr.toDouble();
-  }
-  for (var i = 0; i < n; i++) {
-    sum[i + 1] = sum[i] + hrAt[i];
-    cnt[i + 1] = cnt[i] + (hrAt[i] > 0 ? 1 : 0);
-  }
-  var bestStart = t0;
-  double? bestMean;
-  // 10-min steps: fine enough to land on the night, coarse enough to be free.
-  for (var s = 0; s + spanSec <= n; s += 600) {
-    final c = cnt[s + spanSec] - cnt[s];
-    // Demand real coverage — an empty window has a mean of nothing, and a
-    // sparsely-covered one is not the window we mean by "the night".
-    if (c < spanSec * 0.8) continue;
-    final m = (sum[s + spanSec] - sum[s]) / c;
-    if (bestMean == null || (lowest ? m < bestMean : m > bestMean)) {
-      bestMean = m;
-      bestStart = t0 + s;
-    }
-  }
-  return (bestStart, bestStart + spanSec);
-}
+        {required bool lowest}) =>
+    extremeHrWindow([for (final r in all) r.recTs],
+        [for (final r in all) r.hr], spanSec,
+        lowest: lowest);
 
 // ── metric adapters ─────────────────────────────────────────────────────────
 // Each returns ONE scalar plus an absent flag. Absent is a first-class result

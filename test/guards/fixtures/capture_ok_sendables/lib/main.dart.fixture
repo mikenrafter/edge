@@ -1,0 +1,56 @@
+// FIXTURE: capture_ok_sendables
+import 'dart:isolate';
+import 'dart:typed_data';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#wideHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+@sendable
+class Wide {
+  final int i;
+  final String s;
+  final double d;
+  final bool b;
+  final List<double> list;
+  final Map<String, int> map;
+  final Uint8List bytes;
+  final (int, String) rec;
+  final DayArgs nested;
+  final int? maybe;
+  const Wide(this.i, this.s, this.d, this.b, this.list, this.map, this.bytes,
+      this.rec, this.nested, this.maybe);
+}
+
+@heavy
+DayOut wideHeavy(Wide w) {
+  assertWorker();
+  return DayOut(readinessCompute(w.list).value);
+}
+
+class Caller {
+  Future<DayOut> go(int i, String s, double d, bool b, List<double> list,
+      Map<String, int> map, Uint8List bytes, (int, String) rec, DayArgs nested,
+      int? maybe) {
+    return Isolate.run(() {
+      final w = Wide(i, s, d, b, list, map, bytes, rec, nested, maybe);
+      return wideHeavy(w);
+    });
+  }
+}

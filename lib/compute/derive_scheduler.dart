@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../data/db.dart';
+import 'derive_outcome.dart';
 
 enum DeriveJobKind { light, heavy }
 
@@ -18,13 +19,34 @@ class DeriveScheduler {
     this.lightSettle = const Duration(seconds: 8),
     this.heavySettle = const Duration(seconds: 2),
     this.workoutHoldCap = const Duration(hours: 6),
+    this.onQueued,
+    this.onWaiting,
+    this.retryBackoff = deriveRetryBackoff,
+    this.maxAttempts = kDeriveMaxAttempts,
   });
 
-  final Future<void> Function({required DeriveJobKind kind}) run;
+  /// Runs one pass and says how it ended. A complete outcome deletes the job;
+  /// anything else (or a throw) keeps it for a retry, see [retryBackoff].
+  final Future<DeriveOutcome> Function({required DeriveJobKind kind}) run;
+
+  /// How long a job that just failed its Nth attempt waits before the next.
+  final Duration Function(int attempts) retryBackoff;
+
+  /// A job that has failed this many attempts is parked as 'failed' (it stays
+  /// in the queue table, visible, and is never retried again).
+  final int maxAttempts;
   final void Function(String) log;
   final void Function() onChanged;
   final Duration lightSettle;
   final Duration heavySettle;
+
+  /// Measurement taps (see DerivePerf), never behaviour: a job was queued.
+  final void Function()? onQueued;
+
+  /// Measurement tap: queued work is waiting. [settling] is true when the
+  /// settle timer was armed, false when a hold (offload, workout, background,
+  /// manual sync) is what keeps it parked.
+  final void Function({required bool settling})? onWaiting;
 
   /// Ceiling on the live-workout hold. The hold's whole justification is "a
   /// workout is minutes long and its own results are derived at the end
@@ -74,10 +96,44 @@ class DeriveScheduler {
   // derives DO run; their cadence is capped by DeriveDebouncer's background
   // tier, not blocked here.) Held exactly like _offloadActive.
   bool _background = false;
+
+  /// True while the Calculations power mode defers AUTOMATIC passes (Maximum
+  /// battery, unplugged, under the OS power saver). Held exactly like
+  /// [_offloadActive]: the settle timer is cancelled, queued jobs stay durable,
+  /// releasing re-arms. A pass a user asked for does not come through here.
+  bool _powerHold = false;
+
+  /// Manual syncs currently holding the scheduler, keyed by the id
+  /// [beginManualSync] returned; the value is the [_storedSeq] seen when that
+  /// sync's own derive started (null until then). More than one can exist for a
+  /// moment: a run the coordinator timed out may still be unwinding when its
+  /// replacement starts.
+  ///
+  /// A manual sync derives the data its download just stored. While it is in
+  /// charge, a debounced light derive for that same data would compute it a
+  /// second time, so the scheduler stands down: no timer, no drain. The queued
+  /// job stays durable and is dropped only if the sync really derived what it
+  /// was queued for ([endManualSync] with `absorb`).
+  final Map<int, int?> _manualHolds = {};
+  int _nextHold = 0;
+
+  /// Bumped by every [markStoredData]. A hold compares it with the value at the
+  /// moment its derive started: any change means data landed that derive may
+  /// not have read, so its light job must survive.
+  int _storedSeq = 0;
+  bool get _manualHeld => _manualHolds.isNotEmpty;
   bool _running = false;
   bool _pendingLight = false;
   bool _pendingHeavy = false;
   Timer? _timer;
+
+  /// Wakes the scheduler when the earliest backed-off retry falls due. Separate
+  /// from [_timer] (the settle timer) so a hold that cancels one leaves the
+  /// other: a retry that comes due while held simply drains on release.
+  Timer? _retryTimer;
+
+  /// Earliest `next_run_at` (epoch ms) among queued jobs that are not due yet.
+  int? _nextRetryAt;
   bool _refreshing = false;
 
   Future<void> init() async {
@@ -99,9 +155,57 @@ class DeriveScheduler {
         'running': _running,
         'pending_light': _pendingLight,
         'pending_heavy': _pendingHeavy,
+        'manual_sync_hold': _manualHeld,
+        'power_hold': _powerHold,
       };
 
+  /// A manual sync takes charge of derivation. Returns the handle to pass to
+  /// [markManualDeriveStarted] and [endManualSync]; the caller MUST end it in a
+  /// `finally`.
+  int beginManualSync() {
+    final id = ++_nextHold;
+    _manualHolds[id] = null;
+    _timer?.cancel();
+    _timer = null;
+    log('[derive-scheduler] manual sync in charge — holding derive work');
+    onChanged();
+    return id;
+  }
+
+  /// The manual sync's own derive is about to read the database.
+  void markManualDeriveStarted(int hold) {
+    if (_manualHolds.containsKey(hold)) _manualHolds[hold] = _storedSeq;
+  }
+
+  /// Hand derivation back. With [absorb] (the sync's derive completed) a queued
+  /// light job is dropped as already done, unless more data was stored after
+  /// that derive started. Without it (failed, cancelled) the job stays and runs.
+  /// Safe to call twice.
+  Future<void> endManualSync(int hold, {required bool absorb}) async {
+    if (!_manualHolds.containsKey(hold)) return;
+    final startedAt = _manualHolds.remove(hold);
+    try {
+      if (absorb && startedAt != null && startedAt == _storedSeq) {
+        final dropped = await LocalDb.cancelQueuedLightDerive();
+        if (dropped > 0) {
+          log('[derive-scheduler] manual sync derived this data — '
+              'dropped $dropped queued light job(s)');
+        }
+      }
+    } catch (e) {
+      log('[derive-scheduler] could not drop absorbed light job: $e');
+    } finally {
+      await _refreshSnapshot();
+      if (!_manualHeld) {
+        log('[derive-scheduler] manual sync done — derive may run');
+        _arm();
+      }
+      onChanged();
+    }
+  }
+
   void markStoredData() {
+    _storedSeq++;
     unawaited(_enqueue(type: 'derive_light', reason: 'stored_data'));
   }
 
@@ -175,11 +279,33 @@ class DeriveScheduler {
   // An enqueue still in its DB await when the owner is disposed would
   // otherwise arm a fresh timer and notify a dead listener.
   bool _disposed = false;
+  /// Hold or release automatic passes for the power mode (see [_powerHold]).
+  void setPowerHold(bool held) {
+    if (_powerHold == held) return;
+    _powerHold = held;
+    if (held) {
+      _timer?.cancel();
+      _timer = null;
+      log('[derive-scheduler] power mode defers derive work — holding');
+      onChanged();
+      return;
+    }
+    log('[derive-scheduler] power hold released — derive may run');
+    onChanged();
+    _arm();
+  }
+
+  /// Anything that keeps a pass from starting, bar the power hold: what the
+  /// Eager plug-in sweep (which is not the scheduler's own pass) also waits on.
+  bool get heldBesidesPower =>
+      _offloadActive || _background || _workoutHeld || _manualHeld;
 
   void dispose() {
     _disposed = true;
     _timer?.cancel();
     _timer = null;
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _workoutCapTimer?.cancel();
     _workoutCapTimer = null;
   }
@@ -188,19 +314,30 @@ class DeriveScheduler {
     required String type,
     required String reason,
   }) async {
-    await LocalDb.enqueueDeriveJob(type: type, reason: reason);
+    // Called unawaited: a database error here is logged, never an uncaught
+    // async error. The intent is lost only if the write itself failed, and the
+    // next stored-data tick enqueues again.
+    try {
+      await LocalDb.enqueueDeriveJob(type: type, reason: reason);
+    } catch (e) {
+      log('[derive-scheduler] could not queue $type: $e');
+      return;
+    }
+    onQueued?.call();
     await _refreshSnapshot();
     _arm();
   }
 
   void _arm() {
-    if (_disposed || _running || _offloadActive || _background || _workoutHeld) {
+    if (_disposed || _running || heldBesidesPower || _powerHold) {
+      if (_pendingLight || _pendingHeavy) onWaiting?.call(settling: false);
       return;
     }
     if (!_pendingLight && !_pendingHeavy) {
       unawaited(_refreshSnapshot());
       return;
     }
+    onWaiting?.call(settling: true);
     _timer?.cancel();
     _timer = Timer(_pendingHeavy ? heavySettle : lightSettle, () {
       unawaited(_drain());
@@ -209,10 +346,18 @@ class DeriveScheduler {
   }
 
   Future<void> _drain() async {
-    if (_running || _offloadActive || _background || _workoutHeld) return;
+    if (_running || heldBesidesPower || _powerHold) {
+      return;
+    }
     _timer?.cancel();
     _timer = null;
-    final job = await LocalDb.takeNextComputeJob();
+    final Map<String, dynamic>? job;
+    try {
+      job = await LocalDb.takeNextComputeJob();
+    } catch (e) {
+      log('[derive-scheduler] could not take the next job: $e');
+      return;
+    }
     if (job == null) {
       await _refreshSnapshot();
       return;
@@ -223,7 +368,7 @@ class DeriveScheduler {
     // land) inside it — at which point running the pass is exactly what the
     // gate exists to prevent. The job is already marked `running` by
     // takeNextComputeJob, so hand it back rather than leaving it claimed.
-    if (_offloadActive || _background || _workoutHeld) {
+    if (heldBesidesPower || _powerHold) {
       if (id != null && id.isNotEmpty) {
         await LocalDb.requeueComputeJob(id);
       }
@@ -235,21 +380,74 @@ class DeriveScheduler {
     await _refreshSnapshot();
     log('[derive-scheduler] running ${kind == DeriveJobKind.heavy ? "heavy" : "light"} pass');
     try {
-      await run(kind: kind);
-      if (id != null && id.isNotEmpty) {
-        await LocalDb.completeComputeJob(id);
+      // _drain runs unawaited from a timer: a failed pass is recorded on its
+      // job and logged, not rethrown into the zone.
+      DeriveOutcome? outcome;
+      String? thrown;
+      try {
+        outcome = await run(kind: kind);
+      } catch (e) {
+        thrown = '$e';
+        log('[derive-scheduler] ${kind.name} pass failed: $e');
       }
-    } catch (e) {
       if (id != null && id.isNotEmpty) {
-        await LocalDb.failComputeJob(id, '$e');
+        await _settleJob(id, job, outcome, thrown);
       }
-      rethrow;
     } finally {
       _running = false;
       await _refreshSnapshot();
       if (_pendingHeavy || _pendingLight) _arm();
       onChanged();
     }
+  }
+
+  /// Decide the claimed job's fate from how its pass ended: delete it when
+  /// complete, otherwise back it off for a retry, parking it as 'failed' once
+  /// it has used its attempts. Never throws.
+  Future<void> _settleJob(
+    String id,
+    Map<String, dynamic> job,
+    DeriveOutcome? outcome,
+    String? thrown,
+  ) async {
+    try {
+      if (outcome != null && outcome.complete) {
+        await LocalDb.completeComputeJob(id);
+        return;
+      }
+      final reason = thrown ??
+          outcome?.error ??
+          (outcome != null && outcome.transientFailures > 0
+              ? '${outcome.transientFailures} day(s) failed transiently'
+              : 'derive failed');
+      // The claim already counted this attempt.
+      final attempts = (job['attempts'] as num?)?.toInt() ?? 1;
+      if (attempts >= maxAttempts) {
+        log('[derive-scheduler] giving up after $attempts attempts: $reason');
+        await LocalDb.failComputeJob(id, reason);
+      } else {
+        final wait = retryBackoff(attempts);
+        log('[derive-scheduler] retrying in ${wait.inSeconds}s '
+            '(attempt $attempts of $maxAttempts): $reason');
+        await LocalDb.retryComputeJob(id, reason, wait);
+      }
+    } catch (e) {
+      log('[derive-scheduler] could not record the pass result: $e');
+    }
+  }
+
+  /// Wake at the earliest not-yet-due retry so it runs without another trigger.
+  /// The wake only re-reads the queue and re-arms through the normal gates.
+  void _armRetryTimer(int now) {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    final at = _nextRetryAt;
+    if (at == null) return;
+    final ms = at - now;
+    _retryTimer = Timer(Duration(milliseconds: ms < 1 ? 1 : ms), () {
+      _retryTimer = null;
+      unawaited(_refreshSnapshot().then((_) => _arm()));
+    });
   }
 
   DeriveJobKind _parseKind(String? type) {
@@ -267,14 +465,26 @@ class DeriveScheduler {
     _refreshing = true;
     try {
       final jobs = await LocalDb.computeJobs(state: 'queued', limit: 50);
-      _pendingLight = jobs.any(
-        (job) =>
-            job['type']?.toString() == 'derive_light',
-      );
-      _pendingHeavy = jobs.any(
-        (job) =>
-            job['type']?.toString() == 'derive_heavy',
-      );
+      // A job still waiting out a retry backoff is not drain-now work: counting
+      // it would arm the settle timer, take nothing, and spin.
+      final now = DateTime.now().millisecondsSinceEpoch;
+      int? nextRetry;
+      final due = <Map<String, dynamic>>[];
+      for (final job in jobs) {
+        final at = (job['next_run_at'] as num?)?.toInt();
+        if (at == null || at <= now) {
+          due.add(job);
+        } else if (nextRetry == null || at < nextRetry) {
+          nextRetry = at;
+        }
+      }
+      _pendingLight = due.any((job) => job['type']?.toString() == 'derive_light');
+      _pendingHeavy = due.any((job) => job['type']?.toString() == 'derive_heavy');
+      _nextRetryAt = nextRetry;
+      _armRetryTimer(now);
+    } catch (e) {
+      // Keep the last known pending flags; a failed read is not "nothing queued".
+      log('[derive-scheduler] could not read the job queue: $e');
     } finally {
       _refreshing = false;
       onChanged();

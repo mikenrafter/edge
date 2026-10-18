@@ -1,0 +1,2 @@
+// round trip of PayloadArg through a real Isolate.run (fixture marker)
+void main() {}

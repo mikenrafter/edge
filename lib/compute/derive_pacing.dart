@@ -26,11 +26,15 @@
 
 /// Pacing decisions for one derivation run.
 class DerivePacing {
-  const DerivePacing({required this.background});
+  const DerivePacing({required this.background, this.maxWorkers});
 
   /// True for headless entries: iOS BGProcessingTask / BGAppRefreshTask,
   /// Android WorkManager, and the derive pass that follows a background drain.
   final bool background;
+
+  /// A cap on the worker pool from the power mode (Maximum battery asks for
+  /// one); null = today's rule. It only lowers the count, never raises it.
+  final int? maxWorkers;
 
   /// Upper bound on foreground day-lanes. Deliberately conservative — this is
   /// a phone doing work alongside the UI, not a server batch job.
@@ -43,6 +47,12 @@ class DerivePacing {
   /// `Platform.numberOfProcessors` reported (callers that cannot read it should
   /// pass 1 and get the sequential fallback).
   int concurrency(int cores) {
+    final n = _rule(cores);
+    final cap = maxWorkers;
+    return cap != null && cap < n ? (cap < 1 ? 1 : cap) : n;
+  }
+
+  int _rule(int cores) {
     if (background) return 1;
     if (cores < 1) return 1;
     return cores < maxForegroundConcurrency ? cores : maxForegroundConcurrency;

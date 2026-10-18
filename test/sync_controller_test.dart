@@ -1,264 +1,130 @@
-// SyncController built straight from its constructor, with a hand-written
-// engine and every host callback recording into one trace. The AppState-level
-// suites (app_state_sync_*_test) pin the same behaviour through the facade;
-// this file pins the controller's own contract: what it does before and after
-// the busy early return, the order it takes and gives back the band lease
-// relative to connect and disconnect, how a burst's reports add up and when its
-// single-flight slot frees, which reconnect loop owns the shared flags, the
-// retry when the link drops during post-connect setup, and the quiet window.
+// SyncController in isolation, with fake collaborators. The same
+// behaviour is also pinned through AppState in the other sync tests; these
+// prove the controller stands on its own and never reaches for AppState.
 //
-// The iOS and Android branches (Platform.isIOS / Platform.isAndroid) cannot be
-// taken on the Linux test host; the engine's own calls are the observable
-// surface here.
+// The engine is the harness's [SyncFakeEngine] (no radio); every other
+// collaborator is a recorder. Host callbacks write into the engine's own event
+// list as `host:*`, so one list shows the true order of engine calls and host
+// work. Long timers are the hand-fired ones from [SyncTimers].
 
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/ble/ble_engine.dart';
-import 'package:openstrap_edge/compute/derive_scheduler.dart';
-import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/data/models.dart';
+import 'package:openstrap_edge/compute/derivation_engine.dart';
+import 'package:openstrap_edge/state/derive_coordinator.dart';
 import 'package:openstrap_edge/state/sync_controller.dart';
 import 'package:openstrap_edge/sync/band_ownership.dart';
 import 'package:openstrap_edge/sync/paired_device.dart';
+import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/sync/reset_gate.dart';
-import 'package:openstrap_edge/sync/shortcut_sync_task.dart';
+import 'package:openstrap_edge/ble/ios_ble_restore.dart';
 
-import 'support/app_state_derive_harness.dart'
-    show deriveDbSetUp, deriveDbTearDown, until;
-import 'support/app_state_sync_harness.dart'
-    show SyncTimers, kBackfillEvery, kRemoteId, kSerial, kSuperviseEvery;
+import 'support/app_state_sync_harness.dart';
 
-const _db = 'sync_controller.db';
+const _db = 'sync_controller_unit.db';
 
-/// The engine as the controller sees it: every call lands in [trace], in call
-/// order, and the answers are scripted. Only the members the controller reads
-/// exist; anything else throws.
-class _Engine implements BleEngine {
-  _Engine(this.trace);
-  final List<String> trace;
-
-  @override
-  final DeviceState state = DeviceState();
-
-  bool link = false;
-  final connectScript = <Object>[];
-
-  /// Holds the NEXT connect until completed (taken at call time, then cleared).
-  Completer<void>? nextConnectGate;
-  final runSyncScript = <Object>[];
-  Completer<void>? syncGate;
-  Future<void> Function()? onRunSync;
-  Future<void> Function()? batteryHook;
-  bool foregroundSyncAllowed = true;
-  bool probeAnswer = true;
-  int? newestTs;
-
-  /// A history task the band has not ended yet.
-  @override
-  bool offloadActive = false;
-
-  int count(String name) =>
-      trace.where((e) => e == name || e.startsWith('$name:')).length;
-
-  @override
-  bool get isConnected => link;
-  @override
-  Duration get sinceLastRx => Duration.zero;
-  @override
-  bool get liveEnabled => false;
-  @override
-  bool get historyStuckThisSession => false;
-  @override
-  int? get strapHistoryNewestTs => newestTs;
-  @override
-  DateTime? get lastRxAt => null;
-
-  @override
-  void setBackground(bool value) => trace.add('setBackground:$value');
-
-  @override
-  Future<bool> connectToRemoteId(String remoteId,
-      {String? generationHint}) async {
-    trace.add('connect');
-    final gate = nextConnectGate;
-    nextConnectGate = null;
-    final r = connectScript.isEmpty ? true : connectScript.removeAt(0);
-    if (gate != null) await gate.future;
-    if (r is bool) {
-      link = r;
-      return r;
-    }
-    throw r;
+/// The host of the controller: every collaborator is a recorder.
+class _Host {
+  _Host() {
+    BandOwnership.resetForTest();
+    BleEngine.resetBandClaimForTest();
+    ResetGate.resetForTest();
+    IosBleRestore.foregroundActive = false;
+    coordinator.debugDeriveRun = deriveHook(days: ['d1'], calls: passes);
   }
 
-  @override
-  Future<void> disconnect() async {
-    trace.add('disconnect');
-    link = false;
-  }
+  final engine = SyncFakeEngine();
+  PairedDevice? paired =
+      PairedDevice(kRemoteId, kSerial, generation: 'gen4');
+  final logs = <String>[];
+  final passes = <HookCall>[];
+  int notifies = 0;
+  bool disposed = false;
+  bool phoneSteps = false;
+  bool reanalyzing = false;
+  int bumps = 0;
+  int nudges = 0;
+  int ecgPauses = 0;
+  int phoneStepSyncs = 0;
+  DerivationEngine? derive;
 
-  @override
-  Future<void> getBattery() async {
-    trace.add('getBattery');
-    await batteryHook?.call();
-  }
+  late final DeriveCoordinator coordinator = DeriveCoordinator(
+    engine: () => derive ??= DerivationEngine(log: logs.add),
+    profile: () => throw StateError('no profile in this test'),
+    log: logs.add,
+    notify: () {},
+    isDisposed: () => disposed,
+    repo: () => null,
+    warmHeld: () => false,
+    refreshPhoneStepsToday: () async {},
+    maybeNotifyRecoveryReady: () async {},
+    runHealthExport: () async => 0,
+    healthSyncEnabled: () => false,
+    telemetryConsent: () => false,
+    healthShareConsent: () => false,
+    maybeReclaimDiskSpace: () async {},
+  );
 
-  @override
-  Future<void> getStrapName() async => trace.add('getStrapName');
+  late final SyncController sync = SyncController(
+    engine: () => engine,
+    paired: () => paired,
+    log: logs.add,
+    notify: () => notifies++,
+    isDisposed: () => disposed,
+    isConnected: () => engine.state.connection == 'connected',
+    deriveCoordinator: () => coordinator,
+    deriveEngine: () => derive ??= DerivationEngine(log: logs.add),
+    reanalyzing: () => reanalyzing,
+    waitForDerivation: () async {},
+    phoneStepsEnabled: () => phoneSteps,
+    syncPhoneSteps: () async {
+      phoneStepSyncs++;
+    },
+    ecgOnAppPaused: () async {
+      ecgPauses++;
+    },
+    nudgeLive: () {
+      nudges++;
+      engine.events.add('host:nudge');
+    },
+    recoverOrphanedLiveSession: () async => engine.events.add('host:recover'),
+    resetLivePedometer: () => engine.events.add('host:resetPedometer'),
+    refreshHighFreqWakeWindow: () async => engine.events.add('host:prompt'),
+    armNextAlarmOccurrence: () async => engine.events.add('host:armAlarm'),
+    bumpInsights: () => bumps++,
+    initialized: () => true,
+    initError: () => null,
+  );
 
-  @override
-  Future<void> reconcileLiveStreams() async => trace.add('reconcile');
+  bool logged(String part) => logs.any((l) => l.contains(part));
 
-  @override
-  Future<void> requestHistorySync() async => trace.add('requestHistorySync');
+  Future<void> waitFor(bool Function() ok) =>
+      until(ok, within: const Duration(seconds: 6));
 
-  @override
-  Future<bool> requestForegroundSync() async {
-    trace.add('requestForegroundSync');
-    return foregroundSyncAllowed;
-  }
-
-  @override
-  Future<SyncReport> runSync({
-    Duration timeout = const Duration(seconds: 600),
-  }) async {
-    trace.add('runSync:${timeout.inSeconds}');
-    if (syncGate != null) await syncGate!.future;
-    await onRunSync?.call();
-    final r =
-        runSyncScript.isEmpty ? SyncReport(3, 1, true) : runSyncScript.removeAt(0);
-    if (r is SyncReport) return r;
-    throw r;
-  }
-
-  @override
-  Future<bool> probeLink({Duration timeout = const Duration(seconds: 5)}) async {
-    trace.add('probe');
-    return probeAnswer;
-  }
-
-  @override
-  Duration reconnectDelay(int attempt) {
-    trace.add('backoff:$attempt');
-    return Duration.zero;
-  }
-
-  @override
-  void markReconnecting() => trace.add('markReconnecting');
-
-  @override
-  void clearReconnecting() => trace.add('clearReconnecting');
-
-  @override
-  bool refreshAutoReconnectPause() {
-    trace.add('refreshPause');
-    return state.autoReconnectPaused;
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-/// Records what the controller asks of the scheduler; none of the real
-/// scheduler's timers or queue run.
-class _Scheduler extends DeriveScheduler {
-  _Scheduler(this.trace)
-      : super(
-          run: ({required kind}) async {},
-          log: (_) {},
-          onChanged: () {},
-        );
-  final List<String> trace;
-
-  @override
-  void setBackground(bool background) => trace.add('sched.background:$background');
-  @override
-  void markStoredData() => trace.add('sched.stored');
-  @override
-  void requestHeavy() => trace.add('sched.heavy');
-}
-
-/// A controller plus the host it is wired to. Engine calls, host callbacks and
-/// the band lease all append to the one [trace], in call order.
-class _Rig {
-  _Rig({bool paired = true}) {
+  Future<void> close() async {
+    final g = engine.syncGate;
+    if (g != null && !g.isCompleted) g.complete();
+    await settleMs(100);
+    disposed = true;
+    sync.dispose();
+    sync.releaseForegroundLease();
+    coordinator.dispose();
+    await settleMs(60);
     BandOwnership.resetForTest();
     ResetGate.resetForTest();
-    engine = _Engine(trace);
-    scheduler = _Scheduler(trace);
-    pairedDevice =
-        paired ? PairedDevice(kRemoteId, kSerial, generation: 'gen4') : null;
-    c = SyncController(
-      engine: () => engine,
-      paired: () => pairedDevice,
-      log: (l) {
-        logs.add(l);
-        if (l.contains('acquired foreground lease')) trace.add('lease+');
-        if (l.contains('releasing foreground lease')) trace.add('lease-');
-      },
-      notify: () => notifies++,
-      isDisposed: () => hostDisposed,
-      initialized: () => initialized,
-      initError: () => initError,
-      deriveScheduler: () => scheduler,
-      phoneStepsEnabled: () => phoneSteps,
-      syncPhoneSteps: () async => trace.add('steps'),
-      ecgOnAppPaused: () async => trace.add('ecg.pause'),
-      nudgeLive: () => trace.add('nudge'),
-      recoverOrphanedLiveSession: () async => trace.add('recover'),
-      resetLivePedometer: () => trace.add('resetPedometer'),
-      refreshHighFreqWakeWindow: () async => trace.add('wake'),
-      armNextAlarmOccurrence: () async => trace.add('alarm'),
-      resetActivityReviewAttempts: () => trace.add('reviews.reset'),
-      refreshActivityReviews: () async => trace.add('reviews.refresh'),
-    );
+    IosBleRestore.foregroundActive = false;
   }
-
-  final trace = <String>[];
-  final logs = <String>[];
-  late final _Engine engine;
-  late final _Scheduler scheduler;
-  late final SyncController c;
-  PairedDevice? pairedDevice;
-  int notifies = 0;
-  bool hostDisposed = false;
-  bool initialized = true;
-  String? initError;
-  bool phoneSteps = false;
-
-  bool logged(String text) => logs.any((l) => l.contains(text));
-
-  /// A connected foreground session whose backlog burst has landed.
-  Future<void> openAndSettle() async {
-    await c.openSession();
-    await until(() => trace.contains('sched.heavy'));
-    trace.clear();
-    logs.clear();
-    notifies = 0;
-  }
-
-  /// Wait (polling) until [text] has been logged.
-  Future<void> loggedWithin(String text) =>
-      until(() => logged(text), what: 'log "$text"');
 }
 
-/// A test body in a [SyncTimers] zone (the 10 min backfill, the 1 min
-/// supervisor and the 6 s quiet timer are fired by hand) with a fresh rig.
-void Function() _rigCase(
-  Future<void> Function(_Rig r, SyncTimers timers) body, {
-  bool paired = true,
-}) =>
+void Function() _case(Future<void> Function(_Host h, SyncTimers t) body) =>
     () async {
       final timers = SyncTimers();
       await timers.run(() async {
-        final r = _Rig(paired: paired);
+        final h = _Host();
         try {
-          await body(r, timers);
+          await body(h, timers);
         } finally {
-          r.c.dispose();
-          BandOwnership.resetForTest();
-          ResetGate.resetForTest();
+          await h.close();
         }
       });
     };
@@ -268,560 +134,391 @@ void main() {
   setUp(() => deriveDbSetUp(_db));
   tearDown(() => deriveDbTearDown(_db));
 
-  group('openSession and the busy early return', () {
-    test('the foreground flip lands before the busy return, with the nudge',
-        _rigCase((r, timers) async {
-      r.c.background = true;
-      r.c.busy = true;
-      await r.c.openSession();
-      expect(r.c.background, isFalse);
-      expect(r.c.busy, isTrue, reason: 'the in-flight session keeps its flag');
-      expect(r.trace, [
-        'setBackground:false',
-        'sched.background:false',
-        'nudge',
-        'wake',
-      ]);
-      expect(BandOwnership.foregroundIntent, isFalse,
-          reason: 'returned before claiming intent');
+  group('construction', () {
+    test('touches no collaborator, arms no timer and starts in the foreground',
+        _case((h, timers) async {
+      final c = h.sync;
+      expect(h.engine.events, isEmpty);
+      expect(h.logs, isEmpty);
+      expect(h.notifies, 0);
+      expect(timers.all, isEmpty);
+      expect(c.background, isFalse);
+      expect(c.busy, isFalse);
+      expect(c.lastRecTs, isNull);
+      expect(c.lastRecordAt, isNull);
+      expect(c.syncingNow, isFalse);
     }));
 
-    test('already foreground and busy: flips nothing new and nudges nothing',
-        _rigCase((r, timers) async {
-      r.c.busy = true;
-      await r.c.openSession();
-      expect(r.trace, ['setBackground:false', 'sched.background:false']);
+    test('syncOperations is one object, built on first use',
+        _case((h, timers) async {
+      final c = h.sync;
+      expect(identical(c.syncOperations, c.syncOperations), isTrue);
     }));
-
-    test('a background open while busy touches nothing', _rigCase((r, timers) async {
-      r.c.background = true;
-      r.c.busy = true;
-      await r.c.openSession(foreground: false);
-      expect(r.c.background, isTrue);
-      expect(r.trace, isEmpty);
-    }));
-
-    test('the activity-review reset follows the busy return and precedes the lease',
-        _rigCase((r, timers) async {
-      r.phoneSteps = true;
-      r.engine.connectScript.add(false);
-      await r.c.openSession();
-      expect(r.trace, [
-        'setBackground:false',
-        'sched.background:false',
-        'steps',
-        'reviews.reset',
-        'reviews.refresh',
-        'lease+',
-        'connect',
-        'lease-',
-      ]);
-    }));
-
-    test('unpaired: nothing happens, not even the foreground flip',
-        _rigCase((r, timers) async {
-      r.c.background = true;
-      await r.c.openSession();
-      expect(r.c.background, isTrue);
-      expect(r.trace, isEmpty);
-    }, paired: false));
   });
 
-  group('the band lease against connect and disconnect', () {
-    test('a failed connect releases the lease and intent, and frees busy',
-        _rigCase((r, timers) async {
-      r.engine.connectScript.add(false);
-      await r.c.openSession();
-      expect(r.trace.where((e) => e.startsWith('lease') || e == 'connect'),
-          ['lease+', 'connect', 'lease-']);
-      expect(r.c.busy, isFalse);
-      expect(r.notifies, 2, reason: 'busy on, busy off');
-      expect(BandOwnership.foregroundIntent, isFalse);
-      expect(r.logged('Session start: could not reach the band.'), isTrue);
-    }));
-
-    test('a connect that throws is swallowed and cleaned up the same way',
-        _rigCase((r, timers) async {
-      r.engine.connectScript.add(StateError('radio'));
-      await r.c.openSession();
-      expect(r.logged('Session start failed: Bad state: radio'), isTrue);
-      expect(r.trace.last, 'lease-');
-      expect(r.c.busy, isFalse);
-    }));
-
-    test('a good session takes the lease before connect and keeps it',
-        _rigCase((r, timers) async {
-      await r.c.openSession();
-      await until(() => r.trace.contains('sched.heavy'));
-      expect(r.trace, [
+  group('openSession', () {
+    test('engine calls and host work in order: background off, connect, poll, '
+        'alarm arm, band prompt, orphan recovery, pedometer reset, live '
+        'reconcile, then the burst (no history request of its own), then the '
+        'alarm and the prompt again once the backlog landed',
+        _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      expect(h.engine.events, [
         'setBackground:false',
-        'sched.background:false',
-        'reviews.reset',
-        'reviews.refresh',
-        'lease+',
-        'connect',
+        'connect:$kRemoteId:gen4',
         'getBattery',
         'getStrapName',
-        'wake',
-        'alarm',
-        'recover',
-        'resetPedometer',
+        'host:armAlarm',
+        'host:prompt',
+        'host:recover',
+        'host:resetPedometer',
         'reconcile',
         'runSync:180',
-        'wake',
-        'alarm',
-        'sched.heavy',
+        'host:armAlarm',
+        'host:prompt',
       ]);
-      expect(r.c.busy, isFalse);
-      expect(timers.activePeriodic(kBackfillEvery), hasLength(1));
+      expect(h.sync.busy, isFalse);
+      expect(BandOwnership.owner, BandOwnerKind.foreground);
       expect(timers.activePeriodic(kSuperviseEvery), hasLength(1));
-      expect(BandOwnership.foregroundIntent, isTrue);
+      expect(timers.activePeriodic(kBackfillEvery), hasLength(1));
     }));
 
-    test('endSession disconnects, then gives the lease back',
-        _rigCase((r, timers) async {
-      await r.openAndSettle();
-      await r.c.endSession();
-      expect(r.trace, ['clearReconnecting', 'disconnect', 'lease-']);
-      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
-      expect(timers.activePeriodic(kSuperviseEvery), isEmpty);
+    test('a foreground resume over a link that stayed up arms the alarm '
+        'before the prompt (the fast path skips the connect flow)',
+        _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      await h.sync.pauseForBackground();
+      h.engine.events.clear();
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 1);
+      final arm = h.engine.events.indexOf('host:armAlarm');
+      final prompt = h.engine.events.indexOf('host:prompt');
+      expect(arm, greaterThanOrEqualTo(0));
+      expect(prompt, greaterThan(arm));
+    }));
+
+    test('busy is held for the session start and lowered in the finally, '
+        'also when the start throws', _case((h, timers) async {
+      h.engine.batteryThrows = StateError('boom');
+      final seen = <bool>[];
+      h.engine.batteryHook = () async => seen.add(h.sync.busy);
+      await h.sync.openSession();
+      expect(seen, [true]);
+      expect(h.sync.busy, isFalse);
+      expect(h.logged('Session start failed: Bad state: boom'), isTrue);
+    }));
+
+    test('busy or unpaired: it does nothing at all', _case((h, timers) async {
+      h.sync.busy = true;
+      await h.sync.openSession();
+      h.sync.busy = false;
+      h.paired = null;
+      await h.sync.openSession();
+      expect(h.engine.events, isEmpty);
       expect(BandOwnership.foregroundIntent, isFalse);
     }));
 
-    test('unpairSession tears the link down in order, lease last',
-        _rigCase((r, timers) async {
-      await r.openAndSettle();
-      await r.c.unpairSession();
-      expect(r.trace, ['clearReconnecting', 'disconnect', 'lease-']);
+    test('a connect that is refused releases the claim and the backfill timer '
+        'is never armed', _case((h, timers) async {
+      h.engine.connectScript.add(false);
+      await h.sync.openSession();
+      expect(h.logged('could not reach the band'), isTrue);
       expect(BandOwnership.foregroundIntent, isFalse);
+      expect(BandOwnership.owner, isNull);
       expect(timers.activePeriodic(kBackfillEvery), isEmpty);
-      expect(timers.activePeriodic(kSuperviseEvery), isEmpty);
-    }));
-
-    test('dispose cancels the timers and leaves the lease and the link to the host',
-        _rigCase((r, timers) async {
-      await r.openAndSettle();
-      r.c.markSyncActivity();
-      // AppState cancels the quiet timer first, then disposes the rest.
-      r.c.cancelQuietTimer();
-      expect(timers.live, isNotEmpty, reason: 'backfill still armed');
-      r.c.dispose();
-      expect(timers.live, isEmpty);
-      expect(r.trace, ['clearReconnecting']);
-      expect(r.engine.link, isTrue);
-    }));
-
-    test('a link drop with no session wanted only hands the lease back',
-        _rigCase((r, timers) async {
-      await r.openAndSettle();
-      r.engine.state.autoReconnectPaused = true;
-      r.engine.link = false;
-      r.c.onLinkDropped();
-      expect(r.trace, ['lease-']);
-    }));
-
-    test('the background cold-launch connect: success, refusal and a throw',
-        _rigCase((r, timers) async {
-      r.engine.connectScript.add(true);
-      r.engine.connectScript.add(false);
-      r.engine.connectScript.add(StateError('radio'));
-      await r.c.startBackgroundSession();
-      expect(r.trace, [
-        'lease+',
-        'connect',
-        'recover',
-        'resetPedometer',
-        'reconcile',
-        'wake',
-      ]);
-      expect(timers.activePeriodic(kBackfillEvery), hasLength(1));
-      expect(timers.activePeriodic(kSuperviseEvery), hasLength(1));
-      r.trace.clear();
-      await r.c.startBackgroundSession();
-      expect(r.trace, ['connect']);
-      expect(r.logged('[init] bg connect returned false — arming recovery'),
-          isTrue);
-      await r.c.startBackgroundSession();
-      expect(r.logged('[init] bg connect failed: Bad state: radio'), isTrue);
-    }));
-
-    test('going to the background: flag first, ECG cleanup before the stream step-down',
-        _rigCase((r, timers) async {
-      final f = r.c.pauseForBackground();
-      expect(r.c.background, isTrue, reason: 'set before the first await');
-      await f;
-      expect(r.trace, [
-        'ecg.pause',
-        'setBackground:true',
-        'sched.background:true',
-        'nudge',
-      ]);
+      expect(h.sync.busy, isFalse);
     }));
   });
 
-  group('sync bursts', () {
-    test('a burst reports the sum of its sessions with the last one\'s completion',
-        _rigCase((r, timers) async {
-      r.engine.link = true;
-      r.engine.newestTs = 1000000;
-      var session = 0;
-      r.engine.runSyncScript
-        ..add(SyncReport(2, 1, false))
-        ..add(SyncReport(3, 2, true));
-      r.engine.onRunSync = () async {
-        session++;
-        await LocalDb.setCursor(
-            'rec_ts_hw', session == 1 ? '1000' : '999900');
-      };
-      final task = ShortcutSyncTask('t', const Duration(minutes: 1));
-      final report = await r.c.syncForShortcut(task);
-      expect(report.records, 5);
-      expect(report.batches, 3);
-      expect(report.complete, isTrue);
-      expect(r.trace.where((e) => e.startsWith('runSync') ||
-          e == 'requestHistorySync'), [
-        'requestHistorySync',
-        'runSync:180',
+  group('background flag', () {
+    test('pauseForBackground sets it, tells the engine, nudges the live '
+        'owners and pauses ECG',
+        _case((h, timers) async {
+      await h.sync.pauseForBackground();
+      expect(h.sync.background, isTrue);
+      expect(h.engine.events, ['setBackground:true', 'host:nudge']);
+      expect(h.ecgPauses, 1);
+      // (The scheduler only defers derivation on iOS, so its own flag is not
+      // observable on the test host.)
+    }));
+
+    test('openSession brings it back down: the engine hears it and phone steps resync',
+        _case((h, timers) async {
+      await h.sync.pauseForBackground();
+      h.phoneSteps = true;
+      h.engine.events.clear();
+      await h.sync.openSession();
+      expect(h.sync.background, isFalse);
+      expect(h.engine.events.first, 'setBackground:false');
+      expect(h.phoneStepSyncs, 1);
+    }));
+
+    test('a backgrounded backfill tick refreshes the wake window once and '
+        'asks for no offload', _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      await h.sync.pauseForBackground();
+      h.engine.events.clear();
+      timers.activePeriodic(kBackfillEvery).single.fire();
+      await h.waitFor(() => h.logged('skipped — backgrounded'));
+      expect(h.engine.events, ['host:prompt']);
+      h.engine.events.clear();
+      timers.activePeriodic(kBackfillEvery).single.fire();
+      await settleMs(60);
+      expect(h.engine.events, isEmpty, reason: 'throttled to one per 25 min');
+    }));
+  });
+
+  group('the backfill tick', () {
+    test('foreground: prompt, a history request, one drain, and a stored-data '
+        'mark when records came', _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      h.engine.events.clear();
+      h.engine.syncScript.add(SyncReport(5, 1, true));
+      timers.activePeriodic(kBackfillEvery).single.fire();
+      await h.waitFor(() => h.logged('Periodic backlog check: 5 records'));
+      expect(h.engine.events, [
+        'host:prompt',
         'requestHistorySync',
         'runSync:180',
       ]);
-      expect(r.c.lastRecTs, 999900, reason: 'advanced from every session');
-      expect(task.phase, 'syncing');
-      expect(r.trace.last, 'sched.stored');
     }));
 
+    test('it does nothing while busy, unpaired or not connected',
+        _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      final tick = timers.activePeriodic(kBackfillEvery).single;
+      for (final off in <void Function()>[
+        () => h.sync.busy = true,
+        () => h.paired = null,
+        () => h.engine.link = false,
+      ]) {
+        h.engine.events.clear();
+        h.sync.busy = false;
+        h.paired = PairedDevice(kRemoteId, kSerial, generation: 'gen4');
+        h.engine.link = true;
+        off();
+        tick.fire();
+        await settleMs(40);
+        expect(h.engine.events, isEmpty);
+      }
+    }));
+  });
+
+  group('the reconnect loop', () {
+    test('a link drop starts a loop; endSession retires it and a late failure '
+        'does not touch the flags', _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      final gate = h.engine.connectGate = Completer<void>();
+      h.engine.connectScript.add(false);
+      h.engine.events.clear();
+      h.engine.drop();
+      h.sync.onLinkDropped();
+      await h.waitFor(() => h.engine.count('connect') == 1);
+      await h.sync.endSession();
+      final clears = h.engine.count('clearReconnecting');
+      gate.complete();
+      await h.waitFor(() => h.logged('was superseded'));
+      await settleMs(60);
+      expect(h.engine.count('connect'), 1, reason: 'no second attempt');
+      expect(h.engine.count('clearReconnecting'), clears);
+      expect(BandOwnership.foregroundIntent, isFalse);
+      expect(timers.activePeriodic(kSuperviseEvery), isEmpty);
+    }));
+
+    test('with no wish for a link a drop starts nothing and releases the '
+        'claim', _case((h, timers) async {
+      h.engine.drop();
+      h.sync.onLinkDropped();
+      await settleMs(40);
+      expect(h.engine.events, isNot(contains(startsWith('connect'))));
+      expect(BandOwnership.owner, isNull);
+    }));
+
+    test('the supervisor starts a loop when disconnected with none running',
+        _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      h.engine.drop();
+      h.engine.events.clear();
+      timers.activePeriodic(kSuperviseEvery).single.fire();
+      await h.waitFor(() => h.engine.count('connect') == 1);
+      expect(h.logged('supervisor: disconnected with no loop running'), isTrue);
+    }));
+  });
+
+  group('the manual sync', () {
+    test('the scheduler hold is taken for the download and handed back in the '
+        'finally when the download throws', _case((h, timers) async {
+      h.engine.up();
+      h.engine.syncGate = Completer<void>();
+      final run = h.sync.syncOperations.syncNow();
+      await h.waitFor(() => h.engine.count('runSync') == 1);
+      expect(h.coordinator.scheduler.snapshot()['manual_sync_hold'], isTrue);
+      h.engine.syncScript.add(StateError('band went away'));
+      h.engine.syncGate!.complete();
+      await run;
+      expect(h.coordinator.scheduler.snapshot()['manual_sync_hold'], isFalse);
+      expect(h.sync.syncOperations.presentation.phase, 'failed');
+      expect(h.passes, isEmpty, reason: 'a failed download runs no derive');
+    }));
+
+    test('a good one hands the derive to the coordinator as the changed-only '
+        'heavy pass and ends the hold', _case((h, timers) async {
+      h.engine.up();
+      await h.sync.syncOperations.syncNow();
+      expect(h.passes.single.heavy, isTrue);
+      expect(h.passes.single.changedOnly, isTrue);
+      expect(h.coordinator.scheduler.snapshot()['manual_sync_hold'], isFalse);
+    }));
+
+    test('no band paired: a failure with the reason and no engine call',
+        _case((h, timers) async {
+      h.paired = null;
+      final result = await h.sync.syncOperations.syncNow();
+      expect(h.engine.events, isEmpty);
+      expect(result.error, contains('Pair a band before syncing'));
+    }));
+  });
+
+  group('the history burst', () {
     test('a wait that gives up on a still-running task waits on it again',
-        _rigCase((r, timers) async {
-      r.engine.link = true;
+        _case((h, timers) async {
+      h.engine.link = true;
       var session = 0;
-      r.engine.runSyncScript
+      h.engine.syncScript
         ..add(SyncReport(0, 0, false))
         ..add(SyncReport(1, 1, true));
-      r.engine.onRunSync = () async {
+      h.engine.onRunSync = () async {
         session++;
-        r.engine.offloadActive = session == 1;
+        h.engine.offloading = session == 1;
       };
-      final report = await r.c.syncForShortcut(
-          ShortcutSyncTask('t', const Duration(minutes: 1)));
-      expect(r.engine.count('runSync'), 2,
+      await h.sync.forceResync();
+      expect(h.engine.count('runSync'), 2,
           reason: 'no batch ACKs yet must not end a task the band is running');
-      expect(report.complete, isTrue);
-      expect(r.logged('the history task is still running'), isTrue);
-    }));
-
-    test('the single-flight slot frees whenComplete, success or failure',
-        _rigCase((r, timers) async {
-      r.engine.link = true;
-      r.engine.runSyncScript.add(StateError('stuck'));
-      await r.c.foregroundCatchUp();
-      expect(r.logged('Foreground catch-up sync failed: Bad state: stuck'),
-          isTrue);
-      expect(r.engine.count('runSync'), 1);
-      // A fresh burst starts, so the failed one released the slot.
-      await r.c.forceResync();
-      expect(r.engine.count('runSync'), 2);
-      expect(r.logged('Resync failed'), isFalse);
-      await r.c.forceResync();
-      expect(r.engine.count('runSync'), 3);
-    }));
-
-    test('a second trigger joins the burst in flight instead of starting one',
-        _rigCase((r, timers) async {
-      r.engine.link = true;
-      final gate = r.engine.syncGate = Completer<void>();
-      final first = r.c.foregroundCatchUp();
-      await until(() => r.engine.count('runSync') == 1);
-      await r.c.foregroundCatchUp();
-      expect(r.engine.count('runSync'), 1, reason: 'the second one joined');
-      var resyncDone = false;
-      final resync = r.c.forceResync().then((_) => resyncDone = true);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-      expect(resyncDone, isFalse, reason: 'forceResync waits the burst out');
-      r.engine.syncGate = null;
-      gate.complete();
-      await first;
-      await resync;
-      expect(r.engine.count('runSync'), 2);
-      expect(r.engine.count('requestHistorySync'), 1,
-          reason: 'forceResync re-kicks the offload itself');
-    }));
-
-    test('syncNow asks for a floored pull, then requests the heavy finalize',
-        _rigCase((r, timers) async {
-      r.engine.link = true;
-      r.engine.foregroundSyncAllowed = false;
-      await r.c.syncNow();
-      expect(r.trace, ['requestForegroundSync', 'sched.heavy']);
-      r.trace.clear();
-      r.engine.foregroundSyncAllowed = true;
-      await r.c.syncNow();
-      expect(r.trace, [
-        'requestForegroundSync',
-        'runSync:180',
-        'sched.stored',
-        'sched.heavy',
-      ]);
-    }));
-
-    test('syncNow while backgrounded or unlinked opens a session instead',
-        _rigCase((r, timers) async {
-      r.c.background = true;
-      r.c.busy = true;
-      r.engine.link = true;
-      await r.c.syncNow();
-      expect(r.c.background, isFalse);
-      expect(r.engine.count('requestForegroundSync'), 0);
-      expect(r.trace, contains('setBackground:false'));
-    }));
-
-    test('the periodic tick: foreground pulls, background only re-plans the wake window',
-        _rigCase((r, timers) async {
-      await r.openAndSettle();
-      final tick = timers.activePeriodic(kBackfillEvery).single;
-      tick.fire();
-      await until(() => r.trace.contains('sched.stored'));
-      expect(r.trace, [
-        'wake',
-        'requestHistorySync',
-        'runSync:180',
-        'sched.stored',
-      ]);
-      expect(r.logged('Periodic backlog check: 3 records (complete).'), isTrue);
-
-      r.trace.clear();
-      r.c.background = true;
-      tick.fire();
-      await until(() => r.logged('Periodic history refresh skipped — backgrounded'));
-      expect(r.trace, ['wake']);
-      r.trace.clear();
-      tick.fire();
-      await until(() => r.logs.where((l) =>
-          l.contains('Periodic history refresh skipped — backgrounded')).length == 2);
-      expect(r.trace, isEmpty, reason: 'the re-plan is throttled to 25 minutes');
+      expect(h.logged('the history task is still running'), isTrue);
     }));
   });
 
-  group('reconnect', () {
-    test('a link that drops during post-connect setup is retried',
-        _rigCase((r, timers) async {
-      await r.openAndSettle();
-      var dropped = false;
-      r.engine.batteryHook = () async {
-        if (dropped) return;
-        dropped = true;
-        r.engine.link = false;
-      };
-      r.engine.link = false;
-      r.c.onLinkDropped();
-      await r.loggedWithin('Reconnected — live on; draining backlog in background.');
-      expect(r.logged('Link dropped during reconnect setup — retrying.'), isTrue);
-      expect(r.engine.count('connect'), 2, reason: 'one attempt per pass');
-      expect(r.engine.count('backoff'), 2);
-      expect(r.engine.link, isTrue);
-      await until(() => r.trace.contains('sched.heavy'));
+  group('the data edge, the activity window and busy', () {
+    test('lastRecordAt follows lastRecTs (epoch seconds)',
+        _case((h, timers) async {
+      h.sync.lastRecTs = 1700000000;
+      expect(h.sync.lastRecordAt,
+          DateTime.fromMillisecondsSinceEpoch(1700000000 * 1000));
+      h.sync.lastRecTs = null;
+      expect(h.sync.lastRecordAt, isNull);
     }));
 
-    test('a superseded loop leaves the replacement\'s flags alone',
-        _rigCase((r, timers) async {
-      r.engine.connectScript
-        ..add(true) // the first session
-        ..add(false) // loop A, parked until released
-        ..add(false) // the second session's own connect
-        ..add(true); // loop B, parked until released
-      await r.openAndSettle();
-
-      final gateA = r.engine.nextConnectGate = Completer<void>();
-      r.engine.link = false;
-      r.c.onLinkDropped();
-      await until(() => r.engine.count('connect') == 1);
-
-      // Ending the session retires loop A; a fresh session then drops again and
-      // starts loop B.
-      await r.c.endSession();
-      await r.c.openSession();
-      expect(r.engine.count('connect'), 2);
-      final gateB = r.engine.nextConnectGate = Completer<void>();
-      r.engine.link = false;
-      r.c.onLinkDropped();
-      await until(() => r.engine.count('connect') == 3);
-      expect(BandOwnership.foregroundIntent, isTrue);
-
-      final mark = r.trace.length;
-      gateA.complete();
-      await r.loggedWithin('[RECONNECT] loop #1 was superseded');
-      expect(r.trace.sublist(mark), isNot(contains('clearReconnecting')),
-          reason: 'the stale loop must not clear the live loop\'s state');
-      expect(BandOwnership.foregroundIntent, isTrue);
-
-      gateB.complete();
-      await until(() => r.trace.sublist(mark).contains('clearReconnecting'));
-      expect(r.engine.link, isTrue, reason: 'loop B owned the reconnect');
-      expect(r.logs.where((l) => l.contains('superseded')), hasLength(1));
-    }));
-
-    test('the supervisor starts a loop when none runs, and does nothing once disposed',
-        _rigCase((r, timers) async {
-      await r.openAndSettle();
-      final tick = timers.activePeriodic(kSuperviseEvery).single;
-      r.engine.link = false;
-      tick.fire();
-      await r.loggedWithin('[RECONNECT] supervisor: disconnected with no loop running');
-      await until(() => r.engine.count('connect') == 1);
-
-      r.trace.clear();
-      r.hostDisposed = true;
-      tick.fire();
-      expect(r.trace, isEmpty, reason: 'not even refreshAutoReconnectPause');
-    }));
-
-    test('a drop while a session is wanted cancels the backfill timer and reconnects',
-        _rigCase((r, timers) async {
-      await r.openAndSettle();
-      final backfill = timers.activePeriodic(kBackfillEvery).single;
-      r.engine.link = false;
-      r.c.onLinkDropped();
-      expect(backfill.cancelled, isTrue, reason: 'cancelled at the edge');
-      await r.loggedWithin('Reconnected');
-      expect(r.logged('Connection dropped — reconnecting…'), isTrue);
-    }));
-  });
-
-  group('the quiet window', () {
-    test('marking activity lights the indicator and arms one timer that notifies once',
-        _rigCase((r, timers) async {
-      expect(r.c.syncingNow, isFalse);
-      r.c.markSyncActivity();
-      expect(r.c.syncingNow, isTrue);
-      expect(r.notifies, 0, reason: 'marking itself does not notify');
+    test('markSyncActivity lights syncingNow and arms ONE quiet timer that '
+        'notifies once when it fires; a second mark replaces it',
+        _case((h, timers) async {
+      h.sync.markSyncActivity();
+      expect(h.sync.syncingNow, isTrue);
       final first = timers.activeOneShot(const Duration(milliseconds: 6000));
       expect(first, hasLength(1));
-
-      r.c.markSyncActivity();
-      expect(first.single.cancelled, isTrue, reason: 'a new batch restarts it');
+      h.sync.markSyncActivity();
+      expect(first.single.cancelled, isTrue);
       final second = timers.activeOneShot(const Duration(milliseconds: 6000));
       expect(second, hasLength(1));
-
+      expect(h.notifies, 0);
       second.single.fire();
-      expect(r.notifies, 1);
-      expect(timers.activeOneShot(const Duration(milliseconds: 6000)), isEmpty);
+      expect(h.notifies, 1);
     }));
 
-    test('last-record time follows the stored seconds', _rigCase((r, timers) async {
-      expect(r.c.lastRecordAt, isNull);
-      r.c.lastRecTs = 1700000000;
-      expect(r.c.lastRecordAt,
-          DateTime.fromMillisecondsSinceEpoch(1700000000 * 1000));
+    test('reportSyncCommit never throws, whatever it is handed',
+        _case((h, timers) async {
+      h.sync.reportSyncCommit(3, [1700000000, null, 1700000100]);
+      h.sync.reportSyncCommit(0, const []);
+      h.disposed = true;
     }));
   });
 
-  group('syncForShortcut', () {
-    test('waits for init, then for a busy session, reporting each phase',
-        _rigCase((r, timers) async {
-      r.initialized = false;
-      r.c.busy = true;
-      r.engine.link = true;
-      final phases = <String>[];
-      final task = ShortcutSyncTask('t', const Duration(minutes: 1),
-          onProgress: (m) => phases.add(m['phase']! as String));
-      final done = r.c.syncForShortcut(task);
-      await until(() => phases.contains('starting'));
-      r.initialized = true;
-      await until(() => phases.contains('waiting'));
-      r.c.busy = false;
-      final report = await done;
-      expect(phases, ['starting', 'waiting', 'syncing']);
-      expect(report.records, 3);
+  group('endSession and dispose', () {
+    test('endSession stops wanting a link: disconnects, releases the claim, '
+        'cancels both timers', _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      h.engine.events.clear();
+      await h.sync.endSession();
+      expect(h.engine.events.where((e) => e == 'disconnect'), hasLength(1));
+      expect(BandOwnership.owner, isNull);
+      expect(BandOwnership.foregroundIntent, isFalse);
+      expect(timers.activePeriodic(kSuperviseEvery), isEmpty);
+      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
     }));
 
-    test('an init failure or a disposed host is "not ready"',
-        _rigCase((r, timers) async {
-      r.initialized = false;
-      r.initError = 'boom';
-      await expectLater(
-          r.c.syncForShortcut(ShortcutSyncTask('t', const Duration(minutes: 1))),
-          throwsA(isA<StateError>()));
-      r.initError = null;
-      r.initialized = true;
-      r.hostDisposed = true;
-      await expectLater(
-          r.c.syncForShortcut(ShortcutSyncTask('t', const Duration(minutes: 1))),
-          throwsA(isA<StateError>()));
+    test('dispose cancels the supervisor, the backfill timer and the quiet '
+        'timer, and nothing else (the claim stays until released)',
+        _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      h.sync.markSyncActivity();
+      h.sync.dispose();
+      expect(timers.live.where((t) => t.periodic), isEmpty);
+      expect(timers.activeOneShot(const Duration(milliseconds: 6000)), isEmpty);
+      expect(BandOwnership.owner, BandOwnerKind.foreground);
+      h.sync.releaseForegroundLease();
+      expect(BandOwnership.owner, isNull);
     }));
 
-    test('a reset in progress refuses before anything else', _rigCase((r, timers) async {
-      ResetGate.enter();
-      await expectLater(
-          r.c.syncForShortcut(ShortcutSyncTask('t', const Duration(minutes: 1))),
-          throwsA(isA<StateError>()));
-      expect(r.trace, isEmpty);
+    test('debugArmBackfillTimer arms it and dispose cancels it',
+        _case((h, timers) async {
+      h.sync.debugArmBackfillTimer();
+      expect(timers.activePeriodic(kBackfillEvery), hasLength(1));
+      h.sync.dispose();
+      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
+    }));
+  });
+
+  group('the headless background start', () {
+    test('wants a link, supervises, takes the lease, connects, arms the alarm, '
+        'recovers and arms the backfill timer; it polls nothing and starts no '
+        'drain',
+        _case((h, timers) async {
+      h.sync.background = true;
+      await h.sync.startBackgroundSession();
+      expect(h.engine.events, [
+        'connect:$kRemoteId:gen4',
+        'host:armAlarm',
+        'host:recover',
+        'host:resetPedometer',
+        'reconcile',
+        'host:prompt',
+      ]);
+      expect(BandOwnership.owner, BandOwnerKind.foreground);
+      expect(timers.activePeriodic(kSuperviseEvery), hasLength(1));
+      expect(timers.activePeriodic(kBackfillEvery), hasLength(1));
     }));
 
-    test('a stopped task stops waiting without touching the band',
-        _rigCase((r, timers) async {
-      r.c.busy = true;
-      final task = ShortcutSyncTask('t', const Duration(minutes: 1));
-      final done = r.c.syncForShortcut(task);
-      await until(() => task.phase == 'waiting');
-      task.stop();
-      final report = await done;
-      expect([report.records, report.batches, report.complete], [0, 0, false]);
-      expect(r.trace, isEmpty);
+    test('a refused connect is logged and arms no backfill timer',
+        _case((h, timers) async {
+      h.sync.background = true;
+      h.engine.connectScript.add(false);
+      await h.sync.startBackgroundSession();
+      expect(h.logged('bg connect returned false'), isTrue);
+      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
     }));
+  });
 
-    test('a stopped task ceases waiting on a running burst; the burst carries on',
-        _rigCase((r, timers) async {
-      r.engine.link = true;
-      final gate = r.engine.syncGate = Completer<void>();
-      final task = ShortcutSyncTask('t', const Duration(minutes: 1));
-      final done = r.c.syncForShortcut(task);
-      await until(() => r.engine.count('runSync') == 1);
-      task.stop();
-      final report = await done;
-      expect([report.records, report.batches, report.complete], [0, 0, false]);
-      expect(r.trace, isNot(contains('sched.stored')));
-      r.engine.syncGate = null;
-      gate.complete();
-      await until(() => r.trace.contains('sched.stored'),
-          what: 'the burst finishing on its own');
-    }));
-
-    test('after the host is disposed the report comes back with no derive and no notify',
-        _rigCase((r, timers) async {
-      r.engine.link = true;
-      var gate = r.engine.syncGate = Completer<void>();
-      var task = ShortcutSyncTask('t', const Duration(minutes: 1));
-      var done = r.c.syncForShortcut(task);
-      await until(() => r.engine.count('runSync') == 1);
-      gate.complete();
-      var report = await done;
-      expect(report.records, 3);
-      expect(r.trace.last, 'sched.stored', reason: 'control: alive host derives');
-      final notified = r.notifies;
-      expect(notified, greaterThan(0));
-
-      r.trace.clear();
-      gate = r.engine.syncGate = Completer<void>();
-      task = ShortcutSyncTask('t', const Duration(minutes: 1));
-      done = r.c.syncForShortcut(task);
-      await until(() => r.engine.count('runSync') == 1);
-      r.hostDisposed = true;
-      gate.complete();
-      report = await done;
-      expect(report.records, 3);
-      expect(r.trace, isNot(contains('sched.stored')));
-      expect(r.notifies, notified, reason: 'no notify after disposal');
-    }));
-
-    test('a background Shortcut connects without the foreground flip',
-        _rigCase((r, timers) async {
-      r.c.background = true;
-      final task = ShortcutSyncTask('t', const Duration(minutes: 1));
-      final report = await r.c.syncForShortcut(task);
-      expect(r.c.background, isTrue);
-      expect(r.trace, isNot(contains('setBackground:false')));
-      expect(r.trace, contains('connect'));
-      expect(report.records, 3);
-      expect(task.phase, 'syncing');
+  group('unpairSession', () {
+    test('stops wanting a link, stops both timers, disconnects and releases '
+        'the claim; the pairing itself is the host\'s',
+        _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      await h.sync.unpairSession();
+      expect(h.engine.count('disconnect'), 1);
+      expect(BandOwnership.owner, isNull);
+      expect(timers.activePeriodic(kSuperviseEvery), isEmpty);
+      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
+      expect(IosBleRestore.foregroundActive, isFalse);
+      expect(h.paired, isNotNull);
     }));
   });
 }

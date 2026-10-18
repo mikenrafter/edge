@@ -48,6 +48,19 @@ class SleepProfilePolicy {
   /// Cap on tracked day_ids so the `baselines` row cannot grow unbounded.
   static const int maxFoldedDays = 400;
 
+  /// Key inside the profile payload holding each folded night's OBSERVATION
+  /// (day_id -> the JSON the fold consumed). An EWMA cannot be un-folded, so
+  /// this is what lets a night the user later blanks ("Not sleep", or a window
+  /// of their own) be taken back out: the profile is refolded from the
+  /// observations that remain. Its absence marks a profile written before this
+  /// existed; the nights in it cannot be proven to exclude a blanked one.
+  static const String foldedObsKey = 'folded_obs';
+
+  /// Observations kept. At the ~14-night EWMA horizon a night older than this
+  /// carries a weight near 1e-4, so older ones are dropped without changing the
+  /// profile in any way that shows.
+  static const int maxStoredObservations = 90;
+
   const SleepProfilePolicy._();
 
   /// Day_ids already folded into [payloadJson]. Empty for absent, corrupt, or
@@ -58,6 +71,39 @@ class SleepProfilePolicy {
     final days = m?[foldedDaysKey];
     if (days is! List) return const <String>{};
     return {for (final d in days) if (d is String) d};
+  }
+
+  /// day_id -> observation JSON stored in [payloadJson]. Empty for absent,
+  /// corrupt, or pre-observation payloads.
+  static Map<String, Map<String, dynamic>> foldedObservations(
+      String? payloadJson) {
+    final m = _decode(payloadJson);
+    final obs = m?[foldedObsKey];
+    if (obs is! Map) return const {};
+    return {
+      for (final e in obs.entries)
+        if (e.key is String && e.value is Map)
+          e.key as String: (e.value as Map).cast<String, dynamic>(),
+    };
+  }
+
+  /// [alreadyStored] + [observation] for [dayId], newest [maxStoredObservations]
+  /// kept (eviction by day label, oldest first — the same precondition as
+  /// [appendFoldedDay]).
+  static Map<String, Map<String, dynamic>> withObservation(
+    Map<String, Map<String, dynamic>> alreadyStored,
+    String dayId,
+    Map<String, dynamic> observation,
+  ) {
+    final out = {...alreadyStored, dayId: observation};
+    if (out.length <= maxStoredObservations) return out;
+    final keep = (out.keys.toList()..sort())
+        .skip(out.length - maxStoredObservations)
+        .toSet();
+    return {
+      for (final e in out.entries)
+        if (keep.contains(e.key)) e.key: e.value,
+    };
   }
 
   /// True when [payloadJson] predates fold tracking and must be discarded.

@@ -1,17 +1,23 @@
-// A strap double tap through AppState: which action the single double-tap
-// mapping runs, and the two guards in front of it. The tap travels the real
-// engine event path; the dispatcher's clock is faked so each boundary is
-// exact.
+// Gesture area: a strap double tap travels the real path
+// (engine event frame -> AppState -> GestureDispatcher -> sessions -> cues) and
+// these tests pin which actions and cues fire, and in what order, for each
+// route.
 //
-//  * Recency: a tap whose strap timestamp is more than 6 s behind the phone is
-//    a drained/historical one and is skipped; a timestamp that is not a
-//    plausible past time (unset RTC: zero, in the future, more than a day old)
-//    cannot be judged and falls through to the debounce alone.
-//  * Debounce: one action per 2 s, however many events the band sends.
+// Routes (decided in GestureDispatcher.handle, wired in AppState):
+//  * immediate: a plain double tap runs the 2-tap actions at once; the tap ack
+//    (the confirm cue) follows when one RAN;
+//  * repeated double taps (any band without ECG, or by choice): the start cue,
+//    one follow-up per added tap, the confirm; the count picks the actions;
+//  * ECG touches (WHOOP MG): the same cues from the ECG session, packets
+//    through the ECG controller's onFrame;
+//  * the two Device-lab benches run nothing.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
+import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
+import 'package:openstrap_edge/gestures/gesture_failures.dart';
+import 'package:openstrap_edge/gestures/gesture_settings.dart';
 
 import 'support/app_state_gesture_harness.dart';
 
@@ -19,214 +25,341 @@ const _db = 'app_state_gesture_dispatch.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  late ActionChannel channel;
-  late HapticSpy haptics;
-  setUpAll(() => gestureDbSetUp(_db));
-  tearDownAll(() => gestureDbTearDown(_db));
-  setUp(() {
+  setUp(() async {
     BleEngine.resetBandClaimForTest();
-    channel = ActionChannel();
-    haptics = HapticSpy();
+    await deriveDbSetUp(_db);
+    await resetGesturePrefs();
   });
-  tearDown(() {
-    channel.dispose();
-    haptics.dispose();
+  tearDown(() async {
     BleEngine.resetBandClaimForTest();
+    await deriveDbTearDown(_db);
   });
 
-  GestureRig newRig() {
-    final rig = GestureRig();
+  late ActionChannel channel;
+  late List<String> order;
+  Future<GestureRig> newRig({bool mg = false, bool? dev}) async {
+    order = <String>[];
+    channel = ActionChannel(order: order);
+    addTearDown(channel.dispose);
+    final rig = GestureRig(mg: mg, dev: dev, order: order);
     addTearDown(rig.dispose);
+    await rig.measureCues();
     return rig;
   }
 
-  group('the mapping', () {
-    test('nothing is mapped by default: a tap runs nothing', () async {
-      final rig = newRig();
-      expect(rig.app.gestureSettings.doubleTap, DeviceAction.none);
+  group('immediate double tap (no 3-5 mapping)', () {
+    test('a mapped action runs, then the confirm cue acknowledges it', () async {
+      final rig = await newRig();
+      await rig.app.gestureSettings
+          .setDoubleTapActions({DeviceAction.mediaPlayPause});
       rig.doubleTap();
+      await until(() => rig.cues.isNotEmpty);
       await settleMs(100);
-      expect(channel.performed, isEmpty);
-      expect(haptics.calls, isEmpty);
+      expect(channel.performed, ['media_play_pause']);
+      expect(order, ['action:media_play_pause', 'cue:confirm'],
+          reason: 'the action first, then the tap ack (no start / follow-up)');
+      expect(rig.app.gestureFailures.all, isEmpty);
     });
 
-    for (final a in [
-      DeviceAction.mediaPlayPause,
-      DeviceAction.mediaNext,
-      DeviceAction.volumeUp,
-      DeviceAction.torch,
-      DeviceAction.ringPhone,
-      DeviceAction.broadcastToTasker,
-    ]) {
-      test('a native action goes to the platform channel by its wire id '
-          '(${a.id})', () async {
-        final rig = newRig();
-        await rig.map(a);
+    test('several mapped actions run in enum order, one ack for the tap',
+        () async {
+      final rig = await newRig();
+      await rig.app.gestureSettings.setDoubleTapActions(
+          {DeviceAction.torch, DeviceAction.mediaPlayPause});
+      rig.doubleTap();
+      await until(() => rig.cues.isNotEmpty);
+      await settleMs(100);
+      expect(channel.performed, ['media_play_pause', 'torch']);
+      expect(order, [
+        'action:media_play_pause',
+        'action:torch',
+        'cue:confirm',
+      ]);
+    });
+
+    test('nothing mapped: nothing runs, nothing buzzes, nothing is recorded',
+        () async {
+      final rig = await newRig();
+      rig.doubleTap();
+      await settleMs(500);
+      expect(order, isEmpty);
+      expect(rig.app.gestureFailures.all, isEmpty);
+    });
+
+    test('a native action that fails: no ack, one failure naming the action',
+        () async {
+      final rig = await newRig();
+      channel.ok = false;
+      await rig.app.gestureSettings
+          .setDoubleTapActions({DeviceAction.mediaPlayPause});
+      rig.doubleTap();
+      await until(() => rig.app.gestureFailures.all.isNotEmpty);
+      await settleMs(300);
+      expect(channel.performed, ['media_play_pause']);
+      expect(rig.cues, isEmpty, reason: 'an ack only follows an action that ran');
+      final f = rig.app.gestureFailures.all.single;
+      expect(f.kind, GestureFailureKind.doubleTap);
+      expect(f.reason, startsWith('media_play_pause:'));
+      expect(labText(rig), contains('Gesture failed (media_play_pause:'),
+          reason: 'the lab trace says it, so the saved log tells the story');
+    });
+
+    test('a tap that reached the phone late is skipped (stale), silently',
+        () async {
+      final rig = await newRig();
+      await rig.app.gestureSettings
+          .setDoubleTapActions({DeviceAction.mediaPlayPause});
+      rig.doubleTap(atSec: DateTime.now().millisecondsSinceEpoch ~/ 1000 - 120);
+      await settleMs(500);
+      expect(order, isEmpty);
+      expect(rig.app.gestureFailures.all, isEmpty);
+    });
+
+    test('the same tap delivered twice runs once (once-ever claim)', () async {
+      final rig = await newRig();
+      await rig.app.gestureSettings
+          .setDoubleTapActions({DeviceAction.mediaPlayPause});
+      rig.doubleTap();
+      await until(() => rig.cues.isNotEmpty);
+      rig.doubleTap(resend: true);
+      await settleMs(400);
+      expect(channel.performed, ['media_play_pause']);
+      expect(rig.cues, ['confirm']);
+    });
+
+    test('on a WHOOP MG with only the 2-tap action mapped it is also '
+        'immediate (no counting)', () async {
+      final rig = await newRig(mg: true);
+      await rig.app.gestureSettings
+          .setDoubleTapActions({DeviceAction.mediaPlayPause});
+      rig.doubleTap();
+      await until(() => rig.cues.isNotEmpty);
+      await settleMs(100);
+      expect(order, ['action:media_play_pause', 'cue:confirm']);
+      expect(order, isNot(contains('band:selectWrist')),
+          reason: 'no ECG stream for a plain double tap');
+    });
+  });
+
+  group('repeated double taps (a band without ECG)', () {
+    Future<GestureRig> repeatRig() async {
+      final rig = await newRig();
+      await mapActions(rig.app, [2, 3, 4, 5]);
+      await rig.app.gestureSettings.setRepeatTapWindowMs(1000);
+      return rig;
+    }
+
+    // Count [n]: the opening tap plus n - 2 more, each sent once the cue before
+    // it was written.
+    Future<void> tapCount(GestureRig rig, int n) async {
+      rig.doubleTap();
+      await until(() => rig.cues.isNotEmpty);
+      for (var i = 0; i < n - 2; i++) {
         rig.doubleTap();
-        await until(() => channel.performed.isNotEmpty, what: 'native perform');
-        expect(channel.performed, [a.id]);
+        await until(() => rig.cues.length >= 2 + i);
+      }
+      await until(
+          () => channel.performed.isNotEmpty && rig.cues.contains('confirm'),
+          within: const Duration(seconds: 8));
+      await settleMs(150);
+    }
+
+    for (final n in [2, 3, 4, 5]) {
+      test('count $n: start, ${n - 2} follow-up(s), confirm; the $n-tap '
+          'action runs; no extra ack', () async {
+        final rig = await repeatRig();
+        await tapCount(rig, n);
+        expect(channel.performed, [kActionFor[n]!.id]);
+        expect(rig.cues, [
+          'start',
+          for (var i = 0; i < n - 2; i++) 'followUp',
+          'confirm',
+        ]);
+        expect(order.first, 'cue:start');
+        expect(order.where((e) => e.startsWith('action:')).length, 1);
+        expect(rig.app.gestureFailures.all, isEmpty);
+        expect(labText(rig), contains('More double taps'));
       });
     }
 
-    test('a native action that fails is not retried and does not throw',
-        () async {
-      final rig = newRig();
-      channel.ok = false;
-      await rig.map(DeviceAction.torch);
+    test('the Device lab bench counts to 5 and runs no action', () async {
+      final rig = await newRig();
+      await mapActions(rig.app, [2, 3]);
+      await rig.app.gestureSettings.setRepeatTapWindowMs(1000);
+      await rig.app.gestureSettings.setRepeatTapsLab(true);
       rig.doubleTap();
-      await until(() => channel.performed.isNotEmpty);
-      await settleMs(100);
-      expect(channel.performed, ['torch']);
+      await until(() => rig.cues.isNotEmpty);
+      rig.doubleTap();
+      await until(() => rig.cues.length >= 2);
+      await until(() => rig.cues.contains('confirm'),
+          within: const Duration(seconds: 8));
+      await settleMs(300);
+      expect(rig.cues, ['start', 'followUp', 'confirm']);
+      expect(channel.performed, isEmpty);
+      expect(labText(rig), contains('Result: 3 taps. No action was run.'));
     });
+  });
 
-    test('in-app actions never reach the platform channel', () async {
-      for (final a in [
-        DeviceAction.markMoment,
-        DeviceAction.workoutToggle,
-        DeviceAction.logWater,
-      ]) {
-        final rig = newRig();
-        await rig.map(a);
+  group('ECG touches (WHOOP MG)', () {
+    Future<GestureRig> ecgRig() async {
+      final rig = await newRig(mg: true);
+      await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
+      await mapActions(rig.app, [2, 3, 4, 5]);
+      return rig;
+    }
+
+    for (final n in [2, 3, 4, 5]) {
+      test('count $n: start cue, stream start, ${n - 2} follow-up(s), confirm; '
+          'the $n-tap action runs', () async {
+        final rig = await ecgRig();
         rig.doubleTap();
-        await settleMs(150);
-        expect(channel.performed, isEmpty, reason: a.id);
-        await rig.app.stopWorkout();
-        await rig.dispose();
-        await settleMs(100);
-        BleEngine.resetBandClaimForTest();
-      }
-    });
+        await until(() => order.contains('band:generation'));
+        await playEcgCount(rig, n);
+        await until(() => channel.performed.isNotEmpty,
+            within: const Duration(seconds: 8));
+        await until(() => rig.cues.contains('confirm'));
+        await settleMs(200);
+        expect(channel.performed, [kActionFor[n]!.id]);
+        expect(rig.cues, [
+          'start',
+          for (var i = 0; i < n - 2; i++) 'followUp',
+          'confirm',
+        ]);
+        // The start cue goes out before the stream's first command.
+        expect(order.first, 'cue:start');
+        expect(order.indexOf('band:selectWrist'), greaterThan(0));
+        expect(labText(rig), contains('Final count $n'));
+        expect(rig.app.gestureFailures.all, isEmpty);
+      });
+    }
 
-    test('an event that is not a double tap runs nothing, whatever is mapped',
+    test('the stream is stopped when the gesture ends (cleanup written)',
         () async {
-      final rig = newRig();
-      await rig.map(DeviceAction.torch);
-      for (final id in [3, 9, 56, 57, 13, 15]) {
-        rig.event(id);
-      }
-      await settleMs(100);
-      expect(channel.performed, isEmpty);
-    });
-
-    test('the mapping is read live: changing it between taps changes what '
-        'the next tap does', () async {
-      final rig = newRig();
-      await rig.map(DeviceAction.mediaNext);
+      final rig = await ecgRig();
       rig.doubleTap();
-      await until(() => channel.performed.length == 1);
-      rig.advance(const Duration(seconds: 3));
-      await rig.map(DeviceAction.volumeUp);
-      rig.doubleTap();
-      await until(() => channel.performed.length == 2);
-      rig.advance(const Duration(seconds: 3));
-      await rig.map(DeviceAction.none);
-      rig.doubleTap();
-      await settleMs(100);
-      expect(channel.performed, ['media_next', 'volume_up']);
+      await until(() => order.contains('band:generation'));
+      await playEcgCount(rig, 2);
+      await until(() => channel.performed.isNotEmpty,
+          within: const Duration(seconds: 8));
+      await settleMs(300);
+      final gens = order.where((e) => e == 'band:generation').length;
+      expect(gens, 2, reason: 'one START, one STOP');
+      expect(rig.app.ecg.isCapturing, isFalse);
     });
   });
 
-  group('recency window (6 s)', () {
-    test('a tap that is 0 and 6 seconds old runs', () async {
-      for (final age in [0, 6]) {
-        final rig = newRig();
-        await rig.map(DeviceAction.torch);
-        channel.performed.clear();
-        rig.doubleTapAged(Duration(seconds: age));
-        await until(() => channel.performed.isNotEmpty, what: 'age $age');
-        expect(channel.performed, ['torch'], reason: 'age $age');
-        await rig.dispose();
+  group('ECG touches (WHOOP MG), a stream paced like the band\'s', () {
+    test('no finger on the sensor: the stream settles on the wall clock, then '
+        'the count is 2 (the plain double tap)', () async {
+      final rig = await newRig(mg: true);
+      await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
+      await mapActions(rig.app, [2, 3]);
+      rig.doubleTap();
+      await until(() => order.contains('band:generation'));
+      // The session waits for a steady stream: packets in step with the
+      // clock, one a second, until the touch window has run out.
+      for (var i = 0; i < 12 && labCount(rig, 'Final count') == 0; i++) {
+        rig.feedEcg(presencePacket(1000 + i));
+        await settleMs(1000);
       }
+      await until(() => channel.performed.isNotEmpty,
+          within: const Duration(seconds: 8));
+      await until(() => rig.cues.contains('confirm'));
+      expect(channel.performed, ['media_play_pause']);
+      expect(rig.cues, ['start', 'confirm']);
+      expect(order.where((e) => e == 'band:rawSave').length, 1,
+          reason: 'Keep waveform is off: no raw-save ON in PREPARE, only the '
+              'OFF in CLEANUP');
+    }, timeout: const Timeout(Duration(seconds: 40)));
+  });
+
+  group('ECG gestures are developer mode only', () {
+    // A WHOOP MG rig stores the ECG counting method (measureCues). Without
+    // developer mode the dispatcher sees no ECG, so the same stored choice
+    // counts double taps and every mapped action still runs.
+    test('a stored ECG choice without developer mode: the count is made with '
+        'double taps, the n-tap action runs, no ECG stream is touched',
+        () async {
+      final rig = await newRig(mg: true, dev: false);
+      expect(rig.app.gestureSettings.tapMethodChoice, TapCountMethod.ecg);
+      await mapActions(rig.app, [2, 3]);
+      await rig.app.gestureSettings.setRepeatTapWindowMs(1000);
+      rig.doubleTap();
+      await until(() => rig.cues.isNotEmpty);
+      rig.doubleTap();
+      await until(() => rig.cues.length >= 2);
+      await until(
+          () => channel.performed.isNotEmpty && rig.cues.contains('confirm'),
+          within: const Duration(seconds: 8));
+      await settleMs(200);
+      expect(channel.performed, [kActionFor[3]!.id]);
+      expect(rig.cues, ['start', 'followUp', 'confirm']);
+      expect(order.contains('band:selectWrist'), isFalse);
+      expect(order.contains('band:generation'), isFalse,
+          reason: 'no ECG stream was started');
+      expect(labText(rig), contains('More double taps'));
+      expect(rig.app.gestureFailures.all, isEmpty);
     });
 
-    test('a tap that is 7 seconds, a minute or an hour old is stale: skipped, '
-        'logged, and it does not spend the debounce', () async {
-      final rig = newRig();
-      await rig.map(DeviceAction.torch);
-      for (final age in [const Duration(seconds: 7), const Duration(minutes: 1),
-          const Duration(hours: 1), const Duration(hours: 23)]) {
-        rig.doubleTapAged(age);
-      }
-      await settleMs(100);
-      expect(channel.performed, isEmpty);
-      expect(
-          rig.app.logLines.where((l) => l.contains('ignoring stale double-tap')),
-          hasLength(4));
-      rig.doubleTap(); // same instant: the stale ones did not use the debounce
+    test('the lab\'s ECG-on-double-tap switch without developer mode does '
+        'not suspend the mapped action: it runs', () async {
+      final rig = await newRig(mg: true, dev: false);
+      await rig.app.gestureSettings
+          .setDoubleTapActions({DeviceAction.mediaPlayPause});
+      await rig.app.gestureSettings.setEcgOnDoubleTap(true);
+      rig.doubleTap();
       await until(() => channel.performed.isNotEmpty);
-      expect(channel.performed, ['torch']);
+      await settleMs(200);
+      expect(channel.performed, ['media_play_pause']);
+      expect(order.contains('band:generation'), isFalse);
     });
 
-    test('a timestamp that is not a plausible past time falls through to the '
-        'debounce: unset (0), in the future, a day or more old', () async {
-      final rig = newRig();
-      await rig.map(DeviceAction.torch);
-      final cases = <int>[
-        0,
-        rig.nowSec + 3600,
-        rig.nowSec - 86400,
-        rig.nowSec - 86400 * 40,
-      ];
-      for (final ts in cases) {
-        channel.performed.clear();
-        rig.doubleTap(atSec: ts);
-        await until(() => channel.performed.isNotEmpty, what: 'ts $ts');
-        expect(channel.performed, ['torch'], reason: 'ts $ts');
-        rig.advance(const Duration(seconds: 3));
-      }
-      expect(rig.app.logLines.where((l) => l.contains('stale')), isEmpty);
-    });
-
-    test('just inside the one-day cap is still judged stale', () async {
-      final rig = newRig();
-      await rig.map(DeviceAction.torch);
-      rig.doubleTap(atSec: rig.nowSec - 86399);
-      await settleMs(100);
-      expect(channel.performed, isEmpty);
+    test('with developer mode on the same stored choice takes the ECG route',
+        () async {
+      final rig = await newRig(mg: true, dev: true);
+      await mapActions(rig.app, [2, 3]);
+      rig.doubleTap();
+      await until(() => rig.cues.contains('failed'));
+      await settleMs(200);
+      expect(rig.app.gestureFailures.all.single.kind, GestureFailureKind.ecg,
+          reason: 'no wrist remembered: the ECG route tried and failed');
     });
   });
 
-  group('debounce (2 s)', () {
-    test('a second tap inside the window is dropped, even with a fresh '
-        'timestamp', () async {
-      final rig = newRig();
-      await rig.map(DeviceAction.torch);
-      rig.doubleTap();
-      await until(() => channel.performed.length == 1);
-      rig.advance(const Duration(milliseconds: 1900));
-      rig.doubleTap();
-      rig.doubleTap();
-      await settleMs(100);
-      expect(channel.performed, ['torch']);
-    });
-
-    test('a tap at 2 s runs again; the window restarts from the one that '
-        'ran', () async {
-      final rig = newRig();
-      await rig.map(DeviceAction.torch);
-      rig.doubleTap();
-      await until(() => channel.performed.length == 1);
-      rig.advance(const Duration(seconds: 2));
-      rig.doubleTap();
-      await until(() => channel.performed.length == 2);
-      rig.advance(const Duration(milliseconds: 1500));
-      rig.doubleTap(); // 1.5 s after the second: dropped
-      await settleMs(100);
-      expect(channel.performed, hasLength(2));
-    });
-
-    test('the debounce is per AppState: another one has its own window',
+  group('ECG route when the stream cannot start', () {
+    test('no wrist remembered: start cue, a retry, the failure cue; the '
+        'double-tap fallback runs the 2-tap action; one ECG failure is kept',
         () async {
-      final a = newRig();
-      await a.map(DeviceAction.torch);
-      a.doubleTap();
-      await until(() => channel.performed.length == 1);
-      BleEngine.resetBandClaimForTest();
-      final b = GestureRig(start: a.now);
-      addTearDown(b.dispose);
-      await b.map(DeviceAction.torch);
-      b.doubleTap(); // GestureDispatcher.now now follows b, same instant
-      await until(() => channel.performed.length == 2);
+      final rig = await newRig(mg: true);
+      await mapActions(rig.app, [2, 3]);
+      rig.doubleTap();
+      await until(() => channel.performed.isNotEmpty);
+      await until(() => rig.cues.contains('failed'));
+      await settleMs(200);
+      expect(rig.cues, ['start', 'failed']);
+      expect(channel.performed, ['media_play_pause'],
+          reason: 'fallback: the count is 2');
+      expect(order.contains('band:selectWrist'), isFalse,
+          reason: 'nothing was written to the stream');
+      final f = rig.app.gestureFailures.all.single;
+      expect(f.kind, GestureFailureKind.ecg);
+      expect(f.reason, 'start_failed');
+      expect(labText(rig), contains('trying the ECG once more'));
+      expect(labText(rig), contains('The failure buzz written.'));
+    });
+
+    test('the Device lab ECG bench: the stream is started, no action runs, a '
+        'failed start is still recorded', () async {
+      final rig = await newRig(mg: true);
+      await mapActions(rig.app, [2]);
+      await rig.app.gestureSettings.setEcgOnDoubleTap(true);
+      rig.doubleTap();
+      await until(() => rig.cues.contains('failed'));
+      await settleMs(300);
+      expect(channel.performed, isEmpty,
+          reason: 'the lab suspends the mapped actions');
+      expect(rig.cues, ['start', 'failed']);
+      expect(rig.app.gestureFailures.all.single.kind, GestureFailureKind.ecg);
     });
   });
 }

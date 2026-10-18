@@ -97,9 +97,21 @@ mixin RevisionReload<T extends StatefulWidget> on State<T> {
   static const Object _unset = Object();
   Object? _seenLocale = _unset;
 
+  /// Whether this screen is on show (its TickerMode is on), as of the last
+  /// `didChangeDependencies`. A tab the shell has parked, or a screen under
+  /// another route, is not.
+  bool _shown = true;
+
+  /// A revision (or a language switch) landed while hidden: re-read once when
+  /// the screen is shown again, not once per bump.
+  bool _dirty = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Registered before any early return so the shell showing a parked tab
+    // always re-runs this.
+    _shown = TickerMode.valuesOf(context).enabled;
     if (!revisionReloads) return;
     // No AppState above us in a golden or a widget test — such a screen just
     // renders what it has, exactly as it did before this mixin existed.
@@ -127,31 +139,48 @@ mixin RevisionReload<T extends StatefulWidget> on State<T> {
     // in-app override): `AppLocalizations.of(context)` follows the OS, but
     // `code` doesn't move, so the old compare never saw it. The resolved
     // locale is the thing that actually decides which strings got baked in.
-    final Object localeKey;
+    Object? localeKey;
     try {
       final code = context.watch<LocaleController>().code;
       localeKey = code ?? Localizations.localeOf(context);
     } catch (_) {
-      return;
+      // No LocaleController: nothing to compare, but a deferred revision
+      // below must still be honoured.
     }
-    if (identical(_seenLocale, _unset)) {
-      _seenLocale = localeKey;
-    } else if (_seenLocale != localeKey) {
-      _seenLocale = localeKey;
+    var localeChanged = false;
+    if (localeKey != null) {
+      if (identical(_seenLocale, _unset)) {
+        _seenLocale = localeKey;
+      } else if (_seenLocale != localeKey) {
+        _seenLocale = localeKey;
+        localeChanged = true;
+      }
+    }
+    // Hidden: remember it. Shown: one read covers a language switch and every
+    // revision that was missed.
+    if (localeChanged && !_shown) {
+      _dirty = true;
+    } else if (localeChanged || (_dirty && _shown)) {
+      _dirty = false;
       reload();
     }
   }
 
-  // ponytail: a parked tab re-reads too — the IndexedStack keeps all five
-  // alive, so a derive costs five loads instead of one. They are the same
-  // queries opening the tab would run, and they run on a derive or an import,
-  // not on a frame. Gate on route/tab visibility if profiling ever says so.
+  // A parked tab does not re-read: the shell keeps up to five tabs alive and
+  // wraps the hidden ones in TickerMode(enabled: false), so a derive used to
+  // cost five loads instead of one (and one per committed day, now that each
+  // day publishes). A hidden screen only marks itself dirty and reads once,
+  // when it is shown again. The same holds for a screen under another route.
   void _onRevision() {
     final r = _rev;
     // A bump that landed while this screen was being torn down, or one it has
     // already read, is not a reason to hit the database.
     if (!mounted || r == null || r.value == _seen) return;
     _seen = r.value;
+    if (!_shown) {
+      _dirty = true;
+      return;
+    }
     reload();
   }
 

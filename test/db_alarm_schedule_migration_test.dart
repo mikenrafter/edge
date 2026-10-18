@@ -74,8 +74,12 @@ void main() {
     final db = await LocalDb.instance;
     final cols = await db.rawQuery('PRAGMA table_info(alarm_schedule)');
     final names = cols.map((c) => c['name'] as String).toSet();
-    expect(names,
-        {'weekday', 'hour', 'minute', 'enabled', 'smart_window_minutes'});
+    expect(names, {
+      'weekday', 'hour', 'minute', 'enabled', 'smart_window_minutes',
+      // v56: the Natural Wake / Gradual Wake split (additive).
+      'natural_window_minutes', 'gradual_window_minutes', 'gradual_pattern',
+      'gradual_cadence_sec',
+    });
     final weekdayCol = cols.firstWhere((c) => c['name'] == 'weekday');
     expect((weekdayCol['pk'] as num).toInt(), 1,
         reason: 'weekday must be the PRIMARY KEY');

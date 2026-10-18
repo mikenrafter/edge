@@ -244,7 +244,7 @@ void main() {
     });
 
     testWidgets(
-      'completed offers view and done, and says it is not a diagnosis',
+      'completed offers view and done, and says it is a screen, not a medical test',
       (t) async {
         final log = <String>[];
         await _pump(
@@ -258,7 +258,7 @@ void main() {
           ),
         );
         expect(_allText(t), contains('Reading saved'));
-        expect(_allText(t), contains('not a diagnosis'));
+        expect(_allText(t), contains('not a medical test'));
         await t.tap(find.text('View reading'));
         await t.tap(find.text('Done'));
         expect(log, ['view', 'done']);
@@ -298,7 +298,7 @@ void main() {
           log: log,
         ),
       );
-      expect(_allText(t), contains('try once more'));
+      expect(_allText(t), contains('Try once more'));
       await t.tap(find.text('Try once more'));
       expect(log, ['retry']);
     });
@@ -327,7 +327,7 @@ void main() {
       final text = _allText(t);
       expect(text, contains('Reading failed'));
       expect(text, contains('The band disconnected.'));
-      expect(text, contains('stopped on the next connection'));
+      expect(text, contains('will stop it the next time it connects'));
       await _pump(
         t,
         _body(
@@ -444,8 +444,9 @@ void main() {
     );
 
     testWidgets(
-      'the detail screen shows the band category, stats and Analyze now; '
-      'an empty waveform is a status card',
+      'the detail screen shows the band category, stats and, with the '
+      'waveform kept, Analyze now; an empty waveform is a status card and '
+      'says "Waveform not kept" instead of offering the coach',
       (t) async {
         await _pump(
           t,
@@ -458,12 +459,16 @@ void main() {
         );
         final text = _allText(t);
         expect(text, contains('Band-reported result'));
-        expect(text, contains('Sinus rhythm'));
+        // Design 04: the label says what the band reported, not that nothing
+        // was found; the old "nothing flagged" and "Analyze now" on a reading
+        // with no waveform are gone.
+        expect(text, contains('Regular rhythm reported'));
         expect(text, contains('No waveform was saved'));
-        expect(text, contains('Analyze now'));
+        expect(text, contains('Waveform not kept'));
+        expect(text, isNot(contains('Analyze now')));
         expect(text, contains('77 bpm'));
         expect(text, contains('Left wrist'));
-        expect(text, contains('not a diagnosis'));
+        expect(text, contains('not a medical test'));
         expect(text.toLowerCase(), isNot(contains('lead i')));
       },
     );
@@ -515,7 +520,8 @@ void main() {
         expect(cfg.configured, isTrue, reason: 'precondition');
 
         final pushed = <String?>[];
-        t.view.physicalSize = const Size(1170, 2532);
+        // Tall enough that the action card, below the waveform, is built.
+        t.view.physicalSize = const Size(1170, 6000);
         t.view.devicePixelRatio = 3;
         addTearDown(t.view.reset);
         await t.pumpWidget(
@@ -526,10 +532,12 @@ void main() {
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
               navigatorObservers: [_RouteLog(pushed)],
+              // Analyze now exists only for a band result whose waveform was
+              // kept (design 04), so the reading brings a packet.
               home: EcgDetailScreen(
                 data: EcgDetailData(
-                  reading: _reading(packets: 0),
-                  packets: const [],
+                  reading: _reading(),
+                  packets: [_pkt(1)],
                 ),
               ),
             ),

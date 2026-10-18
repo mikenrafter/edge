@@ -1,0 +1,8 @@
+// FIXTURE: c_bad_closure_plain_helper
+import 'dart:isolate';
+
+double helper(List<double> x) => x.length.toDouble();
+
+class Reader {
+  Future<double> go(List<double> hr) => Isolate.run(() => helper(hr));
+}

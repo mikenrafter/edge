@@ -189,11 +189,11 @@ class WhoopImporter {
       throw ImportFormatException(
         csvPaths.isEmpty
             ? 'No CSV files were found to import.'
-            : 'None of those files look like a WHOOP export. We match the '
-                  'English column names WHOOP writes (e.g. "Recovery score %", '
-                  '"Activity name", "Sleep onset"), so an export downloaded in '
-                  'another language will not be recognised — re-download it '
-                  'with WHOOP set to English.'
+            : 'None of those files look like a WHOOP export. The importer matches '
+                  'English column names such as "Recovery score %", '
+                  '"Activity name" and "Sleep onset". '
+                  'An export in another language is not read. '
+                  'Re-download it with WHOOP set to English.'
                   '${headersSeen.isEmpty ? '' : ' Columns found: ${headersSeen.first}.'}',
       );
     }
@@ -351,7 +351,7 @@ class WhoopImporter {
     };
 
     double? d(num? v) => v?.toDouble();
-    await LocalDb.putDayResult(
+    final committed = await LocalDb.putDayResult(
       dayId: date,
       algoVersion: kAlgoVersion,
       payloadJson: jsonEncode(bundle),
@@ -384,7 +384,7 @@ class WhoopImporter {
         'efficiency': d(effPct),
       },
     );
-    return _DayWrite.written;
+    return committed ? _DayWrite.written : _DayWrite.keptExisting;
   }
 
   static Future<bool> _writeWorkout(_Row row) async {

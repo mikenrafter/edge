@@ -1,0 +1,42 @@
+// FIXTURE: payload_ok_inside_heavy
+// The decode of a stored payload belongs in an @heavy function behind a registered
+// entry: no storedPayloadDecodeOutsideHeavy finding.
+import 'dart:convert';
+import 'dart:isolate';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class PayloadArgs {
+  final String payloadJson;
+  const PayloadArgs(this.payloadJson);
+}
+
+@sendable
+class PayloadOut {
+  final int keys;
+  const PayloadOut(this.keys);
+}
+
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#decodePayloadHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+@heavy
+PayloadOut decodePayloadHeavy(PayloadArgs a) {
+  assertWorker();
+  const column = 'payload_json';
+  final m = jsonDecode(a.payloadJson) as Map;
+  return PayloadOut(column.length + m.length);
+}
+
+class Repo {
+  Future<PayloadOut> decode(String raw) {
+    return Isolate.run(() {
+      final a = PayloadArgs(raw);
+      final out = decodePayloadHeavy(a);
+      return out;
+    });
+  }
+}

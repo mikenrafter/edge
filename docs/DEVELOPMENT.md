@@ -21,6 +21,12 @@ flutter run --dart-define-from-file=.env
 Close the device maker's own app before you pair. Bluetooth only lets one app own a
 device at a time.
 
+A debug build installs as **Edge Dev** (`wtf.openstrap.openstrap_edge.dev`), a separate
+app with its own data, so it never replaces a release install. In the Nix shell,
+`make install` builds it and installs it on the one attached phone
+(`EDGE_DEVICE=<serial>` when there are several), and `make install-emulator` boots an
+emulator first.
+
 iOS signing and the App Group setup for the widget and Live Activity take a few more
 steps; see [guides/IOS_INSTALLATION.md](../guides/IOS_INSTALLATION.md). To sideload the
 unsigned IPA instead of using TestFlight, see

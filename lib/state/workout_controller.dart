@@ -1,4 +1,4 @@
-// The live-workout controller, moved out of AppState with no behaviour
+// The live-workout seam, moved out of AppState with no behaviour
 // change. It owns the active workout and its lifecycle: start / stop / delete,
 // the 1 Hz tick that bills heart rate into the session's tallies, the 30 s
 // tally snapshot and the cold-start reconcile that resumes or finalizes an
@@ -16,16 +16,17 @@
 // [addWorkoutMinuteSteps], [rebaseWorkoutSteps]). The connection-lifetime raw
 // total the base is read against arrives as the [liveRaw] callback.
 //
-// It does not own the pedometer, the resting-HR anchors, the BLE engine, the
-// derive scheduler, the repository or the Health exporter; they arrive as
-// callbacks (the zone-crossing buzz is the `buzz` callback). It holds no
-// reference to AppState. Platform services (Live Activity, ScreenWake, the HRS
-// / PMD links, GPS, the database) are static and called directly, as before.
+// It does not own the pedometer, the band-alert dispatcher (the zone-crossing
+// buzz goes through the `dispatchBandAlert` callback), the resting-HR anchors,
+// the BLE engine, the derive scheduler, the repository or the Health exporter;
+// they arrive as callbacks. It holds no reference to AppState. Platform
+// services (Live Activity, ScreenWake, the HRS / PMD links, GPS, the database)
+// are static and called directly, as before.
 //
 // AppState.dispose cancels the tick timer through [dispose] and nothing else:
 // it does not finalize a live workout, release the display hold, end the Live
 // Activity or stop the route recorder. That is today's behaviour, pinned by the
-// controller tests.
+// workout controller tests, and is tracked as a follow-up rather than changed in a move.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -49,14 +50,18 @@ import '../gps/route_types.dart';
 import '../gps/screen_wake.dart';
 import '../health/health_export.dart';
 import '../live/live_activity.dart';
+import '../notify/alert_dispatcher.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../notify/tap_router.dart';
+import '../ui2/activity/live.dart' show LiveDraft;
 import '../sync/edge_tracking.dart';
 import '../widget/widget_service.dart';
-import '../ui2/activity/live.dart' show LiveDraft;
+import 'prefs.dart';
 import 'workout_idle.dart';
 import 'zone_alert.dart';
+
+enum _HeldStopBankOutcome { none, banked, failed }
 
 class WorkoutController {
   WorkoutController({
@@ -69,7 +74,6 @@ class WorkoutController {
     required void Function(String line) log,
     required int? Function() liveHr,
     required int Function() liveRaw,
-    required bool Function() zoneAlertEnabled,
     required int Function() zoneAlertTargetZone,
     required Future<void> Function() refreshNightlyRhr,
     required int Function() restingHr,
@@ -84,7 +88,8 @@ class WorkoutController {
     }) dismissSupersededSuggestions,
     required bool Function() healthSyncEnabled,
     required Future<bool> Function(Map<String, Object?> session) exportToHealth,
-    required Future<void> Function() buzz,
+    required Future<AlertDeliveryOutcome> Function(String ruleId)
+        dispatchBandAlert,
     required LocalRepository? Function() repo,
     required bool Function() hostDisposed,
     String? Function()? liveSensor,
@@ -99,7 +104,6 @@ class WorkoutController {
         _log = log,
         _liveHr = liveHr,
         _liveRaw = liveRaw,
-        _zoneAlertEnabled = zoneAlertEnabled,
         _zoneAlertTargetZone = zoneAlertTargetZone,
         _refreshNightlyRhr = refreshNightlyRhr,
         _restingHr = restingHr,
@@ -111,7 +115,7 @@ class WorkoutController {
         _dismissSupersededSuggestions = dismissSupersededSuggestions,
         _healthSyncEnabled = healthSyncEnabled,
         _exportToHealth = exportToHealth,
-        _buzz = buzz,
+        _dispatchBandAlert = dispatchBandAlert,
         _repo = repo,
         _hostDisposed = hostDisposed {
     onStrapTailBanked = requestHeavyDerive ?? () {};
@@ -133,7 +137,6 @@ class WorkoutController {
 
   // The pedometer's connection-lifetime raw step total.
   final int Function() _liveRaw;
-  final bool Function() _zoneAlertEnabled;
   final int Function() _zoneAlertTargetZone;
 
   // The resting-HR anchors stay with the host (init reads them too): the
@@ -150,13 +153,14 @@ class WorkoutController {
       _dismissSupersededSuggestions;
   final bool Function() _healthSyncEnabled;
   final Future<bool> Function(Map<String, Object?> session) _exportToHealth;
-  final Future<void> Function() _buzz;
+  final Future<AlertDeliveryOutcome> Function(String ruleId)
+      _dispatchBandAlert;
   final LocalRepository? Function() _repo;
-  final bool Function() _hostDisposed;
 
   // The workout sensor (adapter id) the live heart rate is coming from right
   // now, or null when it is the band's or nothing's.
   final String? Function() _liveSensor;
+  final bool Function() _hostDisposed;
   static String? _noSensor() => null;
 
   /// The workout sensor (adapter id) whose live reading a tick of the active
@@ -174,8 +178,9 @@ class WorkoutController {
   int? _workoutRawBase;
 
   /// The debounced HR-zone-crossing watch for the active session, or null
-  /// when [zoneAlertEnabled] was off at start (or the session has none —
-  /// same "session-scoped, reset on both teardown paths" shape as
+  /// when the session has none. Armed for every session: whether a
+  /// crossing buzzes is the 'zone' alert rule's choice, read when it happens
+  /// (same "session-scoped, reset on both teardown paths" shape as
   /// [_workoutRawBase] above, rather than living on [LiveWorkoutState] itself,
   /// so arming it needs no change to that class's constructor.
   ZoneCrossingAlert? _zoneAlert;
@@ -235,6 +240,18 @@ class WorkoutController {
 
   Timer? _workoutTimer;
 
+  /// The session is stopped but its save failed: [activeWorkout] is kept only
+  /// as the retry handle and carrier of the tallies. Not ticking, not live —
+  /// UI that offers "back to your session" reads this to offer "retry save".
+  bool _stopPending = false;
+  bool get stopPending => _stopPending;
+
+  /// The finished row a stop built, kept across a failed save so every retry
+  /// banks the SAME numbers and stop time: the tick is cancelled but the
+  /// pedometer and the clock keep moving, and a retry minutes later must not
+  /// stretch the workout. Also written to prefs, see [Prefs.workoutStopPending].
+  Map<String, Object?>? _stopRow;
+
   // GPS route tracking for the active run/ride/walk (on-device only). Null when
   // no session is live or the type isn't route-eligible / permission denied.
   RouteTracker? _routeTracker;
@@ -262,20 +279,17 @@ class WorkoutController {
   /// onto a future session that reuses the id (CodeRabbit/Sourcery-flagged).
   Future<void>? _pendingTallyPersist;
 
-  // `_maxHr` (220 − age, silently substituting age 30 → a flat 190 for every
-  // user who skipped the field) and the public `maxHr` that wrapped it are
-  // GONE (TS-03a). The live session now carries its own ceiling, resolved once
-  // at start from the athlete's age AND the strap that is measuring it
-  // ([LiveWorkoutState.hrMax]) — the same `estimatedMaxHr` the day pipeline and
-  // the session re-score band on, so the live gauge, the persisted `zone_min`
-  // and the detail screen's recomputed `zone_bands` can no longer disagree.
-  // `maxHr` had no readers left at all; its doc still claimed the route map
-  // used it, and the route map takes its ceiling from the session.
-
   /// Why route tracking is NOT running for the current route-eligible workout
   /// (null = no issue / tracking active). Drives the live screen's "Location
   /// off" affordance instead of silently skipping the map.
   GpsPermissionStatus? routeLocationIssue;
+
+  /// Set in [dispose]. Async work that resumes AFTER teardown must not touch
+  /// state or call notifyListeners() — see AppState.dispose()'s own note about
+  /// notifying a disposed ChangeNotifier (which throws in release). Timers are
+  /// cancelled there, but an already-suspended `await` cannot be, so every
+  /// continuation past an await in this class needs to re-check this.
+  bool _disposed = false;
 
   /// HR → zone 0..5, through THE app's zone set ([trainingZones]).
   ///
@@ -448,17 +462,11 @@ class WorkoutController {
     String type = 'other',
   }) {
     if (activeWorkout != null) return;
-    // A new session owns no draft yet. One left in Prefs belongs to a session
-    // that ended without clearing it (finalized as stale on relaunch), and its
-    // pause would hold this session's clock. Setup opens the fresh one after.
-    LiveDraft.clear();
     final start = DateTime.now();
     final id = workoutId ?? 'w${start.millisecondsSinceEpoch}';
     _resetWorkoutStepState();
     _workoutRawBase = _liveRaw();
-    _zoneAlert = _zoneAlertEnabled()
-        ? ZoneCrossingAlert(targetZone: _zoneAlertTargetZone())
-        : null;
+    _zoneAlert = ZoneCrossingAlert(targetZone: _zoneAlertTargetZone());
     // A first night may have been derived since init. This read finishes
     // after the session below is constructed, so it back-fills the anchor on
     // `activeWorkout` when it lands rather than blocking the start.
@@ -609,7 +617,7 @@ class WorkoutController {
     }
     // The permission round-trip can outlive the whole AppState (a resumed
     // workout kicks this off unawaited during startup), so re-check both.
-    if (_hostDisposed()) return;
+    if (_disposed) return;
     // The session may have ended while we awaited the permission dialog.
     if (activeWorkout?.workoutId != id) return;
     if (perm != GpsPermissionStatus.granted) {
@@ -688,6 +696,10 @@ class WorkoutController {
       // (CodeRabbit flagged the race). Bail rather than clobber a real,
       // just-started activeWorkout and leak its timer.
       if (activeWorkout != null) return;
+      final heldStop = await _bankHeldStop();
+      // A held stop is already over. Do not let its still-live durable row
+      // restart the timer, GPS, or streams when its bank needs another try.
+      if (heldStop == _HeldStopBankOutcome.failed) return;
       final rows = await LocalDb.liveSessions();
       // RE-CHECK AFTER THE AWAIT. This is kicked unawaited from _init(), one
       // line before `initialized = true` makes the shell interactive — so the
@@ -763,9 +775,7 @@ class WorkoutController {
           // would be only part of the session: it stays unmeasured rather
           // than banking as the total (see [_workoutStepsGap]).
           _workoutStepsGap = true;
-          _zoneAlert = _zoneAlertEnabled()
-              ? ZoneCrossingAlert(targetZone: _zoneAlertTargetZone())
-              : null;
+          _zoneAlert = ZoneCrossingAlert(targetZone: _zoneAlertTargetZone());
     // A first night may have been derived since init. This read finishes
     // after the session below is constructed, so it back-fills the anchor on
     // `activeWorkout` when it lands rather than blocking the start.
@@ -846,6 +856,76 @@ class WorkoutController {
     }
   }
 
+  void _clearStopMarker() => Prefs.setString(Prefs.workoutStopPending, '');
+
+  /// A previous run stopped a workout, could not save it, and died before a
+  /// retry landed: bank the finished row it held (see [_stopRow]). This is a
+  /// real stop with real tallies — unlike a stale live row below, its end is not
+  /// fabricated, so it is exported to Health like any other finished session.
+  /// The row is banked even if its live row is gone: the held copy is the only
+  /// one. Best effort and leaves the held row in place on a failure, so the
+  /// next launch tries again. A failed bank restores only a stopped retry
+  /// handle, and the caller must not go on to resume the session's live row.
+  Future<_HeldStopBankOutcome> _bankHeldStop() async {
+    final raw = Prefs.getString(Prefs.workoutStopPending, '');
+    if (raw.isEmpty) return _HeldStopBankOutcome.none;
+    final Map<String, Object?> held;
+    final String id;
+    try {
+      held = Map<String, Object?>.from(jsonDecode(raw) as Map);
+      id = held['id'] as String;
+      if (held['start_ts'] is! num || held['end_ts'] is! num) {
+        throw const FormatException('no start or end time');
+      }
+    } catch (e) {
+      // Nothing to bank and no id to keep a live row away from: left in place,
+      // as before, so it cannot also wedge the live-row reconcile.
+      _log('[workout] the held stopped session is unreadable: $e');
+      return _HeldStopBankOutcome.none;
+    }
+    try {
+      // The live row carries the strap stamp the held row may not (its read
+      // failed); anything the held row does say wins.
+      final row = {...?await LocalDb.session(id), ...held};
+      await LocalDb.putSession(row);
+      _bumpInsights();
+      unawaited(LocalDb.deleteLiveWorkoutTally(id));
+      await _dismissSupersededSuggestions(
+        startSec: row['start_ts'] as int,
+        endSec: row['end_ts'] as int,
+      );
+      _clearStopMarker();
+      _log('[workout] banked a stopped session whose save failed before the relaunch (id=$id).');
+      if (_healthSyncEnabled()) unawaited(_exportToHealth(row));
+      return _HeldStopBankOutcome.banked;
+    } catch (e) {
+      _log('[workout] could not bank the held stopped session: $e');
+      _restoreHeldStop(held);
+      return _HeldStopBankOutcome.failed;
+    }
+  }
+
+  /// Rebuild only the retry handle after a relaunch. The workout already
+  /// stopped, so this deliberately does not arm a timer, GPS, display wake or
+  /// live-stream ownership.
+  void _restoreHeldStop(Map<String, Object?> held) {
+    final id = held['id'] as String;
+    final startSec = (held['start_ts'] as num).toInt();
+    activeWorkout = LiveWorkoutState(
+      startTime: DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
+      targetKcal: 300,
+      workoutId: id,
+      type: (held['type'] as String?) ?? 'other',
+      age: (_user()?['age'] as num?)?.round(),
+      profile: Profile.fromMap(_user()),
+      hrMax: estimatedMaxHr((_user()?['age'] as num?), _linkDeviceFamily()),
+      restingHr: _liveRestingHr(),
+    );
+    _stopRow = held;
+    _stopPending = true;
+    _notify();
+  }
+
   Future<void> stopWorkout() async {
     if (activeWorkout == null) return;
     // Step coverage is judged at the moment of stop: the teardown awaited
@@ -899,13 +979,10 @@ class WorkoutController {
     // The user's stop, not after the awaited flushes above: the minutes
     // after it are the recovery tail, not the workout.
     final endTs = stopMs ~/ 1000;
-    // Which strap measured this workout. `putSession` is INSERT OR REPLACE, so
-    // an omitted key would blank the stamp startWorkout banked — keep that one
-    // when the link has since dropped rather than downgrading a real answer to
-    // "unknown".
-    final bandFamily = _linkDeviceFamily() ??
-        ((await LocalDb.session(id))?['device_family'] as String?);
-    final sessionRow = {
+    // Built once. A retry after a failed save banks this same row, so the stop
+    // time and tallies are those of the stop, not of the retry.
+    final retry = _stopPending;
+    final sessionRow = _stopRow ??= {
       'id': id,
       'start_ts': w.startTime.millisecondsSinceEpoch ~/ 1000,
       'end_ts': endTs,
@@ -921,17 +998,27 @@ class WorkoutController {
       if (wSteps != null && wSteps > 0) 'steps': wSteps,
       'cadence_spm': ?wCadence,
       'source': 'manual',
-      'device_family': bandFamily,
       'created_at': w.startTime.millisecondsSinceEpoch,
     };
     // AWAITED, and the live state is not cleared until it lands. This was
     // fire-and-forget with `activeWorkout = null` on the next line: the
     // in-memory session is the ONLY other copy, so a failed write silently
     // destroyed the whole workout while the summary screen rendered it in full.
-    // On a throw the session stays live — every teardown above is idempotent,
-    // so calling stopWorkout() again is a clean retry — and the exception
-    // propagates instead of being reported as a finished, saved session.
+    // On a throw the session is "stop pending": every teardown above is
+    // idempotent, so calling stopWorkout() again is a clean retry, and the
+    // exception propagates instead of being reported as a finished, saved
+    // session.
     try {
+      // Which strap measured this workout. `putSession` is INSERT OR REPLACE,
+      // so an omitted key would blank the stamp startWorkout banked — keep
+      // that one when the link has since dropped rather than downgrading a
+      // real answer to "unknown". INSIDE the try, with the write: its failure
+      // is a failed save like any other (log, notify, stop pending), whichever
+      // strap family is linked.
+      if (!sessionRow.containsKey('device_family')) {
+        sessionRow['device_family'] = _linkDeviceFamily() ??
+            ((await LocalDb.session(id))?['device_family'] as String?);
+      }
       await LocalDb.putSession(sessionRow);
       final sensor = _workoutSensor;
       if (sensor != null) await LocalDb.stampSessionSensor(id, sensor);
@@ -951,13 +1038,28 @@ class WorkoutController {
       // doesn't keep asking "did you work out?" about a workout already saved.
       await _dismissSupersededSuggestions(
         startSec: sessionRow['start_ts'] as int,
-        endSec: endTs,
+        endSec: sessionRow['end_ts'] as int,
       );
     } catch (e) {
-      _log('[workout] could not save session $id: $e — keeping it live');
+      _log('[workout] could not save session $id: $e — held for retry');
+      _stopPending = true;
+      // The retry handle stays in memory, but the finished workout must stop
+      // owning high-rate streams immediately.
+      _nudgeLive();
+      // Written ahead for a relaunch (see [reconcileOrphanedLiveWorkout]);
+      // best effort, the in-memory copy serves a retry in this process.
+      try {
+        Prefs.setString(Prefs.workoutStopPending, jsonEncode(sessionRow));
+      } catch (_) {}
+      // The session is stopped, so the lock screen stops counting it. Once:
+      // a retry that fails again must not end it a second time.
+      if (!retry) LiveActivity.end();
       _notify();
       rethrow;
     }
+    _stopPending = false;
+    _stopRow = null;
+    _clearStopMarker();
     // Session-triggered Health export (issue #130) — don't wait for the next
     // day_result/derive pass (which may not run at all if the band isn't
     // connected right now); write this workout to Apple Health/Health Connect
@@ -978,7 +1080,7 @@ class WorkoutController {
           ? 'Live session ended. No calorie anchors in the profile.'
           : 'Live session ended. Burned $finalKcal kcal.',
     );
-    LiveActivity.end();
+    if (!retry) LiveActivity.end();
     // The workout's ownership ends: a workout stopped while backgrounded used
     // to leave FULL live armed with no consumer, and the keep-alive then
     // re-armed the 100 Hz flood every 30 s until the next lifecycle transition.
@@ -1020,7 +1122,9 @@ class WorkoutController {
     ScreenWake.releaseOwner('workout');
     _setWorkoutActive(false);
     activeWorkout = null;
-    LiveDraft.clear();
+    _stopPending = false;
+    _stopRow = null;
+    _clearStopMarker();
     _nudgeLive(); // the workout's stream ownership ends with it
     _resetWorkoutStepState();
     _zoneAlert = null;
@@ -1036,9 +1140,6 @@ class WorkoutController {
   /// "Run live" until a manual refresh/restart; and deleting a workout that
   /// was GENUINELY still live would have left its timer/route tracker/Live
   /// Activity running against a deleted id.
-  ///
-  /// Teardown runs BEFORE the delete: stopping the route tracker flushes its
-  /// tail under this id, which would otherwise land after the delete.
   Future<void> deleteWorkout(String id) async {
     final live = activeWorkout?.workoutId == id;
     if (live) await _cancelActiveWorkoutTeardown();
@@ -1117,7 +1218,8 @@ class WorkoutController {
 
   void _tickWorkout() {
     final w = activeWorkout;
-    if (w == null) return;
+    // A stop-pending session is stopped: nothing bills into it any more.
+    if (w == null || _stopPending) return;
 
     // Pause is held by the live screen's draft. While paused the clock and
     // every tally (zones, strain, calories, the idle watch) hold too, so the
@@ -1162,41 +1264,27 @@ class WorkoutController {
       }
     }
 
-    // HR-zone-crossing haptic (opt-in, see [zoneAlertEnabled]). Skipped
+    // HR-zone-crossing alert (the 'zone' rule decides where it goes: off by
+    // default, see [NotificationPrefs]). Skipped
     // entirely on a null [hr] — same "absent stays absent" rule the peak and
     // zone-seconds tally above follow — rather than feeding it as zone 0: a
     // few-second link blip would otherwise read as "left the target zone"
     // and buzz twice for a connection hiccup that was never a real crossing.
     final alert = _zoneAlert;
     if (alert != null && hr != null && alert.onTick(DateTime.now(), _zoneFor(hr))) {
-      unawaited(_buzz());
+      unawaited(_dispatchBandAlert('zone'));
     }
 
-    // Forgotten-session watch: judged against the calorie gate (null when
+    // Forgotten-session watch: judged against the SAME gate calories bill
+    // with, so "quiet" here means exactly "billed as rest there" (null when
     // the anchors cannot define one — then only absence counts, see
-    // WorkoutIdleWatch), capped at the zone-1 floor (issue #466): the calorie
-    // gate is 40 % HRR, moderate intensity, so a steady 92 bpm session the
-    // live bar shows as ZONE 1 was being told "nothing above resting effort".
-    // Quiet means below BOTH lines — billed as rest AND shown as rest. The
-    // ask is a notification, once per session; the session itself is never
-    // touched — there is deliberately no auto-stop.
-    //
-    // The cap never goes below a quarter of the way from resting HR to the
-    // calorie gate (~10 % HRR). Resting HR here is the night's LOWEST 30-min
-    // mean, so sleeping HR sits a few bpm above it: a zone-1 edge at or just
-    // above it (manual bounds only need >= 30 bpm) would make a session left
-    // open overnight read active forever, and the nudge would never go out.
-    // A wider floor (halfway) overshot a real 50 %-HRmax zone-1 edge once RHR
-    // passes ~0.375 HRmax, nudging sessions the bar shows as ZONE 1.
+    // WorkoutIdleWatch). The ask is a notification, once per session; the
+    // session itself is never touched — there is deliberately no auto-stop.
     final wRhr = w.restingHr;
     final wMax = w.hrMax;
-    final calGate = (wRhr != null && wMax != null)
+    final idleGate = (wRhr != null && wMax != null)
         ? ana.Calories.activeGateHr(wMax, wRhr)
         : null;
-    final z1Floor = w.zoneSet?.zones.first.lower;
-    final idleGate = (calGate == null || z1Floor == null)
-        ? calGate
-        : math.max(math.min(calGate, z1Floor), wRhr! + (calGate - wRhr) / 4);
     if (w.idleWatch.onTick(DateTime.now(), hr: hr, gate: idleGate)) {
       unawaited(_nudgeIdleWorkout(w));
     }
@@ -1302,6 +1390,7 @@ class WorkoutController {
   void dispose() {
     _workoutTimer?.cancel();
     _workoutTimer = null;
+    _disposed = true;
     if (strapTailRunning) unawaited(_disarmSensors());
   }
 }

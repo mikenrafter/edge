@@ -117,22 +117,17 @@ void main() {
     });
 
     test(
-      'progress 100 or S2 state 2 is terminal; the terminal frame is '
-      'appended; the persisted category uses AVERAGE HR, the live one LIVE HR',
+      'progress 100 or S2 state 2 is terminal; the AVERAGE HR is the one '
+      'source: result 1 at an average of 120 bpm is unreadable, whatever the '
+      'live rate says (design 04: the live branch used to complete it)',
       () {
         final (s, e) = run([
           pkt(seq: 1),
           terminal(seq: 2, avgHr: 120, liveHr: 78, result: 1),
         ]);
         expect(s.phase, EcgPhase.done);
-        expect(seqs(s), [1, 2]);
         final t = e.whereType<EcgTerminal>().single.outcome;
-        expect(
-          t.kind,
-          EcgTerminalKind.completed,
-          reason: 'the LIVE branch (78 bpm) completes',
-        );
-        expect(t.liveCategory, EcgCategory.sinusRhythm);
+        expect(t.kind, EcgTerminalKind.unreadable);
         expect(
           t.persistedCategory,
           EcgCategory.unreadable,
@@ -142,23 +137,22 @@ void main() {
         );
         expect(t.averageHr, 120);
         expect(t.liveHr, 78);
+        expect(t.window.map((p) => p.sequence), [1, 2],
+            reason: 'the window the terminal ended is handed over');
       },
     );
 
-    test(
-      'a live-unreadable terminal (live HR out of range) clears the window',
-      () {
-        final (s, e) = run([
-          pkt(seq: 1),
-          terminal(seq: 2, avgHr: 77, liveHr: 120, result: 1),
-        ]);
-        expect(s.accepted, isEmpty);
-        expect(
-          e.whereType<EcgTerminal>().single.outcome.kind,
-          EcgTerminalKind.unreadable,
-        );
-      },
-    );
+    test('the live heart rate never decides: average 77, live 120 completes',
+        () {
+      final (s, e) = run([
+        pkt(seq: 1),
+        terminal(seq: 2, avgHr: 77, liveHr: 120, result: 1),
+      ]);
+      expect(seqs(s), [1, 2]);
+      final t = e.whereType<EcgTerminal>().single.outcome;
+      expect(t.kind, EcgTerminalKind.completed);
+      expect(t.persistedCategory, EcgCategory.sinusRhythm);
+    });
 
     test('a completed terminal via S2 state 2 with progress below 100', () {
       final (s, e) = run([
@@ -177,7 +171,6 @@ void main() {
       final t = e.whereType<EcgTerminal>().single.outcome;
       expect(t.kind, EcgTerminalKind.completed);
       expect(t.persistedCategory, EcgCategory.sinusRhythm);
-      expect(t.liveCategory, EcgCategory.sinusRhythm);
       expect(seqs(s), [1, 2]);
     });
 

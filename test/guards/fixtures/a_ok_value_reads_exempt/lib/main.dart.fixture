@@ -1,0 +1,12 @@
+// FIXTURE: a_ok_value_reads_exempt
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:fixture_app/series_codec.dart';
+
+class FakeWidget {
+  Metric build(Object context) {
+    const none = Metric.absent();
+    final zone = kZoneTable['z1'];
+    final header = const SeriesHeader(kSeriesVersion);
+    return zone == null || header.version < 0 ? none : const Metric(1.0);
+  }
+}

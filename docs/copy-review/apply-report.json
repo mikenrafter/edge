@@ -1,0 +1,377 @@
+{
+ "applied": 1309,
+ "skipped": [
+  {
+   "id": "lib/l10n/app_en.arb:phoneImportDisagreeBody",
+   "why": "placeholders differ"
+  },
+  {
+   "id": "lib/l10n/app_en.arb:phoneImportAgreeBody",
+   "why": "placeholders differ"
+  },
+  {
+   "id": "lib/ai/journal_ai.dart:offset-2979",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/import/journal_csv_import.dart:offset-5704",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/import/lab_csv_import.dart:offset-2985",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/import/noop_backup_import.dart:offset-9725",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/import/noop_backup_import.dart:offset-13211",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/import/noop_backup_import.dart:offset-13303",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/import/noop_backup_import.dart:offset-16400",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/import/noop_backup_import.dart:offset-16492",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/import/whoop_import.dart:offset-7657",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/notify/notification_center.dart:offset-30171",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/onboarding/welcome.dart:offset-29700",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/onboarding/welcome.dart:offset-30143",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/profile/phone_import.dart:offset-12261",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/profile/settings.dart:offset-15494",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/profile/settings.dart:offset-60158",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/calm_breathing.dart:offset-33040",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/circadian_detail.dart:offset-20283",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/circadian_detail.dart:offset-30754",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/cycle_screen.dart:offset-25286",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/cycle_screen.dart:offset-25438",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/cycle_screen.dart:offset-48513",
+   "why": "interpolations differ"
+  },
+  {
+   "id": "lib/ui2/screens/health_screen.dart:offset-33619",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/health_screen.dart:offset-33883",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/health_screen.dart:offset-71575",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/investigate.dart:offset-32684",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/journal_compose.dart:offset-35637",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/sleep_detail.dart:offset-38148",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/what_changed.dart:offset-6328",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "lib/ui2/screens/what_changed.dart:offset-6518",
+   "why": "literal cut inside an interpolation"
+  },
+  {
+   "id": "docs/legal.html:html-1",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/legal.html:html-8",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/notice.html:html-1",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/notice.html:html-8",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/notice.html:html-10",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/notice.html:html-21",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/notice.html:html-22",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-1",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-7",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-11",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-12",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-13",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-17",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-21",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-24",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-26",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-30",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-31",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-32",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-34",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-36",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-37",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-38",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-40",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-42",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-44",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-48",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-50",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-52",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-53",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-54",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-56",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-57",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-63",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-65",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-67",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-71",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-72",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-74",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-75",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-76",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-77",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/privacy.html:html-81",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-1",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-9",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-11",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-12",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-14",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-15",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-18",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-22",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-23",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-24",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-28",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-30",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-32",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-35",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-36",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-37",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "docs/terms.html:html-38",
+   "why": "legal text; owner review"
+  },
+  {
+   "id": "lib/l10n/app_en.arb:signalVendorScalars",
+   "why": "arb entry not found verbatim"
+  },
+  {
+   "id": "lib/ui2/screens/day_timeline.dart:offset-30689",
+   "why": "dart span moved"
+  }
+ ]
+}

@@ -685,6 +685,71 @@ class Substrate {
           .toSet(),
     );
   }
+
+  static List<int> _transferInts(Map<String, dynamic> m, String key) {
+    final value = m[key];
+    if (value is List<int>) return value;
+    final src = (value as List?) ?? const [];
+    return src.map((e) => (e as num).toInt()).toList();
+  }
+
+  static Float64List _transferDoubles(Map<String, dynamic> m, String key) {
+    final value = m[key];
+    if (value is Float64List) return value;
+    final src = (value as List?) ?? const [];
+    final out = Float64List(src.length);
+    for (var i = 0; i < src.length; i++) {
+      out[i] = (src[i] as num).toDouble();
+    }
+    return out;
+  }
+
+  static List<int> _transferSafeInts(
+      Map<String, dynamic> m, String key, int length) {
+    final values = _transferInts(m, key);
+    return values.isEmpty && length > 0
+        ? List<int>.filled(length, 0)
+        : values;
+  }
+
+  static Float64List _transferSafeDoubles(
+      Map<String, dynamic> m, String key, int length) {
+    final values = _transferDoubles(m, key);
+    return values.isEmpty && length > 0 ? Float64List(length) : values;
+  }
+
+  static List<int> _transferAbsentMarkerInts(
+      Map<String, dynamic> m, String key, int length) {
+    final values = _transferInts(m, key);
+    return values.length == length
+        ? values
+        : List<int>.filled(length, -1);
+  }
+
+  static Substrate fromTransfer(Map<String, dynamic> m) {
+    final tsSec = _transferInts(m, 'ts_sec');
+    final n = tsSec.length;
+
+    return Substrate(
+      tsSec: tsSec,
+      hr: _transferSafeInts(m, 'hr', n),
+      rrTsMs: _transferDoubles(m, 'rr_ts_ms'),
+      rrMs: _transferDoubles(m, 'rr_ms'),
+      ax: _transferSafeDoubles(m, 'ax', n),
+      ay: _transferSafeDoubles(m, 'ay', n),
+      az: _transferSafeDoubles(m, 'az', n),
+      spo2Red: _transferSafeInts(m, 'spo2_red', n),
+      spo2Ir: _transferSafeInts(m, 'spo2_ir', n),
+      skinTemp: _transferSafeInts(m, 'skin_temp', n),
+      skinContact: _transferSafeInts(m, 'skin_contact', n),
+      stepCount: _transferAbsentMarkerInts(m, 'step_count', n),
+      hrValid: _transferAbsentMarkerInts(m, 'hr_valid', n),
+      deviceFamily: m['device_family'] as String?,
+      deviceIds: ((m['device_ids'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toSet(),
+    );
+  }
 }
 
 /// Decode the WHOLE retained raw ledger into one continuous, time-sorted
@@ -1188,7 +1253,7 @@ class SleepWindowOverride {
   final String dayId;
   final int onsetSec;
   final int offsetSec;
-  final String source; // 'manual' | 'confirmed' | 'rejected'
+  final String source; // 'manual' | 'confirmed' | 'rejected' (manual and rejected blank the metrics)
   // 'rejected': onsetSec/offsetSec still carry the window being rejected (the
   // auto-detected window at the time of rejection, same convention the
   // already-shipped rejected-nap rows use), but the window is never staged —
@@ -1201,6 +1266,12 @@ class SleepWindowOverride {
     required this.source,
   });
 }
+
+/// Whether an override of this [source] blanks the night's metrics: "Not
+/// sleep" and the user's own times both mean absence rather than a number the
+/// app worked out. Only 'confirmed' (the user agreeing with the app's own
+/// window) still stages.
+bool userBlanksNight(String source) => source == 'rejected' || source == 'manual';
 
 /// Local YYYY-MM-DD label for an epoch-second instant.
 String localDateLabel(int epochSec) =>
@@ -1241,6 +1312,7 @@ List<PhysioDay> calendarDays(
   int Function(int epochSec)? tzOffsetAt,
   List<({int startSec, int endSec, String dayKey})> priorSleep = const [],
   List<VendorNight> vendorNights = const [],
+  ana.CardioRowCache? rowCache,
 }) {
   final tzOffset = tzOffsetAt ?? tzOffsetSecondsAt;
   if (sub.isEmpty) return const [];
@@ -1253,12 +1325,17 @@ List<PhysioDay> calendarDays(
   final sleepHistory = <({int startSec, int endSec, String dayKey})>[
     ...priorSleep,
   ];
-  var dayStart = _localMidnight(dataStart);
+  final assertedDay = override == null ? null : DateTime.tryParse(override.dayId);
+  final assertedStart = assertedDay == null ? null : assertedDay.millisecondsSinceEpoch ~/ 1000;
+  var dayStart = assertedStart == null ? _localMidnight(dataStart)
+    : math.min(_localMidnight(dataStart), assertedStart);
+  final walkEnd = assertedStart == null ? dataEnd : math.max(dataEnd, _nextLocalMidnight(assertedStart));
   var guard = 0;
-  while (dayStart < dataEnd && guard++ < 400) {
+  while (dayStart < walkEnd && guard++ < 400) {
     final dayEnd = _nextLocalMidnight(dayStart);
-    final cs = math.max(dayStart, dataStart);
-    final ce = math.min(dayEnd, dataEnd);
+    final assertedHere = assertedStart == dayStart;
+    final cs = assertedHere ? dayStart : math.max(dayStart, dataStart);
+    final ce = assertedHere ? dayEnd : math.min(dayEnd, dataEnd);
     if (ce <= cs) {
       dayStart = dayEnd;
       continue;
@@ -1270,8 +1347,12 @@ List<PhysioDay> calendarDays(
     // prev-18:00 → noon window missed late wakes and forced the detector to act
     // like there was only one candidate sleep. The richer selector needs the
     // full set of sessions that can legitimately end today.
-    final searchStart = math.max(dataStart, dayStart - kNocturnalSearchLookbackSec);
-    final searchEnd = math.min(dataEnd, dayEnd);
+    final dayLabel = localDateLabel(dayStart);
+    final ov = (override != null && override.dayId == dayLabel) ? override : null;
+    final searchStart = math.max(dataStart, ov == null
+      ? dayStart - kNocturnalSearchLookbackSec
+      : math.min(dayStart - kNocturnalSearchLookbackSec, ov.onsetSec));
+    final searchEnd = math.min(dataEnd, ov == null ? dayEnd : math.max(dayEnd, ov.offsetSec));
     final loS = _lowerBound(sub.tsSec, searchStart);
     final hiS = _lowerBound(sub.tsSec, searchEnd);
 
@@ -1279,10 +1360,6 @@ List<PhysioDay> calendarDays(
     var sleepLo = 0, sleepHi = 0;
     var sleepSource = 'none';
     final vendorIgnored = <String>[];
-    final dayLabel = localDateLabel(dayStart);
-    // Does the user have an override (manual / confirmed) for THIS day?
-    final ov =
-        (override != null && override.dayId == dayLabel) ? override : null;
     if (hiS - loS >= 600 || ov != null) {
       // The habitual-midsleep prior converts each HISTORICAL sleep block's epoch
       // seconds to a local time-of-day. Using `DateTime.now()`'s offset applied
@@ -1320,13 +1397,15 @@ List<PhysioDay> calendarDays(
 
       ana.SleepSegmentation s;
       String src;
-      if (ov != null && ov.source == 'rejected') {
-        // The user's word again, the other direction: this was NOT sleep at
-        // all. Skip detection/staging entirely rather than force a window —
-        // the day derives with no main sleep, same as the already-shipped
-        // rejected-nap path (`sleep_nap` source='rejected').
+      if (ov != null && userBlanksNight(ov.source)) {
+        // The user's word: this was NOT sleep ('rejected'), or the times are
+        // theirs and the metrics are not ('manual'). Skip detection/staging
+        // entirely rather than force a window — the day derives with no main
+        // sleep, same as the already-shipped rejected-nap path
+        // (`sleep_nap` source='rejected'). A 'manual' window's bounds are still
+        // on the override row and are what the Sleep screen shows.
         s = ana.SleepSegmentation.absent;
-        src = 'rejected';
+        src = ov.source;
       } else if (ov != null) {
         // The user's word — force the window, skip detection entirely.
         s = ana.segmentSleep(
@@ -1335,6 +1414,7 @@ List<PhysioDay> calendarDays(
           hrBaseline: hrBaseline,
           rrMs: rrMsSeg,
           rrTsMs: rrTsSeg,
+          rowCache: rowCache,
           forcedWindow: (onsetSec: ov.onsetSec, offsetSec: ov.offsetSec),
         );
         src = ov.source; // 'manual' | 'confirmed'
@@ -1358,6 +1438,7 @@ List<PhysioDay> calendarDays(
             hrBaseline: hrBaseline,
             rrMs: rrMsSeg,
             rrTsMs: rrTsSeg,
+            rowCache: rowCache,
             habitualMidsleepSec: habitualMidsleepSec,
             // Gen5/MG band envelope, positional 1:1 with accelSlice: may END
             // the auto night at the band's own last SLEEP (AUTO path only —
@@ -1388,6 +1469,7 @@ List<PhysioDay> calendarDays(
               hrBaseline: hrBaseline,
               rrMs: rrMsSeg,
               rrTsMs: rrTsSeg,
+              rowCache: rowCache,
               forcedWindow:
                   (onsetSec: cand.onsetSec, offsetSec: cand.offsetSec),
             );
@@ -1458,6 +1540,8 @@ List<PhysioDay> calendarDays(
             ));
           }
         }
+      } else if (ov != null) {
+        sleepSource = ov.source;
       } else if (src == 'rejected') {
         // No window to stage (deliberately), but the day still needs to know
         // it was a rejection rather than an ordinary absence — sleep_detail

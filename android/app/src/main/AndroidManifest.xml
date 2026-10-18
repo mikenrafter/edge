@@ -58,6 +58,15 @@
     <!-- Battery-optimization (Doze) exemption request — user-granted via the system
          dialog fired from the "Keep alive in background" row. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Exact timing for the main-alarm snooze's phone backstop (a wake alarm app:
+         the one thing this notification is for is waking the wearer on time when
+         the process is suspended). USE_EXACT_ALARM is granted at install on
+         Android 13+ (reserved for alarm-clock apps); SCHEDULE_EXACT_ALARM is the
+         user-granted special access on Android 12 / 12L. Without either the
+         backstop falls back to an inexact alarm and the snooze settings say so. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
     <!-- Keep the CPU alive while the boot receiver starts the foreground service. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- OTA self-update: download + launch the system installer for the new APK. -->
@@ -122,7 +131,7 @@
         android:required="false" />
 
     <application
-        android:label="Edge"
+        android:label="${appLabel}"
         android:name=".EdgeApplication"
         android:icon="@mipmap/launcher_icon"
         android:allowBackup="false"
@@ -235,21 +244,23 @@
              instead requires a String extra "token" matching the per-install
              secret shown in Settings -> Automation, plus a short rate limit;
              anything else is silently dropped. Optional int extra "pattern"
-             (default 2). -->
+             (default 2). PLAY_HAPTIC takes the same token and plays a haptic
+             slot ("slot") or a stored pattern ("pattern") on the band. -->
         <receiver
             android:name=".TaskerReceiver"
             android:exported="true"
             android:enabled="true">
             <intent-filter>
                 <action android:name="wtf.openstrap.openstrap_edge.BUZZ_STRAP" />
+                <action android:name="wtf.openstrap.openstrap_edge.PLAY_HAPTIC" />
             </intent-filter>
         </receiver>
 
-        <!-- Notification relay (notification_listener_service plugin). The system binds
-             this to deliver posted notifications; gated behind the user granting
-             "Notification access" in system settings. Class lives in the plugin. -->
+        <!-- Notification relay. The system binds this app-owned listener to deliver
+             posted-notification METADATA (never title or body); gated behind the user
+             granting "Notification access" in system settings. -->
         <service
-            android:name="notification.listener.service.NotificationListener"
+            android:name=".OpenStrapNotificationListener"
             android:label="OpenStrap notification relay"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">

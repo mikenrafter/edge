@@ -265,7 +265,11 @@ dependencies:
       ref: 89080bcfac7767b3a871fd3a7d9307f5f30dad26
   openstrap_analytics:
     git:
-      url: https://github.com/OpenStrap/analytics.git
+      # FORK PIN (user-approved): the causal sleep-stage API (CausalStager)
+      # that Natural Wake needs lives on mikenrafter/openstrap-analytics,
+      # branch feat/causal-stage-api, pending upstream review. Move this
+      # back to the OpenStrap/analytics URL at the merge SHA once it lands.
+      url: https://github.com/mikenrafter/openstrap-analytics.git
       # analytics main @ #34 merge. Two hops in one: #32 (the HR-onset bypass
       # for low-limb-swing cardio) had already merged and this pin was still
       # sitting on its PR-branch head, and #34 lands the sleep-stager rewrite.
@@ -512,7 +516,94 @@ dependencies:
       # analytics main @ 77fe373, the #95 merge (tree-identical to its head
       # 608c46f): readiness autonomic merge + spread calibration + capped
       # re-centring + robust lnRMSSD centre, for kAlgoVersion 112.
-      ref: 77fe373eb819fda235f80610e898a4bc20a7a249
+      #
+      # Fork history (mikenrafter/openstrap-analytics, before the upstream
+      # catch-up). These pins are not ancestors of the ref below; it merges them.
+      #
+      # mikenrafter/openstrap-analytics `feat/causal-stage-api` @ 7fe67a7
+      # (phase 6A, on top of 0441ef9). Adds CausalStager.observe and the
+      # CausalSampleWindow/CausalStagerState types exported from onehz.dart.
+      # Purely additive: 6A verified no existing analytics output changed, so
+      # this repin alone needs no kAlgoVersion bump. Verified with
+      # `git ls-remote <fork-url> refs/heads/feat/causal-stage-api` and a
+      # grep for `abstract final class CausalStager` in the pub-cache checkout.
+      # feat/minute-energy @ 7334289 (child of 7fe67a7): adds
+      # Calories.minuteEnergy + hourlyRollup (per-minute energy, abstains on
+      # missing HR). Daily dailyEnergy outputs are unchanged (golden == tests in
+      # test/onehz/minute_energy_test.dart), so no kAlgoVersion bump.
+      #
+      # 2026-10-04 REPIN: feat/minute-energy @ 65c8901 (same fork, three commits
+      # on 7334289). Carries the incremental calculation states edge now uses on
+      # awake passes (CalculationCache, IncrementalMinuteMetrics,
+      # IncrementalEnmoSeries), `hrDipFromDayTotals` (hrDip's day side),
+      # `IntHistogram` (exact medians; unused by the app so far), and ONE OUTPUT
+      # CHANGE: `lombScargle` measures time from the first sample, not from raw
+      # epoch seconds, so hrvFreq, cardiacCoherence, the respiration RSA rate
+      # and the cardio stager's LF/HF move by ~1e-14 relative on real data (up
+      # to ~5e-6 per frequency worst case). kAlgoVersion bumped 100 -> 101.
+      # Verified against the SHA:
+      #   `git show 65c8901:lib/src/onehz/util.dart | grep -n 'every trig argument'`
+      #
+      # perf/incremental-rr (aa67997, on top of 65c8901): correctRr on sliding
+      # sorted windows (bit-identical output, ~37x faster; oracle-tested against
+      # a frozen copy), plus the streaming RrCorrector and IrregularScreenState.
+      # correctRr output unchanged; the streamed day RR built on it bumps
+      # kAlgoVersion 101 -> 102 (see the v102 note). Verified against the SHA:
+      #   `git show aa67997:lib/onehz.dart | grep rr_correction_stream`
+      #
+      # REPIN @ bf1be19 (mikenrafter/openstrap-analytics feat/prv-diagnostics,
+      # on aa67997): irregularBeatScreenDetailed + IrregularScreenState
+      # .evaluateDetailed, the evidence behind the PRV screen's verdict (v103).
+      # Same verdicts; IrregularScreenState checkpoint is version 2. Verified:
+      #   `git show bf1be19:lib/onehz.dart | grep irregular_diagnostics`
+      #
+      # REPIN @ 0fc5768 (same branch, on bf1be19): the diagnostics' artifact
+      # fraction is absent (null) when the corrector saw no beats, instead of the
+      # 1.0 `1 - cleanFraction` gives an empty series. Verdicts unchanged; the
+      # persisted output changed, so kAlgoVersion 104 (§3.4). Verified:
+      #   `git show 0fc5768:lib/src/onehz/clinical/irregular_diagnostics.dart | grep diagnosticArtifactFraction`
+      #
+      # REPIN @ 5af20f8 (feat/aggregator, on bf79e84): adds the mergeable
+      # aggregator API (package:openstrap_analytics/aggregate.dart) beside the
+      # existing functions. hypnogramMetrics, phillipsSri and readinessLnRmssd
+      # now run through it with bit-identical output (frozen-reference parity
+      # tests); every other aggregator is additive. RunningMoments JSON writes
+      # non-finite doubles as strings (finite values unchanged). No output
+      # change for any valid input, so no kAlgoVersion bump.
+      # Previous: REPIN @ bf79e84 (same branch, on fa77ab4 = 0fc5768 + test-only property
+      # laws): checkpoint readers refuse impossible saved state (IntHistogram
+      # count overflow, IrregularScreenState and RrCorrector counters out of
+      # their stage bounds) with FormatException; add/merge throw StateError on
+      # int64 overflow. No output change for any valid input, so no kAlgoVersion
+      # bump. Verified:
+      #   `git show bf79e84:lib/src/onehz/foundations/rr_correction_stream.dart | grep "invalid normalFinal"`
+      #
+      # REPIN @ db02896 (feat/aggregator, on 5af20f8): exact cardio epoch-row
+      # cache (CardioRowCache + optional rowCache: on segmentSleep), phase-0
+      # exact speedups, and the CVHR NaN-hang fix. No output change for valid
+      # finite input, so no kAlgoVersion bump.
+      #
+      # REPIN @ 972f0b2 (feat/aggregator, on db02896): exact HrvFreqStream and
+      # RsaRespStream (fold settled beats; snapshot(tail) == hrvFreq /
+      # rsaRespRate(prefix) bit for bit; JSON-checkpointable). Additive. No
+      # output change, so no kAlgoVersion bump.
+      #
+      # REPIN @ 07d6af0 (feat/aggregator, on 972f0b2): exact CvhrStream (fold
+      # settled beats; snapshot == cvhrApneaScreen(prefix) bit for bit;
+      # JSON-checkpointable). Additive. No output change, so no kAlgoVersion
+      # bump.
+      #
+      # REPIN @ 914bb6a (feat/aggregator, on 07d6af0): a fresh CvhrStream with
+      # nothing folded snapshots the tail exactly like cvhrApneaScreen (it
+      # reported absent before), so edge drops its tail-only fallback. No
+      # output change, so no kAlgoVersion bump.
+      #
+      # INTEGRATION (2026-10-18): mikenrafter/openstrap-analytics
+      # `integrate/upstream` @ 1add367 = OpenStrap/analytics main @ 724ede9
+      # (77fe373 + the AGPL relicense) merged with feat/aggregator @ e6dd526.
+      # Upstream's metric rules, our streams/aggregators ported to them. See
+      # edge.research/merge-decisions-log.md D10-D12. WIP branch, not a release.
+      ref: 1add367979dc308360dd02185517107cdfef3c66
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
@@ -649,7 +740,6 @@ dependencies:
   package_info_plus: ^8.1.0
   ota_update: ^7.1.0
   url_launcher: ^6.3.0
-  notification_listener_service: ^1.0.0
   flutter_secure_storage: ^10.3.1
   gpt_markdown: ^1.1.7
   firebase_core: ^4.11.0
@@ -691,6 +781,11 @@ dev_dependencies:
   # minor bump is allowed to change or withdraw it and would break the test on
   # someone else's `pub upgrade` rather than on a deliberate one here.
   sqflite_common: 2.5.8
+  # test/guards/heavy_calc_guard_test.dart resolves lib/ with package:analyzer
+  # (design 02). Dev-only, no lint plugin. 10.0.1 is what the Flutter 3.41.6
+  # SDK already resolves transitively (via `test`), so this only
+  # promotes it to a direct dev dependency without moving the lock.
+  analyzer: ^10.0.1
 
 # Run with `dart run flutter_launcher_icons`. TWO THINGS TO KNOW BEFORE YOU DO:
 #

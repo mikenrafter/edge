@@ -1,0 +1,13 @@
+// FIXTURE: a_ok_rowbatch_first_last
+// P2.0b: reading the first or last row of a batch is O(1) and not iteration,
+// like length / isEmpty / isNotEmpty (the cheap-member set widened, shrink-only).
+import 'package:openstrap_edge/util/raw_readers.dart';
+
+typedef Row = Map<String, Object?>;
+
+class Screen {
+  Row? newest(RowBatch<Row> batch) => batch.isEmpty ? null : batch.last;
+  Row? oldest(RowBatch<Row> batch) => batch.isEmpty ? null : batch.first;
+  int size(RowBatch<Row> batch) => batch.length;
+  bool any(RowBatch<Row> batch) => batch.isNotEmpty;
+}

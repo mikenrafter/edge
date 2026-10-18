@@ -32,10 +32,20 @@ enum DeviceAction {
   // (iOS can't reach other apps, but it can always do these).
   markMoment,
   workoutToggle,
+  // RETIRED: kept so a stored mask or id still decodes (the enum order is the
+  // persisted bitmask). Never offered; it loads as markMoment (see
+  // GestureSettings.bootstrap) and its glass is the Water answer of the
+  // marked-moment follow-up.
   logWater,
   // Native broadcast — sends an Android broadcast intent for Tasker to subscribe
   // to (see NativeChannels.kt). Only offered on Android.
   broadcastToTasker,
+  // In-app: buzzes the current local time on the band (see time_buzz.dart).
+  // APPENDED LAST: the enum order is the persisted bitmask, never reorder.
+  tellTime,
+  // In-app: a guided breathing session paced on the band, with no phone
+  // screen (see breath_gesture.dart). APPENDED LAST, after tellTime.
+  breathe,
 }
 
 extension DeviceActionX on DeviceAction {
@@ -67,6 +77,10 @@ extension DeviceActionX on DeviceAction {
         return 'log_water';
       case DeviceAction.broadcastToTasker:
         return 'broadcast_to_tasker';
+      case DeviceAction.tellTime:
+        return 'tell_time';
+      case DeviceAction.breathe:
+        return 'breathe';
     }
   }
 
@@ -97,6 +111,10 @@ extension DeviceActionX on DeviceAction {
         return 'Log water';
       case DeviceAction.broadcastToTasker:
         return 'Broadcast to Tasker';
+      case DeviceAction.tellTime:
+        return 'Tell the time';
+      case DeviceAction.breathe:
+        return 'Breathing exercise';
     }
   }
 
@@ -124,10 +142,15 @@ extension DeviceActionX on DeviceAction {
       case DeviceAction.workoutToggle:
         return 'Begin or end a workout from your wrist.';
       case DeviceAction.logWater:
-        return 'Add a glass to today\'s water, same step as the + on the '
-            'nutrition screen.';
+        return 'Add one glass to today\'s water total, like the + button on the '
+               'nutrition screen.';
       case DeviceAction.broadcastToTasker:
-        return 'Fire a broadcast intent so Tasker can trigger any automation.';
+        return 'Send an Android broadcast message that a Tasker task can listen for.';
+      case DeviceAction.tellTime:
+        return 'Buzz the current time on the band.';
+      case DeviceAction.breathe:
+        return 'Start a guided breathing session paced by the band, or end '
+            'the one that is running. No need to look at the phone.';
     }
   }
 
@@ -162,6 +185,10 @@ extension DeviceActionX on DeviceAction {
         return l?.deviceActionLogWaterLabel ?? label;
       case DeviceAction.broadcastToTasker:
         return l?.deviceActionBroadcastToTaskerLabel ?? label;
+      case DeviceAction.tellTime:
+        return l?.deviceActionTellTimeLabel ?? label;
+      case DeviceAction.breathe:
+        return l?.deviceActionBreatheLabel ?? label;
     }
   }
 
@@ -193,6 +220,10 @@ extension DeviceActionX on DeviceAction {
         return l?.deviceActionLogWaterBlurb ?? blurb;
       case DeviceAction.broadcastToTasker:
         return l?.deviceActionBroadcastToTaskerBlurb ?? blurb;
+      case DeviceAction.tellTime:
+        return l?.deviceActionTellTimeBlurb ?? blurb;
+      case DeviceAction.breathe:
+        return l?.deviceActionBreatheBlurb ?? blurb;
     }
   }
 
@@ -201,9 +232,27 @@ extension DeviceActionX on DeviceAction {
   bool get isInApp =>
       this == DeviceAction.markMoment ||
       this == DeviceAction.workoutToggle ||
-      this == DeviceAction.logWater;
+      this == DeviceAction.logWater ||
+      this == DeviceAction.tellTime ||
+      this == DeviceAction.breathe;
 
   bool get isNative => this != DeviceAction.none && !isInApp;
+
+  /// No longer an action a person can choose (Log water, now the Water answer
+  /// of the marked-moment follow-up). Still decodes from old storage.
+  bool get isRetired => this == DeviceAction.logWater;
+
+  /// Safe to run for a tap that is replayed from history (the band's flash)
+  /// rather than felt now. True only for actions that record a moment in time;
+  /// anything that acts on the phone right now (media, torch, water, workout)
+  /// would fire hours late.
+  bool get supportsHistoricalReplay => this == DeviceAction.markMoment;
+
+  /// A long-running mode that takes over the band while it runs, so it cannot
+  /// share a gesture slot with any other action. ECG is the one today, but it
+  /// is the separate `GestureSettings.ecgOnDoubleTap` flag, not a
+  /// [DeviceAction]; this is where a future action says it is one.
+  bool get isActiveMode => false;
 
   static DeviceAction? fromId(String? id) {
     if (id == null) return null;

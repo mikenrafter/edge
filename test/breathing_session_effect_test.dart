@@ -28,7 +28,7 @@ void main() {
     test('no sessions reads as an explanation, not as a result', () {
       final e = breathingEffect(const <Map<String, dynamic>>[]);
       expect(e.pairs, 0);
-      expect(breathingEffectLine(e), contains('quiet minutes either side'));
+      expect(breathingEffectLine(e), contains('two quiet minutes before and after'));
     });
 
     test('rows missing either window are dropped, never imputed', () {
@@ -106,7 +106,7 @@ void main() {
       for (final banned in const ['ms', 'RMSSD', 'rmssd', 'streak', 'score']) {
         expect(line.contains(banned), isFalse, reason: 'line said "$banned"');
       }
-      expect(kBreathingEffectCaveat, contains('cannot tell the two apart'));
+      expect(kBreathingEffectCaveat, contains('cannot separate the two'));
     });
   });
 

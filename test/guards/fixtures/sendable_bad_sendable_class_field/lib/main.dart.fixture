@@ -1,0 +1,29 @@
+// FIXTURE: sendable_bad_sendable_class_field
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#leakyHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+@sendable
+class Leaky {
+  final int ok;
+  final Object payload;
+  const Leaky(this.ok, this.payload);
+}
+
+@heavy
+double leakyHeavy(Leaky l) {
+  assertWorker();
+  return l.ok.toDouble();
+}
+
+class Caller {
+  Future<double> go(int n) => Isolate.run(() {
+        final l = Leaky(n, n);
+        return leakyHeavy(l);
+      });
+}

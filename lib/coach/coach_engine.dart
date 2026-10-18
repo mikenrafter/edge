@@ -210,15 +210,13 @@ class CoachEngine {
 
   final Random _rand = Random();
   static const List<String> _shenanigans = [
-    'Reading your overnight RR…',
-    'Doing the Banister math…',
-    'Asking your heart rate a few questions…',
-    'Decoding last night…',
-    'Auditing 90 days of you…',
-    'Letting the data confess…',
-    'Lining up the z-scores…',
-    'Chasing a hunch through your HRV…',
-    'Pulling the thread…',
+    'Reading overnight beat intervals…',
+    'Computing training load…',
+    'Reading heart rate data…',
+    'Reading last night\'s sleep…',
+    'Reading 90 days of data…',
+    'Comparing against your baseline…',
+    'Checking your HRV…',
   ];
 
   CoachEngine({
@@ -266,7 +264,7 @@ class CoachEngine {
     final cap = _capFor(tool);
     return s.length <= cap
         ? s
-        : '${s.substring(0, cap)}…(truncated — narrow the query)';
+        : '${s.substring(0, cap)}… (truncated, narrow the query)';
   }
 
   int _historyChars() {
@@ -591,7 +589,7 @@ class CoachEngine {
         });
       }
     }
-    emit(CoachItem.assistant('I dug through several steps but couldn’t wrap that up — try narrowing the question.'));
+    emit(CoachItem.assistant('The coach ran out of steps before finishing. Ask a narrower question.'));
     onStatus(null);
   }
 
@@ -686,6 +684,27 @@ class CoachEngine {
     final model = body['model'] as String? ?? '';
     final api = config.api;
     final apiBase = config.apiBase;
+    // Recent Claude models reject sampling params with a 400, on Anthropic's
+    // own endpoint and through any pass-through provider alike. Strip them for
+    // exactly those model versions; older Claude models and every other
+    // provider keep their sampling params untouched.
+    if (claudeRejectsSampling(body['model'] as String? ?? '')) {
+      body = {...body}
+        ..remove('temperature')
+        ..remove('top_p')
+        ..remove('top_k');
+    }
+    // FAIL-CLOSED size ceiling. Nothing leaves the device until this passes —
+    // the request is never truncated and silently sent, it is refused, so a
+    // runaway tool loop cannot ship the health database to a third party.
+    final payload = jsonEncode(body);
+    if (payload.length > kMaxRequestBytes) {
+      throw CoachException(
+          'That request is ${payload.length ~/ 1024} KB, over the '
+          '${kMaxRequestBytes ~/ 1024} KB limit on data sent from this '
+          'device. Start a new chat or ask a narrower question. Aggregate with '
+          'AVG/MIN/MAX/COUNT instead of selecting every row.');
+    }
     try {
       body = switch (api) {
         CoachApi.responses => CoachResponses.request(body, apiBase: apiBase),
@@ -1029,12 +1048,12 @@ class CoachEngine {
         'start_ts/end_ts yourself; '
         'v_baselines(key,value,mean,z,delta,ratio,n,updated_at); '
         'v_insights(id,kind,title,body,date,created_at,read); '
-        'v_ecg_readings(id,start_ts,end_ts,date,wrist,status,category,'
+        'v_ecg_readings(id,start_ts,end_ts,date,wrist,status,band_category,'
         'result_code,avg_hr,quality,unreadable_mask,interruptions,duration_s,'
         'sample_count,sample_rate_hz,sample_unit,min_uv,max_uv,rms_uv,'
-        'missing_segments) — WHOOP MG ECG readings, SUMMARY only (the '
-        'category is the band\'s own result); the waveform is in '
-        'get_ecg_reading. '
+        'missing_segments) — WHOOP MG ECG readings, SUMMARY only, latest '
+        'attempt of each; `band_category` is only what the band said. What a '
+        'reading means (its outcome) and the waveform are in get_ecg_reading. '
         'Read-only, derived only — no other tables. Dates are \'YYYY-MM-DD\'; '
         'timestamps are epoch seconds. Prefer aggregates (AVG/MIN/MAX/COUNT) over '
         'SELECT *. Results are capped at 200 rows.',
@@ -1082,15 +1101,17 @@ class CoachEngine {
         'Read the medication/supplement schedule and today\'s doses '
         '(taken/skipped/missed/upcoming). Not in run_sql — use this.', {}),
     _fn('get_ecg_reading',
-        'Read ONE saved WHOOP MG ECG reading by id: local time, status, the '
-        'BAND-REPORTED category and result code, average HR, signal quality, '
-        'unreadable reasons, duration, sample count, missing segments, '
-        'min/max/RMS, and the accepted waveform in microvolts at the band\'s '
-        'own sample rate (null where a segment is missing; a window too long '
-        'for one result is decimated by a whole-number stride, reported as '
-        '`stride`). Never returns raw frames, a band serial or the notes. The '
-        'category is the band\'s HeartKey result, not yours; you may read the '
-        'waveform yourself and say if you disagree with it.',
+        'Read ONE saved WHOOP MG ECG reading by id. The first field is the '
+        'OUTCOME the app allows: band result, inconclusive, not readable or '
+        'partial, with its reasons and caveat. Then local time, status, the '
+        'BAND-REPORTED category (`band_category`) and result code, average HR, '
+        'the band\'s quality number (scale unknown), unreadable reasons, '
+        'duration, sample count, missing segments, min/max/RMS. The accepted '
+        'waveform in microvolts is included ONLY when the outcome is a band '
+        'result and the wearer kept the waveform; otherwise there are no '
+        'samples and you must not interpret rhythm. Never returns raw frames, '
+        'a band serial or the notes. The category is the band\'s HeartKey '
+        'result, not yours.',
         {'reading_id': {'type': 'string', 'description': 'the reading id from v_ecg_readings'}},
         ['reading_id']),
     _fn('log_food',

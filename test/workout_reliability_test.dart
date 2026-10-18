@@ -8,6 +8,7 @@
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/compute/derive_outcome.dart';
 import 'package:openstrap_edge/compute/derive_scheduler.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/gps/screen_wake.dart';
@@ -60,7 +61,10 @@ void main() {
       logs = [];
       runs = 0;
       s = DeriveScheduler(
-        run: ({required DeriveJobKind kind}) async => runs++,
+        run: ({required DeriveJobKind kind}) async {
+          runs++;
+          return const DeriveOutcome();
+        },
         log: logs.add,
         onChanged: () {},
         lightSettle: const Duration(milliseconds: 10),
@@ -147,7 +151,10 @@ void main() {
         // whose design assumed "a workout is minutes long".
         var cappedRuns = 0;
         final capped = DeriveScheduler(
-          run: ({required DeriveJobKind kind}) async => cappedRuns++,
+          run: ({required DeriveJobKind kind}) async {
+            cappedRuns++;
+            return const DeriveOutcome();
+          },
           log: logs.add,
           onChanged: () {},
           lightSettle: const Duration(milliseconds: 10),
@@ -179,7 +186,10 @@ void main() {
     test('ending a workout re-arms the cap for the next session', () async {
       var cappedRuns = 0;
       final capped = DeriveScheduler(
-        run: ({required DeriveJobKind kind}) async => cappedRuns++,
+        run: ({required DeriveJobKind kind}) async {
+          cappedRuns++;
+          return const DeriveOutcome();
+        },
         log: logs.add,
         onChanged: () {},
         lightSettle: const Duration(milliseconds: 10),
@@ -235,11 +245,10 @@ void main() {
       expect(claimed, isNotNull, reason: 'the job should be claimable');
       expect(claimed!['state'], 'running');
       final id = claimed['id'].toString();
-      // NOTE: takeNextComputeJob returns the row as it was BEFORE its own
-      // update, so `attempts` here is the pre-increment value. That makes the
-      // comparison below the meaningful one: if the requeue failed to undo the
-      // increment, the second claim would report a higher number than the
-      // first.
+      // NOTE: takeNextComputeJob returns the post-increment attempts (the
+      // scheduler's retry cap reads it). The comparison below is the
+      // meaningful one: if the requeue failed to undo the increment, the
+      // second claim would report a higher number than the first.
       final attemptsAtFirstClaim = (claimed['attempts'] as num).toInt();
 
       // While claimed, nothing else can take it.

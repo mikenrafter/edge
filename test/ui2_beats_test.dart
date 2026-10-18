@@ -167,11 +167,11 @@ void main() {
 
     // It may not reassure, and it terminates in a clinician rather than a
     // number. Both lines are on the card, not in a tooltip.
-    expect(text, contains('not a day you were cleared'));
+    expect(text, contains('does not mean you were cleared'));
     expect(text, contains('cannot rule anything out'));
-    // The project's settled termination for this whole surface — the same
-    // sentence the CVHR card on Nerd stats ends on. It ends in a person.
-    expect(text, contains('a clinician can test that properly'));
+    // The project's settled termination for this whole surface: it ends in a
+    // person, as the CVHR card on Nerd stats does.
+    expect(text, contains('see a clinician for an ecg'));
     // No count of abnormal beats, in either grammar.
     expect(text, isNot(contains('% of beats')));
     expect(text, isNot(contains('abnormal')));

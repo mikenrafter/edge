@@ -77,7 +77,7 @@ LabCsvParse parseLabCsv(String text, {DateTime? today}) {
   final header = [for (final h in records.first) h.trim().toLowerCase()];
   if (!listEquals(header, kLabCsvHeader)) {
     throw LabCsvFormatException(
-      'this is not a lab-results export — expected the columns '
+      'the header does not match. Expected the columns '
       '${kLabCsvHeader.join(', ')}, found ${header.join(', ')}',
     );
   }

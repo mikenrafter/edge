@@ -121,6 +121,65 @@ that did not exist.
 `Scrubber` is the only drag: it carries the slider role, so increase/decrease
 reach it without a pointer, and `describe` is what those steps say out loud.
 
+### ChartScrub — every chart is scrubbable
+
+```dart
+ChartScrub({required String label, required List<ChartKey> keys, required Widget child,
+            String? Function(double at)? time, bool gaps = false,
+            ChartScrubMode mode = ChartScrubMode.line, double step = .05})
+```
+
+Wrap the chart painter (inside the `ChartFrame` child) and a tap or drag places
+a cursor line that follows the finger. **There is no tooltip**: a pill sits under
+the thumb that placed it. The values go in a row UNDER the chart, in the chart's
+key (`ChartKeyReadout`): the time first (`Latest` at rest, `Selected` while
+scrubbing), then a cell per series with its colour swatch, its label and the
+value under them. It is a `Scrubber` underneath, so the slider role and the
+spoken value (time, then `label value` per series) come with it. It adds no size
+of its own to a framed chart.
+
+Each `ChartKey` is one series: `label` (units in it — `Heart rate (bpm)`),
+`color`, and `value(at)` for a position 0…1 across the chart, **null where the
+series has nothing**, which reads `—`. Never read a neighbour's value, never
+interpolate across a hole, never show a 0. Build it from the same series the
+painter draws:
+
+```dart
+ChartFrame(
+  title: 'Heart rate', unit: 'bpm', legend: [('Heart rate (bpm)', red)],
+  child: ChartScrub(
+    label: 'Heart rate',
+    gaps: hasChartGaps([hr]),                       // "Not recorded", only if true
+    time: (at) => ChartScrub.clock(ChartScrub.slotAt(hr.length, at)),
+    keys: [ChartKey.slots('Heart rate (bpm)', red, hr, (i, v) => '${v.round()} bpm')],
+    child: CustomPaint(size: Size.infinite, painter: LineChart(hr, red, axis: axis)),
+  ),
+)
+```
+
+Inside a `ChartFrame` the row IS the frame's key: each legend entry gets its
+value directly under it, matched to the series by **label** (so share the
+string), in the legend's order; a series with no legend entry is appended, and a
+legend entry with no series (a shaded stretch) stays a plain key. Without a
+frame the scrub draws its own row under the chart; give the chart its own height
+(`child: SizedBox(height: 72, …)`), not a `SizedBox` around the `ChartScrub`.
+The row is as tall for `—` as for a number, so scrubbing moves nothing.
+
+Helpers: `ChartKey.slots(label, color, series, say, {bars})` for a dense series
+(line: the nearest slot; `bars: true`: the bar under the finger; also finds the
+latest point), `ChartKey.fixed` for a value that does not depend on the finger,
+`ChartScrub.zoneKeys(p, minutes)` / `bandKeys` for a `ZoneBar`,
+`ChartScrub.slotAt(n, at, {bars})` for the index a position reads,
+`ChartScrub.dayBack(n)` / `day(date)` / `clock(minute)` for the time half.
+`gaps` adds a `Not recorded` entry; pass `hasChartGaps(series)`: a hole between
+readings, or before the first, is a gap; nothing at all is no data, and holes
+after the last reading are not a gap unless `trailing: true` (a finished
+window). Scatter and grid charts (Poincaré, `HeatMap`, month grid) pass
+`mode: ChartScrubMode.nearest`: the row only, no line through the picture.
+`test/ui2_chart_scrub_guard_test.dart` fails any `painter: LineChart(…)` (or
+other chart painter) in `screens/`, `activity/` or `live_hr.dart` that is not
+inside a `ChartScrub` or `Scrubber`.
+
 ### Layout primitives
 
 ```dart
@@ -337,6 +396,8 @@ ChartFrame({
   Widget? empty,                // non-null MEANS NO DATA — `const NoData()`
   List<double?> series = const [],   // the SPOKEN version of the chart
   List<double> xMarks = const [],    // 0…1 breaks — NOT data, see rule 5
+  AnnotationSet? annotations,        // journal items + version marks: icon + dashed line
+  double? annotationCursor,          // 0…1 finger position when the chart is not a ChartScrub
 })
 
 NoData({String message = 'No data yet'})
@@ -367,13 +428,29 @@ Five rules:
 2. **`xLabels` must describe the range actually drawn.** A hardcoded
    `['30 days ago', '15', 'Today']` under a seven-day window is worse than no
    labels. With three labels they mark the start, middle and end of the data.
-3. **`xMarks` is provenance, never a measurement.** A mark says the days
+3. **Marks are provenance, never a measurement.** A mark says the days
    either side of it were not produced the same way — a release boundary, read
-   off `getChart`'s `algo_breaks`. It draws dotted, in `p.ink3`, above the
-   curve, and it does not take taps. **A mark without a `footnote` is a line
-   nobody can read**: the footnote is the mark's only screen-reader form and
-   the only thing that can say what it is. Keep the wording flat — a version
-   change is provenance, not something that happened to the user.
+   off `getChart`'s `algo_breaks`. The metric-detail hero draws it as an
+   `AnnotationKind.algoVersion` annotation (`heroAlgoAnnotations`): an icon and
+   a dashed line, above the curve, laid out with every other annotation so two
+   icons never overlap. It never joins a "+n" cluster. `xMarks` (a bare dotted
+   line) remains for a chart that only needs a boundary. **A mark without a
+   `footnote` is a line nobody can read**: the footnote is the mark's only
+   screen-reader form and the only thing that can say what it is. Keep the
+   wording flat — a version change is provenance, not something that happened
+   to the user.
+
+   **Annotations** (`chart_annotations.dart`) put journal items on a chart:
+   water, assumed water, marked moments, symptoms, workouts, naps, other timed
+   entries. Each is an icon on a lane above the plot plus a dashed line down
+   through it. The item nearest the scrub goes bold and its label shows in one
+   fixed place. A linked start/end pair is a shaded area (its kind's colour)
+   with one icon at the start and dashed lines at both ends. Items closer than
+   an icon's width collapse to one icon (the focused item, else the oldest)
+   with "+n"; tap it to step through them. The layout is the pure
+   `layoutAnnotations`; nothing outside the plot, or without a clock, is drawn.
+   The chart's own painter keeps its `RepaintBoundary`: the lane repaints on
+   focus, the plot does not.
 4. **More than one colour means a `legend`.** Use the painters' own, never
    retyped: `Hypnogram.legend(p, l)`, `IntervalLadder.legend` (instance).
    The swatch is the mark's *solved* colour, so the key and the plot can never

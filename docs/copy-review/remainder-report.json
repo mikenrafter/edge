@@ -1,0 +1,63 @@
+{
+ "applied": [
+  "lib/ai/journal_ai.dart:offset-2979",
+  "lib/import/journal_csv_import.dart:offset-5704",
+  "lib/import/lab_csv_import.dart:offset-2985",
+  "lib/import/noop_backup_import.dart:offset-9725",
+  "lib/l10n/app_en.arb:signalVendorScalars",
+  "lib/notify/notification_center.dart:offset-30171",
+  "lib/ui2/onboarding/welcome.dart:offset-29700",
+  "lib/ui2/onboarding/welcome.dart:offset-30143",
+  "lib/ui2/profile/phone_import.dart:offset-12261",
+  "lib/ui2/profile/settings.dart:offset-15494",
+  "lib/ui2/profile/settings.dart:offset-60158",
+  "lib/ui2/screens/calm_breathing.dart:offset-33040",
+  "lib/ui2/screens/circadian_detail.dart:offset-20283",
+  "lib/ui2/screens/circadian_detail.dart:offset-30754",
+  "lib/ui2/screens/cycle_screen.dart:offset-25286",
+  "lib/ui2/screens/cycle_screen.dart:offset-25438",
+  "lib/ui2/screens/cycle_screen.dart:offset-48513",
+  "lib/ui2/screens/health_screen.dart:offset-33619",
+  "lib/ui2/screens/health_screen.dart:offset-33883",
+  "lib/ui2/screens/health_screen.dart:offset-71575",
+  "lib/ui2/screens/investigate.dart:offset-32684",
+  "lib/ui2/screens/journal_compose.dart:offset-35637",
+  "lib/ui2/screens/sleep_detail.dart:offset-38148",
+  "lib/ui2/screens/what_changed.dart:offset-6328",
+  "lib/ui2/screens/what_changed.dart:offset-6518"
+ ],
+ "skipped": [
+  {
+   "id": "lib/import/noop_backup_import.dart:offset-13211",
+   "why": "text found 2 times"
+  },
+  {
+   "id": "lib/import/noop_backup_import.dart:offset-13303",
+   "why": "text found 2 times"
+  },
+  {
+   "id": "lib/import/noop_backup_import.dart:offset-16400",
+   "why": "text found 2 times"
+  },
+  {
+   "id": "lib/import/noop_backup_import.dart:offset-16492",
+   "why": "text found 2 times"
+  },
+  {
+   "id": "lib/import/whoop_import.dart:offset-7657",
+   "why": "text found 0 times"
+  },
+  {
+   "id": "lib/l10n/app_en.arb:phoneImportDisagreeBody",
+   "why": "interpolations or placeholders differ"
+  },
+  {
+   "id": "lib/l10n/app_en.arb:phoneImportAgreeBody",
+   "why": "interpolations or placeholders differ"
+  },
+  {
+   "id": "lib/ui2/screens/day_timeline.dart:offset-30689",
+   "why": "text found 0 times"
+  }
+ ]
+}

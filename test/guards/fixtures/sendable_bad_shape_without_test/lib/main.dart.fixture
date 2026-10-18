@@ -1,0 +1,28 @@
+// FIXTURE: sendable_bad_shape_without_test
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#payloadHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+@SendableShape('stored day payload JSON')
+class PayloadArg {
+  final Map<String, dynamic> json;
+  const PayloadArg(this.json);
+}
+
+@heavy
+double payloadHeavy(PayloadArg a) {
+  assertWorker();
+  return a.json.length.toDouble();
+}
+
+class Caller {
+  Future<double> go(int n) => Isolate.run(() {
+        final a = PayloadArg({'n': n});
+        return payloadHeavy(a);
+      });
+}

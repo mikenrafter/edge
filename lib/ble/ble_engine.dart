@@ -45,6 +45,7 @@ import 'package:openstrap_protocol/openstrap_protocol.dart';
 
 import '../data/db.dart';
 import '../data/models.dart';
+import '../gestures/strap_event.dart';
 import '../platform/tasker_bridge.dart';
 import '../sync/paired_device.dart' show cleanDeviceLabel;
 import '../sync/sync_policy.dart';
@@ -62,11 +63,10 @@ int u32(Uint8List b, int o) =>
 typedef SampleSink = Future<void> Function(Sample? sample, RawRecord raw);
 typedef StateSink = void Function(DeviceState state);
 typedef LogSink = void Function(String line);
-/// [profile] is the band the event came off. The event-id space is not shared
-/// across generations (109 is BATTERY_PACK_INFO on gen5 only), so whoever
-/// persists the hex has to decode it the way the live parse did.
-typedef EventSink =
-    void Function(int eventId, int tsEpoch, String hex, BandProfile profile);
+/// A band event, with the strap's own timestamp (incl. sub-second ticks), the
+/// phone's receipt time and the raw hex. The engine has no device id of its
+/// own, so it stamps [LocalDb.kPrimaryDeviceId]; a sink may `copyWith`.
+typedef EventSink = void Function(StrapEvent event);
 typedef BatchSink =
     Future<void> Function(List<RawRecord> raws, List<Sample?> samples);
 
@@ -110,6 +110,9 @@ sealed class EcgEngineEvent {
 }
 
 /// A CRC-valid live type-43 revision-17 packet, parsed.
+/// package:clock's zone-aware stopwatch (fake time under fakeAsync).
+Stopwatch _packageClockStopwatch() => clock.stopwatch();
+
 class EcgFrameEvent extends EcgEngineEvent {
   final LabradorR17 r17;
   const EcgFrameEvent(this.r17, super.linkGeneration);
@@ -970,11 +973,15 @@ class _FbpGattOps implements GattBootstrapOps {
   }
 }
 
-class BleEngine {
+class BleEngine implements AlarmBandWriter {
   final SampleSink onRecord;
   final StateSink onState;
   final LogSink? log;
   final EventSink? onEvent;
+
+  /// Receipt-time source for [StrapEvent.receivedAt]; read once per event
+  /// frame. Injectable so tests can drive recency without sleeping.
+  final DateTime Function() clock;
 
   /// If provided, historical-drain records are buffered and flushed in batches
   /// (one DB transaction per ACK boundary) instead of one-by-one via [onRecord].
@@ -1020,7 +1027,9 @@ class BleEngine {
   /// stream goes quiet. The debouncer can run in a fast stale mode or a calmer
   /// fresh mode depending on [deriveDataStaleness] — or a fast foreground mode
   /// depending on [isForegroundActive], which takes priority over both.
-  final DeriveDebouncer deriveDebouncer;
+  /// The Calculations power mode replaces the tiers (see CalcPowerPolicy); they
+  /// are read on every check, so a change lands on the next one.
+  DeriveDebouncer deriveDebouncer;
   final Duration Function() deriveDataStaleness;
   final bool Function() isForegroundActive;
 
@@ -1038,6 +1047,7 @@ class BleEngine {
     required this.onState,
     this.log,
     this.onEvent,
+    DateTime Function()? clock,
     this.onRecordsBatch,
     this.onDataStored,
     this.onLiveFrame,
@@ -1054,7 +1064,7 @@ class BleEngine {
     this.isForegroundActive = _defaultIsForegroundActive,
     this.gen5DeepBuffersEnabled = _defaultGen5DeepBuffersDisabled,
     this.onKeepAlive,
-  });
+  }) : clock = clock ?? DateTime.now;
 
   /// Fired at the tail of every keep-alive tick (~[kKeepAliveIntervalSeconds]
   /// while connected). A thin hook so app-level periodic checks (Smart Wake
@@ -1124,6 +1134,10 @@ class BleEngine {
   /// ordinary WHOOP 5.0 and before hello. Never inferred from the UUID, the
   /// name or command acceptance.
   bool get isMaverick => _gen5Hello?.isMaverick ?? false;
+
+  /// The firmware version the gen5 HELLO reported; null on gen4 (which does
+  /// not report one here) and before hello.
+  String? get bandFirmware => _gen5Hello?.firmwareVersion;
 
   /// The link generation — bumped once per teardown. ECG work captures it
   /// and ignores anything from an older link.
@@ -1203,13 +1217,19 @@ class BleEngine {
     await endHistoryTask(reason: reason);
   }
 
-  static List<_EcgMember> _ecgPrepareMembers(WristSelection wrist) => [
+  static List<_EcgMember> _ecgPrepareMembers(
+    WristSelection wrist, {
+    bool rawSave = true,
+  }) => [
         ('selectWrist', Cmd.selectWrist,
             (seq, band) => cmdSelectWrist(seq, wrist, profile: band)),
         ('filteredOn', Cmd.toggleLabradorFiltered,
             (seq, band) => cmdLabradorFiltered(seq, true, profile: band)),
-        ('rawSaveOn', Cmd.toggleLabradorRawSave,
-            (seq, band) => cmdLabradorRawSave(seq, true, profile: band)),
+        // The band's raw-save keeps the recording for ordinary history sync to
+        // store (ecg_raw_packet): only when the wearer chose to keep it.
+        if (rawSave)
+          ('rawSaveOn', Cmd.toggleLabradorRawSave,
+              (seq, band) => cmdLabradorRawSave(seq, true, profile: band)),
       ];
 
   static List<_EcgMember> _ecgStartMembers(LabradorOperation op) => [
@@ -1234,13 +1254,14 @@ class BleEngine {
         (seq, band) => cmdLabradorRawSave(seq, false, profile: band)),
   ];
 
-  /// PREPARE: 123 wrist, 139 filtered ON, 125 raw-save ON. Attempt-all; the
-  /// caller accepts only when every member succeeded.
+  /// PREPARE: 123 wrist, 139 filtered ON and, unless [rawSave] is false, 125
+  /// raw-save ON. Attempt-all; the caller accepts only when every member
+  /// succeeded.
   Future<List<EcgCommandOutcome>> ecgPrepare(
     EcgLease lease,
-    WristSelection wrist,
-  ) =>
-      _runEcgList(lease, _ecgPrepareMembers(wrist));
+    WristSelection wrist, {
+    bool rawSave = true,
+  }) => _runEcgList(lease, _ecgPrepareMembers(wrist, rawSave: rawSave));
 
   /// START: 20 abort-history (unconditional), 124 generation START.
   Future<List<EcgCommandOutcome>> ecgStart(EcgLease lease) =>
@@ -2221,6 +2242,24 @@ class BleEngine {
   String? _lastHapticsTermination;
   int? _lastHapticsTerminationTs;
 
+  /// When (phone clock) the band last reported a `user_double_tap`
+  /// termination; null if it has not this session. Natural Wake's repeat reads
+  /// it through the wake environment: a double tap after the repeat started
+  /// is the wearer saying they are awake. The band's own `ts` is not used, so
+  /// the comparison never depends on the band's clock.
+  DateTime? _lastHapticsDoubleTapAt;
+  DateTime? get lastHapticsDoubleTapAt => _lastHapticsDoubleTapAt;
+
+  /// Called for every HAPTICS_TERMINATED(100) with its cause string
+  /// ('user_double_tap' | 'expired' | 'error' | 'unknown' | 'code_N'), the
+  /// phone-clock receipt time, and the strap's OWN stamp of the event (null
+  /// when the strap clock is not believable). The stamp is what ties a
+  /// termination to the native alarm fire it ended (events 57/58 carry the
+  /// same clock), however late the link delivered it. AppState hangs the
+  /// main-alarm snooze on it. A throw from it is logged and goes no further.
+  void Function(String cause, DateTime at, DateTime? bandAt)?
+      onHapticsTerminated;
+
   // ── reconnect/offload policy ────────────────────────────────────────────────
   // Marginal-radio + post-bond-loop persist ACROSS reconnects (they count
   // consecutive bad cycles), so they live for the engine's lifetime and self-reset
@@ -2453,7 +2492,9 @@ class BleEngine {
   // with existing double-seconds call sites like AutoContinueRun's.
   // package:clock's stopwatch is the system one in production; under
   // fakeAsync it follows fake time, so the windows read off it are testable.
-  final Stopwatch _monotonic = clock.stopwatch()..start();
+  // Through a top-level helper: inside this class `clock` is the injected
+  // wall-clock field, not package:clock's.
+  final Stopwatch _monotonic = _packageClockStopwatch()..start();
   double _monotonicSecs() => _monotonic.elapsedMicroseconds / 1e6;
 
   // Wall-clock of the last BLE notification received on ANY characteristic. iOS
@@ -4820,12 +4861,20 @@ class BleEngine {
   /// immediately before the bytes go to the transport (the chain may hold
   /// this write behind earlier ones for a while); returning false skips the
   /// write, which then reports false.
+  /// [notAfter] is a delivery deadline: a write still waiting in the queue when
+  /// it passes is DROPPED, not sent. The caller that queued it has given up by
+  /// then (and may have retried or moved on), so writing it late is a stale
+  /// duplicate (review finding H).
   Future<bool> _write(
     Uint8List raw, {
     _Session? owner,
     bool allowDangerous = false,
     bool Function()? beforeTransport,
+    DateTime? notAfter,
   }) {
+    // FOOTGUN(DATA_LOSS): destructive commands are refused before the write queue.
+    // FOOTGUN(LINK_LOSS): reboot and power-cycle commands are refused here.
+    // FOOTGUN(FIRMWARE): update-load commands are refused here.
     final session = _session;
     // The dangerous-opcode block lives HERE, at the one write every command
     // funnels through, not only in `_send`: nine call sites build their own
@@ -4842,6 +4891,11 @@ class BleEngine {
       return Future.value(false);
     }
     return _writeChain.add<bool>(() async {
+      if (notAfter != null && DateTime.now().isAfter(notAfter)) {
+        _log('write dropped: its delivery deadline passed while it waited '
+            'in the write queue.');
+        return false;
+      }
       try {
         // Readiness and ownership are checked BEFORE the test seam, not after,
         // so a hooked write rejects a stale-session ACK exactly like the real
@@ -4993,6 +5047,7 @@ class BleEngine {
     Duration timeout = CommandAwaiter.defaultTimeout,
     Uint8List Function(int seq)? frameBuilder,
     _Session? owner,
+    Duration? maxQueueWait,
   }) async {
     if (_refuseDangerousOpcode(opcode)) {
       return (written: false, response: Future<CorrelatedResponse?>.value());
@@ -5001,7 +5056,9 @@ class BleEngine {
     final pending = _awaiter.register(seq, opcode, timeout: timeout);
     final frame = frameBuilder?.call(seq) ??
         buildCommand(seq, opcode, payload, _session?.band ?? BandProfile.gen4);
-    if (!await _write(frame, owner: owner)) {
+    final notAfter =
+        maxQueueWait == null ? null : DateTime.now().add(maxQueueWait);
+    if (!await _write(frame, owner: owner, notAfter: notAfter)) {
       pending.cancel();
       _log('WRITE FAILED for opcode 0x${opcode.toRadixString(16)} — '
           'command not delivered.');
@@ -5308,7 +5365,15 @@ class BleEngine {
       final e = parseEvent(frame.inner, profile: profile);
       if (e != null) {
         _handleEventInfo(e);
-        onEvent?.call(e.eventId, e.tsEpoch, _innerHex(frame.inner), profile);
+        onEvent?.call(
+          StrapEvent.fromEventInfo(
+            e,
+            receivedAt: clock(),
+            hex: _innerHex(frame.inner),
+            deviceId: LocalDb.kPrimaryDeviceId,
+            profile: profile,
+          ),
+        );
       }
     }
     final entry = _session?.entry ?? kWhoopGen4;
@@ -6482,12 +6547,26 @@ class BleEngine {
       case EventId.hapticsTerminated:
         // . `user_double_tap` is the wearer
         // dismissing a running alarm — a different fact from an alarm that ran
-        // its course. Observed, not acted on: the alarm flow is unchanged.
+        // its course. The alarm flow is unchanged; the one reader of the
+        // double tap is Natural Wake's repeat ([lastHapticsDoubleTapAt]).
         _lastHapticsTermination =
             f['haptics_termination'] as String? ?? 'unknown';
         _lastHapticsTerminationTs = event.tsEpoch;
+        if (_lastHapticsTermination == 'user_double_tap') {
+          _lastHapticsDoubleTapAt = clock();
+        }
         _log('[ALARM] haptics terminated: cause=$_lastHapticsTermination '
             'code=${f['haptics_termination_code']} ts=${event.tsEpoch}');
+        // The main alarm's snooze hangs on this. A throw from it must never
+        // reach the frame path.
+        try {
+          final strap = event.tsEpoch >= kMinPlausibleStrapEpoch
+              ? DateTime.fromMillisecondsSinceEpoch(event.tsEpoch * 1000)
+              : null;
+          onHapticsTerminated?.call(_lastHapticsTermination!, clock(), strap);
+        } catch (e) {
+          _log('[ALARM] haptics-terminated hook failed: $e');
+        }
         return;
       case EventId.highFreqSyncPrompt:
         _log(
@@ -7768,6 +7847,7 @@ class BleEngine {
   /// reviewed opt-in rather than the structural bypass it used to be, now that
   /// the block sits on `_write` itself.
   Future<void> enableGen5DeepBuffers() async {
+    // FOOTGUN(PERSISTENT_CONFIG): audited opt-in R22 configuration exception.
     if (!(_session?.band.isGen5 ?? false)) return;
     final frames = buildR22EnableSequence(startSeq: _seq.nextLive());
     _log('Sending gen5 R22 deep-buffer enable sequence (${frames.length} '
@@ -8417,6 +8497,7 @@ class BleEngine {
   /// arm because a read-back never came back would break wake alarms on any
   /// band that does not echo the originating sequence. The log line is the
   /// signal that the arm went out unconfirmed.
+  @override
   Future<DateTime?> setAlarm(
     DateTime when, {
     int index = 0,
@@ -8519,6 +8600,125 @@ class BleEngine {
     );
   }
 
+  // ── Device lab alarm-slot probe ────────────────────────────────────────────
+  // Three calls for `lib/gestures/alarm_slot_probe.dart`, which asks whether
+  // the band holds MORE THAN ONE alarm. They are never reached by the normal
+  // arm path: [setAlarm] stays the one place a REAL alarm is written, and these
+  // only run from a user-started probe that restores the real alarm in
+  // `finally`. Slot 0 is probe alarm A (gen5 id 1 / gen4 rich index 0), slot 1
+  // is probe alarm B (gen5 id 2 / gen4 index 1). None of the three opcodes is
+  // in `dangerousCmds`.
+
+  /// SET_ALARM_TIME for probe alarm [slot] at [when] (wall clock; sent in the
+  /// strap's RTC frame exactly as [setAlarm] does), with the short gentle
+  /// [AlarmPayloads.probeHaptics] pattern. Reports what the band said without
+  /// judging it; an unanswered write is `answered: false`, not a refusal.
+  Future<AlarmSlotWrite> setAlarmSlot(DateTime when, {required int slot}) async {
+    if (slot < 0 || slot > 1) {
+      throw ArgumentError.value(slot, 'slot', 'the probe has slots 0 and 1');
+    }
+    final isGen5 = _session?.band.isGen5 ?? false;
+    if (isGen5) {
+      await setClock(); // as setAlarm: the RTC drift must be fresh
+      await Future.delayed(const Duration(milliseconds: 120));
+    }
+    final ref = _clockRef;
+    final driftSec = ref?.driftSec ?? 0;
+    final armWhen = AlarmPayloads.toStrapFrame(when, driftSec);
+    final wallSec = when.millisecondsSinceEpoch ~/ 1000;
+    final strapSec = armWhen.millisecondsSinceEpoch ~/ 1000;
+    final payload =
+        AlarmPayloads.probeBody(armWhen, isGen5: isGen5, slot: slot);
+    final out = await _sendAwaited(Cmd.setAlarmTime, payload);
+    _log('[alarm] probe SET_ALARM_TIME slot $slot '
+        '(${isGen5 ? 'gen5 id ${AlarmPayloads.gen5Slot + slot}' : 'gen4 rich index $slot'} '
+        '${payload.length}B) → wallSec=$wallSec strapSec=$strapSec '
+        'drift=${driftSec}s correlated=${ref != null} '
+        'write=${out.written ? 'ok' : 'FAILED'}');
+    AlarmSlotWrite result({
+      required bool written,
+      required bool answered,
+      bool rejected = false,
+      int? resultStatus,
+      int? alarmStatus,
+      String? alarmStatusName,
+    }) =>
+        AlarmSlotWrite(
+          written: written,
+          answered: answered,
+          rejected: rejected,
+          wallSec: wallSec,
+          strapSec: strapSec,
+          resultStatus: resultStatus,
+          alarmStatus: alarmStatus,
+          alarmStatusName: alarmStatusName,
+        );
+    if (!out.written) return result(written: false, answered: false);
+    final resp = await out.response;
+    if (resp == null) {
+      _log('[alarm] probe slot $slot: no correlated SET_ALARM_TIME reply.');
+      return result(written: true, answered: false);
+    }
+    final code = (resp.fields['alarm_status'] as num?)?.toInt();
+    final name = resp.fields['alarm_status_name'] as String?;
+    final rejected = resp.failed ||
+        resp.unsupported ||
+        (code != null && AlarmStatus.isInputRejection(code));
+    _log('[alarm] probe slot $slot ${rejected ? 'REJECTED' : 'accepted'} — '
+        'result=${resp.status} alarm_status=${code ?? 'absent'} '
+        '(${name ?? 'no status byte'}).');
+    return result(
+      written: true,
+      answered: true,
+      rejected: rejected,
+      resultStatus: resp.status,
+      alarmStatus: code,
+      alarmStatusName: name,
+    );
+  }
+
+  /// GET_ALARM_TIME for probe [slot]. gen5 reads by id; gen4's read has no
+  /// index operand, so it reports whichever one alarm the band names. No
+  /// reply (or an unwritten read) is [AlarmSlotRead.silent], never a guess.
+  Future<AlarmSlotRead> readAlarmSlot({required int slot}) async {
+    final isGen5 = _session?.band.isGen5 ?? false;
+    final out = await _sendAwaited(
+      Cmd.getAlarmTime,
+      AlarmPayloads.probeReadBody(isGen5: isGen5, slot: slot),
+    );
+    if (!out.written) return const AlarmSlotRead.silent();
+    final resp = await out.response;
+    if (resp == null) {
+      _log('[alarm] probe GET_ALARM_TIME slot $slot: no reply.');
+      return const AlarmSlotRead.silent();
+    }
+    final epoch = (resp.fields['alarm_epoch'] as num?)?.toInt();
+    final active = resp.fields['alarm_active'] as bool?;
+    _log('[alarm] probe GET_ALARM_TIME slot $slot: result=${resp.status} '
+        'epoch=${epoch ?? 'absent'} active=${active ?? 'n/a'}');
+    return AlarmSlotRead(answered: true, epoch: epoch, active: active);
+  }
+
+  /// DISABLE_ALARM for probe [slot]: gen5 clears exactly that id (never the
+  /// all-slots 0xFF), gen4's disable has no index. True when the write left
+  /// the phone and the band did not refuse it (no reply counts as sent).
+  Future<bool> clearAlarmSlot({required int slot}) async {
+    final isGen5 = _session?.band.isGen5 ?? false;
+    final out = await _sendAwaited(
+      Cmd.disableAlarm,
+      AlarmPayloads.probeClearBody(isGen5: isGen5, slot: slot),
+    );
+    if (!out.written) {
+      _log('[alarm] probe DISABLE_ALARM slot $slot: write FAILED.');
+      return false;
+    }
+    final resp = await out.response;
+    final refused = resp != null && (resp.failed || resp.unsupported);
+    _log('[alarm] probe DISABLE_ALARM slot $slot: '
+        '${resp == null ? 'sent, no reply' : refused ? 'REFUSED' : 'accepted'}.');
+    return !refused;
+  }
+
   /// Fire the alarm haptics IMMEDIATELY — a "test buzz" so the user can confirm
   /// the strap actually fires before trusting the scheduled wake.
   ///
@@ -8541,6 +8741,7 @@ class BleEngine {
   /// (the earlier `[0x00]` body was ACKed but did not clear the alarm); gen5
   /// needs revision 2 plus the alarm id, defaulting to "all slots" — see
   /// [AlarmPayloads.disableForBand].
+  @override
   Future<void> disableAlarm({int? id}) {
     final isGen5 = _session?.band.isGen5 ?? false;
     return _send(
@@ -8609,12 +8810,139 @@ class BleEngine {
   }
   Future<void> buzz() => buzzPattern(hapticShortPulse);
 
+  /// Where [buzzBand] reports what the band said back, for the Device lab's
+  /// trace. Diagnostic only: nothing waits on it and nothing is decided by it.
+  void Function(String line)? onBuzzDiagnostic;
+
+  /// How long a buzz's reply is waited for, to LOG it. Not a delivery limit.
+  static const Duration buzzReplyLogWindow = Duration(seconds: 3);
+
+  /// How long a buzz may wait in the write queue before it is stale: the
+  /// sequence player's per-step timeout (`playBuzzSequence.stepTimeout`), after
+  /// which the player has already reported the step as unanswered.
+  static const Duration buzzQueueDeadline = Duration(seconds: 5);
+
+  /// Buzz the band once. True when the haptic command was written to the band
+  /// (the GATT write-with-response succeeded), exactly as every other haptic and
+  /// toggle write here is judged. The band's own correlated reply is NOT waited
+  /// for and NEVER gates the result: it is logged afterwards ("Band replied
+  /// success in 40 ms" / "No reply from the band within 3000 ms") because the
+  /// band is not known to answer RUN_HAPTICS with a correlated SUCCESS, and a
+  /// version that required one reported every buzz as undelivered.
+  ///
+  /// [holdMs] approximates a held press. MG: a hold of 500 ms or more repeats the
+  /// supported waveform twice (overallLoop 2). Gen4 has no duration-capable
+  /// waveform verified, so a long hold plays as its one short pulse: it never
+  /// fails the sequence.
+  ///
+  /// [maxQueueWait] is the buzz's delivery deadline in the GATT write queue: if a
+  /// stuck earlier write holds the queue longer than that, this buzz is dropped
+  /// (false) instead of playing late, after the sequence player has already
+  /// given up on it and a retry may have been made. Defaults to
+  /// [buzzQueueDeadline], the sequence player's per-step timeout.
+  ///
+  /// [onReply] hears this buzz's own reply (its status name, or null when none
+  /// came within [buzzReplyLogWindow]) and the ms since the call: the Device
+  /// lab's buzz probe uses it to see which commands the band took. Like
+  /// the log line, it never gates delivery.
+  Future<bool> buzzBand({
+    int holdMs = 0,
+    Duration maxQueueWait = buzzQueueDeadline,
+    void Function(String? status, int ms)? onReply,
+  }) async {
+    final owner = _session;
+    if (owner?.connected != true) return false;
+    if (holdMs < 0) return false;
+    final gen5 = owner!.band.isGen5;
+    final sent = DateTime.now();
+    final out = await _sendAwaited(
+      gen5 ? Cmd.runHapticPatternMaverick : Cmd.runHapticsPattern,
+      gen5
+          ? AlarmPayloads.gen5MaverickBuzz(overallLoop: holdMs >= 500 ? 2 : 1)
+          : [hapticShortPulse, 0, 0, 0, 0],
+      timeout: buzzReplyLogWindow,
+      owner: owner,
+      maxQueueWait: maxQueueWait,
+    );
+    if (!out.written) return false;
+    unawaited(out.response.then((reply) {
+      final ms = DateTime.now().difference(sent).inMilliseconds;
+      final line = reply == null
+          ? 'No reply from the band within $ms ms'
+          : 'Band replied ${_cmdStatusName(reply.status)} in $ms ms';
+      _log('[buzz] $line');
+      try {
+        onBuzzDiagnostic?.call(line);
+      } catch (_) {}
+      try {
+        onReply?.call(
+            reply == null ? null : _cmdStatusName(reply.status), ms);
+      } catch (_) {}
+    }));
+    return true;
+  }
+
+  /// Write one custom Maverick haptic pattern (the Device lab's pattern
+  /// probe): [effects] (1..8, each 1..255) played [loop] (1..3) times. Like
+  /// [buzzBand]: true when the write landed, the reply is only logged and
+  /// handed to [onReply], never gating delivery. False (nothing written) when
+  /// not connected, when the band is not gen5 (only the Maverick opcode takes
+  /// a pattern), or when the payload is invalid.
+  Future<bool> buzzMaverickPattern({
+    required List<int> effects,
+    int loop = 1,
+    Duration maxQueueWait = buzzQueueDeadline,
+    void Function(String? status, int ms)? onReply,
+  }) async {
+    final owner = _session;
+    if (owner?.connected != true || !owner!.band.isGen5) return false;
+    final List<int> body;
+    try {
+      body = AlarmPayloads.gen5MaverickPattern(effects, loop: loop);
+    } on ArgumentError {
+      return false;
+    }
+    final sent = DateTime.now();
+    final out = await _sendAwaited(
+      Cmd.runHapticPatternMaverick,
+      body,
+      timeout: buzzReplyLogWindow,
+      owner: owner,
+      maxQueueWait: maxQueueWait,
+    );
+    if (!out.written) return false;
+    unawaited(out.response.then((reply) {
+      final ms = DateTime.now().difference(sent).inMilliseconds;
+      final line = reply == null
+          ? 'No reply from the band within $ms ms'
+          : 'Band replied ${_cmdStatusName(reply.status)} in $ms ms';
+      _log('[buzz] pattern: $line');
+      try {
+        onBuzzDiagnostic?.call(line);
+      } catch (_) {}
+      try {
+        onReply?.call(
+            reply == null ? null : _cmdStatusName(reply.status), ms);
+      } catch (_) {}
+    }));
+    return true;
+  }
+
+  static String _cmdStatusName(int status) => switch (status) {
+        CommandAwaiter.statusSuccess => 'success',
+        CommandAwaiter.statusFailure => 'failure',
+        CommandAwaiter.statusPending => 'pending',
+        CommandAwaiter.statusUnsupported => 'unsupported',
+        _ => 'status $status',
+      };
+
   /// Play a haptic buzz. gen5 ("Maverick") has a DIFFERENT buzz opcode and
   /// payload shape than gen4 (`Cmd.runHapticPatternMaverick`, 12-byte body —
   /// see `cmdBuzzGen5Maverick` in protocol/commands.dart) — [pattern] is
   /// honoured only on gen4; a gen5 link always plays the strap's fixed
   /// `[47, 152]` waveform pair (the only Maverick buzz byte-verified so far).
   Future<void> buzzPattern(int pattern) {
+    // Gen5 cannot reproduce arbitrary pattern choices.
     if (_session?.band.isGen5 ?? false) {
       return _send(
         Cmd.runHapticPatternMaverick,

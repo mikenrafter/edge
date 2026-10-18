@@ -17,8 +17,31 @@
 
 import 'dart:async';
 
+import 'alert_dispatcher.dart';
+import 'alert_rule.dart';
+import 'notification_prefs.dart';
+
 class MedBuzzer {
-  MedBuzzer({required this.buzz, required this.isConnected});
+  MedBuzzer({
+    required this.buzz,
+    required this.isConnected,
+    AlertDispatcher? dispatcher,
+  }) : _legacyTransport = dispatcher == null,
+       dispatcher =
+           dispatcher ??
+           AlertDispatcher(
+             phone: () async => false,
+             band: () async {
+               await buzz();
+               return true;
+             },
+             isConnected: isConnected,
+             ledger: MemoryAlertDeliveryLedger(),
+           );
+
+  final bool _legacyTransport;
+  bool _disposed = false;
+  final AlertDispatcher dispatcher;
 
   /// Sends one short haptic to the strap (no-op if the link isn't ready).
   final Future<void> Function() buzz;
@@ -43,6 +66,7 @@ class MedBuzzer {
   void _reschedule() {
     _timer?.cancel();
     _timer = null;
+    if (_disposed) return;
     if (_slots.isEmpty) return;
 
     final now = DateTime.now();
@@ -56,16 +80,34 @@ class MedBuzzer {
   Future<void> _fire() async {
     // Consume the slot whether or not the buzz landed — the link being down at
     // the dose instant is not a reason to re-buzz minutes later.
-    if (_slots.isNotEmpty) _slots.removeAt(0);
+    final sourceTime = _slots.isNotEmpty ? _slots.removeAt(0) : DateTime.now();
     if (isConnected()) {
       try {
-        await buzz();
-      } catch (_) {/* link dropped mid-write — best effort */}
+        final rule = _legacyTransport
+            ? const AlertRule(
+                id: 'meds',
+                kind: 'meds',
+                destinations: 2,
+                executionMode: AlertExecutionMode.phoneLive,
+                channelPolicyId: 'meds',
+              )
+            : (await NotificationPrefs.load()).alertRule('meds');
+        await dispatcher.dispatch(
+          rule,
+          eventId: 'meds:${sourceTime.millisecondsSinceEpoch}',
+          sourceTime: sourceTime,
+          historical: false,
+          transportTargets: const {'band'},
+        );
+      } catch (_) {
+        /* link dropped mid-write — best effort */
+      }
     }
     _reschedule(); // arm the next dose, if any remain in this batch
   }
 
   void dispose() {
+    _disposed = true;
     _timer?.cancel();
     _timer = null;
     _slots = const [];

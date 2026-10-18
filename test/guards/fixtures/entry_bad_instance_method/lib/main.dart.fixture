@@ -1,0 +1,41 @@
+// FIXTURE: entry_bad_instance_method
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#Worker.runHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+class Worker {
+  const Worker();
+
+  @heavy
+  DayOut runHeavy(DayArgs a) {
+    assertWorker();
+    return DayOut(readinessCompute(a.hr).value);
+  }
+}
+
+const kWorker = Worker();
+
+class Caller {
+  Future<DayOut> go(int n, List<double> hr) => Isolate.run(() {
+        final a = DayArgs(n, hr);
+        return kWorker.runHeavy(a);
+      });
+}

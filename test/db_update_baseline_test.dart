@@ -101,14 +101,17 @@ void main() {
 
   test('a non-null return replaces the payload and advances updated_at',
       () async {
+    var clock = DateTime.utc(2026, 10, 5, 8).millisecondsSinceEpoch;
+    final systemNowMs = LocalDb.nowMs;
+    addTearDown(() => LocalDb.nowMs = systemNowMs);
+    LocalDb.nowMs = () => clock;
     await LocalDb.putBaseline('ub_replace', '{"n":1}');
     final before = await LocalDb.baseline('ub_replace');
     final beforeAt = before!['updated_at'] as int;
 
-    // updated_at is millisecond-resolution wall clock; without a gap the
-    // rewrite can land in the same millisecond and the assertion below would
-    // be testing the clock, not the write.
-    await Future<void>.delayed(const Duration(milliseconds: 5));
+    // updated_at is millisecond-resolution; the clock is moved explicitly so
+    // the assertion below tests the write, not the host clock.
+    clock += 5;
 
     await LocalDb.updateBaseline('ub_replace', (current) {
       final n = (jsonDecode(current!) as Map)['n'] as int;
@@ -117,7 +120,7 @@ void main() {
 
     final after = await LocalDb.baseline('ub_replace');
     expect(jsonDecode(after!['payload_json'] as String), {'n': 2});
-    expect(after['updated_at'] as int, greaterThan(beforeAt));
+    expect(after['updated_at'], beforeAt + 5);
   });
 
   test('sequential accumulate: every update observes the previous commit',

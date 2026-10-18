@@ -13,6 +13,69 @@ void main() {
     source: 'habitual',
   );
 
+  group('a pending main-alarm snooze', () {
+    BandPromptRequest snooze(Duration length, {Duration due = const Duration(minutes: 5)}) =>
+        BandPromptRequest.snooze(
+            now: now, due: now.add(due), snoozeLength: length);
+
+    test('prompts every snooze length (at most 900 s), until due + 15 min',
+        () {
+      final r = snooze(const Duration(minutes: 5));
+      expect(r.intervalSeconds, 300);
+      expect(r.reason, kSnoozePromptReason);
+      expect(r.until, now.add(const Duration(minutes: 20)));
+      expect(r.duration, const Duration(minutes: 20));
+    });
+
+    test('a 1-minute snooze is clamped to the 61 s gen5 accepts', () {
+      expect(snooze(const Duration(minutes: 1)).intervalSeconds, 61);
+    });
+
+    test('a 30-minute snooze never prompts slower than the 900 s background '
+        'keep-alive', () {
+      expect(snooze(const Duration(minutes: 30)).intervalSeconds, 900);
+    });
+
+    test('an overdue snooze (re-alarm retrying) still holds a lease from now',
+        () {
+      final r = snooze(const Duration(minutes: 5),
+          due: const Duration(minutes: -3));
+      expect(r.until, now.add(kSnoozePromptTail));
+    });
+
+    test('it beats the background keep-alive and nothing, but not smart wake',
+        () {
+      final s = snooze(const Duration(minutes: 5));
+      expect(
+          BandPromptPolicy.plan(
+              smartWake: null,
+              snooze: s,
+              iosBackgrounded: true,
+              currentReason: kIosBackgroundPromptReason,
+              currentUntil: now.add(const Duration(hours: 1)),
+              now: now),
+          s);
+      expect(
+          BandPromptPolicy.plan(
+              smartWake: null,
+              snooze: s,
+              iosBackgrounded: false,
+              currentReason: null,
+              currentUntil: null,
+              now: now),
+          s);
+      expect(
+          BandPromptPolicy.plan(
+              smartWake: smartWake,
+              snooze: s,
+              iosBackgrounded: false,
+              currentReason: null,
+              currentUntil: null,
+              now: now),
+          smartWake);
+    });
+  });
+
   group('BandPromptPolicy.plan', () {
     test('nothing wants a prompt → null', () {
       expect(

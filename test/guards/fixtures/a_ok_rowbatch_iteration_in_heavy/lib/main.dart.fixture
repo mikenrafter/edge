@@ -1,0 +1,42 @@
+// FIXTURE: a_ok_rowbatch_iteration_in_heavy
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+import 'package:openstrap_edge/util/raw_readers.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#meanHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+typedef Row = Map<String, Object?>;
+
+@heavy
+DayOut meanHeavy(DayArgs a) {
+  assertWorker();
+  final batch = RowBatch<Row>.wrap([for (final h in a.hr) {'hr': h}]);
+  var sum = 0.0;
+  for (final row in batch) {
+    sum += (row['hr'] as num).toDouble();
+  }
+  return DayOut(sum);
+}
+class Caller {
+  Future<DayOut> via_meanHeavy_call(int n, List<double> hr) => Isolate.run(() {
+    final a = DayArgs(n, hr);
+    return meanHeavy(a);
+  });
+}

@@ -33,6 +33,7 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+android/local.properties
 /coverage/
 
 # Symbolication related
@@ -119,3 +120,6 @@ docs/internal/
 payload*.json
 
 MULTIDEVICE_PROGRESS.md
+
+# flutter golden mismatch artifacts
+test/proof/failures/

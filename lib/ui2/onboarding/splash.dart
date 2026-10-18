@@ -74,17 +74,19 @@ class _Cover extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    // Dark whatever the theme: the native launch window is dark for everyone
+    // (no flashbang for light-mode users), so the cover matches it and a
+    // light theme fades in from dark via the AnimatedOpacity above.
     // Material, not ColoredBox: the cover sits at MaterialApp.home, above every
     // route, so its own text has no Material ancestor to inherit from and debug
     // builds painted the missing-Material underline right across the wordmark.
     return Material(
-      color: p.bg,
+      color: C.launchDark,
       child: Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(LucideIcons.activity, size: 44, color: p.on(C.green)),
+          Icon(LucideIcons.activity, size: 44, color: C.green),
           const SizedBox(height: S.x4),
-          Text('OpenStrap', style: F.t2.copyWith(color: p.ink)),
+          Text('OpenStrap', style: F.t2.copyWith(color: C.n50)),
         ]),
       ),
     );

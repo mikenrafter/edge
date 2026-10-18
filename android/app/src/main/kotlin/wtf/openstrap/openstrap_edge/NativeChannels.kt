@@ -72,6 +72,7 @@ object NativeChannels {
         // so the channel exists headless; the sensor listener itself arms on the first
         // Dart call, which only happens when the user has phone steps switched on.
         PhoneStepCounter.register(engine, app)
+        NotificationRelayBridge.register(engine, app)
 
         MethodChannel(engine.dartExecutor.binaryMessenger, EDGE_TRACKING_CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -192,7 +193,14 @@ object NativeChannels {
                             "broadcast_to_tasker"
                         )
                     )
-                    "perform" -> result.success(perform(app, call.argument<String>("action") ?: ""))
+                    "perform" -> result.success(
+                        perform(
+                            app,
+                            call.argument<String>("action") ?: "",
+                            call.argument<String>("slot"),
+                            call.argument<Int>("taps")
+                        )
+                    )
                     else -> result.notImplemented()
                 }
             }
@@ -255,6 +263,15 @@ object NativeChannels {
                             result.success(false)
                         } else {
                             val intent = Intent("$EVENT_ACTION_PREFIX$name")
+                            // A health-carrying event (MOMENT_REVIEWED) names the
+                            // one app that may receive it; without this the
+                            // implicit broadcast reaches every app on the phone.
+                            // SYNC_COMPLETE sends no package and stays open to
+                            // Tasker, Automate and MacroDroid. NOT yet tested on
+                            // a device.
+                            call.argument<String>("package")
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { intent.setPackage(it) }
                             call.argument<Map<String, Any>>("extras")
                                 ?.forEach { (k, v) ->
                                     when (v) {
@@ -262,6 +279,12 @@ object NativeChannels {
                                         is Long -> intent.putExtra(k, v)
                                         is Boolean -> intent.putExtra(k, v)
                                         is String -> intent.putExtra(k, v)
+                                        // A typed dose (MOMENT_REVIEWED's
+                                        // `value`, e.g. 1.5 units). NOT yet
+                                        // tested on a device: the Dart side
+                                        // is pinned by test, this branch is
+                                        // not.
+                                        is Double -> intent.putExtra(k, v)
                                     }
                                 }
                             app.sendBroadcast(intent)
@@ -320,7 +343,7 @@ object NativeChannels {
         }
     }
 
-    private fun perform(ctx: Context, action: String): Boolean {
+    private fun perform(ctx: Context, action: String, slot: String? = null, taps: Int? = null): Boolean {
         return try {
             when (action) {
                 "media_play_pause" -> dispatchMediaKey(ctx, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
@@ -330,7 +353,7 @@ object NativeChannels {
                 "volume_down" -> adjustVolume(ctx, AudioManager.ADJUST_LOWER)
                 "ring_phone" -> ringPhone(ctx)
                 "torch" -> toggleTorch(ctx)
-                "broadcast_to_tasker" -> sendTaskerBroadcast(ctx)
+                "broadcast_to_tasker" -> sendTaskerBroadcast(ctx, slot, taps)
                 else -> return false
             }
             true
@@ -556,11 +579,16 @@ object NativeChannels {
     /** Send a broadcast intent so Tasker (or any automation app) can subscribe
      * to band double-taps. The intent action is
      * `wtf.openstrap.openstrap_edge.DOUBLE_TAP`; Tasker listens via
-     * Event → Intent Received.
+     * Event → Intent Received. The name is historical: it is sent for every
+     * counted gesture. Extras: `slot` (String: double, triple, quad, quint)
+     * and `taps` (Int, 2..5), so a profile can tell a double from a triple.
+     * Each is omitted when Dart did not send it.
      */
-    private fun sendTaskerBroadcast(ctx: Context) {
+    private fun sendTaskerBroadcast(ctx: Context, slot: String?, taps: Int?) {
         val intent = Intent(ACTION_DOUBLE_TAP).apply {
             addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+            if (slot != null) putExtra("slot", slot)
+            if (taps != null) putExtra("taps", taps)
         }
         ctx.sendBroadcast(intent)
     }

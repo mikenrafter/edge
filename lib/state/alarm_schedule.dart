@@ -7,8 +7,8 @@
 // storage/UI indexing choice, not a replacement for `DateTime.weekday`
 // (1=Mon..7=Sun), which every conversion below still goes through explicitly.
 
-import '../ble/ble_engine.dart';
-import '../ble/ble_state.dart' show AlarmConfirmation;
+import '../ble/ble_state.dart' show AlarmBandWriter, AlarmConfirmation;
+import '../wake/wake_settings.dart';
 
 /// One weekday's slot in the schedule. Immutable — callers build a new one to
 /// change a field.
@@ -24,7 +24,22 @@ class AlarmScheduleEntry {
   /// this is how much EARLIER than that the app may try an early buzz once it
   /// detects light sleep. It never moves, shortens, or cancels the fallback
   /// arm; see smart_wake.dart.
+  ///
+  /// LEGACY: superseded by [naturalWindowMinutes]. Kept (never dropped) so a
+  /// rollback finds what it expects, and because it still drives the old
+  /// light-sleep heuristic for users whose Smart Wake upgrade explanation is
+  /// pending ([WakeUpgradeState.pending]).
   final int smartWindowMinutes;
+
+  /// Natural Wake window, minutes before the must-be-up-by time (0 = off,
+  /// 15..120 in steps of 15). Independent of [gradualWindowMinutes].
+  final int naturalWindowMinutes;
+
+  /// Gradual Wake window, minutes before the must-be-up-by time (0 = off).
+  /// Never enabled by a migration.
+  final int gradualWindowMinutes;
+  final GradualPattern gradualPattern;
+  final int gradualCadenceSec;
 
   const AlarmScheduleEntry({
     required this.weekday,
@@ -32,6 +47,10 @@ class AlarmScheduleEntry {
     required this.minute,
     this.enabled = true,
     this.smartWindowMinutes = 0,
+    this.naturalWindowMinutes = 0,
+    this.gradualWindowMinutes = 0,
+    this.gradualPattern = GradualPattern.ramp,
+    this.gradualCadenceSec = kGradualCadenceDefaultSec,
   });
 
   AlarmScheduleEntry copyWith({
@@ -39,6 +58,10 @@ class AlarmScheduleEntry {
     int? minute,
     bool? enabled,
     int? smartWindowMinutes,
+    int? naturalWindowMinutes,
+    int? gradualWindowMinutes,
+    GradualPattern? gradualPattern,
+    int? gradualCadenceSec,
   }) =>
       AlarmScheduleEntry(
         weekday: weekday,
@@ -46,6 +69,10 @@ class AlarmScheduleEntry {
         minute: minute ?? this.minute,
         enabled: enabled ?? this.enabled,
         smartWindowMinutes: smartWindowMinutes ?? this.smartWindowMinutes,
+        naturalWindowMinutes: naturalWindowMinutes ?? this.naturalWindowMinutes,
+        gradualWindowMinutes: gradualWindowMinutes ?? this.gradualWindowMinutes,
+        gradualPattern: gradualPattern ?? this.gradualPattern,
+        gradualCadenceSec: gradualCadenceSec ?? this.gradualCadenceSec,
       );
 
   factory AlarmScheduleEntry.fromRow(Map<String, Object?> row) =>
@@ -55,7 +82,25 @@ class AlarmScheduleEntry {
         minute: row['minute'] as int,
         enabled: (row['enabled'] as int) != 0,
         smartWindowMinutes: (row['smart_window_minutes'] as int?) ?? 0,
+        naturalWindowMinutes: (row['natural_window_minutes'] as int?) ?? 0,
+        gradualWindowMinutes: (row['gradual_window_minutes'] as int?) ?? 0,
+        gradualPattern: GradualPattern.parse(row['gradual_pattern']),
+        gradualCadenceSec:
+            (row['gradual_cadence_sec'] as int?) ?? kGradualCadenceDefaultSec,
       );
+
+  /// The `alarm_schedule` row for this entry; the inverse of [fromRow].
+  Map<String, Object?> toRow() => {
+        'weekday': weekday,
+        'hour': hour,
+        'minute': minute,
+        'enabled': enabled ? 1 : 0,
+        'smart_window_minutes': smartWindowMinutes,
+        'natural_window_minutes': naturalWindowMinutes,
+        'gradual_window_minutes': gradualWindowMinutes,
+        'gradual_pattern': gradualPattern.name,
+        'gradual_cadence_sec': gradualCadenceSec,
+      };
 
   @override
   bool operator ==(Object other) =>
@@ -64,16 +109,84 @@ class AlarmScheduleEntry {
       other.hour == hour &&
       other.minute == minute &&
       other.enabled == enabled &&
-      other.smartWindowMinutes == smartWindowMinutes;
+      other.smartWindowMinutes == smartWindowMinutes &&
+      other.naturalWindowMinutes == naturalWindowMinutes &&
+      other.gradualWindowMinutes == gradualWindowMinutes &&
+      other.gradualPattern == gradualPattern &&
+      other.gradualCadenceSec == gradualCadenceSec;
 
   @override
-  int get hashCode =>
-      Object.hash(weekday, hour, minute, enabled, smartWindowMinutes);
+  int get hashCode => Object.hash(weekday, hour, minute, enabled,
+      smartWindowMinutes, naturalWindowMinutes, gradualWindowMinutes,
+      gradualPattern, gradualCadenceSec);
 
   @override
   String toString() =>
       'AlarmScheduleEntry(weekday: $weekday, hour: $hour, minute: $minute, '
-      'enabled: $enabled, smartWindowMinutes: $smartWindowMinutes)';
+      'enabled: $enabled, smartWindowMinutes: $smartWindowMinutes, '
+      'naturalWindowMinutes: $naturalWindowMinutes, '
+      'gradualWindowMinutes: $gradualWindowMinutes)';
+}
+
+/// The window whose lead time high-frequency collection must cover for [e]:
+/// Natural once the upgrade explanation is settled, the legacy Smart window
+/// while it is pending (that is the behaviour still running).
+int collectionWindowMinutes(AlarmScheduleEntry e, WakeUpgradeState upgrade) =>
+    upgrade == WakeUpgradeState.pending
+        ? e.smartWindowMinutes
+        : e.naturalWindowMinutes;
+
+/// The armed alarm's collection window under [upgrade], or null when there is
+/// no armed [epoch] or that weekday has no window. Same lookup as
+/// [armedSmartWakeWindow], but follows Natural Wake instead of the legacy
+/// Smart window once the upgrade is settled.
+({DateTime windowEnd, int minutes})? armedCollectionWindow({
+  required int? epoch,
+  required List<AlarmScheduleEntry> schedule,
+  required WakeUpgradeState upgrade,
+}) {
+  if (epoch == null) return null;
+  final windowEnd = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
+  final entry = schedule
+      .where((e) => e.weekday == windowEnd.weekday - 1)
+      .firstOrNull;
+  if (entry == null) return null;
+  final minutes = collectionWindowMinutes(entry, upgrade);
+  if (minutes <= 0) return null;
+  return (windowEnd: windowEnd, minutes: minutes);
+}
+
+/// The wake occurrence whose Natural window high-frequency collection must
+/// serve, whether or not this process currently TRACKS an armed alarm.
+///
+/// [armedCollectionWindow] needs the armed epoch. That epoch is app state: it
+/// is cleared when an alarm fires (and the fire event is routinely missed), by
+/// a replayed band event, on a reinstall or a prefs wipe, and it is simply
+/// absent until the first arm after a launch. In every one of those the user's
+/// schedule still says "wake at T with a Natural window", the band is still (or
+/// about to be) armed for T, and collection has to cover the window anyway.
+/// So: a FUTURE armed epoch wins (it is what the band holds), otherwise the next
+/// enabled occurrence of the schedule, searched the way the arm engine
+/// searches ([armSearchFrom], so an acknowledged occurrence is not planned).
+({DateTime windowEnd, int minutes})? plannedCollectionWindow({
+  required int? epoch,
+  required List<AlarmScheduleEntry> schedule,
+  required WakeUpgradeState upgrade,
+  DateTime? now,
+  int? ackedThroughEpochSec,
+}) {
+  final at = now ?? DateTime.now();
+  if (epoch != null && epoch * 1000 > at.millisecondsSinceEpoch) {
+    return armedCollectionWindow(
+        epoch: epoch, schedule: schedule, upgrade: upgrade);
+  }
+  final next =
+      nextAlarmOccurrence(schedule, armSearchFrom(at, ackedThroughEpochSec));
+  if (next == null) return null;
+  return armedCollectionWindow(
+      epoch: next.millisecondsSinceEpoch ~/ 1000,
+      schedule: schedule,
+      upgrade: upgrade);
 }
 
 /// Whether a smart-wake early-fire attempt should happen right now.
@@ -197,8 +310,21 @@ DateTime alarmRearmFrom(DateTime now, int? firedEpoch) {
 /// was refused/failed). [disabled] is true only when this call actively sent
 /// DISABLE_ALARM because the schedule now has nothing enabled but the strap
 /// still held a live arm — the case a caller must clear its own
-/// persisted/optimistic epoch for.
-typedef AlarmArmResult = ({int? epoch, bool disabled});
+/// persisted/optimistic epoch for. [refused] is true when a SET_ALARM was
+/// attempted and the band did not take it (the write never left the phone, or
+/// the strap answered no): the one case where "epoch is null" means failure
+/// rather than "nothing to do".
+typedef AlarmArmResult = ({int? epoch, bool disabled, bool refused});
+
+/// Where the search for the next occurrence starts. Normally [now]; but after
+/// the user explicitly acknowledged a wake and cancelled its native alarm
+/// ([ackedThroughEpochSec], unix s), that occurrence must not be re-armed by
+/// the next connect or sync, so the search starts just after it.
+DateTime armSearchFrom(DateTime now, int? ackedThroughEpochSec) {
+  if (ackedThroughEpochSec == null) return now;
+  final acked = DateTime.fromMillisecondsSinceEpoch(ackedThroughEpochSec * 1000);
+  return acked.isBefore(now) ? now : acked.add(const Duration(seconds: 1));
+}
 
 /// Arms [engine] with the next scheduled occurrence, if one exists and it
 /// differs from [currentArmedEpoch] (unix seconds) — the "don't hammer the
@@ -208,25 +334,35 @@ typedef AlarmArmResult = ({int? epoch, bool disabled});
 /// tested independently with no engine, and the wire form is whatever
 /// `engine.setAlarm` already sends (rev1 gen4 / gen5 rich — unchanged here).
 Future<AlarmArmResult> armNextScheduledOccurrence({
-  required BleEngine engine,
+  required AlarmBandWriter engine,
   required List<AlarmScheduleEntry> schedule,
   required int? currentArmedEpoch,
   DateTime? now,
+  int? ackedThroughEpochSec,
 }) async {
-  final next = nextAlarmOccurrence(schedule, now ?? DateTime.now());
+  final next = nextAlarmOccurrence(
+      schedule, armSearchFrom(now ?? DateTime.now(), ackedThroughEpochSec));
   if (next == null) {
     // Nothing enabled. Toggling every weekday off individually (rather than
     // an explicit cancel-all) must not leave the strap holding its last arm
     // forever — nothing else in this flow ever tells the band to give it up.
-    if (currentArmedEpoch == null) return (epoch: null, disabled: false);
+    if (currentArmedEpoch == null) {
+      return (epoch: null, disabled: false, refused: false);
+    }
     await engine.disableAlarm();
-    return (epoch: null, disabled: true);
+    return (epoch: null, disabled: true, refused: false);
   }
   final epoch = next.millisecondsSinceEpoch ~/ 1000;
-  if (epoch == currentArmedEpoch) return (epoch: null, disabled: false);
+  if (epoch == currentArmedEpoch) {
+    return (epoch: null, disabled: false, refused: false);
+  }
   final armed = await engine.setAlarm(next);
-  if (armed == null) return (epoch: null, disabled: false);
-  return (epoch: armed.millisecondsSinceEpoch ~/ 1000, disabled: false);
+  if (armed == null) return (epoch: null, disabled: false, refused: true);
+  return (
+    epoch: armed.millisecondsSinceEpoch ~/ 1000,
+    disabled: false,
+    refused: false
+  );
 }
 
 /// The weekday/hour/minute a legacy single-alarm epoch maps onto, for the

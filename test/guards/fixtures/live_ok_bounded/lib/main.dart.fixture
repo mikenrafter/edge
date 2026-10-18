@@ -1,0 +1,15 @@
+// FIXTURE: live_ok_bounded
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+
+@live
+double zoneFor(double hr) {
+  var z = 0.0;
+  for (var i = 0; i < 5; i++) {
+    z += hr * 0.1;
+  }
+  for (final c in const [1.0, 2.0, 3.0]) {
+    z += c;
+  }
+  return z + (kZoneTable['z1'] ?? 0);
+}

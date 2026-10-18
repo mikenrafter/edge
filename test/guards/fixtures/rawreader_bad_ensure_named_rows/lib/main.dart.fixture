@@ -1,0 +1,20 @@
+// FIXTURE: rawreader_bad_ensure_named_rows
+// The name loophole is closed: a method that RETURNS ROWS is a raw reader even
+// when it is called ensure*/repair*/backfill*/migrate*. Only an explicit
+// kMigrationMethods entry (symbol + reason, in the guard config) exempts one.
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<List<Row>> ensureRows() => _db.query('raw_records');
+  Future<List<Row>> _repairRows() => _db.query('decoded_rr');
+  Future<List<Row>> backfillRows() => _db.query('decoded_onehz');
+}

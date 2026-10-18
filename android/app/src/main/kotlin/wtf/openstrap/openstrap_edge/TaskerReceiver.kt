@@ -9,11 +9,43 @@ import android.util.Log
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.plugin.common.MethodChannel
 
+/*
+ * Device test checklist (none of this can run in CI; do it on a phone with
+ * Tasker, the band connected, and Settings -> Automation -> "Tasker
+ * connection" ON). Every intent below needs Package =
+ * wtf.openstrap.openstrap_edge and the String extra token from
+ * Settings -> Automation.
+ *
+ *  1. BUZZ_STRAP, extra pattern=1: the band buzzes once. Without the token,
+ *     or without the Package, nothing happens (logcat tag TaskerReceiver says
+ *     "rejected").
+ *  2. PLAY_HAPTIC, slot=3 (Tasker's Int or Str): the band plays three short
+ *     pulses. slot=1..6 each play that many pulses.
+ *  3. PLAY_HAPTIC, slot=tasker.2: two pulses. slot=breath.done and
+ *     slot=alert.water play those slots' patterns.
+ *  4. PLAY_HAPTIC, pattern=sys.preset.sos: the SOS preset plays. A pattern id
+ *     saved in the app's Haptics screen plays too.
+ *  5. PLAY_HAPTIC, slot=7 or pattern=nope: nothing plays; the app log has a
+ *     "[tasker] ignored" line.
+ *  6. Put another pattern on Tasker slot 2 (Haptics -> Tasker) and repeat 2.
+ *  7. Turn "Tasker connection" OFF and repeat 1 and 2: nothing plays. Gesture
+ *     tab: the Broadcast to Tasker switch is dimmed with "Turn on Tasker
+ *     first".
+ *  8. Send two PLAY_HAPTIC intents less than 1.5 s apart: the second is
+ *     dropped ("rate-limited"). Spend the band's command window (many plays):
+ *     later plays wait, they do not cut in.
+ *  9. Force-stop the app (engine dead) and send PLAY_HAPTIC: nothing plays,
+ *     logcat says "engine dead, dropping". (BUZZ_STRAP still persists its
+ *     pending flag, as before.)
+ * 10. Map Broadcast to Tasker to the double AND the triple tap. A Tasker
+ *     "Intent Received" profile on wtf.openstrap.openstrap_edge.DOUBLE_TAP
+ *     sees slot=double / taps=2 for one, slot=triple / taps=3 for the other.
+ */
 class TaskerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
         Log.i(TAG, "onReceive: action=$action")
-        if (action != ACTION_BUZZ_STRAP) return
+        if (action != ACTION_BUZZ_STRAP && action != ACTION_PLAY_HAPTIC) return
 
         // The token rides as a plain intent extra. If Tasker (or anything
         // else) sends this as an IMPLICIT broadcast (no setPackage/
@@ -51,11 +83,16 @@ class TaskerReceiver : BroadcastReceiver() {
         }
         lastAcceptedElapsedMs = nowElapsed
 
-        val pattern = intent.getIntExtra(EXTRA_PATTERN, DEFAULT_PATTERN)
-        Log.i(TAG, "pattern=$pattern")
-
         val engine = FlutterEngineCache.getInstance()
             .get(EdgeApplication.ENGINE_ID)
+
+        if (action == ACTION_PLAY_HAPTIC) {
+            playHaptic(intent, engine)
+            return
+        }
+
+        val pattern = intent.getIntExtra(EXTRA_PATTERN, DEFAULT_PATTERN)
+        Log.i(TAG, "pattern=$pattern")
 
         if (engine != null) {
             Log.i(TAG, "engine alive, invoking method channel")
@@ -81,11 +118,43 @@ class TaskerReceiver : BroadcastReceiver() {
         EdgeTrackingService.start(context)
     }
 
+    /**
+     * PLAY_HAPTIC: forward `slot` (an Int 1..6, or a String: a number or a slot
+     * key) or `pattern` (a String id) to Dart as `tasker_play`; Dart decides
+     * whether it is known, whether the Tasker connection is on and when the
+     * band can take it. Dropped, not persisted, when the engine is dead.
+     */
+    private fun playHaptic(intent: Intent, engine: io.flutter.embedding.engine.FlutterEngine?) {
+        if (engine == null) {
+            Log.w(TAG, "engine dead, dropping PLAY_HAPTIC")
+            return
+        }
+        val args = java.util.HashMap<String, Any>()
+        // Tasker may send a number as an Int or as text; pass either through.
+        val extras = intent.extras
+        extras?.get(EXTRA_SLOT)?.let { if (it is Int || it is String) args["slot"] = it }
+        if (!args.containsKey("slot")) {
+            intent.getStringExtra(EXTRA_PATTERN_ID)?.let { args["pattern"] = it }
+        }
+        if (args.isEmpty()) {
+            Log.w(TAG, "PLAY_HAPTIC without a slot or pattern")
+            return
+        }
+        Log.i(TAG, "PLAY_HAPTIC $args")
+        MethodChannel(engine.dartExecutor.binaryMessenger, NativeChannels.TASKER_CHANNEL)
+            .invokeMethod("tasker_play", args)
+    }
+
     companion object {
         const val TAG = "TaskerReceiver"
         const val ACTION_BUZZ_STRAP =
             "wtf.openstrap.openstrap_edge.BUZZ_STRAP"
+        const val ACTION_PLAY_HAPTIC =
+            "wtf.openstrap.openstrap_edge.PLAY_HAPTIC"
         const val EXTRA_PATTERN = "pattern"
+        // PLAY_HAPTIC: `slot` (Int or String) or `pattern` (String id).
+        const val EXTRA_SLOT = "slot"
+        const val EXTRA_PATTERN_ID = "pattern"
         const val EXTRA_TOKEN = "token"
         const val PENDING_BUZZ_KEY = "pending_tasker_buzz"
         const val PENDING_PATTERN_KEY = "pending_tasker_buzz_pattern"

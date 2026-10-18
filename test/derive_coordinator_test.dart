@@ -1,328 +1,405 @@
+// Derive area: DeriveCoordinator in isolation, with fake collaborators. The
+// same behaviours are pinned through AppState in the app_state_derive_* tests;
+// these prove the coordinator stands on its own and never reaches for AppState.
+
 import 'dart:async';
+import 'dart:io';
 
-import 'package:fake_async/fake_async.dart';
-import 'package:flutter/foundation.dart' show FlutterError;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:openstrap_edge/compute/derivation_engine.dart';
+import 'package:openstrap_edge/compute/derive_scheduler.dart';
+import 'package:openstrap_edge/compute/periodic_calculation_policy.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/state/derive_coordinator.dart';
+import 'package:openstrap_edge/state/recalc_state.dart';
+import 'package:openstrap_edge/wake/wake_orchestrator.dart' show WakeSamples;
+
+import 'support/scripted_artifact_source.dart';
+import 'support/app_state_derive_harness.dart';
+
+const _db = 'openstrap_app_state_derive_coordinator.db';
+
+/// A host for the coordinator: every collaborator is a recorder.
+class FakeHost {
+  final logs = <String>[];
+  int notifies = 0;
+  bool disposed = false;
+  bool warmHeld = false;
+  bool healthSync = false;
+  bool telemetry = false;
+  bool healthShare = false;
+  int steps = 0;
+  int recovery = 0;
+  int exports = 0;
+  int reclaims = 0;
+  Object? exportThrows;
+
+  late final DeriveCoordinator coordinator = DeriveCoordinator(
+    engine: () => engine ??= DerivationEngine(log: logs.add),
+    profile: () => Profile.fromMap(const <String, dynamic>{}),
+    log: logs.add,
+    notify: () => notifies++,
+    isDisposed: () => disposed,
+    repo: () => null,
+    warmHeld: () => warmHeld,
+    refreshPhoneStepsToday: () async => steps++,
+    maybeNotifyRecoveryReady: () async => recovery++,
+    runHealthExport: () async {
+      exports++;
+      if (exportThrows != null) throw exportThrows!;
+      return 2;
+    },
+    healthSyncEnabled: () => healthSync,
+    telemetryConsent: () => telemetry,
+    healthShareConsent: () => healthShare,
+    maybeReclaimDiskSpace: () async => reclaims++,
+    calculationPolicy: policy,
+  );
+
+  DerivationEngine? engine;
+  PeriodicCalculationPolicy? policy;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final logs = <String>[];
-  var notifies = 0;
-  var phoneSteps = 0;
-  var recoveryChecks = 0;
-  var exports = 0;
-  var reclaims = 0;
+  setUpAll(() => deriveDbSetUp(_db));
+  tearDownAll(() => deriveDbTearDown(_db));
+  setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  setUp(() {
-    logs.clear();
-    notifies = 0;
-    phoneSteps = 0;
-    recoveryChecks = 0;
-    exports = 0;
-    reclaims = 0;
+  late FakeHost host;
+  DeriveCoordinator make() {
+    final c = host.coordinator;
+    addTearDown(c.dispose);
+    c.debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
+    return c;
+  }
+
+  setUp(() => host = FakeHost());
+
+  group('construction', () {
+    test('touches no collaborator until a pass runs (the engine in particular '
+        'is resolved lazily)', () {
+      final c = make();
+      expect(host.engine, isNull);
+      expect(host.notifies, 0);
+      expect(host.logs, isEmpty);
+      expect(c.recalc.value, RecalcState.idle);
+      expect(c.insightsRevision.value, 0);
+      expect(c.lastHomeRenderMs, isNull);
+    });
+
+    test('the notifiers are single objects', () {
+      final c = make();
+      expect(identical(c.insightsRevision, c.insightsRevision), isTrue);
+      expect(identical(c.recalc, c.recalc), isTrue);
+      expect(identical(c.scheduler, c.scheduler), isTrue);
+    });
   });
 
-  DeriveCoordinator make({
-    bool Function()? background,
-    bool Function()? disposed,
-    bool healthSync = false,
-    Future<int> Function()? runHealthExport,
-  }) =>
-      DeriveCoordinator(
-        // Every test installs a debug hook for the engine calls, so any real
-        // engine access is a laziness regression.
-        derive: () => throw StateError('derive should stay lazy'),
-        profile: () => const Profile(),
-        repo: () => null,
-        background: background ?? () => false,
-        disposed: disposed ?? () => false,
-        log: logs.add,
-        notify: () => notifies++,
-        refreshPhoneStepsToday: () async => phoneSteps++,
-        maybeNotifyRecoveryReady: () async => recoveryChecks++,
-        runHealthExport: runHealthExport ??
-            () async {
-              exports++;
-              return 2;
-            },
-        healthSyncEnabled: () => healthSync,
-        telemetryConsent: () => false,
-        healthShareConsent: () => false,
-        maybeReclaimDiskSpace: () async => reclaims++,
+  group('a pass', () {
+    test('forwards its flags and maps the outcome', () async {
+      final c = make();
+      final calls = <HookCall>[];
+      c.debugDeriveRun = deriveHook(days: ['d2', 'd1'], calls: calls);
+      final o = await c.debugRunScheduled(kind: DeriveJobKind.light);
+      expect(calls.single.heavy, isFalse);
+      expect(calls.single.changedOnly, isTrue);
+      expect(o.complete, isTrue);
+      expect(o.computed, 2);
+
+      await c.debugRunScheduled(kind: DeriveJobKind.heavy);
+      expect(calls.last.heavy, isTrue);
+      expect(calls.last.changedOnly, isFalse);
+    });
+
+    test('a throw is a failed outcome carrying the error', () async {
+      final c = make();
+      c.debugDeriveRun = deriveHook(throws: StateError('nope'));
+      final o = await c.afterDrain();
+      expect(o.failed, isTrue);
+      expect(o.error, contains('nope'));
+      expect(host.notifies, 0);
+    });
+
+    test('notify counts per pass (day 1, every 3rd, last, plus the publish)',
+        () async {
+      final c = make();
+      c.debugDeriveRun = deriveHook(days: ['d4', 'd3', 'd2', 'd1']);
+      await c.afterDrain();
+      expect(host.notifies, 4);
+    });
+
+    test('the phone-step refresh runs once per full pass; recovery-ready and '
+        'disk reclaim only after a heavy one', () async {
+      final c = make();
+      c.debugDeriveRun = deriveHook(days: ['d1']);
+      await c.afterDrain();
+      await settleMs();
+      expect((host.steps, host.recovery, host.reclaims), (1, 0, 0));
+      await c.afterDrain(heavy: true);
+      await settleMs();
+      expect((host.steps, host.recovery, host.reclaims), (2, 1, 1));
+    });
+
+    test('the nothing-changed early return skips the post-derive callbacks '
+        'unless it is an automatic pass (which only refreshes steps)',
+        () async {
+      final c = make();
+      c.debugDeriveRun = deriveHook(scope: 0);
+      await c.afterDrain(changedOnly: true);
+      await settleMs();
+      expect((host.steps, host.notifies), (0, 0));
+      await c.debugRunScheduled(kind: DeriveJobKind.light);
+      await settleMs();
+      expect(host.steps, 1);
+      expect(host.recovery, 0);
+    });
+
+    test('the health export runs only when sync is on, and a failure is '
+        'logged, never thrown', () async {
+      final c = make();
+      c.debugDeriveRun = deriveHook(days: ['d1']);
+      await c.afterDrain();
+      await settleMs();
+      expect(host.exports, 0);
+
+      host.healthSync = true;
+      await c.afterDrain();
+      await settleMs();
+      expect(host.exports, 1);
+      expect(host.logs, contains('[health] exported 2 day(s)'));
+
+      host.exportThrows = StateError('no health');
+      final o = await c.afterDrain();
+      await settleMs();
+      expect(host.exports, 2);
+      expect(o.failed, isFalse);
+      expect(host.logs.any((l) => l.startsWith('[health] export failed')),
+          isTrue);
+    });
+
+    test('a pass that finishes after the host is disposed sets no recalc and '
+        'bumps nothing from the clear path', () async {
+      final c = make();
+      host.disposed = true;
+      c.debugDeriveRun = deriveHook(days: ['d2', 'd1']);
+      var recalcTicks = 0;
+      c.recalc.addListener(() => recalcTicks++);
+      await c.afterDrain();
+      await settleMs();
+      expect(recalcTicks, 0);
+      expect(c.recalc.value, RecalcState.idle);
+    });
+  });
+
+  group('recalc and revision', () {
+    test('bumpInsights moves only the revision', () {
+      final c = make();
+      var recalcTicks = 0;
+      c.recalc.addListener(() => recalcTicks++);
+      c.bumpInsights();
+      expect(c.insightsRevision.value, 1);
+      expect((host.notifies, recalcTicks), (0, 0));
+    });
+
+    test('the owner that set the days is the only one that clears them',
+        () async {
+      final c = make();
+      final gate = Completer<void>();
+      c.debugDeriveRun =
+          deriveHook(days: ['d2', 'd1'], gate: gate, holdAfter: 0);
+      final running = c.afterDrain();
+      await until(() => c.recalc.value.days.length == 2);
+      c.debugDeriveRun = deriveHook(reportScope: false, returns: 0);
+      await c.afterDrain();
+      expect(c.recalc.value.days, {'d2', 'd1'});
+      gate.complete();
+      await running;
+      expect(c.recalc.value, RecalcState.idle);
+    });
+
+    test('debugSetRecalc writes the notifier', () {
+      final c = make();
+      final s = RecalcState(days: {'x'}, passStartedAt: DateTime(2026));
+      c.debugSetRecalc(s);
+      expect(c.recalc.value, s);
+    });
+
+    test('recordHomeRender stores and logs', () {
+      final c = make();
+      c.recordHomeRender(33);
+      expect(c.lastHomeRenderMs, 33);
+      expect(host.logs, contains('[perf] home render 33 ms'));
+    });
+
+    test('lastPassPerf reads the engine\'s snapshot, null before a pass',
+        () {
+      final c = make();
+      expect(c.lastPassPerf, isNull);
+      expect(host.engine, isNotNull);
+    });
+  });
+
+  group('warmer', () {
+    test('warms the days a productive pass reported', () async {
+      final src = FakeArtifactSource();
+      final c = make()..debugArtifactSource = src;
+      c.debugDeriveRun = deriveHook(days: ['d2', 'd1']);
+      await c.afterDrain();
+      await until(() => src.candidateCalls.isNotEmpty);
+      expect(src.candidateCalls, [
+        ['d2', 'd1']
+      ]);
+    });
+
+    test('the host hold keeps it from warming', () async {
+      final src = FakeArtifactSource();
+      final c = make()..debugArtifactSource = src;
+      host.warmHeld = true;
+      c.debugDeriveRun = deriveHook(days: ['d1']);
+      await c.afterDrain();
+      await settleMs();
+      expect(src.candidateCalls, isEmpty);
+    });
+
+    test('an active offload on the scheduler holds it too', () async {
+      final src = FakeArtifactSource();
+      final c = make()..debugArtifactSource = src;
+      c.scheduler.setOffloadActive(true);
+      c.debugDeriveRun = deriveHook(days: ['d1']);
+      await c.afterDrain();
+      await settleMs();
+      expect(src.candidateCalls, isEmpty);
+      c.scheduler.setOffloadActive(false);
+      await c.afterDrain();
+      await until(() => src.candidateCalls.isNotEmpty);
+      expect(src.candidateCalls.length, 1);
+    });
+
+    test('nothing to warm without a source and without a repository',
+        () async {
+      final c = make();
+      c.debugDeriveRun = deriveHook(days: ['d1']);
+      final o = await c.afterDrain();
+      expect(o.complete, isTrue);
+    });
+  });
+
+  group('calculation policy', () {
+    test('a real light pass asks the injected policy once; heavy never does',
+        () async {
+      var charging = 0;
+      host.policy = PeriodicCalculationPolicy(
+        phoneCharging: () async {
+          charging++;
+          return true;
+        },
+        loadSamples: (from, to) async =>
+            throw StateError('not asked while charging'),
       );
+      final c = make();
+      await c.debugRunScheduled(kind: DeriveJobKind.light);
+      expect(charging, 1);
+      await c.debugRunScheduled(kind: DeriveJobKind.heavy);
+      expect(charging, 1);
+    });
 
-  test('constructing the coordinator and its scheduler never touches derive',
-      () {
-    final coordinator = make();
-    addTearDown(coordinator.dispose);
-    expect(coordinator.scheduler, isNotNull);
-    expect(coordinator.insightsRevision.value, 0);
+    test('the debug hook bypasses the policy', () async {
+      var charging = 0;
+      host.policy = PeriodicCalculationPolicy(
+        phoneCharging: () async {
+          charging++;
+          return null;
+        },
+        loadSamples: (from, to) async => const WakeSamples.empty(),
+      );
+      final c = make();
+      c.debugDeriveRun = deriveHook(days: ['d1']);
+      await c.debugRunScheduled(kind: DeriveJobKind.light);
+      expect(charging, 0);
+    });
   });
 
-  test('a light pass notifies, bumps once and skips the heavy-only work',
-      () async {
-    final coordinator = make();
-    addTearDown(coordinator.dispose);
-    final calls = <bool>[];
-    coordinator.debugDeriveRun = (profile, {heavy = false, onDayDone}) async {
-      calls.add(heavy);
-      return 0;
-    };
-    var rescans = 0;
-    coordinator.debugRescanRecent = (_) async {
-      rescans++;
-      return 0;
-    };
+  group('lifecycle', () {
+    test('dispose disposes both notifiers and is safe twice', () {
+      final c = host.coordinator;
+      c.dispose();
+      c.dispose();
+      expect(() => c.insightsRevision.addListener(() {}), throwsFlutterError);
+      expect(() => c.recalc.addListener(() {}), throwsFlutterError);
+    });
 
-    await coordinator.afterDrain();
-    await Future<void>.delayed(Duration.zero);
+    test('dispose with a trailing publish pending leaves no live timer',
+        () async {
+      final spy = TimerSpy();
+      await spy.run(() async {
+        final c = host.coordinator
+          ..debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
+        c.debugDeriveRun = deriveHook(days: ['d1']);
+        await c.afterDrain();
+        await c.afterDrain();
+        await settleMs();
+        expect(spy.live, isNotEmpty);
+        c.dispose();
+        await settleMs();
+        expect(spy.live, isEmpty);
+      });
+    });
 
-    expect(calls, [false]);
-    expect(rescans, 0);
-    expect(coordinator.insightsRevision.value, 1);
-    expect(notifies, 1);
-    expect(phoneSteps, 1);
-    expect(recoveryChecks, 1);
-    expect(reclaims, 0);
-    expect(exports, 0);
-  });
+    test('dispose cancels the workout hold cap armed on the scheduler',
+        () async {
+      final spy = TimerSpy();
+      await spy.run(() async {
+        final c = host.coordinator;
+        c.scheduler.setWorkoutActive(true);
+        expect(spy.live, isNotEmpty);
+        c.dispose();
+        expect(spy.live, isEmpty);
+      });
+    });
 
-  test('a heavy pass awaits the rescan, then reclaims disk space', () async {
-    final coordinator = make();
-    addTearDown(coordinator.dispose);
-    coordinator.debugDeriveRun = (profile, {heavy = false, onDayDone}) async => 0;
-    final rescan = Completer<int>();
-    coordinator.debugRescanRecent = (_) => rescan.future;
+    test('a pass in flight at dispose completes without throwing', () async {
+      final c = host.coordinator
+        ..debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
+      final gate = Completer<void>();
+      c.debugDeriveRun =
+          deriveHook(days: ['d2', 'd1'], gate: gate, holdAfter: 1);
+      final pass = c.afterDrain();
+      await until(() => c.recalc.value.days.length < 2);
+      c.dispose();
+      gate.complete();
+      await expectLater(pass, completes);
+    });
 
-    var finished = false;
-    final heavy =
-        coordinator.afterDrain(heavy: true).then((_) => finished = true);
-    await Future<void>.delayed(Duration.zero);
-    await Future<void>.delayed(Duration.zero);
-    expect(finished, isFalse, reason: 'the pass must wait for the rescan');
-    expect(reclaims, 0);
-    final notifiesBeforeRescan = notifies;
-
-    rescan.complete(3);
-    await heavy;
-    await Future<void>.delayed(Duration.zero);
-    expect(finished, isTrue);
-    expect(notifies, notifiesBeforeRescan + 1,
-        reason: 'a rescan that refreshed days notifies once more');
-    expect(reclaims, 1);
-  });
-
-  test('a rescan that throws is logged and the pass carries on', () async {
-    final coordinator = make(healthSync: true);
-    addTearDown(coordinator.dispose);
-    coordinator.debugDeriveRun = (profile, {heavy = false, onDayDone}) async => 0;
-    coordinator.debugRescanRecent = (_) async => throw StateError('boom');
-
-    await coordinator.afterDrain(heavy: true);
-    await Future<void>.delayed(Duration.zero);
-
-    expect(logs.any((l) => l.startsWith('[derive] rescan failed')), isTrue);
-    expect(logs.any((l) => l.contains('post-drain failed')), isFalse);
-    expect(exports, 1);
-    expect(reclaims, 1);
-  });
-
-  test('a failing engine run is contained and skips the post-run steps',
-      () async {
-    final coordinator = make(healthSync: true);
-    addTearDown(coordinator.dispose);
-    var runs = 0;
-    coordinator.debugDeriveRun = (profile, {heavy = false, onDayDone}) async {
-      runs++;
-      throw StateError('no');
-    };
-
-    await coordinator.afterDrain();
-    await Future<void>.delayed(Duration.zero);
-
-    expect(runs, 1, reason: 'the hook, not the real engine, ran');
-    expect(
-        logs.any((l) =>
-            l.startsWith('[derive] post-drain failed') && l.contains('no')),
-        isTrue);
-    expect(coordinator.insightsRevision.value, 0);
-    expect(notifies, 0);
-    expect(phoneSteps, 0);
-    expect(recoveryChecks, 0);
-    expect(exports, 0);
-  });
-
-  test('per-day progress notifies on the first, every third and the last day',
-      () async {
-    final coordinator = make();
-    addTearDown(coordinator.dispose);
-    final notifiedAfter = <int>[];
-    coordinator.debugDeriveRun = (profile, {heavy = false, onDayDone}) async {
-      for (var i = 1; i <= 7; i++) {
-        final before = notifies;
-        onDayDone!('d$i', i, 7);
-        if (notifies > before) notifiedAfter.add(i);
-      }
-      return 7;
-    };
-
-    await coordinator.afterDrain();
-
-    // Days 1, 3, 6 and 7, then the end-of-pass notification.
-    expect(notifiedAfter, [1, 3, 6, 7]);
-    expect(notifies, 5);
-  });
-
-  test('health export runs only when enabled and logs its day count',
-      () async {
-    final off = make();
-    addTearDown(off.dispose);
-    off.debugDeriveRun = (profile, {heavy = false, onDayDone}) async => 0;
-    await off.afterDrain();
-    await Future<void>.delayed(Duration.zero);
-    expect(exports, 0);
-
-    final on = make(healthSync: true);
-    addTearDown(on.dispose);
-    on.debugDeriveRun = (profile, {heavy = false, onDayDone}) async => 0;
-    await on.afterDrain();
-    await Future<void>.delayed(Duration.zero);
-    expect(exports, 1);
-    expect(logs, contains('[health] exported 2 day(s)'));
-  });
-
-  test('a throwing health export is logged and never fails the pass',
-      () async {
-    final coordinator = make(
-      healthSync: true,
-      runHealthExport: () async => throw StateError('hk'),
-    );
-    addTearDown(coordinator.dispose);
-    coordinator.debugDeriveRun = (profile, {heavy = false, onDayDone}) async => 0;
-
-    await coordinator.afterDrain();
-    await Future<void>.delayed(Duration.zero);
-
-    expect(logs.any((l) => l.startsWith('[health] export failed')), isTrue);
-    expect(logs.any((l) => l.contains('post-drain failed')), isFalse);
-  });
-
-  test('backs off to the cap, skips background retries, and resets on resume',
-      () {
-    fakeAsync((fa) {
-      var background = false;
-      final coordinator = make(background: () => background);
-      var calls = 0;
-      coordinator.debugRefreshActivityReviews = (_) async {
-        calls++;
-        return false;
+    test('flags and owners reset in finally: a throwing pass leaves the '
+        'coordinator ready for the next', () async {
+      final c = make();
+      c.debugDeriveRun = ({
+        required heavy,
+        required changedOnly,
+        onScope,
+        onScopeDays,
+        onDayDone,
+        onCrossDay,
+      }) async {
+        onScopeDays?.call(['d1']);
+        onCrossDay?.call(true);
+        throw StateError('x');
       };
-
-      unawaited(coordinator.refreshActivityReviews());
-      fa.flushMicrotasks();
-      fa.elapse(const Duration(minutes: 30));
-      expect(calls, 11, reason: 'the first call plus ten capped retries');
-      expect(fa.pendingTimers, isEmpty);
-
-      background = true;
-      unawaited(coordinator.refreshActivityReviews(retry: true));
-      fa.flushMicrotasks();
-      expect(calls, 11);
-
-      background = false;
-      coordinator.resetActivityReviewAttempts();
-      unawaited(coordinator.refreshActivityReviews(retry: true));
-      fa.flushMicrotasks();
-      expect(calls, 12);
-      expect(fa.pendingTimers, hasLength(1));
-      coordinator.dispose();
+      await c.afterDrain();
+      expect(c.recalc.value, RecalcState.idle);
+      c.debugDeriveRun = deriveHook(days: ['d1']);
+      final o = await c.afterDrain();
+      expect(o.complete, isTrue);
     });
   });
 
-  test('retries wait 2s, 4s, 8s, 16s and then 30s', () {
-    fakeAsync((fa) {
-      final coordinator = make();
-      var calls = 0;
-      coordinator.debugRefreshActivityReviews = (_) async {
-        calls++;
-        return false;
-      };
-      unawaited(coordinator.refreshActivityReviews());
-      fa.flushMicrotasks();
-      var expected = 1;
-      for (final seconds in [2, 4, 8, 16, 30, 30]) {
-        fa.elapse(Duration(seconds: seconds - 1));
-        expect(calls, expected, reason: 'before the ${seconds}s retry');
-        fa.elapse(const Duration(seconds: 1));
-        expect(calls, ++expected, reason: 'at the ${seconds}s retry');
-      }
-      coordinator.dispose();
-    });
-  });
-
-  test('a successful review refresh bumps and stops retrying', () {
-    fakeAsync((fa) {
-      final coordinator = make();
-      coordinator.debugRefreshActivityReviews = (_) async => true;
-      unawaited(coordinator.refreshActivityReviews());
-      fa.flushMicrotasks();
-      // One bump when the refresh starts, one when it lands.
-      expect(coordinator.insightsRevision.value, 2);
-      expect(fa.pendingTimers, isEmpty);
-      coordinator.dispose();
-    });
-  });
-
-  test('a retry does not bump on entry, and a disposed host does nothing',
-      () async {
-    var hostDisposed = false;
-    final coordinator = make(disposed: () => hostDisposed);
-    addTearDown(coordinator.dispose);
-    var calls = 0;
-    coordinator.debugRefreshActivityReviews = (_) async {
-      calls++;
-      return true;
-    };
-
-    await coordinator.refreshActivityReviews(retry: true);
-    expect(calls, 1);
-    expect(coordinator.insightsRevision.value, 1);
-
-    hostDisposed = true;
-    await coordinator.refreshActivityReviews();
-    expect(calls, 1);
-    expect(coordinator.insightsRevision.value, 1);
-  });
-
-  test('reanalyzeForNapEdit is a fresh, non-retry review refresh', () async {
-    final coordinator = make();
-    addTearDown(coordinator.dispose);
-    var calls = 0;
-    coordinator.debugRefreshActivityReviews = (_) async {
-      calls++;
-      return true;
-    };
-    await coordinator.reanalyzeForNapEdit();
-    expect(calls, 1);
-    expect(coordinator.insightsRevision.value, 2);
-  });
-
-  test('dispose cancels the retry timer and disposes the revision notifier',
-      () {
-    fakeAsync((fa) {
-      final coordinator = make();
-      coordinator.debugRefreshActivityReviews = (_) async => false;
-      unawaited(coordinator.refreshActivityReviews());
-      fa.flushMicrotasks();
-      expect(fa.pendingTimers, hasLength(1));
-      final revision = coordinator.insightsRevision;
-      coordinator.dispose();
-      expect(fa.pendingTimers, isEmpty);
-      expect(() => revision.addListener(() {}), throwsA(isA<FlutterError>()));
-    });
+  test('the coordinator imports nothing from AppState', () {
+    // Source guard: a controller must not grow a back-reference.
+    final src = File('lib/state/derive_coordinator.dart').readAsStringSync();
+    expect(src, isNot(contains('app_state.dart')));
   });
 }

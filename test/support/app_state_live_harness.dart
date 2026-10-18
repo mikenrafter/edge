@@ -1,12 +1,10 @@
-// Shared helpers for the AppState live-stream tests. Everything goes through
-// AppState's public and @visibleForTesting surface, so the same files keep
-// passing wherever the live-stream ownership code lives.
+// Shared helpers for the LiveStreamController tests. Everything
+// goes through AppState's public and @visibleForTesting surface, so the same
+// files serve the AppState-level tests and the controller's own tests.
 //
-// LiveRig is an AppState over an engine wired the way the production
-// constructor wires it for the live path (onLiveFrame, liveOwners) with a fake
-// gen5/gen4 link that records every command the engine writes. The engine's
-// owner callback is counted, which is how a test sees that AppState nudged the
-// engine (the engine reads the owner set once per reconcile pass).
+// Frames travel the real engine path through the live-stream band rig (a gen5 or gen4
+// fake link whose onLiveFrame / onState / liveOwners are wired the way the
+// production AppState constructor wires them).
 
 import 'dart:async';
 import 'dart:typed_data';
@@ -21,9 +19,70 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-typedef LiveWrite = ({int opcode, List<int> body});
+import 'app_state_derive_harness.dart' show settleMs;
+import 'live_stream_band_rig.dart';
+import 'ecg_trace.dart' show r17;
 
-int nowSec() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
+export 'app_state_derive_harness.dart' show settleMs, TickCounter;
+export 'live_stream_band_rig.dart';
+
+/// A live R17 packet's inner bytes with the band's own live HR (inner[20]) and
+/// signal quality (inner[13]) set; the samples are i * 10 uV like
+/// [r17LiveInner].
+Uint8List r17LiveInnerWith({int liveHr = 0, int quality = 0}) {
+  final inner = r17(
+    strapSeconds: nowSec(),
+    samples: [for (var i = 0; i < 100; i++) (i - 50) * 10],
+    quality: quality,
+  ).inner;
+  inner[20] = liveHr;
+  return inner;
+}
+
+/// A live R11 (0x2B, rec 11) packet: two raw int32 channels of 50 samples at
+/// offsets 36 and 236, channel A = a0 + i, channel B = b0 + i.
+Uint8List r11LiveInner({int a0 = 1000, int b0 = -2000, int? ts}) {
+  final b = Uint8List(440);
+  final v = ByteData.sublistView(b);
+  b[0] = 0x2B;
+  b[1] = 11;
+  v.setUint32(7, ts ?? nowSec(), Endian.little);
+  for (var i = 0; i < 50; i++) {
+    v.setInt32(36 + 4 * i, a0 + i, Endian.little);
+    v.setInt32(236 + 4 * i, b0 + i, Endian.little);
+  }
+  return b;
+}
+
+/// Hex of an inner packet, the way the engine hands it to onLiveFrame.
+String hexOf(Uint8List inner) =>
+    inner.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+
+/// Every stream the band has in the buffer, as key -> values (oldest first).
+Map<String, List<double>> snapshot(G6Rig rig) => {
+      for (final k in rig.app.liveStreams.streamKeys(kBandId)) k: rig.values(k),
+    };
+
+/// The sample times of one stream, oldest first.
+List<DateTime> stamps(G6Rig rig, String key) => [
+      for (final s in rig.app.liveStreams.retained(kBandId, key)) s.at,
+    ];
+
+// ── from upstream's copy of this harness (merge: union of both sides) ──
+
+// Shared helpers for the AppState live-stream tests. Everything goes through
+// AppState's public and @visibleForTesting surface, so the same files keep
+// passing wherever the live-stream ownership code lives.
+//
+// LiveRig is an AppState over an engine wired the way the production
+// constructor wires it for the live path (onLiveFrame, liveOwners) with a fake
+// gen5/gen4 link that records every command the engine writes. The engine's
+// owner callback is counted, which is how a test sees that AppState nudged the
+// engine (the engine reads the owner set once per reconcile pass).
+
+
+
+typedef LiveWrite = ({int opcode, List<int> body});
 
 Future<void> liveDbSetUp(String name) async {
   sqfliteFfiInit();
@@ -44,20 +103,6 @@ Future<void> liveDbTearDown(String name) async {
       p.join(await databaseFactory.getDatabasesPath(), name));
 }
 
-Future<void> settleMs([int ms = 150]) =>
-    Future<void>.delayed(Duration(milliseconds: ms));
-
-/// Counts AppState notifications.
-class TickCounter {
-  TickCounter(this.app) {
-    app.addListener(_tick);
-  }
-  final AppState app;
-  int ticks = 0;
-  void _tick() => ticks++;
-  void stop() => app.removeListener(_tick);
-}
-
 /// SQLite's total_changes() on the app's own connection: any INSERT, UPDATE or
 /// DELETE moves it.
 Future<int> dbChanges() async {
@@ -65,82 +110,6 @@ Future<int> dbChanges() async {
   final r = await db.rawQuery('SELECT total_changes() AS n');
   return (r.single['n'] as num).toInt();
 }
-
-// ── frame builders (synthetic, shape-correct) ────────────────────────────────
-
-/// 0x28 compact realtime HR: ts@2, hr@8, rr_count@9, rr i16@10.., wearing@18.
-Uint8List hr28Inner({int hr = 62, List<int> rr = const [], int? ts}) {
-  final b = Uint8List(20);
-  final v = ByteData.sublistView(b);
-  b[0] = 0x28;
-  v.setUint32(2, ts ?? nowSec(), Endian.little);
-  b[8] = hr;
-  b[9] = rr.length;
-  for (var i = 0; i < rr.length; i++) {
-    v.setInt16(10 + 2 * i, rr[i], Endian.little);
-  }
-  b[18] = 1;
-  return b;
-}
-
-/// gen5 live IMU: a 0x2B envelope carrying a record-21 buffer (100 accel and
-/// 100 gyro samples per axis, raw int16 LSBs).
-Uint8List r21LiveInner({int ax = 4096, int ay = 2048, int az = 0, int? unix}) {
-  final b = Uint8List(kGen5V21InnerLen);
-  final v = ByteData.sublistView(b);
-  b[0] = 0x2B;
-  b[1] = 21;
-  b[2] = 0x80;
-  v.setUint32(3, 1, Endian.little);
-  v.setUint32(7, unix ?? nowSec(), Endian.little);
-  v.setUint16(16, 100, Endian.little);
-  v.setUint16(622, 100, Endian.little);
-  for (var i = 0; i < 100; i++) {
-    v.setInt16(20 + 2 * i, ax, Endian.little);
-    v.setInt16(220 + 2 * i, ay, Endian.little);
-    v.setInt16(420 + 2 * i, az, Endian.little);
-  }
-  return b;
-}
-
-/// gen4 live R10 (0x2B, rec 10, 1920 bytes): ts@7, hr@17, rr_count@18, rr@19,
-/// accel X@85 (100 int16).
-Uint8List r10LiveInner({int hr = 64, List<int> rr = const [900], int? ts}) {
-  final b = Uint8List(1920);
-  final v = ByteData.sublistView(b);
-  b[0] = 0x2B;
-  b[1] = 10;
-  v.setUint32(3, 7, Endian.little);
-  v.setUint32(7, ts ?? nowSec(), Endian.little);
-  b[17] = hr;
-  b[18] = rr.length;
-  for (var i = 0; i < rr.length; i++) {
-    v.setInt16(19 + 2 * i, rr[i], Endian.little);
-  }
-  for (var i = 0; i < 100; i++) {
-    v.setInt16(85 + 2 * i, 4096, Endian.little);
-  }
-  return b;
-}
-
-/// gen4 0x33 IMU stream: ts@4, idx@14, 10 samples each of X, Y, Z int16 from 24.
-Uint8List imu33Inner({int ax = 4096, int ay = 0, int az = 0, int? ts}) {
-  final b = Uint8List(84);
-  final v = ByteData.sublistView(b);
-  b[0] = 0x33;
-  v.setUint32(4, ts ?? nowSec(), Endian.little);
-  v.setUint16(14, 1, Endian.little);
-  for (var i = 0; i < 10; i++) {
-    v.setInt16(24 + 2 * i, ax, Endian.little);
-    v.setInt16(24 + 2 * (10 + i), ay, Endian.little);
-    v.setInt16(24 + 2 * (20 + i), az, Endian.little);
-  }
-  return b;
-}
-
-/// Hex of an inner packet, the way the engine hands it to onLiveFrame.
-String hexOf(Uint8List inner) =>
-    inner.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
 
 // ── the rig ──────────────────────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/notify/alert_dispatcher.dart';
 import 'package:openstrap_edge/state/breathing_controller.dart';
 import 'package:openstrap_edge/stress/breath_phases.dart';
 
@@ -41,8 +42,12 @@ void main() {
       nudgeLive: () {
         nudges++;
       },
-      buzzPattern: (pattern) async {
-        buzzes.add(pattern);
+      // The merged controller's per-phase buzz is one band-alert delivery
+      // under the 'breath' rule carrying the pattern (no cue slots here).
+      dispatchBandAlert: (ruleId, {pattern}) async {
+        expect(ruleId, 'breath');
+        buzzes.add(pattern!);
+        return const AlertDeliveryOutcome(['band'], null);
       },
       notify: () => notifications++,
       now: () {
@@ -117,7 +122,8 @@ void main() {
       repo: () => repo,
       reconcileLiveStreams: () async {},
       nudgeLive: () {},
-      buzzPattern: (_) async {},
+      dispatchBandAlert: (_, {pattern}) async =>
+          const AlertDeliveryOutcome([], null),
       notify: () => notifications++,
     );
     final probe = TimerProbe();
@@ -148,7 +154,8 @@ void main() {
       repo: () => repo,
       reconcileLiveStreams: () async {},
       nudgeLive: () {},
-      buzzPattern: (_) async {},
+      dispatchBandAlert: (_, {pattern}) async =>
+          const AlertDeliveryOutcome([], null),
       notify: () => notifications++,
     );
     final probe = TimerProbe();
@@ -202,7 +209,8 @@ void main() {
       repo: () => repo,
       reconcileLiveStreams: () async {},
       nudgeLive: () {},
-      buzzPattern: (_) async {},
+      dispatchBandAlert: (_, {pattern}) async =>
+          const AlertDeliveryOutcome([], null),
       // The host's notify is a no-op once it is disposed, as AppState's is.
       notify: () {
         notifyCalls++;
@@ -269,7 +277,10 @@ void main() {
           trace.add('reconcile:end');
         },
         nudgeLive: () => trace.add('nudge'),
-        buzzPattern: (pattern) async => trace.add('buzz:$pattern'),
+        dispatchBandAlert: (_, {pattern}) async {
+          trace.add('buzz:$pattern');
+          return const AlertDeliveryOutcome(['band'], null);
+        },
         notify: () => trace.add('notify'),
         now: () {
           reads++;

@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../l10n/app_localizations.dart';
+import '../state/capabilities.dart';
+import '../state/capabilities_scope.dart';
 import '../state/prefs.dart';
 import 'ui2.dart';
 
@@ -16,6 +18,18 @@ enum _Ask { discord, donate }
 /// Home renders one of these per eligible ask, right under the rings.
 class CommunityNudge extends StatefulWidget {
   const CommunityNudge({super.key});
+
+  /// Test hook: forget this launch's dismissals, as a new process would.
+  @visibleForTesting
+  static void debugResetSession() => _CommunityNudgeState._sessionHidden.clear();
+
+  /// Test seam: "now" for the cooldown and the "last shown" stamp, epoch
+  /// milliseconds. Null (the default) is the real clock. A value, not a
+  /// callback: the heavy-work guard rejects calling a function-typed variable.
+  @visibleForTesting
+  static int? debugNowMs;
+
+  static int _nowMs() => debugNowMs ?? DateTime.now().millisecondsSinceEpoch;
 
   @override
   State<CommunityNudge> createState() => _CommunityNudgeState();
@@ -27,41 +41,81 @@ class _CommunityNudgeState extends State<CommunityNudge> {
   // that was just a slip.
   static const _cooldownMs = 14 * 24 * 60 * 60 * 1000;
 
+  // Asks dismissed during this launch. Developer mode ignores the stored
+  // dismissal and cooldown (below), so without this a remount of the card —
+  // which Home causes whenever its list changes shape during a recalculation —
+  // would bring a dismissed ask straight back. Process memory only: a new
+  // launch shows the asks again.
+  static final Set<String> _sessionHidden = {};
+
   static String _dismissedKey(_Ask a) => 'nudge.${a.name}.dismissed';
   static String _lastShownKey(_Ask a) => 'nudge.${a.name}.last_shown_ms';
 
-  static bool _eligible(_Ask a) {
+  static bool _eligible(_Ask a, {required bool devMode}) {
+    // Dismissed this launch: stays dismissed, developer mode or not.
+    if (_sessionHidden.contains(a.name)) return false;
     // Developer mode is someone deliberately testing the app, not a real
     // reader being nagged — silencing or a cooldown here would just make
-    // this unreachable on every build after the first tap.
-    if (Prefs.getBool(Prefs.devMode, false)) return true;
+    // this unreachable on every build after the first tap. That is the default
+    // of the "Revive community cards" developer setting; switched off, developer
+    // mode is held to the stored dismissal and the cooldown like anyone else.
+    if (devMode && Prefs.reviveCommunityCardsOn) return true;
     if (Prefs.getBool(_dismissedKey(a), false)) return false;
     final last = Prefs.getInt(_lastShownKey(a), 0);
-    return DateTime.now().millisecondsSinceEpoch - last > _cooldownMs;
+    return CommunityNudge._nowMs() - last > _cooldownMs;
   }
 
   // Discord above the sponsor ask when both are due — joining a community
   // is a smaller thing to ask for than money.
   late List<_Ask> _asks;
 
-  @override
-  void initState() {
-    super.initState();
-    _asks = [for (final a in _Ask.values) if (_eligible(a)) a];
-    // Mark each shown ask as seen NOW, not only on snooze/silence — otherwise
-    // the cooldown never actually starts and leaving Home without tapping
-    // anything shows the same ask again on the very next rebuild.
-    for (final a in _asks) {
-      Prefs.setInt(_lastShownKey(a), DateTime.now().millisecondsSinceEpoch);
+  List<_Ask> _eligibleNow() {
+    final devMode = context.capsRead.has(Feature.developerMode);
+    return [for (final a in _Ask.values) if (_eligible(a, devMode: devMode)) a];
+  }
+
+  // Mark an ask as seen NOW, not only on snooze/silence — otherwise the
+  // cooldown never actually starts and leaving Home without tapping anything
+  // shows the same ask again on the very next rebuild.
+  void _stamp(Iterable<_Ask> shown) {
+    for (final a in shown) {
+      Prefs.setInt(_lastShownKey(a), CommunityNudge._nowMs());
     }
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _asks = _eligibleNow();
+    _stamp(_asks);
+    Prefs.reviveCommunityCardsRevision.addListener(_reviveChanged);
+  }
+
+  @override
+  void dispose() {
+    Prefs.reviveCommunityCardsRevision.removeListener(_reviveChanged);
+    super.dispose();
+  }
+
+  // Home stays mounted under Settings, so a flip of "Revive community cards"
+  // has to move the cards already on screen. Eligibility is re-asked as for a
+  // fresh mount (stored dismissal, cooldown, and this launch's dismissals are
+  // all honoured by _eligible); only cards that newly appear start a cooldown.
+  void _reviveChanged() {
+    if (!mounted) return;
+    final next = _eligibleNow();
+    _stamp(next.where((a) => !_asks.contains(a)));
+    setState(() => _asks = next);
+  }
+
   void _snooze(_Ask a) {
-    Prefs.setInt(_lastShownKey(a), DateTime.now().millisecondsSinceEpoch);
+    _sessionHidden.add(a.name);
+    Prefs.setInt(_lastShownKey(a), CommunityNudge._nowMs());
     _hide(a);
   }
 
   void _silence(_Ask a) {
+    _sessionHidden.add(a.name);
     Prefs.setBool(_dismissedKey(a), true);
     _hide(a);
   }
@@ -71,10 +125,9 @@ class _CommunityNudgeState extends State<CommunityNudge> {
     // widget tree was torn down while that was in flight, setState here
     // would throw after dispose.
     if (!mounted) return;
-    // Dev mode ignores its own dismissal/cooldown (see _eligible) — writing
-    // it above is harmless, but re-adding it here is what testing it needs.
-    final devMode = Prefs.getBool(Prefs.devMode, false);
-    setState(() => devMode ? null : _asks.remove(a));
+    // Developer mode ignores the stored dismissal and cooldown on a new
+    // launch (see _eligible), but a tap still hides the card for this one.
+    setState(() => _asks.remove(a));
   }
 
   @override
@@ -96,10 +149,10 @@ class _AskCard extends StatelessWidget {
       _Ask.discord => (
           brandGlyph('assets/icons/discord.svg'),
           C.indigo,
-          l?.nudgeDiscordTitle ?? 'Come say hi',
+          l?.nudgeDiscordTitle ?? 'OpenStrap Discord',
           l?.nudgeDiscordBody ??
-              'Other OpenStrap users hang out on Discord — bugs, ideas, and '
-                  'people running the same band as you.',
+              'Report bugs and ask other people running the same band '
+              'on the OpenStrap Discord.',
           l?.nudgeDiscordCta ?? 'Join Discord',
           kDiscordUrl,
         ),
@@ -107,10 +160,10 @@ class _AskCard extends StatelessWidget {
           (Color tint) =>
               Icon(LucideIcons.heartHandshake, size: 16, color: tint),
           C.pink,
-          l?.nudgeDonateTitle ?? 'Enjoying OpenStrap?',
+          l?.nudgeDonateTitle ?? 'Support OpenStrap',
           l?.nudgeDonateBody ??
-              'It is a free, open-source project with no subscription. '
-                  'Sponsoring keeps it maintained.',
+              'OpenStrap is free and open source, with no subscription. '
+              'Sponsorships fund ongoing maintenance.',
           l?.nudgeDonateCta ?? 'Support the project',
           kSponsorUrl,
         ),

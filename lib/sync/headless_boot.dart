@@ -68,6 +68,8 @@ Future<bool?> runBootSyncThroughGate(
 /// re-entry if main() is somehow invoked twice on the same engine.
 bool _booted = false;
 
+bool _platformIsAndroid() => Platform.isAndroid;
+
 /// Call from main() before runApp (but after WidgetsFlutterBinding.ensureInitialized).
 /// On Android with no Activity, checks for a paired band and auto-connects headlessly.
 ///
@@ -78,51 +80,84 @@ bool _booted = false;
 ///   - already ran
 ///
 /// This is deliberately SYNCHRONOUS from the call-site perspective — the caller
-/// awaits so startup init stays ordered, but the actual BLE work is fire-and-forget
-/// after we start the service (connect happens asynchronously in the engine).
-Future<void> maybeHeadlessBoot() async {
-  if (!Platform.isAndroid) return;
-  if (_booted) return;
-  _booted = true;
+/// awaits so startup init stays ordered, but the actual BLE work is
+/// fire-and-forget after we start the service (connect happens asynchronously
+/// in the engine). [HeadlessBoot.run] with its default `awaitDrain: true` is the
+/// same path for callers (tests) that want to wait for the drain.
+Future<void> maybeHeadlessBoot() => HeadlessBoot.run(awaitDrain: false);
 
-  final pendingBoot = await AndroidBootSignal.consumePendingHeadlessBoot();
-  if (!pendingBoot) {
-    return;
-  }
+/// The Android post-boot wake with injectable seams (design 02, rev 6/7), so
+/// the real wake path can be driven on a CI host. Every seam defaults to the
+/// production behaviour.
+class HeadlessBoot {
+  HeadlessBoot._();
 
-  final paired = await PairedDevice.load();
-  if (paired == null) return; // nothing paired, nothing to do
+  /// Runs the boot wake. The returned Future completes when its sync work
+  /// completes (or immediately when there is nothing to do).
+  static Future<void> run({
+    bool Function() isAndroid = _platformIsAndroid,
+    Future<bool> Function()? consumePendingBoot,
+    Future<PairedDevice?> Function() loadPaired = PairedDevice.load,
+    Future<void> Function() startTracking = _startTracking,
+    Future<bool> Function(BandLease lease)? runner,
+    bool awaitDrain = true,
+  }) async {
+    if (!isAndroid()) return;
+    if (_booted) return;
+    _booted = true;
 
-  final lease = BandOwnership.tryAcquireHeadless();
-  if (lease == null) {
+    final pendingBoot = await (consumePendingBoot ??
+        () => AndroidBootSignal.consumePendingHeadlessBoot(
+            isAndroid: isAndroid))();
+    if (!pendingBoot) {
+      return;
+    }
+
+    final paired = await loadPaired();
+    if (paired == null) return; // nothing paired, nothing to do
+
+    final lease = BandOwnership.tryAcquireHeadless();
+    if (lease == null) {
+      debugPrint(
+        '[headless-boot] boot wake skipped — ${BandOwnership.debugState}',
+      );
+      return;
+    }
+
     debugPrint(
-      '[headless-boot] boot wake skipped — ${BandOwnership.debugState}',
+      '[headless-boot] boot wake confirmed — lease=${lease.token} '
+      '${BandOwnership.debugState}',
     );
-    return;
-  }
+    // Ensure the foreground service is running (it was started by BootReceiver, but
+    // calling start() again here is safe — EdgeTracking.start() is idempotent).
+    await startTracking();
 
-  debugPrint(
-    '[headless-boot] boot wake confirmed — lease=${lease.token} '
-    '${BandOwnership.debugState}',
-  );
-  // Ensure the foreground service is running (it was started by BootReceiver, but
-  // calling start() again here is safe — EdgeTracking.start() is idempotent).
-  await EdgeTracking.start();
-
-  // Run a single headless drain pass (connect → flash offload → local store →
-  // disconnect). This catches up the offline backlog accumulated while the phone
-  // was powered off. Errors are swallowed inside runHeadlessSync.
-  debugPrint('[headless-boot] starting headless sync for ${paired.remoteId}');
-  // Fire-and-forget (see the doc above) but SERIALISED through the shared
-  // headless gate, so `HeadlessSyncGate.busy` is true for the whole boot drain.
-  unawaited(
-    runBootSyncThroughGate(lease).then((ran) {
+    // Run a single headless drain pass (connect → flash offload → local store →
+    // disconnect). This catches up the offline backlog accumulated while the phone
+    // was powered off. Errors are swallowed inside runHeadlessSync.
+    debugPrint('[headless-boot] starting headless sync for ${paired.remoteId}');
+    // SERIALISED through the shared headless gate, so `HeadlessSyncGate.busy` is
+    // true for the whole boot drain.
+    final drain = runBootSyncThroughGate(lease, runner: runner).then((ran) {
       debugPrint(
         ran == null
             ? '[headless-boot] boot wake skipped — another headless sync '
                 'holds the gate; lease released.'
             : '[headless-boot] headless sync complete',
       );
-    }),
-  );
+    });
+    if (awaitDrain) {
+      await drain;
+    } else {
+      unawaited(drain);
+    }
+  }
+
+  /// Clears the one-shot "already booted" state.
+  @visibleForTesting
+  static void resetForTest() {
+    _booted = false;
+  }
 }
+
+Future<void> _startTracking() => EdgeTracking.start();

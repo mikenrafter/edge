@@ -1,0 +1,6 @@
+// FIXTURE: unresolved_bad_dynamic_call
+
+
+void probe(dynamic x) {
+  x.compute();
+}

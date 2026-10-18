@@ -127,6 +127,7 @@ class NotificationService {
   static const int idEveningBrief = 2006; // scheduled daily (AI evening recap)
   static const int idAlarmLatchFailed = 2007; // immediate ("alarm not confirmed")
   static const int idAlarmNightCheck = 2008; // scheduled daily, one-shot 19:00
+  static const int idSnoozeBackstop = 2009; // one-shot at a snooze's due time
   static const int idStillness = 2200; // provisional one-shot ("time to move", issue #123)
   static const int idCheckIn = 2201; // daily ("how was today?" → the journal)
 
@@ -168,6 +169,11 @@ class NotificationService {
   ///     reminder is switched on, at the interval the user picked.
   ///   • [idEveningBrief] — armed only when the nightly sweep found something
   ///     unusual for this user, and its body IS the finding.
+  ///   • [idSnoozeBackstop] — armed only while a main-alarm snooze is pending,
+  ///     at its due time, and cancelled the moment it ends (dismissed, or a
+  ///     wake confirmed). It is the user's own alarm: a suspended phone cannot
+  ///     run the snooze's timer, the OS can still post this. Quiet hours do not
+  ///     apply, as for the alarm itself.
   ///   • [idStillness] — armed only while `NotificationPrefs.movementEnabled`
   ///     is on (opt-in, off by default), and only by two hours of no movement
   ///     in the band's own live IMU. Its body IS that measurement. It was
@@ -199,6 +205,7 @@ class NotificationService {
     idStillness,
     idCheckIn,
     idAlarmNightCheck,
+    idSnoozeBackstop,
   };
 
   /// Whether [id] is one of the hydration slots. A band rather than a set
@@ -564,23 +571,44 @@ class NotificationService {
     required String body,
     required DateTime at,
     String? route,
+    bool exact = false,
   }) async {
     try {
       if (!_maySchedule(id)) return;
       if (!await ensurePermission(allowPrompt: false)) return;
       final when = tz.TZDateTime.from(at, tz.local);
+      // [exact]: exactAllowWhileIdle when Android lets this app set exact
+      // alarms (an inexact one can arrive minutes late with Dart suspended),
+      // else the inexact mode, never an exact request that would throw.
+      final mode = exact && await canScheduleExact()
+          ? AndroidScheduleMode.exactAllowWhileIdle
+          : AndroidScheduleMode.inexactAllowWhileIdle;
       await _plugin.zonedSchedule(
         id,
         title,
         body,
         when,
         _details(category),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: mode,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: route,
       );
     } catch (_) {}
+  }
+
+  /// Whether Android lets this app schedule EXACT alarms right now (the
+  /// USE_EXACT_ALARM / SCHEDULE_EXACT_ALARM permission). False on every other
+  /// platform, and when the OS does not say.
+  Future<bool> canScheduleExact() async {
+    try {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (android == null) return false;
+      return await android.canScheduleExactNotifications() ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> cancel(int id) async {

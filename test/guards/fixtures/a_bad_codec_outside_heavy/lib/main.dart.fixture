@@ -1,0 +1,6 @@
+// FIXTURE: a_bad_codec_outside_heavy
+import 'package:fixture_app/series_codec.dart';
+
+class Repo {
+  List<double> load(List<int> bytes) => decodeSeries(bytes);
+}

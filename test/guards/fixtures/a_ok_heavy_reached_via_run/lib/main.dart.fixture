@@ -1,0 +1,40 @@
+// FIXTURE: a_ok_heavy_reached_via_run
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#deriveDayHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+@heavy
+DayOut deriveDayHeavy(DayArgs a) {
+  assertWorker();
+  WorkerInit.ensure(WorkerInputs(nowEpochMs: a.nowEpochMs, zoneId: 'UTC', localeTag: 'en'));
+  final m = readinessCompute(a.hr);
+  return DayOut(m.value);
+}
+
+class Repo {
+  Future<DayOut> derive(int n, List<double> hr) {
+    return Isolate.run(() {
+      final a = DayArgs(n, hr);
+      final out = deriveDayHeavy(a);
+      return out;
+    });
+  }
+}

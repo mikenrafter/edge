@@ -1,49 +1,96 @@
+// The guided-breathing half of the workout seam, moved out of
+// AppState with no behaviour change. It owns the breathing session and the
+// quiet windows either side of it: the flags, the pattern / target / start
+// time, the last coherence result and error, the RR frame buffer the live
+// router fills, the 20 s coherence recompute, the history read, the phase and
+// completion cues, and the Live Activity stop-button hand-off.
+//
+// It is a separate controller from the workout because it shares no state with
+// it: a workout and a breathing session only meet through the host's "live
+// session active" predicates, which read the flags here and on the workout.
+//
+// It does not own the live-frame router (AppState hands each RR-bearing frame
+// to [tapFrame]), the live-stream owner set (it nudges through `nudgeLive`),
+// the BLE engine, the repository or the alert dispatcher; they arrive as
+// callbacks. It holds no reference to AppState. The breathing Live Activity,
+// the widget flag and the database are static services, called directly as
+// before.
+//
+// RAM only except the banked session row and its two window RMSSDs: nothing
+// here persists a live frame (AGENTS invariant 14).
 import 'dart:async';
+
 
 import '../data/db.dart';
 import '../data/local_repository.dart';
+import '../gestures/breath_gesture.dart' show BreathPacerHost;
+import '../haptics/builtin_patterns.dart'
+    show kBreathDoneKey, kBreathExhaleKey, kBreathHoldKey, kBreathInhaleKey;
 import '../live/breathing_live_activity.dart';
+import '../notify/alert_dispatcher.dart';
 import '../stress/breath_phases.dart';
 import '../widget/widget_service.dart';
 
-/// Owns guided breathing sessions and their quiet windows.
-class BreathingController {
+class BreathingController implements BreathPacerHost {
   BreathingController({
     required bool Function() isConnected,
-    required LocalRepository? Function() repo,
     required Future<void> Function() reconcileLiveStreams,
     required void Function() nudgeLive,
-    required Future<void> Function(int pattern) buzzPattern,
+    required LocalRepository? Function() repo,
+    required Future<AlertDeliveryOutcome> Function(String ruleId,
+            {int? pattern})
+        dispatchBandAlert,
     required void Function() notify,
+    Future<bool> Function(String slotKey, {required bool skipIfBusy})? playCue,
     DateTime Function()? now,
-  })  : _isConnected = isConnected,
-        _repo = repo,
+  })  : _playCue = playCue,
+        _now = now ?? DateTime.now,
+        _isConnected = isConnected,
         _reconcileLiveStreams = reconcileLiveStreams,
         _nudgeLive = nudgeLive,
-        _buzzPattern = buzzPattern,
-        _notify = notify,
-        breathingNow = now ?? DateTime.now;
+        _repo = repo,
+        _dispatchBandAlert = dispatchBandAlert,
+        _notify = notify;
 
   final bool Function() _isConnected;
-  final LocalRepository? Function() _repo;
   final Future<void> Function() _reconcileLiveStreams;
   final void Function() _nudgeLive;
-  final Future<void> Function(int pattern) _buzzPattern;
+  final LocalRepository? Function() _repo;
+  final Future<AlertDeliveryOutcome> Function(String ruleId, {int? pattern})
+      _dispatchBandAlert;
   final void Function() _notify;
+
+  /// The wall clock the session's start, end and banked length are read from.
+  final DateTime Function() _now;
+
+  /// Plays breathing cue slot [slotKey] (see haptic_slots.dart) as one
+  /// dispatcher delivery and answers true, or answers false when the slot has
+  /// nothing of its own to play (a 4.0 with no pattern assigned), in which
+  /// case the per-phase buzz below plays. With [skipIfBusy] a cue that would
+  /// start while the band is still playing something is dropped, not queued
+  /// behind it. Null: every cue is the per-phase buzz.
+  final Future<bool> Function(String slotKey, {required bool skipIfBusy})?
+      _playCue;
 
   // ── guided-breathing cardiac coherence ──────────────────────────────────────
   // User taps "begin breathing session": enable live RR-bearing streams,
-  // collect frames continuously in _breathingFrames, and periodically recompute
-  // McCraty & Zayas 2014 coherence over the FULL accumulated series so far —
-  // not a sliding window, so the score stabilizes as more clean data comes in
-  // rather than jittering on a short recent slice. Replaces the screen's old
+  // collect frames continuously in _breathingFrames (tapped from _onLiveFrame),
+  // and periodically recompute McCraty & Zayas
+  // 2014 coherence over the FULL accumulated series so far — not a sliding
+  // window, so the score stabilizes as more clean data comes in rather than
+  // jittering on a short recent slice. Replaces the screen's old
   // Random()-fabricated score. Ephemeral — nothing persisted.
   static const Duration _breathingRecomputeInterval = Duration(seconds: 20);
+  @override
   bool breathingActive = false;
 
-  /// The clock a breathing session is timed by. Tests only — the app never
-  /// replaces it.
-  DateTime Function() breathingNow;
+  /// True while the screen-free [BreathPacer] owns the running session's phase
+  /// cues (a breathing gesture started it). The CalmBreathing screen reads this
+  /// and makes no cue calls of its own while it is set, so a session is never
+  /// cued twice. Cleared by the pacer, and by [stopBreathingSession] on every
+  /// path.
+  @override
+  bool pacedByBand = false;
 
   /// The pattern the running session is pacing to. Coherence is only computed
   /// for a pattern that claims a resonance frequency — see
@@ -74,9 +121,18 @@ class BreathingController {
   final List<String> _breathingFrames = [];
   Timer? _breathingRecomputeTimer;
 
-  // The quiet windows either side of the paced block. The window brackets the
-  // session so it owns the stream before pacing and after it stops. Only the
-  // quiet windows are stored.
+  // ── MIND-06 · the quiet windows either side of the paced block ─────────────
+  //
+  // The lifecycle, not the statistics, is what blocked this. The live streams
+  // were enabled by [startBreathingSession] and torn down by
+  // [stopBreathingSession], and the frame buffer was cleared at start — so the
+  // two minutes BEFORE the pacing had no streams and the two minutes AFTER it
+  // had neither streams nor a buffer. A window therefore brackets the session
+  // rather than living inside it: it owns the stream enable, survives the
+  // paced block's start and stop, and hands the buffer over at each boundary.
+  //
+  // Only the two quiet windows are stored. The paced block's own RMSSD is not
+  // computed here and has nowhere to go — see `lib/stress/session_effect.dart`.
 
   /// True while a quiet window is capturing outside the paced block.
   bool breathingWindowOpen = false;
@@ -90,6 +146,8 @@ class BreathingController {
   int? _windowRowStartedAt;
 
   /// Open the quiet window: HR stream on, frames buffering, no pacing yet.
+  /// The window is an HR owner in its own right (see [LiveStreamController.owners]), so the
+  /// paced block's stop cannot turn off a stream the post window still reads.
   Future<void> openBreathingWindow() async {
     if (breathingWindowOpen || breathingActive) return;
     if (!_isConnected()) {
@@ -111,6 +169,11 @@ class BreathingController {
 
   /// Close the window, measure both quiet stretches and attach them to the
   /// banked session. Safe to call when no window is open.
+  ///
+  /// RMSSD comes from the SAME seam the live spot-check uses, so the two
+  /// windows are cleaned and estimated identically — a pre window scored one
+  /// way and a post window another would produce a difference that is entirely
+  /// method.
   Future<void> closeBreathingWindow() async {
     if (!breathingWindowOpen) return;
     breathingWindowOpen = false;
@@ -151,6 +214,7 @@ class BreathingController {
   }
 
   /// Begin a guided-breathing session. Requires a connected band.
+  @override
   Future<void> startBreathingSession({
     BreathPattern? pattern,
     Duration? target,
@@ -166,21 +230,29 @@ class BreathingController {
     breathingActive = true;
     breathingResult = null;
     breathingError = null;
+    // MIND-06 — hand the pre window over before the buffer is reused for the
+    // paced block. The clear is still right; what was missing is that the
+    // frames it throws away are the "before" measurement.
     if (breathingWindowOpen) {
       _preWindowFrames = List<String>.from(_breathingFrames);
     }
     _breathingFrames.clear();
-    _breathingStartedAt = breathingNow();
+    final startedAt = _now();
+    _breathingStartedAt = startedAt;
     _notify();
-    unawaited(BreathingLiveActivity.start(startedAt: breathingNow()));
+    unawaited(BreathingLiveActivity.start(startedAt: startedAt));
     try {
+      // The session is an HR owner (see [LiveStreamController.owners]); the engine's
+      // reconciler serialises this against any in-flight transition, e.g. a
+      // background downgrade still writing when a band double-tap starts the
+      // session — the exact race that used to leave the session without its
+      // stream.
       await _reconcileLiveStreams();
     } catch (_) {
       /* best-effort; we still collect whatever arrives */
     }
     _breathingRecomputeTimer?.cancel();
-    _breathingRecomputeTimer =
-        Timer.periodic(_breathingRecomputeInterval, (_) {
+    _breathingRecomputeTimer = Timer.periodic(_breathingRecomputeInterval, (_) {
       unawaited(_recomputeBreathingCoherence());
     });
   }
@@ -190,7 +262,9 @@ class BreathingController {
   /// A session shorter than a minute is NOT recorded. Opening the screen and
   /// closing it again is not a breathing session, and a history full of
   /// 4-second entries would bury the real ones.
+  @override
   Future<void> stopBreathingSession() async {
+    pacedByBand = false; // whoever stops it, the pacer's claim on the cues ends
     if (!breathingActive) return;
     _breathingRecomputeTimer?.cancel();
     _breathingRecomputeTimer = null;
@@ -203,7 +277,7 @@ class BreathingController {
     _breathingStartedAt = null;
     _breathingTarget = null;
     if (started != null) {
-      final ended = breathingNow();
+      final ended = _now();
       var seconds = ended.difference(started).inSeconds;
       // Clamped to what was asked for. Overshoot is always suspension, never
       // extra breathing — the pacer stops the moment the app leaves the
@@ -237,6 +311,10 @@ class BreathingController {
         }
       }
     }
+    // MIND-06 — the post window starts here and reads the same buffer, so the
+    // paced block's frames have to go. They are not part of either quiet
+    // window and RMSSD over them would be the RSA artefact this feature exists
+    // to avoid reporting.
     if (breathingWindowOpen) _breathingFrames.clear();
     _notify();
   }
@@ -246,20 +324,61 @@ class BreathingController {
       LocalDb.breathingSessions(limit: limit);
 
   /// Buzz the strap at a breathing or interval phase boundary.
+  ///
+  /// Distinct cues per phase so it is legible without looking: the slots
+  /// `breath.inhale|exhale|hold` (an interval's work plays the inhale cue, its
+  /// rest the exhale cue, both holds the hold cue), each the wearer's pattern
+  /// or a built-in of the band's own vocabulary. A band the slots do not
+  /// reach (a 4.0, nothing assigned) keeps its per-tap buzzes: a longer buzz
+  /// to breathe in, a shorter one to breathe out, a double for a hold. Never
+  /// throws and never awaits the caller: this fires from a frame callback, and
+  /// a momentary disconnect must not interrupt the session or stall the
+  /// animation. A cue that would start while the band still plays the last is
+  /// skipped, not queued: a phase shorter than its cue gets no cue rather than
+  /// one that arrives late and overlaps the next.
+  @override
   void buzzBreathPhase(BreathPhaseKind kind) {
     if (!_isConnected()) return;
-    final pattern = switch (kind) {
-      BreathPhaseKind.inhale || BreathPhaseKind.work => 1,
-      BreathPhaseKind.exhale || BreathPhaseKind.rest => 0,
-      BreathPhaseKind.holdIn || BreathPhaseKind.holdOut => 2,
+    final (slot, pattern) = switch (kind) {
+      BreathPhaseKind.inhale || BreathPhaseKind.work => (kBreathInhaleKey, 1),
+      BreathPhaseKind.exhale || BreathPhaseKind.rest => (kBreathExhaleKey, 0),
+      BreathPhaseKind.holdIn || BreathPhaseKind.holdOut => (kBreathHoldKey, 2),
     };
-    unawaited(_buzzPattern(pattern).catchError((_) {}));
+    unawaited(_cue(slot, skipIfBusy: true, legacy: () =>
+        _dispatchBandAlert('breath', pattern: pattern)));
   }
 
   /// The whole session is over, as opposed to one phase of it.
+  ///
+  /// Its own cue (`breath.done`) rather than a repeat of the phase cue:
+  /// repeated `runHapticsPattern` frames serialize on the BLE write chain and
+  /// arrive milliseconds apart, re-triggering the firmware's haptic engine
+  /// while it is still playing, so N of them are felt as one, and the user
+  /// cannot tell "round over" from "session over". Never skipped: nothing
+  /// follows it, so it waits for the band instead.
+  @override
   void buzzSessionComplete() {
     if (!_isConnected()) return;
-    unawaited(_buzzPattern(4).catchError((_) {}));
+    unawaited(_cue(kBreathDoneKey, skipIfBusy: false, legacy: () =>
+        _dispatchBandAlert('breath', pattern: 4)));
+  }
+
+  // The slot's cue, else [legacy]. With no slot hook the legacy call is made
+  // before the first await, as it always was.
+  Future<void> _cue(
+    String slot, {
+    required bool skipIfBusy,
+    required Future<Object?> Function() legacy,
+  }) async {
+    final play = _playCue;
+    if (play != null) {
+      try {
+        if (await play(slot, skipIfBusy: skipIfBusy)) return;
+      } catch (_) {
+        /* a slot that cannot play leaves the cue to the per-tap buzz */
+      }
+    }
+    await legacy();
   }
 
   Future<void> _recomputeBreathingCoherence() async {
@@ -269,6 +388,9 @@ class BreathingController {
     try {
       final res = await _repo()!.breathingCoherence(
         frames,
+        // The pattern's own paced frequency, not a constant — box breathing at
+        // 3.75 breaths/min scored against a 5.5 breaths/min target would read
+        // as incoherent no matter how well it was done.
         pacedHz: breathingPattern.pacedHz,
       );
       if (!breathingActive) return; // session ended while we awaited
@@ -281,16 +403,22 @@ class BreathingController {
     }
   }
 
-  /// Adds an R-R-bearing frame the host router accepted.
+  /// One RR-bearing live frame from the host's router (0x28 compact HR, 0x2B
+  /// R10). Kept only while a session or a quiet window is open, and bounded.
+  /// Cleared at each session start.
   void tapFrame(String hex) {
     if (breathingActive || breathingWindowOpen) {
       if (_breathingFrames.length < 8000) _breathingFrames.add(hex);
     }
   }
 
-  /// Stop a breathing session requested by its Live Activity.
+  /// Same idea as the workout's Live Activity Finish button, for the breathing
+  /// session's own Live Activity stop button (EndBreathingIntent sets
+  /// `end_breathing_session` — a separate flag so the two Live Activities'
+  /// stop buttons never collide). Call on app resume.
   Future<void> maybeStopBreathingFromLiveActivity() async {
-    // Same latch, same fix as the workout Live Activity.
+    // Consume FIRST, the same latch fix the workout's has: a stop tapped on a
+    // Live Activity that outlived the app must not stay latched on disk.
     final asked = await WidgetService.consumeEndBreathingFlag();
     if (!asked) return;
     if (breathingActive) await stopBreathingSession();
@@ -300,14 +428,24 @@ class BreathingController {
     await closeBreathingWindow();
   }
 
-  /// Cancels the periodic recompute without ending the session.
+  /// Cancel the recompute timer. The session itself is not ended: that is
+  /// today's AppState.dispose behaviour, pinned by the breathing controller tests and
+  /// tracked as a follow-up.
   void dispose() {
     _breathingRecomputeTimer?.cancel();
     _breathingRecomputeTimer = null;
   }
 
+  // Test seams. They carry no @visibleForTesting here because AppState's own
+  // delegates (which keep the annotation) forward to them; only tests and those
+  // delegates may use them.
+
+  /// Arm the recompute timer so a test can prove [dispose] cancels it.
   void debugArmTimer() {
     _breathingRecomputeTimer ??=
         Timer.periodic(_breathingRecomputeInterval, (_) {});
   }
+
+  /// The buffered RR frames.
+  List<String> get debugFrames => List.unmodifiable(_breathingFrames);
 }

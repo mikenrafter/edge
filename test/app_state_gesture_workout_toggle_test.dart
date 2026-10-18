@@ -19,10 +19,13 @@ void main() {
   late HapticSpy haptics;
   setUpAll(() => gestureDbSetUp(_db));
   tearDownAll(() => gestureDbTearDown(_db));
-  setUp(() {
+  setUp(() async {
     BleEngine.resetBandClaimForTest();
     channel = ActionChannel();
     haptics = HapticSpy();
+    // Once-ever gesture claims (keyed by strap time and sub-second) must not
+    // leak from one test's taps into the next.
+    await (await LocalDb.instance).delete('notif_fired');
   });
   tearDown(() async {
     // A workout's live row and the rig's device rows are fire-and-forget.
@@ -33,7 +36,7 @@ void main() {
   });
 
   Future<GestureRig> newRig({FakeJournalRepo? repo}) async {
-    final rig = GestureRig();
+    final rig = GestureRig(mg: false);
     addTearDown(rig.dispose);
     if (repo != null) rig.app.repo = repo;
     await rig.map(DeviceAction.workoutToggle);

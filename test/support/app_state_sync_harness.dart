@@ -1,6 +1,6 @@
-// Shared helpers for the AppState sync tests (open/resume session, reconnect
-// loop and supervisor, sync bursts, Shortcut sync, status). Everything goes
-// through AppState's public and @visibleForTesting surface.
+// Shared helpers for the SyncController tests. Everything goes
+// through AppState's public and @visibleForTesting surface, so the same files
+// serve the AppState-level tests and the controller's own tests.
 //
 // What the area talks to, and how the tests see it:
 //   - the BLE engine is a [SyncFakeEngine]: a BleEngine subclass that records
@@ -9,7 +9,7 @@
 //     what the production onState callback does. No radio, no plugin.
 //   - the periodic timers (10 min backfill, 1 min reconnect supervisor) and
 //     every one-shot timer of one second or more (the derive scheduler's settle
-//     timers, the alarm grace timer) are
+//     timers, the alarm grace timer, the sync coordinator's deadline) are
 //     replaced, inside [SyncTimers.run], by timers the test fires by hand, so a
 //     tick is one explicit call and never a wall-clock race. Shorter one-shots
 //     (Future.delayed polls, zero-delay reconnect backoff) run for real.
@@ -35,25 +35,18 @@ import 'package:openstrap_edge/sync/band_ownership.dart';
 import 'package:openstrap_edge/sync/paired_device.dart';
 import 'package:openstrap_edge/sync/reset_gate.dart';
 
-import 'app_state_derive_harness.dart' show deriveHook, until;
+import 'app_state_derive_harness.dart' show deriveHook, HookCall, TickCounter, settleMs, until;
 
 export 'package:openstrap_edge/ble/ble_engine.dart' show SyncReport;
-export 'app_state_derive_harness.dart' show deriveDbSetUp, deriveDbTearDown, until;
-
-/// A real wait for fire-and-forget work to land.
-Future<void> settleMs([int ms = 150]) =>
-    Future<void>.delayed(Duration(milliseconds: ms));
-
-/// Counts the notifyListeners ticks of an AppState until [stop].
-class TickCounter {
-  TickCounter(this.app) {
-    app.addListener(_tick);
-  }
-  final AppState app;
-  int ticks = 0;
-  void _tick() => ticks++;
-  void stop() => app.removeListener(_tick);
-}
+export 'app_state_derive_harness.dart'
+    show
+        deriveDbSetUp,
+        deriveDbTearDown,
+        settleMs,
+        until,
+        TickCounter,
+        HookCall,
+        deriveHook;
 
 /// The band the rigs pair.
 const String kRemoteId = 'r-sync';
@@ -197,11 +190,6 @@ class SyncFakeEngine extends BleEngine {
   /// Runs inside getBattery, before it answers.
   Future<void> Function()? batteryHook;
 
-  /// Runs inside connectToRemoteId / disconnect, before they answer (to look at
-  /// who holds the band at that moment).
-  Future<void> Function()? connectHook;
-  Future<void> Function()? disconnectHook;
-
   // ── engine surface AppState reads ──────────────────────────────────────────
   @override
   bool get isConnected => link;
@@ -213,6 +201,11 @@ class SyncFakeEngine extends BleEngine {
   bool get historyStuckThisSession => stuck;
   @override
   int? get strapHistoryNewestTs => newestTs;
+
+  /// A history task the band has not ended yet ([offloadActive]).
+  bool offloading = false;
+  @override
+  bool get offloadActive => offloading;
   @override
   DateTime? get lastRxAt => rxAt;
 
@@ -236,7 +229,6 @@ class SyncFakeEngine extends BleEngine {
   @override
   Future<bool> connectToRemoteId(String remoteId, {String? generationHint}) async {
     events.add('connect:$remoteId:${generationHint ?? '-'}');
-    await connectHook?.call();
     final gate = connectGate;
     connectGate = null;
     if (gate != null) await gate.future;
@@ -251,7 +243,6 @@ class SyncFakeEngine extends BleEngine {
   @override
   Future<void> disconnect() async {
     events.add('disconnect');
-    await disconnectHook?.call();
     link = false;
     _state('disconnected');
   }
@@ -372,20 +363,12 @@ class SyncRig {
     // The pass itself is never the subject of a sync-controller test: a run of the
     // scheduler lands here instead of in the derive engine.
     app.debugDeriveRun = deriveHook(calls: passes);
-    app.debugRefreshActivityReviews = (_) async {
-      reviewCalls++;
-      return true;
-    };
   }
 
   final SyncTimers? timers;
   late final SyncFakeEngine engine;
   late final AppState app;
-  final passes = <bool>[];
-
-  /// Every `refreshActivityReviews` attempt openSession and the resume paths
-  /// launch, answered as done so no retry timer is armed.
-  int reviewCalls = 0;
+  final passes = <HookCall>[];
   bool _closed = false;
   final _openGates = <Completer<void>>[];
 
@@ -466,7 +449,7 @@ class SyncRig {
     }
     final held = engine.connectGate;
     if (held != null && !held.isCompleted) held.complete();
-    await settleMs(250);
+    await settleMs(120);
     if (dispose) app.dispose();
     await settleMs(60);
     BandOwnership.resetForTest();

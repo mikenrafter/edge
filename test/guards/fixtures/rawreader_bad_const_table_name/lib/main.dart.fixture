@@ -1,0 +1,19 @@
+// FIXTURE: rawreader_bad_const_table_name
+import 'package:openstrap_edge/util/raw_readers.dart';
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+}
+
+const _t = 'decoded_rr';
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<RowBatch<Row>> beats() async =>
+      RowBatch.wrap(await _db.rawQuery('SELECT * FROM $_t'));
+}

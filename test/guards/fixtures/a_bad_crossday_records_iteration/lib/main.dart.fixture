@@ -1,0 +1,11 @@
+// FIXTURE: a_bad_crossday_records_iteration
+
+
+// Not a stored-data file: iterating day records here is ordinary code.
+double fine(List<Map<String, dynamic>> days) {
+  var s = 0.0;
+  for (final d in days) {
+    s += (d['x'] as num).toDouble();
+  }
+  return s;
+}

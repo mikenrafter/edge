@@ -1,0 +1,35 @@
+// FIXTURE: c_ok_compute_tearoff
+import 'dart:isolate';
+import 'package:fixture_dispatch/dispatch.dart';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#deriveHeavy, dispatcher: Dispatcher.compute, reason: 'fixture'),
+];
+
+
+@heavy
+DayOut deriveHeavy(DayArgs a) {
+  assertWorker();
+  return DayOut(readinessCompute(a.hr).value);
+}
+
+class Caller {
+  Future<DayOut> via_deriveHeavy_call(int n, List<double> hr) => compute(deriveHeavy, DayArgs(n, hr));
+}

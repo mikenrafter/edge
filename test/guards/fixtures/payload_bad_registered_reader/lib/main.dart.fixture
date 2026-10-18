@@ -1,0 +1,24 @@
+// FIXTURE: payload_bad_registered_reader
+// storedPayloadDecodeOutsideHeavy: no column literal here, but the function
+// calls a registered payload reader (kRawReaders) and decodes: that decode is of
+// a stored payload.
+import 'dart:convert';
+import 'package:openstrap_edge/util/raw_readers.dart';
+
+const kRawReaders = <RawReader>[
+  RawReader(#LocalDb.dayPayload, reason: 'fixture: stored day payload'),
+];
+
+typedef Row = Map<String, Object?>;
+
+class LocalDb {
+  Future<RowBatch<Row>> dayPayload(String day) async =>
+      RowBatch.wrap(const <Row>[]);
+}
+
+class Repo {
+  Future<Object?> show(LocalDb db, String day, String raw) async {
+    final batch = await db.dayPayload(day);
+    return batch.isEmpty ? null : jsonDecode(raw);
+  }
+}

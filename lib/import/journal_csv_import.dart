@@ -163,7 +163,7 @@ JournalCsvParse parseJournalCsv(String text, {DateTime? today}) {
   final header = [for (final h in records.first) h.trim().toLowerCase()];
   if (!listEquals(header, kJournalCsvHeader)) {
     throw JournalCsvFormatException(
-      'this is not a journal export — expected the columns '
+      'the header does not match. Expected the columns '
       '${kJournalCsvHeader.join(', ')}, found ${header.join(', ')}',
     );
   }
@@ -237,7 +237,7 @@ JournalCsvParse parseJournalCsv(String text, {DateTime? today}) {
     }
 
     if (tags.isEmpty && note.trim().isEmpty) {
-      rejected.add(RejectedRow(line, 'no tags and no note — nothing to import'));
+      rejected.add(RejectedRow(line, 'no tags and no note, so there is nothing to import'));
       continue;
     }
     rows.add(JournalCsvRow(date, tags, note));

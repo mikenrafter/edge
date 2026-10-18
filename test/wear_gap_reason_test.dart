@@ -33,7 +33,7 @@ void main() {
     test('a night on the charger is named, in the local clock', () {
       // 11:20 PM → 2:14 AM, the sentence the whole item exists for.
       expect(_night([_wear([[-0.6666, 2.2333]])]),
-          'Your band was off your wrist 11:20 PM – 2:14 AM.');
+          'Your band was off your wrist from 11:20 PM to 2:14 AM.');
     });
 
     test('an afternoon gap does not explain a missing night', () {
@@ -59,14 +59,14 @@ void main() {
       // over, not when the band came off.
       expect(_night([prev]), isNull);
       expect(_night([today]),
-          'Your band was off your wrist 12:00 AM – 2:14 AM.');
+          'Your band was off your wrist from 12:00 AM to 2:14 AM.');
       expect(_night([prev, today]),
-          'Your band was off your wrist 11:20 PM – 2:14 AM.');
+          'Your band was off your wrist from 11:20 PM to 2:14 AM.');
     });
 
     test('the longest overlapping gap wins, not the first', () {
       expect(_night([_wear([[0, 1], [2, 8]])]),
-          'Your band was off your wrist 2:00 AM – 8:00 AM.');
+          'Your band was off your wrist from 2:00 AM to 8:00 AM.');
     });
 
     test('"we never looked" is not "the band was never off"', () {
@@ -82,7 +82,7 @@ void main() {
     // The rendering rule, asserted on the copy rather than on pixels: the
     // pipeline saw the day and keeps the first sentence, a sentence written
     // into a widget by someone who never saw the day does not.
-    const gap = 'Your band was off your wrist 11:20 PM – 2:14 AM.';
+    const gap = 'Your band was off your wrist from 11:20 PM to 2:14 AM.';
 
     test('a measured gap replaces a reason the screen invented', () {
       final s = StatusCard.forMetric('No sleep', Metric.empty,
@@ -94,7 +94,7 @@ void main() {
       final s = StatusCard.forMetric(
           'No respiratory rate', const Metric(note: 'need_input:name=nn_beats'),
           why: 'ignored', gap: gap);
-      expect(s!.why, startsWith('Too few clean beat-to-beat intervals'));
+      expect(s!.why, startsWith('Not enough clean beat-to-beat intervals'));
       expect(s.why, endsWith(gap));
     });
 

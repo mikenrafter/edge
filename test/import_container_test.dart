@@ -275,7 +275,7 @@ void main() {
         throwsA(isA<ImportFormatException>().having(
           (e) => e.message,
           'message',
-          contains('does not hold what it says'),
+          contains('does not match the archive checksum'),
         )),
       );
     });

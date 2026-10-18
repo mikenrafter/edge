@@ -46,7 +46,7 @@ void main() {
   test('it is the same notifier object for the life of the app, through '
       'passes and bumps', () async {
     final app = make();
-    app.debugRescanRecent = (_) async => 0;
+    app.debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
     app.debugDeriveRun = deriveHook(days: ['d1']);
     final first = app.insightsRevision;
     app.bumpInsights();
@@ -58,7 +58,7 @@ void main() {
 
   test('a listener registered once keeps hearing every bump', () async {
     final app = make();
-    app.debugRescanRecent = (_) async => 0;
+    app.debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
     app.debugDeriveRun = deriveHook();
     final heard = <int>[];
     app.insightsRevision.addListener(() => heard.add(app.insightsRevision.value));
@@ -71,7 +71,7 @@ void main() {
   test('dispose disposes the notifier; a pass that finishes afterwards does '
       'not throw', () async {
     final app = AppState.forTesting();
-    app.debugRescanRecent = (_) async => 0;
+    app.debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
     app.debugDeriveRun = deriveHook();
     final notifier = app.insightsRevision;
     app.dispose();

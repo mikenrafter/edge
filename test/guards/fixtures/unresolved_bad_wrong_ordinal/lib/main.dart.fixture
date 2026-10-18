@@ -1,0 +1,10 @@
+// FIXTURE: unresolved_bad_wrong_ordinal
+import 'package:openstrap_edge/util/worker_entries.dart';
+
+const kUnresolvedOk = <UnresolvedOk>[
+  UnresolvedOk(file: 'main.dart', symbol: 'probe', source: 'x.compute()', ordinal: 1, reason: 'fixture'),
+];
+
+void probe(dynamic x) {
+  x.compute();
+}

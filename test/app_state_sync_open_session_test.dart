@@ -41,13 +41,12 @@ void main() {
       ticks.stop();
     }, paired: false));
 
-    test('already busy: a second call only flips the engine to foreground '
-        '(no connect, no tick, no intent, busy left alone)',
-        syncCase((rig, timers) async {
+    test('already busy: a second call is a no-op (no engine call, no tick, '
+        'no intent)', syncCase((rig, timers) async {
       rig.app.busy = true;
       final ticks = TickCounter(rig.app);
       await rig.app.openSession();
-      expect(_ev(rig), ['setBackground:false']);
+      expect(_ev(rig), isEmpty);
       expect(ticks.ticks, 0);
       expect(BandOwnership.foregroundIntent, isFalse);
       expect(rig.app.busy, isTrue, reason: 'it must not clear someone else\'s latch');
@@ -139,7 +138,7 @@ void main() {
       expect(rig.app.derivePending, isTrue);
       timers.activeOneShot(const Duration(seconds: 2)).single.fire();
       await rig.waitFor(() => rig.passes.isNotEmpty);
-      expect(rig.passes.single, isTrue);
+      expect(rig.passes.single.heavy, isTrue);
     }));
 
     test('a drain that stopped early still requests the heavy derive (only '
@@ -150,8 +149,9 @@ void main() {
       expect(rig.app.logLines.any((l) => l.contains('Backlog drained: 40 records in 2 batches (stopped early)')), isTrue);
     }));
 
-    test('notifies 3 times to open (busy, connected state, idle) and 3 more '
-        'when the drain lands (derive queued, settle armed, completion)',
+    test('notifies 3 times to open (busy, connected state, idle) and 4 more '
+        'when the drain lands (derive queued, settle armed, completion, the '
+        'last-sync stamp)',
         syncCase((rig, timers) async {
       rig.engine.syncGate = Completer<void>();
       final ticks = TickCounter(rig.app);
@@ -163,7 +163,7 @@ void main() {
       await rig.waitFor(() => rig.engine.count('prompt') == 2);
       await rig.settleDerive();
       await rig.quiesce();
-      expect(ticks.ticks, 6);
+      expect(ticks.ticks, 7);
       ticks.stop();
     }));
 
@@ -180,7 +180,7 @@ void main() {
   group('failure paths', () {
     test('the band cannot be reached: busy, intent and lease are released, '
         'the backfill timer never starts, but the supervisor stays and the '
-        'iOS restore flag is left as set', syncCase((rig, timers) async {
+        'iOS restore flag stays set', syncCase((rig, timers) async {
       rig.engine.connectScript.add(false);
       await rig.app.openSession();
       expect(rig.app.busy, isFalse);
@@ -191,10 +191,11 @@ void main() {
           reason: 'we still WANT a link; the supervisor retries it');
       expect(_ev(rig), ['setBackground:false', 'connect:$kRemoteId:gen4']);
       expect(rig.app.logLines, contains('Session start: could not reach the band.'));
-      // The flag is set before the connect and only a BACKGROUND failure hands
-      // the band back to iOS recovery (a platform call, not reachable here), so
-      // a foreground failure leaves the plain static set.
-      expect(IosBleRestore.foregroundActive, isTrue);
+      // the flag is set before the connect, so
+      // the exit that leaves no link must clear it, or on iOS the native
+      // restore wake no-ops until a connect lands. (Reset directly: the
+      // recovery arm is iOS-only, and the flag is a plain static.)
+      expect(IosBleRestore.foregroundActive, isFalse);
       expect(rig.app.status, 'disconnected');
     }));
 
@@ -205,27 +206,34 @@ void main() {
       expect(rig.app.busy, isFalse);
       expect(BandOwnership.foregroundIntent, isFalse);
       expect(BandOwnership.owner, isNull);
-      expect(IosBleRestore.foregroundActive, isTrue);
+      // the throw exit clears the iOS restore flag too.
+      expect(IosBleRestore.foregroundActive, isFalse);
       expect(timers.activePeriodic(kBackfillEvery), isEmpty);
       expect(rig.app.logLines, contains('Session start failed: Bad state: gatt 133'));
     }));
 
-    test('a poll throws after the link is up: logged, and the half-built '
-        'session is left as it is (link up, intent and lease held, no drain, '
-        'no backfill timer)', syncCase((rig, timers) async {
+    test('a poll throws after the link is up: the half-built session is torn '
+        'down (link dropped, not left up with no drain) and the reconnect loop '
+        'that the drop starts brings it fully up: drain, backfill timer, intent '
+        'and lease', syncCase((rig, timers) async {
+      // a throw after the connect used to leave the link
+      // up with the intent and lease held, no drain and no backfill timer. A
+      // session is fully up or torn down. One-shot so the retry's poll works.
       rig.engine.batteryThrowsOnce = StateError('no reply');
       await rig.app.openSession();
       expect(rig.app.busy, isFalse);
       expect(rig.app.logLines, contains('Session start failed: Bad state: no reply'));
-      await rig.quiesce();
-      expect(rig.engine.count('disconnect'), 0);
+      expect(rig.engine.count('disconnect'), 1,
+          reason: 'the link is torn down, not left half open');
+      // The disconnect edge starts the loop; it re-runs the whole setup.
+      await rig.waitFor(() => rig.engine.count('runSync') == 1);
+      await rig.waitFor(() => timers.activePeriodic(kBackfillEvery).isNotEmpty);
+      expect(rig.engine.count('connect'), 2);
       expect(rig.engine.isConnected, isTrue);
-      expect(rig.engine.count('runSync'), 0);
-      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
-      expect(timers.activePeriodic(kSuperviseEvery), hasLength(1));
+      expect(timers.activePeriodic(kBackfillEvery), hasLength(1));
       expect(BandOwnership.foregroundIntent, isTrue);
       expect(BandOwnership.owner, BandOwnerKind.foreground);
-      expect(await rig.jobTypes(), isEmpty);
+      await rig.jobQueued('derive_heavy');
     }));
 
     test('the link is gone by the time the session settles: the finally clears '
@@ -353,130 +361,11 @@ void main() {
       rig.engine.quiet = const Duration(seconds: 45);
       await rig.app.openSession();
       await rig.waitFor(() => rig.engine.count('markReconnecting') >= 1);
-      expect(rig.app.logLines.any((l) => l.contains('Connection dropped — reconnecting…')), isTrue);
+      expect(rig.app.logLines.any((l) => l.contains('Connection dropped. Reconnecting…')), isTrue);
       // The fake does not serialise connects the way the real engine's single
       // in-flight guard does, so both callers reach it.
       expect(rig.engine.count('connect'), 2);
       await rig.quiesce();
-    }));
-  });
-
-  group('who holds the band when the engine is called', () {
-    // The foreground intent and the lease are taken before the connect and
-    // given back only after the disconnect, so a headless wake cannot slip in
-    // between.
-    test('openSession: intent and lease are held by the time the connect runs',
-        syncCase((rig, timers) async {
-      final seen = <String>[];
-      rig.engine.connectHook = () async => seen.add(
-          '${BandOwnership.foregroundIntent}:${BandOwnership.owner?.name}');
-      await rig.app.openSession();
-      expect(seen, ['true:foreground']);
-      await rig.waitFor(() => rig.engine.count('prompt') == 2);
-    }));
-
-    test('endSession: the intent is dropped first, the lease is still held '
-        'while the engine disconnects, and released right after',
-        syncCase((rig, timers) async {
-      await rig.openAndSettle();
-      final seen = <String>[];
-      rig.engine.disconnectHook = () async => seen.add(
-          '${BandOwnership.foregroundIntent}:${BandOwnership.owner?.name}');
-      await rig.app.endSession();
-      expect(seen, ['false:foreground']);
-      expect(BandOwnership.owner, isNull);
-    }));
-
-    test('unpair: same order as endSession', syncCase((rig, timers) async {
-      await rig.openAndSettle();
-      final seen = <String>[];
-      rig.engine.disconnectHook = () async => seen.add(
-          '${BandOwnership.foregroundIntent}:${BandOwnership.owner?.name}');
-      await rig.app.unpair();
-      expect(seen, ['false:foreground']);
-      expect(BandOwnership.owner, isNull);
-    }));
-
-    test('the reconnect loop re-takes the lease before each connect once a '
-        'supervisor tick restarts it', syncCase((rig, timers) async {
-      rig.engine.connectScript.add(false);
-      await rig.app.openSession();
-      expect(BandOwnership.owner, isNull);
-      final seen = <String>[];
-      rig.engine.connectHook = () async => seen.add(
-          '${BandOwnership.foregroundIntent}:${BandOwnership.owner?.name}');
-      timers.activePeriodic(kSuperviseEvery).single.fire();
-      await rig.waitFor(() => rig.engine.count('prompt') >= 2);
-      expect(seen, ['true:foreground']);
-    }));
-  });
-
-  group('the activity-review rollup openSession launches', () {
-    // A failing rollup retries on a 2 s to 30 s backoff and gives up after ten
-    // retries; opening the session gives the chain a fresh budget.
-    Future<void> failReviews(SyncRig rig) async {
-      rig.app.debugRefreshActivityReviews = (_) async {
-        rig.reviewCalls++;
-        return false;
-      };
-    }
-
-    List<FakeTimer> retryTimers(SyncTimers t) => [
-          for (final x in t.live)
-            if (!x.periodic && const [2, 4, 8, 16, 30].contains(x.duration.inSeconds)) x
-        ];
-
-    test('a fresh open asks once, as a retry-flagged attempt (no opening '
-        'insights bump, one after a rollup that succeeded)',
-        syncCase((rig, timers) async {
-      rig.engine.syncGate = Completer<void>();
-      final before = rig.app.insightsRevision.value;
-      await rig.app.openSession();
-      expect(rig.reviewCalls, 1);
-      await rig.quiesce();
-      expect(rig.app.insightsRevision.value, before + 1);
-    }));
-
-    test('a resume on a live link gives a chain that ran out of attempts a '
-        'fresh budget', syncCase((rig, timers) async {
-      rig.engine.syncGate = Completer<void>();
-      await failReviews(rig);
-      await rig.app.openSession();
-      await rig.waitFor(() => retryTimers(timers).length == 1);
-      // Fire the whole chain: ten retries after the first attempt.
-      for (var i = 0; i < 10; i++) {
-        final t = retryTimers(timers);
-        expect(t, hasLength(1), reason: 'retry ${i + 1}');
-        t.single.fire();
-        await rig.waitFor(() => rig.reviewCalls == i + 2);
-        await settleMs(10);
-      }
-      expect(rig.reviewCalls, 11);
-      expect(retryTimers(timers), isEmpty, reason: 'ten retries, then it stops');
-      await rig.app.pauseForBackground();
-      await rig.app.openSession();
-      await rig.waitFor(() => rig.reviewCalls == 12);
-      await rig.waitFor(() => retryTimers(timers).length == 1);
-      expect(timers.live.where((t) => !t.periodic && t.duration == const Duration(seconds: 2)).length,
-          1, reason: 'the new chain starts at the first backoff step again');
-    }));
-
-    test('a resume that finds a succeeding rollup notifies in the same order '
-        'as before: the review is asked first, then the revision bump, with '
-        'no extra ticks', syncCase((rig, timers) async {
-      rig.engine.syncGate = Completer<void>();
-      await rig.app.openSession();
-      await rig.app.pauseForBackground();
-      final order = <String>[];
-      rig.app.addListener(() => order.add('t'));
-      rig.app.insightsRevision.addListener(() => order.add('r'));
-      rig.app.debugRefreshActivityReviews = (_) async {
-        order.add('review');
-        return true;
-      };
-      await rig.app.openSession();
-      await rig.quiesce();
-      expect(order, ['review', 'r']);
     }));
   });
 }

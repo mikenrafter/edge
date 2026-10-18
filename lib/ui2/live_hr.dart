@@ -163,22 +163,35 @@ class LiveHrCard extends StatelessWidget {
           ),
         if (trace.length > 2) ...[
           const SizedBox(height: S.x3),
-          SizedBox(
-            height: 56,
-            child: CustomPaint(
-              painter: LineChart(
-                [for (final v in trace) v.toDouble()],
-                C.red,
-                fill: false,
+          // Bare scrub: no frame, so it draws its own key row under the trace.
+          // The 56 pt belongs to the trace alone, not to the row beneath it.
+          Builder(builder: (_) {
+            final live = [for (final v in trace) v.toDouble()];
+            return ChartScrub(
+              label: 'Live heart rate',
+              // The stream carries no timestamps, so the position is "how many
+              // readings ago", counted from the newest.
+              time: (at) {
+                final ago = live.length - 1 - ChartScrub.slotAt(live.length, at);
+                return ago == 0 ? 'Latest' : '$ago readings ago';
+              },
+              keys: [
+                ChartKey.slots('Heart rate (bpm)', C.red, live,
+                    (i, v) => '${v.round()} bpm'),
+              ],
+              child: SizedBox(
+                height: 56,
+                child: CustomPaint(
+                  painter: LineChart(live, C.red, fill: false),
+                  size: Size.infinite,
+                ),
               ),
-              size: Size.infinite,
-            ),
-          ),
+            );
+          }),
           const SizedBox(height: S.x2),
           Text(
-            'The last ${trace.length} readings — ${trace.reduce(math.min)}'
-            '–${trace.reduce(math.max)} bpm. Not stored; this is '
-            'the live stream, not a record of your day.',
+            'The last ${trace.length} readings, ${trace.reduce(math.min)}'
+            ' to ${trace.reduce(math.max)} bpm. The live stream is not saved.',
             style: F.over.copyWith(color: p.ink3),
           ),
         ],
@@ -194,8 +207,8 @@ class LiveHrCard extends StatelessWidget {
         : !connected
             ? (
                 'Your band is not connected.',
-                'Live beats need an open link — the app connects when you open '
-                    'it with the band in range.'
+                'The app connects when you open it with the band in range. '
+                'Live beats need that connection.'
               )
             : (
                 'No beat in the last ${AppState.liveHrMaxAge.inSeconds} '

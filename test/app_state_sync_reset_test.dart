@@ -5,8 +5,8 @@
 // resetAllData itself needs the whole plugin stack (preferences, notifications,
 // widget, telemetry, keychain), so its ordering stays source-pinned in
 // test/reset_quiesces_ingest_test.dart. What is behavioural here is the gate's
-// effect on the stored-record callback and on the connection edge handler that
-// lives in _onEngineState.
+// effect on the engine callbacks AppState hands out, and on the connection
+// edge handler that lives in _onEngineState.
 //
 // AppState does not use HeadlessSyncGate at all: the headless wake paths
 // (lib/sync, lib/ble/ios_ble_restore.dart) take it, and the foreground app
@@ -15,7 +15,9 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/models.dart';
+import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/band_ownership.dart';
 import 'package:openstrap_edge/sync/headless_gate.dart';
@@ -24,6 +26,14 @@ import 'package:openstrap_edge/sync/reset_gate.dart';
 import 'support/app_state_sync_harness.dart';
 
 const _db = 'app_state_sync_reset.db';
+
+StrapEvent _event(int id) => StrapEvent(
+      eventId: id,
+      tsEpoch: 1750000000,
+      receivedAt: DateTime.fromMillisecondsSinceEpoch(1750000000000),
+      hex: 'aa55',
+      deviceId: '',
+    );
 
 RawRecord _raw(int ts) =>
     RawRecord(counter: 1, hex: '00', capturedAt: 1750000000000, recTs: ts);
@@ -57,6 +67,23 @@ void main() {
       await app.engine.onRecord(null, _raw(1750000100));
       expect(app.lastRecordAt,
           DateTime.fromMillisecondsSinceEpoch(1750000200 * 1000));
+    });
+
+    test('a live event is not persisted while the gate is up, and is when it '
+        'is down', () async {
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      ResetGate.enter();
+      app.engine.onEvent!(_event(9));
+      await settleMs(150);
+      expect(await LocalDb.strapEvents(), isEmpty);
+      ResetGate.leave();
+      app.engine.onEvent!(_event(10));
+      for (var i = 0; i < 200; i++) {
+        if ((await LocalDb.strapEvents()).isNotEmpty) break;
+        await settleMs(10);
+      }
+      expect((await LocalDb.strapEvents()).map((e) => e.eventId), [10]);
     });
 
     test('a device-state callback is ignored whole: no notify, no live-HR '

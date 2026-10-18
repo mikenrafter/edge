@@ -58,7 +58,7 @@ void main() {
 
   test('the summary view is readable through run_sql', () async {
     final out = await CoachDb.runCoachSql(
-      'SELECT id, category, avg_hr, duration_s, date FROM v_ecg_readings',
+      'SELECT id, band_category, avg_hr, duration_s, date FROM v_ecg_readings',
     );
     expect(out, contains('"ecg_1"'));
     expect(out, contains('inconclusive'));
@@ -66,6 +66,44 @@ void main() {
     expect(out, isNot(contains('SERIAL-SECRET')));
     expect(out, isNot(contains('private note')));
     expect(out, isNot(contains('deadbeef')));
+  });
+
+  test('the stored band value is named band_category (it is only what the '
+      'band said; the outcome comes from get_ecg_reading) and the old name is '
+      'gone', () async {
+    final ok = await CoachDb.runCoachSql(
+      'SELECT band_category FROM v_ecg_readings',
+    );
+    expect(ok, contains('inconclusive'));
+    final old = await CoachDb.runCoachSql(
+      'SELECT category FROM v_ecg_readings',
+    );
+    expect(old, contains('error'));
+  });
+
+  test('superseded attempts are not listed: the latest attempt is the '
+      'reading', () async {
+    final db = await LocalDb.instance;
+    await db.insert('ecg_reading', {
+      'id': 'ecg_old',
+      'device_id': '',
+      'source': 'mg_labrador',
+      'wrist': 'left',
+      'start_ts': 1787823000,
+      'end_ts': 1787823030,
+      'result_code': 2,
+      'category': 'unreadable',
+      'unreadable_mask': 2,
+      'interruptions': 0,
+      'sample_count': 2,
+      'status': 'completed',
+      'created_at': 1787823030000,
+      'superseded_by': 'ecg_1',
+    });
+    addTearDown(() => db.delete('ecg_reading', where: 'id = ?', whereArgs: ['ecg_old']));
+    final out = await CoachDb.runCoachSql('SELECT id FROM v_ecg_readings');
+    expect(out, contains('"ecg_1"'));
+    expect(out, isNot(contains('ecg_old')));
   });
 
   test('the view exposes no identity, notes or bytes columns', () async {

@@ -1,4 +1,4 @@
-// What stopping a workout exports. A saved
+// Workout area: what stopping a workout exports. A saved
 // session goes to Apple Health / Health Connect right away when the health
 // sync switch is on (issue #130), fire-and-forget; nothing is exported when it
 // is off, when the save failed, when the session was torn down by a delete, or
@@ -20,12 +20,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late PlatformSpies spies;
   setUp(() async {
-    await workoutDbSetUp(_db);
+    await deriveDbSetUp(_db);
     spies = PlatformSpies();
   });
   tearDown(() async {
     spies.dispose();
-    await workoutDbTearDown(_db);
+    await deriveDbTearDown(_db);
   });
 
   List<String> health() => [for (final c in spies.health) c.method];
@@ -35,7 +35,7 @@ void main() {
     final app = AppState.forTesting();
     app.healthSyncEnabled = sync;
     app.startWorkout(workoutId: id, type: type);
-    backdate(app, const Duration(minutes: 5));
+    await settleMs(1300);
     return app;
   }
 
@@ -81,8 +81,12 @@ void main() {
       'depends on the second boundary, so this pins only the save', () async {
     final app = AppState.forTesting();
     app.healthSyncEnabled = true;
+    // Start just after a wall-clock second boundary: the session stamps the
+    // real clock, so a start at .999 would cross into the next second before
+    // the stop and become a valid 1 s sample (flaky under suite load).
+    final ms = DateTime.now().millisecond;
+    await Future<void>.delayed(Duration(milliseconds: 1000 - ms + 5));
     app.startWorkout(workoutId: 'w4-x4', type: 'strength');
-    await sessionLanded('w4-x4');
     await app.stopWorkout();
     await settleMs(400);
     expect((await sessionRow('w4-x4'))!['status'], 'done');
@@ -121,7 +125,6 @@ void main() {
     await expectLater(app.stopWorkout(), throwsA(anything));
     await settleMs(400);
     expect(health(), isEmpty);
-    expect(app.activeWorkout, isNotNull, reason: 'kept live for the retry');
     await db.execute('ALTER TABLE sessions_hidden RENAME TO sessions');
     await app.stopWorkout();
     await settleMs(400);

@@ -91,6 +91,9 @@ class FakeTransport implements EcgTransport {
   Completer<void>? holdCleanup;
   int syncRequests = 0;
 
+  /// The rawSave flag of every PREPARE, in order.
+  final rawSaves = <bool>[];
+
   @override
   bool get isReady => ready;
   @override
@@ -136,9 +139,11 @@ class FakeTransport implements EcgTransport {
   @override
   Future<EcgCommandListResult> prepare(
     EcgLeaseHandle lease,
-    EcgWrist wrist,
-  ) async {
+    EcgWrist wrist, {
+    bool rawSave = true,
+  }) async {
     calls.add('prepare:${wrist.name}');
+    rawSaves.add(rawSave);
     return prepareResult ?? _ok(['selectWrist', 'filteredOn', 'rawSaveOn']);
   }
 
@@ -201,6 +206,9 @@ class Rig {
       releaseScreen: (o) async => screen.add('release:$o'),
       captureTimeout: timeout,
       nowMs: () => now,
+      // These tests pin the accepted window handed to save(); the default
+      // (no waveform kept) is pinned in test/ecg_features/.
+      keepWaveform: () => true,
     );
     c.addListener(() => phases.add(c.state.phase));
   }
@@ -548,7 +556,7 @@ void main() {
   });
 
   group('terminal outcomes', () {
-    test('unreadable: cleanup, mask surfaced, nothing saved', () async {
+    test('unreadable: cleanup, mask surfaced, saved as an attempt', () async {
       final r = Rig();
       await r.c.begin(EcgWrist.right);
       r.t.emitFrame(frame(seq: 1, progress: 3));
@@ -557,13 +565,19 @@ void main() {
       await r.settle();
       expect(r.c.state.phase, EcgCapturePhase.unreadable);
       expect(r.c.state.unreadableMask, 0x03);
-      expect(r.saved, isEmpty);
+      // Design 04: an unreadable terminal is SAVED as an attempt (category
+      // unreadable, its mask kept), not dropped; no sync is requested.
+      expect(r.saved, hasLength(1));
+      expect(r.saved.single.$1.category, EcgCategory.unreadable);
+      expect(r.saved.single.$1.unreadableMask, 0x03);
+      expect(r.c.state.readingId, r.saved.single.$1.id);
       expect(r.t.calls.where((c) => c == 'cleanup'), hasLength(1));
       expect(r.t.syncRequests, 0);
     });
 
     test(
-      'first inconclusive offers one retry; the retry persists inconclusive',
+      'first inconclusive (saved) offers one retry; the retry saves a second '
+      'inconclusive',
       () async {
         final r = Rig();
         await r.c.begin(EcgWrist.right);
@@ -572,7 +586,9 @@ void main() {
         await r.settle();
         await r.settle();
         expect(r.c.state.phase, EcgCapturePhase.inconclusiveRetry);
-        expect(r.saved, isEmpty);
+        // Design 04: the first inconclusive is saved before the retry is
+        // offered; the retry then adds the second (final) attempt.
+        expect(r.saved.single.$1.status, EcgReadingStatus.inconclusive);
         expect(r.c.isCapturing, isFalse);
         await r.c.retry();
         expect(r.c.state.phase, EcgCapturePhase.waiting);
@@ -582,7 +598,8 @@ void main() {
         await r.settle();
         await r.settle();
         expect(r.c.state.phase, EcgCapturePhase.completed);
-        expect(r.saved.single.$1.status, EcgReadingStatus.inconclusive);
+        expect(r.saved, hasLength(2));
+        expect(r.saved.last.$1.status, EcgReadingStatus.inconclusive);
         // No third attempt is offered.
         await r.c.retry();
         expect(r.t.calls.where((c) => c == 'prepare:right'), hasLength(2));
@@ -604,6 +621,151 @@ void main() {
     });
   });
 
+  // a tap-counting gesture reads the live stream through the same
+  // controller, and a long touch can make it reach a normal terminal. It must
+  // never leave a reading behind (invariant 14).
+  group('persist: false (the tap-counting gesture)', () {
+    Future<void> terminalWith(Rig r, int result) async {
+      await r.c.begin(EcgWrist.right, persist: false);
+      r.t.emitFrame(frame(seq: 1, progress: 3));
+      r.t.emitFrame(terminal(seq: 2, result: result));
+      await r.settle();
+      await r.settle();
+    }
+
+    for (final (name, result) in [('completed', 1), ('inconclusive', 6)]) {
+      test('a $name terminal saves nothing, cleans up once and asks for no '
+          'sync', () async {
+        final r = Rig();
+        await terminalWith(r, result);
+        expect(r.saved, isEmpty);
+        expect(r.c.state.phase, EcgCapturePhase.cancelled);
+        expect(r.c.state.reason, 'gesture');
+        expect(r.phases, isNot(contains(EcgCapturePhase.saving)));
+        expect(r.phases, isNot(contains(EcgCapturePhase.completed)));
+        expect(r.t.calls.where((c) => c == 'cleanup'), hasLength(1));
+        expect(r.t.syncRequests, 0);
+        expect(r.c.isCapturing, isFalse);
+        expect(r.guard.active, isEmpty);
+        expect(r.screen, ['hold:ecg', 'release:ecg']);
+      });
+    }
+
+    test('an unreadable terminal leaves no retry offer to start a reading',
+        () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right, persist: false);
+      r.t.emitFrame(frame(seq: 1, progress: 3));
+      r.t.emitFrame(terminal(seq: 2, result: 0, unreadable: 0x03));
+      await r.settle();
+      await r.settle();
+      expect(r.saved, isEmpty);
+      expect(r.c.state.phase, EcgCapturePhase.cancelled);
+      await r.c.retry();
+      expect(r.t.calls.where((c) => c == 'prepare:right'), hasLength(1));
+    });
+
+    test('the next ordinary begin persists again (no sticky flag)', () async {
+      final r = Rig();
+      await terminalWith(r, 1);
+      await r.c.begin(EcgWrist.right);
+      r.t.emitFrame(frame(seq: 3, progress: 3));
+      r.t.emitFrame(terminal(seq: 4));
+      await r.settle();
+      await r.settle();
+      expect(r.saved, hasLength(1));
+      expect(r.c.state.phase, EcgCapturePhase.completed);
+    });
+
+    // lifting a finger is the gesture. The reading's own rules (give up
+    // after three contact losses; send RESTART when the S2 state drops with
+    // contact on) would end the stream or blind it mid-gesture.
+    test('a dropped S2 state sends no RESTART and every packet is forwarded',
+        () async {
+      final r = Rig();
+      final forwarded = <int>[];
+      final trace = <String>[];
+      r.c.onFrame = (f) => forwarded.add(f.sequence);
+      await r.c.begin(EcgWrist.right, persist: false, trace: trace.add);
+      r.t.emitFrame(frame(seq: 1, progress: 3));
+      r.t.emitFrame(frame(seq: 2, progress: 6, s2One: false));
+      r.t.emitFrame(frame(seq: 3, progress: 6, s2One: false));
+      await r.settle();
+      expect(r.t.calls, isNot(contains('restart')));
+      expect(r.c.state.phase, isNot(EcgCapturePhase.restarting));
+      expect(forwarded, [1, 2, 3]);
+      expect(trace.where((l) => l.contains('would send RESTART here')),
+          hasLength(1),
+          reason: 'once per capture, not once per packet');
+      expect(r.c.isCapturing, isTrue);
+    });
+
+    test('contact lost again and again does not end the capture', () async {
+      final r = Rig();
+      final trace = <String>[];
+      await r.c.begin(EcgWrist.right, persist: false, trace: trace.add);
+      var seq = 0;
+      for (var i = 0; i < 4; i++) {
+        r.t.emitFrame(frame(seq: ++seq, progress: 3)); // touch
+        r.t.emitFrame(frame(seq: ++seq, progress: 3, presence: false)); // lift
+        r.t.emitFrame(frame(seq: ++seq, progress: 0, presence: false));
+      }
+      await r.settle();
+      await r.settle();
+      expect(r.c.isCapturing, isTrue);
+      expect(r.c.state.phase, isNot(EcgCapturePhase.failed));
+      expect(r.t.calls.where((c) => c == 'cleanup'), isEmpty);
+      expect(trace, contains(contains('the gesture keeps streaming')));
+    });
+
+    test('an ordinary reading still gives up after three contact losses',
+        () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right);
+      var seq = 0;
+      for (var i = 0; i < 4; i++) {
+        r.t.emitFrame(frame(seq: ++seq, progress: 3));
+        r.t.emitFrame(frame(seq: ++seq, progress: 3, presence: false));
+        r.t.emitFrame(frame(seq: ++seq, progress: 0, presence: false));
+      }
+      await r.settle();
+      await r.settle();
+      expect(r.c.state.phase, EcgCapturePhase.failed);
+      expect(r.c.state.reason, 'interruptions');
+    });
+
+    test('the start trace names every stage with its time', () async {
+      final r = Rig();
+      final trace = <String>[];
+      await r.c.begin(EcgWrist.right, persist: false, trace: trace.add);
+      for (final stage in [
+        'wrist saved',
+        'guard checked',
+        'history sync paused',
+        'guard set',
+        'prepare answered (accepted)',
+        'start answered (accepted)',
+      ]) {
+        expect(trace, contains(matches(RegExp(
+            'ECG start: ${RegExp.escape(stage)} \\(\\+\\d+ ms, \\d+ ms in\\)\\.'))),
+            reason: stage);
+      }
+    });
+
+    test('a cancelled gesture does not leak the flag into the next begin',
+        () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right, persist: false);
+      await r.c.cancel();
+      await r.c.begin(EcgWrist.right);
+      r.t.emitFrame(frame(seq: 1, progress: 3));
+      r.t.emitFrame(terminal(seq: 2));
+      await r.settle();
+      await r.settle();
+      expect(r.saved, hasLength(1));
+    });
+  });
+
   group('single flight', () {
     test('a second begin while capturing is ignored', () async {
       final r = Rig();
@@ -612,6 +774,57 @@ void main() {
       expect(r.t.acquired, 1);
       expect(r.t.calls.where((c) => c.startsWith('prepare')), hasLength(1));
       expect(r.c.state.wrist, EcgWrist.right);
+    });
+  });
+
+  group('dispose', () {
+    test('a capture running at dispose gets its one cleanup, releases the '
+        'lease and the screen hold, and notifies nobody', () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right);
+      final seen = r.phases.length;
+      r.c.dispose();
+      for (var i = 0; i < 5; i++) {
+        await r.settle();
+      }
+      expect(r.t.calls.where((c) => c == 'cleanup'), hasLength(1));
+      expect(r.t.current, isNull);
+      expect(r.screen, ['hold:ecg', 'release:ecg']);
+      expect(r.guard.active, isEmpty, reason: 'the retained guard is cleared');
+      expect(r.phases.length, seen, reason: 'a disposed notifier is not told');
+    });
+
+    test('a cleanup already running when the owner disposes finishes without '
+        'a throw and releases the lease', () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right);
+      r.t.holdCleanup = Completer<void>();
+      final cancelling = r.c.cancel();
+      await r.settle();
+      r.c.dispose();
+      r.t.holdCleanup!.complete();
+      await cancelling; // threw from the final notify before the guard
+      expect(r.t.calls.where((c) => c == 'cleanup'), hasLength(1));
+      expect(r.t.current, isNull);
+      expect(r.screen, ['hold:ecg', 'release:ecg']);
+    });
+
+    test('after dispose a late cancel or begin does nothing', () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right);
+      r.c.dispose();
+      await r.settle();
+      await r.c.cancel();
+      await r.c.begin(EcgWrist.left);
+      expect(r.t.calls.where((c) => c == 'cleanup'), hasLength(1));
+      expect(r.t.acquired, 1);
+    });
+
+    test('an idle controller disposes without touching the band', () async {
+      final r = Rig();
+      r.c.dispose();
+      await r.settle();
+      expect(r.t.calls, isEmpty);
     });
   });
 }

@@ -9,7 +9,15 @@
 // If a screen is somehow built before [ensureLoaded] completes, reads fall back
 // to the provided default — never throws, never blocks.
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../compute/calc_power_policy.dart' show CalcPowerMode;
+import '../haptics/band_queue.dart'
+    show
+        kBandCommandLimitDefault,
+        kBandCommandLimitMax,
+        kBandCommandLimitMin;
 
 class Prefs {
   Prefs._();
@@ -95,6 +103,95 @@ class Prefs {
   /// list and nothing reads it except the surfaces it reveals.
   static const String devMode = 'dev.mode';
 
+  /// Developer setting "Revive community cards". ON (the default) is today's
+  /// behaviour: in developer mode the Discord and Sponsor cards ignore a stored
+  /// dismissal and the cooldown. OFF: developer mode honours both exactly like
+  /// a normal install. Irrelevant when developer mode is off.
+  static const String reviveCommunityCards = 'dev.revive_community_cards';
+  static bool get reviveCommunityCardsOn => getBool(reviveCommunityCards, true);
+
+  /// Ticks every time [setReviveCommunityCards] writes. Home keeps its
+  /// community cards mounted while Settings is open over it, so they listen
+  /// here instead of reading the pref only when they are built.
+  static final ValueNotifier<int> reviveCommunityCardsRevision = ValueNotifier(0);
+
+  /// The one writer of the setting: stores it, then tells the listeners.
+  static void setReviveCommunityCards(bool on) {
+    setBool(reviveCommunityCards, on);
+    reviveCommunityCardsRevision.value++;
+  }
+
+  /// Lift the 10 s cap on compiled band haptics. Off by default; the
+  /// 8-command plan cap and the band's rolling command limit still apply.
+  static const String hapticsAllowLong = 'haptics_allow_long_sequences';
+  static bool get allowLongHaptics => getBool(hapticsAllowLong, false);
+
+  /// Developer setting: how many band haptic commands may be sent in any 2
+  /// minutes, 10..60, default 30. Read on every use (the ledger asks each
+  /// time); a stored value out of range is clamped on read.
+  static const String hapticsCommandLimit = 'haptics_command_limit';
+  static int get hapticCommandLimit =>
+      getInt(hapticsCommandLimit, kBandCommandLimitDefault)
+          .clamp(kBandCommandLimitMin, kBandCommandLimitMax);
+  static void setHapticCommandLimit(int v) => setInt(hapticsCommandLimit,
+      v.clamp(kBandCommandLimitMin, kBandCommandLimitMax));
+
+  /// The notes editor's mode, 'follow_rhythm' (the default: every note is
+  /// a `*` note and the dynamics bar is hidden) or 'allow_dynamics'.
+  static const String hapticsEditorMode = 'haptics_editor_mode';
+
+  /// The pattern each gesture cue was given, a JSON map of slot key to
+  /// pattern id (see haptic_slots.dart). Written through the settings
+  /// repository; a cue not in it plays its own built-in.
+  static const String hapticsCueAssign = 'haptics_gesture_cue_assign';
+
+  /// "Tasker connection": the one switch for the Tasker integration (the
+  /// Broadcast to Tasker gesture action and the incoming Tasker plays). On
+  /// unless somebody turned it off, so existing Tasker users see no change.
+  static const String taskerConnection = 'tasker_connection';
+  static bool get taskerConnectionOn => getBool(taskerConnection, true);
+
+  /// "Send reviewed moments to Tasker": consent for the marked-moment review's
+  /// MOMENT_REVIEWED broadcast. Those answers are health information (a
+  /// medication, a dose, a symptom), so unlike the Tasker connection this is OFF
+  /// until somebody turns it on, and it is a separate switch from it.
+  static const String taskerMomentExport = 'tasker_moment_export';
+  static bool get taskerMomentExportOn => getBool(taskerMomentExport, false);
+
+  /// setString with the platform's own acknowledgement: false when there is no
+  /// storage or the write was refused or threw (see [setBoolAcked]). The cache
+  /// is updated before the first await, so a read right after sees the value.
+  static Future<bool> setStringAcked(String key, String value) async {
+    try {
+      return await _sp?.setString(key, value) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// The gestures that failed to activate, one JSON string (see
+  /// gestures/gesture_failures.dart); bounded to the newest 20.
+  static const String gestureFailures = 'gesture_failures';
+
+  /// "Pull down to sync": Home's pull-to-refresh. On unless somebody turned it
+  /// off, so nobody else sees a change; off leaves syncing to the status line's
+  /// Sync now button.
+  static const String pullToSync = 'pull_to_sync';
+  static bool get pullToSyncOn => getBool(pullToSync, true);
+
+  /// Settings > Data & privacy > Calculations: when derive work and warming run
+  /// (see CalcPowerPolicy). The enum's name; balanced when unset or unknown.
+  static const String calcPowerMode = 'calc_power_mode';
+  static CalcPowerMode get calcPowerModeValue {
+    final name = getString(calcPowerMode, '');
+    for (final m in CalcPowerMode.values) {
+      if (m.name == name) return m;
+    }
+    return CalcPowerMode.balanced;
+  }
+
+  static void setCalcPowerMode(CalcPowerMode m) => setString(calcPowerMode, m.name);
+
   /// Per-metric range toggle on the shared MetricScreen (Today/Week/Month/3M).
   /// Keyed by the metric id so Sleep / Heart / Body each remember independently.
   static String metricTab(String metric) => 'ui.metric_tab.$metric';
@@ -122,4 +219,14 @@ class Prefs {
   /// Whether values we estimate where the wearable gives nothing are shown.
   /// On by default; each carries an "Estimated" label either way.
   static const String wearableShowEstimates = 'ui.wearable_show_estimates';
+  /// The finished session row of a workout whose save failed (JSON), written
+  /// ahead so a relaunch can bank it instead of losing the tallies. Empty when
+  /// nothing is waiting. Cleared once the row is saved or the workout deleted.
+  static const String workoutStopPending = 'workout.stop_pending';
+
+  /// Demo Mode: the app is showing a synthetic ~2-month backfill instead of a
+  /// paired band's real data. Checked by `_Gate` (persistent banner) and by
+  /// `AppState._persistPaired` (purge before a real pairing ever touches the
+  /// database) — see `lib/demo/demo_data_generator.dart`.
+  static const String demoModeEnabled = 'demo.mode_enabled';
 }

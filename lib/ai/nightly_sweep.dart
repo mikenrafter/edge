@@ -162,9 +162,9 @@ List<SweepFinding> sweepFindings(List<SweepSeries> series) {
 String? sweepPairing(List<SweepFinding> findings) {
   if (findings.length < 2) return null;
   String name(SweepFinding f) => f.text.split(' — ').first;
-  return '${name(findings[0])} and ${name(findings[1])} — both outside your '
-      'usual range on the same day, which is worth noticing but is not a '
-      'measured relationship between them';
+  return '${name(findings[0])} and ${name(findings[1])} were both outside your '
+         'usual range on the same day. The app has not measured '
+         'any link between them.';
 }
 
 /// The exact payload the model is given, and therefore the exact payload the

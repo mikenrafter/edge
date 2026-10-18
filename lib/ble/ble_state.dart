@@ -243,32 +243,30 @@ BandStatus bandStatusFor({
   bool syncClockLost = false,
   int bondRefusals = 0,
 }) {
-  const repairFix = 'Forget the band in the phone’s Bluetooth settings, '
-      'then pair it again here';
+  const repairFix = "Forget the band in your phone's Bluetooth settings, then pair it again here";
   switch (blocker) {
     case BleBlocker.permissionDenied:
       return const BandStatus(
         BandCondition.bluetoothDenied,
-        'Bluetooth is switched off for this app',
-        'The phone is withholding the Bluetooth radio from OpenStrap, so '
-            'nothing can be scanned or connected. This is not the band — '
-            'walking closer to it will not help.',
+        'OpenStrap is blocked from using Bluetooth',
+        'Your phone blocks OpenStrap from using Bluetooth, so it cannot scan for or connect to the band. '
+        'Moving closer to the band will not help.',
         fix: 'Open Settings → OpenStrap and allow Bluetooth',
       );
     case BleBlocker.adapterOff:
       return const BandStatus(
         BandCondition.bluetoothOff,
         'Bluetooth is turned off',
-        'The phone’s radio is off, so the band cannot be reached by any app. '
-            'The band keeps recording meanwhile; nothing is lost.',
+        'Bluetooth is off on this phone, so no app can reach the band. '
+        'The band keeps recording and sends the data when you reconnect.',
         fix: 'Turn Bluetooth on',
       );
     case BleBlocker.unsupported:
       return const BandStatus(
         BandCondition.bluetoothUnsupported,
         'This phone has no Bluetooth Low Energy radio',
-        'The band can only be reached over Bluetooth Low Energy. Imported '
-            'data still works; a live link does not.',
+        'The band connects only over Bluetooth Low Energy. You can still '
+        'import data, but you cannot sync live.',
       );
     case null:
       break;
@@ -276,11 +274,11 @@ BandStatus bandStatusFor({
   if (autoReconnectPaused) {
     return BandStatus(
       BandCondition.reconnectPaused,
-      'Reconnecting has been paused',
+      'Reconnecting stopped',
       'The band refused the pairing key $bondRefusals times in a row, so the '
-          'app stopped retrying rather than pin the radio and drain both '
-          'batteries on a link that will not open. Nothing is reconnecting '
-          'until you act.',
+      'app stopped retrying to avoid draining both batteries on a link that '
+      'will not open. The app does not reconnect '
+      'until you act.',
       fix: repairFix,
       bondRefusals: bondRefusals,
     );
@@ -289,9 +287,9 @@ BandStatus bandStatusFor({
     return const BandStatus(
       BandCondition.repairNeeded,
       'The band needs to be paired again',
-      'The link comes up, but the band rejects the encryption key the phone '
-          'holds, so every command is dropped and no data moves. Your '
-          'recordings are safe on the band.',
+      'The link opens, but the band rejects the encryption key stored on the '
+      'phone, so it drops every command and no data moves. Your '
+      'recordings stay on the band.',
       fix: repairFix,
     );
   }
@@ -300,29 +298,29 @@ BandStatus bandStatusFor({
       BandCondition.syncStuck,
       'One batch of recordings will not finish transferring',
       'The band keeps re-sending the same batch because the app cannot get '
-          'its confirmation through. Everything in it is already saved here — '
-          'nothing is lost — but the band cannot move on until the '
-          'confirmation lands.',
+      'its confirmation through. The app already saved everything in the '
+      'batch. The band cannot move on until the '
+      'confirmation arrives.',
       fix: 'Reconnect the band; if it repeats tomorrow, pair it again',
     );
   }
   if (strapNeedsReboot) {
     return const BandStatus(
       BandCondition.strapUnresponsive,
-      'The band has stopped handing over its recordings',
+      'The band is not sending its recordings',
       'The band reports newer recordings than it will send. Those recordings '
-          'are still on the band and still safe; it just is not passing them '
-          'across.',
+      'remain on the band, but it is not sending them '
+      'to the phone.',
       fix: 'Put the band on its charger for a minute, then reconnect',
     );
   }
   if (syncClockLost) {
     return const BandStatus(
       BandCondition.clockLost,
-      'Syncs are finishing with no data in them',
-      'The band completes each sync without handing over a single sensor '
-          'reading, which almost always means its onboard clock has lost '
-          'sync. The app keeps resetting it on every connect.',
+      'Syncs finish with no data',
+      'The band completes each sync without sending any sensor readings, '
+      'which usually means its internal clock is wrong. The app resets '
+      'the clock on every connect.',
       fix: 'Leave the band connected for a few minutes; if nothing arrives '
           'by tomorrow, pair it again',
     );
@@ -332,26 +330,26 @@ BandStatus bandStatusFor({
       return const BandStatus(
         BandCondition.connected,
         'Connected',
-        'The band is linked and handing over its recordings.',
+        'The band is connected and sending its recordings.',
       );
     case 'connecting':
       return const BandStatus(
         BandCondition.connecting,
         'Connecting',
-        'Opening the link to the band.',
+        'Connecting to the band.',
       );
     case 'scanning':
       return const BandStatus(
         BandCondition.scanning,
         'Looking for the band',
-        'Listening for the band to advertise itself.',
+        'Scanning for a Bluetooth signal from the band.',
       );
     default:
       return const BandStatus(
         BandCondition.disconnected,
         'Not connected',
-        'The band is out of range, on its charger, or held by another app. '
-            'It keeps recording either way.',
+        'The band is out of range, charging, or connected to another app. '
+        'It keeps recording.',
         fix: 'Bring the band near the phone, and close any other app '
             'connected to it',
       );
@@ -1320,6 +1318,33 @@ class AlarmPayloads {
     return <int>[0x01, 47, 152, 0, 0, 0, 0, 0, 0, 0, 0, loop];
   }
 
+  /// Gen5 Maverick custom pattern (RUN_HAPTIC_PATTERN_MAVERICK = 0x13), for the
+  /// Device lab's pattern probe: `[0x01, 8 waveform-effect slots (0 =
+  /// idle), u16 per-effect loop control (left 0), u8 overall loop]`. Bounded
+  /// for the band's health: 1..8 effects, each 1..255, overall [loop] 1..3.
+  /// Anything else is an [ArgumentError], never a clamped guess.
+  static List<int> gen5MaverickPattern(List<int> effects, {int loop = 1}) {
+    if (effects.isEmpty || effects.length > 8) {
+      throw ArgumentError.value(effects, 'effects', 'need 1..8 effects');
+    }
+    for (final e in effects) {
+      if (e < 1 || e > 255) {
+        throw ArgumentError.value(effects, 'effects', 'each effect is 1..255');
+      }
+    }
+    if (loop < 1 || loop > 3) {
+      throw ArgumentError.value(loop, 'loop', 'the loop is 1..3');
+    }
+    return <int>[
+      0x01,
+      ...effects,
+      for (var i = effects.length; i < 8; i++) 0,
+      0,
+      0,
+      loop,
+    ];
+  }
+
   /// RUN_ALARM (0x44) body — fire the haptics immediately ("test buzz").
   static const List<int> runNow = <int>[0x01];
 
@@ -1349,6 +1374,58 @@ class AlarmPayloads {
   }) =>
       isGen5 ? <int>[0x04, id & 0xff] : const <int>[0x01];
 
+  /// The Device lab's alarm-slot probe pattern: the stock effect pair
+  /// (47, 152), ONE overall loop and a 3 s cap — a short, gentle buzz rather
+  /// than the stock loop-7, 30 s wake buzz. The waveform bytes are the ones
+  /// the band is known to accept; only the loop and duration shrink.
+  static const List<int> probeHaptics = <int>[
+    47, 152, 0, 0, 0, 0, 0, 0, // waveform-effect slots
+    0, 0, //                       loop control (u16 LE)
+    1, //                          overall loop
+    3, //                          duration seconds
+  ];
+
+  /// The probe's two slots: 0 is alarm A, 1 is alarm B.
+  static void _checkProbeSlot(int slot) {
+    if (slot < 0 || slot > 1) {
+      throw ArgumentError.value(slot, 'slot', 'the probe has slots 0 and 1');
+    }
+  }
+
+  /// SET_ALARM_TIME body for probe alarm [slot]: the RICH form on both
+  /// generations, because the rev-1 form has no index and so cannot address a
+  /// second alarm. gen5 uses alarm ids [gen5Slot] + slot (1, 2 — id 0 is
+  /// rejected) with the crescendo byte; gen4 uses rich indices 0 and 1.
+  /// Always the [probeHaptics] pattern.
+  static List<int> probeBody(
+    DateTime when, {
+    required bool isGen5,
+    required int slot,
+  }) {
+    _checkProbeSlot(slot);
+    return isGen5
+        ? <int>[
+            ...rich(when, index: gen5Slot + slot, haptics: probeHaptics),
+            0, // crescendo off
+          ]
+        : rich(when, index: slot, haptics: probeHaptics);
+  }
+
+  /// GET_ALARM_TIME body for probe [slot]. gen4's read has no index operand,
+  /// so both slots read the same way and report the one alarm it names.
+  static List<int> probeReadBody({required bool isGen5, required int slot}) {
+    _checkProbeSlot(slot);
+    return getPayloadForBand(isGen5: isGen5, id: gen5Slot + slot);
+  }
+
+  /// DISABLE_ALARM body for probe [slot]: gen5 clears exactly that id (never
+  /// the all-slots 0xFF); gen4's disable has no index, so it is the plain
+  /// gen4 body whatever the slot.
+  static List<int> probeClearBody({required bool isGen5, required int slot}) {
+    _checkProbeSlot(slot);
+    return disableForBand(isGen5: isGen5, id: gen5Slot + slot);
+  }
+
   /// Convert a WALL-CLOCK alarm target into the strap's own RTC frame.
   ///
   /// The strap runs the wake alarm autonomously and fires when ITS RTC reaches
@@ -1366,6 +1443,59 @@ class AlarmPayloads {
   /// wall epoch unchanged.
   static DateTime toStrapFrame(DateTime when, int driftSec) =>
       when.subtract(Duration(seconds: driftSec));
+}
+
+/// What the band said to one probe SET_ALARM_TIME (Device lab). [rejected] is
+/// the engine's verdict (a FAILURE/UNSUPPORTED outer result or an input-
+/// rejection alarm-status byte); [answered] false is a write that went out
+/// with no correlated reply, which is NOT a refusal. [wallSec] is the wall
+/// instant asked for, [strapSec] the same in the strap's clock frame — the
+/// frame the band's readbacks and events are in.
+class AlarmSlotWrite {
+  const AlarmSlotWrite({
+    required this.written,
+    required this.answered,
+    required this.rejected,
+    required this.wallSec,
+    required this.strapSec,
+    this.resultStatus,
+    this.alarmStatus,
+    this.alarmStatusName,
+  });
+  final bool written;
+  final bool answered;
+  final bool rejected;
+  final int wallSec;
+  final int strapSec;
+  final int? resultStatus;
+  final int? alarmStatus;
+  final String? alarmStatusName;
+
+  /// Seconds the strap clock is behind the wall clock for this write.
+  int get driftSec => wallSec - strapSec;
+}
+
+/// What the band said to one probe GET_ALARM_TIME. [active] is null where the
+/// form carries no active flag (gen4).
+class AlarmSlotRead {
+  const AlarmSlotRead({required this.answered, this.epoch, this.active});
+  const AlarmSlotRead.silent()
+      : answered = false,
+        epoch = null,
+        active = null;
+  final bool answered;
+  final int? epoch;
+  final bool? active;
+}
+
+/// The two band writes the weekly-schedule arm logic may make. Exists so a test
+/// can count them with a fake; [BleEngine] is the only real implementation.
+abstract interface class AlarmBandWriter {
+  /// SET_ALARM. Null when the write never reached the band or it refused.
+  Future<DateTime?> setAlarm(DateTime when);
+
+  /// DISABLE_ALARM.
+  Future<void> disableAlarm();
 }
 
 /// Effect of a strap alarm-lifecycle event, for the caller to act on.
@@ -1431,6 +1561,23 @@ class AlarmConfirmation {
   /// an earlier arm sits further back than this (an alarm re-armed within it
   /// is the ceiling).
   static const int replaySlackSec = 120;
+  /// How far before the current SET an event may be stamped and still count as
+  /// about this arm (the strap's clock and ours are not perfectly aligned).
+  static const int staleSlackMs = 5 * 60 * 1000;
+
+  /// A fired/disabled event ([kEvtStrapExecuted], [kEvtAppExecuted],
+  /// [kEvtDisabled]) stamped well before the current SET describes an EARLIER
+  /// alarm. The band delivers old events in bursts at the next sync, and
+  /// acting on last night's "executed" would drop tonight's freshly armed alarm
+  /// from the app's books. ALARM_SET ([kEvtSet]) is not judged here: an earlier
+  /// confirmation of the same occurrence is still a confirmation.
+  bool predatesArm(int id, int eventTsSec) {
+    if (id != kEvtStrapExecuted && id != kEvtAppExecuted && id != kEvtDisabled) {
+      return false;
+    }
+    final at = setAtMs;
+    return at != null && eventTsSec * 1000 < at - staleSlackMs;
+  }
 
   /// Feed a strap event. Returns the resulting [AlarmEffect] the caller acts on,
   /// or null when the event is unrelated to the alarm (or belongs to an
@@ -2020,6 +2167,16 @@ class LiveStreamOwners {
   /// decision in #287 was taken in gen5 terms.
   final bool foreground;
 
+  /// The developer's "Start live feed" on the Live devices screen (HR and the
+  /// high-rate stream, both families). An explicit, user-held request to see
+  /// everything the band sends; released by Stop or when the screen closes.
+  final bool developerLiveFeed;
+
+  /// The Device lab's IMU recorder holds a bounded recording (IMU only, never
+  /// HR). Held from the double tap that begins it until it stops, is
+  /// cancelled, or the band disconnects; never a standing request.
+  final bool imuLab;
+
   const LiveStreamOwners({
     this.visibleLiveHrView = false,
     this.activeWorkout = false,
@@ -2028,6 +2185,8 @@ class LiveStreamOwners {
     this.movementSampling = false,
     this.passiveStrapSteps = false,
     this.foreground = false,
+    this.developerLiveFeed = false,
+    this.imuLab = false,
   });
 
   static const none = LiveStreamOwners();
@@ -2037,13 +2196,16 @@ class LiveStreamOwners {
       'hrView: $visibleLiveHrView, workout: $activeWorkout, '
       'fgGait: $foregroundGaitWorkout, breathing: $breathing, '
       'movement: $movementSampling, '
-      'passiveSteps: $passiveStrapSteps, foreground: $foreground)';
+      'passiveSteps: $passiveStrapSteps, foreground: $foreground, '
+      'developer: $developerLiveFeed, imuLab: $imuLab)';
 }
 
 /// The streams the current owners call for.
 ///
 ///   wantHr  = visibleLiveHrView || activeWorkout || breathing
+///             || developerLiveFeed
 ///   wantImu = foregroundGaitWorkout || movementSampling || passiveStrapSteps
+///             || developerLiveFeed || imuLab
 ///
 /// plus, on gen4 only, `foreground` as an owner of both (see
 /// [LiveStreamOwners.foreground]). History sync is never an owner — it reads
@@ -2061,10 +2223,13 @@ LiveStreamIntent desiredLiveStreams(
   final hr = o.visibleLiveHrView ||
       o.activeWorkout ||
       o.breathing ||
+      o.developerLiveFeed ||
       legacy;
   final imu = (o.foregroundGaitWorkout ||
           o.movementSampling ||
           o.passiveStrapSteps ||
+          o.developerLiveFeed ||
+          o.imuLab ||
           legacy) &&
       !standardHrFallback;
   return LiveStreamIntent(hr: hr, imu: imu);

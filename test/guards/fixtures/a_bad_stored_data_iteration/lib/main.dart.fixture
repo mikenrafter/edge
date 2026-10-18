@@ -1,0 +1,40 @@
+// FIXTURE: a_bad_stored_data_iteration
+
+
+class Substrate {
+  final List<int> tsSec;
+  final List<double> rrMs;
+  final List<String> flags;
+  const Substrate(this.tsSec, this.rrMs, this.flags);
+}
+
+class Screen {
+  int sum(Substrate s) {
+    var t = 0;
+    for (final x in s.tsSec) {
+      t += x;
+    }
+    return t;
+  }
+
+  double mean(Substrate s) => s.rrMs.fold(0.0, (a, b) => a + b);
+
+  int count(Substrate s) {
+    var c = 0;
+    for (var i = 0; i < s.tsSec.length; i++) {
+      c++;
+    }
+    return c;
+  }
+
+  // O(1) reads and non-sample lists are not stored-data iteration.
+  bool has(Substrate s) => s.tsSec.isNotEmpty;
+
+  int flagCount(Substrate s) {
+    var c = 0;
+    for (final f in s.flags) {
+      c += f.length;
+    }
+    return c;
+  }
+}

@@ -315,10 +315,11 @@ class IosShortcutSync {
     final profile = await loadHeadlessProfile();
     if (task.stopped) return task.expired;
     if (ResetGate.active) throw StateError('data reset in progress');
-    await DerivationEngine(
-      log: (line) => debugPrint('[shortcut-derive] $line'),
-      background: true,
-    ).run(profile, heavy: false);
+    // The one headless engine builder, so a Shortcut-driven derive carries the
+    // finalization audit like every other. No power gate: the user ran it.
+    await (await newHeadlessDerivationEngine(
+            (line) => debugPrint('[shortcut-derive] $line')))
+        .run(profile, heavy: false);
     if (task.stopped) return task.expired;
     if (ResetGate.active) throw StateError('data reset in progress');
     await WidgetService.refresh(

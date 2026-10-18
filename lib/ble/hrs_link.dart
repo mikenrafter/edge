@@ -674,9 +674,9 @@ class HrsLink {
     if (!await AccessorySetup.isSupported()) return null;
     if (await AccessorySetup.provisionedId() != null) return null;
     return 'Your main band is not paired yet. Searching for a sensor now starts '
-        'Bluetooth in a way that hides the system pairing sheet until you '
-        'restart the app — so pair your main band first, or expect to restart '
-        'the app before you can.';
+           'Bluetooth in a way that hides the system pairing sheet until you '
+           'restart the app. Pair your main band first, or restart '
+           'the app before you pair it.';
   }
 
   // ── pairing: the device row ───────────────────────────────────────────────
@@ -781,8 +781,8 @@ class HrsLink {
       await device.connect(timeout: _connectTimeout);
     } catch (e) {
       debugPrint('[hrs] pair connect failed: $e');
-      return 'That sensor did not answer. It may have gone back to sleep, or '
-          'it may already be connected to another phone or app.';
+      return 'That sensor did not answer. It may be asleep or connected to '
+             'another phone or app.';
     }
     try {
       final services = await device.discoverServices();
@@ -795,10 +795,10 @@ class HrsLink {
           link.missingCharacteristics(entry.requiredCharacteristics);
       if (missing.isNotEmpty) {
         link.close();
-        return 'That device answered, but it does not expose the '
-            '${entry.label} data this needs '
-            '(missing ${missing.map((u) => u.substring(0, 8)).join(", ")}). '
-            'Nothing was saved.';
+        return 'That device answered but does not expose the '
+               '${entry.label} data this needs '
+               '(missing ${missing.map((u) => u.substring(0, 8)).join(", ")}). '
+               'Nothing was saved.';
       }
       // A Garmin watch's data characteristic varies, so the generic list
       // cannot name it; its own check stands in.
@@ -840,8 +840,8 @@ class HrsLink {
       return null;
     } catch (e) {
       debugPrint('[hrs] pair setup failed: $e');
-      return 'That sensor disconnected before it could be set up. Nothing was '
-          'saved.';
+      return 'That sensor disconnected during setup. Nothing was '
+             'saved.';
     } finally {
       // The pairing connection is not the session. `arm()` opens its own when
       // a workout starts, and holding this one would be a second GATT link

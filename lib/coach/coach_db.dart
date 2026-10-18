@@ -93,7 +93,12 @@ class CoachDb {
     // derived / user tables
     'day_result', 'metric_series', 'baselines', 'derived_day', 'sessions',
     'notifications', 'journal', 'cycle_log', 'cycle_symptom', 'notif_fired',
-    'sleep_override', 'sleep_session_candidates', 'wake_day_features',
+    'sleep_override', 'wake_confirmation', 'wake_evidence',
+    // Journal-side tables the coach has no view over: the wearer's marked-moment
+    // answers, assumed water glasses and described symptoms.
+    'moment_label', 'assumed_water', 'symptom_entry',
+    'sleep_session_candidates',
+    'wake_day_features',
     'workout_suggestions', 'workout_route', 'live_coverage',
     'session_score_mask', 'session_sensor',
     // raw / decoded substrate
@@ -105,6 +110,8 @@ class CoachDb {
     // keeps `device_id`/`notes` (never in the view) out of run_sql. The two
     // packet tables are unreachable at both layers.
     'ecg_reading', 'ecg_reading_packet', 'ecg_raw_packet',
+    // Gesture intervals. Not ECG data and not for the coach.
+    'ecg_gesture_session',
     // sync / compute bookkeeping
     'sync_ledger', 'sync_quarantine', 'sync_cursor', 'sync_ledger_legacy',
     'sync_quarantine_legacy', 'sync_cursor_legacy', 'compute_jobs',
@@ -249,7 +256,7 @@ class CoachDb {
       }
       if (c == '"' || c == '`' || c == '[' || c == ']') {
         throw SqlGuardError(
-            'Quoted identifiers are not allowed — use bare view names.');
+            'Quoted identifiers are not allowed. Use bare view names.');
       }
       out.write(c);
       i++;
@@ -358,7 +365,7 @@ class CoachDb {
         if (!n.ident) {
           if (n.text == '(') {
             throw SqlGuardError(
-                'Subqueries in FROM are not allowed — query a view directly.');
+                'Subqueries in FROM are not allowed. Query a view directly.');
           }
           throw SqlGuardError('Expected a view name after FROM/JOIN.');
         }
@@ -460,7 +467,7 @@ class CoachDb {
   static Future<void> _assertAllowedBtrees(Database db, String sql) async {
     final allowed = await _allowedRootPages(db);
     if (allowed.isEmpty) {
-      throw SqlGuardError('Query surface unavailable.');
+      throw SqlGuardError('The coach database is unavailable.');
     }
     final Set<int> used;
     try {

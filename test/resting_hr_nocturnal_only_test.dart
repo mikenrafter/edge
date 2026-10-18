@@ -66,7 +66,7 @@ void main() {
     final rhr = ((b['clinical'] as Map)['resting_hr'] as Map)
         .cast<String, dynamic>();
     expect(rhr['value'], anyOf(isNull, '—'));
-    expect(rhr['note'] as String, contains('no sleep was scored'));
+    expect(rhr['note'] as String, contains('No sleep was scored'));
     expect(rhr['tier'], isNotNull);
 
     // The baseline series must not fold it either — that is what widened the

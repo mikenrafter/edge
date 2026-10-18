@@ -6,11 +6,14 @@ import 'package:provider/provider.dart';
 
 import 'ai/briefing.dart' show BriefingPeriod;
 import 'coach/coach_config.dart';
+import 'demo/demo_mode_banner.dart';
 import 'l10n/app_localizations.dart';
 import 'notify/notification_service.dart';
 import 'notify/tap_router.dart';
 import 'state/app_state.dart';
 import 'state/clock_format.dart';
+import 'state/publish_gate.dart';
+import 'data/bundle_store.dart';
 import 'state/locale_controller.dart';
 import 'state/prefs.dart';
 import 'telemetry/telemetry_service.dart';
@@ -25,7 +28,7 @@ import 'ui2/pairing/device_picker.dart';
 import 'ui2/onboarding/splash.dart';
 import 'ui2/onboarding/welcome.dart';
 import 'ui2/profile/alarm.dart';
-import 'ui2/profile/profile.dart';
+import 'ui2/profile/settings.dart' show MoreSettings;
 import 'ui2/screens/ai_briefing.dart';
 import 'ui2/screens/calm_breathing.dart';
 import 'ui2/screens/what_changed.dart';
@@ -39,6 +42,7 @@ import 'ui2/screens/sleep_tab.dart';
 import 'ui2/screens/wellness_screen.dart';
 import 'ui2/screens/workout_screen.dart';
 import 'ui2/ui2.dart';
+import 'data/db.dart' show LocalDb;
 
 class OpenStrapApp extends StatefulWidget {
   const OpenStrapApp({super.key});
@@ -58,7 +62,30 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       context.read<AppState>().attachCoachConfig(context.read<CoachConfig>());
 
       final app = context.read<AppState>();
+      // A cold start into the foreground has no `resumed` transition, so this
+      // is where the read connection is first allowed. A process starts with it
+      // off (a headless launch never reaches this callback).
+      final startState = WidgetsBinding.instance.lifecycleState;
+      unawaited(LocalDb.setForeground(
+        startState != AppLifecycleState.detached &&
+            startState != AppLifecycleState.paused &&
+            startState != AppLifecycleState.hidden,
+      ));
       if (app.isPaired) app.openSession();
+      // A cold start into the foreground has no `resumed` transition.
+      unawaited(app.noteAppOpened());
+      unawaited(Future<void>.delayed(const Duration(milliseconds: 250), () async {
+        if (!mounted) return;
+        final lifecycle = WidgetsBinding.instance.lifecycleState;
+        final headless = WidgetsBinding.instance.platformDispatcher.views.isEmpty ||
+            lifecycle == AppLifecycleState.detached ||
+            lifecycle == AppLifecycleState.paused ||
+            lifecycle == AppLifecycleState.hidden;
+        await StartupWarm(
+          headless: headless,
+          steps: LocalStartupWarmSteps(store: BundleStore.shared),
+        ).run();
+      }));
     });
   }
 
@@ -78,6 +105,14 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final app = context.read<AppState>();
+    // The read connection lives only while the UI can show something.
+    if (state == AppLifecycleState.resumed) {
+      unawaited(LocalDb.setForeground(true));
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(LocalDb.setForeground(false));
+    }
     if (state == AppLifecycleState.resumed) {
       // The user may have flipped our notification switch either way in OS
       // Settings while we were backgrounded. Drop the cached authorization
@@ -85,6 +120,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // to latch for the whole process, silencing every notification and
       // scheduled reminder until a full app restart.
       NotificationService.instance.invalidatePermissionCache();
+      app.noteForegroundActivity();
       // A background relaunch while the phone was locked cannot read the
       // keychain, so the BYOK key can be missing from an otherwise healthy
       // process. Coming to the foreground means the phone is unlocked — take
@@ -95,6 +131,8 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       unawaited(app.maybeStopBreathingFromLiveActivity());
       app.refreshAppStatus(); // re-check OTA + admin banner on every foreground
       app.runCadenceChecks(); // evening wind-down / weekly recap nudges (best-effort)
+      // Slots of "Assume I drank water" that passed while we were away.
+      unawaited(app.catchUpAssumedWater());
       // A Siri "start breathing" App Intent may have just foregrounded an
       // already-running process (openAppWhenRun doesn't guarantee a fresh
       // launch) — the constructor-time check alone would miss that case.
@@ -114,6 +152,9 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // a lock screen looking current.
       unawaited(WidgetService.refresh(app.repo));
       if (app.isPaired) app.openSession();
+      // After openSession: that is what takes the app out of the background,
+      // and a backgrounded process has no foreground to note.
+      unawaited(app.noteAppOpened());
     } else if (state == AppLifecycleState.paused) {
       // Backgrounded: hand the band to the iOS restore path so it can wake-and-drain
       // in the background (no-op on Android, where the foreground service holds it).
@@ -145,7 +186,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // Runs even when `locale:` above has a user override — Flutter still
       // calls this callback, just with [locale.locale] as the sole
       // "device" candidate instead of the real device list, so an override
-      // resolves through the same language-match path below and comes back
+      // resolves through the same language-match path (resolveAppLocale) and comes back
       // unchanged (LocaleController only ever holds a bare language code
       // that's already in supportedLocales). Flutter's own default
       // resolution falls back to supportedLocales.first when nothing
@@ -154,16 +195,17 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // language only (none of our locales carry a country/script code)
       // and fall back to English explicitly instead of leaving that to
       // alphabetical luck.
-      localeListResolutionCallback: (deviceLocales, supported) {
-        for (final deviceLocale in deviceLocales ?? const <Locale>[]) {
-          for (final s in supported) {
-            if (s.languageCode == deviceLocale.languageCode) return s;
-          }
-        }
-        return const Locale('en');
-      },
+      localeListResolutionCallback: resolveAppLocale,
+      // Any touch is foreground activity: it restarts the 30 s idle wait before
+      // Home/Health artifacts are warmed (Calculations power mode).
       builder: (context, child) => _ClockScope(
-          child: ThemeSwitchOverlay(key: themeSwitchKey, child: child!)),
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) =>
+              context.read<AppState>().noteForegroundActivity(),
+          child: ThemeSwitchOverlay(key: themeSwitchKey, child: child!),
+        ),
+      ),
       navigatorObservers: [TelemetryNavigatorObserver()],
       home: const _Gate(),
     );
@@ -292,10 +334,23 @@ class _Gate extends StatelessWidget {
               onDone: () => OnboardingBypass.mark(OnboardingBypass.kProfile)),
           AppRoute.shell => const _Shell(),
         };
+        // Demo mode's persistent reminder — pinned below EVERY route this
+        // switch can produce (onboarding steps included), so there is no
+        // screen where it is possible to forget the data on it is fake. Read
+        // directly off Prefs rather than AppState: nothing about demo mode is
+        // a property of a paired device, and OnboardingBypass.revision (which
+        // this ValueListenableBuilder already listens to) is bumped on both
+        // entering and exiting it, so this re-evaluates at the right times.
+        final withBanner = Prefs.getBool(Prefs.demoModeEnabled, false)
+            ? Column(children: [
+                Expanded(child: resolved),
+                const DemoModeBanner(),
+              ])
+            : resolved;
         // Cold-start splash: covers the whole loading phase and cross-fades out
         // the instant AppState finishes initializing, even mid-play. Shown once
         // per launch; BootSplash latches itself off after.
-        return BootSplash(ready: route != AppRoute.loading, child: resolved);
+        return BootSplash(ready: route != AppRoute.loading, child: withBanner);
       },
     );
   }
@@ -338,9 +393,9 @@ class _InitFailed extends StatelessWidget {
                     style: F.t2.copyWith(color: p.ink)),
                 const SizedBox(height: 8),
                 Text(
-                  'Your data is still on this device — nothing was deleted. '
-                  'This is a start-up step failing, and it will fail the same '
-                  'way each launch until it is fixed.',
+                  'Your data is still on this device and nothing was deleted. '
+                  'A start-up step failed. It will fail again on each launch '
+                  'until the cause is fixed.',
                   style: F.body.copyWith(color: p.ink2, height: 1.5),
                 ),
                 const SizedBox(height: 16),
@@ -474,8 +529,9 @@ Widget? screenForRoute(String route) => switch (routePath(route)) {
       kRouteDetectedActivities => DetectedActivitiesScreen(focusId: routeId(route)),
       kRouteWorkoutSuggestion =>
         WorkoutSuggestionScreen(focusId: routeId(route)),
-      // Battery, band and sources all live behind this one.
-      kRouteProfile => const ProfileHome(),
+      // Battery, band and sources live behind Settings > Hardware > My devices;
+      // there is no profile landing screen in between.
+      kRouteProfile => const MoreSettings(),
       // The alarm safety notifications land where either can actually be
       // fixed — the schedule itself.
       kRouteAlarm => const AlarmScreen(),
@@ -565,7 +621,17 @@ class _ShellState extends State<_Shell> {
       }
       return;
     }
-    if (tab >= 0) _go(domainForTab(tab));
+    if (tab >= 0) {
+      _go(domainForTab(tab));
+      // A sub-tab asked for alongside the switch (Wellness > Recovery asks for
+      // Health's Last night). Cleared a frame later so the Health that ends up
+      // on screen, live or freshly keyed, has seen it — see
+      // `HealthScreen.tabRequest`.
+      if (HealthScreen.tabRequest.value >= 0) {
+        WidgetsBinding.instance.addPostFrameCallback(
+            (_) => HealthScreen.tabRequest.value = -1);
+      }
+    }
   }
 
   void _go(ShellDomain d) {
@@ -654,6 +720,38 @@ class _LiveSessionBar extends StatelessWidget {
     final p = P.of(c);
     final app = c.read<AppState>();
     final a = _activityFor(app);
+    // A finished session whose save failed. It is not running — nothing is
+    // ticking — so say that, and offer the one action that helps: save again.
+    // (The failed stop already raised its error; this is only the way back.)
+    if (c.select<AppState, bool>((s) => s.workoutStopPending)) {
+      return Container(
+        decoration: BoxDecoration(
+          color: p.card,
+          border: Border(top: BorderSide(color: p.line)),
+        ),
+        child: Pressable(
+          semanticLabel: 'Save the session that could not be saved',
+          onTap: () async {
+            try {
+              await app.stopWorkout();
+            } catch (_) {
+              /* logged and announced by the stop itself; still pending */
+            }
+          },
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3),
+            child: Row(children: [
+              Expanded(
+                child: Text('Workout not saved. Tap to try again.',
+                    style: F.body.copyWith(color: p.ink)),
+              ),
+              Icon(LucideIcons.refreshCw, size: 18, color: p.ink3),
+            ]),
+          ),
+        ),
+      );
+    }
     // A session the app is holding but this build cannot draw — an older
     // build's type key, say. Never nothing: the bar is the ONLY control that
     // can end an open session, and hiding it left the workout open forever
@@ -673,7 +771,7 @@ class _LiveSessionBar extends StatelessWidget {
                 const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3),
             child: Row(children: [
               Expanded(
-                child: Text('Session running — tap to finish',
+                child: Text('Session running. Tap to finish.',
                     style: F.body.copyWith(color: p.ink)),
               ),
               Icon(LucideIcons.square, size: 18, color: p.ink3),

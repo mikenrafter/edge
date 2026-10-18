@@ -162,6 +162,104 @@ void main() {
   setUp(BleEngine.resetBandClaimForTest);
   tearDown(BleEngine.resetBandClaimForTest);
 
+  group('band buzz delivery', () {
+    // A write-with-response that lands IS delivery (the same standard every
+    // other haptic and toggle write uses). The band's correlated reply is only
+    // logged; nothing waits on it and nothing is gated on it.
+    test('a link that never replies still delivers', () async {
+      final l = _Link();
+      expect(await l.engine.buzzBand(), isTrue);
+      expect(l.opcodes, [Cmd.runHapticPatternMaverick]);
+      expect(l.commands.single.body.take(12), AlarmPayloads.gen5MaverickBuzz());
+    });
+
+    test('a failed write is the only failure', () async {
+      final failedWrite = _Link()..writeOk = false;
+      expect(await failedWrite.engine.buzzBand(), isFalse);
+      final failedReply = _Link()
+        ..answerAll(status: CommandAwaiter.statusFailure);
+      expect(await failedReply.engine.buzzBand(), isTrue,
+          reason: 'the write landed; the status is only logged');
+    });
+
+    test('not connected is false and writes nothing', () async {
+      final engine = BleEngine(onRecord: (_, _) async {}, onState: (_) {});
+      expect(await engine.buzzBand(), isFalse);
+    });
+
+    test('returns without waiting for the reply', () {
+      fakeAsync((async) {
+        final l = _Link();
+        bool? result;
+        l.engine.buzzBand().then((ok) => result = ok);
+        async.flushMicrotasks();
+        expect(result, isTrue, reason: 'no clock time passed');
+      });
+    });
+
+    test('a reply is logged with its status and how long it took', () async {
+      final l = _Link()..answerAll();
+      final traced = <String>[];
+      l.engine.onBuzzDiagnostic = traced.add;
+      expect(await l.engine.buzzBand(), isTrue);
+      await Future<void>.delayed(Duration.zero);
+      expect(traced.single, matches(r'^Band replied success in \d+ ms'));
+      expect(l.logs.any((x) => x.contains('replied success in')), isTrue);
+    });
+
+    test('a missing reply is logged as no reply, never as a failure', () {
+      fakeAsync((async) {
+        final l = _Link();
+        final traced = <String>[];
+        l.engine.onBuzzDiagnostic = traced.add;
+        bool? result;
+        l.engine.buzzBand().then((ok) => result = ok);
+        async.elapse(const Duration(seconds: 11));
+        expect(result, isTrue);
+        expect(traced.single,
+            matches(r'^No reply from the band within \d+ ms'));
+        expect(l.opcodes, [Cmd.runHapticPatternMaverick],
+            reason: 'nothing is resent');
+      });
+    });
+
+    test('a failure status is logged with its name', () async {
+      final l = _Link()..answerAll(status: CommandAwaiter.statusFailure);
+      final traced = <String>[];
+      l.engine.onBuzzDiagnostic = traced.add;
+      await l.engine.buzzBand();
+      await Future<void>.delayed(Duration.zero);
+      expect(traced.single, contains('failure'));
+    });
+
+    test('MG long and short presses use the supported loop count', () async {
+      final l = _Link();
+      expect(await l.engine.buzzBand(holdMs: 750), isTrue);
+      expect(l.commands.single.body[11], 2);
+      l.commands.clear();
+      expect(await l.engine.buzzBand(holdMs: 80), isTrue);
+      expect(l.commands.single.body[11], 1);
+      l.commands.clear();
+      expect(await l.engine.buzzBand(holdMs: 500), isTrue);
+      expect(l.commands.single.body[11], 2, reason: '500 ms is the boundary');
+    });
+
+    test('gen4 uses its own short pulse command', () async {
+      final l = _Link(band: BandProfile.gen4);
+      expect(await l.engine.buzzBand(), isTrue);
+      expect(l.opcodes, [Cmd.runHapticsPattern]);
+      expect(l.commands.single.body.take(5), [hapticShortPulse, 0, 0, 0, 0]);
+    });
+
+    test('gen4 degrades a long hold to a short buzz instead of failing',
+        () async {
+      final l = _Link(band: BandProfile.gen4);
+      expect(await l.engine.buzzBand(holdMs: 750), isTrue);
+      expect(l.opcodes, [Cmd.runHapticsPattern]);
+      expect(l.commands.single.body.take(5), [hapticShortPulse, 0, 0, 0, 0]);
+    });
+  });
+
   group('MG identity', () {
     test('false before hello; true for a revision-1 MAVERICK hello', () {
       final l = _Link();
@@ -223,6 +321,27 @@ void main() {
         expect(l.commands.map((c) => c.seq).toSet().length, 3);
       },
     );
+
+    test('PREPARE with raw save off (Keep waveform off): 123 and 139 only, no '
+        '125 — the band does not record the waveform', () async {
+      final l = _Link()..answerAll();
+      final lease = l.engine.ecgAcquire()!;
+      final out =
+          await l.engine.ecgPrepare(lease, WristSelection.right, rawSave: false);
+      expect(l.opcodes, [123, 139]);
+      expect(out.map((o) => o.label), ['selectWrist', 'filteredOn']);
+      expect(out.every((o) => o.written && o.succeeded), isTrue);
+    });
+
+    test('CLEANUP still switches raw save OFF (125 00), whatever PREPARE did',
+        () async {
+      final l = _Link()..answerAll();
+      final lease = l.engine.ecgAcquire()!;
+      await l.engine.ecgPrepare(lease, WristSelection.right, rawSave: false);
+      expect(l.opcodes, [123, 139]);
+      await l.engine.ecgCleanup(lease);
+      expect(l.opcodes.sublist(2), contains(125));
+    });
 
     test('PREPARE left selects 01 02', () async {
       final l = _Link()..answerAll();

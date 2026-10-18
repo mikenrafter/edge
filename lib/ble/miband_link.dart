@@ -72,9 +72,8 @@ const FlutterSecureStorage _secure = FlutterSecureStorage();
 /// accepts a new key while it holds none, so freeing it from Mi Fit/Zepp comes
 /// FIRST and pairing here comes second.
 const String _kUnpairFirst =
-    'The band would not take a new key. It only accepts one while it holds '
-    'none, so unpair it from Mi Fit or Zepp first (or use a factory-reset '
-    'unit), then pair here.';
+    'The band rejected the new key. It accepts a key only when it holds none. '
+    'Unpair it from Mi Fit or Zepp, or factory-reset it, then pair here.';
 
 /// Status 0x02: the band was in the wrong state for the command. Not a
 /// refusal of the key, so not [_kUnpairFirst]'s remedy.
@@ -444,8 +443,8 @@ Future<String?> pairMiBand234(BluetoothDevice device) async {
     // holding the band against the phone with a spinner in front of them.
     return await withSecondaryLinkSlot<String?>(
       timeout: const Duration(seconds: 30),
-      onTimeout: () => 'Another sensor is using this phone’s Bluetooth right '
-          'now. Try pairing again in a moment.',
+      onTimeout: () => "Another sensor is using this phone's Bluetooth. "
+                       'Try pairing again in a moment.',
       () async {
         try {
           await device.connect(timeout: const Duration(seconds: 20));
@@ -459,8 +458,8 @@ Future<String?> pairMiBand234(BluetoothDevice device) async {
           final missing = localLink
               .missingCharacteristics(kMiBand234.requiredCharacteristics);
           if (missing.isNotEmpty) {
-            return 'That device does not expose the service this app '
-                'speaks for a Mi Band 2 or 3.';
+            return 'That device does not offer the Bluetooth service '
+                   'used by the Mi Band 2, 3 or 4.';
           }
 
           // Install, then prove — over the real auth characteristic and

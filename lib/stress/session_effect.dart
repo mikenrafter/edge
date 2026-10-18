@@ -113,22 +113,22 @@ String breathingEffectLine(BreathingEffect e) {
   if (e.p == null) {
     final left = kBreathingEffectPairs - e.pairs;
     return e.pairs == 0
-        ? 'Two quiet minutes either side, so there is a before and an after to '
-              'compare. Nothing is said until about $kBreathingEffectPairs '
-              'sessions have both.'
+        ? 'The app compares two quiet minutes before and after each session. '
+          'It shows a result once about $kBreathingEffectPairs '
+          'sessions have both.'
         : 'Measured on ${e.pairs} '
               '${e.pairs == 1 ? 'session' : 'sessions'} so far. About $left '
               'more before there is enough to compare.';
   }
   if (!e.detected) {
-    return 'No detectable change across ${e.pairs} sessions. Your resting '
-        'variability afterwards looks like it did before.';
+    return 'No detectable change across ${e.pairs} sessions. Resting variability '
+           'after a session matched the minutes before it.';
   }
   return e.direction > 0
-      ? 'After your sessions, your resting variability is usually higher for a '
-            'few minutes. Across ${e.pairs} sessions.'
-      : 'After your sessions, your resting variability is usually lower for a '
-            'few minutes. Across ${e.pairs} sessions.';
+      ? 'Across ${e.pairs} sessions, your resting variability was usually higher '
+        'for a few minutes after a session.'
+      : 'Across ${e.pairs} sessions, your resting variability was usually lower '
+        'for a few minutes after a session.';
 }
 
 /// Why the sentence above is weaker than it sounds. Shown WITH the finding,
@@ -136,9 +136,9 @@ String breathingEffectLine(BreathingEffect e) {
 /// itself the plausible mechanism, and nothing here can separate it from the
 /// pacing.
 const kBreathingEffectCaveat =
-    'You knew you were doing it, and you also sat still for ten minutes — that '
-    'on its own would do something, and this cannot tell the two apart. It is '
-    'a few minutes either side, not a lasting change.';
+    'You knew you were breathing on purpose and you sat still for ten '
+    'minutes. Sitting still alone could change the result, and this '
+    'comparison cannot separate the two. It only covers a few minutes either side of a session.';
 
 /// Signed-rank sum (W+ − W−) over the non-zero differences.
 double _signedRankSum(List<double> diffs) {

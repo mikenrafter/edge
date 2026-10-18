@@ -1,0 +1,23 @@
+// FIXTURE: rawtable_ok_inside_localdb
+// Inside LocalDb the loop is the raw-reader registry's business
+// (rawReaderUnregistered), not this rule's; this method returns an int, so it is
+// not a reader either.
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> rawQuery(String sql) async => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<int> hrSum() async {
+    final rows = await _db.rawQuery('SELECT hr FROM decoded_onehz');
+    var n = 0;
+    for (final r in rows) {
+      n += (r['hr'] as num).toInt();
+    }
+    return n;
+  }
+}

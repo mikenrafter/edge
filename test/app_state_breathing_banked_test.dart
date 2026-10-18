@@ -1,7 +1,7 @@
-// A breathing session that IS banked. The rule is "at least 60 s of wall
-// clock", read from the session's clock (AppState.breathingNow, a test-only
-// replacement for DateTime.now), so this file moves a virtual clock past the
-// minute and checks everything that depends on it:
+// Workout area: a breathing session that IS banked. The rule
+// is "at least 60 s of wall clock", read from the controller's injected clock,
+// so this file moves a virtual clock past the minute and checks everything
+// that depends on it:
 //
 //   A  a resonance session in a pre / post quiet window, with a target:
 //      seconds clamped to the target, coherence + confidence taken from the
@@ -10,18 +10,19 @@
 //      frames each stretch buffered;
 //   B  an open-ended session on a pattern the score is not rated for, no
 //      window: the full elapsed seconds, coherence and confidence NULL (a
-//      score exists but is not rated for this pattern), insert off the stop
+//      score exists but is not banked for this pattern), insert off the stop
 //      path.
 //
 // Both run side by side on two AppStates over the one stretch of virtual time,
-// and a third and fourth pin the 59.999 s / 60 s boundary. A last test pins
-// that a window around a session too short to bank has nothing to attach to.
+// and a third and fourth pin the 59 s / 60 s boundary.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/stress/breath_phases.dart';
 
+import 'support/app_state_live_harness.dart';
 import 'support/app_state_workout_harness.dart';
 
 const _db = 'app_state_workout_breathing_banked.db';
@@ -30,12 +31,14 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late PlatformSpies spies;
   setUp(() async {
-    await workoutDbSetUp(_db);
+    BleEngine.resetBandClaimForTest();
+    await deriveDbSetUp(_db);
     spies = PlatformSpies();
   });
   tearDown(() async {
     spies.dispose();
-    await workoutDbTearDown(_db);
+    BleEngine.resetBandClaimForTest();
+    await deriveDbTearDown(_db);
   });
 
   test('a session of a minute or more is banked, clamped to its target, '
@@ -44,7 +47,7 @@ void main() {
     DateTime now() => clock;
     final probe = TimerProbe();
     await probe.run(() async {
-      final hr = hr28Frame(7);
+      final hr = hexOf(hr28Inner(rr: const [800, 810]));
       void feed(AppState app, int n) {
         for (var i = 0; i < n; i++) {
           app.debugOnLiveFrame(0x28, hr, 1790000000 + i);
@@ -55,7 +58,7 @@ void main() {
       final unrated = kBreathPatterns.firstWhere((p) => !p.coherenceRated);
 
       // A: window, then a rated session with a one-minute target.
-      final a = AppState.forTesting()..breathingNow = now;
+      final a = AppState.forTesting(breathingNow: now);
       final repoA = BreathRepo();
       a.repo = repoA;
       a.device.connection = 'connected';
@@ -73,7 +76,7 @@ void main() {
       clock = clock.add(const Duration(milliseconds: 5));
 
       // B: no window, an unrated pattern, no target.
-      final b = AppState.forTesting()..breathingNow = now;
+      final b = AppState.forTesting(breathingNow: now);
       final repoB = BreathRepo();
       b.repo = repoB;
       b.device.connection = 'connected';
@@ -124,7 +127,7 @@ void main() {
       expect(afterClose['seconds'], 60);
 
       // The boundary: 59.999 s is not a session, 60 s exactly is.
-      final c = AppState.forTesting()..breathingNow = now;
+      final c = AppState.forTesting(breathingNow: now);
       c.repo = BreathRepo();
       c.device.connection = 'connected';
       await c.startBreathingSession(pattern: unrated);
@@ -133,7 +136,7 @@ void main() {
       await c.stopBreathingSession();
 
       clock = clock.add(const Duration(seconds: 1));
-      final d = AppState.forTesting()..breathingNow = now;
+      final d = AppState.forTesting(breathingNow: now);
       d.repo = BreathRepo();
       d.device.connection = 'connected';
       await d.startBreathingSession(pattern: unrated);

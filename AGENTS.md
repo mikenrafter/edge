@@ -78,6 +78,10 @@ and by `_repairOpenSchema` on every open). `events`/`samples` prune at the cutof
 **immutable** `day_result` (PK `day_id, algo_version`) and `metric_series`
 (PK `date,key`, REPLACE). Consequence: a `kAlgoVersion` bump re-derives only
 days whose substrate is still on disk; older days keep their version.
+Provisional rows are replaced on re-derive; once
+finalized, a (day, version) row is frozen — only a new `kAlgoVersion` (new
+sibling row), a user-triggered re-derive, or a value-identical re-encode touches
+it. `LocalDb.putDayResult` is the one place the rule is enforced.
 
 **Bug-density hotspots** (fix-titled commit churn, last 300 commits):
 `state/app_state.dart` 30 · `data/db.dart` 25 · `compute/derivation_engine.dart`
@@ -106,9 +110,11 @@ a hotspot.
    imputation, no substituted defaults, no deriving one metric from another as a
    fallback. Most-violated rule in the repo (§4.1).
 4. **Bump `kAlgoVersion`** (`compute/derivation_engine.dart`) whenever any
-   analytics *output* changes, including via a sibling re-pin. Rows are immutable
-   per version; without a bump nothing recomputes. Add a changelog entry above
-   the constant.
+   analytics *output* changes, including via a sibling re-pin. Provisional rows
+   are replaced on re-derive; once finalized, a (day, version) row is frozen —
+   only a new `kAlgoVersion` (new sibling row), a user-triggered re-derive
+   (`DayResultWrite.userOverride`), or a value-identical re-encode touches it.
+   Without a bump nothing recomputes. Add a changelog entry above the constant.
 5. **A bump citing a sibling change must be backed by the pin.** Verify the SHA
    in `pubspec.yaml` actually contains the cited change. v43's changelog
    described an analytics fix its pin never contained; the bug stayed live three
@@ -119,6 +125,13 @@ a hotspot.
    `data/day_label.dart`; never `DateTime.now().toUtc()...substring(0,10)`. Epoch
    timestamps (rec_ts, session bounds, prune cutoffs) are absolute — do not
    "fix" those to local. Day-length arithmetic must not assume 86400 s (DST).
+   **Being migrated (design 01, owner-approved 2026-10-08):** a day label
+   becomes the wearer's local date in the zone *recorded at the time*
+   (`zone_span`; unknown ⇒ nearest known zone), not the phone's current zone.
+   After a westward zone change the label never goes backwards: the later day
+   continues until the new zone's date passes it. `day_label.dart` stays the
+   only label API (delegating to `CalendarPolicy`). Until that phase lands,
+   the code above is the behaviour.
 8. **One source per concern.** One raw decode point (`substrate.dart`), one sleep
    segmentation, one readiness, one frame-ingest path (`RecordGate`), one
    notification emitter (`NotificationCenter.emit`). A second path is the bug.
@@ -143,9 +156,18 @@ a hotspot.
 13. **The coach reads only allow-listed `v_*` views** — never `decoded_*`,
     `raw_*`, or base tables.
 14. **Live high-rate streams (0x28/0x2B/0x33) are never persisted** — RAM-only.
+    The one exception is a Device lab IMU recording the wearer saves with an
+    explicit "Save recording" (`gestures/imu_recording_store.dart`, a JSON Lines
+    file under `device_lab/imu/`); it never reaches `raw_records`, `decoded_*` or
+    `raw_archive`, and nothing is saved automatically.
 15. **Dangerous opcodes are never auto-sent** (`dangerousCmds`, gated in
     `ble/ble_engine.dart` wherever a write checks it): force-trim, reboot,
     power-cycle, firmware load.
+16. **Device lab reports are shared as log files, never as strings on the
+    clipboard.** Every Device lab page and runner saves its report through the
+    existing path (`logFileName` + `saveLogFile` in `util/log_file.dart`, the
+    platform share sheet). No "Copy report" control, no `Clipboard.setData`
+    (`log_no_clipboard_guard_test`, `device_lab_no_clipboard_guard_test`).
 
 ## 4. Recurring bug patterns — what actually ships broken here
 
@@ -231,7 +253,7 @@ rode analytics v42 into 0.9.13; a PR bumped `kAlgoVersion` while the lock still
 pinned the pre-fix analytics commit, requiring a manual merge-order gate; and
 `0.9.17+1` shipped versionCode 1 → `INSTALL_FAILED_VERSION_DOWNGRADE`, making
 the release uninstallable.
-`pubspec_overrides.yaml` redirects siblings to `../analytics` / `../protocol` and
+`pubspec_overrides.yaml` redirects siblings to `../openstrap-analytics` / `../protocol` and
 is gitignored — committing a path override fails CI `flutter pub get` (exit 66).
 The tracked `pubspec.lock` records `source: git` + `resolved-ref` for both
 siblings, and `.github/scripts/check_sibling_pins.sh` fails CI if it ever
@@ -276,3 +298,30 @@ every metric path, idempotence under repeated derivation, flag reset on failure
 paths, transaction ordering and durability around BLE sync, isolate boundaries,
 migration safety, and anything that could display a number the data does not
 support.
+
+## 6. Design rules (for new code; existing code converges gradually)
+
+Adopted 2026-10-08 (design 03). New code follows these now; refactors of old
+code happen one cluster at a time, each with a design note first.
+
+- **Deep modules, one interface per concern.** Similar actions go through ONE
+  module: writing a journal day, posting a band haptic, persisting a pref with
+  acknowledgement. A second hand-rolled copy is a finding.
+- **One owner per mutable state.** Each piece of mutable state has exactly one
+  owner, named in its file header. Concurrent access goes through that owner's
+  lock or queue. A caller never reads, modifies and writes back state it does
+  not own (no `getJournal` then `postJournal` at a call site).
+- **Atomic actions.** Use one DB transaction where possible. Otherwise prepare,
+  validate, then switch over (write the new thing, then swap a pointer or flag).
+  Every exit path cleans up: no orphaned files, timers or listeners.
+- **Results, not booleans.** Operations that can be refused or fail return a
+  sealed result (`Ok | Refused(reason) | Failed(error)`), not a bool plus a log
+  line. Exceptions that remain are documented on the API.
+- **One lexicon.** Domain terms are defined in `docs/lexicon.md`; names follow
+  it. A new term is added there in the same change that introduces it.
+- **Rationale comments at decisions.** Comment *why* at the point a choice is
+  made; don't narrate what the code does.
+- **Time and heavy work.** Instants vs days vs wall times vs strap clock vs
+  monotonic time are separate domains (design 01). Work whose cost grows with
+  stored data is `@heavy` and runs only through a registered worker
+  (design 02). Guards for both land in phases.

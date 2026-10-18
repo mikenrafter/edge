@@ -1,0 +1,66 @@
+// FIXTURE: sendable_bad_nested_shapes
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#mapHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+  WorkerEntry(#listHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+  WorkerEntry(#recordHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+  WorkerEntry(#objectResultHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+  WorkerEntry(#deepHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+@heavy
+double mapHeavy(Map<String, dynamic> j) {
+  assertWorker();
+  return 0;
+}
+
+@heavy
+double listHeavy(List<Object?> xs) {
+  assertWorker();
+  return 0;
+}
+
+@heavy
+double recordHeavy((int, dynamic) r) {
+  assertWorker();
+  return 0;
+}
+
+@heavy
+Object objectResultHeavy(DayArgs a) {
+  assertWorker();
+  return a;
+}
+
+@heavy
+double deepHeavy(Map<String, List<Map<String, dynamic>>> m) {
+  assertWorker();
+  return 0;
+}
+
+class Caller {
+  Future<void> go() async {
+    await Isolate.run(() => mapHeavy(const {}));
+    await Isolate.run(() => listHeavy(const []));
+    await Isolate.run(() => recordHeavy((1, 2)));
+    await Isolate.run(() => objectResultHeavy(const DayArgs(0, [])));
+    await Isolate.run(() => deepHeavy(const {}));
+  }
+}

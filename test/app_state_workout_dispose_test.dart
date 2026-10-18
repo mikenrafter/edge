@@ -1,8 +1,12 @@
-// Lifetime of the workout / breathing state. What AppState.dispose cancels in
-// this area (the 1 Hz tick, the 20 s breathing recompute), what it leaves alone
-// (the live state itself, the display hold, the Live Activity, a running
-// route recorder: today's behaviour, pinned so a move cannot change it by
-// accident), identities, and what a dispose does to calls that arrive after it.
+// Workout area: lifetime of the workout / breathing state.
+// What AppState.dispose cancels in this area (the 1 Hz tick, the 20 s
+// breathing recompute), what it leaves alone (the live state itself, the
+// display hold, the Live Activity, a running route recorder: today's
+// behaviour, pinned so a move cannot change it by accident), identities, and
+// what a dispose does to calls that arrive after it.
+//
+// Not pinned here on purpose: what dispose does to gesture sessions (another
+// change owns that).
 
 import 'dart:async';
 
@@ -12,6 +16,7 @@ import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/gps/screen_wake.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 
+import 'support/app_state_live_harness.dart' show hexOf, hr28Inner;
 import 'support/app_state_workout_harness.dart';
 
 const _db = 'app_state_workout_dispose.db';
@@ -21,13 +26,13 @@ void main() {
   late PlatformSpies spies;
   setUp(() async {
     BleEngine.resetBandClaimForTest();
-    await workoutDbSetUp(_db);
+    await deriveDbSetUp(_db);
     spies = PlatformSpies();
   });
   tearDown(() async {
     spies.dispose();
     BleEngine.resetBandClaimForTest();
-    await workoutDbTearDown(_db);
+    await deriveDbTearDown(_db);
   });
 
   group('timers', () {
@@ -140,7 +145,7 @@ void main() {
         app.device.connection = 'connected';
         app.repo = repo;
         await app.startBreathingSession();
-        app.debugOnLiveFrame(0x28, hr28Frame(), 1);
+        app.debugOnLiveFrame(0x28, hexOf(hr28Inner(rr: const [800])), 1);
         final timer = probe.active(kBreathRecompute).single;
         timer.fire();
         await settleMs(30);
@@ -159,9 +164,11 @@ void main() {
         'start / stop', () async {
       final app = AppState.forTesting();
       final revision = app.insightsRevision;
+      final recalc = app.recalc;
       app.startWorkout(workoutId: 'w4-z5', type: 'strength');
       await app.stopWorkout();
       expect(identical(app.insightsRevision, revision), isTrue);
+      expect(identical(app.recalc, recalc), isTrue);
       expect(app.insightsRevision.value, 1);
       await settleMs(200);
       app.dispose();

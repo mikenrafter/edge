@@ -22,8 +22,11 @@ void main() {
       expect(categoryFor(1, 100), EcgCategory.unreadable);
     });
 
-    test('code 3: low heart rate only at 50 or below', () {
-      expect(categoryFor(3, 0), EcgCategory.lowHeartRate);
+    test('code 3: low heart rate only at 1..50; 0 is "no rate", not a low one',
+        () {
+      // design 04: 0 used to map to lowHeartRate, a rate nobody measured.
+      expect(categoryFor(3, 0), EcgCategory.unreadable);
+      expect(categoryFor(3, 1), EcgCategory.lowHeartRate);
       expect(categoryFor(3, 50), EcgCategory.lowHeartRate);
       expect(categoryFor(3, 51), EcgCategory.unreadable);
     });

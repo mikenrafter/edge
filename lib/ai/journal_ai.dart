@@ -88,7 +88,7 @@ String journalAiSystemPrompt() =>
     'structured log of it.\n'
     'Respond with ONLY a JSON object, no other text:\n'
     '{"reply": string, "tags": [string], "note": string}\n'
-    '- reply: 1-3 warm sentences reflecting what you heard. You may ask at '
+    '- reply: 1-3 warm sentences that restate what you heard. You may ask at '
     'most ONE short follow-up if something health-relevant is unclear. No '
     'advice, no diagnosis, no emojis.\n'
     '- tags: the CUMULATIVE behaviours mentioned so far this conversation, '

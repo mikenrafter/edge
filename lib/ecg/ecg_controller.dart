@@ -15,11 +15,16 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 
+import 'ecg_cues.dart';
 import 'ecg_guard_store.dart';
 import 'ecg_models.dart';
+import 'ecg_outcome.dart';
 import 'ecg_policy.dart';
 import 'ecg_recovery.dart';
+import 'ecg_seconds.dart';
+import 'ecg_result.dart';
 import 'ecg_transport.dart';
 import 'ecg_waveform_buffer.dart';
 
@@ -66,6 +71,18 @@ class EcgCaptureState {
   /// the next connection retries the cleanup triplet.
   final bool cleanupIncomplete;
 
+  /// What was saved, once something was: complete, a final inconclusive, or a
+  /// partial (stopped by background/timeout). Null while capturing and when
+  /// nothing was saved. RED stub (ecg-features): the controller never sets it.
+  final EcgReadingStatus? result;
+
+  /// The saved result's real metrics (see ecgMetricsOf), empty until saved.
+  final List<EcgMetric> metrics;
+
+  /// Design 04 R1: the shared outcome of what was saved (ecgOutcome of the
+  /// saved reading). Null while capturing and when nothing was saved.
+  final EcgOutcome? outcome;
+
   const EcgCaptureState({
     this.phase = EcgCapturePhase.idle,
     this.wrist,
@@ -77,6 +94,9 @@ class EcgCaptureState {
     this.readingId,
     this.unreadableMask = 0,
     this.cleanupIncomplete = false,
+    this.result,
+    this.metrics = const [],
+    this.outcome,
   });
 
   EcgCaptureState copyWith({
@@ -91,6 +111,9 @@ class EcgCaptureState {
     String? readingId,
     int? unreadableMask,
     bool? cleanupIncomplete,
+    EcgReadingStatus? result,
+    List<EcgMetric>? metrics,
+    EcgOutcome? outcome,
   }) => EcgCaptureState(
     phase: phase ?? this.phase,
     wrist: wrist ?? this.wrist,
@@ -102,6 +125,9 @@ class EcgCaptureState {
     readingId: readingId ?? this.readingId,
     unreadableMask: unreadableMask ?? this.unreadableMask,
     cleanupIncomplete: cleanupIncomplete ?? this.cleanupIncomplete,
+    result: result ?? this.result,
+    metrics: metrics ?? this.metrics,
+    outcome: outcome ?? this.outcome,
   );
 
   /// The phases in which the band may be generating: from the first ON
@@ -137,7 +163,32 @@ class EcgController extends ChangeNotifier {
   final Duration captureTimeout;
   final int Function() nowMs;
 
+  /// Whether the accepted waveform is kept with a saved reading (the wearer's
+  /// "Keep waveform" choice; default false). When false the controller hands
+  /// [save] NO packets: only the derived metrics and quality are stored. Read
+  /// when the result is saved.
+  final bool Function() keepWaveform;
+
+  /// Plays the ECG haptic cue [slotKey] (`ecg.*`, see EcgCueTracker). Never
+  /// called for a gesture-owned (`persist: false`) capture, whose cues are the
+  /// gesture ones. A cue that throws is logged and ignored.
+  final void Function(String slotKey)? onCue;
+
+  /// Design 04 R3 provenance stamped on every new reading. Each is read when
+  /// the reading is built; null (or a provider returning null) = not recorded,
+  /// stored NULL and shown "not recorded", never inferred.
+  final String? Function()? firmwareVersion;
+  final String? Function()? appVersion;
+
+  /// UTC offset in minutes at the instant [epochMs] (the window start).
+  final int? Function(int epochMs)? utcOffsetMin;
+
   static const String screenOwner = 'ecg';
+
+  /// Every live packet that passes the armed gate, before the reducer sees it.
+  /// A tap on the stream for a consumer that only reads (the Device lab's
+  /// touch counter); it must not throw and is never awaited.
+  void Function(LabradorR17 r17)? onFrame;
 
   EcgController({
     required this.transport,
@@ -149,7 +200,13 @@ class EcgController extends ChangeNotifier {
     void Function(String)? log,
     this.captureTimeout = const Duration(seconds: 120),
     int Function()? nowMs,
-  }) : log = log ?? ((_) {}),
+    bool Function()? keepWaveform,
+    this.onCue,
+    this.firmwareVersion,
+    this.appVersion,
+    this.utcOffsetMin,
+  }) : keepWaveform = keepWaveform ?? (() => false),
+       log = log ?? ((_) {}),
        nowMs = nowMs ?? (() => DateTime.now().millisecondsSinceEpoch);
 
   EcgCaptureState _state = const EcgCaptureState();
@@ -167,31 +224,112 @@ class EcgController extends ChangeNotifier {
   bool _armed = false;
   bool _restartInFlight = false;
   bool _cleanupDone = false;
+  bool _disposed = false;
   bool _screenHeld = false;
+  bool _persist = true;
+  void Function(String line)? _trace;
+  bool _restartNoted = false;
   int _retriesUsed = 0;
   int? _windowStartMs;
   EcgReducerState _reducer = const EcgReducerState.initial();
   StreamSubscription<EcgTransportEvent>? _sub;
   Timer? _timer;
+  final EcgCueTracker _cues = EcgCueTracker();
+
+  /// The one completion of the current capture (see [_exitOnce]). Reset by
+  /// [begin].
+  Future<void>? _exiting;
+
+  /// "Keep waveform" as it was when this capture began. It decides both whether
+  /// PREPARE asks the band for its raw save and whether the accepted window is
+  /// handed to [save]; taking it once keeps the two in step.
+  bool _keep = false;
+
+  // What the accepted window's packets carried, for a partial result: the
+  // live heart rates (the band sends 0 for "none") and the last quality. They
+  // restart with the window (EcgClear).
+  int _hrSum = 0;
+  int _hrN = 0;
+  int _lastQuality = 0;
 
   bool get isCapturing => _lease != null;
+
+  /// Changes on every [begin] and every cancel, so a consumer that started a
+  /// capture can later tell it is still THAT capture (the tap-counting gesture
+  /// stops a late start it began, never an ECG the user began since).
+  int get captureEpoch => _epoch;
 
   @visibleForTesting
   EcgReducerState get reducerState => _reducer;
 
+  // A capture that ends after dispose (its cleanup was still running) must
+  // still finish: notifying a disposed notifier throws in debug and would end
+  // the exit path before the lease is released.
   void _set(EcgCaptureState s) {
     _state = s;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
+    _cue(s);
+  }
+
+  // The haptic cue this state calls for, if any. Never for a gesture-owned
+  // capture (its cues are the gesture ones) and never able to break an exit.
+  void _cue(EcgCaptureState s) {
+    final play = onCue;
+    if (!_persist || _disposed || play == null) return;
+    final slot = _cues.observe(s);
+    if (slot == null) return;
+    try {
+      play(slot);
+    } catch (e) {
+      log('[ECG] cue $slot failed: $e');
+    }
   }
 
   bool _stale(int epoch) => _epoch != epoch || _lease == null;
 
+  void _note(String line) {
+    try {
+      _trace?.call(line);
+    } catch (_) {}
+  }
+
   /// Start a reading on [wrist]. Every precondition failure lands in a
   /// terminal phase with a reason; nothing is written to the band before
   /// the durable guard is acknowledged.
-  Future<void> begin(EcgWrist wrist) async {
-    if (_lease != null) return; // single-flight
+  ///
+  /// [persist] false is for a consumer that only reads the live stream (the
+  /// tap-counting gesture): whatever terminal the band reaches, nothing is
+  /// saved, no sync is requested and the capture ends `cancelled`/`gesture`.
+  /// The reading's own rules also stand down, because lifting a finger is the
+  /// gesture, not a fault: contact lost three times does not end the capture,
+  /// and the explicit RESTART a reading sends when the band's S2 state drops
+  /// is not sent (a restart stops forwarding packets while it runs, and makes
+  /// the band start its signal over). Both are reported through [trace].
+  /// It is set per begin, so it can never outlive the capture it was for.
+  ///
+  /// [trace] gets one line per start stage with the time it took (Device lab).
+  Future<void> begin(
+    EcgWrist wrist, {
+    bool persist = true,
+    void Function(String line)? trace,
+  }) async {
+    if (_disposed || _lease != null) return; // single-flight
     final epoch = ++_epoch;
+    _persist = persist;
+    _trace = trace;
+    _restartNoted = false;
+    _cues.reset();
+    _hrSum = 0;
+    _hrN = 0;
+    _lastQuality = 0;
+    final clock = Stopwatch()..start();
+    var lastMs = 0;
+    void stage(String what) {
+      final now = clock.elapsedMilliseconds;
+      _note('ECG start: $what (+${now - lastMs} ms, $now ms in).');
+      lastMs = now;
+    }
+
     live.clear();
     preview.markDirty();
     if (!transport.isReady) {
@@ -240,6 +378,8 @@ class EcgController extends ChangeNotifier {
     _serial = serial;
     _wrist = wrist;
     _cleanupDone = false;
+    _exiting = null;
+    _keep = keepWaveform();
     _armed = false;
     _restartInFlight = false;
     _windowStartMs = null;
@@ -249,6 +389,7 @@ class EcgController extends ChangeNotifier {
     _set(EcgCaptureState(phase: EcgCapturePhase.preparing, wrist: wrist));
     try {
       await guard.setWrist(serial, wrist);
+      stage('wrist saved');
       if (await guard.isActive(serial)) {
         _set(_state.copyWith(phase: EcgCapturePhase.recovering));
         final r = await ecgRecoverRetainedGuard(
@@ -264,8 +405,10 @@ class EcgController extends ChangeNotifier {
         }
         _set(_state.copyWith(phase: EcgCapturePhase.preparing));
       }
+      stage('guard checked');
       await transport.cancelHistory(lease);
       if (_stale(epoch)) return;
+      stage('history sync paused');
       // The durable guard goes down BEFORE the first ON write and is
       // acknowledged; a write that did not land does not get a band enabled.
       if (!await guard.setActive(serial)) {
@@ -273,11 +416,17 @@ class EcgController extends ChangeNotifier {
         return;
       }
       if (_stale(epoch)) return;
+      stage('guard set');
       // Subscribe BEFORE any generation write: the first post-START packet
       // can arrive at the write/response boundary.
       _sub ??= transport.events.listen(_onEvent);
-      final prep = await transport.prepare(lease, wrist);
+      // The band keeps the raw recording (for history sync to store in
+      // ecg_raw_packet) only if the wearer keeps the waveform. That holds for
+      // the tap-counting gesture too: off, it records nothing and no
+      // gesture-tagged raw rows are stored; on, they are tagged as before.
+      final prep = await transport.prepare(lease, wrist, rawSave: _keep);
       if (_stale(epoch)) return;
+      stage('prepare answered (${prep.allSucceeded ? 'accepted' : 'refused'})');
       if (!prep.allSucceeded) {
         log('[ECG] PREPARE not accepted: $prep');
         await _finish(epoch, EcgCapturePhase.failed, reason: 'prepare');
@@ -289,6 +438,7 @@ class EcgController extends ChangeNotifier {
       await holdScreen(screenOwner);
       final st = await transport.start(lease);
       if (_stale(epoch)) return;
+      stage('start answered (${st.allSucceeded ? 'accepted' : 'refused'})');
       if (!st.allSucceeded) {
         log('[ECG] START not accepted: $st');
         _armed = false;
@@ -296,7 +446,9 @@ class EcgController extends ChangeNotifier {
         return;
       }
       _timer = Timer(captureTimeout, () {
-        unawaited(_finish(epoch, EcgCapturePhase.failed, reason: 'timeout'));
+        unawaited(
+          _finishWithPartial(epoch, EcgCapturePhase.failed, 'timeout'),
+        );
       });
       if (_state.phase == EcgCapturePhase.starting) {
         _set(_state.copyWith(phase: EcgCapturePhase.waiting));
@@ -323,17 +475,22 @@ class EcgController extends ChangeNotifier {
 
   /// Back / explicit cancel. Cleans up; the band stops generating.
   Future<void> cancel() async {
-    if (_lease == null) return;
+    if (_lease == null || _disposed) return;
+    final running = _exiting;
+    if (running != null) return running; // the capture is already ending
     final epoch = ++_epoch;
     await _finish(epoch, EcgCapturePhase.cancelled, reason: 'cancelled');
   }
 
-  /// The app went to the background mid-capture — same as cancel (the
-  /// official screen stops on ON_PAUSE too).
+  /// The app went to the background mid-capture — the capture stops (the
+  /// official screen stops on ON_PAUSE too) and what was recorded is saved as
+  /// a partial reading ([_finishWithPartial]).
   Future<void> onAppPaused() async {
-    if (_lease == null) return;
+    if (_lease == null || _disposed) return;
+    final running = _exiting;
+    if (running != null) return running; // the capture is already ending
     final epoch = ++_epoch;
-    await _finish(epoch, EcgCapturePhase.cancelled, reason: 'paused');
+    await _finishWithPartial(epoch, EcgCapturePhase.cancelled, 'paused');
   }
 
   /// Awaited teardown for the owner (AppState shutdown, tests).
@@ -343,8 +500,18 @@ class EcgController extends ChangeNotifier {
     _sub = null;
   }
 
+  /// A capture still holding the band at dispose gets its one cleanup now (the
+  /// owner cannot await it): the stop is written and the lease and screen hold
+  /// are released without notifying. One already cleaning up carries on alone.
   @override
   void dispose() {
+    _disposed = true;
+    if (_lease != null && _exiting == null) {
+      unawaited(
+        _finish(++_epoch, EcgCapturePhase.cancelled, reason: 'disposed')
+            .catchError((Object _) {}),
+      );
+    }
     _timer?.cancel();
     _sub?.cancel();
     super.dispose();
@@ -356,7 +523,7 @@ class EcgController extends ChangeNotifier {
     switch (e) {
       case EcgTransportLinkDown():
         unawaited(
-          _finish(epoch, EcgCapturePhase.failed, reason: 'disconnected'),
+          _finishWithPartial(epoch, EcgCapturePhase.failed, 'disconnected'),
         );
       case EcgTransportMalformed():
         if (_armed) {
@@ -372,6 +539,11 @@ class EcgController extends ChangeNotifier {
   void _onFrame(int epoch, EcgTransportFrame e) {
     if (!_armed || _restartInFlight) return;
     final r17 = e.r17;
+    try {
+      onFrame?.call(r17);
+    } catch (err) {
+      log('[ECG] frame listener failed: $err');
+    }
     // The live preview shows real samples from the moment the pipeline is
     // armed (zeros before contact); only the accepted window is ever saved.
     live.push(r17.samples);
@@ -404,14 +576,34 @@ class EcgController extends ChangeNotifier {
     _set(next);
     for (final effect in step.effects) {
       switch (effect) {
-        case EcgAppend():
-        case EcgAppendPlaceholder():
+        case EcgAppend(:final packet):
+          if (packet.liveHr > 0) {
+            _hrSum += packet.liveHr;
+            _hrN++;
+          }
+          if (packet.quality > 0) _lastQuality = packet.quality;
         case EcgClear():
+          _hrSum = 0;
+          _hrN = 0;
+          _lastQuality = 0;
+        case EcgAppendPlaceholder():
           break;
         case EcgSendRestart():
-          unawaited(_restart(epoch));
+          if (_persist) {
+            unawaited(_restart(epoch));
+          } else if (!_restartNoted) {
+            // Once per capture: the packet lines show the S2 state each time.
+            _restartNoted = true;
+            _note('ECG: the band\'s S2 state dropped with contact on; a '
+                'reading would send RESTART here, the gesture does not.');
+          }
         case EcgFail(:final reason):
-          unawaited(_finish(epoch, EcgCapturePhase.failed, reason: reason));
+          if (!_persist && reason == 'interruptions') {
+            _note('ECG: contact lost ${_reducer.interruptions} times; a '
+                'reading would give up here, the gesture keeps streaming.');
+          } else {
+            unawaited(_finish(epoch, EcgCapturePhase.failed, reason: reason));
+          }
         case EcgTerminal(:final outcome):
           unawaited(_handleTerminal(epoch, outcome));
       }
@@ -434,40 +626,182 @@ class EcgController extends ChangeNotifier {
     _set(_state.copyWith(phase: EcgCapturePhase.active));
   }
 
-  Future<void> _handleTerminal(int epoch, EcgTerminalOutcome outcome) async {
-    _armed = false;
-    _timer?.cancel();
-    switch (outcome.kind) {
-      case EcgTerminalKind.unreadable:
-        await _finish(
-          epoch,
-          EcgCapturePhase.unreadable,
-          unreadableMask: outcome.unreadableMask,
-        );
-      case EcgTerminalKind.inconclusiveOfferRetry:
-        await _finish(epoch, EcgCapturePhase.inconclusiveRetry);
-      case EcgTerminalKind.completed:
-      case EcgTerminalKind.inconclusiveFinal:
-        _set(_state.copyWith(phase: EcgCapturePhase.saving));
-        final packets = List<EcgAcceptedPacket>.from(_reducer.accepted);
-        final reading = _buildReading(outcome, packets);
-        try {
-          await save(reading, packets);
-        } catch (e) {
-          log('[ECG] save failed: $e');
-          if (_stale(epoch)) return;
-          await _finish(epoch, EcgCapturePhase.failed, reason: 'save');
+  Future<void> _handleTerminal(int epoch, EcgTerminalOutcome outcome) =>
+      _exitOnce(epoch, () async {
+        _armed = false;
+        _timer?.cancel();
+        if (!_persist) {
+          await _teardown(epoch, EcgCapturePhase.cancelled, reason: 'gesture');
           return;
         }
-        if (_stale(epoch)) return;
-        await _finish(epoch, EcgCapturePhase.completed, readingId: reading.id);
-        // The band saved raw R16 under raw-save ON; ordinary incremental
-        // history brings it back through the normal safe path.
+        // EVERY terminal is saved as an attempt before the window is gone
+        // (design 04 R2): an unreadable or first-inconclusive one is evidence
+        // too, and the store groups it with the retake that follows. A failed
+        // save ends the capture `failed`/'save', never a "saved" screen.
+        _set(_state.copyWith(phase: EcgCapturePhase.saving));
+        final packets = List<EcgAcceptedPacket>.from(outcome.window);
+        final reading = _buildReading(outcome, packets);
         try {
-          await transport.requestSync();
+          await save(reading, _keep ? packets : const []);
         } catch (e) {
-          log('[ECG] post-reading sync request failed: $e');
+          log('[ECG] save failed: $e');
+          await _teardown(epoch, EcgCapturePhase.failed, reason: 'save');
+          return;
         }
+        // What the screens say about it: the one outcome, band bytes plus the
+        // mask the whole window carried.
+        final shown = ecgOutcome(reading);
+        switch (outcome.kind) {
+          case EcgTerminalKind.unreadable:
+            await _teardown(
+              epoch,
+              EcgCapturePhase.unreadable,
+              unreadableMask: outcome.unreadableMask,
+              readingId: reading.id,
+              outcome: shown,
+            );
+          case EcgTerminalKind.inconclusiveOfferRetry:
+            await _teardown(
+              epoch,
+              EcgCapturePhase.inconclusiveRetry,
+              readingId: reading.id,
+              outcome: shown,
+            );
+          case EcgTerminalKind.completed:
+          case EcgTerminalKind.inconclusiveFinal:
+            await _teardown(
+              epoch,
+              EcgCapturePhase.completed,
+              readingId: reading.id,
+              result: reading.status,
+              metrics: ecgMetricsOf(reading),
+              outcome: shown,
+            );
+            // With the raw save on, the band kept the recording; ordinary
+            // incremental history brings it back through the normal safe path.
+            try {
+              await transport.requestSync();
+            } catch (e) {
+              log('[ECG] post-reading sync request failed: $e');
+            }
+        }
+      });
+
+  /// THE one exit of a capture. Whatever ends it first (the terminal packet,
+  /// the capture timeout, a dropped link, the app going to the background, the
+  /// wearer's cancel, a failed start) runs [run]; every later attempt gets the
+  /// same future and does nothing of its own. So a result is saved once, the
+  /// cleanup runs once, and the lease is released only after that cleanup has
+  /// finished. Called synchronously from each entry, before any await, so two
+  /// entries in the same turn cannot both pass.
+  Future<void> _exitOnce(int epoch, Future<void> Function() run) {
+    final running = _exiting;
+    if (running != null) return running;
+    if (_lease == null || _epoch != epoch) return Future<void>.value();
+    return _exiting = run().catchError((Object e, StackTrace st) {
+      log('[ECG] exit failed: $e\n$st');
+    });
+  }
+
+  /// Stop the capture and, if there is an accepted window, save it as a
+  /// [EcgReadingStatus.partial] reading before the exit completes. [phase] and
+  /// [reason] are what the capture ends as (background: cancelled/'paused',
+  /// timeout and link loss: failed). Nothing is saved for a gesture-owned
+  /// capture, or when no signal was accepted (nothing was recorded); metrics are
+  /// kept only from [kEcgPartialMinSamples] samples. A save that fails still
+  /// ends the capture the same way, with no reading.
+  Future<void> _finishWithPartial(
+    int epoch,
+    EcgCapturePhase phase,
+    String reason,
+  ) => _exitOnce(epoch, () async {
+    _armed = false;
+    _timer?.cancel();
+    final packets = List<EcgAcceptedPacket>.from(_reducer.accepted);
+    final reading = _persist ? _buildPartial(packets, reason) : null;
+    if (reading == null) {
+      await _teardown(epoch, phase, reason: reason);
+      return;
+    }
+    _set(_state.copyWith(phase: EcgCapturePhase.saving));
+    try {
+      await save(reading, _keep ? packets : const []);
+    } catch (e) {
+      log('[ECG] partial save failed: $e');
+      await _teardown(epoch, phase, reason: reason);
+      return;
+    }
+    await _teardown(
+      epoch,
+      phase,
+      reason: reason,
+      readingId: reading.id,
+      result: reading.status,
+      metrics: ecgMetricsOf(reading),
+    );
+  });
+
+  EcgReading? _buildPartial(List<EcgAcceptedPacket> packets, String reason) {
+    final real = packets.where((p) => !p.placeholder);
+    if (real.isEmpty) return null;
+    final now = nowMs();
+    final startMs = _windowStartMs ?? now;
+    final stats = EcgWindowStats.of(packets);
+    // Metrics only from enough signal; the heart rate is the mean of the
+    // band's live rate over the window, never a guess.
+    final enough = stats.sampleCount >= kEcgPartialMinSamples;
+    return EcgReading(
+      id: ecgReadingId(
+        startEpochMs: startMs,
+        terminalStrapS: real.last.strapSeconds,
+      ),
+      deviceId: '',
+      wrist: _wrist ?? EcgWrist.right,
+      startTs: startMs ~/ 1000,
+      endTs: now ~/ 1000,
+      strapTerminalTs: null,
+      strapTerminalSubsec: null,
+      resultCode: 0,
+      category: EcgCategory.inconclusive,
+      avgHr: enough && _hrN > 0 ? (_hrSum / _hrN).round() : null,
+      quality: enough && _lastQuality > 0 ? _lastQuality : null,
+      unreadableMask: 0,
+      interruptions: _reducer.interruptions,
+      sampleCount: stats.sampleCount,
+      minUv: stats.minUv,
+      maxUv: stats.maxUv,
+      rmsUv: stats.rmsUv,
+      missingSegments: stats.missingSegments,
+      status: EcgReadingStatus.partial,
+      notes: null,
+      createdAt: now,
+      stopReason: reason,
+      maskAny: ecgMaskAnyOf(packets),
+      captureTableVersion: kEcgOutcomeTableVersion,
+      firmwareVersion: _asked(firmwareVersion),
+      captureAppVersion: _asked(appVersion),
+      startOffsetMin: _offsetAt(startMs),
+    );
+  }
+
+  // Provenance providers belong to other modules and may throw or know
+  // nothing: "not recorded" (null), never a guess and never a failed save.
+  // A throw is swallowed on purpose: this runs inside the one exit, before the
+  // band is stopped, so it must not be able to end it early (AGENTS 4.3).
+  String? _asked(String? Function()? provider) {
+    try {
+      final v = provider?.call();
+      return (v == null || v.isEmpty) ? null : v;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int? _offsetAt(int epochMs) {
+    try {
+      return utcOffsetMin?.call(epochMs);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -498,23 +832,65 @@ class EcgController extends ChangeNotifier {
       maxUv: stats.maxUv,
       rmsUv: stats.rmsUv,
       missingSegments: stats.missingSegments,
-      status: outcome.kind == EcgTerminalKind.inconclusiveFinal
-          ? EcgReadingStatus.inconclusive
-          : EcgReadingStatus.completed,
+      // The band's own status: an unreadable terminal is `completed` with
+      // category unreadable (as it always was); an inconclusive one, first
+      // attempt or final, is `inconclusive`.
+      status: switch (outcome.kind) {
+        EcgTerminalKind.inconclusiveFinal ||
+        EcgTerminalKind.inconclusiveOfferRetry => EcgReadingStatus.inconclusive,
+        EcgTerminalKind.completed ||
+        EcgTerminalKind.unreadable => EcgReadingStatus.completed,
+      },
       notes: null,
       createdAt: now,
+      // R1'': every band reason bit the window carried, whether or not the
+      // waveform is kept, so identical captures read identically.
+      maskAny: ecgMaskAnyOf(packets) | t.unreadable.raw,
+      liveHr: t.liveHr > 0 ? t.liveHr : null,
+      variabilityRaw: t.variabilityRaw,
+      captureTableVersion: kEcgOutcomeTableVersion,
+      firmwareVersion: _asked(firmwareVersion),
+      captureAppVersion: _asked(appVersion),
+      startOffsetMin: _offsetAt(startMs),
     );
   }
 
-  /// THE one exit path. Idempotent per capture: cleanup runs once, the
-  /// screen hold and the lease are released, and the final phase is set
-  /// only after cleanup so a "completed" never precedes a stopped band.
+  /// End the capture with no result to save: the guarded form of [_teardown]
+  /// (see [_exitOnce]).
   Future<void> _finish(
     int epoch,
     EcgCapturePhase phase, {
     String? reason,
     String? readingId,
     int? unreadableMask,
+    EcgReadingStatus? result,
+    List<EcgMetric>? metrics,
+  }) => _exitOnce(
+    epoch,
+    () => _teardown(
+      epoch,
+      phase,
+      reason: reason,
+      readingId: readingId,
+      unreadableMask: unreadableMask,
+      result: result,
+      metrics: metrics,
+    ),
+  );
+
+  /// The teardown, run only inside [_exitOnce]'s one completion. Cleanup runs
+  /// once, the screen hold and the lease are released AFTER it has finished,
+  /// and the final phase is set only after that, so a "completed" never
+  /// precedes a stopped band.
+  Future<void> _teardown(
+    int epoch,
+    EcgCapturePhase phase, {
+    String? reason,
+    String? readingId,
+    int? unreadableMask,
+    EcgReadingStatus? result,
+    List<EcgMetric>? metrics,
+    EcgOutcome? outcome,
   }) async {
     final lease = _lease;
     if (lease == null || _epoch != epoch) return;
@@ -551,6 +927,9 @@ class EcgController extends ChangeNotifier {
         readingId: readingId,
         unreadableMask: unreadableMask,
         cleanupIncomplete: incomplete,
+        result: result,
+        metrics: metrics,
+        outcome: outcome,
       ),
     );
   }

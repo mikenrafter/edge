@@ -1,10 +1,13 @@
 // Sync area: the sync status AppState shows the UI (status
-// string, busy, last-data timestamps, the deriving / pending flags) and how
-// many times each transition notifies. Through AppState.
+// string, busy, last-data timestamps, the sync panel's presentation, the
+// deriving / pending flags) and how many times each transition notifies.
+// Through AppState.
 //
+// Not reachable without the real AppState constructor (and so not driven here):
 // `syncingNow` and the quiet timer behind it are fed only by the engine's
-// onDataStored callback, which forTesting does not wire; they are covered with
-// the real constructor in app_state_sync_commit_test.dart.
+// onDataStored callback, and the panel's live record counts only by the
+// engine's onCommitBatch callback. forTesting does not wire either. Both are
+// pinned by source in app_state_sync_delegation_test.dart.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/models.dart';
@@ -34,6 +37,28 @@ void main() {
       expect(app.lastSynced, isNull);
       expect(app.isPaired, isFalse);
       expect(app.initialized, isFalse);
+      expect(app.syncPresentation.phase, 'offline');
+      expect(app.syncPresentation.busy, isFalse);
+      expect(app.syncPresentation.lastSuccess, isNull);
+    });
+
+    test('the sync coordinator is one object for the life of the app, and '
+        'syncPresentation is its view', () {
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      final c = app.syncOperations;
+      expect(identical(app.syncOperations, c), isTrue);
+      expect(app.syncPresentation.phase, c.view.phase);
+      expect(identical(app.syncPresentation, c.view), isTrue);
+    });
+
+    test('an offline panel reads idle once the link is up (derived at read '
+        'time, no publish)', () {
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      expect(app.syncPresentation.phase, 'offline');
+      app.device.connection = 'connected';
+      expect(app.syncPresentation.phase, 'idle');
     });
   });
 
@@ -68,6 +93,15 @@ void main() {
       final at = DateTime.utc(2026, 1, 2, 3, 4, 5);
       rig.engine.rxAt = at;
       expect(rig.app.lastDataAt, at);
+    }, paired: false));
+
+    test('an offline refresh publishes through the coordinator into AppState\'s '
+        'own listeners', syncCase((rig, timers) async {
+      final ticks = TickCounter(rig.app);
+      await rig.app.refreshData();
+      expect(ticks.ticks, greaterThanOrEqualTo(1));
+      expect(rig.app.syncPresentation.phase, 'offline');
+      ticks.stop();
     }, paired: false));
   });
 

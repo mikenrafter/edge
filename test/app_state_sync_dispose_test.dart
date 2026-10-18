@@ -2,10 +2,8 @@
 // claim and the live session, and what calls that arrive
 // AFTER it still do. Through AppState with a [SyncFakeEngine].
 //
-// Dispose only guards the notification funnel and cancels the timers it owns;
-// work already in flight, and a connection edge that arrives afterwards, still
-// run their course on the disposed object. That is pinned as it is, not as it
-// should be.
+// Calls that arrive after dispose must start nothing new: no work and no
+// ownership outlives the object.
 
 import 'dart:async';
 
@@ -84,23 +82,31 @@ void main() {
   });
 
   group('calls that arrive after dispose', () {
-    test('a drain finishing after dispose still re-reads the band prompt and '
-        'queues the heavy derive, without throwing',
+    test('a drain finishing after dispose does nothing more: no throw, no '
+        'band prompt re-read, no heavy derive queued',
         syncCase((rig, timers) async {
+      // the bookkeeping behind a drain used to run on the
+      // disposed object and queue the heavy derive.
       rig.engine.syncGate = Completer<void>();
       await rig.app.openSession();
       await rig.waitFor(() => rig.engine.count('runSync') == 1);
       rig.app.dispose();
       rig.engine.events.clear();
       rig.engine.syncGate!.complete();
-      await rig.waitFor(() => rig.engine.count('prompt') == 1);
-      await rig.jobQueued('derive_heavy');
+      // A negative: the continuation has no signal to wait on once it is
+      // fixed, so give the in-flight work time to run (it is a few awaits and
+      // one DB write on today's code).
+      await rig.quiesce();
+      await rig.quiesce();
+      expect(rig.engine.count('prompt'), 0);
+      expect(await rig.jobTypes(), isEmpty);
     }, dispose: false));
 
-    test('an openSession parked in connect at dispose carries on when the '
-        'connect answers: poll, prompt, drain and a fresh backfill timer, '
-        'though the supervisor stays cancelled and no intent or lease is left',
-        syncCase((rig, timers) async {
+    test('an openSession parked in connect at dispose does nothing after it '
+        'resumes: no poll, no drain, no backfill timer, and it leaves no '
+        'intent or lease behind', syncCase((rig, timers) async {
+      // it used to poll, start the drain and arm a fresh
+      // backfill timer on the disposed object. The link it just won is dropped.
       final gate = rig.holdConnect();
       final open = rig.app.openSession();
       await rig.waitFor(() => rig.engine.count('connect') == 1);
@@ -108,32 +114,41 @@ void main() {
       expect(timers.activePeriodic(kSuperviseEvery), isEmpty);
       gate.complete();
       await open;
-      await rig.waitFor(() => rig.engine.count('runSync') == 1);
-      expect(rig.engine.count('getBattery'), 1);
-      expect(rig.engine.count('reconcile'), 1);
-      expect(rig.engine.count('disconnect'), 0);
+      expect(rig.engine.count('getBattery'), 0);
+      expect(rig.engine.count('getStrapName'), 0);
+      expect(rig.engine.count('prompt'), 0);
+      expect(rig.engine.count('reconcile'), 0);
+      expect(rig.engine.count('runSync'), 0);
+      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
       expect(timers.activePeriodic(kSuperviseEvery), isEmpty);
-      expect(timers.activePeriodic(kBackfillEvery), hasLength(1));
       expect(BandOwnership.foregroundIntent, isFalse);
       expect(BandOwnership.owner, isNull);
       expect(rig.app.busy, isFalse);
       await rig.quiesce();
+      expect(rig.engine.count('runSync'), 0);
+      // dispose means no link: the link the connect won is dropped, once.
+      expect(rig.engine.count('disconnect'), 1);
+      expect(rig.engine.isConnected, isFalse);
     }, dispose: false));
 
-    test('a link drop reported after dispose still starts a reconnect, which '
-        'takes the foreground lease and intent again',
-        syncCase((rig, timers) async {
+    test('a link drop reported after dispose starts no reconnect and takes no '
+        'foreground lease', syncCase((rig, timers) async {
+      // dispose did not stop wanting a link, so the drop
+      // started a reconnect that took a lease the disposed object never
+      // released.
       await _open(rig);
       rig.app.dispose();
       expect(BandOwnership.owner, isNull);
       rig.engine.events.clear();
       rig.engine.drop();
-      await rig.waitFor(() => rig.engine.count('runSync') == 1);
-      expect(rig.engine.count('markReconnecting'), 1);
-      expect(rig.engine.count('connect'), 1);
-      expect(BandOwnership.owner, BandOwnerKind.foreground);
-      expect(BandOwnership.foregroundIntent, isTrue);
       await rig.quiesce();
+      await rig.quiesce();
+      expect(rig.engine.count('markReconnecting'), 0);
+      expect(rig.engine.count('connect'), 0);
+      expect(rig.engine.count('runSync'), 0);
+      expect(BandOwnership.owner, isNull);
+      expect(BandOwnership.foregroundIntent, isFalse);
+      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
     }, dispose: false));
   });
 }

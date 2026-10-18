@@ -1,23 +1,97 @@
+// The live-stream seam, moved out of AppState with no behaviour
+// change. It owns: the live-stream owner set the engine reads (who wants HR /
+// IMU right now), the developer's live feed flag, the mounted live-HR view
+// count, the movement-sampling window flag, and the helpers that feed decoded
+// live frames into the Live devices buffer (RR stamping included).
+//
+// It does not own the buffer (AppState constructs `liveStreams` and hands it
+// in), the live HR trace, the live-frame router (`AppState._onLiveFrame` also
+// drives the pedometer, coverage and the breathing frames), or the BLE engine;
+// the engine calls and the host state it reads arrive as callbacks. It holds no
+// reference to AppState. Its packet broadcast is closed by [dispose].
+//
+// RAM only (AGENTS invariant 14): nothing here persists a live sample.
 import 'dart:async';
 
+import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
+
 import '../ble/ble_state.dart' show LiveStreamOwners;
-import '../ble/live_step_runs.dart' show isGaitStepType;
+import '../ble/live_step_runs.dart';
+import '../data/db.dart';
+import '../gestures/imu_readiness.dart';
+import 'imu_packet.dart';
+import 'live_stream_buffer.dart';
 
 class LiveStreamController {
   LiveStreamController({
-    required bool Function() background,
+    required LiveStreamBuffer buffer,
+    required bool Function() isBackground,
     required String? Function() activeWorkoutType,
     required bool Function() breathing,
-    required Future<void> Function() reconcileLiveStreams,
-  })  : _background = background,
+    required Future<void> Function() reconcile,
+    required Future<void> Function() clearRadioFallbackAndReconcile,
+    required void Function() notify,
+    this.onImuPacket,
+  })  : _buffer = buffer,
+        _isBackground = isBackground,
         _activeWorkoutType = activeWorkoutType,
         _breathing = breathing,
-        _reconcileLiveStreams = reconcileLiveStreams;
+        _reconcile = reconcile,
+        _clearRadioFallbackAndReconcile = clearRadioFallbackAndReconcile,
+        _notify = notify;
 
-  final bool Function() _background;
+  final LiveStreamBuffer _buffer;
+  final bool Function() _isBackground;
+
+  // The active workout's type label, or null when no workout is running.
   final String? Function() _activeWorkoutType;
+
+  // A breathing session or its pre/post quiet window is open.
   final bool Function() _breathing;
-  final Future<void> Function() _reconcileLiveStreams;
+  final Future<void> Function() _reconcile;
+  final Future<void> Function() _clearRadioFallbackAndReconcile;
+  final void Function() _notify;
+  final void Function(ImuPacket packet)? onImuPacket;
+  final ImuPacketAdapter _imuAdapter = ImuPacketAdapter();
+  final StreamController<ImuPacket> _imuPackets =
+      StreamController<ImuPacket>.broadcast();
+
+  /// Full six-axis packets, decoded once per live 0x2B frame. This is RAM-only
+  /// telemetry; subscribing here neither owns nor starts a band stream.
+  Stream<ImuPacket> get imuPackets => _imuPackets.stream;
+
+  /// Whether the IMU stream is carrying valid motion data yet. Idle until
+  /// [awaitImuReady]; judged on every decoded packet after that.
+  final ImuReadiness imuReadiness = ImuReadiness();
+  void Function(ImuReadiness readiness)? _onImuReady;
+
+  /// Start waiting for usable motion data: call it when a gesture-owned IMU
+  /// request is made. [onReady] runs each time the stream turns ready (once
+  /// per connection generation; a new link starts the wait over) with the
+  /// detector, which says when and how many samples were skipped. A timeout is
+  /// the caller's: poll [imuReadiness] on its own timer. One waiter at a time;
+  /// a later call replaces the earlier one. It neither owns nor starts the
+  /// stream: that stays with the owner flags.
+  void awaitImuReady(void Function(ImuReadiness readiness) onReady) {
+    _onImuReady = onReady;
+    imuReadiness.begin(monotonicNow);
+  }
+
+  /// Stop waiting; no callback runs after this. Safe to call any time.
+  void cancelImuReady() {
+    _onImuReady = null;
+    imuReadiness.reset();
+  }
+
+  /// The packet receipt clock for a future session's tap/write markers.
+  Duration get monotonicNow => _imuAdapter.monotonicNow;
+
+  /// Frames the packet adapter has decoded; see [ImuPacketAdapter.decodeCalls].
+  int get imuDecodeCount => _imuAdapter.decodeCalls;
+
+  void dispose() {
+    _imuPackets.close();
+  }
 
   // ── live HR / IMU ownership (#287) ──────────────────────────────────────────
   //
@@ -36,7 +110,8 @@ class LiveStreamController {
   //         HIGH_FREQ_SYNC prompt is the wake source now — see
   //         BandPromptPolicy and _refreshHighFreqWakeWindow.
   //   IMU ← a gait workout in the FOREGROUND, a bounded movement-sampling
-  //         window, or the passive strap-step opt-in (off).
+  //         window, the Device lab's bounded IMU recording, or the passive
+  //         strap-step opt-in (off).
   //   An ordinary foreground connection owns nothing on gen5: the on-chip daily
   //   counter is the step fallback and the phone can supply windowed steps.
   //   Backgrounded with no owner is fully OFF on both platforms — on Android
@@ -81,29 +156,248 @@ class LiveStreamController {
 
   bool _movementSampling = false;
 
+  /// The Device lab's IMU recorder holds a bounded recording (IMU-only owner).
+  /// The recorder is the only caller: it sets this when a double tap begins a
+  /// recording and clears it, in a `finally`, when the recording ends for any
+  /// reason. Not tied to the app's foreground, so a recording that is already
+  /// running is not cut short by a screen lock; its own duration bounds it.
+  void setImuLab(bool active) {
+    if (_imuLab == active) return;
+    _imuLab = active;
+    nudge();
+  }
+
+  bool _imuLab = false;
+
+  /// The developer's "Start live feed" on the Live devices screen is on.
+  /// RAM only: never a preference, so a restart never re-arms the flood.
+  bool _developerLiveFeed = false;
+
+  /// Whether the feed is on for [deviceId]. Only the band (the primary id) has
+  /// one: a paired sensor's streams are already on while it is connected.
+  bool isLiveFeedOn(String deviceId) =>
+      deviceId == LocalDb.kPrimaryDeviceId && _developerLiveFeed;
+
+  /// Turn the band's realtime streams on so the Live devices screen has
+  /// something to draw: an explicit owner of both streams, on gen4 and gen5.
+  /// The engine's reconciler stays the only writer. An explicit foreground
+  /// action, so it also clears the sticky marginal-radio fallback (otherwise a
+  /// latched fallback would leave HR only). Idempotent.
+  Future<void> startLiveFeed(String deviceId) async {
+    if (deviceId != LocalDb.kPrimaryDeviceId) return;
+    if (!_developerLiveFeed) {
+      _developerLiveFeed = true;
+      _notify();
+    }
+    await _clearRadioFallbackAndReconcile();
+  }
+
+  /// Release the developer owner and let the reconciler turn the streams off.
+  /// The owner is cleared BEFORE the first await, so a band that refuses (or
+  /// throws on) the disable writes, or a caller that never awaits this (a
+  /// screen's dispose), cannot leave the flag set; the engine's keep-alive
+  /// retries the writes. gen4's own foreground owner keeps its streams on.
+  /// Stop without Start writes nothing.
+  Future<void> stopLiveFeed(String deviceId) async {
+    if (deviceId != LocalDb.kPrimaryDeviceId || !_developerLiveFeed) return;
+    _developerLiveFeed = false;
+    _notify();
+    await _reconcile();
+  }
+
   /// Passive strap-step collection: OFF by default on gen5 (#287 decision 1).
   /// A future explicit opt-in requests IMU through this same owner.
   static const bool _passiveStrapSteps = false;
 
-  LiveStreamOwners get owners {
-    final workoutType = _activeWorkoutType();
+  LiveStreamOwners owners() {
+    final type = _activeWorkoutType();
+    final background = _isBackground();
     return LiveStreamOwners(
       // A route is not disposed when the app backgrounds, so a mounted
       // live-HR page must not keep the stream on behind a locked screen.
-      visibleLiveHrView: !_background() && _liveHrViewers > 0,
-      activeWorkout: workoutType != null,
-      foregroundGaitWorkout: workoutType != null &&
-          !_background() &&
-          isGaitStepType(workoutType),
+      visibleLiveHrView: !background && _liveHrViewers > 0,
+      activeWorkout: type != null,
+      foregroundGaitWorkout:
+          type != null && !background && isGaitStepType(type),
       breathing: _breathing(),
       movementSampling: _movementSampling,
       passiveStrapSteps: _passiveStrapSteps,
-      foreground: !_background(),
+      foreground: !background,
+      // Like a mounted live-HR view, not held behind a locked screen.
+      developerLiveFeed: !background && _developerLiveFeed,
+      imuLab: _imuLab,
     );
   }
 
   /// An owner input changed: let the engine converge. Fire-and-forget; the
-  /// engine reads [owners] inside its own loop, and its keep-alive tick heals
-  /// a nudge that was missed.
-  void nudge() => unawaited(_reconcileLiveStreams());
+  /// engine reads [owners] inside its own loop, and its keep-alive tick
+  /// heals a nudge that was missed.
+  void nudge() => unawaited(_reconcile());
+
+  // ── feeding the Live devices buffer (RAM only, invariant 14) ───────────────
+
+  /// Decoded fields that already have their own stream (or are a time or type
+  /// tag, not a reading) and so are not repeated under their raw name.
+  /// `hr_precise` is the HR byte as a double.
+  static const _liveNamedElsewhere = {
+    'rec_type',
+    'packet_type',
+    'ts_epoch',
+    'ts_subsec',
+    'counter',
+    'hr',
+    'hr_precise',
+  };
+
+  /// The same reading the live-HR trace took, for the Live devices graph: the
+  /// band's and every paired sensor's beats arrive through AppState's one
+  /// append path, so this is the one tap for the 'hr' stream.
+  void bufferLiveHr(String deviceId, int at, int hr) {
+    _buffer.add(deviceId, 'hr',
+        DateTime.fromMillisecondsSinceEpoch(at), hr.toDouble());
+  }
+
+  /// Everything else a live frame carries, into the Live devices buffer (RAM
+  /// only, invariant 14): R11's two raw channels, the MG's filtered ECG with
+  /// the band's own HR and quality, and any other numeric field the
+  /// decoder names, under that name. Fixed unit scales only; a field the
+  /// packet did not carry adds no stream. A frame that does not decode adds
+  /// nothing.
+  void bufferLiveExtras(int pt, String hex) {
+    try {
+      final bytes = proto.hexToBytes(hex);
+      final rec = bytes.length > 1 ? bytes[1] : -1;
+      if (pt == 0x2B) {
+        if (rec == 11) {
+          // Meaning unconfirmed (protocol R11Raw): raw channels, ~50 Hz each.
+          final r11 = proto.decodeR11Raw(hex);
+          if (r11 != null) {
+            _bufferLiveSeries('r11_ch1', r11.channelA, 20);
+            _bufferLiveSeries('r11_ch2', r11.channelB, 20);
+          }
+        }
+        final r17 = rec == proto.LabradorR17.revision
+            ? proto.LabradorR17.parse(bytes)
+            : null;
+        if (r17 != null) {
+          _bufferLiveSeries('ecg_uv', r17.samples, 10); // 100 Hz, µV
+          _bufferLiveSeries('ecg_quality', [r17.quality], 10);
+          // 0 is "no reading", not a heart rate.
+          if (r17.liveHr > 0) _bufferLiveSeries('ecg_band_hr', [r17.liveHr], 10);
+        }
+      }
+      final fields = proto
+          .decodeFrame(proto.Frame(bytes, true, true))
+          .fields;
+      final now = DateTime.now();
+      for (final MapEntry(:key, :value) in fields.entries) {
+        if (value is num && !_liveNamedElsewhere.contains(key)) {
+          _buffer.add(LocalDb.kPrimaryDeviceId, key, now, value.toDouble());
+        }
+      }
+    } catch (_) {
+      // Debug view only: a frame that will not decode is simply not drawn.
+    }
+  }
+
+  /// [values] into the Live devices buffer under [key], oldest first, the
+  /// newest stamped now and each earlier one [stepMs] before the next.
+  void _bufferLiveSeries(String key, List<num> values, int stepMs) {
+    final n = values.length;
+    final end = DateTime.now();
+    for (var i = 0; i < n; i++) {
+      _buffer.add(LocalDb.kPrimaryDeviceId, key,
+          end.subtract(Duration(milliseconds: (n - 1 - i) * stepMs)),
+          values[i].toDouble());
+    }
+  }
+
+  /// Beat intervals of one live frame into the Live devices buffer (RAM only).
+  /// Each beat gets its own time, after the last one stored ([stampLiveBeats]);
+  /// stamped from arrival alone, a batched frame's earlier beats were refused
+  /// as late and the graph drew holes while beats were coming in.
+  DateTime? _lastRrAt;
+  void bufferLiveRr(String hex) {
+    final rr = proto.realtimeRr(hex)?.rrMs;
+    if (rr == null || rr.isEmpty) return;
+    final at = stampLiveBeats(DateTime.now(), rr, after: _lastRrAt);
+    for (var i = 0; i < rr.length; i++) {
+      if (_buffer.add(LocalDb.kPrimaryDeviceId, 'rr', at[i], rr[i].toDouble())) {
+        _lastRrAt = at[i];
+      }
+    }
+  }
+
+  /// One live IMU frame's accel samples (100 Hz) into the Live devices buffer.
+  /// Per-axis when the decoder gave axes, otherwise the magnitude only. The
+  /// decoder returns the axes as raw int16 counts (only `mags` is in g), so
+  /// they are scaled to g here: 1/4096 g per count on both families.
+  void bufferLiveImu(proto.ImuFrame f) {
+    final n = f.mags.length;
+    if (n == 0) return;
+    final axes = {'accel_x': f.xs, 'accel_y': f.ys, 'accel_z': f.zs};
+    if (axes.values.every((a) => a != null && a.length == n)) {
+      for (final MapEntry(:key, :value) in axes.entries) {
+        _bufferLiveSeries(
+            key, [for (final v in value!) v * proto.kGen5AccelScaleG], 10);
+      }
+    } else {
+      _bufferLiveSeries('accel_mag', f.mags, 10);
+    }
+  }
+
+  /// Decode and fan out a full six-axis packet exactly once. `includeAccel`
+  /// preserves the existing gen4 preference for the dedicated 0x33 accel
+  /// stream while still letting R10 gyro and packet listeners observe 0x2B.
+  ImuPacket? decodeAndFanoutImu({
+    required int packetType,
+    required String hex,
+    required String deviceId,
+    required int connectionGeneration,
+    required bool includeAccel,
+    DateTime? receivedAt,
+    Duration? monotonicReceipt,
+  }) {
+    final packet = _imuAdapter.decode(
+      packetType: packetType,
+      hex: hex,
+      deviceId: deviceId,
+      connectionGeneration: connectionGeneration,
+      receivedAt: receivedAt,
+      monotonicReceipt: monotonicReceipt,
+    );
+    if (packet == null) return null;
+    _bufferLivePacket(packet, includeAccel: includeAccel);
+    // Timing is optional telemetry: a failure in it must not stop the
+    // pedometer and graph feeds that run after this call.
+    try {
+      onImuPacket?.call(packet);
+    } catch (_) {}
+    if (!_imuPackets.isClosed) _imuPackets.add(packet);
+    if (imuReadiness.packet(packet)) {
+      try {
+        _onImuReady?.call(imuReadiness);
+      } catch (_) {}
+    }
+    return packet;
+  }
+
+  void _bufferLivePacket(ImuPacket packet, {required bool includeAccel}) {
+    if (includeAccel && packet.feedsAccelConsumers) {
+      _bufferLiveSeries(
+          'accel_x', [for (final s in packet.accelSamples) s.x], 10);
+      _bufferLiveSeries(
+          'accel_y', [for (final s in packet.accelSamples) s.y], 10);
+      _bufferLiveSeries(
+          'accel_z', [for (final s in packet.accelSamples) s.z], 10);
+    }
+    if (packet.gyroSamples.isNotEmpty) {
+      _bufferLiveSeries(
+          'gyro_x', [for (final s in packet.gyroSamples) s.x], 10);
+      _bufferLiveSeries(
+          'gyro_y', [for (final s in packet.gyroSamples) s.y], 10);
+      _bufferLiveSeries(
+          'gyro_z', [for (final s in packet.gyroSamples) s.z], 10);
+    }
+  }
 }

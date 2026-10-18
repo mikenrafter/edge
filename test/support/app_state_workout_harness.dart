@@ -1,18 +1,18 @@
-// Shared helpers for the workout and breathing tests. Everything goes through
-// AppState's public and @visibleForTesting surface, so the same files keep
-// passing when the area moves out of AppState into its own controllers.
+// Shared helpers for the WorkoutController tests. Everything goes
+// through AppState's public and @visibleForTesting surface, so the same files
+// serve the AppState-level tests and the controller's own tests.
 //
 // What the area talks to, and how the tests see it:
 //   - the lock-screen / Dynamic Island activities, the display wake hold, the
-//     geolocator plugin, the Health plugin and the App-Group widget flags are
-//     platform channels; [PlatformSpies] answers them and records every call.
+//     geolocator plugin and the App-Group widget flags are platform channels;
+//     [PlatformSpies] answers them and records every call.
 //   - the 1 Hz workout tick and the 20 s breathing recompute are periodic
 //     timers; [TimerProbe] replaces periodic timers made inside its zone with
 //     ones the test fires by hand (so a tick is one explicit call, never a
 //     wall-clock race) and records their period and whether they were
 //     cancelled. One-shot timers still run for real.
 //   - the session row, the live tally row and the breathing history are real
-//     rows in a LocalDb over sqflite_ffi ([workoutDbSetUp]).
+//     rows in a LocalDb over sqflite_ffi (deriveDbSetUp).
 //   - the heart rate is set the way the existing tick tests set it: straight
 //     on the engine's DeviceState with a connected link.
 
@@ -21,67 +21,20 @@ import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/gps/screen_wake.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+
+import 'app_state_derive_harness.dart' show settleMs, until;
+
+export 'app_state_derive_harness.dart'
+    show deriveDbSetUp, deriveDbTearDown, settleMs, until, TickCounter, TimerSpy;
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
-import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/gps/route_types.dart';
-import 'package:openstrap_edge/gps/screen_wake.dart';
-import 'package:openstrap_edge/state/app_state.dart';
-
-Future<void> settleMs([int ms = 150]) =>
-    Future<void>.delayed(Duration(milliseconds: ms));
-
-/// Point LocalDb at an empty file called [name] and reset prefs.
-Future<void> workoutDbSetUp(String name) async {
-  sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
-  await LocalDb.close();
-  LocalDb.dbName = name;
-  await databaseFactory.deleteDatabase(
-      p.join(await databaseFactory.getDatabasesPath(), name));
-  SharedPreferences.setMockInitialValues({});
-  // Open (and migrate) the file now. The area dispatches fire-and-forget
-  // writes; the first one would otherwise be what opens it, and a teardown that
-  // closes the file mid-open takes the whole test process down.
-  await LocalDb.instance;
-}
-
-/// Lets the fire-and-forget writes the area dispatches (the live-row insert, a
-/// minute's coverage checkpoint, a tally save) land first: closing and deleting
-/// the file under one that is still opening crashes the test process.
-Future<void> workoutDbTearDown(String name) async {
-  await settleMs(300);
-  await LocalDb.close();
-  await databaseFactory.deleteDatabase(
-      p.join(await databaseFactory.getDatabasesPath(), name));
-}
-
-/// Polls until [ok]; fails the test, naming [what], if [within] runs out.
-Future<void> until(bool Function() ok,
-    {Duration within = const Duration(seconds: 4), String? what}) async {
-  final end = DateTime.now().add(within);
-  while (!ok()) {
-    if (!DateTime.now().isBefore(end)) {
-      throw TestFailure('until(${what ?? 'condition'}) was not met within '
-          '${within.inMilliseconds} ms');
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 5));
-  }
-}
-
-/// Counts every notifyListeners tick of [app] from now on.
-class TickCounter {
-  TickCounter(this.app) {
-    app.addListener(_tick);
-  }
-  final AppState app;
-  int ticks = 0;
-  void _tick() => ticks++;
-  void stop() => app.removeListener(_tick);
-}
 
 int nowMs() => DateTime.now().millisecondsSinceEpoch;
 
@@ -365,6 +318,33 @@ class BreathRepo extends LocalRepository {
   Future<Map<String, dynamic>> getToday() async => const {};
 }
 
+// ── from upstream's copy of this harness (merge: union of both sides) ──
+
+/// Point LocalDb at an empty file called [name] and reset prefs.
+Future<void> workoutDbSetUp(String name) async {
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+  await LocalDb.close();
+  LocalDb.dbName = name;
+  await databaseFactory.deleteDatabase(
+      p.join(await databaseFactory.getDatabasesPath(), name));
+  SharedPreferences.setMockInitialValues({});
+  // Open (and migrate) the file now. The area dispatches fire-and-forget
+  // writes; the first one would otherwise be what opens it, and a teardown that
+  // closes the file mid-open takes the whole test process down.
+  await LocalDb.instance;
+}
+
+/// Lets the fire-and-forget writes the area dispatches (the live-row insert, a
+/// minute's coverage checkpoint, a tally save) land first: closing and deleting
+/// the file under one that is still opening crashes the test process.
+Future<void> workoutDbTearDown(String name) async {
+  await settleMs(300);
+  await LocalDb.close();
+  await databaseFactory.deleteDatabase(
+      p.join(await databaseFactory.getDatabasesPath(), name));
+}
+
 /// Make the running workout look [ago] old, so a test that needs "longer than
 /// a second" (or a stale session) does not have to wait for it. The state is
 /// swapped in place of the one startWorkout built, keeping its id and type.
@@ -382,8 +362,11 @@ void backdate(AppState app, Duration ago) {
 // packet type and, for a 0x2B envelope, whether the record byte is R10 (0x0a).
 // The bodies are opaque to everything under test, so a tag stands in.
 String hr28Frame([int tag = 0]) => '28aa${tag.toRadixString(16).padLeft(4, '0')}';
+
 String r10Frame([int tag = 0]) => '2b0a${tag.toRadixString(16).padLeft(4, '0')}';
+
 String r21Frame([int tag = 0]) => '2b15${tag.toRadixString(16).padLeft(4, '0')}';
+
 String imu33Frame([int tag = 0]) => '33aa${tag.toRadixString(16).padLeft(4, '0')}';
 
 /// Feed [n] copies of a live frame through the router, like the engine does.

@@ -30,7 +30,12 @@ void main() {
     // A fired alarm presents a notification; keep the OS out of it.
     NotificationCenter.instance.presentSink =
         (NotificationEvent e, {bool allowPermissionPrompt = true}) async => true;
-    await (await LocalDb.instance).delete('events');
+    final db = await LocalDb.instance;
+    await db.delete('events');
+    // The merged dispatcher's once-ever claims live in notif_fired, keyed by
+    // the tap's strap time and sub-second; a rig's first tap in one test can
+    // share both with an earlier test's.
+    await db.delete('notif_fired');
   });
   tearDown(() {
     channel.dispose();
@@ -40,7 +45,7 @@ void main() {
   });
 
   GestureRig newRig() {
-    final rig = GestureRig();
+    final rig = GestureRig(mg: false);
     addTearDown(rig.dispose);
     return rig;
   }
@@ -50,26 +55,32 @@ void main() {
         'then dispatched', () async {
       final rig = newRig();
       await rig.map(DeviceAction.torch);
-      rig.doubleTap();
+      final sec = rig.nowSec;
+      rig.doubleTap(atSec: sec);
       await until(() => channel.performed.isNotEmpty);
       await untilEvents(1);
       final e = (await storedEvents()).single;
-      expect((e.id, e.ts, e.device), (14, rig.nowSec, ''));
+      expect((e.id, e.ts, e.device), (14, sec, ''));
       expect(channel.performed, ['torch']);
     });
 
-    test('a double tap is stored even when nothing is mapped, when it is '
-        'stale, and when the debounce drops it', () async {
+    test('a double tap is stored even when nothing is mapped and when it is '
+        'stale; a re-send the claim drops runs nothing', () async {
       final rig = newRig();
       rig.doubleTap(); // unmapped
       await rig.map(DeviceAction.torch);
       rig.doubleTapAged(const Duration(minutes: 5)); // stale
       rig.advance(const Duration(seconds: 3));
       rig.doubleTap(); // runs
-      rig.doubleTap(); // debounced
-      await untilEvents(4);
+      // The merged dispatcher has no receipt debounce for a believable strap
+      // clock: the duplicate it drops is a re-send of the same tap (its
+      // once-ever claim). A re-send is the same frame, which the events
+      // table already holds, so it adds no row.
+      rig.doubleTap(resend: true);
+      await untilEvents(3);
+      await settleMs(100);
       expect(channel.performed, ['torch']);
-      expect((await storedEvents()).map((e) => e.id), [14, 14, 14, 14]);
+      expect((await storedEvents()).map((e) => e.id), [14, 14, 14]);
     });
 
     test('other events are stored and never dispatched', () async {
@@ -138,7 +149,7 @@ void main() {
       await untilEvents(1);
     });
 
-    test('a tap suppressed by a reset does not spend the debounce', () async {
+    test('a tap suppressed by a reset does not spend its claim', () async {
       final rig = newRig();
       await rig.map(DeviceAction.torch);
       ResetGate.enter();
@@ -148,7 +159,9 @@ void main() {
       } finally {
         ResetGate.leave();
       }
-      rig.doubleTap(); // same instant
+      // The band re-sends the same tap: had the suppressed delivery taken its
+      // once-ever claim, this one would be dropped as a duplicate.
+      rig.doubleTap(resend: true);
       await until(() => channel.performed.isNotEmpty);
       expect(channel.performed, ['torch']);
     });

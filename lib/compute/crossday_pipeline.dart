@@ -25,6 +25,8 @@ import '../data/day_label.dart';
 // isolate safety. One grammar for "a required input was missing" across both
 // pipelines rather than a second one here.
 import 'onehz_pipeline.dart' show needInputNote;
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
 
 /// Build the cross-day analytics bundle from a time-ordered (OLDEST FIRST) list
 /// of per-day records and the user profile.
@@ -49,12 +51,14 @@ import 'onehz_pipeline.dart' show needInputNote;
 /// that day (TS-11). A day with more than one is dropped by the analytics, not
 /// split — it belongs to no single type. Empty ⇒ `session_cost` is absent,
 /// which is also its state for the first ten sessions of any type.
+@heavy
 Map<String, dynamic> buildCrossDayBundle(
   List<Map<String, dynamic>> daysOldestFirst,
   Map<String, dynamic> profile, {
   List<String> cycleStartDates = const [],
   Map<String, List<String>> sessionTypesByDate = const {},
 }) {
+  WorkerAudit.entered('buildCrossDayBundle');
   final days = daysOldestFirst;
   final n = days.length;
 
@@ -145,8 +149,13 @@ Map<String, dynamic> buildCrossDayBundle(
     final onset = (d['onset_sec'] as num?)?.toDouble();
     final wake = (d['wake_sec'] as num?)?.toDouble();
     final tstMin = (d['tst_min'] as num?)?.toDouble();
-    final dur = tstMin == null ? null : tstMin / 60.0;
-    if (dur != null) allDurH.add(dur);
+    // A night with a window but no total sleep time is NOT RECORDED (the
+    // user asserted the window; nothing covered it). Its bare window is not a
+    // mid-sleep: counting it paired a free-day mid-sleep with no duration
+    // (chronotype n 8 vs 7) and moved social jetlag. Skip it entirely.
+    if (tstMin == null) continue;
+    final dur = tstMin / 60.0;
+    allDurH.add(dur);
     if (onset == null || wake == null) continue;
     final midSec = (onset + wake) / 2.0;
     // LOCAL clock-hours [0,24). onset/wake are epoch SECONDS (UTC); `% 86400`
@@ -156,7 +165,7 @@ Map<String, dynamic> buildCrossDayBundle(
     final free = _isFreeDay(d['date'] as String?);
     if (free) {
       freeMidH.add(midH);
-      if (dur != null) freeDurH.add(dur);
+      freeDurH.add(dur);
     } else {
       workMidH.add(midH);
     }
@@ -405,7 +414,10 @@ Map<String, dynamic> buildCrossDayBundle(
   // typical wake clock-minute + efficiency from recent days (medians).
   final wakeMins = <double>[
     for (final d in days)
-      if (d['wake_sec'] != null) _localTodMin((d['wake_sec'] as num).toInt()),
+      // A blank night's wake is the user's asserted window, not a measured
+      // wake time: it must not move the bedtime guidance.
+      if (d['wake_sec'] != null && d['tst_min'] != null)
+        _localTodMin((d['wake_sec'] as num).toInt()),
   ];
   final effs = <double>[for (final d in days) ?_numOrNull(d['efficiency'])];
   final typicalWakeMin = _median(wakeMins);
@@ -997,9 +1009,10 @@ _Circadian _crossDayCircadian(List<Map<String, dynamic>> days) {
 /// Append the substrate caveat to an envelope's note, so the claim never leaves
 /// this file without saying what it was computed FROM.
 Map<String, dynamic> _withInputNote(Map<String, dynamic> envelope) {
-  const caveat = 'computed on hourly HEART-RATE means, not accelerometry '
-      '(no multi-day accel survives raw pruning): M10/L5 are the highest- and '
-      'lowest-HR windows and RA is an HR amplitude ratio';
+  const caveat = 'Computed from hourly mean heart rate, because raw accelerometer data '
+                 'is pruned and no multi-day accelerometer data remains. M10 is the '
+                 'highest-HR window, L5 is the lowest-HR window and RA is the HR '
+                 'amplitude ratio.';
   final existing = envelope['note'];
   // Never overwrite a `need_baseline:` note — the edge parses it verbatim.
   if (existing is String && existing.startsWith('need_baseline:')) {

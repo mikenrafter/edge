@@ -1,0 +1,5 @@
+import 'package:fixture_app/main.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+
+@heavy
+DayOut deriveHeavy(DayArgs a) => const DayOut(null);

@@ -38,11 +38,11 @@ void main() {
     test('a heavy job stays running while the baseline rescan is blocked, '
         'and a light request waits behind it', () async {
       final app = make();
-      final calls = <bool>[];
+      final calls = <HookCall>[];
       app.debugDeriveRun = deriveHook(calls: calls);
       final rescan = Completer<int>();
       var rescanEntered = false;
-      app.debugRescanRecent = (_) {
+      app.debugRescanRecent = ({onScopeDays, onDayDone}) {
         rescanEntered = true;
         return rescan.future;
       };
@@ -53,19 +53,19 @@ void main() {
       await until(() => app.derivePending, what: 'heavy job queued');
       await until(() => rescanEntered, what: 'heavy pass reached its rescan');
       expect(app.deriving, isTrue);
-      expect(calls, [true]);
+      expect(calls.map((c) => c.heavy), [true]);
 
       app.debugDeriveScheduler.markStoredData();
       await until(() => app.debugDeriveScheduler.pendingLight,
           what: 'light job queued behind the heavy one');
       // The light job cannot start: the heavy job still holds the scheduler.
       await Future<void>.delayed(const Duration(milliseconds: 200));
-      expect(calls, [true]);
+      expect(calls.map((c) => c.heavy), [true]);
       expect(app.deriving, isTrue);
 
       rescan.complete(0);
       await until(() => !app.deriving, what: 'heavy job released');
-      expect(calls, [true]);
+      expect(calls.map((c) => c.heavy), [true]);
       expect(app.derivePending, isTrue,
           reason: 'the light job is still queued, now free to run');
       final jobs = await LocalDb.computeJobs(state: 'queued', limit: 10);
@@ -77,7 +77,7 @@ void main() {
       final app = make();
       final gate = Completer<void>();
       app.debugDeriveRun = deriveHook(gate: gate);
-      app.debugRescanRecent = (_) async => 0;
+      app.debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
       final log = SignalLog(app);
       app.debugDeriveScheduler.requestHeavy();
       await until(() => app.deriving, what: 'job running');
@@ -109,7 +109,7 @@ void main() {
       await putTodayReadiness();
       final app = make();
       app.debugDeriveRun = deriveHook();
-      app.debugRescanRecent = (_) async => 0;
+      app.debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
       await app.debugAfterDrain(heavy: true);
       await until(() => sink.shown.isNotEmpty, what: 'recovery-ready emitted');
       expect(sink.shown, [sink.todayKey]);
@@ -173,7 +173,7 @@ void main() {
       await putTodayReadiness();
       final app = make();
       app.debugDeriveRun = deriveHook();
-      app.debugRescanRecent = (_) async => 0;
+      app.debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
       await app.debugAfterDrain();
       await until(() => sink.shown.isNotEmpty, what: 'first announcement');
       await app.debugAfterDrain(heavy: true);
@@ -189,7 +189,7 @@ void main() {
       await spy.run(() async {
         final app = AppState.forTesting();
         app.debugDeriveRun = deriveHook();
-        app.debugRescanRecent = (_) async => 0;
+        app.debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
         app.debugDeriveScheduler.requestHeavy();
         await until(() => app.derivePending, what: 'job queued');
         await until(() => spy.live.isNotEmpty, what: 'settle timer armed');
@@ -201,7 +201,14 @@ void main() {
     test('a request made after dispose never runs a pass', () async {
       final app = AppState.forTesting();
       var runs = 0;
-      app.debugDeriveRun = (profile, {bool heavy = false, onDayDone}) async {
+      app.debugDeriveRun = ({
+        required heavy,
+        required changedOnly,
+        onScope,
+        onScopeDays,
+        onDayDone,
+        onCrossDay,
+      }) async {
         runs++;
         return 0;
       };

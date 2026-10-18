@@ -15607,7 +15607,7 @@
   "@reportDatabaseCovered": {
     "description": "Issue report: line under the 2-week switch while the full database switch is on."
   },
-  "reportStageSlice": "Preparing last 2 weeks\u2026",
+  "reportStageSlice": "Preparing last 2 weeks…",
   "@reportStageSlice": {
     "description": "Report screen: progress text inside the busy button while the 2-week database is built."
   },
@@ -15752,6 +15752,2056 @@
     "description": "Snackbar after copying the ticket ID on the report screen.",
     "placeholders": {
       "id": {
+        "type": "String"
+      }
+    }
+  },
+  "devicesSyncingTheWatch": "Syncing the watch…",
+  "@devicesSyncingTheWatch": {
+    "description": "Snackbar: syncing Bangle.js."
+  },
+  "devicesConnectingZeTime": "Connecting…",
+  "@devicesConnectingZeTime": {
+    "description": "Snackbar: connecting to the ZeTime."
+  },
+  "devicesConnectedZeTime": "Connected.",
+  "@devicesConnectedZeTime": {
+    "description": "Snackbar: ZeTime connect succeeded."
+  },
+  "devicesCouldNotReachZeTime": "Could not reach the watch. It has to be nearby, and not connected to another app.",
+  "@devicesCouldNotReachZeTime": {
+    "description": "Snackbar: ZeTime connect failed."
+  },
+  "devicesConnectingWatch": "Connecting…",
+  "@devicesConnectingWatch": {
+    "description": "Snackbar: connecting to the watch."
+  },
+  "devicesCouldNotReachWatch": "Could not reach the watch. It has to be nearby, and not connected to another app.",
+  "@devicesCouldNotReachWatch": {
+    "description": "Snackbar: sync failed."
+  },
+  "devicesWhatItDoesUnranked": "Everything it sends is stored and attributed to it. Nothing in the app is calculated from it yet.",
+  "@devicesWhatItDoesUnranked": {
+    "description": "Row sub: unranked sensor."
+  },
+  "devicesWhatItDoesRanked": "Beat timing is stored and attributed to it during a workout. Nothing in the app is calculated from it yet.",
+  "@devicesWhatItDoesRanked": {
+    "description": "Row sub: ranked sensor."
+  },
+  "pairSensorExplainer": "During a workout, a sensor records heart rate and beat timing. The band keeps recording everything else, and the sensor is not used overnight. Its readings are stored and shown. No score uses them yet.",
+  "@pairSensorExplainer": {
+    "description": "Explanatory body."
+  },
+  "devicePickerBlurbO2Ring": "Reads battery, model and serial number. Its measurements are not decoded yet.",
+  "@devicePickerBlurbO2Ring": {
+    "description": "Category row subtitle for the Wellue O2Ring."
+  },
+  "devicePickerBlurbWearFit": "A Howear band that pairs through the WearFit apps.",
+  "@devicePickerBlurbWearFit": {
+    "description": "Category row subtitle for a WearFit-family band."
+  },
+  "devicePickerBlurbWithingsSteelHr": "A Withings Steel HR. Pairs and connects. Its data is not decoded yet.",
+  "@devicePickerBlurbWithingsSteelHr": {
+    "description": "Category row subtitle for the Withings Steel HR / Activité."
+  },
+  "devicePickerBlurbZeTime": "A ZeTime watch. Pairs and connects. Only its battery level is decoded.",
+  "@devicePickerBlurbZeTime": {
+    "description": "Category row subtitle for the MyKronoz ZeTime."
+  },
+  "devicePickerBlurbBangleJs": "Pairs any Espruino or Nordic UART device, including Bangle.js watches. Stores raw bytes only and decodes nothing.",
+  "@devicePickerBlurbBangleJs": {
+    "description": "Category row subtitle for Bangle.js and other Nordic-UART devices."
+  },
+  "monthGridSemanticsLabel": "{title}: {have} of {total} days have a value. Shaded against your own range.",
+  "@monthGridSemanticsLabel": {
+    "description": "Month grid: accessibility label read for one metric's heat-map strip.",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "have": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "monthGridFootnote": "One cell per day. Darker means higher in your own range, from the 10th to the 90th percentile of every day you have stored. An outlined cell is a day with no value. Shading shows where a day sat in that range and does not rate the day.",
+  "@monthGridFootnote": {
+    "description": "Month grid: explanatory footnote under the strips about what shading means."
+  },
+  "monthGridNotShadedYetTitle": "{title} is not shaded yet",
+  "@monthGridNotShadedYetTitle": {
+    "description": "Month grid: status card title when a metric has too little history to shade, e.g. 'Sleep is not shaded yet'.",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "monthGridNotShadedYetBody": "With {days, plural, one{{days} day} other{{days} days}} of data there is no range to shade against. Shading starts at {min}.",
+  "@monthGridNotShadedYetBody": {
+    "description": "Month grid: status card body explaining how many days of history exist and how many are needed before shading starts.",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "driverBreakdownUsualRange": "Your usual range {lo}–{hi}{unit}",
+  "@driverBreakdownUsualRange": {
+    "description": "Chart footnote stating the user's usual range for this driver.",
+    "placeholders": {
+      "lo": {
+        "type": "String"
+      },
+      "hi": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "beatsHolesFootnote": "{count, plural, one{ {count} bin has too few clean beats to calculate a value and shows as a gap.} other{ {count} bins have too few clean beats to calculate a value and show as gaps.}}",
+  "@beatsHolesFootnote": {
+    "description": "Footnote fragment noting how many bins were left empty for too few clean beats",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dayTimelineMainSleep": "Main sleep {start} to {end}",
+  "@dayTimelineMainSleep": {
+    "description": "Day timeline chart label for the night's main sleep annotation; start and end are local clock times such as 11:10 PM and 6:40 AM.",
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "investigateShapeOfTheNight": "Shape of the night",
+  "@investigateShapeOfTheNight": {
+    "description": "Chart title: RMSSD shape across the night"
+  },
+  "investigateBinRmssd": "Bin RMSSD",
+  "@investigateBinRmssd": {
+    "description": "Chart legend label: per-bin RMSSD line"
+  },
+  "investigateSamplingRange": "Sampling range",
+  "@investigateSamplingRange": {
+    "description": "Chart legend label: sampling spread band"
+  },
+  "investigateShapeFootnote": "{drawn} of {total} bins had enough beats to read. The rest are gaps. The outer pair is the estimator's sampling spread. This chart describes the night and cannot say why it looks that way. A low first third fits alcohol, a late meal, late training, a warm room, an illness starting, or nothing at all.",
+  "@investigateShapeFootnote": {
+    "description": "Chart footnote explaining night-shape bin coverage and caveats",
+    "placeholders": {
+      "drawn": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "investigate29DaysAgo": "29 days ago",
+  "@investigate29DaysAgo": {
+    "description": "Chart x-axis label: 29 days before today"
+  },
+  "investigateToday": "Today",
+  "@investigateToday": {
+    "description": "Chart x-axis label: today"
+  },
+  "investigateDcFootnoteWithBeats": "This compares only your own nights. No reference range exists for pulse arrivals. Signal quality varies from night to night and moves this line on its own. Last night had {beats} beats.",
+  "@investigateDcFootnoteWithBeats": {
+    "description": "Deceleration capacity chart footnote, including last night's beat count",
+    "placeholders": {
+      "beats": {
+        "type": "String"
+      }
+    }
+  },
+  "investigateDcFootnote": "This compares only your own nights. No reference range exists for pulse arrivals. Signal quality varies from night to night and moves this line on its own.",
+  "@investigateDcFootnote": {
+    "description": "Deceleration capacity chart footnote, no beat count available"
+  },
+  "metricDetailBeatsLinkTitle": "Beats",
+  "@metricDetailBeatsLinkTitle": {
+    "description": "Title of the doorway row from the HRV metric screen into the Beats (Poincare/rhythm) screen."
+  },
+  "metricDetailBeatsLinkSub": "Beat-to-beat intervals for the night, charted",
+  "@metricDetailBeatsLinkSub": {
+    "description": "Subtitle of the doorway row into the Beats screen."
+  },
+  "metricDetailJournalMarksToggle": "Journal marks",
+  "@metricDetailJournalMarksToggle": {
+    "description": "Toggle chip above the metric-detail trend chart: show or hide journal items (workouts, marked moments, water, symptoms, timed journal entries) as icons with dashed lines on the chart. Off by default."
+  },
+  "metricDetailPercentileTodayNoBand": "Today is at the {ordinal} percentile of your history.",
+  "@metricDetailPercentileTodayNoBand": {
+    "description": "Sentence stating today's percentile rank within the user's own history, with no qualitative band.",
+    "placeholders": {
+      "ordinal": {
+        "type": "String"
+      }
+    }
+  },
+  "metricDetailPercentileTodayBand": "Today is at the {ordinal} percentile of your history, {band}.",
+  "@metricDetailPercentileTodayBand": {
+    "description": "Sentence stating today's percentile rank within the user's own history, plus a qualitative band label.",
+    "placeholders": {
+      "ordinal": {
+        "type": "String"
+      },
+      "band": {
+        "type": "String"
+      }
+    }
+  },
+  "metricDetailPercentileFromNoBand": "Your reading from {date} is at the {ordinal} percentile of your history.",
+  "@metricDetailPercentileFromNoBand": {
+    "description": "Sentence stating a past day's percentile rank within the user's own history, with no qualitative band.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "ordinal": {
+        "type": "String"
+      }
+    }
+  },
+  "metricDetailPercentileFromBand": "Your reading from {date} is at the {ordinal} percentile of your history, {band}.",
+  "@metricDetailPercentileFromBand": {
+    "description": "Sentence stating a past day's percentile rank within the user's own history, plus a qualitative band label.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "ordinal": {
+        "type": "String"
+      },
+      "band": {
+        "type": "String"
+      }
+    }
+  },
+  "healthTabLastNight": "Last night",
+  "@healthTabLastNight": {
+    "description": "Health screen sub-tab label: one night (readiness, sleep, overnight vitals)"
+  },
+  "healthTabToday": "Today",
+  "@healthTabToday": {
+    "description": "Health screen sub-tab label: today so far (strain, steps, heart rate range, wear)"
+  },
+  "healthNightOf": "Night of {day}",
+  "@healthNightOf": {
+    "description": "Header over the Last night rows, naming the night they describe when it is not last night",
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "healthRowReadiness": "Readiness",
+  "@healthRowReadiness": {
+    "description": "Last night row label: readiness"
+  },
+  "healthRowOvernightStress": "Overnight stress",
+  "@healthRowOvernightStress": {
+    "description": "Last night row label: stress measured overnight"
+  },
+  "healthVsYourUsual": "vs your usual",
+  "@healthVsYourUsual": {
+    "description": "Skin temperature row sub-label: the reading is a deviation from the person's own usual level"
+  },
+  "healthSkinTempSdNote": "Skin temperature is a deviation from your own usual level, in standard deviations (SD). It is not a temperature in degrees.",
+  "@healthSkinTempSdNote": {
+    "description": "Caption under the Last night rows explaining the SD unit on the skin temperature row"
+  },
+  "healthRowStrain": "Strain",
+  "@healthRowStrain": {
+    "description": "Today row label: strain"
+  },
+  "healthRowSteps": "Steps",
+  "@healthRowSteps": {
+    "description": "Today row label: steps"
+  },
+  "healthRowActiveMinutes": "Active minutes",
+  "@healthRowActiveMinutes": {
+    "description": "Today row label: active minutes"
+  },
+  "healthRowCalories": "Calories",
+  "@healthRowCalories": {
+    "description": "Today row label: calories"
+  },
+  "healthWhyNotMeasuredToday": "Not measured yet today.",
+  "@healthWhyNotMeasuredToday": {
+    "description": "Reason on a Today gap card when the day has no value yet"
+  },
+  "healthCatRecovery": "Recovery",
+  "@healthCatRecovery": {
+    "description": "Trends catalogue category title: Recovery (readiness and stress)"
+  },
+  "healthBlurbReadiness": "How ready your body looks for strain, against your own usual",
+  "@healthBlurbReadiness": {
+    "description": "Trends catalogue one-line description for readiness"
+  },
+  "healthBlurbStress": "Beat-interval clustering over your most restful stretch",
+  "@healthBlurbStress": {
+    "description": "Trends catalogue one-line description for stress"
+  },
+  "healthWhyNoSpo2": "No SpO2 here: this app does not estimate blood oxygen.",
+  "@healthWhyNoSpo2": {
+    "description": "One-line note in the Breathing family on Trends saying why there is no SpO2 row"
+  },
+  "healthWhyNotEnoughOvernight": "Not enough overnight data for this one",
+  "@healthWhyNotEnoughOvernight": {
+    "description": "Generic reason on an absent Last night card when no specific reason is known"
+  },
+  "healthBuildingBaseline": "Building your baseline ({days} of 7 days)",
+  "@healthBuildingBaseline": {
+    "description": "Trend card window label while fewer than 7 prior days exist to compare against",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "healthVsDayAverage": "vs your {days}-day average",
+  "@healthVsDayAverage": {
+    "description": "Trend card comparison window label",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "healthFirstReadings": "first readings",
+  "@healthFirstReadings": {
+    "description": "Trend card window label on the very first readings"
+  },
+  "homeSleepPctOf": "{pct}% of {target}",
+  "@homeSleepPctOf": {
+    "description": "Sleep ring subtitle once a night is scored: percent of the learned sleep need.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String",
+        "example": "8h 00m"
+      }
+    }
+  },
+  "homeSleepPctOfDefault": "{pct}% of {target} (default)",
+  "@homeSleepPctOfDefault": {
+    "description": "Sleep ring subtitle once a night is scored, when no need has been learned yet: percent of the 8 h default target, labelled as a default.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String",
+        "example": "8h 00m"
+      }
+    }
+  },
+  "homeSleepOnTrack": "on track for {cycles, plural, =1{1 cycle} other{{cycles} cycles}}, {duration}",
+  "@homeSleepOnTrack": {
+    "description": "Sleep ring subtitle before a night is scored: whole sleep cycles the estimate covers, then the estimated time asleep.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String",
+        "example": "7h 30m"
+      }
+    }
+  },
+  "homeSleepOnTrackDefault": "on track for {cycles, plural, =1{1 cycle} other{{cycles} cycles}}, {duration} · target {target} (default)",
+  "@homeSleepOnTrackDefault": {
+    "description": "Sleep ring subtitle before a night is scored when the target is the 8 h default (no need learned yet): the estimate, then the default target, labelled as a default.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String",
+        "example": "7h 30m"
+      },
+      "target": {
+        "type": "String",
+        "example": "8h 00m"
+      }
+    }
+  },
+  "homeSleepNoEstimate": "No estimate",
+  "@homeSleepNoEstimate": {
+    "description": "Sleep ring value when no night is scored and there is no wake time to estimate to."
+  },
+  "homeSleepNoEstimateWhy": "No sleep scored yet, and no alarm or typical wake time to estimate from.",
+  "@homeSleepNoEstimateWhy": {
+    "description": "Why the sleep ring has no estimate."
+  },
+  "wellnessLastNightInHealth": "Last night in Health",
+  "@wellnessLastNightInHealth": {
+    "description": "Recovery tab link row title: opens Health on its Last night sub-tab"
+  },
+  "wellnessLastNightInHealthMeta": "Readiness, sleep and the rest of the night",
+  "@wellnessLastNightInHealthMeta": {
+    "description": "Recovery tab link row subtitle: what Last night in Health holds"
+  },
+  "workoutMinutesUnit": "minutes",
+  "@workoutMinutesUnit": {
+    "description": "Chart unit label on the history row zone bar"
+  },
+  "activitySummarySecondsPerLap": "seconds per lap",
+  "@activitySummarySecondsPerLap": {
+    "description": "Unit label on the lap-time bar chart"
+  },
+  "activityLiveLapXLabel": "Lap {n}",
+  "@activityLiveLapXLabel": {
+    "description": "Live swim screen: x-axis label on the laps chart, e.g. 'Lap 1'.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "gesturesSectionBodyMulti": "Works only while the app is connected and awake. Turn on as many actions as you like; with every action off, a double-tap does nothing. If you tap while your phone is away, the band stores the tap and sends it later. A late tap runs only an action that says it can.",
+  "@gesturesSectionBodyMulti": {
+    "description": "Body text on the double-tap screen: several actions can be on at once, all off means a double-tap does nothing, and a tap the band delivers late runs only actions that allow it"
+  },
+  "gesturesReplayTitle": "Also run for taps replayed from history",
+  "@gesturesReplayTitle": {
+    "description": "Switch title shown under the Mark a moment action: also act on a double-tap the band stored while the phone was away and delivered later"
+  },
+  "gesturesReplaySub": "A tap the band delivers late is still stamped with the minute and day it happened. Other actions never run for a late tap.",
+  "@gesturesReplaySub": {
+    "description": "Subtitle of the replay switch: what a late tap does for Mark a moment (stamped with when it happened) and what it does not do (other actions never run)"
+  },
+  "gestureEcgTapName": "{n, plural, =0{Double tap} one{Double tap + {n} ECG tap} other{Double tap + {n} ECG taps}}",
+  "@gestureEcgTapName": {
+    "description": "Name of an ECG tap count on the Gestures screen: the opening double tap plus {n} touches of the ECG sensor (0 is the plain double tap).",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "taskerTurnOnFirst": "Turn on Tasker first",
+  "@taskerTurnOnFirst": {
+    "description": "Hint under a Tasker control that is disabled because the Tasker connection is off"
+  },
+  "settingsTaskerConnectionSectionTitle": "Tasker",
+  "@settingsTaskerConnectionSectionTitle": {
+    "description": "Automation screen section heading for the Tasker connection"
+  },
+  "settingsTaskerConnectionTitle": "Tasker connection",
+  "@settingsTaskerConnectionTitle": {
+    "description": "Title of the switch that turns the Tasker integration on or off"
+  },
+  "settingsTaskerConnectionSub": "Lets Tasker and other automation apps buzz the band, and lets the Broadcast to Tasker gesture action reach them. Off, all of it stops.",
+  "@settingsTaskerConnectionSub": {
+    "description": "Explains what the Tasker connection switch controls"
+  },
+  "hapticsTaskerSectionSub": "Tasker plays these by number. Like any alert they follow quiet hours and the haptic limit.",
+  "@hapticsTaskerSectionSub": {
+    "description": "Note at the top of the Tasker group on the Haptics screen"
+  },
+  "deviceActionTellTimeLabel": "Tell the time",
+  "@deviceActionTellTimeLabel": {
+    "description": "Band double-tap action picker: label for telling the time"
+  },
+  "deviceActionTellTimeBlurb": "Buzz the current time on the band.",
+  "@deviceActionTellTimeBlurb": {
+    "description": "Band double-tap action picker: blurb for telling the time"
+  },
+  "deviceActionBreatheLabel": "Breathing exercise",
+  "@deviceActionBreatheLabel": {
+    "description": "Band double-tap action picker: label for the breathing exercise"
+  },
+  "deviceActionBreatheBlurb": "Start a guided breathing session paced by the band, or end the one that is running. No need to look at the phone.",
+  "@deviceActionBreatheBlurb": {
+    "description": "Band double-tap action picker: blurb for the breathing exercise"
+  },
+  "gesturesBreatheTitle": "Breathing session",
+  "@gesturesBreatheTitle": {
+    "description": "Gestures: title of the Breathing exercise picker"
+  },
+  "gesturesBreathePatternTitle": "Pattern",
+  "@gesturesBreathePatternTitle": {
+    "description": "Gestures: heading above the breathing pattern rows"
+  },
+  "gesturesBreatheLengthTitle": "Length",
+  "@gesturesBreatheLengthTitle": {
+    "description": "Gestures: heading above the breathing session length options"
+  },
+  "gesturesTimeBuzzTitle": "How to buzz the time",
+  "@gesturesTimeBuzzTitle": {
+    "description": "Gestures: title of the Tell the time encoding picker"
+  },
+  "gesturesTimeBuzzCountTitle": "Count",
+  "@gesturesTimeBuzzCountTitle": {
+    "description": "Tell the time encoding: name of the count mode"
+  },
+  "gesturesTimeBuzzCountSub": "Hours as buzzes (short = AM, long = PM), then quarter-hour clicks",
+  "@gesturesTimeBuzzCountSub": {
+    "description": "Tell the time encoding: what the count mode does"
+  },
+  "gesturesTimeBuzzBinaryTitle": "Binary",
+  "@gesturesTimeBuzzBinaryTitle": {
+    "description": "Tell the time encoding: name of the binary mode"
+  },
+  "gesturesTimeBuzzBinarySub": "Hour as 4 bits (long = 1), then AM or PM, then clicks",
+  "@gesturesTimeBuzzBinarySub": {
+    "description": "Tell the time encoding: what the binary mode does"
+  },
+  "gesturesTimeBuzzMorseTitle": "Morse",
+  "@gesturesTimeBuzzMorseTitle": {
+    "description": "Tell the time encoding: name of the Morse mode"
+  },
+  "gesturesTimeBuzzMorseSub": "Hour digits in Morse, then A or P, then clicks",
+  "@gesturesTimeBuzzMorseSub": {
+    "description": "Tell the time encoding: what the Morse mode does"
+  },
+  "gesturesTimeBuzzNow": "Now",
+  "@gesturesTimeBuzzNow": {
+    "description": "Tell the time encoding: label of the row that shows the current time"
+  },
+  "gesturesTimeBuzzLegend": "▬ long   · short   • click   │ pause",
+  "@gesturesTimeBuzzLegend": {
+    "description": "Tell the time encoding: what each glyph of the worked examples means (long, short, click, pause)"
+  },
+  "asOfTime": "As of {time}",
+  "@asOfTime": {
+    "description": "Small label under a title while newer results are being calculated: the time the shown results were calculated, 24-hour, e.g. 08:42.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "asOfDateTime": "As of {date}, {time}",
+  "@asOfDateTime": {
+    "description": "Same label when the shown results are from another day: {date} is a short day and month (30 Sep), {time} is 24-hour.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "asOfSemantics": "Showing results calculated at {when}; new results are being calculated",
+  "@asOfSemantics": {
+    "description": "Screen-reader text for the As of label. {when} is the time, with a short date in front when it is not today.",
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "exploreScaleDaily": "Daily",
+  "@exploreScaleDaily": {
+    "description": "Data Explorer scale switch: one reading per day over a range of days"
+  },
+  "exploreScaleDay": "Day",
+  "@exploreScaleDay": {
+    "description": "Data Explorer scale switch: the readings of one day on a clock axis"
+  },
+  "exploreRange7": "7 d",
+  "@exploreRange7": {
+    "description": "Data Explorer range chip: the last 7 days, kept short to fit five chips on a phone"
+  },
+  "exploreRange30": "30 d",
+  "@exploreRange30": {
+    "description": "Data Explorer range chip: the last 30 days"
+  },
+  "exploreRange6m": "6 mo",
+  "@exploreRange6m": {
+    "description": "Data Explorer range chip: the last 6 months"
+  },
+  "exploreRange1y": "1 y",
+  "@exploreRange1y": {
+    "description": "Data Explorer range chip: the last year"
+  },
+  "exploreRangeCustom": "Custom",
+  "@exploreRangeCustom": {
+    "description": "Data Explorer range chip: opens a date range picker"
+  },
+  "exploreToday": "Today",
+  "@exploreToday": {
+    "description": "Data Explorer day stepper: the label of the current day"
+  },
+  "exploreHint": "Pick up to 4 metrics below. They share one time axis, each on its own scale.",
+  "@exploreHint": {
+    "description": "Data Explorer: shown in place of the chart until a metric is picked"
+  },
+  "exploreLimit": "You can compare up to 4 metrics. Remove one to add another.",
+  "@exploreLimit": {
+    "description": "Data Explorer: shown when a fifth metric is refused"
+  },
+  "exploreUnitNormalised": "Normalised",
+  "@exploreUnitNormalised": {
+    "description": "Data Explorer chart header, where a unit would be: the lines are not in the metrics' own units"
+  },
+  "exploreNormalised": "Normalised: each line spans its own lowest to highest, so shapes compare and values do not. Touch the chart for the real values.",
+  "@exploreNormalised": {
+    "description": "Data Explorer note under the chart while every line is scaled to its own range"
+  },
+  "exploreNormalisedBaseline": "Normalised. Lines in baseline mode show distance from your usual level (the middle is usual, the top and bottom are 3 standard deviations away); the others span their own lowest to highest. Touch the chart for the real values.",
+  "@exploreNormalisedBaseline": {
+    "description": "Data Explorer note under the chart while at least one line is against its baseline"
+  },
+  "exploreNoDataRange": "Nothing recorded for these in this range.",
+  "@exploreNoDataRange": {
+    "description": "Data Explorer: every picked metric is empty over the range"
+  },
+  "exploreNoDataDay": "Nothing recorded for these on this day.",
+  "@exploreNoDataDay": {
+    "description": "Data Explorer: every picked metric is empty on the chosen day"
+  },
+  "exploreNoDataFor": "No data for {metric}",
+  "@exploreNoDataFor": {
+    "description": "Data Explorer: one picked metric has nothing to draw while another does",
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
+  },
+  "exploreFailedTitle": "Could not read these metrics",
+  "@exploreFailedTitle": {
+    "description": "Data Explorer read-failure title"
+  },
+  "exploreBaselineToggle": "Baseline",
+  "@exploreBaselineToggle": {
+    "description": "Data Explorer toggle on a picked metric: draw it against your usual level instead of its own range"
+  },
+  "exploreBaselineSemantics": "{metric} against your baseline",
+  "@exploreBaselineSemantics": {
+    "description": "Screen-reader label of the baseline toggle",
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
+  },
+  "exploreRemoveSemantics": "Remove {metric}",
+  "@exploreRemoveSemantics": {
+    "description": "Screen-reader label of a picked metric's chip, which removes it",
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
+  },
+  "gesturesFollowUpTitle": "Follow up about my marked moments",
+  "@gesturesFollowUpTitle": {
+    "description": "Switch title under the late-marks switch: follow up later about the moments marked with a double tap"
+  },
+  "gesturesFollowUpSub": "Ask me later what each moment I marked was, so I can put it in my journal.",
+  "@gesturesFollowUpSub": {
+    "description": "Subtitle of the follow-up switch while Mark a moment is on"
+  },
+  "momentChoicePillsMeds": "Pills & meds",
+  "@momentChoicePillsMeds": {
+    "description": "Quick answer for a marked moment: pills or medication"
+  },
+  "momentChoiceNap": "Nap",
+  "@momentChoiceNap": {
+    "description": "Quick answer for a marked moment: a nap"
+  },
+  "momentChoiceCaffeine": "Caffeine",
+  "@momentChoiceCaffeine": {
+    "description": "Quick answer for a marked moment: caffeine"
+  },
+  "momentChoiceAlcohol": "Alcohol",
+  "@momentChoiceAlcohol": {
+    "description": "Quick answer for a marked moment: alcohol"
+  },
+  "momentChoiceMeal": "Meal",
+  "@momentChoiceMeal": {
+    "description": "Quick answer for a marked moment: a meal"
+  },
+  "momentChoiceWorkout": "Workout",
+  "@momentChoiceWorkout": {
+    "description": "Quick answer for a marked moment: a workout"
+  },
+  "momentChoiceSymptom": "Symptom",
+  "@momentChoiceSymptom": {
+    "description": "Quick answer for a marked moment: a symptom"
+  },
+  "momentChoiceOther": "Other",
+  "@momentChoiceOther": {
+    "description": "Quick answer for a marked moment: something else, with an optional note"
+  },
+  "momentChoiceWater": "Water",
+  "@momentChoiceWater": {
+    "description": "Quick answer for a marked moment: a glass of water (one tap adds one glass to that day)"
+  },
+  "momentFollowUpMomentsLine": "{n, plural, one{{n} marked moment} other{{n} marked moments}}",
+  "@momentFollowUpMomentsLine": {
+    "description": "Home card line: how many marked moments are waiting for review; n is how many",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "momentFollowUpAssumedWaterLine": "{n, plural, one{{n} assumed water} other{{n} assumed water}}",
+  "@momentFollowUpAssumedWaterLine": {
+    "description": "Home card line: how many assumed water glasses are waiting for review; n is how many",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "momentFollowUpAnswer": "Answer",
+  "@momentFollowUpAnswer": {
+    "description": "Button on the Home card that opens the follow-up screen"
+  },
+  "momentFollowUpTitle": "Marked moments",
+  "@momentFollowUpTitle": {
+    "description": "Title of the screen that lists marked moments to answer"
+  },
+  "momentFollowUpSub": "FOLLOW UP",
+  "@momentFollowUpSub": {
+    "description": "Small caption under the follow-up screen title"
+  },
+  "momentFollowUpSkip": "Skip",
+  "@momentFollowUpSkip": {
+    "description": "Button that marks a moment answered without a label"
+  },
+  "momentFollowUpSave": "Save",
+  "@momentFollowUpSave": {
+    "description": "Button that saves the amount or note typed for a marked moment"
+  },
+  "momentFollowUpEmptyTitle": "Nothing to follow up on",
+  "@momentFollowUpEmptyTitle": {
+    "description": "Empty state title when no marked moment is waiting for an answer"
+  },
+  "momentFollowUpEmptyBody": "Moments you mark show up here until you answer them or a week goes by.",
+  "@momentFollowUpEmptyBody": {
+    "description": "Empty state body: how long a marked moment stays waiting"
+  },
+  "momentFollowUpAmountHint": "Amount in {unit} (optional)",
+  "@momentFollowUpAmountHint": {
+    "description": "Hint of the optional dose field; unit is mg or units",
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "momentFollowUpNoteHint": "Note (optional)",
+  "@momentFollowUpNoteHint": {
+    "description": "Hint of the optional free-text note field"
+  },
+  "momentFollowUpLogWorkout": "Log a workout at this time",
+  "@momentFollowUpLogWorkout": {
+    "description": "Button that opens the workout log prefilled with the moment's time"
+  },
+  "momentFollowUpLabelOnly": "Just label it",
+  "@momentFollowUpLabelOnly": {
+    "description": "Button that stores only the Workout label for the moment"
+  },
+  "momentFollowUpSaveFailed": "Could not save that answer. Try again.",
+  "@momentFollowUpSaveFailed": {
+    "description": "Error shown when an answer to a marked moment could not be saved"
+  },
+  "dayTimelineMarkedAt": "Marked moment at {time}",
+  "@dayTimelineMarkedAt": {
+    "description": "Detail line of a labelled marked moment on the day timeline; time is a clock time",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticSimilarSameBeats": "Feels like {slot} (same {n, plural, one{1 beat} other{{n} beats}})",
+  "@hapticSimilarSameBeats": {
+    "description": "Warning on a haptic slot whose pattern has the same number of beats as another slot that could be mistaken for it; slot is that slot's name, n the beat count",
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      },
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticSimilarCloseLength": "Feels like {slot} (within 0.5 s)",
+  "@hapticSimilarCloseLength": {
+    "description": "Warning on a haptic slot whose pattern is within half a second of another slot's in total length; slot is that slot's name",
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticScoreNotes": "{n, plural, one{1 note} other{{n} notes}}",
+  "@hapticScoreNotes": {
+    "description": "Spoken note count of a haptic pattern drawn as a music score",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticScoreOneSecond": "1 second",
+  "@hapticScoreOneSecond": {
+    "description": "Spoken total length of a haptic pattern that lasts exactly one second"
+  },
+  "hapticScoreSeconds": "{value} seconds",
+  "@hapticScoreSeconds": {
+    "description": "Spoken total length of a haptic pattern; value is a number such as 1.5 or 2",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticScoreSemantics": "{notes}, {length}",
+  "@hapticScoreSemantics": {
+    "description": "Screen-reader label of a haptic pattern's music score: the note count, then the total length",
+    "placeholders": {
+      "notes": {
+        "type": "String"
+      },
+      "length": {
+        "type": "String"
+      }
+    }
+  },
+  "symptomSeveritySevere": "severe",
+  "@symptomSeveritySevere": {
+    "description": "Symptom describer: severity \"severe\" (lower case; also used inside the sentence)"
+  },
+  "symptomSeverityModerate": "moderate",
+  "@symptomSeverityModerate": {
+    "description": "Symptom describer: severity \"moderate\" (lower case; also used inside the sentence)"
+  },
+  "symptomSeverityMild": "mild",
+  "@symptomSeverityMild": {
+    "description": "Symptom describer: severity \"mild\" (lower case; also used inside the sentence)"
+  },
+  "symptomSeverityFaint": "faint",
+  "@symptomSeverityFaint": {
+    "description": "Symptom describer: severity \"faint\" (lower case; also used inside the sentence)"
+  },
+  "symptomSideLeft": "left",
+  "@symptomSideLeft": {
+    "description": "Symptom describer: side \"left\" (lower case; shown in parentheses after the area)"
+  },
+  "symptomSideRight": "right",
+  "@symptomSideRight": {
+    "description": "Symptom describer: side \"right\" (lower case; shown in parentheses after the area)"
+  },
+  "symptomSideBoth": "both",
+  "@symptomSideBoth": {
+    "description": "Symptom describer: side \"both\" (lower case; shown in parentheses after the area)"
+  },
+  "symptomSideCenter": "center",
+  "@symptomSideCenter": {
+    "description": "Symptom describer: side \"center\" (lower case; shown in parentheses after the area)"
+  },
+  "symptomSideAll": "all",
+  "@symptomSideAll": {
+    "description": "Symptom describer: side \"all\" (lower case; shown in parentheses after the area)"
+  },
+  "symptomKindPain": "pain",
+  "@symptomKindPain": {
+    "description": "Symptom describer: kind \"pain\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindSwelling": "swelling",
+  "@symptomKindSwelling": {
+    "description": "Symptom describer: kind \"swelling\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindItchiness": "itchiness",
+  "@symptomKindItchiness": {
+    "description": "Symptom describer: kind \"itchiness\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindIrritation": "irritation",
+  "@symptomKindIrritation": {
+    "description": "Symptom describer: kind \"irritation\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindNumbness": "numbness",
+  "@symptomKindNumbness": {
+    "description": "Symptom describer: kind \"numbness\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindSoreness": "soreness",
+  "@symptomKindSoreness": {
+    "description": "Symptom describer: kind \"soreness\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindTingling": "tingling",
+  "@symptomKindTingling": {
+    "description": "Symptom describer: kind \"tingling\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindOther": "other",
+  "@symptomKindOther": {
+    "description": "Symptom describer: kind \"other\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomAreaFeet": "feet",
+  "@symptomAreaFeet": {
+    "description": "Symptom describer: body area \"feet\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaAnkles": "ankles",
+  "@symptomAreaAnkles": {
+    "description": "Symptom describer: body area \"ankles\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaCalves": "calves",
+  "@symptomAreaCalves": {
+    "description": "Symptom describer: body area \"calves\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaKnees": "knees",
+  "@symptomAreaKnees": {
+    "description": "Symptom describer: body area \"knees\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaThighs": "thighs",
+  "@symptomAreaThighs": {
+    "description": "Symptom describer: body area \"thighs\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaHips": "hips",
+  "@symptomAreaHips": {
+    "description": "Symptom describer: body area \"hips\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaGlutes": "glutes",
+  "@symptomAreaGlutes": {
+    "description": "Symptom describer: body area \"glutes\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaLowerAbdomen": "lower abdomen",
+  "@symptomAreaLowerAbdomen": {
+    "description": "Symptom describer: body area \"lower abdomen\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaLowerBack": "lower back",
+  "@symptomAreaLowerBack": {
+    "description": "Symptom describer: body area \"lower back\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaUpperAbdomen": "upper abdomen",
+  "@symptomAreaUpperAbdomen": {
+    "description": "Symptom describer: body area \"upper abdomen\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaMidBack": "mid back",
+  "@symptomAreaMidBack": {
+    "description": "Symptom describer: body area \"mid back\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaChest": "chest",
+  "@symptomAreaChest": {
+    "description": "Symptom describer: body area \"chest\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaUpperBack": "upper back",
+  "@symptomAreaUpperBack": {
+    "description": "Symptom describer: body area \"upper back\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaShoulders": "shoulders",
+  "@symptomAreaShoulders": {
+    "description": "Symptom describer: body area \"shoulders\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaArms": "arms",
+  "@symptomAreaArms": {
+    "description": "Symptom describer: body area \"arms\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaElbows": "elbows",
+  "@symptomAreaElbows": {
+    "description": "Symptom describer: body area \"elbows\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaWrists": "wrists",
+  "@symptomAreaWrists": {
+    "description": "Symptom describer: body area \"wrists\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaHands": "hands",
+  "@symptomAreaHands": {
+    "description": "Symptom describer: body area \"hands\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaNeck": "neck",
+  "@symptomAreaNeck": {
+    "description": "Symptom describer: body area \"neck\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaJaw": "jaw",
+  "@symptomAreaJaw": {
+    "description": "Symptom describer: body area \"jaw\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaFace": "face",
+  "@symptomAreaFace": {
+    "description": "Symptom describer: body area \"face\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaForehead": "forehead",
+  "@symptomAreaForehead": {
+    "description": "Symptom describer: body area \"forehead\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaSkull": "skull",
+  "@symptomAreaSkull": {
+    "description": "Symptom describer: body area \"skull\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaOther": "other",
+  "@symptomAreaOther": {
+    "description": "Symptom describer: body area \"other\" (lower case; used inside the sentence)"
+  },
+  "symptomDescription": "{severity} {kind} in my {area}",
+  "@symptomDescription": {
+    "description": "Sentence for a described symptom with no side, e.g. \"mild pain in my knees\"",
+    "placeholders": {
+      "severity": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      },
+      "area": {
+        "type": "String"
+      }
+    }
+  },
+  "symptomDescriptionSided": "{severity} {kind} in my {area} ({side})",
+  "@symptomDescriptionSided": {
+    "description": "Sentence for a described symptom with a side, e.g. \"mild pain in my knees (left)\"",
+    "placeholders": {
+      "severity": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      },
+      "area": {
+        "type": "String"
+      },
+      "side": {
+        "type": "String"
+      }
+    }
+  },
+  "symptomDescriberSeverity": "How strong?",
+  "@symptomDescriberSeverity": {
+    "description": "Symptom describer: heading of the severity choices"
+  },
+  "symptomDescriberSide": "Which side? (optional)",
+  "@symptomDescriberSide": {
+    "description": "Symptom describer: heading of the optional side choices"
+  },
+  "symptomDescriberKind": "What kind?",
+  "@symptomDescriberKind": {
+    "description": "Symptom describer: heading of the kind choices"
+  },
+  "symptomDescriberArea": "Where?",
+  "@symptomDescriberArea": {
+    "description": "Symptom describer: heading of the body-area choices"
+  },
+  "symptomDescriberKindOtherHint": "Describe the kind",
+  "@symptomDescriberKindOtherHint": {
+    "description": "Symptom describer: hint of the text field for a kind not in the list"
+  },
+  "symptomDescriberAreaOtherHint": "Describe the place",
+  "@symptomDescriberAreaOtherHint": {
+    "description": "Symptom describer: hint of the text field for an area not in the list"
+  },
+  "symptomDescriberNoteHint": "Note (optional)",
+  "@symptomDescriberNoteHint": {
+    "description": "Symptom describer: hint of the optional note field"
+  },
+  "journalComposeSymptomsSection": "Symptoms",
+  "@journalComposeSymptomsSection": {
+    "description": "Journal: heading of the symptoms described on the day's marked moments"
+  },
+  "waterIncludesAssumed": "Includes {amount} assumed",
+  "@waterIncludesAssumed": {
+    "description": "Under a water total: the part of it that was assumed by \"Assume I drank water\"; amount is already formatted with its unit",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsWaterAssumeRowTitle": "Assume I drank water",
+  "@settingsWaterAssumeRowTitle": {
+    "description": "Settings, water reminder: toggle that counts each reminder as one glass of water drunk"
+  },
+  "settingsWaterAssumeRowSub": "Each reminder logs one assumed glass",
+  "@settingsWaterAssumeRowSub": {
+    "description": "Settings, water reminder: what the assume toggle does"
+  },
+  "assumedWaterTitle": "Assumed glass of water",
+  "@assumedWaterTitle": {
+    "description": "Follow-up list: title of an assumed glass of water"
+  },
+  "assumedWaterBody": "Adds {amount} to the water you drank, assumed from your water reminder. Keep it or remove it.",
+  "@assumedWaterBody": {
+    "description": "Follow-up list: what an assumed glass does; amount is already formatted with its unit",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "assumedWaterKeep": "Keep",
+  "@assumedWaterKeep": {
+    "description": "Follow-up list: keep an assumed glass"
+  },
+  "assumedWaterRemove": "Remove",
+  "@assumedWaterRemove": {
+    "description": "Follow-up list: remove an assumed glass"
+  },
+  "snoozeCardUntil": "Snoozed until {time}",
+  "@snoozeCardUntil": {
+    "description": "Home card while a main-alarm snooze is pending; {time} is HH:MM.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "snoozeCardBuzzing": "Your alarm is buzzing again",
+  "@snoozeCardBuzzing": {
+    "description": "Home card while the snooze re-alarm is buzzing."
+  },
+  "snoozeCardHint": "or double-tap the band",
+  "@snoozeCardHint": {
+    "description": "Home card caption: double-tapping the band also dismisses."
+  },
+  "snoozeImUp": "I'm up",
+  "@snoozeImUp": {
+    "description": "Button that dismisses the snooze."
+  },
+  "snoozeDismissCopy": "{taps, plural, =1{1 double tap to dismiss — fewer is a snooze} other{{taps} double taps to dismiss — fewer is a snooze}}",
+  "@snoozeDismissCopy": {
+    "description": "Alarm settings: how many double taps dismiss the alarm; fewer is a snooze.",
+    "placeholders": {
+      "taps": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeRowTaps": "Double taps to dismiss",
+  "@snoozeRowTaps": {
+    "description": "Alarm settings row: double taps that dismiss."
+  },
+  "snoozeRowWindow": "Dismiss window",
+  "@snoozeRowWindow": {
+    "description": "Alarm settings row: how long the taps are counted."
+  },
+  "snoozeRowMinutes": "Snooze for",
+  "@snoozeRowMinutes": {
+    "description": "Alarm settings row: snooze length."
+  },
+  "snoozeRowCap": "Stop escalating after",
+  "@snoozeRowCap": {
+    "description": "Alarm settings row: after how many snoozes the re-alarm stops getting stronger."
+  },
+  "snoozeValueTaps": "{n, plural, =1{1 double tap} other{{n} double taps}}",
+  "@snoozeValueTaps": {
+    "description": "Row value: number of double taps.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeValueSeconds": "{s} s",
+  "@snoozeValueSeconds": {
+    "description": "Row value: seconds.",
+    "placeholders": {
+      "s": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeValueMinutes": "{m} min",
+  "@snoozeValueMinutes": {
+    "description": "Row value: minutes.",
+    "placeholders": {
+      "m": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeValueCap": "{n, plural, =1{1 snooze} other{{n} snoozes}}",
+  "@snoozeValueCap": {
+    "description": "Row value: number of snoozes.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeUnsupported": "Snooze needs a band that reports how the alarm was stopped (WHOOP 5/MG)",
+  "@snoozeUnsupported": {
+    "description": "Shown under the disabled alarm snooze rows on a band (WHOOP 4.0) that does not report how the alarm was stopped."
+  },
+  "snoozeEnable": "Snooze",
+  "@snoozeEnable": {
+    "description": "Alarm settings switch: turn the main-alarm snooze on (off by default)."
+  },
+  "snoozeExactNote": "Exact timing needs the alarm permission",
+  "@snoozeExactNote": {
+    "description": "One line under the snooze settings when Android will not let the app set exact alarms."
+  },
+  "momentReviewHint": "Your choices are queued. Nothing is saved until you press Save.",
+  "@momentReviewHint": {
+    "description": "Hint at the top of the marked-moment review: choices are queued until Save"
+  },
+  "momentReviewSaveCount": "{count, plural, =0{Save} one{Save 1 answer} other{Save {count} answers}}",
+  "@momentReviewSaveCount": {
+    "description": "Label of the review's Save button; count is how many queued items it will save (a paired range counts once)",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "momentReviewPending": "Will save: {what}",
+  "@momentReviewPending": {
+    "description": "Line on a review card showing the queued decision; what is the decision, e.g. Caffeine · 80 mg",
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "momentReviewUndo": "Undo",
+  "@momentReviewUndo": {
+    "description": "Button that takes a queued review decision back"
+  },
+  "momentReviewQueueIt": "Queue this answer",
+  "@momentReviewQueueIt": {
+    "description": "Button that adds the typed amount or note to the review queue (it does not save yet)"
+  },
+  "momentReviewPair": "Pair with another mark…",
+  "@momentReviewPair": {
+    "description": "Button that pairs a nap or workout mark with a second mark as its start and end"
+  },
+  "momentReviewPairTitle": "Pair with another marked moment",
+  "@momentReviewPairTitle": {
+    "description": "Title of the sheet listing the moments a nap or workout mark can be paired with"
+  },
+  "momentReviewPairNone": "No other unanswered moment to pair with.",
+  "@momentReviewPairNone": {
+    "description": "Shown in the pairing sheet when no other moment is available"
+  },
+  "momentReviewPairType": "Workout type: {type}",
+  "@momentReviewPairType": {
+    "description": "Row in the pairing sheet showing the workout type; type is an activity name",
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "momentReviewRange": "{what}: {start} to {end}",
+  "@momentReviewRange": {
+    "description": "Line on both cards of a paired range; what is Nap or Workout, start and end are clock times (a date is added when the end is on another day)",
+    "placeholders": {
+      "what": {
+        "type": "String"
+      },
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "momentReviewItemFailed": "Not saved. It is still queued — press Save to try again.",
+  "@momentReviewItemFailed": {
+    "description": "Shown on a review card whose decision could not be saved; it stays queued"
+  },
+  "momentReviewRangeEnd": "The end has to be after the start.",
+  "@momentReviewRangeEnd": {
+    "description": "Validation error for a paired range whose end is not after its start"
+  },
+  "momentReviewRangeFuture": "A range can't end in the future.",
+  "@momentReviewRangeFuture": {
+    "description": "Validation error for a paired range that ends in the future"
+  },
+  "momentReviewRangeWorkoutLength": "A workout has to last between 1 minute and 24 hours.",
+  "@momentReviewRangeWorkoutLength": {
+    "description": "Validation error for a paired workout shorter than a minute or longer than a day"
+  },
+  "momentReviewRangeWorkoutOverlap": "That overlaps a workout already in your log.",
+  "@momentReviewRangeWorkoutOverlap": {
+    "description": "Validation error for a paired workout that overlaps a saved workout"
+  },
+  "momentReviewRangeCheckFailed": "Could not check this pair. Try again.",
+  "@momentReviewRangeCheckFailed": {
+    "description": "Error when the existing naps or workouts could not be read to check a pair"
+  },
+  "settingsTaskerMomentExportTitle": "Send reviewed moments to Tasker",
+  "@settingsTaskerMomentExportTitle": {
+    "description": "Switch in Automation: send the marked-moment review's answers to Tasker"
+  },
+  "settingsTaskerMomentExportSub": "When you save the review of your marked moments, sends each one to Tasker: what it was, when, and any amount you typed. This is health information, so it goes to Tasker only and stays off until you turn it on.",
+  "@settingsTaskerMomentExportSub": {
+    "description": "Explains what the switch sends (health information) and that it is off by default and goes to Tasker only"
+  },
+  "momentReviewPersistFailed": "Could not store your choices on this phone. They are kept while the app is open but may be lost if it closes.",
+  "@momentReviewPersistFailed": {
+    "description": "Warning on the marked-moment review when the phone did not confirm storing the queued choices"
+  },
+  "momentReviewAmountInvalid": "Type a number above 0 (within the usual range), or leave it empty.",
+  "@momentReviewAmountInvalid": {
+    "description": "Error under the amount field of a marked moment when the typed value is not a usable number"
+  },
+  "momentReviewAmbiguous": "This time came round twice when the clocks went back, so it cannot be paired with another mark.",
+  "@momentReviewAmbiguous": {
+    "description": "Shown on a nap or workout mark made in the hour that repeats when the clocks go back; it cannot be paired"
+  },
+  "momentReviewResume": "Saved so far. Press Save to finish this pair.",
+  "@momentReviewResume": {
+    "description": "Note on a paired range whose first half was saved and whose rest is still to do"
+  },
+  "momentReviewProgressNotSaved": "Could not record progress on this pair, so it was stopped. Press Save to try again.",
+  "@momentReviewProgressNotSaved": {
+    "description": "Shown on a paired range that was stopped because its progress could not be stored; it stays queued"
+  },
+  "settingsTaskerMomentExportSaveFailed": "Could not save that change. The switch shows what is stored.",
+  "@settingsTaskerMomentExportSaveFailed": {
+    "description": "Shown under the send-reviewed-moments-to-Tasker switch when the phone refused to store the change; the switch shows the stored state"
+  },
+  "hapticsPresetsGeneral": "General",
+  "@hapticsPresetsGeneral": {
+    "description": "Title of the group of the ten general presets on the Patterns tab of the Haptics screen"
+  },
+  "hapticsNewFromTaps": "New from taps",
+  "@hapticsNewFromTaps": {
+    "description": "Button under the Haptics title that records a new pattern by tapping"
+  },
+  "hapticsNewFromNotes": "New from notes",
+  "@hapticsNewFromNotes": {
+    "description": "Button under the Haptics title that writes a new pattern as notes"
+  },
+  "hapticsCommandsCount": "{n, plural, one{1 command} other{{n} commands}}",
+  "@hapticsCommandsCount": {
+    "description": "Spoken count of the band commands a haptic pattern is sent as",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticsRowSemantics": "{name}, {length}, {commands}",
+  "@hapticsRowSemantics": {
+    "description": "Screen-reader label of a haptic pattern row: its name, its length, then its command count",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "length": {
+        "type": "String"
+      },
+      "commands": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticScoreLength": "~{value}s",
+  "@hapticScoreLength": {
+    "description": "Total length printed on the staff of a haptic pattern; value is a number with one decimal such as 1.5",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsCommandLimitTitle": "Band haptic limit",
+  "@hapticsCommandLimitTitle": {
+    "description": "Title of the control that sets how many haptic commands the band may be sent in 2 minutes"
+  },
+  "hapticsCommandLimitBody": "{n} commands in any 2 minutes. A precaution we chose to spare the motor and the battery, not a limit of the band. Alerts wait for room; a gesture without room is not acted on.",
+  "@hapticsCommandLimitBody": {
+    "description": "Explains the haptic command limit; n is the limit",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticsCommandLimitSaving": "Saving…",
+  "@hapticsCommandLimitSaving": {
+    "description": "Shown on the command-limit control while the new limit is being written"
+  },
+  "hapticsCommandLimitFailed": "Could not save that change. The limit stays at {n}.",
+  "@hapticsCommandLimitFailed": {
+    "description": "Shown on the command-limit control when the write was refused; n is the limit still in force",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticsYourPatterns": "Your patterns",
+  "@hapticsYourPatterns": {
+    "description": "Heading of the group of the wearer's own patterns on the Haptics screen"
+  },
+  "hapticsSafety": "Safety",
+  "@hapticsSafety": {
+    "description": "Heading of the Safety group on the Haptics Band tab"
+  },
+  "hapticsTest": "Test",
+  "@hapticsTest": {
+    "description": "Heading of the Test group on the Haptics Band tab"
+  },
+  "hapticsCalibration": "Calibration",
+  "@hapticsCalibration": {
+    "description": "Heading of the Calibration group on the Haptics Band tab (developer mode)"
+  },
+  "hapticsSectionAlerts": "Alerts",
+  "@hapticsSectionAlerts": {
+    "description": "Heading of the alert slots group on the Haptics screen"
+  },
+  "hapticsSectionApps": "Apps and automation",
+  "@hapticsSectionApps": {
+    "description": "Heading of the apps and automation slots group on the Haptics screen"
+  },
+  "hapticsSectionTasker": "Tasker",
+  "@hapticsSectionTasker": {
+    "description": "Heading of the Tasker slots group on the Haptics screen (Tasker is a product name)"
+  },
+  "hapticsSectionActivity": "Activity",
+  "@hapticsSectionActivity": {
+    "description": "Heading of the workout slots group on the Haptics screen"
+  },
+  "hapticsSectionGestures": "Gestures",
+  "@hapticsSectionGestures": {
+    "description": "Heading of the gesture cues group on the Haptics screen"
+  },
+  "hapticsSectionBreathing": "Breathing",
+  "@hapticsSectionBreathing": {
+    "description": "Heading of the breathing cues group on the Haptics screen"
+  },
+  "hapticsSectionAlarm": "Alarm snooze",
+  "@hapticsSectionAlarm": {
+    "description": "Heading of the alarm snooze cues group on the Haptics screen"
+  },
+  "hapticsSectionEcg": "ECG",
+  "@hapticsSectionEcg": {
+    "description": "Heading of the ECG cues group on the Haptics screen"
+  },
+  "sampleArchiveLoadingDetail": "Loading detail…",
+  "@sampleArchiveLoadingDetail": {
+    "description": "Label on a long-range chart while its curve is still being refined from a coarse view to full detail; no precise value is shown until it disappears."
+  },
+  "sampleArchiveApproximation": "Approximate (archived)",
+  "@sampleArchiveApproximation": {
+    "description": "Label kept on an archived long-range chart even at full detail: the curve is read back from an archive that stores rounded values, not a measurement."
+  },
+  "ecgOutcomeNotReadable": "Not readable",
+  "@ecgOutcomeNotReadable": {
+    "description": "WHOOP MG ECG: Not readable"
+  },
+  "ecgStoppedEarly": "Stopped early",
+  "@ecgStoppedEarly": {
+    "description": "WHOOP MG ECG: Stopped early"
+  },
+  "ecgOutcomeNoRhythm": "This recording does not support a rhythm reading.",
+  "@ecgOutcomeNoRhythm": {
+    "description": "WHOOP MG ECG: This recording does not support a rhythm reading."
+  },
+  "ecgCaveatQualityUnchecked": "Band-reported. The app has not checked this recording's quality yet.",
+  "@ecgCaveatQualityUnchecked": {
+    "description": "WHOOP MG ECG: Band-reported. The app has not checked this recording's quality yet."
+  },
+  "ecgReasonUnknownBit": "Unknown band reason bit {bit}",
+  "@ecgReasonUnknownBit": {
+    "description": "WHOOP MG ECG: Unknown band reason bit {bit}",
+    "placeholders": {
+      "bit": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgReasonUnknownCode": "The band's result code {code} is not one this app knows",
+  "@ecgReasonUnknownCode": {
+    "description": "WHOOP MG ECG: The band's result code {code} is not one this app knows",
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgReasonBandUnreadable": "The band's result code {code} means it could not read the recording",
+  "@ecgReasonBandUnreadable": {
+    "description": "WHOOP MG ECG: The band's result code {code} means it could not read the recording",
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgReasonNoHeartRate": "No heart rate was reported",
+  "@ecgReasonNoHeartRate": {
+    "description": "WHOOP MG ECG: No heart rate was reported"
+  },
+  "ecgReasonHrOutOfRange": "The average heart rate ({hr} bpm) is outside the range this result can be read at",
+  "@ecgReasonHrOutOfRange": {
+    "description": "WHOOP MG ECG: The average heart rate ({hr} bpm) is outside the range this result can be read at",
+    "placeholders": {
+      "hr": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgExportAll": "Export ECG logs",
+  "@ecgExportAll": {
+    "description": "WHOOP MG ECG: Export ECG logs"
+  },
+  "ecgExportReading": "Export this reading",
+  "@ecgExportReading": {
+    "description": "WHOOP MG ECG: Export this reading"
+  },
+  "ecgExportFailed": "Couldn't save the ECG log: {reason}",
+  "@ecgExportFailed": {
+    "description": "WHOOP MG ECG: Couldn't save the ECG log: {reason}",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgDeleteConfirmOne": "Delete this reading?",
+  "@ecgDeleteConfirmOne": {
+    "description": "WHOOP MG ECG: Delete this reading?"
+  },
+  "ecgDeleteConfirmMany": "Delete this reading and all {count} attempts?",
+  "@ecgDeleteConfirmMany": {
+    "description": "WHOOP MG ECG: Delete this reading and all {count} attempts?",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDeleteConfirm": "Delete",
+  "@ecgDeleteConfirm": {
+    "description": "WHOOP MG ECG: Delete"
+  },
+  "ecgWaveformNotKept": "Waveform not kept",
+  "@ecgWaveformNotKept": {
+    "description": "WHOOP MG ECG: Waveform not kept"
+  },
+  "ecgCoachNoRhythm": "No rhythm reading to analyze — {reason}",
+  "@ecgCoachNoRhythm": {
+    "description": "WHOOP MG ECG: No rhythm reading to analyze — {reason}",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgDetails": "Details",
+  "@ecgDetails": {
+    "description": "WHOOP MG ECG: Details"
+  },
+  "ecgNotRecorded": "not recorded",
+  "@ecgNotRecorded": {
+    "description": "WHOOP MG ECG: not recorded"
+  },
+  "ecgNotKept": "not kept",
+  "@ecgNotKept": {
+    "description": "WHOOP MG ECG: not kept"
+  },
+  "ecgDetailNone": "none",
+  "@ecgDetailNone": {
+    "description": "WHOOP MG ECG: none"
+  },
+  "ecgDetailOutcome": "What the app decided",
+  "@ecgDetailOutcome": {
+    "description": "WHOOP MG ECG: What the app decided"
+  },
+  "ecgDetailResultCode": "Band result code",
+  "@ecgDetailResultCode": {
+    "description": "WHOOP MG ECG: Band result code"
+  },
+  "ecgDetailStoredCategory": "Band category as stored",
+  "@ecgDetailStoredCategory": {
+    "description": "WHOOP MG ECG: Band category as stored"
+  },
+  "ecgDetailAvgHr": "Average heart rate (decides)",
+  "@ecgDetailAvgHr": {
+    "description": "WHOOP MG ECG: Average heart rate (decides)"
+  },
+  "ecgDetailLiveHr": "Live heart rate (never decides)",
+  "@ecgDetailLiveHr": {
+    "description": "WHOOP MG ECG: Live heart rate (never decides)"
+  },
+  "ecgDetailQualityValue": "{value} · band-reported, scale unknown",
+  "@ecgDetailQualityValue": {
+    "description": "WHOOP MG ECG: {value} · band-reported, scale unknown",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgDetailFinalMask": "Band reasons, final second",
+  "@ecgDetailFinalMask": {
+    "description": "WHOOP MG ECG: Band reasons, final second"
+  },
+  "ecgDetailMaskAny": "Band reasons, any second",
+  "@ecgDetailMaskAny": {
+    "description": "WHOOP MG ECG: Band reasons, any second"
+  },
+  "ecgDetailVariability": "Variability (raw, unit unknown)",
+  "@ecgDetailVariability": {
+    "description": "WHOOP MG ECG: Variability (raw, unit unknown)"
+  },
+  "ecgDetailMin": "Lowest sample",
+  "@ecgDetailMin": {
+    "description": "WHOOP MG ECG: Lowest sample"
+  },
+  "ecgDetailMax": "Highest sample",
+  "@ecgDetailMax": {
+    "description": "WHOOP MG ECG: Highest sample"
+  },
+  "ecgDetailRms": "RMS amplitude",
+  "@ecgDetailRms": {
+    "description": "WHOOP MG ECG: RMS amplitude"
+  },
+  "ecgDetailSampleCount": "Samples",
+  "@ecgDetailSampleCount": {
+    "description": "WHOOP MG ECG: Samples"
+  },
+  "ecgDetailStopReason": "Stopped because",
+  "@ecgDetailStopReason": {
+    "description": "WHOOP MG ECG: Stopped because"
+  },
+  "ecgDetailFirmware": "Band firmware",
+  "@ecgDetailFirmware": {
+    "description": "WHOOP MG ECG: Band firmware"
+  },
+  "ecgDetailAppVersion": "App version at capture",
+  "@ecgDetailAppVersion": {
+    "description": "WHOOP MG ECG: App version at capture"
+  },
+  "ecgDetailTableVersion": "Rule table version",
+  "@ecgDetailTableVersion": {
+    "description": "WHOOP MG ECG: Rule table version"
+  },
+  "ecgDetailTableBoth": "captured with table v{captured}, shown now with table v{now}",
+  "@ecgDetailTableBoth": {
+    "description": "WHOOP MG ECG: captured with table v{captured}, shown now with table v{now}",
+    "placeholders": {
+      "captured": {
+        "type": "int"
+      },
+      "now": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailTableSame": "v{now} (captured and shown now)",
+  "@ecgDetailTableSame": {
+    "description": "WHOOP MG ECG: v{now} (captured and shown now)",
+    "placeholders": {
+      "now": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailTableNotRecorded": "not recorded; shown now with table v{now}",
+  "@ecgDetailTableNotRecorded": {
+    "description": "WHOOP MG ECG: not recorded; shown now with table v{now}",
+    "placeholders": {
+      "now": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailUtcOffset": "UTC offset at capture",
+  "@ecgDetailUtcOffset": {
+    "description": "WHOOP MG ECG: UTC offset at capture"
+  },
+  "ecgDetailPackets": "Kept waveform",
+  "@ecgDetailPackets": {
+    "description": "WHOOP MG ECG: Kept waveform"
+  },
+  "ecgDetailPacketsKept": "{count} seconds kept",
+  "@ecgDetailPacketsKept": {
+    "description": "WHOOP MG ECG: {count} seconds kept",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailAttempts": "Attempts in this group",
+  "@ecgDetailAttempts": {
+    "description": "WHOOP MG ECG: Attempts in this group"
+  },
+  "ecgAttemptLine": "Attempt {n}: {outcome}",
+  "@ecgAttemptLine": {
+    "description": "WHOOP MG ECG: Attempt {n}: {outcome}",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "outcome": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgAttemptThis": "this reading",
+  "@ecgAttemptThis": {
+    "description": "WHOOP MG ECG: this reading"
+  },
+  "ecgDetailBandLogic": "How the band decides its result is proprietary and unknown to this app. The app only reads the numbers the band reports.",
+  "@ecgDetailBandLogic": {
+    "description": "WHOOP MG ECG: How the band decides its result is proprietary and unknown to this app. The app only reads the numbers the ban"
+  },
+  "ecgRateMapping": "Regular rhythm is only reported at 51–99 bpm; at 100–150 bpm the band separates irregular from not irregular; at 151–200 bpm it reports only high heart rate; outside that the band gives no rhythm reading. These ranges come from how the app reads the band's codes, not from a validation of this device.",
+  "@ecgRateMapping": {
+    "description": "WHOOP MG ECG: Regular rhythm is only reported at 51–99 bpm; at 100–150 bpm the band separates irregular from not irregular; "
+  },
+  "ecgDetailRuleHr": "The heart rate that decides is the average heart rate the band reports. The live rate is shown but never decides.",
+  "@ecgDetailRuleHr": {
+    "description": "WHOOP MG ECG: The heart rate that decides is the average heart rate the band reports. The live rate is shown but never decid"
+  },
+  "ecgDetailRuleMask": "Any reason bit the band set in any second, an unknown result code or a missing heart rate makes the reading Not readable, whatever the result code says.",
+  "@ecgDetailRuleMask": {
+    "description": "WHOOP MG ECG: Any reason bit the band set in any second, an unknown result code or a missing heart rate makes the reading No"
+  },
+  "ecgTimelineTitle": "Per-second timeline",
+  "@ecgTimelineTitle": {
+    "description": "WHOOP MG ECG: Per-second timeline"
+  },
+  "ecgTimelineSecond": "Sec",
+  "@ecgTimelineSecond": {
+    "description": "WHOOP MG ECG: Sec"
+  },
+  "ecgTimelineQuality": "Quality",
+  "@ecgTimelineQuality": {
+    "description": "WHOOP MG ECG: Quality"
+  },
+  "ecgTimelineContact": "Contact",
+  "@ecgTimelineContact": {
+    "description": "WHOOP MG ECG: Contact"
+  },
+  "ecgTimelineS2": "S2 state/flag",
+  "@ecgTimelineS2": {
+    "description": "WHOOP MG ECG: S2 state/flag"
+  },
+  "ecgTimelineReasons": "Reasons",
+  "@ecgTimelineReasons": {
+    "description": "WHOOP MG ECG: Reasons"
+  },
+  "ecgTimelineProgress": "Progress",
+  "@ecgTimelineProgress": {
+    "description": "WHOOP MG ECG: Progress"
+  },
+  "ecgTimelineMissing": "missing second",
+  "@ecgTimelineMissing": {
+    "description": "WHOOP MG ECG: missing second"
+  },
+  "ecgTimelineUndecodable": "not decodable",
+  "@ecgTimelineUndecodable": {
+    "description": "WHOOP MG ECG: not decodable"
+  },
+  "ecgScreenerSinusMeaning": "The band reported a regular rhythm at a heart rate between 51 and 99 beats per minute. The app has not checked this recording's quality. This does not mean you were cleared: the screen cannot rule anything out, and it looks at one short recording only.",
+  "@ecgScreenerSinusMeaning": {
+    "description": "WHOOP MG ECG: The band reported a regular rhythm at a heart rate between 51 and 99 beats per minute. The app has not checked"
+  },
+  "ecgScreenerLowHrMeaning": "The average heart rate was 50 beats per minute or lower. A low rate can be ordinary for some people, and this screen says nothing about the cause. If you feel faint, dizzy or unwell, see a clinician.",
+  "@ecgScreenerLowHrMeaning": {
+    "description": "WHOOP MG ECG: The average heart rate was 50 beats per minute or lower. A low rate can be ordinary for some people, and this "
+  },
+  "ecgScreenerPossibleAfibMeaning": "The band's screen flagged an irregular rhythm in this recording, at a heart rate between 51 and 99 beats per minute. A flag is a prompt for a proper test, not a finding. One short recording from a wrist band cannot tell a lasting pattern from a passing one, so see a clinician for an ECG, especially with symptoms.",
+  "@ecgScreenerPossibleAfibMeaning": {
+    "description": "WHOOP MG ECG: The band's screen flagged an irregular rhythm in this recording, at a heart rate between 51 and 99 beats per m"
+  },
+  "ecgScreenerAfibHighHrMeaning": "The band's screen flagged an irregular rhythm together with a heart rate from 100 to 150 beats per minute. A flag is a prompt for a proper test, not a finding. See a clinician for an ECG, and soon if you feel unwell, short of breath or have chest pain.",
+  "@ecgScreenerAfibHighHrMeaning": {
+    "description": "WHOOP MG ECG: The band's screen flagged an irregular rhythm together with a heart rate from 100 to 150 beats per minute. A f"
+  },
+  "ecgScreenerHighHrMeaning": "The heart rate was between 151 and 200 beats per minute. At this rate the screen does not tell a regular rhythm from an irregular one. Exercise, fever, caffeine and stress all raise it. If it stays high at rest or you feel unwell, see a clinician.",
+  "@ecgScreenerHighHrMeaning": {
+    "description": "WHOOP MG ECG: The heart rate was between 151 and 200 beats per minute. At this rate the screen does not tell a regular rhyth"
+  },
+  "ecgScreenerHighHrNoAfibMeaning": "The heart rate was between 100 and 150 beats per minute and the screen flagged no irregular rhythm. This does not mean you were cleared: the screen cannot rule anything out. If a high rate stays at rest or you feel unwell, see a clinician.",
+  "@ecgScreenerHighHrNoAfibMeaning": {
+    "description": "WHOOP MG ECG: The heart rate was between 100 and 150 beats per minute and the screen flagged no irregular rhythm. This does "
+  },
+  "ecgScreenerInconclusiveMeaning": "The band could not reach a result from this recording; the signal may have been too noisy or too short. It says nothing either way. Try again with your arm resting and your fingers still. This attempt is kept with the reading's details, and a reading you start within 10 minutes is grouped with it.",
+  "@ecgScreenerInconclusiveMeaning": {
+    "description": "WHOOP MG ECG: The band could not reach a result from this recording; the signal may have been too noisy or too short. It say"
+  },
+  "ecgScreenerUnreadableMeaning": "The app could not read a rhythm from this recording: the band reported low amplitude, noise, an unstable signal or not enough data, or its result code or heart rate could not be mapped to a result. This recording was not screened. Not screened is not the same as nothing flagged.",
+  "@ecgScreenerUnreadableMeaning": {
+    "description": "WHOOP MG ECG: The app could not read a rhythm from this recording: the band reported low amplitude, noise, an unstable signa"
+  },
+  "ecgScreenerPartialMeaning": "The recording stopped before it finished, because the app went to the background, it timed out or the band connection dropped. What was recorded is saved as a partial reading. It was not screened, so no rhythm result is given. Heart rate and signal quality appear only if at least 10 seconds of signal were recorded.",
+  "@ecgScreenerPartialMeaning": {
+    "description": "WHOOP MG ECG: The recording stopped before it finished, because the app went to the background, it timed out or the band con"
+  },
+  "ecgScreenerFailedMeaning": "The reading could not be completed: the band would not start it, or the connection was lost before any signal came in. It was not screened and nothing is saved. Check that the band is connected and worn snugly, then try again.",
+  "@ecgScreenerFailedMeaning": {
+    "description": "WHOOP MG ECG: The reading could not be completed: the band would not start it, or the connection was lost before any signal "
+  },
+  "ecgScreenerIntro": "This is a screen, not a medical test.\n\nA result with nothing flagged does not mean you were cleared, and the screen cannot rule anything out. A result that was not screened says nothing at all.\n\nThe result is the band's own. The app does not read the trace itself and has not checked the recording's quality; it only withholds a rhythm result when the band reports a problem. A wrist band records a single lead.\n\nWith symptoms, see a clinician for a proper test.",
+  "@ecgScreenerIntro": {
+    "description": "WHOOP MG ECG: This is a screen, not a medical test.  A result with nothing flagged does not mean you were cleared, and the s"
+  },
+  "findingTitleIllness": "Possible illness onset",
+  "@findingTitleIllness": {
+    "description": "Design 04 cardio transparency: Possible illness onset"
+  },
+  "findingTitleAnomaly": "Unusual overnight readings",
+  "@findingTitleAnomaly": {
+    "description": "Design 04 cardio transparency: Unusual overnight readings"
+  },
+  "findingTitleTemp": "Skin temperature elevated",
+  "@findingTitleTemp": {
+    "description": "Design 04 cardio transparency: Skin temperature elevated"
+  },
+  "findingTitleIrregularRhythm": "Irregular pulse pattern flagged",
+  "@findingTitleIrregularRhythm": {
+    "description": "Design 04 cardio transparency: Irregular pulse pattern flagged"
+  },
+  "findingTitleLowReadiness": "Low readiness today",
+  "@findingTitleLowReadiness": {
+    "description": "Design 04 cardio transparency: Low readiness today"
+  },
+  "findingTitleRhrShift": "Your resting heart-rate trend shifted",
+  "@findingTitleRhrShift": {
+    "description": "Design 04 cardio transparency: Your resting heart-rate trend shifted"
+  },
+  "findingDetailIllness": "Resting heart rate is up and heart rate variability (HRV) is down over recent nights.",
+  "@findingDetailIllness": {
+    "description": "Design 04 cardio transparency: Resting heart rate is up and heart rate variability (HRV) is down over recent nights."
+  },
+  "findingDetailAnomaly": "Your overnight readings are outside your usual range.",
+  "@findingDetailAnomaly": {
+    "description": "Design 04 cardio transparency: Your overnight readings are outside your usual range."
+  },
+  "findingDetailTemp": "Sustained rise above your baseline, which can be a sign of illness.",
+  "@findingDetailTemp": {
+    "description": "Design 04 cardio transparency: Sustained rise above your baseline, which can be a sign of illness."
+  },
+  "findingDetailIrregularRhythm": "Your beat-to-beat pulse timing looked irregular today. This screen uses the wrist pulse, which can't show the heart's electrical activity, and is not a diagnosis. See a clinician if you have symptoms.",
+  "@findingDetailIrregularRhythm": {
+    "description": "Design 04 cardio transparency: Your beat-to-beat pulse timing looked irregular today. This screen uses the wrist pulse, which can't show the "
+  },
+  "findingDetailLowReadiness": "Your recovery markers are below your usual range. Take an easier day.",
+  "@findingDetailLowReadiness": {
+    "description": "Design 04 cardio transparency: Your recovery markers are below your usual range. Take an easier day."
+  },
+  "findingDetailRhrShiftRisen": "Your resting HR has risen noticeably versus your recent baseline.",
+  "@findingDetailRhrShiftRisen": {
+    "description": "Design 04 cardio transparency: Your resting HR has risen noticeably versus your recent baseline."
+  },
+  "findingDetailRhrShiftFallen": "Your resting HR has fallen noticeably versus your recent baseline.",
+  "@findingDetailRhrShiftFallen": {
+    "description": "Design 04 cardio transparency: Your resting HR has fallen noticeably versus your recent baseline."
+  },
+  "investigateFlagNotScreened": "not screened",
+  "@investigateFlagNotScreened": {
+    "description": "Design 04 cardio transparency: not screened"
+  },
+  "investigateConfidence24h": "Confidence, 24 h",
+  "@investigateConfidence24h": {
+    "description": "Design 04 cardio transparency: Confidence, 24 h"
+  },
+  "investigateConfidenceSleep": "Confidence, sleep",
+  "@investigateConfidenceSleep": {
+    "description": "Design 04 cardio transparency: Confidence, sleep"
+  },
+  "investigateCleanFractionSleep": "Share of beats kept after cleaning, sleep",
+  "@investigateCleanFractionSleep": {
+    "description": "Design 04 cardio transparency: Share of beats kept after cleaning, sleep"
+  },
+  "investigatePrvEvidenceTitle": "Irregular-rhythm screen evidence",
+  "@investigatePrvEvidenceTitle": {
+    "description": "Design 04 PRV diagnostics: Irregular-rhythm screen evidence"
+  },
+  "investigatePrvScopeSleep": "sleep",
+  "@investigatePrvScopeSleep": {
+    "description": "Design 04 PRV diagnostics: sleep"
+  },
+  "investigatePrvScope24h": "24 h",
+  "@investigatePrvScope24h": {
+    "description": "Design 04 PRV diagnostics: 24 h"
+  },
+  "investigatePrvBeatsRaw": "Beats before cleaning, {scope}",
+  "@investigatePrvBeatsRaw": {
+    "description": "Design 04 PRV diagnostics: Beats before cleaning, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvBeatsCorrected": "Beats corrected, {scope}",
+  "@investigatePrvBeatsCorrected": {
+    "description": "Design 04 PRV diagnostics: Beats corrected, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvBeatsDropped": "Beats dropped, {scope}",
+  "@investigatePrvBeatsDropped": {
+    "description": "Design 04 PRV diagnostics: Beats dropped, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvBeatsAnalysed": "Beats analysed, {scope}",
+  "@investigatePrvBeatsAnalysed": {
+    "description": "Design 04 PRV diagnostics: Beats analysed, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvArtifactShare": "Share of beats classified as artifacts (corrected or dropped), {scope}",
+  "@investigatePrvArtifactShare": {
+    "description": "Design 04 PRV diagnostics: Share of beats classified as artifacts (corrected or dropped), {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsTotal": "Windows, all, {scope}",
+  "@investigatePrvWindowsTotal": {
+    "description": "Design 04 PRV diagnostics: Windows, all, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsValid": "Windows with enough beats to count, {scope}",
+  "@investigatePrvWindowsValid": {
+    "description": "Design 04 PRV diagnostics: Windows with enough beats to count, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsFlagged": "Windows flagged, {scope}",
+  "@investigatePrvWindowsFlagged": {
+    "description": "Design 04 PRV diagnostics: Windows flagged, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsShare": "Flagged share, seen / needed, {scope}",
+  "@investigatePrvWindowsShare": {
+    "description": "Design 04 PRV diagnostics: Flagged share, seen / needed, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenWindow": "Last (open) window, {scope}",
+  "@investigatePrvOpenWindow": {
+    "description": "Design 04 PRV diagnostics: Last (open) window, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenThin": "{n} beats, too few to count",
+  "@investigatePrvOpenThin": {
+    "description": "Design 04 PRV diagnostics: {n} beats, too few to count",
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenFlagged": "{n} beats, flagged",
+  "@investigatePrvOpenFlagged": {
+    "description": "Design 04 PRV diagnostics: {n} beats, flagged",
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenUnflagged": "{n} beats, not flagged",
+  "@investigatePrvOpenUnflagged": {
+    "description": "Design 04 PRV diagnostics: {n} beats, not flagged",
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvPnnSleep": "Successive intervals over 70 ms, sleep",
+  "@investigatePrvPnnSleep": {
+    "description": "Design 04 PRV diagnostics: Successive intervals over 70 ms, sleep"
+  },
+  "investigatePrvWhy": "Why not screened, {scope}",
+  "@investigatePrvWhy": {
+    "description": "Design 04 PRV diagnostics: Why not screened, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWhyTooFew": "Too few usable beats: {have} of {need} needed",
+  "@investigatePrvWhyTooFew": {
+    "description": "Design 04 PRV diagnostics: Too few usable beats: {have} of {need} needed",
+    "placeholders": {
+      "have": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWhyArtifact": "Too much artifact: {seen} of beats classified as artifacts (corrected or dropped), {allowed} allowed",
+  "@investigatePrvWhyArtifact": {
+    "description": "Design 04 PRV diagnostics: Too much artifact: {seen} of beats classified as artifacts (corrected or dropped), {allowed} allowed",
+    "placeholders": {
+      "seen": {
+        "type": "String"
+      },
+      "allowed": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWhyNoPairs": "No successive usable beats to compare",
+  "@investigatePrvWhyNoPairs": {
+    "description": "Design 04 PRV diagnostics: No successive usable beats to compare"
+  },
+  "investigatePrvWhyNoVariability": "No long-term variability (SD2 is zero), so the ratio is undefined",
+  "@investigatePrvWhyNoVariability": {
+    "description": "Design 04 PRV diagnostics: No long-term variability (SD2 is zero), so the ratio is undefined"
+  },
+  "investigatePrvExport": "Export PRV log",
+  "@investigatePrvExport": {
+    "description": "Design 04 PRV diagnostics: Export PRV log"
+  },
+  "investigatePrvExportFailed": "Couldn't save the PRV log: {reason}",
+  "@investigatePrvExportFailed": {
+    "description": "Design 04 PRV diagnostics: Couldn't save the PRV log: {reason}",
+    "placeholders": {
+      "reason": {
         "type": "String"
       }
     }

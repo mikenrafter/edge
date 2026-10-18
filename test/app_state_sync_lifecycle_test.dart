@@ -6,7 +6,8 @@
 // Platform branches (Android Edge Tracking, the iOS restore central, the
 // scheduler's iOS-only background hold, the OS autoConnect fallback) cannot be
 // taken on the Linux host; pauseForBackground on Linux is the engine step-down,
-// the live-owner re-evaluation and nothing else.
+// the live-owner re-evaluation and nothing else. The wiring of the rest is
+// pinned by source in app_state_sync_delegation_test.dart.
 
 import 'dart:async';
 
@@ -16,12 +17,19 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/sync/band_ownership.dart';
 import 'package:openstrap_edge/sync/paired_device.dart';
 
+import 'support/fake_power_source.dart';
 import 'support/app_state_sync_harness.dart';
 
 const _db = 'app_state_sync_lifecycle.db';
 
 bool _logged(SyncRig rig, String text) =>
     rig.app.logLines.any((l) => l.contains(text));
+
+/// Init attaches the power source, and the real one (Balanced is the default
+/// mode) polls the OS saver on a one-minute periodic timer: the same period the
+/// supervisor counts below. These cases count the supervisor's timer, so power
+/// is scripted; the poll itself is pinned in calc_power_source_poll_test.dart.
+void _scriptedPower(SyncRig rig) => rig.app.debugPowerSource = FakePowerSource();
 
 /// A connected, drained foreground session.
 Future<void> _open(SyncRig rig) => rig.openAndSettle();
@@ -198,6 +206,7 @@ void main() {
       await pairedCase(rig);
       await rig.app.pauseForBackground();
       rig.engine.events.clear();
+      _scriptedPower(rig);
       await rig.app.debugInit();
       expect(rig.engine.only('connect'), ['connect:$kRemoteId:gen4']);
       expect(rig.engine.count('getBattery'), 0);
@@ -214,19 +223,23 @@ void main() {
     }, paired: false));
 
     test('headless background, connect refused: logged, no backfill timer, '
-        'the supervisor stays, and the lease and intent are still held (only '
-        'the iOS recovery arm runs, and that is a platform call)',
+        'and the lease and intent are released (a headless '
+        'wake stayed blocked until a reconnect landed); the supervisor stays',
         syncCase((rig, timers) async {
       await pairedCase(rig);
       await rig.app.pauseForBackground();
       rig.engine.connectScript.add(false);
+      _scriptedPower(rig);
       await rig.app.debugInit();
       expect(_logged(rig, '[init] bg connect returned false — arming recovery'), isTrue);
       expect(timers.activePeriodic(kBackfillEvery), isEmpty);
       expect(timers.activePeriodic(kSuperviseEvery), hasLength(1));
-      expect(BandOwnership.owner, BandOwnerKind.foreground);
-      expect(BandOwnership.foregroundIntent, isTrue);
-      expect(BandOwnership.tryAcquireHeadless(), isNull);
+      expect(BandOwnership.owner, isNull);
+      expect(BandOwnership.foregroundIntent, isFalse);
+      final lease = BandOwnership.tryAcquireHeadless();
+      expect(lease, isNotNull);
+      BandOwnership.release(lease!);
+      expect(IosBleRestore.foregroundActive, isFalse, reason: 'iOS-only here');
     }, paired: false));
 
     test('headless background, connect throws: same outcome, logged as a '
@@ -237,8 +250,8 @@ void main() {
       await rig.app.debugInit();
       expect(_logged(rig, '[init] bg connect failed: Bad state: radio off — arming recovery'), isTrue);
       expect(timers.activePeriodic(kBackfillEvery), isEmpty);
-      expect(BandOwnership.owner, BandOwnerKind.foreground);
-      expect(BandOwnership.foregroundIntent, isTrue);
+      expect(BandOwnership.owner, isNull);
+      expect(BandOwnership.foregroundIntent, isFalse);
     }, paired: false));
   });
 

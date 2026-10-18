@@ -1,8 +1,8 @@
-// The GPS route recorder a workout owns, through AppState. Which types start
-// one, what a permission refusal looks like, the retry, the live distance, the
-// zone colouring (a callback into the workout's current HR), the points
-// persisted, and what stop / delete / dispose do to it. The location plugin is
-// a channel pair answered by PlatformSpies.
+// Workout area: the GPS route recorder a workout owns. Which
+// types start one, what a permission refusal looks like, the retry, the live
+// distance, the zone colouring (a callback into the workout's current HR),
+// the points persisted, and what stop / delete / dispose do to it. The
+// location plugin is a channel pair answered by PlatformSpies.
 
 import 'dart:async';
 
@@ -24,12 +24,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late PlatformSpies spies;
   setUp(() async {
-    await workoutDbSetUp(_db);
+    await deriveDbSetUp(_db);
     spies = PlatformSpies();
   });
   tearDown(() async {
     spies.dispose();
-    await workoutDbTearDown(_db);
+    await deriveDbTearDown(_db);
   });
 
   // Every test body runs with its periodic timers under a TimerProbe: the

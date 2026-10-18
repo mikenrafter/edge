@@ -1,0 +1,39 @@
+// FIXTURE: payload_bad_column_literals
+// storedPayloadDecodeOutsideHeavy: a JSON decode or encode in a non-@heavy
+// function whose string literals name a payload column (payload_json,
+// window_json, trace_json, meta_json, payload). One finding per call; a closure
+// counts as its enclosing function.
+import 'dart:convert';
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table, {List<String>? columns}) async => const [];
+}
+
+class Repo {
+  Future<Object?> day(Database db) async {
+    final rows = await db.query('day_result', columns: const ['payload_json']);
+    return jsonDecode(rows.first['payload_json'] as String);
+  }
+
+  Future<Object?> window(Database db) async {
+    final rows = await db.query('day_result', columns: const ['window_json']);
+    return jsonDecode(rows.first['window_json'] as String);
+  }
+
+  String trace(Map<String, Object?> t) {
+    final column = 'trace_json';
+    return jsonEncode({column: t});
+  }
+
+  Object? meta(String raw) {
+    const key = 'meta_json';
+    return json.decode(raw)[key];
+  }
+
+  String generic(Map<String, Object?> p) => jsonEncode({'payload': p});
+
+  List<Object?> mapped(List<Row> rows) =>
+      rows.map((r) => jsonDecode(r['payload_json'] as String)).toList();
+}

@@ -1,0 +1,25 @@
+// FIXTURE: payload_bad_inside_localdb
+// storedPayloadDecodeOutsideHeavy applies inside LocalDb too (refreshComputeFreshness,
+// putDayResult are such methods).
+import 'dart:convert';
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<int> countSkipped() async {
+    final rows = await _db.query('day_result');
+    var n = 0;
+    for (final r in rows) {
+      final p = jsonDecode(r['payload_json'] as String) as Map;
+      if (p['skipped'] == true) n++;
+    }
+    return n;
+  }
+}

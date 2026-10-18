@@ -69,7 +69,7 @@ void main() {
     expect(none.days, isEmpty);
   });
 
-  test('a sleep override forces + stages the user window (Approach 1)', () {
+  PreparedDerivationPayload withOverride(String source) {
     // 5 h of still wrist + low HR on the target day.
     final start = DateTime(2026, 6, 27, 0, 0).millisecondsSinceEpoch ~/ 1000;
     final end = DateTime(2026, 6, 27, 5, 0).millisecondsSinceEpoch ~/ 1000;
@@ -104,18 +104,36 @@ void main() {
         dayId: '2026-06-27',
         onsetSec: onsetSec,
         offsetSec: offsetSec,
-        source: 'manual',
+        source: source,
       ),
     );
+    return out;
+  }
+
+  test('a CONFIRMED override forces + stages the window (Approach 2)', () {
+    final out = withOverride('confirmed');
     expect(out.days, hasLength(1));
     final day = out.days.first;
-    expect(day.sleepSource, 'manual');
+    expect(day.sleepSource, 'confirmed');
     // The forced window was staged → sleep is present (not absent).
     expect(day.sleepJson['tst_sec'], isNotNull);
     // In-bed window ≈ the user's 4 h (allow boundary rounding).
     final inBed = (day.sleepJson['in_bed_sec'] as num).toInt();
     expect(inBed, greaterThan(3 * 3600));
     expect(inBed, lessThanOrEqualTo(4 * 3600 + 60));
+  });
+
+  test('a MANUAL window ("Set the times myself") is blank, even with data in it',
+      () {
+    final out = withOverride('manual');
+    expect(out.days, hasLength(1));
+    final day = out.days.first;
+    // The user's times are on record, but nothing is staged from them.
+    expect(day.sleepSource, 'manual');
+    expect(day.sleepJson['tst_sec'], isNull);
+    expect(day.sleepOnsetSec, 0);
+    expect(day.sleepOffsetSec, 0);
+    expect(day.flags, isNot(contains('SLEEP_MANUAL')));
   });
 
   test(

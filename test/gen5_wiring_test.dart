@@ -585,6 +585,8 @@ void _events() {
       final snap = r.engine.offloadSnapshot;
       expect(snap['last_haptics_termination'], 'user_double_tap');
       expect(snap['last_haptics_termination_ts'], 1786000456);
+      // Natural Wake's repeat reads the phone-clock receipt time.
+      expect(r.engine.lastHapticsDoubleTapAt, isNotNull);
       expect(
           r.logs.where(
               (l) => l.contains('[ALARM]') && l.contains('user_double_tap')),
@@ -600,6 +602,8 @@ void _events() {
         true,
       ));
       expect(r.engine.offloadSnapshot['last_haptics_termination'], 'expired');
+      expect(r.engine.lastHapticsDoubleTapAt, isNull,
+          reason: 'only a double tap is a dismissal');
     });
   });
 }

@@ -6,6 +6,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/water_units.dart';
+
 enum UnitSystem { metric, imperial }
 
 extension UnitSystemLabel on UnitSystem {
@@ -28,6 +30,11 @@ class UnitsController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     return UnitsController._(_parse(prefs.getString(_kUnits)));
   }
+
+  /// The persisted system, for code with no controller above it (the water
+  /// answer writer, the headless reminder arming). One key, one parser.
+  static Future<UnitSystem> savedSystem() async =>
+      _parse((await SharedPreferences.getInstance()).getString(_kUnits));
 
   static UnitSystem _parse(String? s) =>
       s == 'imperial' ? UnitSystem.imperial : UnitSystem.metric;
@@ -192,4 +199,11 @@ class UnitsController extends ChangeNotifier {
   /// bodyweight-only lifts.
   double loadStepKg(double kgStep) =>
       isImperial ? (kgStep <= 0 ? 0.0 : 5 * _kgPerLb) : kgStep;
+
+  // ── water (storage stays ml; see data/water_units.dart) ────────────────────
+  /// "250 ml" / "8 fl oz" for a logged amount in ml.
+  String water(num ml) => WaterUnits.format(ml, _system);
+
+  /// One glass / one stepper tap in ml for the current system.
+  double get waterStepMl => WaterUnits.stepMl(_system);
 }

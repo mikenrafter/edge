@@ -1,0 +1,6 @@
+// FIXTURE: a_bad_factory_constructor_outside_heavy
+import 'package:openstrap_analytics/onehz.dart';
+
+class FakeWidget {
+  Metric build(Object context) => Metric.fromSamples(const [60.0]);
+}

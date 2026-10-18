@@ -1,0 +1,10 @@
+// FIXTURE: c_bad_closure_inline_analytics
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+
+// The reader-style inline pattern (cf. local_repository_impl weekdayEffect):
+// legacy, baselined, never new.
+class Reader {
+  Future<double> weekday(List<String> dates, List<double> values) =>
+      Isolate.run(() => weekdayEffect(dates, values));
+}

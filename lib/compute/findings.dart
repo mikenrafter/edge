@@ -33,6 +33,7 @@ import 'package:flutter/foundation.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import '../data/day_label.dart' show dayLabelBefore;
+import '../l10n/app_localizations.dart';
 
 /// The headline composite's band cut-offs — its OWN quantiles (see the long
 /// note on `readinessBand`): p=.05 → 26, p=.20 → 37, p=.75 → 61. The ring,
@@ -395,3 +396,31 @@ List<ExceptionNotice> planExceptionNotices(
   }
   return dueExceptionNotices(findings, today: today);
 }
+/// A finding's title from the ARBs (all six locales), so a notification and the
+/// log say it the same way. The irregular-rhythm one is "Irregular pulse
+/// pattern flagged": the screen reads the wrist pulse, which cannot show the
+/// heart's electrical activity (design 04 R5).
+String findingTitle(AppLocalizations l, Finding f) => switch (f.kind) {
+  FindingKind.illness => l.findingTitleIllness,
+  FindingKind.anomaly => l.findingTitleAnomaly,
+  FindingKind.tempElevated => l.findingTitleTemp,
+  FindingKind.irregularRhythm => l.findingTitleIrregularRhythm,
+  FindingKind.lowReadiness => l.findingTitleLowReadiness,
+  FindingKind.rhrShift => l.findingTitleRhrShift,
+};
+
+/// A finding's one-sentence explanation from the ARBs. The irregular-rhythm one
+/// begins "Your beat-to-beat pulse timing looked irregular today. This screen
+/// uses the wrist pulse, which can't show the heart's electrical activity, and
+/// is not a diagnosis."
+String findingDetail(AppLocalizations l, Finding f) => switch (f.kind) {
+  FindingKind.illness => l.findingDetailIllness,
+  FindingKind.anomaly => l.findingDetailAnomaly,
+  FindingKind.tempElevated => l.findingDetailTemp,
+  FindingKind.irregularRhythm => l.findingDetailIrregularRhythm,
+  FindingKind.lowReadiness => l.findingDetailLowReadiness,
+  FindingKind.rhrShift =>
+    f.risen == false
+        ? l.findingDetailRhrShiftFallen
+        : l.findingDetailRhrShiftRisen,
+};

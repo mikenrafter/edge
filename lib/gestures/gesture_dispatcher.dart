@@ -1,19 +1,125 @@
-// gesture_dispatcher.dart — turns a live band event into an action, with the guards
-// that keep it safe. Wired ONLY into the foreground/live event path (AppState), never
-// the headless drain (background_sync persists events but must not replay them).
+// gesture_dispatcher.dart — turns a live band event into the user's chosen
+// actions, with the guards that keep each one safe. Wired ONLY into the
+// foreground/live event path (AppState), never the headless drain
+// (background_sync persists events but must not dispatch them).
 //
-// Two guards do the real work:
-//  • Recency — a double-tap drained from the band's flash carries an OLD timestamp;
-//    we refuse to act on anything that didn't happen in the last few seconds, so a
-//    sync catch-up can't fire play/pause for a tap from this morning. (Only applies
-//    when the band ts is plausible; a bogus RTC falls through to the debounce alone.)
-//  • Debounce — the band can emit the event more than once per physical tap.
+// A double-tap can map to SEVERAL actions. For each one, in enum order and one
+// at a time, [handle] decides:
+//  • Recency — a tap that reached the phone long after it happened (drained from
+//    the band's flash, or held back by a dropped link) is "stale". A stale tap is
+//    replayed ONLY for an action that opts in (`supportsHistoricalReplay` and the
+//    user's replay switch: today just Mark moment, which stamps the tap's own
+//    time). Everything else — native actions, water, workouts — is skipped, so a
+//    sync catch-up never plays music for a tap from this morning. A stale skip
+//    takes no claim, so turning replay on later still works.
+//  • Once-ever — a tap with a believable strap clock is one occurrence, named by
+//    StrapEvent.identity. Each (occurrence, action) pair is claimed in the
+//    persistent notif_fired ledger before it runs, so a re-send, a reconnect or an
+//    app restart can't run it twice. A failed action gives its claim back.
+//  • Receipt debounce — an unset or wild RTC makes every tap share one identity,
+//    so a persistent claim would lock the feature out forever. For those the only
+//    guard is a 2 s in-memory window on RECEIPT time.
+// ECG on double tap (WHOOP MG only): while GestureSettings.ecgOnDoubleTap
+// is on, a live double tap starts the ECG capture through [onEcgTap] instead of
+// its actions, which are suspended (the Device lab owns that mode). It takes the
+// same once-ever claim / receipt debounce as an action, under `...:ecg`.
+// With the switch OFF, on an MG with a 3-5 tap mapping, a live double tap runs
+// the same capture as a touch COUNTER ([onCountTaps]): the actions mapped to the
+// final count (2-5) then run through the path above, claimed per tap identity
+// and count (`gesture:<identity>:t<count>:<action>`; a count of 2 keeps the plain
+// key). An abandoned count runs nothing; its outcomes carry `taps`, which keeps
+// the tap-ack quiet (the counter's own buzzes are the acknowledgement).
+//
+// Two ways to count the taps beyond the firmware's double tap, chosen per band
+// (GestureSettings.tapMethodFor): MORE DOUBLE TAPS, the default, which any band
+// can do, or ECG sensor touches (above; WHOOP MG only, an opt-in). The first
+// opens a window at the
+// first live double tap; every tap, opener or member, takes its own once-ever
+// claim before it is accepted, and the session groups taps by the band's clock
+// (a tap too long after the last one starts the next group). Each further live
+// double tap inside it adds one,
+// buzzes once and restarts the window; when it runs out the actions mapped to
+// the count run. The first [handle] call waits for that and returns the
+// outcomes; the later calls return nothing at once. A single double tap is only
+// delayed when some 3-5 slot is actually mapped (otherwise it runs at once, as
+// always). Late taps never count. In the Device lab (repeatTapsLab) the same
+// window runs with the max at 5 and NO action runs.
+//
+// Rollout switch (FeatureFlag.tapClassifiers, default on). OFF: a double tap is
+// only a double tap. The ECG lab, the repeated-double-tap lab and both 3-5 tap
+// counters are skipped, so the mapped 2-tap actions run at once, whatever the
+// 3-5 slots or the lab switches hold in storage.
+//
+// One action failing never stops the next, and nothing escapes as an unhandled
+// async error: [handle] always completes with a list of outcomes.
+//
+// Recency and the debounce use the event's own `receivedAt`, which keeps this
+// deterministic under test. The one wall-clock read is Tell the time's local
+// time, from the injectable [GestureDispatcher.now].
+//
+// Claim growth: one `gesture:<identity>:<action>` row per tap per action in
+// notif_fired. LocalDb.pruneNotifFired (run whenever a notification fires)
+// drops them after 90 days.
+
+import 'dart:async' show TimeoutException;
+
+import 'package:clock/clock.dart';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'device_action.dart';
+import 'double_tap_repeat.dart';
+import 'gesture_failures.dart';
 import 'gesture_settings.dart';
+import 'gesture_slots.dart';
+import 'strap_event.dart';
+import 'tap_names.dart';
+import 'time_buzz.dart';
+import '../data/db.dart';
 import '../platform/device_actions.dart';
+import '../state/feature_flags.dart';
+import '../state/prefs.dart';
+
+enum GestureStatus { ran, skippedStale, skippedDuplicate, failed }
+
+class GestureOutcome {
+  const GestureOutcome({
+    required this.action,
+    required this.status,
+    required this.timeSource,
+    this.error,
+    this.taps,
+  });
+
+  final DeviceAction action;
+  final GestureStatus status;
+
+  /// Where the EVENT's time came from; the same on every outcome of one tap.
+  final EventTimeSource timeSource;
+
+  /// Non-null iff [status] is [GestureStatus.failed].
+  final Object? error;
+
+  /// The touch counter's final count when this ran because of a counted tap;
+  /// null for an immediate double tap.
+  final int? taps;
+}
+
+typedef GestureHandler = Future<void> Function(StrapEvent event);
+
+/// Plays the time as a gesture: [elements] is [encodeTime] of the injected
+/// local clock in the mode of the slot that fired
+/// ([GestureSettings.timeBuzzModeFor]), read when the
+/// action runs. Complete once the band has the gesture (it need not wait for
+/// the last buzz to finish: a 12 PM time is ~20 s, past [actionTimeout]).
+/// Runs an in-app action for the SLOT that fired it, so the same action on two
+/// slots keeps separate state (two timers are two timers). When given, it takes
+/// the place of [GestureDispatcher.onMarkMoment] / [onWorkoutToggle].
+typedef SlotActionHandler = Future<void> Function(
+    String slot, DeviceAction action, StrapEvent event);
+
+typedef TellTimeHandler = Future<void> Function(
+    StrapEvent event, List<TimeBuzzElement> elements);
 
 class GestureDispatcher {
   final GestureSettings settings;
@@ -21,71 +127,488 @@ class GestureDispatcher {
 
   /// In-app action handlers (supplied by AppState). Native actions go to the
   /// platform channel instead.
-  final Future<void> Function()? onMarkMoment;
-  final Future<void> Function()? onWorkoutToggle;
-  final Future<void> Function()? onLogWater;
+  final GestureHandler? onMarkMoment;
+  final GestureHandler? onWorkoutToggle;
+
+  /// Per-slot in-app handler; see [SlotActionHandler].
+  final SlotActionHandler? onSlotAction;
+
+  /// Plays [DeviceAction.tellTime]. Missing: the action fails (an in-app action
+  /// with no handler), like the others.
+  final TellTimeHandler? onTellTime;
+
+  /// The local wall clock [DeviceAction.tellTime] reads, on every run. Null:
+  /// package:clock's `clock.now()`.
+  final DateTime Function()? now;
+
+  /// True only on a positively identified WHOOP MG.
+  final bool Function()? ecgSupported;
+
+  /// Start the ECG capture for this live double tap. A throw gives the
+  /// claim back so a retry can run.
+  final GestureHandler? onEcgTap;
+
+  /// Count the taps of this live double tap (the ECG touch counter) and
+  /// complete with the final count, or null when the gesture was abandoned (a
+  /// link drop or stall). Throws when it could not start; the claim is then
+  /// given back and the double-tap actions run at once, as without counting.
+  final Future<int?> Function(StrapEvent)? onCountTaps;
+
+  /// The repeated-double-tap window (the method that needs no ECG). Null: the
+  /// method is unavailable and a double tap always runs at once.
+  final DoubleTapRepeatSession? repeatSession;
+
+  /// A tap's mapped action FAILED (threw, answered false or timed out):
+  /// called once per tap with the kind of route it took (`ecg` after counting
+  /// touches, `doubleTap` otherwise) and a reason that names the action. Never
+  /// for an action that ran, a stale skip or a duplicate. The ECG route's own
+  /// start failures are the session's to report, so one failure is not
+  /// recorded twice. May throw: it is swallowed.
+  final void Function(StrapEvent e, GestureFailureKind kind, String reason)?
+      onFailed;
+
+  /// How long one action may take. A native or in-app action that never answers
+  /// is a failed outcome and the next action still runs. Its claim is KEPT: the
+  /// action may yet have run, and a re-sent tap must not run it a second time.
+  final Duration actionTimeout;
+
+  /// True while a Device lab recording is armed or running (the IMU recorder).
+  /// A double tap then runs nothing, claims nothing and starts no session: the
+  /// recorder owns the tap. Read on every tap.
+  final bool Function()? labHold;
+
+  /// True when the band's haptic budget can play a gesture's haptics. Read on
+  /// every live double tap that would start a gesture (not one that adds to an
+  /// open repeat window, not the Device lab's benches), before any claim: false
+  /// means the gesture is not acted on at all, because an action without its
+  /// confirming haptic is worse than none. Null: no gate.
+  final bool Function()? hapticsAvailable;
+
+  /// FeatureFlag.tapClassifiers, read on every tap so the switch bites at once.
+  final bool Function() _tapClassifiersOn;
+
+  /// "Tasker connection", read on every run of Broadcast to Tasker. Null: the
+  /// stored switch (on unless turned off).
+  final bool Function() _taskerConnectionOn;
+
+  /// A native action injected by a test; null is the real channel, which also
+  /// carries the slot and tap count of Broadcast to Tasker.
+  final Future<bool> Function(String actionId)? _performNativeOverride;
+  final Future<bool> Function(String key) _claim;
+  final Future<void> Function(String key) _release;
 
   GestureDispatcher({
     required this.settings,
     this.log,
     this.onMarkMoment,
     this.onWorkoutToggle,
-    this.onLogWater,
-  });
+    this.onTellTime,
+    this.onSlotAction,
+    this.now,
+    this.ecgSupported,
+    this.onEcgTap,
+    this.onCountTaps,
+    this.repeatSession,
+    this.onFailed,
+    this.labHold,
+    this.hapticsAvailable,
+    bool Function()? tapClassifiersOn,
+    this.actionTimeout = const Duration(seconds: 10),
+    Future<bool> Function(String actionId)? performNative,
+    bool Function()? taskerConnectionOn,
+    Future<bool> Function(String key)? claim,
+    Future<void> Function(String key)? release,
+  })  : _tapClassifiersOn = tapClassifiersOn ??
+            (() => FeatureFlags.isOn(FeatureFlag.tapClassifiers)),
+        _performNativeOverride = performNative,
+        _taskerConnectionOn =
+            taskerConnectionOn ?? (() => Prefs.taskerConnectionOn),
+        _claim = claim ?? LocalDb.claimNotifFired,
+        _release = release ?? LocalDb.releaseNotifFired;
 
   static const int _doubleTapEventId = 14; // EventId.doubleTap
-  static const int _recencyWindowSec = 6; // older than this = a drained/historical tap
-  static const int _plausibleAgeCapSec = 86400; // ignore the recency check if ts looks bogus
-  static const int _debounceMs = 2000;
+  static const Duration _receiptDebounce = Duration(seconds: 2);
 
-  /// The wall clock the recency window and the debounce read. Tests only.
-  @visibleForTesting
-  static DateTime Function() now = DateTime.now;
+  /// receivedAt of the last ACCEPTED tap per `<identity>:<action id>`, for
+  /// implausible clocks only.
+  final Map<String, DateTime> _lastAccepted = {};
 
-  int _lastFiredMs = 0;
+  bool _disposed = false;
 
-  /// Feed every live event here (id, band timestamp seconds, raw hex). Cheap to call
-  /// for non-gesture events — it returns immediately.
-  void onEvent(int eventId, int tsEpoch, String hex) {
-    if (eventId != _doubleTapEventId) return;
-    final action = settings.doubleTap;
-    if (action == DeviceAction.none) return;
+  /// The app is going away: later taps do nothing, and a tap waiting on a
+  /// session's count (which the owner has just ended) or on its claim runs no
+  /// action and starts no session.
+  void dispose() => _disposed = true;
 
-    final nowSec = now().millisecondsSinceEpoch ~/ 1000;
-    final age = nowSec - tsEpoch;
-    // Stale only when the ts is plausibly a real (recent-ish but past) historical
-    // record. A wildly-off ts from an unset RTC is treated as "can't tell" → allow,
-    // and rely on debounce + the live-only wiring.
-    if (tsEpoch > 0 && age > _recencyWindowSec && age < _plausibleAgeCapSec) {
-      log?.call('[gesture] ignoring stale double-tap (${age}s old)');
-      return;
+  /// Feed every live event here. Cheap for non-gesture events. Never throws.
+  Future<List<GestureOutcome>> handle(StrapEvent e) async {
+    if (_disposed || e.eventId != _doubleTapEventId) return const [];
+    if (labHold?.call() == true) return const [];
+    if (!_tapClassifiersOn()) {
+      if (_noHaptics(e)) return const [];
+      return _runActions(e, settings.doubleTapActions);
     }
-
-    final nowMs = now().millisecondsSinceEpoch;
-    if (nowMs - _lastFiredMs < _debounceMs) return;
-    _lastFiredMs = nowMs;
-
-    log?.call('[gesture] double-tap → ${action.id}');
-    if (action.isInApp) {
-      switch (action) {
-        case DeviceAction.markMoment:
-          onMarkMoment?.call();
-          break;
-        case DeviceAction.workoutToggle:
-          onWorkoutToggle?.call();
-          break;
-        case DeviceAction.logWater:
-          onLogWater?.call();
-          break;
-        default:
-          // isInApp said yes and there is no case for it — an action that is
-          // offered in the picker and then does nothing, which is the exact
-          // failure the picker exists to end. Say so rather than return quietly.
-          log?.call('[gesture] ${action.id} is in-app with no handler');
-          break;
+    // Lab mode: suspended whether or not the capture below can start (a late
+    // tap, a duplicate, a failed start) so a tap never runs half the lab and
+    // half the normal actions.
+    if (settings.ecgOnDoubleTap && ecgSupported?.call() == true) {
+      if (e.isLive) await _ecgTap(e);
+      return const [];
+    }
+    // The Device lab's other bench: count repeated double taps, run nothing.
+    final repeat = repeatSession;
+    if (settings.repeatTapsLab && repeat != null) {
+      if (e.isLive) await _repeatTap(e, repeat, lab: true);
+      return const [];
+    }
+    if (_noHaptics(e)) return const [];
+    final mg = ecgSupported?.call() == true;
+    final method = settings.tapMethodFor(ecgSupported: mg);
+    // With a 3-5 tap mapping, a live double tap is counted and its actions
+    // wait for the final count. A late tap is never counted (the touch would be
+    // for a tap from the past) and runs as before.
+    if (e.isLive && settings.maxMappedTaps > 2) {
+      if (method == TapCountMethod.ecg && onCountTaps != null && mg) {
+        return _countedTap(e);
       }
+      if (method == TapCountMethod.repeat && repeat != null) {
+        return _repeatTap(e, repeat);
+      }
+    }
+    // A late tap while a window is open is still not counted: it takes the
+    // ordinary path (stale rules) below.
+    return _runActions(e, settings.doubleTapActions);
+  }
+
+  /// True when [e], a live double tap that would START a gesture, finds the
+  /// band's haptic budget spent: nothing runs for it, and it takes no claim, so
+  /// the same tap can run once there is room. A tap inside an open repeat
+  /// window only adds to a gesture that has started, so it is never gated.
+  bool _noHaptics(StrapEvent e) {
+    final gate = hapticsAvailable;
+    if (gate == null || !e.isLive || repeatSession?.open == true) return false;
+    if (gate()) return false;
+    log?.call('[gesture] double-tap ignored: no band haptic budget left');
+    return true;
+  }
+
+  Future<List<GestureOutcome>> _runActions(StrapEvent e, Set<DeviceAction> actions,
+      {int? taps,
+      GestureFailureKind kind = GestureFailureKind.doubleTap}) async {
+    final out = <GestureOutcome>[];
+    for (final a in _retired(actions)) {
+      if (_disposed) break;
+      final o = await _handleOne(e, a, taps: taps);
+      // Disposed while this one waited (its claim): nothing ran, and a
+      // stopped gesture is not a failed one.
+      if (o == null) return const [];
+      out.add(o);
+    }
+    // One report per tap, for the first action that failed.
+    for (final o in out) {
+      if (o.status != GestureStatus.failed) continue;
+      try {
+        onFailed?.call(e, kind, '${o.action.id}: ${_why(o.error)}');
+      } catch (_) {}
+      break;
+    }
+    return out;
+  }
+
+  /// "Log water" is retired: its glass is now the Water answer of the
+  /// marked-moment follow-up. An old value that still reaches the dispatcher
+  /// is Mark a moment, mapped BEFORE the claim so the occurrence is claimed,
+  /// replayed and reported as the action that runs, and a tap that also has
+  /// Mark a moment marks once.
+  static Set<DeviceAction> _retired(Set<DeviceAction> actions) => {
+        for (final a in actions)
+          a == DeviceAction.logWater ? DeviceAction.markMoment : a,
+      };
+
+  // A short, single-line reason for a failed outcome.
+  static String _why(Object? error) {
+    final t = (error ?? 'failed').toString().replaceAll(RegExp(r'\s+'), ' ');
+    return t.length > 120 ? '${t.substring(0, 120)}...' : t;
+  }
+
+  /// Take the once-ever claim (or the receipt debounce) for the ECG session of
+  /// this tap, under `...:ecg`. Null: skip, this tap already has one.
+  Future<({String? claimKey, String debounceKey})?> _takeEcgTap(
+      StrapEvent e, [String kind = 'ecg']) async {
+    final debounceKey = '${e.identity}:$kind';
+    String? claimKey;
+    if (e.plausible) {
+      claimKey = 'gesture:$debounceKey';
+      try {
+        if (!await _claim(claimKey)) return null;
+      } catch (err) {
+        log?.call('[gesture] ecg: claim failed: $err');
+        return null;
+      }
+      // Disposed while the claim was pending: start nothing, give it back.
+      if (_disposed) {
+        await _giveBackEcgTap((claimKey: claimKey, debounceKey: debounceKey));
+        return null;
+      }
+    } else {
+      final last = _lastAccepted[debounceKey];
+      if (last != null && e.receivedAt.difference(last) < _receiptDebounce) {
+        return null;
+      }
+      _lastAccepted.removeWhere(
+          (_, t) => e.receivedAt.difference(t) >= _receiptDebounce);
+      _lastAccepted[debounceKey] = e.receivedAt;
+    }
+    return (claimKey: claimKey, debounceKey: debounceKey);
+  }
+
+  Future<void> _giveBackEcgTap(
+      ({String? claimKey, String debounceKey}) taken) async {
+    final claimKey = taken.claimKey;
+    if (claimKey != null) {
+      try {
+        await _release(claimKey);
+      } catch (relErr) {
+        log?.call('[gesture] ecg: claim release failed: $relErr');
+      }
+    } else {
+      _lastAccepted.remove(taken.debounceKey);
+    }
+  }
+
+  Future<void> _ecgTap(StrapEvent e) async {
+    final start = onEcgTap;
+    if (start == null) return;
+    final taken = await _takeEcgTap(e);
+    if (taken == null) return;
+    try {
+      log?.call('[gesture] double-tap → ecg');
+      await start(e);
+    } catch (err) {
+      log?.call('[gesture] ecg start failed: $err');
+      await _giveBackEcgTap(taken);
+    }
+  }
+
+  /// Count the taps, then run the final count's actions. An abandoned
+  /// gesture runs nothing and keeps its claim (a re-send is the same tap). One
+  /// that could not START never counted anything, so it gives the claim back
+  /// and the tap does what it always did.
+  Future<List<GestureOutcome>> _countedTap(StrapEvent e) async {
+    final taken = await _takeEcgTap(e);
+    if (taken == null) return const [];
+    final int? count;
+    try {
+      log?.call('[gesture] double-tap → counting taps');
+      count = await onCountTaps!(e);
+    } catch (err) {
+      log?.call('[gesture] tap counting did not start: $err');
+      await _giveBackEcgTap(taken);
+      return _runActions(e, settings.doubleTapActions);
+    }
+    if (count == null) {
+      log?.call('[gesture] tap counting abandoned; no action');
+      return const [];
+    }
+    log?.call('[gesture] counted ${ecgTapCountName(count)}');
+    return _runActions(e, settings.actionsForTaps(count),
+        taps: count, kind: GestureFailureKind.ecg);
+  }
+
+  /// A member of an open repeated-double-tap group takes its own once-ever claim
+  /// (`gesture:<identity>:rep`) BEFORE the session sees it, so a member that is
+  /// re-delivered after its group finished (history replay, reconnect) is
+  /// skipped instead of opening a new window or running an action twice. Null:
+  /// skip, already claimed (or the claim store failed: fail closed). An
+  /// implausible strap clock has no stable identity, so such a member takes no
+  /// claim here; the session's receipt debounce guards it.
+  Future<({String? claimKey, String debounceKey})?> _takeMember(
+      StrapEvent e) async {
+    final debounceKey = '${e.identity}:rep';
+    if (!e.plausible) return (claimKey: null, debounceKey: debounceKey);
+    final claimKey = 'gesture:$debounceKey';
+    try {
+      if (!await _claim(claimKey)) return null;
+    } catch (err) {
+      log?.call('[gesture] rep: claim failed: $err');
+      return null;
+    }
+    if (_disposed) {
+      await _giveBackEcgTap((claimKey: claimKey, debounceKey: debounceKey));
+      return null;
+    }
+    return (claimKey: claimKey, debounceKey: debounceKey);
+  }
+
+  /// The repeated-double-tap method. A later tap inside an open window only
+  /// adds to it and returns nothing; the tap that opened the window waits for
+  /// the final count and runs its actions (none in the lab). EVERY tap, opener
+  /// or member, takes the same once-ever claim / receipt debounce as the ECG
+  /// route, under `...:rep`, before it is accepted, so a re-send cannot open a
+  /// second window or count twice. A member the session reports as starting the
+  /// NEXT group (too long after the last tap by the band clock) has already
+  /// finished the open group and opens its own window with the claim it holds.
+  Future<List<GestureOutcome>> _repeatTap(
+      StrapEvent e, DoubleTapRepeatSession session,
+      {bool lab = false}) async {
+    final taken =
+        session.open ? await _takeMember(e) : await _takeEcgTap(e, 'rep');
+    if (taken == null) return const [];
+    if (session.open) {
+      // A member, or another tap opened the window while this one took its
+      // claim. Counted or ignored, the claim stays: a re-send is the same tap.
+      if (session.offer(e) != RepeatOffer.newGroup) return const [];
+    }
+    if (taken.claimKey == null) {
+      _lastAccepted[taken.debounceKey] = e.receivedAt;
+    }
+    log?.call('[gesture] double-tap → counting double taps');
+    final int count;
+    try {
+      count = await session.begin(e);
+    } catch (err) {
+      log?.call('[gesture] double-tap window did not open: $err');
+      await _giveBackEcgTap(taken);
+      return lab ? const [] : _runActions(e, settings.doubleTapActions);
+    }
+    log?.call('[gesture] counted $count double taps');
+    if (lab) return const [];
+    // The session played the start, one follow-up per added tap and the
+    // confirm, a count of 2 included, so every count is marked: the tap
+    // ack stays out and the wearer feels the confirm once.
+    return _runActions(e, settings.actionsForTaps(count), taps: count);
+  }
+
+  /// Null: the dispatcher was disposed while this action waited for its claim,
+  /// so it was given back and nothing ran.
+  Future<GestureOutcome?> _handleOne(StrapEvent e, DeviceAction a,
+      {int? taps}) async {
+    GestureOutcome outcome(GestureStatus s, [Object? error]) => GestureOutcome(
+        action: a,
+        status: s,
+        timeSource: e.timeSource,
+        error: error,
+        taps: taps);
+
+    // A count of 2 is the plain double tap; 3-5 are their own occurrences.
+    final scope = taps == null || taps == 2 ? '' : 't$taps:';
+
+    // a. Stale check first, before any claim is taken.
+    if (!e.isLive &&
+        !(a.supportsHistoricalReplay && settings.replayHistorical(a))) {
+      log?.call('[gesture] ${a.id}: skipping stale double-tap '
+          '(${e.age?.inSeconds}s old)');
+      return outcome(GestureStatus.skippedStale);
+    }
+
+    final debounceKey = '${e.identity}:$scope${a.id}';
+    String? claimKey;
+    if (e.plausible) {
+      // b. Persistent, atomic once-ever claim. Fail closed.
+      claimKey = 'gesture:${e.identity}:$scope${a.id}';
+      try {
+        if (!await _claim(claimKey)) {
+          return outcome(GestureStatus.skippedDuplicate);
+        }
+      } catch (err) {
+        log?.call('[gesture] ${a.id}: claim failed: $err');
+        return outcome(GestureStatus.failed, err);
+      }
+    } else {
+      // c. No usable clock: debounce on receipt time. The entry is written
+      // before anything is awaited so overlapping deliveries can't both pass.
+      final last = _lastAccepted[debounceKey];
+      if (last != null && e.receivedAt.difference(last) < _receiptDebounce) {
+        return outcome(GestureStatus.skippedDuplicate);
+      }
+      _lastAccepted.removeWhere(
+          (_, t) => e.receivedAt.difference(t) >= _receiptDebounce);
+      _lastAccepted[debounceKey] = e.receivedAt;
+    }
+
+    // The claim is a database round trip: the app may have gone away during it.
+    // No action may start after teardown (a workout timer, a counting
+    // session's cues), and the occurrence goes back so a re-send can run it.
+    if (_disposed) {
+      if (claimKey != null) {
+        try {
+          await _release(claimKey);
+        } catch (_) {}
+      } else {
+        _lastAccepted.remove(debounceKey);
+      }
+      return null;
+    }
+
+    // d. Run.
+    try {
+      log?.call('[gesture] double-tap → ${a.id}');
+      await _run(a, e, GestureSlots.ofTaps(taps ?? 2))
+          .timeout(actionTimeout);
+      return outcome(GestureStatus.ran);
+    } on TimeoutException catch (err) {
+      log?.call('[gesture] ${a.id} did not answer in $actionTimeout');
+      return outcome(GestureStatus.failed, err);
+    } catch (err) {
+      log?.call('[gesture] ${a.id} failed: $err');
+      // e. Give the occurrence back so a retry can run it.
+      if (claimKey != null) {
+        try {
+          await _release(claimKey);
+        } catch (relErr) {
+          log?.call('[gesture] ${a.id}: claim release failed: $relErr');
+        }
+      } else {
+        _lastAccepted.remove(debounceKey);
+      }
+      return outcome(GestureStatus.failed, err);
+    }
+  }
+
+  Future<void> _run(DeviceAction a, StrapEvent e, String slot) async {
+    if (a == DeviceAction.tellTime) {
+      final handler = onTellTime;
+      if (handler == null) {
+        throw StateError('${a.id} is in-app with no handler');
+      }
+      // Read now, when the action runs (a claim or a queue may have waited).
+      await handler(
+          e,
+          encodeTime((now ?? () => clock.now())(),
+              settings.timeBuzzModeFor(slot)));
       return;
     }
-    DeviceActions.perform(action.id);
+    if (a.isInApp) {
+      final bySlot = onSlotAction;
+      if (bySlot != null) {
+        await bySlot(slot, a, e);
+        return;
+      }
+      final handler = switch (a) {
+        DeviceAction.markMoment => onMarkMoment,
+        DeviceAction.workoutToggle => onWorkoutToggle,
+        _ => null,
+      };
+      // An action offered in the picker that then does nothing is the exact
+      // failure the picker exists to end, so a missing handler is a failure.
+      if (handler == null) {
+        throw StateError('${a.id} is in-app with no handler');
+      }
+      await handler(e);
+      return;
+    }
+    if (a == DeviceAction.broadcastToTasker && !_taskerConnectionOn()) {
+      throw StateError('the Tasker connection is off');
+    }
+    final tapCount = GestureSlots.tapsOf(slot);
+    final override = _performNativeOverride;
+    final ok = override != null
+        ? await override(a.id)
+        : a == DeviceAction.broadcastToTasker
+            ? await DeviceActions.perform(a.id, slot: slot, taps: tapCount)
+            : await DeviceActions.perform(a.id);
+    if (!ok) {
+      throw StateError('native ${a.id} reported failure');
+    }
   }
 }

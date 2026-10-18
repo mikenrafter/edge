@@ -1,0 +1,372 @@
+// The built-in (system) patterns. Four gesture cues (start, follow-up,
+// confirm and failed), four breathing cues (Oct 4) and ten presets (pulses, long pulses, SOS, Hip hip
+// hooray) are stored beside the user's patterns under a stable systemKey. They
+// can never be renamed or deleted; the cues can be customised and put back, the
+// presets are read-only. A non-alarm alert rule's default is one of the presets
+// ([alertPresetKey]); its slot key 'alert.<ruleId>' only names where it is
+// used. The defaults are built here, for the WHOOP MG profile with the taps
+// rhythm kept for a 4.0 band. Pure Dart.
+
+import '../gestures/pattern_transcript.dart';
+import '../notify/buzz_sequence.dart';
+import '../notify/notification_prefs.dart';
+import 'haptic_compiler.dart';
+import 'haptic_profile.dart';
+import 'haptic_slots.dart' show kTaskerSlotCount, taskerSlotKey, taskerSlotNumber;
+import 'tap_notes.dart';
+
+const String kGestureStartKey = 'gesture.start';
+const String kGestureFollowUpKey = 'gesture.followUp';
+const String kGestureConfirmKey = 'gesture.confirm';
+
+/// The failed-gesture cue; its default is the failure buzz the engine
+/// used to play as a fixed call.
+const String kGestureFailedKey = 'gesture.failed';
+
+/// The four breathing cues (Oct 4): the start of an inhale, an exhale and a
+/// hold, and the end of the session. Interval work plays the inhale cue, rest
+/// the exhale cue, both holds the hold cue. Each default is ONE command of the
+/// MG's vocabulary (a breath is cued every few seconds and the band takes 30
+/// commands in two minutes) and short enough to finish well inside the
+/// shortest built-in phase: a long strong buzz to breathe in, a shorter and
+/// softer one to breathe out, two faint ticks for a hold, and a swell that
+/// settles for the end.
+const String kBreathInhaleKey = 'breath.inhale';
+const String kBreathExhaleKey = 'breath.exhale';
+const String kBreathHoldKey = 'breath.hold';
+const String kBreathDoneKey = 'breath.done';
+
+/// The main alarm's snooze slots (owner spec 2026-10-07). Each is its own
+/// default pattern, none shared with a gesture cue or with the full-wake
+/// confirmation: snooze set, dismissed, a wake confirmed during a snooze
+/// ("you're up"), and the escalating re-alarm (whose default is the first
+/// snooze's pattern; SnoozeSchedule grows it per snooze).
+///
+/// Defaults (MG, 125 ms per sixteenth). Beat counts 4, 5, 6 and 3: none shares
+/// a count with a gesture cue (1 to 3 beats), with the breathing cues or with
+/// Natural Wake's three long strong buzzes.
+///  * snooze set    "N2mf R2 N2mf R2 N2mf R2 N2mf": four even, soft ticks.
+///  * dismissed     "N1f R1 N2f R1 N3ff R1 N4ff R1 N6ff": five buzzes rising
+///                  from short and firm to one long and strong ("done").
+///  * cancelled     "N6ff R2 N1mf R1 N1mf R1 N1mf R1 N1mf R1 N1mf": one long
+///                  strong buzz, then a flutter of five light ticks ("you're up").
+///  * re-alarm      the first snooze's pattern, "N4mf R3 N2mf R6 N4mf"; the
+///                  app grows it per snooze (SnoozeSchedule).
+const String kAlarmSnoozeConfirmKey = 'alarm.snooze.confirm';
+const String kAlarmDismissConfirmKey = 'alarm.dismiss.confirm';
+const String kAlarmSnoozeCancelledKey = 'alarm.snooze.cancelled';
+const String kAlarmReAlarmKey = 'alarm.snooze.realarm';
+
+const String _snoozeConfirmNotes = 'N2mf R2 N2mf R2 N2mf R2 N2mf';
+const String _dismissConfirmNotes = 'N1f R1 N2f R1 N3ff R1 N4ff R1 N6ff';
+const String _snoozeCancelledNotes =
+    'N6ff R2 N1mf R1 N1mf R1 N1mf R1 N1mf R1 N1mf';
+const String _reAlarmFirstNotes = 'N4mf R3 N2mf R6 N4mf';
+
+/// The four snooze slots, in the order they are listed.
+const List<String> kAlarmSlotKeys = [
+  kAlarmSnoozeConfirmKey,
+  kAlarmDismissConfirmKey,
+  kAlarmSnoozeCancelledKey,
+  kAlarmReAlarmKey,
+];
+
+/// Whether [slotKey] is one of the four snooze slots.
+bool isAlarmSlot(String slotKey) => kAlarmSlotKeys.contains(slotKey);
+
+/// The six ECG cues (ecg-features): a reading started, ended well, ended
+/// inconclusive, ended inconclusive with another reading asked for, failed, and
+/// "look at the phone". They play on the band like the gesture cues; see
+/// `lib/ecg/ecg_result.dart` (EcgCueTracker) for which end state plays which.
+/// `ecg.attention` is the one that defaults to the SOS rhythm. It is for a
+/// band that may still be recording (a cleanup that did not finish, a retained
+/// guard that could not be cleared), never for a result: ECG here is a screen,
+/// not a diagnostic device, and no outcome of a reading is an alarm.
+const String kEcgStartedKey = 'ecg.started';
+const String kEcgCompleteKey = 'ecg.complete';
+const String kEcgInconclusiveKey = 'ecg.inconclusive';
+const String kEcgInconclusiveRetryKey = 'ecg.inconclusiveRetry';
+const String kEcgFailedKey = 'ecg.failed';
+const String kEcgAttentionKey = 'ecg.attention';
+
+/// The six ECG cue keys in the order the Haptics screen lists them.
+const List<String> kEcgCueKeys = [
+  kEcgStartedKey,
+  kEcgCompleteKey,
+  kEcgInconclusiveKey,
+  kEcgInconclusiveRetryKey,
+  kEcgFailedKey,
+  kEcgAttentionKey,
+];
+
+// The ECG cues' names and rhythms (a pulse is a quarter note, a long pulse a
+// half). Six different beat counts, 1, 2, 3, 4, 5 and 9, and lengths more than
+// half a second apart, so no two are flagged as alike (pattern_similarity.dart);
+// none is a gesture or breathing rhythm. `ecg.attention` is the SOS preset's.
+const Map<String, (String, String)> _ecgCues = {
+  kEcgStartedKey: ('ECG started', 'N8*'),
+  kEcgCompleteKey: ('ECG complete', 'N4* R6 N4*'),
+  kEcgInconclusiveKey: ('ECG inconclusive', 'N8* R4 N8* R4 N8*'),
+  kEcgInconclusiveRetryKey: (
+    'ECG try again',
+    'N4* R2 N4* R2 N4* R2 N4*',
+  ),
+  kEcgFailedKey: (
+    'ECG failed',
+    'N6* R4 N6* R4 N6* R4 N6* R4 N6*',
+  ),
+  kEcgAttentionKey: (
+    'ECG attention',
+    'N2* R2 N2* R2 N2* R4 N6* R3 N6* R3 N6* R4 N2* R2 N2* R2 N2*',
+  ),
+};
+
+/// The ten presets, in the order they are listed: key, name and notes. A
+/// pulse is a quarter note, a long pulse a half, the rest between pulses a
+/// quarter. SOS is three short, three long, three short; Hip hip hooray is two
+/// rounds of short, short, longer.
+const List<(String, String, String)> kPresets = [
+  ('preset.one_pulse', 'One pulse', 'N4*'),
+  ('preset.two_pulses', 'Two pulses', 'N4* R4 N4*'),
+  ('preset.three_pulses', 'Three pulses', 'N4* R4 N4* R4 N4*'),
+  ('preset.four_pulses', 'Four pulses', 'N4* R4 N4* R4 N4* R4 N4*'),
+  ('preset.five_pulses', 'Five pulses', 'N4* R4 N4* R4 N4* R4 N4* R4 N4*'),
+  ('preset.one_long_pulse', 'One long pulse', 'N8*'),
+  ('preset.two_long_pulses', 'Two long pulses', 'N8* R4 N8*'),
+  ('preset.three_long_pulses', 'Three long pulses', 'N8* R4 N8* R4 N8*'),
+  (
+    'preset.sos',
+    'SOS',
+    'N2* R2 N2* R2 N2* R4 N6* R3 N6* R3 N6* R4 N2* R2 N2* R2 N2*',
+  ),
+  (
+    'preset.hip_hip_hooray_x2',
+    'Hip hip hooray ×2',
+    'N2* R2 N2* R2 N4* R6 N2* R2 N2* R2 N4*',
+  ),
+];
+
+/// Which preset each alert slot plays until the wearer picks another. Spread so
+/// that no preset serves more than two slots and alerts that can fire close
+/// together differ in count and length. SOS is not a default anywhere: a 4.0
+/// holds eight taps at most (BuzzSequence.maxBuzzes), so its taps rhythm is
+/// the SOS minus its last short pulse, and nobody gets that unasked.
+const Map<String, String> _alertPresets = {
+  'health': 'preset.three_long_pulses',
+  'recovery': 'preset.two_pulses',
+  'reminders': 'preset.five_pulses',
+  'device': 'preset.two_long_pulses',
+  'water': 'preset.three_pulses',
+  'autoDetect': 'preset.one_long_pulse',
+  'movement': 'preset.four_pulses',
+  'meds': 'preset.five_pulses',
+  'checkIn': 'preset.one_pulse',
+  'stepGoal': 'preset.hip_hip_hooray_x2',
+  'windDown': 'preset.one_long_pulse',
+  'zone': 'preset.two_long_pulses',
+  'breath': 'preset.one_pulse',
+  'tasker': 'preset.two_pulses',
+  'relay': 'preset.three_pulses',
+};
+
+/// The preset key behind alert slot [slotKey] (`alert.<ruleId>`), or null for a
+/// key that is not an alert slot with a default.
+String? alertPresetKey(String slotKey) => slotKey.startsWith('alert.')
+    ? _alertPresets[slotKey.substring('alert.'.length)]
+    : null;
+
+/// Whether [systemKey] is one of the read-only presets.
+bool isPresetKey(String systemKey) => systemKey.startsWith('preset.');
+
+/// The systemKey of the built-in for alert rule [ruleId].
+String alertSystemKey(String ruleId) => 'alert.$ruleId';
+
+/// The id a built-in is stored under: stable, so a rule's snapshot of it keeps
+/// pointing at it across reads.
+String systemPatternId(String systemKey) => 'sys.$systemKey';
+
+/// A built-in as it is seeded.
+class BuiltInSpec {
+  const BuiltInSpec(this.key, this.name, this.sequence);
+  final String key;
+  final String name;
+
+  /// Carries [systemPatternId] of [key] as its patternId.
+  final BuzzSequence sequence;
+}
+
+/// Every built-in key, in the order they are listed: the gesture cues, the
+/// breathing cues, then the presets. (Alert slots are not built-ins of their own: see
+/// [alertPresetKey].)
+List<String> builtInKeys() => [
+      kGestureStartKey,
+      kGestureFollowUpKey,
+      kGestureConfirmKey,
+      kGestureFailedKey,
+      kBreathInhaleKey,
+      kBreathExhaleKey,
+      kBreathHoldKey,
+      kBreathDoneKey,
+      for (var n = 1; n <= kTaskerSlotCount; n++) taskerSlotKey(n),
+      ...kAlarmSlotKeys,
+      ...kEcgCueKeys,
+      for (final p in kPresets) p.$1,
+    ];
+
+final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
+
+/// One command as a pattern: the phrase's shortest rendition as notes, the
+/// taps those notes make, and the one-step plan for the MG.
+BuzzSequence _fromPhrase(HapticPhrase ph, String id) {
+  final notes = ph.min;
+  return tapsFromNotes(notes, unitMs: _mg.unitMs).copyWith(
+    notes: notes.join(' '),
+    profileId: _mg.id,
+    profileVersion: _mg.version,
+    bakedSteps: [BakedStep(effects: ph.effects, loop: ph.loop, delayMs: 0)],
+    bakedRuntimeMs: ph.unitsMax * _mg.unitMs,
+    patternId: id,
+  );
+}
+
+HapticPhrase _phrase(String id) => _mg.phrases.firstWhere((p) => p.id == id);
+
+// [code] as a pattern: its notes, the taps those notes make, and the plan
+// compiled for the MG under the default cap. A 4.0 holds at most eight taps, so
+// the taps rhythm stops after the eighth pulse.
+BuzzSequence _fromNotes(String code, String id) {
+  final notes = PatternTranscript.parseCode(code).entries;
+  var pulses = 0;
+  var inNote = false;
+  var keep = notes.length;
+  for (var i = 0; i < notes.length; i++) {
+    if (notes[i].note) {
+      if (!inNote && ++pulses > BuzzSequence.maxBuzzes) {
+        keep = i;
+        break;
+      }
+      inNote = true;
+    } else {
+      inNote = false;
+    }
+  }
+  final taps = tapsFromNotes(notes.sublist(0, keep), unitMs: _mg.unitMs);
+  final plan = compile(
+    notes,
+    _mg,
+    dynamicWeight: 0,
+    maxRuntimeMs: kMaxHapticRuntime.inMilliseconds,
+  );
+  final s = taps.copyWith(
+    notes: code,
+    profileId: _mg.id,
+    profileVersion: _mg.version,
+    patternId: id,
+  );
+  if (plan == null) return s;
+  return s.copyWith(
+    bakedSteps: [
+      for (final st in plan.steps)
+        BakedStep(
+          effects: st.phrase.effects,
+          loop: st.phrase.loop,
+          delayMs: st.delayMs,
+        ),
+    ],
+    bakedRuntimeMs: plan.runtimeMs,
+  );
+}
+
+/// [code] (notes with dynamics, "N4mf R3 N2mf") as a pattern for the MG, stored
+/// under [id]: the re-alarm's escalating notes are played this way.
+BuzzSequence alarmSequenceFromNotes(String code, {required String id}) =>
+    _fromNotes(code, id);
+
+/// Whether [s] is the rhythm alert [ruleId] was seeded with before the presets
+/// (the nine count-and-gap rhythms of BuzzSequence.defaultFor, as `*` notes): a
+/// stored copy of it was never the wearer's choice and gives way to the preset.
+bool isLegacyAlertDefault(String ruleId, BuzzSequence s) {
+  final i = NotificationPrefs.alertRuleOrder.indexOf(ruleId);
+  if (i < 0) return false;
+  final taps = BuzzSequence.defaultFor(i);
+  final notes =
+      notesFromTaps(taps, unitMs: _mg.unitMs, dynamic: PatternDynamic.any)
+          .join(' ');
+  return s.notes == notes &&
+      s.offsetsMs.join(',') == taps.offsetsMs.join(',') &&
+      s.durationsMs.join(',') == taps.durationsMs.join(',');
+}
+
+// builtInDefault is pure and compiling a long rhythm costs milliseconds (the
+// whole store is ~150 ms to seed), and every settings read seeds the store; the
+// result is computed once per key.
+final Map<String, BuiltInSpec?> _defaults = {};
+
+/// The seeded default for [systemKey], or null for a key that is not built in.
+BuiltInSpec? builtInDefault(String systemKey) => _defaults.containsKey(systemKey)
+    ? _defaults[systemKey]
+    : _defaults[systemKey] = _buildDefault(systemKey);
+
+BuiltInSpec? _buildDefault(String systemKey) {
+  final id = systemPatternId(systemKey);
+  switch (systemKey) {
+    case kGestureStartKey:
+      return BuiltInSpec(
+          systemKey, 'Gesture start', _fromPhrase(_phrase('pair'), id));
+    case kGestureFollowUpKey:
+      final single = _mg.fastestSingle();
+      if (single == null) return null;
+      return BuiltInSpec(systemKey, 'Gesture follow-up', _fromPhrase(single, id));
+    case kGestureConfirmKey:
+      return BuiltInSpec(
+          systemKey, 'Gesture confirm', _fromPhrase(_phrase('buzz47'), id));
+    case kGestureFailedKey:
+      return BuiltInSpec(
+          systemKey, 'Gesture failed', _fromPhrase(_phrase('pairx2'), id));
+    case kBreathInhaleKey:
+      return BuiltInSpec(
+          systemKey, 'Breathing inhale', _fromPhrase(_phrase('buzz47x2'), id));
+    case kBreathExhaleKey:
+      return BuiltInSpec(
+          systemKey, 'Breathing exhale', _fromPhrase(_phrase('buzz14'), id));
+    case kBreathHoldKey:
+      return BuiltInSpec(
+          systemKey, 'Breathing hold', _fromPhrase(_phrase('click1'), id));
+    case kBreathDoneKey:
+      return BuiltInSpec(
+          systemKey, 'Breathing done', _fromPhrase(_phrase('arc47'), id));
+  }
+  switch (systemKey) {
+    case kAlarmSnoozeConfirmKey:
+      return BuiltInSpec(
+          systemKey, 'Snooze set', _fromNotes(_snoozeConfirmNotes, id));
+    case kAlarmDismissConfirmKey:
+      return BuiltInSpec(
+          systemKey, 'Alarm dismissed', _fromNotes(_dismissConfirmNotes, id));
+    case kAlarmSnoozeCancelledKey:
+      return BuiltInSpec(systemKey, 'Snooze cancelled',
+          _fromNotes(_snoozeCancelledNotes, id));
+    case kAlarmReAlarmKey:
+      return BuiltInSpec(
+          systemKey, 'Snooze re-alarm', _fromNotes(_reAlarmFirstNotes, id));
+  }
+  for (final (key, name, notes) in kPresets) {
+    if (key == systemKey) return BuiltInSpec(key, name, _fromNotes(notes, id));
+  }
+  final ecg = _ecgCues[systemKey];
+  if (ecg != null) {
+    return BuiltInSpec(systemKey, ecg.$1, _fromNotes(ecg.$2, id));
+  }
+  // Tasker slot n: n short pulses, the pulse and rest of the "One pulse" preset.
+  final tasker = taskerSlotNumber(systemKey);
+  if (tasker != null) {
+    return BuiltInSpec(
+      systemKey,
+      'Tasker slot $tasker',
+      _fromNotes(List.filled(tasker, 'N4*').join(' R4 '), id),
+    );
+  }
+  // An alert slot's default is its preset.
+  final preset = alertPresetKey(systemKey);
+  return preset == null ? null : builtInDefault(preset);
+}

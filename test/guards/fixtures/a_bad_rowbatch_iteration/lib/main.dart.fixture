@@ -1,0 +1,20 @@
+// FIXTURE: a_bad_rowbatch_iteration
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/raw_readers.dart';
+
+typedef Row = Map<String, Object?>;
+
+class Screen {
+  double mean(RowBatch<Row> batch) {
+    var sum = 0.0;
+    for (final row in batch) {
+      sum += (row['hr'] as num).toDouble();
+    }
+    return sum;
+  }
+
+  List<Object?> hrs(RowBatch<Row> batch) => batch.map((r) => r['hr']).toList();
+
+  // Reading the size is O(1) and not iteration: allowed.
+  bool hasRows(RowBatch<Row> batch) => batch.isNotEmpty;
+}

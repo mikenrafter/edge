@@ -119,7 +119,7 @@ extension BleEngineTransport on BleEngine {
       // The remedy in this line is still WHOOP-specific ("the official app").
       // Per-band copy needs the per-entry discovery/label of D9; the registry
       // does not make it fixable on its own.
-      _log('No band found (force-quit the official app; band must be free).');
+      _log('No band found. Force-quit the official WHOOP app so the band is free, then scan again.');
     } else {
       _clearBlocker();
     }

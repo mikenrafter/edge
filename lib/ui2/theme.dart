@@ -107,6 +107,10 @@ class C {
 
   static const white = Color(0xFFFFFFFF);
 
+  /// First paint for every user (native launch window and BootSplash cover).
+  /// Matches the dark P.bg; see docs/LAYOUT_SHIFT.md.
+  static const launchDark = Color(0xFF0B1017);
+
   /// Each domain owns an accent — the mental map is colour-coded, and the map
   /// is the point. Today, Sleep, Activity and Health are the four tabs; food
   /// and mind keep their accents as sections inside Activity and Health.
@@ -399,6 +403,10 @@ class Motion {
   /// only file allowed to write a `Duration(…)`, and a screen inventing its own
   /// tick is how thirteen ungated tickers happened last time.
   static const tick = Duration(seconds: 1);
+
+  /// A slow wall clock for text that ages in minutes ("synced 12 min ago"):
+  /// real time, never passed through [motion], like [tick].
+  static const slowTick = Duration(seconds: 30);
 
   /// One full breath cycle for the paced-breathing ring — 5 s in, 5 s out is
   /// the pace the breathing session already uses. The PHASE is still owned by

@@ -213,8 +213,8 @@ void main() {
       expect(w, contains('readiness (Need 8 more nights)'));
       expect(
           w,
-          contains('resting_hr (There is no scored night to read this '
-              'from.)'));
+          contains('resting_hr (This metric needs a scored night, and '
+              'there is none.)'));
       // A night with no deep/REM behind it is refused per field, not silently
       // dropped — that is the one the model narrates from total sleep time.
       expect(w, contains('deep_min'));
@@ -263,7 +263,7 @@ void main() {
       final m = briefingSystemPrompt(BriefingPeriod.morning);
       expect(m, contains('withheld'));
       expect(m, contains('REFUSED'));
-      expect(m, contains('reasoned out of the numbers you WERE given'));
+      expect(m, contains('do not infer it from the numbers you WERE given'));
     });
 
     test('the evening sweep never carries a withheld list', () async {
@@ -287,7 +287,7 @@ void main() {
       expect(e, contains('finding'));
       expect(e, contains('do not summarise the day'));
       expect(e, contains('no disclaimer'));
-      expect(e, contains('never assert a cause'));
+      expect(e, contains('do not assert a cause'));
     });
 
     test('greeting comes from the app at read time, never baked into the '

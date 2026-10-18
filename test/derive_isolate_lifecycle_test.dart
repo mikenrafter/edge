@@ -21,6 +21,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
 
+/// A computation that never finishes and beats on [beat] every few ms. Built
+/// here so the closure carries only the SendPort across the isolate boundary.
+Future<int> Function() _wedgedBeating(SendPort beat) => () async {
+      // An open ReceivePort keeps the isolate's event loop alive, so it stays
+      // running (exactly like a real hung compute) rather than exiting and
+      // tripping the onExit path.
+      final keepAlive = ReceivePort();
+      Timer.periodic(const Duration(milliseconds: 5), (_) => beat.send(1));
+      await Completer<int>().future;
+      keepAlive.close();
+      return 0;
+    };
+
 /// Drive the real prepare worker over a caller-supplied page sequence and
 /// return whichever came first: a result payload, or an error. Mirrors
 /// `_loadSubstrateRange`'s wiring (onError + onExit + a bounded wait) so the
@@ -212,26 +225,35 @@ void main() {
       // The defect this pins: `Isolate.run` with no timeout at all — the
       // sleep-staging site — left the caller awaiting forever with
       // `_running == true`, so DeriveScheduler._drain never returned again.
-      final sw = Stopwatch()..start();
+      //
+      // The worker beats on a port this test owns, so "killed" is observable:
+      // the beats stop. No host-speed bound is asserted; a hang would be the
+      // test timeout, not a number here.
+      final beats = ReceivePort();
+      var beatCount = 0;
+      final sub = beats.listen((_) => beatCount++);
+      addTearDown(() async {
+        await sub.cancel();
+        beats.close();
+      });
+      final beat = beats.sendPort;
       await expectLater(
         runCancellableIsolate<int>(
-          () async {
-            // An open ReceivePort keeps the isolate's event loop alive, so it
-            // stays running (exactly like a real hung compute) rather than
-            // exiting and tripping the onExit path above.
-            final keepAlive = ReceivePort();
-            await Completer<int>().future;
-            keepAlive.close();
-            return 0;
-          },
+          _wedgedBeating(beat),
           const Duration(milliseconds: 400),
           label: 'wedged',
         ),
         throwsA(isA<TimeoutException>()),
       );
-      sw.stop();
-      expect(sw.elapsed, lessThan(const Duration(seconds: 8)),
-          reason: 'the wait is bounded by the timeout, not by the isolate');
+      expect(beatCount, greaterThan(0),
+          reason: 'the worker was running while the call waited');
+
+      // Let anything already in flight arrive, then require silence.
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final afterKill = beatCount;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(beatCount, afterKill,
+          reason: 'a killed worker sends nothing further');
     });
   });
 }

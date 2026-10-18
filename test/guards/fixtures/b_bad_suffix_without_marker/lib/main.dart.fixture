@@ -1,0 +1,18 @@
+// FIXTURE: b_bad_suffix_without_marker
+import 'package:openstrap_edge/util/heavy.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+
+// Named like a heavy function but not marked: the suffix must mean something.
+DayOut deriveHeavy(DayArgs a) => DayOut(a.nowEpochMs.toDouble());
