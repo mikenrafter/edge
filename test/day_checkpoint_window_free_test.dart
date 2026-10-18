@@ -662,7 +662,10 @@ void main() {
       expect(s.hrSamples, lessThanOrEqualTo(2 * tail),
           reason: 'only the tail was folded');
       expect(s.orientationSamples, tail);
-      expect(s.stepSamples, tail);
+      // The band's step counter is no longer folded: the merge took upstream's
+      // per-day delta pass over the counter (decision D16), so nothing is
+      // folded for it and nothing has to resume.
+      expect(s.stepSamples, 0);
       final got = await stored();
       final cp = (await LocalDb.dayCheckpoint(label, kAlgoVersion))!;
       expect(cp.cpRecTs, h(5.25));

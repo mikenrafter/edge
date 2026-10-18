@@ -614,7 +614,10 @@ void main() {
       // the seconds after the checkpoint; a pass without it folds all of them.
       expect(state.hrSamples, 2 * (rowsAll - 1800));
       expect(state.orientationSamples, rowsAll - 1800);
-      expect(state.stepSamples, rowsAll - 1800);
+      // The band's step counter is no longer folded: the merge took upstream's
+      // per-day delta pass over the counter (decision D16), so nothing is
+      // folded for it and nothing has to resume.
+      expect(state.stepSamples, 0);
       final cp2 = (await checkpoint())!;
       expect(cp2.cpRecTs, start + 3600);
       expect(decodeDayResumeState(cp2.state)!.folded, 3600);
