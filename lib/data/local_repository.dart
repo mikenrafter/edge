@@ -107,7 +107,15 @@ abstract class LocalRepository {
     String day, {
     required List<String> chartKeys,
     required int windowDays,
-  }) => throw UnimplementedError('re-layer: getSleepDetailBundle');
+  }) async => SleepDetailBundle(
+    // The piece-by-piece composition, for repositories (fakes) without a
+    // cheaper combined read. LocalRepositoryImpl overrides it.
+    night: await getDaySleepV2(day),
+    timeline: await getDayTimeline(day),
+    insights: await getInsights(),
+    charts: {for (final k in chartKeys) k: await getChart(k)},
+    windows: await sleepWindows(days: windowDays),
+  );
 
   Future<Map<String, dynamic>> getDaySleepV2(String date) =>
       throw UnimplementedError('re-layer: getDaySleepV2');

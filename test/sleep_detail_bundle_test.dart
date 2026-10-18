@@ -12,6 +12,7 @@
 // per-piece read, so a screen that still sequences them fails.
 import 'dart:convert';
 
+import 'package:flutter/material.dart' show CircularProgressIndicator;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -87,7 +88,7 @@ void main() {
         final day = '2026-08-0$d';
         await _put(day, at += 1000, {
           'tst_min': 400.0 + d,
-          if (d != 3) 'deep': 80.0 + d,
+          if (d != 3) 'deep_min': 80.0 + d,
           'efficiency': d == 3 ? null : 90.0 + d,
           'unobserved_min': 5.0 * d,
           if (d == 5) 'awakenings': 2.0,
@@ -124,6 +125,7 @@ void main() {
       // the load sends to the handle is seen (a batch counts as its operations).
       final sql = <String>[];
       await LocalDb.close();
+      // ignore: experimental_member_use
       databaseFactory = SqfliteDatabaseFactoryLogger(
         databaseFactoryFfi,
         options: SqfliteLoggerOptions(
@@ -183,7 +185,8 @@ void main() {
       await t.pumpWidget(perfApp(app, const SleepDetail(day: '2026-08-05')));
       await t.pump(const Duration(seconds: 3));
       expect(repo.bundleCalls, 1);
-      expect(find.text('Time asleep'), findsWidgets);
+      expect(find.textContaining('7h 23'), findsWidgets);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
     });
   });
 }

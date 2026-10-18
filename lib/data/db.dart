@@ -9511,9 +9511,10 @@ class LocalDb {
   /// per day (~298 MB RSS). Fetch the bundle for one day at a time with
   /// [dayResult] and let each one go.
   static Future<List<Map<String, dynamic>>> recentDayResultsMeta(
-    int limit,
-  ) async {
-    final db = await instance;
+    int limit, {
+    DatabaseExecutor? within,
+  }) async {
+    final db = within ?? await instance;
     final rows = await db.rawQuery(
       'SELECT r.day_id, r.algo_version, r.computed_at, r.finalized, '
       'r.skipped, r.partial, r.rhr, r.rmssd, r.readiness '
@@ -11239,6 +11240,52 @@ class LocalDb {
       orderBy: 'date ASC',
       limit: limit,
     );
+  }
+
+  /// Everything a multi-chart screen needs from the derived series, in ONE
+  /// read transaction (one slot on the single serialized handle, not ~4 per
+  /// chart): every non-null `metric_series` row for each of [keys] (each list
+  /// oldest first, exactly [metricSeries]), the whole version table once, and
+  /// the payload-free day_result rows covering the longest of those series
+  /// (newest first; a caller wanting [recentDayResultsMeta]`(n)` for a shorter
+  /// series takes the first n).
+  static Future<
+    ({
+      Map<String, List<Map<String, dynamic>>> rows,
+      List<Map<String, dynamic>> versions,
+      List<Map<String, dynamic>> meta,
+    })
+  >
+  metricSeriesBundle(List<String> keys) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final byKey = {for (final k in keys) k: <Map<String, dynamic>>[]};
+      if (keys.isNotEmpty) {
+        final rows = await txn.query(
+          'metric_series',
+          where:
+              'key IN (${List.filled(keys.length, '?').join(',')}) '
+              'AND value IS NOT NULL',
+          whereArgs: keys,
+          orderBy: 'date ASC',
+        );
+        for (final r in rows) {
+          byKey[r['key'] as String]!.add(r);
+        }
+      }
+      final versions = await txn.query(
+        'metric_series_version',
+        orderBy: 'date ASC',
+      );
+      final longest = byKey.values.fold<int>(
+        0,
+        (m, l) => l.length > m ? l.length : m,
+      );
+      final meta = longest == 0
+          ? const <Map<String, dynamic>>[]
+          : await recentDayResultsMeta(longest, within: txn);
+      return (rows: byKey, versions: versions, meta: meta);
+    });
   }
 
   /// The TRAILING [n] non-null values for [key] — the newest n days, returned

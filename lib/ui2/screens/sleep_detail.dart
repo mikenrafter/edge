@@ -45,6 +45,17 @@ const _recordNights = 14;
 /// enough to still be "you lately" rather than "you last season".
 const _window = 28;
 
+/// The stored series the screen compares a night against (getChart names).
+const _chartKeys = [
+  'sleep',
+  'deep',
+  'efficiency',
+  'unobserved_min',
+  'awakenings',
+  'longest_sleep_min',
+  'sol_min',
+];
+
 /// A per-second label from the segmenter, or NULL for a second nobody watched.
 ///
 /// `unobserved` is not a stage. The catch-all used to be `SleepStage.light`, so
@@ -250,9 +261,13 @@ class SleepData {
             (today['status'] as Map?)?['today_day']?.toString());
     if (day == null) return SleepData(days: days);
 
-    final night = await repo.getDaySleepV2(day);
-    final timeline = await repo.getDayTimeline(day);
-    final cd = await repo.getInsights();
+    // ONE repository call for everything the night needs: the repository reads
+    // all the series in a single statement instead of ~50 serialized ones.
+    final b = await repo.getSleepDetailBundle(day,
+        chartKeys: _chartKeys, windowDays: _window + 1);
+    final night = b.night;
+    final timeline = b.timeline;
+    final cd = b.insights;
     final coach = cd['sleep_coach'];
     final needEnv = coach is Map ? coach['need'] : null;
     final needSec = envValue(needEnv)?['need_sec'] as num?;
@@ -260,27 +275,23 @@ class SleepData {
     final debtH = envValue(debtEnv)?['debt_hours'] as num?;
     final bedEnv = coach is Map ? coach['bedtime'] : null;
 
-    // Personal history for the comparisons. These are `metric_series` reads —
-    // one small row per day per key — not day bundles, so the whole comparison
-    // costs three scalar queries and one window query rather than 28 payload
-    // decodes.
+    // Personal history for the comparisons: `metric_series` scalars, one small
+    // row per day per key, not day bundles.
     final cut = _noonOf(day);
-    final tstChart = await repo.getChart('sleep');
+    final tstChart = b.charts['sleep'];
     final tst = _trailing(tstChart, cut);
     // Nights with a total sleep time. A window the user set over a stretch the
     // band did not record is NOT RECORDED: it is not a bedtime to compare to.
     final recordedNoons = {for (final p in pointsOf(tstChart)) p.t};
-    final deep = _trailing(await repo.getChart('deep'), cut);
+    final deep = _trailing(b.charts['deep'], cut);
     // Stored as whole percent; the night's own `efficiency` is 0…1.
-    final eff = _trailing(await repo.getChart('efficiency'), cut);
-    // The shape of THIS night. Four scalar series, read for one day each — the
-    // day bundle's `accounting` carries the same figures but `_daySleep` does
-    // not re-export them, and metric_series is one row per day per key.
-    final unobserved = _on(await repo.getChart('unobserved_min'), cut);
-    final wakeups = _on(await repo.getChart('awakenings'), cut);
-    final longest = _on(await repo.getChart('longest_sleep_min'), cut);
-    final sol = _on(await repo.getChart('sol_min'), cut);
-    final wins = await repo.sleepWindows(days: _window + 1);
+    final eff = _trailing(b.charts['efficiency'], cut);
+    // The shape of THIS night: four scalar series, one day each.
+    final unobserved = _on(b.charts['unobserved_min'], cut);
+    final wakeups = _on(b.charts['awakenings'], cut);
+    final longest = _on(b.charts['longest_sleep_min'], cut);
+    final sol = _on(b.charts['sol_min'], cut);
+    final wins = b.windows;
     final onsets = <int>[
       for (final w in wins.reversed)
         if (w['date'] != day &&

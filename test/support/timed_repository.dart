@@ -6,6 +6,7 @@
 // of everything the call awaits (isolate hops included). Stopwatch is
 // monotonic elapsed time, the accepted exception to the no-clock rule for
 // these gated heavy tests.
+import 'package:openstrap_edge/data/local_repository.dart' show SleepDetailBundle;
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 
 class CallRecord {
@@ -131,6 +132,12 @@ class TimedRepository extends LocalRepositoryImpl {
   @override
   Future<Map<String, dynamic>> getRecords() =>
       _t('getRecords', () => super.getRecords());
+  @override
+  Future<SleepDetailBundle> getSleepDetailBundle(String day,
+          {required List<String> chartKeys, required int windowDays}) =>
+      _t('getSleepDetailBundle',
+          () => super.getSleepDetailBundle(day,
+              chartKeys: chartKeys, windowDays: windowDays));
   @override
   Future<Map<String, dynamic>> getChart(String metric,
           {int? from, int? to, Set<String> signals = const {}}) =>

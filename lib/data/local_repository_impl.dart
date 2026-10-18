@@ -1975,47 +1975,125 @@ class LocalRepositoryImpl extends LocalRepository {
     }
     final key = _trendKey(metric);
     final rows = await LocalDb.metricSeries(key);
-    // THE PIN WINS. getToday serves the frozen morning headline for readiness,
-    // but metric_series is rewritten by every later re-derive of the same day —
-    // which is the pin's whole reason for existing — so Readiness detail drew
-    // 74 in the ring and 69 as today's point in the chart underneath it. One
-    // day, one readiness number.
     final pin = key == 'readiness' ? await LocalDb.frozenHeadline() : null;
-
-    // ONE read of metric_series_version, two consumers. `_algoBreaks` used to
-    // fetch it privately; `coverage_devices` rides on the same rows because it
-    // is the same table, the same day key and the same write.
+    // ONE read of metric_series_version, two consumers (see _seriesChart).
     final versions = await LocalDb.metricSeriesVersions();
-
-    // WHO CONTRIBUTED TO EACH DAY'S SCALARS (final-plan §4.4). Days with no
-    // stamp, and days stamped before schema 50, are simply ABSENT — never
-    // attributed to the primary by assumption, which is the same rule
-    // `source` and `device_family` on this table already follow.
-    final coverageDevices = {
-      for (final r in versions)
-        if (r['coverage_devices'] case final String s when s.isNotEmpty)
-          r['date'] as String: s.split(','),
-    };
-    final distinctDevices = {for (final ids in coverageDevices.values) ...ids};
-
+    final wear = await LocalDb.metricSeries('worn_min');
+    final seriesDays = {for (final r in rows) r['date'] as String};
+    final meta = seriesDays.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : await LocalDb.recentDayResultsMeta(seriesDays.length);
     final oldestDaySec =
         rows.isEmpty ? _nowSec() : _dateToEpoch(rows.first['date'] as String);
+    final distinctDevices = _coverageDevices(versions)
+        .values
+        .expand((ids) => ids)
+        .toSet();
+    return _seriesChart(
+      rows: rows,
+      wear: wear,
+      versions: versions,
+      meta: meta,
+      pin: pin,
+      coverageRecording: signals.isEmpty || distinctDevices.length < 2
+          ? const <String, List<String>>{}
+          : await LocalDb.coverageDevicesByDay(
+              signals: signals.toList(),
+              fromSec: oldestDaySec,
+              toSec: _nowSec(),
+            ),
+    );
+  });
 
-    // When the newest of the days drawn here was computed — the max of their
-    // day_result rows' own times (metric_series carries none), so "As of"
-    // names a row that was read. Null when none of them has a row.
+  /// The charts [keys] name, shaped exactly as [getChart] shapes each, from ONE
+  /// `LocalDb.metricSeriesBundle` read. Keys that [getChart] special-cases
+  /// (`hr`) or that need extra queries (`signals`) are not for here.
+  Future<Map<String, Map<String, dynamic>>> _getCharts(
+    List<String> keys,
+  ) async {
+    assert(!keys.contains('hr'), 'hr is a curve, not a stored series');
+    final trend = {for (final k in keys) k: _trendKey(k)};
+    final pin = trend.values.contains('readiness')
+        ? await LocalDb.frozenHeadline()
+        : null;
+    final all = await LocalDb.metricSeriesBundle([
+      ...{...trend.values, 'worn_min'},
+    ]);
+    final wear = all.rows['worn_min']!;
+    return {
+      for (final e in trend.entries)
+        e.key: _seriesChart(
+          rows: all.rows[e.value]!,
+          wear: wear,
+          versions: all.versions,
+          // getChart asks for the newest N day_result rows where N is THIS
+          // series' day count; the shared read is the longest series' N, so
+          // cut it back to this one's to give the same "As of".
+          meta: all.meta
+              .take({for (final r in all.rows[e.value]!) r['date']}.length)
+              .toList(),
+          pin: e.value == 'readiness' ? pin : null,
+          coverageRecording: const <String, List<String>>{},
+        ),
+    };
+  }
+
+  @override
+  Future<SleepDetailBundle> getSleepDetailBundle(
+    String day, {
+    required List<String> chartKeys,
+    required int windowDays,
+  }) async {
+    final night = await getDaySleepV2(day);
+    final timeline = await getDayTimeline(day);
+    final insights = await getInsights();
+    final charts = await _getCharts(chartKeys);
+    final windows = await sleepWindows(days: windowDays);
+    return SleepDetailBundle(
+      night: night,
+      timeline: timeline,
+      insights: insights,
+      charts: charts,
+      windows: windows,
+    );
+  }
+
+  /// `{date -> [device ids]}` from the version rows. Days with no stamp, and
+  /// days stamped before schema 50, are simply ABSENT — never attributed to the
+  /// primary by assumption (final-plan §4.4).
+  Map<String, List<String>> _coverageDevices(
+    List<Map<String, dynamic>> versions,
+  ) => {
+    for (final r in versions)
+      if (r['coverage_devices'] case final String s when s.isNotEmpty)
+        r['date'] as String: s.split(','),
+  };
+
+  /// The ONE shaping of a stored scalar series into the chart map, shared by
+  /// [getChart] and the combined sleep read so the two cannot drift.
+  ///
+  /// THE PIN WINS: getToday serves the frozen morning headline for readiness,
+  /// but metric_series is rewritten by every later re-derive of the same day, so
+  /// Readiness detail drew 74 in the ring and 69 as today's point underneath it.
+  /// [meta] is the newest-N day_result rows for the days drawn; "As of" is the
+  /// max `computed_at` among those days (null when none has a row).
+  Map<String, dynamic> _seriesChart({
+    required List<Map<String, dynamic>> rows,
+    required List<Map<String, dynamic>> wear,
+    required List<Map<String, dynamic>> versions,
+    required List<Map<String, dynamic>> meta,
+    required ({String day, int value})? pin,
+    required Map<String, List<String>> coverageRecording,
+  }) {
     final seriesDays = {for (final r in rows) r['date'] as String};
     int? computedAt;
-    if (seriesDays.isNotEmpty) {
-      for (final m in await LocalDb.recentDayResultsMeta(seriesDays.length)) {
-        if (!seriesDays.contains(m['date'])) continue;
-        final at = (m['computed_at'] as num?)?.toInt();
-        if (at != null && (computedAt == null || at > computedAt)) {
-          computedAt = at;
-        }
+    for (final m in meta) {
+      if (!seriesDays.contains(m['date'])) continue;
+      final at = (m['computed_at'] as num?)?.toInt();
+      if (at != null && (computedAt == null || at > computedAt)) {
+        computedAt = at;
       }
     }
-
     return {
       'computed_at': computedAt,
       'points': [
@@ -2027,39 +2105,21 @@ class LocalRepositoryImpl extends LocalRepository {
       ],
       // L4 — THE DENOMINATOR. Worn minutes for the same days, so a long trend
       // can be read against how much of it was actually measured instead of
-      // being an attendance chart wearing a physiology label. Deliberately
-      // unflattering: a month with four nights of wear should look like a month
-      // with four nights of wear, not like a flat line.
-      //
-      // `worn_min` is a live metric_series key present every day, so this is the
-      // same scan again, not a new store. Wear OLDER than the 3-day substrate
-      // window is knowable ONLY through this derived key — nothing here
-      // reconstructs it, and a day with no `worn_min` row is simply absent.
+      // being an attendance chart wearing a physiology label. A day with no
+      // `worn_min` row is simply absent.
       'wear': [
-        for (final r in await LocalDb.metricSeries('worn_min'))
+        for (final r in wear)
           {'t': _dateToEpoch(r['date'] as String), 'v': r['value']},
       ],
-      // L13 — WHERE THE MATHS CHANGED. The dates at which the algo version
-      // behind these values differs from the day before it. This does NOT make
-      // the values on either side comparable; nothing can (days lock ~48 h
-      // after wake, and the substrate to re-derive them is gone at 3 days). It
-      // makes the seam visible, so a change-point search refuses to run across
-      // one instead of reporting the day of a version bump as a finding about
-      // the user.
+      // L13 — WHERE THE MATHS CHANGED: dates at which the algo version differs
+      // from the day before, so a change-point search refuses to run across one.
       'algo_breaks': _algoBreaks(versions),
-      'coverage_devices': coverageDevices,
-      // WHAT WAS RECORDING, for the middle row of §6.2's readout. Queried ONLY
-      // when the day sets above already name two or more devices — a
-      // single-device install runs no additional statement, ever.
-      'coverage_recording': signals.isEmpty || distinctDevices.length < 2
-          ? const <String, List<String>>{}
-          : await LocalDb.coverageDevicesByDay(
-              signals: signals.toList(),
-              fromSec: oldestDaySec,
-              toSec: _nowSec(),
-            ),
+      'coverage_devices': _coverageDevices(versions),
+      // WHAT WAS RECORDING (§6.2), queried by the caller only when two or more
+      // devices are named above.
+      'coverage_recording': coverageRecording,
     };
-  });
+  }
 
   int _nowSec() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
