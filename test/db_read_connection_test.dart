@@ -34,6 +34,8 @@ void main() {
   setUp(() async {
     await LocalDb.close();
     LocalDb.readerEnabled = true;
+    // The reader exists only in the foreground; the UI sets this on resume.
+    await LocalDb.setForeground(true);
     LocalDb.readerOpenerForTest = null;
     LocalDb.dbName = 'read_conn_${n++}.db';
     await _putSeries('2026-08-01', 1);
@@ -152,5 +154,49 @@ void main() {
     LocalDb.readerEnabled = false;
     expect(identical(await LocalDb.reader, await LocalDb.instance), isTrue);
     expect((await LocalDb.metricSeries('k')).length, 2);
+  });
+
+  // ── foreground-only ────────────────────────────────────────────────────────
+  test('a process starts with no reader: background/headless never opens one',
+      () async {
+    await LocalDb.close();
+    LocalDb.debugResetForeground();
+    LocalDb.dbName = 'read_conn_${n++}.db';
+    await _putSeries('2026-08-01', 1);
+    expect((await LocalDb.metricSeries('k')).length, 1);
+    expect(LocalDb.hasReader, isFalse);
+    expect(identical(await LocalDb.reader, await LocalDb.instance), isTrue);
+  });
+
+  test('backgrounding closes the reader and reads use the writer without '
+      'reopening it', () async {
+    await LocalDb.metricSeries('k');
+    expect(LocalDb.hasReader, isTrue);
+    await LocalDb.setForeground(false);
+    expect(LocalDb.hasReader, isFalse);
+    final w = await LocalDb.instance;
+    expect(identical(await LocalDb.reader, w), isTrue);
+    expect((await LocalDb.metricSeries('k')).length, 2);
+    expect((await LocalDb.metricSeries('k')).length, 2);
+    expect(LocalDb.hasReader, isFalse);
+  });
+
+  test('resuming allows the next read to reopen the reader', () async {
+    await LocalDb.setForeground(false);
+    await LocalDb.metricSeries('k');
+    expect(LocalDb.hasReader, isFalse);
+    await LocalDb.setForeground(true);
+    expect(LocalDb.hasReader, isFalse, reason: 'lazy: opens on the next read');
+    await LocalDb.metricSeries('k');
+    expect(LocalDb.hasReader, isTrue);
+  });
+
+  test('backgrounding during an in-flight reader open leaves no reader',
+      () async {
+    final opening = LocalDb.metricSeries('k');
+    final bg = LocalDb.setForeground(false);
+    await opening;
+    await bg;
+    expect(LocalDb.hasReader, isFalse);
   });
 }
