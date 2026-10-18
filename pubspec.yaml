@@ -542,14 +542,21 @@ dependencies:
       # persisted output changed, so kAlgoVersion 104 (§3.4). Verified:
       #   `git show 0fc5768:lib/src/onehz/clinical/irregular_diagnostics.dart | grep diagnosticArtifactFraction`
       #
-      # REPIN @ bf79e84 (same branch, on fa77ab4 = 0fc5768 + test-only property
+      # REPIN @ 5af20f8 (feat/aggregator, on bf79e84): adds the mergeable
+      # aggregator API (package:openstrap_analytics/aggregate.dart) beside the
+      # existing functions. hypnogramMetrics, phillipsSri and readinessLnRmssd
+      # now run through it with bit-identical output (frozen-reference parity
+      # tests); every other aggregator is additive. RunningMoments JSON writes
+      # non-finite doubles as strings (finite values unchanged). No output
+      # change for any valid input, so no kAlgoVersion bump.
+      # Previous: REPIN @ bf79e84 (same branch, on fa77ab4 = 0fc5768 + test-only property
       # laws): checkpoint readers refuse impossible saved state (IntHistogram
       # count overflow, IrregularScreenState and RrCorrector counters out of
       # their stage bounds) with FormatException; add/merge throw StateError on
       # int64 overflow. No output change for any valid input, so no kAlgoVersion
       # bump. Verified:
       #   `git show bf79e84:lib/src/onehz/foundations/rr_correction_stream.dart | grep "invalid normalFinal"`
-      ref: bf79e847a8a6ec6dd949bb8fbb7b7ad2ca05d108
+      ref: 5af20f8163d67dfa40e093e980fe36f3ea29b7e9
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
