@@ -66,6 +66,16 @@ abstract class LocalRepository {
   Future<Map<String, dynamic>> getToday() =>
       throw UnimplementedError('re-layer: getToday');
 
+  /// [getToday] without waiting for the freshness refresh: for a screen's first
+  /// paint. `status.refresh_pending` is true when the stored row named another
+  /// day; nothing of that row is then presented as today's. Default: the full
+  /// read (a repository with no refresh to defer).
+  Future<Map<String, dynamic>> getTodayStored() => getToday();
+
+  /// Runs the freshness refresh `getToday` would have run, single-flight.
+  /// Default: nothing to refresh.
+  Future<void> refreshTodayFreshness() async {}
+
   /// Sleep ONSET/OFFSET for the most recent [days] days, newest first.
   ///
   /// One projected query over `day_result.window_json` — no bundle decode and

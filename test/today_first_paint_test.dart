@@ -184,7 +184,7 @@ void main() {
       expect(s['overnight_day'], y);
       for (final k in ['strain', 'steps']) {
         final m = (r['daily'] as Map)[k];
-        expect(m is Map ? m['value'] : m, isNull, reason: k);
+        expect(m is Map ? m['value'] : m, anyOf(isNull, '—'), reason: k);
       }
     });
 

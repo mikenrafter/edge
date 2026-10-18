@@ -333,7 +333,38 @@ class LocalRepositoryImpl extends LocalRepository {
   // nocturnal:{…}, resp:{…}, hrv:{…}, skin_temp:{…}, step_goal}.
 
   @override
-  Future<Map<String, dynamic>> getToday() => ReadPerf.reading('getToday', () async {
+  Future<Map<String, dynamic>> getToday() =>
+      ReadPerf.reading('getToday', () => _readToday(refresh: true));
+
+  /// What a screen can paint at once. The stored `today` row is read as it is;
+  /// when it names another day (or there is none) the refresh is NOT run here.
+  /// The answer then says so (`status.refresh_pending`) and carries only what
+  /// stays true without the refresh: today's activity is absent (`building`),
+  /// and the last stored night is offered as a HELD-OVER night under its own
+  /// day, never as today's. The caller runs [refreshTodayFreshness] after its
+  /// first frame and reads again.
+  @override
+  Future<Map<String, dynamic>> getTodayStored() =>
+      ReadPerf.reading('getTodayStored', () => _readToday(refresh: false));
+
+  static Future<void>? _todayRefresh;
+
+  /// The freshness refresh for a screen that already painted. One at a time:
+  /// callers that arrive while it runs join it. The latch is cleared in
+  /// `finally`, so a throw cannot wedge later opens.
+  @override
+  Future<void> refreshTodayFreshness() =>
+      _todayRefresh ??= _refreshTodayOnce();
+
+  Future<void> _refreshTodayOnce() async {
+    try {
+      await LocalDb.refreshComputeFreshness();
+    } finally {
+      _todayRefresh = null;
+    }
+  }
+
+  Future<Map<String, dynamic>> _readToday({required bool refresh}) async {
     // Refresh when the row is missing OR when its `today_day` is no longer the
     // real local day. The row is stamped by the last derive, so an app left
     // running over midnight (band on the charger, or an imported-only user)
@@ -345,19 +376,37 @@ class LocalRepositoryImpl extends LocalRepository {
       'today',
       r'$.today_day',
     );
-    if (todayDay != _todayLocalLabel()) {
+    final stale = todayDay != _todayLocalLabel();
+    if (stale && refresh) {
       await LocalDb.refreshComputeFreshness();
       todayDay = await LocalDb.computeFreshnessStringField(
         'today',
         r'$.today_day',
       );
     }
-    final todayFresh = await _freshness('today');
+    var todayFresh = await _freshness('today');
+    // Stored mode over a row that names another day: nothing in it is today's.
+    // Its night survives only as the prior night under its own day; its
+    // activity (and the day it named) is dropped.
+    final pending = stale && !refresh;
+    if (pending) {
+      todayDay = _todayLocalLabel();
+      final night = todayFresh?['overnight_day']?.toString();
+      todayFresh = {
+        'overnight_state': 'building',
+        'activity_state': 'building',
+        if (night != null) ...{
+          'overnight_day': night,
+          'overnight_computed_at': todayFresh?['overnight_computed_at'],
+          'showing_prior_overnight': true,
+        },
+      };
+    }
     todayDay ??= _todayLocalLabel();
     final todayBundle = await _bundle(todayDay);
     final overnightDay = todayFresh?['overnight_day']?.toString();
     final overnightBundle = overnightDay == null
-        ? await _latestBundle()
+        ? (pending ? null : await _latestBundle())
         : await _bundle(overnightDay);
     final overnightState =
         todayFresh?['overnight_state']?.toString() ?? 'missing';
@@ -383,6 +432,7 @@ class LocalRepositoryImpl extends LocalRepository {
           'today_day': todayDay,
           'overnight_state': overnightState,
           'activity_state': activityState,
+          if (pending) 'refresh_pending': true,
         },
         'step_goal': await _stepGoal(),
       };
@@ -597,10 +647,11 @@ class LocalRepositoryImpl extends LocalRepository {
         'overnight_computed_at': todayFresh?['overnight_computed_at'],
         'showing_prior_overnight':
             todayFresh?['showing_prior_overnight'] == true,
+        if (pending) 'refresh_pending': true,
       },
       'step_goal': await _stepGoal(),
     };
-  });
+  }
 
   /// How long a stored `crossday` rollup may outlive the day it was built for.
   ///

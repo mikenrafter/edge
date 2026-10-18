@@ -1504,6 +1504,11 @@ class HomeData {
   final String? illnessDay;
   final double? illnessZ;
 
+  /// The data was read before the freshness refresh ran (see
+  /// [LocalRepository.getTodayStored]); today's figures are absent, not yet
+  /// worked out. The screen asks for the refresh after this frame.
+  final bool refreshPending;
+
   const HomeData({
     this.name,
     this.dayId,
@@ -1534,6 +1539,7 @@ class HomeData {
     this.activityAt,
     this.overnightDay,
     this.activityDay,
+    this.refreshPending = false,
   });
 
   /// The three illness fields, replaced together. Test-facing sugar, and they
@@ -1596,6 +1602,7 @@ class HomeData {
         activityAt: activityAt,
         overnightDay: overnightDay,
         activityDay: activityDay,
+        refreshPending: refreshPending,
       );
 
   /// A day OTHER than today, for the Home day switcher.
@@ -1638,8 +1645,11 @@ class HomeData {
     );
   }
 
-  static Future<HomeData> load(LocalRepository repo, [AppLocalizations? l]) async {
-    final today = await repo.getToday();
+  /// [stored]: read what is persisted and do not wait for the freshness
+  /// refresh (first paint); [refreshPending] then says whether one is owed.
+  static Future<HomeData> load(LocalRepository repo, [AppLocalizations? l,
+      bool stored = false]) async {
+    final today = await (stored ? repo.getTodayStored() : repo.getToday());
     final cd = await repo.getInsights();
     final profile = await repo.getProfile();
 
@@ -1725,6 +1735,7 @@ class HomeData {
           heldOver == null ? (status?['overnight_day'])?.toString() : null,
       activityAt: computedAtOf(status?['activity_computed_at']),
       activityDay: status?['activity_day']?.toString(),
+      refreshPending: status?['refresh_pending'] == true,
     );
   }
 }
@@ -1857,6 +1868,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void reload() {
     _latency.revisionBumped();
+    _justRefreshed = false;
     _load();
   }
 
@@ -1886,12 +1898,17 @@ class _HomeScreenState extends State<HomeScreen>
       final day = _day;
       final l = AppLocalizations.of(context);
       final d = day == null || day == todayLabel()
-          ? await HomeData.load(repo, l)
+          ? await HomeData.load(repo, l, true)
           : await HomeData.loadForDay(repo, day, l);
       final days = await repo.availableDays();
       if (stillNewest(#home, t)) {
         setState(() => (_d = d, _days = days, _loading = false, _failed = false));
         _recordRender();
+        if (d.refreshPending) {
+          _refreshAfterPaint(repo);
+        } else {
+          _justRefreshed = false;
+        }
       }
     } catch (_) {
       if (stillNewest(#home, t)) {
@@ -1900,6 +1917,38 @@ class _HomeScreenState extends State<HomeScreen>
         // than time a later retry from this bump.
         _latency.committed();
       }
+    }
+  }
+
+  /// The freshness refresh `getToday` used to run before the first paint. The
+  /// repository joins overlapping calls into one run, and `_refreshing` keeps
+  /// this screen from asking twice; it is cleared in `finally` so a failed
+  /// refresh cannot stop the next load from asking again. On landing, read
+  /// again: the stored row now names today.
+  bool _refreshing = false;
+  bool _justRefreshed = false;
+  Future<void> _refreshAfterPaint(LocalRepository repo) async {
+    // A read right after a refresh that is STILL pending is not asked again
+    // (it would loop); a revision reload starts over.
+    if (_refreshing) return;
+    if (_justRefreshed) {
+      _justRefreshed = false;
+      return;
+    }
+    _refreshing = true;
+    var ok = false;
+    try {
+      await repo.refreshTodayFreshness();
+      ok = true;
+    } catch (_) {
+      // Stays on the honest "still being worked out" state; the next revision
+      // reloads and asks again.
+    } finally {
+      _refreshing = false;
+    }
+    if (ok && mounted) {
+      _justRefreshed = true;
+      _load();
     }
   }
 

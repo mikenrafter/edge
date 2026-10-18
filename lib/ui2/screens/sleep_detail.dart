@@ -174,6 +174,10 @@ class SleepData {
   ///   * [solMin] — sleep-onset latency, and ONLY on a user-set window.
   final double? unobservedMin, awakenings, longestSleepMin, solMin;
 
+  /// Read before the freshness refresh ran; a newer night may exist. The
+  /// screen asks for the refresh after painting and reads again.
+  final bool refreshPending;
+
   const SleepData({
     this.day,
     this.days = const [],
@@ -190,6 +194,7 @@ class SleepData {
     this.awakenings,
     this.longestSleepMin,
     this.solMin,
+    this.refreshPending = false,
   });
 
   bool get hasNight => night['duration_min'] is num;
@@ -247,7 +252,10 @@ class SleepData {
   }
 
   static Future<SleepData> load(LocalRepository repo, {String? want}) async {
-    final today = await repo.getToday();
+    // Stored read: the night to open is all this needs from `getToday`, and
+    // the freshness refresh behind it must not hold the first paint.
+    final today = await repo.getTodayStored();
+    final pending = (today['status'] as Map?)?['refresh_pending'] == true;
     // THE NIGHT `getToday` ACTUALLY SERVED. Home's Sleep card is that night, so
     // tapping it has to open that night. Resolving on `today_day` alone opened
     // a day that has a day_result but no night — wear the band all day with it
@@ -259,7 +267,7 @@ class SleepData {
         want,
         heldOverNightOf(today) ??
             (today['status'] as Map?)?['today_day']?.toString());
-    if (day == null) return SleepData(days: days);
+    if (day == null) return SleepData(days: days, refreshPending: pending);
 
     // ONE repository call for everything the night needs: the repository reads
     // all the series in a single statement instead of ~50 serialized ones.
@@ -317,6 +325,7 @@ class SleepData {
       awakenings: wakeups,
       longestSleepMin: longest,
       solMin: sol,
+      refreshPending: pending,
     );
   }
 }
@@ -371,7 +380,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
   bool get revisionReloads => widget.data == null;
 
   @override
-  void reload() => _load();
+  void reload() {
+    _justRefreshed = false;
+    _load();
+  }
 
   // A locale change and `_goDay` can each kick off a `_load()` while a prior
   // one is still in flight; whichever resolves last would otherwise win and
@@ -399,9 +411,44 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           : null;
       if (mounted && gen == _loadGen) {
         setState(() => (_d = d, _rough = rough, _loading = false));
+        if (d.refreshPending) {
+          _refreshAfterPaint(repo);
+        } else {
+          _justRefreshed = false;
+        }
       }
     } catch (_) {
       if (mounted && gen == _loadGen) setState(() => _loading = false);
+    }
+  }
+
+  bool _refreshing = false;
+  bool _justRefreshed = false;
+
+  /// The freshness refresh, after the night is on screen; read again when it
+  /// lands (a newer night may now be the held-over one). Single-flight here and
+  /// in the repository; the latch clears in `finally`.
+  Future<void> _refreshAfterPaint(LocalRepository repo) async {
+    // A read right after a refresh that is STILL pending is not asked again
+    // (it would loop); a revision reload starts over.
+    if (_refreshing) return;
+    if (_justRefreshed) {
+      _justRefreshed = false;
+      return;
+    }
+    _refreshing = true;
+    var ok = false;
+    try {
+      await repo.refreshTodayFreshness();
+      ok = true;
+    } catch (_) {
+      // The night on screen stays; the next revision reloads.
+    } finally {
+      _refreshing = false;
+    }
+    if (ok && mounted) {
+      _justRefreshed = true;
+      _load();
     }
   }
 
