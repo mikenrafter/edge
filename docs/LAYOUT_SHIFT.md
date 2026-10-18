@@ -182,7 +182,10 @@ scrolled Home reload. No error-level shifts, so there are no Known findings.
 Warnings seen (fake pumps, standard policy): Health refresh landing, 2
 warnings (top: a card column at 500 ms, 0.06); Readiness refresh landing, 9
 warnings (top: a control at 500 ms, 0.16 - the "building" block gives way to
-the chart key and breakdown). Route pushes use `ShiftProbe(skipCoveredRoutes:
+the chart key and breakdown). Phase 18 fixed both: Readiness detail and Health (Last night) hold the landed
+layout while the refresh is pending (ring box with a dash, dash rows, no tail
+until it lands), and both refresh-landing tests now assert no shift finding.
+Route pushes use `ShiftProbe(skipCoveredRoutes:
 true)`: the covered page is not scored, because its slide is the framework's
 transition.
 

@@ -234,7 +234,15 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
               style: F.cap.copyWith(color: p.ink2)),
           const SizedBox(height: S.x3),
         ],
-        if (v == null) ...[
+        if (v == null && d.refreshPending)
+          // The stored row is another day's and today's score is still being
+          // worked out, so this is not yet an absence to explain. It holds the
+          // landed ring's exact box (an empty track and a dash, never another
+          // day's number): the card swapping for the ring, the breakdown
+          // section appearing and the absence diagnostic going away used to
+          // move the whole page when the refresh landed.
+          _ringSurface(p, Ring(0, p.track, p.track, stroke: 14, t: 1), '—', ' ')
+        else if (v == null) ...[
           // No `why:`. The pipeline records why readiness abstained on every
           // day it does, and the "What was missing" section directly below is
           // built from that record — a sentence written here was competing
@@ -253,30 +261,16 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
                           'The last night scored was '
                               '${prettyDay(d.heldOverNight, l)}.')) ??
               const SizedBox.shrink(),
-          if (d.absentDiag != null)
+          if (d.absentDiag != null && !d.refreshPending)
             Section(l?.readinessDetailWhatWasMissing ?? 'What was missing',
                 _absence(c, p, d.absentDiag!)),
         ] else
-          Surface(
-            child: Column(children: [
-              SizedBox(
-                width: 150,
-                height: 150,
-                child: Stack(alignment: Alignment.center, children: [
-                  CustomPaint(
-                    size: const Size(150, 150),
-                    painter: Ring(d.readiness.normalized(100), p.on(band.color),
-                        p.track,
-                        stroke: 14, t: animate(c, 1)),
-                  ),
-                  Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text('${v.round()}', style: F.n48.copyWith(color: p.ink)),
-                    Text(band.label, style: F.cap.copyWith(color: p.ink3)),
-                  ]),
-                ]),
-              ),
-            ]),
-          ),
+          _ringSurface(
+              p,
+              Ring(d.readiness.normalized(100), p.on(band.color), p.track,
+                  stroke: 14, t: animate(c, 1)),
+              '${v.round()}',
+              band.label),
 
         if (d.breakdown.isNotEmpty) ...[
           Section(l?.readinessDetailWhatWentIntoIt ?? 'What went into it',
@@ -298,7 +292,10 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
               ),
             ]),
           ),
-        ] else if (v != null)
+        ] else if (v != null || d.refreshPending)
+          // Pending too: the breakdown comes from the cross-day insights, not
+          // from today's score, so "none yet" is true before the refresh lands
+          // and the section is already in place when it does.
           Section(
             l?.readinessDetailWhatWentIntoIt ?? 'What went into it',
             StatusCard(
@@ -328,6 +325,25 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
       ],
     ]);
   }
+
+  /// The headline card, shared by the scored state and the building one so
+  /// both occupy the same box.
+  Widget _ringSurface(P p, CustomPainter ring, String big, String caption) =>
+      Surface(
+        child: Column(children: [
+          SizedBox(
+            width: 150,
+            height: 150,
+            child: Stack(alignment: Alignment.center, children: [
+              CustomPaint(size: const Size(150, 150), painter: ring),
+              Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(big, style: F.n48.copyWith(color: p.ink)),
+                Text(caption, style: F.cap.copyWith(color: p.ink3)),
+              ]),
+            ]),
+          ),
+        ]),
+      );
 
   /// The last 90 CALENDAR days, trimmed to start at the first day that
   /// actually has a score — so the x labels span real dates and the empty run
