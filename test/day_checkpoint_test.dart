@@ -606,7 +606,7 @@ void main() {
 
       await rows(rowsFirst, rowsAll);
       final log = <String>[];
-      final headless = newHeadlessDerivationEngine(log.add);
+      final headless = await newHeadlessDerivationEngine(log.add);
       await headless.run(profile);
       expect(ckptLines(log), ['[perf] checkpoint $day resume folded=1800']);
       final state = headless.debugCalculationState(day)!;

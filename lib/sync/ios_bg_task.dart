@@ -113,7 +113,7 @@ class IosBgTask {
             // Heavy derive pass (full sleep staging + 24h spectra, stale days).
             try {
               final profile = await _loadProfile();
-              final engine = newHeadlessDerivationEngine(
+              final engine = await newHeadlessDerivationEngine(
                   (l) => debugPrint('[ios-bgtask-derive] $l'));
               await engine.run(profile, heavy: true);
               // Baseline-dirty rescan on the iOS BGTask tick: refresh
@@ -129,7 +129,7 @@ class IosBgTask {
             // This keeps today's metrics fresh without tripping the CPU watchdog.
             try {
               final profile = await _loadProfile();
-              final engine = newHeadlessDerivationEngine(
+              final engine = await newHeadlessDerivationEngine(
                   (l) => debugPrint('[ios-bgrefresh-derive] $l'));
               await engine.run(profile, heavy: false);
               await _refreshWidgetSnapshot(profile);

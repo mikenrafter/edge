@@ -139,10 +139,41 @@ PowerSource? debugHeadlessPowerSource;
 DerivationEngine Function({void Function(String)? log, bool background})?
     debugHeadlessEngineFactory;
 
-/// The one place a headless entry builds its [DerivationEngine].
-DerivationEngine newHeadlessDerivationEngine(void Function(String) log) =>
-    (debugHeadlessEngineFactory ?? DerivationEngine.new)(
-        log: log, background: true);
+/// The saved Calculations mode (balanced when unset or unknown). Read from
+/// SharedPreferences directly: the headless isolate has not loaded [Prefs].
+Future<CalcPowerMode> _savedCalcPowerMode() async {
+  final rawMode =
+      (await SharedPreferences.getInstance()).getString(Prefs.calcPowerMode);
+  return CalcPowerMode.values
+      .firstWhere((m) => m.name == rawMode, orElse: () => CalcPowerMode.balanced);
+}
+
+/// The one place a headless entry builds its [DerivationEngine]. It carries the
+/// finalization audit like the foreground engine: the saved Calculations mode
+/// and the phone's power read at the moment of finalization. Power that cannot
+/// be read counts as unplugged, so the day is marked pending, never audited.
+Future<DerivationEngine> newHeadlessDerivationEngine(
+    void Function(String) log) async {
+  final engine = (debugHeadlessEngineFactory ?? DerivationEngine.new)(
+      log: log, background: true);
+  try {
+    engine.auditPolicy = CalcPowerPolicy(await _savedCalcPowerMode());
+    engine.auditPowerRead = () async {
+      final owned = debugHeadlessPowerSource == null;
+      final source = debugHeadlessPowerSource ?? BatteryPowerSource();
+      try {
+        return await source.read();
+      } catch (_) {
+        return PowerState.unplugged;
+      } finally {
+        if (owned) (source as BatteryPowerSource).dispose();
+      }
+    };
+  } catch (_) {
+    // Mode unreadable: no audit and no pending mark, as before.
+  }
+  return engine;
+}
 
 /// Whether an automatic derive may run in this headless wake or iOS background
 /// task: the saved Calculations mode against the phone's power now. A platform that
@@ -176,9 +207,9 @@ Future<bool> mayRunHeadlessAutomaticDerive({PowerSource? powerSource}) async {
 Future<void> headlessDeriveAfterSync() async {
   if (await mayRunHeadlessAutomaticDerive()) {
     try {
-      await newHeadlessDerivationEngine(
+      await (await newHeadlessDerivationEngine(
         (l) => _bgLog('[bgsync-derive] $l'),
-      ).run(await _loadProfile());
+      )).run(await _loadProfile());
     } catch (e) {
       _bgLog('[bgsync] derive skipped: $e');
     }
@@ -205,9 +236,9 @@ Future<bool> headlessDeriveConfirmedWakeDay(int moment) async {
   try {
     final day = await DbWakeConfirmationStore().blockDayId() ??
         dayLabelOf(DateTime.fromMillisecondsSinceEpoch(moment * 1000));
-    await newHeadlessDerivationEngine(
+    await (await newHeadlessDerivationEngine(
       (l) => _bgLog('[bgsync-derive] $l'),
-    ).runDays(await _loadProfile(), {day}, force: true);
+    )).runDays(await _loadProfile(), {day}, force: true);
     return true;
   } catch (e) {
     _bgLog('[bgsync] wake-day derive skipped: $e');
