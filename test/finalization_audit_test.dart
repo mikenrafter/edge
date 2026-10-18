@@ -230,16 +230,20 @@ void main() {
   group('auditFinalization (pure)', () {
     Map<String, dynamic> base() => {
           'computed_at': 1,
-          'scalars': {'rhr': 51.5, 'rmssd': 44.0, 'nan': double.nan},
-          'series': {
-            'hrv_day': {
+          'scalars': <String, dynamic>{
+            'rhr': 51.5,
+            'rmssd': 44.0,
+            'nan': double.nan,
+          },
+          'series': <String, dynamic>{
+            'hrv_day': <String, dynamic>{
               'v': [
                 {'t': 1, 'v': 40.0},
                 {'t': 2, 'v': 41.0},
               ]
             }
           },
-          'sleep': {'stages': ['a', 'b']},
+          'sleep': <String, dynamic>{'stages': ['a', 'b']},
         };
 
     test('identical payloads agree; computed_at and NaN are not differences',
@@ -272,10 +276,12 @@ void main() {
       final b = base();
       (b['sleep'] as Map)['stages'] = ['a'];
       (b['scalars'] as Map)['rmssd'] = 44;
-      final before = jsonEncode(a);
+      // base() holds a NaN, which jsonEncode refuses without a fallback.
+      String snap(Object o) => jsonEncode(o, toEncodable: (x) => '$x');
+      final before = snap(a);
       final r = auditFinalization(a, b);
       expect(r.diffKeys, ['scalars.rmssd', 'sleep.stages']);
-      expect(jsonEncode(a), before);
+      expect(snap(a), before);
     });
 
     test('log line format', () {
