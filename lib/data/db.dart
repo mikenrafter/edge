@@ -13377,8 +13377,9 @@ class LocalDb {
       final rows = await tx.query('activity_review_meta', columns: ['revision']);
       final revision = rows.isEmpty ? 0 : rows.single['revision'] as int;
       if (revision != expectedRevision) return false;
+      // nowMs, the clock every other baselines write stamps with.
       await tx.insert('baselines', {'key': key, 'payload_json': payloadJson,
-        'updated_at': DateTime.now().millisecondsSinceEpoch}, conflictAlgorithm: ConflictAlgorithm.replace);
+        'updated_at': nowMs()}, conflictAlgorithm: ConflictAlgorithm.replace);
       return true;
     });
   }
