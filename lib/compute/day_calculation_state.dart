@@ -429,13 +429,6 @@ class DayCalculationState {
       _cvhrFolded += nn.length;
       _cvhrFed = _nightNn.length;
     }
-    // Nothing settled yet: the stream has no first beat (it reports a
-    // degenerate span for a tail-only night), and the whole night is the tail,
-    // so the batch screen over it is both exact and cheap.
-    if (_cvhrFed == 0) {
-      return cvhrApneaScreen(_tailNn, _tailNnTimes,
-          artifactFraction: artifactFraction);
-    }
     return _cvhrStream!.snapshot(
       tailNnMs: _tailNn,
       tailNnTimesMs: _tailNnTimes,

@@ -2041,7 +2041,10 @@ const int kAlgoVersion = 104;
 // REPIN @ 07d6af0 (feat/aggregator, on 972f0b2): exact CvhrStream
 // (snapshot == cvhrApneaScreen(prefix) bit for bit), additive. No output
 // change, so no kAlgoVersion bump.
-const String kAnalyticsPin = '07d6af0486d732ddf2dfdc0f2765e3841584d0f5';
+// REPIN @ 914bb6a (feat/aggregator, on 07d6af0): a fresh CvhrStream snapshots
+// a tail-only night like cvhrApneaScreen; edge's fallback is gone. No output
+// change, so no kAlgoVersion bump.
+const String kAnalyticsPin = '914bb6a5b07d8b65fbea38c1477405ee9b31e829';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both
