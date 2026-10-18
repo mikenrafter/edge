@@ -383,9 +383,121 @@ class LocalDb {
   static bool get isStoreOpen => _db?.isOpen ?? false;
 
   static Future<void> close() async {
+    // Reader first: it is a view of the writer's file and must never outlive it.
+    await _closeReader();
     if (_db != null) {
       await _db!.close();
       _db = null;
+    }
+  }
+
+  // ── READ CONNECTION ─────────────────────────────────────────────────────────
+  // sqflite runs every statement on one handle serially, so a sync commit or a
+  // derive write holding a transaction made every screen read wait behind it.
+  // The file is in WAL mode, where a second connection reads the last committed
+  // snapshot concurrently with the writer. LocalDb owns both handles (one owner
+  // per mutable state).
+  //
+  // Rules:
+  //  * Opened lazily, only AFTER the writer is open (so migrations and
+  //    `_repairOpenSchema` have already run on the writer; the reader never
+  //    migrates), same path, `singleInstance: false`, read-write flags (a
+  //    read-only open of a WAL file can fail when -shm must be created, notably
+  //    on iOS) and then `PRAGMA query_only=ON`, so it can never write.
+  //  * Only named, pure-SELECT, screen-open methods use [reader]. Writes, reads
+  //    inside a write transaction and anything needing its own uncommitted rows
+  //    stay on [instance]. getToday's freshness refresh writes, so it stays too.
+  //  * Closed with the writer and dropped by [_markStoreReplaced] (wipe, merge,
+  //    rebuild), then reopened lazily; any trouble opening it falls back to the
+  //    writer handle, so a read never fails because of the reader.
+  //  * Background/headless runs share this isolate's statics (and so this pair);
+  //    their commits go through the writer untouched.
+  static Database? _readDb;
+  static Database? _readerBeside;
+  static Future<Database?>? _readerOpening;
+
+  /// Switch for the read connection. Off ⇒ [reader] is [instance].
+  @visibleForTesting
+  static bool readerEnabled = true;
+
+  /// Replaces the reader open (tests make it fail).
+  @visibleForTesting
+  static Future<Database> Function(String path)? readerOpenerForTest;
+
+  @visibleForTesting
+  static bool get hasReader => _readDb?.isOpen ?? false;
+
+  /// The handle for a pure-SELECT screen read: the query-only WAL connection,
+  /// or the writer when the reader is off, unavailable or the store is
+  /// in-memory.
+  static Future<Database> get reader async {
+    final writer = await instance;
+    if (!readerEnabled) return writer;
+    final r = _readDb;
+    if (r != null && r.isOpen && identical(_readerBeside, writer)) return r;
+    try {
+      final opening = _readerOpening ??= _openReader(
+        writer,
+      ).whenComplete(() => _readerOpening = null);
+      return await opening ?? writer;
+    } catch (_) {
+      return writer;
+    }
+  }
+
+  static Future<Database?> _openReader(Database writer) async {
+    final path = writer.path;
+    if (path == inMemoryDatabasePath || path == ':memory:') return null;
+    final epoch = _wipeEpoch;
+    await _closeReader();
+    Database? opened;
+    try {
+      opened =
+          await (readerOpenerForTest?.call(path) ??
+              openDatabase(
+                path,
+                readOnly: false,
+                singleInstance: false,
+                onConfigure: (db) async {
+                  await db.rawQuery('PRAGMA query_only=ON');
+                  try {
+                    // Per-connection and cold: without it hot pages are re-read
+                    // from disk on every screen open (default cache ~2 MB).
+                    await db.execute('PRAGMA cache_size=-16000');
+                  } catch (_) {}
+                },
+              ));
+      // Without WAL the writer's lock would block this connection outright.
+      final mode = await opened.rawQuery('PRAGMA journal_mode');
+      if ('${mode.first.values.first}'.toLowerCase() != 'wal') {
+        throw StateError('not WAL');
+      }
+      // The store moved on (closed, replaced) while this was opening.
+      if (!identical(_db, writer) || epoch != _wipeEpoch) {
+        throw StateError('store changed');
+      }
+    } catch (_) {
+      final o = opened;
+      if (o != null) {
+        try {
+          await o.close();
+        } catch (_) {}
+      }
+      return null;
+    }
+    _readDb = opened;
+    _readerBeside = writer;
+    return opened;
+  }
+
+  static Future<void> _closeReader() async {
+    final r = _readDb;
+    _readDb = null;
+    _readerBeside = null;
+    if (r != null) {
+      try {
+        await r.close();
+      } catch (_) {}
     }
   }
 
@@ -3072,7 +3184,7 @@ class LocalDb {
 
   /// The user's sleep window for [dayId], or null if none.
   static Future<Map<String, dynamic>?> getSleepOverride(String dayId) async {
-    final db = await instance;
+    final db = await reader;
     final rows = await db.query(
       'sleep_override',
       where: 'day_id = ?',
@@ -5151,7 +5263,7 @@ class LocalDb {
   /// The algo version behind each day's `metric_series` scalars, oldest first.
   /// Days with no stamp are simply absent — never guessed at.
   static Future<List<Map<String, dynamic>>> metricSeriesVersions() async {
-    final db = await instance;
+    final db = await reader;
     return db.query('metric_series_version', orderBy: 'date ASC');
   }
 
@@ -8448,7 +8560,7 @@ class LocalDb {
     int toTs, {
     int limit = 5000,
   }) async {
-    final db = await instance;
+    final db = await reader;
     return db.query(
       'events',
       where: 'ts >= ? AND ts < ?',
@@ -9316,7 +9428,7 @@ class LocalDb {
   /// (see [_servedAlgoCeiling]), with a normalized `date` alias for callers.
   /// Null if absent.
   static Future<Map<String, dynamic>?> dayResult(String dayId) async {
-    final db = await instance;
+    final db = await reader;
     final rows = await db.query(
       'day_result',
       where: 'day_id = ? AND algo_version <= ?',
@@ -9329,7 +9441,7 @@ class LocalDb {
 
   /// Payload-free recent served-day rows, newest first, for BundleStore readers.
   static Future<List<Map<String, dynamic>>> recentDayResultMetas(int limit) async {
-    final db = await instance;
+    final db = await reader;
     final rows = await db.rawQuery(
       'SELECT r.day_id AS date, r.algo_version, r.computed_at, r.finalized, '
       'r.skipped, r.partial, r.rhr, r.rmssd, r.readiness, r.window_json, '
@@ -9344,8 +9456,11 @@ class LocalDb {
   /// Payload-free read of the served `day_result` row for [dayId]: every column
   /// except `payload_json`, plus `rev` (`COALESCE(row_rev.rev, 0)`), under
   /// [_servedAlgoCeiling]. Null when absent.
-  static Future<Map<String, dynamic>?> dayResultMeta(String dayId) async {
-    final db = await instance;
+  static Future<Map<String, dynamic>?> dayResultMeta(
+    String dayId, {
+    bool onReader = false,
+  }) async {
+    final db = onReader ? await reader : await instance;
     final rows = await db.rawQuery(
       'SELECT r.day_id, r.algo_version, r.computed_at, r.finalized, '
       'r.skipped, r.partial, r.rhr, r.rmssd, r.readiness, r.window_json, '
@@ -9364,8 +9479,9 @@ class LocalDb {
     String dayId,
     int algoVersion, {
     required int expectedRev,
+    bool onReader = false,
   }) async {
-    final db = await instance;
+    final db = onReader ? await reader : await instance;
     final rows = await db.rawQuery(
       'SELECT r.payload_json, COALESCE(v.rev, 0) AS rev '
       'FROM day_result r LEFT JOIN row_rev v '
@@ -9408,6 +9524,13 @@ class LocalDb {
   /// transaction commits, so a failed transaction never invalidates readers.
   static void _markStoreReplaced() {
     _wipeEpoch++;
+    // The reader belongs to the store that was just replaced: drop it in the
+    // same step (synchronously unreachable, closed in the background) so no
+    // later read can answer from the old store. The next read reopens it.
+    final stale = _readDb;
+    _readDb = null;
+    _readerBeside = null;
+    if (stale != null) unawaited(stale.close().catchError((_) {}));
   }
 
   /// The demo-data delete, moved here from `DemoDataGenerator.purge` so every
@@ -9514,7 +9637,7 @@ class LocalDb {
     int limit, {
     DatabaseExecutor? within,
   }) async {
-    final db = within ?? await instance;
+    final db = within ?? await reader;
     final rows = await db.rawQuery(
       'SELECT r.day_id, r.algo_version, r.computed_at, r.finalized, '
       'r.skipped, r.partial, r.rhr, r.rmssd, r.readiness '
@@ -9532,7 +9655,7 @@ class LocalDb {
   /// ask "what version is this day at" was doing an N+1 that pulled a full
   /// bundle each time to read one integer.
   static Future<Map<String, int>> dayResultVersions() async {
-    final db = await instance;
+    final db = await reader;
     final rows = await db.rawQuery(
       'SELECT day_id, MAX(algo_version) AS v FROM day_result '
       'WHERE algo_version <= ? GROUP BY day_id',
@@ -9553,7 +9676,7 @@ class LocalDb {
   /// column, so onset/offset are one small projected read — no bundle decode,
   /// no per-day round trip. Rows: `{day_id, window_json}`.
   static Future<List<Map<String, dynamic>>> sleepWindowRows(int limit) async {
-    final db = await instance;
+    final db = await reader;
     return db.rawQuery(
       "SELECT r.day_id AS day_id, r.window_json AS window_json, v.rev AS rev FROM day_result r $_servedDayJoin LEFT JOIN row_rev v ON v.kind = 'day_result' AND v.k1 = r.day_id AND v.k2 = r.algo_version WHERE r.skipped = 0 ORDER BY r.day_id DESC LIMIT ?",
       [limit],
@@ -9563,7 +9686,7 @@ class LocalDb {
   /// [sleepWindowRows] for one [day]: `{day_id, window_json, rev}`, or null
   /// when the day has no served, non-skipped row (now).
   static Future<Map<String, dynamic>?> sleepWindowRow(String day) async {
-    final db = await instance;
+    final db = await reader;
     final rows = await db.rawQuery(
       "SELECT r.day_id AS day_id, r.window_json AS window_json, v.rev AS rev FROM day_result r $_servedDayJoin LEFT JOIN row_rev v ON v.kind = 'day_result' AND v.k1 = r.day_id AND v.k2 = r.algo_version WHERE r.skipped = 0 AND r.day_id = ? AND m.day_id = ? LIMIT 1",
       [day, day],
@@ -9579,7 +9702,7 @@ class LocalDb {
   /// boundary. Screens that only need "which days exist" must use this instead:
   /// over a multi-year history the payload variant is hundreds of MB.
   static Future<List<String>> dayResultDayIdsDesc() async {
-    final db = await instance;
+    final db = await reader;
     final rows = await db.rawQuery(
       'SELECT day_id FROM day_result WHERE algo_version <= ? '
       'GROUP BY day_id ORDER BY day_id DESC',
@@ -9595,7 +9718,7 @@ class LocalDb {
   /// (`sleep.accounting.value.tst_sec` present). Extracted IN SQLite via
   /// json_extract, so only the scalar crosses the boundary — never the payload.
   static Future<Set<String>> daysWithSleepTst() async {
-    final db = await instance;
+    final db = await reader;
     final rows = await db.rawQuery(
       'SELECT r.day_id FROM day_result r '
       '$_servedDayJoin '
@@ -9622,7 +9745,7 @@ class LocalDb {
   /// bound navigation. Skips are excluded via the `skipped` column, which
   /// `_markDaySkipped` sets alongside the `{skipped:true}` payload.
   static Future<List<String>> availableDayIds() async {
-    final db = await instance;
+    final db = await reader;
     // Latest version per day (matches [dayResult]), then drop skip-markers.
     final rows = await db.rawQuery(
       'SELECT r.day_id FROM day_result r '
@@ -10272,7 +10395,7 @@ class LocalDb {
   /// scan behind it is over `day_result.payload_json` (whole day bundles), so
   /// a caller reading several series takes it ONCE and filters in Dart.
   static Future<Set<String>> importedDates() async {
-    final db = await instance;
+    final db = await reader;
     return {
       for (final r in await db.rawQuery(_importedDatesSql)) r['date'] as String,
     };
@@ -11125,7 +11248,7 @@ class LocalDb {
   /// Count non-null series points for each requested metric key.
   static Future<Map<String, int>> metricSeriesCounts(List<String> keys) async {
     if (keys.isEmpty) return const {};
-    final db = await instance;
+    final db = await reader;
     final out = <String, int>{};
     for (final key in keys) {
       out[key] =
@@ -11231,7 +11354,7 @@ class LocalDb {
     int? limit,
     bool measuredOnly = false,
   }) async {
-    final db = await instance;
+    final db = await reader;
     return db.query(
       'metric_series',
       where: 'key = ? AND value IS NOT NULL'
@@ -11257,8 +11380,15 @@ class LocalDb {
     })
   >
   metricSeriesBundle(List<String> keys) async {
-    final db = await instance;
-    return db.transaction((txn) async {
+    final db = await reader;
+    // `transaction` opens with BEGIN IMMEDIATE, which a query-only connection
+    // refuses. On the reader each statement still reads one committed snapshot;
+    // only a commit landing BETWEEN the three can skew them (a series row with
+    // no version row yet), which every consumer already treats as absent.
+    // putDayResult writes all three in one transaction, so it cannot tear one.
+    Future<R> snapshot<R>(Future<R> Function(DatabaseExecutor) body) =>
+        identical(db, _db) ? db.transaction(body) : body(db);
+    return snapshot((txn) async {
       final byKey = {for (final k in keys) k: <Map<String, dynamic>>[]};
       if (keys.isNotEmpty) {
         final rows = await txn.query(
@@ -11302,7 +11432,7 @@ class LocalDb {
     int n, {
     bool measuredOnly = true,
   }) async {
-    final db = await instance;
+    final db = await reader;
     final rows = await db.rawQuery(
       'SELECT value FROM metric_series '
       'WHERE key = ? AND value IS NOT NULL '
@@ -11314,7 +11444,7 @@ class LocalDb {
   }
 
   static Future<Map<String, dynamic>?> baseline(String key) async {
-    final db = await instance;
+    final db = await reader;
     final rows = await db.query(
       'baselines',
       where: 'key = ?',
@@ -11326,7 +11456,7 @@ class LocalDb {
 
   /// Payload-free baseline metadata for warm-set and freshness readers.
   static Future<Map<String, dynamic>?> baselineMeta(String key) async {
-    final db = await instance;
+    final db = await reader;
     final rows = await db.rawQuery(
       'SELECT b.key, b.updated_at, COALESCE(v.rev, 0) AS rev '
       'FROM baselines b LEFT JOIN row_rev v '
@@ -13263,7 +13393,7 @@ class LocalDb {
     int fromTs,
     int toTs,
   ) async {
-    final db = await instance;
+    final db = await reader;
     return db.query(
       'sessions',
       where: 'start_ts >= ? AND start_ts <= ?',

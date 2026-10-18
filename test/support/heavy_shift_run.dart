@@ -166,6 +166,31 @@ Future<void> startIngestWriter(AppState app) async {
   }());
 }
 
+/// Like [startIngestWriter] but shaped like a sync commit: each round is ONE
+/// transaction of five 10k-row replaces, held open across the statements.
+/// Reads on the writer's handle wait for the whole transaction; reads on the
+/// read connection wait for one statement at most.
+Future<void> startIngestTxnWriter(AppState app) async {
+  var stop = false;
+  addTearDown(() => stop = true);
+  final db = await LocalDb.instance;
+  unawaited(() async {
+    try {
+      while (!stop) {
+        await db.transaction((t) async {
+          for (var i = 0; i < 5; i++) {
+            await t.execute('INSERT OR REPLACE INTO decoded_onehz '
+                'SELECT * FROM decoded_onehz WHERE rec_ts IN '
+                '(SELECT rec_ts FROM decoded_onehz LIMIT 10000)');
+          }
+        });
+      }
+    } catch (_) {
+      // the database closed under the last statement
+    }
+  }());
+}
+
 class HeavyCase {
   const HeavyCase(this.label, this.build, {this.prepare, this.after});
   final String label;

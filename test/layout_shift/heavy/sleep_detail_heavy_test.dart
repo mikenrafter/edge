@@ -25,6 +25,11 @@ void main() {
     HeavyCase('SleepDetail yesterday + concurrent ingest writer',
         () => SleepDetail(day: yesterdayLabel()),
         prepare: startIngestWriter),
+    // Synthetic: the same, but each round is one held-open transaction (what a
+    // band chunk commit looks like to a reader).
+    HeavyCase('SleepDetail yesterday + concurrent ingest transaction',
+        () => SleepDetail(day: yesterdayLabel()),
+        prepare: startIngestTxnWriter),
   ]);
 
   // Parity on the real export: the combined read is the per-key getChart path,
