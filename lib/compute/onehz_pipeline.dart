@@ -460,7 +460,9 @@ Map<String, dynamic> deriveDayBundle(
     'hrv_freq',
     [nn, nnTimes, artifactFraction],
     () => nn.length >= 20
-        ? hrvFreq(nn, nnTimes, artifactFraction: artifactFraction)
+        ? (state != null
+            ? state.nightHrvFreq(artifactFraction)
+            : hrvFreq(nn, nnTimes, artifactFraction: artifactFraction))
         : Metric<HrvFreq>.absent(
             tier: Tier.high,
             inputs_used: const ['rr_cleaned'],
@@ -540,7 +542,9 @@ Map<String, dynamic> deriveDayBundle(
     'resp',
     [nn, nnTimes, artifactFraction],
     () => nn.length >= 30
-        ? rsaRespRate(nn, nnTimes, artifactFraction: artifactFraction)
+        ? (state != null
+            ? state.nightResp(artifactFraction)
+            : rsaRespRate(nn, nnTimes, artifactFraction: artifactFraction))
         : Metric<RespEstimate>.absent(
             tier: Tier.estimate,
             inputs_used: const ['rr_cleaned'],

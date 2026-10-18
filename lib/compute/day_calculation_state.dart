@@ -143,6 +143,11 @@ class DayCalculationState {
     _nightTs.clear();
     _nightNn.clear();
     _nightNnTimes.clear();
+    _tailNn = const [];
+    _tailNnTimes = const [];
+    _hrvStream = null;
+    _respStream = null;
+    _spectralFed = 0;
   }
 
   /// The corrected night for this slice: `correctRr(rrMs, rrTsMs: rrTsMs)`, bit
@@ -188,12 +193,69 @@ class DayCalculationState {
       _nightNnTimes.addAll(settled.nnTimes);
     }
     final snap = corrector.snapshot();
+    _tailNn = snap.tailNn;
+    _tailNnTimes = snap.tailNnTimes;
     return (
       nn: [..._nightNn, ...snap.tailNn],
       nnTimesMs: [..._nightNnTimes, ...snap.tailNnTimes],
       cleanFraction: snap.cleanFraction,
       droppedCount: snap.droppedCount,
       correctedCount: snap.correctedCount,
+    );
+  }
+
+  // ── Night spectral metrics, streamed ───────────────────────────────────────
+  // An HrvFreqStream and an RsaRespStream fed only the corrector's settled
+  // beats; each ask snapshots them with the provisional tail of the last
+  // nightRr call. Restarted (lazily) whenever nightRr rebuilds. RAM-only.
+  List<double> _tailNn = const [], _tailNnTimes = const [];
+  HrvFreqStream? _hrvStream;
+  RsaRespStream? _respStream;
+  int _spectralFed = 0, _spectralFolded = 0, _spectralRestarts = 0;
+  int _spectralGen = -1;
+
+  /// Settled beats folded into the spectral streams (a restart counts again).
+  int get nightSpectralFolded => _spectralFolded;
+
+  /// Times the spectral streams were started from scratch, the first included.
+  int get nightSpectralRestarts => _spectralRestarts;
+
+  void _syncSpectral() {
+    if (_hrvStream == null || _respStream == null || _spectralGen != _nightRebuilds) {
+      _hrvStream = HrvFreqStream();
+      _respStream = RsaRespStream();
+      _spectralFed = 0;
+      _spectralGen = _nightRebuilds;
+      _spectralRestarts++;
+    }
+    if (_spectralFed < _nightNn.length) {
+      final nn = _nightNn.sublist(_spectralFed);
+      final ts = _nightNnTimes.sublist(_spectralFed);
+      _hrvStream!.fold(nn, ts);
+      _respStream!.fold(nn, ts);
+      _spectralFolded += nn.length;
+      _spectralFed = _nightNn.length;
+    }
+  }
+
+  /// `hrvFreq` of the last [nightRr] slice, bit for bit, without re-running
+  /// Welch over the settled beats.
+  Metric<HrvFreq> nightHrvFreq(double artifactFraction) {
+    _syncSpectral();
+    return _hrvStream!.snapshot(
+      tailNnMs: _tailNn,
+      tailNnTimesMs: _tailNnTimes,
+      artifactFraction: artifactFraction,
+    );
+  }
+
+  /// `rsaRespRate` of the last [nightRr] slice, bit for bit.
+  Metric<RespEstimate> nightResp(double artifactFraction) {
+    _syncSpectral();
+    return _respStream!.snapshot(
+      tailNnMs: _tailNn,
+      tailNnTimesMs: _tailNnTimes,
+      artifactFraction: artifactFraction,
     );
   }
 
