@@ -136,6 +136,7 @@ void main() {
     'buildCrossDayBundle',
     'foldDayCheckpoint',
     'foldDayTailHeavy',
+    'stageSleepCandidateHeavy',
   };
 
   // `#DerivationEngine.kcalMinutesForDayHeavy` -> `kcalMinutesForDayHeavy`
@@ -255,7 +256,9 @@ void main() {
             cancellableEntries: cancellableEntries,
             legacyInline: legacyInline,
           );
-      expect(run('sleep-staging 2026-01-10'), isEmpty);
+      expect(run('sleep-staging 2026-01-10'), isNotEmpty,
+          reason: 'sleep staging is the registered stageSleepCandidateHeavy '
+              'now, no longer an inline closure');
       expect(run('crossday-input'), isEmpty);
       expect(run('crossday'), isNotEmpty);
     });
@@ -276,7 +279,7 @@ void main() {
           legacyInline: legacyInline);
       expect(problems, hasLength(1), reason: '$problems');
       expect(problems.single, contains('crossday-input-new-work'));
-      // And the sleep-staging pattern is a date, not a prefix.
+      // And a label that merely starts like a registered dispatch is not one.
       expect(
           dispatchCorrelationProblems(
               [dispatch(1, Dispatcher.cancellable, 'sleep-staging-extra x')],

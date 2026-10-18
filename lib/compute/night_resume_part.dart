@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:openstrap_analytics/onehz.dart';
 
+import '../util/heavy.dart';
+
 /// What a night fold has consumed: the first beat's time, how many beats, and a
 /// 64-bit fingerprint of exactly those beats ([nightBeatsFingerprint]). A later
 /// slice extends the fold when it starts at [startTsMs], holds at least [count]
@@ -63,6 +65,10 @@ List<double> _doubles(Object? v) {
 /// crosses to a worker and into the checkpoint blob without any live object:
 /// the RR corrector, the settled corrected beats it already handed out, and the
 /// two spectral streams fed those beats. Version 1.
+///
+/// The UI isolate never holds one of these: it carries the part only as its
+/// encoded text (the UTF-8 JSON of [toJson]) and the workers that need it build
+/// it, so [captureHeavy] and the `build…Heavy` methods are `@heavy`.
 class NightResumePart {
   NightResumePart({
     required this.tag,
@@ -85,7 +91,8 @@ class NightResumePart {
   final int spectralFed;
 
   /// A deep copy of live state; the caller's objects stay untouched.
-  factory NightResumePart.capture({
+  @heavy
+  static NightResumePart captureHeavy({
     required NightFoldTag tag,
     required RrCorrector corrector,
     required List<double> nn,
@@ -123,9 +130,11 @@ class NightResumePart {
         },
       };
 
-  /// Throws [FormatException] on anything malformed, including a corrector or
-  /// stream payload analytics rejects and a tag that disagrees with the
-  /// corrector it describes.
+  /// Throws [FormatException] on anything structurally malformed. What only
+  /// the analytics package can judge (a corrector or stream payload it rejects,
+  /// a tag that disagrees with the corrector it describes) is checked where the
+  /// part is adopted, in a worker (`DayCalculationState`), by building the
+  /// live objects.
   factory NightResumePart.fromJson(Map<String, dynamic> json) {
     try {
       if (json['v'] != 1) throw const FormatException('night part: bad version');
@@ -140,10 +149,6 @@ class NightResumePart {
       final corr = json['corrector'];
       if (corr is! Map) throw const FormatException('night part: no corrector');
       final corrector = (_copy(corr) as Map).cast<String, dynamic>();
-      // Constructing validates it; the tag must describe what it folded.
-      if (RrCorrector.fromJson(corrector).toJson()['n'] != count) {
-        throw const FormatException('night part: tag disagrees with corrector');
-      }
       final nn = _doubles(json['nn']), nnTimes = _doubles(json['nnTimes']);
       if (nn.length != nnTimes.length) {
         throw const FormatException('night part: nn lengths');
@@ -157,8 +162,6 @@ class NightResumePart {
         }
         hrv = (_copy(h) as Map).cast<String, dynamic>();
         resp = (_copy(r) as Map).cast<String, dynamic>();
-        HrvFreqStream.fromJson(hrv);
-        RsaRespStream.fromJson(resp);
         fed = f;
       }
       return NightResumePart(
@@ -182,7 +185,13 @@ class NightResumePart {
   }
 
   /// Fresh live objects built from this part's data (each call builds new ones).
-  RrCorrector buildCorrector() => RrCorrector.fromJson(corrector);
-  HrvFreqStream? buildHrv() => hrv == null ? null : HrvFreqStream.fromJson(hrv!);
-  RsaRespStream? buildResp() => resp == null ? null : RsaRespStream.fromJson(resp!);
+  /// Each throws [FormatException] when the analytics package rejects the data.
+  @heavy
+  RrCorrector buildCorrectorHeavy() => RrCorrector.fromJson(corrector);
+  @heavy
+  HrvFreqStream? buildHrvHeavy() =>
+      hrv == null ? null : HrvFreqStream.fromJson(hrv!);
+  @heavy
+  RsaRespStream? buildRespHeavy() =>
+      resp == null ? null : RsaRespStream.fromJson(resp!);
 }

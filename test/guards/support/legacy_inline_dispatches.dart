@@ -42,12 +42,6 @@ class LegacyInlineDispatch {
 
 const List<LegacyInlineDispatch> kLegacyInlineDispatches = [
   LegacyInlineDispatch(
-    'sleep-staging',
-    r'^sleep-staging \d{4}-\d{2}-\d{2}$',
-    'DerivationEngine sleep-staging closure handed to _runIsolateCancellable '
-        '(baselined dispatcherClosureContract)',
-  ),
-  LegacyInlineDispatch(
     'crossday-input',
     r'^crossday-input$',
     'DerivationEngine cross-day input closure handed to '

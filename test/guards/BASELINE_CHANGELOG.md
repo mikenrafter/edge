@@ -114,13 +114,28 @@ baselined readers return `Map` rows, or `List<Sample>` (`samplesInRange`), which
 still treats as rows. (The worker_audit hook fingerprint in `kUnresolvedOk` was
 refreshed for the new `id:` argument; it is not a baseline key.)
 
+## Shrink (2026-10-17) - sleep-staging inline closure -> registered stageSleepCandidateHeavy; 19 keys removed (1,907 -> 1,888 keys, 2,106 -> 2,082 occurrences)
+The closure `DerivationEngine._sleepCandidateForDay` handed to
+`_runIsolateCancellable` is now the registered cancellable entry
+`stageSleepCandidateHeavy` (`lib/compute/sleep_staging_worker.dart`), so its
+baselined closure keys are gone: `captureNotSendable` (`override`, `searchSub`),
+`dispatcherClosureContract` (`List.sort`, `Map.cast`, `SleepProfilePolicy.shouldBlend`,
+`SleepSessionCandidate.toJson`, `SleepUserProfile.fromJson`, `jsonDecode`,
+`jsonEncode`, `num.compareTo`, `prepareSleepSessionCandidate`,
+`resetCardioObservations`, `takeCardioObservations`), `heavyOriginOutsideHeavy`
+(`SleepUserProfile.fromJson`, `resetCardioObservations`, `takeCardioObservations`)
+and one `storedPayloadDecodeOutsideHeavy` `jsonEncode`. The regeneration also
+dropped keys that had gone stale on this tree (`HealthExporter.exportAll`
+`jsonEncode`, `DeriveCoordinator._publishDay` `_log(...)`). No key was added.
+
 ## legacyInlineDispatch sleep-staging
-`DerivationEngine` hands the sleep-staging closure (label `sleep-staging
-<yyyy-mm-dd>`) to `_runIsolateCancellable`. It runs inline code, not a registered
-entry (baselined `dispatcherClosureContract`), so the dispatcher audit cannot
-require an entry report for it. The exception is the anchored pattern in
-`test/guards/support/legacy_inline_dispatches.dart`; nothing may report under its
-token. Delete the entry when the closure becomes a registered entry.
+RETIRED (2026-10-17). `DerivationEngine` used to hand an inline sleep-staging
+closure (label `sleep-staging <yyyy-mm-dd>`) to `_runIsolateCancellable`, so the
+dispatcher audit could not require an entry report for it. The closure is now
+the registered cancellable entry `stageSleepCandidateHeavy`
+(`lib/compute/sleep_staging_worker.dart`); the pattern is deleted from
+`test/guards/support/legacy_inline_dispatches.dart` and the label is matched
+like any other cancellable pipeline entry.
 
 ## legacyInlineDispatch crossday-input
 The same for the cross-day input closure (exact label `crossday-input`).

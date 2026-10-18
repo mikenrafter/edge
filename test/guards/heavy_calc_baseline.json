@@ -81,20 +81,6 @@
     {
       "rule": "captureNotSendable",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "override",
-      "count": 1
-    },
-    {
-      "rule": "captureNotSendable",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "searchSub",
-      "count": 1
-    },
-    {
-      "rule": "captureNotSendable",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine.kcalMinutesForStoredDay",
       "element": "daySub",
       "count": 1
@@ -174,83 +160,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._runIsolateCancellable",
       "element": "DerivationEngine._cancellableIsolateEntry",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "List.sort",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "Map.cast",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "SleepProfilePolicy.shouldBlend",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "SleepSessionCandidate.toJson",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "SleepUserProfile.fromJson",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "jsonEncode",
-      "count": 2
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "num.compareTo",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "prepareSleepSessionCandidate",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "resetCardioObservations",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "takeCardioObservations",
       "count": 1
     },
     {
@@ -748,27 +657,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._runNotificationsUntimed",
       "element": "cusumChangePoints",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "SleepUserProfile.fromJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "resetCardioObservations",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "takeCardioObservations",
       "count": 1
     },
     {
@@ -1651,14 +1539,7 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._sleepCandidateForDay",
       "element": "jsonDecode",
-      "count": 4
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "jsonEncode",
-      "count": 2
+      "count": 3
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
@@ -1686,7 +1567,7 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine.run",
       "element": "jsonEncode",
-      "count": 2
+      "count": 1
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
@@ -1834,13 +1715,6 @@
       "symbol": "LocalRepositoryImpl.getNightBeats",
       "element": "jsonDecode",
       "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "health/health_export.dart",
-      "symbol": "HealthExporter.exportAll",
-      "element": "jsonEncode",
-      "count": 2
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
@@ -9365,13 +9239,6 @@
       "file": "state/derive_coordinator.dart",
       "symbol": "DeriveCoordinator._profile",
       "element": "_profileOf()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/derive_coordinator.dart",
-      "symbol": "DeriveCoordinator._publishDay",
-      "element": "_log('[derive] freshness refresh failed: $e')",
       "count": 1
     },
     {

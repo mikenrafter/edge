@@ -16,6 +16,7 @@ const kExpected = <String, Dispatcher>{
   'deriveDayBundle': Dispatcher.cancellable,
   'buildCrossDayBundle': Dispatcher.cancellable,
   'auditBatchDay': Dispatcher.cancellable,
+  'stageSleepCandidateHeavy': Dispatcher.cancellable,
   'foldDayCheckpoint': Dispatcher.cancellable,
   'foldDayTailHeavy': Dispatcher.cancellable,
   'kcalMinutesForDayHeavy': Dispatcher.run,

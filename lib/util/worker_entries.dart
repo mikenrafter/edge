@@ -85,7 +85,18 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
     #auditBatchDay,
     dispatcher: Dispatcher.cancellable,
     reason: 'finalization audit: the pure batch re-derive of a finalizing day '
-        '(no DayCalculationState); WorkerInit.ensure first, JSON map in/out',
+        '(no DayCalculationState); meets the contract (WorkerInit.ensure '
+        'first, @SendableShape JSON-map input and result with round-trip '
+        'tests)',
+  ),
+  WorkerEntry(
+    #stageSleepCandidateHeavy,
+    dispatcher: Dispatcher.cancellable,
+    reason: 'one night\'s sleep staging (was the inline sleep-staging closure): '
+        're-arms the analytics ambient globals, decodes/merges/cuts/prunes/'
+        'encodes the encoded cardio row chunks; meets the contract '
+        '(WorkerInit.ensure first, @SendableShape input carrying the '
+        'substrate, @sendable result)',
   ),
   WorkerEntry(
     #foldDayCheckpoint,
@@ -311,5 +322,58 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
     ordinal: 0,
     reason: 'runs the dispatcher\'s own closure after adopting the audit port; '
         'wrap only exists to prefix a closure the dispatcher already runs',
+  ),
+  UnresolvedOk(
+    file: 'compute/derivation_engine.dart',
+    symbol: 'DerivationEngine._auditAtFinalization',
+    source: 'read()',
+    ordinal: 0,
+    reason: 'injected power-state reader (a function-typed field the owner '
+        'assigns): one platform read at the moment of finalization, no '
+        'stored-data loop',
+  ),
+  UnresolvedOk(
+    file: 'compute/derivation_engine.dart',
+    symbol: 'DerivationEngine.auditPendingFinalizations',
+    source: 'read()',
+    ordinal: 0,
+    reason: 'injected power-state reader (a function-typed field the owner '
+        'assigns): one platform read per audit pass, no stored-data loop',
+  ),
+  UnresolvedOk(
+    file: 'compute/derivation_engine.dart',
+    symbol: 'DerivationEngine._auditLog',
+    source: 'debugPrint(m)',
+    ordinal: 0,
+    reason: 'Flutter\'s function-typed debugPrint hook, one log line',
+  ),
+  UnresolvedOk(
+    file: 'compute/derivation_engine.dart',
+    symbol: 'DerivationEngine._auditLog',
+    source: 'log?.call(m)',
+    ordinal: 1,
+    reason: 'the engine\'s injected log sink, one log line',
+  ),
+  UnresolvedOk(
+    file: 'compute/derivation_engine.dart',
+    symbol: 'DerivationEngine._derivePreparedDay',
+    source: 'debugAccumulatorTamper?.call(day.date, bundle)',
+    ordinal: 1,
+    reason: 'test-only seam (@visibleForTesting), null in production',
+  ),
+  UnresolvedOk(
+    file: 'data/db.dart',
+    symbol: 'LocalDb.updateFinalizationAudit',
+    source: 'change(s)',
+    ordinal: 0,
+    reason: 'the caller\'s mutation of the one audit-counter row (a handful '
+        'of fields), no stored-data loop',
+  ),
+  UnresolvedOk(
+    file: 'data/db.dart',
+    symbol: 'LocalDb.updateFinalizationAudit',
+    source: 'nowMs()',
+    ordinal: 1,
+    reason: 'injectable clock seam: one scalar read',
   ),
 ];

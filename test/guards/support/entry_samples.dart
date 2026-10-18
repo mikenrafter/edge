@@ -31,6 +31,7 @@ import 'package:openstrap_edge/compute/day_tail_fold.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
+import 'package:openstrap_edge/compute/sleep_staging_worker.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
 import 'package:openstrap_edge/data/bundle_store.dart';
 import 'package:openstrap_edge/data/json_payload_lane.dart';
@@ -71,9 +72,33 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       final input = copyDay(incrementalDay());
       final inputs = WorkerInputs(
           nowEpochMs: 1760000000000, zoneId: 'UTC', localeTag: 'en');
-      await expectIsolateRoundTrip<Map<String, dynamic>>(input);
       await _sameInWorker(() => auditBatchDay(
-          inputs, copyDay(input), CalculationMode.forced));
+              inputs, AuditBatchInput(copyDay(input)), CalculationMode.forced),
+          json: (AuditBatchResult r) => r.bundle);
+    },
+  ),
+  'stageSleepCandidateHeavy': (
+    roundTrip: () async {
+      // An empty substrate stages to the absent candidate; the @SendableShape
+      // round trip of a real night is in
+      // test/sendable_stageSleepCandidateHeavy_test.dart.
+      const inputs = WorkerInputs(nowEpochMs: 1, zoneId: 'UTC', localeTag: 'en');
+      final input = SleepStagingInput(
+        dayId: '2026-06-27',
+        searchSub: Substrate.empty,
+        override: null,
+        priorSleep: const [],
+        confirmedWakeSec: null,
+        profileJson: null,
+        mayFold: true,
+        rowChunks: const [],
+        rowsLoSec: 0,
+        rowsHiSec: 1,
+        nowSec: 1,
+      );
+      await _sameInWorker(() => stageSleepCandidateHeavy(inputs, input),
+          json: (SleepStagingResult r) =>
+              [r.candidateJson, r.observationJson, r.rowsJson?.toList()]);
     },
   ),
   'buildCrossDayBundle': (

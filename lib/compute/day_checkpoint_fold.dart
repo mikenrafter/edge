@@ -1,11 +1,9 @@
 import 'dart:typed_data';
 
-import 'package:openstrap_analytics/onehz.dart' as ana;
-
+import 'cardio_rows_blob.dart';
 import 'day_curve_states.dart';
 import 'day_resume_state.dart';
 import 'minute_bills.dart';
-import 'night_resume_part.dart';
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
 
@@ -98,9 +96,14 @@ Uint8List? foldDayCheckpoint({
   int? throughSec,
   double quietCutG = 0.02,
   // The optional suffix sections; like [bills] they REPLACE the base's (null
-  // drops them). Encoded here, in the worker, from plain data.
-  NightResumePart? night,
-  ana.CardioRowCache? cardioRows,
+  // drops them). [nightJson] is the night part already encoded by the pass that
+  // folded it. The cardio rows arrive as the encoded chunks the engine holds;
+  // they are merged, cut to the start seconds [cardioRowsLoSec, cardioRowsHiSec)
+  // and encoded HERE, in the worker (no rows left: no section).
+  Uint8List? nightJson,
+  List<Uint8List> cardioRowChunks = const [],
+  int cardioRowsLoSec = 0,
+  int cardioRowsHiSec = 0,
 }) {
   WorkerAudit.entered('foldDayCheckpoint');
   final DayResumeState state;
@@ -140,7 +143,12 @@ Uint8List? foldDayCheckpoint({
   final through = throughSec ?? (ts.isEmpty ? 0 : ts.last + 1);
   if (!state.curves.fold(rrMs, rrTsMs, ts, ax, ay, az, through)) return null;
   state.bills = bills;
-  state.night = night;
-  state.cardioRows = cardioRows;
+  state.nightJson = nightJson;
+  state.cardioRowsJson = null;
+  if (cardioRowChunks.isNotEmpty) {
+    final rows = restrictCardioRows(mergeCardioRowChunksHeavy(cardioRowChunks),
+        loSec: cardioRowsLoSec, hiSec: cardioRowsHiSec);
+    if (rows.length > 0) state.cardioRowsJson = encodeCardioRowsHeavy(rows);
+  }
   return encodeDayResumeState(state);
 }

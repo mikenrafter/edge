@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:openstrap_analytics/onehz.dart';
 
 import 'day_activity_state.dart';
@@ -7,6 +10,7 @@ import 'day_resume_state.dart';
 import 'minute_bills.dart';
 import 'night_resume_part.dart';
 import 'state_fingerprint.dart';
+import '../util/heavy.dart';
 
 typedef NightRr = ({
   List<double> nn,
@@ -17,7 +21,10 @@ typedef NightRr = ({
 });
 
 /// The night's corrected RR in one batch call (what [DayCalculationState.nightRr]
-/// reproduces incrementally).
+/// reproduces incrementally). Heavy (it corrects every beat of the night); the
+/// public name stays because the pipeline, the incremental path and the tests
+/// share it.
+@heavy
 NightRr nightRrBatch(List<double> rrMs, List<double> rrTsMs) {
   final r = correctRr(rrMs, rrTsMs: rrTsMs);
   return (
@@ -81,7 +88,7 @@ class DayCalculationState {
       _minutes = minutes;
       _minutesBase = minutes.processedMinutes;
     }
-    seedNight(resume.night);
+    seedNightJson(resume.nightJson);
     _seeded = true;
   }
 
@@ -128,9 +135,16 @@ class DayCalculationState {
   double _nightStart = 0;
   int _nightCount = 0, _nightFp = kNightFingerprintSeed;
 
-  /// A part from a checkpoint, adopted by the next [nightRr] call if its slice
-  /// proves to extend it (else dropped).
-  NightResumePart? _pendingNight;
+  /// A part from a checkpoint as its encoded text (UTF-8 JSON of
+  /// [NightResumePart.toJson]), adopted by the next [nightRr] call if its slice
+  /// proves to extend it (else dropped). The UI isolate only moves these bytes;
+  /// the worker that runs [nightRr] decodes them.
+  Uint8List? _pendingNightJson;
+
+  /// The night's state as of the last pass, already encoded by the worker that
+  /// ran it ([exportNightJsonHeavy]); what the checkpoint embeds. Null when no
+  /// beats are folded. Replaced by every pass that is given this state.
+  Uint8List? exportedNightJson;
 
   /// Final output of the folded beats, in order. The corrector hands each part
   /// out once, so it is kept here.
@@ -153,7 +167,8 @@ class DayCalculationState {
   int get nightRetainedInputBeats => 0;
 
   /// The night's state for the checkpoint, deep-copied; null when no beats are
-  /// folded.
+  /// folded. The public name is pinned by the checkpoint tests.
+  @heavy
   NightResumePart? exportNight() {
     final corrector = _nightCorrector;
     final tag = nightFoldTag;
@@ -161,7 +176,7 @@ class DayCalculationState {
     final live = _hrvStream != null &&
         _respStream != null &&
         _spectralGen == _nightRebuilds;
-    return NightResumePart.capture(
+    return NightResumePart.captureHeavy(
       tag: tag,
       corrector: corrector,
       nn: _nightNn,
@@ -172,11 +187,27 @@ class DayCalculationState {
     );
   }
 
-  /// Arms [part] (null clears); the next [nightRr] call adopts it only when its
-  /// slice starts at the part's first beat, holds at least its count of beats
-  /// and those hash to its fingerprint. An adopted part is neither a rebuild nor
-  /// a spectral restart.
-  void seedNight(NightResumePart? part) => _pendingNight = part;
+  /// [exportNight] as the encoded text the checkpoint stores, built in the
+  /// worker so the UI isolate never serialises the night.
+  @heavy
+  Uint8List? exportNightJsonHeavy() {
+    final part = exportNight();
+    return part == null ? null : Uint8List.fromList(utf8.encode(jsonEncode(part.toJson())));
+  }
+
+  /// Arms the encoded part (null clears); the next [nightRr] call adopts it
+  /// only when its slice starts at the part's first beat, holds at least its
+  /// count of beats and those hash to its fingerprint. An adopted part is
+  /// neither a rebuild nor a spectral restart. Nothing is parsed here: damage
+  /// shows up at adoption and the night is rebuilt.
+  void seedNightJson(Uint8List? json) => _pendingNightJson = json;
+
+  /// [seedNightJson] for a part held as an object (tests). Production never has
+  /// one on the UI isolate.
+  @visibleForTesting
+  void seedNight(NightResumePart? part) => seedNightJson(part == null
+      ? null
+      : Uint8List.fromList(utf8.encode(jsonEncode(part.toJson()))));
 
   void _resetNight() {
     _nightCorrector = null;
@@ -192,8 +223,17 @@ class DayCalculationState {
     _spectralFed = 0;
   }
 
-  /// Takes over [part] as this (empty) state's fold. False leaves it empty.
-  bool _adopt(NightResumePart part, List<double> rrMs, List<double> rrTsMs) {
+  /// Takes over the encoded [json] as this (empty) state's fold. False leaves
+  /// it empty: the bytes are damaged, or the slice does not extend them.
+  @heavy
+  bool _adoptHeavy(Uint8List json, List<double> rrMs, List<double> rrTsMs) {
+    final NightResumePart part;
+    try {
+      part = NightResumePart.fromJson(
+          (jsonDecode(utf8.decode(json)) as Map).cast<String, dynamic>());
+    } catch (_) {
+      return false; // damaged: the night rebuilds, never wrong output
+    }
     final tag = part.tag;
     final n = rrMs.length;
     if (tag.count == 0 ||
@@ -204,8 +244,12 @@ class DayCalculationState {
       return false;
     }
     try {
-      final corrector = part.buildCorrector();
-      final hrv = part.buildHrv(), resp = part.buildResp();
+      final corrector = part.buildCorrectorHeavy();
+      // The tag must describe what the corrector folded.
+      if (corrector.toJson()['n'] != tag.count) {
+        throw const FormatException('night part: tag disagrees with corrector');
+      }
+      final hrv = part.buildHrvHeavy(), resp = part.buildRespHeavy();
       _nightCorrector = corrector;
       _nightStart = tag.startTsMs;
       _nightCount = tag.count;
@@ -232,14 +276,15 @@ class DayCalculationState {
   /// Cost: proving the extension hashes the folded beats again, O(folded) of
   /// integer work per call (the correction itself stays O(new)). A prefix cannot
   /// be proven unchanged without reading it.
+  @heavy
   NightRr nightRr(List<double> rrMs, List<double> rrTsMs) {
     NightRr batch() => nightRrBatch(rrMs, rrTsMs);
 
     final n = rrMs.length;
-    final pending = _pendingNight;
-    _pendingNight = null;
+    final pending = _pendingNightJson;
+    _pendingNightJson = null;
     if (pending != null && _nightCorrector == null && n > 0) {
-      _adopt(pending, rrMs, rrTsMs);
+      _adoptHeavy(pending, rrMs, rrTsMs);
     }
     var held = _nightCount;
     var extends_ = n >= held && rrTsMs.length == n;
@@ -304,7 +349,8 @@ class DayCalculationState {
   /// Times the spectral streams were started from scratch, the first included.
   int get nightSpectralRestarts => _spectralRestarts;
 
-  void _syncSpectral() {
+  @heavy
+  void _syncSpectralHeavy() {
     if (_hrvStream == null || _respStream == null || _spectralGen != _nightRebuilds) {
       _hrvStream = HrvFreqStream();
       _respStream = RsaRespStream();
@@ -324,8 +370,9 @@ class DayCalculationState {
 
   /// `hrvFreq` of the last [nightRr] slice, bit for bit, without re-running
   /// Welch over the settled beats.
+  @heavy
   Metric<HrvFreq> nightHrvFreq(double artifactFraction) {
-    _syncSpectral();
+    _syncSpectralHeavy();
     return _hrvStream!.snapshot(
       tailNnMs: _tailNn,
       tailNnTimesMs: _tailNnTimes,
@@ -334,8 +381,9 @@ class DayCalculationState {
   }
 
   /// `rsaRespRate` of the last [nightRr] slice, bit for bit.
+  @heavy
   Metric<RespEstimate> nightResp(double artifactFraction) {
-    _syncSpectral();
+    _syncSpectralHeavy();
     return _respStream!.snapshot(
       tailNnMs: _tailNn,
       tailNnTimesMs: _tailNnTimes,

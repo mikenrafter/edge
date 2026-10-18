@@ -74,6 +74,15 @@
 //    decideResume reason 'fmt' (full pass). fmt 5 is accepted.
 //
 // All of these fail today on missing members / the fmt constant only.
+//
+// AMENDED by the isolate fix (AGENTS.md 3.10): the UI isolate holds the night
+// part and the cardio rows ONLY as their encoded UTF-8 JSON text. So
+// DayResumeState carries `Uint8List? nightJson` / `cardioRowsJson` (the section
+// payloads as stored, never parsed), foldDayCheckpoint takes `nightJson` and the
+// encoded `cardioRowChunks` (+ the window to cut them to) and encodes in the
+// worker, and a damaged section is found where it is READ (the adopting worker
+// rebuilds the night / recomputes the rows), not by the blob decoder. The
+// helpers below turn the stored text back into objects for the assertions.
 @Timeout(Duration(minutes: 10))
 library;
 
@@ -84,6 +93,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_analytics/onehz.dart' show CalculationMode, RrCorrector;
+import 'package:openstrap_edge/compute/cardio_rows_blob.dart';
 import 'package:openstrap_edge/compute/day_calculation_state.dart';
 import 'package:openstrap_edge/compute/day_checkpoint_fold.dart';
 import 'package:openstrap_edge/compute/day_checkpoint_policy.dart';
@@ -205,11 +215,38 @@ Uint8List _blob({
     age: 35,
     stepModulus: null,
     throughSec: _t0 + n,
-    night: night,
-    cardioRows: cardioRows,
+    nightJson: night == null ? null : _nightBytes(night),
+    cardioRowChunks: cardioRows == null ? const [] : [encodeCardioRowsHeavy(cardioRows)],
+    cardioRowsLoSec: 0,
+    cardioRowsHiSec: 1 << 62,
   );
   expect(out, isNotNull, reason: 'fixture: the day part folds');
   return out!;
+}
+
+Uint8List _nightBytes(NightResumePart p) =>
+    Uint8List.fromList(utf8.encode(jsonEncode(p.toJson())));
+
+/// The stored night text as an object; null when it cannot be read (what the
+/// adopting worker would treat as "rebuild").
+NightResumePart? _nightOf(DayResumeState s) {
+  final raw = s.nightJson;
+  if (raw == null) return null;
+  try {
+    return NightResumePart.fromJson(
+        (jsonDecode(utf8.decode(raw)) as Map).cast<String, dynamic>());
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The stored rows text as a cache; null when it cannot be read (what the
+/// staging worker would treat as "recompute").
+ana.CardioRowCache? _rowsOf(DayResumeState s) {
+  final raw = s.cardioRowsJson;
+  if (raw == null) return null;
+  final rows = mergeCardioRowChunksHeavy([raw]);
+  return rows.length == 0 ? null : rows;
 }
 
 Uint8List _withFmt(Uint8List blob, int fmt) {
@@ -252,7 +289,7 @@ DayCalculationState _folded(Map<String, dynamic> full, int n) {
 }
 
 NightResumePart _roundTrip(NightResumePart p) {
-  final back = decodeDayResumeState(_blob(night: p))!.night;
+  final back = _nightOf(decodeDayResumeState(_blob(night: p))!);
   expect(back, isNotNull, reason: 'a good night part survives the blob');
   return back!;
 }
@@ -402,8 +439,8 @@ void main() {
 
       final blob = _blob(night: part);
       final decoded = decodeDayResumeState(blob)!;
-      expect(decoded.night, isNotNull);
-      expect(decoded.night!.tag, part.tag);
+      expect(_nightOf(decoded), isNotNull);
+      expect(_nightOf(decoded)!.tag, part.tag);
       expect(encodeDayResumeState(decoded), blob, reason: 'stable re-encode');
 
       final restored = DayCalculationState()..seedFrom(decoded);
@@ -457,16 +494,16 @@ void main() {
     test('foldDayCheckpoint replaces the night part; null drops it', () {
       final part = _folded(full, 400).exportNight()!;
       final withNight = _blob(n: 600, night: part);
-      expect(decodeDayResumeState(withNight)!.night!.tag, part.tag);
+      expect(_nightOf(decodeDayResumeState(withNight)!)!.tag, part.tag);
 
       final part2 = _folded(full, 700).exportNight()!;
       final replaced =
           _blob(base: withNight, alreadyFolded: 600, night: part2);
-      expect(decodeDayResumeState(replaced)!.night!.tag, part2.tag);
+      expect(_nightOf(decodeDayResumeState(replaced)!)!.tag, part2.tag);
       expect(decodeDayResumeState(replaced)!.folded, 900);
 
       final dropped = _blob(base: withNight, alreadyFolded: 600);
-      expect(decodeDayResumeState(dropped)!.night, isNull);
+      expect(_nightOf(decodeDayResumeState(dropped)!), isNull);
     });
   });
 
@@ -565,8 +602,8 @@ void main() {
       final decoded = decodeDayResumeState(bad);
       expect(decoded, isNotNull, reason: 'the day part is fine');
       expect(decoded!.folded, 900);
-      expect(decoded.night, isNull);
-      expect(decoded.cardioRows?.length, rows.length);
+      expect(_nightOf(decoded), isNull);
+      expect(_rowsOf(decoded)?.length, rows.length);
 
       final s = DayCalculationState()..seedFrom(decoded);
       _expectBundle(_upTo(full, 700), s);
@@ -578,7 +615,7 @@ void main() {
       final m = jsonDecode(partJson) as Map<String, dynamic>..['v'] = 7;
       final bad = _patch(blob, partJson, jsonEncode(m));
       final decoded = decodeDayResumeState(bad)!;
-      expect(decoded.night, isNull);
+      expect(_nightOf(decoded), isNull);
       expect(decoded.folded, 900);
     });
 
@@ -598,10 +635,11 @@ void main() {
         _patch(blob, rowsJson, jsonEncode(m)),
       ]) {
         final decoded = decodeDayResumeState(bad)!;
-        expect(decoded.cardioRows, isNull);
-        expect(decoded.night?.tag, warmPart.tag, reason: 'night section is whole');
+        expect(_rowsOf(decoded), isNull);
+        expect(_nightOf(decoded)?.tag, warmPart.tag,
+            reason: 'night section is whole');
         expect(decoded.folded, 900);
-        final cache = decoded.cardioRows ?? ana.CardioRowCache();
+        final cache = _rowsOf(decoded) ?? ana.CardioRowCache();
         final got = prepareSleepSessionCandidate(sub,
             targetDay: _day, rowCache: cache);
         expect(_json(got), _json(plain));
@@ -627,8 +665,8 @@ void main() {
 
       final bare = _blob();
       final bareDecoded = decodeDayResumeState(bare)!;
-      expect(bareDecoded.night, isNull);
-      expect(bareDecoded.cardioRows, isNull);
+      expect(bareDecoded.nightJson, isNull);
+      expect(bareDecoded.cardioRowsJson, isNull);
       for (final blob in [
         _blob(night: part),
         _blob(cardioRows: rows),
@@ -637,8 +675,8 @@ void main() {
         final d = decodeDayResumeState(blob)!;
         expect(d.folded, bareDecoded.folded);
         d
-          ..night = null
-          ..cardioRows = null;
+          ..nightJson = null
+          ..cardioRowsJson = null;
         expect(encodeDayResumeState(d), bare,
             reason: 'with the suffix removed, the bytes are the bare blob');
       }
@@ -649,10 +687,11 @@ void main() {
       final rows = ana.CardioRowCache();
       prepareSleepSessionCandidate(_build(-2, 7, _night),
           targetDay: _day, rowCache: rows);
-      final s = DayResumeState(night: part, cardioRows: rows);
+      final s = DayResumeState(
+          nightJson: _nightBytes(part), cardioRowsJson: encodeCardioRowsHeavy(rows));
       final back = decodeDayResumeState(encodeDayResumeState(s))!;
-      expect(back.night!.tag, part.tag);
-      expect(jsonEncode(back.cardioRows!.toJson()), jsonEncode(rows.toJson()));
+      expect(_nightOf(back)!.tag, part.tag);
+      expect(jsonEncode(_rowsOf(back)!.toJson()), jsonEncode(rows.toJson()));
     });
   });
 
@@ -667,7 +706,7 @@ void main() {
       expect(warm.length, greaterThan(0));
 
       final decoded = decodeDayResumeState(_blob(cardioRows: warm))!;
-      final rows = decoded.cardioRows!;
+      final rows = _rowsOf(decoded)!;
       expect(rows.length, warm.length);
       final got = prepareSleepSessionCandidate(sub, targetDay: _day, rowCache: rows);
       expect(_json(got), _json(plain));

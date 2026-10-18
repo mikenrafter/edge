@@ -437,6 +437,36 @@ class HeavyGuardConfig {
                 'name); renaming it would split that vocabulary',
           ),
           OriginAllow(
+            'DayCalculationState.nightRr',
+            'nightRr',
+            'worker-only @heavy: the streamed night RR correction, reached only from deriveDayBundle; the public name is used by the pipeline and by night_nn_stream_test, night_spectral_stream_test and day_checkpoint_night_state_test',
+          ),
+          OriginAllow(
+            'DayCalculationState.nightHrvFreq',
+            'nightHrvFreq',
+            'worker-only @heavy: the streamed night HRV spectrum, reached only from deriveDayBundle; the public name is the contract of night_spectral_stream_test',
+          ),
+          OriginAllow(
+            'DayCalculationState.nightResp',
+            'nightResp',
+            'worker-only @heavy: the streamed night respiration estimate, reached only from deriveDayBundle; the public name is the contract of night_spectral_stream_test',
+          ),
+          OriginAllow(
+            'DayCalculationState.exportNight',
+            'exportNight',
+            'worker-only @heavy: the night state captured for the checkpoint, reached only from exportNightJsonHeavy (inside deriveDayBundle); the public name is the contract of day_checkpoint_night_state_test',
+          ),
+          OriginAllow(
+            'nightRrBatch',
+            'nightRrBatch',
+            'worker-only @heavy: the batch night RR correction shared by the pipeline and the streamed path (reached only from deriveDayBundle and nightRr); the public name is used by tests',
+          ),
+          OriginAllow(
+            'restrictCardioRows',
+            'restrictCardioRows',
+            'worker-only @heavy: cuts a cardio row cache to a window, reached only from foldDayCheckpoint and stageSleepCandidateHeavy; the public name is the contract of day_checkpoint_night_state_test',
+          ),
+          OriginAllow(
             'buildCrossDayBundle',
             'buildCrossDayBundle',
             'registered legacy worker entry: the public name is used by tests, '

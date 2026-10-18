@@ -340,20 +340,37 @@ class DayBundleInput {
   }
 }
 
+/// What [auditBatchDay] derives from: the serialized [DayBundleInput] map.
+@SendableShape('the day bundle input: Map<String, dynamic> JSON '
+    '(DayBundleInput.toJson); round trip in test/sendable_auditBatchDay_test.dart')
+class AuditBatchInput {
+  const AuditBatchInput(this.json);
+  final Map<String, dynamic> json;
+}
+
+/// The bundle [auditBatchDay] derived: the plain JSON map [deriveDayBundle]
+/// returns.
+@SendableShape('the derived day bundle: Map<String, dynamic> JSON; round trip '
+    'in test/sendable_auditBatchDay_test.dart')
+class AuditBatchResult {
+  const AuditBatchResult(this.bundle);
+  final Map<String, dynamic> bundle;
+}
+
 /// WORKER ENTRY: the finalization audit's batch reference. [deriveDayBundle]
 /// with no [DayCalculationState] at all, so every figure is computed from the
 /// whole day's rows in one go; the caller compares it with the accumulator
 /// result about to be frozen.
 @heavy
-Map<String, dynamic> auditBatchDay(
+AuditBatchResult auditBatchDay(
   WorkerInputs inputs,
-  Map<String, dynamic> inputJson,
+  AuditBatchInput input,
   CalculationMode mode,
 ) {
   WorkerInit.ensure(inputs);
   assertWorker();
   WorkerAudit.entered('auditBatchDay');
-  return deriveDayBundle(inputJson, mode: mode);
+  return AuditBatchResult(deriveDayBundle(input.json, mode: mode));
 }
 
 /// THE ISOLATE ENTRY POINT.
@@ -1721,6 +1738,9 @@ Map<String, dynamic> deriveDayBundle(
       ),
     },
   };
+  // The night's state for the next checkpoint, encoded HERE so the UI isolate
+  // only ever carries its bytes (AGENTS.md 3.10).
+  if (state != null) state.exportedNightJson = state.exportNightJsonHeavy();
   return state == null ? bundle : _ownedBundleJson(bundle) as Map<String, dynamic>;
 }
 

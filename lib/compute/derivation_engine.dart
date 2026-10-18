@@ -67,7 +67,8 @@ import 'day_calculation_state.dart';
 import 'day_checkpoint_fold.dart';
 import 'day_checkpoint_policy.dart';
 import 'day_resume_state.dart';
-import 'night_resume_part.dart';
+import 'cardio_rows_blob.dart';
+import 'sleep_staging_worker.dart';
 import 'day_tail_fold.dart';
 import 'minute_bills.dart';
 import 'step_cadence.dart';
@@ -2817,11 +2818,12 @@ class DerivationEngine {
 
   /// Exact cardio epoch rows reused across stagings (RAM only). A row's key
   /// carries a fingerprint of every input to it, so a hit is the row a fresh
-  /// computation would produce. Main isolate only; each staging gets a copy
-  /// restricted to its window and returns what it computed.
-  final ana.CardioRowCache _cardioRows = ana.CardioRowCache();
-  static const _cardioRowsKeepSec = 4 * 24 * 3600;
-  static const _cardioRowsSlackSec = 3600;
+  /// computation would produce. Held ONLY as encoded chunks with their time
+  /// bounds: this isolate never parses, merges, filters or encodes the rows. A
+  /// staging is handed the chunks that overlap its window and returns one chunk
+  /// that replaces them; a checkpoint worker is handed the same and embeds the
+  /// part in its window.
+  final List<CardioRowsChunk> _cardioRowChunks = [];
 
   @visibleForTesting
   int get debugCeilingHits => _ceilingHits;
@@ -2894,7 +2896,7 @@ class DerivationEngine {
   /// drop the samples it holds. Called from the lifecycle handler; costs
   /// nothing when there is nothing to drop.
   void trimForBackground() {
-    _cardioRows.retainWhere((_) => false);
+    _cardioRowChunks.clear();
     final before = _calculationStates.length;
     final labels = _calculationStates.keys.toList()..sort();
     while (labels.length > 1) {
@@ -3020,7 +3022,7 @@ class DerivationEngine {
     final pending = (await LocalDb.finalizationAudit()).pending;
     if (pending.isEmpty || !policy.mayAuditFinalization(await read())) return 0;
     final dataNowSec = await LocalDb.lastDecodedRecTs() ?? 0;
-    final profileSig = jsonEncode(profile.toMap());
+    final profileSig = _profileSignature(profile);
     final derived = await LocalDb.derivedFingerprints(kAlgoVersion);
     final history = await _BaselineHistoryCache.load();
     var audited = 0;
@@ -3255,7 +3257,7 @@ class DerivationEngine {
       // What each candidate day's input looks like right now. Taken BEFORE the
       // derive reads anything, so rows that land mid-derive make the recorded
       // fingerprint stale (=> re-derive next time), never falsely current.
-      final profileSig = jsonEncode(profile.toMap());
+      final profileSig = _profileSignature(profile);
       final fps = todoDays.isEmpty
           ? const <String, String>{}
           : await LocalDb.decodedDayFingerprints({
@@ -3612,7 +3614,7 @@ class DerivationEngine {
       }
       _diag['todo_days'] = todoDays.length;
       onScopeDays?.call(todoDays.reversed.toList());
-      final profileSig = jsonEncode(profile.toMap());
+      final profileSig = _profileSignature(profile);
       final fps = await LocalDb.decodedDayFingerprints({
         for (final d in todoDays) ...[d, _adjacentDayIds(d).first],
       });
@@ -4025,11 +4027,11 @@ class DerivationEngine {
     //   (1) read the profile from the DB HERE (the main isolate owns the DB) as
     //       plain JSON,
     //   (2) re-arm the ambient globals and run the staging + EWMA profile fold
-    //       INSIDE the worker, and
-    //   (3) return the staged candidate + folded profile as plain JSON to persist
-    //       back on main.
-    // The worker isolate dies after `Isolate.run`, so the recording flag can't
-    // leak into the next day's derivation — no try/finally reset needed.
+    //       INSIDE the worker ([stageSleepCandidateHeavy]), and
+    //   (3) return the staged candidate + the raw observation as plain JSON to
+    //       persist back on main.
+    // The worker isolate dies after dispatch, so the recording flag can't leak
+    // into the next day's derivation — no try/finally reset needed.
     final profileJson = await _loadSleepUserProfileJson();
     // Which day_ids have ALREADY been folded into that profile. See
     // [_kFoldedDaysKey] for why this exists and why a legacy profile that
@@ -4054,116 +4056,55 @@ class DerivationEngine {
     // (and its _diag map) cannot be sent to the isolate.
     final stagesStep = CalcStatus.instance.begin('Sleep stages');
     final stagingStartedAt = DateTime.now().millisecondsSinceEpoch;
-    // Rows inside this call's window +- 1 h, as plain data for the worker.
-    final rowsLo = range.$1 - _cardioRowsSlackSec;
-    final rowsHi = range.$2 + _cardioRowsSlackSec;
-    final rowsCopy = ana.CardioRowCache()..merge(_cardioRows);
-    rowsCopy.retainWhere((k) => k.startSec >= rowsLo && k.startSec <= rowsHi);
-    final rowCacheJson = jsonEncode(rowsCopy.toJson());
-    final (String, String?, String, int, int) staged;
+    // The encoded rows that may overlap this call's window +- 1 h. They go to
+    // the worker as they are; it decodes, merges, cuts and prunes them and
+    // hands back one chunk to replace them.
+    final rowsLo = range.$1 - kCardioRowsSlackSec;
+    final rowsHi = range.$2 + kCardioRowsSlackSec;
+    final sentChunks = [
+      for (final c in _cardioRowChunks)
+        if (c.overlaps(rowsLo, rowsHi)) c,
+    ];
+    final input = SleepStagingInput(
+      dayId: dayId,
+      searchSub: searchSub,
+      override: override,
+      priorSleep: priorSleep,
+      confirmedWakeSec: confirmedWake,
+      profileJson: profileJson,
+      mayFold: mayFold,
+      rowChunks: [for (final c in sentChunks) c.json],
+      rowsLoSec: rowsLo,
+      rowsHiSec: rowsHi,
+      nowSec: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    );
+    final inputs = _workerInputs();
+    final SleepStagingResult staged;
     try {
-      staged = await _runIsolateCancellable(() {
-      try {
-        final p = profileJson == null
-            ? null
-            : ana.SleepUserProfile.fromJson(
-                (jsonDecode(profileJson) as Map).cast<String, dynamic>());
-        // Warm-up gate — see SleepProfilePolicy.shouldBlend. Note the profile
-        // is only WITHHELD FROM STAGING here; accumulation into it happens on
-        // the main isolate in _foldObservationIntoProfile, which re-reads the
-        // current profile, so a withheld night still counts toward `nights`.
-        ana.cardioUserProfile =
-            SleepProfilePolicy.shouldBlend(p?.nights) ? p : null;
-      } catch (_) {
-        // Defense in depth: an incompatible/outdated persisted profile must
-        // fall back to a cold start, never throw inside the worker (an uncaught
-        // throw here bubbles to processDay's per-day catch → the day gets stuck
-        // marked 'error' every pass until the row is fixed).
-        ana.cardioUserProfile = null;
-      }
-      ana.cardioRecordObservations = true;
-      ana.resetCardioObservations();
-      ana.CardioRowCache rowCache;
-      try {
-        rowCache = ana.CardioRowCache.fromJson(
-            (jsonDecode(rowCacheJson) as Map).cast<String, dynamic>());
-      } on FormatException {
-        rowCache = ana.CardioRowCache(); // refuse, never guess
-      }
-      final candidate = prepareSleepSessionCandidate(
-        searchSub,
-        targetDay: dayId,
-        override: override,
-        priorSleep: priorSleep,
-        confirmedWakeSec: confirmedWake,
-        rowCache: rowCache,
+      staged = await _runIsolateCancellable(
+        () => stageSleepCandidateHeavy(inputs, input),
+        _perDayTimeout,
+        label: 'sleep-staging $dayId',
       );
-      // Fold the MAIN sleep (most epochs) of a freshly-staged night into the
-      // rolling profile — done here in the worker because the observations live
-      // in THIS isolate's globals. Skipped for overrides. EWMA self-seeds.
-      String? observationJson;
-      // IDEMPOTENT PER DAY. `fold()` is an EWMA step that also increments
-      // `nights`, and this path runs on EVERY staging pass for a day — an
-      // algo-version bump, a BLE-drain re-derive, a backfill sweep. Without a
-      // guard the same handful of real nights fold hundreds of times: a real
-      // user export showed `nights: 1348` against 12 days of data, which pins
-      // `personalWeight` at its 0.5 cap from day one and collapses the EWMA
-      // onto whichever day was re-derived last. Measured effect of that
-      // corrupt profile on the same nights: wake 4.3% -> 36.4%, deep 1.9% ->
-      // 0.0%. One fold per day_id, ever.
-      if (mayFold) {
-        final obs = ana.takeCardioObservations();
-        if (obs.isNotEmpty) {
-          obs.sort((a, b) => b.epochs.compareTo(a.epochs));
-          final main = obs.first;
-          if (main.epochs >= 120) {
-            // require ≥60 min — not a nap.
-            // Return the raw OBSERVATION, not a folded profile. Folding here
-            // would bake in the profile this worker read before staging began,
-            // and a concurrent day may have written a newer one since. The
-            // fold happens on the main isolate under the profile lock.
-            observationJson = jsonEncode({
-              'epochs': main.epochs,
-              'hr_floor_p5': main.hrFloorP5,
-              'hr_floor_p25': main.hrFloorP25,
-              'hr_sleep_median': main.hrSleepMedian,
-              'hr_arousal': main.hrArousal,
-              'rmssd_med': main.rmssdMed,
-              'rmssd_mad': main.rmssdMad,
-              'enmo_still_cut': main.enmoStillCut,
-              'enmo_move_cut': main.enmoMoveCut,
-              'lfhf_med': main.lfhfMed,
-              'rk_med': main.rkMed,
-            });
-          }
-        }
-      }
-      return (
-        jsonEncode(candidate.toJson()),
-        observationJson,
-        jsonEncode(rowCache.toJson()),
-        rowCache.hits,
-        rowCache.misses,
-      );
-      }, _perDayTimeout, label: 'sleep-staging $dayId');
     } finally {
       CalcStatus.instance.end(stagesStep);
       perf.addStage('stage_candidate',
           DateTime.now().millisecondsSinceEpoch - stagingStartedAt);
     }
-    final (candidateJson, observationJson, rowsOutJson, rowHits, rowMisses) =
-        staged;
-    try {
-      _cardioRows.merge(ana.CardioRowCache.fromJson(
-          (jsonDecode(rowsOutJson) as Map).cast<String, dynamic>()));
-    } on FormatException {
-      // Unreadable rows are dropped; the next staging recomputes them.
+    final candidateJson = staged.candidateJson;
+    final observationJson = staged.observationJson;
+    // The returned chunk holds everything the sent ones did (less what aged
+    // out), so it replaces them; only plain ints are compared here.
+    _cardioRowChunks.removeWhere(sentChunks.contains);
+    final rowsOut = staged.rowsJson;
+    if (rowsOut != null) {
+      _cardioRowChunks
+          .add(CardioRowsChunk(rowsOut, staged.rowsLoSec, staged.rowsHiSec));
     }
-    final keepFrom =
-        DateTime.now().millisecondsSinceEpoch ~/ 1000 - _cardioRowsKeepSec;
-    _cardioRows.retainWhere((k) => k.startSec >= keepFrom);
-    perf.addCount('cardio_rows_hit', rowHits);
-    perf.addCount('cardio_rows_miss', rowMisses);
+    final keepFrom = input.nowSec - kCardioRowsKeepSec;
+    _cardioRowChunks.removeWhere((c) => c.hiSec < keepFrom);
+    perf.addCount('cardio_rows_hit', staged.rowHits);
+    perf.addCount('cardio_rows_miss', staged.rowMisses);
     final candidate = SleepSessionCandidate.fromJson(
         (jsonDecode(candidateJson) as Map).cast<String, dynamic>());
     if (override == null) {
@@ -5009,7 +4950,7 @@ class DerivationEngine {
       perfStarted = true;
       _calcStage('Day calculations');
       onScopeDays?.call(todoDays.reversed.toList());
-      final profileSig = jsonEncode(profile.toMap());
+      final profileSig = _profileSignature(profile);
       final fps = await LocalDb.decodedDayFingerprints({
         for (final d in todoDays) ...[d, _adjacentDayIds(d).first],
       });
@@ -6120,6 +6061,9 @@ class DerivationEngine {
           reuse: ckptReuse,
           state: candidateState,
           stream: stream);
+      // Its bytes are in the checkpoint now; do not carry them (and copy them
+      // into the next worker) with the retained state.
+      candidateState.exportedNightJson = null;
     }
     return true;
   }
@@ -6218,8 +6162,16 @@ class DerivationEngine {
       // The rows the stager computed before the restart: staging finds them as
       // hits instead of recomputing the night. The night RR / spectral part
       // rides in `state` and is armed by seedFrom.
-      final rows = state.cardioRows;
-      if (rows != null) _cardioRows.merge(rows);
+      final rows = state.cardioRowsJson;
+      if (rows != null) {
+        // Still encoded: the staging worker decodes and merges it. Its start
+        // seconds lie in the staging window it was cut to when it was written.
+        final window = _targetDayWindow(day.date);
+        _cardioRowChunks.add(CardioRowsChunk(
+            rows,
+            window.$1 - kCardioRowsSlackSec,
+            window.$2 + kCardioRowsSlackSec));
+      }
       return (state: DayCalculationState()..seedFrom(state), resume: state);
     } catch (e) {
       _log('checkpoint ${day.date} not resumed: $e');
@@ -6390,10 +6342,8 @@ class DerivationEngine {
       // window ride in the blob as plain data; the worker encodes them. A new
       // pass adopts the night only if its slice proves to extend it.
       final window = _targetDayWindow(day.date);
-      final night = state.exportNight();
-      final rows = restrictCardioRows(_cardioRows,
-          loSec: window.$1 - _cardioRowsSlackSec,
-          hiSec: window.$2 + _cardioRowsSlackSec + 1);
+      final rowsLo = window.$1 - kCardioRowsSlackSec;
+      final rowsHi = window.$2 + kCardioRowsSlackSec;
       final blob = await perf.stage('checkpoint', () => _foldCheckpoint(
             base: base,
             alreadyFolded: lo,
@@ -6413,8 +6363,13 @@ class DerivationEngine {
             rrTsMs: addTs,
             throughSec: boundary,
             quietCutG: ana.calibrationFor(_quietEnmoCutG, sub.deviceFamily) ?? 0.02,
-            night: night,
-            cardioRows: rows.length == 0 ? null : rows,
+            nightJson: state.exportedNightJson,
+            cardioRowChunks: [
+              for (final c in _cardioRowChunks)
+                if (c.overlaps(rowsLo, rowsHi)) c.json,
+            ],
+            cardioRowsLoSec: rowsLo,
+            cardioRowsHiSec: rowsHi + 1,
             timeout: _perDayTimeout,
             label: 'checkpoint ${day.date}',
           ));
@@ -6463,8 +6418,10 @@ class DerivationEngine {
     required List<double> rrTsMs,
     required int throughSec,
     required double quietCutG,
-    required NightResumePart? night,
-    required ana.CardioRowCache? cardioRows,
+    required Uint8List? nightJson,
+    required List<Uint8List> cardioRowChunks,
+    required int cardioRowsLoSec,
+    required int cardioRowsHiSec,
     required Duration timeout,
     required String label,
   }) => _runIsolateCancellable(
@@ -6484,8 +6441,10 @@ class DerivationEngine {
           rrTsMs: rrTsMs,
           throughSec: throughSec,
           quietCutG: quietCutG,
-          night: night,
-          cardioRows: cardioRows,
+          nightJson: nightJson,
+          cardioRowChunks: cardioRowChunks,
+          cardioRowsLoSec: cardioRowsLoSec,
+          cardioRowsHiSec: cardioRowsHiSec,
         ),
         timeout,
         label: label,
@@ -10185,20 +10144,31 @@ class DerivationEngine {
           return (bundle: bundle, state: state);
         }, timeout, label: label);
 
+  /// The profile as the text the day fingerprints hash: a few dozen settings,
+  /// not stored data.
+  static String _profileSignature(Profile profile) =>
+      jsonEncode(profile.toMap());
+
+  /// The plain inputs every registered entry carries. The staging and audit
+  /// entries read none of zone or locale (they re-arm only the analytics
+  /// ambient globals); the clock is the one instant they may need.
+  static WorkerInputs _workerInputs() => WorkerInputs(
+        nowEpochMs: DateTime.now().millisecondsSinceEpoch,
+        zoneId: 'UTC',
+        localeTag: 'en',
+      );
+
   /// The batch reference of the finalization audit: [auditBatchDay] with no
   /// calculation state, cancellable like every other per-day worker.
   Future<({Map<String, dynamic> bundle, DayCalculationState state})>
       _runAuditBatch(Map<String, dynamic> input, String date) {
-    final inputs = WorkerInputs(
-      nowEpochMs: DateTime.now().millisecondsSinceEpoch,
-      zoneId: 'UTC',
-      localeTag: 'en',
-    );
+    final inputs = _workerInputs();
     return _runIsolateCancellable(
-      () => auditBatchDay(inputs, input, ana.CalculationMode.forced),
+      () => auditBatchDay(
+          inputs, AuditBatchInput(input), ana.CalculationMode.forced),
       _perDayTimeout,
       label: 'audit-batch $date',
-    ).then((bundle) => (bundle: bundle, state: DayCalculationState()));
+    ).then((r) => (bundle: r.bundle, state: DayCalculationState()));
   }
 
   static Future<R> _runIsolateCancellable<R>(
