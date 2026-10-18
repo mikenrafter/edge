@@ -153,6 +153,7 @@ class AlertCapabilityRegistry {
     'reminders',
     'device',
     'autoDetect',
+    'napDetect',
     'stepGoal',
     'alarmLatchFailed',
     'alarmNightCheck',
