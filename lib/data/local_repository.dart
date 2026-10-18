@@ -37,6 +37,22 @@ class RepositoryException implements Exception {
   String toString() => 'Repository error $status: $body';
 }
 
+/// Everything the Sleep detail screen reads for one night, from ONE call.
+/// `charts` is keyed by the same names [LocalRepository.getChart] takes and each
+/// value is exactly what `getChart(name)` returns.
+class SleepDetailBundle {
+  final Map<String, dynamic> night, timeline, insights;
+  final Map<String, Map<String, dynamic>> charts;
+  final List<Map<String, dynamic>> windows;
+  const SleepDetailBundle({
+    required this.night,
+    required this.timeline,
+    required this.insights,
+    required this.charts,
+    required this.windows,
+  });
+}
+
 /// The local data contract for every insights screen + the AI Coach.
 /// Return types mirror the cloud ApiClient exactly (defensive Map/List blobs).
 abstract class LocalRepository {
@@ -85,6 +101,14 @@ abstract class LocalRepository {
       throw UnimplementedError('re-layer: getInsights');
 
   // ── day drill-down detail ────────────────────────────────────────────────────
+  /// One read for the whole Sleep detail screen: the night, its timeline, the
+  /// insights, every named chart and the sleep windows ([windowDays] newest).
+  Future<SleepDetailBundle> getSleepDetailBundle(
+    String day, {
+    required List<String> chartKeys,
+    required int windowDays,
+  }) => throw UnimplementedError('re-layer: getSleepDetailBundle');
+
   Future<Map<String, dynamic>> getDaySleepV2(String date) =>
       throw UnimplementedError('re-layer: getDaySleepV2');
   Future<Map<String, dynamic>> getDayStrain(String date) =>
