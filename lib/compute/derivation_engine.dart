@@ -5624,15 +5624,14 @@ class DerivationEngine {
       }
 
       // DB writes + notification the pure compute deferred to us (DB-owning isolate).
-      for (final w in blocks.sessionHrrWrites) {
-        await LocalDb.setSessionHrr(w.$1, w.$2);
-      }
-      for (final sug in blocks.suggestionsToPersist) {
-        await LocalDb.putWorkoutSuggestion({
-          ...sug,
-          'created_at': DateTime.now().millisecondsSinceEpoch,
-        });
-      }
+      final deferredAt = DateTime.now().millisecondsSinceEpoch;
+      await LocalDb.putDerivedSessionWrites(
+        hrr: [for (final w in blocks.sessionHrrWrites) (w.$1, w.$2)],
+        suggestions: [
+          for (final sug in blocks.suggestionsToPersist)
+            {...sug, 'created_at': deferredAt},
+        ],
+      );
       final nb = blocks.notifBout;
       // Only for a bout that is STILL waiting on an answer. The detector is
       // pure and re-derives the same bouts every pass; dismissing one, logging
@@ -7338,8 +7337,10 @@ class DerivationEngine {
     final artifact = history.toArtifactJson();
     final rolling = ((artifact['rolling'] as Map?) ?? const {})
         .cast<String, dynamic>();
-    await LocalDb.putBaseline('rolling_artifact', jsonEncode(artifact));
-    await LocalDb.putBaseline('rolling', jsonEncode(rolling));
+    await LocalDb.putBaselines({
+      'rolling_artifact': jsonEncode(artifact),
+      'rolling': jsonEncode(rolling),
+    });
     await _refreshCrossDayInputArtifact();
   }
 

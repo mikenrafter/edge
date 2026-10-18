@@ -7,6 +7,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite/sqflite.dart' show Sqflite;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/ble/live_step_runs.dart' show kStepSourceStrap;
@@ -91,7 +92,7 @@ void main() {
       () async {
     final db = await LocalDb.instance;
     await db.insert('sessions', {
-      'id': 's1', 'start_ts': 1, 'type': 'run', 'status': 'done',
+      'id': 's1', 'start_ts': 1, 'type': 'run', 'status': 'done', 'created_at': 1,
     });
     await _failOn('CREATE TRIGGER t BEFORE INSERT ON workout_suggestions '
         "BEGIN SELECT RAISE(ABORT, 'boom'); END");
@@ -113,7 +114,7 @@ void main() {
   test('putDerivedSessionWrites: all writes land together', () async {
     final db = await LocalDb.instance;
     await db.insert('sessions', {
-      'id': 's1', 'start_ts': 1, 'type': 'run', 'status': 'done',
+      'id': 's1', 'start_ts': 1, 'type': 'run', 'status': 'done', 'created_at': 1,
     });
     await LocalDb.putDerivedSessionWrites(
       hrr: [('s1', 31.5)],

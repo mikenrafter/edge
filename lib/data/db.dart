@@ -422,6 +422,35 @@ class LocalDb {
   static Database? _readerFailedFor;
   static int? _readerFailedEpoch;
 
+  /// True only while the UI is in the foreground. The read connection exists
+  /// only then: a background/headless sync (BGTask, workmanager, foreground
+  /// service with no UI) shares this isolate's statics but must never hold a
+  /// second connection, and has no screen to read for. A process STARTS in the
+  /// background; the app's one lifecycle observer (lib/app.dart) turns it on
+  /// when the UI is first visible and on every resume, and off on
+  /// hidden/paused/detached. Owned here, set only through [setForeground].
+  static bool _foreground = false;
+
+  /// Sets whether screen reads may use the read connection. Off closes it now
+  /// (waiting for an open that is in flight) and routes reads to the writer
+  /// with no lazy reopen; on only re-allows the lazy open on the next read.
+  static Future<void> setForeground(bool foreground) async {
+    _foreground = foreground;
+    if (foreground) return;
+    final opening = _readerOpening;
+    if (opening != null) {
+      try {
+        await opening;
+      } catch (_) {}
+    }
+    // Re-check: a resume may have landed while the open finished.
+    if (!_foreground) await _closeReader();
+  }
+
+  /// A fresh process: background, no reader.
+  @visibleForTesting
+  static void debugResetForeground() => _foreground = false;
+
   /// Switch for the read connection. Off ⇒ [reader] is [instance].
   @visibleForTesting
   static bool readerEnabled = true;
@@ -438,7 +467,7 @@ class LocalDb {
   /// in-memory.
   static Future<Database> get reader async {
     final writer = await instance;
-    if (!readerEnabled) return writer;
+    if (!readerEnabled || !_foreground) return writer;
     final r = _readDb;
     if (r != null && r.isOpen && identical(_readerBeside, writer)) return r;
     if (identical(_readerFailedFor, writer) && _readerFailedEpoch == _wipeEpoch) {
@@ -498,6 +527,14 @@ class LocalDb {
       }
       _readerFailedFor = writer;
       _readerFailedEpoch = epoch;
+      return null;
+    }
+    // Backgrounded while this was opening: not a failure (a later foreground
+    // may open one), so do not mark it failed, and do not keep the handle.
+    if (!_foreground) {
+      try {
+        await opened.close();
+      } catch (_) {}
       return null;
     }
     _readDb = opened;
@@ -2328,7 +2365,7 @@ class LocalDb {
     final gestureCutoff = (nowMs ?? DateTime.now().millisecondsSinceEpoch) -
         gestureClaimRetention.inMilliseconds;
     await _guardedWrite<int>(
-      (db) async {
+      (handle) => handle.transaction((db) async {
         final dated = await db.rawDelete(
           "DELETE FROM notif_fired "
           "WHERE substr(key, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "
@@ -2340,7 +2377,7 @@ class LocalDb {
           [gestureCutoff],
         );
         return dated + gestures;
-      },
+      }),
       bestEffort: true,
     );
   }
@@ -2470,14 +2507,16 @@ class LocalDb {
     required String dataJson,
   }) async {
     final db = await instance;
-    await db.insert('wake_trace', {
-      'wake_epoch': wakeEpochSec,
-      'at_ms': atMs,
-      'kind': kind,
-      'data_json': dataJson,
+    await db.transaction((txn) async {
+      await txn.insert('wake_trace', {
+        'wake_epoch': wakeEpochSec,
+        'at_ms': atMs,
+        'kind': kind,
+        'data_json': dataJson,
+      });
+      await txn.delete('wake_trace',
+          where: 'wake_epoch < ?', whereArgs: [wakeEpochSec - 14 * 86400]);
     });
-    await db.delete('wake_trace',
-        where: 'wake_epoch < ?', whereArgs: [wakeEpochSec - 14 * 86400]);
   }
 
   /// The trace for one wake, oldest first. With [limit], the NEWEST [limit]
@@ -4374,6 +4413,35 @@ class LocalDb {
       'day': day,
       'source': source,
       'device_id': deviceId,
+    });
+  }
+
+  /// [addLiveCoverage] for several runs, in one transaction (same window
+  /// sanitising; a run that sanitises away is skipped).
+  static Future<void> addLiveCoverageRuns(
+    List<({int startTs, int endTs, int steps, String day})> runs, {
+    String source = kStepSourceBand,
+    String deviceId = kPrimaryDeviceId,
+  }) async {
+    final rows = <Map<String, Object?>>[];
+    for (final r in runs) {
+      final w = sanitizeCoverageWindow(r.startTs, r.endTs, r.steps);
+      if (w == null) continue;
+      rows.add({
+        'start_ts': w.startTs,
+        'end_ts': w.endTs,
+        'steps': r.steps,
+        'day': r.day,
+        'source': source,
+        'device_id': deviceId,
+      });
+    }
+    if (rows.isEmpty) return;
+    final db = await instance;
+    await db.transaction((txn) async {
+      for (final row in rows) {
+        await txn.insert('live_coverage', row);
+      }
     });
   }
 
@@ -7913,7 +7981,9 @@ class LocalDb {
       }
     }();
     final battery = parsed == null ? null : batteryRowFromEvent(parsed);
-    await _guardedWrite((db) async {
+    // One transaction: the three rows are one event, and a drain issues one of
+    // these per event, so single statements would each take the writer in turn.
+    await _guardedWrite((handle) => handle.transaction((db) async {
       await db.insert('events', {
         'device_id': deviceId,
         'hex': hex,
@@ -7940,7 +8010,7 @@ class LocalDb {
           conflictAlgorithm: ConflictAlgorithm.ignore,
         );
       }
-    }, bestEffort: true);
+    }), bestEffort: true);
   }
 
   /// [insertEvent] for a [StrapEvent]: keeps its sub-second remainder and the
@@ -11528,6 +11598,22 @@ class LocalDb {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// [putBaseline] for several rows that belong together, in one transaction.
+  static Future<void> putBaselines(Map<String, String> payloadsByKey) async {
+    if (payloadsByKey.isEmpty) return;
+    final db = await instance;
+    final at = nowMs();
+    await db.transaction((txn) async {
+      for (final e in payloadsByKey.entries) {
+        await txn.insert('baselines', {
+          'key': e.key,
+          'payload_json': e.value,
+          'updated_at': at,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
   /// Atomically read-modify-write one `baselines` row.
   ///
   /// [transform] receives the current `payload_json` (null when the row does
@@ -13690,6 +13776,27 @@ class LocalDb {
 
   /// Backfill a session's heart-rate-recovery (bpm), computed retrospectively
   /// from the 1 Hz substrate around the session's end during derivation.
+  /// The writes the pure day compute defers to the DB-owning isolate: HRR
+  /// backfills and workout suggestions, in ONE transaction (a derive pass used
+  /// to take the writer once per row). Suggestions keep their ignore-on-conflict.
+  static Future<void> putDerivedSessionWrites({
+    required List<(String, double)> hrr,
+    required List<Map<String, dynamic>> suggestions,
+  }) async {
+    if (hrr.isEmpty && suggestions.isEmpty) return;
+    final db = await instance;
+    await db.transaction((txn) async {
+      for (final w in hrr) {
+        await txn.update('sessions', {'hrr_bpm': w.$2},
+            where: 'id = ?', whereArgs: [w.$1]);
+      }
+      for (final row in suggestions) {
+        await txn.insert('workout_suggestions', row,
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    });
+  }
+
   static Future<void> setSessionHrr(String id, double hrrBpm) async {
     final db = await instance;
     await db.update(

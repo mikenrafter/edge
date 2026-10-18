@@ -39,6 +39,7 @@ import 'ui2/screens/nutrition_screen.dart';
 import 'ui2/screens/wellness_screen.dart';
 import 'ui2/screens/workout_screen.dart';
 import 'ui2/ui2.dart';
+import 'data/db.dart' show LocalDb;
 
 class OpenStrapApp extends StatefulWidget {
   const OpenStrapApp({super.key});
@@ -58,6 +59,15 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       context.read<AppState>().attachCoachConfig(context.read<CoachConfig>());
 
       final app = context.read<AppState>();
+      // A cold start into the foreground has no `resumed` transition, so this
+      // is where the read connection is first allowed. A process starts with it
+      // off (a headless launch never reaches this callback).
+      final startState = WidgetsBinding.instance.lifecycleState;
+      unawaited(LocalDb.setForeground(
+        startState != AppLifecycleState.detached &&
+            startState != AppLifecycleState.paused &&
+            startState != AppLifecycleState.hidden,
+      ));
       if (app.isPaired) app.openSession();
       // A cold start into the foreground has no `resumed` transition.
       unawaited(app.noteAppOpened());
@@ -92,6 +102,14 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final app = context.read<AppState>();
+    // The read connection lives only while the UI can show something.
+    if (state == AppLifecycleState.resumed) {
+      unawaited(LocalDb.setForeground(true));
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(LocalDb.setForeground(false));
+    }
     if (state == AppLifecycleState.resumed) {
       // The user may have flipped our notification switch either way in OS
       // Settings while we were backgrounded. Drop the cached authorization
