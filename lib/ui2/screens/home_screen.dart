@@ -29,12 +29,14 @@ import '../../l10n/date_text.dart';
 
 import 'dart:async';
 
+import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../ai/briefing.dart'
     show Briefing, BriefingPeriod, BriefingStore, currentBriefingPeriod, resolveBriefingToShow;
+import '../../compute/derive_perf.dart' show RenderLatency;
 import '../../compute/findings.dart'
     show
         isRecentFindingDate,
@@ -58,15 +60,19 @@ import 'package:openstrap_analytics/onehz.dart'
 import '../../models/metric.dart';
 import '../../models/payloads.dart' show todayHeadlineOf;
 import '../../notify/notification_prefs.dart' show NotificationPrefs;
+import '../../gestures/gesture_failures.dart';
 import '../../state/app_state.dart';
 import '../../state/clock_format.dart' show formatClockOf;
+import '../../state/prefs.dart';
+import '../../state/recalc_state.dart';
 import '../../state/units_controller.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
 import '../activity/day_strain.dart' show DayStrainDetail;
 import '../profile/alarm.dart'
     show AlarmArmState, alarmArmOf, alarmDoor, alarmGlanceCard;
 import '../profile/devices.dart' show formatDayTime;
-import '../profile/profile.dart';
+import '../profile/profile.dart' show ProfileAvatar;
+import '../profile/settings.dart' show MoreSettings;
 import '../profile/wearable_numbers.dart'
     show WearableCells, kHomeWearableRows;
 import '../ui2.dart';
@@ -74,7 +80,10 @@ import 'ai_briefing.dart' show AiBriefingScreen;
 import 'coach.dart';
 import 'detected_activities.dart';
 import 'day_timeline.dart' show DayTimelineScreen;
+import 'moment_follow_up.dart' show momentFollowUpCard;
 import 'metric_detail.dart';
+import 'natural_wake_card.dart';
+import 'snooze_card.dart';
 import 'readiness_detail.dart';
 import 'sleep_detail.dart';
 
@@ -106,6 +115,19 @@ LocalRepository? repoOf(BuildContext c) {
   }
 }
 
+/// Asks the background warmer for an artifact (`beats|<day>`, `circadian`):
+/// what a screen with nothing stored does instead of computing in its build
+/// path. The returned future completes when the warm has finished or been
+/// dropped, and the revision has moved if it stored something. Null in a golden
+/// (no AppState to ask).
+Future<void> Function(String key)? warmRequesterOf(BuildContext c) {
+  try {
+    return c.read<AppState>().requestWarm;
+  } catch (_) {
+    return null;
+  }
+}
+
 /// The user's unit system, or null in a golden. A screen that cannot reach it
 /// renders what the store holds, which is metric.
 UnitsController? unitsOf(BuildContext c) {
@@ -131,6 +153,16 @@ VoidCallback? syncOf(BuildContext c) {
   try {
     final app = c.read<AppState>();
     return app.syncNow;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The failed-gesture store, or null in a golden. The card
+/// (gesture_failure_card.dart) listens to it itself, so Home only needs to reach it.
+GestureFailureStore? gestureFailuresOf(BuildContext c) {
+  try {
+    return c.read<AppState>().gestureFailures;
   } catch (_) {
     return null;
   }
@@ -178,18 +210,6 @@ bool cycleTrackingOf(BuildContext c) {
   }
 }
 
-/// Whether the band is actively sending data right now, or false in a
-/// golden. Same shape and same reasoning as [workoutLiveOf] — `select`
-/// because this only cares about the bool flipping, not AppState's ~1 Hz
-/// heartbeat.
-bool syncingNowOf(BuildContext c) {
-  try {
-    return c.select<AppState, bool>((a) => a.syncingNow);
-  } catch (_) {
-    return false;
-  }
-}
-
 /// Whether a derive job is running or about to (the backlog just landed and
 /// today's numbers are being worked out), or false in a golden.
 /// How far the data we hold actually reaches — the band's OWN clock on the
@@ -226,14 +246,30 @@ DateTime? lastDataAtOf(BuildContext c) {
 /// most misleading thing this line could say.
 String syncedThroughLabel(DateTime? at, String? todayId,
     [AppLocalizations? l]) {
-  if (at == null) return l?.homeSyncedNever ?? 'No band data yet';
+  final when = _throughWhen(at, todayId, l);
+  if (when == null) return l?.homeSyncedNever ?? 'No band data yet';
+  return l?.homeSyncedThrough(when) ?? 'Synced through $when';
+}
+
+/// "Through 11:06": the same fact in less width, for a header line that has
+/// other things to carry. Only the lead word goes; the time never does.
+String syncedThroughShortLabel(DateTime? at, String? todayId,
+    [AppLocalizations? l]) {
+  final when = _throughWhen(at, todayId, l);
+  if (when == null) return l?.homeSyncedNever ?? 'No band data yet';
+  return 'Through $when';
+}
+
+/// The time part of [syncedThroughLabel]; null when no record exists.
+String? _throughWhen(DateTime? at, String? todayId, AppLocalizations? l) {
+  if (at == null) return null;
   final today = todayId == null ? null : DateTime.tryParse(todayId);
   final isToday = today != null &&
       at.year == today.year &&
       at.month == today.month &&
       at.day == today.day;
-  final when = isToday ? formatClockOf(at) : formatDayTime(at, l);
-  return l?.homeSyncedThrough(when) ?? 'Synced through $when';
+  // The user's 12/24-hour choice, the same clock every other time uses.
+  return isToday ? formatClockOf(at) : formatDayTime(at, l);
 }
 
 /// The band's battery, straight off the same [DeviceState] devices.dart
@@ -265,21 +301,54 @@ bool lowBattery(double pct, bool charging) =>
     // near it.
     !charging && pct < NotificationPrefs.batteryPctDefault;
 
-/// "78%" with a battery glyph, next to the sync line — the one place that
-/// already used a battery icon as an unrelated recovery-ring metaphor, but
-/// this is the actual reading. Mirrors devices.dart's `SourceRow` battery
-/// chip (same icon swap, same 13px size) rather than inventing a new look.
-Widget? batteryLine(BuildContext c) {
-  final battery = deviceBatteryOf(c);
-  if (battery == null) return null;
-  final (pct, charging) = battery;
+/// Whether the band link is up, read off the same [DeviceState] the rest of
+/// the app uses. Null when there is no AppState above (a golden).
+bool? deviceConnectedOf(BuildContext c) {
+  try {
+    return c.select<AppState, bool>((a) => a.isConnected);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// "59% · Connected" with a battery glyph, under the sync line. Connection is
+/// said here and only here; the sync line above carries data recency and time.
+/// Mirrors devices.dart's `SourceRow` battery chip (same icon swap, same 13px
+/// size). The reading is the strap's last report, so it is shown only while
+/// connected; with no level yet (or no link) it is the connection alone, never
+/// a placeholder. Null with no AppState above.
+/// The Natural Wake "I'm up" card; null with no AppState above (a golden).
+Widget? _naturalWakeCard(BuildContext c) {
+  try {
+    return NaturalWakeBuzzingCard(wake: c.read<AppState>().wake);
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
+Widget? connectionLine(BuildContext c, [AppLocalizations? l]) {
+  final connected = deviceConnectedOf(c);
+  if (connected == null) return null;
+  final battery = connected ? deviceBatteryOf(c) : null;
   final p = P.of(c);
-  final color = lowBattery(pct, charging) ? p.on(C.red) : p.ink3;
+  final color = battery != null && lowBattery(battery.$1, battery.$2)
+      ? p.on(C.red)
+      : p.ink3;
+  final state = connected
+      ? (l?.devicesConnected ?? 'Connected')
+      : (l?.devicesNotConnected ?? 'Not connected');
   return Row(mainAxisSize: MainAxisSize.min, children: [
-    Icon(charging ? LucideIcons.batteryCharging : LucideIcons.battery,
-        size: 13, color: color),
-    const SizedBox(width: 3),
-    Text('${pct.round()}%', style: F.cap.copyWith(color: color)),
+    if (battery != null) ...[
+      Icon(battery.$2 ? LucideIcons.batteryCharging : LucideIcons.battery,
+          size: 13, color: color),
+      const SizedBox(width: 3),
+    ],
+    Flexible(
+      child: Text(
+        battery == null ? state : '${battery.$1.round()}% · $state',
+        style: F.cap.copyWith(color: color),
+      ),
+    ),
   ]);
 }
 
@@ -288,10 +357,97 @@ Widget? batteryLine(BuildContext c) {
 /// loudest is the one where there is no day to show.
 Widget syncedThroughLine(BuildContext c, String? todayId,
     [AppLocalizations? l]) {
-  return Text(
-    syncedThroughLabel(lastDataAtOf(c), todayId, l),
-    style: F.cap.copyWith(color: P.of(c).ink3),
+  final at = lastDataAtOf(c);
+  return HomeSyncStatus(
+    through: syncedThroughLabel(at, todayId, l),
+    throughShort: syncedThroughShortLabel(at, todayId, l),
   );
+}
+
+/// Rows 1 and 2 of the greeting header. Row 1 is the sync row
+/// ([HomeSyncStatus], with [end], the settings button, at its right end): the
+/// date when idle, replaced by the progress status or the problem while one
+/// shows. Row 2 is always "Synced through 15:33", plain text, inset on the
+/// right so it never runs under the button's overhang.
+List<Widget> homeHeaderRows(
+  BuildContext c, {
+  required String? todayId,
+  required String date,
+  required Widget end,
+  required double endInset,
+  AppLocalizations? l,
+}) {
+  return [
+    HomeSyncStatus(through: date, throughShort: date, end: end),
+    Padding(
+      padding: EdgeInsets.only(right: endInset),
+      child: _HeldSyncedThrough(
+        at: lastDataAtOf(c),
+        busy: syncBusyOf(c),
+        todayId: todayId,
+        l: l,
+      ),
+    ),
+  ];
+}
+
+/// "Synced through …" that holds its last value while a sync runs: records
+/// land in batches mid-sync, and the line only moves once the sync is done.
+class _HeldSyncedThrough extends StatefulWidget {
+  const _HeldSyncedThrough(
+      {required this.at, required this.busy, required this.todayId, this.l});
+
+  final DateTime? at;
+  final bool busy;
+  final String? todayId;
+  final AppLocalizations? l;
+
+  @override
+  State<_HeldSyncedThrough> createState() => _HeldSyncedThroughState();
+}
+
+class _HeldSyncedThroughState extends State<_HeldSyncedThrough> {
+  late DateTime? _shown = widget.at;
+
+  @override
+  Widget build(BuildContext c) {
+    if (!widget.busy) _shown = widget.at;
+    return Text(syncedThroughLabel(_shown, widget.todayId, widget.l),
+        style: F.cap.copyWith(color: P.of(c).ink3),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis);
+  }
+}
+
+/// Whether a sync is running, from the same presentation state the sync line
+/// reads. False with no AppState above (a golden).
+bool syncBusyOf(BuildContext c) {
+  try {
+    return c.select<AppState, bool>((a) => a.syncPresentation.busy);
+  } catch (_) {
+    return false;
+  }
+}
+
+/// The next armed alarm, or null with none held (or in a golden). May be an
+/// instant already past — the sleep ring ignores those.
+DateTime? nextAlarmOf(BuildContext c) {
+  try {
+    final e = c.select<AppState, int?>((a) => a.alarmEpoch);
+    return e == null ? null : DateTime.fromMillisecondsSinceEpoch(e * 1000);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The saved expected sleep schedule, or null with none saved (or in a golden).
+ExpectedSleepSchedule? sleepScheduleOf(BuildContext c) {
+  try {
+    return c.select<AppState, ExpectedSleepSchedule?>(
+        (a) => a.sleepOperations.schedule);
+  } catch (_) {
+    return null;
+  }
 }
 
 bool derivingOf(BuildContext c) {
@@ -485,7 +641,12 @@ String axisDay(int? epochSec,
   final behind = daysBehind(epochSec);
   if (behind == null) return '';
   if (behind <= 0) return todayWord;
-  return '$behind $unitWord ago';
+  // "1 days ago" read as a typo on the card that says "as of ...". The words
+  // passed in are English plurals ("days", "nights"), so one drops the s.
+  final unit = behind == 1 && unitWord.endsWith('s')
+      ? unitWord.substring(0, unitWord.length - 1)
+      : unitWord;
+  return '$behind $unit ago';
 }
 
 /// Whole calendar days between a stored point and today, or null when there is
@@ -494,7 +655,7 @@ String axisDay(int? epochSec,
 int? daysBehind(int? epochSec) {
   if (epochSec == null) return null;
   return calendarDaysBetween(
-      DateTime.fromMillisecondsSinceEpoch(epochSec * 1000), DateTime.now());
+      DateTime.fromMillisecondsSinceEpoch(epochSec * 1000), pc.clock.now());
 }
 
 /// The withheld-rollup reason inside a `getInsights()` result, or null when the
@@ -822,18 +983,30 @@ class RingTrio extends StatelessWidget {
   /// worth pushing onto.
   final void Function(HomeRingKind)? onOpen;
 
-  const RingTrio({super.key, required this.d, this.onOpen});
+  /// The instant the sleep ring measures an unslept night's estimate from.
+  /// Injected by tests; production reads `clock.now()`.
+  final DateTime? now;
+
+  const RingTrio({super.key, required this.d, this.onOpen, this.now});
 
   /// Whether ANY of the three has something to draw. When none do, the screen
   /// owes the user one written absence, not three empty circles.
-  static bool has(HomeData d) =>
-      HomeRingKind.values.any((k) => _ringOf(k, d, null).why == null);
+  static bool has(HomeData d, {DateTime? now}) {
+    final at = now ?? pc.clock.now();
+    return HomeRingKind.values.any((k) => _ringOf(k, d, null, at).why == null);
+  }
+
+  /// Whether the sleep ring can estimate tonight's sleep, and so has something
+  /// to draw even when nothing else on the day does.
+  static bool hasSleepEstimate(HomeData d, {DateTime? now}) =>
+      _ringOf(HomeRingKind.sleep, d, null, now ?? pc.clock.now()).estimated;
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final rings = [for (final k in HomeRingKind.values) _ringOf(k, d, l)];
+    final at = now ?? pc.clock.now();
+    final rings = [for (final k in HomeRingKind.values) _ringOf(k, d, l, at)];
     final gaps = rings.where((r) => r.why != null).toList();
     // THERE IS NO "THESE TWO ARE FROM SATURDAY" LINE ANY MORE, and there is
     // nothing left for one to explain. Recovery and sleep used to be served
@@ -960,6 +1133,14 @@ class _RingState {
   /// ring is [absent].
   final String? why;
 
+  /// The sleep ring's arcs when a night is scored: stage arcs, or one solid
+  /// arc. Null for every other ring and state.
+  final List<SleepArc>? arcs;
+
+  /// An ESTIMATE of tonight's sleep, not a reading: drawn in the muted ink,
+  /// never a stage colour, and never solid.
+  final bool estimated;
+
   const _RingState(
     this.kind,
     this.label,
@@ -973,6 +1154,8 @@ class _RingState {
     this.need,
     this.why,
     this.provisional = false,
+    this.arcs,
+    this.estimated = false,
   });
 
   /// A number that may still move (the night is still draining), drawn grey.
@@ -980,20 +1163,26 @@ class _RingState {
 
   /// A number the ring is actually reporting. Calibration is progress, not a
   /// reading, so it is not one.
-  bool get measured => why == null && !calibrating;
+  bool get measured => why == null && !calibrating && !estimated;
 
-  Color arc(P p) => calibrating || provisional ? p.ink3 : p.on(color);
+  /// Whether the value is a number to set in numerals (a reading or an
+  /// estimate) rather than an absence in words.
+  bool get showsNumber => why == null && !calibrating;
+
+  Color arc(P p) =>
+      calibrating || estimated || provisional ? p.ink3 : p.on(color);
   Color ink(P p) => measured && !provisional ? p.on(color) : p.ink3;
 
   String get spoken => [
         label,
-        measured ? value : value.toLowerCase(),
+        showsNumber ? value : value.toLowerCase(),
         if (sub.isNotEmpty) sub,
         ?why,
       ].join('. ');
 }
 
-_RingState _ringOf(HomeRingKind k, HomeData d, AppLocalizations? l) {
+_RingState _ringOf(
+    HomeRingKind k, HomeData d, AppLocalizations? l, DateTime now) {
   switch (k) {
     case HomeRingKind.recovery:
       final v = d.readiness.value;
@@ -1039,27 +1228,69 @@ _RingState _ringOf(HomeRingKind k, HomeData d, AppLocalizations? l) {
       final v = d.strain.value;
       // 0–21 is the scale's own ceiling, not a target invented here.
       return v == null
-          ? _gap(k, l?.homeRingStrain ?? 'Strain', LucideIcons.zap, C.purple,
+          ? _gap(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
               d.strain, l?.homeRingNoStrain ?? 'No strain', l, unit: 'days')
-          : _RingState(k, l?.homeRingStrain ?? 'Strain', LucideIcons.zap, C.purple,
+          : _RingState(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
               value: v.toStringAsFixed(1), sub: l?.homeStrainOf21 ?? 'of 21', frac: v / 21);
     case HomeRingKind.sleep:
-      final v = d.sleepMin.value;
-      final need = d.sleepNeedMin.value;
-      return v == null
-          ? _gap(k, l?.homeRingSleep ?? 'Sleep', LucideIcons.moon, C.blue,
-              d.sleepMin, l?.homeRingNoSleep ?? 'No sleep', l,
-              fallbackWhy: l?.homeSleepGapFallback ??
-                  'No night long enough to score was recorded.')
-          : _RingState(k, l?.homeRingSleep ?? 'Sleep', LucideIcons.moon, C.blue,
-              value: hm(v),
-              // No computed need means no denominator. The hardcoded 480 in
-              // the sleep bundle is not this user's need and must never be
-              // shown as one, so the ring stays open and says so.
-              sub: need == null
-                  ? (l?.homeSleepNoTarget ?? 'No target yet')
-                  : (l?.homeOfSpan(hm(need)) ?? 'of ${hm(need)}'),
-              frac: need == null || need <= 0 ? null : v / need);
+      final label = l?.homeRingSleep ?? 'Sleep';
+      // A baseline still filling is progress, not an absence, and is drawn
+      // exactly as before: dashed, ahead of any estimate.
+      if (d.sleepMin.value == null &&
+          baselineCountsFromNote(d.sleepMin.note) != null) {
+        return _gap(k, label, LucideIcons.moon, C.blue, d.sleepMin,
+            l?.homeRingNoSleep ?? 'No sleep', l);
+      }
+      final m = sleepRingModel(
+        now: now,
+        durationMin: d.sleepMin.value,
+        stages: d.sleepStages,
+        needMin: d.sleepNeedMin.value,
+        coachBedtimeMinOfDay: d.bedtime.value,
+        schedule: d.sleepSchedule,
+        nextAlarm: d.nextAlarm,
+        learnedOnsetMin: d.learnedOnsetMin,
+        learnedWakeMin: d.learnedWakeMin,
+        cycleLenMin: d.cycleLenMin,
+      );
+      switch (m.phase) {
+        case SleepRingPhase.slept:
+          final target = hm(m.targetMin);
+          return _RingState(k, label, LucideIcons.moon, C.blue,
+              value: hm(m.asleepMin),
+              // The target is the learned need, or the 8 h default — and the
+              // default says so. It is never passed off as this user's need.
+              sub: m.targetIsDefault
+                  ? (l?.homeSleepPctOfDefault(m.pct!, target) ??
+                      '${m.pct}% of $target (default)')
+                  : (l?.homeSleepPctOf(m.pct!, target) ??
+                      '${m.pct}% of $target'),
+              frac: m.sweep,
+              arcs: m.arcs);
+        case SleepRingPhase.estimate:
+          final est = hm(m.estimateMin);
+          return _RingState(k, label, LucideIcons.moon, C.blue,
+              value: est,
+              // The ring is filled against the target, so the default says
+              // so here too — it is never passed off as this user's need.
+              sub: m.targetIsDefault
+                  ? (l?.homeSleepOnTrackDefault(
+                          m.cycles!, est, hm(m.targetMin)) ??
+                      'on track for ${m.cycles} '
+                          '${m.cycles == 1 ? 'cycle' : 'cycles'}, $est'
+                          ' · target ${hm(m.targetMin)} (default)')
+                  : (l?.homeSleepOnTrack(m.cycles!, est) ??
+                      'on track for ${m.cycles} '
+                          '${m.cycles == 1 ? 'cycle' : 'cycles'}, $est'),
+              frac: m.sweep,
+              estimated: true);
+        case SleepRingPhase.none:
+          return _gap(k, label, LucideIcons.moon, C.blue, d.sleepMin,
+              l?.homeSleepNoEstimate ?? 'No estimate', l,
+              fallbackWhy: l?.homeSleepNoEstimateWhy ??
+                  'No sleep scored yet, and no alarm or typical wake time '
+                      'to estimate from.');
+      }
   }
 }
 
@@ -1093,6 +1324,27 @@ _RingState _gap(HomeRingKind k, String label, IconData icon, Color color,
               : (l?.homeGapNoReason ?? 'Nothing recorded says why this is missing.')));
 }
 
+/// The scored night split by stage, in the hypnogram's own colours — or null
+/// when the night is one solid arc (stage totals absent) or not a night.
+List<RingArc>? _stageArcs(_RingState r, P p) {
+  final arcs = r.arcs;
+  if (arcs == null || arcs.every((a) => a.kind == SleepArcKind.solid)) {
+    return null;
+  }
+  final cols = Hypnogram.cols(p);
+  return [
+    for (final a in arcs)
+      RingArc(
+          cols[switch (a.kind) {
+            SleepArcKind.deep => SleepStage.deep,
+            SleepArcKind.rem => SleepStage.rem,
+            SleepArcKind.light => SleepStage.light,
+            _ => SleepStage.awake,
+          }]!,
+          a.fraction),
+  ];
+}
+
 /// The dial itself. An empty [frac] draws the track and nothing else — which is
 /// exactly what [Ring] already does with a zero sweep.
 class _Dial extends StatelessWidget {
@@ -1115,6 +1367,9 @@ class _Dial extends StatelessWidget {
             // "6 of 14" draws as 14 divisions with 6 filled.
             ? DashedRing(r.frac ?? 0, r.arc(p), p.track,
                 stroke: stroke, segments: r.need ?? 24)
+            : _stageArcs(r, p) != null
+            ? StageRing(_stageArcs(r, p)!, p.track,
+                stroke: stroke, t: animate(c, 1))
             : Ring(r.frac ?? 0, r.arc(p), p.track,
                 stroke: stroke, t: animate(c, 1), solid: r.measured),
       ),
@@ -1193,10 +1448,11 @@ class _RingText extends StatelessWidget {
           style: F.over.copyWith(color: p.ink3), textAlign: align),
         const SizedBox(height: S.x1),
         // Absent reads as words, never as a dash and never as a zero — so it
-        // takes the sentence weight rather than the numeral one.
+        // takes the sentence weight rather than the numeral one. An estimate
+        // is a number too, set in numerals.
         Text(
           presentationText(AppLocalizations.of(c), r.value),
-          style: r.measured
+          style: r.showsNumber
               ? F.n24.copyWith(color: r.provisional ? p.ink3 : p.ink)
               : F.body.copyWith(color: p.ink2),
           textAlign: align,
@@ -1266,6 +1522,39 @@ class _GapRow extends StatelessWidget {
 
 // ═══════════════════ the screen ═══════════════════
 
+/// The night's stage totals off a `getDaySleepV2` map, or null when it carries
+/// none of them. Individual stages stay null when the pipeline had no figure —
+/// the ring splits only when Deep, REM and Light are all there.
+SleepStageMin? sleepStagesOf(Map<String, dynamic> night) {
+  int? m(String k) => (night[k] as num?)?.round();
+  final s = SleepStageMin(
+      deep: m('deep_min'),
+      rem: m('rem_min'),
+      light: m('light_min'),
+      awake: m('awake_min'));
+  return s.deep == null && s.rem == null && s.light == null && s.awake == null
+      ? null
+      : s;
+}
+
+/// The learned sleep need and the coach bedtime out of `getInsights()`, shared
+/// by every loader so a dated view cannot forget them (it did, and drew an
+/// empty bar under a night that had a need).
+({Metric need, Metric bedtime}) sleepCoachOf(Map<String, dynamic> insights) {
+  final coach = insights['sleep_coach'];
+  final needEnv = coach is Map ? coach['need'] : null;
+  final bedEnv = coach is Map ? coach['bedtime'] : null;
+  final needSec = envValue(needEnv)?['need_sec'] as num?;
+  return (
+    // sleep_coach.need is the COMPUTED need. `sleep.need_min` is a hardcoded
+    // 480 and must never be shown as "your sleep need".
+    need: envMetric(needEnv, needSec == null ? null : needSec / 60,
+        unit: 'min'),
+    bedtime: envMetric(
+        bedEnv, envValue(bedEnv)?['bedtime_min_of_day'] as num?),
+  );
+}
+
 class HomeData {
   final String? name;
   final String? dayId;
@@ -1282,10 +1571,37 @@ class HomeData {
   final Metric bedtime;
   final Map<String, dynamic>? strainTarget;
 
+  /// The scored night's stage totals (`getDaySleepV2`): the sleep ring splits
+  /// its arc by these. Null when none were loaded; fields inside are null when
+  /// the pipeline had no figure.
+  final SleepStageMin? sleepStages;
+
+  /// Settings > expected sleep schedule, when saved.
+  final ExpectedSleepSchedule? sleepSchedule;
+
+  /// The next armed alarm (a future instant), when one is set.
+  final DateTime? nextAlarm;
+
+  /// Median local clock minute-of-day of the user's recent onsets / wakes.
+  final int? learnedOnsetMin, learnedWakeMin;
+
+  /// The user's own sleep-cycle length, minutes. Null until a persisted
+  /// per-user value exists, which means the 90 min assumption.
+  // TODO(sleep-ring): populate from a persisted per-user cycle length when one exists.
+  final int? cycleLenMin;
+
   /// Non-null when the cross-day rollup was withheld rather than absent — see
   /// [staleInsightsCard]. Drivers, sleep need and bedtime are all empty in that
   /// case, and the screen owes the user the reason.
   final Map<String, dynamic>? insightsStale;
+
+  /// When the rows behind the rings were computed, and which day each belongs
+  /// to — what "As of" says while a newer result is being calculated. The
+  /// overnight pair (recovery, sleep) is null whenever the night on file is not
+  /// today's ([heldOverNight]): those numbers are refused above and a time
+  /// must not bring them back. Null with no row at all; never "now".
+  final DateTime? overnightAt, activityAt;
+  final String? overnightDay, activityDay;
 
   /// The last night that scored, when that is NOT today's — so the screen can
   /// say WHERE THE DATA STOPS on a day it has nothing of its own.
@@ -1323,6 +1639,17 @@ class HomeData {
   /// `{from, to, at}` when today's final recovery changed after it was shown.
   final Map<String, dynamic>? readinessUpdate;
 
+  /// The data was read before the freshness refresh ran (see
+  /// [LocalRepository.getTodayStored]); today's figures are absent, not yet
+  /// worked out. The screen asks for the refresh after this frame.
+  final bool refreshPending;
+
+  /// Detected activities waiting for review, read WITH the day so the
+  /// "Detected activities" card is in its landed shape on the first paint
+  /// rather than popping in above the rings a moment later. Null when the
+  /// read failed or was not made; the card then reads the count itself.
+  final int? pendingActivities;
+
   const HomeData({
     this.name,
     this.dayId,
@@ -1338,6 +1665,12 @@ class HomeData {
     this.sleepNeedMin = Metric.empty,
     this.bedtime = Metric.empty,
     this.strainTarget,
+    this.sleepStages,
+    this.sleepSchedule,
+    this.nextAlarm,
+    this.learnedOnsetMin,
+    this.learnedWakeMin,
+    this.cycleLenMin,
     this.heldOverNight,
     this.illnessState,
     this.illnessDay,
@@ -1346,12 +1679,45 @@ class HomeData {
     this.absentDiag,
     this.recoveryState,
     this.readinessUpdate,
+    this.overnightAt,
+    this.activityAt,
+    this.overnightDay,
+    this.activityDay,
+    this.refreshPending = false,
+    this.pendingActivities,
   });
 
   /// The three illness fields, replaced together. Test-facing sugar, and they
   /// travel as a set on purpose — they are read as one envelope, and setting
   /// one without the others describes a state the pipeline cannot produce.
-  HomeData copyOrIllness(String? state, String? day, double? z) => HomeData(
+  HomeData copyOrIllness(String? state, String? day, double? z) => _copy(
+        illnessState: state,
+        illnessDay: day,
+        illnessZ: z,
+        nextAlarm: nextAlarm,
+      );
+
+  /// The same data with the armed alarm and saved schedule replaced — both
+  /// live on AppState, not in the repository, so the screen lays them over
+  /// what loaded.
+  HomeData withSleepInputs(
+          {DateTime? alarm, ExpectedSleepSchedule? schedule}) =>
+      _copy(
+        illnessState: illnessState,
+        illnessDay: illnessDay,
+        illnessZ: illnessZ,
+        nextAlarm: alarm,
+        sleepSchedule: schedule,
+      );
+
+  HomeData _copy({
+    required String? illnessState,
+    required String? illnessDay,
+    required double? illnessZ,
+    required DateTime? nextAlarm,
+    ExpectedSleepSchedule? sleepSchedule,
+  }) =>
+      HomeData(
         name: name,
         dayId: dayId,
         readiness: readiness,
@@ -1366,14 +1732,26 @@ class HomeData {
         sleepNeedMin: sleepNeedMin,
         bedtime: bedtime,
         strainTarget: strainTarget,
+        sleepStages: sleepStages,
+        sleepSchedule: sleepSchedule ?? this.sleepSchedule,
+        nextAlarm: nextAlarm,
+        learnedOnsetMin: learnedOnsetMin,
+        learnedWakeMin: learnedWakeMin,
+        cycleLenMin: cycleLenMin,
         heldOverNight: heldOverNight,
-        illnessState: state,
-        illnessDay: day,
-        illnessZ: z,
+        illnessState: illnessState,
+        illnessDay: illnessDay,
+        illnessZ: illnessZ,
         insightsStale: insightsStale,
         absentDiag: absentDiag,
         recoveryState: recoveryState,
         readinessUpdate: readinessUpdate,
+        overnightAt: overnightAt,
+        activityAt: activityAt,
+        overnightDay: overnightDay,
+        activityDay: activityDay,
+        refreshPending: refreshPending,
+        pendingActivities: pendingActivities,
       );
 
   /// A day OTHER than today, for the Home day switcher.
@@ -1399,6 +1777,14 @@ class HomeData {
     final absentDiag = readiness.value != null
         ? null
         : await LocalDb.readinessAbsentDiag(date);
+    // The learned need, like [load]. A failed read leaves it absent — the ring
+    // then shows the labelled default, never an invented need.
+    ({Metric need, Metric bedtime})? coach;
+    try {
+      coach = sleepCoachOf(await repo.getInsights());
+    } catch (_) {
+      coach = null;
+    }
     return HomeData(
       name: profile['name']?.toString(),
       dayId: date,
@@ -1410,12 +1796,28 @@ class HomeData {
       calories: metricOf(strain['calories']),
       caloriesTotal: metricOf(strain['calories_total']),
       sleepMin: metricOf(sleep['duration_min']),
+      sleepNeedMin: coach?.need ?? Metric.empty,
+      sleepStages: sleepStagesOf(sleep),
       stepGoal: (profile['step_goal'] as num?)?.toInt() ?? kDefaultStepGoal,
+      pendingActivities: await _pendingActivitiesOf(repo),
     );
   }
 
-  static Future<HomeData> load(LocalRepository repo, [AppLocalizations? l]) async {
-    final today = await repo.getToday();
+  /// The review count for [pendingActivities]; null when the read fails, so
+  /// the card falls back to reading it itself.
+  static Future<int?> _pendingActivitiesOf(LocalRepository repo) async {
+    try {
+      return await repo.pendingActivityCount();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// [stored]: read what is persisted and do not wait for the freshness
+  /// refresh (first paint); [refreshPending] then says whether one is owed.
+  static Future<HomeData> load(LocalRepository repo, [AppLocalizations? l,
+      bool stored = false]) async {
+    final today = await (stored ? repo.getTodayStored() : repo.getToday());
     final cd = await repo.getInsights();
     final profile = await repo.getProfile();
 
@@ -1427,10 +1829,7 @@ class HomeData {
     final gb = cd['readiness_glassbox'];
     final gbDrivers = gb is Map ? gb['drivers'] : null;
 
-    final coach = cd['sleep_coach'];
-    final needEnv = coach is Map ? coach['need'] : null;
-    final bedEnv = coach is Map ? coach['bedtime'] : null;
-    final needSec = (envValue(needEnv)?['need_sec'] as num?);
+    final coach = sleepCoachOf(cd);
 
     final strain = today['coach'];
 
@@ -1440,6 +1839,31 @@ class HomeData {
     // RATE ALONE — it has never been given a temperature series — so nothing
     // here may imply a second signal.
     final illness = today['illness'];
+    final status = today['status'] as Map?;
+
+    final sleepMin = overnightMetric(today, s('duration_min'), l);
+
+    // Stage totals of TODAY'S OWN night only: a held-over night is refused
+    // above, and its stages must not turn up under today's ring.
+    SleepStageMin? stages;
+    if (sleepMin.value != null) {
+      final night = (status?['overnight_day'] ?? status?['today_day'])?.toString();
+      if (night != null) {
+        try {
+          stages = sleepStagesOf(await repo.getDaySleepV2(night));
+        } catch (_) {
+          stages = null;
+        }
+      }
+    }
+
+    // Typical onset/wake for the unslept estimate. The saved schedule and the
+    // armed alarm are AppState's and are laid over this by the screen
+    // ([HomeData.withSleepInputs]); a failed read here is simply absent.
+    ({int? onsetMin, int? wakeMin}) learned = (onsetMin: null, wakeMin: null);
+    try {
+      learned = learnedClockMinutes(await repo.sleepWindows(days: 14));
+    } catch (_) {}
 
     // The three that come off the OVERNIGHT block. Gated, so a night that is
     // not today's cannot arrive wearing today's clothes — see
@@ -1459,7 +1883,7 @@ class HomeData {
 
     return HomeData(
       name: profile['name']?.toString(),
-      dayId: (today['status'] as Map?)?['today_day']?.toString(),
+      dayId: status?['today_day']?.toString(),
       heldOverNight: heldOver,
       illnessState: illness is Map ? illness['state']?.toString() : null,
       illnessDay: illness is Map ? illness['date']?.toString() : null,
@@ -1473,24 +1897,48 @@ class HomeData {
           if (e is Map) e.cast<String, dynamic>(),
       ],
       strain: metricOf(d('strain')),
-      sleepMin: overnightMetric(today, s('duration_min'), l),
+      sleepMin: sleepMin,
+      sleepStages: stages,
+      learnedOnsetMin: learned.onsetMin,
+      learnedWakeMin: learned.wakeMin,
       rhr: overnightMetric(today, d('resting_hr'), l),
       steps: metricOf(d('steps')),
       calories: metricOf(d('calories')),
       caloriesTotal: metricOf(d('calories_total')),
       stepGoal: (today['step_goal'] as num?)?.toInt() ?? kDefaultStepGoal,
-      // sleep_coach.need is the COMPUTED need. `sleep.need_min` is a hardcoded
-      // 480 and must never be shown as "your sleep need".
-      sleepNeedMin: envMetric(needEnv, needSec == null ? null : needSec / 60,
-          unit: 'min'),
-      bedtime: envMetric(
-          bedEnv, envValue(bedEnv)?['bedtime_min_of_day'] as num?),
+      sleepNeedMin: coach.need,
+      bedtime: coach.bedtime,
       strainTarget: strain is Map && strain['strain_target'] is Map
           ? (strain['strain_target'] as Map).cast<String, dynamic>()
           : null,
       insightsStale: staleReasonOf(cd),
+      overnightAt:
+          heldOver == null ? computedAtOf(status?['overnight_computed_at']) : null,
+      overnightDay:
+          heldOver == null ? (status?['overnight_day'])?.toString() : null,
+      activityAt: computedAtOf(status?['activity_computed_at']),
+      activityDay: status?['activity_day']?.toString(),
+      refreshPending: status?['refresh_pending'] == true,
+      pendingActivities: await _pendingActivitiesOf(repo),
     );
   }
+}
+
+/// How long until the next whole minute after [now], in (0, 60 s].
+///
+/// Taken from the UTC instant, never from local wall-clock fields: a minute
+/// boundary is the same instant in every whole-, half- and quarter-hour zone,
+/// but `DateTime(y, m, d, h, min + 1)` in the repeated fall-back hour resolves
+/// to the FIRST occurrence of that wall time, an hour in the past — a negative
+/// delay, a zero-delay Timer, and a setState loop.
+@visibleForTesting
+Duration nextMinuteTickDelay(DateTime now) {
+  const minuteUs = 60 * 1000000;
+  final us = now.toUtc().microsecondsSinceEpoch;
+  final next = DateTime.fromMicrosecondsSinceEpoch(
+      us - us % minuteUs + minuteUs,
+      isUtc: true);
+  return next.difference(now.toUtc());
 }
 
 class HomeScreen extends StatefulWidget {
@@ -1507,8 +1955,9 @@ class HomeScreen extends StatefulWidget {
   /// reads it off AppState via [workoutLiveOf].
   final bool? workoutLive;
 
-  /// The wall clock, injected only by tests. The illness watch ages by the
-  /// calendar, so a test of "a day later" needs to move it.
+  /// The wall clock, injected only by tests: the instant the sleep ring
+  /// estimates from, and the day the illness watch ages against (a test of
+  /// "a day later" needs to move it). Production reads `clock.now()`.
   final DateTime? now;
 
   const HomeScreen(
@@ -1518,7 +1967,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with RevisionReload {
+class _HomeScreenState extends State<HomeScreen>
+    with RevisionReload, WidgetsBindingObserver {
   HomeData? _d;
   bool _loading = true;
 
@@ -1537,33 +1987,53 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   /// history that their band has never produced data is the wrong answer to it.
   bool _failed = false;
 
-  /// Set the moment "Sync the band" is tapped, cleared once real progress has
-  /// a signal of its own (`syncingNow`) or after [_tapGrace] with nothing —
-  /// the bridge over the gap between the tap and the first record landing,
-  /// where neither `busy` (skipped entirely on the common fast-reclaim path)
-  /// nor `syncingNow` has moved yet and the button would otherwise look inert.
-  bool _syncTapped = false;
-  Timer? _syncTapTimer;
-  static const _tapGrace = Duration(seconds: 20);
+  /// Fires on each minute boundary so the sleep ring's estimate (wake minus
+  /// now) does not freeze at the minute the screen was built.
+  Timer? _tick;
 
-  void _tapSync(VoidCallback sync) {
-    sync();
-    setState(() => _syncTapped = true);
-    _syncTapTimer?.cancel();
-    _syncTapTimer = Timer(_tapGrace, () {
-      if (mounted) setState(() => _syncTapped = false);
+  /// Test-facing: how many times the tick fired, and the delay last armed.
+  @visibleForTesting
+  int debugTickCount = 0;
+  @visibleForTesting
+  Duration? debugLastTickDelay;
+
+  void _armTick() {
+    _tick?.cancel();
+    final delay = nextMinuteTickDelay(pc.clock.now());
+    debugLastTickDelay = delay;
+    _tick = Timer(delay, () {
+      if (!mounted) return;
+      debugTickCount++;
+      setState(() {});
+      _armTick();
     });
+  }
+
+  /// Nothing to keep fresh while the app is in the background; it catches up
+  /// the moment it is back.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (mounted) setState(() {});
+      _armTick();
+    } else {
+      _tick?.cancel();
+      _tick = null;
+    }
   }
 
   @override
   void dispose() {
-    _syncTapTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _tick?.cancel();
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _armTick();
     if (widget.data != null) {
       _d = widget.data;
       _loading = false;
@@ -1581,7 +2051,26 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   /// offload landed, the derive ran, and Home kept saying "Nothing derived
   /// yet" until the app was relaunched.
   @override
-  void reload() => _load();
+  void reload() {
+    _latency.revisionBumped();
+    _refresh.reset();
+    _load();
+  }
+
+  /// Revision -> first commit that consumed it, logged by AppState. Only a
+  /// revision-driven load is timed; the first load and the day switcher are
+  /// not revisions.
+  final RenderLatency _latency = RenderLatency(
+    nowMs: () => DateTime.now().millisecondsSinceEpoch,
+  );
+
+  void _recordRender() {
+    final ms = _latency.committed();
+    if (ms == null) return;
+    try {
+      context.read<AppState>().recordHomeRender(ms);
+    } catch (_) {}
+  }
 
   Future<void> _load() async {
     final repo = repoOf(context);
@@ -1594,18 +2083,32 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       final day = _day;
       final l = AppLocalizations.of(context);
       final d = day == null || day == todayLabel()
-          ? await HomeData.load(repo, l)
+          ? await HomeData.load(repo, l, true)
           : await HomeData.loadForDay(repo, day, l);
       final days = await repo.availableDays();
       if (stillNewest(#home, t)) {
         setState(() => (_d = d, _days = days, _loading = false, _failed = false));
+        _recordRender();
+        _refresh.afterPaint(repo, d.refreshPending).then((landed) {
+          if (landed && mounted) _load();
+        });
       }
     } catch (_) {
       if (stillNewest(#home, t)) {
         setState(() => (_loading = false, _failed = true));
+        // Nothing usable was rendered: drop the pending measurement rather
+        // than time a later retry from this bump.
+        _latency.committed();
       }
     }
   }
+
+  /// The freshness refresh `getToday` used to run before the first paint. The
+  /// repository joins overlapping calls into one run, and `_refreshing` keeps
+  /// this screen from asking twice; it is cleared in `finally` so a failed
+  /// refresh cannot stop the next load from asking again. On landing, read
+  /// again: the stored row now names today.
+  final _refresh = TodayRefreshLatch();
 
   /// Another day. The switcher never strands you off the record — [DayNav]
   /// already restricts the arrows to [_days] — so this just re-loads for it.
@@ -1618,65 +2121,33 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   }
 
   /// The "nothing derived yet" card, upgraded with the one thing it used to
-  /// withhold: whether anything is actually happening right now. Tapping Sync
-  /// used to leave this card looking identical whether the band was mid-drain
-  /// or the tap had silently gone nowhere — "I am not sure if it is actually
-  /// syncing or not, no progress, no cue" was exactly that gap. `syncingNow` is
-  /// the one signal that is honest across BOTH session paths (a fresh connect
-  /// sets `busy`; the common fast-reclaim-from-background path never does), so
-  /// it is what ends "connecting", not `busy`. `deriving`/`derivePending` catch
-  /// the LAST mile — the backlog landed, `syncingNow` has gone quiet again, but
-  /// this screen is still bare because the heavy derive it depends on hasn't
-  /// finished. Without that phase the card would flash back to a bare "Nothing
-  /// derived yet" for the minute or so a full sleep-stage + spectra pass takes.
-  /// The syncing / analyzing / connecting phase card — valid whether or not
-  /// [HomeData] itself has loaded yet, which is why it does not take one.
-  /// Shared by the fully-bare first-run path (`d == null`) and the
-  /// derived-but-empty bare-day path, so a first-run tap of "Sync the band"
-  /// gets the same connecting/syncing feedback as every other one. Returns
-  /// null when none of the three phases apply, so the caller falls through
-  /// to its own "nothing yet" copy.
+  /// withhold: whether anything is actually happening right now. This is the
+  /// LAST mile only — the backlog landed, but this screen is still bare because
+  /// the heavy derive it depends on has not finished. Without it the card would
+  /// flash back to a bare "Nothing derived yet" for the minute or so a full
+  /// sleep-stage + spectra pass takes.
+  ///
+  /// It does NOT say "syncing" or "connecting" any more, and it has no sync
+  /// button: the sync status line in the greeting header ([HomeSyncStatus])
+  /// owns all of that, from the one SyncCoordinator state. This card used to read a second busy flag
+  /// (`syncingNow`) plus a 20 s tap latch of its own, which is how Home showed
+  /// two sync controls that disagreed about whether a sync was running.
+  ///
+  /// Valid whether or not [HomeData] itself has loaded yet, which is why it does
+  /// not take one. Returns null when no derive is in flight, so the caller falls
+  /// through to its own "nothing yet" copy.
   Widget? _phaseStatusCard(BuildContext c, AppLocalizations? l) {
-    final syncing = syncingNowOf(c);
-    final deriving = derivingOf(c);
-    // The tap latch is otherwise cleared only by its 20s grace timer — if
-    // real progress lands before that timer fires, clear it here too so the
-    // UI does not bounce back to "Connecting" once syncing/deriving goes
-    // quiet again.
-    if ((syncing || deriving) && _syncTapped) {
-      _syncTapped = false;
-      _syncTapTimer?.cancel();
-    }
-    final spinner = SizedBox(
-      width: 16,
-      height: 16,
-      child: CircularProgressIndicator(strokeWidth: 2, color: P.of(c).ink3),
+    if (!derivingOf(c)) return null;
+    return StatusCard(
+      l?.homeAnalyzingTitle ?? 'Crunching last night\'s numbers',
+      l?.homeAnalyzingBody ?? 'The data is in — sleep, recovery and strain '
+          'are next.',
+      leading: SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2, color: P.of(c).ink3),
+      ),
     );
-
-    if (syncing) {
-      return StatusCard(
-        l?.homeSyncingTitle ?? 'Syncing with your band',
-        l?.homeSyncingBody ?? 'Pulling data now — this can take a few minutes '
-            'on a full backlog.',
-        leading: spinner,
-      );
-    }
-    if (deriving) {
-      return StatusCard(
-        l?.homeAnalyzingTitle ?? 'Crunching last night\'s numbers',
-        l?.homeAnalyzingBody ?? 'The data is in — sleep, recovery and strain '
-            'are next.',
-        leading: spinner,
-      );
-    }
-    if (_syncTapped) {
-      return StatusCard(
-        l?.homeConnectingTitle ?? 'Connecting to your band',
-        l?.homeConnectingBody ?? 'Hang on — this usually takes a few seconds.',
-        leading: spinner,
-      );
-    }
-    return null;
   }
 
   Widget _bareStatusCard(BuildContext c, HomeData d, AppLocalizations? l,
@@ -1696,7 +2167,6 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     final phase = _phaseStatusCard(c, l);
     if (phase != null) return phase;
 
-    final sync = syncOf(c);
     return StatusCard(
       d.heldOverNight == null
           ? (l?.homeNothingDerivedTitle ?? 'No nights scored yet')
@@ -1706,9 +2176,8 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
           : (l?.homeNothingTodayBody(prettyDay(d.heldOverNight, l)) ??
               'The last night this app scored was '
                   '${prettyDay(d.heldOverNight, l)}. Nothing has reached it since.'),
-      fix: sync == null ? '' : (l?.homeSyncBand ?? 'Sync the band'),
+      // No button: Home's sync status line (greeting header) owns Sync now.
       icon: LucideIcons.watch,
-      onFix: sync == null ? null : () => _tapSync(sync),
     );
   }
 
@@ -1736,22 +2205,29 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
 
     if (d == null) {
       return _refreshable(ListView(padding: pad, children: [
-        const SizedBox(height: S.x8),
+        const SizedBox(height: S.x4),
+        ?_naturalWakeCard(c),
+        ?snoozeCardFor(c),
+        ?momentFollowUpCard(c),
         // No day on screen ⇒ no `todayId`, so this renders the dated form.
         // Shown here TOO: a first run, a failed read and a sync in flight are
         // exactly when "how far are we?" is worth answering, and the header
-        // this line normally sits under does not exist on this path.
-        Align(alignment: Alignment.centerLeft, child: syncedThroughLine(c, null, l)),
-        // The battery reading lives on AppState.device, independent of
-        // HomeData — a load failure or first run must not hide it too.
-        if (batteryLine(c) case final battery?) ...[
+        // this line normally sits under does not exist on this path. It is
+        // also where Sync now lives, so a failed load can still be retried.
+        syncedThroughLine(c, null, l),
+        // The connection and battery live on AppState.device, independent of
+        // HomeData — a load failure or first run must not hide them too.
+        if (connectionLine(c, l) case final conn?) ...[
           const SizedBox(height: 2),
-          Align(alignment: Alignment.centerLeft, child: battery),
+          Align(alignment: Alignment.centerLeft, child: conn),
         ],
         const SizedBox(height: S.x3),
-        const DetectedActivitiesCard(),
+        // Not while the first read is out: the card reads its own count, and
+        // landing above the loading row would push it down. The loaded paths
+        // below hand it the count read with the day.
+        if (!_loading) const DetectedActivitiesCard(),
         if (_loading)
-          const Center(child: CircularProgressIndicator())
+          const InlineLoading()
         else if (_failed)
           StatusCard(
             l?.homeLoadFailedTitle ?? 'Today could not be read',
@@ -1769,13 +2245,11 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
           Builder(builder: (c) {
             final phase = _phaseStatusCard(c, l);
             if (phase != null) return phase;
-            final sync = syncOf(c);
             return StatusCard(
               l?.homeNothingDerivedTitle ?? 'No nights scored yet',
               l?.homeNothingDerivedBody ?? 'Wear the band tonight and open the app in the morning.',
-              fix: sync == null ? '' : (l?.homeSyncBand ?? 'Sync the band'),
+              // No button: Home's sync status line owns Sync now.
               icon: LucideIcons.watch,
-              onFix: sync == null ? null : () => _tapSync(sync),
             );
           }),
         if (!_loading && !_failed && widget.data == null) ...[
@@ -1801,7 +2275,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     // them apart: whether this install has ever scored a night. "No band
     // recordings processed yet" said to someone with three months of history is
     // the first-run answer to a gap, and it is wrong.
-    final bare = d.readiness.isEmpty &&
+    final noData = d.readiness.isEmpty &&
         d.sleepMin.isEmpty &&
         d.strain.isEmpty &&
         d.rhr.isEmpty &&
@@ -1812,6 +2286,16 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     // gates the plan/live-workout copy below, which is about what to DO
     // today and reads as a stale instruction on a day already in the past.
     final isToday = _day == null || _day == todayLabel();
+    // The alarm is AppState's. Only TODAY's rings estimate toward it.
+    final ringData =
+        isToday ? d.withSleepInputs(
+                alarm: nextAlarmOf(c) ?? d.nextAlarm,
+                schedule: sleepScheduleOf(c) ?? d.sleepSchedule)
+            : d;
+    // A day with no measured data is not bare when tonight's estimate can be
+    // made: a saved schedule or an armed alarm is something to show.
+    final bare =
+        noData && !(isToday && RingTrio.hasSleepEstimate(ringData, now: widget.now));
 
     // Until recovery can score for the first time: what arrives when.
     // Also while the readiness note still counts nights: missed nights push
@@ -1823,13 +2307,25 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
         (_days.length <= readinessCompositeMinBaseline ||
             recoveryNightsLeft != null);
 
-    final stale = staleInsightsCard(d.insightsStale, syncOf(c), l);
+    // No sync button on this card either: Home's one sync control is the
+    // only place Home starts a sync.
+    final stale = staleInsightsCard(d.insightsStale, null, l);
     // Above the greeting, not below it: if the app had to rebuild the database
     // to start, that outranks anything else this screen has to say today.
     final rebuilt = dbRebuiltCard(dbRebuildOf(c), l);
 
+    // The width the button takes at row 1's right end (a Pressable is S.tap
+    // wide), and the text above and below stops short of it. One button: the
+    // coach moved to its own chip at the foot of the screen.
+    final endInset = S.tap + HomeSyncStatus.endGap;
+
     return _refreshable(ListView(padding: pad, children: [
-      if (rebuilt != null) ...[const SizedBox(height: S.x3), rebuilt],
+      ?rebuilt,
+      // Natural Wake is buzzing and waiting for "I'm up": above everything.
+      ?_naturalWakeCard(c),
+      // A pending main-alarm snooze, with the same "I'm up".
+      ?snoozeCardFor(c),
+      ?momentFollowUpCard(c),
 
       // ── the one observation Home is allowed to make ──
       //
@@ -1844,47 +2340,80 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       // ── greeting ──
       Padding(
         padding: const EdgeInsets.only(top: S.x3, bottom: S.x5),
-        child: Row(children: [
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Flexible(
-                  child: Text(
-                    d.name == null || d.name!.isEmpty
-                        ? g.word
-                        : '${g.word}, ${d.name}',
-                    style: F.t2.copyWith(color: p.ink),
-                  ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // The greeting stops short of the buttons: they are centred on row 1,
+          // so their top overlaps the greeting's lower edge.
+          Padding(
+            padding: EdgeInsets.only(right: endInset),
+            child: Row(children: [
+              Flexible(
+                child: Text(
+                  d.name == null || d.name!.isEmpty
+                      ? g.word
+                      : '${g.word}, ${d.name}',
+                  style: F.t2.copyWith(color: p.ink),
                 ),
-                const SizedBox(width: S.x2),
-                Icon(g.icon, size: 17, color: p.on(g.color)),
-              ]),
-              const SizedBox(height: 2),
-              Text(prettyDay(d.dayId, l), style: F.cap.copyWith(color: p.ink3)),
-              // How far the band's data reaches, always — the question "am I
-              // looking at today, or at last night?" used to be answerable
-              // only by opening Profile > Devices.
-              syncedThroughLine(c, d.dayId, l),
-              // Its own line, not squeezed into the sync line's row: at
-              // accessibility text sizes that row has no slack left, and
-              // `Expanded` would only shrink the sync text into extra wrapped
-              // lines to make room rather than ever actually overflow.
-              if (batteryLine(c) case final battery?) ...[
-                const SizedBox(height: 2),
-                battery,
-              ],
+              ),
+              const SizedBox(width: S.x2),
+              Icon(g.icon, size: 17, color: p.on(g.color)),
             ]),
           ),
-          const SizedBox(width: S.x3),
-          // The coach moved to its own chip under the plan, and Profile is the
-          // same avatar every tab carries.
-          const ProfileAvatar(accent: C.domHome),
+          const SizedBox(height: 2),
+          // The first row under the greeting is the sync row, and its centre
+          // is the buttons' centre: the date when idle, the status or problem
+          // while one shows. How far the band's data reaches is always said, on
+          // the row below — "am I looking at today, or at last night?" used to
+          // be answerable only by opening Profile > Devices. Time since the
+          // last sync and Sync now are right-aligned on the sync row, just left
+          // of the avatar. The row is a direct child of this Column: its tap
+          // targets overhang the lines around it (see [HitOverhang]), and no
+          // tighter ancestor may clip them.
+          ...homeHeaderRows(
+            c,
+            todayId: d.dayId,
+            date: prettyDay(d.dayId, l),
+            endInset: endInset,
+            l: l,
+            // Profile is the same avatar every tab carries; the coach moved to
+            // its own chip at the foot of the screen. While a sync runs the
+            // avatar gives way to a spinner: same button, same size, same tap,
+            // same on-colour. It is where the eye already is, and it leaves the
+            // sync row to the status text.
+            end: syncBusyOf(c)
+                ? Pressable(
+                    semanticLabel:
+                        '${l?.homeProfileSettings ?? 'Profile and settings'}, syncing',
+                    onTap: () => go(c, const MoreSettings()),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                          shape: BoxShape.circle, color: p.fill(C.domHome)),
+                      child: Center(
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: p.inkOnFill),
+                        ),
+                      ),
+                    ),
+                  )
+                : const ProfileAvatar(accent: C.domHome),
+          ),
+          // Its own line, not squeezed into the sync row: at accessibility text
+          // sizes that row has no slack left, and `Expanded` would only shrink
+          // the sync text into extra wrapped lines to make room rather than
+          // ever actually overflow.
+          if (connectionLine(c, l) case final conn?) ...[
+            const SizedBox(height: 2),
+            conn,
+          ],
         ]),
       ),
 
       if (bare) ...[
-        const DetectedActivitiesCard(),
+        _detectedActivities(d),
       ],
       ...dayNavRow(_day ?? d.dayId, _days, _goDay),
       // Stepped back through the record: one tap home.
@@ -1896,14 +2425,11 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
             child: Text(l?.homeBackToToday ?? 'Back to today'),
           ),
         ),
-      // A sync or a derive in flight on an ordinary morning. It used to show
-      // only on a bare day, so yesterday's rings sat on screen during a sync
-      // with nothing but a grey "Synced through" line to say anything moved.
-      if (!bare && isToday)
-        if (_phaseStatusCard(c, l) case final phase?) ...[
-          phase,
-          const SizedBox(height: S.x3),
-        ],
+      // No in-flight card above the rings on an ordinary morning: it would
+      // land and leave mid-read and move everything under it. The header's
+      // sync row says a sync is running, and "As of" under the rings says a
+      // number is being recalculated, both in space they already hold.
+      //
       // The active wearable's day, cell by cell. Nothing on a WHOOP-only
       // install, nor when the screen is handed its data.
       if (widget.data == null)
@@ -1938,9 +2464,10 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
         // diagnostic used to go nowhere but a Firebase breadcrumb. It belongs
         // one tap away, on the Readiness screen: a wall of per-input
         // diagnostics on Home makes the app read as broken.
-        if (RingTrio.has(d))
+        if (RingTrio.has(ringData, now: widget.now))
           RingTrio(
-            d: d,
+            d: ringData,
+            now: widget.now,
             onOpen: (k) => go(
                 c,
                 switch (k) {
@@ -1984,9 +2511,15 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
               onFix: () => go(c, const ReadinessDetail()),
             );
           }),
+        _homeAsOf(c, d),
 
+        // Right under the rings, above everything else — the one spot on
+        // this screen nobody scrolls past without seeing. A failed gesture
+        // comes first: the newest undismissed one, one card at a time.
+        if (gestureFailuresOf(c) case final failures?)
+          GestureFailureCard(store: failures),
         const SizedBox(height: S.x3),
-        const DetectedActivitiesCard(),
+        _detectedActivities(d),
         const CommunityNudge(),
 
         // ── the rollup was withheld, not absent ──
@@ -2042,6 +2575,41 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     ]));
   }
 
+  /// "As of <time>" under the rings while a pass is recalculating their day:
+  /// recovery and sleep say when the overnight row was computed, strain and
+  /// activity when today's was. See [AsOfHold] for why it outlasts the pass by
+  /// one reload.
+  static Widget _homeAsOf(BuildContext c, HomeData d) {
+    Widget label(BuildContext c, DateTime at) => Padding(
+        padding: const EdgeInsets.only(top: S.x2), child: AsOfLabel(at: at));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      AsOfHold(
+        shown: d,
+        builder: label,
+        day: d.overnightDay,
+        computedAt: d.overnightAt,
+        asOf: (recalc) => asOfFor(
+            shownDay: d.overnightDay,
+            computedAt: d.overnightAt,
+            recalc: recalc),
+      ),
+      AsOfHold(
+        shown: d,
+        builder: label,
+        day: d.activityDay,
+        computedAt: d.activityAt,
+        // One line when both rows were computed together.
+        asOf: (recalc) => d.activityAt == d.overnightAt &&
+                d.activityDay == d.overnightDay
+            ? null
+            : asOfFor(
+                shownDay: d.activityDay,
+                computedAt: d.activityAt,
+                recalc: recalc),
+      ),
+    ]);
+  }
+
   /// The illness watch, on Home, at amber as well as red.
   ///
   /// Returns null on every ordinary day — green, or no state at all because the
@@ -2095,34 +2663,27 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     ];
   }
 
-  /// Pull to sync. Pull used to re-read the phone's database and nothing
-  /// else, while every other wearable app treats it as "sync now". It now
-  /// asks the band for its backlog (today only, and only with a band), shows
-  /// the same connecting / syncing / analysing card the Sync button does, and
-  /// re-reads when the sync returns. A past day just re-reads.
-  Widget _refreshable(Widget list) =>
-      RefreshIndicator(onRefresh: _pullToSync, child: list);
+  /// "Detected activities", handed the count read with the day so it is in
+  /// its landed shape on the first paint. Keyed by the count: the card copies
+  /// it once, so a new count (a reload after a review) needs a new card.
+  static Widget _detectedActivities(HomeData d) => DetectedActivitiesCard(
+      key: ValueKey<int?>(d.pendingActivities),
+      pendingCount: d.pendingActivities);
 
-  Future<void> _pullToSync() async {
-    AppState? app;
-    try {
-      app = context.read<AppState>();
-    } catch (_) {
-      // No AppState above us (goldens): nothing to sync.
-    }
-    final isToday = _day == null || _day == todayLabel();
-    if (app != null && app.isPaired && isToday && widget.data == null) {
-      _tapSync(() {});
-      // ponytail: the spinner lets go after 90 s; a long backlog keeps going
-      // in the background and the syncing card stays up until it ends.
-      try {
-        await app.syncNow().timeout(const Duration(seconds: 90));
-      } catch (_) {
-        // A timeout or a failed sync still re-reads what did land.
-      }
-    }
-    await _load();
-  }
+  /// Pull to reload. The screen also reloads itself on `insightsRevision`, but
+  /// a derive that fails silently, an import, or anything that lands without
+  /// bumping it still leaves the user a way to ask.
+  // HomeSyncStatus renders AppState's shared SyncPresentationState.
+  //
+  // "Pull down to sync" (Settings) off means no RefreshIndicator at all, so an
+  // overscroll does nothing; the status line's Sync now is the way to sync.
+  Widget _refreshable(Widget list) => !Prefs.pullToSyncOn
+      ? list
+      : RefreshIndicator(onRefresh: () async {
+        try { await context.read<AppState>().refreshData(); }
+        on ProviderNotFoundException { /* Standalone fixture has local data only. */ }
+        if (mounted) await _load();
+      }, child: list);
 
   Widget _glance(BuildContext c, HomeData d, {required bool isToday}) {
     final l = AppLocalizations.of(c);
@@ -2178,7 +2739,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     cards.add(SignalCard(
       LucideIcons.footprints,
       C.green,
-      l?.homeSteps ?? 'Steps',
+      l?.homeSteps ?? MetricLabels.steps,
       d.steps.value == null ? (l?.homeStepsNone ?? 'None') : thousands(d.steps.value),
       // The sensor rides the line that is already there rather than adding a
       // row: the day is resolved per window now, so "8,412" can be the strap's
