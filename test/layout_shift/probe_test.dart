@@ -310,4 +310,31 @@ void main() {
     final row = last.frames[1].elements.firstWhere((e) => e.id == 'row');
     expect(row.rect.height, 300, reason: 'clipped to the 300 px viewport');
   });
+
+  // Route push: the covered page slides while the new one comes in. That is
+  // the transition, not a shift of the page's controls.
+  testWidgets('skipCoveredRoutes drops the page under a pushed route',
+      (t) async {
+    final nav = GlobalKey<NavigatorState>();
+    await t.pumpWidget(MaterialApp(
+        navigatorKey: nav,
+        home: const Scaffold(
+            body: Align(
+                alignment: Alignment.topLeft,
+                child: Text('below', key: ValueKey('below'))))));
+    final on = ShiftProbe(skipCoveredRoutes: true);
+    final off = ShiftProbe();
+    on.capture(t, atMs: 0);
+    off.capture(t, atMs: 0);
+    nav.currentState!.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(
+            body: Text('above', key: ValueKey('above')))));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 100));
+    on.capture(t, atMs: 100);
+    off.capture(t, atMs: 100);
+    expect(on.frames[1].elements.map((e) => e.id), isNot(contains('below')));
+    expect(on.frames[1].elements.map((e) => e.id), contains('above'));
+    expect(off.frames[1].elements.map((e) => e.id), contains('below'));
+  });
 }

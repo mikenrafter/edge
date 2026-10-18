@@ -522,6 +522,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   @override
   void reload() {
     _refresh.reset();
+    _refreshGaveUp = false;
     _load();
     if (hasRead(#vitals)) _loadVitals(force: true);
     if (hasRead(#labs)) {
@@ -545,6 +546,16 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
 
   final _refresh = TodayRefreshLatch();
 
+  /// The refresh was asked and did not land (it failed, or the read after it
+  /// is still pending): stop holding the building layout and say what is
+  /// absent. Cleared by every reload, which asks again.
+  bool _refreshGaveUp = false;
+
+  /// Today's row is still being worked out. The last-night list then holds
+  /// dash rows and shows nothing under it, because everything under it moves
+  /// when the figures land (absence cards become rows, or the reverse).
+  bool _building(HealthData d) => d.refreshPending && !_refreshGaveUp;
+
   Future<void> _load() async {
     final repo = repoOf(context);
     if (repo == null) {
@@ -557,7 +568,12 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       if (stillNewest(#day, t)) {
         setState(() => (_d = d, _loading = false));
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
-          if (landed && mounted) _load();
+          if (!mounted) return;
+          if (landed) {
+            _load();
+          } else if (d.refreshPending) {
+            setState(() => _refreshGaveUp = true);
+          }
         });
       }
     } catch (_) {
@@ -672,6 +688,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     final l = AppLocalizations.of(c);
     final rows = <Widget>[];
     final gaps = <Widget>[];
+    final building = _building(d);
 
     // Every row here is read from the night, so every absent one takes the same
     // measured gap. A row that is not (none on this tab) would pass
@@ -682,6 +699,15 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     void row(Metric m, IconData icon, Color col, String name, String sub,
         String value, String unit, VoidCallback onTap,
         {String? whyAbsent}) {
+      if (m.isEmpty && building) {
+        // Today's row is still being worked out, so this is not yet an absence
+        // to explain: hold the landed row's box with a dash. A tall absence
+        // card swapping for a short row moved everything under it when the
+        // refresh landed. Never another day's number.
+        rows.add(MetricRow(icon, col, name, '—',
+            sub: sub, unit: '', onTap: onTap));
+        return;
+      }
       if (m.isEmpty) {
         // EVERY ABSENCE CARD STATES A REASON. A row with no specific one (stress
         // on a night that had sleep) got the card's own "no record of why"
@@ -865,7 +891,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // way through to the anomaly, skin temperature and resting-HR findings,
       // which fired for months and reached no screen at all. NOT a feed — see
       // findings_log.dart. Nothing here is unread, badged or dismissible.
-      if (illnessCard != null || d.findings.isNotEmpty) ...[
+      if (!building && (illnessCard != null || d.findings.isNotEmpty)) ...[
         const SizedBox(height: S.x4),
         Section(
           l?.healthObservationsTitle ?? 'Observations',
@@ -885,6 +911,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // NAPS — the display and the correction, which are one feature. The
       // section is here on a day with no naps too, because the door to logging
       // one has to exist on exactly the day the detector found nothing.
+      if (!building)
       Section(
         l?.healthNapsTitle ?? 'Naps',
         d.napCount == null
@@ -928,7 +955,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // WHOOP MG only: the Heart Screener door appears once the paired band has
       // positively identified itself as an MG, and stays while it is away. It is
       // the last thing on the tab, below everything this night produced.
-      if (c.caps.has(Feature.ecgEntry)) ...[
+      if (!building && c.caps.has(Feature.ecgEntry)) ...[
         const SizedBox(height: S.x3),
         const EcgEntryCard(),
       ],
