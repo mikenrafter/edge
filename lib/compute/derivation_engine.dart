@@ -5780,14 +5780,17 @@ class DerivationEngine {
       }
 
       // DB writes + notification the pure compute deferred to us (DB-owning isolate).
-      for (final w in batchReference ? [] : blocks.sessionHrrWrites) {
-        await LocalDb.setSessionHrr(w.$1, w.$2);
-      }
-      for (final sug in batchReference ? [] : blocks.suggestionsToPersist) {
-        await LocalDb.putWorkoutSuggestion({
-          ...sug,
-          'created_at': DateTime.now().millisecondsSinceEpoch,
-        });
+      // The audit's batch reference pass writes nothing; otherwise the HRR
+      // stamps and suggestions land in one transaction.
+      if (!batchReference) {
+        final deferredAt = DateTime.now().millisecondsSinceEpoch;
+        await LocalDb.putDerivedSessionWrites(
+          hrr: [for (final w in blocks.sessionHrrWrites) (w.$1, w.$2)],
+          suggestions: [
+            for (final sug in blocks.suggestionsToPersist)
+              {...sug, 'created_at': deferredAt},
+          ],
+        );
       }
       final nb = batchReference ? null : blocks.notifBout;
       // Only for a bout that is STILL waiting on an answer. The detector is
@@ -7546,8 +7549,10 @@ class DerivationEngine {
     final artifact = history.toArtifactJson();
     final rolling = ((artifact['rolling'] as Map?) ?? const {})
         .cast<String, dynamic>();
-    await LocalDb.putBaseline('rolling_artifact', jsonEncode(artifact));
-    await LocalDb.putBaseline('rolling', jsonEncode(rolling));
+    await LocalDb.putBaselines({
+      'rolling_artifact': jsonEncode(artifact),
+      'rolling': jsonEncode(rolling),
+    });
     await _refreshCrossDayInputArtifact();
   }
 

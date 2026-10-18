@@ -37,6 +37,22 @@ class RepositoryException implements Exception {
   String toString() => 'Repository error $status: $body';
 }
 
+/// Everything the Sleep detail screen reads for one night, from ONE call.
+/// `charts` is keyed by the same names [LocalRepository.getChart] takes and each
+/// value is exactly what `getChart(name)` returns.
+class SleepDetailBundle {
+  final Map<String, dynamic> night, timeline, insights;
+  final Map<String, Map<String, dynamic>> charts;
+  final List<Map<String, dynamic>> windows;
+  const SleepDetailBundle({
+    required this.night,
+    required this.timeline,
+    required this.insights,
+    required this.charts,
+    required this.windows,
+  });
+}
+
 /// The local data contract for every insights screen + the AI Coach.
 /// Return types mirror the cloud ApiClient exactly (defensive Map/List blobs).
 abstract class LocalRepository {
@@ -49,6 +65,16 @@ abstract class LocalRepository {
   // ── today / summaries ────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> getToday() =>
       throw UnimplementedError('re-layer: getToday');
+
+  /// [getToday] without waiting for the freshness refresh: for a screen's first
+  /// paint. `status.refresh_pending` is true when the stored row named another
+  /// day; nothing of that row is then presented as today's. Default: the full
+  /// read (a repository with no refresh to defer).
+  Future<Map<String, dynamic>> getTodayStored() => getToday();
+
+  /// Runs the freshness refresh `getToday` would have run, single-flight.
+  /// Default: nothing to refresh.
+  Future<void> refreshTodayFreshness() async {}
 
   /// Sleep ONSET/OFFSET for the most recent [days] days, newest first.
   ///
@@ -85,6 +111,22 @@ abstract class LocalRepository {
       throw UnimplementedError('re-layer: getInsights');
 
   // ── day drill-down detail ────────────────────────────────────────────────────
+  /// One read for the whole Sleep detail screen: the night, its timeline, the
+  /// insights, every named chart and the sleep windows ([windowDays] newest).
+  Future<SleepDetailBundle> getSleepDetailBundle(
+    String day, {
+    required List<String> chartKeys,
+    required int windowDays,
+  }) async => SleepDetailBundle(
+    // The piece-by-piece composition, for repositories (fakes) without a
+    // cheaper combined read. LocalRepositoryImpl overrides it.
+    night: await getDaySleepV2(day),
+    timeline: await getDayTimeline(day),
+    insights: await getInsights(),
+    charts: {for (final k in chartKeys) k: await getChart(k)},
+    windows: await sleepWindows(days: windowDays),
+  );
+
   Future<Map<String, dynamic>> getDaySleepV2(String date) =>
       throw UnimplementedError('re-layer: getDaySleepV2');
   Future<Map<String, dynamic>> getDayStrain(String date) =>

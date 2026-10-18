@@ -142,7 +142,7 @@ class BeatsData {
   static Future<({String? day, List<String> days})> pickNight(
       LocalRepository repo,
       {String? want}) async {
-    final today = await repo.getToday();
+    final today = await repo.getTodayStored();
     final days = await repo.availableDays();
     return (
       day: pickDay(

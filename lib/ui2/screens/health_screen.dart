@@ -57,6 +57,11 @@ Future<Map<String, dynamic>> _soft(
 class HealthData {
   final Map<String, dynamic> today, insights, profile;
 
+  /// Read before the freshness refresh ran: today's figures are absent, not yet
+  /// worked out. The screen asks for the refresh after painting and reads again.
+  bool get refreshPending =>
+      (today['status'] as Map?)?['refresh_pending'] == true;
+
   /// Timestamped. The x axis and the "how old is this number" line are both
   /// read off the points' own dates — `metric_series` has one row per DERIVED
   /// day, so the newest stored point can be a week old.
@@ -146,7 +151,7 @@ class HealthData {
   Metric get resp => metricOf(today['resp']);
 
   static Future<HealthData> load(LocalRepository repo) async {
-    final today = await repo.getToday();
+    final today = await repo.getTodayStored();
     final cd = await repo.getInsights();
     final profile = await repo.getProfile();
     final days = await repo.availableDays();
@@ -274,7 +279,7 @@ class VitalsData {
   });
 
   static Future<VitalsData> load(LocalRepository repo, {String? want}) async {
-    final today = await repo.getToday();
+    final today = await repo.getTodayStored();
     final days = await repo.availableDays();
     final day = pickDay(
         days, want, (today['status'] as Map?)?['today_day']?.toString());
@@ -516,6 +521,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   /// is the ordinary state of the first load after an import. See [hasRead].
   @override
   void reload() {
+    _refresh.reset();
     _load();
     if (hasRead(#vitals)) _loadVitals(force: true);
     if (hasRead(#labs)) {
@@ -537,6 +543,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     if (i == 3) _loadLabs();
   }
 
+  final _refresh = TodayRefreshLatch();
+
   Future<void> _load() async {
     final repo = repoOf(context);
     if (repo == null) {
@@ -546,7 +554,12 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     final t = beginRead(#day);
     try {
       final d = await HealthData.load(repo);
-      if (stillNewest(#day, t)) setState(() => (_d = d, _loading = false));
+      if (stillNewest(#day, t)) {
+        setState(() => (_d = d, _loading = false));
+        _refresh.afterPaint(repo, d.refreshPending).then((landed) {
+          if (landed && mounted) _load();
+        });
+      }
     } catch (_) {
       if (stillNewest(#day, t)) setState(() => _loading = false);
     }

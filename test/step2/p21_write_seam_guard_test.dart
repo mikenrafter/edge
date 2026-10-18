@@ -34,7 +34,7 @@ const _allowed = <String, Map<String, Set<String>>>{
     'LocalDb.purgeDemoRows': {'delete'},
   },
   'baselines': {
-    'LocalDb.putBaseline': {'insert'},
+    'LocalDb.putBaselines': {'insert'},
     'LocalDb.updateBaseline': {'insert'},
     'LocalDb.touchBaseline': {'update'},
   },

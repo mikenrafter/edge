@@ -2,10 +2,9 @@
 <resources>
     <color name="ic_launcher_background">#020D1C</color>
     <!-- The window behind the app while the process starts and while Flutter
-         draws its first frame. Same value as P.bg, so the handoff from the OS
-         to lib/ui2 is a colour that does not change. The night/ copy is the
-         dark one; the platform default (?android:colorBackground) was pure
-         white and pure black, and pure black against the app's #0B1017 was a
-         visible step on every cold start. -->
-    <color name="launch_background">#F8FAFC</color>
+         draws its first frame. Dark for EVERY user, light-mode included: the
+         first paint must not flash a light frame at a dark-adapted eye
+         (docs/LAYOUT_SHIFT.md, checkFirstPaint). Same value as the night/
+         copy and P.bg dark; BootSplash fades from it into the user's theme. -->
+    <color name="launch_background">#0B1017</color>
 </resources>

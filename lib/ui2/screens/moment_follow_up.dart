@@ -927,8 +927,22 @@ class _MomentRow extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${moment.date} · ${moment.hhmm}',
             style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
-        if (queued != null) ...[
-          const SizedBox(height: S.x2),
+        const SizedBox(height: S.x1),
+        Wrap(spacing: S.x2, runSpacing: S.x2, children: [
+          for (final ch in MomentChoice.values)
+            Pressable(
+              key: ValueKey('moment-choice:$k:${ch.id}'),
+              onTap: busy || locked ? null : () => onChoose(ch),
+              child: Pill(ch.localized(l), choice == ch ? C.domMind : C.blue),
+            ),
+        ]),
+        // Everything the tap changes sits BELOW the chips, so the chips the
+        // user just pressed never move. The status line and its Undo keep
+        // their height whether or not anything is queued (an invisible
+        // placeholder of the same text metrics), so choosing and undoing
+        // change text, not layout. Layout shift budget, docs/LAYOUT_SHIFT.md.
+        const SizedBox(height: S.x2),
+        if (queued != null)
           Row(
             key: ValueKey(
                 rangeText != null ? 'moment-range:$k' : 'moment-pending:$k'),
@@ -940,21 +954,47 @@ class _MomentRow extends StatelessWidget {
                     style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
               ),
             ],
-          ),
-          if (canUndo)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Pressable(
-              key: ValueKey('moment-undo:$k'),
-              onTap: busy ? null : onUndo,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: S.x2),
-                child: Text(l?.momentReviewUndo ?? 'Undo',
-                    style: F.cap.copyWith(color: p.ink2)),
-              ),
+          )
+        else
+          _Reserved(Text(' ',
+              style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600))),
+        // Undo and Skip share one line that is always there, so Skip does not
+        // slide up when a form below it closes (it did, under the finger that
+        // had just pressed Queue).
+        Row(children: [
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: queued != null && canUndo
+                  ? Pressable(
+                      key: ValueKey('moment-undo:$k'),
+                      onTap: busy ? null : onUndo,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: S.x2),
+                        child: Text(l?.momentReviewUndo ?? 'Undo',
+                            style: F.cap.copyWith(color: p.ink2)),
+                      ),
+                    )
+                  // Pressable's 44 pt minimum is part of the line's height.
+                  : _Reserved(ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: S.tap),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: S.x2),
+                        child: Text(' ', style: F.cap.copyWith(color: p.ink2)),
+                      ),
+                    )),
             ),
           ),
-        ],
+          Pressable(
+            key: ValueKey('moment-skip:$k'),
+            onTap: busy || locked ? null : onSkip,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: S.x2),
+              child: Text(l?.momentFollowUpSkip ?? 'Skip',
+                  style: F.cap.copyWith(color: p.ink2)),
+            ),
+          ),
+        ]),
         if (resumeNote)
           Padding(
             key: ValueKey('moment-range-resume:$k'),
@@ -970,15 +1010,12 @@ class _MomentRow extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: S.x2),
             child: Text(failure!, style: F.cap.copyWith(color: p.ink2)),
           ),
-        const SizedBox(height: S.x1),
-        Wrap(spacing: S.x2, runSpacing: S.x2, children: [
-          for (final ch in MomentChoice.values)
-            Pressable(
-              key: ValueKey('moment-choice:$k:${ch.id}'),
-              onTap: busy || locked ? null : () => onChoose(ch),
-              child: Pill(ch.localized(l), choice == ch ? C.domMind : C.blue),
-            ),
-        ]),
+        // Forms open below the reserved line, instantly. Growing them with
+        // AnimatedSize was measured worse: the form is laid out at full size
+        // under the next row from the first frame, so its Queue button reads as
+        // a packed control sliding against that row's chips, and the rows below
+        // pay latency for every frame of the glide. One jump inside the free
+        // 100 ms moves only what is below, never the chips just pressed.
         if (spec != null) ...[
           const SizedBox(height: S.x3),
           OsTextField(
@@ -1064,22 +1101,20 @@ class _MomentRow extends StatelessWidget {
             padding: const EdgeInsets.only(top: S.x2),
             child: Text(pairError!, style: F.cap.copyWith(color: p.ink2)),
           ),
-        const SizedBox(height: S.x2),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Pressable(
-            key: ValueKey('moment-skip:$k'),
-            onTap: busy || locked ? null : onSkip,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: S.x2),
-              child: Text(l?.momentFollowUpSkip ?? 'Skip',
-                  style: F.cap.copyWith(color: p.ink2)),
-            ),
-          ),
-        ),
       ]),
     );
   }
+}
+
+/// Holds the height of a line that is not showing, so what appears there
+/// later does not push anything: same text metrics, invisible, inert.
+class _Reserved extends StatelessWidget {
+  const _Reserved(this.child);
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+      child: IgnorePointer(child: Opacity(opacity: 0, child: child)));
 }
 
 /// A started range none of whose marks is left to answer: it shows what it is

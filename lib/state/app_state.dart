@@ -4516,22 +4516,21 @@ class AppState extends ChangeNotifier {
   /// and this is the daily-sum layer `calcSteps` documents as the gain's home.
   /// Applying it at both ends shipped a silent x1.23.
   Future<void> _bankGaitRuns(List<LiveStepRun> runs) async {
-    for (final run in runs) {
-      final steps = (run.rawSteps * ana.StepParams.gain).round();
-      if (steps <= 0) continue;
-      // Per RUN, so a walk either side of midnight lands on the right days
-      // instead of both going to whichever day the session started on.
-      final day = dayLabelOf(
-        DateTime.fromMillisecondsSinceEpoch(run.startTs * 1000),
-      );
-      await LocalDb.addLiveCoverage(
-        run.startTs,
-        run.endTs,
-        steps,
-        day,
-        source: kStepSourceStrap,
-      );
-    }
+    // One transaction for all runs of the session.
+    await LocalDb.addLiveCoverageRuns([
+      for (final run in runs)
+        if ((run.rawSteps * ana.StepParams.gain).round() > 0)
+          (
+            startTs: run.startTs,
+            endTs: run.endTs,
+            steps: (run.rawSteps * ana.StepParams.gain).round(),
+            // Per RUN, so a walk either side of midnight lands on the right
+            // days instead of both going to whichever day the session started.
+            day: dayLabelOf(
+              DateTime.fromMillisecondsSinceEpoch(run.startTs * 1000),
+            ),
+          ),
+    ], source: kStepSourceStrap);
   }
 
   // Whatever accrued via _committedRaw/_magMin between minute-commits is

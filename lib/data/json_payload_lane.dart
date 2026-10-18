@@ -140,8 +140,15 @@ abstract interface class JsonRowSource {
   Future<JsonRowState?> current();
 }
 
+/// A source that can re-read many of its own kind in one query. The lane uses
+/// it only when every source of a chunk has the same runtime type; the answer
+/// for each source must equal what its own [current] would return.
+abstract interface class BatchedJsonRowSource implements JsonRowSource {
+  Future<List<JsonRowState?>> currentMany(List<JsonRowSource> sources);
+}
+
 /// One `day_result.window_json` (the sleep window of a served, not skipped day).
-final class SleepWindowRowSource implements JsonRowSource {
+final class SleepWindowRowSource implements BatchedJsonRowSource {
   const SleepWindowRowSource(this.day);
   final String day;
 
@@ -152,6 +159,20 @@ final class SleepWindowRowSource implements JsonRowSource {
   Future<JsonRowState?> current() async {
     final row = await LocalDb.sleepWindowRow(day);
     return row == null ? null : stateOf(row);
+  }
+
+  @override
+  Future<List<JsonRowState?>> currentMany(List<JsonRowSource> sources) async {
+    final rows = await LocalDb.sleepWindowRowsFor([
+      for (final s in sources) (s as SleepWindowRowSource).day,
+    ]);
+    return [
+      for (final s in sources)
+        if (rows[(s as SleepWindowRowSource).day] case final row?)
+          stateOf(row)
+        else
+          null,
+    ];
   }
 
   static JsonRowState stateOf(Map<String, dynamic> row) => JsonRowState(
@@ -298,9 +319,7 @@ class JsonPayloadLane {
           encode: false,
         ));
         if (LocalDb.storeGeneration != generation) return absent();
-        final now = await Future.wait([
-          for (final i in chunk) rows[i].source.current(),
-        ]);
+        final now = await _currentMany([for (final i in chunk) rows[i].source]);
         // Nothing is awaited between here and the publish below.
         if (LocalDb.storeGeneration != generation) return absent();
         verified = {};
@@ -333,7 +352,7 @@ class JsonPayloadLane {
         if (out[i] != null && !verified.contains(i)) i,
     ];
     if (stale.isNotEmpty) {
-      final now = await Future.wait([for (final i in stale) rows[i].source.current()]);
+      final now = await _currentMany([for (final i in stale) rows[i].source]);
       if (LocalDb.storeGeneration != generation) return absent();
       for (var j = 0; j < stale.length; j++) {
         final current = now[j];
@@ -343,6 +362,17 @@ class JsonPayloadLane {
       }
     }
     return out;
+  }
+
+  /// [JsonRowSource.current] for each source, in order: one query when they
+  /// are all the same batching kind, one read each otherwise.
+  static Future<List<JsonRowState?>> _currentMany(List<JsonRowSource> sources) {
+    final first = sources.isEmpty ? null : sources.first;
+    if (first is BatchedJsonRowSource &&
+        sources.every((s) => s.runtimeType == first.runtimeType)) {
+      return first.currentMany(sources);
+    }
+    return Future.wait([for (final s in sources) s.current()]);
   }
 
   /// Whether [now] is the row that was decoded from [then]. A row with no
