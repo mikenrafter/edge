@@ -929,8 +929,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: db02896455a9117b7a7a995c807c482d20b5c12f
-      resolved-ref: db02896455a9117b7a7a995c807c482d20b5c12f
+      ref: "972f0b2e9ba8aceefcc784205c9ca688cd494fd0"
+      resolved-ref: "972f0b2e9ba8aceefcc784205c9ca688cd494fd0"
       url: "https://github.com/mikenrafter/openstrap-analytics.git"
     source: git
     version: "1.0.0"

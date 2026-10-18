@@ -561,7 +561,12 @@ dependencies:
       # cache (CardioRowCache + optional rowCache: on segmentSleep), phase-0
       # exact speedups, and the CVHR NaN-hang fix. No output change for valid
       # finite input, so no kAlgoVersion bump.
-      ref: db02896455a9117b7a7a995c807c482d20b5c12f
+      #
+      # REPIN @ 972f0b2 (feat/aggregator, on db02896): exact HrvFreqStream and
+      # RsaRespStream (fold settled beats; snapshot(tail) == hrvFreq /
+      # rsaRespRate(prefix) bit for bit; JSON-checkpointable). Additive. No
+      # output change, so no kAlgoVersion bump.
+      ref: 972f0b2e9ba8aceefcc784205c9ca688cd494fd0
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8

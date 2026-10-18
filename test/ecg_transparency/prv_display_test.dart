@@ -143,7 +143,7 @@ void main() {
         'the analytics pin moved on to its aggregator descendant with no '
         'output change', () {
       expect(kAlgoVersion, 104);
-      expect(kAnalyticsPin, 'db02896455a9117b7a7a995c807c482d20b5c12f');
+      expect(kAnalyticsPin, '972f0b2e9ba8aceefcc784205c9ca688cd494fd0');
       expect(kProtocolPin, 'bc7d8d0df706e40a2546ffde4545263f09d0fecb');
     });
 

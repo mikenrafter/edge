@@ -2031,7 +2031,10 @@ const int kAlgoVersion = 104;
 // scan) and the exact CardioRowCache staging now reuses; cvhrApneaScreen no
 // longer loops forever on a non-finite NN (it never returned before). No
 // output change for any input that completed before, so no kAlgoVersion bump.
-const String kAnalyticsPin = 'db02896455a9117b7a7a995c807c482d20b5c12f';
+// REPIN @ 972f0b2 (feat/aggregator, on db02896): exact HrvFreqStream and
+// RsaRespStream (snapshot(tail) == hrvFreq / rsaRespRate(prefix) bit for bit),
+// additive. No output change, so no kAlgoVersion bump.
+const String kAnalyticsPin = '972f0b2e9ba8aceefcc784205c9ca688cd494fd0';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both
