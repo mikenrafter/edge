@@ -168,10 +168,10 @@ final class SleepWindowRowSource implements BatchedJsonRowSource {
     ]);
     return [
       for (final s in sources)
-        () {
-          final row = rows[(s as SleepWindowRowSource).day];
-          return row == null ? null : stateOf(row);
-        }(),
+        if (rows[(s as SleepWindowRowSource).day] case final row?)
+          stateOf(row)
+        else
+          null,
     ];
   }
 

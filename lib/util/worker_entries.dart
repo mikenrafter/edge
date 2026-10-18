@@ -198,6 +198,41 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
 /// Fingerprinted unresolved invocations. Shrink-only.
 const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
+    file: 'data/db.dart',
+    symbol: 'LocalDb._openReader',
+    source: 'readerOpenerForTest?.call(path)',
+    ordinal: 0,
+    reason: 'test seam replacing the read-connection open; production opens one sqflite connection, no stored-data loop',
+  ),
+  UnresolvedOk(
+    file: 'data/db.dart',
+    symbol: 'LocalDb.metricSeriesBundle',
+    source: 'body(db)',
+    ordinal: 0,
+    reason: 'local closure running the bundle\'s three SELECTs on one executor (reader or writer transaction); bounded statements, no row loop of its own',
+  ),
+  UnresolvedOk(
+    file: 'data/db.dart',
+    symbol: 'LocalDb.putBaselines',
+    source: 'nowMs()',
+    ordinal: 0,
+    reason: 'injectable clock seam (one scalar), moved here from putBaseline',
+  ),
+  UnresolvedOk(
+    file: 'data/db.dart',
+    symbol: 'LocalDb.readerRun',
+    source: 'body(db)',
+    ordinal: 0,
+    reason: 'runs a caller\'s pure-SELECT body on the read connection; the bodies are LocalDb reader methods, each one bounded query',
+  ),
+  UnresolvedOk(
+    file: 'data/db.dart',
+    symbol: 'LocalDb.readerRun',
+    source: 'body(await instance)',
+    ordinal: 1,
+    reason: 'the same body retried once on the writer when the reader closed mid-read',
+  ),
+  UnresolvedOk(
     file: 'compute/derive_perf.dart',
     symbol: 'DerivePerf.addCountLazy',
     source: 'value()',
