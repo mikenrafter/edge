@@ -13,6 +13,7 @@ import '../../l10n/display_text.dart';
 // constants — it is the user's own distribution, so it cannot be wrong about
 // somebody it was never fitted to.
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -25,8 +26,8 @@ import '../../data/day_label.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
-import '../../state/locale_controller.dart';
 import '../../state/prefs.dart';
+import '../../state/recalc_state.dart';
 import '../../models/metric.dart';
 import '../profile/devices.dart' show DeviceFilter;
 import '../profile/profile.dart' show ProfileAvatar;
@@ -83,6 +84,17 @@ const _window = 28;
   }
   return (newOnset, newWake);
 }
+
+/// The stored series the screen compares a night against (getChart names).
+const _chartKeys = [
+  'sleep',
+  'deep',
+  'efficiency',
+  'unobserved_min',
+  'awakenings',
+  'longest_sleep_min',
+  'sol_min',
+];
 
 /// A per-second label from the segmenter, or NULL for a second nobody watched.
 ///
@@ -204,6 +216,10 @@ class SleepData {
   ///   * [solMin] — sleep-onset latency, and ONLY on a user-set window.
   final double? unobservedMin, awakenings, longestSleepMin, solMin;
 
+  /// Read before the freshness refresh ran; a newer night may exist. The
+  /// screen asks for the refresh after painting and reads again.
+  final bool refreshPending;
+
   const SleepData({
     this.day,
     this.days = const [],
@@ -221,6 +237,7 @@ class SleepData {
     this.longestSleepMin,
     this.solMin,
     this.deviceNights = const [],
+    this.refreshPending = false,
   });
 
   bool get hasNight => night['duration_min'] is num;
@@ -282,8 +299,22 @@ class SleepData {
     return null;
   }
 
+  /// Each paired device's own staging of [day]; empty for a repository
+  /// without per-device nights.
+  static Future<List<Map<String, Object?>>> _deviceNightsOf(
+      LocalRepository repo, String day) async {
+    try {
+      return await repo.getDeviceNights(day);
+    } on UnimplementedError {
+      return const [];
+    }
+  }
+
   static Future<SleepData> load(LocalRepository repo, {String? want}) async {
-    final today = await repo.getToday();
+    // Stored read: the night to open is all this needs from `getToday`, and
+    // the freshness refresh behind it must not hold the first paint.
+    final today = await repo.getTodayStored();
+    final pending = (today['status'] as Map?)?['refresh_pending'] == true;
     // THE NIGHT `getToday` ACTUALLY SERVED. Home's Sleep card is that night, so
     // tapping it has to open that night. Resolving on `today_day` alone opened
     // a day that has a day_result but no night — wear the band all day with it
@@ -295,17 +326,24 @@ class SleepData {
         want,
         heldOverNightOf(today) ??
             (today['status'] as Map?)?['today_day']?.toString());
-    if (day == null) return SleepData(days: days);
+    if (day == null) return SleepData(days: days, refreshPending: pending);
 
-    final night = await repo.getDaySleepV2(day);
-    var deviceNights = const <Map<String, Object?>>[];
-    try {
-      deviceNights = await repo.getDeviceNights(day);
-    } on UnimplementedError {
-      // A repository without per-device nights: ours only.
-    }
-    final timeline = await repo.getDayTimeline(day);
-    final cd = await repo.getInsights();
+    // ONE repository call for everything the night needs: the repository reads
+    // all the series in a single statement instead of ~50 serialized ones.
+    // Two reads ride beside it, in parallel, so the night still lands in one
+    // paint: each paired device's own staging (not in the bundle), and the
+    // windows BEFORE this night. The bundle's windows are the newest nights
+    // overall, which would compare a past night against nights that came
+    // after it.
+    final (b, deviceNights, wins) = await (
+      repo.getSleepDetailBundle(day,
+          chartKeys: _chartKeys, windowDays: _window + 1),
+      _deviceNightsOf(repo, day),
+      repo.sleepWindows(days: _window, before: day),
+    ).wait;
+    final night = b.night;
+    final timeline = b.timeline;
+    final cd = b.insights;
     final coach = cd['sleep_coach'];
     final needEnv = coach is Map ? coach['need'] : null;
     final needSec = envValue(needEnv)?['need_sec'] as num?;
@@ -313,28 +351,27 @@ class SleepData {
     final debtH = envValue(debtEnv)?['debt_hours'] as num?;
     final bedEnv = coach is Map ? coach['bedtime'] : null;
 
-    // Personal history for the comparisons. These are `metric_series` reads —
-    // one small row per day per key — not day bundles, so the whole comparison
-    // costs three scalar queries and one window query rather than 28 payload
-    // decodes.
+    // Personal history for the comparisons: `metric_series` scalars, one small
+    // row per day per key, not day bundles.
     final cut = _noonOf(day);
-    final tst = _trailing(await repo.getChart('sleep'), cut);
-    final deep = _trailing(await repo.getChart('deep'), cut);
+    final tstChart = b.charts['sleep'];
+    final tst = _trailing(tstChart, cut);
+    // Nights with a total sleep time. A window the user set over a stretch the
+    // band did not record is NOT RECORDED: it is not a bedtime to compare to.
+    final recordedNoons = {for (final p in pointsOf(tstChart)) p.t};
+    final deep = _trailing(b.charts['deep'], cut);
     // Stored as whole percent; the night's own `efficiency` is 0…1.
-    final eff = _trailing(await repo.getChart('efficiency'), cut);
-    // The shape of THIS night. Four scalar series, read for one day each — the
-    // day bundle's `accounting` carries the same figures but `_daySleep` does
-    // not re-export them, and metric_series is one row per day per key.
-    final unobserved = _on(await repo.getChart('unobserved_min'), cut);
-    final wakeups = _on(await repo.getChart('awakenings'), cut);
-    final longest = _on(await repo.getChart('longest_sleep_min'), cut);
-    final sol = _on(await repo.getChart('sol_min'), cut);
-    // The nights BEFORE this one, like the series above. The newest nights
-    // overall would compare a past night against nights that came after it.
-    final wins = await repo.sleepWindows(days: _window, before: day);
+    final eff = _trailing(b.charts['efficiency'], cut);
+    // The shape of THIS night: four scalar series, one day each.
+    final unobserved = _on(b.charts['unobserved_min'], cut);
+    final wakeups = _on(b.charts['awakenings'], cut);
+    final longest = _on(b.charts['longest_sleep_min'], cut);
+    final sol = _on(b.charts['sol_min'], cut);
     final onsets = <int>[
       for (final w in wins.reversed)
-        if (w['onset_ts'] is num) (w['onset_ts'] as num).round(),
+        if (w['onset_ts'] is num &&
+            recordedNoons.contains(_noonOf(w['date'] as String?)))
+          (w['onset_ts'] as num).round(),
     ];
 
     return SleepData(
@@ -355,6 +392,7 @@ class SleepData {
       longestSleepMin: longest,
       solMin: sol,
       deviceNights: deviceNights,
+      refreshPending: pending,
     );
   }
 }
@@ -384,14 +422,6 @@ class SleepDetail extends StatefulWidget {
 }
 
 class _SleepDetailState extends State<SleepDetail> with RevisionReload {
-  /// A pushed copy lives for one look. The tab is kept alive by the shell, so
-  /// it has to re-read when a sync or a derive lands.
-  @override
-  bool get revisionReloads => widget.embedded && widget.data == null;
-
-  @override
-  void reload() => _load();
-
   /// The pushed screen's scaffold, or the tab's own header and footer.
   Widget _frame(BuildContext c, String title, List<Widget> body,
       {String sub = ''}) {
@@ -450,29 +480,16 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
 
   // `_rough` bakes `AppLocalizations` strings into `knows`/`moved` at load
   // time (see `loadRoughNight`), so a language switch while this screen is
-  // alive would otherwise leave the rough-night card showing the old locale
-  // until the user steps to another day. Sentinel so the system-default
-  // locale (`code == null`) is not mistaken for "never seen yet" on the first
-  // pass — same fix as `RevisionReload`/`DayTimelineScreen`.
-  static const Object _localeUnset = Object();
-  Object? _seenLocale = _localeUnset;
+  // alive has to read again, and so does a derive that rewrites this night —
+  // the "As of" label below clears only when the new row has landed.
+  // `RevisionReload` carries both.
+  @override
+  bool get revisionReloads => widget.data == null;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final Object localeKey;
-    try {
-      final code = context.watch<LocaleController>().code;
-      localeKey = code ?? Localizations.localeOf(context);
-    } catch (_) {
-      return;
-    }
-    if (identical(_seenLocale, _localeUnset)) {
-      _seenLocale = localeKey;
-    } else if (_seenLocale != localeKey && widget.data == null) {
-      _seenLocale = localeKey;
-      _load();
-    }
+  void reload() {
+    _refresh.reset();
+    _load();
   }
 
   // A locale change and `_goDay` can each kick off a `_load()` while a prior
@@ -501,11 +518,32 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           : null;
       if (mounted && gen == _loadGen) {
         setState(() => (_d = d, _rough = rough, _loading = false));
+        _refresh.afterPaint(repo, d.refreshPending).then((landed) {
+          if (landed && mounted) _load();
+        });
       }
     } catch (_) {
       if (mounted && gen == _loadGen) setState(() => _loading = false);
     }
   }
+
+  final _refresh = TodayRefreshLatch();
+
+  /// "As of <time>" while this night is being recalculated; the night on
+  /// screen stays. Its own row's time, so stepping to another night never
+  /// borrows this one's.
+  Widget _asOf(SleepData d) => AsOfHold(
+        shown: d,
+        day: d.day,
+        computedAt: computedAtOf(d.night['computed_at']),
+        asOf: (recalc) => asOfFor(
+            shownDay: d.day,
+            computedAt: computedAtOf(d.night['computed_at']),
+            recalc: recalc),
+        builder: (c, at) => Padding(
+            padding: const EdgeInsets.only(bottom: S.x2),
+            child: AsOfLabel(at: at)),
+      );
 
   /// Another night. The scrub cursor belongs to the night it was placed on, so
   /// it goes with it.
@@ -527,8 +565,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
 
     if (_loading && _d == null) {
       return _frame(c, title, const [
-        SizedBox(height: S.x8),
-        Center(child: CircularProgressIndicator()),
+        SizedBox(height: S.x4),
+        InlineLoading(),
       ]);
     }
 
@@ -539,9 +577,14 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       final rejectedDay = d.day;
       final rejected =
           (d.night['sleep_source'] as String?) == 'rejected' && rejectedDay != null;
+      // Times the user set leave the night blank on purpose (no numbers from
+      // a window the app did not find), so "wear the band" would be wrong here.
+      final userSet = (d.night['sleep_source'] as String?) == 'manual';
       return _frame(c, title, [
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
+        ..._nightControls(d),
         const SizedBox(height: S.x2),
+        ...?_windowCard(c, P.of(c), d, d.night),
         // A day CAN be in `availableDays` and still hold no night — the band
         // was worn through the day and off overnight. Stepping onto one of
         // those says so and leaves the stepper above it, so it is a day you
@@ -549,15 +592,22 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
         StatusCard(
           rejected
               ? (l?.sleepDetailRejectedTitle ?? 'Marked as not sleep')
-              : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
+              : userSet
+                  ? 'Your times, no sleep numbers'
+                  : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
           rejected
               ? (l?.sleepDetailRejectedBody ??
                   'You told us this stretch was not sleep, so nothing is '
                       'scored for it.')
-              : (l?.sleepDetailNoNightBody ??
-                  'No stretch of band recordings long enough to score.'),
-          fix: rejected ? '' : (l?.sleepDetailNoNightFix ??
-              'Wear the band overnight and sync in the morning'),
+              : userSet
+                  ? 'You set this night\'s times, so its sleep numbers stay '
+                      'blank and it does not count toward your scores.'
+                  : (l?.sleepDetailNoNightBody ??
+                      'No stretch of band recordings long enough to score.'),
+          fix: rejected || userSet
+              ? ''
+              : (l?.sleepDetailNoNightFix ??
+                  'Wear the band overnight and sync in the morning'),
           icon: rejected ? LucideIcons.undo2 : LucideIcons.moon,
         ),
         if (rejected) ...[
@@ -567,10 +617,11 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
             child: Text(
                 l?.sleepDetailUndoRejection ?? 'Undo — go back to automatic'),
           ),
-        ] else if (rejectedDay != null) ...[
+        ] else if (rejectedDay != null && !_hasWindowCard(d)) ...[
           // A night the detector missed is the other half of "it got it
           // wrong": the same manual window a mis-staged night gets, stored as
-          // an override so every later re-analysis stages from it.
+          // an override so every later re-analysis stages from it. A night
+          // with a window (times the user set) has the window card's controls.
           const SizedBox(height: S.x2),
           TextButton(
             onPressed: _saving || _loading
@@ -578,16 +629,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
                 : () => _addWindow(rejectedDay),
             child: Text(l?.sleepDetailIWasAsleep ?? 'I was asleep'),
           ),
+          // Why a correction did not take is said once, by [_nightControls].
           if (_saving)
             Text(l?.sleepDetailReanalysing ?? 'Re-analysing the night…',
                 style: F.cap.copyWith(color: P.of(c).ink3)),
-          if (!_saving && _overrideFailed != null)
-            StatusCard(
-              l?.sleepDetailCorrectionFailedTitle ??
-                  'That correction has not been applied',
-              _overrideFailed!,
-              icon: LucideIcons.triangleAlert,
-            ),
         ],
         // A day with no main-sleep window can still have naps — worn all
         // day, off overnight, or a rejected night — so this door to the naps
@@ -605,7 +650,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     // thing that dates the screen.
     return _frame(c, title,
         sub: d.days.length < 2 ? (d.day ?? '').toUpperCase() : '', [
+      _asOf(d),
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
+      ..._nightControls(d),
 
       // ── 1 · THE ANSWER ──
       _answer(c, p, d, n),
@@ -813,6 +860,17 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
               ),
             ),
           ]),
+          if (mine) ...[
+            const SizedBox(height: S.x2),
+            Text('${dayLabelOf(DateTime.fromMillisecondsSinceEpoch(t0 * 1000))} '
+              '${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(t0 * 1000)).format(c)}'
+              ' to ${dayLabelOf(DateTime.fromMillisecondsSinceEpoch(t1 * 1000))} '
+              '${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(t1 * 1000)).format(c)}',
+              style: F.cap.copyWith(color: p.ink3)),
+            if (!d.hasNight)
+              Text('Your times are saved. Sleep numbers stay blank for times you set.',
+                style: F.cap.copyWith(color: p.ink3)),
+          ],
           if (fallback) ...[
             const SizedBox(height: S.x2),
             Text(
@@ -840,6 +898,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           ],
           const SizedBox(height: S.x2),
           Wrap(spacing: S.x2, children: [
+            // The one recalculation control on this screen: it lives in the
+            // card that says where the window came from, not in a strip of
+            // its own above it.
+            _recalculateButton(day),
             if (fallback)
               TextButton(
                 onPressed: busy ? null : () => _confirmWindow(day),
@@ -870,15 +932,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
             Text(l?.sleepDetailReanalysing ?? 'Re-analysing the night…',
                 style: F.cap.copyWith(color: p.ink3)),
           ],
-          if (!busy && _overrideFailed != null) ...[
-            const SizedBox(height: S.x3),
-            StatusCard(
-              l?.sleepDetailCorrectionFailedTitle ??
-                  'That correction has not been applied',
-              _overrideFailed!,
-              icon: LucideIcons.triangleAlert,
-            ),
-          ],
+
         ]),
       ),
     ];
@@ -891,13 +945,15 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       );
 
   Future<void> _clearWindow(String day) => _runOverride(
-      day, () => context.read<AppState>().clearSleepOverride(day));
+      day, () => context.read<AppState>().clearSleepOverride(day),
+      timesSaved: false);
 
   Future<void> _rejectWindow(String day) => _runOverride(
         day,
         () => context.read<AppState>().rejectSleep(day),
         applied: (n) =>
             n['sleep_source'] == 'rejected' && n['has_sleep'] != true,
+        timesSaved: false,
       );
 
   /// Two pickers, seeded from the window we already have — the user is
@@ -919,6 +975,16 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     );
     if (up == null || !mounted) return;
     final (newOnset, newWake) = correctedSleepWindow(onset, wake, bed, up);
+    final app = context.read<AppState>();
+    final useSchedule = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Apply sleep times'),
+      content: const Text('Apply these times to this night only, or use them as your expected sleep schedule.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('This night only')),
+        TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Use this schedule going forward')),
+      ],
+    ));
+    if (useSchedule == null || !mounted) return;
     // Applied = the stored night IS the typed window. The source alone can't
     // say: re-timing a night that is already manual leaves it unchanged, and
     // a window erased by the derive comes back as a different source.
@@ -927,7 +993,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
         (ts.round() - t.millisecondsSinceEpoch ~/ 1000).abs() <= 120;
     await _runOverride(
       day,
-      () => context.read<AppState>().setSleepOverride(day, newOnset, newWake),
+      () => app.setSleepOverride(day, newOnset, newWake,
+          useSchedule: useSchedule),
       applied: (n) =>
           n['sleep_source'] == 'manual' &&
           near(n['onset_ts'], newOnset) &&
@@ -936,68 +1003,104 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
   }
 
   /// "I was asleep" on a night with no window: the edit pickers, seeded with
-  /// 23:00 the evening before and 07:00 on [day] (the night belongs to the
-  /// day it ends on).
+  /// the user's expected sleep schedule for [day] when one is set, else 23:00
+  /// the evening before and 07:00 on [day] (the night belongs to the day it
+  /// ends on).
   Future<void> _addWindow(String day) async {
     final d = DateTime.tryParse(day);
     if (d == null) return;
+    AppState? app;
+    try { app = context.read<AppState>(); } on ProviderNotFoundException { /* pure view */ }
+    final expected = app?.sleepOperations.expectedWindowFor(d);
+    final onset = expected?.$1 ?? DateTime(d.year, d.month, d.day - 1, 23);
+    final wake = expected?.$2 ?? DateTime(d.year, d.month, d.day, 7);
     await _editWindow(
       day,
-      DateTime(d.year, d.month, d.day - 1, 23).millisecondsSinceEpoch ~/ 1000,
-      DateTime(d.year, d.month, d.day, 7).millisecondsSinceEpoch ~/ 1000,
+      onset.millisecondsSinceEpoch ~/ 1000,
+      wake.millisecondsSinceEpoch ~/ 1000,
     );
+  }
+
+  /// "Recalculate this night". Drawn by [_windowCard] when there is a window to
+  /// describe, and by [_nightControls] only when there is not — never both.
+  Widget _recalculateButton(String day) {
+    AppState? app;
+    try { app = context.read<AppState>(); } on ProviderNotFoundException { /* pure view */ }
+    return TextButton(onPressed: _saving || app == null ? null : () =>
+      _runOverride(day, () => app!.recalculateSleep(day), timesSaved: false),
+      child: const Text('Recalculate this night'));
+  }
+
+  /// Whether [_windowCard] will draw for [d]: it needs a day and a window.
+  bool _hasWindowCard(SleepData d) =>
+      d.day != null &&
+      d.night['onset_ts'] is num &&
+      d.night['wake_ts'] is num;
+
+  /// Recalculate when no window card carries it, and why the last correction
+  /// did not take (or that its times were saved without numbers).
+  List<Widget> _nightControls(SleepData d) {
+    final day = _day ?? d.day ?? todayLabel();
+    return [
+      if (!_hasWindowCard(d)) _recalculateButton(day),
+      if (_overrideFailed case final error?)
+        StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
+    ];
   }
 
   /// Every override path is the same shape: write it, wait for the forced
   /// re-derive, then reload the screen from what the engine produced. The
   /// screen must not keep drawing the old night's numbers under a new window.
   ///
-  /// [applied] reads the reloaded night and says whether the edit took. Without
-  /// it, a changed source is the test (clearing an override).
+  /// The write's [SleepOperationResult] says whether it failed. [applied]
+  /// reads the reloaded night and says whether the edit took; without it the
+  /// result is the test. [timesSaved] is false for actions that are not about
+  /// a window ("Not sleep", recalculate, back to automatic): "Times saved…"
+  /// would be a lie.
   Future<void> _runOverride(
     String day,
-    Future<void> Function() write, {
+    Future<dynamic> Function() write, {
     bool Function(Map<String, dynamic> night)? applied,
+    bool timesSaved = true,
   }) async {
     if (_saving) return;
     setState(() {
       _saving = true;
       _overrideFailed = null;
     });
-    String? failed;
+    String? failed, note;
     try {
-      await write();
+      final result = await write();
+      if (result is SleepOperationResult) {
+        if (!result.success) {
+          failed = result.error ?? 'Sleep calculation failed. Try again.';
+        } else if (!result.metricsAvailable && timesSaved) {
+          note = 'Times saved. Sleep numbers stay blank for times you set.';
+        }
+      }
     } catch (e) {
       failed = '$e';
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-    final before = _source;
     if (mounted) await _load();
     if (!mounted) return;
-    // EVERY failure below this screen is silent: the forced re-derive catches
-    // and logs its own throw, and it returns at its first line when another
-    // re-analysis is already running. Both leave the write in the database and
-    // the night on screen unchanged — indistinguishable from a correction that
-    // worked, which is how a rejected one got dropped without a word. So the
+    // A write can report success and still leave the night on screen
+    // unchanged, indistinguishable from a correction that worked, so the
     // reloaded night is checked against what the edit asked for.
     // The user stepped to another night meanwhile: the reloaded night is not
     // the one edited, so it cannot say whether the edit took.
     if (failed == null && _d?.day != day) return;
-    final took = applied != null
-        ? applied(_d?.night ?? const <String, dynamic>{})
-        : _source != before;
+    final took = applied?.call(_d?.night ?? const <String, dynamic>{}) ?? true;
     if (failed != null || !took) {
       final l = AppLocalizations.of(context);
       setState(() => _overrideFailed = failed ??
           l?.sleepDetailReanalyseFailed ??
           'The night wasn’t re-analysed; another run was busy or it failed. Your times are saved: open Your data and tap Re-analyze everything.');
+    } else if (note != null) {
+      setState(() => _overrideFailed = note);
     }
   }
-
-  /// Where the drawn window came from: 'auto', 'auto_fallback', 'manual' or
-  /// 'confirmed'.
-  String? get _source => (_d?.night['sleep_source'] as String?) ?? 'auto';
 
   /// The hypnogram, as the centrepiece rather than as an illustration. The
   /// cycle count rides underneath it because it is a property of this shape,
@@ -1934,6 +2037,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     final legend = <(String, Color)>[];
     final axes = <AxisSpec?>[];
     final units = <String>[];
+    final names = <String>[];
 
     // Each lane keeps its own scale — they are different quantities — but the
     // scale is PINNED to the night's own range and its unit is named. Three
@@ -1956,6 +2060,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
         if (v > hi) hi = v;
       }
       legend.add(('$label ${format(lo)}–${format(hi)} ${uiText(c, unit)}', col));
+      names.add(label);
       axes.add(AxisSpec.of(present, ticks: 2, format: format));
       units.add(unit);
     }
@@ -2001,7 +2106,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           // The hypnogram's cursor, on the same onset→wake clock: scrub
           // either chart and both show the same instant, with the readout
           // under each. Only when the night has both ends, which is what
-          // makes the two time bases one.
+          // makes the two time bases one. Otherwise one column reads every
+          // lane (they share the night's clock); a lane with nothing in that
+          // bucket reads "—".
           child: linked
               ? Scrubber(
                   value: _scrub,
@@ -2014,9 +2121,25 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
                       painter: NightStack(series, colors,
                           axes: axes, selectedX: _scrub, cursor: p.ink)),
                 )
-              : CustomPaint(
-                  size: Size.infinite,
-                  painter: NightStack(series, colors, axes: axes)),
+              : ChartScrub(
+                  label: loc?.sleepDetailThroughTheNight ?? 'Through the night',
+                  gaps: hasChartGaps(series),
+                  time: (at) {
+                    final cols = series.first.length;
+                    if (cols < 2) return null;
+                    final i = ChartScrub.slotAt(cols, at);
+                    return clockOfTs(
+                        t0 + ((t1 - t0) * i / (cols - 1)).round());
+                  },
+                  keys: [
+                    for (var k = 0; k < series.length; k++)
+                      ChartKey.slots(names[k], colors[k], series[k],
+                          (i, v) => '${axisFixedOrInt(v)} ${units[k]}'),
+                  ],
+                  child: CustomPaint(
+                      size: Size.infinite,
+                      painter: NightStack(series, colors, axes: axes)),
+                ),
         ),
         if (linked && _scrub != null) _scrubCard(c, p, d),
       ]),
