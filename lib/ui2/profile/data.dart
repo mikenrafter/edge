@@ -28,6 +28,7 @@ import '../../data/day_label.dart' show dayLabelOf;
 import '../../data/db.dart';
 import '../../import/backup_crypto.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/display_text.dart' show withIosUninstallWarning;
 import '../../state/app_state.dart';
 import '../../state/clock_format.dart' show formatClockOf;
 import '../activity/share.dart' show shareOrigin;
@@ -501,7 +502,7 @@ class DataScreenView extends StatelessWidget {
                       chevron: false),
                   if (backupError != null)
                     SetRow(LucideIcons.triangleAlert, C.orange,
-                        l?.dataBackupFailed(backupError) ?? 'Backup failed: $backupError',
+                        l?.dataBackupFailed(backupError!) ?? 'Backup failed: $backupError',
                         sub: defaultTargetPlatform == TargetPlatform.android
                             ? (l?.dataBackupFolderRetry ?? 'Retry with Back up now, or choose another folder')
                             : (l?.dataBackUpNow ?? 'Back up now'),
@@ -612,16 +613,18 @@ Future<void> confirmResetAllData(BuildContext c, AppState app) async {
       // install id, the stored API key and the home-screen widget standing.
       // It now removes all of that, so it can say so.
       content: Text(
-        l?.settingsResetBody ??
-            'This deletes, permanently and with no copy anywhere else:\n\n'
+        withIosUninstallWarning(c, l?.settingsResetBody ??
+            'This permanently deletes this app\'s data on this device:\n\n'
                 '· every measured day, sleep, workout and route\n'
                 '· every lab result, meal, medication dose, habit, breathing session '
                 'and logged set\n'
-                '· your journal, cycle log and rolling baselines\n'
+                '· your journal, cycle log and what the app has learned as your usual\n'
                 '· your profile, every preference and any stored AI key\n'
                 '· the home-screen widget and every scheduled reminder\n\n'
+                'Exported copies and backups in previous or unavailable folders '
+                'may remain. Delete those separately.\n\n'
                 'The band is unpaired, and it cannot re-send history it has already '
-                'handed over. Export from Your data first if you want a copy.',
+                'handed over. Export from Your data first if you want a copy.'),
       ),
       actions: [
         TextButton(
@@ -633,21 +636,32 @@ Future<void> confirmResetAllData(BuildContext c, AppState app) async {
       ],
     ),
   );
-  if (ok != true) return;
-  await app.resetAllData();
-  // "with no copy anywhere else" was false while automatic backup was on:
-  // `wipeAll` deletes rows and cannot touch files, so up to [kBackupsKept]
-  // gzipped whole-database copies survived in a folder the user can browse and
-  // Import a file can read straight back.
+  if (ok != true || !c.mounted) return;
+  final messenger = ScaffoldMessenger.of(c);
+  // resetAllData deletes the automatic backups itself (and releases the
+  // chosen folder); it returns why that cleanup was incomplete, if it was.
+  String? backupCleanupError;
   try {
-    await pruneBackups(await backupDirectory(), keep: 0);
-  } catch (_) {
-    // No backup folder is the normal case — nothing to delete.
+    backupCleanupError = await app.resetAllData();
+  } catch (e) {
+    if (c.mounted) {
+      ScaffoldMessenger.of(c).showSnackBar(SnackBar(
+        content: Text(l?.dataFailed(e.toString()) ?? 'Failed: $e'),
+      ));
+    }
+    return;
   }
   // resetAllData swaps the gate to Welcome, which is UNDER this screen —
   // without this the user stays on Settings, reading a profile that has been
   // deleted.
   if (c.mounted) backToRoot(c);
+  if (backupCleanupError != null && messenger.mounted) {
+    messenger.showSnackBar(SnackBar(
+      content: Text(l?.settingsResetBackupWarning ??
+          'App data deleted. Backup cleanup was incomplete. '
+              'Some files or folder access may remain.'),
+    ));
+  }
 }
 
 /// Off → Daily → Weekly → Off. Three states cycle in a row; a picker for three

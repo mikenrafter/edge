@@ -12,6 +12,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/notify/alert_dispatcher.dart'
+    show AlertDeliveryOutcome;
 import 'package:openstrap_edge/state/workout_controller.dart';
 import 'package:openstrap_edge/ui2/activity/catalogue.dart' show activityByName;
 import 'package:openstrap_edge/ui2/activity/live.dart' show LiveDraft;
@@ -53,7 +55,6 @@ class _Rig {
       log: logs.add,
       liveHr: () => hr,
       liveRaw: () => raw,
-      zoneAlertEnabled: () => false,
       zoneAlertTargetZone: () => 3,
       refreshNightlyRhr: () async => trace.add('rhr'),
       restingHr: () => 55,
@@ -66,7 +67,10 @@ class _Rig {
           trace.add('dismiss:$startSec-$endSec'),
       healthSyncEnabled: () => false,
       exportToHealth: (_) async => false,
-      buzz: () async => trace.add('buzz'),
+      dispatchBandAlert: (rule) async {
+        trace.add('alert:$rule');
+        return const AlertDeliveryOutcome([], null);
+      },
       repo: () => repoOverride ?? repo,
       hostDisposed: () => hostDisposed,
     );

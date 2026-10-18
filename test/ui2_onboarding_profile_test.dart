@@ -19,7 +19,6 @@ import 'package:openstrap_edge/ui2/onboarding/splash.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
-import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -83,22 +82,16 @@ Map<String, Widget> _cases() => {
       'profile_setup_filled': ProfileSetupView(
           initial: const {'sex': 'f', 'age': 34, 'weight_kg': 61.5},
           onSave: (_) async {}),
-      'profile_home': const ProfileHomeView(
-        stats: ProfileStats(
-            name: 'Sahil', sources: 2, storageBytes: 1503238553),
-      ),
-      'profile_home_loading': const ProfileHomeView(),
       'my_devices': MyDevicesView(sources: [_band, _phone]),
       'my_devices_empty': const MyDevicesView(),
       'device_detail': DeviceDetailView(_band, onFind: () {}, onForget: () {}),
-      'more_settings': const MoreSettingsView(
-          units: 'Metric', appearance: 'Dark', phoneSteps: true),
+      'more_settings':
+          const MoreSettingsView(units: 'Metric', appearance: 'Dark'),
       // The icon row appears only where the OS will actually change the icon,
       // so the default case above is drawn without it — this is the iOS one.
       'more_settings_icon': const MoreSettingsView(
           units: 'Metric',
           appearance: 'Dark',
-          phoneSteps: true,
           appIcon: AppIconChoice.colourful),
       // The alarm's three confirmation states are the point of the screen: it
       // must not draw a confident tick over an alarm the band never
@@ -112,7 +105,7 @@ Map<String, Widget> _cases() => {
           connected: true,
           schedule: _alarmSchedule,
           onTest: () async {},
-          onCancel: () async {}),
+          onCancelAlarm: () async {}),
       'alarm_unconfirmed': AlarmScreenView(
           armedAt: _alarmAt,
           now: _alarmNow,
@@ -120,7 +113,7 @@ Map<String, Widget> _cases() => {
           connected: true,
           schedule: _alarmSchedule,
           onTest: () async {},
-          onCancel: () async {}),
+          onCancelAlarm: () async {}),
       'alarm_disconnected': AlarmScreenView(
           armedAt: _alarmAt,
           now: _alarmNow,

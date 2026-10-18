@@ -118,7 +118,8 @@ class _Saved extends EcgController {
   );
 
   @override
-  Future<void> begin(EcgWrist wrist) async {}
+  Future<void> begin(EcgWrist wrist,
+      {bool persist = true, void Function(String)? trace}) async {}
 }
 
 void main() {

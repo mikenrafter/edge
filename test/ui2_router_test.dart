@@ -34,6 +34,7 @@ import 'package:openstrap_edge/ui2/screens/log_workout.dart'
     show WorkoutSuggestionScreen;
 import 'package:openstrap_edge/ui2/profile/devices.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
+import 'package:openstrap_edge/ui2/profile/settings.dart' show MoreSettings;
 import 'package:openstrap_edge/ui2/screens/nutrition_screen.dart'
     show NutritionScreen;
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -171,7 +172,7 @@ void main() {
       expect(screenForRoute(kRouteWater), isA<NutritionScreen>());
       expect((screenForRoute(kRouteWater)! as NutritionScreen).page, isTrue);
       expect(domainForRoute('/profile'), ShellDomain.today);
-      expect(screenForRoute('/profile'), isA<ProfileHome>(),
+      expect(screenForRoute('/profile'), isA<MoreSettings>(),
           reason: 'the battery notification promises the band, not Today');
       expect(domainForRoute('/recap'), ShellDomain.health);
       // Unknown / retired routes must not crash a cold launch.

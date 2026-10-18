@@ -1,8 +1,9 @@
 // Where the Explorer lives: NOT in Health.
 //
 // DECISION (reversed after a first try as a fifth Health tab): the Data
-// Explorer is not ready for everyone, so Health keeps its four sub-tabs (Last
-// night, Today, Trends, Labs) and the Explorer is reached from Settings >
+// Explorer is not ready for everyone, so Health keeps its own sub-tabs
+// (Overview, Explore, Trends, Vitals, Labs; its Explore is the metric
+// catalogue, not the Explorer) and the Explorer is reached from Settings >
 // Developer > "Data Explorer", developer mode only. It opens full screen,
 // under a NavBar titled "Data Explorer".
 import 'dart:io';
@@ -20,7 +21,7 @@ import 'package:provider/provider.dart';
 
 import 'support/explorer_harness.dart';
 
-const _four = ['Last night', 'Today', 'Trends', 'Labs'];
+const _five = ['Overview', 'Explore', 'Trends', 'Vitals', 'Labs'];
 
 Future<void> _health(WidgetTester t, int tab,
     {double width = 360, double scale = 1}) async {
@@ -78,30 +79,24 @@ void main() {
   });
   setUp(clearPrefs);
 
-  group('Health has four sub-tabs again', () {
-    testWidgets('the tabs are Last night, Today, Trends, Labs; not dense',
+  group('Health has five sub-tabs', () {
+    testWidgets('the tabs are Overview, Explore, Trends, Vitals, Labs; not dense',
         (t) async {
       await _health(t, 0);
-      expect(_tabs(t).items, _four);
+      expect(_tabs(t).items, _five);
       expect(_tabs(t).dense, isFalse);
-      expect(find.text('Explore'), findsNothing);
       expect(find.byType(ExplorerView), findsNothing);
     });
 
-    testWidgets('Labs is tab 3 and the Explorer is nowhere in Health', (t) async {
-      await _health(t, 3);
-      expect(_tabs(t).index, 3);
+    testWidgets('Labs is tab 4 and the Explorer is nowhere in Health', (t) async {
+      await _health(t, 4);
+      expect(_tabs(t).index, 4);
       expect(find.text('Add a result'), findsOneWidget);
       expect(find.byType(ExplorerView), findsNothing);
       await t.pumpWidget(const SizedBox());
       await _health(t, 2);
       expect(find.byType(ExplorerView), findsNothing);
       expect(find.byKey(const ValueKey('explore-scale:daily')), findsNothing);
-    });
-
-    test('an old five-tab index still lands on the right one of the four', () {
-      expect(HealthScreen.tabFromLegacy(4), 3);
-      expect(HealthScreen.tabFromLegacy(3), 1);
     });
   });
 
