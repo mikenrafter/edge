@@ -483,6 +483,22 @@ class LocalDb {
     }
   }
 
+  /// Runs a pure-SELECT [body] on the screen-read handle. The handle can be
+  /// closed between fetching it and the query running (backgrounding closes
+  /// the reader; a wipe or merge replaces the store), which surfaces as a
+  /// closed-database error. When the handle we used is closed after the
+  /// failure, retry ONCE on the writer. Any other failure is the caller's.
+  /// Every reader call site goes through here; [body] must be a read.
+  static Future<T> readerRun<T>(Future<T> Function(Database db) body) async {
+    final db = await reader; // reader-acquire
+    try {
+      return await body(db);
+    } catch (_) {
+      if (db.isOpen || identical(db, _db)) rethrow;
+      return body(await instance);
+    }
+  }
+
   static Future<Database?> _openReader(Database writer) async {
     final path = writer.path;
     if (path == inMemoryDatabasePath || path == ':memory:') return null;
@@ -3238,7 +3254,7 @@ class LocalDb {
 
   /// The user's sleep window for [dayId], or null if none.
   static Future<Map<String, dynamic>?> getSleepOverride(String dayId) async {
-    final db = await reader;
+    return readerRun((db) async {
     final rows = await db.query(
       'sleep_override',
       where: 'day_id = ?',
@@ -3246,6 +3262,7 @@ class LocalDb {
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
+    });
   }
 
   /// `wake_confirmation`: the instant a sleep block was confirmed awake, which
@@ -5346,8 +5363,9 @@ class LocalDb {
   /// The algo version behind each day's `metric_series` scalars, oldest first.
   /// Days with no stamp are simply absent — never guessed at.
   static Future<List<Map<String, dynamic>>> metricSeriesVersions() async {
-    final db = await reader;
+    return readerRun((db) async {
     return db.query('metric_series_version', orderBy: 'date ASC');
+    });
   }
 
   // ── VERSIONED IMMUTABLE DERIVED STORE (ARCHITECTURE_V2 invariant 6) ─────────
@@ -8645,7 +8663,7 @@ class LocalDb {
     int toTs, {
     int limit = 5000,
   }) async {
-    final db = await reader;
+    return readerRun((db) async {
     return db.query(
       'events',
       where: 'ts >= ? AND ts < ?',
@@ -8653,6 +8671,7 @@ class LocalDb {
       orderBy: 'ts ASC',
       limit: limit,
     );
+    });
   }
 
   /// Whether an ALARM_SET (event 56) row landed at or after [sinceMs]
@@ -9513,7 +9532,7 @@ class LocalDb {
   /// (see [_servedAlgoCeiling]), with a normalized `date` alias for callers.
   /// Null if absent.
   static Future<Map<String, dynamic>?> dayResult(String dayId) async {
-    final db = await reader;
+    return readerRun((db) async {
     final rows = await db.query(
       'day_result',
       where: 'day_id = ? AND algo_version <= ?',
@@ -9522,11 +9541,12 @@ class LocalDb {
       limit: 1,
     );
     return rows.isEmpty ? null : _withDate(rows.first);
+    });
   }
 
   /// Payload-free recent served-day rows, newest first, for BundleStore readers.
   static Future<List<Map<String, dynamic>>> recentDayResultMetas(int limit) async {
-    final db = await reader;
+    return readerRun((db) async {
     final rows = await db.rawQuery(
       'SELECT r.day_id AS date, r.algo_version, r.computed_at, r.finalized, '
       'r.skipped, r.partial, r.rhr, r.rmssd, r.readiness, r.window_json, '
@@ -9536,6 +9556,7 @@ class LocalDb {
       [limit],
     );
     return rows;
+    });
   }
 
   /// Payload-free read of the served `day_result` row for [dayId]: every column
@@ -9545,7 +9566,7 @@ class LocalDb {
     String dayId, {
     bool onReader = false,
   }) async {
-    final db = onReader ? await reader : await instance;
+    Future<Map<String, dynamic>?> read(DatabaseExecutor db) async {
     final rows = await db.rawQuery(
       'SELECT r.day_id, r.algo_version, r.computed_at, r.finalized, '
       'r.skipped, r.partial, r.rhr, r.rmssd, r.readiness, r.window_json, '
@@ -9556,6 +9577,8 @@ class LocalDb {
       [dayId],
     );
     return rows.isEmpty ? null : rows.first;
+    }
+    return onReader ? readerRun(read) : read(await instance);
   }
 
   /// The stored payload of exactly ([dayId], [algoVersion]), provided the row's
@@ -9566,7 +9589,7 @@ class LocalDb {
     required int expectedRev,
     bool onReader = false,
   }) async {
-    final db = onReader ? await reader : await instance;
+    Future<DayPayloadRead> read(DatabaseExecutor db) async {
     final rows = await db.rawQuery(
       'SELECT r.payload_json, COALESCE(v.rev, 0) AS rev '
       'FROM day_result r LEFT JOIN row_rev v '
@@ -9581,6 +9604,8 @@ class LocalDb {
       payloadJson: rows.first['payload_json'] as String,
       rev: rev,
     );
+    }
+    return onReader ? readerRun(read) : read(await instance);
   }
 
   /// `(wipeEpoch, openCount)`: changes whenever the store was wiped, rebuilt,
@@ -9722,7 +9747,7 @@ class LocalDb {
     int limit, {
     DatabaseExecutor? within,
   }) async {
-    final db = within ?? await reader;
+    Future<List<Map<String, dynamic>>> read(DatabaseExecutor db) async {
     final rows = await db.rawQuery(
       'SELECT r.day_id, r.algo_version, r.computed_at, r.finalized, '
       'r.skipped, r.partial, r.rhr, r.rmssd, r.readiness '
@@ -9732,6 +9757,8 @@ class LocalDb {
       [limit],
     );
     return [for (final r in rows) _withDate(r)];
+    }
+    return within != null ? read(within) : readerRun(read);
   }
 
   /// `{day_id -> served algo_version}` for every day, payload-free.
@@ -9740,7 +9767,7 @@ class LocalDb {
   /// ask "what version is this day at" was doing an N+1 that pulled a full
   /// bundle each time to read one integer.
   static Future<Map<String, int>> dayResultVersions() async {
-    final db = await reader;
+    return readerRun((db) async {
     final rows = await db.rawQuery(
       'SELECT day_id, MAX(algo_version) AS v FROM day_result '
       'WHERE algo_version <= ? GROUP BY day_id',
@@ -9751,6 +9778,7 @@ class LocalDb {
         if (r['day_id'] is String && r['v'] is num)
           r['day_id'] as String: (r['v'] as num).toInt(),
     };
+    });
   }
 
   /// The stored sleep WINDOW for each of the [limit] most recent days, newest
@@ -9761,22 +9789,24 @@ class LocalDb {
   /// column, so onset/offset are one small projected read — no bundle decode,
   /// no per-day round trip. Rows: `{day_id, window_json}`.
   static Future<List<Map<String, dynamic>>> sleepWindowRows(int limit) async {
-    final db = await reader;
+    return readerRun((db) async {
     return db.rawQuery(
       "SELECT r.day_id AS day_id, r.window_json AS window_json, v.rev AS rev FROM day_result r $_servedDayJoin LEFT JOIN row_rev v ON v.kind = 'day_result' AND v.k1 = r.day_id AND v.k2 = r.algo_version WHERE r.skipped = 0 ORDER BY r.day_id DESC LIMIT ?",
       [limit],
     );
+    });
   }
 
   /// [sleepWindowRows] for one [day]: `{day_id, window_json, rev}`, or null
   /// when the day has no served, non-skipped row (now).
   static Future<Map<String, dynamic>?> sleepWindowRow(String day) async {
-    final db = await reader;
+    return readerRun((db) async {
     final rows = await db.rawQuery(
       "SELECT r.day_id AS day_id, r.window_json AS window_json, v.rev AS rev FROM day_result r $_servedDayJoin LEFT JOIN row_rev v ON v.kind = 'day_result' AND v.k1 = r.day_id AND v.k2 = r.algo_version WHERE r.skipped = 0 AND r.day_id = ? AND m.day_id = ? LIMIT 1",
       [day, day],
     );
     return rows.isEmpty ? null : rows.first;
+    });
   }
 
   /// Every day_id that has a `day_result` row at its LATEST algo_version, newest
@@ -9787,7 +9817,7 @@ class LocalDb {
   /// boundary. Screens that only need "which days exist" must use this instead:
   /// over a multi-year history the payload variant is hundreds of MB.
   static Future<List<String>> dayResultDayIdsDesc() async {
-    final db = await reader;
+    return readerRun((db) async {
     final rows = await db.rawQuery(
       'SELECT day_id FROM day_result WHERE algo_version <= ? '
       'GROUP BY day_id ORDER BY day_id DESC',
@@ -9797,13 +9827,14 @@ class LocalDb {
       for (final r in rows)
         if (r['day_id'] is String) r['day_id'] as String,
     ];
+    });
   }
 
   /// Day labels whose LATEST-version bundle records a real sleep total
   /// (`sleep.accounting.value.tst_sec` present). Extracted IN SQLite via
   /// json_extract, so only the scalar crosses the boundary — never the payload.
   static Future<Set<String>> daysWithSleepTst() async {
-    final db = await reader;
+    return readerRun((db) async {
     final rows = await db.rawQuery(
       'SELECT r.day_id FROM day_result r '
       '$_servedDayJoin '
@@ -9818,6 +9849,7 @@ class LocalDb {
       for (final r in rows)
         if (r['day_id'] is String) r['day_id'] as String,
     };
+    });
   }
 
   /// Every day label ('YYYY-MM-DD') the lookback screen can actually RENDER —
@@ -9830,7 +9862,7 @@ class LocalDb {
   /// bound navigation. Skips are excluded via the `skipped` column, which
   /// `_markDaySkipped` sets alongside the `{skipped:true}` payload.
   static Future<List<String>> availableDayIds() async {
-    final db = await reader;
+    return readerRun((db) async {
     // Latest version per day (matches [dayResult]), then drop skip-markers.
     final rows = await db.rawQuery(
       'SELECT r.day_id FROM day_result r '
@@ -9843,6 +9875,7 @@ class LocalDb {
         if (r['day_id'] is String && (r['day_id'] as String).isNotEmpty)
           r['day_id'] as String,
     ];
+    });
   }
 
   /// The set of day_id labels that already have a REAL, COMPLETE result at
@@ -10480,10 +10513,11 @@ class LocalDb {
   /// scan behind it is over `day_result.payload_json` (whole day bundles), so
   /// a caller reading several series takes it ONCE and filters in Dart.
   static Future<Set<String>> importedDates() async {
-    final db = await reader;
+    return readerRun((db) async {
     return {
       for (final r in await db.rawQuery(_importedDatesSql)) r['date'] as String,
     };
+    });
   }
 
   /// The `metric_series` keys whose stored VALUES ARE IN THE BAND'S OWN UNITS,
@@ -11333,7 +11367,7 @@ class LocalDb {
   /// Count non-null series points for each requested metric key.
   static Future<Map<String, int>> metricSeriesCounts(List<String> keys) async {
     if (keys.isEmpty) return const {};
-    final db = await reader;
+    return readerRun((db) async {
     final out = <String, int>{};
     for (final key in keys) {
       out[key] =
@@ -11346,6 +11380,7 @@ class LocalDb {
           0;
     }
     return out;
+    });
   }
 
   /// Cross-day rollup presence + day count, read from the `crossday` baseline.
@@ -11439,7 +11474,7 @@ class LocalDb {
     int? limit,
     bool measuredOnly = false,
   }) async {
-    final db = await reader;
+    return readerRun((db) async {
     return db.query(
       'metric_series',
       where: 'key = ? AND value IS NOT NULL'
@@ -11448,6 +11483,7 @@ class LocalDb {
       orderBy: 'date ASC',
       limit: limit,
     );
+    });
   }
 
   /// Everything a multi-chart screen needs from the derived series, in ONE
@@ -11465,7 +11501,7 @@ class LocalDb {
     })
   >
   metricSeriesBundle(List<String> keys) async {
-    final db = await reader;
+    return readerRun((db) async {
     // `transaction` opens with BEGIN IMMEDIATE, which a query-only connection
     // refuses. On the reader each statement still reads one committed snapshot;
     // only a commit landing BETWEEN the three can skew them (a series row with
@@ -11501,6 +11537,7 @@ class LocalDb {
           : await recentDayResultsMeta(longest, within: txn);
       return (rows: byKey, versions: versions, meta: meta);
     });
+    });
   }
 
   /// The TRAILING [n] non-null values for [key] — the newest n days, returned
@@ -11517,7 +11554,7 @@ class LocalDb {
     int n, {
     bool measuredOnly = true,
   }) async {
-    final db = await reader;
+    return readerRun((db) async {
     final rows = await db.rawQuery(
       'SELECT value FROM metric_series '
       'WHERE key = ? AND value IS NOT NULL '
@@ -11526,10 +11563,11 @@ class LocalDb {
       [key, n],
     );
     return [for (final r in rows.reversed) (r['value'] as num).toDouble()];
+    });
   }
 
   static Future<Map<String, dynamic>?> baseline(String key) async {
-    final db = await reader;
+    return readerRun((db) async {
     final rows = await db.query(
       'baselines',
       where: 'key = ?',
@@ -11537,11 +11575,12 @@ class LocalDb {
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
+    });
   }
 
   /// Payload-free baseline metadata for warm-set and freshness readers.
   static Future<Map<String, dynamic>?> baselineMeta(String key) async {
-    final db = await reader;
+    return readerRun((db) async {
     final rows = await db.rawQuery(
       'SELECT b.key, b.updated_at, COALESCE(v.rev, 0) AS rev '
       'FROM baselines b LEFT JOIN row_rev v '
@@ -11549,6 +11588,7 @@ class LocalDb {
       [key],
     );
     return rows.isEmpty ? null : rows.first;
+    });
   }
 
   /// Payload-free lookup used by the Home warm set.
@@ -13494,13 +13534,14 @@ class LocalDb {
     int fromTs,
     int toTs,
   ) async {
-    final db = await reader;
+    return readerRun((db) async {
     return db.query(
       'sessions',
       where: 'start_ts >= ? AND start_ts <= ?',
       whereArgs: [fromTs, toTs],
       orderBy: 'start_ts DESC',
     );
+    });
   }
 
   /// Ids of the sessions that START in `[fromTs, toTs]`, newest first. No row

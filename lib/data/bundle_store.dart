@@ -1008,12 +1008,11 @@ class BundleStore {
     if (source.kind == 'day_result') {
       meta = await LocalDb.dayResultMeta(source.k1, onReader: true);
     } else {
-      final db = await LocalDb.reader;
-      final rows = await db.rawQuery(
+      final rows = await LocalDb.readerRun((db) => db.rawQuery(
         "SELECT b.key, b.updated_at, COALESCE(v.rev, 0) AS rev "
         "FROM baselines b LEFT JOIN row_rev v ON v.kind = 'baselines' AND v.k1 = b.key AND v.k2 = 0 WHERE b.key = ?",
         [source.k1],
-      );
+      ));
       meta = rows.isEmpty ? null : rows.first;
     }
     if (meta == null) return null;
@@ -1044,12 +1043,11 @@ class BundleStore {
         DayPayloadAbsent() || DayPayloadStale() => _PayloadRead.stale(),
       };
     }
-    final db = await LocalDb.reader;
-    final rows = await db.rawQuery(
+    final rows = await LocalDb.readerRun((db) => db.rawQuery(
       "SELECT b.payload_json, COALESCE(v.rev, 0) AS rev FROM baselines b "
       "LEFT JOIN row_rev v ON v.kind = 'baselines' AND v.k1 = b.key AND v.k2 = 0 WHERE b.key = ?",
       [prepared.source.k1],
-    );
+    ));
     if (rows.isEmpty || (rows.first['rev'] as num).toInt() != prepared.key.rev) {
       return _PayloadRead.stale();
     }
