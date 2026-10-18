@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/alarm_draft.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
 
@@ -100,6 +101,9 @@ List<String> _options(WidgetTester t) => [
 ];
 
 void main() {
+  // Times are asserted as 24-hour; the format follows the OS otherwise.
+  setUp(() => ClockFormatController.seed(ClockFormat.h24));
+  tearDown(ClockFormatController.debugReset);
   group('Natural Wake', () {
     testWidgets('offers Off, then 15 to 120 in 15-minute steps', (t) async {
       await pumpTall(t, _Harness().view());

@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/alarm_draft.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -78,6 +79,9 @@ bool _applyLive(WidgetTester t) =>
     t.widget<BigButton>(_apply).onTap != null && !isDimmed(t, _apply);
 
 void main() {
+  // Times are asserted as 24-hour; the format follows the OS otherwise.
+  setUp(() => ClockFormatController.seed(ClockFormat.h24));
+  tearDown(ClockFormatController.debugReset);
   group('day tabs', () {
     testWidgets('one SubTabs, one tab per weekday, above every accordion', (
       t,
