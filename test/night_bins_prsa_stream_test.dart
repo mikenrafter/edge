@@ -632,11 +632,22 @@ void main() {
           for (final p in passes) {
             step('${p.where}: nightRr');
             final got = state.nightRr(p.rr, p.ts);
+            // The batch bins throw on a non-finite beat time (`floor()` of
+            // NaN / inf, the frozen reference included); "equal to batch"
+            // then means the same throw, so outcomes are compared.
+            Object? outcome(List<double> Function() f) {
+              try {
+                return f();
+              } catch (e) {
+                return 'threw ${e.runtimeType}';
+              }
+            }
+
             step('${p.where}: nightRespWindows');
-            final w = state.nightRespWindows();
+            final w = outcome(state.nightRespWindows);
             step('${p.where}: batch respPerWindow');
             out.add(['${p.where}.respWindows', w,
-                _refRespPerWindow(got.nn, got.nnTimesMs)]);
+                outcome(() => _refRespPerWindow(got.nn, got.nnTimesMs))]);
             step('${p.where}: nightPrsaDc');
             final dc = _prsaRaw(state.nightPrsaDc());
             out.add(['${p.where}.prsaDc', dc, _prsaRaw(decelerationCapacity(got.nn))]);

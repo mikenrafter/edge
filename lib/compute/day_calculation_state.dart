@@ -8,6 +8,8 @@ import 'package:openstrap_analytics/onehz.dart';
 import 'day_activity_state.dart';
 import 'day_resume_state.dart';
 import 'minute_bills.dart';
+import 'night_prsa.dart';
+import 'night_resp_bins.dart';
 import 'night_resume_part.dart';
 import 'state_fingerprint.dart';
 import '../util/heavy.dart';
@@ -186,6 +188,10 @@ class DayCalculationState {
       spectralFed: _spectralFed,
       cvhr: _cvhrStream != null && _cvhrGen == _nightRebuilds ? _cvhrStream : null,
       cvhrFed: _cvhrFed,
+      respBins: _bins != null && _binsGen == _nightRebuilds ? _bins : null,
+      respBinsFed: _binsFed,
+      prsa: _prsa != null && _prsaGen == _nightRebuilds ? _prsa : null,
+      prsaFed: _prsaFed,
     );
   }
 
@@ -225,6 +231,10 @@ class DayCalculationState {
     _spectralFed = 0;
     _cvhrStream = null;
     _cvhrFed = 0;
+    _bins = null;
+    _binsFed = 0;
+    _prsa = null;
+    _prsaFed = 0;
   }
 
   /// Takes over the encoded [json] as this (empty) state's fold. False leaves
@@ -255,6 +265,7 @@ class DayCalculationState {
       }
       final hrv = part.buildHrvHeavy(), resp = part.buildRespHeavy();
       final cvhr = part.buildCvhrHeavy();
+      final bins = part.buildRespBinsHeavy(), prsa = part.buildPrsaHeavy();
       _nightCorrector = corrector;
       _nightStart = tag.startTsMs;
       _nightCount = tag.count;
@@ -269,6 +280,12 @@ class DayCalculationState {
       _cvhrStream = cvhr;
       _cvhrFed = part.cvhrFed;
       _cvhrGen = _nightRebuilds;
+      _bins = bins;
+      _binsFed = part.respBinsFed;
+      _binsGen = _nightRebuilds;
+      _prsa = prsa;
+      _prsaFed = part.prsaFed;
+      _prsaGen = _nightRebuilds;
       return true;
     } on FormatException {
       _resetNight();
@@ -286,7 +303,8 @@ class DayCalculationState {
   /// be proven unchanged without reading it.
   @heavy
   NightRr nightRr(List<double> rrMs, List<double> rrTsMs) {
-    NightRr batch() => nightRrBatch(rrMs, rrTsMs);
+    _batchNight = null;
+    NightRr batch() => _batchNight = nightRrBatch(rrMs, rrTsMs);
 
     final n = rrMs.length;
     final pending = _pendingNightJson;
@@ -341,6 +359,12 @@ class DayCalculationState {
     );
   }
 
+  /// The last [nightRr] result when it came from the batch path (the night was
+  /// reset, so every stream is empty); null when it came from the fold. The
+  /// night getters then answer with their batch functions over it, so a pass
+  /// is never scored on beats the streams do not hold. RAM-only.
+  NightRr? _batchNight;
+
   // ── Night spectral metrics, streamed ───────────────────────────────────────
   // An HrvFreqStream and an RsaRespStream fed only the corrector's settled
   // beats; each ask snapshots them with the provisional tail of the last
@@ -380,6 +404,10 @@ class DayCalculationState {
   /// Welch over the settled beats.
   @heavy
   Metric<HrvFreq> nightHrvFreq(double artifactFraction) {
+    final b = _batchNight;
+    if (b != null) {
+      return hrvFreq(b.nn, b.nnTimesMs, artifactFraction: artifactFraction);
+    }
     _syncSpectralHeavy();
     return _hrvStream!.snapshot(
       tailNnMs: _tailNn,
@@ -391,6 +419,10 @@ class DayCalculationState {
   /// `rsaRespRate` of the last [nightRr] slice, bit for bit.
   @heavy
   Metric<RespEstimate> nightResp(double artifactFraction) {
+    final b = _batchNight;
+    if (b != null) {
+      return rsaRespRate(b.nn, b.nnTimesMs, artifactFraction: artifactFraction);
+    }
     _syncSpectralHeavy();
     return _respStream!.snapshot(
       tailNnMs: _tailNn,
@@ -417,6 +449,11 @@ class DayCalculationState {
   /// re-scoring the settled beats.
   @heavy
   Metric<CvhrResult> nightCvhr(double artifactFraction) {
+    final b = _batchNight;
+    if (b != null) {
+      return cvhrApneaScreen(b.nn, b.nnTimesMs,
+          artifactFraction: artifactFraction);
+    }
     if (_cvhrStream == null || _cvhrGen != _nightRebuilds) {
       _cvhrStream = CvhrStream();
       _cvhrFed = 0;
@@ -434,6 +471,83 @@ class DayCalculationState {
       tailNnTimesMs: _tailNnTimes,
       artifactFraction: artifactFraction,
     );
+  }
+
+  // ── Night 30-min RSA bins and PRSA, streamed ──────────────────────────────
+  // Same rules as CVHR: fed only settled beats (own feed counts), restarted
+  // when nightRr rebuilds, ride the night part of the checkpoint. DC and AC
+  // share one feed count.
+  NightRespBins? _bins;
+  int _binsFed = 0, _binsFolded = 0, _binsRestarts = 0;
+  int _binsGen = -1;
+  NightPrsa? _prsa;
+  int _prsaFed = 0, _prsaFolded = 0, _prsaRestarts = 0;
+  int _prsaGen = -1;
+
+  /// Settled beats folded into the RSA bins (a restart counts again).
+  int get nightBinsFolded => _binsFolded;
+
+  /// Times the RSA bins were started from scratch, the first included.
+  int get nightBinsRestarts => _binsRestarts;
+
+  /// Settled beats folded into the PRSA sums (a restart counts again).
+  int get nightPrsaFolded => _prsaFolded;
+
+  /// Times the PRSA sums were started from scratch, the first included.
+  int get nightPrsaRestarts => _prsaRestarts;
+
+  /// [respPerWindowHeavy] of the last [nightRr] slice, bit for bit, scoring
+  /// each closed 30-min bin once.
+  @heavy
+  List<double> nightRespWindows() {
+    final b = _batchNight;
+    if (b != null) return respPerWindowHeavy(b.nn, b.nnTimesMs);
+    if (_bins == null || _binsGen != _nightRebuilds) {
+      _bins = NightRespBins();
+      _binsFed = 0;
+      _binsGen = _nightRebuilds;
+      _binsRestarts++;
+    }
+    if (_binsFed < _nightNn.length) {
+      final nn = _nightNn.sublist(_binsFed);
+      _bins!.foldHeavy(nn, _nightNnTimes.sublist(_binsFed));
+      _binsFolded += nn.length;
+      _binsFed = _nightNn.length;
+    }
+    return _bins!.snapshotHeavy(_tailNn, _tailNnTimes);
+  }
+
+  @heavy
+  NightPrsa _syncPrsaHeavy() {
+    if (_prsa == null || _prsaGen != _nightRebuilds) {
+      _prsa = NightPrsa.emptyHeavy();
+      _prsaFed = 0;
+      _prsaGen = _nightRebuilds;
+      _prsaRestarts++;
+    }
+    if (_prsaFed < _nightNn.length) {
+      final nn = _nightNn.sublist(_prsaFed);
+      _prsa!.foldHeavy(nn);
+      _prsaFolded += nn.length;
+      _prsaFed = _nightNn.length;
+    }
+    return _prsa!;
+  }
+
+  /// `decelerationCapacity` of the last [nightRr] slice, bit for bit.
+  @heavy
+  Metric<PrsaResult> nightPrsaDc() {
+    final b = _batchNight;
+    if (b != null) return decelerationCapacity(b.nn);
+    return _syncPrsaHeavy().dcHeavy(_tailNn);
+  }
+
+  /// `accelerationCapacity` of the last [nightRr] slice, bit for bit.
+  @heavy
+  Metric<PrsaResult> nightPrsaAc() {
+    final b = _batchNight;
+    if (b != null) return accelerationCapacity(b.nn);
+    return _syncPrsaHeavy().acHeavy(_tailNn);
   }
 
   /// Per-key reuse and cost, collected only when [debugStats] is set (for the
