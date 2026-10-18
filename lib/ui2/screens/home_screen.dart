@@ -1868,7 +1868,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void reload() {
     _latency.revisionBumped();
-    _justRefreshed = false;
+    _refresh.reset();
     _load();
   }
 
@@ -1904,11 +1904,9 @@ class _HomeScreenState extends State<HomeScreen>
       if (stillNewest(#home, t)) {
         setState(() => (_d = d, _days = days, _loading = false, _failed = false));
         _recordRender();
-        if (d.refreshPending) {
-          _refreshAfterPaint(repo);
-        } else {
-          _justRefreshed = false;
-        }
+        _refresh.afterPaint(repo, d.refreshPending).then((landed) {
+          if (landed && mounted) _load();
+        });
       }
     } catch (_) {
       if (stillNewest(#home, t)) {
@@ -1925,32 +1923,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// this screen from asking twice; it is cleared in `finally` so a failed
   /// refresh cannot stop the next load from asking again. On landing, read
   /// again: the stored row now names today.
-  bool _refreshing = false;
-  bool _justRefreshed = false;
-  Future<void> _refreshAfterPaint(LocalRepository repo) async {
-    // A read right after a refresh that is STILL pending is not asked again
-    // (it would loop); a revision reload starts over.
-    if (_refreshing) return;
-    if (_justRefreshed) {
-      _justRefreshed = false;
-      return;
-    }
-    _refreshing = true;
-    var ok = false;
-    try {
-      await repo.refreshTodayFreshness();
-      ok = true;
-    } catch (_) {
-      // Stays on the honest "still being worked out" state; the next revision
-      // reloads and asks again.
-    } finally {
-      _refreshing = false;
-    }
-    if (ok && mounted) {
-      _justRefreshed = true;
-      _load();
-    }
-  }
+  final _refresh = TodayRefreshLatch();
 
   /// Another day. The switcher never strands you off the record — [DayNav]
   /// already restricts the arrows to [_days] — so this just re-loads for it.

@@ -734,7 +734,7 @@ class TimelineData {
     AppLocalizations? l,
   }) async {
     final days = await repo.availableDays();
-    final today = await repo.getToday();
+    final today = await repo.getTodayStored();
     final day = pickDay(
         days, want, (today['status'] as Map?)?['today_day']?.toString());
     if (day == null) return TimelineData(days: days);

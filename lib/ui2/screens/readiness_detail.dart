@@ -58,6 +58,10 @@ class ReadinessData {
   final String? asOfDay;
   final DateTime? computedAt;
 
+  /// Read before the freshness refresh ran; today's score is not yet worked out.
+  /// The screen asks for the refresh after painting and reads again.
+  final bool refreshPending;
+
   const ReadinessData({
     this.readiness = Metric.empty,
     this.breakdown = const [],
@@ -68,6 +72,7 @@ class ReadinessData {
     this.absentDiag,
     this.asOfDay,
     this.computedAt,
+    this.refreshPending = false,
   });
 
   /// The absence diagnostic off a stored day bundle. Read straight from
@@ -84,7 +89,7 @@ class ReadinessData {
   /// as that night's own readiness instead of being refused as not today's. Any
   /// other value of [day] changes nothing.
   static Future<ReadinessData> load(LocalRepository repo, {String? day}) async {
-    final today = await repo.getToday();
+    final today = await repo.getTodayStored();
     final cd = await repo.getInsights();
     final chart = await repo.getChart('recovery');
 
@@ -100,6 +105,7 @@ class ReadinessData {
     final scored = readiness.value != null;
 
     return ReadinessData(
+      refreshPending: (status is Map) && status['refresh_pending'] == true,
       readiness: readiness,
       // `narrative` and the glass-box `score` are DELIBERATELY not read. Both
       // belong to the deprecated percentile score, which bands at 70/40 while
@@ -169,7 +175,12 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
   bool get revisionReloads => widget.data == null;
 
   @override
-  void reload() => _load();
+  void reload() {
+    _refresh.reset();
+    _load();
+  }
+
+  final _refresh = TodayRefreshLatch();
 
   Future<void> _load() async {
     final repo = repoOf(context);
@@ -179,7 +190,12 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
     }
     try {
       final d = await ReadinessData.load(repo, day: widget.day);
-      if (mounted) setState(() => (_d = d, _loading = false));
+      if (mounted) {
+        setState(() => (_d = d, _loading = false));
+        _refresh.afterPaint(repo, d.refreshPending).then((landed) {
+          if (landed && mounted) _load();
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }

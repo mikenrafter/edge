@@ -65,7 +65,7 @@ class WhatChangedData {
   static Future<WhatChangedData> load(LocalRepository repo,
       {String? want}) async {
     final days = await repo.availableDays();
-    final today = await repo.getToday();
+    final today = await repo.getTodayStored();
     final day = pickDay(
         days, want, (today['status'] as Map?)?['today_day']?.toString());
     if (day == null) return WhatChangedData(days: days, grid: await loadGridRows(repo));

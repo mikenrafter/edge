@@ -381,7 +381,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
 
   @override
   void reload() {
-    _justRefreshed = false;
+    _refresh.reset();
     _load();
   }
 
@@ -411,46 +411,16 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           : null;
       if (mounted && gen == _loadGen) {
         setState(() => (_d = d, _rough = rough, _loading = false));
-        if (d.refreshPending) {
-          _refreshAfterPaint(repo);
-        } else {
-          _justRefreshed = false;
-        }
+        _refresh.afterPaint(repo, d.refreshPending).then((landed) {
+          if (landed && mounted) _load();
+        });
       }
     } catch (_) {
       if (mounted && gen == _loadGen) setState(() => _loading = false);
     }
   }
 
-  bool _refreshing = false;
-  bool _justRefreshed = false;
-
-  /// The freshness refresh, after the night is on screen; read again when it
-  /// lands (a newer night may now be the held-over one). Single-flight here and
-  /// in the repository; the latch clears in `finally`.
-  Future<void> _refreshAfterPaint(LocalRepository repo) async {
-    // A read right after a refresh that is STILL pending is not asked again
-    // (it would loop); a revision reload starts over.
-    if (_refreshing) return;
-    if (_justRefreshed) {
-      _justRefreshed = false;
-      return;
-    }
-    _refreshing = true;
-    var ok = false;
-    try {
-      await repo.refreshTodayFreshness();
-      ok = true;
-    } catch (_) {
-      // The night on screen stays; the next revision reloads.
-    } finally {
-      _refreshing = false;
-    }
-    if (ok && mounted) {
-      _justRefreshed = true;
-      _load();
-    }
-  }
+  final _refresh = TodayRefreshLatch();
 
   /// "As of <time>" while this night is being recalculated; the night on
   /// screen stays. Its own row's time, so stepping to another night never

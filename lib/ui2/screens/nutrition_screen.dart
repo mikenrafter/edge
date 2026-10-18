@@ -77,7 +77,12 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   /// after a sync, water logged on Wellness. This tab is never disposed, so
   /// without this it showed launch-time figures all day.
   @override
-  void reload() => _load();
+  void reload() {
+    _refresh.reset();
+    _load();
+  }
+
+  final _refresh = TodayRefreshLatch();
 
   Future<void> _load() async {
     final t = beginRead(#nutrition);
@@ -88,8 +93,12 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
     double? water;
     double assumed = 0;
     final repo = app.repo;
+    var pending = false;
     if (repo != null) {
-      final today = await repo.getToday();
+      // Stored read: burned calories are today's activity, absent (not
+      // another day's) until the refresh lands; it is asked for after paint.
+      final today = await repo.getTodayStored();
+      pending = (today['status'] as Map?)?['refresh_pending'] == true;
       final daily = today['daily'];
       if (daily is Map) burned = Metric.parse(daily['calories_total']);
       water = (await repo.getJournalMetrics(_date))['water_ml']?.value;
@@ -104,6 +113,11 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
       _profile = {...?app.user};
       _loading = false;
     });
+    if (repo != null) {
+      _refresh.afterPaint(repo, pending).then((landed) {
+          if (landed && mounted) _load();
+        });
+    }
   }
 
   NutritionDay? get _today {

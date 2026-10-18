@@ -188,12 +188,12 @@ void main() {
       for (final m in RegExp(r"ReadPerf\.reading\('(\w+)'").allMatches(src))
         m.group(1)!,
     ];
-    expect(wrapped, hasLength(20), reason: wrapped.join(', '));
-    expect(wrapped.toSet(), hasLength(20), reason: 'a name wrapped twice');
+    expect(wrapped, hasLength(21), reason: wrapped.join(', '));
+    expect(wrapped.toSet(), hasLength(21), reason: 'a name wrapped twice');
     expect(
       wrapped.toSet(),
       {
-        'getToday', 'getInsights', 'getDayHeart', 'getDayHrv', 'getDaySleep',
+        'getToday', 'getTodayStored', 'getInsights', 'getDayHeart', 'getDayHrv', 'getDaySleep',
         'getDaySleepV2', 'getDayLungs', 'getDayWear', 'getDayNaps',
         'getDaySteps', 'getDayStress', 'getDayStrain', 'getDayOverview',
         'getDayTimeline', 'getChart', 'getJournal', 'getJournalInsights',

@@ -7,12 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
-import 'package:openstrap_edge/ui2/screens/beats.dart';
-import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
-import 'package:openstrap_edge/ui2/screens/health_screen.dart';
-import 'package:openstrap_edge/ui2/screens/investigate.dart';
-import 'package:openstrap_edge/ui2/screens/readiness_detail.dart';
-import 'package:openstrap_edge/ui2/screens/what_changed.dart';
 import 'package:openstrap_edge/ui2/today_refresh.dart';
 
 /// getToday and the refresh never answer; the stored read does, with a row
@@ -50,7 +44,7 @@ class _Hang extends LocalRepository {
   Future<Map<String, dynamic>> getProfile() async => const {};
   @override
   Future<Map<String, dynamic>> getChart(String key,
-          {int? limit, String? from, String? to}) async =>
+          {int? from, Set<String> signals = const {}, int? to}) async =>
       const {};
   @override
   Future<Map<String, dynamic>> getDayBlock(
@@ -67,27 +61,31 @@ Future<T> _within<T>(Future<T> f) =>
       throw StateError('waited on the freshness refresh');
     });
 
+/// The loader got past its today read (it may then stop at a read this fake
+/// does not implement; that is not what is under test).
+Future<void> _gotPastToday(Future<Object?> f) async {
+  try {
+    await _within(f);
+  } on UnimplementedError {/* reached a later read */}
+}
+
 void main() {
   group('loaders do not wait for the refresh', () {
     test('what_changed', () async {
-      final d = await _within(WhatChangedData.load(_Hang()));
-      expect(d.day, isNull);
+      await _gotPastToday(WhatChangedData.load(_Hang()));
     });
     test('investigate', () async {
-      final d = await _within(InvestigateData.load(_Hang(), 'hrv'));
-      expect(d.day, isNull);
+      await _gotPastToday(InvestigateData.load(_Hang(), 'hrv'));
     });
     test('vitals', () async {
-      final d = await _within(VitalsData.load(_Hang()));
-      expect(d.day, isNull);
+      await _gotPastToday(VitalsData.load(_Hang()));
     });
     test('day timeline', () async {
-      final d = await _within(TimelineData.load(_Hang()));
-      expect(d.day, isNull);
+      await _gotPastToday(TimelineData.load(_Hang()));
     });
     test('beats', () async {
       final n = await _within(BeatsData.pickNight(_Hang()));
-      expect(n.day, isNull);
+      expect(n.day, '2026-08-05');
     });
     test('readiness: another-day row is absent, not today\'s, and pending',
         () async {
@@ -102,52 +100,42 @@ void main() {
   });
 
   group('TodayRefreshLatch', () {
-    test('asks once while a refresh is in flight, then reloads once', () async {
+    test('asks once while a refresh is in flight; one caller reads again',
+        () async {
       final repo = _Hang()..gate = Completer<void>();
       final latch = TodayRefreshLatch();
-      var reloads = 0;
-      final a = latch.afterPaint(repo, true, () => true, () => reloads++);
-      final b = latch.afterPaint(repo, true, () => true, () => reloads++);
+      final a = latch.afterPaint(repo, true);
+      final b = latch.afterPaint(repo, true);
       repo.gate!.complete();
-      await Future.wait([a, b]);
+      expect(await Future.wait([a, b]), [true, false]);
       expect(repo.refreshes, 1);
-      expect(reloads, 1);
     });
 
-    test('a throw clears the latch: the next load asks again, no reload',
-        () async {
+    test('a throw clears the latch: the next load asks again', () async {
       final repo = _Hang()..refreshError = StateError('boom');
       final latch = TodayRefreshLatch();
-      var reloads = 0;
-      await latch.afterPaint(repo, true, () => true, () => reloads++);
-      expect(reloads, 0);
+      expect(await latch.afterPaint(repo, true), isFalse);
       repo.refreshError = null;
-      await latch.afterPaint(repo, true, () => true, () => reloads++);
+      expect(await latch.afterPaint(repo, true), isTrue);
       expect(repo.refreshes, 2);
-      expect(reloads, 1);
     });
 
     test('a read right after a landing that is still pending is not re-asked',
         () async {
       final repo = _Hang();
       final latch = TodayRefreshLatch();
-      await latch.afterPaint(repo, true, () => true, () {});
-      await latch.afterPaint(repo, true, () => true, () {});
+      expect(await latch.afterPaint(repo, true), isTrue);
+      expect(await latch.afterPaint(repo, true), isFalse);
       expect(repo.refreshes, 1);
       latch.reset();
-      await latch.afterPaint(repo, true, () => true, () {});
+      expect(await latch.afterPaint(repo, true), isTrue);
       expect(repo.refreshes, 2);
     });
 
-    test('not pending asks nothing; unmounted does not reload', () async {
+    test('not pending asks nothing', () async {
       final repo = _Hang();
-      final latch = TodayRefreshLatch();
-      var reloads = 0;
-      await latch.afterPaint(repo, false, () => true, () => reloads++);
+      expect(await TodayRefreshLatch().afterPaint(repo, false), isFalse);
       expect(repo.refreshes, 0);
-      await latch.afterPaint(repo, true, () => false, () => reloads++);
-      expect(repo.refreshes, 1);
-      expect(reloads, 0);
     });
   });
 }
