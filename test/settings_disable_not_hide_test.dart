@@ -181,6 +181,7 @@ void main() {
     //     version.isNotEmpty
     //   load state: loaded
     //   structural identity: name == ... (which channel this row list is for)
+    //   status: backupError != null (the last backup's failure, not a setting)
     //   per-channel override: cfg.overrideQuietHours (a channel's own Starts/Ends exist only
     //     while it overrides the global quiet hours)
     // Permission/status CARDS are StatusCard, not rows, so they never match.
@@ -207,6 +208,7 @@ void main() {
       // Gestures: which tab this is (the replay switch is the double tap\'s).
       RegExp(r'^taps == \d$'),
       RegExp(r'^cfg\.overrideQuietHours$'),
+      RegExp(r'^backupError != null$'),
     ];
 
     bool termAllowed(String term) {

@@ -70,6 +70,10 @@ Finder _in(String accordion, Finder f) =>
 Finder _tab(int weekday) => find.byKey(ValueKey('wake-day-$weekday'));
 
 Future<void> _select(WidgetTester t, int weekday) async {
+  // SubTabs scrolls the selected tab into view, so an earlier day can sit
+  // off the row's left edge; a finger scrolls to it first.
+  await t.ensureVisible(_tab(weekday));
+  await t.pumpAndSettle();
   await t.tap(_tab(weekday));
   await t.pumpAndSettle();
 }

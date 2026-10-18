@@ -60,6 +60,20 @@ class _Repo extends LocalRepository {
   @override
   Future<Map<String, dynamic>> getDaySleepV2(String date) async =>
       {'has_sleep': true, 'duration_min': 250};
+
+  // Sleep detail reads its night as one bundle: the night, and nothing else.
+  @override
+  Future<SleepDetailBundle> getSleepDetailBundle(
+    String day, {
+    required List<String> chartKeys,
+    required int windowDays,
+  }) async => SleepDetailBundle(
+    night: await getDaySleepV2(day),
+    timeline: const {},
+    insights: const {},
+    charts: const {},
+    windows: const [],
+  );
 }
 
 Future<void> _settle(WidgetTester t, {int n = 40}) async {

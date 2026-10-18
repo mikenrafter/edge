@@ -2,6 +2,8 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/adapters/signals.dart';
+import 'package:openstrap_edge/compute/inputs/canonical.dart'
+    show setWearableEnabled;
 import 'package:openstrap_edge/data/db.dart' show LocalDb;
 import 'package:openstrap_edge/ui2/profile/devices.dart'
     show HealthSource, bandLabelFor;
@@ -92,6 +94,8 @@ void main() {
 
   test('a card says which signals use it and why', () async {
     await insertDeviceRow(kStrapA, kRemoteA, 'Polar H10');
+    // A strap's sensors count only with its flag on (rule R6, as the engine).
+    await setWearableEnabled('ble_hrs', true);
     await LocalDb.setSignalPriority(InputSignal.rrIntervals, [kStrapA, kPrimary]);
     await insertCoverage(kStrapA, InputSignal.rrIntervals, t0, t6);
     await insertCoverage(kPrimary, InputSignal.rrIntervals, t0, t6);

@@ -649,6 +649,13 @@ void main() {
           const SizedBox(
               height: 2200,
               child: MoreSettingsView(version: '1', devMode: true)));
+      // The group is last, below every open accordion: scroll it in.
+      await t.scrollUntilVisible(find.text('Chest strap'), 300,
+          scrollable: find
+              .descendant(
+                  of: find.byType(MoreSettingsView),
+                  matching: find.byType(Scrollable))
+              .first);
       expect(find.text('Wearable numbers'), findsOneWidget);
       expect(find.text('Garmin watch'), findsOneWidget);
       expect(find.text('Active'), findsOneWidget);

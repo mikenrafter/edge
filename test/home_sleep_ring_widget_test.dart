@@ -477,7 +477,7 @@ void main() {
       addTearDown(app.dispose);
       app.sleepOperations.schedule = _schedule;
       await pumpBare(t, app);
-      expect(find.text('Nothing derived yet'), findsNothing);
+      expect(find.text('No nights scored yet'), findsNothing);
       expect(find.text('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
     });
 
@@ -486,7 +486,7 @@ void main() {
       final app = AppState.forTesting();
       addTearDown(app.dispose);
       await pumpBare(t, app);
-      expect(find.text('Nothing derived yet'), findsOneWidget);
+      expect(find.text('No nights scored yet'), findsOneWidget);
       expect(find.text('No estimate'), findsNothing);
     });
   });

@@ -379,8 +379,8 @@ class _InvestigateState extends State<Investigate> {
   static String _flagWord(AppLocalizations? l, Object? flag) => flag == null
       ? (l?.investigateFlagNotScreened ?? 'not screened')
       : flag == true
-      ? (l?.investigateFlagRaised ?? 'raised')
-      : (l?.investigateFlagClear ?? 'clear');
+      ? (l?.investigateFlagRaised ?? 'flagged')
+      : (l?.investigateFlagClear ?? 'not flagged');
 
   // ── PRV screen evidence (design 04 PRV diagnostics) ──
   // What the irregular-rhythm screen counted on its way to its verdict, read
@@ -880,11 +880,11 @@ class _InvestigateState extends State<Investigate> {
         ],
         legend: [(ranLabel, p.on(C.purple))],
         footnote: l?.investigateRhythmStripFootnote(ran, raised) ??
-            'Ran on $ran day${ran == 1 ? '' : 's'}, raised its flag on '
-            '$raised. An outlined square is a day it did not run. A clear '
-            'strip is not a negative result: this is a screen on pulse '
-            'timing, and it cannot tell an ectopic beat from a dropped beat '
-            'from the band moving on your wrist.',
+            'Ran on $ran day${ran == 1 ? '' : 's'}, flagged on '
+            '$raised. An outlined square is a day it did not run. A strip '
+            'with nothing flagged does not rule anything out. The screen '
+            'reads pulse timing and cannot tell an ectopic beat from a '
+            'dropped beat or from the band moving on your wrist.',
         // A grid: the finger selects the week (column) it is over, and the
         // readout counts that week's squares. A week with no day on which the
         // screen ran reads "No data here".

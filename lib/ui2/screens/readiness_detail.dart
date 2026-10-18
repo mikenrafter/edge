@@ -93,7 +93,7 @@ class ReadinessData {
   ///
   /// Best effort: a failed read is null, not a throw. It only explains an
   /// absence, so it must never take down the screen load that asked for it.
-  static Future<Map<String, dynamic>?> _absentDiag(LocalRepository repo, String? day) async {
+  static Future<Map<String, dynamic>?> readAbsentDiag(LocalRepository repo, String? day) async {
     if (day == null) return null;
     try {
       final block =
@@ -165,7 +165,7 @@ class ReadinessData {
       // null, which is correct — the note on the metric is the reason then.
       absentDiag: readiness.value != null
           ? null
-          : await _absentDiag(
+          : await readAbsentDiag(
               repo, (today['status'] as Map?)?['today_day']?.toString()),
     );
   }

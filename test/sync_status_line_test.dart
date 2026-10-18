@@ -24,6 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -212,7 +213,12 @@ void _expectLine(WidgetTester t, String line,
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    // "synced through … 14:32" is asserted as HH:MM.
+    ClockFormatController.seed(ClockFormat.h24);
+  });
+  tearDown(ClockFormatController.debugReset);
 
   group('every phase is one sentence', () {
     _tw('idle, has synced', (t) async {

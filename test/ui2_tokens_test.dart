@@ -67,12 +67,10 @@ final _rules = <_Rule>[
     RegExp(r'Duration\((?!\s*\))'),
     'Durations come from Motion.fast/base/slow and pass through '
         'motion(context, …) so reduced motion collapses them to zero.',
-    // home_screen's `_tapGrace` is a `Timer` bridging a tap to the first
-    // sync signal, not an animation — reduced motion has no opinion on how
-    // long a network round trip gets before the button gives up on it, and
-    // `Timer` has no non-`Duration` constructor to dodge this the way
-    // beats.dart's wall-clock math does.
-    allow: {_tokenFile, 'lib/ui2/screens/home_screen.dart'},
+    // home_screen used to be allowed here for `_tapGrace`, a tap latch that
+    // existed only because Home had a second sync control with its own busy
+    // flag. The latch is gone, so the exemption is too.
+    allow: {_tokenFile},
   ),
   _Rule(
     'raw gesture detector',
@@ -193,8 +191,45 @@ void main() {
 /// this list fails the test above, so the choice has to be made rather than
 /// drifted into.
 const _notComponents = {
+  // Device lab panel bound to a live AlarmSlotProbeRunner, which arms real
+  // band alarms; every state it draws is pumped in
+  // alarm_slot_probe_panel_test.dart with a fake runner.
+  'AlarmSlotProbeCard',
+  // Same for the termination probe: bound to a live runner that arms a real
+  // band alarm; every state is pumped in termination_probe_panel_test.dart.
+  'TerminationProbeCard',
+  // Home card bound to WakeController.naturalBuzzing; shown only while a
+  // Natural Wake repeat runs. Both states are pumped in
+  // natural_wake_card_test.dart.
+  'NaturalWakeBuzzingCard',
+  // Marked-moment follow-up: the Home card is pure and the screen reads and
+  // writes the database. Both are pumped in test/gestures/moments/.
+  'MomentFollowUpCard', 'MomentFollowUpScreen',
+  // The searchable activity list of the Log-a-workout form, also offered by the
+  // marked-moment pairing sheet; a bottom sheet over a database-free list,
+  // pumped through both in test/gestures/moments/review/review_screen_test.dart.
+  'ActivityTypeSheet',
+  // Home card bound to SnoozeController.status (a pending main-alarm snooze);
+  // every state is pumped in test/alarm_snooze/snooze_ui_test.dart. The
+  // settings rows are pumped there too, standalone and inside the alarm screen.
+  'SnoozeCard', 'SnoozeSettingsRows',
+  // The ECG screener page: a Scaffold of text and links over fixed content,
+  // pumped in test/ecg_features/ecg_screener_page_test.dart.
+  'EcgScreenerScreen',
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
+  // The developer-only route around ExplorerView, which is in the gallery.
+  'ExplorerScreen',
+  // Lifecycle only (opens the band queue's lab mode), draws nothing.
+  'LabSession',
+  // A spinner animates forever, so a gallery case would keep the sweeps and
+  // goldens that settle the frame from ever settling. It is a Surface around a
+  // CircularProgressIndicator and is asserted structurally in
+  // test/calc_screens_shell_test.dart.
+  'InlineLoading',
+  // Reads AppState from Provider; `SyncControl` is its pure half and is in
+  // the gallery.
+  'HomeSyncStatus',
   // WHOOP MG ECG routes: the Heart Screener entry reads the database and
   // pushes; the capture screen owns a live BLE reading (a gallery case would
   // start one); the detail screen reads and deletes a reading and routes to
@@ -207,7 +242,7 @@ const _notComponents = {
   'BootSplash', 'WelcomeScreen', 'WelcomeView', 'PairingScreen', 'PairingView',
   'ProfileSetupScreen', 'ProfileSetupView',
   // profile routes
-  'ProfileHome', 'ProfileHomeView', 'MoreSettings', 'MoreSettingsView',
+  'MoreSettings', 'MoreSettingsView',
   'NotificationSettings', 'NotificationSettingsView', 'EditProfile',
   'EditProfileView', 'DataScreen', 'AlarmScreen', 'AlarmScreenView',
   'ReportIssueScreen',
@@ -221,6 +256,10 @@ const _notComponents = {
   // permission on tap — a gallery case would either mock all of that or
   // trigger a real health-store prompt from a screenshot sweep.
   'PhoneImport', 'AutomationSettings',
+  // The pure halves of Data and Automation, pumped headless by
+  // settings_sections_new_views_test.dart. Scaffold screens, like
+  // MoreSettingsView above.
+  'DataScreenView', 'AutomationSettingsView',
   // The second-sensor pairing route. A Scaffold that owns a BLE scan, reads
   // the `device` table and asks CoreBluetooth whether AccessorySetupKit has
   // provisioned anything — a gallery case would be a photograph of a fixture,
@@ -255,12 +294,42 @@ const _notComponents = {
   // device flags in the database, and opens a confirm sheet that re-derives.
   // Pumped off a real database by device_use_switch_test.dart.
   'DeviceUseSwitch',
+  // The Sources area. The two Scaffold routes read AppState; their
+  // three pure views are drawn by test/sources_structure_views_test.dart (goldens at
+  // 390 px, light/dark, 1x/2x) and pumped by source_views_test.dart, which is
+  // where their keys and copy are pinned.
+  'SourceCatalogScreen', 'ResolvedDataScreen', 'SourceCatalogView',
+  'ResolvedDataView', 'ResolvedWindowPicker', 'SourcePriorityEditor',
   // The double-tap picker. A Scaffold route whose whole content is decided by
   // what the OS answered to a method channel, so a gallery case would be a
   // photograph of a fixture rather than of the screen. Rendered instead by
   // band_gestures_test.dart, at a real phone width, in both the has-native and
   // the native-unreachable state.
   'BandGestures', 'BandGesturesView',
+  // The failed-gesture list: a Scaffold route over AppState's failure
+  // store; `GestureFailuresView` is its pure half, pumped by
+  // test/gestures_failure_settings_test.dart. The Home card it mirrors,
+  // `GestureFailureCard`, IS in the gallery.
+  'GestureFailures', 'GestureFailuresView',
+  // Live devices and the Device lab. The two routes read
+  // AppState; `LiveDevicesView` and `DeviceLabView` are their pure halves and
+  // test/live_devices_test.dart and device_lab_test.dart pump them in
+  // each state, with `LiveStreamChart` (one stream's graph, which needs a
+  // buffer of samples) and `EcgThresholdAdjusters` (the three touch-window
+  // steppers) inside them.
+  'LiveDevices', 'LiveDevicesView', 'LiveStreamChart', 'DeviceLab',
+  'DeviceLabView', 'EcgThresholdAdjusters',
+  // The Device lab's hardware probes: it drives a live probe runner (a
+  // band buzz or an ECG stream) and stops it when it leaves the screen, so a
+  // gallery case would start hardware. hardware_probe_panel_test.dart pumps it
+  // over a runner with fake effects. The pattern probe's page is a
+  // pushed route over the same runner, pumped by pattern_probe_page_test.dart.
+  'HardwareProbePanel', 'PatternProbePage',
+  // The Device lab's Motion tab: it drives the IMU recorder (which asks the
+  // band for a high-rate stream) and a file store, so a gallery case would
+  // start both. device_lab_motion_test.dart pumps it over a real recorder fed
+  // fake packets, with a fake store and share.
+  'MotionLabPanel',
   // FULL-BLEED, so it is a screen element rather than a component: it takes
   // the whole window width back off its parent's padding via OverflowBox. The
   // gallery lays every case out in a ~179 logical-px cell, which is narrower
@@ -313,5 +382,18 @@ const _notComponents = {
   // time picker on tap. Covered by `log_workout_test.dart`, which pumps each
   // at a real phone width against injected rows.
   'WorkoutSuggestionScreen', 'LogWorkout',
+  // The haptic pattern editor is a Scaffold route over a live band
+  // player. The five widgets are the notation parts the pattern probe and the
+  // editor share (extracted from the probe page unchanged); they fill the
+  // width of the wheel or footer row they sit in and are pumped inside those
+  // rows by haptic_pattern_editor_test.dart and pattern_probe_page_test.dart.
+  'HapticPatternEditorPage',
+  'PatternNotation', 'PatternEntryRow', 'PatternLengthButton',
+  'PatternDotButton', 'PatternDynamicButton',
+  // The Haptics screen is a Scaffold route over the pattern store, the
+  // alert rules and the live relay; `HapticsSettingsView` is its pure half and
+  // is what haptics_settings_test.dart pumps. The name dialog is an
+  // AlertDialog opened over a route.
+  'HapticsSettings', 'HapticsSettingsView', 'PatternNameDialog',
   'DetectedActivitiesScreen', 'NapProposalEditor', // Full review/editor routes.
 };

@@ -168,6 +168,7 @@ void main() {
       final repo = _BundleOnlyRepo();
       final d = await SleepData.load(repo, want: '2026-08-05');
       expect(repo.bundleCalls, 1);
+      expect(repo.windowCalls, 1);
       expect(d.day, '2026-08-05');
       expect(d.night['duration_min'], 443);
       expect(d.tstHistory, [401.0, 402.0]);
@@ -191,7 +192,8 @@ void main() {
   });
 }
 
-/// getToday / availableDays and the bundle only; every per-piece read throws.
+/// getToday / availableDays, the bundle and the windows before the night only;
+/// every per-piece read throws.
 class _BundleOnlyRepo extends LocalRepository {
   int bundleCalls = 0;
 
@@ -200,6 +202,17 @@ class _BundleOnlyRepo extends LocalRepository {
       {'status': {'today_day': '2026-08-05'}};
   @override
   Future<List<String>> availableDays() async => ['2026-08-05', '2026-08-04'];
+
+  // The windows BEFORE the night ride beside the bundle in the same `.wait`
+  // (the bundle's own windows are the newest nights overall). One read, in
+  // parallel, not a per-piece sequence.
+  int windowCalls = 0;
+  @override
+  Future<List<Map<String, dynamic>>> sleepWindows(
+      {int days = 60, String? before}) async {
+    windowCalls++;
+    return const [];
+  }
 
   @override
   Future<SleepDetailBundle> getSleepDetailBundle(String day,

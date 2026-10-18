@@ -12,6 +12,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/capabilities.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/feature_flags.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
@@ -92,6 +93,9 @@ void main() {
         ChangeNotifierProvider(
             create: (_) => ThemeController.seed(AppThemeChoice.light, Brightness.light)),
         ChangeNotifierProvider(create: (_) => LocaleController.seed(null)),
+        // Settings has a Time format row.
+        ChangeNotifierProvider(
+            create: (_) => ClockFormatController.seed(ClockFormat.system)),
         Provider<Capabilities>.value(value: caps),
       ],
       child: MaterialApp(theme: buildTheme(Brightness.light), home: screen),
@@ -334,9 +338,9 @@ void main() {
     testWidgets('the Android intent copy follows androidAutomation', (t) async {
       await pump(t, const AutomationSettings(),
           _caps(platform: TargetPlatform.iOS));
-      expect(find.textContaining('broadcasts an Android intent'), findsNothing);
+      expect(find.textContaining('broadcasts an intent'), findsNothing);
       await pump(t, const AutomationSettings(), _caps());
-      expect(find.textContaining('broadcasts an Android intent'),
+      expect(find.textContaining('broadcasts an intent'),
           findsOneWidget);
     });
   });

@@ -250,11 +250,12 @@ void main() {
     app.repo = repo;
 
     await t.pumpWidget(_app(app));
-    await _until(t, find.text('2.0 L'));
-    expect(find.text('2.0 L'), findsOneWidget);
+    // WaterUnits.format: a whole litre reads "2 L", not "2.0 L".
+    await _until(t, find.text('2 L'));
+    expect(find.text('2 L'), findsOneWidget);
 
     // Midnight passes with the tab open and nothing bumps it: the tile still
-    // holds yesterday's 2.0 L, but today has nothing stored yet.
+    // holds yesterday's 2 L, but today has nothing stored yet.
     repo.journal = const {};
     await t.tap(find.byIcon(LucideIcons.plus).last);
     for (var i = 0; i < 20 && repo.posted == null; i++) {

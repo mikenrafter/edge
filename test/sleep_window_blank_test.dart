@@ -186,10 +186,12 @@ void main() {
       await t.pumpAndSettle();
     }
 
-    testWidgets('a night with no recording offers "Set the times myself"',
+    // Upstream's copy for the same action: the edit pickers seeded with the
+    // expected window, stored as a manual override.
+    testWidgets('a night with no recording offers "I was asleep"',
         (t) async {
       await pump(t, const SleepDetail(data: SleepData(day: '2026-09-30')));
-      expect(find.text('Set the times myself'), findsOneWidget);
+      expect(find.text('I was asleep'), findsOneWidget);
     });
 
     testWidgets('an asserted window with no data says so, metrics blank',

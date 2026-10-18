@@ -14,6 +14,8 @@ import 'package:flutter/material.dart';
 import '../ecg/ecg_models.dart';
 import '../ecg/ecg_result.dart';
 import '../ecg/ecg_waveform_buffer.dart';
+import '../l10n/app_localizations.dart';
+import '../l10n/display_text.dart';
 import 'grammar.dart';
 import 'theme.dart';
 
@@ -508,6 +510,20 @@ class EcgMetricsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = P.of(context);
+    final l = AppLocalizations.of(context);
+    // EcgMetric carries English for the controller and logs; the page names
+    // and units are read in the wearer's language.
+    String name(EcgMetric m) => switch (m.key) {
+      'avgHr' => l?.ecgAvgHr ?? m.name,
+      'quality' => l?.ecgQuality ?? m.name,
+      _ => m.name,
+    };
+    String display(EcgMetric m) {
+      final d = m.display;
+      if (m.value == null || m.unit.isEmpty) return d;
+      return '${d.substring(0, d.length - m.unit.length)}${uiText(context, m.unit)}';
+    }
+
     return Column(
       children: [
         for (final m in metrics)
@@ -517,9 +533,9 @@ class EcgMetricsList extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(m.name, style: F.body.copyWith(color: p.ink2)),
+                  child: Text(name(m), style: F.body.copyWith(color: p.ink2)),
                 ),
-                Text(m.display, style: F.body.copyWith(color: p.ink)),
+                Text(display(m), style: F.body.copyWith(color: p.ink)),
               ],
             ),
           ),

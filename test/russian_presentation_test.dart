@@ -387,8 +387,10 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          expect(find.text('Синусовый ритм'), findsOneWidget);
-          expect(find.textContaining('Это не диагноз'), findsOneWidget);
+          // Read from the ARB: the ECG wording is design 04's (no diagnosis
+          // vocabulary), not a literal pinned here.
+          expect(find.text(ru.ecgCategorySinus), findsOneWidget);
+          expect(find.textContaining(ru.ecgNotDiagnosis), findsOneWidget);
           final explanation = find.text(ru.ecgWaveformLabel);
           expect(explanation, findsOneWidget);
           expect(

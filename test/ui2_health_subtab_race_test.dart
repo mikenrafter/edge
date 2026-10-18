@@ -18,57 +18,52 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-// Today's real label: the Today tab shows a heart rate range only for today.
-final _day = todayLabel();
+const _day = '2026-08-16';
 
-/// The Today sub-tab's read, with a hand on its clock.
+/// The Vitals read, with a hand on its clock.
 ///
-/// Only the calls `VitalsData.load` makes are answered; the Last night load's
-/// own queries throw their `re-layer` default, which that loader catches, and
-/// nothing in this test looks at Last night.
+/// Only the four calls `VitalsData.load` makes are answered; the Overview
+/// load's own queries throw their `re-layer` default, which that loader
+/// catches, and nothing in this test looks at Overview.
 class _Repo extends LocalRepository {
-  /// The day's peak heart rate the database holds. Changing it is "an import
+  /// The respiratory rate the database holds. Changing it is "an import
   /// landed".
-  int peak = 151;
+  double resp = 11;
 
-  /// Parks the NEXT timeline read until completed. One-shot.
+  /// Parks the NEXT lungs read until completed. One-shot.
   Completer<void>? hold;
 
   @override
-  Future<Map<String, dynamic>> getToday() async => {
+  Future<Map<String, dynamic>> getToday() async => const {
         'status': {'today_day': _day}
       };
 
   @override
-  Future<List<String>> availableDays() async => [_day];
+  Future<List<String>> availableDays() async => const [_day];
 
   @override
-  Future<Map<String, dynamic>> getDayTimeline(String date) async {
+  Future<Map<String, dynamic>> getDayTimeline(String date) async =>
+      {'date': date};
+
+  @override
+  Future<Map<String, dynamic>> getDayLungs(String date) async {
     // Read the value BEFORE parking: a read that started before the import
     // saw the pre-import database, whenever it happens to be resumed.
-    final v = peak;
+    final v = resp;
     final h = hold;
     if (h != null) {
       hold = null;
       await h.future;
     }
     return {
-      'date': date,
-      'highs': {
-        'low_hr': {'v': 48},
-        'peak_hr': {'v': v},
-      },
+      'resp': {'value': v}
     };
   }
-
-  @override
-  Future<Map<String, dynamic>> getDayLungs(String date) async => const {};
 
   @override
   Future<Map<String, dynamic>> getDayWear(String date) async => const {};
@@ -86,7 +81,7 @@ Future<void> _settle(WidgetTester t) async {
 void main() {
   testWidgets('a read in flight when the revision lands does not win',
       (t) async {
-    // Wide enough that all four sub-tab chips are on screen to be tapped.
+    // Wide enough that all five sub-tab chips are on screen to be tapped.
     t.view.physicalSize = const Size(800 * 3, 2400 * 3);
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);
@@ -105,10 +100,10 @@ void main() {
     ));
     await _settle(t);
 
-    // The user opens Today for the first time. Its read parks mid-flight.
+    // The user opens Vitals for the first time. Its read parks mid-flight.
     final parked = Completer<void>();
     repo.hold = parked;
-    await t.tap(find.text('Today'));
+    await t.tap(find.text('Vitals'));
     await _settle(t);
     expect(find.byType(CircularProgressIndicator), findsOneWidget,
         reason: 'the sub-tab should still be loading — nothing to race yet');
@@ -116,7 +111,7 @@ void main() {
     final before = t.state(find.byType(HealthScreen));
 
     // An import lands while that read is parked. Its cache is still null.
-    repo.peak = 163;
+    repo.resp = 17;
     app.bumpInsights();
     await _settle(t);
 
@@ -124,9 +119,9 @@ void main() {
     parked.complete();
     await _settle(t);
 
-    expect(find.text('48 – 163'), findsOneWidget,
+    expect(find.text('17.0'), findsOneWidget,
         reason: 'the post-revision read must be what is on screen');
-    expect(find.text('48 – 151'), findsNothing,
+    expect(find.text('11.0'), findsNothing,
         reason: 'a read that started before the revision committed after it');
     expect(identical(t.state(find.byType(HealthScreen)), before), isTrue,
         reason: 'the screen was remounted — that is the workaround, not the fix');

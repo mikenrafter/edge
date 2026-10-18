@@ -49,6 +49,12 @@ class _HangingRefreshRepo extends LocalRepository {
       windows: const [],
     );
   }
+
+  // Read beside the bundle: the windows before this night.
+  @override
+  Future<List<Map<String, dynamic>>> sleepWindows(
+          {int days = 60, String? before}) async =>
+      const [];
 }
 
 /// Home: stored read answers at once with today's figures absent; the refresh

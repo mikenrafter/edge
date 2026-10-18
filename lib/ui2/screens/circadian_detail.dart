@@ -577,7 +577,7 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ChartFrame(
           title: l?.circadianDetailForecastTitle ??
-              'Predicted alertness curve for today',
+              'How today is likely to run',
           // There is no unit. Saying so is more honest than borrowing one, and
           // the frame renders it in the slot a unit would have occupied.
           unit: 'shape only',
@@ -590,14 +590,14 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
           // No `series:`. A shape has no reading; handing the frame one would
           // have it speak numbers off a curve that deliberately has none.
           footnote: l?.circadianDetailForecastFootnote ??
-              'The curve has no scale. Read its shape only.',
+              'No scale — the shape is the whole output.',
           // The readout keeps the card's rule: a time and, inside the named
           // window, that it is the flattest stretch. No figure comes off a
           // curve that has no scale. The span is the 0 / +9 / +18 h the x
           // labels above print.
           child: ChartScrub(
             label: l?.circadianDetailForecastTitle ??
-                'Predicted alertness curve for today',
+                'How today is likely to run',
             gaps: hasChartGaps([v.shape]),
             time: (at) => _hourClock(v.startHour +
                 18 * ChartScrub.slotAt(v.shape.length, at) / (v.shape.length - 1)),
@@ -640,8 +640,8 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
         const SizedBox(height: S.x3),
         Text(
           l?.circadianDetailNotADrivingCheck ??
-              'Do not use it to decide whether you can drive or work a shift safely. '
-              'It does not measure impairment.',
+              'It is not a fitness-to-drive check and not a shift-safety '
+                  'tool, and it does not say you are impaired.',
           style: F.cap.copyWith(color: p.ink2, height: 1.6),
         ),
       ]),

@@ -2413,6 +2413,7 @@
       }
     }
   },
+  "metricDetailJournalMarksToggle": "Отметки журнала",
   "metricDetailSlotNoRecord": "{day}, нет записи",
   "@metricDetailSlotNoRecord": {
     "placeholders": {

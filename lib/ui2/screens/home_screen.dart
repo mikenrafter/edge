@@ -46,7 +46,7 @@ import '../../compute/findings.dart'
 import '../../data/day_label.dart' show todayLabel, calendarDaysBetween;
 import '../../compute/onehz_pipeline.dart'
     show readinessInputShortfallNote, readinessUnstableBaselineNote;
-import '../../data/db.dart' show DbRebuild, LocalDb;
+import '../../data/db.dart' show DbRebuild;
 import '../../data/journal_fields.dart' show formatMinuteOfDay;
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
@@ -1626,10 +1626,11 @@ class HomeData {
   final String? illnessDay;
   final double? illnessZ;
 
-  /// `LocalDb.readinessAbsentDiag` off today's bundle — null unless
-  /// [readiness] is absent. See `readiness_detail.dart`'s own copy of this
-  /// field for why: this card's "not scored" explanation has to be built
-  /// from the SAME diagnostic that screen's does, or the two can disagree.
+  /// The `readiness_absent_diag` block off today's bundle — null unless
+  /// [readiness] is absent. Read through [ReadinessData.readAbsentDiag], the same
+  /// repository read readiness_detail.dart uses: this card's "not scored"
+  /// explanation has to be built from the SAME diagnostic that screen's does,
+  /// or the two can disagree.
   final Map<String, dynamic>? absentDiag;
 
   /// `todayHeadlineOf`'s recovery_state for today (null for a past day):
@@ -1776,7 +1777,7 @@ class HomeData {
     // switcher stepped onto can be absent too, not just today (PR #510).
     final absentDiag = readiness.value != null
         ? null
-        : await LocalDb.readinessAbsentDiag(date);
+        : await ReadinessData.readAbsentDiag(repo, date);
     // The learned need, like [load]. A failed read leaves it absent — the ring
     // then shows the labelled default, never an invented need.
     ({Metric need, Metric bedtime})? coach;
@@ -1878,8 +1879,8 @@ class HomeData {
         : overnightMetric(today, d('readiness'), l);
     final absentDiag = readiness.value != null
         ? null
-        : await LocalDb.readinessAbsentDiag(
-            (today['status'] as Map?)?['today_day']?.toString());
+        : await ReadinessData.readAbsentDiag(
+            repo, (today['status'] as Map?)?['today_day']?.toString());
 
     return HomeData(
       name: profile['name']?.toString(),
@@ -2054,6 +2055,7 @@ class _HomeScreenState extends State<HomeScreen>
   void reload() {
     _latency.revisionBumped();
     _refresh.reset();
+    _refreshGaveUp = false;
     _load();
   }
 
@@ -2090,7 +2092,12 @@ class _HomeScreenState extends State<HomeScreen>
         setState(() => (_d = d, _days = days, _loading = false, _failed = false));
         _recordRender();
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
-          if (landed && mounted) _load();
+          if (!mounted) return;
+          if (landed) {
+            _load();
+          } else if (d.refreshPending) {
+            setState(() => _refreshGaveUp = true);
+          }
         });
       }
     } catch (_) {
@@ -2109,6 +2116,11 @@ class _HomeScreenState extends State<HomeScreen>
   /// refresh cannot stop the next load from asking again. On landing, read
   /// again: the stored row now names today.
   final _refresh = TodayRefreshLatch();
+
+  /// The refresh was asked and did not land (it failed, or the read after it
+  /// is still pending): stop holding the building state and say what is
+  /// absent. Cleared by every reload, which asks again.
+  bool _refreshGaveUp = false;
 
   /// Another day. The switcher never strands you off the record — [DayNav]
   /// already restricts the arrows to [_days] — so this just re-loads for it.
@@ -2296,6 +2308,15 @@ class _HomeScreenState extends State<HomeScreen>
     // made: a saved schedule or an armed alarm is something to show.
     final bare =
         noData && !(isToday && RingTrio.hasSleepEstimate(ringData, now: widget.now));
+    // The stored row is another day's and today's refresh is still out: today
+    // is being worked out, not empty. "No nights scored yet" here would be a
+    // false empty state, and the cards it brings would leave when the figures
+    // land and move everything under them.
+    final building = bare &&
+        isToday &&
+        widget.data == null &&
+        d.refreshPending &&
+        !_refreshGaveUp;
 
     // Until recovery can score for the first time: what arrives when.
     // Also while the readiness note still counts nights: missed nights push
@@ -2412,7 +2433,7 @@ class _HomeScreenState extends State<HomeScreen>
         ]),
       ),
 
-      if (bare) ...[
+      if (bare && !building) ...[
         _detectedActivities(d),
       ],
       ...dayNavRow(_day ?? d.dayId, _days, _goDay),
@@ -2440,12 +2461,15 @@ class _HomeScreenState extends State<HomeScreen>
         // is the hold at work, not a sync problem — see [workoutHoldCard].
         // Only for TODAY: a live workout right now says nothing about why a
         // PAST day the switcher stepped onto has nothing on it.
-        isToday && (widget.workoutLive ?? workoutLiveOf(c))
-            ? workoutHoldCard(l)
-            : _bareStatusCard(c, d, l, pastDay: !isToday),
+        if (building)
+          const InlineLoading()
+        else
+          isToday && (widget.workoutLive ?? workoutLiveOf(c))
+              ? workoutHoldCard(l)
+              : _bareStatusCard(c, d, l, pastDay: !isToday),
         // The first morning is exactly when "when do I get numbers?" is
         // loudest.
-        if (firstWeeks) ...[
+        if (firstWeeks && !building) ...[
           const SizedBox(height: S.x3),
           firstWeekCard(c,
               days: _days.length,
@@ -2562,13 +2586,14 @@ class _HomeScreenState extends State<HomeScreen>
       // ── the next alarm: a door, same as the one above ──
       // Only on a bare day: otherwise it is a tile in "At a glance", and the
       // same alarm twice on one screen is one too many.
-      if (isToday && bare)
+      if (isToday && bare && !building)
         if (alarmArmOfContext(c) case final (DateTime?, AlarmArmState) a) ...[
           const SizedBox(height: S.x3),
           alarmDoor(c, a.$1, a.$2),
         ],
-      // The coach, set up or not, on every ordinary or bare today.
-      if (isToday) ...[
+      // The coach, set up or not, on every ordinary or bare today. Not while
+      // today is building: the figures landing above would push it down.
+      if (isToday && !building) ...[
         const SizedBox(height: S.x4),
         coachChip(c),
       ],

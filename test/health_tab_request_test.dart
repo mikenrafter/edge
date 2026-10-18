@@ -1,11 +1,11 @@
-// The Wellness link lands on Health > Last night.
+// A deep link asking Health for one of its sub-tabs.
 //
-// API assumed, mirroring `WellnessScreen.tabRequest`: `HealthScreen.tabRequest`,
-// a static ValueNotifier<int> (-1 = none). The Wellness row writes 0 to it;
-// HealthScreen reads it in initState (the shell re-keyed and built a fresh
-// Health) and listens to it (Health already on screen, kept alive by the shell's
-// IndexedStack); the shell clears it a frame later. Isolated in its own file
-// because it is the only thing that needs the new symbol.
+// `HealthScreen.tabRequest`, mirroring `WellnessScreen.tabRequest`: a static
+// ValueNotifier<int> (-1 = none). HealthScreen reads it in initState (the
+// shell re-keyed and built a fresh Health) and listens to it (Health already
+// on screen, kept alive by the shell's IndexedStack); the shell clears it a
+// frame later. (The Wellness "Last night in Health" row that used to write it
+// is gone with the Last night sub-tab; the mechanism stays for deep links.)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,8 +14,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
-
-import 'support/wellness_link_harness.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -29,15 +27,6 @@ void main() {
     HealthScreen.tabRequest.value = -1;
   });
   tearDown(() => HealthScreen.tabRequest.value = -1);
-
-  testWidgets('tapping "Last night in Health" asks Health for sub-tab 0',
-      (t) async {
-    await openWellness(t);
-    await t.tap(find.text('Last night in Health'));
-    await t.pump();
-    expect(HealthScreen.tabRequest.value, 0,
-        reason: 'Last night is the first sub-tab');
-  });
 
   Future<void> pumpHealth(WidgetTester t, {required int tab}) async {
     t.view.physicalSize = const Size(390 * 3, 6000 * 3);
@@ -71,27 +60,27 @@ void main() {
     }
   }
 
-  // "Overnight stress" is a Last night row and nothing else's.
-  int onLastNight(WidgetTester t) => t
+  // The Stress row is on Overview (sub-tab 0) and nowhere else.
+  int onOverview(WidgetTester t) => t
       .widgetList<MetricRow>(find.byType(MetricRow))
-      .where((r) => r.name == 'Overnight stress')
+      .where((r) => r.name == 'Stress')
       .length;
 
-  testWidgets('Health already on Trends: a request for 0 switches to Last night',
+  testWidgets('Health already on Trends: a request for 0 switches to Overview',
       (t) async {
     await pumpHealth(t, tab: 2);
-    expect(onLastNight(t), 0, reason: 'precondition: Trends is not Last night');
+    expect(onOverview(t), 0, reason: 'precondition: Trends is not Overview');
     HealthScreen.tabRequest.value = 0;
     for (var i = 0; i < 10; i++) {
       await t.pump(const Duration(milliseconds: 100));
     }
-    expect(onLastNight(t), 1);
+    expect(onOverview(t), 1);
   });
 
-  testWidgets('Health mounted after the request (shell re-keyed) opens on Last night',
+  testWidgets('Health mounted after the request (shell re-keyed) opens on Overview',
       (t) async {
     HealthScreen.tabRequest.value = 0;
     await pumpHealth(t, tab: 2);
-    expect(onLastNight(t), 1);
+    expect(onOverview(t), 1);
   });
 }

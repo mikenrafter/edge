@@ -177,6 +177,7 @@ void main() {
         'Language',
         'Units',
         'Appearance',
+        'Time format',
         'Pull down to sync',
         'Expected sleep schedule',
         'Cycle tracking',
@@ -203,6 +204,7 @@ void main() {
         'Write to Apple Health',
         'Contribute my health data',
         'Crash reports',
+        'Report an issue',
       ]);
     });
 

@@ -1,9 +1,9 @@
 // Held-over night rows opened details for a different time
-// scope. After days without a sync, Health → Last night labels the older night
-// and shows its readiness, HRV, resting heart rate, respiratory rate and stress.
-// Tapping Readiness opened a detail that refused a held-over night, and tapping
-// the others opened MetricDetail on Today, which said "Nothing recorded today"
-// beside a number the tapped row had just shown. Only Sleep got the night.
+// scope. After days without a sync, Health → Overview labels the older night
+// and shows its HRV, resting heart rate, respiratory rate and stress. Tapping
+// them opened MetricDetail on Today, which said "Nothing recorded today"
+// beside a number the tapped row had just shown. (Readiness is no longer a
+// Health row, so its case left this file with it.)
 //
 // Each row is tapped and what the detail then shows is read: the tapped night's
 // own value and date, not today's.
@@ -157,6 +157,8 @@ Finder _inDetail(Type detail, Finder f) =>
     find.descendant(of: find.byType(detail), matching: f);
 
 void main() {
+  // `prettyDay` below reads the display language off the binding.
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
@@ -165,26 +167,11 @@ void main() {
 
   final nightPretty = prettyDay(_night);
 
-  testWidgets('Readiness opens on the held-over night and shows its score',
-      (t) async {
-    await _pump(t);
-    await t.tap(find.text('Readiness'));
-    await _settle(t);
-    expect(find.byType(ReadinessDetail), findsOneWidget);
-    expect(_inDetail(ReadinessDetail, find.text('82')), findsOneWidget,
-        reason: 'the night\'s own readiness, not an absence');
-    expect(_inDetail(ReadinessDetail, find.text('Readiness is not scored')),
-        findsNothing);
-    expect(_inDetail(ReadinessDetail, find.textContaining(nightPretty)),
-        findsWidgets,
-        reason: 'and it says which night it is');
-  });
-
   for (final (label, key, value) in <(String, String, String)>[
     ('HRV', 'hrv', '68'),
     ('Resting heart rate', 'resting_hr', '52'),
     ('Respiratory rate', 'resp_rate', '14'),
-    ('Overnight stress', 'stress', '28'),
+    ('Stress', 'stress', '28'),
   ]) {
     testWidgets('$label opens $key on the held-over night, not on Today',
         (t) async {

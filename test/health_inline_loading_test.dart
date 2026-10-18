@@ -3,7 +3,7 @@
 //
 // USER REPORT (APK f88d230c, Health > Trends): the three trend cards, then a
 // bare CircularProgressIndicator floating under them. The sub-tab bodies that
-// wait on their own read (Today's vitals, Trends' measure counts, Labs) and the
+// wait on their own read (Explore's measure counts, Vitals, Labs) and the
 // first page read each returned
 // `Center(child: CircularProgressIndicator())`, the pattern removed from
 // every calculation screen but did not list health_screen.dart.
@@ -55,7 +55,9 @@ Future<void> _pump(WidgetTester t, int tab) async {
 }
 
 void main() {
-  for (final (tab, name) in [(1, 'Today'), (2, 'Trends'), (3, 'Labs')]) {
+  // The sub-tabs with a read of their own. Overview and Trends draw from the
+  // main read, which is handed over here.
+  for (final (tab, name) in [(1, 'Explore'), (3, 'Vitals'), (4, 'Labs')]) {
     testWidgets('$name while its read is pending: an inline card, and the '
         'title and tabs stay', (t) async {
       await _pump(t, tab);

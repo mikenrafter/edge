@@ -13,11 +13,13 @@
 //    to Alerts, see zone_alert_test.dart); "Alarm" (moved from Band to
 //    the first row of Alerts), "Alerts and
 //    notifications" and "App notifications on the band" (Alerts); "Edit
-//    profile", "Language", "Units", "Appearance", "Expected sleep schedule",
+//    profile", "Language", "Units", "Appearance", "Time format",
+//    "Pull down to sync", "Expected sleep schedule",
 //    "Icon", "Cycle tracking" (You & preferences, the first group;
 //    the "Steps" row is gone, phone steps live only in My devices);
 //    "Storage", "Export, backup, import", "Calculations", "Write to Apple
-//    Health", "Contribute my health data", "Crash reports" (Data & privacy);
+//    Health", "Contribute my health data", "Crash reports", "Report an
+//    issue" (Data & privacy);
 //    "AI coach", "Tasker and Shortcuts", "Check for updates", "Look barcodes up online"
 //    (Connections, moved from Data & privacy);
 //    "Version", "Notices and licences" (About); "Component gallery", "Live
@@ -109,6 +111,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Language'],
     ['Units'],
     ['Appearance'],
+    ['Time format'],
     ['Pull down to sync'],
     ['Expected sleep schedule'],
     ['Icon'],
@@ -121,6 +124,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Write to Apple Health'],
     ['Contribute my health data'],
     ['Crash reports'],
+    ['Report an issue'],
   ],
   'Connections': [
     ['AI coach'],

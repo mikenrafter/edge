@@ -41,7 +41,7 @@ void main() {
   testWidgets('first run (nothing derived, nothing loaded)', (t) async {
     await t.pumpWidget(_home(app));
     await t.pump();
-    expect(find.text('Nothing derived yet'), findsOneWidget);
+    expect(find.text('No nights scored yet'), findsOneWidget);
     expectOne(t);
   });
 
@@ -60,7 +60,7 @@ void main() {
   testWidgets('a bare day on a fresh install', (t) async {
     await t.pumpWidget(_home(app, data: const HomeData(dayId: '2026-05-20')));
     await t.pump();
-    expect(find.text('Nothing derived yet'), findsOneWidget);
+    expect(find.text('No nights scored yet'), findsOneWidget);
     expectOne(t);
   });
 

@@ -1705,11 +1705,11 @@ class _JournalFindingsState extends State<JournalFindings> {
         const InlineLoading()
       else if (_rows.isEmpty)
         StatusCard(
-          l?.wellnessNothingSeparatedTitle ?? 'No clear pattern yet',
+          l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
           l?.wellnessNothingSeparatedBody ??
-              'Each item you log is compared with your recovery, HRV, '
-              'resting heart rate and sleep efficiency. None has shown '
-              'a difference yet.',
+              'Everything you log is tested against your recovery, HRV, '
+                  'resting heart rate and sleep efficiency. Nothing has '
+                  'cleared the bar yet.',
           icon: LucideIcons.scatterChart,
         )
       else ...[
@@ -1726,8 +1726,8 @@ class _JournalFindingsState extends State<JournalFindings> {
         const SizedBox(height: S.x2),
         Text(
           l?.wellnessLinkNeverCause ??
-              'This shows an association in your own days. It does not show a cause. '
-              'Days when you do something often differ in other ways too.',
+              'A link on your own days — never a cause. The days you do a '
+                  'thing are days you were already that kind of day.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
       ],

@@ -42,6 +42,7 @@ import 'package:openstrap_edge/compute/calc_power_policy.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/capabilities.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
@@ -299,6 +300,8 @@ void main() {
               create: (_) => ThemeController.seed(
                   AppThemeChoice.light, Brightness.light)),
           ChangeNotifierProvider(create: (_) => LocaleController.seed(null)),
+          ChangeNotifierProvider(
+              create: (_) => ClockFormatController.seed(ClockFormat.h24)),
           Provider<Capabilities>.value(value: app.capabilities),
         ],
         child: MaterialApp(

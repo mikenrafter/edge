@@ -15,7 +15,7 @@ import 'source_catalog_view.dart' show signalNameOf;
 
 /// Days of raw readings kept on the phone. Mirrors `rawRetentionDays`
 /// (compute/derivation_engine.dart); a test holds the two equal.
-const int kRebuildRawDays = 3;
+const int kRebuildRawDays = 5;
 
 class SourcePriorityEditor extends StatefulWidget {
   final List<Map<String, Object?>> signals;

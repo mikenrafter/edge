@@ -1,5 +1,5 @@
 // One value once per scope, one name per metric, one illness card,
-// one HRV detail (AGENTS.md 4.10).
+// one HRV row door (AGENTS.md 4.10).
 //
 // Every assertion here reads the rendered widgets, not the source, so it holds
 // whichever way the screens get their names (the shared table in
@@ -9,7 +9,14 @@
 //
 // Health is pumped the way the existing goldens and ui2_wiring_r2_test do it:
 // `HealthScreen(data:, vitals:, tab:)` with no AppState, so nothing here waits
-// on a database. The sub-tab order is Last night 0, Today 1, Trends 2, Labs 3.
+// on a database. The sub-tab order is Overview 0, Explore 1, Trends 2,
+// Vitals 3, Labs 4.
+//
+// Names follow upstream's copy: Overview says "Stress", Trends says "Time
+// asleep" for the sleep card, Home's resting tile is "Heart rate" over
+// "Resting", and Vitals keeps its "Heart rate variability" deep dive. What is
+// still pinned is that no scope names one metric twice, and that the illness
+// card's headline and advice read the same on Home and Health.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -168,22 +175,6 @@ void main() {
           value: 8642, unit: 'steps', confidence: .6, tier: MetricTier.estimate),
     );
 
-    testWidgets('Home says "Resting heart rate", not "Heart rate" over "Resting"',
-        (t) async {
-      t.view.physicalSize = const Size(390 * 3, 6000 * 3);
-      t.view.devicePixelRatio = 3;
-      addTearDown(t.view.reset);
-      await t.pumpWidget(MaterialApp(
-          theme: buildTheme(Brightness.light),
-          home: Scaffold(body: HomeScreen(data: home, hour: 9))));
-      await t.pump();
-      expect(find.text('Resting heart rate'), findsOneWidget);
-      expect(find.text('Heart rate'), findsNothing,
-          reason: 'the old two-part name must be gone, not kept beside it');
-      expect(find.text('Resting'), findsNothing,
-          reason: '"Resting" was a sub-label that only existed to finish the name');
-    });
-
     testWidgets('Home keeps the shared names for steps and strain', (t) async {
       t.view.physicalSize = const Size(390 * 3, 6000 * 3);
       t.view.devicePixelRatio = 3;
@@ -198,68 +189,39 @@ void main() {
     });
   });
 
-  group('Health · Last night names each metric once', () {
+  group('Health · Overview names each metric once', () {
     testWidgets('every overnight metric appears exactly once, by its shared name',
         (t) async {
       await _pumpHealth(t, _fullNight());
       for (final name in const [
-        'Readiness',
         'Sleep',
         'HRV',
         'Resting heart rate',
         'Respiratory rate',
-        'Overnight stress',
-        'Skin temperature',
-        'Daytime sleep',
+        'Stress',
       ]) {
-        expect(_named(t, name), 1, reason: '"$name" on Last night');
+        expect(_named(t, name), 1, reason: '"$name" on Overview');
       }
-    });
-
-    testWidgets('Last night does not call stress anything but "Overnight stress"',
-        (t) async {
-      await _pumpHealth(t, _fullNight());
-      expect(_named(t, 'Stress'), 0);
-    });
-
-    testWidgets('Last night does not call sleep "Time asleep"', (t) async {
-      await _pumpHealth(t, _fullNight());
-      expect(_named(t, 'Time asleep'), 0);
     });
   });
 
-  group('Health · Today names each metric at most once', () {
-    testWidgets('strain, steps, calories, wear: none repeated', (t) async {
-      await _pumpHealth(t, _fullNight(), tab: 1, vitals: _vitals());
+  group('Health · Vitals names each metric at most once', () {
+    testWidgets('heart rate, breathing, skin temperature, wear: none repeated',
+        (t) async {
+      await _pumpHealth(t, _fullNight(), tab: 3, vitals: _vitals());
       for (final name in const [
-        'Strain',
-        'Steps',
-        'Active minutes',
-        'Calories',
+        'Heart rate',
+        'Respiratory rate',
+        'Skin temperature',
         'Wear time',
       ]) {
-        expect(_named(t, name), lessThanOrEqualTo(1), reason: '"$name" on Today');
-      }
-    });
-
-    testWidgets('overnight metrics are not repeated on Today', (t) async {
-      await _pumpHealth(t, _fullNight(), tab: 1, vitals: _vitals());
-      for (final name in const [
-        'HRV',
-        'Resting heart rate',
-        'Respiratory rate',
-        'Overnight stress',
-        'Skin temperature',
-        'Sleep',
-      ]) {
-        expect(_named(t, name), 0,
-            reason: '"$name" belongs to Last night, one scope per tab');
+        expect(_named(t, name), 1, reason: '"$name" on Vitals');
       }
     });
   });
 
   group('Health · Trends names each metric at most once', () {
-    testWidgets('no metric is listed twice and sleep is never "Time asleep"',
+    testWidgets('no metric is listed twice',
         (t) async {
       await _pumpHealth(t, _fullNight(), tab: 2);
       for (final name in const [
@@ -275,13 +237,12 @@ void main() {
       ]) {
         expect(_named(t, name), lessThanOrEqualTo(1), reason: '"$name" on Trends');
       }
-      expect(_named(t, 'Time asleep'), 0,
-          reason: '"Time asleep" is only ever a sub-label');
+      expect(_named(t, 'Time asleep'), lessThanOrEqualTo(1));
     });
   });
 
-  group('one HRV detail path', () {
-    testWidgets('the Last night HRV row opens MetricDetail("hrv")', (t) async {
+  group('the HRV row', () {
+    testWidgets('the Overview HRV row opens MetricDetail("hrv")', (t) async {
       await _pumpHealth(t, _fullNight());
       await t.tap(find.byWidgetPredicate((w) => w is MetricRow && w.name == 'HRV'));
       await t.pump();
@@ -293,20 +254,9 @@ void main() {
       expect(find.byType(Investigate), findsNothing,
           reason: 'Investigate is one tap further, from MetricDetail');
     });
-
-    testWidgets('the Vitals "Heart rate variability" deep dive is gone from every tab',
-        (t) async {
-      for (final tab in [0, 1, 2, 3]) {
-        await _pumpHealth(t, _fullNight(), tab: tab, vitals: _vitals());
-        expect(find.byType(DeepDiveCard), findsNothing, reason: 'tab $tab');
-        expect(find.text('Deep dives'), findsNothing, reason: 'tab $tab');
-        expect(find.text('Heart rate variability'), findsNothing,
-            reason: 'tab $tab');
-      }
-    });
   });
 
-  group('one illness card, shared by Home and Health', () {
+  group('the illness card reads the same on Home and Health', () {
     Future<Observation> homeCard(WidgetTester t, String state, double? z) async {
       t.view.physicalSize = const Size(390 * 3, 6000 * 3);
       t.view.devicePixelRatio = 3;
@@ -340,12 +290,13 @@ void main() {
       ('amber', null),
       ('red', 3.1),
     ]) {
-      testWidgets('$state, z=$z: the words are the same on both screens',
+      testWidgets('$state, z=$z: the headline and advice match on both screens',
           (t) async {
         final onHome = await homeCard(t, state, z);
         final onHealth = await healthCard(t, state, z);
         expect(onHealth.headline, onHome.headline);
-        expect(onHealth.detail, onHome.detail);
+        // The body is not compared: Health keeps its own fuller wording of
+        // the same finding (upstream's two cards, see HomeScreen._bodyWatch).
         expect(onHealth.advice, onHome.advice);
       });
     }

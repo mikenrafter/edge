@@ -4,13 +4,12 @@
 // `daily.active_min` to the screen directly hid it.
 //
 // These tests go through the production repository over a real database, the
-// way the other repository tests do, and then through HealthData.load into the
-// screen. An absent figure must come back as an absent envelope with a reason
+// way the other repository tests do. (Health no longer has a Today sub-tab, so
+// the screen half of this file left with it; the repository contract stays.) An absent figure must come back as an absent envelope with a reason
 // (AGENTS.md 3.3, 4.1), never as a zero.
 
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,8 +20,6 @@ import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/models/metric.dart';
-import 'package:openstrap_edge/ui2/screens/screens.dart';
-import 'package:openstrap_edge/ui2/ui2.dart';
 
 Future<void> _putToday(Map<String, Object?> scalars) async {
   await LocalDb.putDayResult(
@@ -33,12 +30,6 @@ Future<void> _putToday(Map<String, Object?> scalars) async {
     finalized: true,
   );
   await LocalDb.refreshComputeFreshness();
-}
-
-Future<void> _settled(WidgetTester t) async {
-  for (var i = 0; i < 10; i++) {
-    await t.pump(const Duration(milliseconds: 100));
-  }
 }
 
 void main() {
@@ -104,38 +95,6 @@ void main() {
       final today = await repo.getToday();
       final m = Metric.parse((today['daily'] as Map)['active_min']);
       expect(m.value, 12);
-    });
-  });
-
-  group('Health → Today over the production repository', () {
-    Future<void> pumpToday(WidgetTester t) async {
-      final data = await t.runAsync(() => HealthData.load(repo));
-      t.view.physicalSize = const Size(390 * 3, 6000 * 3);
-      t.view.devicePixelRatio = 3;
-      addTearDown(t.view.reset);
-      await t.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: Scaffold(
-          body: HealthScreen(data: data, vitals: const VitalsData(), tab: 1),
-        ),
-      ));
-      await _settled(t);
-    }
-
-    testWidgets('a stored active_min is shown as a row', (t) async {
-      await t.runAsync(() => _putToday({'strain': 9.0, 'active_min': 74.0}));
-      await pumpToday(t);
-      expect(find.text('Active minutes'), findsOneWidget);
-      expect(find.text('74'), findsOneWidget);
-      expect(find.textContaining('No active minutes'), findsNothing);
-    });
-
-    testWidgets('no active_min is the honest absence card, never a zero',
-        (t) async {
-      await t.runAsync(() => _putToday({'strain': 9.0}));
-      await pumpToday(t);
-      expect(find.textContaining('No active minutes'), findsOneWidget);
-      expect(find.text('0'), findsNothing);
     });
   });
 }

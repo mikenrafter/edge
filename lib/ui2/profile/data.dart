@@ -490,9 +490,11 @@ class DataScreenView extends StatelessWidget {
                         l?.dataBackupFolder ?? 'Backup folder',
                         sub: '$folderLabel\n${l?.dataBackupFolderSub ?? 'Choose where new backups are saved. Existing backups stay where they are'}',
                         onTap: busy ? null : onChooseBackupFolder),
-                  if (defaultTargetPlatform == TargetPlatform.android && folder != null)
+                  // Disabled, not hidden, while the default folder is in use.
+                  if (defaultTargetPlatform == TargetPlatform.android)
                     SetRow(LucideIcons.folderClosed, C.n500,
                         l?.dataBackupFolderUseDefault ?? 'Use default folder',
+                        enabled: folder != null,
                         onTap: busy ? null : onUseDefaultBackupFolder),
                   SetRow(LucideIcons.clock, C.n500,
                       l?.dataLastBackup ?? 'Last backup',

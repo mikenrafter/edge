@@ -16,6 +16,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/live_stream_buffer.dart';
 import 'package:openstrap_edge/ui2/profile/buzz_pattern.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
@@ -91,6 +92,9 @@ Widget _scrub() => Scaffold(
 
 void main() {
   setUpAll(loadFonts);
+  // The baselines show HH:MM; pin 24-hour so the host's locale does not decide.
+  setUp(() => ClockFormatController.seed(ClockFormat.h24));
+  tearDown(ClockFormatController.debugReset);
   final fixtures = <String, (double, Widget, _Act?)>{
     'live_devices': (
       2400,

@@ -312,6 +312,13 @@ class WellnessRepo extends LocalRepository {
       };
   @override
   Future<Map<String, dynamic>> getInsights() async => const {};
+  // The Recovery drivers' baselines and charts: nothing stored.
+  @override
+  Future<Map<String, dynamic>> getDayHeart(String date) async => const {};
+  @override
+  Future<Map<String, dynamic>> getChart(String metric,
+          {int? from, int? to, Set<String> signals = const {}}) async =>
+      const {};
   @override
   Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) async =>
       {};

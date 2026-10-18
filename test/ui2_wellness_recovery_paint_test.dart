@@ -232,12 +232,9 @@ void main() {
       testWidgets('recovery paints its cards — $where', (t) async {
         await _openRecovery(t, dark: dark, scale: scale, repo: _Repo());
 
-        // Recovery is one link into Health > Last night. The readiness
-        // drivers and the sleep need it used to rebuild live in Health now.
-        expect(find.text('Last night in Health'), findsOneWidget);
-        expect(find.text('What raised and lowered your readiness'), findsNothing);
-        expect(find.text('Sleep need tonight'), findsNothing);
-        expect(find.byType(DriverBreakdown), findsNothing);
+        expect(find.text('What charged and drained you'), findsOneWidget);
+        expect(find.text('Sleep need tonight'), findsOneWidget);
+        expect(find.byType(DriverBreakdown), findsOneWidget);
         _expectCardPainted(t);
       }, timeout: const Timeout(Duration(seconds: 60)));
 
@@ -254,7 +251,7 @@ void main() {
       // (`sanitizeForJson`); this is the same rule on the read side, and this
       // is the test that says so. Both themes, because a screen that has
       // stopped painting looks different in each.
-      testWidgets('a leaf of the wrong type costs nothing on Recovery — '
+      testWidgets('a leaf of the wrong type costs its row, not the page — '
           '$where', (t) async {
         await _openRecovery(
           t,
@@ -286,11 +283,11 @@ void main() {
           ),
         );
 
-        // Recovery reads none of those leaves any more (the drivers
-        // and the sleep need moved to Health), so hostile ones cannot cost it
-        // anything: the link is still here and the page still paints.
-        expect(find.text('Last night in Health'), findsOneWidget);
-        expect(find.text('No sleep need yet'), findsNothing);
+        // Every one of those is now ABSENT, which is a state this screen
+        // already renders honestly — so the section is still here and still
+        // says why, rather than the page being gone.
+        expect(find.text('Sleep need tonight'), findsOneWidget);
+        expect(find.text('No sleep need yet'), findsOneWidget);
         _expectCardPainted(t);
       }, timeout: const Timeout(Duration(seconds: 60)));
     }
@@ -356,10 +353,10 @@ Future<void> _openRecovery(
   ));
   final loaded = await _settleLoad(t);
 
-  // Cleared, NOT asserted on: this pump interleaves real delays with frames,
-  // which can raise the harness-only semantics asserts `_harnessArtifact` names,
-  // and this test is about the tab that comes next. (The Mind tab's StartCard
-  // Spacer error is fixed; health_h2_wellness_link_test pins Mind clean.)
+  // Cleared, NOT asserted on. The Mind tab this opens on has a pre-existing
+  // layout complaint of its own (`StartCard`'s `Spacer` sits in a `Column`
+  // that a `ListView` hands unbounded height), and this test is about the tab
+  // that comes next. Only what the switch to Recovery reports is in scope.
   errors.clear();
   await _frames(t);
 

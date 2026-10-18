@@ -170,6 +170,7 @@ const _goldenMirrors = <String, Object>{
   'notif_health': true,
   'notif_meds': false,
   'notif_movement': false,
+  'notif_nap_detect': false,
   'notif_quiet_enabled': true,
   'notif_quiet_end': 420,
   'notif_quiet_start': 1300,

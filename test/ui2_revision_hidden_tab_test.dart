@@ -168,7 +168,7 @@ void main() {
         (t) async {
       await t.pumpWidget(shell());
       expect(find.byType(_Probe, skipOffstage: false), findsOneWidget);
-      expect(enabledFor(t, 'home'), isTrue);
+      expect(enabledFor(t, 'today'), isTrue);
     });
 
     testWidgets('a tab left behind is wrapped in TickerMode(enabled: false)',
@@ -177,7 +177,7 @@ void main() {
       await t.tap(find.text('Health'));
       await t.pump();
       expect(find.byType(_Probe, skipOffstage: false), findsNWidgets(2));
-      expect(enabledFor(t, 'home'), isFalse);
+      expect(enabledFor(t, 'today'), isFalse);
       expect(enabledFor(t, 'health'), isTrue);
       // The three never-visited tabs are still unbuilt.
       expect(find.byType(_Probe, skipOffstage: false), findsNWidgets(2));
@@ -197,12 +197,12 @@ void main() {
       app.bumpInsights();
       await t.pump();
       expect(log, ['health', 'health'],
-          reason: 'home is parked: it must not re-read on a derive');
+          reason: 'today is parked: it must not re-read on a derive');
 
       log.clear();
-      await t.tap(find.text('Home'));
+      await t.tap(find.text('Today'));
       await t.pump();
-      expect(log, ['home'], reason: 'it missed two bumps: one reload on return');
+      expect(log, ['today'], reason: 'it missed two bumps: one reload on return');
       expect(enabledFor(t, 'health'), isFalse);
     });
   });

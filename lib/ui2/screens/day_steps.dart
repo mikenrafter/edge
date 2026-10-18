@@ -462,7 +462,7 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
               'Counted at your wrist. A real walk tends to read low, and '
               'rhythmic hand work can read as walking.')
         : (l?.dayStepsHonestyPhone ??
-              'Counted by your phone, so only steps taken while you carried it '
+              'Counted by your phone, so only the steps you had it on you for '
               'are here.');
   }
 

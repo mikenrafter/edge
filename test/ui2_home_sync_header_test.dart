@@ -26,6 +26,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:openstrap_edge/data/models.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
@@ -112,6 +113,9 @@ Widget _home(AppState app, {double scale = 1}) => MultiProvider(
     ),
     ChangeNotifierProvider(create: (_) => UnitsController.seed(UnitSystem.metric)),
     ChangeNotifierProvider(create: (_) => LocaleController.seed(null)),
+    ChangeNotifierProvider(
+      create: (_) => ClockFormatController.seed(ClockFormat.h24),
+    ),
   ],
   child: MaterialApp(
     theme: buildTheme(Brightness.light),
@@ -156,7 +160,8 @@ Finder get _through => find.text('Synced through 15:33');
 /// Row 1 when idle.
 Finder get _date => find.text('Sunday, 4 October');
 
-Finder get _gear => find.byIcon(LucideIcons.settings);
+/// The settings button is the profile avatar (no name set: the user glyph).
+Finder get _gear => find.byIcon(LucideIcons.user);
 Finder get _spinner => find.byType(CircularProgressIndicator);
 
 /// The settings button: the Pressable that carries the "Profile and settings"
@@ -205,7 +210,12 @@ void main() {
   // The real type: the test font is a full em wide per glyph, which would force
   // the short label at every width and prove nothing about the real fit.
   setUpAll(loadFonts);
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    // "Synced through 15:33" is asserted as HH:MM.
+    ClockFormatController.seed(ClockFormat.h24);
+  });
+  tearDown(ClockFormatController.debugReset);
 
   group('idle', () {
     testWidgets('row 1: the date, then time since sync and Sync now '

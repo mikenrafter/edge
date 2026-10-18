@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/demo/demo_mode_banner.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/control_operations.dart';
 import 'package:openstrap_edge/ui2/profile/band_notifications.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
@@ -143,6 +144,9 @@ const _gesturesSupported = {
 
 void main() {
   setUpAll(loadFonts);
+  // "synced through … 09:10" is asserted as HH:MM.
+  setUp(() => ClockFormatController.seed(ClockFormat.h24));
+  tearDown(ClockFormatController.debugReset);
   final fixtures = <String, (double, Widget)>{
     'sync_offline': (300, syncFixture(const SyncPresentationState())),
     'sync_downloading': (1300, syncFixture(_downloadingState)),
@@ -543,7 +547,8 @@ void main() {
   screenStructure('sleep_empty', fixtures['sleep_empty']!.$2, () {
     expect(find.text('No night to show'), findsOneWidget);
     expect(find.text('Recalculate this night'), findsOneWidget);
-    expect(find.text('Set the times myself'), findsOneWidget);
+    // A night the detector missed: the manual window, as "I was asleep".
+    expect(find.text('I was asleep'), findsOneWidget);
     expect(find.text('Naps'), findsOneWidget);
   });
   screenStructure(

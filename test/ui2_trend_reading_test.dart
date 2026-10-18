@@ -130,11 +130,17 @@ void main() {
       expect(find.text('Good to go / Steady'), findsOneWidget);
       expect(find.text('Usual range 37–61'), findsOneWidget);
 
+      // The history reads through ChartScrub: the finger's bar goes in the
+      // key row. At rest that is the latest bar (today's 20).
       final strip = find.byWidgetPredicate(
-          (w) => w is Scrubber && w.label == 'Recovery');
-      await t.tapAt(t.getBottomRight(strip) - const Offset(1, 1));
-      await t.pumpAndSettle();
-      expect(find.textContaining('· 20 · Rest today'), findsOneWidget);
+          (w) => w is ChartScrub && w.label == 'Recovery');
+      expect(find.textContaining('20 · Rest today'), findsOneWidget);
+      // Hold on the bar before it (80).
+      final r = t.getRect(strip);
+      await t.tapAt(Offset(r.left + r.width * (20.5 / 22), r.center.dy));
+      await t.pump();
+      expect(find.textContaining('80 · '), findsOneWidget);
+      expect(find.textContaining('20 · Rest today'), findsNothing);
     });
 
     testWidgets('under two weeks there is no band, and one line says why',

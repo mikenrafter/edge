@@ -1,14 +1,19 @@
 // Three honesty bugs, each test named for the bug it pins
 // (AGENTS.md 3.3, 4.1).
 //
-//   1. a night held over from an earlier date drew sparklines (trend arrows read
-//      off a 24-day series) as though they described that night;
+//   1. a night held over from an earlier date was stated as last night's;
 //   2. a gap card for a missing overnight metric could carry no reason at all
 //      (stress missing on a night that had sleep);
 //   3. a trend delta was drawn against a "1-day average".
 //
 // Health is pumped with `HealthScreen(data:, tab:)` and no AppState, the way the
-// existing goldens do. Sub-tab order: Last night 0, Today 1, Trends 2, Labs 3.
+// existing goldens do. Sub-tab order: Overview 0, Explore 1, Trends 2,
+// Vitals 3, Labs 4.
+//
+// (Overview rows carry a sparkline again, as upstream's Overview does: the
+// series ends at the night the row names, so it is that night's history, and
+// the row says which night. The old "no series on a one-night tab" cases left
+// with the Last night tab.)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -72,10 +77,10 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   // ── 1 ──
-  group('a held-over night draws no sparkline', () {
+  group('a held-over night says which night it is', () {
     // `getToday` serves the last scored night when today's has not settled. The
-    // numbers describe THAT night, so a 24-day series beside them says nothing
-    // about it, and the old Overview drew one on every row.
+    // numbers describe THAT night, and a row that says "Last night" about it
+    // states a date the data does not support.
     final held = HealthData(
       today: {
         'status': {
@@ -97,38 +102,6 @@ void main() {
         'resp_rate': _stored(24, base: 14),
       },
     );
-
-    testWidgets(
-        'held-over night: no row on Last night carries a series, so none draws a trend arrow',
-        (t) async {
-      await _pump(t, held);
-      final rows = t.widgetList<MetricRow>(find.byType(MetricRow)).toList();
-      expect(rows, isNotEmpty, reason: 'the night itself still has rows');
-      for (final r in rows) {
-        expect(r.series, isEmpty,
-            reason: '"${r.name}" got a series on a one-night tab');
-      }
-      expect(find.byType(TrendCard), findsNothing);
-      expect(
-          find.byWidgetPredicate(
-              (w) => w is CustomPaint && w.painter is LineChart),
-          findsNothing);
-    });
-
-    testWidgets('a night with its own date draws none either', (t) async {
-      await _pump(
-          t,
-          HealthData(
-            today: {
-              'daily': {'resting_hr': _env(52, tier: 'HIGH')},
-              'sleep': {'duration_min': _env(465)},
-            },
-            charts: {'resting_hr': _stored(24), 'sleep': _stored(24, base: 420)},
-          ));
-      for (final r in t.widgetList<MetricRow>(find.byType(MetricRow))) {
-        expect(r.series, isEmpty, reason: '"${r.name}"');
-      }
-    });
 
     testWidgets('the held-over night is labelled with its own date', (t) async {
       await _pump(t, held);
@@ -163,7 +136,7 @@ void main() {
       }
     });
 
-    for (final (name, tab) in [('Last night', 0), ('Today', 1), ('Trends', 2)]) {
+    for (final (name, tab) in [('Overview', 0), ('Trends', 2)]) {
       testWidgets('$name: no StatusCard has an empty reason', (t) async {
         await _pump(t, sleepOnly, tab: tab);
         for (final c in t.widgetList<StatusCard>(find.byType(StatusCard))) {
@@ -174,7 +147,7 @@ void main() {
     }
 
     testWidgets(
-        'Last night with nothing measured: every card has a reason, and none says "no record of why"',
+        'Overview with nothing measured: every card has a reason, and none says "no record of why"',
         (t) async {
       await _pump(t, const HealthData());
       final cards = t.widgetList<StatusCard>(find.byType(StatusCard)).toList();
@@ -187,7 +160,7 @@ void main() {
     });
 
     testWidgets(
-        'Last night with sleep scored: no overnight gap card admits it does not know',
+        'Overview with sleep scored: no overnight gap card admits it does not know',
         (t) async {
       await _pump(t, sleepOnly);
       for (final c in t.widgetList<StatusCard>(find.byType(StatusCard))) {
@@ -222,17 +195,19 @@ void main() {
   });
 
   // ── 3 ──
-  group('a trend delta needs a baseline of 7 prior days', () {
-    // Trends draws a delta from the newest stored point against the mean of the
-    // days before it. With one prior day that mean is "1-day average" and the
-    // arrow is a coin flip dressed as a measurement.
+  group('a trend card judges only against a usual range', () {
+    // Trends once drew a delta from the newest stored point against the mean
+    // of the days before it. With one prior day that mean is a "1-day average"
+    // and the arrow is a coin flip dressed as a measurement. Trends now judges
+    // against the usual range, which abstains until there is one.
     HealthData rhr(int stored) =>
         HealthData(charts: {'resting_hr': _stored(stored)});
 
     testWidgets('a delta against a 1-day average is not drawn', (t) async {
       await _pump(t, rhr(2), tab: 2);
-      expect(find.textContaining('1-day average'), findsNothing);
-      expect(find.text('Building your baseline (1 of 7 days)'), findsOneWidget);
+      expect(find.textContaining('average'), findsNothing);
+      expect(find.text('Your usual range appears after 14 days. 2 so far.'),
+          findsOneWidget);
     });
 
     testWidgets('1 prior day: the value is shown and the card passes no judgement',
@@ -242,25 +217,27 @@ void main() {
       expect(find.textContaining('51'), findsWidgets);
       for (final c in t.widgetList<TrendCard>(find.byType(TrendCard))) {
         expect(c.good, isNull, reason: 'an arrow and hue need a baseline');
+        expect(c.band, isNull);
       }
     });
 
-    testWidgets('6 prior days is still a building baseline', (t) async {
-      await _pump(t, rhr(7), tab: 2);
-      expect(find.text('Building your baseline (6 of 7 days)'), findsOneWidget);
-      expect(find.textContaining('6-day average'), findsNothing);
-    });
-
-    testWidgets('7 prior days draws the delta and states its window', (t) async {
-      await _pump(t, rhr(8), tab: 2);
-      expect(find.textContaining('Building your baseline'), findsNothing);
-      expect(find.text('vs your 7-day average'), findsOneWidget);
-    });
-
-    testWidgets('a sleep delta against the computed need needs no 7 days',
+    testWidgets('a long series without the pipeline baseline still abstains',
         (t) async {
-      // The comparison there is the need, not an average of prior days, so the
-      // 7-day rule is about averages only.
+      // Resting heart rate's usual range is the pipeline's baseline and
+      // nothing else: thirty stored days are not filled in as one.
+      await _pump(t, rhr(30), tab: 2);
+      final card = t
+          .widgetList<TrendCard>(find.byType(TrendCard))
+          .singleWhere((c) => c.label == 'Resting heart rate');
+      expect(card.band, isNull);
+      expect(card.good, isNull);
+      expect(card.delta, isEmpty);
+      expect(find.textContaining('no usual range yet'), findsOneWidget);
+    });
+
+    testWidgets('a sleep delta against the computed need needs no usual range',
+        (t) async {
+      // The comparison there is the need, not a range of prior days.
       await _pump(
           t,
           HealthData(
@@ -268,7 +245,7 @@ void main() {
             need: const Metric(value: 462, unit: 'min'),
           ),
           tab: 2);
-      expect(find.textContaining('Building your baseline'), findsNothing);
+      expect(find.textContaining('usual range appears'), findsNothing);
       expect(find.textContaining('need'), findsWidgets);
     });
   });
