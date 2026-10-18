@@ -155,4 +155,36 @@ void main() {
     expect(_find(f, 'dec').colorArgb, 0xFF336699);
     expect(_find(f, 'col').colorArgb, 0xFFAA5500);
   });
+
+  testWidgets('trackUnkeyed: ids are stable and a late inserted card shifts '
+      'the Text below it', (t) async {
+    Widget app(bool banner) => MaterialApp(
+          home: Align(
+            alignment: Alignment.topLeft,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (banner) const SizedBox(height: 50),
+              const Text('same'),
+              const Text('same'),
+              ElevatedButton(onPressed: () {}, child: const Text('Go')),
+            ]),
+          ),
+        );
+    final probe = ShiftProbe(trackUnkeyed: true);
+    await t.pumpWidget(app(false));
+    final a = probe.capture(t, atMs: 0);
+    await t.pumpWidget(app(true));
+    final b = probe.capture(t, atMs: 300);
+    final ids = a.elements.map((e) => e.id).toList();
+    expect(ids.toSet(), hasLength(ids.length), reason: 'ids are unique');
+    expect(b.elements.map((e) => e.id).toList(), ids,
+        reason: 'inserting a sibling above must not rename anything');
+    expect(a.elements.where((e) => e.role == ElementRole.control), isNotEmpty);
+    expect(ids.where((i) => i.startsWith('~text|') && i.contains('same')),
+        hasLength(2));
+    final r = score(probe.scenario(_viewport), ShiftPolicy.standard);
+    expect(r.total, greaterThan(0));
+    // Default mode still tracks keyed only.
+    final keyedOnly = ShiftProbe();
+    expect(keyedOnly.capture(t, atMs: 0).elements, isEmpty);
+  });
 }

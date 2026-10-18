@@ -12,6 +12,46 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 
 class ShiftProbe {
+  /// Opt-in: also track widgets WITHOUT a `ValueKey<String>` under a stable
+  /// synthetic id (see [_synthKind]). Off by default so keyed-only tests are
+  /// unchanged.
+  ///
+  /// Id = `~<kind>|<scope>|<ancestor types>|<content>#<ordinal>`:
+  ///  * scope: the nearest ancestor `ValueKey<String>` value (or empty), so a
+  ///    keyed section anchors everything inside it;
+  ///  * ancestor types: runtimeTypes of the 3 nearest ancestors. Sibling INDEX
+  ///    is deliberately left out: a card inserted above would renumber every
+  ///    later sibling, the ids would no longer match across frames and the
+  ///    very shift we want to measure would vanish;
+  ///  * content: Text data (first 24 chars + FNV-1a hash), or the first Text
+  ///    inside a control/surface;
+  ///  * ordinal: n-th element with the same prefix in tree order.
+  /// Deterministic: same tree gives the same ids. An element whose content
+  /// changes (placeholder text replaced by a value) gets a new id and is
+  /// treated as appearing, not shifting.
+  final bool trackUnkeyed;
+
+  /// When set, elements whose rect does not intersect it are dropped (a
+  /// lazily built list item far below the fold is not a visible shift).
+  final ShiftRect? visibleOnly;
+  ShiftProbe({this.trackUnkeyed = false, this.visibleOnly});
+
+  Map<Element, String> _ids = {};
+
+  /// The id of the nearest tracked element at or above the match of [f] in the
+  /// last capture, for naming an Interaction source.
+  String? idOf(WidgetTester tester, Finder f) {
+    Element? hit = f.evaluate().firstOrNull;
+    if (hit == null) return null;
+    String? found = _ids[hit];
+    hit.visitAncestorElements((a) {
+      if (found != null) return false;
+      found = _ids[a];
+      return found == null;
+    });
+    return found;
+  }
+
   final List<Frame> frames = [];
   final List<Interaction> interactions = [];
   final List<FocusEvent> focus = [];
@@ -20,9 +60,18 @@ class ShiftProbe {
   /// Walks the current tree, records and returns a Frame stamped [atMs].
   Frame capture(WidgetTester tester, {required int atMs}) {
     final out = <ElementSnapshot>[];
-    for (final e in tester.allElements) {
+    final ids = <Element, String>{};
+    final seen = <String, int>{};
+    final ctlSeen = <String>{};
+    for (final e in _elements(tester)) {
       final k = e.widget.key;
-      if (k is! ValueKey<String>) continue;
+      String? id;
+      if (k is ValueKey<String>) {
+        id = k.value;
+      } else if (trackUnkeyed) {
+        id = _synthId(e, seen);
+      }
+      if (id == null) continue;
       final box = _box(e);
       if (box == null || !box.hasSize) continue;
       final o = box.localToGlobal(Offset.zero);
@@ -30,15 +79,33 @@ class ShiftProbe {
       final focusEl = sub.where((x) => x.widget is Focus).firstOrNull;
       final node = focusEl == null ? null : _nodeOf(focusEl);
       final canFocus = node?.canRequestFocus ?? false;
+      final vis = visibleOnly;
+      if (vis != null &&
+          vis.intersect(ShiftRect(o.dx, o.dy, box.size.width, box.size.height)) ==
+              null) {
+        continue;
+      }
+      // One control = one element: InkWell, Semantics and Pressable wrappers
+      // around the same button share a rect and label; keep the first.
+      if (id.startsWith('~ctl|')) {
+        final sig = '${id.substring(id.lastIndexOf('|'), id.lastIndexOf('#'))}@'
+            '${o.dx.round()},${o.dy.round()},${box.size.width.round()},'
+            '${box.size.height.round()}';
+        if (!ctlSeen.add(sig)) continue;
+      }
+      ids[e] = id;
       out.add(ElementSnapshot(
-        id: k.value,
+        id: id,
         rect: ShiftRect(o.dx, o.dy, box.size.width, box.size.height),
-        role: _role(e.widget, sub, canFocus),
+        role: _synthKind(e.widget) == 'ctl'
+            ? ElementRole.control
+            : _role(e.widget, sub, canFocus),
         colorArgb: _color(sub),
         focusable: canFocus,
         focused: node?.hasFocus ?? false,
       ));
     }
+    _ids = ids;
     final f = Frame(atMs, out);
     frames.add(f);
     return f;
@@ -52,6 +119,92 @@ class ShiftProbe {
         focus: List.of(focus),
         animations: List.of(animations),
       );
+
+  /// Elements in tree order, skipping Offstage subtrees (not painted).
+  static List<Element> _elements(WidgetTester tester) {
+    final l = <Element>[];
+    void visit(Element x) {
+      final w = x.widget;
+      if (w is Offstage && w.offstage) return;
+      l.add(x);
+      x.visitChildren(visit);
+    }
+
+    visit(tester.binding.rootElement!);
+    return l;
+  }
+
+  /// Which unkeyed widgets are worth tracking: text, inputs, tappable
+  /// controls and card/material surfaces.
+  static String? _synthKind(Widget w) {
+    if (w is Text) return 'text';
+    if (w is EditableText) return 'input';
+    if (w is ButtonStyleButton || w is InkResponse) return 'ctl';
+    if (w is GestureDetector && w.onTap != null) return 'ctl';
+    if (w is Card) return 'card';
+    return null;
+  }
+
+  static String? _synthId(Element e, Map<String, int> seen) {
+    final kind = _synthKind(e.widget);
+    if (kind == null) return null;
+    // A control wrapped by another control within 16 levels (Semantics and
+    // InkWell around a button) is the same control: track the outer one only.
+    // Bounded so a page-level tap handler does not swallow every control.
+    // Same for a label inside a control: the control owns its text, and a
+    // tracked Text over its own button would score as covering it.
+    if (kind == 'ctl' || kind == 'text') {
+      var nested = false;
+      var depth = 0;
+      e.visitAncestorElements((a) {
+        depth++;
+        // A button's InkWell sits ~20 levels under it; a plain tap handler
+        // only counts when close (a page-level one must not swallow the page).
+        if (a.widget is ButtonStyleButton ||
+            (depth < 16 && _synthKind(a.widget) == 'ctl')) {
+          nested = true;
+        }
+        return !nested && depth < 60;
+      });
+      if (nested) return null;
+    }
+    var scope = '';
+    final types = <String>[];
+    e.visitAncestorElements((a) {
+      final k = a.widget.key;
+      if (k is ValueKey<String>) {
+        scope = k.value;
+        return false;
+      }
+      if (types.length < 3) types.add(a.widget.runtimeType.toString());
+      return true;
+    });
+    String content = '';
+    final w = e.widget;
+    if (w is Text) {
+      content = w.data ?? w.textSpan?.toPlainText() ?? '';
+    } else {
+      void find(Element x) {
+        if (content.isNotEmpty) return;
+        final y = x.widget;
+        if (y is Text) {
+          content = y.data ?? y.textSpan?.toPlainText() ?? '';
+          return;
+        }
+        x.visitChildren(find);
+      }
+
+      e.visitChildren(find);
+    }
+    var h = 0x811c9dc5;
+    for (final c in content.codeUnits) {
+      h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF;
+    }
+    final short = content.length > 24 ? content.substring(0, 24) : content;
+    final base = '~$kind|$scope|${types.join('<')}|$short:${h.toRadixString(16)}';
+    final n = seen[base] = (seen[base] ?? -1) + 1;
+    return '$base#$n';
+  }
 
   static RenderBox? _box(Element e) {
     RenderBox? found;
