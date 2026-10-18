@@ -146,28 +146,9 @@ Future<String> dbHotCalls(WidgetTester t) async {
   return out.toString();
 }
 
-/// Synthetic ingest: back-to-back 10k-row INSERT OR REPLACE statements on
-/// decoded_onehz (same rows rewritten), like a BLE drain committing while the
-/// user opens the page. Stops at test teardown. Pass as HeavyCase.prepare.
-Future<void> startIngestWriter(AppState app) async {
-  var stop = false;
-  addTearDown(() => stop = true);
-  final db = await LocalDb.instance;
-  unawaited(() async {
-    try {
-      while (!stop) {
-        await db.execute('INSERT OR REPLACE INTO decoded_onehz '
-            'SELECT * FROM decoded_onehz WHERE rec_ts IN '
-            '(SELECT rec_ts FROM decoded_onehz LIMIT 10000)');
-      }
-    } catch (_) {
-      // the database closed under the last statement
-    }
-  }());
-}
-
-/// Like [startIngestWriter] but shaped like a sync commit: each round is ONE
-/// transaction of five 10k-row replaces, held open across the statements.
+/// Synthetic ingest shaped like a sync commit (DrainController.commit is one
+/// transaction per chunk): each round is ONE transaction of five 10k-row
+/// replaces, held open across the statements.
 /// Reads on the writer's handle wait for the whole transaction; reads on the
 /// read connection wait for one statement at most.
 Future<void> startIngestTxnWriter(AppState app) async {
@@ -215,6 +196,9 @@ void heavyScreen(String screen, List<HeavyCase> cases) {
       late HeavyDb db;
       setUpAll(() async {
         TestWidgetsFlutterBinding.ensureInitialized();
+        // The app is in the foreground while the screen is open: reads may
+        // use the read connection.
+        await LocalDb.setForeground(true);
         db = await openHeavyDb(weeks: weeks, name: 'ls_heavy_${screen}_w$weeks.db');
         debugPrint('[heavy] $screen [$variant] ${db.describe()}');
       });

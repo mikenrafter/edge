@@ -20,13 +20,8 @@ void main() {
     }),
     // No day: today, which also runs the rough-night read.
     HeavyCase('SleepDetail today', () => const SleepDetail()),
-    // Synthetic: a writer committing 10k-row replaces back to back while the
-    // page loads (a drain landing as the user opens it).
-    HeavyCase('SleepDetail yesterday + concurrent ingest writer',
-        () => SleepDetail(day: yesterdayLabel()),
-        prepare: startIngestWriter),
-    // Synthetic: the same, but each round is one held-open transaction (what a
-    // band chunk commit looks like to a reader).
+    // Synthetic: a writer shaped like a band chunk commit (one held-open
+    // transaction per round) while the page loads.
     HeavyCase('SleepDetail yesterday + concurrent ingest transaction',
         () => SleepDetail(day: yesterdayLabel()),
         prepare: startIngestTxnWriter),
