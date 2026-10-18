@@ -2803,6 +2803,14 @@ class DerivationEngine {
   static const _ceilingCacheMax = 128;
   int _ceilingHits = 0, _ceilingComputed = 0;
 
+  /// Exact cardio epoch rows reused across stagings (RAM only). A row's key
+  /// carries a fingerprint of every input to it, so a hit is the row a fresh
+  /// computation would produce. Main isolate only; each staging gets a copy
+  /// restricted to its window and returns what it computed.
+  final ana.CardioRowCache _cardioRows = ana.CardioRowCache();
+  static const _cardioRowsKeepSec = 4 * 24 * 3600;
+  static const _cardioRowsSlackSec = 3600;
+
   @visibleForTesting
   int get debugCeilingHits => _ceilingHits;
 
@@ -2874,6 +2882,7 @@ class DerivationEngine {
   /// drop the samples it holds. Called from the lifecycle handler; costs
   /// nothing when there is nothing to drop.
   void trimForBackground() {
+    _cardioRows.retainWhere((_) => false);
     final before = _calculationStates.length;
     final labels = _calculationStates.keys.toList()..sort();
     while (labels.length > 1) {
@@ -3888,7 +3897,13 @@ class DerivationEngine {
     // (and its _diag map) cannot be sent to the isolate.
     final stagesStep = CalcStatus.instance.begin('Sleep stages');
     final stagingStartedAt = DateTime.now().millisecondsSinceEpoch;
-    final (String, String?) staged;
+    // Rows inside this call's window +- 1 h, as plain data for the worker.
+    final rowsLo = range.$1 - _cardioRowsSlackSec;
+    final rowsHi = range.$2 + _cardioRowsSlackSec;
+    final rowsCopy = ana.CardioRowCache()..merge(_cardioRows);
+    rowsCopy.retainWhere((k) => k.startSec >= rowsLo && k.startSec <= rowsHi);
+    final rowCacheJson = jsonEncode(rowsCopy.toJson());
+    final (String, String?, String, int, int) staged;
     try {
       staged = await _runIsolateCancellable(() {
       try {
@@ -3911,12 +3926,20 @@ class DerivationEngine {
       }
       ana.cardioRecordObservations = true;
       ana.resetCardioObservations();
+      ana.CardioRowCache rowCache;
+      try {
+        rowCache = ana.CardioRowCache.fromJson(
+            (jsonDecode(rowCacheJson) as Map).cast<String, dynamic>());
+      } on FormatException {
+        rowCache = ana.CardioRowCache(); // refuse, never guess
+      }
       final candidate = prepareSleepSessionCandidate(
         searchSub,
         targetDay: dayId,
         override: override,
         priorSleep: priorSleep,
         confirmedWakeSec: confirmedWake,
+        rowCache: rowCache,
       );
       // Fold the MAIN sleep (most epochs) of a freshly-staged night into the
       // rolling profile — done here in the worker because the observations live
@@ -3958,14 +3981,32 @@ class DerivationEngine {
           }
         }
       }
-      return (jsonEncode(candidate.toJson()), observationJson);
+      return (
+        jsonEncode(candidate.toJson()),
+        observationJson,
+        jsonEncode(rowCache.toJson()),
+        rowCache.hits,
+        rowCache.misses,
+      );
       }, _perDayTimeout, label: 'sleep-staging $dayId');
     } finally {
       CalcStatus.instance.end(stagesStep);
       perf.addStage('stage_candidate',
           DateTime.now().millisecondsSinceEpoch - stagingStartedAt);
     }
-    final (candidateJson, observationJson) = staged;
+    final (candidateJson, observationJson, rowsOutJson, rowHits, rowMisses) =
+        staged;
+    try {
+      _cardioRows.merge(ana.CardioRowCache.fromJson(
+          (jsonDecode(rowsOutJson) as Map).cast<String, dynamic>()));
+    } on FormatException {
+      // Unreadable rows are dropped; the next staging recomputes them.
+    }
+    final keepFrom =
+        DateTime.now().millisecondsSinceEpoch ~/ 1000 - _cardioRowsKeepSec;
+    _cardioRows.retainWhere((k) => k.startSec >= keepFrom);
+    perf.addCount('cardio_rows_hit', rowHits);
+    perf.addCount('cardio_rows_miss', rowMisses);
     final candidate = SleepSessionCandidate.fromJson(
         (jsonDecode(candidateJson) as Map).cast<String, dynamic>());
     if (override == null) {

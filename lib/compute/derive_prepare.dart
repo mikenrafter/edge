@@ -446,6 +446,7 @@ PreparedDerivationPayload prepareDerivationPayload(
   String? targetDay,
   SleepWindowOverride? override,
   List<({int startSec, int endSec, String dayKey})> priorSleep = const [],
+  ana.CardioRowCache? rowCache,
 }) {
   if (sub.isEmpty || sub.lastTs == null) {
     return const PreparedDerivationPayload(dataNowSec: 0, days: []);
@@ -455,6 +456,7 @@ PreparedDerivationPayload prepareDerivationPayload(
     sub,
     override: override,
     priorSleep: priorSleep,
+    rowCache: rowCache,
   )) {
     if (targetDay != null && day.date != targetDay) continue;
     final daySub = sub.slice(day.startSec, day.endSec);
@@ -512,6 +514,7 @@ SleepSessionCandidate prepareSleepSessionCandidate(
   // end stands, awake minutes are never stretched into sleep), a later sync
   // cannot move the night, and going back to bed is never bridged into it.
   int? confirmedWakeSec,
+  ana.CardioRowCache? rowCache,
 }) {
   // A user window is the source of truth; a confirmation never trims it.
   final upTo = override == null ? confirmedWakeSec : null;
@@ -519,7 +522,10 @@ SleepSessionCandidate prepareSleepSessionCandidate(
       ? sub
       : sub.slice(sub.tsSec.first, upTo);
   final payload = prepareDerivationPayload(staged,
-      targetDay: targetDay, override: override, priorSleep: priorSleep);
+      targetDay: targetDay,
+      override: override,
+      priorSleep: priorSleep,
+      rowCache: rowCache);
   if (payload.days.isEmpty) return SleepSessionCandidate.absent(targetDay);
   final day = payload.days.first;
   return SleepSessionCandidate(

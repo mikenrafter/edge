@@ -1126,6 +1126,7 @@ List<PhysioDay> calendarDays(
   SleepWindowOverride? override,
   int Function(int epochSec)? tzOffsetAt,
   List<({int startSec, int endSec, String dayKey})> priorSleep = const [],
+  ana.CardioRowCache? rowCache,
 }) {
   final tzOffset = tzOffsetAt ?? tzOffsetSecondsAt;
   if (sub.isEmpty) return const [];
@@ -1227,6 +1228,7 @@ List<PhysioDay> calendarDays(
           hrBaseline: hrBaseline,
           rrMs: rrMsSeg,
           rrTsMs: rrTsSeg,
+          rowCache: rowCache,
           forcedWindow: (onsetSec: ov.onsetSec, offsetSec: ov.offsetSec),
         );
         src = ov.source; // 'manual' | 'confirmed'
@@ -1250,6 +1252,7 @@ List<PhysioDay> calendarDays(
             hrBaseline: hrBaseline,
             rrMs: rrMsSeg,
             rrTsMs: rrTsSeg,
+            rowCache: rowCache,
             habitualMidsleepSec: habitualMidsleepSec,
           );
         } else {
@@ -1273,6 +1276,7 @@ List<PhysioDay> calendarDays(
               hrBaseline: hrBaseline,
               rrMs: rrMsSeg,
               rrTsMs: rrTsSeg,
+              rowCache: rowCache,
               forcedWindow:
                   (onsetSec: cand.onsetSec, offsetSec: cand.offsetSec),
             );
