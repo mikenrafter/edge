@@ -40,7 +40,7 @@ void main() {
     addTearDown(app.dispose);
     final run = ShiftRun(t);
     await t.pumpWidget(perfApp(app, const HomeScreen(hour: 9)));
-    run.snap();
+    run.opened();
     await run.frames();
     // Drain anything left so no timer outlives the test.
     await t.pump(const Duration(seconds: 5));

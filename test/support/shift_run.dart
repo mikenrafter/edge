@@ -31,6 +31,14 @@ class ShiftRun {
   /// Captures the current tree at [now] without pumping.
   void snap() => probe.capture(t, atMs: now);
 
+  /// The user opened this screen at [now] (launch or navigation): the open is
+  /// the action the loading sequence answers, so its shifts are in-window,
+  /// not charged as unprompted movement.
+  void opened([String id = 'screen-open']) {
+    snap();
+    probe.interactions.add(Interaction(now, id));
+  }
+
   /// Pumps to each offset (relative to the current [now]) and captures.
   Future<void> frames([List<int> offsets = shiftOffsets]) async {
     final base = now;

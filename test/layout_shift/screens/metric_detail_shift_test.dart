@@ -34,7 +34,7 @@ void main() {
     addTearDown(app.dispose);
     final run = ShiftRun(t);
     await t.pumpWidget(perfApp(app, const MetricDetail('resting_hr')));
-    run.snap();
+    run.opened();
     await run.frames(); // open: loading -> data
     await t.pump(const Duration(seconds: 3));
     await run.tap(find.text('7 days')); // range chip

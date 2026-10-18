@@ -31,7 +31,7 @@ void main() {
     addTearDown(app.dispose);
     final run = ShiftRun(t);
     await t.pumpWidget(perfApp(app, SleepDetail(day: yesterdayId)));
-    run.snap();
+    run.opened();
     await run.frames();
     await t.pump(const Duration(seconds: 3));
     run.expectNoErrors('sleep detail open');
