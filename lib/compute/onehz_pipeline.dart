@@ -388,10 +388,12 @@ Map<String, dynamic> deriveDayBundle(
   // HRV/RHR are rest/sleep-only per the catalog. Running correctRr+hrvTime over
   // the SLEEP RR (not the whole day) is what brings RMSSD back to physiological
   // tens-of-ms instead of the whole-day ~166 ms inflated value.
-  final corrected = memo('sleep_rr', [
-    d.sleepRrMs,
-    d.sleepRrTsMs,
-  ], () => correctRr(d.sleepRrMs, rrTsMs: d.sleepRrTsMs));
+  // With a state the correction streams across passes (only new beats are
+  // folded, bit-identical to correctRr); not through memo(), so a pass that
+  // bypasses the cache still folds nothing for an unchanged slice.
+  final corrected = state != null
+      ? state.timed('night_rr', () => state.nightRr(d.sleepRrMs, d.sleepRrTsMs))
+      : nightRrBatch(d.sleepRrMs, d.sleepRrTsMs);
   final nn = corrected.nn;
   final nnTimes = corrected.nnTimesMs;
   final artifactFraction = (1.0 - corrected.cleanFraction).clamp(0.0, 1.0);

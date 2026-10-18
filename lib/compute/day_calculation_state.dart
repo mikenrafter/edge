@@ -7,6 +7,27 @@ import 'day_resume_state.dart';
 import 'minute_bills.dart';
 import 'state_fingerprint.dart';
 
+typedef NightRr = ({
+  List<double> nn,
+  List<double> nnTimesMs,
+  double cleanFraction,
+  int droppedCount,
+  int correctedCount,
+});
+
+/// The night's corrected RR in one batch call (what [DayCalculationState.nightRr]
+/// reproduces incrementally).
+NightRr nightRrBatch(List<double> rrMs, List<double> rrTsMs) {
+  final r = correctRr(rrMs, rrTsMs: rrTsMs);
+  return (
+    nn: r.nn,
+    nnTimesMs: r.nnTimesMs,
+    cleanFraction: r.cleanFraction,
+    droppedCount: r.droppedCount,
+    correctedCount: r.correctedCount,
+  );
+}
+
 /// RAM-only calculation data copied into workers and published after persistence.
 /// Callbacks passed to [evaluate] are evaluated synchronously, never retained.
 ///
@@ -94,6 +115,86 @@ class DayCalculationState {
   void compact() {
     _enmo = IncrementalEnmoSeries();
     _enmoHeld = 0;
+  }
+
+  // ── Night RR correction, streamed ──────────────────────────────────────────
+  // RAM-only like the rest of this state (not in DayResumeState): the night
+  // slice depends on the sleep window, which a checkpoint does not hold.
+  RrCorrector? _nightCorrector;
+
+  /// The beats (and their timestamps) the corrector above has folded, kept to
+  /// prove the next slice extends them; compared bit for bit.
+  final List<double> _nightRr = [], _nightTs = [];
+
+  /// Final output of the folded beats, in order. The corrector hands each part
+  /// out once, so it is kept here.
+  final List<double> _nightNn = [], _nightNnTimes = [];
+  int _nightProcessed = 0, _nightRebuilds = 0;
+
+  /// Beats pushed through a corrector so far (a rebuild counts its whole slice).
+  int get processedNightBeats => _nightProcessed;
+
+  /// Times a corrector was started from scratch, the first included.
+  int get nightRebuilds => _nightRebuilds;
+
+  void _resetNight() {
+    _nightCorrector = null;
+    _nightRr.clear();
+    _nightTs.clear();
+    _nightNn.clear();
+    _nightNnTimes.clear();
+  }
+
+  /// The corrected night for this slice: `correctRr(rrMs, rrTsMs: rrTsMs)`, bit
+  /// for bit, folding only the beats past those already folded. A slice that
+  /// does not extend them (moved start, any earlier beat or timestamp changed,
+  /// shorter, empty) starts over.
+  NightRr nightRr(List<double> rrMs, List<double> rrTsMs) {
+    NightRr batch() => nightRrBatch(rrMs, rrTsMs);
+
+    final n = rrMs.length;
+    var held = _nightRr.length;
+    var extends_ = n >= held && rrTsMs.length == n;
+    for (var i = 0; extends_ && i < held; i++) {
+      extends_ = identical(rrMs[i], _nightRr[i]) &&
+          identical(rrTsMs[i], _nightTs[i]);
+    }
+    if (!extends_) {
+      // A non-empty slice counts below, as the fresh corrector it gets.
+      if (n == 0 && _nightCorrector != null) _nightRebuilds++;
+      _resetNight();
+      held = 0;
+    }
+    if (n == 0 || rrTsMs.length != n) return batch();
+    final fresh = _nightCorrector == null;
+    final corrector = _nightCorrector ??= RrCorrector();
+    if (fresh) _nightRebuilds++;
+    if (n > held) {
+      final addRr = held == 0 ? rrMs : rrMs.sublist(held);
+      final addTs = held == 0 ? rrTsMs : rrTsMs.sublist(held);
+      final RrSettled settled;
+      try {
+        settled = corrector.fold(addRr, tsMs: addTs);
+      } on ArgumentError {
+        // A non-finite beat: the corrector refuses it before changing anything,
+        // but this state no longer matches it. Let the batch path decide.
+        _resetNight();
+        return batch();
+      }
+      _nightProcessed += addRr.length;
+      _nightRr.addAll(addRr);
+      _nightTs.addAll(addTs);
+      _nightNn.addAll(settled.nn);
+      _nightNnTimes.addAll(settled.nnTimes);
+    }
+    final snap = corrector.snapshot();
+    return (
+      nn: [..._nightNn, ...snap.tailNn],
+      nnTimesMs: [..._nightNnTimes, ...snap.tailNnTimes],
+      cleanFraction: snap.cleanFraction,
+      droppedCount: snap.droppedCount,
+      correctedCount: snap.correctedCount,
+    );
   }
 
   /// Per-key reuse and cost, collected only when [debugStats] is set (for the
