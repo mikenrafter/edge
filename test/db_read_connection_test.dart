@@ -131,6 +131,23 @@ void main() {
     expect(LocalDb.hasReader, isFalse);
   });
 
+  // A failed open must not be retried on every read: each attempt opens a
+  // connection, which would make the fallback slower than having no reader.
+  test('a failed reader open is not retried until the store changes', () async {
+    var opens = 0;
+    LocalDb.readerOpenerForTest = (_) async {
+      opens++;
+      throw StateError('no reader');
+    };
+    await LocalDb.metricSeries('k');
+    await LocalDb.metricSeries('k');
+    await LocalDb.metricSeries('k');
+    expect(opens, 1);
+    await LocalDb.close();
+    await LocalDb.metricSeries('k');
+    expect(opens, 2, reason: 'a new writer may open a reader again');
+  });
+
   test('reads still work with the reader switched off', () async {
     LocalDb.readerEnabled = false;
     expect(identical(await LocalDb.reader, await LocalDb.instance), isTrue);

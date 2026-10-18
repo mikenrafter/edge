@@ -416,6 +416,12 @@ class LocalDb {
   static Database? _readerBeside;
   static Future<Database?>? _readerOpening;
 
+  /// The writer (and wipe epoch) a reader open last FAILED for. Not retried
+  /// until either changes: every attempt opens a connection, so retrying per
+  /// read would make the fallback slower than having no reader at all.
+  static Database? _readerFailedFor;
+  static int? _readerFailedEpoch;
+
   /// Switch for the read connection. Off ⇒ [reader] is [instance].
   @visibleForTesting
   static bool readerEnabled = true;
@@ -435,6 +441,9 @@ class LocalDb {
     if (!readerEnabled) return writer;
     final r = _readDb;
     if (r != null && r.isOpen && identical(_readerBeside, writer)) return r;
+    if (identical(_readerFailedFor, writer) && _readerFailedEpoch == _wipeEpoch) {
+      return writer;
+    }
     try {
       final opening = _readerOpening ??= _openReader(
         writer,
@@ -460,6 +469,10 @@ class LocalDb {
                 singleInstance: false,
                 onConfigure: (db) async {
                   await db.rawQuery('PRAGMA query_only=ON');
+                  // A WAL reader can still meet SQLITE_BUSY briefly (wal-index
+                  // recovery, checkpoint restart); wait instead of failing the
+                  // screen read. rawQuery: the pragma returns a row.
+                  await db.rawQuery('PRAGMA busy_timeout=2000');
                   try {
                     // Per-connection and cold: without it hot pages are re-read
                     // from disk on every screen open (default cache ~2 MB).
@@ -483,6 +496,8 @@ class LocalDb {
           await o.close();
         } catch (_) {}
       }
+      _readerFailedFor = writer;
+      _readerFailedEpoch = epoch;
       return null;
     }
     _readDb = opened;
