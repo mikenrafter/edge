@@ -2025,7 +2025,13 @@ const int kAlgoVersion = 104;
 // REPIN @ bf79e84 (same branch, on 0fc5768 via the test-only fa77ab4): the
 // checkpoint readers refuse impossible saved state instead of restoring it.
 // No output change for any valid input, so no kAlgoVersion bump.
-const String kAnalyticsPin = 'bf79e847a8a6ec6dd949bb8fbb7b7ad2ca05d108';
+// REPIN @ db02896 (feat/aggregator, on bf79e84): the mergeable aggregator API
+// (additive); hypnogramMetrics, phillipsSri and readinessLnRmssd now run
+// through it bit-identically; exact phase-0 speedups (sliding medians, Welch
+// scan) and the exact CardioRowCache staging now reuses; cvhrApneaScreen no
+// longer loops forever on a non-finite NN (it never returned before). No
+// output change for any input that completed before, so no kAlgoVersion bump.
+const String kAnalyticsPin = 'db02896455a9117b7a7a995c807c482d20b5c12f';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

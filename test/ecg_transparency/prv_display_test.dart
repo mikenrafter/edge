@@ -140,10 +140,10 @@ void main() {
 
   group('no derived output changes (R4)', () {
     test('kAlgoVersion stays at the PRV diagnostics empty-input repin (v104); '
-        'the analytics pin moved on to its reader-hardening descendant with no '
+        'the analytics pin moved on to its aggregator descendant with no '
         'output change', () {
       expect(kAlgoVersion, 104);
-      expect(kAnalyticsPin, 'bf79e847a8a6ec6dd949bb8fbb7b7ad2ca05d108');
+      expect(kAnalyticsPin, 'db02896455a9117b7a7a995c807c482d20b5c12f');
       expect(kProtocolPin, 'bc7d8d0df706e40a2546ffde4545263f09d0fecb');
     });
 
