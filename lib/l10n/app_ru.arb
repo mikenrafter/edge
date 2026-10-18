@@ -7516,5 +7516,27 @@
         "type": "String"
       }
     }
-  }
+  },
+  "hapticsPresetsGeneral": "Общие",
+  "hapticsNewFromTaps": "Новый из касаний",
+  "hapticsNewFromNotes": "Новый из нот",
+  "hapticsCommandsCount": "{n, plural, one{{n} команда} few{{n} команды} many{{n} команд} other{{n} команды}}",
+  "hapticsRowSemantics": "{name}, {length}, {commands}",
+  "hapticScoreLength": "~{value} с",
+  "hapticsCommandLimitTitle": "Лимит вибраций браслета",
+  "hapticsCommandLimitBody": "{n} команд за любые 2 минуты. Это наша мера предосторожности, чтобы беречь мотор и батарею, а не ограничение браслета. Уведомления ждут, пока появится место; жест без места не выполняется.",
+  "hapticsCommandLimitSaving": "Сохранение…",
+  "hapticsCommandLimitFailed": "Не удалось сохранить изменение. Лимит остаётся {n}.",
+  "hapticsYourPatterns": "Ваши шаблоны",
+  "hapticsSafety": "Безопасность",
+  "hapticsTest": "Проверка",
+  "hapticsCalibration": "Калибровка",
+  "hapticsSectionAlerts": "Уведомления",
+  "hapticsSectionApps": "Приложения и автоматизация",
+  "hapticsSectionTasker": "Tasker",
+  "hapticsSectionActivity": "Активность",
+  "hapticsSectionGestures": "Жесты",
+  "hapticsSectionBreathing": "Дыхание",
+  "hapticsSectionAlarm": "Отложенный будильник",
+  "hapticsSectionEcg": "ЭКГ"
 }

@@ -15827,10 +15827,6 @@
       }
     }
   },
-  "monthGridFootnote": "One cell per day. Darker means higher in your own range, from the 10th to the 90th percentile of every day you have stored. An outlined cell is a day with no value. Shading shows where a day sat in that range and does not rate the day.",
-  "@monthGridFootnote": {
-    "description": "Month grid: explanatory footnote under the strips about what shading means."
-  },
   "monthGridNotShadedYetTitle": "{title} is not shaded yet",
   "@monthGridNotShadedYetTitle": {
     "description": "Month grid: status card title when a metric has too little history to shade, e.g. 'Sleep is not shaded yet'.",
@@ -15945,54 +15941,6 @@
   "@metricDetailJournalMarksToggle": {
     "description": "Toggle chip above the metric-detail trend chart: show or hide journal items (workouts, marked moments, water, symptoms, timed journal entries) as icons with dashed lines on the chart. Off by default."
   },
-  "metricDetailPercentileTodayNoBand": "Today is at the {ordinal} percentile of your history.",
-  "@metricDetailPercentileTodayNoBand": {
-    "description": "Sentence stating today's percentile rank within the user's own history, with no qualitative band.",
-    "placeholders": {
-      "ordinal": {
-        "type": "String"
-      }
-    }
-  },
-  "metricDetailPercentileTodayBand": "Today is at the {ordinal} percentile of your history, {band}.",
-  "@metricDetailPercentileTodayBand": {
-    "description": "Sentence stating today's percentile rank within the user's own history, plus a qualitative band label.",
-    "placeholders": {
-      "ordinal": {
-        "type": "String"
-      },
-      "band": {
-        "type": "String"
-      }
-    }
-  },
-  "metricDetailPercentileFromNoBand": "Your reading from {date} is at the {ordinal} percentile of your history.",
-  "@metricDetailPercentileFromNoBand": {
-    "description": "Sentence stating a past day's percentile rank within the user's own history, with no qualitative band.",
-    "placeholders": {
-      "date": {
-        "type": "String"
-      },
-      "ordinal": {
-        "type": "String"
-      }
-    }
-  },
-  "metricDetailPercentileFromBand": "Your reading from {date} is at the {ordinal} percentile of your history, {band}.",
-  "@metricDetailPercentileFromBand": {
-    "description": "Sentence stating a past day's percentile rank within the user's own history, plus a qualitative band label.",
-    "placeholders": {
-      "date": {
-        "type": "String"
-      },
-      "ordinal": {
-        "type": "String"
-      },
-      "band": {
-        "type": "String"
-      }
-    }
-  },
   "healthTabLastNight": "Last night",
   "@healthTabLastNight": {
     "description": "Health screen sub-tab label: one night (readiness, sleep, overnight vitals)"
@@ -16009,10 +15957,6 @@
         "type": "String"
       }
     }
-  },
-  "healthRowReadiness": "Readiness",
-  "@healthRowReadiness": {
-    "description": "Last night row label: readiness"
   },
   "healthRowOvernightStress": "Overnight stress",
   "@healthRowOvernightStress": {
@@ -16065,15 +16009,6 @@
   "healthWhyNotEnoughOvernight": "Not enough overnight data for this one",
   "@healthWhyNotEnoughOvernight": {
     "description": "Generic reason on an absent Last night card when no specific reason is known"
-  },
-  "healthBuildingBaseline": "Building your baseline ({days} of 7 days)",
-  "@healthBuildingBaseline": {
-    "description": "Trend card window label while fewer than 7 prior days exist to compare against",
-    "placeholders": {
-      "days": {
-        "type": "int"
-      }
-    }
   },
   "healthVsDayAverage": "vs your {days}-day average",
   "@healthVsDayAverage": {
@@ -16155,10 +16090,6 @@
   "wellnessLastNightInHealth": "Last night in Health",
   "@wellnessLastNightInHealth": {
     "description": "Recovery tab link row title: opens Health on its Last night sub-tab"
-  },
-  "wellnessLastNightInHealthMeta": "Readiness, sleep and the rest of the night",
-  "@wellnessLastNightInHealthMeta": {
-    "description": "Recovery tab link row subtitle: what Last night in Health holds"
   },
   "workoutMinutesUnit": "minutes",
   "@workoutMinutesUnit": {
@@ -16360,7 +16291,7 @@
   "@exploreNormalised": {
     "description": "Data Explorer note under the chart while every line is scaled to its own range"
   },
-  "exploreNormalisedBaseline": "Normalised. Lines in baseline mode show distance from your usual level (the middle is usual, the top and bottom are 3 standard deviations away); the others span their own lowest to highest. Touch the chart for the real values.",
+  "exploreNormalisedBaseline": "Normalised. Lines in usual-range mode show distance from your usual level (the middle is usual, the top and bottom are 3 standard deviations away); the others span their own lowest to highest. Touch the chart for the real values.",
   "@exploreNormalisedBaseline": {
     "description": "Data Explorer note under the chart while at least one line is against its baseline"
   },
@@ -16385,11 +16316,11 @@
   "@exploreFailedTitle": {
     "description": "Data Explorer read-failure title"
   },
-  "exploreBaselineToggle": "Baseline",
+  "exploreBaselineToggle": "Usual",
   "@exploreBaselineToggle": {
     "description": "Data Explorer toggle on a picked metric: draw it against your usual level instead of its own range"
   },
-  "exploreBaselineSemantics": "{metric} against your baseline",
+  "exploreBaselineSemantics": "{metric} against your usual",
   "@exploreBaselineSemantics": {
     "description": "Screen-reader label of the baseline toggle",
     "placeholders": {
@@ -17567,7 +17498,7 @@
   "@findingTitleIrregularRhythm": {
     "description": "Design 04 cardio transparency: Irregular pulse pattern flagged"
   },
-  "findingTitleLowReadiness": "Low readiness today",
+  "findingTitleLowReadiness": "Low recovery today",
   "@findingTitleLowReadiness": {
     "description": "Design 04 cardio transparency: Low readiness today"
   },
@@ -17583,7 +17514,7 @@
   "@findingDetailAnomaly": {
     "description": "Design 04 cardio transparency: Your overnight readings are outside your usual range."
   },
-  "findingDetailTemp": "Sustained rise above your baseline, which can be a sign of illness.",
+  "findingDetailTemp": "Sustained rise above your usual, which can be a sign of illness.",
   "@findingDetailTemp": {
     "description": "Design 04 cardio transparency: Sustained rise above your baseline, which can be a sign of illness."
   },
@@ -17595,11 +17526,11 @@
   "@findingDetailLowReadiness": {
     "description": "Design 04 cardio transparency: Your recovery markers are below your usual range. Take an easier day."
   },
-  "findingDetailRhrShiftRisen": "Your resting HR has risen noticeably versus your recent baseline.",
+  "findingDetailRhrShiftRisen": "Your resting HR has risen noticeably above your recent usual.",
   "@findingDetailRhrShiftRisen": {
     "description": "Design 04 cardio transparency: Your resting HR has risen noticeably versus your recent baseline."
   },
-  "findingDetailRhrShiftFallen": "Your resting HR has fallen noticeably versus your recent baseline.",
+  "findingDetailRhrShiftFallen": "Your resting HR has fallen noticeably below your recent usual.",
   "@findingDetailRhrShiftFallen": {
     "description": "Design 04 cardio transparency: Your resting HR has fallen noticeably versus your recent baseline."
   },
