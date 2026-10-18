@@ -16170,6 +16170,7 @@ class LocalDb {
         await _revSumBefore(db, cutoffSec) != expectedRevSum) {
       return -1;
     }
+    var expectedAfterArchive = expectedRevSum;
     if (policy.enabled) {
       deleted += await SubstrateArchive.archiveAndDeleteBefore(
         db,
@@ -16182,14 +16183,23 @@ class LocalDb {
             ? null
             : (txn, beforeSec) => _raiseCursorVia(txn, cursorName, beforeSec),
       );
+      // The archive's own deletes move the revision (the triggers fire on
+      // DELETE). Re-read it so the check below catches a record landing after
+      // the archive, not the archive itself. A record that landed during it
+      // either went into a bucket still to be archived (archived losslessly
+      // with it) or sits in one already done, where it stays live: the
+      // delete below takes only rows with no record time.
+      if (expectedAfterArchive != null) {
+        expectedAfterArchive = await _revSumBefore(db, cutoffSec);
+      }
     }
     // With archiving on, only the undatable rows are left for this delete;
     // a bucket the archive kept live must stay live.
     final decodedWhere = policy.enabled ? 'rec_ts <= 0' : 'rec_ts < ?';
     final decodedArgs = policy.enabled ? const <Object?>[] : [cutoffSec];
     await db.transaction((txn) async {
-      if (expectedRevSum != null &&
-          await _revSumBefore(txn, cutoffSec) != expectedRevSum) {
+      if (expectedAfterArchive != null &&
+          await _revSumBefore(txn, cutoffSec) != expectedAfterArchive) {
         skipped = true;
         return;
       }
