@@ -52,10 +52,14 @@ class ShiftRun {
   }
 
   /// A user tap on [f]: baseline frame, Interaction at [now], tap, frames.
-  Future<void> tap(Finder f, [List<int> offsets = shiftOffsets]) async {
+  /// [intent] names the element the tap is about (the thing the user expects
+  /// to change), when that is not the tapped control itself.
+  Future<void> tap(Finder f,
+      [List<int> offsets = shiftOffsets, Finder? intent]) async {
     snap();
     final src = probe.idOf(t, f) ?? 'unknown-source';
-    probe.interactions.add(Interaction(now, src));
+    final target = intent == null ? null : probe.idOf(t, intent);
+    probe.interactions.add(Interaction(now, src, intentTargetId: target));
     await t.tap(f);
     await frames(offsets);
   }
