@@ -118,10 +118,15 @@ import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/finalization_audit.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/state/power_source.dart';
+import 'package:openstrap_edge/state/prefs.dart';
+import 'package:openstrap_edge/sync/background_sync.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/util/worker_audit.dart';
 import 'package:openstrap_edge/util/worker_entries.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/fake_power_source.dart';
 import 'support/frozen_day_result_fixtures.dart';
 
 const _profile = Profile(
@@ -531,4 +536,49 @@ void main() {
           isEmpty);
     });
   });
+
+  // ── headless engines (the factory every headless entry builds through) ─────
+
+  group('headless engine factory', () {
+    tearDown(() => debugHeadlessPowerSource = null);
+
+    Future<(DerivationEngine, List<String>)> headless(CalcPowerMode? mode,
+        PowerSource? power) async {
+      SharedPreferences.setMockInitialValues(
+          {if (mode != null) Prefs.calcPowerMode: mode.name});
+      debugHeadlessPowerSource = power;
+      final log = <String>[];
+      return (await newHeadlessDerivationEngine(log.add), log);
+    }
+
+    test('Eager (saved mode) audits at finalization, even unplugged', () async {
+      final (e, log) = await headless(CalcPowerMode.eager, FakePowerSource());
+      await e.run(_profile, heavy: true);
+      expect(_audit(log), contains('[audit] $_d1 ok'));
+      expect((await LocalDb.finalizationAudit()).pending, isEmpty);
+    });
+
+    test('Maximum battery marks the finalized day pending, no audit', () async {
+      final (e, log) = await headless(
+          CalcPowerMode.maxBattery, FakePowerSource(charging: true));
+      await e.run(_profile, heavy: true);
+      expect(_audit(log), isEmpty);
+      expect((await LocalDb.finalizationAudit()).pending, [_d1]);
+    });
+
+    test('power that cannot be read counts as not eligible: pending', () async {
+      final (e, log) = await headless(CalcPowerMode.balanced, _UnreadablePower());
+      await e.run(_profile, heavy: true);
+      expect(_audit(log), isEmpty);
+      expect((await LocalDb.finalizationAudit()).pending, [_d1]);
+    });
+  });
+}
+
+class _UnreadablePower implements PowerSource {
+  @override
+  Future<PowerState> read() async => throw StateError('no power channel');
+
+  @override
+  Stream<PowerState> get changes => const Stream.empty();
 }
