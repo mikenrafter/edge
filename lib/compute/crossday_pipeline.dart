@@ -1075,8 +1075,7 @@ bool _isNextDay(String a, String b) {
       // 1440-epoch grids for all of it. The pad never surfaces in a pair (it
       // has no valid minutes), so its date is only a placeholder.
       for (var k = 1; k < math.min(gap, 2); k++) {
-        final pad = prev!.add(Duration(days: k));
-        gridDates.add(pad.toIso8601String().substring(0, 10));
+        gridDates.add(dayLabelBefore(gridDates.last, -1)!);
         sleepWake.addAll(List<bool>.filled(epochsPerDay, false));
         valid.addAll(List<bool>.filled(epochsPerDay, false));
       }
