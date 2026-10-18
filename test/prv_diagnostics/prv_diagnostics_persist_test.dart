@@ -308,7 +308,7 @@ void main() {
         'is its own version: a (day, 103) row finalized under the bf1be19 pin '
         'must not be served as if derived under 0fc5768 (AGENTS 3.4)', () {
       expect(v, 104);
-      expect(kAnalyticsPin, '914bb6a5b07d8b65fbea38c1477405ee9b31e829');
+      expect(kAnalyticsPin, 'e6dd526003b113d21697128d4f8b075a43fd0b5b');
       final lines = src.substring(0, m.start).split('\n');
       final entry = lines.lastWhere((l) => RegExp(r'^//\s*v104\b').hasMatch(l));
       final at = lines.indexOf(entry);

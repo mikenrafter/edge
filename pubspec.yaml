@@ -576,7 +576,12 @@ dependencies:
       # nothing folded snapshots the tail exactly like cvhrApneaScreen (it
       # reported absent before), so edge drops its tail-only fallback. No
       # output change, so no kAlgoVersion bump.
-      ref: 914bb6a5b07d8b65fbea38c1477405ee9b31e829
+      #
+      # REPIN @ e6dd526 (feat/aggregator, on 914bb6a): rsaRespRate and hrvFreq
+      # abstain on a non-finite beat time instead of looping forever; the
+      # streams refuse such a fold. Stored RR are integers, so no real night
+      # changes: no kAlgoVersion bump.
+      ref: e6dd526003b113d21697128d4f8b075a43fd0b5b
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
