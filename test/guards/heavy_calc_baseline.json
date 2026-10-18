@@ -858,13 +858,6 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/onehz_pipeline.dart",
-      "symbol": "_respPerWindow",
-      "element": "rsaRespRate",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
       "symbol": "_strainCurve",
       "element": "strainScore",
       "count": 1

@@ -42,6 +42,7 @@ import 'hr_max.dart'
 import 'profile.dart' show workoutSex;
 import 'step_cadence.dart' show cadenceSpmForMinutes;
 import 'day_calculation_state.dart';
+import 'night_resp_bins.dart' show respPerWindowHeavy;
 // Same argument: a pure `DateTime` lookup, no DB / IO / Flutter binding. It is
 // the ONE definition of "the UTC offset in effect at this instant" in the tree,
 // and a second copy here would be the exact drift SLP-09's timezone guard is
@@ -805,8 +806,10 @@ Map<String, dynamic> deriveDayBundle(
           hrSummary.wakeHr.sum,
           sleepHr,
         );
-  final dc = memo('prsa_dc', nn, () => decelerationCapacity(nn));
-  final ac = memo('prsa_ac', nn, () => accelerationCapacity(nn));
+  final dc = memo('prsa_dc', nn,
+      () => state != null ? state.nightPrsaDc() : decelerationCapacity(nn));
+  final ac = memo('prsa_ac', nn,
+      () => state != null ? state.nightPrsaAc() : accelerationCapacity(nn));
   // Baevsky Stress Index over the sleep NN — resting autonomic tension (a
   // transparent RR-histogram metric; no ML). Daily resting-stress indicator.
   // nnTimesMs lets it segment at a charging/off-wrist gap instead of letting
@@ -901,7 +904,9 @@ Map<String, dynamic> deriveDayBundle(
   final respWindows = memo('resp_windows', [
     nn,
     nnTimes,
-  ], () => _respPerWindow(nn, nnTimes));
+  ], () => state != null
+      ? state.nightRespWindows()
+      : respPerWindowHeavy(nn, nnTimes));
   final brv = memo(
     'brv',
     respWindows,
@@ -2154,37 +2159,6 @@ double? sleepClockOffsetSec(int epochSec) {
 }
 
 // ── helpers (pure) ───────────────────────────────────────────────────────────
-
-/// Per-window RSA respiratory rates (br/min) for the BRV estimator. Buckets the
-/// cleaned NN into [windowMs] (~30-min) bins by beat time and runs [rsaRespRate]
-/// on each bin with ≥[minBeats] beats; keeps only resolved windows.
-List<double> _respPerWindow(
-  List<double> nn,
-  List<double> nnTimes, {
-  double windowMs = 1800000.0,
-  int minBeats = 60,
-}) {
-  if (nn.isEmpty || nn.length != nnTimes.length) return const [];
-  final t0 = nnTimes.first;
-  final binsNn = <int, List<double>>{};
-  final binsTs = <int, List<double>>{};
-  for (var i = 0; i < nn.length; i++) {
-    final idx = ((nnTimes[i] - t0) / windowMs).floor();
-    (binsNn[idx] ??= <double>[]).add(nn[i]);
-    (binsTs[idx] ??= <double>[]).add(nnTimes[i]);
-  }
-  final out = <double>[];
-  final idxs = binsNn.keys.toList()..sort();
-  for (final idx in idxs) {
-    final segNn = binsNn[idx]!;
-    if (segNn.length < minBeats) continue;
-    // NN is already artifact-corrected upstream → artifactFraction 0.
-    final r = rsaRespRate(segNn, binsTs[idx]!, artifactFraction: 0.0);
-    final b = r.present ? r.value!.brpm : null;
-    if (b != null) out.add(b);
-  }
-  return out;
-}
 
 /// Wrap a value sub-map in the {value,confidence,tier,inputs_used} envelope the
 /// serve seam reads via `.value`. Null inner → honest "—".

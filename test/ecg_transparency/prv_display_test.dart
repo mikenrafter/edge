@@ -143,8 +143,8 @@ void main() {
         'the analytics pin moved on to its aggregator descendant with no '
         'output change', () {
       expect(kAlgoVersion, 104);
-      expect(kAnalyticsPin, '914bb6a5b07d8b65fbea38c1477405ee9b31e829');
-      expect(kProtocolPin, 'bc7d8d0df706e40a2546ffde4545263f09d0fecb');
+      expect(kAnalyticsPin, '1add367979dc308360dd02185517107cdfef3c66');
+      expect(kProtocolPin, '89080bcfac7767b3a871fd3a7d9307f5f30dad26');
     });
 
     test('the persisted irregular blocks keep their keys (the pipeline writes '

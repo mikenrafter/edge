@@ -457,6 +457,21 @@ class HeavyGuardConfig {
             'worker-only @heavy: the streamed night CVHR apnea screen, reached only from deriveDayBundle; the public name is the contract of night_cvhr_stream_test',
           ),
           OriginAllow(
+            'DayCalculationState.nightRespWindows',
+            'nightRespWindows',
+            'worker-only @heavy: the streamed night 30-min RSA bins behind BRV, reached only from deriveDayBundle; the public name is the contract of night_bins_prsa_stream_test',
+          ),
+          OriginAllow(
+            'DayCalculationState.nightPrsaDc',
+            'nightPrsaDc',
+            'worker-only @heavy: the streamed night PRSA deceleration capacity, reached only from deriveDayBundle; the public name is the contract of night_bins_prsa_stream_test',
+          ),
+          OriginAllow(
+            'DayCalculationState.nightPrsaAc',
+            'nightPrsaAc',
+            'worker-only @heavy: the streamed night PRSA acceleration capacity, reached only from deriveDayBundle; the public name is the contract of night_bins_prsa_stream_test',
+          ),
+          OriginAllow(
             'DayCalculationState.exportNight',
             'exportNight',
             'worker-only @heavy: the night state captured for the checkpoint, reached only from exportNightJsonHeavy (inside deriveDayBundle); the public name is the contract of day_checkpoint_night_state_test',
