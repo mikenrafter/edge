@@ -285,4 +285,29 @@ void main() {
     expect(r.total, greaterThan(0));
     expect(r.findings.where((f) => f.elementId.startsWith('~text|')), isNotEmpty);
   });
+
+  // Moment review: rows growing inside the list "covered" the pinned Save bar
+  // below it, though the list viewport clips them.
+  testWidgets('rects are clipped by the scroll viewport: a row growing under '
+      'a pinned bar does not cover it', (t) async {
+    Widget page(double rowH) => SizedBox(
+        width: 300,
+        height: 400,
+        child: Column(children: [
+          SizedBox(
+              height: 300,
+              child: ListView(children: [
+                SizedBox(key: const ValueKey('row'), height: rowH, width: 300),
+              ])),
+          const SizedBox(
+              key: ValueKey('save'),
+              height: 100,
+              width: 300,
+              child: Focus(child: SizedBox.expand())),
+        ]));
+    final r = await run(t, page(100), page(500));
+    expect(r.findings.where((f) => f.rule == 'cover'), isEmpty);
+    final row = last.frames[1].elements.firstWhere((e) => e.id == 'row');
+    expect(row.rect.height, 300, reason: 'clipped to the 300 px viewport');
+  });
 }

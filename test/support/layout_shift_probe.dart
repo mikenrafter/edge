@@ -8,6 +8,7 @@
 // (0x00000000 when none). focusable/focused come from the Focus in the
 // subtree. Times are explicit ms offsets: the probe never reads a clock.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 
@@ -68,6 +69,7 @@ class ShiftProbe {
     final ids = <Element, String>{};
     final seen = <String, int>{};
     final ctlSeen = <String>{};
+    final tracked = <String>{};
     contentOf.clear();
     for (final e in _elements(tester)) {
       final k = e.widget.key;
@@ -81,16 +83,26 @@ class ShiftProbe {
       final box = _slotBox(e);
       if (box == null || !box.hasSize) continue;
       final o = box.localToGlobal(Offset.zero);
+      // What the user sees: clipped by every scroll viewport / ClipRect above
+      // it. Without this a list row scrolled under a pinned Save bar "covers"
+      // the bar, though the viewport never paints it there.
+      final seen0 = _clip(box, ShiftRect(o.dx, o.dy, box.size.width, box.size.height));
+      if (seen0 == null) continue;
       final sub = _subtree(e);
       final focusEl = sub.where((x) => x.widget is Focus).firstOrNull;
       final node = focusEl == null ? null : _nodeOf(focusEl);
       final canFocus = node?.canRequestFocus ?? false;
       final vis = visibleOnly;
       if (vis != null &&
-          vis.intersect(ShiftRect(o.dx, o.dy, box.size.width, box.size.height)) ==
-              null) {
+          vis.intersect(seen0) == null) {
         continue;
       }
+      // A synthetic element filling exactly the box of one already tracked
+      // (the control inside a keyed chip) is that element again: counting it
+      // twice doubled every chip's score.
+      final at = '${seen0.left.round()},${seen0.top.round()},'
+          '${seen0.width.round()},${seen0.height.round()}';
+      if (id.startsWith('~') && tracked.contains(at)) continue;
       // One control = one element: InkWell, Semantics and Pressable wrappers
       // around the same button share a rect and label; keep the first.
       if (id.startsWith('~ctl|')) {
@@ -99,11 +111,12 @@ class ShiftProbe {
             '${box.size.height.round()}';
         if (!ctlSeen.add(sig)) continue;
       }
+      tracked.add(at);
       ids[e] = id;
       contentOf[id] = _contentHash(e);
       out.add(ElementSnapshot(
         id: id,
-        rect: ShiftRect(o.dx, o.dy, box.size.width, box.size.height),
+        rect: seen0,
         role: _synthKind(e.widget) == 'ctl'
             ? ElementRole.control
             : _role(e.widget, sub, canFocus),
@@ -200,6 +213,19 @@ class ShiftProbe {
     final base = '~$kind|$scope|${kind == 'card' ? '' : types.join('<')}';
     final n = seen[base] = (seen[base] ?? -1) + 1;
     return '$base#$n';
+  }
+
+  static ShiftRect? _clip(RenderBox box, ShiftRect r) {
+    ShiftRect? out = r;
+    for (RenderObject? a = box.parent; a != null && out != null; a = a.parent) {
+      if ((a is RenderAbstractViewport || a is RenderClipRect) &&
+          a is RenderBox &&
+          a.hasSize) {
+        final g = a.localToGlobal(Offset.zero);
+        out = out.intersect(ShiftRect(g.dx, g.dy, a.size.width, a.size.height));
+      }
+    }
+    return out;
   }
 
   static String _contentHash(Element e) {
