@@ -97,20 +97,24 @@ void main() {
       final z = await p21DayRev(db, _z);
       final k = await p21BaseRev(db, 'k');
       final k2 = await p21BaseRev(db, 'k2');
-      for (final r in [x, z, k, k2]) {
+      for (final r in [x, z, k2]) {
         expect(r, greaterThan(highestBefore), reason: 'a fresh local revision');
         expect(r, lessThan(p21ForeignRevBase), reason: 'not the export\'s number');
       }
       expect(x, greaterThan(xBefore));
-      expect(k, greaterThan(kBefore));
-      expect({x, z, k, k2}, hasLength(4), reason: 'revisions are unique');
+      // Upstream's restore rule (04efe7b2, kept in the merge): a device with
+      // finalized history of its own (_y) keeps its own baselines, so the
+      // export's 'k' is skipped like _y and keeps its revision.
+      expect(k, kBefore);
+      expect({x, z, k2}, hasLength(3), reason: 'revisions are unique');
       // And the replacement really is the foreign payload.
       expect(
         (await db.query('day_result', where: 'day_id = ?', whereArgs: [_x]))
             .single['payload_json'],
         contains('foreign-x'),
       );
-      expect((await LocalDb.baseline('k'))!['payload_json'], '{"from":"foreign"}');
+      expect((await LocalDb.baseline('k'))!['payload_json'], '{"from":"local"}');
+      expect((await LocalDb.baseline('k2'))!['payload_json'], '{"from":"foreign"}');
     });
 
     test('row_rev is not copied: no foreign number and no orphan key lands',
@@ -156,7 +160,9 @@ void main() {
 
       expect(second.keys.toSet(), first.keys.toSet());
       for (final k in first.keys) {
-        if (k == 'day_result|$_y|$p21Version') {
+        // Skipped rows never move: the locally finalized _y, and (upstream's
+        // restore rule) every baseline once this device has finalized history.
+        if (k == 'day_result|$_y|$p21Version' || k.startsWith('baselines|')) {
           expect(second[k], first[k], reason: 'the skipped row never moves');
         } else {
           expect(second[k], greaterThan(first[k]!), reason: k);
