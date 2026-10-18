@@ -8042,16 +8042,16 @@ class DerivationEngine {
     for (final sub in const ['scalars', 'series']) {
       final p = prev[sub];
       if (p is! Map) continue;
-      final existing = next[sub];
-      if (existing is! Map) {
+      final n = next[sub];
+      if (n is! Map) {
         next[sub] = Map<String, dynamic>.from(p.cast<String, dynamic>());
         carried = true;
         continue;
       }
-      // JSON-decoded prior curves need a dynamic-valued destination. The
-      // pipeline's inferred series map can otherwise reject List<dynamic>.
-      final n = Map<String, dynamic>.from(existing.cast<String, dynamic>());
-      next[sub] = n;
+      // JSON-decoded prior curves need a dynamic-valued destination: the
+      // pipeline's inferred map can reject List<dynamic> or an int scalar.
+      // Merge into a dynamic copy, made only when something is carried, so a
+      // pass with nothing to carry leaves the fresh map itself in place.
       Map<String, dynamic>? merged;
       for (final e in p.entries) {
         if (n.containsKey(e.key) || e.value == null) continue;
