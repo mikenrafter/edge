@@ -556,7 +556,12 @@ dependencies:
       # int64 overflow. No output change for any valid input, so no kAlgoVersion
       # bump. Verified:
       #   `git show bf79e84:lib/src/onehz/foundations/rr_correction_stream.dart | grep "invalid normalFinal"`
-      ref: 5af20f8163d67dfa40e093e980fe36f3ea29b7e9
+      #
+      # REPIN @ db02896 (feat/aggregator, on 5af20f8): exact cardio epoch-row
+      # cache (CardioRowCache + optional rowCache: on segmentSleep), phase-0
+      # exact speedups, and the CVHR NaN-hang fix. No output change for valid
+      # finite input, so no kAlgoVersion bump.
+      ref: db02896455a9117b7a7a995c807c482d20b5c12f
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
