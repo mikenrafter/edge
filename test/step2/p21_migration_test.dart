@@ -76,8 +76,11 @@ void main() {
     }
   });
 
-  test('schemaVersion is 71', () {
-    expect(LocalDb.schemaVersion, 71);
+  // The P2.1 rung is 71. The upstream merge (D13) appended upstream's four
+  // steps as 72-75 after it, so an upgrade from 70 now ends at the top of the
+  // ladder, not at 71.
+  test('schemaVersion is 75 (P2.1 rung 71, then upstream 72-75)', () {
+    expect(LocalDb.schemaVersion, 75);
   });
 
   group('oldV < 71 rung on a v70 database holding rows', () {
@@ -99,7 +102,7 @@ void main() {
 
       final db = await _open(name);
 
-      expect(await p21UserVersion(db), 71);
+      expect(await p21UserVersion(db), LocalDb.schemaVersion);
       await _expectRevObjects(db);
       expect(await db.query('day_result', orderBy: 'day_id, algo_version'),
           before['dr']);
@@ -158,7 +161,7 @@ void main() {
       await db.execute('PRAGMA user_version = 70');
       db = await _open(name);
 
-      expect(await p21UserVersion(db), 71);
+      expect(await p21UserVersion(db), LocalDb.schemaVersion);
       expect(await p21AllRevs(db), revs);
       expect(await p21RevObjectSql(db), sql);
       expect(
@@ -237,7 +240,7 @@ void main() {
 
       final db = await _open(name);
 
-      expect(await p21UserVersion(db), 71);
+      expect(await p21UserVersion(db), LocalDb.schemaVersion);
       await _expectRevObjects(db);
       expect((await LocalDb.dayResult('2026-05-05'))!['payload_json'],
           jsonEncode({'legacy': true}));
@@ -252,7 +255,7 @@ void main() {
       const name = 'p21_mig_fresh.db';
       _created.add(name);
       final db = await p21Fresh(name);
-      expect(await p21UserVersion(db), 71);
+      expect(await p21UserVersion(db), LocalDb.schemaVersion);
       await _expectRevObjects(db);
     });
 
@@ -296,7 +299,7 @@ void main() {
 
       db = await _open(name);
 
-      expect(await p21UserVersion(db), 71);
+      expect(await p21UserVersion(db), LocalDb.schemaVersion);
       expect(await p21RevObjectSql(db), sql);
       await p21RawDay(db, _d2);
       expect(await p21DayRev(db, _d2), greaterThan(0));

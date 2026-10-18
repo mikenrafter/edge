@@ -307,10 +307,15 @@ void main() {
     test('the empty-input repin (artifact_fraction null, not 1.0, with no beats) '
         'is its own version: a (day, 103) row finalized under the bf1be19 pin '
         'must not be served as if derived under 0fc5768 (AGENTS 3.4)', () {
-      expect(v, 104);
+      // The upstream catch-up (merge log D4) took upstream's numbering: the
+      // integrated build is 113, past every fork version, so a fork (day, 103)
+      // or (day, 104) row is never served as current. The fork entries stay in
+      // the changelog as `// | vNNN` history lines.
+      expect(v, greaterThan(104));
       expect(kAnalyticsPin, '1add367979dc308360dd02185517107cdfef3c66');
       final lines = src.substring(0, m.start).split('\n');
-      final entry = lines.lastWhere((l) => RegExp(r'^//\s*v104\b').hasMatch(l));
+      final entry =
+          lines.lastWhere((l) => RegExp(r'^//\s*\|?\s*v104\b').hasMatch(l));
       final at = lines.indexOf(entry);
       final text = lines.sublist(at).where((l) => l.startsWith('//')).join('\n');
       expect(text, contains('0fc57682'));
@@ -331,10 +336,15 @@ void main() {
         block.insert(0, lines[i]);
         i--;
       }
-      // The contiguous comment block holds many versions' entries; the new one
-      // is the one that starts at this version's own line.
-      final from = block.lastIndexWhere((l) => RegExp('^//\\s*v$v\\b').hasMatch(l));
-      expect(from, isNonNegative, reason: 'a `// v$v` entry above the constant');
+      // The contiguous comment block holds many versions' entries. Since the
+      // upstream catch-up (merge log D4) the diagnostics entry is the fork's
+      // v103 history line, and the current version is named by the
+      // integration note that closes the block.
+      expect(block.join('\n'), contains('this build is upstream $v'),
+          reason: 'the integration note names the current version');
+      final from =
+          block.lastIndexWhere((l) => RegExp(r'^//\s*\|?\s*v103\b').hasMatch(l));
+      expect(from, isNonNegative, reason: 'the fork v103 entry above the constant');
       final text = block.sublist(from).join('\n');
       expect(RegExp(r'diagnostic', caseSensitive: false).hasMatch(text), isTrue);
       expect(RegExp(r'PRV|irregular', caseSensitive: false).hasMatch(text), isTrue);
