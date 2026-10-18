@@ -9809,6 +9809,23 @@ class LocalDb {
     });
   }
 
+  /// [sleepWindowRow] for many [days] in ONE statement: `{day_id -> row}`, with
+  /// a day that has no served, non-skipped row (now) absent from the map. The
+  /// same SELECT as the single-day read with `r.day_id IN (...)`.
+  static Future<Map<String, Map<String, dynamic>>> sleepWindowRowsFor(
+    Iterable<String> days,
+  ) async {
+    final ids = days.toSet().toList();
+    if (ids.isEmpty) return const {};
+    return readerRun((db) async {
+      final rows = await db.rawQuery(
+        "SELECT r.day_id AS day_id, r.window_json AS window_json, v.rev AS rev FROM day_result r $_servedDayJoin LEFT JOIN row_rev v ON v.kind = 'day_result' AND v.k1 = r.day_id AND v.k2 = r.algo_version WHERE r.skipped = 0 AND r.day_id IN (${List.filled(ids.length, '?').join(',')})",
+        ids,
+      );
+      return {for (final r in rows) '${r['day_id']}': r};
+    });
+  }
+
   /// Every day_id that has a `day_result` row at its LATEST algo_version, newest
   /// first — WITHOUT touching `payload_json`.
   ///

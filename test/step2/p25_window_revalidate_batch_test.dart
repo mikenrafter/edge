@@ -6,7 +6,6 @@
 // Parity is proven by running each scenario twice through the same lane, once
 // with SleepWindowRowSource (batched) and once with a source that only has the
 // per-row current(), and requiring identical output and worker-call counts.
-import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common/sqflite_logger.dart';
@@ -110,7 +109,7 @@ void main() {
           ),
       ]);
       return (
-        values: [for (final d in out) d == null ? null : d.value],
+        values: [for (final d in out) d?.value],
         workerCalls: fake.calls,
         entries: lane.debugEntries,
       );
