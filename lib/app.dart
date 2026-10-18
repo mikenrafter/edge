@@ -105,15 +105,9 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final app = context.read<AppState>();
-    // The read connection lives only while the UI can show something.
     if (state == AppLifecycleState.resumed) {
+      // The read connection lives only while the UI can show something.
       unawaited(LocalDb.setForeground(true));
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.detached) {
-      unawaited(LocalDb.setForeground(false));
-    }
-    if (state == AppLifecycleState.resumed) {
       // The user may have flipped our notification switch either way in OS
       // Settings while we were backgrounded. Drop the cached authorization
       // decision so the next present/schedule re-reads reality — a denial used
@@ -156,9 +150,13 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // and a backgrounded process has no foreground to note.
       unawaited(app.noteAppOpened());
     } else if (state == AppLifecycleState.paused) {
+      unawaited(LocalDb.setForeground(false));
       // Backgrounded: hand the band to the iOS restore path so it can wake-and-drain
       // in the background (no-op on Android, where the foreground service holds it).
       app.pauseForBackground();
+    } else if (state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(LocalDb.setForeground(false));
     }
   }
 
