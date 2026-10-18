@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:openstrap_analytics/onehz.dart';
 
 import '../util/heavy.dart';
+import 'night_prsa.dart';
+import 'night_resp_bins.dart';
 
 /// What a night fold has consumed: the first beat's time, how many beats, and a
 /// 64-bit fingerprint of exactly those beats ([nightBeatsFingerprint]). A later
@@ -64,7 +66,8 @@ List<double> _doubles(Object? v) {
 /// The night's incremental state as plain data (maps, lists, numbers), so it
 /// crosses to a worker and into the checkpoint blob without any live object:
 /// the RR corrector, the settled corrected beats it already handed out, and the
-/// two spectral streams fed those beats. Version 1.
+/// streams fed those beats (spectral, CVHR, 30-min RSA bins, PRSA), each
+/// optional. Version 1: a part without a stream restarts that stream.
 ///
 /// The UI isolate never holds one of these: it carries the part only as its
 /// encoded text (the UTF-8 JSON of [toJson]) and the workers that need it build
@@ -80,6 +83,10 @@ class NightResumePart {
     required this.spectralFed,
     this.cvhr,
     this.cvhrFed = 0,
+    this.respBins,
+    this.respBinsFed = 0,
+    this.prsa,
+    this.prsaFed = 0,
   });
 
   final NightFoldTag tag;
@@ -98,6 +105,18 @@ class NightResumePart {
   /// Settled beats [cvhr] has been fed (<= [nn].length).
   final int cvhrFed;
 
+  /// The 30-min RSA bins ([NightRespBins]; absent until asked).
+  final Map<String, dynamic>? respBins;
+
+  /// Settled beats [respBins] has been fed (<= [nn].length).
+  final int respBinsFed;
+
+  /// The PRSA sums ([NightPrsa]; absent until asked).
+  final Map<String, dynamic>? prsa;
+
+  /// Settled beats [prsa] has been fed (<= [nn].length).
+  final int prsaFed;
+
   /// A deep copy of live state; the caller's objects stay untouched.
   @heavy
   static NightResumePart captureHeavy({
@@ -110,6 +129,10 @@ class NightResumePart {
     required int spectralFed,
     CvhrStream? cvhr,
     int cvhrFed = 0,
+    NightRespBins? respBins,
+    int respBinsFed = 0,
+    NightPrsa? prsa,
+    int prsaFed = 0,
   }) {
     final live = hrv != null && resp != null;
     return NightResumePart(
@@ -122,6 +145,12 @@ class NightResumePart {
       spectralFed: live ? spectralFed : 0,
       cvhr: cvhr == null ? null : _copy(cvhr.toJson()) as Map<String, dynamic>,
       cvhrFed: cvhr == null ? 0 : cvhrFed,
+      respBins: respBins == null
+          ? null
+          : _copy(respBins.toJsonHeavy()) as Map<String, dynamic>,
+      respBinsFed: respBins == null ? 0 : respBinsFed,
+      prsa: prsa == null ? null : _copy(prsa.toJsonHeavy()) as Map<String, dynamic>,
+      prsaFed: prsa == null ? 0 : prsaFed,
     );
   }
 
@@ -141,6 +170,11 @@ class NightResumePart {
           'fed': spectralFed,
         },
         if (cvhr != null) ...{'cvhr': cvhr, 'cvhrFed': cvhrFed},
+        if (respBins != null) ...{
+          'respBins': respBins,
+          'respBinsFed': respBinsFed,
+        },
+        if (prsa != null) ...{'prsa': prsa, 'prsaFed': prsaFed},
       };
 
   /// Throws [FormatException] on anything structurally malformed. What only
@@ -187,6 +221,17 @@ class NightResumePart {
         cvhr = (_copy(c) as Map).cast<String, dynamic>();
         cvhrFed = f;
       }
+      (Map<String, dynamic>?, int) optional(String key, String fedKey) {
+        if (!json.containsKey(key) && !json.containsKey(fedKey)) return (null, 0);
+        final v = json[key], f = json[fedKey];
+        if (v is! Map || f is! int || f < 0 || f > nn.length) {
+          throw FormatException('night part: bad $key');
+        }
+        return ((_copy(v) as Map).cast<String, dynamic>(), f);
+      }
+
+      final (respBins, respBinsFed) = optional('respBins', 'respBinsFed');
+      final (prsa, prsaFed) = optional('prsa', 'prsaFed');
       return NightResumePart(
         tag: (
           startTsMs: start.toDouble(),
@@ -201,6 +246,10 @@ class NightResumePart {
         spectralFed: fed,
         cvhr: cvhr,
         cvhrFed: cvhrFed,
+        respBins: respBins,
+        respBinsFed: respBinsFed,
+        prsa: prsa,
+        prsaFed: prsaFed,
       );
     } on FormatException {
       rethrow;
@@ -222,4 +271,10 @@ class NightResumePart {
   @heavy
   CvhrStream? buildCvhrHeavy() =>
       cvhr == null ? null : CvhrStream.fromJson(cvhr!);
+  @heavy
+  NightRespBins? buildRespBinsHeavy() =>
+      respBins == null ? null : NightRespBins.fromJsonHeavy(respBins);
+  @heavy
+  NightPrsa? buildPrsaHeavy() =>
+      prsa == null ? null : NightPrsa.fromJsonHeavy(prsa);
 }
