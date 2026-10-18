@@ -11646,16 +11646,11 @@ class LocalDb {
         where: 'key = ?', whereArgs: [key]);
   }
 
-  static Future<void> putBaseline(String key, String payloadJson) async {
-    final db = await instance;
-    await db.insert('baselines', {
-      'key': key,
-      'payload_json': payloadJson,
-      'updated_at': nowMs(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-  }
+  // One baselines inserter (the step-2 write-seam guard allow-lists it).
+  static Future<void> putBaseline(String key, String payloadJson) =>
+      putBaselines({key: payloadJson});
 
-  /// [putBaseline] for several rows that belong together, in one transaction.
+  /// Several baseline rows that belong together, in one transaction.
   static Future<void> putBaselines(Map<String, String> payloadsByKey) async {
     if (payloadsByKey.isEmpty) return;
     final db = await instance;
