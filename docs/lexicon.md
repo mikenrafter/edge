@@ -58,3 +58,10 @@ in the same change that introduces it (AGENTS.md §6).
 - **Attempt group** — the attempts of one sitting: a reading joins the latest group when that group's latest attempt is non-final and the new one starts within 10 minutes after it ended (`attempt_group`, `attempt`).
 - **Superseded** — an attempt a later attempt of its group replaced (`superseded_by`); hidden from the history list, kept for Details and exports.
 - **ECG outcome** — what a saved reading is allowed to say, decided only by `ecgOutcome`: a band-reported rhythm, inconclusive, not readable, or partial. The band's own bytes (result code, average heart rate, reason mask) stay stored untouched.
+
+## Layout shift
+- **Layout shift** — content moving, resizing, recolouring or being covered after it was painted; scored by `lib/layout_shift` (docs/LAYOUT_SHIFT.md).
+- **Interaction window** — the time after a user action in which a shift is expected and costs less.
+- **Intent pair** — an action's source element and the element it is meant to change (copy button → copied text).
+- **Animation chain** — animation spans sharing a chain id, played back to back to hold attention instead of a delay.
+- **Flashbang** — a bright frame before the app's own background; the launch window is never brighter than #222.
