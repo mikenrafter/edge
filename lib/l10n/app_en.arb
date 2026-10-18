@@ -3091,7 +3091,7 @@
   "@beatsNoDayScreened": {
     "description": "Empty-state message when no day in the window was screened at all"
   },
-  "beatsScreenNote": "A screen, not a test.\n\nA day the screen did not fire is not a day you were cleared — it cannot rule anything out, and it never could. Outlined days were not screened at all: too few clean beats, or too much movement.\n\nWrist pulse is not an ECG. If symptoms are what brought you here, a clinician can test that properly.",
+  "beatsScreenNote": "This is a screen. It cannot diagnose a condition.\n\nA day without a flag does not mean you were cleared, and the screen cannot rule anything out. Outlined days were not screened because they had too few clean beats or too much movement.\n\nWrist pulse is not an ECG. If you have symptoms, see a clinician for a proper test.",
   "@beatsScreenNote": {
     "description": "Multi-paragraph disclaimer that the rhythm strip is a screen, not a diagnosis, and to see a clinician for symptoms"
   },
@@ -4759,11 +4759,11 @@
   "@investigateIrregularRhythmFlag24h": {
     "description": "HRV metric label: irregular-rhythm flag over 24 hours"
   },
-  "investigateFlagRaised": "raised",
+  "investigateFlagRaised": "flagged",
   "@investigateFlagRaised": {
     "description": "Value shown when the irregular-rhythm flag was raised"
   },
-  "investigateFlagClear": "clear",
+  "investigateFlagClear": "not flagged",
   "@investigateFlagClear": {
     "description": "Value shown when the irregular-rhythm flag was clear"
   },
@@ -4843,7 +4843,7 @@
   "@investigateScreenRan": {
     "description": "Chart legend label: day the irregular-rhythm screen ran"
   },
-  "investigateRhythmStripFootnote": "Ran on {ran} {ran, plural, one{day} other{days}}, raised its flag on {raised}. An outlined square is a day it did not run. A clear strip is not a negative result: this is a screen on pulse timing, and it cannot tell an ectopic beat from a dropped beat from the band moving on your wrist.",
+  "investigateRhythmStripFootnote": "Ran on {ran} {ran, plural, one{day} other{days}}, flagged on {raised}. An outlined square marks a day it did not run. A strip with nothing flagged does not rule anything out. The screen reads pulse timing and cannot tell an ectopic beat, a dropped beat or wrist movement apart.",
   "@investigateRhythmStripFootnote": {
     "description": "Footnote summarising how many days the irregular-rhythm screen ran and flagged",
     "placeholders": {
@@ -12379,7 +12379,7 @@
   "@ecgDisconnected": {
     "description": "WHOOP MG ECG: Connect your WHOOP MG first."
   },
-  "ecgCleanupIncomplete": "The band may still be generating. It will be stopped on the next connection.",
+  "ecgCleanupIncomplete": "The band may still be running the ECG. The app will stop it the next time it connects.",
   "@ecgCleanupIncomplete": {
     "description": "WHOOP MG ECG: The band may still be generating. It will be stopped on the next connection."
   },
@@ -12391,11 +12391,11 @@
   "@ecgBandReported": {
     "description": "WHOOP MG ECG: Band-reported result"
   },
-  "ecgNotDiagnosis": "The category comes from the band. This is not a diagnosis.",
+  "ecgNotDiagnosis": "The category comes from the band. This is a screen, not a medical test.",
   "@ecgNotDiagnosis": {
     "description": "WHOOP MG ECG: The category comes from the band. This is not a diagnosis."
   },
-  "ecgCategorySinus": "Sinus rhythm",
+  "ecgCategorySinus": "Regular rhythm reported",
   "@ecgCategorySinus": {
     "description": "WHOOP MG ECG: Sinus rhythm"
   },
@@ -12403,11 +12403,11 @@
   "@ecgCategoryLowHr": {
     "description": "WHOOP MG ECG: Low heart rate"
   },
-  "ecgCategoryPossibleAfib": "Possible AFib",
+  "ecgCategoryPossibleAfib": "Irregular rhythm flagged",
   "@ecgCategoryPossibleAfib": {
     "description": "WHOOP MG ECG: Possible AFib"
   },
-  "ecgCategoryAfibHighHr": "AFib with high heart rate",
+  "ecgCategoryAfibHighHr": "Irregular rhythm flagged, high heart rate",
   "@ecgCategoryAfibHighHr": {
     "description": "WHOOP MG ECG: AFib with high heart rate"
   },
@@ -12415,7 +12415,7 @@
   "@ecgCategoryHighHr": {
     "description": "WHOOP MG ECG: High heart rate"
   },
-  "ecgCategoryHighHrNoAfib": "High heart rate, no AFib detected",
+  "ecgCategoryHighHrNoAfib": "High heart rate, no irregular rhythm flagged",
   "@ecgCategoryHighHrNoAfib": {
     "description": "WHOOP MG ECG: High heart rate, no AFib detected"
   },

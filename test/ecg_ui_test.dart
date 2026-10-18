@@ -24,8 +24,9 @@ Future<void> _pump(
   WidgetTester t,
   Widget home, {
   bool reducedMotion = false,
+  double height = 2532,
 }) async {
-  t.view.physicalSize = const Size(1170, 2532);
+  t.view.physicalSize = Size(1170, height);
   t.view.devicePixelRatio = 3;
   addTearDown(t.view.reset);
   await t.pumpWidget(
@@ -457,6 +458,8 @@ void main() {
               packets: const [],
             ),
           ),
+          // Tall enough that the coach line, below the stats, is built.
+          height: 6000,
         );
         final text = _allText(t);
         expect(text, contains('Band-reported result'));

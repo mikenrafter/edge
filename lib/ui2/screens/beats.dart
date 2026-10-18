@@ -804,11 +804,8 @@ class _BeatsState extends State<Beats> with RevisionReload {
           _note(
             p,
             l?.beatsScreenNote ??
-                'A screen, not a test.\n\n'
-                    'A day the screen did not fire is not a day you were '
-                    'cleared — it cannot rule anything out, and it never '
-                    'could. Outlined days were not screened at all: too few '
-                    'clean beats, or too much movement.\n\n'
+                'A day the screen did not fire does not mean you were cleared. The screen cannot rule anything out.\n\n'
+                'Outlined days were not screened because they had too few clean beats or too much movement.\n\n'
                     // "a clinician can test that properly" is the project's
                     // settled termination for this whole surface — the same
                     // sentence the CVHR card ends on. It ends in a person,
@@ -816,8 +813,7 @@ class _BeatsState extends State<Beats> with RevisionReload {
                     // keep the string "you have" off the screen entirely:
                     // that is the grammar of a diagnosis, and the wiring
                     // test greps for it on the neighbouring card.
-                    'Wrist pulse is not an ECG. If symptoms are what brought '
-                    'you here, a clinician can test that properly.',
+                    'A wrist pulse reading cannot replace an ECG. If symptoms are why you are here, see a clinician for an ECG.',
           ),
           const SizedBox(height: S.x3),
           _note(
