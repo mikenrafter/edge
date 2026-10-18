@@ -276,8 +276,8 @@ void main() {
     });
 
     test('the analytics pin carries minuteEnergy (7334289 and its '
-        'descendants 65c8901, aa67997, bf1be19, 0fc5768, bf79e84, db02896, 972f0b2)', () {
-      expect(kAnalyticsPin, '972f0b2e9ba8aceefcc784205c9ca688cd494fd0');
+        'descendants 65c8901, aa67997, bf1be19, 0fc5768, bf79e84, db02896, 972f0b2, 07d6af0)', () {
+      expect(kAnalyticsPin, '07d6af0486d732ddf2dfdc0f2765e3841584d0f5');
     });
   });
 }

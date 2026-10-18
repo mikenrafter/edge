@@ -2038,7 +2038,10 @@ const int kAlgoVersion = 104;
 // REPIN @ 972f0b2 (feat/aggregator, on db02896): exact HrvFreqStream and
 // RsaRespStream (snapshot(tail) == hrvFreq / rsaRespRate(prefix) bit for bit),
 // additive. No output change, so no kAlgoVersion bump.
-const String kAnalyticsPin = '972f0b2e9ba8aceefcc784205c9ca688cd494fd0';
+// REPIN @ 07d6af0 (feat/aggregator, on 972f0b2): exact CvhrStream
+// (snapshot == cvhrApneaScreen(prefix) bit for bit), additive. No output
+// change, so no kAlgoVersion bump.
+const String kAnalyticsPin = '07d6af0486d732ddf2dfdc0f2765e3841584d0f5';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

@@ -566,7 +566,12 @@ dependencies:
       # RsaRespStream (fold settled beats; snapshot(tail) == hrvFreq /
       # rsaRespRate(prefix) bit for bit; JSON-checkpointable). Additive. No
       # output change, so no kAlgoVersion bump.
-      ref: 972f0b2e9ba8aceefcc784205c9ca688cd494fd0
+      #
+      # REPIN @ 07d6af0 (feat/aggregator, on 972f0b2): exact CvhrStream (fold
+      # settled beats; snapshot == cvhrApneaScreen(prefix) bit for bit;
+      # JSON-checkpointable). Additive. No output change, so no kAlgoVersion
+      # bump.
+      ref: 07d6af0486d732ddf2dfdc0f2765e3841584d0f5
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
