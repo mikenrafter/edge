@@ -103,6 +103,10 @@ class C {
 
   static const white = Color(0xFFFFFFFF);
 
+  /// First paint for every user (native launch window and BootSplash cover).
+  /// Matches the dark P.bg; see docs/LAYOUT_SHIFT.md.
+  static const launchDark = Color(0xFF0B1017);
+
   /// Each domain owns an accent — the mental map is colour-coded, and the map
   /// is the point. These five are the five tabs, in order, forever.
   static const domHome = green;
