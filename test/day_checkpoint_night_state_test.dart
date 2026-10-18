@@ -529,8 +529,13 @@ void main() {
   });
 
   group('malformed night part or rows are dropped, never wrong output', () {
-    final warmPart = _folded(full, 400).exportNight()!;
-    final partJson = jsonEncode(warmPart.toJson());
+    // Built in setUpAll: _folded calls expect, which may not run at load time.
+    late final NightResumePart warmPart;
+    late final String partJson;
+    setUpAll(() {
+      warmPart = _folded(full, 400).exportNight()!;
+      partJson = jsonEncode(warmPart.toJson());
+    });
 
     test('fromJson refuses malformed input with FormatException', () {
       Map<String, dynamic> good() =>
@@ -588,7 +593,8 @@ void main() {
 
       final m = jsonDecode(rowsJson) as Map<String, dynamic>..['version'] = 7;
       for (final bad in [
-        _patch(blob, rowsJson.substring(0, 8), '~${rowsJson.substring(1, 8)}'),
+        // 30 chars: the first 8 ('{"versio') also occur in the day part's corrector JSON.
+        _patch(blob, rowsJson.substring(0, 30), '~${rowsJson.substring(1, 30)}'),
         _patch(blob, rowsJson, jsonEncode(m)),
       ]) {
         final decoded = decodeDayResumeState(bad)!;
