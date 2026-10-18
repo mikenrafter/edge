@@ -22,15 +22,19 @@ import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
 import '../../models/payloads.dart' show todayHeadlineOf;
 import '../../state/app_state.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
+import '../../state/recalc_state.dart';
 import '../profile/profile.dart' show ProfileAvatar;
 import '../profile/wearable_numbers.dart'
     show WearableCells, kHealthWearableRows;
 import '../ui2.dart';
 import 'advanced.dart';
-import 'ecg.dart' show EcgEntryCard, pairedIsMaverickOf;
+import 'ecg.dart' show EcgEntryCard;
 import 'findings_log.dart';
 import 'home_screen.dart';
 import 'investigate.dart';
+import 'metric_catalogue.dart';
 import 'metric_detail.dart';
 import 'wellness_screen.dart';
 
@@ -55,6 +59,11 @@ Future<Map<String, dynamic>> _soft(
 
 class HealthData {
   final Map<String, dynamic> today, insights, profile;
+
+  /// Read before the freshness refresh ran: today's figures are absent, not yet
+  /// worked out. The screen asks for the refresh after painting and reads again.
+  bool get refreshPending =>
+      (today['status'] as Map?)?['refresh_pending'] == true;
 
   /// Timestamped. The x axis and the "how old is this number" line are both
   /// read off the points' own dates — `metric_series` has one row per DERIVED
@@ -93,6 +102,12 @@ class HealthData {
   /// trend cards draw for resting HR and HRV. Null when it could not be read.
   final Map<String, dynamic>? baselines;
 
+  /// The newest day among the stored series and when those series were last
+  /// computed (the reader's max `computed_at`) — what Trends says "As of"
+  /// while a pass recalculates that day. Null when no reader gave a time.
+  final String? chartsNewestDay;
+  final DateTime? chartsComputedAt;
+
   const HealthData({
     this.today = const {},
     this.insights = const {},
@@ -107,6 +122,8 @@ class HealthData {
     this.napDay = '',
     this.findings = const [],
     this.baselines,
+    this.chartsNewestDay,
+    this.chartsComputedAt,
   });
 
   /// The stored points for [key].
@@ -142,12 +159,14 @@ class HealthData {
   Metric get resp => metricOf(today['resp']);
 
   static Future<HealthData> load(LocalRepository repo) async {
-    final today = await repo.getToday();
+    final today = await repo.getTodayStored();
     final cd = await repo.getInsights();
     final profile = await repo.getProfile();
     final days = await repo.availableDays();
 
     final charts = <String, List<ChartPoint>>{};
+    DateTime? chartsAt;
+    int? newestT;
     for (final k in const [
       'resting_hr',
       'hrv',
@@ -155,7 +174,15 @@ class HealthData {
       'stress',
       'resp_rate',
     ]) {
-      charts[k] = pointsOf(await repo.getChart(k));
+      final chart = await repo.getChart(k);
+      charts[k] = pointsOf(chart);
+      final at = computedAtOf(chart['computed_at']);
+      if (at != null && (chartsAt == null || at.isAfter(chartsAt))) {
+        chartsAt = at;
+      }
+      for (final pt in charts[k]!) {
+        if (newestT == null || pt.t > newestT) newestT = pt.t;
+      }
     }
 
     final coach = cd['sleep_coach'];
@@ -235,6 +262,10 @@ class HealthData {
       baselines: heart['baselines'] is Map
           ? (heart['baselines'] as Map).cast<String, dynamic>()
           : null,
+      chartsComputedAt: chartsAt,
+      chartsNewestDay: newestT == null
+          ? null
+          : dayLabelOf(DateTime.fromMillisecondsSinceEpoch(newestT * 1000)),
     );
   }
 }
@@ -259,7 +290,7 @@ class VitalsData {
   });
 
   static Future<VitalsData> load(LocalRepository repo, {String? want}) async {
-    final today = await repo.getToday();
+    final today = await repo.getTodayStored();
     final days = await repo.availableDays();
     final day = pickDay(
         days, want, (today['status'] as Map?)?['today_day']?.toString());
@@ -331,96 +362,34 @@ class LabsData {
 // person would look for it, and says for each one how many days it actually
 // has — which is the only honest answer to "is there anything in there".
 
-/// One catalogue entry: the [MetricSpec] key (which is what [MetricDetail]
-/// takes), the `metric_series` key its history is stored under, and the single
-/// line that says what it answers.
-///
-/// Icon, colour and title are NOT here — they come off the spec. A second copy
-/// is how two screens end up disagreeing about what a metric is called.
-class _CatRow {
-  final String key, series, blurb;
+// The list itself is `kMetricCatalogue` (metric_catalogue.dart), shared with
+// the Data Explorer; what is local here is the localised one-line blurb and
+// the import-only rows below.
 
-  /// Only an import writes this series, so with no history the row is left
-  /// out entirely instead of being listed as not measured yet.
-  final bool importOnly;
-  const _CatRow(this.key, this.series, this.blurb, {this.importOnly = false});
+/// Rows only an import writes, by catalogue family. With no history such a row
+/// is left out entirely instead of being listed as not measured yet.
+// TODO(merge): fold into `kMetricCatalogue` as an import-only flag so the Data
+// Explorer offers imported SpO2 too; kept here until metric_catalogue.dart
+// takes upstream's row.
+const _importOnly = <String, List<MetricCatalogueRow>>{
+  'Breathing': [
+    MetricCatalogueRow(
+        'spo2', 'spo2', "WHOOP's own derived value, carried from an import"),
+  ],
+};
 
-  bool shown(Map<String, int> counts) =>
-      !importOnly || (counts[series] ?? 0) > 0;
-}
-
-class _Cat {
-  final String title;
-  final List<_CatRow> rows;
-  const _Cat(this.title, this.rows);
-}
-
-/// The families, in the order a person looks for them.
-///
-/// What is deliberately NOT here:
-/// - ODI and anything apnea-shaped. A capability this app does not produce
-///   has no entry, no card and no key, and an index that listed them to
-///   explain their absence would be the exact thing the absent-forever rule
-///   forbids.
-/// - Cycle. It is a Wellness tab with its own door and its own on/off switch;
-///   a second entrance from Health would be a duplicate route, not a feature.
-/// - `rmssd_whole`, `stress_si`, `brv_slope`. Real numbers, but single-night
-///   with no series ever. They had written specs for a while and nothing could
-///   open them; the specs are gone now, so there is nothing to route to either.
-///   `stress` and `brv` below are the charted forms of two of the three.
-/// - Body clock, zones, Nerd stats. Each already has a door at the same depth
-///   as this one; adding a second is navigation debt.
-const _catalogue = <_Cat>[
-  _Cat('Heart & rhythm', [
-    _CatRow('resting_hr', 'rhr', 'The lowest sustained rate of the night'),
-    _CatRow('hrv', 'rmssd', 'RMSSD of beat-to-beat intervals during sleep'),
-    _CatRow('hrv_cv', 'hrv_cv',
-        'SDNN as a share of the average beat interval, within one night'),
-    _CatRow('lf_hf', 'lf_hf', 'Where beat-timing power sits across frequencies'),
-    _CatRow('dip', 'dip_pct', 'How far your heart rate falls while you sleep'),
-    _CatRow('hrr', 'hrr_bpm', 'How fast it falls in the minute after a bout'),
-  ]),
-  _Cat('Sleep', [
-    _CatRow('sleep', 'tst_min', 'Time asleep, from motion and beat timing'),
-    _CatRow('efficiency', 'efficiency', 'Asleep as a share of time in bed'),
-    _CatRow('deep', 'deep_min', 'Heart-rate flatness inside NREM'),
-    _CatRow('rem', 'rem_min', 'Staged from beat variability and movement'),
-    _CatRow('nap_min', 'nap_min', 'Sleep detected outside the main night'),
-  ]),
-  _Cat('Breathing', [
-    _CatRow('resp_rate', 'resp_rate', 'Breaths per minute, recovered from beat timing'),
-    _CatRow('brv', 'brv_cv', 'How much that rate varies across the night'),
-    _CatRow('spo2', 'spo2', "WHOOP's own derived value, carried from an import",
-        importOnly: true),
-  ]),
-  _Cat('Movement & load', [
-    _CatRow('steps', 'steps', 'Counted by a pedometer, never modelled'),
-    _CatRow('active_min', 'active_min', 'Minutes of movement volume, not locomotion'),
-    _CatRow('calories', 'calories', 'Active energy from heart rate and your profile'),
-    _CatRow('strain', 'strain', 'Cardiovascular load over the day, on 0–21'),
-    _CatRow('trimp', 'trimp', 'Heart points with no cap; Strain is the 0–21 view'),
-  ]),
-  _Cat('Body & wear', [
-    _CatRow('skin_temp', 'skin_temp_z', 'Distance from your own recent nights'),
-    _CatRow('wear', 'worn_min', 'Minutes with a band record present'),
-  ]),
-];
-
-/// Catalogue category titles and row blurbs are read off a top-level `const`
-/// list, which cannot call `AppLocalizations.of(context)` itself — so the
-/// lookup happens here, at render time, keyed off the same literal English
-/// text/row key the const list already carries as its fallback.
-String _catTitle(AppLocalizations? l, String title) => switch (title) {
-      'Heart & rhythm' => l?.healthCatHeartRhythm ?? title,
-      'Sleep' => l?.healthRowSleep ?? title,
-      'Breathing' => l?.healthCatBreathing ?? title,
-      'Movement & load' => l?.healthCatMovementLoad ?? title,
-      'Body & wear' => l?.healthCatBodyWear ?? title,
-      _ => title,
-    };
+/// [f]'s rows as this screen lists them: the shared catalogue's, plus any
+/// import-only row an import has actually written history for.
+List<MetricCatalogueRow> _rowsOf(MetricCategory f, Map<String, int> counts) => [
+      ...f.rows,
+      for (final r in _importOnly[f.title] ?? const <MetricCatalogueRow>[])
+        if ((counts[r.series] ?? 0) > 0) r,
+    ];
 
 String _rowBlurb(AppLocalizations? l, String key, String blurb) =>
     switch (key) {
+      'readiness' => l?.healthBlurbReadiness ?? blurb,
+      'stress' => l?.healthBlurbStress ?? blurb,
       'resting_hr' => l?.healthBlurbRestingHr ?? blurb,
       'hrv' => l?.healthBlurbHrv ?? blurb,
       'hrv_cv' => l?.healthBlurbHrvCv ?? blurb,
@@ -459,8 +428,10 @@ class ExploreData {
 
   static Future<ExploreData> load() async => ExploreData(
         counts: await LocalDb.metricSeriesCounts([
-          for (final f in _catalogue)
+          for (final f in kMetricCatalogue)
             for (final r in f.rows) r.series,
+          for (final rows in _importOnly.values)
+            for (final r in rows) r.series,
         ]),
       );
 }
@@ -486,6 +457,16 @@ class HealthScreen extends StatefulWidget {
       this.explore,
       this.tab = 0,
       this.now});
+
+  /// A deep link asking for one of the sub-tabs — -1 for the ordinary case.
+  ///
+  /// NOT A CONSTRUCTOR ARGUMENT, for the reason `WellnessScreen.tabRequest`
+  /// gives: the shell keeps this screen alive in its IndexedStack, so a tap
+  /// that lands on a Health already on screen builds nothing. The request
+  /// reaches a live state through its listener and a fresh one (the shell
+  /// re-keyed to switch domain) through `initState`. The shell clears it a
+  /// frame later rather than the screen consuming it on read.
+  static final ValueNotifier<int> tabRequest = ValueNotifier<int>(-1);
 
   @override
   State<HealthScreen> createState() => _HealthScreenState();
@@ -515,15 +496,35 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   @override
   void initState() {
     super.initState();
+    final asked = HealthScreen.tabRequest.value;
+    if (asked >= 0 && asked < _tabsOf(null).length) _tab = asked;
+    HealthScreen.tabRequest.addListener(_onTabRequest);
     _d = widget.data;
     _v = widget.vitals;
     _l = widget.labs;
     _e = widget.explore;
     if (widget.data != null) {
       _loading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _enter(_tab));
       return;
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load();
+      _enter(_tab);
+    });
+  }
+
+  /// Health was already on screen when another screen asked for a sub-tab.
+  void _onTabRequest() {
+    final t = HealthScreen.tabRequest.value;
+    if (t < 0 || t >= _tabsOf(null).length || t == _tab || !mounted) return;
+    _select(t);
+  }
+
+  @override
+  void dispose() {
+    HealthScreen.tabRequest.removeListener(_onTabRequest);
+    super.dispose();
   }
 
   /// Handed its data (golden, gallery) — nothing behind it to re-read.
@@ -542,6 +543,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   /// is the ordinary state of the first load after an import. See [hasRead].
   @override
   void reload() {
+    _refresh.reset();
+    _refreshGaveUp = false;
     _load();
     if (hasRead(#vitals)) _loadVitals(force: true);
     if (hasRead(#labs)) {
@@ -554,6 +557,28 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     }
   }
 
+  /// Starts the read the sub-tab at [i] needs, if it has not been read yet.
+  /// Overview and Trends have none of their own: they are drawn from the main
+  /// read.
+  void _enter(int i) {
+    if (!mounted) return;
+    if (i == 1) _loadExplore();
+    if (i == 3) _loadVitals();
+    if (i == 4) _loadLabs();
+  }
+
+  final _refresh = TodayRefreshLatch();
+
+  /// The refresh was asked and did not land (it failed, or the read after it
+  /// is still pending): stop holding the building layout and say what is
+  /// absent. Cleared by every reload, which asks again.
+  bool _refreshGaveUp = false;
+
+  /// Today's row is still being worked out. The overview list then holds dash
+  /// rows and shows nothing under it, because everything under it moves when
+  /// the figures land (absence cards become rows, or the reverse).
+  bool _building(HealthData d) => d.refreshPending && !_refreshGaveUp;
+
   Future<void> _load() async {
     final repo = repoOf(context);
     if (repo == null) {
@@ -563,7 +588,17 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     final t = beginRead(#day);
     try {
       final d = await HealthData.load(repo);
-      if (stillNewest(#day, t)) setState(() => (_d = d, _loading = false));
+      if (stillNewest(#day, t)) {
+        setState(() => (_d = d, _loading = false));
+        _refresh.afterPaint(repo, d.refreshPending).then((landed) {
+          if (!mounted) return;
+          if (landed) {
+            _load();
+          } else if (d.refreshPending) {
+            setState(() => _refreshGaveUp = true);
+          }
+        });
+      }
     } catch (_) {
       if (stillNewest(#day, t)) setState(() => _loading = false);
     }
@@ -637,9 +672,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
 
   void _select(int i) {
     setState(() => _tab = i);
-    if (i == 1) _loadExplore();
-    if (i == 3) _loadVitals();
-    if (i == 4) _loadLabs();
+    _enter(i);
   }
 
   @override
@@ -652,10 +685,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
       const SizedBox(height: S.x5),
       if (_loading && _d == null)
-        const Padding(
-          padding: EdgeInsets.only(top: S.x8),
-          child: Center(child: CircularProgressIndicator()),
-        )
+        const InlineLoading()
       else
         switch (_tab) {
           0 => _overview(c, d),
@@ -667,12 +697,36 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     ]);
   }
 
+  /// "As of <time>" at the top of a sub-tab while the day its rows are read
+  /// from is being recalculated. The rows stay; see [AsOfHold].
+  Widget _asOf(HealthData d, DateTime? Function(RecalcState recalc) at,
+          {String? day, DateTime? computedAt}) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        AsOfHold(
+          shown: d,
+          day: day,
+          computedAt: computedAt,
+          asOf: at,
+          builder: (c, t) => Padding(
+              padding: const EdgeInsets.only(bottom: S.x3),
+              child: AsOfLabel(at: t)),
+        ),
+      ]);
+
   // ─────────────── OVERVIEW ───────────────
   Widget _overview(BuildContext c, HealthData d) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final rows = <Widget>[];
     final gaps = <Widget>[];
+    final building = _building(d);
+
+    // Five of these rows come off the overnight block, and `getToday` holds
+    // that block over until today's settles. "Last night" / "Overnight" were
+    // fixed literals, so a days-old night was stated as last night's — while
+    // the Trends tab one tap away correctly said "as of 4 days ago" about the
+    // same numbers. A row's detail opens on that same night.
+    final night = heldOverNightOf(d.today);
 
     // ALL FIVE ROWS ARE READ FROM THE NIGHT, so all five take the same
     // measured gap. `overnight: false` is for a row that is not — a hole at
@@ -688,12 +742,30 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         {String? whyAbsent,
         bool overnight = true,
         Rising rising = Rising.neither}) {
+      void open() => go(c, MetricDetail(metricKey, initialDay: night));
+      if (m.isEmpty && building) {
+        // Today's row is still being worked out, so this is not yet an absence
+        // to explain: hold the landed row's box with a dash. A tall absence
+        // card swapping for a short row moved everything under it when the
+        // refresh landed. Never another day's number.
+        rows.add(MetricRow(icon, col, name, '—',
+            sub: sub, unit: '', series: series, onTap: open));
+        return;
+      }
       if (m.isEmpty) {
         final s = StatusCard.forMetric(
             l?.healthNoMetric(nounInSentence(l, name)) ??
                 'No ${name.toLowerCase()}',
             m,
-            why: whyAbsent ?? '', gap: overnight ? d.nightGap : null);
+            // EVERY ABSENCE CARD STATES A REASON. A row with no specific one
+            // got the card's own "no record of why" fallback, which says the
+            // app does not know instead of naming the gap. The pipeline's own
+            // note and a measured wear gap still outrank this.
+            why: (whyAbsent == null || whyAbsent.isEmpty)
+                ? (l?.healthWhyNotEnoughOvernight ??
+                    'Not enough overnight data for this one')
+                : whyAbsent,
+            gap: overnight ? d.nightGap : null);
         if (s != null) gaps.add(s);
         return;
       }
@@ -702,15 +774,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
           unit: unit,
           series: series,
           rising: rising,
-          onTap: () => go(c, MetricDetail(metricKey))));
+          onTap: open));
     }
 
-    // Five of these rows come off the overnight block, and `getToday` holds
-    // that block over until today's settles. "Last night" / "Overnight" were
-    // fixed literals, so a days-old night was stated as last night's — while
-    // the Trends tab one tap away correctly said "as of 4 days ago" about the
-    // same numbers.
-    final night = heldOverNightOf(d.today);
     String ofNight(String s) =>
         night == null ? s : '$s · ${prettyDay(night, l)}';
 
@@ -868,10 +934,22 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                 'Worth noting if it continues past a couple of days.',
           );
 
+    final status = d.today['status'];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // The rows below come off the overnight row, whichever night it is.
+      _asOf(
+          d,
+          (recalc) => asOfFor(
+              shownDay: status is Map ? status['overnight_day']?.toString() : null,
+              computedAt: computedAtOf(
+                  status is Map ? status['overnight_computed_at'] : null),
+              recalc: recalc),
+          day: status is Map ? status['overnight_day']?.toString() : null,
+          computedAt: computedAtOf(
+              status is Map ? status['overnight_computed_at'] : null)),
       // WHOOP MG only: the ECG door appears once the paired band has
       // positively identified itself as an MG, and stays while it is away.
-      if (pairedIsMaverickOf(c)) ...[
+      if (c.caps.has(Feature.ecgEntry)) ...[
         const EcgEntryCard(),
         const SizedBox(height: S.x3),
       ],
@@ -906,7 +984,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // and resting-HR findings, which fired for months and reached no screen
       // at all. NOT a feed — see findings_log.dart. Nothing here is unread,
       // badged or dismissible, and it does not appear on Home.
-      if (illnessCard != null || d.findings.isNotEmpty) ...[
+      if (!building && (illnessCard != null || d.findings.isNotEmpty)) ...[
         const SizedBox(height: S.x4),
         Section(
           l?.healthObservationsTitle ?? 'Observations',
@@ -929,7 +1007,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // What used to be the Wellness tab: the things you tell the app back.
       // ONE door now, not one per tab: in the contributed data breathing,
       // medication and cycle were each used by a handful of people, so they
-      // share a row and the screen behind it keeps its own tabs.
+      // share a row and the screen behind it keeps its own tabs. Held back
+      // while today's figures are building, like everything under the rows.
+      if (!building)
       Section(
         l?.healthWellbeingTitle ?? 'Mind, habits and medication',
         detailLinkRow(
@@ -1064,6 +1144,20 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // The trends are the stored series, and the sleep need is the cross-day
+      // rollup: either being recalculated says when it was last computed.
+      _asOf(
+          d,
+          (recalc) =>
+              asOfFor(
+                  shownDay: d.chartsNewestDay,
+                  computedAt: d.chartsComputedAt,
+                  recalc: recalc) ??
+              asOfFor(
+                  shownDay: null,
+                  computedAt: computedAtOf(d.insights['computed_at']),
+                  recalc: recalc,
+                  dependsOnCrossDay: true)),
       trend('resting_hr', l?.healthRowRestingHr ?? 'Resting heart rate', 'bpm',
           C.red, higherBetter: false),
       const SizedBox(height: S.x3),
@@ -1113,9 +1207,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               _loadVitals();
             })
           : const Padding(
-              padding: EdgeInsets.only(top: S.x8),
-              child: Center(child: CircularProgressIndicator()),
-            );
+              padding: EdgeInsets.only(top: S.x3), child: InlineLoading());
     }
 
     // WHICH DAY this tab is showing. Every row here used to say "Today" for a
@@ -1199,7 +1291,22 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             onTap: () => go(c, const MetricDetail('wear'))),
     ];
 
+    // The day's rows come off that day's derived row. Its compute time is only
+    // known for the day today's row was derived from; any other day gets no
+    // label rather than another day's time.
+    final status = d.today['status'];
+    final activityDay =
+        status is Map ? status['activity_day']?.toString() : null;
+    final dayAt = activityDay != null && activityDay == v.day
+        ? computedAtOf(status is Map ? status['activity_computed_at'] : null)
+        : null;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _asOf(
+          d,
+          (recalc) =>
+              asOfFor(shownDay: v.day, computedAt: dayAt, recalc: recalc),
+          day: v.day,
+          computedAt: dayAt),
       ...dayNavRow(_vDay ?? v.day, v.days, _goVitalsDay),
       if (rows.isEmpty)
         StatusCard(
@@ -1285,9 +1392,21 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               message: l?.healthOneNightNotTrend ?? 'One night is not a trend yet')
           : null,
       series: win,
-      child: CustomPaint(
-        size: Size.infinite,
-        painter: LineChart(win, p.on(C.green), t: animate(c, 1), axis: axis),
+      child: ChartScrub(
+        label: l?.healthHeartRateVariability ?? 'Heart rate variability',
+        // Thirty calendar nights ending last night; a night with no record is
+        // a hole.
+        gaps: hasChartGaps([win], trailing: true),
+        time: (at) =>
+            ChartScrub.dayBack(win.length - 1 - ChartScrub.slotAt(win.length, at)),
+        keys: [
+          ChartKey.slots('RMSSD (ms)', p.on(C.green), win,
+              (i, v) => '${v.round()} ms'),
+        ],
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: LineChart(win, p.on(C.green), t: animate(c, 1), axis: axis),
+        ),
       ),
     );
   }
@@ -1304,15 +1423,12 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               _loadExplore();
             })
           : const Padding(
-              padding: EdgeInsets.only(top: S.x8),
-              child: Center(child: CircularProgressIndicator()),
-            );
+              padding: EdgeInsets.only(top: S.x3), child: InlineLoading());
     }
 
     var have = 0, total = 0;
-    for (final f in _catalogue) {
-      for (final r in f.rows) {
-        if (!r.shown(e.counts)) continue;
+    for (final f in kMetricCatalogue) {
+      for (final r in _rowsOf(f, e.counts)) {
         total++;
         if ((e.counts[r.series] ?? 0) > 0) have++;
       }
@@ -1335,23 +1451,25 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
           l?.healthEachOneOpens ??
               'Each one opens its chart, your own range, and how it is worked out.',
           style: F.over.copyWith(color: p.ink3, height: 1.6)),
-      for (final f in _catalogue) _family(c, p, f, e.counts),
+      for (final f in kMetricCatalogue) _family(c, p, f, e.counts),
     ]);
   }
 
-  Widget _family(BuildContext c, P p, _Cat f, Map<String, int> counts) {
+  Widget _family(
+      BuildContext c, P p, MetricCategory f, Map<String, int> counts) {
     final l = AppLocalizations.of(c);
+    final rows = _rowsOf(f, counts);
     final have = [
-      for (final r in f.rows)
+      for (final r in rows)
         if ((counts[r.series] ?? 0) > 0) r,
     ];
     final none = [
-      for (final r in f.rows)
-        if ((counts[r.series] ?? 0) == 0 && r.shown(counts)) r,
+      for (final r in rows)
+        if ((counts[r.series] ?? 0) == 0) r,
     ];
 
     return Section(
-      _catTitle(l, f.title),
+      metricCategoryTitle(l, f.title),
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1428,10 +1546,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               setState(() => _lFailed = false);
               _loadLabs();
             })
-          : const Padding(
-              padding: EdgeInsets.only(top: S.x8),
-              child: Center(child: CircularProgressIndicator()),
-            );
+          : const InlineLoading();
     }
 
     final sex = (_d?.profile['sex'])?.toString();
