@@ -14,6 +14,15 @@ import '../../support/as_of_recalc_fakes.dart';
 import '../../support/shift_refresh_fakes.dart';
 import '../../support/shift_run.dart';
 
+// The landing must not move anything: no shift finding at all (the default
+// policy only fails on errors; warnings are what the landing used to cost).
+void _expectHeldStill(ShiftRun run, String name) {
+  final moved = run.score().findings.where((f) => f.rule == 'shift').toList();
+  expect(moved.where((f) => f.severity.name != 'none'), isEmpty,
+      reason: '$name: the refresh landing moved '
+          '${moved.map((f) => '${f.elementId}@${f.atMs}=${f.score.toStringAsFixed(3)}').join(', ')}');
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() {
@@ -28,7 +37,7 @@ void main() {
   // Opens [screen], waits for the stored paint, then measures from there:
   // the refresh (300 ms) lands and the screen reads again inside [frames].
   Future<void> landing(WidgetTester t, Widget screen, String name,
-      {int expectReads = 1}) async {
+      {int expectReads = 1, bool still = false}) async {
     phoneSurface(t);
     final r = repo();
     final app = AppState.forTesting()..repo = r;
@@ -41,6 +50,7 @@ void main() {
     expect(r.refreshCalls, greaterThanOrEqualTo(expectReads),
         reason: 'the stored row must have asked for the refresh');
     run.expectNoErrors(name);
+    if (still) _expectHeldStill(run, name);
   }
 
   // Same, but the measured window starts AFTER the stored paint settles, so
@@ -73,10 +83,12 @@ void main() {
   });
 
   testWidgets('Health: open + refresh landing', (t) async {
-    await landing(t, const HealthScreen(), 'health refresh landing');
+    await landing(t, const HealthScreen(), 'health refresh landing',
+        still: true);
   });
 
   testWidgets('Readiness detail: open + refresh landing', (t) async {
-    await landing(t, const ReadinessDetail(), 'readiness refresh landing');
+    await landing(t, const ReadinessDetail(), 'readiness refresh landing',
+        still: true);
   });
 }
