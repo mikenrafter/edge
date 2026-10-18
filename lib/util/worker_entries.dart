@@ -82,6 +82,12 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
     reason: 'cross-day pipeline; legacy: JSON maps in/out, no WorkerInit.ensure',
   ),
   WorkerEntry(
+    #auditBatchDay,
+    dispatcher: Dispatcher.cancellable,
+    reason: 'finalization audit: the pure batch re-derive of a finalizing day '
+        '(no DayCalculationState); WorkerInit.ensure first, JSON map in/out',
+  ),
+  WorkerEntry(
     #foldDayCheckpoint,
     dispatcher: Dispatcher.cancellable,
     reason: 'day-checkpoint fold; legacy: no WorkerInit.ensure',

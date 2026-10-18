@@ -46,6 +46,13 @@
     {
       "rule": "captureNotSendable",
       "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._runAuditBatch",
+      "element": "input",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._runCrossDayUntimed",
       "element": "days",
       "count": 1

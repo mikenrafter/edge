@@ -47,7 +47,9 @@ import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../notify/tap_router.dart' show workoutSuggestionRoute;
 import '../telemetry/telemetry_service.dart';
+import 'calc_power_policy.dart';
 import 'calc_status.dart';
+import 'finalization_audit.dart';
 import 'crossday_input.dart';
 import 'crossday_pipeline.dart';
 import 'kcal_minutes.dart';
@@ -2948,6 +2950,137 @@ class DerivationEngine {
   @visibleForTesting
   Future<void> Function(String day)? debugAfterDayBlocks;
 
+  // ── the finalization audit ───────────────────────────────────────────────
+  // When a day finalizes and the Calculations power policy allows heavy work,
+  // the day is re-derived once on the pure batch path, compared with the
+  // accumulator result about to be frozen, and the BATCH result is what gets
+  // frozen. Either field null = feature off (no audit, no pending mark). The
+  // owner of the engine assigns both; the power is read at the moment of
+  // finalization, never cached.
+  CalcPowerPolicy? auditPolicy;
+  Future<PowerState> Function()? auditPowerRead;
+
+  /// Applied to a finished accumulator-path bundle before the audit and the
+  /// write; how a test injects "the accumulator path disagreed".
+  @visibleForTesting
+  Map<String, dynamic> Function(String day, Map<String, dynamic> bundle)?
+      debugAccumulatorTamper;
+
+  /// The bundle a batch-reference pass of [_derivePreparedDay] stops at, by day.
+  final Map<String, Map<String, dynamic>> _batchBundles = {};
+
+  /// [day]'s bundle derived on the pure batch path: freshly prepared with every
+  /// beat (no checkpoint resume), no calculation state, no streamed figures, no
+  /// row caches, no writes. Null when the day cannot be derived whole (the
+  /// caller then does not audit it).
+  Future<Map<String, dynamic>?> _batchBundle(String dayId, Profile profile,
+      int dataNowSec, _BaselineHistoryCache history) async {
+    perf.addCount('audit_batch_runs', 1);
+    try {
+      final prepared = await _prepareTargetDay(dayId, reuse: false, banked: true);
+      if (prepared == null) return null;
+      _batchBundles.remove(dayId);
+      await _derivePreparedDay(prepared, profile, dataNowSec, history,
+          batchReference: true);
+      // The same JSON round trip the stored value takes.
+      final b = _batchBundles.remove(dayId);
+      return b == null
+          ? null
+          : (jsonDecode(jsonEncode(b)) as Map).cast<String, dynamic>();
+    } catch (e) {
+      _auditLog('[audit] $dayId batch derive failed: $e');
+      return null;
+    } finally {
+      _batchBundles.remove(dayId);
+    }
+  }
+
+  /// One audit event: log the verdict and fold it into the persistent counter
+  /// (and clear [day] from the pending list).
+  Future<void> _recordAudit(String day, AuditResult r) async {
+    _auditLog(auditLogLine(day, r));
+    await LocalDb.updateFinalizationAudit((s) {
+      s.runs++;
+      if (!r.ok) {
+        s.diffs++;
+        s.lastDiffDay = day;
+        s.lastDiffKeys = r.diffKeys;
+      }
+      s.pending.remove(day);
+    });
+  }
+
+  /// Audits every pending finalized day when the policy allows it now; returns
+  /// how many were audited. The rows are frozen, so a diff here is LATE: it is
+  /// logged and counted and the stored row is kept. A day whose raw is no longer
+  /// what it was derived from is dropped with `[audit] <day> skipped`.
+  Future<int> auditPendingFinalizations(Profile profile) async {
+    final policy = auditPolicy, read = auditPowerRead;
+    if (policy == null || read == null) return 0;
+    final pending = (await LocalDb.finalizationAudit()).pending;
+    if (pending.isEmpty || !policy.mayAuditFinalization(await read())) return 0;
+    final dataNowSec = await LocalDb.lastDecodedRecTs() ?? 0;
+    final profileSig = jsonEncode(profile.toMap());
+    final derived = await LocalDb.derivedFingerprints(kAlgoVersion);
+    final history = await _BaselineHistoryCache.load();
+    var audited = 0;
+    for (final day in pending) {
+      final fps = await LocalDb.decodedDayFingerprints(
+          {day, _adjacentDayIds(day).first});
+      final fp = deriveFingerprint(
+          profileSig: profileSig,
+          own: fps[day],
+          previous: fps[_adjacentDayIds(day).first]);
+      final row = await LocalDb.dayResult(day);
+      final stored =
+          row == null ? null : _decodeBundle(row['payload_json']);
+      final batch = fp != null && fp == derived[day] && stored != null
+          ? await _batchBundle(day, profile, dataNowSec, history)
+          : null;
+      if (batch == null) {
+        _auditLog('[audit] $day skipped');
+        await LocalDb.updateFinalizationAudit((s) => s.pending.remove(day));
+        continue;
+      }
+      await _recordAudit(day, auditFinalization(stored!, batch));
+      audited++;
+    }
+    return audited;
+  }
+
+  /// The audit at a day's finalization: [bundle] is the accumulator result
+  /// about to be frozen; the returned bundle is what gets frozen. With power
+  /// the batch reference replaces it (after the comparison); without, the day
+  /// is marked pending and finalizes as is.
+  Future<Map<String, dynamic>> _auditAtFinalization(
+    PreparedDerivationDay day,
+    Profile profile,
+    int dataNowSec,
+    _BaselineHistoryCache history,
+    Map<String, dynamic> bundle,
+  ) async {
+    final policy = auditPolicy, read = auditPowerRead;
+    if (policy == null || read == null) return bundle;
+    Future<void> markPending() => LocalDb.updateFinalizationAudit(
+        (s) => s.pending.add(day.date));
+    try {
+      if (!policy.mayAuditFinalization(await read())) {
+        await markPending();
+        return bundle;
+      }
+      final batch = await _batchBundle(day.date, profile, dataNowSec, history);
+      if (batch == null) {
+        await markPending();
+        return bundle;
+      }
+      await _recordAudit(day.date, auditFinalization(bundle, batch));
+      return batch;
+    } catch (e) {
+      _auditLog('[audit] ${day.date} not audited: $e');
+      return bundle;
+    }
+  }
+
   @visibleForTesting
   Future<void> debugDerivePreparedDay(PreparedDerivationDay day, Profile profile,
       int dataNowSec, {ana.CalculationMode calculationMode = ana.CalculationMode.forced}) async {
@@ -3342,6 +3475,13 @@ class DerivationEngine {
       _log('derive ERROR: $e\n$st');
       return 0;
     } finally {
+      // Pending audits of earlier finalizations, once power allows. Before the
+      // pass timing closes so its counter lands in this pass.
+      try {
+        await auditPendingFinalizations(profile);
+      } catch (e) {
+        _auditLog('[audit] pending audits failed: $e');
+      }
       _setOutcome(DeriveOutcome(
         computed: passComputed,
         transientFailures: passTransient,
@@ -3642,7 +3782,7 @@ class DerivationEngine {
   /// user-driven re-derive). A resumable day is then loaded without the beats
   /// the checkpoint already folded (see [DayRrResume]).
   Future<PreparedDerivationDay?> _prepareTargetDay(String dayId,
-      {bool reuse = false}) async {
+      {bool reuse = false, bool banked = false}) async {
     // Per-day page/row totals used to live in the shared `_diag` map (reset
     // then accumulated across this day's 2-3 substrate loads). Under
     // concurrent per-day processing (see `run()`), multiple days resetting/
@@ -3661,7 +3801,8 @@ class DerivationEngine {
     // of the day before any of its rows is read.
     final inputRevs = await LocalDb.inputRevisions(
         dayStart ~/ kRevBucketSec, (dayEnd - 1) ~/ kRevBucketSec + 1);
-    final candidate = await _sleepCandidateForDay(dayId, stats: stats);
+    final candidate =
+        await _sleepCandidateForDay(dayId, stats: stats, banked: banked);
     // A day another pass of this process left state for derives from that state;
     // only a cold day (a headless wake, a fresh process) resumes from storage.
     final rrResume = reuse && !_calculationStates.containsKey(dayId)
@@ -3810,6 +3951,7 @@ class DerivationEngine {
   Future<SleepSessionCandidate> _sleepCandidateForDay(
     String dayId, {
     _PrepareStats? stats,
+    bool banked = false,
   }) async {
     // A user sleep override is the source of truth — never serve the cached auto
     // candidate, and don't cache the override result (so a later edit / clear is
@@ -3833,7 +3975,11 @@ class DerivationEngine {
 
     if (override == null) {
       final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
-      if (finalized.contains(dayId)) {
+      // [banked]: the audit's batch reference takes the night the pass banked
+      // as it is. Staging again would read the rolling sleep profile as it is
+      // NOW (it folded this night in since) and the cardio row cache, so a
+      // difference could come from the profile rather than the derivation.
+      if (banked || finalized.contains(dayId)) {
         final cached = await LocalDb.sleepSessionCandidate(dayId, kAlgoVersion);
         final raw = cached?['payload_json'];
         if (raw is String && raw.isNotEmpty) {
@@ -3849,6 +3995,7 @@ class DerivationEngine {
           }
         }
       }
+      if (banked) throw StateError('no banked sleep candidate for $dayId');
     }
     final range = _targetDayWindow(dayId,
       overrideOnsetSec: override?.onsetSec,
@@ -5135,12 +5282,17 @@ class DerivationEngine {
     bool forceFinalize = false,
     ana.CalculationMode calculationMode = ana.CalculationMode.forced,
     DayResultWrite reason = DayResultWrite.derive,
+    // The finalization audit's reference pass: the same computation from the
+    // whole day with nothing carried over, stopped where the write would be
+    // (the bundle is left in [_batchBundles]); it writes nothing.
+    bool batchReference = false,
   }) async {
     // No state from an earlier pass in this process (a headless wake, a cold
     // start): resume from the stored checkpoint when what it folded is still
     // what the day holds. A user-driven re-derive never resumes; it rebuilds.
-    final ckptReuse = reason == DayResultWrite.derive;
-    DayCalculationState? previousState = _calculationStates[day.date];
+    final ckptReuse = reason == DayResultWrite.derive && !batchReference;
+    DayCalculationState? previousState =
+        batchReference ? null : _calculationStates[day.date];
     DayResumeState? resumed;
     if (previousState == null && ckptReuse) {
       final restored = await _restoreCheckpoint(day, profile);
@@ -5210,11 +5362,13 @@ class DerivationEngine {
 
     // Cancellable: on timeout the isolate is KILLED, not merely abandoned to
     // keep burning a core behind the worker pool's back.
-    final first = await perf.stage('bundle_isolate', () =>
+    final first = batchReference
+        ? await _runAuditBatch(withHistory, day.date)
+        : await perf.stage('bundle_isolate', () =>
       _runDayBundleCancellable(withHistory,
       previousState, calculationMode, _perDayTimeout,
       label: 'day-bundle ${day.date}'));
-    final bundle = first.bundle;
+    var bundle = first.bundle;
     var candidateState = first.state;
     // Readiness came back absent for TODAY specifically (not a historical
     // backfill day, which would just be noise) — log why. This ran inside
@@ -5321,6 +5475,7 @@ class DerivationEngine {
     if (blankSource != null) {
       bundle['sleep_source'] = blankSource;
       if (producedNothing) {
+        if (batchReference) return true;
         final committed = await _blankStoredNight(day, bundle, blankSource, reason);
         if (committed) await _dropFrozenHeadline(day.date);
         return committed;
@@ -5362,8 +5517,11 @@ class DerivationEngine {
     // `partial` row was considered instead, but `partial` still gets written
     // to `day_result` and would still shadow the better older row for
     // day-detail reads; declining is what actually protects it.
+    // (Not for the audit's reference pass: it is a pure computation, judged
+    // against the stored row by the comparison, not declined by it.)
     if (!producedNothing &&
         blankSource == null &&
+        !batchReference &&
         nightSubstrateRegressed(
           sleepSubEmpty: sleepSub.isEmpty,
           nightScalarsNull: scMap == null ||
@@ -5675,16 +5833,16 @@ class DerivationEngine {
       }
 
       // DB writes + notification the pure compute deferred to us (DB-owning isolate).
-      for (final w in blocks.sessionHrrWrites) {
+      for (final w in batchReference ? [] : blocks.sessionHrrWrites) {
         await LocalDb.setSessionHrr(w.$1, w.$2);
       }
-      for (final sug in blocks.suggestionsToPersist) {
+      for (final sug in batchReference ? [] : blocks.suggestionsToPersist) {
         await LocalDb.putWorkoutSuggestion({
           ...sug,
           'created_at': DateTime.now().millisecondsSinceEpoch,
         });
       }
-      final nb = blocks.notifBout;
+      final nb = batchReference ? null : blocks.notifBout;
       // Only for a bout that is STILL waiting on an answer. The detector is
       // pure and re-derives the same bouts every pass; dismissing one, logging
       // it, or logging any session that covers its window retires the row
@@ -5726,7 +5884,9 @@ class DerivationEngine {
         );
       }
 
-      await _persistWakeDayFeatures(dayId: day.date, wake: blocks.wake);
+      if (!batchReference) {
+        await _persistWakeDayFeatures(dayId: day.date, wake: blocks.wake);
+      }
     } catch (e, st) {
       secondHalfOk = false;
       _log('day-blocks (offloaded second half) failed for ${day.date} — '
@@ -5787,6 +5947,19 @@ class DerivationEngine {
       }
     }
 
+    if (batchReference) {
+      // A reference only counts when the whole computation completed.
+      if (secondHalfOk) _batchBundles[day.date] = bundle;
+      return true;
+    }
+    bundle = debugAccumulatorTamper?.call(day.date, bundle) ?? bundle;
+    // The finalization audit sits between the decision and the write: only a
+    // day that finalizes by derive (a user override already is a from-scratch
+    // run; an import has no raw).
+    if (effectiveFinalized && reason == DayResultWrite.derive) {
+      bundle = await _auditAtFinalization(
+          day, profile, dataNowSec, history, bundle);
+    }
     final scalars =
         (bundle['scalars'] as Map?)?.cast<String, dynamic>() ?? const {};
     double? sc(String k) => (scalars[k] as num?)?.toDouble();
@@ -10012,6 +10185,22 @@ class DerivationEngine {
           return (bundle: bundle, state: state);
         }, timeout, label: label);
 
+  /// The batch reference of the finalization audit: [auditBatchDay] with no
+  /// calculation state, cancellable like every other per-day worker.
+  Future<({Map<String, dynamic> bundle, DayCalculationState state})>
+      _runAuditBatch(Map<String, dynamic> input, String date) {
+    final inputs = WorkerInputs(
+      nowEpochMs: DateTime.now().millisecondsSinceEpoch,
+      zoneId: 'UTC',
+      localeTag: 'en',
+    );
+    return _runIsolateCancellable(
+      () => auditBatchDay(inputs, input, ana.CalculationMode.forced),
+      _perDayTimeout,
+      label: 'audit-batch $date',
+    ).then((bundle) => (bundle: bundle, state: DayCalculationState()));
+  }
+
   static Future<R> _runIsolateCancellable<R>(
     FutureOr<R> Function() compute,
     Duration timeout, {
@@ -10868,6 +11057,13 @@ class DerivationEngine {
   void _log(String m) {
     if (kDebugMode) debugPrint('[derive] $m');
     log?.call('[derive] $m');
+  }
+
+  /// The audit's own lines keep their `[audit]` prefix unwrapped so the log
+  /// export can be grepped for them.
+  void _auditLog(String m) {
+    if (kDebugMode) debugPrint(m);
+    log?.call(m);
   }
 }
 

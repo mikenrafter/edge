@@ -102,6 +102,16 @@ class CalcPowerPolicy {
   /// Warming of the recent artifacts while the phone is plugged in.
   bool mayWarmWhilePlugged(PowerState p) => p.charging && mayWarmIdle(p);
 
+  /// May a finalizing day be re-derived on the batch path now (the finalization
+  /// audit)? It is heavy work: Eager always, Balanced only on external power
+  /// without the saver (the rule of [mayWarmWhilePlugged]), Maximum battery
+  /// never.
+  bool mayAuditFinalization(PowerState p) => switch (mode) {
+        CalcPowerMode.maxBattery => false,
+        CalcPowerMode.balanced => mayWarmWhilePlugged(p),
+        CalcPowerMode.eager => true,
+      };
+
   /// The warm that follows a pass that computed days. Balanced keeps it under
   /// the saver because it always ran there; only Maximum battery drops it.
   bool mayWarmAfterPass(PowerState p) => mode != CalcPowerMode.maxBattery;

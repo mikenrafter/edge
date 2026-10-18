@@ -430,6 +430,13 @@ class HeavyGuardConfig {
                 'production churn',
           ),
           OriginAllow(
+            'auditBatchDay',
+            'auditBatchDay',
+            'registered worker entry named by the finalization audit contract '
+                '(the log, the perf counter and the dispatch label share the '
+                'name); renaming it would split that vocabulary',
+          ),
+          OriginAllow(
             'buildCrossDayBundle',
             'buildCrossDayBundle',
             'registered legacy worker entry: the public name is used by tests, '

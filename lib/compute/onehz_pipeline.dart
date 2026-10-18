@@ -47,6 +47,7 @@ import 'day_calculation_state.dart';
 import 'substrate.dart' show tzOffsetSecondsAt;
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
+import '../util/worker_init.dart';
 
 const MetricCfg _skinTempAdcCfg = MetricCfg(
   minVal: 1.0,
@@ -337,6 +338,22 @@ class DayBundleInput {
       ],
     );
   }
+}
+
+/// WORKER ENTRY: the finalization audit's batch reference. [deriveDayBundle]
+/// with no [DayCalculationState] at all, so every figure is computed from the
+/// whole day's rows in one go; the caller compares it with the accumulator
+/// result about to be frozen.
+@heavy
+Map<String, dynamic> auditBatchDay(
+  WorkerInputs inputs,
+  Map<String, dynamic> inputJson,
+  CalculationMode mode,
+) {
+  WorkerInit.ensure(inputs);
+  assertWorker();
+  WorkerAudit.entered('auditBatchDay');
+  return deriveDayBundle(inputJson, mode: mode);
 }
 
 /// THE ISOLATE ENTRY POINT.

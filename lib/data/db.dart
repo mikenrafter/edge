@@ -27,6 +27,7 @@ import '../compute/substrate.dart' show beatTimesMs;
 // `show` keeps the rest of the engine out of this namespace.
 import '../coach/coach_db.dart' show CoachDb;
 import '../compute/derivation_engine.dart' show kAlgoVersion;
+import '../compute/finalization_audit.dart' show FinalizationAuditState;
 import '../ble/adapters/adapter.dart' show NeutralSample;
 import '../ble/adapters/signals.dart' show InputSignal;
 import '../import/import_container.dart';
@@ -1580,6 +1581,41 @@ class LocalDb {
           [maxRows]);
     });
     return written;
+  }
+
+  /// `last_result` key of the finalization audit's counter.
+  static const String kFinalizationAuditKey = 'audit|state';
+
+  /// The finalization audit's counter and pending days (zeros when none yet).
+  static Future<FinalizationAuditState> finalizationAudit() async {
+    try {
+      final r = await lastResult(kFinalizationAuditKey);
+      if (r != null) {
+        return FinalizationAuditState.fromJson(
+            (jsonDecode(r.payload) as Map).cast<String, dynamic>());
+      }
+    } catch (_) {
+      // An unreadable row is the same as none: the counter restarts.
+    }
+    return FinalizationAuditState();
+  }
+
+  static Future<void> _auditTail = Future<void>.value();
+
+  /// Read-modify-write of the audit row, serialised: days derive concurrently
+  /// and each audit event rewrites the one row (a fresh `computed_at`, so the
+  /// table's keep-newest trim never evicts it).
+  static Future<void> updateFinalizationAudit(
+      void Function(FinalizationAuditState s) change) {
+    final run = _auditTail.then((_) async {
+      final s = await finalizationAudit();
+      change(s);
+      s.pending = (s.pending.toSet().toList()..sort());
+      await putLastResult(kFinalizationAuditKey, nowMs(),
+          jsonEncode(s.toJson()), 200);
+    });
+    _auditTail = run.catchError((_) {});
+    return run;
   }
 
   /// Removes [key]'s row (none is fine).

@@ -349,6 +349,7 @@ class DeriveCoordinator {
   set policy(CalcPowerPolicy p) {
     _policy = p;
     if (_disposed) return;
+    _wireAudit();
     _derive.maxWorkers = p.maxWorkers;
     _applyPower();
   }
@@ -380,6 +381,7 @@ class DeriveCoordinator {
   /// and arms the Eager sweep and the plugged-in warm. Idempotent.
   Future<void> attachPower() async {
     if (_disposed || _powerSub != null) return;
+    _wireAudit();
     final src = debugPowerSource ?? (_ownSource ??= BatteryPowerSource());
     _powerSub = src.changes.listen(
       _onPower,
@@ -393,6 +395,15 @@ class DeriveCoordinator {
     } catch (e) {
       _log('[power] read failed: $e');
     }
+  }
+
+  /// Hands the engine the policy and a live power read for the finalization
+  /// audit (heavy work, so it asks the same policy as the other heavy work).
+  void _wireAudit() {
+    final e = _derive;
+    e.auditPolicy = _policy;
+    e.auditPowerRead ??= () =>
+        (debugPowerSource ?? (_ownSource ??= BatteryPowerSource())).read();
   }
 
   void _onPower(PowerState s) {

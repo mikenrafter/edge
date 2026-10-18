@@ -15,6 +15,7 @@ import 'package:openstrap_edge/util/worker_entries.dart';
 const kExpected = <String, Dispatcher>{
   'deriveDayBundle': Dispatcher.cancellable,
   'buildCrossDayBundle': Dispatcher.cancellable,
+  'auditBatchDay': Dispatcher.cancellable,
   'foldDayCheckpoint': Dispatcher.cancellable,
   'foldDayTailHeavy': Dispatcher.cancellable,
   'kcalMinutesForDayHeavy': Dispatcher.run,

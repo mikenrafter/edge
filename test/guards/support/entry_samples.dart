@@ -21,6 +21,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_analytics/onehz.dart' show CalculationMode;
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/crossday_pipeline.dart';
 import 'package:openstrap_edge/compute/day_checkpoint_fold.dart';
@@ -63,6 +64,16 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       final input = copyDay(incrementalDay());
       await expectIsolateRoundTrip<Map<String, dynamic>>(input);
       await _sameInWorker(() => deriveDayBundle(copyDay(input)));
+    },
+  ),
+  'auditBatchDay': (
+    roundTrip: () async {
+      final input = copyDay(incrementalDay());
+      final inputs = WorkerInputs(
+          nowEpochMs: 1760000000000, zoneId: 'UTC', localeTag: 'en');
+      await expectIsolateRoundTrip<Map<String, dynamic>>(input);
+      await _sameInWorker(() => auditBatchDay(
+          inputs, copyDay(input), CalculationMode.forced));
     },
   ),
   'buildCrossDayBundle': (
