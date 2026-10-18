@@ -26,8 +26,10 @@ const int kRevBucketSec = 900;
 /// the day's streaming RR state (corrector and irregular-rhythm screen) and the
 /// three day curves, folded from its beats. 4: the screen state inside it is
 /// analytics' version-2 checkpoint (it counts the beats and windows the PRV
-/// diagnostics report); a layout-3 blob is not resumed, the day refolds.
-const int kDayCheckpointFmt = 4;
+/// diagnostics report). 5: optional suffix sections for the night's RR /
+/// spectral state and the cardio feature rows; a layout-4 blob is not resumed,
+/// the day refolds once.
+const int kDayCheckpointFmt = 5;
 
 /// The checkpoint folds the day's BEATS up to `cpRecTs - kRrFoldGuardSec`, not up
 /// to `cpRecTs`: a record's earlier beats sit before its own second (they are

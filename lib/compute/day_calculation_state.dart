@@ -5,6 +5,7 @@ import 'package:openstrap_analytics/onehz.dart';
 import 'day_activity_state.dart';
 import 'day_resume_state.dart';
 import 'minute_bills.dart';
+import 'night_resume_part.dart';
 import 'state_fingerprint.dart';
 
 typedef NightRr = ({
@@ -80,6 +81,7 @@ class DayCalculationState {
       _minutes = minutes;
       _minutesBase = minutes.processedMinutes;
     }
+    seedNight(resume.night);
     _seeded = true;
   }
 
@@ -118,13 +120,17 @@ class DayCalculationState {
   }
 
   // ── Night RR correction, streamed ──────────────────────────────────────────
-  // RAM-only like the rest of this state (not in DayResumeState): the night
-  // slice depends on the sleep window, which a checkpoint does not hold.
+  // The night slice depends on the sleep window, so this part rides the
+  // checkpoint as its own optional section (NightResumePart), never in the day
+  // part. What the corrector folded is remembered as (start, count, running
+  // fingerprint), not as a copy of the beats; see [nightFoldTag].
   RrCorrector? _nightCorrector;
+  double _nightStart = 0;
+  int _nightCount = 0, _nightFp = kNightFingerprintSeed;
 
-  /// The beats (and their timestamps) the corrector above has folded, kept to
-  /// prove the next slice extends them; compared bit for bit.
-  final List<double> _nightRr = [], _nightTs = [];
+  /// A part from a checkpoint, adopted by the next [nightRr] call if its slice
+  /// proves to extend it (else dropped).
+  NightResumePart? _pendingNight;
 
   /// Final output of the folded beats, in order. The corrector hands each part
   /// out once, so it is kept here.
@@ -137,10 +143,46 @@ class DayCalculationState {
   /// Times a corrector was started from scratch, the first included.
   int get nightRebuilds => _nightRebuilds;
 
+  /// (first beat time, count, fingerprint) of the beats folded; null when none.
+  NightFoldTag? get nightFoldTag => _nightCount == 0
+      ? null
+      : (startTsMs: _nightStart, count: _nightCount, fingerprint: _nightFp);
+
+  /// Input beats kept as copies for the extension check: none. The one
+  /// (count, fingerprint) rule serves the RAM and the restored path.
+  int get nightRetainedInputBeats => 0;
+
+  /// The night's state for the checkpoint, deep-copied; null when no beats are
+  /// folded.
+  NightResumePart? exportNight() {
+    final corrector = _nightCorrector;
+    final tag = nightFoldTag;
+    if (corrector == null || tag == null) return null;
+    final live = _hrvStream != null &&
+        _respStream != null &&
+        _spectralGen == _nightRebuilds;
+    return NightResumePart.capture(
+      tag: tag,
+      corrector: corrector,
+      nn: _nightNn,
+      nnTimesMs: _nightNnTimes,
+      hrv: live ? _hrvStream : null,
+      resp: live ? _respStream : null,
+      spectralFed: _spectralFed,
+    );
+  }
+
+  /// Arms [part] (null clears); the next [nightRr] call adopts it only when its
+  /// slice starts at the part's first beat, holds at least its count of beats
+  /// and those hash to its fingerprint. An adopted part is neither a rebuild nor
+  /// a spectral restart.
+  void seedNight(NightResumePart? part) => _pendingNight = part;
+
   void _resetNight() {
     _nightCorrector = null;
-    _nightRr.clear();
-    _nightTs.clear();
+    _nightStart = 0;
+    _nightCount = 0;
+    _nightFp = kNightFingerprintSeed;
     _nightNn.clear();
     _nightNnTimes.clear();
     _tailNn = const [];
@@ -150,19 +192,60 @@ class DayCalculationState {
     _spectralFed = 0;
   }
 
+  /// Takes over [part] as this (empty) state's fold. False leaves it empty.
+  bool _adopt(NightResumePart part, List<double> rrMs, List<double> rrTsMs) {
+    final tag = part.tag;
+    final n = rrMs.length;
+    if (tag.count == 0 ||
+        n < tag.count ||
+        rrTsMs.length != n ||
+        rrTsMs[0] != tag.startTsMs ||
+        nightBeatsFingerprint(rrMs, rrTsMs, tag.count) != tag.fingerprint) {
+      return false;
+    }
+    try {
+      final corrector = part.buildCorrector();
+      final hrv = part.buildHrv(), resp = part.buildResp();
+      _nightCorrector = corrector;
+      _nightStart = tag.startTsMs;
+      _nightCount = tag.count;
+      _nightFp = tag.fingerprint;
+      _nightNn.addAll(part.nn);
+      _nightNnTimes.addAll(part.nnTimesMs);
+      _hrvStream = hrv;
+      _respStream = resp;
+      _spectralFed = part.spectralFed;
+      // The streams belong to this generation, so they continue.
+      _spectralGen = _nightRebuilds;
+      return true;
+    } on FormatException {
+      _resetNight();
+      return false;
+    }
+  }
+
   /// The corrected night for this slice: `correctRr(rrMs, rrTsMs: rrTsMs)`, bit
   /// for bit, folding only the beats past those already folded. A slice that
   /// does not extend them (moved start, any earlier beat or timestamp changed,
   /// shorter, empty) starts over.
+  ///
+  /// Cost: proving the extension hashes the folded beats again, O(folded) of
+  /// integer work per call (the correction itself stays O(new)). A prefix cannot
+  /// be proven unchanged without reading it.
   NightRr nightRr(List<double> rrMs, List<double> rrTsMs) {
     NightRr batch() => nightRrBatch(rrMs, rrTsMs);
 
     final n = rrMs.length;
-    var held = _nightRr.length;
+    final pending = _pendingNight;
+    _pendingNight = null;
+    if (pending != null && _nightCorrector == null && n > 0) {
+      _adopt(pending, rrMs, rrTsMs);
+    }
+    var held = _nightCount;
     var extends_ = n >= held && rrTsMs.length == n;
-    for (var i = 0; extends_ && i < held; i++) {
-      extends_ = identical(rrMs[i], _nightRr[i]) &&
-          identical(rrTsMs[i], _nightTs[i]);
+    if (extends_ && held > 0) {
+      extends_ = rrTsMs[0] == _nightStart &&
+          nightBeatsFingerprint(rrMs, rrTsMs, held) == _nightFp;
     }
     if (!extends_) {
       // A non-empty slice counts below, as the fresh corrector it gets.
@@ -187,8 +270,9 @@ class DayCalculationState {
         return batch();
       }
       _nightProcessed += addRr.length;
-      _nightRr.addAll(addRr);
-      _nightTs.addAll(addTs);
+      if (held == 0) _nightStart = rrTsMs[0];
+      _nightFp = nightBeatsFingerprintFrom(_nightFp, rrMs, rrTsMs, held, n);
+      _nightCount = n;
       _nightNn.addAll(settled.nn);
       _nightNnTimes.addAll(settled.nnTimes);
     }

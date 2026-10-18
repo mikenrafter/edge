@@ -65,6 +65,7 @@ import 'day_calculation_state.dart';
 import 'day_checkpoint_fold.dart';
 import 'day_checkpoint_policy.dart';
 import 'day_resume_state.dart';
+import 'night_resume_part.dart';
 import 'day_tail_fold.dart';
 import 'minute_bills.dart';
 import 'step_cadence.dart';
@@ -6041,6 +6042,11 @@ class DerivationEngine {
           '${decision.resume ? 'resume folded=${state!.folded}' : 'full ${decision.reason}'}');
       perf.addCount(decision.resume ? 'cp_resumed' : 'cp_full', 1);
       if (state == null) return null;
+      // The rows the stager computed before the restart: staging finds them as
+      // hits instead of recomputing the night. The night RR / spectral part
+      // rides in `state` and is armed by seedFrom.
+      final rows = state.cardioRows;
+      if (rows != null) _cardioRows.merge(rows);
       return (state: DayCalculationState()..seedFrom(state), resume: state);
     } catch (e) {
       _log('checkpoint ${day.date} not resumed: $e');
@@ -6207,6 +6213,14 @@ class DerivationEngine {
       }
       final ctx = _checkpointContext(day, profile, clipEndSec: boundary);
       final sc = sub.stepCount;
+      // The night's streaming state and the cardio rows of the day's staging
+      // window ride in the blob as plain data; the worker encodes them. A new
+      // pass adopts the night only if its slice proves to extend it.
+      final window = _targetDayWindow(day.date);
+      final night = state.exportNight();
+      final rows = restrictCardioRows(_cardioRows,
+          loSec: window.$1 - _cardioRowsSlackSec,
+          hiSec: window.$2 + _cardioRowsSlackSec + 1);
       final blob = await perf.stage('checkpoint', () => _foldCheckpoint(
             base: base,
             alreadyFolded: lo,
@@ -6226,6 +6240,8 @@ class DerivationEngine {
             rrTsMs: addTs,
             throughSec: boundary,
             quietCutG: ana.calibrationFor(_quietEnmoCutG, sub.deviceFamily) ?? 0.02,
+            night: night,
+            cardioRows: rows.length == 0 ? null : rows,
             timeout: _perDayTimeout,
             label: 'checkpoint ${day.date}',
           ));
@@ -6274,6 +6290,8 @@ class DerivationEngine {
     required List<double> rrTsMs,
     required int throughSec,
     required double quietCutG,
+    required NightResumePart? night,
+    required ana.CardioRowCache? cardioRows,
     required Duration timeout,
     required String label,
   }) => _runIsolateCancellable(
@@ -6293,6 +6311,8 @@ class DerivationEngine {
           rrTsMs: rrTsMs,
           throughSec: throughSec,
           quietCutG: quietCutG,
+          night: night,
+          cardioRows: cardioRows,
         ),
         timeout,
         label: label,

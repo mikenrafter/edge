@@ -1,8 +1,11 @@
 import 'dart:typed_data';
 
+import 'package:openstrap_analytics/onehz.dart' as ana;
+
 import 'day_curve_states.dart';
 import 'day_resume_state.dart';
 import 'minute_bills.dart';
+import 'night_resume_part.dart';
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
 
@@ -94,6 +97,10 @@ Uint8List? foldDayCheckpoint({
   List<double> rrTsMs = const [],
   int? throughSec,
   double quietCutG = 0.02,
+  // The optional suffix sections; like [bills] they REPLACE the base's (null
+  // drops them). Encoded here, in the worker, from plain data.
+  NightResumePart? night,
+  ana.CardioRowCache? cardioRows,
 }) {
   WorkerAudit.entered('foldDayCheckpoint');
   final DayResumeState state;
@@ -133,5 +140,7 @@ Uint8List? foldDayCheckpoint({
   final through = throughSec ?? (ts.isEmpty ? 0 : ts.last + 1);
   if (!state.curves.fold(rrMs, rrTsMs, ts, ax, ay, az, through)) return null;
   state.bills = bills;
+  state.night = night;
+  state.cardioRows = cardioRows;
   return encodeDayResumeState(state);
 }

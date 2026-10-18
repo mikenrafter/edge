@@ -1,10 +1,14 @@
+import 'dart:convert';
 import 'dart:typed_data';
+
+import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import 'day_activity_state.dart';
 import 'day_checkpoint_policy.dart' show kDayCheckpointFmt;
 import 'day_curve_states.dart';
 import 'day_rr_state.dart';
 import 'minute_bills.dart';
+import 'night_resume_part.dart';
 import 'resume_bytes.dart';
 
 /// The folded part of a day that a stored `day_checkpoint` resumes: the two
@@ -32,6 +36,8 @@ class DayResumeState {
     this.bills,
     DayRrState? rr,
     DayCurveStates? curves,
+    this.night,
+    this.cardioRows,
   })  : rr = rr ?? DayRrState(),
         curves = curves ?? DayCurveStates(),
         hrPipeline = hrPipeline ?? DayHrSummary(),
@@ -56,6 +62,14 @@ class DayResumeState {
   /// window.
   final DayRrState rr;
   final DayCurveStates curves;
+
+  /// Optional suffix sections, apart from the window-independent day part: the
+  /// night's incremental RR / spectral state and the cardio feature rows of the
+  /// day's staging window. Either may be absent (or dropped by the decoder when
+  /// damaged) without touching the day part; the night then rebuilds and the
+  /// rows recompute.
+  NightResumePart? night;
+  ana.CardioRowCache? cardioRows;
 
   /// Seconds of the day folded so far.
   int get folded => motion.length;
@@ -102,6 +116,41 @@ class DayResumeState {
   }
 }
 
+/// `u8 present | (if 1) i32 byteLength | UTF-8 JSON`.
+void _section(ResumeWriter w, String? json) {
+  w.bool_(json != null);
+  if (json == null) return;
+  final bytes = Uint8List.fromList(utf8.encode(json));
+  w.i32(bytes.length);
+  w.bytes(bytes, bytes.length);
+}
+
+T? _readSection<T>(ResumeReader r, T Function(Map<String, dynamic>) build) {
+  if (!r.bool_()) return null;
+  final len = r.i32();
+  final raw = r.bytes(len);
+  try {
+    final j = jsonDecode(utf8.decode(raw));
+    if (j is! Map<String, dynamic>) return null;
+    return build(j);
+  } catch (_) {
+    // Syntax, version or content damage: this section only.
+    return null;
+  }
+}
+
+/// The rows of [all] whose key's `startSec` lies in [loSec, hiSec) as a new
+/// cache (what the engine stores for one day's staging window); [all] is left
+/// untouched.
+ana.CardioRowCache restrictCardioRows(
+  ana.CardioRowCache all, {
+  required int loSec,
+  required int hiSec,
+}) =>
+    ana.CardioRowCache()
+      ..merge(all)
+      ..retainWhere((k) => k.startSec >= loSec && k.startSec < hiSec);
+
 const int _magic = 0x4f534443; // 'OSDC'
 
 /// Packs [state] as `magic | fmt | folded | parts | checksum`.
@@ -120,6 +169,10 @@ Uint8List encodeDayResumeState(DayResumeState state) {
   bills?.write(w);
   state.rr.write(w);
   state.curves.write(w);
+  final night = state.night;
+  _section(w, night == null ? null : jsonEncode(night.toJson()));
+  final rows = state.cardioRows;
+  _section(w, rows == null ? null : jsonEncode(rows.toJson()));
   final body = w.takeBytes();
   final out = Uint8List(body.length + 4)..setRange(0, body.length, body);
   ByteData.sublistView(out).setUint32(body.length, checksum32(body, body.length));
@@ -155,6 +208,12 @@ DayResumeState? decodeDayResumeState(Uint8List bytes) {
       rr: DayRrState.read(r),
       curves: DayCurveStates.read(r),
     );
+    // A damaged section is dropped alone; framing damage fails the blob.
+    state.night = _readSection(
+      r,
+      (j) => NightResumePart.fromJson(j),
+    );
+    state.cardioRows = _readSection(r, (j) => ana.CardioRowCache.fromJson(j));
     if (r.remaining != 0) return null;
     if (state.folded != folded || !state._consistent) return null;
     return state;
