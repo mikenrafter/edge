@@ -173,3 +173,19 @@ frame's `atMs` minus the interaction's `atMs` (nothing changed ⇒ no finding).
 - Device-level timing: the probe sees pumped frames in a test, not real
   vsync. First-paint timing on device is checked by the launch colour guard
   (the native window paints before Dart runs), not measured.
+
+## Measured screens (Phase 17)
+
+`test/layout_shift/screens/` measures Home, Health, Readiness detail (open and
+the refresh landing after the stored-row paint), Wellness, a route push, and a
+scrolled Home reload. No error-level shifts, so there are no Known findings.
+Warnings seen (fake pumps, standard policy): Health refresh landing, 2
+warnings (top: a card column at 500 ms, 0.06); Readiness refresh landing, 9
+warnings (top: a control at 500 ms, 0.16 - the "building" block gives way to
+the chart key and breakdown). Route pushes use `ShiftProbe(skipCoveredRoutes:
+true)`: the covered page is not scored, because its slide is the framework's
+transition.
+
+## Known findings
+
+None.

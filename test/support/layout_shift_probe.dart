@@ -37,7 +37,17 @@ class ShiftProbe {
   /// When set, elements whose rect does not intersect it are dropped (a
   /// lazily built list item far below the fold is not a visible shift).
   final ShiftRect? visibleOnly;
-  ShiftProbe({this.trackUnkeyed = false, this.visibleOnly});
+
+  /// When set, a route that is no longer the current one (a page covered by a
+  /// push, still painted while the transition runs) is not tracked. Its slide
+  /// and fade belong to the framework's route transition, and the push is what
+  /// the user asked for: scoring the old page "moving" under the new one is a
+  /// false positive. Off by default.
+  final bool skipCoveredRoutes;
+  ShiftProbe(
+      {this.trackUnkeyed = false,
+      this.visibleOnly,
+      this.skipCoveredRoutes = false});
 
   Map<Element, String> _ids = {};
 
@@ -71,7 +81,7 @@ class ShiftProbe {
     final ctlSeen = <String>{};
     final tracked = <String>{};
     contentOf.clear();
-    for (final e in _elements(tester)) {
+    for (final e in _elements(tester, skipCoveredRoutes)) {
       final k = e.widget.key;
       String? id;
       if (k is ValueKey<String>) {
@@ -141,11 +151,17 @@ class ShiftProbe {
       );
 
   /// Elements in tree order, skipping Offstage subtrees (not painted).
-  static List<Element> _elements(WidgetTester tester) {
+  static List<Element> _elements(WidgetTester tester, bool skipCovered) {
     final l = <Element>[];
     void visit(Element x) {
       final w = x.widget;
       if (w is Offstage && w.offstage) return;
+      // The framework's private per-route status widget; read dynamically.
+      if (skipCovered &&
+          w.runtimeType.toString() == '_ModalScopeStatus' &&
+          (w as dynamic).isCurrent == false) {
+        return;
+      }
       l.add(x);
       x.visitChildren(visit);
     }
