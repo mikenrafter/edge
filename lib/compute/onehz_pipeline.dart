@@ -589,7 +589,9 @@ Map<String, dynamic> deriveDayBundle(
     'cvhr',
     [nn, nnTimes, artifactFraction],
     () => nn.length >= 60
-        ? cvhrApneaScreen(nn, nnTimes, artifactFraction: artifactFraction)
+        ? (state != null
+            ? state.nightCvhr(artifactFraction)
+            : cvhrApneaScreen(nn, nnTimes, artifactFraction: artifactFraction))
         : Metric<CvhrResult>.absent(
             tier: Tier.estimate,
             inputs_used: const ['rr_cleaned'],

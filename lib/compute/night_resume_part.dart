@@ -78,6 +78,8 @@ class NightResumePart {
     required this.hrv,
     required this.resp,
     required this.spectralFed,
+    this.cvhr,
+    this.cvhrFed = 0,
   });
 
   final NightFoldTag tag;
@@ -90,6 +92,12 @@ class NightResumePart {
   /// Settled beats the two streams above have been fed (<= [nn].length).
   final int spectralFed;
 
+  /// The CVHR stream (own feed count; absent until the screen was asked).
+  final Map<String, dynamic>? cvhr;
+
+  /// Settled beats [cvhr] has been fed (<= [nn].length).
+  final int cvhrFed;
+
   /// A deep copy of live state; the caller's objects stay untouched.
   @heavy
   static NightResumePart captureHeavy({
@@ -100,6 +108,8 @@ class NightResumePart {
     required HrvFreqStream? hrv,
     required RsaRespStream? resp,
     required int spectralFed,
+    CvhrStream? cvhr,
+    int cvhrFed = 0,
   }) {
     final live = hrv != null && resp != null;
     return NightResumePart(
@@ -110,6 +120,8 @@ class NightResumePart {
       hrv: live ? _copy(hrv.toJson()) as Map<String, dynamic> : null,
       resp: live ? _copy(resp.toJson()) as Map<String, dynamic> : null,
       spectralFed: live ? spectralFed : 0,
+      cvhr: cvhr == null ? null : _copy(cvhr.toJson()) as Map<String, dynamic>,
+      cvhrFed: cvhr == null ? 0 : cvhrFed,
     );
   }
 
@@ -128,6 +140,7 @@ class NightResumePart {
           'resp': resp,
           'fed': spectralFed,
         },
+        if (cvhr != null) ...{'cvhr': cvhr, 'cvhrFed': cvhrFed},
       };
 
   /// Throws [FormatException] on anything structurally malformed. What only
@@ -164,6 +177,16 @@ class NightResumePart {
         resp = (_copy(r) as Map).cast<String, dynamic>();
         fed = f;
       }
+      Map<String, dynamic>? cvhr;
+      var cvhrFed = 0;
+      if (json.containsKey('cvhr') || json.containsKey('cvhrFed')) {
+        final c = json['cvhr'], f = json['cvhrFed'];
+        if (c is! Map || f is! int || f < 0 || f > nn.length) {
+          throw const FormatException('night part: bad cvhr');
+        }
+        cvhr = (_copy(c) as Map).cast<String, dynamic>();
+        cvhrFed = f;
+      }
       return NightResumePart(
         tag: (
           startTsMs: start.toDouble(),
@@ -176,6 +199,8 @@ class NightResumePart {
         hrv: hrv,
         resp: resp,
         spectralFed: fed,
+        cvhr: cvhr,
+        cvhrFed: cvhrFed,
       );
     } on FormatException {
       rethrow;
@@ -194,4 +219,7 @@ class NightResumePart {
   @heavy
   RsaRespStream? buildRespHeavy() =>
       resp == null ? null : RsaRespStream.fromJson(resp!);
+  @heavy
+  CvhrStream? buildCvhrHeavy() =>
+      cvhr == null ? null : CvhrStream.fromJson(cvhr!);
 }

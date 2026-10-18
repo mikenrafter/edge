@@ -184,6 +184,8 @@ class DayCalculationState {
       hrv: live ? _hrvStream : null,
       resp: live ? _respStream : null,
       spectralFed: _spectralFed,
+      cvhr: _cvhrStream != null && _cvhrGen == _nightRebuilds ? _cvhrStream : null,
+      cvhrFed: _cvhrFed,
     );
   }
 
@@ -221,6 +223,8 @@ class DayCalculationState {
     _hrvStream = null;
     _respStream = null;
     _spectralFed = 0;
+    _cvhrStream = null;
+    _cvhrFed = 0;
   }
 
   /// Takes over the encoded [json] as this (empty) state's fold. False leaves
@@ -250,6 +254,7 @@ class DayCalculationState {
         throw const FormatException('night part: tag disagrees with corrector');
       }
       final hrv = part.buildHrvHeavy(), resp = part.buildRespHeavy();
+      final cvhr = part.buildCvhrHeavy();
       _nightCorrector = corrector;
       _nightStart = tag.startTsMs;
       _nightCount = tag.count;
@@ -261,6 +266,9 @@ class DayCalculationState {
       _spectralFed = part.spectralFed;
       // The streams belong to this generation, so they continue.
       _spectralGen = _nightRebuilds;
+      _cvhrStream = cvhr;
+      _cvhrFed = part.cvhrFed;
+      _cvhrGen = _nightRebuilds;
       return true;
     } on FormatException {
       _resetNight();
@@ -385,6 +393,50 @@ class DayCalculationState {
   Metric<RespEstimate> nightResp(double artifactFraction) {
     _syncSpectralHeavy();
     return _respStream!.snapshot(
+      tailNnMs: _tailNn,
+      tailNnTimesMs: _tailNnTimes,
+      artifactFraction: artifactFraction,
+    );
+  }
+
+  // ── Night CVHR, streamed ───────────────────────────────────────────────────
+  // A CvhrStream fed the same settled beats, with its own feed count (it is
+  // asked only on nights past the 60-beat gate). Restarted when nightRr
+  // rebuilds; rides the night part of the checkpoint.
+  CvhrStream? _cvhrStream;
+  int _cvhrFed = 0, _cvhrFolded = 0, _cvhrRestarts = 0;
+  int _cvhrGen = -1;
+
+  /// Settled beats folded into the CVHR stream (a restart counts again).
+  int get nightCvhrFolded => _cvhrFolded;
+
+  /// Times the CVHR stream was started from scratch, the first included.
+  int get nightCvhrRestarts => _cvhrRestarts;
+
+  /// `cvhrApneaScreen` of the last [nightRr] slice, bit for bit, without
+  /// re-scoring the settled beats.
+  @heavy
+  Metric<CvhrResult> nightCvhr(double artifactFraction) {
+    if (_cvhrStream == null || _cvhrGen != _nightRebuilds) {
+      _cvhrStream = CvhrStream();
+      _cvhrFed = 0;
+      _cvhrGen = _nightRebuilds;
+      _cvhrRestarts++;
+    }
+    if (_cvhrFed < _nightNn.length) {
+      final nn = _nightNn.sublist(_cvhrFed);
+      _cvhrStream!.fold(nn, _nightNnTimes.sublist(_cvhrFed));
+      _cvhrFolded += nn.length;
+      _cvhrFed = _nightNn.length;
+    }
+    // Nothing settled yet: the stream has no first beat (it reports a
+    // degenerate span for a tail-only night), and the whole night is the tail,
+    // so the batch screen over it is both exact and cheap.
+    if (_cvhrFed == 0) {
+      return cvhrApneaScreen(_tailNn, _tailNnTimes,
+          artifactFraction: artifactFraction);
+    }
+    return _cvhrStream!.snapshot(
       tailNnMs: _tailNn,
       tailNnTimesMs: _tailNnTimes,
       artifactFraction: artifactFraction,

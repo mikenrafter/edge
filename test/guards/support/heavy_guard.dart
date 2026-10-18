@@ -452,6 +452,11 @@ class HeavyGuardConfig {
             'worker-only @heavy: the streamed night respiration estimate, reached only from deriveDayBundle; the public name is the contract of night_spectral_stream_test',
           ),
           OriginAllow(
+            'DayCalculationState.nightCvhr',
+            'nightCvhr',
+            'worker-only @heavy: the streamed night CVHR apnea screen, reached only from deriveDayBundle; the public name is the contract of night_cvhr_stream_test',
+          ),
+          OriginAllow(
             'DayCalculationState.exportNight',
             'exportNight',
             'worker-only @heavy: the night state captured for the checkpoint, reached only from exportNightJsonHeavy (inside deriveDayBundle); the public name is the contract of day_checkpoint_night_state_test',
