@@ -36,10 +36,14 @@ import '../../compute/inputs/measurement_inputs.dart'
 import '../../compute/profile.dart' show bmiOf;
 import '../../data/coverage_resolver.dart' show OwnedSpan, coverageFromJson, spanAt;
 import '../../data/day_label.dart' show localDayEndSec;
+import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
 import '../../data/db.dart';
 import '../../data/journal_fields.dart';
 import '../../data/local_repository.dart';
 import '../../data/med_store.dart';
+import '../../data/moment_label.dart';
+import '../../gestures/moment_follow_ups.dart' show MomentChoice;
+import '../../gestures/symptom_description.dart' show StoredSymptom;
 import '../../data/nutrition_store.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
@@ -62,7 +66,19 @@ class Moment {
     this.color,
     this.until,
     this.detail = '',
+    this.eventId,
+    this.annotationKind,
+    this.annotationLabel,
   });
+
+  /// What the chart annotation says when it is not the moment's [title] (the
+  /// main sleep's "Main sleep 11:10 PM to 6:40 AM"). Null: use [title].
+  final String? annotationLabel;
+
+  /// What chart annotation this moment becomes, or NULL when it is not one
+  /// (sleep, band events, the day's extremes — facts about the band or the
+  /// arithmetic, not things the wearer logged).
+  final AnnotationKind? annotationKind;
 
   /// Epoch seconds. The ONLY sort key — nothing on this page is ranked.
   final int at;
@@ -79,6 +95,36 @@ class Moment {
   /// not on. Those render in muted ink, because a colour is a claim that the
   /// row belongs to a domain and none of them do.
   final Color? color;
+
+  /// The band event id this line came from, or NULL for anything else. Only
+  /// equal non-null ids can be folded together by [groupRepeatedEvents].
+  final int? eventId;
+}
+
+/// A run of consecutive moments that are the same band event.
+@immutable
+class MomentGroup {
+  const MomentGroup(this.moments);
+  final List<Moment> moments;
+  int get count => moments.length;
+  Moment get first => moments.first;
+}
+
+/// Folds each run of consecutive moments sharing one non-null [Moment.eventId]
+/// into a single group. Pure; order is kept and nothing is dropped. A moment
+/// with no event id is always a group of one — equal titles are not identity.
+List<MomentGroup> groupRepeatedEvents(List<Moment> sorted) {
+  final out = <List<Moment>>[];
+  for (final m in sorted) {
+    if (out.isNotEmpty &&
+        m.eventId != null &&
+        out.last.last.eventId == m.eventId) {
+      out.last.add(m);
+    } else {
+      out.add([m]);
+    }
+  }
+  return [for (final g in out) MomentGroup(g)];
 }
 
 /// Something that was logged for this day and carries no time of day. Kept
@@ -131,6 +177,9 @@ List<Moment> dayMoments({
   List<({String label, int at})> doses = const [],
   Map<String, JournalMetricValue> journal = const {},
   List<JournalFieldSpec> fields = const [],
+  List<MomentLabel> momentLabels = const [],
+  List<StoredSymptom> symptoms = const [],
+  List<AssumedGlass> assumedWater = const [],
   AppLocalizations? l,
 }) {
   final out = <Moment>[];
@@ -139,36 +188,61 @@ List<Moment> dayMoments({
   // Sleep. The onset normally sits in the PREVIOUS calendar day — a day's
   // sleep is the night that ended that morning — so it sorts to the top and
   // reads as what it is: you were already asleep when this day started.
-  for (final s in (timeline['sleep'] as List?) ?? const []) {
-    if (s is! Map) continue;
-    final on = asInt(s['onset_ts']), off = asInt(s['wake_ts']);
+  //
+  // MAIN SLEEP. One entry is the night on the chart: the longest one whose wake
+  // is after its onset, the earlier onset on a tie. `getDayTimeline` sends at
+  // most one today; the rule keeps a second entry from being a coin flip. The
+  // others stay rows in this list and are not annotated.
+  final sleeps = [
+    for (final s in (timeline['sleep'] as List?) ?? const [])
+      if (s is Map) (on: asInt(s['onset_ts']), off: asInt(s['wake_ts'])),
+  ];
+  int? mainAt;
+  for (var i = 0; i < sleeps.length; i++) {
+    final on = sleeps[i].on, off = sleeps[i].off;
+    if (on == null || off == null || off <= on) continue;
+    final best = mainAt == null ? null : sleeps[mainAt];
+    if (best == null) {
+      mainAt = i;
+      continue;
+    }
+    final len = off - on, bestLen = best.off! - best.on!;
+    if (len > bestLen || (len == bestLen && on < best.on!)) mainAt = i;
+  }
+  for (var i = 0; i < sleeps.length; i++) {
+    final on = sleeps[i].on, off = sleeps[i].off;
     if (on == null || off == null) continue;
-    out.add(
-      Moment(
-        at: on,
-        until: off,
-        title: l?.dayTimelineAsleep ?? 'Asleep',
-        detail: '${_span(on, off)} · ${_dur((off - on) / 60, l)}',
-        icon: LucideIcons.moon,
-        color: C.blue,
-      ),
-    );
+    final isMain = i == mainAt;
+    out.add(Moment(
+      at: on,
+      until: off,
+      title: l?.dayTimelineAsleep ?? 'Asleep',
+      detail: '${_span(on, off)} · ${_dur((off - on) / 60, l)}',
+      icon: LucideIcons.moon,
+      color: C.blue,
+      annotationKind: isMain ? AnnotationKind.mainSleep : null,
+      // Clock times only: the onset is usually the evening before, and the
+      // chart's own axis already says which day it is.
+      annotationLabel: isMain
+          ? (l?.dayTimelineMainSleep(clockOfTs(on), clockOfTs(off)) ??
+              'Main sleep ${clockOfTs(on)} to ${clockOfTs(off)}')
+          : null,
+    ));
   }
 
   for (final n in (timeline['naps'] as List?) ?? const []) {
     if (n is! Map) continue;
     final on = asInt(n['start']), off = asInt(n['end']);
     if (on == null) continue;
-    out.add(
-      Moment(
-        at: on,
-        until: off,
-        title: l?.dayTimelineNap ?? 'Nap',
-        detail: '${_span(on, off)} · ${_dur(n['duration_min'] as num?, l)}',
-        icon: LucideIcons.bedDouble,
-        color: C.indigo,
-      ),
-    );
+    out.add(Moment(
+      at: on,
+      until: off,
+      title: l?.dayTimelineNap ?? 'Nap',
+      detail: '${_span(on, off)} · ${_dur(n['duration_min'] as num?, l)}',
+      icon: LucideIcons.bedDouble,
+      color: C.indigo,
+      annotationKind: AnnotationKind.nap,
+    ));
   }
 
   for (final s in (timeline['sessions'] as List?) ?? const []) {
@@ -194,6 +268,7 @@ List<Moment> dayMoments({
       detail: bits.join(' · '),
       icon: act?.icon ?? LucideIcons.dumbbell,
       color: act?.color ?? C.orange,
+      annotationKind: AnnotationKind.workout,
     ));
   }
 
@@ -254,6 +329,7 @@ List<Moment> dayMoments({
       title: def.$1,
       detail: clockOfTs(t),
       icon: def.$2,
+      eventId: id,
     ));
   }
 
@@ -261,21 +337,20 @@ List<Moment> dayMoments({
     final t = m.atTs;
     if (t == null) continue;
     final kcal = m.kcal;
-    out.add(
-      Moment(
-        at: t,
-        title: m.label.isEmpty ? localizedText(l, m.meal) : m.label,
-        detail: [
-          clockOfTs(t),
-          if (m.meal.isNotEmpty) localizedText(l, m.meal),
-          // A bare occasion is complete as a log. It just has no energy on it,
-          // and printing "0 kcal" for one is the fabrication this app refuses.
-          if (kcal != null) '${kcal.round()} kcal',
-        ].join(' · '),
-        icon: LucideIcons.utensils,
-        color: C.domFood,
-      ),
-    );
+    out.add(Moment(
+      at: t,
+      title: m.label.isEmpty ? localizedText(l, m.meal) : m.label,
+      detail: [
+        clockOfTs(t),
+        if (m.meal.isNotEmpty) localizedText(l, m.meal),
+        // A bare occasion is complete as a log. It just has no energy on it,
+        // and printing "0 kcal" for one is the fabrication this app refuses.
+        if (kcal != null) '${kcal.round()} kcal',
+      ].join(' · '),
+      icon: LucideIcons.utensils,
+      color: C.domFood,
+      annotationKind: AnnotationKind.journal,
+    ));
   }
 
   for (final d in doses) {
@@ -285,6 +360,7 @@ List<Moment> dayMoments({
       detail: l?.dayTimelineTakenAt(clockOfTs(d.at)) ?? 'Taken at ${clockOfTs(d.at)}',
       icon: LucideIcons.pill,
       color: C.purple,
+      annotationKind: AnnotationKind.journal,
     ));
   }
 
@@ -292,6 +368,13 @@ List<Moment> dayMoments({
   // landed, which is the sleep-relevant fact about both.
   final dayStart = asInt(timeline['day_start']);
   final specs = {for (final f in fields) f.key: f};
+  // A dose answered from a marked moment writes the label AND adds to its
+  // journal field at the same minute: one event, and the moment is it.
+  final answered = <String>{
+    for (final m in momentLabels)
+      if (MomentChoice.fromId(m.label)?.journalField case final f?)
+        '$f@${m.hhmm}',
+  };
   journal.forEach((key, v) {
     final min = v.atMinuteOfDay;
     if (min == null || dayStart == null) return;
@@ -299,31 +382,107 @@ List<Moment> dayMoments({
     final n = v.value == v.value.roundToDouble()
         ? v.value.round().toString()
         : v.value.toStringAsFixed(1);
-    // A wall-clock minute, so built on the calendar, not added as elapsed
-    // seconds: on a 23- or 25-hour day that lands an hour off.
-    final d = DateTime.fromMillisecondsSinceEpoch(dayStart * 1000);
+    // The stored minute is WALL-CLOCK, so the instant is built from calendar
+    // fields: dayStart + min * 60 is elapsed time and is an hour off on a 23 h
+    // or 25 h day.
+    final d0 = DateTime.fromMillisecondsSinceEpoch(dayStart * 1000);
     final at =
-        DateTime(d.year, d.month, d.day, 0, min).millisecondsSinceEpoch ~/ 1000;
-    out.add(
-      Moment(
-        at: at,
-        title: spec == null
-            ? key.replaceAll('_', ' ')
-            : spec.custom
-            ? spec.label
-            : localizedText(l, spec.label),
-        // "last one at" is the stored meaning, and saying just "at" would turn a
-        // total plus one timestamp into a single event that never happened.
-        detail:
-            '$n${spec == null || spec.unit.isEmpty ? '' : ' ${spec.custom ? spec.unit : localizedText(l, spec.unit)}'} · '
-            '${l?.dayTimelineLastAt(clockOfTs(at)) ?? 'last at ${clockOfTs(at)}'}',
-        icon: LucideIcons.notebookPen,
-        color: C.domMind,
-      ),
-    );
+        DateTime(d0.year, d0.month, d0.day, min ~/ 60, min % 60)
+                .millisecondsSinceEpoch ~/
+            1000;
+    final hhmm = '${(min ~/ 60).toString().padLeft(2, '0')}:'
+        '${(min % 60).toString().padLeft(2, '0')}';
+    out.add(Moment(
+      at: at,
+      title: spec == null
+          ? key.replaceAll('_', ' ')
+          : spec.custom
+              ? spec.label
+              : localizedText(l, spec.label),
+      // "last one at" is the stored meaning, and saying just "at" would turn a
+      // total plus one timestamp into a single event that never happened.
+      detail:
+          '$n${spec == null || spec.unit.isEmpty ? '' : ' ${spec.custom ? spec.unit : localizedText(l, spec.unit)}'} · '
+          '${l?.dayTimelineLastAt(clockOfTs(at)) ?? 'last at ${clockOfTs(at)}'}',
+      icon: LucideIcons.notebookPen,
+      color: C.domMind,
+      // The water total is an aggregate of assumed glasses and water taps,
+      // which are annotated from their own records; it is never a third event.
+      annotationKind: key == 'water_ml' || answered.contains('$key@$hhmm')
+          ? null
+          : AnnotationKind.journal,
+    ));
   });
 
+  // Marked moments the wearer labelled. A marked moment has a real clock (the
+  // minute the tap happened), so it is placed there. A skipped one has no label
+  // to show, and a label this build does not know is not turned into text.
+  final symptomAt = {for (final y in symptoms) y.key: y};
+  for (final m in momentLabels) {
+    final choice = MomentChoice.fromId(m.label);
+    final at = m.atSec;
+    if (choice == null || at == null) continue;
+    final note = m.note;
+    // A symptom answered with a description reads as that sentence; one
+    // answered before descriptions existed keeps its plain "Symptom".
+    final described =
+        choice == MomentChoice.symptom ? symptomAt[m.key]?.description : null;
+    out.add(Moment(
+      at: at,
+      title: described?.describe(l) ?? choice.localized(l),
+      detail: [
+        l?.dayTimelineMarkedAt(m.hhmm) ?? 'Marked moment at ${m.hhmm}',
+        if (note != null && note.isNotEmpty) note,
+      ].join(' · '),
+      icon: LucideIcons.bookmark,
+      color: C.domMind,
+      annotationKind: switch (choice) {
+        MomentChoice.water => AnnotationKind.water,
+        MomentChoice.symptom => AnnotationKind.symptom,
+        _ => AnnotationKind.moment,
+      },
+    ));
+  }
+
+  // "Assume I drank water" glasses. A removed one is a tombstone — it records
+  // that the slot was handled, not that anything happened — so it is not shown.
+  for (final g in assumedWater) {
+    if (g.state == AssumedState.removed) continue;
+    final at = g.local.millisecondsSinceEpoch ~/ 1000;
+    out.add(Moment(
+      at: at,
+      title: l?.assumedWaterTitle ?? 'Assumed glass of water',
+      detail: g.hhmm,
+      icon: LucideIcons.droplet,
+      color: C.sky,
+      annotationKind: AnnotationKind.assumedWater,
+    ));
+  }
+
   out.sort((a, b) => a.at.compareTo(b.at));
+  return out;
+}
+
+/// [dayMoments] as chart annotations (domain: epoch seconds). Only moments with
+/// an [Moment.annotationKind] become one; a moment with an end later than its
+/// start is a range, anything else a point. Ids are unique and stable.
+List<ChartAnnotation> dayAnnotations(List<Moment> moments) {
+  final used = <String, int>{};
+  final out = <ChartAnnotation>[];
+  for (final m in moments) {
+    final kind = m.annotationKind;
+    if (kind == null) continue;
+    final base = '${kind.name}:${m.at}';
+    final n = used.update(base, (v) => v + 1, ifAbsent: () => 0);
+    final end = m.until;
+    out.add(ChartAnnotation(
+      id: n == 0 ? base : '$base#$n',
+      kind: kind,
+      at: m.at.toDouble(),
+      until: end != null && end > m.at ? end.toDouble() : null,
+      label: m.annotationLabel ?? m.title,
+    ));
+  }
   return out;
 }
 
@@ -396,9 +555,10 @@ List<DayNote> dayNotes({
 // destination, two halves: the graph answers WHEN, the list answers WHAT, and
 // neither is a second copy of the other.
 //
-// FOUR LANES, and the count is the design. Heart rate is the spine — it is the
-// only thing this band measures all day at a rate worth drawing. Sleep is a
-// band across the hours it covers. Workouts are blocks on the top edge.
+// THREE LANES, and the count is the design. Heart rate is the spine — it is the
+// only thing this band measures all day at a rate worth drawing. Sleep is not a
+// lane: the night is the main-sleep annotation above the plot and a nap its
+// own annotation, so no band hides the curve. Workouts are blocks on the top edge.
 // Movement is a strip along the floor. Everything else the day holds — meals,
 // doses, notes, breathing, temperature, HRV — stays in the list rather than
 // getting a lane, because ten labelled lanes is a chart nobody reads twice and
@@ -426,7 +586,8 @@ class DayGraph {
   });
 
   /// Epoch second of slot 0 — local midnight for a whole day, the window's
-  /// first minute for a [window]. Null for a graph built without a day.
+  /// first minute for a [window]. The annotation domain runs `dayStart` ..
+  /// `dayStart + slots * 60`. Null for a graph built without a day.
   final int? dayStart;
 
   /// Beats per minute, one slot per minute of the day, `null` where nothing
@@ -438,7 +599,9 @@ class DayGraph {
   /// sit still, `null` is a minute we were not there for.
   final List<double?> movement;
 
-  /// Asleep and naps, as (from, to) minute of the day.
+  /// Asleep and naps, as (from, to) minute of the day. NOT drawn: the night is
+  /// a chart annotation and a nap is its own annotation. Kept because a known
+  /// night or nap is measured time ([unmeasured]) and the card's emptiness test.
   final List<(int, int, Color)> rest;
 
   /// Workouts, same units.
@@ -564,9 +727,8 @@ DayGraph dayGraph(Map<String, dynamic> timeline, {List<Object?>? hrOverride}) {
     return hi <= lo ? null : (lo, hi, col);
   }
 
-  // A nap is asleep. It gets its own name in the list below, where the
-  // distinction is worth a word; up here a second blue would be a second key
-  // for the same fact.
+  // Known sleep, night and nap, as spans. Not drawn (see [DayGraph.rest]); the
+  // spans are what keeps a night from being called "not recorded".
   final rest = <(int, int, Color)>[
     for (final s in (timeline['sleep'] as List?) ?? const [])
       if (s is Map) ?span(s['onset_ts'], s['wake_ts'], C.blue),
@@ -619,7 +781,7 @@ class TimelineData {
     AppLocalizations? l,
   }) async {
     final days = await repo.availableDays();
-    final today = await repo.getToday();
+    final today = await repo.getTodayStored();
     final day = pickDay(
         days, want, (today['status'] as Map?)?['today_day']?.toString());
     if (day == null) return TimelineData(days: days);
@@ -631,6 +793,8 @@ class TimelineData {
     final db = await LocalDb.instance;
     final meals = await NutritionDb.entriesForDay(db, day);
     final notes = await LocalDb.journalRows(sinceDaysEpoch: day);
+    final momentLabels = await LocalDb.momentLabels(date: day);
+    final symptoms = await LocalDb.symptomEntries(date: day);
 
     // Doses: one row per (medication, slot), and only the ones actually taken
     // carry a clock. A skipped dose is a real fact with no time attached, so it
@@ -670,6 +834,8 @@ class TimelineData {
         doses: taken,
         journal: journal,
         fields: fields,
+        momentLabels: momentLabels,
+        symptoms: symptoms,
         l: l,
       ),
       notes: [
@@ -917,8 +1083,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
         sub: l?.dayTimelineSub ?? 'MIDNIGHT TO MIDNIGHT', [
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       if (_loading) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: S.x4),
+        const InlineLoading(),
       ] else ...[
         if (_candidates.length >= 2) ...[
           const SizedBox(height: S.x2),
@@ -933,8 +1099,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
               child: Text(
                 l?.dayTimelineDeviceBounded(_deviceOldest ?? '') ??
                     'Per-device detail is kept for recent days only. Before '
-                        '${_deviceOldest ?? ''} we know which device recorded, '
-                        'not what it said.',
+                        '${_deviceOldest ?? ''} we only know which device recorded, '
+                        'not its readings.',
                 style: F.over.copyWith(color: P.of(c).ink3),
               ),
             ),
@@ -945,6 +1111,16 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
     ]);
   }
 }
+
+/// What the movement lane plots, in the words its key and note use. The lane is
+/// `activity_curve`: per 5 minutes, the share of seconds in which the wrist's
+/// orientation changed by more than 5 degrees between consecutive readings
+/// (0…1, shown as a percentage). It is a share of time, not a count of steps or
+/// an acceleration, so the unit is "% of time moving".
+const _movementLabel = 'Movement (% of time moving)';
+const _hrLabel = 'Heart rate (bpm)';
+const _movementNote = 'Movement is the share of each 5 minutes in which your '
+    'wrist turned more than 5° between readings. It is not steps or effort.';
 
 /// The graph, or nothing.
 ///
@@ -957,8 +1133,14 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
 /// says "no heart rate here" instead of vanishing, so the zoom control under
 /// it stays reachable. [fine] is a per-second curve over the same window,
 /// drawn instead of the per-minute one when the raw rows still exist.
+/// [footnote], when given, is shown after the movement note. [annotations] are the
+/// day's labelled moments, marked over the plot on `g.dayStart` ..
+/// `g.dayStart + g.slots * 60`.
 Widget? dayGraphCard(BuildContext c, DayGraph g,
-    {bool zoomed = false, List<double?>? fine, String? footnote}) {
+    {bool zoomed = false,
+    List<double?>? fine,
+    String? footnote,
+    List<ChartAnnotation> annotations = const []}) {
   if (!g.hasCurve && !zoomed) return null;
   final p = P.of(c);
   final l = AppLocalizations.of(c);
@@ -967,16 +1149,76 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
   final curve = fine ?? g.hr;
   final axis = AxisSpec.of([for (final v in curve) ?v], ticks: 3);
   if (axis == null && !zoomed) return null;
+  // Slot 0's instant: local midnight for the whole day, the window's first
+  // minute when zoomed.
   final start = g.dayStart;
 
-  final asleep = p.on(C.blue), workout = p.on(C.orange);
+  final workout = p.on(C.orange);
+  final hrInk = p.on(C.red), moveInk = p.on(C.domMove);
+  final hasMovement = g.movement.any((v) => v != null);
+  final workoutLabel = l?.dayTimelineWorkout ?? 'Workout';
   final gaps = g.unmeasured;
+  // The card marks the same labelled moments as the list beneath it, on the
+  // real local-day domain: dayStart + slots * 60 follows a 23 h or 25 h day,
+  // never a flat 86400, and a zoomed window's own span. No day start or
+  // nothing logged: no lane, nothing invented.
+  final marks = start == null || annotations.isEmpty
+      ? null
+      : AnnotationSet(
+          items: annotations,
+          domainStart: start.toDouble(),
+          domainEnd: (start + n * 60).toDouble(),
+          reach: 48);
+
+  bool present(double? v) => v != null && v.isFinite;
+  // A lane, one slot per sample of its own list (a minute, or a second for a
+  // [fine] curve); the lane's own holes read null.
+  ChartKey lane(String label, Color ink, List<double?> d,
+      String Function(double v) say) {
+    final last = d.lastIndexWhere(present);
+    return ChartKey(
+      label,
+      ink,
+      (at) {
+        final i = ChartScrub.slotAt(d.length, at);
+        return i < d.length && present(d[i]) ? say(d[i]!) : null;
+      },
+      latest: last < 0 || d.length < 2 ? null : last / (d.length - 1),
+    );
+  }
+
+  // A shaded stretch: whether the finger is inside one. It never sets the
+  // "latest" point — a night does not make the last minute of the day.
+  ChartKey shade(String label, Color ink, List<(int, int, Color)> spans) =>
+      ChartKey(
+        label,
+        ink,
+        (at) {
+          final m = ChartScrub.slotAt(n, at);
+          return spans.any((x) => m >= x.$1 && m < x.$2) ? 'Yes' : 'No';
+        },
+        latest: null,
+        data: false,
+      );
+
+  // The readout's time is the instant under the finger, read off the same
+  // slots the heart-rate line draws: seconds for a [fine] curve, minutes
+  // otherwise, counted from the window's own start when zoomed.
+  String time(double at) {
+    final f = fine;
+    if (start == null) return ChartScrub.clock(ChartScrub.slotAt(n, at));
+    if (f != null) return clockOfTs(start + ChartScrub.slotAt(f.length, at));
+    return clockOfTs(start + ChartScrub.slotAt(n, at) * 60);
+  }
+
+  final notes = [if (hasMovement) _movementNote, ?footnote];
   return Surface(
     child: ChartFrame(
       title: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
       unit: 'bpm',
       height: 200,
       yAxis: axis,
+      annotations: marks,
       // Three, and only three, because ChartFrame lays the first flush left,
       // the last flush right and the rest centred — which puts a middle label
       // exactly on the middle of the plot and a five-label row 5 % out.
@@ -991,46 +1233,63 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
               l?.dayTimelineNoon ?? 'Noon',
               l?.dayTimelineMidnight ?? 'Midnight',
             ],
-      footnote: footnote,
+      // The movement note says what the grey lane is (not steps, not effort);
+      // a caller's note (the zoom hint) adds to it rather than replacing it.
+      footnote: notes.isEmpty ? null : notes.join(' '),
       empty: axis == null
           ? NoData(
               message: l?.dayTimelineZoomNoHr ?? 'No heart rate in this stretch')
           : null,
+      // The keys this chart is read by, in the order they are read: the
+      // movement stat, the heart rate, and (only when the day has a hole in it)
+      // "Not recorded", which ChartScrub appends. Workout names its shaded
+      // stretch and appears only when the day has one. The night is not a key:
+      // it is the main-sleep annotation above the plot.
       legend: [
-        if (g.rest.isNotEmpty) (l?.dayTimelineAsleep ?? 'Asleep', asleep),
-        if (g.work.isNotEmpty) (l?.dayTimelineWorkout ?? 'Workout', workout),
-        if (g.movement.any((v) => v != null))
-          (l?.dayTimelineMoving ?? 'Moving', p.on(C.domMove)),
-        if (gaps.isNotEmpty) (l?.dayTimelineNotRecorded ?? 'Not recorded', p.card2),
+        if (hasMovement) (_movementLabel, moveInk),
+        (_hrLabel, hrInk),
+        if (g.work.isNotEmpty) (workoutLabel, workout),
       ],
       series: curve,
-      child: Stack(children: [
-        Positioned.fill(
-          child: CustomPaint(
-            size: Size.infinite,
-            painter: DayLanes(
-              p: p,
-              gaps: [for (final (a, b) in gaps) (at(a), at(b))],
-              rest: [
-                for (final (a, b, _) in g.rest) (at(a), at(b), asleep),
-              ],
-              work: [
-                for (final (a, b, _) in g.work) (at(a), at(b), workout),
-              ],
-              movement: g.movement,
+      // The row under the chart is the slot under the finger (or the latest
+      // one) for each lane, with "—" for a lane that has nothing there: a
+      // minute with movement but no heart rate shows the movement and a dash,
+      // never a 0.
+      child: ChartScrub(
+        label: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
+        gaps: gaps.isNotEmpty,
+        time: time,
+        keys: [
+          if (hasMovement)
+            lane(_movementLabel, moveInk, g.movement,
+                (v) => '${(v * 100).round()}%'),
+          lane(_hrLabel, hrInk, curve, (v) => '${v.round()} bpm'),
+          if (g.work.isNotEmpty) shade(workoutLabel, workout, g.work),
+        ],
+        child: Stack(children: [
+          Positioned.fill(
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: DayLanes(
+                p: p,
+                gaps: [for (final (a, b) in gaps) (at(a), at(b))],
+                work: [
+                  for (final (a, b, _) in g.work) (at(a), at(b), workout),
+                ],
+                movement: g.movement,
+              ),
             ),
           ),
-        ),
           Positioned.fill(
             child: CustomPaint(
               size: Size.infinite,
               // No fill under the line: the area would swallow the bands behind
               // it, and the bands are the half of this picture the curve cannot
               // say on its own.
-              painter: LineChart(curve, p.on(C.red), fill: false, axis: axis),
+              painter: LineChart(curve, hrInk, fill: false, axis: axis),
             ),
           ),
-        ],
+        ]),
       ),
     ),
   );
@@ -1072,13 +1331,20 @@ List<double?> perSecondHr(
 /// showing minutes rather than pretending to more detail.
 class _DayGraphZoom extends StatefulWidget {
   const _DayGraphZoom(this.graph,
-      {super.key, this.fineDetail = true, this.owners = const []});
+      {super.key,
+      this.fineDetail = true,
+      this.owners = const [],
+      this.annotations = const []});
 
   final DayGraph graph;
   final bool fineDetail;
 
   /// The day's HR ownership spans, empty on a one-device day.
   final List<OwnedSpan> owners;
+
+  /// The day's labelled moments as chart annotations (epoch seconds). A
+  /// zoomed window marks the ones inside it; the domain follows the window.
+  final List<ChartAnnotation> annotations;
 
   @override
   State<_DayGraphZoom> createState() => _ZoomState();
@@ -1165,8 +1431,11 @@ class _ZoomState extends State<_DayGraphZoom> {
           '1-minute averages. Drag the handles to zoom; two hours or less '
               'shows every second while it is still kept.';
     }
-    final card =
-        dayGraphCard(c, g, zoomed: zoomed, fine: _fine, footnote: note);
+    final card = dayGraphCard(c, g,
+        zoomed: zoomed,
+        fine: _fine,
+        footnote: note,
+        annotations: widget.annotations);
     if (card == null || n < 2) return card ?? const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1218,6 +1487,7 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
       ? _DayGraphZoom(d.graph,
           fineDetail: fineDetail,
           owners: coverageFromJson(d.raw?['hr_owner']),
+          annotations: dayAnnotations(d.moments),
           key: ValueKey(d.day))
       : null;
   return [
@@ -1226,8 +1496,8 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
       StatusCard(
         l?.dayTimelineNothingRecordedTitle ?? 'Nothing was recorded on this day',
         l?.dayTimelineNothingRecordedBody ??
-            'No sleep, no session, no log and no band event carrying a time. A day '
-                'with nothing on it is usually a day the band was off.',
+            'This day has no sleep, session, log or timed band event. '
+            'The band was probably off.',
         icon: LucideIcons.circleSlash,
       )
     else ...[
@@ -1247,7 +1517,8 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
             pad: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x2),
             child: Column(
               children: [
-                for (final m in d.moments) MomentRow(m),
+                for (final g in groupRepeatedEvents(d.moments))
+                  g.count > 1 ? MomentGroupRow(g) : MomentRow(g.first),
               ],
             ),
           ),
@@ -1291,8 +1562,8 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
           padding: const EdgeInsets.only(top: S.x2, left: S.x1),
           child: Text(
             l?.dayTimelineNoTimeNote ??
-                'These were recorded against the day and carry no time of day, so '
-                    'they are not placed on it.',
+                'These entries belong to this day but have no time of day, so '
+                'they are not on the timeline.',
             style: F.over.copyWith(color: p.ink3, height: 1.5),
           ),
         ),
@@ -1300,8 +1571,8 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
     const SizedBox(height: S.x4),
     Text(
       l?.dayTimelinePatternsNote ??
-          'Patterns in your own logs, not causes. Two things next to each other '
-              'here happened near each other, which is all this page claims.',
+          'Items shown together happened close in time in your own logs. '
+          'That does not show one caused the other.',
       style: F.over.copyWith(color: p.ink3, height: 1.5),
     ),
   ];
@@ -1373,4 +1644,65 @@ List<DeviceOption> _anyHrCandidates(BuildContext c, AppState app) {
           : sparse.firstWhere((x) => x.deviceId == o.deviceId && x.selectable,
               orElse: () => o),
   ];
+}
+
+/// A run of the same band event as one line, "<title> · N times", that opens
+/// to the individual times. Collapsed by default: five double taps in a row is
+/// one thing that happened, not five.
+class MomentGroupRow extends StatefulWidget {
+  const MomentGroupRow(this.group, {super.key});
+  final MomentGroup group;
+
+  @override
+  State<MomentGroupRow> createState() => _MomentGroupRowState();
+}
+
+class _MomentGroupRowState extends State<MomentGroupRow> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final g = widget.group, f = g.first;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Pressable(
+          onTap: () => setState(() => _open = !_open),
+          semanticLabel:
+              '${f.title}, ${g.count} times, ${_open ? 'expanded' : 'collapsed'}',
+          child: Row(
+            children: [
+              Expanded(
+                child: MomentRow(Moment(
+                  at: f.at,
+                  title: '${f.title} · ${g.count} times',
+                  icon: f.icon,
+                  color: f.color,
+                )),
+              ),
+              Icon(_open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                  size: 17, color: p.ink3),
+            ],
+          ),
+        ),
+        if (_open)
+          // The individual times sit under the title column, in the row's own
+          // clock style, so an opened group reads as more of the same row.
+          Padding(
+            padding: EdgeInsets.only(
+                left: MediaQuery.textScalerOf(c).scale(58) + 17 + S.x3,
+                bottom: S.x2),
+            child: Wrap(
+              spacing: S.x4,
+              runSpacing: S.x1,
+              children: [
+                for (final m in g.moments)
+                  Text(clockOfTs(m.at), style: F.n17.copyWith(color: p.ink3)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 }

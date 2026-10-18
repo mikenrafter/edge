@@ -9,7 +9,7 @@
 // Every metric goes through THIS screen. Forty bespoke detail screens is how
 // the old UI ended up with forty different opinions about what a chart is.
 
-import '../../l10n/display_text.dart';
+import 'package:clock/clock.dart' as pkg_clock;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -20,9 +20,12 @@ import '../../data/day_label.dart';
 import '../../data/db.dart' show LocalDb;
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/display_text.dart';
 import '../../state/app_state.dart';
+import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'advanced.dart';
+import 'explorer_annotations.dart' show AnnotationLoader, loadAnnotations;
 import 'day_steps.dart';
 import 'home_screen.dart';
 import 'investigate.dart';
@@ -107,7 +110,7 @@ class MetricSpec {
 const _specs = <String, MetricSpec>{
   'resting_hr': MetricSpec(
     chartKey: 'resting_hr',
-    title: 'Resting heart rate',
+    title: MetricLabels.restingHr,
     unit: 'bpm',
     color: C.red,
     icon: LucideIcons.heart,
@@ -120,7 +123,7 @@ const _specs = <String, MetricSpec>{
   ),
   'hrv': MetricSpec(
     chartKey: 'hrv',
-    title: 'HRV',
+    title: MetricLabels.hrv,
     unit: 'ms',
     color: C.green,
     icon: LucideIcons.activity,
@@ -159,7 +162,7 @@ const _specs = <String, MetricSpec>{
   ),
   'resp_rate': MetricSpec(
     chartKey: 'resp_rate',
-    title: 'Respiratory rate',
+    title: MetricLabels.respRate,
     unit: 'br/min',
     color: C.teal,
     icon: LucideIcons.wind,
@@ -176,7 +179,7 @@ const _specs = <String, MetricSpec>{
   ),
   'sleep': MetricSpec(
     chartKey: 'sleep',
-    title: 'Time asleep',
+    title: MetricLabels.timeAsleep,
     unit: 'min',
     color: C.blue,
     icon: LucideIcons.moon,
@@ -219,7 +222,7 @@ const _specs = <String, MetricSpec>{
   ),
   'steps': MetricSpec(
     chartKey: 'steps',
-    title: 'Steps',
+    title: MetricLabels.steps,
     unit: 'steps',
     color: C.green,
     icon: LucideIcons.footprints,
@@ -231,7 +234,8 @@ const _specs = <String, MetricSpec>{
         'the rest of it. There is no 1 Hz estimate — walking cadence sits above what '
         'one sample a second can resolve, so a day with no counter behind it '
         'reports no steps rather than a guess.',
-    citation: 'AN-2554 pedometer · phone pedometer (HealthKit / Health Connect)',
+    citation: 'AN-2554 pedometer · phone pedometer (HealthKit / Health Connect)'
+        ' · Straczkiewicz 2023 · O\'Connell 2017',
     // Deliberately EMPTY — see final-plan §4.6. Steps are resolved by
     // `live_coverage_policy.dart`, which ranks by SPAN not device and credits
     // by overlap subtraction; a device-ownership filter on this screen would
@@ -252,7 +256,7 @@ const _specs = <String, MetricSpec>{
   ),
   'strain': MetricSpec(
     chartKey: 'strain',
-    title: 'Strain',
+    title: MetricLabels.strain,
     color: C.purple,
     icon: LucideIcons.zap,
     method: 'Cardiovascular load over the day, compressed onto a 0–21 scale.',
@@ -264,14 +268,15 @@ const _specs = <String, MetricSpec>{
     title: 'Heart effort',
     color: C.purple,
     icon: LucideIcons.dumbbell,
-    method: 'Training impulse: time in each heart-rate zone, weighted by the '
-        'physiological cost of that zone.',
-    citation: 'Banister 1975 · Edwards 1993',
+    method: 'Training impulse (TRIMP): each minute counts by how far your heart '
+            'rate sits between resting and maximum, weighted so harder minutes '
+            'count exponentially more.',
+    citation: 'Banister 1991 · Morton 1990',
     requires: {InputSignal.hr1Hz},
   ),
   'stress': MetricSpec(
     chartKey: 'stress',
-    title: 'Stress',
+    title: MetricLabels.stress,
     color: C.purple,
     icon: LucideIcons.brain,
     higherBetter: false,
@@ -358,7 +363,7 @@ const _specs = <String, MetricSpec>{
   // generic entry titled "nap min". They are 17/17 on real data.
   'nap_min': MetricSpec(
     chartKey: 'nap_min',
-    title: 'Daytime sleep',
+    title: MetricLabels.daytimeSleep,
     unit: 'min',
     color: C.indigo,
     icon: LucideIcons.moon,
@@ -396,7 +401,7 @@ const _specs = <String, MetricSpec>{
   // ── charted nowhere, on purpose ──
   'skin_temp': MetricSpec(
     chartKey: 'skin_temp',
-    title: 'Skin temperature',
+    title: MetricLabels.skinTemp,
     color: C.orange,
     icon: LucideIcons.thermometer,
     higherBetter: false,
@@ -438,6 +443,29 @@ const _outcomeOf = {
 };
 
 // ═══════════════════ the screen ═══════════════════
+
+/// WHERE A RELEASE SITS ON THE LINE, as annotations.
+///
+/// A break's stamp is the first day computed the NEW way, so the boundary is
+/// between two slots, not on one — half a slot left of it. A break at slot 0 is
+/// dropped: there is nothing before it in this window to be incomparable with.
+/// [daysBehind] maps a stamp (epoch seconds) to whole days before today, or
+/// null; it is a parameter so the placement is testable without a clock.
+///
+/// Domain: slot i is at i (0 … [seriesLength] - 1, the last slot is today).
+List<ChartAnnotation> heroAlgoAnnotations({
+  required List<int> algoBreaks,
+  required int seriesLength,
+  required int? Function(int epochSec) daysBehind,
+  required String label,
+}) =>
+    algoBreakAnnotations(
+      breakDaysBehind: [
+        for (final t in algoBreaks) ?daysBehind(t),
+      ],
+      seriesLength: seriesLength,
+      label: label,
+    );
 
 class MetricData {
   /// DATED points, not bare values. `metric_series` holds one row per DERIVED
@@ -513,6 +541,12 @@ class MetricData {
   /// usual range the chart draws, the same band the recovery breakdown draws.
   final Map<String, dynamic>? baselines;
 
+  /// When the newest day drawn here was computed (the reader's own
+  /// `computed_at`, off the rows it read) and that day's label — what "As of"
+  /// says while a pass recalculates it. Null when the reader gave none.
+  final DateTime? computedAt;
+  final String? newestDay;
+
   const MetricData({
     this.series = const [],
     this.wear = const [],
@@ -526,7 +560,37 @@ class MetricData {
     this.sources = const [],
     this.viewingDeviceId,
     this.baselines,
+    this.computedAt,
+    this.newestDay,
   });
+
+  /// The rows of a `getJournalInsights` map that are about [outcome].
+  static List<Map<String, dynamic>> moversOf(
+      Map<String, dynamic> journal, String outcome) {
+    final ins = journal['insights'];
+    return [
+      for (final e in (ins is List ? ins : const []))
+        if (e is Map && e['outcome'] == outcome) e.cast<String, dynamic>(),
+    ];
+  }
+
+  /// This result with its [movers] replaced.
+  MetricData withMovers(List<Map<String, dynamic>> movers) => MetricData(
+        series: series,
+        wear: wear,
+        percentile: percentile,
+        movers: movers,
+        daysAvailable: daysAvailable,
+        algoBreaks: algoBreaks,
+        stepGoal: stepGoal,
+        coverage: coverage,
+        recording: recording,
+        sources: sources,
+        viewingDeviceId: viewingDeviceId,
+        baselines: baselines,
+        computedAt: computedAt,
+        newestDay: newestDay,
+      );
 
   static Future<MetricData> load(
     LocalRepository repo,
@@ -535,6 +599,10 @@ class MetricData {
     /// Const-empty default so every existing caller and every test compiles
     /// unchanged and gets today's screen.
     List<DeviceOption> candidates = const [],
+
+    /// False leaves out the slow 90-day journal pass (`movers` stays empty):
+    /// the screen reads that on its own so the series can be drawn first.
+    bool journal = true,
   }) async {
     final spec = specOf(key);
     if (spec.suppress != null) return const MetricData();
@@ -556,12 +624,9 @@ class MetricData {
       final all = cd['percentiles'];
       final one = all is Map ? all[outcome] : null;
       pct = envValue(one);
-      final j = await repo.getJournalInsights(range: '90d');
-      final ins = j['insights'];
-      movers = [
-        for (final e in (ins is List ? ins : const []))
-          if (e is Map && e['outcome'] == outcome) e.cast<String, dynamic>(),
-      ];
+      if (journal) {
+        movers = moversOf(await repo.getJournalInsights(range: '90d'), outcome);
+      }
     }
     Map<String, dynamic>? baselines;
     if (kBaselineKeyOf.containsKey(key)) {
@@ -573,8 +638,14 @@ class MetricData {
     }
     final coverage = _coverageOf(chart['coverage_devices']);
     final recording = _coverageOf(chart['coverage_recording']);
+    final points = pointsOf(chart);
     return MetricData(
-      series: pointsOf(chart),
+      computedAt: computedAtOf(chart['computed_at']),
+      newestDay: points.isEmpty
+          ? null
+          : dayLabelOf(
+              DateTime.fromMillisecondsSinceEpoch(points.last.t * 1000)),
+      series: points,
       wear: pointsOf({'points': chart['wear']}),
       percentile: pct,
       movers: movers,
@@ -685,13 +756,42 @@ bool _labelSources(MetricData d) {
 class MetricDetail extends StatefulWidget {
   final String metricKey;
   final MetricData? data;
-  const MetricDetail(this.metricKey, {super.key, this.data});
+
+  /// The window to open on, in days (1, 7, 30, 182 or 365). Null opens on
+  /// Today, which is right for a screen that is about this morning's number.
+  /// Health's Trends list passes 30: someone choosing a metric from a list of
+  /// histories is asking how it has been going, not what it is right now.
+  /// A window this install does not have enough days for falls back to the
+  /// widest one it does, the same clamp every other range choice goes through.
+  final int? initialRange;
+
+  /// A past day to open on, as a `YYYY-MM-DD` label, or null for Today. Health's
+  /// Last night passes the night a held-over row describes: the screen opens on
+  /// the narrowest window that holds that day with the day selected, so it shows
+  /// that night's value and date rather than today's empty slot. Applied once,
+  /// after the first load; [initialRange] is ignored for it.
+  final String? initialDay;
+
+  /// Reads the journal annotations behind the hero's toggle for the local days
+  /// `from`..`to` ([loadAnnotations] when null). Injectable so tests open no
+  /// database; a failing loader leaves the chart without them.
+  final AnnotationLoader? annotationLoader;
+
+  /// The hero's "journal marks" toggle chip (off by default).
+  static const journalToggleKey = ValueKey('metric-journal-toggle');
+
+  const MetricDetail(this.metricKey,
+      {super.key,
+      this.data,
+      this.initialRange,
+      this.initialDay,
+      this.annotationLoader});
 
   @override
   State<MetricDetail> createState() => _MetricDetailState();
 }
 
-class _MetricDetailState extends State<MetricDetail> {
+class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   // Today is its own window, not the left edge of the 7-day one. Asking "what
   // is it right now" and "what has it been lately" are different questions,
   // and a range list that starts at 7 days made the first one unanswerable.
@@ -717,10 +817,27 @@ class _MetricDetailState extends State<MetricDetail> {
   /// days and three months on 30, so the default moved as the install aged and
   /// was never today. The range switcher is still here and still remembers
   /// nothing between visits — a default is where a screen starts, not a
-  /// preference.
-  int _range = 0;
+  /// preference. A caller that wants another window says so with
+  /// [MetricDetail.initialRange]; nothing else changes the default.
+  late int _range = _windows.indexOf(widget.initialRange ?? 1).clamp(0, 4);
   MetricData? _d;
   bool _loading = true;
+
+  /// The hero's journal marks toggle. OFF by default and not remembered: algo
+  /// marks are provenance and always on, journal marks are opt-in detail.
+  bool _journalMarks = false;
+
+  /// What has been read for the toggle, by "from..to" (epoch-second domain),
+  /// and the reads in flight. Nothing is read while the toggle is off.
+  final Map<String, List<ChartAnnotation>> _journalRead = {};
+  final Set<String> _journalReading = {};
+
+  /// Bumped by every reload; a read commits only if it started in this one.
+  int _journalGen = 0;
+
+  /// True once [MetricDetail.initialDay] has been turned into a window and a
+  /// selected slot, so a reload (a changed preference) never moves the user.
+  bool _dayApplied = false;
 
   /// The slot the user has put a finger on, as an index into the DENSE window.
   /// Null until they touch the chart. A window change clears it: slot 12 of a
@@ -821,6 +938,104 @@ class _MetricDetailState extends State<MetricDetail> {
     super.dispose();
   }
 
+  /// Handed its data (golden, gallery): nothing behind it to read again.
+  /// Otherwise a derive that rewrites the series is read again — and the "As
+  /// of" label below clears only when that new read has landed.
+  @override
+  bool get revisionReloads => widget.data == null;
+
+  @override
+  void reload() {
+    // Whatever is in flight was asked before this revision: it must neither
+    // hold back the next read of its window nor commit when it lands.
+    _journalGen++;
+    _journalRead.clear();
+    _journalReading.clear();
+    _load();
+  }
+
+  /// Reads the journal marks for [from]..[to] once, when the toggle is on. A
+  /// failure is an empty list (a smaller claim, not a wrong one).
+  void _readJournal(String from, String to) {
+    final key = '$from..$to';
+    if (_journalRead.containsKey(key) || !_journalReading.add(key)) return;
+    final gen = _journalGen;
+    final load = widget.annotationLoader ??
+        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context)));
+    Future<List<ChartAnnotation>> read() async {
+      try {
+        return await load(from, to);
+      } catch (_) {
+        return const <ChartAnnotation>[];
+      }
+    }
+
+    read().then((items) {
+      // A read from before the last reload is dropped whole: its in-flight
+      // mark was cleared, and the fresh read of this window may be running.
+      if (gen != _journalGen) return;
+      _journalReading.remove(key);
+      if (mounted) setState(() => _journalRead[key] = items);
+    });
+  }
+
+  Widget _journalChip(BuildContext c, MetricSpec spec) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final on = _journalMarks;
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Semantics(
+        key: MetricDetail.journalToggleKey,
+        selected: on,
+        button: true,
+        child: Pressable(
+          onTap: () => setState(() => _journalMarks = !on),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: S.x3, vertical: S.x2),
+            decoration: BoxDecoration(
+                color: on ? p.wash(spec.color) : null,
+                border: on ? null : Border.all(color: p.line),
+                borderRadius: R.rPill),
+            child: Text(l?.metricDetailJournalMarksToggle ?? 'Journal marks',
+                style: F.cap.copyWith(
+                    color: on ? p.on(spec.color) : p.ink2,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Set while the insights on screen are the last result of a previous open
+  /// (memory or the stored copy), shown at once while the 90-day pass
+  /// recomputes; null once a fresh result has replaced them.
+  DateTime? _cachedAt;
+
+  /// What [_d] is built from: the cheap read (series, percentile) and the slow
+  /// 90-day journal insights, which arrive on their own.
+  MetricData? _base;
+  Map<String, dynamic>? _journal;
+  bool _journalFailed = false;
+
+  String? get _outcome => _outcomeOf[widget.metricKey];
+
+  /// "What moves it" is still waiting on the slow read, with nothing to show.
+  bool get _moversPending =>
+      widget.data == null &&
+      _outcome != null &&
+      _journal == null &&
+      !_journalFailed;
+
+  void _recompose() {
+    final b = _base;
+    if (b == null) return;
+    final j = _journal;
+    final o = _outcome;
+    _d = (j == null || o == null) ? b : b.withMovers(MetricData.moversOf(j, o));
+  }
+
   Future<void> _load() async {
     // FIRST LINE, because the line under it reads `context` unconditionally.
     // Both callers can land after disposal: the post-frame callback fires
@@ -843,8 +1058,39 @@ class _MetricDetailState extends State<MetricDetail> {
           ? signalCandidates(context, context.read<AppState>(),
               requires: spec.requires)
           : const <DeviceOption>[];
+      // Only a metric with journal insights does the slow part on open (the
+      // 90-day insight pass). It starts now, beside the cheap series read. The
+      // pass is ONE artifact shared with Wellness and the warmer, keyed by what
+      // it reads, not by the metric: a stored result whose input signature
+      // still matches is shown as is and not recomputed; a stale one is shown
+      // under an "As of" label until the recompute lands. Errors are never
+      // stored.
+      final cacheKey = _outcome == null
+          ? null
+          : LastResultCache.keyOf('journal_insights', ['90d']);
+      // A failure is carried as null: it must not escape while the series is
+      // still being read.
+      final slow = cacheKey == null
+          ? null
+          : LastResultCache.instance
+              .loadArtifact<Map<String, dynamic>>(
+                cacheKey,
+                () => repo.getJournalInsights(range: '90d'),
+                signature: () => repo.artifactSignature(cacheKey),
+                onLast: (hit) {
+                  // Only while nothing is shown yet: a re-read of a screen
+                  // that already has a fresh result is not stale.
+                  if (!mounted || _journal != null) return;
+                  setState(() {
+                    _journal = hit.value;
+                    _cachedAt = hit.cachedAt;
+                    _recompose();
+                  });
+                },
+              )
+              .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
       final d = await MetricData.load(repo, widget.metricKey,
-          candidates: candidates);
+          candidates: candidates, journal: false);
       var winners = const <InputSignal, String?>{};
       if (d.sources.length >= 2 && spec.requires.isNotEmpty && mounted) {
         // Read before the query, so the `mounted` in the condition above is
@@ -866,12 +1112,66 @@ class _MetricDetailState extends State<MetricDetail> {
         if (!mounted) return;
         winners = resolved;
       }
-      if (mounted) {
-        setState(() => (_d = d, _winners = winners, _loading = false));
-      }
+      if (!mounted) return;
+      setState(() {
+        _base = d;
+        _recompose();
+        _winners = winners;
+        _loading = false;
+        _openOnDay(d);
+      });
+      if (slow == null) return;
+      final j = await slow;
+      if (!mounted) return;
+      setState(() {
+        if (j != null) {
+          _journal = j;
+          _cachedAt = null;
+        } else {
+          // A failed refresh leaves an earlier result (labelled) in place; with
+          // none, the section is simply absent rather than loading forever.
+          _journalFailed = _journal == null;
+        }
+        _recompose();
+      });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// "As of <time>": the last result of an earlier open while it recomputes,
+  /// or the shown series while a pass recalculates its newest day.
+  Widget _asOf(MetricData d) {
+    Widget place(BuildContext c, DateTime at) => Padding(
+        padding: const EdgeInsets.only(bottom: S.x2), child: AsOfLabel(at: at));
+    final cached = _cachedAt;
+    if (cached != null) return place(context, cached);
+    return AsOfHold(
+      // The series' own read, not the composed view: a late journal result
+      // swaps `_d` but must not release a label held for the old series.
+      shown: _base ?? d,
+      day: d.newestDay,
+      computedAt: d.computedAt,
+      asOf: (recalc) => asOfFor(
+          shownDay: d.newestDay, computedAt: d.computedAt, recalc: recalc),
+      builder: place,
+    );
+  }
+
+  /// Moves to the narrowest offered window holding [MetricDetail.initialDay]
+  /// and selects its slot. A day today, or one no offered window reaches, leaves
+  /// the screen where it was. Called inside setState, once.
+  void _openOnDay(MetricData d) {
+    if (_dayApplied) return;
+    _dayApplied = true;
+    final behind = _dayBehind(widget.initialDay);
+    if (behind == null || behind <= 0) return;
+    var i = _windows.indexWhere((w) => w > behind);
+    if (i < 0) i = _windows.length - 1;
+    i = i.clamp(0, _offered(d) - 1);
+    if (behind >= _windows[i]) return;
+    _range = i;
+    _pick = _windows[i] - 1 - behind;
   }
 
   @override
@@ -889,6 +1189,7 @@ class _MetricDetailState extends State<MetricDetail> {
     final vals = [for (final v in series) ?v];
 
     return detailScaffold(c, uiText(context, spec.title), [
+      _asOf(d),
       // Resting heart rate is the NIGHT's number; this is what the chest is
       // doing this second. Two different quantities, so the live one gets its
       // own card above the trend rather than a second figure on the same card,
@@ -915,7 +1216,7 @@ class _MetricDetailState extends State<MetricDetail> {
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
         if (_loading)
-          const Center(child: CircularProgressIndicator())
+          const InlineLoading()
         else
           StatusCard(
             win == 1
@@ -983,7 +1284,10 @@ class _MetricDetailState extends State<MetricDetail> {
                 all.isEmpty ? null : all.last.t)),
         if (d.movers.isNotEmpty)
           Section(l?.metricDetailWhatMovesItSection ?? 'What moves it',
-              _movers(c, d.movers)),
+              _movers(c, d.movers))
+        else if (_moversPending)
+          Section(l?.metricDetailWhatMovesItSection ?? 'What moves it',
+              const InlineLoading()),
         const SizedBox(height: S.x5),
         // Steps are the one metric assembled from SPANS of the day, each
         // counted by a different sensor. That breakdown is a day's worth of
@@ -1306,7 +1610,9 @@ class _MetricDetailState extends State<MetricDetail> {
         // one-day window is a single point — and a single point drawn on an
         // axis is a shape pretending to be a trend. "Your normal range" below
         // is the context that actually helps here.
-        if (win > 1) const SizedBox(height: S.x5),
+        if (win > 1) const SizedBox(height: S.x4),
+        if (win > 1) _journalChip(c, spec),
+        if (win > 1) const SizedBox(height: S.x2),
         if (win > 1)
         Builder(builder: (c) {
           // One axis, shared by the labels and the curve. `min` unit metrics
@@ -1328,25 +1634,51 @@ class _MetricDetailState extends State<MetricDetail> {
           // boundary is between two slots, not on one — half a slot left of it.
           // A break at slot 0 is dropped: there is nothing before it in this
           // window to be incomparable with.
-          final marks = <double>[
-            if (series.length > 1)
-              for (final t in algoBreaks)
-                if (daysBehind(t) case final b?
-                    when b >= 0 && b < series.length && series.length - 1 - b > 0)
-                  (series.length - 1 - b - .5) / (series.length - 1),
+          final marks = heroAlgoAnnotations(
+            algoBreaks: algoBreaks,
+            seriesLength: series.length,
+            daysBehind: daysBehind,
+            label: l?.investigateAlgoVersionLabel ?? 'Algorithm version',
+          );
+          // Journal marks (workouts, moments, water, symptoms, timed journal fields) only
+          // while the toggle is on, on their local day's slot.
+          final dayLabels = [
+            for (var i = 0; i < series.length; i++)
+              _dayOfSlot(i, series.length),
           ];
-                final dim = _dimMask(d, series.length);
-                return ChartFrame(
-                  title: uiText(context, spec.title),
-                  unit: spec.unit.isEmpty ? 'score' : spec.unit,
-                  height: 150,
-                  yAxis: axis,
-                  band: band,
-                  bandColor: p.wash(spec.color),
-                  xMarks: marks,
-                  // The mark's only screen-reader form, and the only thing that can
-                  // say what it is. Deliberately flat: a version change is
-                  // provenance, not an event that happened to the user.
+          var journal = const <ChartAnnotation>[];
+          if (_journalMarks && dayLabels.length > 1) {
+            final from = dayLabels.first, to = dayLabels.last;
+            final read = _journalRead['$from..$to'];
+            if (read == null) {
+              WidgetsBinding.instance
+                  .addPostFrameCallback((_) => _readJournal(from, to));
+            } else {
+              journal = dailyAnnotations(read, dayLabels);
+            }
+          }
+          final shown = [...marks, ...journal];
+          final dim = _dimMask(d, series.length);
+          return ChartFrame(
+            title: uiText(context, spec.title),
+            unit: spec.unit.isEmpty ? 'score' : spec.unit,
+            height: 150,
+            yAxis: axis,
+            band: band,
+            bandColor: p.wash(spec.color),
+            // Icon + dashed line, through the shared annotation layout so a
+            // mark can never sit on another icon. Provenance, not an event.
+            annotations: shown.isEmpty
+                ? null
+                : AnnotationSet(
+                    items: shown,
+                    domainStart: 0,
+                    domainEnd: (series.length - 1).toDouble()),
+            annotationCursor:
+                _pick == null ? null : _slotAt01(_pick!, series.length),
+            // The mark's only screen-reader form, and the only thing that can
+            // say what it is. Deliberately flat: a version change is
+            // provenance, not an event that happened to the user.
             footnote: marks.isEmpty
                 ? (band == null && stored.length - 1 < kUsualMinDays
                     ? usualNeedsDaysText(l, stored.length)
@@ -1498,9 +1830,26 @@ class _MetricDetailState extends State<MetricDetail> {
                     '${have.length} of these $win days have a wear '
                         'record. The rest are gaps in both charts — the line above '
                         'is not carried across one.',
-                child: CustomPaint(
-                  size: Size.infinite,
-                  painter: Bars(hrs, p.ink3, axis: axis),
+                // The window ends today, one bar per day; a day with no wear
+                // record has no bar and reads "No data here".
+                child: ChartScrub(
+                  label: l?.metricDetailWornChartTitle ?? 'Worn',
+                  gaps: hasChartGaps([hrs], trailing: true),
+                  time: (at) => ChartScrub.dayBack(hrs.length -
+                      1 -
+                      ChartScrub.slotAt(hrs.length, at, bars: true)),
+                  keys: [
+                    ChartKey.slots(
+                        'Worn (${l?.metricDetailHoursADayUnit ?? 'h a day'})',
+                        p.ink3,
+                        hrs,
+                        (i, v) => '${v.toStringAsFixed(1)} h',
+                        bars: true),
+                  ],
+                  child: CustomPaint(
+                    size: Size.infinite,
+                    painter: Bars(hrs, p.ink3, axis: axis),
+                  ),
                 ),
               ),
             );
@@ -1524,7 +1873,7 @@ class _MetricDetailState extends State<MetricDetail> {
   /// with, walked through [DateTime]'s own calendar so the two days a year that
   /// are 23 or 25 hours long land on the right date.
   String _dayOfSlot(int i, int len) {
-    final n = DateTime.now();
+    final n = pkg_clock.clock.now();
     return dayLabelOf(DateTime(n.year, n.month, n.day - (len - 1 - i)));
   }
 

@@ -801,15 +801,15 @@ class LiveHeart extends StatelessWidget {
           ? StatusCard(
               l?.activityLiveNoHrYetTitle ?? 'No heart rate yet',
               l?.activityLiveNoHrYetBody ??
-                  'The band is connected but has not reported a beat, so it '
-                      'needs to be snug, a finger-width above the wrist bone.',
+                  'The band is connected but has sent no heartbeat. '
+                  'Wear it snug, a finger-width above the wrist bone.',
               icon: LucideIcons.heartPulse,
             )
           : StatusCard(
               l?.activityLiveNoHrTitle ?? 'No heart rate',
               l?.activityLiveNoHrBody ??
-                  'The band is not connected, so nothing is arriving for '
-                      'this session.',
+                  'The band is not connected. Connect it to record '
+                  'heart rate for this session.',
               icon: LucideIcons.heartPulse,
             );
     }
@@ -874,8 +874,8 @@ Widget? _routeIssueCard(
     GpsPermissionStatus.serviceOff => StatusCard(
         l?.activityLiveNoRouteOffTitle ?? 'No route: location is off',
         l?.activityLiveNoRouteOffBody ??
-            'Location services are off on this phone, so no fixes are '
-                'arriving.',
+            'Location services are off on this phone, so the '
+            'route cannot be recorded.',
         fix: l?.activityLiveTurnOnLocation ?? 'Turn on location',
         onFix: onFix,
         icon: LucideIcons.mapPin,
@@ -884,8 +884,8 @@ Widget? _routeIssueCard(
         l?.activityLiveNoRouteNotAllowedTitle ??
             'No route: location not allowed',
         l?.activityLiveDeniedForeverBody ??
-            'Location is denied for this app, which only Settings can '
-                'change.',
+            'Location access is denied for this app. '
+            'Change it in Settings.',
         fix: l?.activityLiveOpenSettings ?? 'Open Settings',
         onFix: onFix,
         icon: LucideIcons.mapPin,
@@ -894,7 +894,7 @@ Widget? _routeIssueCard(
     _ => StatusCard(
         l?.activityLiveNoRouteFailedTitle ?? 'No route: location failed',
         l?.activityLiveNoRouteFailedBody ??
-            'The phone returned an error when asked for a fix.',
+            'The phone could not get a location.',
         fix: l?.activityLiveTryAgain ?? 'Try again',
         onFix: onFix,
         icon: LucideIcons.mapPin,
@@ -1109,11 +1109,10 @@ class LiveMeasured extends StatelessWidget {
               height: 150,
               footnote: f.distanceKm == null
                   ? (l?.activityLiveRouteFootnoteNoDistance ??
-                      'Start pinned; distance appears once the fixes settle.')
+                      'Start point saved. Distance appears once enough location readings arrive.')
                   : (l?.activityLiveRouteFootnoteWithDistance(
                           _distanceText(ctx, f.distanceKm!)) ??
-                      '${_distanceText(ctx, f.distanceKm!)} from the fixes '
-                          'recorded so far.'),
+                      '${_distanceText(ctx, f.distanceKm!)} so far.'),
               child: ClipRRect(
                 borderRadius: R.rLg,
                 child: Container(
@@ -1701,7 +1700,7 @@ class _LiveStrengthState extends State<LiveStrength> {
           child: Text(
               bodyweight
                   ? (l?.activityLiveBodyweightExcludedNote ??
-                      'Bodyweight — left out of volume')
+                      'Bodyweight, left out of volume')
                   : (l?.activityLiveLogAsBodyweight ?? 'Log as bodyweight'),
               style: F.cap.copyWith(color: p.on(C.purple))),
         ),

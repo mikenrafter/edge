@@ -24,6 +24,7 @@ import '../../data/day_label.dart';
 import '../../data/nutrition_store.dart';
 import '../../models/metric.dart';
 import '../../data/journal_fields.dart';
+import '../../data/water_units.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import '../onboarding/profile_setup.dart' show formatDay;
@@ -62,6 +63,9 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   /// The day [_waterMl] was read for. Past midnight on a tab nobody reloaded
   /// it is still yesterday's, and a full yesterday disabled today's + button.
   String? _waterDate;
+
+  /// The part of [_waterMl] that came from "Assume I drank water".
+  double _assumedMl = 0;
   bool _loading = true;
 
   /// The local profile map, read once per load. Targets live here rather than
@@ -80,7 +84,12 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   /// after a sync, water logged on Wellness. This tab is never disposed, so
   /// without this it showed launch-time figures all day.
   @override
-  void reload() => _load();
+  void reload() {
+    _refresh.reset();
+    _load();
+  }
+
+  final _refresh = TodayRefreshLatch();
 
   Future<void> _load() async {
     final t = beginRead(#nutrition);
@@ -90,12 +99,18 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
     Metric? burned;
     double? water;
     final date = _date;
+    double assumed = 0;
     final repo = app.repo;
+    var pending = false;
     if (repo != null) {
-      final today = await repo.getToday();
+      // Stored read: burned calories are today's activity, absent (not
+      // another day's) until the refresh lands; it is asked for after paint.
+      final today = await repo.getTodayStored();
+      pending = (today['status'] as Map?)?['refresh_pending'] == true;
       final daily = today['daily'];
       if (daily is Map) burned = Metric.parse(daily['calories_total']);
       water = (await repo.getJournalMetrics(date))['water_ml']?.value;
+      assumed = water == null ? 0 : await LocalDb.assumedWaterMl(date);
     }
     if (!stillNewest(#nutrition, t)) return;
     setState(() {
@@ -103,9 +118,15 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
       _burned = burned;
       _waterMl = water;
       _waterDate = date;
+      _assumedMl = assumed;
       _profile = {...?app.user};
       _loading = false;
     });
+    if (repo != null) {
+      _refresh.afterPaint(repo, pending).then((landed) {
+          if (landed && mounted) _load();
+        });
+    }
   }
 
   NutritionDay? get _today {
@@ -142,6 +163,9 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   Future<void> _stepWater(int dir) async {
     final repo = context.read<AppState>().repo;
     if (repo == null || _writingWater) return;
+    // The step follows the user's water units. Read before the first await,
+    // while the context is still live, and before the guard is set.
+    final step = WaterUnits.stepMl(waterSystemOf(context, listen: false));
     _writingWater = true;
     try {
       // Inside the try, not before it: the READ can throw too, and with the
@@ -162,9 +186,9 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
       final spec = _waterSpec;
       double? next;
       if (dir > 0) {
-        next = ((v ?? 0) + spec.step).clamp(0, spec.max).toDouble();
+        next = ((v ?? 0) + step).clamp(0, spec.max).toDouble();
       } else {
-        final down = (v ?? 0) - spec.step;
+        final down = (v ?? 0) - step;
         next = down <= 0 ? (v == null || v == 0 ? null : 0.0) : down;
       }
       if (mounted) {
@@ -276,7 +300,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         if (day == null || !day.logged)
           StatusCard(
             l?.nutritionEmptyTodayTitle ?? 'Nothing logged today',
-            l?.nutritionEmptyTodayBody ?? 'One tap is a complete log.',
+            l?.nutritionEmptyTodayBody ?? 'Add an entry with one tap. Numbers are optional.',
             fix: l?.nutritionLogOccasionFix ?? 'Log an eating occasion',
             icon: LucideIcons.utensils,
             onFix: _logFood,
@@ -329,6 +353,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
           final ml = _waterDate == _date ? _waterMl : null;
           return _WaterRow(
             ml: ml,
+            assumedMl: _waterDate == _date ? _assumedMl : 0,
             onDown: (!live || ml == null) ? null : () => _stepWater(-1),
             onUp: (!live || (ml ?? 0) >= _waterSpec.max)
                 ? null
@@ -338,11 +363,11 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         if (day != null && day.logged && day.kcal.isFloor) ...[
           const SizedBox(height: S.x4),
           StatusCard(
-            l?.nutritionFloorTitle ?? 'Today\'s energy is a floor, not a total',
+            l?.nutritionFloorTitle ?? 'Today\'s energy is a minimum',
             l?.nutritionFloorBody(day.kcal.unknown, day.entries.length) ??
-                '${day.kcal.unknown} of ${day.entries.length} occasions were '
-                    'logged without an energy figure, so the number above is '
-                    'the least you ate rather than what you ate.',
+                '${day.kcal.unknown} of ${day.entries.length} occasions have '
+                'no energy figure, so the number above is '
+                'a minimum.',
             fix: l?.nutritionAddNumbersFix ?? 'Add the numbers to an occasion',
             icon: LucideIcons.circleDashed,
             onFix: _logFood,
@@ -383,8 +408,8 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
             partial == 0
                 ? (l?.nutritionDaysLoggedLabel ?? 'Days with something logged')
                 : (l?.nutritionPartialExcluded(partial) ??
-                    '$partial logged but partial, so excluded from '
-                        'every average below'),
+                    '$partial partial, left out of '
+                    'every average below'),
             C.domFood,
           ),
         ),
@@ -394,7 +419,9 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
           counted == 0
               ? StatusCard(
                   l?.nutritionNoCompleteDayTitle ?? 'No complete day to average yet',
-                  l?.nutritionNoCompleteDayBody ?? 'You have none.',
+                  l?.nutritionNoCompleteDayBody ??
+                      'Give every occasion in a day an energy figure and that '
+                      'day counts toward the average.',
                   icon: LucideIcons.chartNoAxesColumn,
                 )
               : Surface(
@@ -495,10 +522,28 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         series: vals,
         child: axis == null
             ? const SizedBox.shrink()
-            : CustomPaint(
-                size: Size.infinite,
-                painter: Bars(vals, C.domFood,
-                    highlight: vals.length - 1, t: animate(c, 1), axis: axis),
+            // Seven bars, oldest first; an unlogged day has no bar and reads
+            // "No data here", and a partial day says it is a floor.
+            : ChartScrub(
+                label: l?.nutritionEnergyLoggedTitle ?? 'Energy logged',
+                gaps: hasChartGaps([vals], trailing: true),
+                time: (at) => _dayShort(
+                    w.days[ChartScrub.slotAt(vals.length, at, bars: true)].date,
+                    l),
+                keys: [
+                  ChartKey.slots(
+                      l?.nutritionEnergyLoggedTitle ?? 'Energy logged',
+                      C.domFood,
+                      vals,
+                      (i, v) => '${v.round()} kcal'
+                          '${w.days[i].state == DayLogState.partial ? ' (partial day)' : ''}',
+                      bars: true),
+                ],
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter: Bars(vals, C.domFood,
+                      highlight: vals.length - 1, t: animate(c, 1), axis: axis),
+                ),
               ),
       ),
     );
@@ -603,7 +648,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         if (set.isEmpty)
           StatusCard(
             l?.nutritionNoTargetsTitle ?? 'No targets set',
-            l?.nutritionNoTargetsBody ?? 'A target here is one you type.',
+            l?.nutritionNoTargetsBody ?? 'Targets are values you enter.',
             fix: l?.nutritionSetTargetFix ?? 'Set a target',
             icon: LucideIcons.target,
             onFix: _editTargets,
@@ -687,19 +732,19 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         // completeness is a sentence the user can see is false.
         (m?.floorDays ?? 0) > 0
             ? (l?.nutritionFloorAverageBody(nutrient) ??
-                'Every complete day had an occasion logged without a '
-                    '$nutrient figure, so the average would only be a lower '
-                    'bound.')
+                'Every complete day has an entry with no '
+                '$nutrient figure, so an average would '
+                'be a minimum.')
             : (_week?.counted.length ?? 0) > 0
                 ? (l?.nutritionCountedNoFigureBody(
                         _week!.counted.length, _week!.span, nutrient) ??
                     '${_week!.counted.length} of the last ${_week!.span} days '
-                        'counted, but none of them carried a $nutrient '
-                        'figure.')
+                    'counted, but none had a $nutrient '
+                    'figure.')
                 : (l?.nutritionDayCountsRuleFull(_week?.span ?? 7) ??
                     'A day counts once every occasion carries a figure and '
-                        'the log reaches the evening. None of the last '
-                        '${_week?.span ?? 7} days has.'),
+                    'the log reaches the evening. None of the last '
+                    '${_week?.span ?? 7} days qualifies.'),
         fix: (m?.floorDays ?? 0) > 0 || (_week?.counted.length ?? 0) > 0
             ? (l?.nutritionAddNumbersFix ?? 'Add the numbers to an occasion')
             : (l?.nutritionLogOccasionFix ?? 'Log an eating occasion'),
@@ -959,8 +1004,8 @@ class _Mean extends StatelessWidget {
       sub: mean.value == null
           ? (floors > 0
                 ? (l?.nutritionEveryDayNoFigure(label.toUpperCase()) ??
-                    'EVERY COMPLETE DAY HAD AN OCCASION WITH NO '
-                        '${label.toUpperCase()} FIGURE')
+                    'EVERY COMPLETE DAY HAD AN ENTRY WITH NO '
+                    '${label.toUpperCase()} FIGURE')
                 : (l?.nutritionNoDayRecorded(label.toUpperCase()) ??
                     'NO COMPLETE DAY RECORDED ${label.toUpperCase()}'))
           : (l?.nutritionMeanOfCompleteDaysCaps(n) ??
@@ -968,7 +1013,7 @@ class _Mean extends StatelessWidget {
               (floors == 0
                   ? ''
                   : (l?.nutritionLeftOutAsFloor(floors) ??
-                      ' · $floors LEFT OUT AS A FLOOR')),
+                      ' · $floors AT-LEAST VALUES LEFT OUT')),
     );
   }
 }
@@ -979,11 +1024,14 @@ class _Mean extends StatelessWidget {
 /// the whole row, and water needs two targets pointing opposite ways. Nothing
 /// else about it departs from that row's shape.
 class _WaterRow extends StatelessWidget {
-  const _WaterRow({required this.ml, this.onDown, this.onUp});
+  const _WaterRow({required this.ml, this.assumedMl = 0, this.onDown, this.onUp});
 
   /// Null is NOT logged, which is a different answer from a logged zero and
   /// reads differently here: "Not logged" against "0.0 L".
   final double? ml;
+
+  /// The assumed part of [ml], shown as such.
+  final double assumedMl;
   final VoidCallback? onDown, onUp;
 
   @override
@@ -1005,24 +1053,33 @@ class _WaterRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+            if (assumedShareText(c, assumedMl) case final share?)
+              Text(share,
+                  key: const ValueKey('nutrition-water-assumed'),
+                  style: F.over.copyWith(color: p.ink3),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
           ]),
         ),
         _WaterStep(LucideIcons.minus, onDown),
         // Fixed width so the number does not shove the buttons sideways as it
         // steps through 0.8 → 1.0 → 1.2.
         SizedBox(
-          width: 78,
-          child: Text(
+          width: 96,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
             // NEVER a bare em-dash. An absent value says the word; a dash is a
             // shrug the reader has to interpret, and the suite pins this.
             ml == null
                 ? (l?.nutritionNoneYet ?? 'None yet')
-                : '${(ml! / 1000).toStringAsFixed(1)} L',
+                : waterText(c, ml!),
             textAlign: TextAlign.center,
             style: ml == null
                 ? F.cap.copyWith(color: p.ink3)
                 : F.n24.copyWith(color: p.ink),
             maxLines: 1,
+          ),
           ),
         ),
         _WaterStep(LucideIcons.plus, onUp),

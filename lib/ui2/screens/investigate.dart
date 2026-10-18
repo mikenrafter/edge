@@ -22,17 +22,21 @@ import '../../l10n/date_text.dart';
 // carry a plain row down to it.
 
 import '../../l10n/display_text.dart';
-import 'dart:convert' show jsonDecode;
 import 'dart:math' show sqrt;
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/local_repository.dart';
+import '../../compute/derivation_engine.dart'
+    show kAlgoVersion, kAnalyticsPin, kProtocolPin;
+import '../../compute/prv_export.dart';
 import '../../l10n/app_localizations.dart';
+import '../../util/log_file.dart' show LogSaveFailed;
 import '../ui2.dart';
 import 'day_timeline.dart';
 import 'home_screen.dart';
@@ -110,7 +114,7 @@ class InvestigateData {
 
   static Future<InvestigateData> load(LocalRepository repo, String key,
       {String? want}) async {
-    final today = await repo.getToday();
+    final today = await repo.getTodayStored();
     final days = await repo.availableDays();
     final day = pickDay(
         days, want, (today['status'] as Map?)?['today_day']?.toString());
@@ -121,7 +125,8 @@ class InvestigateData {
     final heart = await repo.getDayHeart(day);
     final wear = await repo.getDayWear(day);
     final lungs = await repo.getDayLungs(day);
-    final row = await LocalDb.dayResult(day);
+    final row = await LocalDb.dayResultMeta(day);
+    final block = await repo.getDayBlock(day, const ['imported', 'source', 'steps']);
     final win = lungs['sleep_window'];
     final series =
         spec.suppress != null ? const <double>[] : seriesOf(await repo.getChart(spec.chartKey));
@@ -137,21 +142,10 @@ class InvestigateData {
     // onto the bundle itself; a day derived here has neither.
     String? importedFrom;
     var steps = const <String, dynamic>{};
-    final payload = row?['payload_json'];
-    // The `contains` guard is what keeps every other key off the decode; the
-    // steps split needs the bundle, so that key pays for it deliberately.
-    if (payload is String &&
-        (key == 'steps' || payload.contains('"imported"'))) {
-      final b = jsonDecode(payload);
-      if (b is Map) {
-        if (b['imported'] == true) {
-          importedFrom = b['source']?.toString() ?? 'an import';
-        }
-        if (b['steps'] is Map) {
-          steps = (b['steps'] as Map).cast<String, dynamic>();
-        }
-      }
+    if (block['imported'] == true) {
+      importedFrom = block['source']?.toString() ?? 'an import';
     }
+    if (block['steps'] is Map) steps = (block['steps'] as Map).cast<String, dynamic>();
 
     return InvestigateData(
       day: day,
@@ -219,7 +213,12 @@ class Investigate extends StatefulWidget {
   /// caller did before a day could be asked for.
   final String? day;
 
-  const Investigate(this.metricKey, {super.key, this.data, this.day});
+  /// The 'hrv' page's "Export PRV log" control saves through this (clock, app
+  /// version, saver). Null means the platform defaults. RED STUB: not read yet.
+  final PrvExportEnv? prvExport;
+
+  const Investigate(this.metricKey,
+      {super.key, this.data, this.day, this.prvExport});
 
   @override
   State<Investigate> createState() => _InvestigateState();
@@ -232,6 +231,10 @@ class _InvestigateState extends State<Investigate> {
   // A quick second tap on the day stepper starts a second load; the first
   // can finish last and must not paint the old day under the new label.
   int _loadToken = 0;
+
+  // PRV log export (the 'hrv' page). Cleared on every exit of an attempt.
+  bool _prvExporting = false;
+  String? _prvExportFailure;
 
   @override
   void initState() {
@@ -372,6 +375,225 @@ class _InvestigateState extends State<Investigate> {
     ];
   }
 
+  /// A screen's verdict in words. null = the screen did not run.
+  static String _flagWord(AppLocalizations? l, Object? flag) => flag == null
+      ? (l?.investigateFlagNotScreened ?? 'not screened')
+      : flag == true
+      ? (l?.investigateFlagRaised ?? 'raised')
+      : (l?.investigateFlagClear ?? 'clear');
+
+  // ── PRV screen evidence (design 04 PRV diagnostics) ──
+  // What the irregular-rhythm screen counted on its way to its verdict, read
+  // from the stored day bundle (`diagnostics` inside `clinical.irregular` and
+  // `clinical.irregular_24h`); nothing is recomputed. An unstored value has no
+  // row (MonoTable drops a dash): never a 0 or a 0 %.
+  List<Widget> _prvEvidencePanels(BuildContext c, InvestigateData d) {
+    final l = AppLocalizations.of(c);
+    Map<String, dynamic>? diagOf(Object? screen) {
+      final m = screen is Map ? screen['diagnostics'] : null;
+      return m is Map ? m.cast<String, dynamic>() : null;
+    }
+
+    Map<String, dynamic> sub(Object? m) =>
+        m is Map ? m.cast<String, dynamic>() : const <String, dynamic>{};
+    String n(Object? v) => v is num ? thousands(v) : '—';
+    String pct(Object? v) => v is num
+        ? '${(v * 100).toStringAsFixed(1).replaceFirst('-', '\u2212')} %'
+        : '—';
+
+    String why(Map<String, dynamic> g, String reason) {
+      final beats = sub(g['beats']), th = sub(g['thresholds']);
+      switch (reason) {
+        case 'too_few_beats':
+          return l?.investigatePrvWhyTooFew(
+                  n(beats['nn_kept']), n(th['min_beats'])) ??
+              'Too few usable beats: ${n(beats['nn_kept'])} of '
+                  '${n(th['min_beats'])} needed';
+        case 'artifact':
+          return l?.investigatePrvWhyArtifact(
+                  pct(beats['artifact_fraction']), pct(th['max_artifact'])) ??
+              'Too much artifact: ${pct(beats['artifact_fraction'])} of beats '
+                  'classified as artifacts (corrected or dropped), '
+                  '${pct(th['max_artifact'])} allowed';
+        case 'no_successive_pairs':
+          return l?.investigatePrvWhyNoPairs ??
+              'No successive usable beats to compare';
+        case 'no_long_term_variability':
+          return l?.investigatePrvWhyNoVariability ??
+              'No long-term variability (SD2 is zero), so the ratio is '
+                  'undefined';
+      }
+      return '—';
+    }
+
+    String open(Map<String, dynamic> w) {
+      final beats = n(w['open_beats']);
+      switch (w['open']) {
+        case 'thin':
+          return l?.investigatePrvOpenThin(beats) ??
+              '$beats beats, too few to count';
+        case 'flagged':
+          return l?.investigatePrvOpenFlagged(beats) ?? '$beats beats, flagged';
+        case 'unflagged':
+          return l?.investigatePrvOpenUnflagged(beats) ??
+              '$beats beats, not flagged';
+      }
+      return '—';
+    }
+
+    List<(String, String)> rows(
+        String scope, Map<String, dynamic>? g, List<(String, String)> extra) {
+      if (g == null) return [...extra];
+      final beats = sub(g['beats']), w = sub(g['windows']), th = sub(g['thresholds']);
+      final reason = g['abstain'];
+      return [
+        if (reason is String)
+          (l?.investigatePrvWhy(scope) ?? 'Why not screened, $scope',
+              why(g, reason)),
+        (l?.investigatePrvBeatsRaw(scope) ?? 'Beats before cleaning, $scope',
+            n(beats['rr_raw'])),
+        (l?.investigatePrvBeatsCorrected(scope) ?? 'Beats corrected, $scope',
+            n(beats['corrected'])),
+        (l?.investigatePrvBeatsDropped(scope) ?? 'Beats dropped, $scope',
+            n(beats['dropped'])),
+        (l?.investigatePrvBeatsAnalysed(scope) ?? 'Beats analysed, $scope',
+            n(beats['nn_kept'])),
+        (l?.investigatePrvArtifactShare(scope) ??
+            'Share of beats classified as artifacts (corrected or dropped), '
+                '$scope',
+            pct(beats['artifact_fraction'])),
+        ...extra,
+        (l?.investigatePrvWindowsTotal(scope) ?? 'Windows, all, $scope',
+            n(w['total'])),
+        (l?.investigatePrvWindowsValid(scope) ??
+            'Windows with enough beats to count, $scope',
+            n(w['valid'])),
+        (l?.investigatePrvWindowsFlagged(scope) ?? 'Windows flagged, $scope',
+            n(w['flagged'])),
+        (l?.investigatePrvWindowsShare(scope) ??
+            'Flagged share, seen / needed, $scope',
+            w['sustained_observed'] is num && th['sustained_fraction'] is num
+                ? '${pct(w['sustained_observed'])} / '
+                    '${pct(th['sustained_fraction'])}'
+                : '—'),
+        if (w.isNotEmpty)
+          (l?.investigatePrvOpenWindow(scope) ?? 'Last (open) window, $scope',
+              open(w)),
+      ];
+    }
+
+    final sleepPlain = sub(d.heart['irregular']);
+    final sleepDiag = diagOf(d.heart['irregular']);
+    final dayDiag = diagOf(d.heart['irregular_24h']);
+    final s24 = l?.investigatePrvScope24h ?? '24 h';
+    final sSleep = l?.investigatePrvScopeSleep ?? 'sleep';
+    final all = [
+      ...rows(s24, dayDiag, const []),
+      ...rows(sSleep, sleepDiag, [
+        (l?.investigatePrvPnnSleep ?? 'Successive intervals over 70 ms, sleep',
+            sleepPlain['pnn_pct'] is num
+                ? '${(sleepPlain['pnn_pct'] as num).toStringAsFixed(1)} %'
+                : '—'),
+      ]),
+    ];
+    final hasEvidence = !all.every((r) => r.$2 == '—');
+    // A day from before the diagnostics (v103) holds a verdict and no evidence,
+    // and cannot gain any (its raw rows are pruned): the log still exports what
+    // it has and says "not recorded" for the rest.
+    final screen24h = d.heart['irregular_24h'];
+    final hasVerdict = sleepPlain['flag'] != null ||
+        (screen24h is Map && screen24h['value'] is Map);
+    if (!hasEvidence && !hasVerdict) return const [];
+    return [
+      const SizedBox(height: S.x3),
+      if (hasEvidence)
+        MonoTable(
+            l?.investigatePrvEvidenceTitle ??
+                'Irregular-rhythm screen evidence',
+            all),
+      if (hasEvidence) const SizedBox(height: S.x2),
+      _prvExportRow(c, d),
+    ];
+  }
+
+  Widget _prvExportRow(BuildContext c, InvestigateData d) {
+    final l = AppLocalizations.of(c);
+    final p = P.of(c);
+    final label = l?.investigatePrvExport ?? 'Export PRV log';
+    final failure = _prvExportFailure;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Pressable(
+          key: const ValueKey('prv-log-export'),
+          semanticLabel: label,
+          onTap: _prvExporting ? null : () => _exportPrv(d),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: S.x2),
+            child: Row(children: [
+              Icon(LucideIcons.share, size: 16, color: p.on(C.blue)),
+              const SizedBox(width: S.x2),
+              Expanded(
+                  child: Text(label, style: F.body.copyWith(color: p.on(C.blue)))),
+            ]),
+          ),
+        ),
+        if (failure != null)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              l?.investigatePrvExportFailed(failure) ??
+                  'Couldn\'t save the PRV log: $failure',
+              style: F.cap.copyWith(color: p.ink3),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Saves the shown day's PRV verdict and evidence as a log file. The busy
+  /// flag clears on every exit; a failure is shown with its reason.
+  Future<void> _exportPrv(InvestigateData d) async {
+    setState(() {
+      _prvExporting = true;
+      _prvExportFailure = null;
+    });
+    String? failure;
+    try {
+      Map<String, dynamic>? asMap(Object? m) =>
+          m is Map ? m.cast<String, dynamic>() : null;
+      final r = await exportPrvLog(
+        env: widget.prvExport ?? _defaultPrvEnv(),
+        analyticsPin: kAnalyticsPin,
+        protocolPin: kProtocolPin,
+        algoVersion: kAlgoVersion,
+        day: d.day ?? _day ?? 'not recorded',
+        sleep: asMap(d.heart['irregular']),
+        screen24h: asMap(d.heart['irregular_24h']),
+      );
+      if (r is LogSaveFailed) failure = r.reason;
+    } catch (e) {
+      failure = '$e';
+    } finally {
+      if (mounted) {
+        setState(() {
+          _prvExporting = false;
+          _prvExportFailure = failure;
+        });
+      }
+    }
+  }
+
+  /// The production environment: the installed app's version, the wall clock,
+  /// the platform share sheet. Tests hand in their own.
+  PrvExportEnv _defaultPrvEnv() => PrvExportEnv(
+        appVersion: () async {
+          final i = await PackageInfo.fromPlatform();
+          return '${i.version}+${i.buildNumber}';
+        },
+        now: DateTime.now,
+      );
+
   // ── HRV: time, frequency, non-linear ──
   List<Widget> _hrvPanels(BuildContext c, InvestigateData d) {
     final l = AppLocalizations.of(c);
@@ -388,6 +610,11 @@ class _InvestigateState extends State<Investigate> {
         ? (d.heart['irregular'] as Map).cast<String, dynamic>()
         : const <String, dynamic>{};
     final irr24 = envValue(d.heart['irregular_24h']) ?? const {};
+    // The 24 h confidence rides on the envelope, not in its value.
+    final irr24Env = d.heart['irregular_24h'];
+    final irr24Confidence = irr24Env is Map ? irr24Env['confidence'] : null;
+    final coverage = d.hrv['coverage'];
+    final cleanFraction = coverage is Map ? coverage['clean_fraction'] : null;
     final dc = envValue(d.hrv['prsa_dc']) ?? const {};
     final ac = envValue(d.hrv['prsa_ac']) ?? const {};
     final hrvBlock = d.heart['hrv'];
@@ -488,21 +715,24 @@ class _InvestigateState extends State<Investigate> {
         // A screen that never RAN is not a screen that ran and found nothing.
         // `irregularBeatScreen` abstains below 500 clean beats or over 30%
         // artifact — the common case for a barely-worn day — and both rows
-        // printed "clear" for it, i.e. a negative arrhythmia screen for a day
-        // the screen was explicitly suppressed. MonoTable drops the em-dash.
+        // used to print "clear" for it, i.e. a negative arrhythmia screen for
+        // a day the screen was explicitly suppressed. Now: raised / clear /
+        // not screened, and "not screened" is never "clear".
         (l?.investigateIrregularRhythmFlagSleep ??
             'Irregular-rhythm flag, sleep',
-            irr['flag'] == null
-                ? '—'
-                : (irr['flag'] == true
-                    ? (l?.investigateFlagRaised ?? 'raised')
-                    : (l?.investigateFlagClear ?? 'clear'))),
+            _flagWord(l, irr['flag'])),
         (l?.investigateIrregularRhythmFlag24h ?? 'Irregular-rhythm flag, 24 h',
-            irr24['flag'] == null
-                ? '—'
-                : (irr24['flag'] == true
-                    ? (l?.investigateFlagRaised ?? 'raised')
-                    : (l?.investigateFlagClear ?? 'clear'))),
+            _flagWord(l, irr24['flag'])),
+        // The stored evidence behind those two verdicts, read from the day
+        // bundle as persisted (design 04 R4: display only, nothing recomputed).
+        // An unpersisted value has no row: never a 0 or a 0 %.
+        (l?.investigateConfidence24h ?? 'Confidence, 24 h',
+            plain(irr24Confidence)),
+        (l?.investigateConfidenceSleep ?? 'Confidence, sleep',
+            plain(irr['confidence'])),
+        (l?.investigateCleanFractionSleep ??
+            'Share of beats kept after cleaning, sleep',
+            cleanFraction is num ? pct(cleanFraction * 100) : '—'),
         (l?.investigateDecelerationCapacity ?? 'Deceleration capacity',
             ms(dc['capacity_ms'])),
         (l?.investigateAccelerationCapacity ?? 'Acceleration capacity',
@@ -510,6 +740,7 @@ class _InvestigateState extends State<Investigate> {
         (l?.investigateDcAnchors ?? 'DC anchors',
             dc['anchors'] == null ? '—' : thousands(dc['anchors'] as num)),
       ]),
+      ..._prvEvidencePanels(c, d),
       if (d.rhythmPoints.isNotEmpty) ...[
         const SizedBox(height: S.x3),
         _rhythmStrip(c, d),
@@ -621,6 +852,23 @@ class _InvestigateState extends State<Investigate> {
     final grid = _weekGrid(d.rhythmPoints, weeks);
     final ran = d.rhythmPoints.length;
     final raised = d.rhythmPoints.where((e) => e.v >= 1).length;
+    final ranLabel = l?.investigateScreenRan ?? 'Screen ran';
+    // Days from the start of the grid to today; the rest of this week is the
+    // future, which is not a day the screen failed to run.
+    final elapsedDays = weeks * 7 - (7 - DateTime.now().weekday);
+    // One key per count: that week's days, "N of 7". A week with no day on
+    // which the screen ran has nothing to count and reads "—".
+    ChartKey weekKey(String label, Color ink, int Function(List<double?>) n) {
+      String? say(double at) {
+        final col = grid[ChartScrub.slotAt(weeks, at, bars: true)];
+        return col.every((v) => v == null) ? null : '${n(col)} of 7 days';
+      }
+
+      final last = grid.lastIndexWhere((col) => col.any((v) => v != null));
+      return ChartKey(label, ink, say,
+          latest: last < 0 ? null : (last + .5) / weeks);
+    }
+
     return Surface(
       child: ChartFrame(
         title: l?.investigateIrregularRhythmScreen ?? 'Irregular-rhythm screen',
@@ -630,16 +878,41 @@ class _InvestigateState extends State<Investigate> {
           l?.investigate12WeeksAgo ?? '12 weeks ago',
           l?.investigateThisWeek ?? 'This week',
         ],
-        legend: [(l?.investigateScreenRan ?? 'Screen ran', p.on(C.purple))],
+        legend: [(ranLabel, p.on(C.purple))],
         footnote: l?.investigateRhythmStripFootnote(ran, raised) ??
             'Ran on $ran day${ran == 1 ? '' : 's'}, raised its flag on '
             '$raised. An outlined square is a day it did not run. A clear '
             'strip is not a negative result: this is a screen on pulse '
             'timing, and it cannot tell an ectopic beat from a dropped beat '
             'from the band moving on your wrist.',
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: HeatMap(grid, p.on(C.purple), p.line),
+        // A grid: the finger selects the week (column) it is over, and the
+        // readout counts that week's squares. A week with no day on which the
+        // screen ran reads "No data here".
+        child: ChartScrub(
+          label: l?.investigateIrregularRhythmScreen ?? 'Irregular-rhythm screen',
+          mode: ChartScrubMode.nearest,
+          // Outlined squares are days it did not run: that is the "Not
+          // recorded" entry, and it appears only when there is one.
+          gaps: hasChartGaps([
+            [for (final col in grid) ...col].sublist(0, elapsedDays)
+          ], trailing: true),
+          time: (at) {
+            final w = ChartScrub.slotAt(weeks, at, bars: true);
+            final back = DateTime.now().weekday - 1 + (weeks - 1 - w) * 7;
+            return w == weeks - 1
+                ? 'This week'
+                : 'Week of ${ChartScrub.dayBack(back)}';
+          },
+          keys: [
+            weekKey(ranLabel, p.on(C.purple),
+                (col) => col.where((v) => v != null).length),
+            weekKey('Flagged', p.on(C.purple),
+                (col) => col.where((v) => v != null && v >= 1).length),
+          ],
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: HeatMap(grid, p.on(C.purple), p.line),
+          ),
         ),
       ),
     );
@@ -1061,7 +1334,8 @@ class _InvestigateState extends State<Investigate> {
           ),
           if (spec.citation.isNotEmpty) ...[
             const SizedBox(height: S.x3),
-            Text(
+            researchCitation(
+              c,
               uiText(c, spec.citation),
               style: F.over.copyWith(color: p.ink3, fontFamily: 'Menlo'),
             ),

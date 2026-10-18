@@ -37,6 +37,7 @@ import '../../state/app_state.dart';
 import '../../state/clock_format.dart' show formatClockOf;
 import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
+import '../as_of.dart';
 import '../charts.dart';
 import '../grammar.dart';
 import '../paint_activity.dart';
@@ -721,11 +722,17 @@ class ActivitySummary extends StatefulWidget {
   /// escalation the spec refuses.
   final bool justFinished;
 
+  /// Set only while [result] is the last one computed for this session, shown
+  /// at once while it is computed again: "As of <time>". Null for a result
+  /// that is current.
+  final DateTime? asOf;
+
   const ActivitySummary(this.result,
       {super.key,
       this.weightKg,
       this.onRetrySave,
-      this.justFinished = false});
+      this.justFinished = false,
+      this.asOf});
 
   @override
   State<ActivitySummary> createState() => _ActivitySummaryState();
@@ -1067,6 +1074,12 @@ class _ActivitySummaryState extends State<ActivitySummary> {
                   ],
                 ),
               ),
+            ),
+          if (widget.asOf case final at?)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, 0),
+              child: Align(
+                  alignment: Alignment.centerLeft, child: AsOfLabel(at: at)),
             ),
             // A dedicated, plainly-labeled button rather than a bare icon in the
             // nav bar — this is the one export action worth naming outright.
@@ -1729,10 +1742,20 @@ class _ActivitySummaryState extends State<ActivitySummary> {
       xLabels: [l?.activitySummaryStart ?? 'Start', hms(r.duration)],
       footnote: note.isEmpty ? null : note.join(' '),
       series: r.hr,
-      child: CustomPaint(
-          size: Size.infinite,
-          painter: LineChart(r.hr, p.on(C.red),
-              axis: axis, t: animate(context, 1))),
+      child: ChartScrub(
+        label: l?.activitySummaryHeartRateTitle ?? 'Heart rate',
+        // One slot per minute of the session, as the series is built.
+        gaps: hasChartGaps([r.hr]),
+        time: (at) => 'Minute ${ChartScrub.slotAt(r.hr.length, at)}',
+        keys: [
+          ChartKey.slots('Heart rate (bpm)', p.on(C.red), r.hr,
+              (i, v) => '${v.round()} bpm'),
+        ],
+        child: CustomPaint(
+            size: Size.infinite,
+            painter: LineChart(r.hr, p.on(C.red),
+                axis: axis, t: animate(context, 1))),
+      ),
     );
   }
 
@@ -2240,10 +2263,20 @@ class _ActivitySummaryState extends State<ActivitySummary> {
                 // the phone recorded alongside it.
                 footnote: g.$1 == 'Heart rate' ? _traceNote : null,
                 series: g.$4,
-                child: CustomPaint(
-                    size: Size.infinite,
-                    painter: LineChart(g.$4, p.on(g.$3),
-                        axis: axis, t: animate(context, 1))),
+                child: ChartScrub(
+                  label: g.$1,
+                  gaps: hasChartGaps([g.$4]),
+                  time: (at) =>
+                      'Minute ${ChartScrub.slotAt(g.$4.length, at)}',
+                  keys: [
+                    ChartKey.slots('${g.$1} (${g.$2})', p.on(g.$3), g.$4,
+                        (i, v) => '${v.round()} ${g.$2}'),
+                  ],
+                  child: CustomPaint(
+                      size: Size.infinite,
+                      painter: LineChart(g.$4, p.on(g.$3),
+                          axis: axis, t: animate(context, 1))),
+                ),
               );
             }),
           ),

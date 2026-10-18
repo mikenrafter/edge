@@ -301,8 +301,8 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
         sub: d.days.length < 2 ? dayNavLabel(d.day).toUpperCase() : '', [
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       if (_loading && _d == null) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: S.x4),
+        const InlineLoading(),
       ] else if (d.spans.isEmpty)
         _absent(c, d)
       else ...[
@@ -347,6 +347,8 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
     final (band, phone) = hourlySteps(d.spans);
     final totals = [for (var h = 0; h < 24; h++) band[h] ?? phone[h]];
     final axis = AxisSpec.of(totals.whereType<double>(), floor: 0);
+    String steps(int h, double v) =>
+        '${thousands(v)} ${l?.dayStepsUnit ?? 'steps'}';
     return Surface(
       child: Column(
         children: [
@@ -367,27 +369,55 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
                 : const [],
             footnote: _honesty(c, d),
             empty: axis == null ? const NoData() : null,
-            child: Stack(
-              children: [
-                CustomPaint(
-                  size: Size.infinite,
-                  painter: Bars(
-                    band,
-                    p.on(C.green),
-                    axis: axis,
-                    t: animate(c, 1),
+            // 24 bars, one per local hour. When both sensors counted the hour
+            // the readout names each; it never adds them together.
+            child: ChartScrub(
+              label: l?.dayStepsChartTitle ?? 'When they were counted',
+              gaps: hasChartGaps([totals]),
+              time: (at) => ChartScrub.clock(
+                  ChartScrub.slotAt(totals.length, at, bars: true) * 60),
+              // When both sensors counted the hour the row names each, under
+              // its own key; it never adds them together.
+              keys: d.mixed
+                  ? [
+                      ChartKey.slots(d.bandLabel, p.on(C.green), band, steps,
+                          bars: true),
+                      ChartKey.slots(l?.dayStepsYourPhone ?? 'Your phone',
+                          p.on(C.teal), phone, steps,
+                          bars: true),
+                    ]
+                  : [
+                      ChartKey.slots(
+                          d.strap > 0
+                              ? d.bandLabel
+                              : (l?.dayStepsYourPhone ?? 'Your phone'),
+                          d.strap > 0 ? p.on(C.green) : p.on(C.teal),
+                          totals,
+                          steps,
+                          bars: true),
+                    ],
+              child: Stack(
+                children: [
+                  CustomPaint(
+                    size: Size.infinite,
+                    painter: Bars(
+                      band,
+                      p.on(C.green),
+                      axis: axis,
+                      t: animate(c, 1),
+                    ),
                   ),
-                ),
-                CustomPaint(
-                  size: Size.infinite,
-                  painter: Bars(
-                    phone,
-                    p.on(C.teal),
-                    axis: axis,
-                    t: animate(c, 1),
+                  CustomPaint(
+                    size: Size.infinite,
+                    painter: Bars(
+                      phone,
+                      p.on(C.teal),
+                      axis: axis,
+                      t: animate(c, 1),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: S.x4),
@@ -429,11 +459,11 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
               'Counted by your wrist and your phone. A wrist can read a walk low and hand work as walking; a phone only counts steps while you carry it.')
         : d.strap > 0
         ? (l?.dayStepsHonestyStrap ??
-              'Counted at your wrist, where a real walk tends to read low and '
-                  'rhythmic hand work can read as walking.')
+              'Counted at your wrist. A real walk tends to read low, and '
+              'rhythmic hand work can read as walking.')
         : (l?.dayStepsHonestyPhone ??
-              'Counted by your phone, so only the steps you had it on you for '
-                  'are here.');
+              'Counted by your phone, so only steps taken while you carried it '
+              'are here.');
   }
 
   // ── the stretches themselves ───────────────────────────────────────────────

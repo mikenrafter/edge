@@ -61,6 +61,8 @@ import '../../ble/adapters/_registry.dart'
         kUltrahuman,
         declaredSignals;
 import '../../ble/adapters/signals.dart' show InputSignal, kRankedSignals;
+import '../../data/coverage_resolver.dart'
+    show CoverageInterval, effectivePriority;
 import '../../ble/colmi_link.dart' show ColmiLink;
 import '../../ble/coros_link.dart' show CorosLink;
 import '../../ble/garmin_link.dart' show GarminLink;
@@ -83,9 +85,13 @@ import '../../state/prefs.dart' show Prefs;
 import '../../sync/paired_device.dart' show cleanDeviceLabel;
 import '../../state/app_state.dart';
 import '../../state/clock_format.dart' show formatClockOf;
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../pairing/device_picker.dart' show DevicePickerScreen;
 import '../onboarding/profile_setup.dart' show formatDay;
 import '../ui2.dart';
+import '../sources/source_catalog_screen.dart' show SourceCatalogScreen;
+import '../sources/source_views.dart' show SourceViews;
 import 'profile.dart';
 import 'settings.dart' show backToRoot;
 import 'wearable_numbers.dart' show DeviceUseSwitch, WearableDayScreen;
@@ -104,8 +110,7 @@ enum SourceTier {
   wristOptical(
     2,
     'Wrist optical pulse',
-    'Continuous 24/7 pulse, sleep and temperature. Beat timing is inferred '
-        'from a pulse wave, so HRV here is PRV.',
+    'Measures pulse, sleep and temperature around the clock. It infers beat timing from a pulse wave, so heart rate variability (HRV) here is pulse rate variability (PRV).',
     C.blue,
   ),
 
@@ -113,7 +118,7 @@ enum SourceTier {
   phone(
     3,
     'Steps only',
-    'The phone’s own motion coprocessor. Steps and nothing else.',
+    'The motion coprocessor in the phone. Counts steps only.',
     C.orange,
   );
 
@@ -275,10 +280,10 @@ class DeviceFilter extends StatelessWidget {
   }
 }
 
-/// The global per-signal priority editor: one drag-reorder list per contended
-/// signal, reached from `MyDevicesView`'s "Which source wins" row. Only
-/// contended signals get a list — a signal only one paired device declares
-/// has nothing to order (final-plan §4.5).
+/// The per-signal priority editor, reached from the Source catalog and from
+/// `MyDevicesView`'s "Which source wins" row. One section per signal any paired
+/// source declares, contended or not. Saving changes current and future
+/// computation only; rebuilding history is a separate Advanced action.
 class SignalPriorityScreen extends StatefulWidget {
   const SignalPriorityScreen({super.key});
 
@@ -287,11 +292,9 @@ class SignalPriorityScreen extends StatefulWidget {
 }
 
 class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
-  bool _loading = true;
-  List<InputSignal> _signals = const [];
-  Map<InputSignal, List<String>> _order = const {};
-  Map<String, String> _labels = const {};
-  Set<String> _userSet = const {};
+  bool _loading = true, _rebuilding = false;
+  bool _failed = false;
+  List<Map<String, Object?>> _signals = const [];
 
   @override
   void initState() {
@@ -300,49 +303,89 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
   }
 
   Future<void> _load() async {
-    final app = context.read<AppState>();
-    final sources = liveSources(app);
-    final signals = contendedSignalsOf(sources);
-    final labels = <String, String>{
-      // The phone has no `device` row, so no id. Coalesced to `''` its null
-      // collapsed onto the PRIMARY BAND's key, and a map literal keeps
-      // insertion order with last-write-wins — so a phone iterated after the
-      // band renamed the band's row in the reorder list. The user then drags
-      // a row labelled "Your phone" that actually moves the band, in the one
-      // editor that decides which device wins a signal.
-      for (final s in sources) ?deviceIdOf(s): s.name,
-    };
-    final priorities = await LocalDb.signalPriorities();
-    final order = <InputSignal, List<String>>{};
-    for (final sig in signals) {
-      final declaring = declaringDeviceIds(sources, sig);
-      final stored = priorities[sig.name];
-      order[sig] = stored != null && stored.isNotEmpty
-          ? [
-              for (final id in stored) if (declaring.contains(id)) id,
-              for (final id in declaring) if (!stored.contains(id)) id,
-            ]
-          : declaring;
+    final service = context.read<AppState>().sourceService;
+    try {
+      final names = {
+        for (final c in await service.cards())
+          if (c.deviceId != null) c.deviceId!: c.displayLabel,
+      };
+      final userSet = await LocalDb.userSetSignals();
+      final signals = [
+        for (final m in await service.prioritySignals())
+          {
+            ...m,
+            'userSet': userSet.contains(m['signal']),
+            'labels': {
+              for (final id in m['order'] as List) '$id': names['$id'] ?? '—',
+            },
+          },
+      ];
+      if (!mounted) return;
+      setState(() {
+        _signals = signals;
+        _loading = false;
+        _failed = false;
+      });
+    } catch (_) {
+      // A failed read is a retryable error, never an empty list.
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
     }
-    final userSet = await LocalDb.userSetSignals();
-    if (!mounted) return;
-    setState(() {
-      _signals = signals;
-      _labels = labels;
-      _order = order;
-      _userSet = userSet;
-      _loading = false;
-    });
   }
 
-  /// A write that did not land must never look like one that did — the list
-  /// snapping back with no sentence anywhere is how a user believes they set
-  /// a preference they did not.
+  /// A write that did not land must never look like one that did.
   Future<void> _sayNotSaved() => showReasonSheet(
         context,
         AppLocalizations.of(context)?.devicesOrderNotSaved ??
-            'That order could not be saved. Nothing changed.',
+            'Could not save the order. The previous order is still in use.',
       );
+
+  Future<void> _save(String signal, List<String> order) async {
+    final service = context.read<AppState>().sourceService;
+    try {
+      await service.savePriority(InputSignal.values.byName(signal), order);
+    } catch (_) {
+      if (mounted) await _sayNotSaved();
+      return;
+    }
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Order saved. Current and future days use it.'),
+    ));
+  }
+
+  Future<void> _reset(String signal) async {
+    try {
+      await LocalDb.clearSignalPriority(InputSignal.values.byName(signal));
+    } catch (_) {
+      if (mounted) await _sayNotSaved();
+      return;
+    }
+    await _load();
+  }
+
+  Future<void> _rebuild() async {
+    final app = context.read<AppState>();
+    setState(() => _rebuilding = true);
+    try {
+      final n = await app.rebuildHistoryWithPriority();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(n == 1 ? 'Rebuilt 1 day.' : 'Rebuilt $n days.'),
+      ));
+    } catch (e) {
+      if (mounted) {
+        await showReasonSheet(context, 'Could not rebuild history. $e');
+      }
+    } finally {
+      if (mounted) setState(() => _rebuilding = false);
+    }
+  }
 
   @override
   Widget build(BuildContext c) {
@@ -358,81 +401,40 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
           ),
           if (_loading)
             const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_failed)
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(S.x4),
+                  child: StatusCard(
+                    'Could not read your sources',
+                    'Nothing was changed. Try again.',
+                    fix: 'Try again',
+                    icon: LucideIcons.triangleAlert,
+                    onFix: () {
+                      setState(() => _loading = true);
+                      _load();
+                    },
+                  ),
+                ),
+              ),
+            )
           else
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
                 children: [
-                  for (final sig in _signals) ...[
-                    Section(
-                      signalDisplayName(c, sig),
-                      Column(children: [
-                        ReorderableListView(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          onReorder: (from, to) async {
-                            final ids = [...?_order[sig]];
-                            // ReorderableListView's `to` is the index BEFORE removal.
-                            ids.insert(
-                                to > from ? to - 1 : to, ids.removeAt(from));
-                            try {
-                              await LocalDb.setSignalPriority(sig, ids);
-                            } catch (_) {
-                              // The stored order is unchanged, so leave the
-                              // list where it was rather than showing an order
-                              // nothing persisted. Same shape as `_saveRpe`.
-                              if (mounted) await _sayNotSaved();
-                              return;
-                            }
-                            if (!mounted) return;
-                            setState(() {
-                              _order = {..._order, sig: ids};
-                              _userSet = {..._userSet, sig.name};
-                            });
-                          },
-                          children: [
-                            for (final id in _order[sig] ?? const <String>[])
-                              ListTile(
-                                key: ValueKey(id),
-                                title: Text(_labels[id] ?? id),
-                              ),
-                          ],
-                        ),
-                        if (_userSet.contains(sig.name))
-                          Pressable(
-                            onTap: () async {
-                              try {
-                                await LocalDb.clearSignalPriority(sig);
-                              } catch (_) {
-                                if (mounted) await _sayNotSaved();
-                                return;
-                              }
-                              await _load();
-                            },
-                                semanticLabel:
-                                    l?.devicesResetSourceSemantics(
-                                      signalDisplayName(c, sig),
-                                    ) ??
-                                    'Reset ${signalDisplayName(c, sig)} '
-                                'to the default order',
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: S.x2),
-                              child: Text(
-                                l?.devicesResetToDefault ??
-                                    'Back to the default order',
-                                style: F.cap.copyWith(color: p.on(C.blue)),
-                              ),
-                            ),
-                          ),
-                      ]),
-                    ),
-                    const SizedBox(height: S.x4),
+                  if (_rebuilding) ...[
+                    const LinearProgressIndicator(),
+                    const SizedBox(height: S.x2),
+                    Text('Rebuilding history. This can take several minutes.',
+                        style: F.cap.copyWith(color: p.ink3)),
                   ],
-                  Text(
-                    l?.metricDetailHistoryKeepsSource ??
-                        'Days already finished keep the source they were '
-                            'calculated with.',
-                    style: F.over.copyWith(color: p.ink3),
+                  const SourceViews().priorityEditor(
+                    signals: _signals,
+                    onSave: _save,
+                    onReset: _reset,
+                    onRebuild: _rebuilding ? () {} : _rebuild,
                   ),
                   ],
                 ),
@@ -454,32 +456,47 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
 String signalDisplayName(BuildContext c, InputSignal s) {
   final l = AppLocalizations.of(c);
   return switch (s) {
-    InputSignal.rrIntervals =>
-      l?.signalRrIntervals ?? 'Beat-to-beat intervals',
-    InputSignal.hr1Hz => l?.signalHr1Hz ?? 'Continuous heart rate',
-    InputSignal.hrSparse => l?.signalHrSparse ?? 'Heart rate',
-    InputSignal.accel1Hz => l?.signalAccel1Hz ?? 'Movement',
-    InputSignal.accelHighRate =>
-      l?.signalAccelHighRate ?? 'High-rate movement',
-    InputSignal.ppgGreen => l?.signalPpgGreen ?? 'Green PPG',
-    InputSignal.ppgRedIr => l?.signalPpgRedIr ?? 'Red/infrared PPG',
-    InputSignal.skinTempRaw => l?.signalSkinTempRaw ?? 'Skin temperature',
-    InputSignal.steps => l?.signalSteps ?? 'Steps',
-    InputSignal.skinTempC => l?.signalSkinTempC ?? 'Skin temperature (°C)',
-    InputSignal.activityLevel => l?.signalActivityLevel ?? 'Activity',
-    InputSignal.deviceHrv => l?.signalDeviceHrv ?? 'The device’s own HRV',
-    InputSignal.deviceStages =>
-      l?.signalDeviceStages ?? 'The device’s own sleep stages',
-    InputSignal.deviceResp =>
-      l?.signalDeviceResp ?? 'The device’s own breathing rate',
-    InputSignal.deviceSpo2 => l?.signalDeviceSpo2 ?? 'The device’s own SpO2',
-    InputSignal.deviceStress =>
-      l?.signalDeviceStress ?? 'The device’s own stress',
-    InputSignal.vendorScalars =>
-      l?.signalVendorScalars ?? 'The device’s own numbers',
-
+    InputSignal.rrIntervals => l?.signalRrIntervals ?? signalLabelEn(s),
+    InputSignal.hr1Hz => l?.signalHr1Hz ?? signalLabelEn(s),
+    InputSignal.hrSparse => l?.signalHrSparse ?? signalLabelEn(s),
+    InputSignal.accel1Hz => l?.signalAccel1Hz ?? signalLabelEn(s),
+    InputSignal.accelHighRate => l?.signalAccelHighRate ?? signalLabelEn(s),
+    InputSignal.ppgGreen => l?.signalPpgGreen ?? signalLabelEn(s),
+    InputSignal.ppgRedIr => l?.signalPpgRedIr ?? signalLabelEn(s),
+    InputSignal.skinTempRaw => l?.signalSkinTempRaw ?? signalLabelEn(s),
+    InputSignal.steps => l?.signalSteps ?? signalLabelEn(s),
+    InputSignal.skinTempC => l?.signalSkinTempC ?? signalLabelEn(s),
+    InputSignal.activityLevel => l?.signalActivityLevel ?? signalLabelEn(s),
+    InputSignal.deviceHrv => l?.signalDeviceHrv ?? signalLabelEn(s),
+    InputSignal.deviceStages => l?.signalDeviceStages ?? signalLabelEn(s),
+    InputSignal.deviceResp => l?.signalDeviceResp ?? signalLabelEn(s),
+    InputSignal.deviceSpo2 => l?.signalDeviceSpo2 ?? signalLabelEn(s),
+    InputSignal.deviceStress => l?.signalDeviceStress ?? signalLabelEn(s),
+    InputSignal.vendorScalars => l?.signalVendorScalars ?? signalLabelEn(s),
   };
 }
+
+/// The English name of [s], for text built without a [BuildContext] and as the
+/// fallback [signalDisplayName] uses when no localizations are in scope.
+String signalLabelEn(InputSignal s) => switch (s) {
+      InputSignal.rrIntervals => 'Beat-to-beat intervals',
+      InputSignal.hr1Hz => 'Continuous heart rate',
+      InputSignal.hrSparse => 'Heart rate',
+      InputSignal.accel1Hz => 'Movement',
+      InputSignal.accelHighRate => 'High-rate movement',
+      InputSignal.ppgGreen => 'Green PPG',
+      InputSignal.ppgRedIr => 'Red/infrared PPG',
+      InputSignal.skinTempRaw => 'Skin temperature',
+      InputSignal.steps => 'Steps',
+      InputSignal.skinTempC => 'Skin temperature (°C)',
+      InputSignal.activityLevel => 'Activity',
+      InputSignal.deviceHrv => 'The device’s own HRV',
+      InputSignal.deviceStages => 'The device’s own sleep stages',
+      InputSignal.deviceResp => 'The device’s own breathing rate',
+      InputSignal.deviceSpo2 => 'The device’s own SpO2',
+      InputSignal.deviceStress => 'The device’s own stress',
+      InputSignal.vendorScalars => 'The device’s own numbers',
+    };
 
 /// Why this device cannot serve a metric, from the signals it does NOT declare.
 ///
@@ -661,8 +678,9 @@ Future<Map<InputSignal, String?>> signalWinners(
   required Set<InputSignal> requires,
   required Map<String, List<String>> stored,
   String? fallback,
+  DateTime? now,
 }) async {
-  final now = DateTime.now();
+  now ??= DateTime.now();
   // Calendar subtraction on the DateTime constructor, not `* 86400` or
   // `Duration(days:)` — a day is not always 86400s across a DST transition
   // (AGENTS.md §3.7), and this file is under lib/ui2's token boundary, where
@@ -691,20 +709,16 @@ Future<Map<InputSignal, String?>> signalWinners(
   for (final sig in requires) {
     final declaring = declaringDeviceIds(sources, sig);
     final rawPriority = stored[sig.name] ?? const <String>[];
-    // Mirrors `_resolveOwnership`'s empty-priority rule: no stored row means
-    // the primary device owns this window, never "let every covering device
-    // in unranked" — a customized-but-narrower order still gets the coverage
-    // union below, only a NEVER-customized one gets this fixed default.
-    // Flag-off devices dropped, as the engine does (rule R6).
+    // The engine's own rule (`effectivePriority`): no stored row means the
+    // primary owns, and a customised order is unioned with covering devices.
+    // A customised order also drops flag-off devices, as the engine does
+    // (rule R6); the primary-only default has nothing to drop.
+    final candidates = effectivePriority(rawPriority, [
+      for (final iv in coverageBySig[sig] ?? const <CoverageInterval>[]) iv.deviceId,
+    ]);
     final order = rawPriority.isEmpty
-        ? const [LocalDb.kPrimaryDeviceId]
-        : await flagOnOrPrimary([
-            ...rawPriority,
-            ...{for (final iv in coverageBySig[sig] ?? const []) iv.deviceId}
-                .difference(rawPriority.toSet())
-                .toList()
-              ..sort(),
-          ]);
+        ? candidates
+        : await flagOnOrPrimary(candidates);
     String? winner;
     for (final id in order) {
       if (declaring.contains(id)) {
@@ -788,18 +802,14 @@ class NotYet {
 const List<NotYet> kNotYet = [
   NotYet(
     'Polar 360 and Loop',
-    'Screenless, no subscription, worn around the clock, with beat-to-beat '
-        'intervals the vendor documents. Nobody has written the driver.',
+    'A screenless band with no subscription, worn around the clock. The vendor documents its beat-to-beat intervals. No driver exists yet.',
     'Planned',
     LucideIcons.watch,
   ),
   NotYet(
     'Fitbit, Withings, Xiaomi and Zepp bands',
-    'Their pairing key is issued by the vendor’s own server. A driver would '
-        'work only while their app stayed installed and signed in, and would '
-        'stop the day they changed it — so the band would be ours to support '
-        'and theirs to switch off.',
-    'Not a matter of time',
+    'The vendor server issues the pairing key. A driver would work only while the vendor app stays installed and signed in, and would break whenever the vendor changes it. We would have to support the band, and the vendor could disable it.',
+    'Not planned',
     LucideIcons.cloudOff,
   ),
 ];
@@ -886,8 +896,45 @@ class HealthSource {
     this.deviceId,
     this.family,
     this.flagOff = false,
+    this.disabledReason,
   });
+
+  /// Why this source is listed but not doing its job, or null when it is. The
+  /// phone is the case: My devices always lists it, and when step counting is
+  /// off (or the platform has no step sensor) the row is dimmed and says so
+  /// here rather than disappearing.
+  final String? disabledReason;
 }
+
+/// The phone, as a source. Always buildable; [HealthSource.disabledReason] says
+/// when it is not counting.
+HealthSource phoneSource(AppState app) {
+  final gate = app.capabilities.of(Feature.phoneSteps);
+  final String? reason = gate.isDisabled
+      ? gate.reason
+      : app.phoneStepsEnabled
+          ? null
+          : phoneStepsOffReason;
+  return HealthSource(
+    name: 'This phone',
+    nameIsFallback: true,
+    kind: 'Motion coprocessor',
+    tier: SourceTier.phone,
+    icon: LucideIcons.smartphone,
+    // NOT the toggle. On iOS `requestAuthorization` reports success even when
+    // the user denied READ, so the toggle sits on while every read comes back
+    // empty — this row used to hardcode `true` and claim a source that was
+    // measuring nothing. Steps actually banked is the only evidence the phone
+    // is a source.
+    connected: reason == null &&
+        app.phoneStepsLastSyncedDays != null &&
+        (app.phoneStepsLastTotal ?? 0) > 0,
+    disabledReason: reason,
+  );
+}
+
+/// The honest reason on a phone row whose step counting is switched off.
+const String phoneStepsOffReason = 'Step counting from this phone is off';
 
 /// The one-row device disclosure (MT-12 / CV-04a).
 ///
@@ -905,8 +952,7 @@ class HealthSource {
   if (label != null) {
     return (
       label,
-      'Metrics that depend on the sensor use this band’s own constants, so two '
-          'different bands can land on different tiers for the same physiology.'
+      'Sensor-dependent metrics use constants specific to each band, so two bands can show different tiers for the same person.'
     );
   }
   // Null is the honest majority case, not an error: every row banked before
@@ -916,9 +962,7 @@ class HealthSource {
   // WHOOP 4.
   return (
     'Not stated yet',
-    'This band has not said which generation it is, and imported or older '
-        'days never will. Metrics that depend on the sensor abstain rather '
-        'than borrow another band’s numbers.'
+    'This band has not reported its generation, and imported or older days never include it. Metrics that depend on the sensor stay blank.'
   );
 }
 
@@ -956,15 +1000,21 @@ SourceTier? tierNamed(Object? name) {
 /// it changes on every beat: routing it through [AppState] would notify every
 /// listener in the app at 1 Hz for the duration of a workout, which is the
 /// rebuild storm this screen has already been fixed for once.
+///
+/// [alwaysListPhone] is My devices's: the phone is listed even with step
+/// counting off, disabled with its reason. Every other caller (the metric
+/// device filters, the source service) wants only sources that are counting.
 List<HealthSource> liveSources(AppState app,
-        {Set<String> liveAdapterIds = const {}}) => [
-  if (app.isPaired)
-    HealthSource(
-      name: app.strapName ?? 'Your band',
-      nameIsFallback: app.strapName == null,
-      // The registry's own word for this band, or just what it is when the
-      // link has not said. Never an assertion that an unnamed band is a
-      // WHOOP 4.
+        {Set<String> liveAdapterIds = const {},
+        bool alwaysListPhone = false}) =>
+    [
+      if (app.isPaired)
+        HealthSource(
+          name: app.strapName ?? 'Your band',
+          nameIsFallback: app.strapName == null,
+          // The registry's own word for this band, or just what it is when the
+          // link has not said. Never an assertion that an unnamed band is a
+          // WHOOP 4.
           kind: [
             ?bandLabelFor(app.device.generation),
             'wrist optical',
@@ -1016,21 +1066,7 @@ List<HealthSource> liveSources(AppState app,
           family: r['adapter_id'] as String?,
           flagOff: app.flagOffSensorIds.contains(r['id']),
         ),
-      if (app.phoneStepsEnabled)
-        HealthSource(
-          name: 'This phone',
-          nameIsFallback: true,
-          kind: 'Motion coprocessor',
-          tier: SourceTier.phone,
-          icon: LucideIcons.smartphone,
-          // NOT the toggle. On iOS `requestAuthorization` reports success even
-          // when the user denied READ, so the toggle sits on while every read
-          // comes back empty — this row used to hardcode `true` and claim a
-          // source that was measuring nothing. Steps actually banked is the
-          // only evidence the phone is a source.
-          connected: app.phoneStepsLastSyncedDays != null &&
-              (app.phoneStepsLastTotal ?? 0) > 0,
-        ),
+      if (app.phoneStepsEnabled || alwaysListPhone) phoneSource(app),
     ];
 
 /// Quality first, then recency, then the name. The inverse of last-writer-wins.
@@ -1089,7 +1125,8 @@ class MyDevices extends StatelessWidget {
 
   Widget _build(BuildContext c, AppState app, Set<String> liveAdapterIds) {
     return MyDevicesView(
-      sources: rankSources(liveSources(app, liveAdapterIds: liveAdapterIds)),
+      sources: rankSources(liveSources(app,
+          liveAdapterIds: liveAdapterIds, alwaysListPhone: true)),
       // The band row's dot says connected or not. That covers six different
       // problems with six different fixes, and a user cannot fix a problem the
       // app will not name — so the engine's own verdict rides alongside it.
@@ -1103,11 +1140,34 @@ class MyDevices extends StatelessWidget {
       // way back to pairing. So push it.
       onPair: () => goto(c, const RePair()),
       onAddSensor: () => addSensor(c),
+      onTogglePhoneSteps: app.togglePhoneSteps,
+      phoneStepsOn: app.phoneStepsEnabled,
+      phoneStepsUnavailable:
+          app.capabilities.of(Feature.phoneSteps).reason,
       contendedSignals: contendedSignals(app),
-      onSignalPriority: () => goto(c, const SignalPriorityScreen()),
+      // FeatureFlag.sourceResolverUi OFF: no catalog or resolved-data entry,
+      // and the priority editor appears only when two devices contend, as
+      // before the resolver UI.
+      onSignalPriority: showSignalPriorityEntry(c.caps,
+              contended: contendedSignals(app).isNotEmpty)
+          ? () => goto(c, const SignalPriorityScreen())
+          : null,
+      onSourceCatalog: showSourceCatalogEntry(c.caps)
+          ? () => goto(c, const SourceCatalogScreen())
+          : null,
     );
   }
 }
+
+/// FeatureFlag.sourceResolverUi: the Source catalog (and the resolved-data view
+/// behind it) has an entry row only while the flag is on.
+bool showSourceCatalogEntry(Capabilities caps) =>
+    caps.has(Feature.sourceCatalog);
+
+/// The priority editor's entry row: always offered with the resolver UI, else
+/// only when two paired devices declare the same signal (the pre-resolver rule).
+bool showSignalPriorityEntry(Capabilities caps, {required bool contended}) =>
+    caps.has(Feature.signalPriority) || contended;
 
 /// Every sensor that can be paired from this screen — a second device
 /// alongside the band, never a replacement for it.
@@ -1119,8 +1179,7 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
     kPairableSensors = [
   (
     entry: kBleHrs,
-    blurb: 'A chest strap or armband. Beat timing measured electrically, '
-        'which a wrist pulse cannot match. Runs during a workout.',
+    blurb: 'A chest strap or armband. Measures beat timing electrically. Runs during a workout.',
     // Null means the plain notify-class pairing, which is the whole of what a
     // heart-rate sensor needs.
     pick: null,
@@ -1137,8 +1196,7 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
   ),
   (
     entry: kPolarPmd,
-    blurb: 'A Polar Verity Sense or OH1. Beat timing measured optically, '
-        'streamed during a workout, same as a chest strap.',
+    blurb: 'A Polar Verity Sense or OH1. Measures beat timing optically and streams it during a workout, like a chest strap.',
     // Null: no handshake and no key — the START/STOP toggle this sensor
     // needs belongs to the workout session, not to pairing. Same as
     // [kBleHrs].
@@ -1189,8 +1247,7 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
   ),
   (
     entry: kUltrahuman,
-    blurb: 'Reads the ring directly. No account, no key exchange — just pair '
-        'it like a chest strap.',
+    blurb: 'Reads the ring directly. No account or key exchange needed. Pair it as you would a chest strap.',
     // Null: this wire has no auth at all, so there is no key/handshake step
     // beyond the plain notify-class pairing — same as `kBleHrs`.
     pick: null,
@@ -1249,8 +1306,7 @@ Future<void> addSensor(BuildContext c) async {
         c,
         AppLocalizations.of(c)
                 ?.devicesSensorLimit(kMaxConcurrentSecondaryLinks) ??
-            'This phone will pair at most $kMaxConcurrentSecondaryLinks '
-                'sensors alongside your band. Remove one to add another.');
+            'This phone pairs at most $kMaxConcurrentSecondaryLinks sensors alongside your band. Remove one to add another.');
     return;
   }
   if (!c.mounted) return;
@@ -1283,7 +1339,7 @@ Future<void> addFramedBand(BuildContext c) async {
     await showReasonSheet(
         c,
         AppLocalizations.of(c)?.devicesRequestNotSaved ??
-            'That request could not be saved. Please try again.');
+            'Could not save the request. Try again.');
     return;
   }
   await showRestartRequiredSheet(c);
@@ -1379,7 +1435,15 @@ class MyDevicesView extends StatelessWidget {
   /// Empty on every single-device install, which keeps the priority-editor
   /// entry row absent by default (final-plan §4.5).
   final List<InputSignal> contendedSignals;
-  final VoidCallback? onSignalPriority;
+  final VoidCallback? onSignalPriority, onSourceCatalog;
+
+  /// The phone's "Count steps from this phone" switch, drawn under its row and
+  /// bound to the same preference as Settings. Null: no switch (a fixture with
+  /// no AppState). [phoneStepsUnavailable] is the platform's reason it cannot
+  /// count at all (Capabilities), which makes the switch inert and says why.
+  final VoidCallback? onTogglePhoneSteps;
+  final bool phoneStepsOn;
+  final String? phoneStepsUnavailable;
 
   const MyDevicesView({
     super.key,
@@ -1389,6 +1453,10 @@ class MyDevicesView extends StatelessWidget {
     this.status,
     this.contendedSignals = const [],
     this.onSignalPriority,
+    this.onSourceCatalog,
+    this.onTogglePhoneSteps,
+    this.phoneStepsOn = false,
+    this.phoneStepsUnavailable,
   });
 
   @override
@@ -1434,13 +1502,9 @@ class MyDevicesView extends StatelessWidget {
                             'Nothing is measuring yet'),
                     phoneCounting
                         ? (l?.devicesPhoneCountingBody ??
-                            'The phone counts steps and nothing else. Heart '
-                                'rate, sleep, recovery and temperature all abstain '
-                                'until a band is paired.')
+                            'The phone counts steps only. Heart rate, sleep, recovery and temperature stay blank until you pair a band.')
                         : (l?.devicesNothingMeasuringBody ??
-                            'No band is paired and no phone steps are arriving, '
-                                'so every metric in the app will abstain rather '
-                                'than estimate.'),
+                            'No band is paired and no phone steps are arriving, so every metric stays blank.'),
                     fix: l?.devicesPairABand ?? 'Pair a band',
                     icon: LucideIcons.watch,
                     onFix: onPair,
@@ -1462,6 +1526,20 @@ class MyDevicesView extends StatelessWidget {
                         fix: fault.fix ?? '',
                         icon: LucideIcons.bluetoothOff),
                   ],
+                  if (s.tier == SourceTier.phone && onTogglePhoneSteps != null) ...[
+                    const SizedBox(height: S.x2),
+                    Surface(
+                      pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                      child: SwitchRow(
+                        'Count steps from this phone',
+                        phoneStepsOn,
+                        (_) => onTogglePhoneSteps!(),
+                        sub: phoneStepsUnavailable ?? '',
+                        enabled: phoneStepsUnavailable == null,
+                        switchFirst: true,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: S.x3),
                 ],
                 // At the foot of LIVE, because that is what it adds to. Not
@@ -1477,17 +1555,30 @@ class MyDevicesView extends StatelessWidget {
                             'A heart-rate strap or a ring, alongside the band',
                         onTap: onAddSensor),
                   ),
-                // ONLY when something can actually contend. A reorder screen
-                // over one device is a control with nothing to order, which is
-                // the empty-rung problem this screen already refuses (§6.5).
-                if (contendedSignals.isNotEmpty && onSignalPriority != null) ...[
+                // The catalog comes first: what every source is and supplies,
+                // before the detail of who won what.
+                if (onSourceCatalog != null && sources.isNotEmpty) ...[
+                  const SizedBox(height: S.x3),
+                  Surface(
+                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                    child: SetRow(LucideIcons.layoutList, C.teal, 'Source catalog',
+                        sub: 'What each source is, supplies and is used for',
+                        onTap: onSourceCatalog),
+                  ),
+                ],
+                // ALWAYS offered once a source exists: the order is per signal,
+                // and a signal with one declaring source still shows its
+                // section so the order is set before a second source arrives.
+                if (onSignalPriority != null && sources.isNotEmpty) ...[
                   const SizedBox(height: S.x3),
                   Surface(
                     pad: const EdgeInsets.symmetric(horizontal: S.x4),
                     child: SetRow(LucideIcons.arrowUpDown, C.blue,
                         l?.devicesWhichSourceWins ?? 'Which source wins',
-                        sub: l?.devicesWhichSourceWinsSub ??
-                            'When two of your devices measure the same thing',
+                        sub: contendedSignals.isNotEmpty
+                            ? (l?.devicesWhichSourceWinsSub ??
+                                'When two of your devices measure the same thing')
+                            : 'Set the order for each signal',
                         onTap: onSignalPriority),
                   ),
                 ],
@@ -1495,7 +1586,7 @@ class MyDevicesView extends StatelessWidget {
                 // (owner's call, live review). `kNotYet`/`NotYet` still hold
                 // the reasons and permanences below; only the render is gone.
                 const SizedBox(height: S.x5),
-                Text(l?.devicesQualityLadder ?? 'THE QUALITY LADDER',
+                Text(l?.devicesQualityLadder ?? 'SOURCE RANKING',
                     style: F.over.copyWith(color: p.ink3)),
                 const SizedBox(height: S.x3),
                 for (final t in SourceTier.values)
@@ -1506,7 +1597,9 @@ class MyDevicesView extends StatelessWidget {
                   // empty one is now a genuine invitation rather than a dead
                   // end.
                   ...[
-                    TierRow(t, filled: sources.any((s) => s.tier == t)),
+                    TierRow(t,
+                        filled: sources.any(
+                            (s) => s.tier == t && s.disabledReason == null)),
                     const SizedBox(height: S.x3),
                   ],
                 ],
@@ -1541,6 +1634,7 @@ String sourceState(HealthSource s) {
     return s.tier == null ? 'Paired · storing what it sends' : 'Waiting for a workout';
   }
   if (s.tier == SourceTier.phone) {
+    if (s.disabledReason case final why?) return why;
     return s.connected ? 'Reporting steps' : 'No steps arriving';
   }
   if (s.syncing) return 'Syncing';
@@ -1556,6 +1650,7 @@ String _localizedSourceState(BuildContext c, HealthSource s) {
         : (l?.devicesWaitingForWorkout ?? 'Waiting for a workout');
   }
   if (s.tier == SourceTier.phone) {
+    if (s.disabledReason case final why?) return why;
     return s.connected
         ? (l?.devicesReportingSteps ?? 'Reporting steps')
         : (l?.devicesNoStepsArriving ?? 'No steps arriving');
@@ -1585,7 +1680,7 @@ class SourceRow extends StatelessWidget {
             s.tier!.accent,
             wrap: stacked,
           );
-    return Surface(
+    final row = Surface(
       onTap: onTap,
       child: Row(children: [
         Container(
@@ -1667,6 +1762,9 @@ class SourceRow extends StatelessWidget {
         ],
       ),
     );
+    // Disabled stays listed and reachable (its page holds the switch that turns
+    // it back on); it is only dimmed.
+    return s.disabledReason == null ? row : Opacity(opacity: .55, child: row);
   }
 }
 
@@ -1818,14 +1916,15 @@ class _DeviceDetailState extends State<DeviceDetail> {
       forecast: _forecast,
       onFind: app?.buzzBand,
       liveHr: s.isBand ? app?.liveHr : null,
-      onRename: (app != null && app.isConnected)
+      onRename: (app != null && c.caps.has(Feature.bandRename))
           ? () => _renameBand(c, app, s.name)
           : null,
       // A sensor is forgotten through its own path: `unpair()` tears down the
       // primary band's link, its restore identity and its trim cursor, none of
       // which a sensor has — pointing this at it would have unpaired the
       // WHOOP from a chest strap's page.
-      onSync: switch (s.family) {
+      syncPresentation: app?.syncPresentation,
+      onSync: app != null ? app.syncNow : switch (s.family) {
         'oura' => () => _syncRing(c, s.family),
         'coros' => () => _syncCorosWatch(c),
         'garmin' => () => _syncGarminWatch(c),
@@ -2185,6 +2284,12 @@ class DeviceDetailView extends StatelessWidget {
   final HealthSource s;
   final VoidCallback? onFind, onForget, onSync;
 
+  final SyncPresentationState? syncPresentation;
+
+  /// The sync panel's time source. Production leaves it null (wall clock);
+  /// the proof goldens pin it so a ticking elapsed time stays reproducible.
+  final DateTime Function()? syncClock;
+
   /// The beat arriving right now, or null when nothing fresh is streaming.
   /// Passed IN rather than read from a provider here: this view is rendered in
   /// tests with no Provider above it, which is the point of it being a view.
@@ -2220,6 +2325,8 @@ class DeviceDetailView extends StatelessWidget {
       this.onFind,
       this.onForget,
       this.onSync,
+      this.syncPresentation,
+      this.syncClock,
       this.onRename,
       this.liveHr,
       this.status,
@@ -2252,6 +2359,10 @@ class DeviceDetailView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
+                if (syncPresentation case final state?) ...[
+                  SyncControl(state: state, onSync: onSync, clock: syncClock),
+                  const SizedBox(height: S.x4),
+                ],
                 Center(
                   child: Container(
                     width: 120,
@@ -2285,7 +2396,7 @@ class DeviceDetailView extends StatelessWidget {
                   const SizedBox(height: S.x5),
                 ],
                 if (s.tier case final t?) ...[
-                  TierRow(t, filled: true),
+                  TierRow(t, filled: s.disabledReason == null),
                   const SizedBox(height: S.x5),
                 ],
                 // A PAIRED SENSOR'S OWN CARD, not the band block below. It has
@@ -2297,17 +2408,16 @@ class DeviceDetailView extends StatelessWidget {
                 // has to be on the screen rather than inferred from a metric
                 // quietly still abstaining.
                 if (!s.isBand && s.deviceId != null) ...[
-                  Surface(
-                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
-                    child: Column(children: [
+                  SettingsAccordion('Sensor',
+                      id: 'device_detail_sensor',
+                      children: [
                       SetRow(LucideIcons.flaskConical, C.orange,
                           l?.devicesSupport ?? 'Support',
                           value: l?.devicesExperimental ?? 'Experimental',
                           sub: l?.devicesSensorExperimentalSub ??
-                              'Decoded from the protocol, never checked '
-                                  'against the hardware — nobody here owns one.',
+                              'Decoded from the protocol. Nobody on the project owns one, '
+                              'so it has not been tested on hardware.',
                           chevron: false),
-                      Divider(color: p.line, height: 1),
                       SetRow(LucideIcons.database, C.teal,
                           l?.devicesWhatItDoes ?? 'What it does',
                           sub: s.tier == null
@@ -2316,12 +2426,11 @@ class DeviceDetailView extends StatelessWidget {
                               : (l?.devicesWhatItDoesBeats ??
                                   'Heartbeat timing is saved under its name, during workouts and a few minutes after. Scoring workouts from it is experimental and off for now.'),
                           chevron: false),
-                      Divider(color: p.line, height: 1),
                       SetRow(LucideIcons.refreshCw, C.purple,
                           l?.devicesLastData ?? 'Last data',
                           value: last == null ? '' : formatDayTime(last, l),
                           sub: last == null
-                              ? (l?.devicesNothingBankedYet ?? 'Nothing banked yet')
+                              ? (l?.devicesNothingBankedYet ?? 'Nothing saved yet')
                               : '',
                           chevron: false),
                       // A wearable with a column in the metric x device
@@ -2346,8 +2455,7 @@ class DeviceDetailView extends StatelessWidget {
                       // does, and putting it on a schedule would have it
                       // contending for the radio with the band's own link
                       // for no reason a user asked for.
-                      if (onSync != null) ...[
-                        Divider(color: p.line, height: 1),
+                      if (onSync != null && syncPresentation == null) ...[
                         SetRow(LucideIcons.downloadCloud, C.blue,
                             l?.devicesSyncNow ?? 'Sync now',
                             // Only Oura genuinely fetches held history off a
@@ -2359,47 +2467,42 @@ class DeviceDetailView extends StatelessWidget {
                             // the connect does not keep.
                             sub: s.family == 'oura'
                                 ? (l?.devicesSyncNowSub ??
-                                    'Fetch whatever it has been holding')
+                                    'Download the data it has stored')
                                 : (l?.devicesSyncNowSubListen ??
                                     'Listen for whatever it sends right now'),
-                              onTap: onSync,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                            onTap: onSync),
+                      ],
+                  ]),
+                  const SizedBox(height: S.x5),
+                  // The beta "use this device" switch: off keeps the sensor
+                  // stored but out of every derived number (rule R6).
+                  if (s.family case final family?) ...[
+                    DeviceUseSwitch(deviceId: s.deviceId!, adapterId: family),
                     const SizedBox(height: S.x5),
-                    if (s.family case final family?)
-                      DeviceUseSwitch(
-                          deviceId: s.deviceId!, adapterId: family),
                   ],
-                  // Band rows only. The phone has no radio link and no battery
-                  // this app can read, so "Not reported since the last
-                  // connection" named a connection it does not have — on the
-                  // exact screen someone lands on when phone steps are silently
-                  // failing, where the answer is the permission, not a battery.
-                  if (s.isBand)
-                    Surface(
-                      pad: const EdgeInsets.symmetric(horizontal: S.x4),
-                      child: Column(
-                        children: [
-                          // The name is the band's own advertising name, written
-                          // to the strap — not a phone-side label. So it is only
-                          // editable on a live link, and the row says so rather
-                          // than opening an editor whose save cannot land.
-                          SetRow(
-                            LucideIcons.tag,
-                            C.blue,
-                            l?.devicesName ?? 'Name',
-                            value: s.displayName(c),
+                ],
+                // Band rows only. The phone has no radio link and no battery
+                // this app can read, so "Not reported since the last
+                // connection" named a connection it does not have — on the
+                // exact screen someone lands on when phone steps are silently
+                // failing, where the answer is the permission, not a battery.
+                if (s.isBand) ...[
+                  SettingsAccordion('Band',
+                      id: 'device_detail_band',
+                      children: [
+                      // The name is the band's own advertising name, written
+                      // to the strap — not a phone-side label. So it is only
+                      // editable on a live link, and the row says so rather
+                      // than opening an editor whose save cannot land.
+                      SetRow(LucideIcons.tag, C.blue, l?.devicesName ?? 'Name',
+                          value: s.displayName(c),
                           sub: onRename == null
                               ? (l?.devicesConnectToRename ??
                                   'Connect to the band to change it')
                               : '',
                           chevron: onRename != null,
                           onTap: onRename),
-                      Divider(color: p.line, height: 1),
-                      if (onWearing != null) ...[
+                      if (onWearing != null)
                         SetRow(LucideIcons.personStanding, C.teal,
                             l?.devicesWornOn ?? 'Worn on',
                             value: wornOnUnknown
@@ -2409,8 +2512,6 @@ class DeviceDetailView extends StatelessWidget {
                                 'Where the band sits. Used to calibrate '
                                 'steps.',
                             onTap: onWearing),
-                        Divider(color: p.line, height: 1),
-                      ],
                       SetRow(LucideIcons.batteryMedium, C.green,
                           l?.devicesBattery ?? 'Battery',
                           value: battery == null ? '' : '${battery.round()}%',
@@ -2435,16 +2536,13 @@ class DeviceDetailView extends StatelessWidget {
                                   ?_chargeHistory(health),
                                 ].join(' · '),
                           chevron: false),
-                      Divider(color: p.line, height: 1),
-                      if (s.batteryPackPct case final pack?) ...[
+                      if (s.batteryPackPct case final pack?)
                         SetRow(LucideIcons.batteryCharging, C.green,
                             l?.devicesBatteryPack ?? 'Battery pack',
                             value: '${pack.round()}%',
                             sub: l?.devicesBatteryPackSub ??
                                 'Reported by the band about every 10 minutes',
                             chevron: false),
-                        Divider(color: p.line, height: 1),
-                      ],
                       // Live, not a stored reading: present only while the
                       // band is actually streaming, and gone the moment it
                       // stops.
@@ -2454,17 +2552,15 @@ class DeviceDetailView extends StatelessWidget {
                             value: '$liveHr bpm',
                             sub: l?.devicesRightNow ?? 'Right now',
                             chevron: false),
-                        Divider(color: p.line, height: 1),
                       ],
                       SetRow(LucideIcons.refreshCw, C.purple,
                           l?.devicesLastData ?? 'Last data',
                           value: last == null ? '' : formatDayTime(last, l),
                           sub: last == null
-                              ? (l?.devicesNothingBankedYet ?? 'Nothing banked yet')
+                              ? (l?.devicesNothingBankedYet ?? 'Nothing saved yet')
                               : '',
                           chevron: false),
                       if (calibration != null) ...[
-                        Divider(color: p.line, height: 1),
                         SetRow(LucideIcons.sliders, C.teal,
                             l?.devicesCalibration ?? 'Calibration',
                             value: calibration.$1,
@@ -2476,26 +2572,30 @@ class DeviceDetailView extends StatelessWidget {
                       // because "experimental" without the reason reads as a
                       // disclaimer instead of a fact about this band.
                       if (s.experimental) ...[
-                        Divider(color: p.line, height: 1),
                         SetRow(LucideIcons.flaskConical, C.orange,
                             l?.devicesSupport ?? 'Support',
                             value: l?.devicesExperimental ?? 'Experimental',
                             sub: l?.devicesBandExperimentalSub ??
-                                'This band is decoded but nobody here has worn '
-                                    'one. Its numbers have not been checked against '
-                                    'the hardware, only against the protocol.',
+                                'Nobody on the project has worn this band. Its decoding '
+                                'follows the protocol and has not '
+                                'been tested on hardware.',
                             chevron: false),
                       ],
-                      if (onFind != null) ...[
-                        Divider(color: p.line, height: 1),
-                        SetRow(LucideIcons.bellRing, C.orange,
-                            l?.devicesBuzzTheBand ?? 'Buzz the band',
-                            sub: l?.devicesFindItByFeel ?? 'Find it by feel',
-                            chevron: false,
-                            onTap: onFind),
-                      ],
-                    ]),
-                  ),
+                  ]),
+                  SettingsAccordion('Tools',
+                      id: 'device_detail_tools',
+                      children: [
+                      SetRow(LucideIcons.bellRing, C.orange,
+                          l?.devicesBuzzTheBand ?? 'Buzz the band',
+                          enabled: onFind != null,
+                          sub: onFind == null
+                              ? 'Connect to the band first'
+                              : l?.devicesFindItByFeel ??
+                                  'Vibrate the band to locate it',
+                          chevron: false,
+                          onTap: onFind),
+                  ]),
+                ],
                 const SizedBox(height: S.x5),
                 if (onForget != null)
                   Surface(

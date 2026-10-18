@@ -11,7 +11,6 @@ import '../../l10n/display_text.dart';
 //     form. None of them feed a metric, and a field that changes nothing is a
 //     field that implies an account.
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -19,27 +18,50 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../compute/calc_power_policy.dart' show CalcPowerMode;
+import '../../compute/derive_perf.dart' show DerivePerf;
 import '../../data/off_lookup.dart';
 import '../../health/health_export.dart' show HealthLinkState;
 import '../../health/health_import_state.dart';
 import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
 import '../../platform/tasker_bridge.dart';
+import '../../haptics/builtin_patterns.dart' show alertSystemKey;
+import '../../haptics/haptic_slots.dart' show slotPatternLabel;
+import '../../haptics/pattern_store.dart' show SavedHapticPattern;
+import '../../notify/alert_rule.dart';
+import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_prefs.dart';
 import '../../notify/notification_service.dart';
+import '../../settings/settings_repository.dart';
 import '../../platform/app_icon.dart';
 import '../../state/app_state.dart';
 import '../../state/clock_format.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
+import '../../state/locale_controller.dart';
+import '../../state/acked_bool.dart';
 import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
 import '../../telemetry/health_uploader.dart';
 import '../../theme/theme_controller.dart';
+import '../activity/zones.dart' show ZonesDetail;
+import '../screens/coach.dart' show CoachSetup, coachSubtitle;
+import '../screens/explorer.dart' show ExplorerScreen;
+import '../screens/home_screen.dart' show deviceBatteryOf;
 import '../ui2.dart';
 import 'alarm.dart';
 import 'band_notifications.dart';
+import 'buzz_pattern.dart';
 import 'data.dart';
+import 'device_lab.dart' show DeviceLab;
+import 'devices.dart' show MyDevices;
 import 'gallery.dart';
+import 'gesture_failures.dart';
 import 'gestures.dart';
+import 'haptics_settings.dart';
+import 'live_devices.dart' show LiveDevices;
+import 'pattern_picker.dart';
 import 'profile.dart';
 import 'report_issue.dart';
 import 'wearable_numbers.dart' show WearableDisplay, wearableSettingsGroup;
@@ -70,11 +92,14 @@ class MoreSettings extends StatefulWidget {
 }
 
 class _MoreSettingsState extends State<MoreSettings> {
-  bool _dev = Prefs.getBool(Prefs.devMode, false);
-
   /// Whether a food barcode may be looked up online. Not on AppState: it is a
   /// screen-local preference like the map basemap's, read straight off Prefs.
   bool _barcode = offLookupAllowed;
+
+  /// Home's pull-to-sync, read straight off Prefs like [_barcode].
+  bool _pullToSync = Prefs.pullToSyncOn;
+  bool _reviveCommunityCards = Prefs.reviveCommunityCardsOn;
+
   String _version = '';
   int _taps = 0;
 
@@ -83,15 +108,33 @@ class _MoreSettingsState extends State<MoreSettings> {
   /// not drawn at all where the OS cannot change it.
   AppIconChoice? _icon;
 
+  /// The database file size for the Storage row. Null until read.
+  int? _storageBytes;
+
   @override
   void initState() {
     super.initState();
     _readVersion();
     _readIcon();
+    _readStorage();
     // The developer wearable toggles list the paired devices; best-effort.
-    if (_dev) {
+    if (context.read<AppState>().devMode) {
       WearableDisplay.instance.loadDevices().catchError((Object _) {});
     }
+  }
+
+  Future<void> _readStorage() async {
+    try {
+      final bytes = await context.read<AppState>().dataFileBytes();
+      if (mounted) setState(() => _storageBytes = bytes);
+    } catch (_) {/* no size, no number — the row prints nothing */}
+  }
+
+  /// An import or a restore changes the file, so the size is read again once
+  /// the data screen is left.
+  Future<void> _openData() async {
+    await goto(context, const DataScreen());
+    if (mounted) await _readStorage();
   }
 
   Future<void> _readIcon() async {
@@ -110,6 +153,15 @@ class _MoreSettingsState extends State<MoreSettings> {
     if (mounted) setState(() => _icon = now);
   }
 
+  /// Applied even if the screen was left meanwhile: the user chose it.
+  Future<void> _pickCalcPower(AppState app) async {
+    final m = await pickCalcPowerMode(context, app.calcPowerMode);
+    if (m != null && m != app.calcPowerMode) await app.setCalcPowerMode(m);
+  }
+
+  Future<void> _editSleepSchedule(AppState app) =>
+      editExpectedSleepSchedule(context, app);
+
   Future<void> _readVersion() async {
     try {
       final i = await PackageInfo.fromPlatform();
@@ -118,7 +170,9 @@ class _MoreSettingsState extends State<MoreSettings> {
   }
 
   void _tapVersion() {
-    if (_dev || ++_taps < kDevTaps) return;
+    if (context.capsRead.has(Feature.developerMode) || ++_taps < kDevTaps) {
+      return;
+    }
     _setDev(true);
   }
 
@@ -136,19 +190,16 @@ class _MoreSettingsState extends State<MoreSettings> {
       final l = AppLocalizations.of(context);
       messenger.showSnackBar(SnackBar(
         content: Text(l?.settingsBarcodeSaveFailed ??
-            'That could not be saved — it may be back next time you '
-                'open the app.'),
+            'The setting was not saved. It may revert when you '
+            'reopen the app.'),
       ));
     }
   }
 
   void _setDev(bool on) {
-    Prefs.setBool(Prefs.devMode, on);
+    context.read<AppState>().setDevMode(on);
     if (on) WearableDisplay.instance.loadDevices().catchError((Object _) {});
-    setState(() {
-      _dev = on;
-      _taps = 0;
-    });
+    setState(() => _taps = 0);
   }
 
   @override
@@ -157,9 +208,12 @@ class _MoreSettingsState extends State<MoreSettings> {
     final units = c.watch<UnitsController>();
     final theme = c.watch<ThemeController>();
     final clock = c.watch<ClockFormatController>();
+    final caps = c.caps;
     return MoreSettingsView(
       version: _version,
-      devMode: _dev,
+      devMode: caps.has(Feature.developerMode),
+      // The engine's `last_pass_perf`: measured values only.
+      lastCalculation: DerivePerf.describe(app.lastPassPerf),
       onVersionTap: _tapVersion,
       onToggleDev: () => _setDev(false),
       onGallery: () => goto(c, const GalleryScreen()),
@@ -167,30 +221,52 @@ class _MoreSettingsState extends State<MoreSettings> {
       appearance: theme.choice.label,
       clockFormat: clock.format,
       cycleTracking: app.cycleTrackingEnabled,
-      zoneAlertEnabled: app.zoneAlertEnabled,
-      zoneAlertZone: app.zoneAlertTargetZone,
       appIcon: _icon,
       onPickIcon: _pickIcon,
-      phoneSteps: app.phoneStepsEnabled,
       telemetry: app.telemetryConsent,
       barcodeLookup: _barcode,
+      pullToSync: _pullToSync,
+      reviveCommunityCards: _reviveCommunityCards,
+      onToggleReviveCommunityCards: () {
+        Prefs.setReviveCommunityCards(!_reviveCommunityCards);
+        setState(() => _reviveCommunityCards = !_reviveCommunityCards);
+      },
+      onTogglePullToSync: () {
+        Prefs.setBool(Prefs.pullToSync, !_pullToSync);
+        setState(() => _pullToSync = !_pullToSync);
+      },
       // Shown when the build has the feature OR when this install already
       // consented under an older build. A consent that cannot be withdrawn is
       // not consent, and the old `lib/ui` toggle died with that package while
       // the pref — and the daily whole-database upload it authorises — did not.
-      showHealthShare: kHealthDataContributionEnabled || app.healthShareConsent,
+      showHealthShare: caps.has(Feature.healthShare),
       healthShare: app.healthShareConsent,
       healthStore: app.healthStoreName,
       healthSync: app.healthSyncEnabled,
       healthState: app.healthState,
-      showUpdateChecks: app.updateChecksAvailable,
+      showUpdateChecks: caps.has(Feature.updateChecks),
       updateChecks: app.updateChecksEnabled,
       updateAvailable: app.updateAvailable,
       updateMandatory: app.updateMandatory,
+      expectedSleepSchedule: app.sleepOperations.schedule,
+      onEditSleepSchedule: () => _editSleepSchedule(app),
+      storageBytes: _storageBytes,
       onEditProfile: () => goto(c, const EditProfile()),
+      onDevices: () => goto(c, const MyDevices()),
+      onLiveDevices: () => goto(c, const LiveDevices()),
+      onDeviceLab: () => goto(c, const DeviceLab()),
+      onDataExplorer: () => goto(c, const ExplorerScreen()),
+      onCoach: () => goto(c, const CoachSetup()),
+      relaySupported: caps.has(Feature.relayEntry),
       onAlarm: () => goto(c, const AlarmScreen()),
+      onBandNotifications: () => goto(c, const BandNotifications()),
+      onGestures: () => goto(c, const BandGestures()),
+      onHaptics: () => goto(c, const HapticsSettings()),
+      onGestureFailures: () => goto(c, const GestureFailures()),
       onNotifications: () => goto(c, const NotificationSettings()),
-      onData: () => goto(c, const DataScreen()),
+      onData: _openData,
+      calcPowerMode: app.calcPowerMode,
+      onPickCalcPowerMode: () => _pickCalcPower(app),
       onAutomation: () => goto(c, const AutomationSettings()),
       onCycleUnits: () => units.setSystem(units.isImperial
           ? UnitSystem.metric
@@ -207,23 +283,30 @@ class _MoreSettingsState extends State<MoreSettings> {
       },
       onToggleCycleTracking: () =>
           app.setCycleTrackingEnabled(!app.cycleTrackingEnabled),
-      onTogglePhoneSteps: () => app.phoneStepsEnabled
-          ? app.disablePhoneSteps()
-          : app.requestPhoneSteps(),
       onToggleTelemetry: () => app.setTelemetryConsent(!app.telemetryConsent),
       onToggleBarcodeLookup: () => _toggleBarcode(c),
       onToggleHealthShare: () => _toggleHealthShare(c, app),
       onToggleHealthSync: () => _toggleHealthSync(app),
       onToggleUpdateChecks: () =>
           app.setUpdateChecksEnabled(!app.updateChecksEnabled),
-      onToggleZoneAlert: () =>
-          app.setZoneAlertEnabled(!app.zoneAlertEnabled),
-      onCycleZoneAlertZone: () => app.setZoneAlertTargetZone(
-          app.zoneAlertTargetZone >= 5 ? 1 : app.zoneAlertTargetZone + 1),
-      onReset: () => _confirmReset(c, app),
     );
   }
 }
+
+/// The language row's sub-line. Without a [LocaleController] above (a view
+/// pumped on its own) it reads as the system default, like coachSubtitle does
+/// for the coach.
+String _languageSub(BuildContext c) {
+  try {
+    return languageLabel(c, c.watch<LocaleController>().code);
+  } catch (_) {
+    return languageLabel(c, null);
+  }
+}
+
+String _clock(int minute) =>
+    '${(minute ~/ 60).toString().padLeft(2, '0')}:'
+    '${(minute % 60).toString().padLeft(2, '0')}';
 
 /// Pick the home-screen icon, with both options drawn so the choice is made by
 /// looking rather than by reading a word.
@@ -356,8 +439,8 @@ String healthSyncSub(
   }
   return switch (state) {
     HealthLinkState.ready => l?.settingsHealthSyncReady(store) ??
-        'Writes each day’s sleep, resting heart rate, '
-            'HRV, respiratory rate, energy and workouts to $store once it is final',
+        "Writes each day's sleep, resting heart rate, HRV, respiratory rate, "
+        "energy and workouts to $store once the day is final",
     HealthLinkState.needsPermission =>
       l?.settingsHealthSyncNeedsPermission(store) ??
           '$store has not granted write access. Tap to open it',
@@ -365,7 +448,7 @@ String healthSyncSub(
         'Health Connect is not installed. Tap to '
             'get it',
     HealthLinkState.needsUpdate => l?.settingsHealthSyncNeedsUpdate ??
-        'Health Connect is too old to write to. Tap to update it',
+        'Health Connect needs an update before the app can write to it. Tap to update',
     HealthLinkState.unsupported => l?.settingsHealthSyncUnsupported ??
         'This device has no health store to write to',
     HealthLinkState.unknown =>
@@ -394,7 +477,7 @@ Future<void> _toggleHealthShare(BuildContext c, AppState app) async {
         content: Text(
           last == null
               ? (l?.settingsHealthShareOffNeverUploaded ??
-                  'Nothing was ever uploaded. Nothing will be.')
+                  'No data was uploaded, and none will be.')
               // What we KNOW, not what we hope: the revocation is posted
               // once, unawaited, with no retry queue, so offline it never
               // arrives and nothing here can tell.
@@ -402,12 +485,9 @@ Future<void> _toggleHealthShare(BuildContext c, AppState app) async {
                       last.toLocal().toString().split('.').first) ??
                   'Nothing further will be uploaded.\n\n'
                       'One copy of your database was uploaded on '
-                      '${last.toLocal().toString().split('.').first}. The server '
-                      'keeps only the most recent copy per device. We tried to '
-                      'tell it your consent is withdrawn — that message is sent '
-                      'once and is not retried, so if this phone is offline it '
-                      'will not have arrived, and we cannot show you that the copy '
-                      'is gone either.'),
+                      '${last.toLocal().toString().split('.').first}. The server keeps only the most recent copy per device. '
+                      'The app sent a withdrawal message once and does not retry it. '
+                      'If this phone was offline, the message did not arrive, and the app cannot confirm the copy is deleted.'),
         ),
         actions: [
           TextButton(
@@ -446,66 +526,28 @@ Future<void> _toggleHealthShare(BuildContext c, AppState app) async {
   if (ok == true) await app.setHealthShareConsent(true);
 }
 
-Future<void> _confirmReset(BuildContext c, AppState app) async {
-  final l = AppLocalizations.of(c);
-  final ok = await showDialog<bool>(
-    context: c,
-    builder: (d) => AlertDialog(
-      title: Text(l?.settingsResetTitle ?? 'Delete everything?'),
-      // Enumerated, because the previous wording ("every measured day, session
-      // and profile field") was false in about twenty places: it deleted the
-      // derived days and left the labs, the meals, the doses, the breathing
-      // sessions, the logged sets, the baselines, the consent flags, the
-      // install id, the stored API key and the home-screen widget standing.
-      // It now removes all of that, so it can say so.
-      content: Text(
-        withIosUninstallWarning(c, l?.settingsResetBody ??
-            'This permanently deletes this app\'s data on this device:\n\n'
-                '· every measured day, sleep, workout and route\n'
-                '· every lab result, meal, medication dose, habit, breathing session '
-                'and logged set\n'
-                '· your journal, cycle log and what the app has learned as your usual\n'
-                '· your profile, every preference and any stored AI key\n'
-                '· the home-screen widget and every scheduled reminder\n\n'
-                'Exported copies and backups in previous or unavailable folders '
-                'may remain. Delete those separately.\n\n'
-                'The band is unpaired, and it cannot re-send history it has already '
-                'handed over. Export from Your data first if you want a copy.'),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.of(d).pop(false),
-            child: Text(l?.settingsResetKeepData ?? 'Keep my data')),
-        TextButton(
-            onPressed: () => Navigator.of(d).pop(true),
-            child: Text(l?.settingsResetDeleteEverything ?? 'Delete everything')),
-      ],
-    ),
+/// Two time pickers, seeded from the saved schedule (or 23:00 / 07:00). Works
+/// with no data at all: it writes the schedule, not a night. Shared by Settings
+/// and the alarm screen (Natural Wake needs it).
+Future<void> editExpectedSleepSchedule(BuildContext context, AppState app) async {
+  final cur = app.sleepOperations.schedule;
+  TimeOfDay at(int m) => TimeOfDay(hour: m ~/ 60, minute: m % 60);
+  final bed = await showTimePicker(
+    context: context,
+    initialTime: at(cur?.onsetMinute ?? 23 * 60),
+    helpText: 'WHEN YOU USUALLY GO TO BED',
   );
-  if (ok != true || !c.mounted) return;
-  final messenger = ScaffoldMessenger.of(c);
-  String? backupCleanupError;
-  try {
-    backupCleanupError = await app.resetAllData();
-  } catch (e) {
-    if (c.mounted) {
-      ScaffoldMessenger.of(c).showSnackBar(SnackBar(
-        content: Text(l?.dataFailed(e.toString()) ?? 'Failed: $e'),
-      ));
-    }
-    return;
-  }
-  // resetAllData swaps the gate to Welcome, which is UNDER this screen —
-  // without this the user stays on Settings, reading a profile that has been
-  // deleted.
-  if (c.mounted) backToRoot(c);
-  if (backupCleanupError != null && messenger.mounted) {
-    messenger.showSnackBar(SnackBar(
-      content: Text(l?.settingsResetBackupWarning ??
-          'App data deleted. Backup cleanup was incomplete. '
-              'Some files or folder access may remain.'),
-    ));
-  }
+  if (bed == null || !context.mounted) return;
+  final up = await showTimePicker(
+    context: context,
+    initialTime: at(cur?.wakeMinute ?? 7 * 60),
+    helpText: 'WHEN YOU USUALLY GET UP',
+  );
+  if (up == null || !context.mounted) return;
+  await app.setExpectedSleepSchedule(ExpectedSleepSchedule(
+    onsetMinute: bed.hour * 60 + bed.minute,
+    wakeMinute: up.hour * 60 + up.minute,
+  ));
 }
 
 class MoreSettingsView extends StatelessWidget {
@@ -513,18 +555,21 @@ class MoreSettingsView extends StatelessWidget {
 
   /// 12- or 24-hour clock, or whatever the OS says ("System", the default).
   final ClockFormat clockFormat;
-  final bool phoneSteps, telemetry, barcodeLookup, cycleTracking;
+  final bool telemetry, barcodeLookup, cycleTracking;
 
-  /// The live-workout HR-zone-crossing haptic. Off by default; [zoneAlertZone]
-  /// (1..5) is only meaningful — and only drawn — while this is on.
-  final bool zoneAlertEnabled;
-  final int zoneAlertZone;
+  /// Home's pull down to sync. On by default.
+  final bool pullToSync;
+  final VoidCallback? onTogglePullToSync;
 
   /// The home-screen icon, or null where the OS will not change it — Android,
   /// and the managed iOS configurations that refuse. Null means the row is not
   /// drawn: a control that cannot do its one job is worse than no control.
   final AppIconChoice? appIcon;
   final ValueChanged<AppIconChoice>? onPickIcon;
+
+  /// Settings > Data & privacy > Calculations: when derive work and warming run.
+  final CalcPowerMode calcPowerMode;
+  final VoidCallback? onPickCalcPowerMode;
 
   /// The health-contribution row appears only where it means something: a
   /// build that has the feature, or an install that already said yes to it.
@@ -553,26 +598,54 @@ class MoreSettingsView extends StatelessWidget {
   /// a feature: nothing in it is for anyone who has not deliberately asked.
   final bool devMode;
 
+  /// The Developer group's "Last calculation" line, already worded; an em dash
+  /// until a pass has been measured.
+  final String lastCalculation;
+
   final VoidCallback? onVersionTap, onToggleDev, onGallery;
 
+  /// Developer group's "Revive community cards": on (the default) keeps the
+  /// Discord and Sponsor cards coming back in developer mode.
+  final bool reviveCommunityCards;
+  final VoidCallback? onToggleReviveCommunityCards;
+
+  /// The expected sleep schedule (local clock times), or null when never set.
+  /// The row is always drawn: it needs no data.
+  final ExpectedSleepSchedule? expectedSleepSchedule;
+  final VoidCallback? onEditSleepSchedule;
+
+  /// Android only, like the relay itself: where it cannot run, the App
+  /// notifications on the band row is omitted rather than shown against
+  /// nothing.
+  final bool relaySupported;
+
+  /// The size of the database file, or null while it is still being read: the
+  /// Storage row prints nothing rather than a zero it does not know.
+  final int? storageBytes;
+
   final VoidCallback? onEditProfile,
+      onDevices,
+      onLiveDevices,
+      onDeviceLab,
+      onDataExplorer,
+      onCoach,
       onAlarm,
+      onBandNotifications,
+      onGestures,
+      onHaptics,
+      onGestureFailures,
       onNotifications,
       onData,
       onAutomation,
       onCycleUnits,
       onCycleAppearance,
       onCycleClockFormat,
-      onTogglePhoneSteps,
       onToggleTelemetry,
       onToggleBarcodeLookup,
       onToggleCycleTracking,
       onToggleHealthShare,
       onToggleHealthSync,
-      onToggleUpdateChecks,
-      onToggleZoneAlert,
-      onCycleZoneAlertZone,
-      onReset;
+      onToggleUpdateChecks;
 
   const MoreSettingsView({
     super.key,
@@ -581,15 +654,16 @@ class MoreSettingsView extends StatelessWidget {
     this.clockFormat = ClockFormat.system,
     this.appIcon,
     this.onPickIcon,
-    this.phoneSteps = false,
+    this.pullToSync = true,
+    this.onTogglePullToSync,
+    this.calcPowerMode = CalcPowerMode.balanced,
+    this.onPickCalcPowerMode,
     this.healthSync = false,
     this.healthState = HealthLinkState.unknown,
     this.healthStore = 'Apple Health',
     this.telemetry = false,
     this.barcodeLookup = true,
     this.cycleTracking = false,
-    this.zoneAlertEnabled = false,
-    this.zoneAlertZone = 3,
     this.showHealthShare = false,
     this.healthShare = false,
     this.showUpdateChecks = false,
@@ -598,27 +672,39 @@ class MoreSettingsView extends StatelessWidget {
     this.updateMandatory = false,
     this.version = '',
     this.devMode = false,
+    this.lastCalculation = '—',
     this.onVersionTap,
     this.onToggleDev,
     this.onGallery,
+    this.reviveCommunityCards = true,
+    this.onToggleReviveCommunityCards,
+    this.expectedSleepSchedule,
+    this.onEditSleepSchedule,
+    this.relaySupported = false,
+    this.storageBytes,
     this.onEditProfile,
+    this.onDevices,
+    this.onLiveDevices,
+    this.onDeviceLab,
+    this.onDataExplorer,
+    this.onCoach,
     this.onAlarm,
+    this.onBandNotifications,
+    this.onGestures,
+    this.onHaptics,
+    this.onGestureFailures,
     this.onNotifications,
     this.onData,
     this.onAutomation,
     this.onCycleUnits,
     this.onCycleAppearance,
     this.onCycleClockFormat,
-    this.onTogglePhoneSteps,
     this.onToggleTelemetry,
     this.onToggleBarcodeLookup,
     this.onToggleCycleTracking,
     this.onToggleHealthShare,
     this.onToggleHealthSync,
     this.onToggleUpdateChecks,
-    this.onToggleZoneAlert,
-    this.onCycleZoneAlertZone,
-    this.onReset,
   });
 
   @override
@@ -639,58 +725,24 @@ class MoreSettingsView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                // No "Edit profile" here. It lives in one place — Quick access
-                // on the Profile screen — because two doors to one form is how
-                // a user ends up unsure which one is the real setting.
-                settingsGroup(c, l?.settingsGroupTheBand ?? 'The band', [
-                  SetRow(LucideIcons.alarmClock, C.orange,
-                      l?.settingsAlarmRowTitle ?? 'Alarm',
-                      sub: l?.settingsAlarmRowSub ??
-                          'Buzzes on your wrist, on the band’s own clock',
-                      onTap: onAlarm),
-                  // Off by default — an existing user did not ask their band
-                  // to start buzzing mid-workout. The target-zone row below
-                  // only appears once this is on; a target for an alert
-                  // that's off is furniture, same rule as battery/water above.
-                  SetRow(LucideIcons.heartPulse, C.red,
-                      l?.settingsZoneAlertRowTitle ?? 'HR zone alert',
-                      sub: l?.settingsZoneAlertRowSub ??
-                          'Buzz when your heart rate crosses into or out of '
-                              'the target zone during a live workout',
-                      value: zoneAlertEnabled ? on : off,
-                      chevron: false,
-                      onTap: onToggleZoneAlert),
-                  if (zoneAlertEnabled)
-                    SetRow(LucideIcons.target, C.red,
-                        l?.settingsZoneAlertTargetRowTitle ?? 'Target zone',
-                        value: l?.settingsZoneAlertTargetRowValue(
-                                zoneAlertZone) ??
-                            'Zone $zoneAlertZone',
-                        chevron: false,
-                        onTap: onCycleZoneAlertZone),
-                  // The picker died with the old ui tree and the engine kept
-                  // running against a mapping nothing could set — the whole
-                  // feature was live code pinned at "do nothing".
-                  Builder(
-                      builder: (c) => SetRow(
-                          LucideIcons.hand, C.orange,
-                          AppLocalizations.of(c)?.settingsDoubleTapRowTitle ??
-                              'Double-tap',
-                          sub: AppLocalizations.of(c)
-                                  ?.settingsDoubleTapRowSub ??
-                              'What a double-tap on the band does',
-                          onTap: () => goto(c, const BandGestures()))),
-                ]),
-                // Band, App, Data, Privacy, Advanced: named for what is in
-                // them, so nothing needs a sub-line listing its contents.
-                settingsGroup(c, l?.settingsGroupApp ?? 'App', [
-                  SetRow(LucideIcons.bell, C.blue,
-                      l?.settingsManageNotificationsRowTitle ??
-                          'Manage notifications',
-                      sub: l?.settingsManageNotificationsRowSub ??
-                          'What may interrupt you, quiet hours, and off '
-                              'switches for all of them',
-                      onTap: onNotifications),
+                // Grouped by task. This is the landing screen:
+                // every row has exactly one door here. Your own preferences
+                // come first and Community sits just above Connections.
+                // Hardware keeps the id `settings_band` it was saved under as
+                // "Band", so a section somebody folded stays folded.
+                SettingsAccordion('You & preferences',
+                    id: 'settings_preferences',
+                    children: [
+                  SetRow(LucideIcons.userPen, C.purple,
+                      l?.profileEditProfile ?? 'Edit profile',
+                      sub: l?.profileEditProfileSub ??
+                          'Sex, age, height, weight',
+                      onTap: onEditProfile),
+                  Builder(builder: (c) => SetRow(
+                      LucideIcons.languages, C.blue,
+                      AppLocalizations.of(c)?.profileLanguage ?? 'Language',
+                      sub: _languageSub(c),
+                      onTap: () => pickLanguage(c))),
                   SetRow(LucideIcons.ruler, C.blue,
                       l?.settingsUnitsRowTitle ?? 'Units',
                       value: units, onTap: onCycleUnits),
@@ -708,6 +760,21 @@ class MoreSettingsView extends StatelessWidget {
                           l?.settingsClockFormat12h ?? clockFormat.label,
                       },
                       onTap: onCycleClockFormat),
+                  // Home's pull-to-refresh. Off removes the gesture; the sync
+                  // status line on Home keeps its Sync now button either way.
+                  SetRow(LucideIcons.refreshCw, C.blue, 'Pull down to sync',
+                      sub: 'Pull Home down to sync with the band',
+                      value: pullToSync ? on : off,
+                      onTap: onTogglePullToSync),
+                  // Intentionally also in Alarm > Wake, where it is the alarm's
+                  // input in context. Both rows edit the same preference.
+                  SetRow(LucideIcons.moon, C.indigo, 'Expected sleep schedule',
+                      sub: 'Your usual bed and wake times',
+                      value: expectedSleepSchedule == null
+                          ? 'Not set'
+                          : '${_clock(expectedSleepSchedule!.onsetMinute)} to '
+                              '${_clock(expectedSleepSchedule!.wakeMinute)}',
+                      onTap: onEditSleepSchedule),
                   if (appIcon != null)
                     _IconRow(chosen: appIcon!, onPick: onPickIcon),
                   // Opt-in, and it says what it does rather than what it is
@@ -721,13 +788,79 @@ class MoreSettingsView extends StatelessWidget {
                       value: cycleTracking ? on : off,
                       onTap: onToggleCycleTracking),
                 ]),
-                settingsGroup(c, l?.settingsGroupData ?? 'Data', [
+                SettingsAccordion('Hardware', id: 'settings_band', children: [
+                  // The band's battery rides the devices row: this is the
+                  // landing screen, where "is my band all right?" is asked.
+                  Builder(builder: (c) {
+                    final battery = deviceBatteryOf(c);
+                    return SetRow(LucideIcons.watch, C.blue,
+                        l?.profileMyDevices ?? 'My devices',
+                        sub: [
+                          'Pair, rename and manage your band',
+                          if (battery != null)
+                            l?.profileBandBattery(battery.$1.round()) ??
+                                'Band ${battery.$1.round()}%',
+                        ].join(' · '),
+                        onTap: onDevices);
+                  }),
+                  SetRow(LucideIcons.hand, C.orange, 'Gestures',
+                      sub: l?.settingsDoubleTapRowSub ??
+                          'What a double-tap on the band does',
+                      onTap: onGestures),
+                  // The named buzz patterns and the band's safety limits.
+                  SetRow(LucideIcons.vibrate, C.purple, 'Haptics',
+                      key: const ValueKey('settings-haptics'),
+                      sub: 'Your buzz patterns and band safety',
+                      onTap: onHaptics),
+                  // Gestures that failed to activate, with the log to send.
+                  // Always drawn: an empty list says so.
+                  SetRow(LucideIcons.triangleAlert, C.orange, 'Gesture failures',
+                      key: const ValueKey('settings-gesture-failures'),
+                      sub: 'Saved logs of gestures that did not activate',
+                      onTap: onGestureFailures),
+                ]),
+                SettingsAccordion('Alerts', id: 'settings_alerts', children: [
+                  // The alarm's one door: a row here, not a row inside
+                  // the Alerts and notifications screen.
+                  SetRow(LucideIcons.alarmClock, C.orange,
+                      l?.settingsAlarmRowTitle ?? 'Alarm',
+                      sub: l?.settingsAlarmRowSub ??
+                          'Buzzes on your wrist and runs on the band\'s clock',
+                      onTap: onAlarm),
+                  SetRow(LucideIcons.bell, C.blue,
+                      l?.settingsManageNotificationsRowTitle ??
+                          'Alerts and notifications',
+                      sub: l?.settingsManageNotificationsRowSub ??
+                          'Turn alerts on or off and set '
+                          'quiet hours',
+                      onTap: onNotifications),
+                  // The one door to the relay screen. Android-only and
+                  // omitted elsewhere rather than shown against nothing.
+                  if (relaySupported)
+                    SetRow(LucideIcons.bellRing, C.purple,
+                        'App notifications on the band',
+                        sub: 'Which apps, alarms and calls make the band buzz',
+                        onTap: onBandNotifications),
+                ]),
+                SettingsAccordion('Data & privacy',
+                    id: 'settings_data_privacy',
+                    children: [
+                  SetRow(LucideIcons.database, C.green,
+                      l?.profileStorage ?? 'Storage',
+                      value: storageBytes == null
+                          ? ''
+                          : formatBytes(storageBytes!),
+                      chevron: false),
                   SetRow(LucideIcons.download, C.green,
                       l?.settingsExportBackupImportRowTitle ??
                           'Export, backup, import',
                       sub: l?.settingsExportBackupImportRowSub ??
-                          'Spreadsheets, a full copy, and bringing history in',
+                          'Export spreadsheets or a full copy, and import history',
                       onTap: onData),
+                  SetRow(LucideIcons.batteryCharging, C.green, 'Calculations',
+                      key: const ValueKey('calc-power-row'),
+                      value: calcPowerLabels[calcPowerMode]!,
+                      onTap: onPickCalcPowerMode),
                   // The row P1 was missing. Everything behind it — the
                   // permission request, the retry/backoff, the four gates —
                   // was already written and simply had no way to be switched
@@ -739,37 +872,6 @@ class MoreSettingsView extends StatelessWidget {
                       sub: healthSyncSub(c, healthSync, healthState, healthStore),
                       value: healthSync ? on : off,
                       onTap: onToggleHealthSync),
-                  SetRow(LucideIcons.footprints, C.teal,
-                      l?.settingsStepsRowTitle ?? 'Steps',
-                      sub: l?.settingsStepsRowSub ??
-                          'This phone’s own step counter, for the hours the '
-                              'band doesn’t cover. Nothing leaves the device',
-                      value: phoneSteps ? on : off,
-                      onTap: onTogglePhoneSteps),
-                ]),
-                settingsGroup(c, l?.settingsGroupPrivacy ?? 'Privacy', [
-                  SetRow(LucideIcons.bug, C.orange,
-                      l?.settingsCrashReportsRowTitle ?? 'Crash reports',
-                      sub: l?.settingsCrashReportsRowSub ??
-                          'Nothing is sent until you say so',
-                      value: telemetry ? on : off,
-                      onTap: onToggleTelemetry),
-                  SetRow(LucideIcons.messageSquareWarning, C.orange,
-                      l?.settingsReportIssueRowTitle ?? 'Report an issue',
-                      sub: l?.settingsReportIssueRowSub ??
-                          'Sends what you choose to the maintainers, encrypted',
-                      onTap: () => goto(c, const ReportIssueScreen())),
-                  // The food log's one outbound call. Named by what it sends,
-                  // not by the feature it powers — a scan is the only thing
-                  // that triggers it and the barcode is the whole payload.
-                  SetRow(LucideIcons.scanBarcode, C.domFood,
-                      l?.settingsBarcodeLookupRowTitle ??
-                          'Look barcodes up online',
-                      sub: l?.settingsBarcodeLookupRowSub ??
-                          'Sends a scanned barcode to openfoodfacts.org. '
-                              'Nothing about you goes with it',
-                      value: barcodeLookup ? on : off,
-                      onTap: onToggleBarcodeLookup),
                   if (showHealthShare)
                     SetRow(LucideIcons.cloudUpload, C.red,
                         l?.settingsContributeHealthDataRowTitle ??
@@ -779,6 +881,67 @@ class MoreSettingsView extends StatelessWidget {
                                 'Wi-Fi and charging, to improve the algorithms',
                         value: healthShare ? on : off,
                         onTap: onToggleHealthShare),
+                  SetRow(LucideIcons.bug, C.orange,
+                      l?.settingsCrashReportsRowTitle ?? 'Crash reports',
+                      sub: l?.settingsCrashReportsRowSub ??
+                          'Reports are sent only if you opt in',
+                      value: telemetry ? on : off,
+                      onTap: onToggleTelemetry),
+                  SetRow(LucideIcons.messageSquareWarning, C.orange,
+                      l?.settingsReportIssueRowTitle ?? 'Report an issue',
+                      sub: l?.settingsReportIssueRowSub ??
+                          'Sends what you choose to the maintainers, encrypted',
+                      onTap: () => goto(c, const ReportIssueScreen())),
+                ]),
+                SettingsAccordion(
+                    l?.profileCommunityGroup ?? 'Community',
+                    id: 'settings_community',
+                    children: [
+                  SetRow.brand(brandGlyph('assets/icons/github.svg'), C.n500,
+                      l?.profileGithubTitle ?? 'GitHub',
+                      sub: l?.profileGithubSub ??
+                          'Star the project to show support.',
+                      onTap: () => open3rdPartyLink(kGithubUrl)),
+                  SetRow.brand(brandGlyph('assets/icons/reddit.svg'), C.orange,
+                      l?.profileRedditTitle ?? 'Reddit',
+                      sub: l?.profileRedditSub ??
+                          'Join r/OpenStrap to share results and ask questions.',
+                      onTap: () => open3rdPartyLink(kRedditUrl)),
+                  SetRow.brand(brandGlyph('assets/icons/discord.svg'),
+                      C.indigo, l?.profileDiscordTitle ?? 'Discord',
+                      sub: l?.profileDiscordSub ??
+                          'Chat with other users and the developers.',
+                      onTap: () => open3rdPartyLink(kDiscordUrl)),
+                  SetRow(LucideIcons.heartHandshake, C.pink,
+                      l?.profileSponsorTitle ?? 'Sponsor',
+                      sub: l?.profileSponsorSub ??
+                          'This is a free, open-source project. Sponsoring funds development.',
+                      onTap: () => open3rdPartyLink(kSponsorUrl)),
+                ]),
+                SettingsAccordion('Connections',
+                    id: 'settings_connections',
+                    children: [
+                  // THE ONLY DOOR TO THE COACH'S SETUP: Home's sparkles button
+                  // is gated on `coachReady`, so on a fresh install there is
+                  // no icon to find it behind. `watch` rather than `read` so
+                  // the sub-line stops saying "Not set up" the moment it is.
+                  Builder(builder: (c) => SetRow(
+                      LucideIcons.sparkles, C.purple,
+                      AppLocalizations.of(c)?.profileAiCoach ?? 'AI coach',
+                      sub: coachSubtitle(c) ??
+                          (AppLocalizations.of(c)?.profileNotSetUp ??
+                              'Not set up'),
+                      onTap: onCoach)),
+                  SetRow(LucideIcons.workflow, C.indigo,
+                      l?.settingsTaskerShortcutsRowTitle ??
+                          'Tasker and Shortcuts',
+                      // The row states the asymmetry rather than leaving it to
+                      // the screen: someone on an iPhone should learn what they
+                      // are not getting before they tap into it.
+                      sub: l?.settingsTaskerShortcutsRowSub ??
+                          'Android can send events out. iOS can buzz the band '
+                          'but cannot receive events from it',
+                      onTap: onAutomation),
                   if (showUpdateChecks)
                     SetRow(LucideIcons.refreshCw, C.blue,
                         l?.settingsCheckForUpdatesRowTitle ??
@@ -795,23 +958,21 @@ class MoreSettingsView extends StatelessWidget {
                                         'your IP address and when you open the app'),
                         value: updateChecks ? on : off,
                         onTap: onToggleUpdateChecks),
+                  // The food log's one outbound call. Named by what it sends,
+                  // not by the feature it powers — a scan is the only thing
+                  // that triggers it and the barcode is the whole payload.
+                  SetRow(LucideIcons.scanBarcode, C.domFood,
+                      l?.settingsBarcodeLookupRowTitle ??
+                          'Look barcodes up online',
+                      sub: l?.settingsBarcodeLookupRowSub ??
+                          'Sends a scanned barcode to openfoodfacts.org. '
+                          'It sees the barcode and your IP address, nothing else about you',
+                      value: barcodeLookup ? on : off,
+                      onTap: onToggleBarcodeLookup),
                 ]),
-                settingsGroup(c, l?.settingsGroupAdvanced ?? 'Advanced', [
-                  SetRow(LucideIcons.workflow, C.indigo,
-                      l?.settingsTaskerShortcutsRowTitle ??
-                          'Tasker and Shortcuts',
-                      // The row states the asymmetry rather than leaving it to
-                      // the screen: someone on an iPhone should learn what they
-                      // are not getting before they tap into it.
-                      sub: l?.settingsTaskerShortcutsRowSub ??
-                          'Android only for events out. iOS can buzz the band '
-                              'but cannot be triggered by it',
-                      onTap: onAutomation),
-                ]),
-                // How a non-WHOOP wearable's numbers are drawn. Developer
-                // only while every wearable is (rule R6).
-                if (devMode) wearableSettingsGroup(c),
-                settingsGroup(c, l?.settingsGroupAbout ?? 'About', [
+                SettingsAccordion(l?.settingsGroupAbout ?? 'About',
+                    id: 'settings_about',
+                    children: [
                   if (version.isNotEmpty)
                     SetRow(LucideIcons.info, C.n500,
                         l?.settingsVersionRowTitle ?? 'Version',
@@ -823,14 +984,16 @@ class MoreSettingsView extends StatelessWidget {
                       l?.settingsNoticesLicencesRowTitle ??
                           'Notices and licences',
                       sub: l?.settingsNoticesLicencesRowSub ??
-                          'Who this app is not, and whose data it uses',
+                          'Affiliations and data sources',
                       onTap: () => launchUrl(
                           Uri.parse(
                               'https://openstrap.github.io/edge/notice.html'),
                           mode: LaunchMode.externalApplication)),
                 ]),
                 if (devMode)
-                  settingsGroup(c, l?.settingsGroupDeveloper ?? 'Developer', [
+                  SettingsAccordion(l?.settingsGroupDeveloper ?? 'Developer',
+                      id: 'settings_developer',
+                      children: [
                     SetRow(LucideIcons.layoutGrid, C.purple,
                         l?.settingsComponentGalleryRowTitle ??
                             'Component gallery',
@@ -838,22 +1001,41 @@ class MoreSettingsView extends StatelessWidget {
                             'Every component, at any text scale, in either '
                                 'theme',
                         onTap: onGallery),
+                    SetRow(LucideIcons.activity, C.red, 'Live devices',
+                        sub: 'The last 30 seconds from each connected device',
+                        onTap: onLiveDevices),
+                    // The lab's tap tools are still behind
+                    // FeatureFlag.tapClassifiers inside it; the entry itself
+                    // needs dev mode, which this group already is.
+                    SetRow(LucideIcons.flaskConical, C.purple, 'Device lab',
+                        sub: 'Try gestures the band does not report on its own',
+                        onTap: onDeviceLab),
+                    // Not a Health tab yet: up to four metrics on one time axis.
+                    SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
+                        sub: 'Compare up to four metrics on one time axis',
+                        onTap: onDataExplorer),
+                    SetRow(LucideIcons.timer, C.n500, 'Last calculation',
+                        sub: lastCalculation, chevron: false),
+                    // Default ON = today's behaviour. OFF holds the Discord and
+                    // Sponsor cards to their dismissal and cooldown in dev mode.
+                    SetRow(LucideIcons.refreshCw, C.n500,
+                        'Revive community cards',
+                        sub: 'Keep the Discord and Sponsor cards coming back, '
+                            'ignoring dismissal and cooldown',
+                        value: reviveCommunityCards ? on : off,
+                        chevron: false,
+                        onTap: onToggleReviveCommunityCards),
                     SetRow(LucideIcons.code, C.n500,
                         l?.settingsDeveloperModeRowTitle ?? 'Developer mode',
                         value: on, chevron: false, onTap: onToggleDev),
                   ]),
-                const SizedBox(height: S.x6),
-                Surface(
-                  pad: const EdgeInsets.symmetric(horizontal: S.x4),
-                  child: SetRow(LucideIcons.trash2, C.red,
-                      l?.settingsResetAllDataRowTitle ?? 'Reset all data',
-                      danger: true, chevron: false, onTap: onReset),
-                ),
-                ],
-              ),
+                // How a non-WHOOP wearable's numbers are drawn. Developer
+                // only while every wearable is (rule R6).
+                if (devMode) wearableSettingsGroup(c),
+              ],
             ),
-          ],
-        ),
+          ),
+        ]),
       ),
     );
   }
@@ -890,6 +1072,9 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   NotificationPrefs? _prefs;
   bool _granted = false;
 
+  // The stored patterns, to name what each alert plays.
+  List<SavedHapticPattern> _patterns = const [];
+
   @override
   void initState() {
     super.initState();
@@ -899,22 +1084,26 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   Future<void> _load() async {
     final p = await NotificationPrefs.load();
     final granted = await NotificationService.instance.hasPermission();
+    List<SavedHapticPattern> patterns = const [];
+    try {
+      patterns = (await SettingsRepository.instance.patterns()).list;
+    } catch (_) {
+      // Unnamed rows say "Custom"; the alerts still work.
+    }
     if (!mounted) return;
     setState(() {
       _prefs = p;
       _granted = granted;
+      _patterns = patterns;
     });
   }
 
-  /// Whether the strap-buzz relay exists on this platform. Android only —
-  /// iOS gives no app access to another app's notifications — and the row is
-  /// absent rather than disabled there, so there is nothing to explain.
-  bool get _relaySupported =>
-      defaultTargetPlatform == TargetPlatform.android;
-
   Future<void> _apply(NotificationPrefs next) async {
     setState(() => _prefs = next);
-    await next.save();
+    await SettingsRepository.instance.update(
+      (d) => d.alerts = next,
+      sections: {SettingsSection.alerts},
+    );
     // Re-run the scheduler so a switch that was just turned off actually
     // cancels what it was standing for, rather than taking effect at some
     // later resume.
@@ -945,14 +1134,160 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   @override
   Widget build(BuildContext c) {
     final p = _prefs;
+    final app = c.watch<AppState>();
     return NotificationSettingsView(
       prefs: p ?? const NotificationPrefs(),
       loaded: p != null,
       granted: _granted,
-      relaySupported: _relaySupported,
       onChanged: _apply,
       onRequestPermission: _requestPermission,
+      onBuzzPattern: _pickPattern,
+      patternNameFor: (id) => slotPatternLabel(
+        alertSystemKey(id),
+        patterns: _patterns,
+        alerts: p ?? const NotificationPrefs(),
+        channels: const {},
+        cueAssignments: const {},
+      ),
+      onOpenHaptics: () => goto(c, const HapticsSettings()),
+      zoneAlertZone: app.zoneAlertTargetZone,
+      onCycleZoneAlertZone: () => app.setZoneAlertTargetZone(
+          app.zoneAlertTargetZone >= 5 ? 1 : app.zoneAlertTargetZone + 1),
+      onOpenZones: () => goto(c, const ZonesDetail()),
     );
+  }
+
+  /// The picker first: Default, the stored patterns, a new tap take, or
+  /// notes. A stored pattern is saved into the rule as a snapshot of itself.
+  void _pickPattern(String id) {
+    final p = _prefs;
+    if (p == null) return;
+    final app = context.read<AppState>();
+    final caps = context.capsRead;
+    SettingsRepository.instance.patterns().then((store) {
+      if (!mounted) return;
+      setState(() => _patterns = store.list);
+      showPatternPicker(
+        context,
+        patterns: store.list,
+        current: p.buzzSequenceFor(id),
+        defaultSequence: store.bySystemKey('alert.$id')?.sequence,
+        bandConnected: caps.has(Feature.bandBuzz),
+        onPlay: app.previewBuzzSequence,
+        // The band's measured vocabulary (an MG), none on a 4.0.
+        profile: caps.hapticProfile,
+        onSaveNew: saveNewPattern,
+        // Default: no sequence in the rule, so it takes the registry default.
+        onDefault: () {
+          final cur = _prefs;
+          if (!mounted || cur == null) return;
+          _apply(cur.withAlertRule(
+              {...cur.alertRule(id).toJson()}..remove('buzzSequence')));
+        },
+        onChoose: (s) {
+          final cur = _prefs;
+          if (!mounted || cur == null) return;
+          _apply(cur.withAlertRule(
+              {...cur.alertRule(id).toJson(), 'buzzSequence': s.toJson()}));
+        },
+      );
+    });
+  }
+}
+
+/// One alert: its name, a single destination picker, and what that choice needs
+/// in order to run. A destination this alert cannot honour is shown disabled.
+class _AlertRow extends StatelessWidget {
+  const _AlertRow(this.icon, this.color, this.title, this.sub, this.rule,
+      this.onMask, {this.sequence, this.patternName, this.onBuzzPattern});
+  final IconData icon;
+  final Color color;
+  final String title, sub;
+  final AlertRule rule;
+  final ValueChanged<int> onMask;
+
+  /// What this alert buzzes the band with, and the opener for the sheet that
+  /// changes it. Null [sequence] means the alert cannot reach the band.
+  final BuzzSequence? sequence;
+
+  /// The name of the pattern behind [sequence].
+  final String? patternName;
+  final VoidCallback? onBuzzPattern;
+
+  static const _options = [
+    (0, 'Off'),
+    (AlertRule.phone, 'Phone'),
+    (AlertRule.band, 'Band'),
+    (AlertRule.phone | AlertRule.band, 'Phone + Band'),
+  ];
+
+  bool _supported(int mask) => [
+        if (mask & AlertRule.phone != 0) 'phone',
+        if (mask & AlertRule.band != 0) 'band',
+      ].every(
+          (t) => AlertCapabilityRegistry.destinationSupportReason(rule, t) == null);
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final mask = rule.enabled ? rule.destinations : 0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SetRow(icon, color, title, sub: sub, chevron: false),
+      Wrap(spacing: S.x2, children: [
+        for (final (m, label) in _options)
+          Pressable(
+            onTap: _supported(m) ? () => onMask(m) : null,
+            semanticLabel:
+                '$label${m == mask ? ', selected' : ''}${_supported(m) ? '' : ', unavailable'}',
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: S.x3, vertical: S.x2),
+              decoration: BoxDecoration(
+                color: m == mask ? p.wash(C.blue) : null,
+                borderRadius: R.rSm,
+                border:
+                    Border.all(color: m == mask ? p.on(C.blue) : p.line),
+              ),
+              child: Text(label,
+                  style: F.cap.copyWith(
+                      color: m == mask
+                          ? p.on(C.blue)
+                          : _supported(m)
+                              ? p.ink
+                              : p.ink3,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ),
+      ]),
+      // Always drawn ("Off" when off) and reserved at three lines, the most a
+      // phone + band summary takes at the default width, so switching an alert
+      // on does not push every section header below it down.
+      Padding(
+        padding: const EdgeInsets.only(top: S.x1),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              minHeight: 3 *
+                  MediaQuery.textScalerOf(c).scale(
+                      (F.over.fontSize ?? 12) * (F.over.height ?? 1.3))),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Text(AlertCapabilityRegistry.summary(rule),
+                style: F.over.copyWith(color: p.ink3)),
+          ),
+        ),
+      ),
+      // Present for every alert that can reach the band, usable only while
+      // Band is one of its destinations.
+      if (sequence != null)
+        BuzzPatternRow(
+          key: ValueKey('buzz-pattern:${rule.id}'),
+          sequence: sequence!,
+          patternName: patternName,
+          enabled: mask & AlertRule.band != 0 && onBuzzPattern != null,
+          onTap: onBuzzPattern,
+        ),
+      const SizedBox(height: S.x3),
+    ]);
   }
 }
 
@@ -960,12 +1295,29 @@ class NotificationSettingsView extends StatelessWidget {
   final NotificationPrefs prefs;
   final bool loaded, granted;
 
-  /// Android only. False hides the strap-buzz relay row entirely rather than
-  /// showing a control that cannot work.
+  /// No longer drawn: the relay's one entrance is Settings > Alerts > App
+  /// notifications on the band. Kept so existing construction sites
+  /// compile.
   final bool relaySupported;
 
   final Future<void> Function(NotificationPrefs next)? onChanged;
   final VoidCallback? onRequestPermission;
+
+  /// Opens the buzz-pattern sheet for one alert (by rule id).
+  final void Function(String ruleId)? onBuzzPattern;
+
+  /// The name of the pattern an alert plays (by rule id), shown on its buzz
+  /// pattern row. Null: the rows say "Custom".
+  final String Function(String ruleId)? patternNameFor;
+
+  /// Opens the Haptics screen, where the patterns are made and every slot is
+  /// listed.
+  final VoidCallback? onOpenHaptics;
+
+  /// The HR zone alert's own settings: the zone (1..5) it watches, the step
+  /// to the next one, and the door to the zone screen.
+  final int zoneAlertZone;
+  final VoidCallback? onCycleZoneAlertZone, onOpenZones;
 
   const NotificationSettingsView({
     super.key,
@@ -975,6 +1327,12 @@ class NotificationSettingsView extends StatelessWidget {
     this.relaySupported = false,
     this.onChanged,
     this.onRequestPermission,
+    this.onBuzzPattern,
+    this.patternNameFor,
+    this.onOpenHaptics,
+    this.zoneAlertZone = 3,
+    this.onCycleZoneAlertZone,
+    this.onOpenZones,
   });
 
   @override
@@ -984,6 +1342,20 @@ class NotificationSettingsView extends StatelessWidget {
     final on = l?.stateOn ?? 'On';
     final off = l?.stateOff ?? 'Off';
     void set(NotificationPrefs next) => onChanged?.call(next);
+    Widget row(String id, IconData icon, Color color, String title, String sub) {
+      final rule = prefs.alertRule(id);
+      return _AlertRow(icon, color, title, sub, rule,
+          (mask) => set(prefs.withAlertRule(
+              {...rule.toJson(), 'enabled': mask != 0, 'destinations': mask})),
+          sequence: AlertCapabilityRegistry.destinationSupportReason(
+                      rule, 'band') ==
+                  null
+              ? prefs.buzzSequenceFor(id)
+              : null,
+          patternName: patternNameFor?.call(id),
+          onBuzzPattern: () => onBuzzPattern?.call(id));
+    }
+
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -992,7 +1364,7 @@ class NotificationSettingsView extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
             child: NavBar(l?.settingsNotificationsNavTitle ?? 'Notifications',
                 sub: l?.settingsNotificationsNavSub ??
-                    'WHAT MAY INTERRUPT YOU'),
+                    'ALERT TYPES'),
           ),
           Expanded(
             child: ListView(
@@ -1003,218 +1375,206 @@ class NotificationSettingsView extends StatelessWidget {
                     l?.settingsNotificationsOffSystemTitle ??
                         'Notifications are off at the system level',
                     l?.settingsNotificationsOffSystemBody ??
-                        'Nothing below can reach you until the OS lets it.',
+                        'No alert below is delivered until you allow notifications in system settings.',
                     fix: l?.settingsTurnThemOn ?? 'Turn them on',
                     icon: LucideIcons.bellOff,
                     onFix: onRequestPermission,
                   ),
                 if (loaded) ...[
-                  settingsGroup(
-                      c,
-                      l?.settingsGroupManageNotifications ??
-                          'Manage notifications', [
-                    SetRow(LucideIcons.heartPulse, C.red,
+                  // Stable groups: each stays in place whether or not anything in
+                  // it is on, and opens only through its own header. Every alert
+                  // has one destination picker and says what it needs to run.
+                  SettingsAccordion(
+                      'Alarms & Wake',
+                      id: 'notifications_alarms_wake',
+                      initiallyExpanded: true,
+                      children: [
+                        // On by default: this exists to catch a wake alarm that
+                        // silently isn't going to fire.
+                        row('alarmLatchFailed', LucideIcons.alarmClock, C.red,
+                            l?.settingsAlarmLatchFailedRowTitle ??
+                                'Alarm not confirmed',
+                            l?.settingsAlarmLatchFailedRowSub ??
+                                'Warn when the band never confirms an alarm '
+                                    'this app just armed'),
+                        // Also on by default; silent whenever an alarm IS armed.
+                        row('alarmNightCheck', LucideIcons.moon, C.red,
+                            l?.settingsAlarmNightCheckRowTitle ??
+                                'No-alarm check-in',
+                            l?.settingsAlarmNightCheckRowSub ??
+                                'A 7pm reminder on any night with no wake alarm '
+                                'armed. Sends nothing otherwise'),
+                      ]),
+                  SettingsAccordion('Health',
+                      id: 'notifications_health',
+                      children: [
+                    row('health', LucideIcons.heartPulse, C.red,
                         l?.settingsHealthExceptionsRowTitle ??
                             'Health exceptions',
-                        sub: l?.settingsHealthExceptionsRowSub ??
-                            'One a day at most, and only when something moved away from your usual',
-                        value: prefs.healthEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            healthEnabled: !prefs.healthEnabled))),
-                    SetRow(LucideIcons.watch, C.orange,
-                        l?.settingsBandAlertsRowTitle ?? 'Band alerts',
-                        sub: l?.settingsBandAlertsRowSub ??
-                            'Flat battery, on the charger, gone quiet',
-                        value: prefs.deviceEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            deviceEnabled: !prefs.deviceEnabled))),
-                    // On by default, unlike the reminders below: this exists to
-                    // catch a wake alarm that silently isn't going to fire, and
-                    // starting silent would defeat the point.
-                    SetRow(LucideIcons.alarmClock, C.red,
-                        l?.settingsAlarmLatchFailedRowTitle ??
-                            'Alarm not confirmed',
-                        sub: l?.settingsAlarmLatchFailedRowSub ??
-                            'Warn when the band never confirms an alarm this '
-                                'app just armed',
-                        value: prefs.alarmLatchFailedEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            alarmLatchFailedEnabled:
-                                !prefs.alarmLatchFailedEnabled))),
-                    // Also on by default, same reasoning: silent whenever an
-                    // alarm IS armed for tonight, so it only ever speaks up
-                    // about a real gap.
-                    SetRow(LucideIcons.moon, C.red,
-                        l?.settingsAlarmNightCheckRowTitle ??
-                            'No-alarm check-in',
-                        sub: l?.settingsAlarmNightCheckRowSub ??
-                            'A 7pm heads-up on any night with no wake alarm '
-                                'armed — silent otherwise',
-                        value: prefs.alarmNightCheckEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            alarmNightCheckEnabled:
-                                !prefs.alarmNightCheckEnabled))),
-                    // The low-battery threshold, only while band alerts are
-                    // on — an interval for a muted alert is furniture, same
-                    // rule as the water row below.
-                    if (prefs.deviceEnabled)
-                      SetRow(LucideIcons.batteryLow, C.orange,
+                        l?.settingsHealthExceptionsRowSub ??
+                            'At most one a day, and only when a metric moves '
+                            'outside your own baseline'),
+                    row('recovery', LucideIcons.activity, C.green,
+                        l?.settingsRecoveryReadyRowTitle ?? 'Recovery ready',
+                        l?.settingsRecoveryReadyRowSub ??
+                            'One notification when your morning recovery score is ready'),
+                  ]),
+                  SettingsAccordion(
+                      'Activity',
+                      id: 'notifications_activity',
+                      initiallyExpanded: true,
+                      children: [
+                        // The auto-detector's off switch: it stops the prompt,
+                        // not the detection itself.
+                        row('autoDetect', LucideIcons.radar, C.green,
+                            l?.settingsDetectedWorkoutsRowTitle ??
+                                'Detected workouts',
+                            l?.settingsDetectedWorkoutsRowSub ??
+                                'Asks about efforts the band detected that you did not start. '
+                                'Off hides the prompt and the review cards. '
+                                'The band keeps measuring either way'),
+                        // The nap detector's prompt, off by default. Like the
+                        // row above it stops the prompt, not the detection.
+                        row('napDetect', LucideIcons.moon, C.blue,
+                            l?.activityNapAlerts ?? 'Detected naps',
+                            l?.activityPushHint ??
+                                'Push alerts only. Suggestions remain in '
+                                    'Detected activities.'),
+                        row('movement', LucideIcons.footprints, C.orange,
+                            l?.settingsMovementNudgeRowTitle ?? 'Movement nudge',
+                            'Nudges you after two hours with no movement '
+                            'or 90 minutes in a desk '
+                            'posture'),
+                        row('stepGoal', LucideIcons.trophy, C.orange,
+                            l?.settingsStepGoalAlertsRowTitle ??
+                                'Step goal alerts',
+                            l?.settingsStepGoalAlertsRowSub ??
+                                'Notifies you once when today\'s steps '
+                                'reach your goal'),
+                        // A live-workout alert: the band buzzes when the heart
+                        // rate crosses into or out of the target zone. The
+                        // zone row is always drawn, dimmed while it is off.
+                        row('zone', LucideIcons.heartPulse, C.red,
+                            l?.settingsZoneAlertRowTitle ?? 'HR zone alert',
+                            l?.settingsZoneAlertRowSub ??
+                                'Buzz when your heart rate crosses into or out '
+                                    'of the target zone during a live workout'),
+                        SetRow(LucideIcons.target, C.red,
+                            l?.settingsZoneAlertTargetRowTitle ?? 'Target zone',
+                            enabled: prefs.alertRule('zone').enabled,
+                            sub: prefs.alertRule('zone').enabled
+                                ? 'The zone to stay in'
+                                : 'Turn on HR zone alert first',
+                            value: l?.settingsZoneAlertTargetRowValue(
+                                    zoneAlertZone) ??
+                                'Zone $zoneAlertZone',
+                            chevron: false,
+                            onTap: onCycleZoneAlertZone),
+                        SetRow(LucideIcons.activity, C.red, 'Zone view',
+                            key: const ValueKey('zone-alert-open-zones'),
+                            sub: 'Your heart-rate zones and their limits',
+                            onTap: onOpenZones ??
+                                () => goto(c, const ZonesDetail())),
+                      ]),
+                  SettingsAccordion(
+                      'Reminders',
+                      id: 'notifications_reminders',
+                      initiallyExpanded: true,
+                      children: [
+                        row('reminders', LucideIcons.calendarDays, C.purple,
+                            l?.settingsWeeklyLookbackRowTitle ??
+                                'Weekly lookback',
+                            l?.settingsWeeklyLookbackRowSub ??
+                                'Sunday evening, only for a week '
+                                'with a finding'),
+                        // The notification names no drug: it lands on a lock
+                        // screen in front of whoever is in the room.
+                        row('meds', LucideIcons.pill, C.blue,
+                            l?.settingsMedicationRemindersRowTitle ??
+                                'Medication reminders',
+                            'One alert per scheduled dose, at the times you '
+                            'entered. No alert for a dose already '
+                            'marked taken or skipped'),
+                        row('checkIn', LucideIcons.notebookPen, C.purple,
+                            l?.settingsDailyCheckInRowTitle ?? 'Daily check-in',
+                            l?.settingsDailyCheckInRowSub ??
+                                'One evening prompt to log your '
+                                'mood, energy and stress. Skipped if the day '
+                                'already has a rating'),
+                        // A prompt to log, not a reading: the app measures no
+                        // hydration and this may never imply it does.
+                        row('water', LucideIcons.glassWater, C.teal,
+                            l?.settingsWaterReminderRowTitle ?? 'Water reminder',
+                            'Reminds you during your waking hours to log a '
+                            'drink'),
+                        // Always drawn; dimmed while the reminder is off.
+                        SetRow(LucideIcons.timer, C.teal,
+                              l?.settingsRemindMeEveryRowTitle ??
+                                  'Remind me every',
+                              enabled: prefs.waterEnabled,
+                              sub: prefs.waterEnabled
+                                  ? 'How often the reminder repeats'
+                                  : 'Turn on the water reminder first',
+                              value: _everyLabel(prefs.waterIntervalMin),
+                              chevron: false,
+                              onTap: () => set(prefs.copyWith(
+                                  waterIntervalMin:
+                                      _nextEvery(prefs.waterIntervalMin)))),
+                        // Each reminder slot logs ONE glass, marked assumed (see
+                        // data/assumed_water.dart). Dimmed while the reminder is
+                        // off, never hidden. Switching it on stamps the moment so
+                        // slots before it are never assumed.
+                        SetRow(LucideIcons.glassWater, C.teal,
+                              l?.settingsWaterAssumeRowTitle ??
+                                  'Assume I drank water',
+                              key: const ValueKey('water-assume-toggle'),
+                              enabled: prefs.waterEnabled,
+                              // One text in both states: a sub that changes
+                              // length when the reminder is switched moves
+                              // every section header below it.
+                              sub: l?.settingsWaterAssumeRowSub ??
+                                  'Each reminder logs one assumed glass',
+                              value: prefs.waterAssumeDrank ? on : off,
+                              chevron: false,
+                              onTap: () => set(prefs.waterAssumeDrank
+                                  ? prefs.copyWith(waterAssumeDrank: false)
+                                  : prefs.copyWith(
+                                      waterAssumeDrank: true,
+                                      waterAssumeSinceMs: DateTime.now()
+                                          .millisecondsSinceEpoch))),
+                        // Silent until the Sleep Coach has LEARNED a bedtime.
+                        row('windDown', LucideIcons.moonStar, C.indigo,
+                            l?.settingsWindDownRowTitle ?? 'Wind-down',
+                            l?.settingsWindDownRowSub ??
+                                'Notifies you about 45 minutes before the bedtime '
+                                'learned from your own nights, outside '
+                                'your quiet hours. Appears after about a '
+                                'week of wear'),
+                      ]),
+                  SettingsAccordion('Device',
+                      id: 'notifications_device',
+                      children: [
+                    row('device', LucideIcons.watch, C.orange,
+                        l?.settingsBandAlertsRowTitle ?? 'Band battery',
+                        l?.settingsBandAlertsRowSub ??
+                            'Low battery, charging status, and a band that stops reporting'),
+                    SetRow(LucideIcons.batteryLow, C.orange,
                           l?.settingsAlertMeAtRowTitle ?? 'Alert me at',
-                          sub: l?.settingsAlertMeAtRowSub ??
-                              'Warn when the band drops under this charge '
+                          enabled: prefs.deviceEnabled,
+                          sub: !prefs.deviceEnabled
+                              ? 'Turn on Band battery first'
+                              : l?.settingsAlertMeAtRowSub ??
+                                  'Warns when the band\'s charge falls below this '
                                   'level',
                           value: '${prefs.batteryAlertPct}%',
                           chevron: false,
                           onTap: () => set(prefs.copyWith(
                               batteryAlertPct:
                                   _nextBatteryPct(prefs.batteryAlertPct)))),
-                    // The retained recovery-channel switch, now with a real
-                    // event behind it again: the morning "recovery is ready"
-                    // note. It was cut in the three-class cull and sat dead —
-                    // emitted, classified null, dropped.
-                    SetRow(LucideIcons.activity, C.green,
-                        l?.settingsRecoveryReadyRowTitle ?? 'Recovery ready',
-                        sub: l?.settingsRecoveryReadyRowSub ??
-                            'One note when your morning recovery score '
-                                'lands',
-                        value: prefs.recoveryEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            recoveryEnabled: !prefs.recoveryEnabled))),
-                    // Says what it DOES now: the finding is computed from the
-                    // week's own crossday rollup (medical flags first, then a
-                    // plainly-stated resting-HR drift), and most weeks still
-                    // say nothing — which is the point.
-                    SetRow(LucideIcons.calendarDays, C.purple,
-                        l?.settingsWeeklyLookbackRowTitle ??
-                            'Weekly lookback',
-                        sub: l?.settingsWeeklyLookbackRowSub ??
-                            'Sunday evening, but only for a week that '
-                                'actually found something. Most weeks are quiet',
-                        value: prefs.remindersEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            remindersEnabled: !prefs.remindersEnabled))),
-                    SetRow(LucideIcons.radar, C.green,
-                        l?.settingsDetectedWorkoutsRowTitle ?? 'Detected workouts',
-                        sub: l?.activityPushHint ?? 'Push alerts only. Suggestions remain in Detected activities.',
-                        value: prefs.autoDetectEnabled ? on : off, chevron: false,
-                        onTap: () => set(prefs.copyWith(autoDetectEnabled: !prefs.autoDetectEnabled))),
-                    SetRow(LucideIcons.moon, C.blue,
-                        l?.activityNapAlerts ?? 'Detected naps',
-                        sub: l?.activityPushHint ?? 'Push alerts only. Suggestions remain in Detected activities.',
-                        value: prefs.napDetectEnabled ? on : off, chevron: false,
-                        onTap: () => set(prefs.copyWith(napDetectEnabled: !prefs.napDetectEnabled))),
-                    // Off by default, and it is the switch that lets the nudge
-                    // be scheduled at all — see
-                    // NotificationService.schedulableIds. It had none, so it
-                    // was refused there and had never once fired. Covers BOTH
-                    // sedentary surfaces: the OS-scheduled two-hour-still
-                    // one-shot, and the foreground desk-posture check (which
-                    // also buzzes the band when it fires).
-                    SetRow(LucideIcons.footprints, C.orange,
-                        l?.settingsMovementNudgeRowTitle ?? 'Movement nudge',
-                        sub: l?.settingsMovementNudgeRowSub ??
-                            'After two hours without moving, or 90 minutes at a desk. A phone notification plus a buzz on the band when it’s connected',
-                        value: prefs.movementEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            movementEnabled: !prefs.movementEnabled))),
-                    // The wind-down nudge. Silent until the Sleep Coach has
-                    // actually LEARNED a bedtime — the nudge's whole content
-                    // is that time, so there is no honest fallback.
-                    SetRow(LucideIcons.moonStar, C.indigo,
-                        l?.settingsWindDownRowTitle ?? 'Wind-down',
-                        sub: l?.settingsWindDownRowSub ??
-                            'A heads-up about 45 minutes before the bedtime '
-                                'learned from your own nights, kept clear of your '
-                                'quiet hours. Appears after about a week of wear',
-                        value: prefs.windDownEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            windDownEnabled: !prefs.windDownEnabled))),
-                    // The step-goal achievement's off switch. On by default:
-                    // once a day at most, and only on a real crossing.
-                    SetRow(LucideIcons.trophy, C.orange,
-                        l?.settingsStepGoalAlertsRowTitle ??
-                            'Step goal alerts',
-                        sub: l?.settingsStepGoalAlertsRowSub ??
-                            'Tells you once when today crosses your steps '
-                                'goal',
-                        value: prefs.stepGoalEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            stepGoalEnabled: !prefs.stepGoalEnabled))),
-                    // The one prompt whose time is not a guess: it is the
-                    // schedule already typed into the Medication tab. Only a
-                    // dose still due is armed, and the notification names no
-                    // drug — it lands on a lock screen in front of whoever is
-                    // in the room.
-                    SetRow(LucideIcons.pill, C.blue,
-                        l?.settingsMedicationRemindersRowTitle ??
-                            'Medication reminders',
-                        sub: l?.settingsMedicationRemindersRowSub ??
-                            'One notification per scheduled dose, plus a buzz on the band when it’s connected. Skipped for doses already marked',
-                        value: prefs.medsEnabled ? on : off,
-                        chevron: false,
-                        onTap: () =>
-                            set(prefs.copyWith(medsEnabled: !prefs.medsEnabled))),
-                    // ONE prompt for the whole journal, not one per field —
-                    // mood, energy, stress and the rest are all the same
-                    // screen, so five rows would be five interruptions for one
-                    // minute of typing.
-                    SetRow(LucideIcons.notebookPen, C.purple,
-                        l?.settingsDailyCheckInRowTitle ?? 'Daily check-in',
-                        sub: l?.settingsDailyCheckInRowSub ??
-                            'One prompt in the evening to write the day — '
-                                'mood, energy, stress. Skipped once the day '
-                                'already has a rating in it',
-                        value: prefs.checkInEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            checkInEnabled: !prefs.checkInEnabled))),
-                    // A prompt to log, not a reading. The app measures no
-                    // hydration and this row may never imply it does.
-                    SetRow(LucideIcons.glassWater, C.teal,
-                        l?.settingsWaterReminderRowTitle ?? 'Water reminder',
-                        sub: l?.settingsWaterReminderRowSub ??
-                            'A buzz on the strap and a notification on your '
-                                'phone through your waking hours, to remind you to '
-                                'log a drink. Nothing is measured either way',
-                        value: prefs.waterEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(
-                            prefs.copyWith(waterEnabled: !prefs.waterEnabled))),
-                    // only while it's on — the group is dense enough, and an
-                    // interval for a reminder nobody armed is furniture.
-                    if (prefs.waterEnabled)
-                      SetRow(LucideIcons.timer, C.teal,
-                          l?.settingsRemindMeEveryRowTitle ??
-                              'Remind me every',
-                          value: _everyLabel(prefs.waterIntervalMin),
-                          chevron: false,
-                          onTap: () => set(prefs.copyWith(
-                              waterIntervalMin:
-                                  _nextEvery(prefs.waterIntervalMin)))),
                   ]),
-                  if (relaySupported)
-                    settingsGroup(c, l?.settingsGroupTheStrap ?? 'The strap', [
-                      // The other direction: not what this app sends you, but
-                      // what your phone's apps make the band do. The permission
-                      // for it has been in the manifest all along with nothing
-                      // in the app that could reach it.
-                      SetRow(LucideIcons.bellRing, C.purple,
-                          l?.settingsBuzzOnAppNotificationsRowTitle ??
-                              'Buzz on app notifications',
-                          sub: l?.settingsBuzzOnAppNotificationsRowSub ??
-                              'Pick which phone apps make the strap buzz',
-                          onTap: () => goto(c, const BandNotifications())),
-                    ]),
-                  settingsGroup(c, l?.settingsGroupQuietHours ?? 'Quiet hours', [
+                  SettingsAccordion(l?.settingsGroupQuietHours ?? 'Quiet hours',
+                      id: 'notifications_quiet_hours',
+                      children: [
                     SetRow(LucideIcons.moon, C.indigo,
                         l?.settingsQuietHoursRowTitle ?? 'Quiet hours',
                         sub: l?.settingsQuietHoursRowSub ??
@@ -1223,25 +1583,20 @@ class NotificationSettingsView extends StatelessWidget {
                         chevron: false,
                         onTap: () => set(
                             prefs.copyWith(quietEnabled: !prefs.quietEnabled))),
-                        SetRow(
-                          LucideIcons.sunset,
-                          C.blue,
-                          l?.settingsQuietHoursStartsRowTitle ?? 'Starts',
-                          value: _hhmm(prefs.quietStartMin),
-                          chevron: false,
-                          onTap: () async {
-                            final v = await _pickMinute(c, prefs.quietStartMin);
-                            if (v != null) {
-                              set(prefs.copyWith(quietStartMin: v));
-                            }
-                          },
-                        ),
-                    SetRow(LucideIcons.sunrise, C.yellow,
-                        l?.settingsQuietHoursEndsRowTitle ?? 'Ends',
-                        value: _hhmm(prefs.quietEndMin),
+                    SetRow(LucideIcons.sunset, C.blue,
+                        l?.settingsQuietHoursStartsRowTitle ?? 'Starts',
+                        value: hhmm(prefs.quietStartMin),
                         chevron: false,
                         onTap: () async {
-                          final v = await _pickMinute(c, prefs.quietEndMin);
+                          final v = await pickMinute(c, prefs.quietStartMin);
+                          if (v != null) set(prefs.copyWith(quietStartMin: v));
+                        }),
+                    SetRow(LucideIcons.sunrise, C.yellow,
+                        l?.settingsQuietHoursEndsRowTitle ?? 'Ends',
+                        value: hhmm(prefs.quietEndMin),
+                        chevron: false,
+                        onTap: () async {
+                          final v = await pickMinute(c, prefs.quietEndMin);
                           if (v != null) set(prefs.copyWith(quietEndMin: v));
                         }),
                     SetRow(LucideIcons.triangleAlert, C.red,
@@ -1253,6 +1608,21 @@ class NotificationSettingsView extends StatelessWidget {
                             criticalOverridesQuiet:
                                 !prefs.criticalOverridesQuiet))),
                   ]),
+                  // Same gap above as the accordions around it.
+                  Padding(
+                    padding: const EdgeInsets.only(top: S.x3),
+                    child: Surface(
+                      pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                      child: SetRow(
+                        LucideIcons.vibrate,
+                        C.purple,
+                        'Haptics',
+                        key: const ValueKey('alerts-open-haptics'),
+                        sub: 'The pattern each alert plays, and your own',
+                        onTap: onOpenHaptics,
+                      ),
+                    ),
+                  ),
                 ],
                 const SizedBox(height: S.x3),
                 StatusCard(
@@ -1304,15 +1674,74 @@ class NotificationSettingsView extends StatelessWidget {
     return batteryChoices[(i + 1) % batteryChoices.length];
   }
 
-  static String _hhmm(int minuteOfDay) => formatClockMinute(minuteOfDay);
+  static String hhmm(int minuteOfDay) {
+    final m = minuteOfDay % 1440;
+    return '${(m ~/ 60).toString().padLeft(2, '0')}:'
+        '${(m % 60).toString().padLeft(2, '0')}';
+  }
 
-  static Future<int?> _pickMinute(BuildContext c, int current) async {
+  static Future<int?> pickMinute(BuildContext c, int current) async {
     final picked = await showTimePicker(
       context: c,
       initialTime: TimeOfDay(hour: (current ~/ 60) % 24, minute: current % 60),
     );
     return picked == null ? null : picked.hour * 60 + picked.minute;
   }
+}
+
+// ══════════════════ CALCULATIONS ══════════════════
+
+/// The three Calculations modes as the settings row and the picker word them.
+/// No numbers: nothing here promises a time or a battery saving.
+const calcPowerLabels = {
+  CalcPowerMode.maxBattery: 'Maximum battery',
+  CalcPowerMode.balanced: 'Balanced',
+  CalcPowerMode.eager: 'Eager',
+};
+
+const _calcPowerSentences = {
+  CalcPowerMode.maxBattery:
+      'Calculates after a sync or when you ask, one day at a time, and '
+          'prepares nothing in the background.',
+  CalcPowerMode.balanced:
+      'Also prepares your screens while the app is idle or charging; your '
+          "phone's battery saver pauses that.",
+  CalcPowerMode.eager:
+      'On a charger it calculates every day and screen it can, even when '
+          "your phone's battery saver is on.",
+};
+
+/// A sheet with the three modes, each with one plain sentence. Tapping one
+/// closes it with that mode; dismissing returns null.
+Future<CalcPowerMode?> pickCalcPowerMode(BuildContext c, CalcPowerMode current) {
+  final p = P.of(c);
+  return showModalBottomSheet<CalcPowerMode>(
+    context: c,
+    backgroundColor: p.card,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheet) => SafeArea(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final m in CalcPowerMode.values)
+              ListTile(
+                key: ValueKey('calc-power-option-${m.name}'),
+                title: Text(calcPowerLabels[m]!,
+                    style: F.body.copyWith(color: p.ink)),
+                subtitle: Text(_calcPowerSentences[m]!,
+                    style: F.cap.copyWith(color: p.ink3)),
+                trailing: m == current
+                    ? Icon(LucideIcons.check, size: 18, color: p.on(C.blue))
+                    : null,
+                onTap: () => Navigator.of(sheet).pop(m),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 // ══════════════════ EDIT PROFILE ══════════════════
@@ -1356,11 +1785,11 @@ class EditProfile extends StatelessWidget {
           return (
             isAppleHealth
                 ? (l?.settingsImportEmptyWithBirthday(storeName) ??
-                    'Nothing came back. $storeName holds no height, weight, '
-                        'birthday or sex for you — type them in here instead.')
+                    '$storeName has no height, weight, birthday '
+                    'or sex on record for you. Enter them here.')
                 : (l?.settingsImportEmpty(storeName) ??
-                    'Nothing came back. $storeName holds no height, weight'
-                        ' or sex for you — type them in here instead.'),
+                    '$storeName has no height, weight'
+                    ' or sex on record for you. Enter them here.'),
             false,
             null,
           );
@@ -1375,8 +1804,7 @@ class EditProfile extends StatelessWidget {
         if (changes.isEmpty) {
           return (
             l?.settingsImportNoChange(snap.found.join(', ')) ??
-                'Read ${snap.found.join(', ')}. Your profile already says the '
-                    'same thing, so nothing changed.',
+                'Read ${snap.found.join(', ')}. Your profile already matches, so nothing changed.',
             false,
             merged,
           );
@@ -1573,41 +2001,58 @@ class _EditProfileViewState extends State<EditProfileView> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                _text(c, _name, l?.settingsNameFieldLabel ?? 'NAME',
-                    TextInputType.name),
-                const SizedBox(height: S.x4),
-                Text(l?.settingsSexFieldLabel ?? 'SEX',
-                    style: F.over.copyWith(color: p.ink3)),
-                const SizedBox(height: S.x2),
-                Wrap(spacing: S.x2, runSpacing: S.x2, children: [
-                  for (final (key, label) in [
-                    ('m', l?.settingsSexMale ?? 'Male'),
-                    ('f', l?.settingsSexFemale ?? 'Female'),
-                    ('other', l?.settingsSexPreferNotToSay ?? 'Prefer not to say'),
-                  ])
-                    Pressable(
-                      onTap: () => setState(() => _sex = key),
-                      semanticLabel: label,
-                      child: Container(
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: S.x4, vertical: S.x2),
-                        decoration: BoxDecoration(
-                          color: _sex == key ? p.wash(C.green) : p.card,
-                          borderRadius: R.rPill,
-                          border: Border.all(
-                              color: _sex == key ? p.on(C.green) : p.line),
-                        ),
-                        child: Text(label,
-                            style: F.cap.copyWith(
-                                color: _sex == key ? p.on(C.green) : p.ink2)),
-                      ),
-                    ),
+                SettingsAccordion('About you',
+                    id: 'edit_profile_about_you',
+                    children: [
+                  _text(c, _name, l?.settingsNameFieldLabel ?? 'NAME',
+                      TextInputType.name),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x3),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(l?.settingsSexFieldLabel ?? 'SEX',
+                              style: F.over.copyWith(color: p.ink3)),
+                          const SizedBox(height: S.x2),
+                          Wrap(spacing: S.x2, runSpacing: S.x2, children: [
+                            for (final (key, label) in [
+                              ('m', l?.settingsSexMale ?? 'Male'),
+                              ('f', l?.settingsSexFemale ?? 'Female'),
+                              (
+                                'other',
+                                l?.settingsSexPreferNotToSay ?? 'Prefer not to say'
+                              ),
+                            ])
+                              Pressable(
+                                onTap: () => setState(() => _sex = key),
+                                semanticLabel: label,
+                                child: Container(
+                                  alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: S.x4, vertical: S.x2),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        _sex == key ? p.wash(C.green) : p.card,
+                                    borderRadius: R.rPill,
+                                    border: Border.all(
+                                        color: _sex == key
+                                            ? p.on(C.green)
+                                            : p.line),
+                                  ),
+                                  child: Text(label,
+                                      style: F.cap.copyWith(
+                                          color: _sex == key
+                                              ? p.on(C.green)
+                                              : p.ink2)),
+                                ),
+                              ),
+                          ]),
+                        ]),
+                  ),
+                  _text(c, _age, l?.settingsAgeYearsFieldLabel ?? 'AGE (YEARS)',
+                      TextInputType.number),
                 ]),
-                const SizedBox(height: S.x4),
-                _text(c, _age, l?.settingsAgeYearsFieldLabel ?? 'AGE (YEARS)',
-                    TextInputType.number),
-                  const SizedBox(height: S.x4),
+                SettingsAccordion('Body', id: 'edit_profile_body', children: [
                   _text(
                     c,
                     _height,
@@ -1616,7 +2061,6 @@ class _EditProfileViewState extends State<EditProfileView> {
                         : uiText(c, _u.heightLabel).toUpperCase(),
                     TextInputType.number,
                   ),
-                  const SizedBox(height: S.x4),
                   _text(
                     c,
                     _weight,
@@ -1625,10 +2069,11 @@ class _EditProfileViewState extends State<EditProfileView> {
                         : uiText(c, _u.weightLabel).toUpperCase(),
                     TextInputType.number,
                   ),
-                  ..._importBlock(p, c),
-                  const SizedBox(height: S.x6),
+                ]),
+                ..._importBlock(p, c),
+                const SizedBox(height: S.x6),
                 StatusCard(
-                  l?.settingsFourFieldsTitle ?? 'These four change your numbers',
+                  l?.settingsFourFieldsTitle ?? 'These four fields affect your metrics',
                   l?.settingsFourFieldsBody ??
                       'They feed heart-rate zones, calorie estimates and training '
                           'load. Clear one and only the metrics that need it stay '
@@ -1651,17 +2096,21 @@ class _EditProfileViewState extends State<EditProfileView> {
     if (widget.onImport == null) return const [];
     final l = AppLocalizations.of(c);
     return [
-      const SizedBox(height: S.x6),
-      Surface(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SettingsAccordion('From $storeName',
+          id: 'edit_profile_import',
+          children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: S.x3),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
             isAppleHealth
                 ? (l?.settingsImportBlockAppleHealth(storeName) ??
                     'Height, weight, birthday and sex from $storeName. Height and weight update every time; age and sex only fill an empty field.')
                 : (l?.settingsImportBlockOther(storeName) ??
-                    'Height and weight, straight out of $storeName. It has no '
-                        'birthday and no sex to read — no app can — so set those '
-                        'two above yourself.'),
+                    'Height and weight from $storeName. It has no '
+                    'birthday or sex to read, so set those '
+                    'two above.'),
             style: F.cap.copyWith(color: p.ink3, height: 1.5),
           ),
           const SizedBox(height: S.x4),
@@ -1681,7 +2130,8 @@ class _EditProfileViewState extends State<EditProfileView> {
             ),
           ],
         ]),
-      ),
+        ),
+      ]),
     ];
   }
 
@@ -1689,7 +2139,10 @@ class _EditProfileViewState extends State<EditProfileView> {
       TextInputType kind) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: S.x2),
+      child:
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: F.over.copyWith(color: p.ink3)),
       TextField(
         controller: ctl,
@@ -1706,7 +2159,7 @@ class _EditProfileViewState extends State<EditProfileView> {
               UnderlineInputBorder(borderSide: BorderSide(color: p.on(C.green))),
         ),
       ),
-    ]);
+    ]));
   }
 }
 
@@ -1729,7 +2182,11 @@ class _EditProfileViewState extends State<EditProfileView> {
 // ships carries facts about the SYNC and no metric at all.
 
 class AutomationSettings extends StatefulWidget {
-  const AutomationSettings({super.key});
+  const AutomationSettings({super.key, this.setBoolAcked});
+
+  /// The acknowledged boolean write for the consent switch; null is
+  /// `Prefs.setBoolAcked`. Tests inject a refusing one.
+  final Future<bool> Function(String key, bool value)? setBoolAcked;
 
   @override
   State<AutomationSettings> createState() => _AutomationSettingsState();
@@ -1738,6 +2195,7 @@ class AutomationSettings extends StatefulWidget {
 class _AutomationSettingsState extends State<AutomationSettings> {
   String? _token;
   bool _copied = false;
+  bool _taskerOn = Prefs.taskerConnectionOn;
 
   @override
   void initState() {
@@ -1747,6 +2205,11 @@ class _AutomationSettingsState extends State<AutomationSettings> {
     });
   }
 
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
   Future<void> _copy() async {
     final t = _token;
     if (t == null) return;
@@ -1754,12 +2217,82 @@ class _AutomationSettingsState extends State<AutomationSettings> {
     if (mounted) setState(() => _copied = true);
   }
 
+  void _setTaskerOn(bool on) {
+    Prefs.setBool(Prefs.taskerConnection, on);
+    setState(() => _taskerOn = on);
+  }
+
+  late final AckedBool _consent = AckedBool.forKey(Prefs.taskerMomentExport);
+
+  /// Consent is a durable choice: it is changed with the acknowledged write,
+  /// one write at a time (the switch is disabled while one waits). The switch,
+  /// its busy state and its error all render [AckedBool]'s own state, so every
+  /// screen instance (including one opened mid-write) shows what is stored: if
+  /// the platform refuses, `AckedBool` puts the cache back to the last CONFIRMED
+  /// value, whether or not this screen is still there, and publishes the
+  /// failure. A failed switch-OFF must never look like it worked: after a
+  /// restart consent would be back ON.
+  Future<void> _setMomentExportOn(bool on) =>
+      _consent.set(on, write: widget.setBoolAcked);
+
+  @override
+  Widget build(BuildContext c) => ListenableBuilder(
+      listenable: _consent,
+      builder: (c, _) => AutomationSettingsView(
+          token: _token,
+          copied: _copied,
+          onCopy: _copy,
+          taskerOn: _taskerOn,
+          onTaskerOn: _setTaskerOn,
+          momentExportOn: _consent.value,
+          onMomentExportOn: _setMomentExportOn,
+          momentExportError: _consent.failed,
+          momentExportBusy: _consent.pending));
+}
+
+/// The Automation screen without its token fetch, so it can be pumped headless.
+/// [token] is null until the bridge answers.
+class AutomationSettingsView extends StatelessWidget {
+  const AutomationSettingsView(
+      {super.key,
+      this.token,
+      this.copied = false,
+      this.onCopy,
+      this.taskerOn = true,
+      this.onTaskerOn,
+      this.momentExportOn = false,
+      this.onMomentExportOn,
+      this.momentExportError = false,
+      this.momentExportBusy = false});
+  final String? token;
+  final bool copied;
+  final VoidCallback? onCopy;
+
+  /// "Tasker connection" (key `tasker-connection`, Android only) and its
+  /// callback. Off: the Tasker rows below it are drawn but disabled and
+  /// dimmed, with the hint "Turn on Tasker first".
+  final bool taskerOn;
+  final ValueChanged<bool>? onTaskerOn;
+
+  /// "Send reviewed moments to Tasker" (key `tasker-moment-export`, Android
+  /// only, OFF by default): consent to send the marked-moment review's health
+  /// answers, to Tasker only. Drawn but disabled while the Tasker connection is
+  /// off, like the other Tasker rows.
+  final bool momentExportOn;
+  final ValueChanged<bool>? onMomentExportOn;
+
+  /// The last change of that switch could not be stored (it shows what is).
+  final bool momentExportError;
+
+  /// A write of that switch waits for its acknowledgement: it is inert.
+  final bool momentExportBusy;
+
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final android = defaultTargetPlatform == TargetPlatform.android;
-    final token = _token;
+    final android = c.caps.has(Feature.androidAutomation);
+    final token = this.token;
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -1772,10 +2305,59 @@ class _AutomationSettingsState extends State<AutomationSettings> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                Section(
+                if (android)
+                  SettingsAccordion(
+                    l?.settingsTaskerConnectionSectionTitle ?? 'Tasker',
+                    id: 'automation_tasker',
+                    children: [
+                      SwitchRow(
+                        l?.settingsTaskerConnectionTitle ?? 'Tasker connection',
+                        taskerOn,
+                        onTaskerOn,
+                        key: const ValueKey('tasker-connection'),
+                        sub: l?.settingsTaskerConnectionSub ??
+                            'Lets Tasker and other automation apps buzz the '
+                                'band, and lets the Broadcast to Tasker '
+                                'gesture action reach them. Off, all of it '
+                                'stops.',
+                      ),
+                      SwitchRow(
+                        l?.settingsTaskerMomentExportTitle ??
+                            'Send reviewed moments to Tasker',
+                        momentExportOn && taskerOn,
+                        onMomentExportOn,
+                        key: const ValueKey('tasker-moment-export'),
+                        enabled: taskerOn && !momentExportBusy,
+                        sub: (l?.settingsTaskerMomentExportSub ??
+                                'When you save the review of your marked '
+                                    'moments, sends each one to Tasker: what '
+                                    'it was, when, and any amount you typed. '
+                                    'This is health information, so it goes '
+                                    'to Tasker only and is off until you turn '
+                                    'it on.') +
+                            (taskerOn
+                                ? ''
+                                : '\n${l?.taskerTurnOnFirst ?? 'Turn on Tasker first'}'),
+                      ),
+                      if (momentExportError)
+                        Padding(
+                          key: const ValueKey('tasker-moment-export-error'),
+                          padding: const EdgeInsets.only(bottom: S.x2),
+                          child: Text(
+                              l?.settingsTaskerMomentExportSaveFailed ??
+                                  'Could not save that change. The switch shows '
+                                      'what is stored.',
+                              style: F.over.copyWith(color: p.ink)),
+                        ),
+                    ],
+                  ),
+                SettingsAccordion(
                   l?.settingsSyncFinishesSectionTitle ??
                       'When a sync finishes',
-                  Surface(
+                  id: 'automation_sync_finishes',
+                  children: [
+                    Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x3),
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1800,42 +2382,46 @@ class _AutomationSettingsState extends State<AutomationSettings> {
                                 style: F.over.copyWith(color: p.ink3)),
                           ],
                         ]),
-                  ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: S.x5),
-                Section(
+                SettingsAccordion(
                   l?.settingsNeverSendSectionTitle ?? 'What it will never send',
-                  Surface(
+                  id: 'automation_never_send',
+                  children: [
+                    Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x3),
                     child: Text(
                       l?.settingsNeverSendBody ??
                           'No recovery, strain or sleep score is sent, on either platform. A missing number would arrive as a bare zero. Sync facts go out, not measurements.',
                       style: F.body,
                     ),
-                  ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: S.x5),
-                Section(
+                SettingsAccordion(
                   l?.settingsBuzzFromShortcutSectionTitle ??
                       'Buzzing the band from a shortcut',
-                  Surface(
+                  id: 'automation_buzz_shortcut',
+                  children: [
+                    Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x3),
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             android
                                 ? (l?.settingsBuzzFromShortcutAndroidBody ??
-                                    'Send '
-                                        'wtf.openstrap.openstrap_edge.BUZZ_STRAP '
-                                        'with this token as the “token” string '
-                                        'extra. Without it any app on the phone '
-                                        'could buzz your band.')
+                                    'Send wtf.openstrap.openstrap_edge.BUZZ_STRAP with this token as the string extra "token". The token stops other apps on the phone from buzzing your band.')
                                 : (l?.settingsBuzzFromShortcutIosBody ??
-                                    'This direction works on iOS: a shortcut you '
-                                        'run yourself can reach the app. What it '
-                                        'cannot do is run itself when the band '
-                                        'syncs.'),
+                                    'On iOS, a shortcut you run yourself can reach the app. It cannot start itself when the band syncs.'),
                             style: F.body.copyWith(color: p.ink2, height: 1.4),
                           ),
+                          if (android && !taskerOn) ...[
+                            const SizedBox(height: S.x2),
+                            Text(l?.taskerTurnOnFirst ?? 'Turn on Tasker first',
+                                style: F.over.copyWith(color: p.ink3)),
+                          ],
                           if (android) ...[
                             const SizedBox(height: S.x4),
                             if (token == null)
@@ -1847,21 +2433,26 @@ class _AutomationSettingsState extends State<AutomationSettings> {
                               SelectableText(token,
                                   style: F.cap.copyWith(color: p.ink)),
                               const SizedBox(height: S.x3),
-                              BigButton(
-                                  _copied
-                                      ? (l?.settingsCopied ?? 'Copied')
-                                      : (l?.settingsCopyTheToken ??
-                                          'Copy the token'),
-                                  icon: _copied
-                                      ? LucideIcons.check
-                                      : LucideIcons.copy,
-                                  color: C.indigo,
-                                  soft: true,
-                                  onTap: _copy),
+                              // Tasker off: still drawn, dimmed and inert.
+                              Opacity(
+                                opacity: taskerOn ? 1 : kDisabledOpacity,
+                                child: BigButton(
+                                    copied
+                                        ? (l?.settingsCopied ?? 'Copied')
+                                        : (l?.settingsCopyTheToken ??
+                                            'Copy the token'),
+                                    icon: copied
+                                        ? LucideIcons.check
+                                        : LucideIcons.copy,
+                                    color: C.indigo,
+                                    soft: true,
+                                    onTap: taskerOn ? onCopy : null),
+                              ),
                             ],
                           ],
                         ]),
-                  ),
+                    ),
+                  ],
                 ),
               ],
             ),

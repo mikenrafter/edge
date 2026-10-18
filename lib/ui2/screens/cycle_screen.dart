@@ -256,9 +256,9 @@ class _CycleTabState extends State<CycleTab> with RevisionReload {
           l?.cycleRemoveLogTitle(_short(date, l)) ?? 'Remove ${_short(date, l)}?',
       body:
           l?.cycleRemoveLogBody ??
-          'Cycle day, phase and the predicted next date are all counted from '
-              'the days you log. Only today can be logged, so this one cannot be '
-              'put back.',
+          'Cycle day, phase and the predicted next date all count from '
+          'the days you log. You can only log today, so you cannot add '
+          'this day back.',
     );
     if (!ok || !mounted) return;
     final repo = context.read<AppState>().repo;
@@ -341,7 +341,7 @@ class _CycleTabState extends State<CycleTab> with RevisionReload {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final d = _d;
-    if (d == null) return const Center(child: CircularProgressIndicator());
+    if (d == null) return const InlineLoading();
 
     if (!d.enabled) {
       return StatusCard(
@@ -820,7 +820,7 @@ String _reproDisplayWhy(AppLocalizations? l, String key) => switch (key) {
   'none' =>
     l?.cycleReproNoneWhy ??
         'No phase and no predicted next. Your biometrics still show.',
-  _ => l?.cyclePreferNotToSayWhy ?? 'The app keeps the phase off.',
+  _ => l?.cyclePreferNotToSayWhy ?? 'The app shows no phase.',
 };
 
 /// Localized display label for a `kCycleSymptoms` key. The key itself stays
@@ -1030,8 +1030,8 @@ class _CycleHistoryState extends State<_CycleHistory> {
         l?.cycleNotEnoughDescribeDayTitle ??
             'Not enough cycles to describe a cycle day yet',
         l?.cycleNotEnoughDescribeDayBody ??
-            'Every point here is the middle of the same day across two or more of '
-                'your own cycles. Nothing has two behind it yet.',
+            'Each point is the middle of the same cycle day across two or more of '
+            'your cycles. No day has two cycles yet.',
         icon: LucideIcons.circleDot,
       );
     }
@@ -1099,14 +1099,27 @@ class _CycleHistoryState extends State<_CycleHistory> {
             '${ns.first == ns.last ? (l?.cycleMiddleOfNCycles(ns.first) ?? 'Middle of ${ns.first} cycles at each day.') : (l?.cycleMiddleOfRangeCycles(ns.first, ns.last) ?? 'Middle of between ${ns.first} and ${ns.last} cycles at each day.')}'
             '${_mdcNote(l, med.values, unit, noise)}',
         series: vals,
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: LineChart(
-            vals,
-            p.on(color),
-            fill: false,
-            t: animate(c, 1),
-            axis: axis,
+        child: ChartScrub(
+          label: title,
+          // Slot i is cycle day i + 1; a day with no median is a hole and
+          // reads "—".
+          gaps: hasChartGaps([vals]),
+          time: (at) => 'Day ${ChartScrub.slotAt(vals.length, at) + 1}',
+          keys: [
+            ChartKey.slots('$title ($unit)', p.on(color), vals,
+                (i, v) => '${axisFixedOrInt(v)} $unit'),
+            ChartKey.slots('Cycles behind it', p.ink3, vals,
+                (i, v) => '${byDay[i + 1]?.length ?? 0}'),
+          ],
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: LineChart(
+              vals,
+              p.on(color),
+              fill: false,
+              t: animate(c, 1),
+              axis: axis,
+            ),
           ),
         ),
       ),
@@ -1142,7 +1155,7 @@ class _CycleHistoryState extends State<_CycleHistory> {
         cd == null
             ? (l?.cycleCompareBodyGeneric ??
                   'This puts today next to the same day of your own previous '
-                      'cycles. It needs three of them that got that far.')
+                  'cycles. It needs three previous cycles that reached the same day.')
             : (l?.cycleCompareBodyWithDay(cd) ??
                   'This puts today next to the same day of your own previous '
                       'cycles. It needs three of them that reached day $cd.'),
@@ -1245,7 +1258,7 @@ class _CycleHistoryState extends State<_CycleHistory> {
 
     if (!_lengthReview) {
       return StatusCard(
-        l?.cycleLengthsTitle ?? 'Your cycle lengths against a published range',
+        l?.cycleLengthsTitle ?? 'Your cycle lengths against a 24 to 38 day range',
         l?.cycleLengthsBody ??
             'Off unless you turn it on. It shows the days between your logged starts next to the published adult range, and nothing more.',
         fix: l?.cycleShowIt ?? 'Show it',
@@ -1262,9 +1275,8 @@ class _CycleHistoryState extends State<_CycleHistory> {
               gaps.length,
               kCycleLengthReviewMinGaps,
             ) ??
-            'This needs a long run: ${gaps.length} of '
-                '$kCycleLengthReviewMinGaps gaps so far, which is about a year of '
-                'logging every start.',
+            'This needs $kCycleLengthReviewMinGaps gaps, about a year of '
+            'logging every start. You have ${gaps.length} so far.',
         icon: LucideIcons.ruler,
       );
     }
@@ -1314,26 +1326,51 @@ class _CycleHistoryState extends State<_CycleHistory> {
                 'The two lines are ${kPublishedCycleDays.low.round()} and '
                     '${kPublishedCycleDays.high.round()} days.',
             series: vals,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                CustomPaint(
-                  painter: Bars(
-                    vals,
+            // Bar i is the stretch from start i to start i + 1, so it is named
+            // by the start it ran up to.
+            child: ChartScrub(
+              label: l?.cycleDaysBetweenStarts ??
+                  'Days between your logged starts',
+              gaps: hasChartGaps([vals]),
+              time: (at) => _short(
+                  _ymdOf(starts[ChartScrub.slotAt(vals.length, at, bars: true) + 1]),
+                  l),
+              keys: [
+                ChartKey.slots(
+                    l?.cycleLegendYourCycles ?? 'Your cycles',
                     p.on(C.pink),
-                    t: animate(c, 1),
-                    axis: axis,
-                  ),
-                ),
-                for (final v in [
-                  kPublishedCycleDays.low,
-                  kPublishedCycleDays.high,
-                ])
-                  Align(
-                    alignment: Alignment(0, 1 - 2 * axis.t(v)),
-                    child: Container(height: 1, color: p.ink3),
-                  ),
+                    vals,
+                    (i, v) => '${v.round()} ${l?.cycleUnitDays ?? 'days'}',
+                    bars: true),
+                // The two lines on the chart, with the numbers they stand at.
+                ChartKey.fixed(
+                    l?.cycleLegendPublishedRange ?? 'Published range',
+                    p.ink3,
+                    '${kPublishedCycleDays.low.round()}–'
+                    '${kPublishedCycleDays.high.round()} '
+                    '${l?.cycleUnitDays ?? 'days'}'),
               ],
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CustomPaint(
+                    painter: Bars(
+                      vals,
+                      p.on(C.pink),
+                      t: animate(c, 1),
+                      axis: axis,
+                    ),
+                  ),
+                  for (final v in [
+                    kPublishedCycleDays.low,
+                    kPublishedCycleDays.high,
+                  ])
+                    Align(
+                      alignment: Alignment(0, 1 - 2 * axis.t(v)),
+                      child: Container(height: 1, color: p.ink3),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1402,7 +1439,7 @@ Widget _currentCycleChart(BuildContext c, CycleData d) {
               l?.cycleDayOneLabel ?? 'Day 1',
               l?.cycleDayNLabel(last) ?? 'Day $last',
             ],
-      footnote: l?.cycleDescriptiveOnly ?? 'Descriptive only.',
+      footnote: l?.cycleDescriptiveOnly ?? 'Describes past nights only.',
       empty: axis == null
           ? NoData(
               message:
@@ -1415,14 +1452,27 @@ Widget _currentCycleChart(BuildContext c, CycleData d) {
           ? const SizedBox.shrink()
           // No fill: a filled area under a heart-rate axis that starts at 52 is
           // the truncated-axis form with the truncation hidden.
-          : CustomPaint(
-              size: Size.infinite,
-              painter: LineChart(
-                vals,
-                p.on(C.pink),
-                fill: false,
-                t: animate(c, 1),
-                axis: axis,
+          : ChartScrub(
+              label: l?.cycleRestingHeartRate ?? 'Resting heart rate',
+              gaps: hasChartGaps([vals]),
+              time: (at) => 'Day ${ChartScrub.slotAt(vals.length, at) + 1}',
+              keys: [
+                ChartKey.slots(
+                    '${l?.cycleRestingHeartRate ?? 'Resting heart rate'} '
+                    '(${l?.cycleUnitBpm ?? 'bpm'})',
+                    p.on(C.pink),
+                    vals,
+                    (i, v) => '${v.round()} ${l?.cycleUnitBpm ?? 'bpm'}'),
+              ],
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: LineChart(
+                  vals,
+                  p.on(C.pink),
+                  fill: false,
+                  t: animate(c, 1),
+                  axis: axis,
+                ),
               ),
             ),
     ),
@@ -1452,7 +1502,7 @@ String _mdcNote(
             ' Every day here is within your normal night-to-night swing: the biggest gap is $s, and $n is the smallest real change. A shape, not a shift.')
       : (l?.cycleMdcNoteVaries(n, s) ??
             ' Your nights vary by $n on their own, so days closer together than '
-                'that are not separated. The biggest gap here is $s.');
+            'that cannot be told apart. The biggest gap here is $s.');
 }
 
 /// A z with its sign always printed — "0.3" and "−0.3" are different findings

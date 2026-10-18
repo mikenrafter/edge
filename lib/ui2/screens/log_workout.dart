@@ -271,7 +271,7 @@ class _LogWorkoutState extends State<LogWorkout> {
       sheetAnimationStyle: sheetMotion(context),
       backgroundColor: P.of(context).card,
       shape: const RoundedRectangleBorder(borderRadius: R.rXl),
-      builder: (_) => const _TypeSheet(),
+      builder: (_) => const ActivityTypeSheet(),
     );
     if (picked != null) setState(() => _activity = picked);
   }
@@ -336,9 +336,9 @@ class _LogWorkoutState extends State<LogWorkout> {
         setState(() {
           _saving = false;
           _wrote = l?.logWorkoutUnscoredSaved ??
-              'Saved. No heart rate was recorded over that window, so it '
-                  'has no strain and no calorie figure — the times are all this '
-                  'one carries.';
+              'Saved. No heart rate was recorded in that window, so this entry '
+              'has no strain or calories. It keeps only the start and end '
+              'times.';
         });
         return;
       }
@@ -371,7 +371,7 @@ class _LogWorkoutState extends State<LogWorkout> {
       if (mounted) {
         setState(() {
           _saving = false;
-          _wrote = l?.logWorkoutCouldNotSave ?? 'Could not save that — try again.';
+          _wrote = l?.logWorkoutCouldNotSave ?? 'Could not save. Try again.';
         });
       }
     }
@@ -393,8 +393,8 @@ class _LogWorkoutState extends State<LogWorkout> {
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
             child: NavBar(title,
                 sub: retime
-                    ? (l?.logWorkoutWindowRescoredSub ?? 'THE WINDOW, RE-SCORED')
-                    : (l?.logWorkoutYourOwnTimesSub ?? 'YOUR OWN TIMES')),
+                    ? (l?.logWorkoutWindowRescoredSub ?? 'RESCORED WITH NEW TIMES')
+                    : (l?.logWorkoutYourOwnTimesSub ?? 'START AND END TIMES')),
           ),
           Expanded(
             child: ListView(
@@ -471,13 +471,13 @@ class _LogWorkoutState extends State<LogWorkout> {
 
 /// The activity list, searchable. The picker proper (`ActivityPicker`) starts a
 /// LIVE session; this one only names a window that has already happened.
-class _TypeSheet extends StatefulWidget {
-  const _TypeSheet();
+class ActivityTypeSheet extends StatefulWidget {
+  const ActivityTypeSheet({super.key});
   @override
-  State<_TypeSheet> createState() => _TypeSheetState();
+  State<ActivityTypeSheet> createState() => _ActivityTypeSheetState();
 }
 
-class _TypeSheetState extends State<_TypeSheet> {
+class _ActivityTypeSheetState extends State<ActivityTypeSheet> {
   String _q = '';
 
   @override

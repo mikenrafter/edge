@@ -13,49 +13,99 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../../coach/coach_config.dart';
+import '../../compute/derivation_engine.dart'
+    show kAlgoVersion, kAnalyticsPin, kProtocolPin;
 import '../../data/db.dart';
 import '../../ecg/ecg_controller.dart';
+import '../../ecg/ecg_export.dart';
 import '../../ecg/ecg_models.dart';
+import '../../ecg/ecg_outcome.dart';
+import '../../ecg/ecg_result.dart';
+import '../../ecg/ecg_seconds.dart';
 import '../../ecg/ecg_waveform_buffer.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/clock_format.dart' show formatClockOf;
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
+import '../../util/log_file.dart'
+    show LogChunkSaver, LogSaveFailed, logFileName, saveLogChunksResult;
+import '../profile/profile.dart' show SwitchRow;
 import '../ui2.dart';
 import 'coach.dart';
+import 'ecg_screener.dart';
 import 'home_screen.dart' show go, pad;
 
-/// Whether the paired band is a remembered WHOOP MG — false outside an
-/// AppState (goldens), like every other provider read in this folder.
-bool pairedIsMaverickOf(BuildContext c) {
-  try {
-    return c.watch<AppState>().pairedIsMaverick;
-  } catch (_) {
-    return false;
-  }
-}
-
 String ecgCategoryLabel(AppLocalizations? l, EcgCategory c) => switch (c) {
-  EcgCategory.sinusRhythm => l?.ecgCategorySinus ?? 'Sinus rhythm',
+  EcgCategory.sinusRhythm => l?.ecgCategorySinus ?? 'Regular rhythm reported',
   EcgCategory.lowHeartRate => l?.ecgCategoryLowHr ?? 'Low heart rate',
-  EcgCategory.possibleAfib => l?.ecgCategoryPossibleAfib ?? 'Possible AFib',
+  EcgCategory.possibleAfib => l?.ecgCategoryPossibleAfib ?? 'Irregular rhythm flagged',
   EcgCategory.afibHighHeartRate =>
-    l?.ecgCategoryAfibHighHr ?? 'AFib with high heart rate',
+    l?.ecgCategoryAfibHighHr ?? 'Irregular rhythm flagged, high heart rate',
   EcgCategory.highHeartRate => l?.ecgCategoryHighHr ?? 'High heart rate',
   EcgCategory.highHeartRateNoAfib =>
-    l?.ecgCategoryHighHrNoAfib ?? 'High heart rate, no AFib detected',
+    l?.ecgCategoryHighHrNoAfib ??
+        'High heart rate, no irregular rhythm flagged',
   EcgCategory.inconclusive => l?.ecgCategoryInconclusive ?? 'Inconclusive',
   EcgCategory.unreadable => l?.ecgCategoryUnreadable ?? 'Unreadable',
 };
 
+/// What an outcome is called, everywhere (capture, history row, detail): a
+/// rhythm label only for a band result; otherwise what the recording supports.
+String ecgOutcomeLabel(AppLocalizations? l, EcgOutcome o) => switch (o.kind) {
+  EcgOutcomeKind.bandResult => ecgCategoryLabel(l, o.bandResult!),
+  EcgOutcomeKind.inconclusive => l?.ecgCategoryInconclusive ?? 'Inconclusive',
+  EcgOutcomeKind.notReadable => l?.ecgOutcomeNotReadable ?? 'Not readable',
+  EcgOutcomeKind.partial => l?.ecgStoppedEarly ?? 'Stopped early',
+};
+
+/// What a saved reading is called in a list: its [ecgOutcome], never the
+/// stored category (a set band reason bit or a mismatched rate is re-judged).
+String ecgReadingLabel(AppLocalizations? l, EcgReading r) =>
+    ecgOutcomeLabel(l, ecgOutcome(r));
+
+/// One reason in words.
+String ecgReasonText(AppLocalizations? l, EcgReason r) {
+  final n = r.arg ?? 0;
+  return switch (r.id) {
+    EcgReasonId.lowAmplitude => l?.ecgReasonLowAmplitude ?? 'Low amplitude',
+    EcgReasonId.significantNoise => l?.ecgReasonNoise ?? 'Significant noise',
+    EcgReasonId.unstableSignal => l?.ecgReasonUnstable ?? 'Unstable signal',
+    EcgReasonId.notEnoughData =>
+      l?.ecgReasonNotEnoughData ?? 'Not enough data',
+    EcgReasonId.unknownBandReasonBit =>
+      l?.ecgReasonUnknownBit(n) ?? 'Unknown band reason bit $n',
+    EcgReasonId.unknownResultCode =>
+      l?.ecgReasonUnknownCode(n) ??
+          'The band\'s result code $n is not one this app knows',
+    EcgReasonId.bandUnreadableResult =>
+      l?.ecgReasonBandUnreadable(n) ??
+          'The band\'s result code $n means it could not read the recording',
+    EcgReasonId.noHeartRate =>
+      l?.ecgReasonNoHeartRate ?? 'No heart rate was reported',
+    EcgReasonId.heartRateOutOfRange =>
+      l?.ecgReasonHrOutOfRange(n) ??
+          'The average heart rate ($n bpm) is outside the range this result '
+              'can be read at',
+    _ => r.id,
+  };
+}
+
+/// Why a partial reading stopped, in words.
+String ecgStopReasonLabel(String? reason) => switch (reason) {
+  'paused' => 'The app went to the background.',
+  'timeout' => 'No result within two minutes.',
+  'disconnected' => 'The band disconnected.',
+  _ => '',
+};
+
 List<String> ecgReasonLabels(AppLocalizations? l, int mask) => [
-  if (mask & 0x01 != 0) l?.ecgReasonLowAmplitude ?? 'Low amplitude',
-  if (mask & 0x02 != 0) l?.ecgReasonNoise ?? 'Significant noise',
-  if (mask & 0x04 != 0) l?.ecgReasonUnstable ?? 'Unstable signal',
-  if (mask & 0x08 != 0) l?.ecgReasonNotEnoughData ?? 'Not enough data',
+  for (final r in ecgMaskReasons(mask)) ecgReasonText(l, r),
 ];
 
 String _wristLabel(AppLocalizations? l, EcgWrist w) => w == EcgWrist.left
@@ -65,6 +115,112 @@ String _wristLabel(AppLocalizations? l, EcgWrist w) => w == EcgWrist.left
 String ecgDisplayWhen(int epochS, AppLocalizations? l) {
   final d = DateTime.fromMillisecondsSinceEpoch(epochS * 1000);
   return '${localizedDate(d, l?.localeName ?? 'en')} ${formatClockOf(d)}';
+}
+
+// ═══════════════════ export (home and detail) ═══════════════════
+
+/// The production export environment: the installed app's version and the wall
+/// clock. Tests hand in their own.
+EcgExportEnv _defaultExportEnv() => EcgExportEnv(
+  appVersion: () async {
+    final i = await PackageInfo.fromPlatform();
+    return '${i.version}+${i.buildNumber}';
+  },
+  now: DateTime.now,
+);
+
+/// Runs one ECG export end to end - build the log with the one formatter, name
+/// it from the clock, hand it to the saver - and returns null when it was
+/// saved, or the reason it was not. [readingId] null = every reading (the
+/// bulk log), else that reading's attempt group. Never throws: a failure is a
+/// reason a person can read, shown as "Couldn't save the ECG log: REASON"
+/// (AGENTS 6: results, not booleans), and nothing reads as saved.
+Future<String?> _runEcgExport({
+  required EcgExportEnv? env,
+  required EcgReadingSource? source,
+  required LogChunkSaver? save,
+  String? readingId,
+}) async {
+  try {
+    final e = env ?? _defaultExportEnv();
+    final src = source ?? const LocalDbEcgSource();
+    final at = e.now();
+    final header = EcgExportHeader(
+      appVersion: await e.appVersion(),
+      analyticsPin: kAnalyticsPin,
+      protocolPin: kProtocolPin,
+      algoVersion: kAlgoVersion,
+      outcomeTableVersion: kEcgOutcomeTableVersion,
+      exportedAt: at,
+    );
+    // The bulk log streams page by page (formatted in a worker, appended to the
+    // file as it arrives); one reading's group is a single small chunk.
+    final chunks = readingId == null
+        ? ecgLogChunksAll(header: header, source: src)
+        : Stream<String>.value(
+            await buildEcgLogFor(header: header, source: src, readingId: readingId),
+          );
+    final saver = save ?? ((name, c) => saveLogChunksResult(name, c));
+    final res = await saver(logFileName('ecg', at), chunks);
+    return res is LogSaveFailed ? res.reason : null;
+  } catch (err) {
+    return '$err';
+  }
+}
+
+/// A button-like text row for the export actions.
+class _ExportRow extends StatelessWidget {
+  const _ExportRow({
+    required this.buttonKey,
+    required this.label,
+    required this.busy,
+    required this.onTap,
+    required this.failure,
+  });
+  final Key buttonKey;
+  final String label;
+  final bool busy;
+  final VoidCallback onTap;
+
+  /// The failure reason of the last attempt, or null.
+  final String? failure;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Pressable(
+          key: buttonKey,
+          semanticLabel: label,
+          onTap: busy ? null : onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: S.x2),
+            child: Row(
+              children: [
+                Icon(LucideIcons.share, size: 16, color: p.on(C.blue)),
+                const SizedBox(width: S.x2),
+                Expanded(
+                  child: Text(label, style: F.body.copyWith(color: p.on(C.blue))),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (failure != null)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              l?.ecgExportFailed(failure!) ??
+                  'Couldn\'t save the ECG log: $failure',
+              style: F.cap.copyWith(color: C.red),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 // ═══════════════════ entry card (Health overview) ═══════════════════
@@ -89,8 +245,26 @@ class EcgEntryCard extends StatelessWidget {
 
 // ═══════════════════ home: history + Take ECG ═══════════════════
 
+/// The route name of every Details screen; a delete pops back through them all.
+const String _kEcgDetailRoute = 'EcgDetailScreen';
+
+/// Bumped when readings were deleted behind the list's back (a delete from a
+/// Details screen the list is not awaiting), so the list reloads.
+final ValueNotifier<int> _ecgHistoryChanged = ValueNotifier<int>(0);
+
 class EcgHomeScreen extends StatefulWidget {
-  const EcgHomeScreen({super.key});
+  /// Design 04 R7: the seams "Export ECG logs" runs through (tests hand in
+  /// fakes; defaults are the real LocalDb source, the platform share sheet and
+  /// the wall clock).
+  final LogChunkSaver? saveLog;
+  final EcgReadingSource? exportSource;
+  final EcgExportEnv? exportEnv;
+  const EcgHomeScreen({
+    super.key,
+    this.saveLog,
+    this.exportSource,
+    this.exportEnv,
+  });
 
   @override
   State<EcgHomeScreen> createState() => _EcgHomeScreenState();
@@ -99,11 +273,20 @@ class EcgHomeScreen extends StatefulWidget {
 class _EcgHomeScreenState extends State<EcgHomeScreen> {
   List<EcgReading> _readings = const [];
   bool _loaded = false;
+  bool _exporting = false;
+  String? _exportFailure;
 
   @override
   void initState() {
     super.initState();
+    _ecgHistoryChanged.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _ecgHistoryChanged.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -150,9 +333,35 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
     final data = await EcgDetailData.load(id);
     if (!c.mounted || data == null) return;
     await Navigator.of(c).push(
-      themedRoute((_) => EcgDetailScreen(data: data), name: 'EcgDetailScreen'),
+      themedRoute((_) => EcgDetailScreen(data: data), name: _kEcgDetailRoute),
     );
     if (mounted) await _load();
+  }
+
+  /// "Export ECG logs": every reading, superseded attempts included, as ONE
+  /// log file through the share sheet. The busy flag is cleared in `finally`
+  /// (AGENTS 4.3) and the failure, if any, stays on screen.
+  Future<void> _exportAll() async {
+    if (_exporting) return;
+    setState(() {
+      _exporting = true;
+      _exportFailure = null;
+    });
+    String? failure;
+    try {
+      failure = await _runEcgExport(
+        env: widget.exportEnv,
+        source: widget.exportSource,
+        save: widget.saveLog,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _exporting = false;
+          _exportFailure = failure;
+        });
+      }
+    }
   }
 
   @override
@@ -160,7 +369,8 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final app = c.watch<AppState>();
-    final canTake = app.engine.isConnected && app.engine.isMaverick;
+    final take = c.caps.of(Feature.ecgTake);
+    final canTake = take.isAvailable;
     return Scaffold(
       backgroundColor: p.bg,
       appBar: AppBar(
@@ -174,19 +384,53 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
             l?.ecgTakeEcg ?? 'Take ECG',
             canTake
                 ? (l?.ecgEntryMeta ?? 'WHOOP MG · band-reported')
-                : (l?.ecgNeedsMg ?? 'Take ECG needs a connected WHOOP MG.'),
+                : (l?.ecgNeedsMg ?? take.reason ?? ''),
             l?.ecgTakeEcg ?? 'Take ECG',
             LucideIcons.heartPulse,
             C.domHealth,
             onTap: canTake ? () => _take(c, app) : null,
+          ),
+          const SizedBox(height: S.x2),
+          SwitchRow(
+            'Keep waveform',
+            app.ecgKeepWaveform,
+            (v) => unawaited(app.setEcgKeepWaveform(v)),
+            sub:
+                'Save the recorded signal with each reading. Off: only the '
+                'result, heart rate and signal quality are kept.',
+          ),
+          Pressable(
+            key: const ValueKey('ecg-screener-link'),
+            semanticLabel: 'What the results mean',
+            onTap: () => go(c, const EcgScreenerScreen()),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: S.x2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'What the results mean',
+                      style: F.body.copyWith(color: p.on(C.blue)),
+                    ),
+                  ),
+                  Icon(LucideIcons.chevronRight, size: 16, color: p.on(C.blue)),
+                ],
+              ),
+            ),
+          ),
+          _ExportRow(
+            buttonKey: const ValueKey('ecg-export-all'),
+            label: l?.ecgExportAll ?? 'Export ECG logs',
+            busy: _exporting,
+            onTap: _exportAll,
+            failure: _exportFailure,
           ),
           const SizedBox(height: S.x4),
           if (_loaded && _readings.isEmpty)
             StatusCard(
               l?.ecgHistoryEmpty ?? 'No readings yet.',
               l?.ecgHistoryEmptyWhy ??
-                  'Readings you take are saved here and stay readable while '
-                      'the band is away.',
+                  'Your saved readings appear here and open without the band connected.',
               icon: LucideIcons.activity,
             ),
           if (_readings.isNotEmpty)
@@ -223,8 +467,13 @@ class EcgReadingRow extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final cat = ecgCategoryLabel(l, reading.category);
-    final hr = reading.avgHr;
+    final outcome = ecgOutcome(reading);
+    final cat = ecgOutcomeLabel(l, outcome);
+    // A rate next to "Not readable" would be a number the recording does not
+    // support; it stays in Details.
+    final hr = outcome.kind == EcgOutcomeKind.bandResult && (reading.avgHr ?? 0) > 0
+        ? reading.avgHr
+        : null;
     return Pressable(
       onTap: onTap,
       semanticLabel:
@@ -576,6 +825,19 @@ class EcgCaptureBody extends StatelessWidget {
                 ),
               ),
             ),
+            if (s.quality > 0) ...[
+              const SizedBox(height: S.x2),
+              EcgMetricsList(
+                metrics: [
+                  EcgMetric(
+                    key: 'quality',
+                    name: 'Signal quality',
+                    value: s.quality.toDouble(),
+                    unit: '',
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: S.x2),
             Row(
               children: [
@@ -643,59 +905,111 @@ class EcgCaptureBody extends StatelessWidget {
           ),
         );
       case EcgCapturePhase.completed:
+        final o = s.outcome;
         return ListView(
           children: [
             const SizedBox(height: S.x6),
             title(l?.ecgCompleted ?? 'Reading saved'),
             const SizedBox(height: S.x2),
+            if (o != null) ...[
+              _EcgOutcomeBlock(outcome: o),
+              const SizedBox(height: S.x2),
+            ],
             body(
               l?.ecgNotDiagnosis ??
-                  'The category comes from the band. This is not a diagnosis.',
+                  'The category comes from the band. This is a screen, not a medical test.',
             ),
+            // A rate beside "Not readable" is a number the recording does not
+            // support; it stays in the reading's Details.
+            if (s.metrics.isNotEmpty &&
+                o?.kind != EcgOutcomeKind.notReadable) ...[
+              const SizedBox(height: S.x4),
+              EcgMetricsList(metrics: s.metrics),
+            ],
             if (s.cleanupIncomplete) ...[
               const SizedBox(height: S.x3),
               body(
                 l?.ecgCleanupIncomplete ??
-                    'The band may still be generating. It will be stopped on '
-                        'the next connection.',
+                    'The band may still be recording. The app will stop it on '
+                    'the next connection.',
               ),
             ],
             const SizedBox(height: S.x6),
             button(l?.ecgViewReading ?? 'View reading', onView),
+            if (o != null && o.kind != EcgOutcomeKind.bandResult) ...[
+              const SizedBox(height: S.x3),
+              button(
+                l?.ecgTakeAnother ?? 'Take another',
+                onTakeAnother,
+                primary: false,
+              ),
+            ],
             const SizedBox(height: S.x3),
             button(l?.ecgDone ?? 'Done', onDone, primary: false),
           ],
         );
       case EcgCapturePhase.unreadable:
-        final reasons = ecgReasonLabels(l, s.unreadableMask);
+        final o = s.outcome;
+        final reasons = o != null
+            ? [for (final r in o.reasons) ecgReasonText(l, r)]
+            : ecgReasonLabels(l, s.unreadableMask);
         return ListView(
           children: [
             const SizedBox(height: S.x6),
-            title(l?.ecgUnreadableTitle ?? 'The band could not read this'),
+            title(
+              o != null
+                  ? (l?.ecgOutcomeNotReadable ?? 'Not readable')
+                  : (l?.ecgUnreadableTitle ?? 'The band could not read this'),
+            ),
             const SizedBox(height: S.x2),
-            body(l?.ecgBandReported ?? 'Band-reported result'),
+            body(l?.ecgOutcomeNoRhythm ?? 'This recording does not support a rhythm reading.'),
             for (final r in reasons) ...[
               const SizedBox(height: S.x1),
               Text('· $r', style: F.body.copyWith(color: p.ink)),
             ],
             const SizedBox(height: S.x6),
-            button(l?.ecgTakeAnother ?? 'Take another', onTakeAnother),
+            if (s.readingId != null) ...[
+              button(l?.ecgViewReading ?? 'View reading', onView),
+              const SizedBox(height: S.x3),
+            ],
+            button(
+              l?.ecgTakeAnother ?? 'Take another',
+              onTakeAnother,
+              primary: s.readingId == null,
+            ),
             const SizedBox(height: S.x3),
             button(l?.ecgDone ?? 'Done', onDone, primary: false),
           ],
         );
       case EcgCapturePhase.inconclusiveRetry:
+        // The saved attempt's own outcome (kind and reasons) leads: a first
+        // terminal the band called inconclusive can still be Not readable once
+        // its noise mask is read (AGENTS 3.8). The retry stays either way.
+        final o = s.outcome;
         return ListView(
           children: [
             const SizedBox(height: S.x6),
-            title(l?.ecgInconclusiveTitle ?? 'Inconclusive'),
-            const SizedBox(height: S.x2),
-            body(
-              l?.ecgInconclusiveRetryHint ??
-                  'The band could not decide. You can try once more.',
-            ),
+            if (o != null)
+              _EcgOutcomeBlock(outcome: o)
+            else
+              title(l?.ecgInconclusiveTitle ?? 'Inconclusive'),
+            if (o == null || o.kind == EcgOutcomeKind.inconclusive) ...[
+              const SizedBox(height: S.x2),
+              body(
+                l?.ecgInconclusiveRetryHint ??
+                    'The band could not decide. You can try once more.',
+              ),
+            ],
             const SizedBox(height: S.x6),
             button(l?.ecgTryOnceMore ?? 'Try once more', onRetry),
+            if (s.readingId != null) ...[
+              const SizedBox(height: S.x3),
+              button(
+                l?.ecgViewReading ?? 'View reading',
+                onView,
+                primary: false,
+              ),
+            ],
             const SizedBox(height: S.x3),
             button(l?.ecgDone ?? 'Done', onDone, primary: false),
           ],
@@ -706,29 +1020,48 @@ class EcgCaptureBody extends StatelessWidget {
           'disconnected' =>
             l?.ecgFailedDisconnected ?? 'The band disconnected.',
           'timeout' => l?.ecgFailedTimeout ?? 'No result within two minutes.',
-          'cancelled' || 'paused' || null => '',
+          'cancelled' || null => '',
+          'paused' => ecgStopReasonLabel('paused'),
           final r =>
             l?.ecgFailedGeneric(r) ??
                 'The band did not accept the reading ($r).',
         };
+        final partial = s.result == EcgReadingStatus.partial;
         return ListView(
           children: [
             const SizedBox(height: S.x6),
             title(
-              s.phase == EcgCapturePhase.cancelled
+              partial
+                  ? 'Stopped early'
+                  : s.phase == EcgCapturePhase.cancelled
                   ? (l?.ecgCancelledTitle ?? 'Reading cancelled')
                   : (l?.ecgFailedTitle ?? 'Reading failed'),
             ),
+            if (partial) ...[
+              const SizedBox(height: S.x2),
+              body(
+                'What was recorded is saved as a partial reading. It was not '
+                'screened, so no rhythm result is given.',
+              ),
+            ],
             if (why.isNotEmpty) ...[const SizedBox(height: S.x2), body(why)],
+            if (partial && s.metrics.isNotEmpty) ...[
+              const SizedBox(height: S.x4),
+              EcgMetricsList(metrics: s.metrics),
+            ],
             if (s.cleanupIncomplete) ...[
               const SizedBox(height: S.x3),
               body(
                 l?.ecgCleanupIncomplete ??
-                    'The band may still be generating. It will be stopped on '
-                        'the next connection.',
+                    'The band may still be recording. The app will stop it on '
+                    'the next connection.',
               ),
             ],
             const SizedBox(height: S.x6),
+            if (partial && s.readingId != null) ...[
+              button(l?.ecgViewReading ?? 'View reading', onView),
+              const SizedBox(height: S.x3),
+            ],
             button(l?.ecgTakeAnother ?? 'Take another', onTakeAnother),
             const SizedBox(height: S.x3),
             button(l?.ecgDone ?? 'Done', onDone, primary: false),
@@ -740,12 +1073,68 @@ class EcgCaptureBody extends StatelessWidget {
   }
 }
 
+/// The outcome as a headline plus what supports it: the label (a rhythm label
+/// only for a band result), the reasons a rhythm may not be read, and the
+/// caveat that the app has not checked the recording's quality. Used by the
+/// capture result and the detail headline, so they cannot say different things.
+class _EcgOutcomeBlock extends StatelessWidget {
+  final EcgOutcome outcome;
+
+  /// Draw the label as the large headline (the detail screen shows its own).
+  final bool showLabel;
+  const _EcgOutcomeBlock({required this.outcome, this.showLabel = true});
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final o = outcome;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (showLabel)
+          Text(ecgOutcomeLabel(l, o), style: F.head.copyWith(color: p.ink)),
+        if (o.kind == EcgOutcomeKind.notReadable ||
+            o.kind == EcgOutcomeKind.inconclusive) ...[
+          const SizedBox(height: S.x1),
+          Text(
+            l?.ecgOutcomeNoRhythm ??
+                'This recording does not support a rhythm reading.',
+            style: F.body.copyWith(color: p.ink2, height: 1.4),
+          ),
+        ],
+        for (final r in o.reasons) ...[
+          const SizedBox(height: S.x1),
+          Text('· ${ecgReasonText(l, r)}', style: F.body.copyWith(color: p.ink)),
+        ],
+        if (o.caveats.contains(EcgCaveat.bandReportedQualityUnchecked)) ...[
+          const SizedBox(height: S.x1),
+          Text(
+            l?.ecgCaveatQualityUnchecked ??
+                'Band-reported. The app has not checked this recording\'s '
+                    'quality yet.',
+            style: F.cap.copyWith(color: p.ink3, height: 1.4),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 // ═══════════════════ detail ═══════════════════
 
 class EcgDetailData {
   final EcgReading reading;
   final List<EcgAcceptedPacket> packets;
-  const EcgDetailData({required this.reading, required this.packets});
+
+  /// Design 04 R2: every attempt in this reading's group (superseded
+  /// included), ordered by attempt; empty = a group of one.
+  final List<EcgReading> attempts;
+  const EcgDetailData({
+    required this.reading,
+    required this.packets,
+    this.attempts = const [],
+  });
 
   static Future<EcgDetailData?> load(String id) async {
     final row = await LocalDb.ecgReading(id);
@@ -754,13 +1143,34 @@ class EcgDetailData {
     final packets = (await LocalDb.ecgReadingPackets(
       id,
     )).map(EcgPacketCodec.fromRow).toList();
-    return EcgDetailData(reading: reading, packets: packets);
+    final attempts = [
+      for (final a in await LocalDb.ecgAttempts(id)) ?EcgReading.fromRow(a),
+    ];
+    return EcgDetailData(
+      reading: reading,
+      packets: packets,
+      attempts: attempts,
+    );
   }
 }
 
 class EcgDetailScreen extends StatefulWidget {
   final EcgDetailData data;
-  const EcgDetailScreen({super.key, required this.data});
+
+  /// Design 04 seams: deleting the whole attempt group (default
+  /// LocalDb.deleteEcgReading), and the export path.
+  final Future<void> Function(String id)? onDelete;
+  final LogChunkSaver? saveLog;
+  final EcgReadingSource? exportSource;
+  final EcgExportEnv? exportEnv;
+  const EcgDetailScreen({
+    super.key,
+    required this.data,
+    this.onDelete,
+    this.saveLog,
+    this.exportSource,
+    this.exportEnv,
+  });
 
   @override
   State<EcgDetailScreen> createState() => _EcgDetailScreenState();
@@ -769,15 +1179,31 @@ class EcgDetailScreen extends StatefulWidget {
 /// The message the coach receives for "Analyze now" — sent visibly as the
 /// user's own turn; the model must call `get_ecg_reading` itself.
 String ecgAnalyzePrompt(String id) =>
-    'Analyse my ECG reading $id. Use get_ecg_reading. Start with signal '
-    'quality and the band-reported result, then read the waveform itself — '
-    'rate, rhythm and its regularity, intervals and morphology — and give '
-    'your impression. Say where the trace or its unproven polarity does not '
+    'Analyse my ECG reading $id. Use get_ecg_reading. Start with its outcome '
+    'and the band-reported result; if the outcome says no rhythm may be read, '
+    'say why and stop there. Otherwise read the waveform itself — rate, '
+    'rhythm and its regularity, intervals and morphology — and give your '
+    'impression. Say where the trace or its unproven polarity does not '
     'support a reading, and say so if you disagree with the band.';
 
 class _EcgDetailScreenState extends State<EcgDetailScreen> {
   static const _scales = [40.0, 80.0, 160.0, 320.0];
   int _scale = 1;
+  bool _detailsOpen = false;
+  bool _timelineOpen = false;
+  bool _exporting = false;
+  String? _exportFailure;
+
+  @override
+  void didUpdateWidget(EcgDetailScreen old) {
+    super.didUpdateWidget(old);
+    // A different reading starts closed: its Details are its own.
+    if (!identical(old.data, widget.data)) {
+      _detailsOpen = false;
+      _timelineOpen = false;
+      _exportFailure = null;
+    }
+  }
 
   Future<void> _analyze(BuildContext c) async {
     final l = AppLocalizations.of(c);
@@ -829,8 +1255,451 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
   }
 
   Future<void> _delete(BuildContext c) async {
-    await LocalDb.deleteEcgReading(widget.data.reading.id);
-    if (c.mounted) Navigator.of(c).pop();
+    final l = AppLocalizations.of(c);
+    // Deleting any attempt deletes the whole group (design 04 R2), so the
+    // dialog counts it: N = rows in the group, at least this one.
+    final n = widget.data.attempts.isEmpty ? 1 : widget.data.attempts.length;
+    final ok = await showDialog<bool>(
+      context: c,
+      builder: (dc) => AlertDialog(
+        title: Text(
+          n == 1
+              ? (l?.ecgDeleteConfirmOne ?? 'Delete this reading?')
+              : (l?.ecgDeleteConfirmMany(n) ??
+                    'Delete this reading and all $n attempts?'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dc).pop(false),
+            child: Text(l?.ecgCancel ?? 'Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dc).pop(true),
+            child: Text(l?.ecgDeleteConfirm ?? 'Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !c.mounted) return;
+    final id = widget.data.reading.id;
+    await (widget.onDelete ?? (x) => LocalDb.deleteEcgReading(x))(id);
+    // The whole group is gone, so no Details route (this one, or the later
+    // attempt it was opened from) may keep showing it: go back to the list and
+    // tell the list to reload.
+    _ecgHistoryChanged.value++;
+    if (!c.mounted) return;
+    Navigator.of(c).popUntil(
+      (r) => r.settings.name != _kEcgDetailRoute || r.isFirst,
+    );
+  }
+
+  /// Export this reading's whole attempt group as one log file. The busy flag
+  /// is cleared in `finally` (AGENTS 4.3); a failure stays on screen.
+  Future<void> _export() async {
+    if (_exporting) return;
+    setState(() {
+      _exporting = true;
+      _exportFailure = null;
+    });
+    String? failure;
+    try {
+      failure = await _runEcgExport(
+        env: widget.exportEnv,
+        source: widget.exportSource,
+        save: widget.saveLog,
+        readingId: widget.data.reading.id,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _exporting = false;
+          _exportFailure = failure;
+        });
+      }
+    }
+  }
+
+  Future<void> _openAttempt(BuildContext c, String id) async {
+    final data = await EcgDetailData.load(id);
+    if (!c.mounted || data == null) return;
+    await Navigator.of(c).push(
+      themedRoute((_) => EcgDetailScreen(data: data), name: _kEcgDetailRoute),
+    );
+  }
+
+  /// The words after "No rhythm reading to analyze —": why nothing may be read.
+  String _noRhythmWhy(AppLocalizations? l, EcgOutcome o) => switch (o.kind) {
+    EcgOutcomeKind.notReadable => [
+      for (final r in o.reasons) ecgReasonText(l, r),
+    ].join(', '),
+    _ => ecgOutcomeLabel(l, o),
+  };
+
+  /// The Details accordion: every number and rule the outcome was decided on.
+  /// Always available (not tied to any display setting); rows are built only
+  /// while it is open.
+  List<Widget> _detailRows(BuildContext c, EcgOutcome o) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final r = widget.data.reading;
+    final packets = widget.data.packets;
+    final notRecorded = l?.ecgNotRecorded ?? 'not recorded';
+    final none = l?.ecgDetailNone ?? 'none';
+    // A value the row does not hold reads "not recorded", never a guess.
+    String opt(Object? v) => v == null ? notRecorded : '$v';
+    String maskText(int m) => m == 0
+        ? none
+        : '${ecgReasonLabels(l, m).join(', ')} (0x${m.toRadixString(16).padLeft(2, '0')})';
+    String offsetText(int m) {
+      final a = m.abs();
+      final hh = (a ~/ 60).toString().padLeft(2, '0');
+      final mm = (a % 60).toString().padLeft(2, '0');
+      return '${m < 0 ? '-' : '+'}$hh:$mm ($m min)';
+    }
+
+    final now = kEcgOutcomeTableVersion;
+    final captured = r.captureTableVersion;
+    final tableText = captured == null
+        ? (l?.ecgDetailTableNotRecorded(now) ??
+              'not recorded; shown now with table v$now')
+        : captured == now
+        ? (l?.ecgDetailTableSame(now) ?? 'v$now (captured and shown now)')
+        : (l?.ecgDetailTableBoth(captured, now) ??
+              'captured with table v$captured, shown now with table v$now');
+
+    Widget row(String field, String label, String value) => Padding(
+      key: ValueKey('ecg-detail:$field'),
+      padding: const EdgeInsets.symmetric(vertical: S.x1),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 5,
+            child: Text(label, style: F.cap.copyWith(color: p.ink2)),
+          ),
+          const SizedBox(width: S.x2),
+          Expanded(
+            flex: 6,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: F.cap.copyWith(color: p.ink),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final group = widget.data.attempts;
+    return [
+      row(
+        'outcome',
+        l?.ecgDetailOutcome ?? 'What the app decided',
+        [
+          ecgOutcomeLabel(l, o),
+          for (final x in o.reasons) '· ${ecgReasonText(l, x)}',
+        ].join('\n'),
+      ),
+      row('result_code', l?.ecgDetailResultCode ?? 'Band result code', '${r.resultCode}'),
+      row(
+        'category',
+        l?.ecgDetailStoredCategory ?? 'Band category as stored',
+        ecgCategoryLabel(l, r.category),
+      ),
+      row(
+        'avg_hr',
+        l?.ecgDetailAvgHr ?? 'Average heart rate (decides)',
+        opt(r.avgHr == null ? null : '${r.avgHr} bpm'),
+      ),
+      row(
+        'live_hr',
+        l?.ecgDetailLiveHr ?? 'Live heart rate (never decides)',
+        opt(r.liveHr == null ? null : '${r.liveHr} bpm'),
+      ),
+      row(
+        'quality',
+        l?.ecgQuality ?? 'Signal quality',
+        r.quality == null
+            ? notRecorded
+            : (l?.ecgDetailQualityValue('${r.quality}') ??
+                  '${r.quality} · band-reported, scale unknown'),
+      ),
+      row(
+        'unreadable_mask',
+        l?.ecgDetailFinalMask ?? 'Band reasons, final second',
+        maskText(r.unreadableMask),
+      ),
+      row(
+        'mask_any',
+        l?.ecgDetailMaskAny ?? 'Band reasons, any second',
+        r.maskAny == null ? notRecorded : maskText(r.maskAny!),
+      ),
+      row(
+        'variability_raw',
+        l?.ecgDetailVariability ?? 'Variability (raw, unit unknown)',
+        opt(r.variabilityRaw),
+      ),
+      row(
+        'min_uv',
+        l?.ecgDetailMin ?? 'Lowest sample',
+        opt(r.minUv == null ? null : '${r.minUv} µV'),
+      ),
+      row(
+        'max_uv',
+        l?.ecgDetailMax ?? 'Highest sample',
+        opt(r.maxUv == null ? null : '${r.maxUv} µV'),
+      ),
+      row(
+        'rms_uv',
+        l?.ecgDetailRms ?? 'RMS amplitude',
+        opt(r.rmsUv == null ? null : '${r.rmsUv!.toStringAsFixed(1)} µV'),
+      ),
+      row('sample_count', l?.ecgDetailSampleCount ?? 'Samples', '${r.sampleCount}'),
+      row(
+        'missing_segments',
+        l?.ecgMissingSegments ?? 'Missing segments',
+        '${r.missingSegments}',
+      ),
+      row(
+        'interruptions',
+        l?.ecgInterruptions ?? 'Interruptions',
+        '${r.interruptions}',
+      ),
+      row(
+        'stop_reason',
+        l?.ecgDetailStopReason ?? 'Stopped because',
+        r.stopReason == null
+            ? (r.status == EcgReadingStatus.partial ? notRecorded : none)
+            : '${r.stopReason}: ${ecgStopReasonLabel(r.stopReason)}',
+      ),
+      row(
+        'firmware_version',
+        l?.ecgDetailFirmware ?? 'Band firmware',
+        opt(r.firmwareVersion),
+      ),
+      row(
+        'capture_app_version',
+        l?.ecgDetailAppVersion ?? 'App version at capture',
+        opt(r.captureAppVersion),
+      ),
+      row(
+        'capture_table_version',
+        l?.ecgDetailTableVersion ?? 'Rule table version',
+        tableText,
+      ),
+      row(
+        'start_offset_min',
+        l?.ecgDetailUtcOffset ?? 'UTC offset at capture',
+        r.startOffsetMin == null
+            ? notRecorded
+            : offsetText(r.startOffsetMin!),
+      ),
+      row(
+        'packets',
+        l?.ecgDetailPackets ?? 'Kept waveform',
+        packets.isEmpty
+            ? (l?.ecgNotKept ?? 'not kept')
+            : (l?.ecgDetailPacketsKept(packets.length) ??
+                  '${packets.length} seconds kept'),
+      ),
+      _timeline(c),
+      if (group.length > 1) ...[
+        Padding(
+          padding: const EdgeInsets.only(top: S.x3, bottom: S.x1),
+          child: Text(
+            l?.ecgDetailAttempts ?? 'Attempts in this group',
+            style: F.cap.copyWith(color: p.ink3),
+          ),
+        ),
+        for (var i = 0; i < group.length; i++)
+          Pressable(
+            key: ValueKey('ecg-attempt:${group[i].id}'),
+            semanticLabel: l?.ecgAttemptLine(
+                  group[i].attempt ?? i + 1,
+                  ecgReadingLabel(l, group[i]),
+                ) ??
+                'Attempt ${group[i].attempt ?? i + 1}',
+            onTap: group[i].id == r.id
+                ? null
+                : () => _openAttempt(c, group[i].id),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: S.x1),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${l?.ecgAttemptLine(group[i].attempt ?? i + 1, ecgReadingLabel(l, group[i])) ?? 'Attempt ${group[i].attempt ?? i + 1}: ${ecgReadingLabel(l, group[i])}'}'
+                      ' · ${ecgDisplayWhen(group[i].startTs, l)}'
+                      '${group[i].id == r.id ? ' · ${l?.ecgAttemptThis ?? 'this reading'}' : ''}',
+                      style: F.cap.copyWith(color: p.ink),
+                    ),
+                  ),
+                  if (group[i].id != r.id)
+                    Icon(LucideIcons.chevronRight, size: 14, color: p.ink3),
+                ],
+              ),
+            ),
+          ),
+      ],
+      Padding(
+        key: const ValueKey('ecg-detail:band-logic'),
+        padding: const EdgeInsets.only(top: S.x3),
+        child: Text(
+          l?.ecgDetailBandLogic ??
+              'How the band decides its result is proprietary and unknown to '
+                  'this app. The app only reads the numbers the band reports.',
+          style: F.cap.copyWith(color: p.ink2, height: 1.4),
+        ),
+      ),
+      Padding(
+        key: const ValueKey('ecg-detail:rules'),
+        padding: const EdgeInsets.only(top: S.x2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final t in [
+              (l ?? lookupAppLocalizations(const Locale('en'))).ecgRateMapping,
+              l?.ecgDetailRuleHr ??
+                  'The heart rate that decides is the average heart rate the '
+                      'band reports. The live rate is shown but never decides.',
+              l?.ecgDetailRuleMask ??
+                  'Any reason bit the band set in any second, an unknown '
+                      'result code or a missing heart rate makes the reading '
+                      'Not readable, whatever the result code says.',
+            ])
+              Padding(
+                padding: const EdgeInsets.only(bottom: S.x1),
+                child: Text(t, style: F.cap.copyWith(color: p.ink2, height: 1.4)),
+              ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  /// The per-second timeline of a kept waveform: what each second's own header
+  /// bytes said, read through the one decoder (ecgSecondOf). A collapsible
+  /// table; "not kept" when the waveform was not kept.
+  Widget _timeline(BuildContext c) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final packets = widget.data.packets;
+    final title = l?.ecgTimelineTitle ?? 'Per-second timeline';
+    if (packets.isEmpty) {
+      return Padding(
+        key: const ValueKey('ecg-detail:timeline'),
+        padding: const EdgeInsets.symmetric(vertical: S.x1),
+        child: Row(
+          children: [
+            Expanded(child: Text(title, style: F.cap.copyWith(color: p.ink2))),
+            Text(
+              l?.ecgNotKept ?? 'not kept',
+              style: F.cap.copyWith(color: p.ink),
+            ),
+          ],
+        ),
+      );
+    }
+    final yes = l?.investigateYes ?? 'yes';
+    final no = l?.investigateNo ?? 'no';
+    final none = l?.ecgDetailNone ?? 'none';
+    TableRow line(List<String> cells, {bool head = false}) => TableRow(
+      children: [
+        for (final t in cells)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+            child: Text(
+              t,
+              style: F.cap.copyWith(
+                color: head ? p.ink3 : p.ink,
+                fontWeight: head ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+          ),
+      ],
+    );
+    return Column(
+      key: const ValueKey('ecg-detail:timeline'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Pressable(
+          key: const ValueKey('ecg-timeline-toggle'),
+          semanticLabel: title,
+          onTap: () => setState(() => _timelineOpen = !_timelineOpen),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: S.x1),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '$title (${packets.length})',
+                    style: F.cap.copyWith(color: p.on(C.blue)),
+                  ),
+                ),
+                Icon(
+                  _timelineOpen
+                      ? LucideIcons.chevronUp
+                      : LucideIcons.chevronDown,
+                  size: 14,
+                  color: p.ink3,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_timelineOpen)
+          Table(
+            key: const ValueKey('ecg-timeline-table'),
+            columnWidths: const {
+              0: FixedColumnWidth(34),
+              1: FixedColumnWidth(50),
+              2: FixedColumnWidth(54),
+              3: FixedColumnWidth(54),
+              5: FixedColumnWidth(62),
+            },
+            children: [
+              line([
+                l?.ecgTimelineSecond ?? 'Sec',
+                l?.ecgTimelineQuality ?? 'Quality',
+                l?.ecgTimelineContact ?? 'Contact',
+                l?.ecgTimelineS2 ?? 'S2',
+                l?.ecgTimelineReasons ?? 'Reasons',
+                l?.ecgTimelineProgress ?? 'Progress',
+              ], head: true),
+              for (final sec in ecgSecondsOf(packets))
+                if (sec.placeholder)
+                  line([
+                    '${sec.ordinal + 1}',
+                    l?.ecgTimelineMissing ?? 'missing second',
+                    '',
+                    '',
+                    '',
+                    '',
+                  ])
+                else if (!sec.decoded)
+                  line([
+                    '${sec.ordinal + 1}',
+                    l?.ecgTimelineUndecodable ?? 'not decodable',
+                    '',
+                    '',
+                    '',
+                    '',
+                  ])
+                else
+                  line([
+                    '${sec.ordinal + 1}',
+                    '${sec.quality}',
+                    sec.presence == true ? yes : no,
+                    '${sec.s2State}/${sec.currentS2One == true ? 1 : 0}',
+                    (sec.mask ?? 0) == 0
+                        ? none
+                        : ecgReasonLabels(l, sec.mask!).join(', '),
+                    '${sec.progress}%',
+                  ]),
+            ],
+          ),
+      ],
+    );
   }
 
   @override
@@ -840,7 +1709,8 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
     final r = widget.data.reading;
     final packets = widget.data.packets;
     final px = _scales[_scale];
-    final cat = ecgCategoryLabel(l, r.category);
+    final o = ecgOutcome(r);
+    final partial = o.kind == EcgOutcomeKind.partial;
     Widget kv(String k, String v) => Padding(
       padding: const EdgeInsets.symmetric(vertical: S.x1),
       child: Row(
@@ -852,6 +1722,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
         ],
       ),
     );
+    final canAnalyze = o.kind == EcgOutcomeKind.bandResult && packets.isNotEmpty;
     return Scaffold(
       backgroundColor: p.bg,
       appBar: AppBar(backgroundColor: p.bg, title: Text(l?.ecgTitle ?? 'ECG')),
@@ -862,28 +1733,62 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  l?.ecgBandReported ?? 'Band-reported result',
-                  style: F.cap.copyWith(color: p.ink3),
-                ),
-                const SizedBox(height: S.x1),
-                Text(cat, style: F.t2.copyWith(color: p.ink)),
-                const SizedBox(height: S.x1),
-                Text(
-                  ecgDisplayWhen(r.startTs, l),
-                  style: F.cap.copyWith(color: p.ink3),
-                ),
-                if (r.status == EcgReadingStatus.inconclusive ||
-                    r.category == EcgCategory.unreadable) ...[
+                if (partial) ...[
+                  Text(
+                    'Partial reading',
+                    style: F.cap.copyWith(color: p.ink3),
+                  ),
+                  const SizedBox(height: S.x1),
+                  Text(
+                    ecgOutcomeLabel(l, o),
+                    style: F.t2.copyWith(color: p.ink),
+                  ),
+                  const SizedBox(height: S.x1),
+                  Text(ecgDisplayWhen(r.startTs, l), style: F.cap.copyWith(color: p.ink3)),
+                  if (ecgStopReasonLabel(r.stopReason).isNotEmpty) ...[
+                    const SizedBox(height: S.x2),
+                    Text(
+                      ecgStopReasonLabel(r.stopReason),
+                      style: F.body.copyWith(color: p.ink),
+                    ),
+                  ],
+                  const SizedBox(height: S.x3),
+                  Text(
+                    'It was not screened, so there is no rhythm result.',
+                    style: F.cap.copyWith(color: p.ink3),
+                  ),
+                ] else ...[
+                  Text(
+                    l?.ecgBandReported ?? 'Band-reported result',
+                    style: F.cap.copyWith(color: p.ink3),
+                  ),
+                  const SizedBox(height: S.x1),
+                  Text(ecgOutcomeLabel(l, o), style: F.t2.copyWith(color: p.ink)),
+                  const SizedBox(height: S.x1),
+                  Text(ecgDisplayWhen(r.startTs, l), style: F.cap.copyWith(color: p.ink3)),
                   const SizedBox(height: S.x2),
-                  for (final reason in ecgReasonLabels(l, r.unreadableMask))
-                    Text('· $reason', style: F.body.copyWith(color: p.ink)),
+                  _EcgOutcomeBlock(outcome: o, showLabel: false),
+                  const SizedBox(height: S.x3),
+                  Text(
+                    l?.ecgNotDiagnosis ??
+                        'The category comes from the band. This is a screen, not a medical test.',
+                    style: F.cap.copyWith(color: p.ink3),
+                  ),
                 ],
-                const SizedBox(height: S.x3),
-                Text(
-                  l?.ecgNotDiagnosis ??
-                      'The category comes from the band. This is not a diagnosis.',
-                  style: F.cap.copyWith(color: p.ink3),
+                Pressable(
+                  key: const ValueKey('ecg-screener-link'),
+                  semanticLabel: 'What the results mean',
+                  onTap: () => go(c, const EcgScreenerScreen()),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: S.x3),
+                    child: Text(
+                      'What the results mean',
+                      style: F.cap.copyWith(
+                        color: p.on(C.blue),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -976,14 +1881,10 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
           Surface(
             child: Column(
               children: [
-                kv(
-                  l?.ecgAvgHr ?? 'Average heart rate',
-                  r.avgHr == null ? '—' : '${r.avgHr} ${uiText(c, 'bpm')}',
-                ),
-                kv(
-                  l?.ecgQuality ?? 'Signal quality',
-                  r.quality == null ? '—' : '${r.quality}',
-                ),
+                // A rate beside "Not readable" is a number the recording does
+                // not support; it is listed in Details with everything else.
+                if (o.kind != EcgOutcomeKind.notReadable)
+                  EcgMetricsList(metrics: ecgMetricsOf(r)),
                 kv(
                   l?.ecgDuration ?? 'Duration',
                   '${r.durationS} ${uiText(c, 's')}',
@@ -1001,15 +1902,69 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
             ),
           ),
           const SizedBox(height: S.x4),
-          ActionCard(
-            l?.ecgAnalyzeNow ?? 'Analyze now',
-            l?.ecgBandReported ?? 'Band-reported result',
-            l?.ecgAnalyzeNow ?? 'Analyze now',
-            LucideIcons.sparkles,
-            kCoachAccent,
-            onTap: () => _analyze(c),
-          ),
+          // Coach: one rule for the button and the get_ecg_reading tool. Only a
+          // band result with its waveform kept can be analysed; otherwise the
+          // control is ABSENT and a line says why.
+          if (canAnalyze) ...[
+            ActionCard(
+              l?.ecgAnalyzeNow ?? 'Analyze now',
+              l?.ecgBandReported ?? 'Band-reported result',
+              l?.ecgAnalyzeNow ?? 'Analyze now',
+              LucideIcons.sparkles,
+              kCoachAccent,
+              onTap: () => _analyze(c),
+            ),
+          ] else
+            Text(
+              o.kind == EcgOutcomeKind.bandResult
+                  ? (l?.ecgWaveformNotKept ?? 'Waveform not kept')
+                  : (l?.ecgCoachNoRhythm(_noRhythmWhy(l, o)) ??
+                        'No rhythm reading to analyze — ${_noRhythmWhy(l, o)}'),
+              style: F.cap.copyWith(color: p.ink3, height: 1.4),
+            ),
           const SizedBox(height: S.x4),
+          Surface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Pressable(
+                  key: const ValueKey('ecg-details'),
+                  semanticLabel: l?.ecgDetails ?? 'Details',
+                  onTap: () => setState(() => _detailsOpen = !_detailsOpen),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x1),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            l?.ecgDetails ?? 'Details',
+                            style: F.head.copyWith(color: p.ink),
+                          ),
+                        ),
+                        Icon(
+                          _detailsOpen
+                              ? LucideIcons.chevronUp
+                              : LucideIcons.chevronDown,
+                          size: 18,
+                          color: p.ink3,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_detailsOpen) ..._detailRows(c, o),
+              ],
+            ),
+          ),
+          const SizedBox(height: S.x3),
+          _ExportRow(
+            buttonKey: const ValueKey('ecg-export-reading'),
+            label: l?.ecgExportReading ?? 'Export this reading',
+            busy: _exporting,
+            onTap: _export,
+            failure: _exportFailure,
+          ),
+          const SizedBox(height: S.x2),
           Pressable(
             semanticLabel: l?.ecgDelete ?? 'Delete reading',
             onTap: () => _delete(c),

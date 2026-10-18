@@ -20,6 +20,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/db.dart';
+import '../../data/local_repository.dart' show LocalRepository;
 import '../../gps/gps_source.dart';
 import '../../gps/route_models.dart';
 import '../../health/health_import_state.dart';
@@ -40,9 +41,13 @@ import '../activity/summary.dart';
 import '../charts.dart';
 import '../profile/profile.dart' show ProfileAvatar, openProfile;
 import '../grammar.dart';
+import '../inline_loading.dart';
+import '../last_result_cache.dart';
 import '../revision.dart';
 import '../theme.dart';
-import '../../data/day_label.dart' show calendarDaysBetween;
+import '../../data/day_label.dart' show calendarDaysBetween, dayLabelOf;
+import 'home_screen.dart' show prettyDay;
+import 'metric_detail.dart' show detailScaffold;
 import 'log_workout.dart';
 import 'metric_detail.dart' show MetricDetail, detailLinkRow;
 import 'nutrition_screen.dart';
@@ -289,10 +294,30 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                 'Exact for what you typed and worthless across exercises — '
                     'kept out of strain and recovery for that reason.'),
         series: d.tonnage7,
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: Bars(d.tonnage7, p.on(C.orange),
-              axis: axis, t: animate(context, 1)),
+        // Seven bars, the same seven dates as the x labels. A day with no
+        // weighted set has no bar; the sum is a minimum, as the footnote says.
+        child: ChartScrub(
+          label: loc?.workoutMechanicalLoadTitle ?? 'Mechanical load',
+          gaps: hasChartGaps([d.tonnage7], trailing: true),
+          time: (at) {
+            final i = ChartScrub.slotAt(d.tonnage7.length, at, bars: true);
+            return ChartScrub.day(
+                DateTime(end.year, end.month, end.day - (6 - i)));
+          },
+          keys: [
+            ChartKey.slots(
+                loc?.workoutMechanicalLoadTitle ?? 'Mechanical load',
+                p.on(C.orange),
+                d.tonnage7,
+                (i, v) =>
+                    '${v.round()} ${loc?.workoutKgLiftedUnit ?? 'kg lifted'}',
+                bars: true),
+          ],
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: Bars(d.tonnage7, p.on(C.orange),
+                axis: axis, t: animate(context, 1)),
+          ),
         ),
       ),
     );
@@ -382,24 +407,41 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                           '$days of the last '
                               'seven days produced a figure.')),
               series: d.trimp7,
-              child: CustomPaint(
-                  size: Size.infinite,
-                  // Today is the last slot, always — not "the newest value".
-                  painter: Bars(d.trimp7, p.on(C.purple),
-                      highlight: d.trimp7.last == null ? -1 : 6,
-                      axis: axis,
-                      t: animate(context, 1)),
-                  ),
-                );
-              },
-            ),
-          ],
-          const SizedBox(height: S.x4),
-          // Absent is absent. `?? 0` used to render "Fatigue 0" — a rest week —
-          // for a pipeline that had simply not produced the number.
-          //
-          // No 'Fitness' entry: it is `ld.ctl`, which the headline two rows up is
-          // already printing at 34 pt under the word "fitness". One number, once.
+              child: ChartScrub(
+                label: loc?.workoutDailyLoadTitle ?? 'Heart effort by day',
+                gaps: hasChartGaps([d.trimp7], trailing: true),
+                time: (at) {
+                  final i =
+                      ChartScrub.slotAt(d.trimp7.length, at, bars: true);
+                  return ChartScrub.day(
+                      DateTime(end.year, end.month, end.day - (6 - i)));
+                },
+                keys: [
+                  ChartKey.slots(
+                      loc?.workoutDailyLoadTitle ?? 'Heart effort by day',
+                      p.on(C.purple),
+                      d.trimp7,
+                      (i, v) =>
+                          '${v.round()} ${loc?.workoutTrimpUnit ?? 'points'}',
+                      bars: true),
+                ],
+                child: CustomPaint(
+                    size: Size.infinite,
+                    // Today is the last slot, always — not "the newest value".
+                    painter: Bars(d.trimp7, p.on(C.purple),
+                        highlight: d.trimp7.last == null ? -1 : 6,
+                        axis: axis,
+                        t: animate(context, 1))),
+              ),
+            );
+          }),
+        ],
+        const SizedBox(height: S.x4),
+        // Absent is absent. `?? 0` used to render "Fatigue 0" — a rest week —
+        // for a pipeline that had simply not produced the number.
+        //
+        // No 'Fitness' entry: it is `ld.ctl`, which the headline two rows up is
+        // already printing at 34 pt under the word "fitness". One number, once.
         InlineMetrics([
           (loc?.workoutFatigueLabel ?? 'Fatigue',
               ld.atl?.round().toString() ?? notYet, C.orange),
@@ -983,6 +1025,88 @@ class WorkoutQuickTile extends StatelessWidget {
   }
 }
 
+/// A past session's summary, opened at once and filled in. The route shows the
+/// session's title and an inline loading card first; the slow reads (the derived
+/// bundle, then the stores) run inside it. When a result of an earlier open is
+/// stored (memory, else the table) it is built into the summary straight away
+/// under an "As of" label, and the fresh read swaps it in and clears the label.
+/// A read that fails keeps what is on screen, label included.
+class _PastSummary extends StatefulWidget {
+  final AppState app;
+  final _PastWorkout w;
+  final double? weightKg;
+
+  const _PastSummary(this.app, this.w, this.weightKg);
+
+  @override
+  State<_PastSummary> createState() => _PastSummaryState();
+}
+
+class _PastSummaryState extends State<_PastSummary> {
+  /// Null until there is something to draw the summary from.
+  ActivityResult? _r;
+  DateTime? _cachedAt;
+
+  /// A result built from a fresh read is on screen (or was tried): a stored one
+  /// that finishes building later must not replace it.
+  bool _fresh = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final repo = widget.app.repo;
+    final w = widget.w;
+    if (repo == null) {
+      final r = await _detailOf(widget.app, w, bundle: null);
+      if (mounted) setState(() => _r = r);
+      return;
+    }
+    // The derived bundle is the slow part of opening a session. It is one
+    // artifact (the bundle map itself, never the screen's object): a stored
+    // result whose input signature still matches is shown as is, a stale one is
+    // shown under an "As of" label while it recomputes; an error is not kept and
+    // comes back as null here.
+    final key = LastResultCache.keyOf('workout', [w.id]);
+    final bundle = await LastResultCache.instance
+        .loadArtifact<Map<String, dynamic>>(
+          key,
+          () => repo.getWorkout(w.id),
+          signature: () => repo.artifactSignature(key),
+          onLast: (hit) async {
+            final r = await _detailOf(widget.app, w, bundle: hit.value);
+            if (!mounted || _fresh) return;
+            setState(() => (_r = r, _cachedAt = hit.cachedAt));
+          },
+        )
+        .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
+    _fresh = true;
+    // No bundle and a stored result already on screen: that stays, labelled.
+    if (bundle == null && _r != null) return;
+    final r = await _detailOf(widget.app, w, bundle: bundle);
+    if (!mounted) return;
+    setState(() => (_r = r, _cachedAt = null));
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final r = _r;
+    if (r != null) {
+      return ActivitySummary(r, weightKg: widget.weightKg, asOf: _cachedAt);
+    }
+    final w = widget.w;
+    return detailScaffold(
+      c,
+      w.importedTitle ?? w.activity.displayName(c),
+      const [InlineLoading()],
+      sub: prettyDay(dayLabelOf(w.start), AppLocalizations.of(c)),
+    );
+  }
+}
+
 /// One past session. Taps through to the same summary a live session lands
 /// on, built from the stores rather than from the six columns in this row —
 /// the heart-rate curve, the sets and the route are all read on open.
@@ -1004,10 +1128,11 @@ class _HistoryRow extends StatelessWidget {
       {this.weightKg, this.onRetime, this.onDelete, this.onScore});
 
   Future<void> _open(BuildContext c) async {
-    final nav = Navigator.of(c);
-    final r = await _detailOf(c.read<AppState>(), w);
-    await nav.push(MaterialPageRoute(
-        builder: (_) => ActivitySummary(r, weightKg: weightKg)));
+    // The route goes up first. Reading the stores for a session is the slow
+    // part of opening it, and it runs inside the page (see [_PastSummary]).
+    await Navigator.of(c).push(MaterialPageRoute(
+        builder: (_) =>
+            _PastSummary(c.read<AppState>(), w, weightKg)));
   }
 
   @override
@@ -1585,12 +1710,18 @@ List<double> _decodeZoneMinutes(Object? raw) => [
 
 /// One past session, opened from history — built from what the stores hold
 /// rather than from the six columns the list row carries.
-Future<ActivityResult> _detailOf(AppState app, _PastWorkout w) async {
+///
+/// [bundle] is the `getWorkout` map, read (or restored) by the caller; null
+/// leaves the list row's own scalars, the degraded but honest result.
+Future<ActivityResult> _detailOf(AppState app, _PastWorkout w,
+    {required Map<String, dynamic>? bundle}) async {
   var out = w.toResult();
   final repo = app.repo;
   if (repo == null) return out;
+  final b = bundle;
+  // No bundle (its read failed, or none yet): the row's own scalars stand.
+  if (b == null) return _withStoreReads(w, repo, out);
   try {
-    final b = await repo.getWorkout(w.id);
     final band = _topBand(b['zone_bands']);
     // The bundle's own split — and whether it is the one that ends up on
     // screen. A short or absent `zone_min` falls back to the list row's split
@@ -1653,6 +1784,13 @@ Future<ActivityResult> _detailOf(AppState app, _PastWorkout w) async {
   } catch (_) {
     // Enrichment is best-effort; the scalars on the row still render.
   }
+  return _withStoreReads(w, repo, out);
+}
+
+/// The primary-key reads of a session's own tables on top of [out]: its rating,
+/// its strength sets and its route.
+Future<ActivityResult> _withStoreReads(
+    _PastWorkout w, LocalRepository repo, ActivityResult out) async {
   // TS-09 — the session's own rating. `getWorkout` is the derived bundle and
   // does not carry the column, so this is one primary-key read of the row.
   try {

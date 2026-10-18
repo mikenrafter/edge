@@ -13,11 +13,11 @@ import 'package:openstrap_analytics/onehz.dart' show readinessCompositeMinBaseli
 import '../../compute/onehz_pipeline.dart'
     show readinessInputShortfallNote, readinessUnstableBaselineNote;
 import '../../data/day_label.dart';
-import '../../data/db.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
 import '../../models/payloads.dart' show todayHeadlineOf;
+import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'home_screen.dart';
 import 'investigate.dart';
@@ -46,17 +46,33 @@ class ReadinessData {
   /// absence.
   final String? heldOverNight;
 
+  /// The night the headline describes when the screen was opened FOR a held-over
+  /// night (Health → Last night names it and passes it in). Null when it was
+  /// opened for today, where the headline is today's or absent.
+  final String? day;
+
   /// DENSE — one slot per calendar day, `null` where no score was stored. The
   /// chart under it is dated, and `seriesOf` (values only) cannot date
   /// anything: a five-point series from five scattered weeks used to be drawn
   /// as five consecutive days.
   final List<double?> series;
 
-  /// `todayHeadlineOf` off the same `getToday()`: the state and update note
-  /// Home shows beside this number.
+  /// `todayHeadlineOf` off the same today read: the state and update note
+  /// Home shows beside this number. Empty when the screen was opened for a
+  /// held-over night ([day]) — today's state does not describe that night.
   final Map<String, dynamic> head;
 
   bool get provisional => head['recovery_state'] == 'provisional';
+
+  /// The night the headline is read off and when its row was computed — what
+  /// "As of" says while a pass recalculates it. Null unless the screen shows a
+  /// score of its own, so an absent number is never captioned with a time.
+  final String? asOfDay;
+  final DateTime? computedAt;
+
+  /// Read before the freshness refresh ran; today's score is not yet worked out.
+  /// The screen asks for the refresh after painting and reads again.
+  final bool refreshPending;
 
   const ReadinessData({
     this.head = const {},
@@ -64,12 +80,36 @@ class ReadinessData {
     this.breakdown = const [],
     this.inputsUsed = 0,
     this.heldOverNight,
+    this.day,
     this.series = const [],
     this.absentDiag,
+    this.asOfDay,
+    this.computedAt,
+    this.refreshPending = false,
   });
 
-  static Future<ReadinessData> load(LocalRepository repo) async {
-    final today = await repo.getToday();
+  /// The absence diagnostic off a stored day bundle, through the repository's
+  /// day-block read the way `InvestigateData.load` reads `imported`.
+  ///
+  /// Best effort: a failed read is null, not a throw. It only explains an
+  /// absence, so it must never take down the screen load that asked for it.
+  static Future<Map<String, dynamic>?> _absentDiag(LocalRepository repo, String? day) async {
+    if (day == null) return null;
+    try {
+      final block =
+          await repo.getDayBlock(day, const ['readiness_absent_diag']);
+      final diag = block['readiness_absent_diag'];
+      return diag is Map ? diag.cast<String, dynamic>() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// [day] is a night the caller already knows is the held-over one; it is read
+  /// as that night's own readiness instead of being refused as not today's. Any
+  /// other value of [day] changes nothing.
+  static Future<ReadinessData> load(LocalRepository repo, {String? day}) async {
+    final today = await repo.getTodayStored();
     final cd = await repo.getInsights();
     final chart = await repo.getChart('recovery');
 
@@ -78,15 +118,23 @@ class ReadinessData {
     final v = envValue(gb) ?? const <String, dynamic>{};
     final bd = v['breakdown'];
 
+    final raw = daily is Map ? daily['readiness'] : null;
+    final ownNight = day != null && day == heldOverNightOf(today);
     // Same rule as Home: a provisional night shows its own number, greyed.
-    final head = todayHeadlineOf(today);
-    final readiness = head['recovery_state'] == 'provisional'
-        ? metricOf(daily is Map ? daily['readiness_provisional'] : null)
-        : overnightMetric(
-            today, daily is Map ? daily['readiness'] : null);
+    // Today's headline state, so not applied to a held-over night opened by
+    // name.
+    final head = ownNight ? const <String, dynamic>{} : todayHeadlineOf(today);
+    final readiness = ownNight
+        ? metricOf(raw)
+        : head['recovery_state'] == 'provisional'
+            ? metricOf(daily is Map ? daily['readiness_provisional'] : null)
+            : overnightMetric(today, raw);
+    final status = today['status'];
+    final scored = readiness.value != null;
 
     return ReadinessData(
       head: head,
+      refreshPending: (status is Map) && status['refresh_pending'] == true,
       readiness: readiness,
       // `narrative` and the glass-box `score` are DELIBERATELY not read. Both
       // belong to the deprecated percentile score, which bands at 70/40 while
@@ -101,6 +149,11 @@ class ReadinessData {
       ],
       inputsUsed: (v['inputs_used'] as num?)?.toInt() ?? 0,
       heldOverNight: heldOverNightOf(today),
+      day: ownNight ? day : null,
+      asOfDay: scored && status is Map ? status['overnight_day']?.toString() : null,
+      computedAt: scored && status is Map
+          ? computedAtOf(status['overnight_computed_at'])
+          : null,
       series: denseDays(pointsOf(chart), 90),
       // Only read when there is nothing to explain away — a scored day has no
       // diag in its bundle anyway, and this is one more day_result decode.
@@ -112,26 +165,26 @@ class ReadinessData {
       // null, which is correct — the note on the metric is the reason then.
       absentDiag: readiness.value != null
           ? null
-          : await LocalDb.readinessAbsentDiag(
-              (today['status'] as Map?)?['today_day']?.toString()),
+          : await _absentDiag(
+              repo, (today['status'] as Map?)?['today_day']?.toString()),
     );
   }
 }
 
 class ReadinessDetail extends StatefulWidget {
   final ReadinessData? data;
-  const ReadinessDetail({super.key, this.data});
+
+  /// The held-over night to open on, or null for today. See [ReadinessData.load].
+  final String? day;
+  const ReadinessDetail({super.key, this.data, this.day});
 
   @override
   State<ReadinessDetail> createState() => _ReadinessDetailState();
 }
 
-class _ReadinessDetailState extends State<ReadinessDetail> {
+class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
   ReadinessData? _d;
   bool _loading = true;
-
-  /// The history slot under the finger, or null.
-  int? _pick;
 
   @override
   void initState() {
@@ -144,6 +197,20 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// Handed its data (golden, gallery): nothing behind it to read again.
+  /// Otherwise a derive that rewrites the night is read again, which is also
+  /// what clears the "As of" label.
+  @override
+  bool get revisionReloads => widget.data == null;
+
+  @override
+  void reload() {
+    _refresh.reset();
+    _load();
+  }
+
+  final _refresh = TodayRefreshLatch();
+
   Future<void> _load() async {
     final repo = repoOf(context);
     if (repo == null) {
@@ -151,8 +218,13 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
       return;
     }
     try {
-      final d = await ReadinessData.load(repo);
-      if (mounted) setState(() => (_d = d, _loading = false));
+      final d = await ReadinessData.load(repo, day: widget.day);
+      if (mounted) {
+        setState(() => (_d = d, _loading = false));
+        _refresh.afterPaint(repo, d.refreshPending).then((landed) {
+          if (landed && mounted) _load();
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -174,7 +246,32 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
         const SizedBox(height: S.x8),
         const Center(child: CircularProgressIndicator()),
       ] else ...[
-        if (v == null) ...[
+        AsOfHold(
+          shown: d,
+          day: d.asOfDay,
+          computedAt: d.computedAt,
+          asOf: (recalc) => asOfFor(
+              shownDay: d.asOfDay, computedAt: d.computedAt, recalc: recalc),
+          builder: (c, at) => Padding(
+              padding: const EdgeInsets.only(bottom: S.x2),
+              child: AsOfLabel(at: at)),
+        ),
+        if (d.day != null) ...[
+          Text(
+              l?.healthNightOf(prettyDay(d.day, l)) ??
+                  'Night of ${prettyDay(d.day, l)}',
+              style: F.cap.copyWith(color: p.ink2)),
+          const SizedBox(height: S.x3),
+        ],
+        if (v == null && d.refreshPending)
+          // The stored row is another day's and today's score is still being
+          // worked out, so this is not yet an absence to explain. It holds the
+          // landed ring's exact box (an empty track and a dash, never another
+          // day's number): the card swapping for the ring, the breakdown
+          // section appearing and the absence diagnostic going away used to
+          // move the whole page when the refresh landed.
+          _ringSurface(p, Ring(0, p.track, p.track, stroke: 14, t: 1), '—', ' ')
+        else if (v == null) ...[
           // No `why:`. The pipeline records why readiness abstained on every
           // day it does, and the "What was missing" section directly below
           // shows the same record in more detail. `why:` below reuses the
@@ -221,7 +318,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
                               'The last night scored was '
                                   '${prettyDay(d.heldOverNight, l)}.')) ??
                   const SizedBox.shrink(),
-              if (d.absentDiag != null)
+              if (d.absentDiag != null && !d.refreshPending)
                 Section(
                     l?.readinessDetailWhatWasMissing ?? 'What was missing',
                     _absence(
@@ -234,33 +331,15 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
             ]);
           }),
         ] else
-          Surface(
-            child: Column(children: [
-              SizedBox(
-                width: 150,
-                height: 150,
-                child: Stack(alignment: Alignment.center, children: [
-                  CustomPaint(
-                    size: const Size(150, 150),
-                    painter: Ring(d.readiness.normalized(100),
-                        d.provisional ? p.ink3 : p.on(band.color),
-                        p.track,
-                        stroke: 14, t: animate(c, 1)),
-                  ),
-                  Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text('${v.round()}',
-                        style: F.n48.copyWith(
-                            color: d.provisional ? p.ink3 : p.ink)),
-                    Text(band.label, style: F.cap.copyWith(color: p.ink3)),
-                  ]),
-                ]),
-              ),
-              if (recoveryStateLine(d.head, l) case final note?) ...[
-                const SizedBox(height: S.x2),
-                Text(note, style: F.cap.copyWith(color: p.ink3)),
-              ],
-            ]),
-          ),
+          _ringSurface(
+              p,
+              Ring(d.readiness.normalized(100),
+                  d.provisional ? p.ink3 : p.on(band.color), p.track,
+                  stroke: 14, t: animate(c, 1)),
+              '${v.round()}',
+              band.label,
+              bigColor: d.provisional ? p.ink3 : null,
+              note: recoveryStateLine(d.head, l)),
 
         if (d.breakdown.isNotEmpty) ...[
           Section(l?.readinessDetailWhatWentIntoIt ?? 'What went into it',
@@ -297,7 +376,10 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
               ),
             ]),
           ),
-        ] else if (v != null)
+        ] else if (v != null || d.refreshPending)
+          // Pending too: the breakdown comes from the cross-day insights, not
+          // from today's score, so "none yet" is true before the refresh lands
+          // and the section is already in place when it does.
           Section(
             l?.readinessDetailWhatWentIntoIt ?? 'What went into it',
             StatusCard(
@@ -327,6 +409,31 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
       ],
     ]);
   }
+
+  /// The headline card, shared by the scored state and the building one so
+  /// both occupy the same box. [bigColor] greys a provisional number; [note]
+  /// is the recovery state line Home shows beside the same number.
+  Widget _ringSurface(P p, CustomPainter ring, String big, String caption,
+          {Color? bigColor, String? note}) =>
+      Surface(
+        child: Column(children: [
+          SizedBox(
+            width: 150,
+            height: 150,
+            child: Stack(alignment: Alignment.center, children: [
+              CustomPaint(size: const Size(150, 150), painter: ring),
+              Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(big, style: F.n48.copyWith(color: bigColor ?? p.ink)),
+                Text(caption, style: F.cap.copyWith(color: p.ink3)),
+              ]),
+            ]),
+          ),
+          if (note != null) ...[
+            const SizedBox(height: S.x2),
+            Text(note, style: F.cap.copyWith(color: p.ink3)),
+          ],
+        ]),
+      );
 
   /// The last 90 CALENDAR days, trimmed to start at the first day that
   /// actually has a score — so the x labels span real dates and the empty run
@@ -358,81 +465,63 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
     final scored = [for (final v in win) ?v];
     // "Steady" is the usual band; abstains under two weeks of scored days.
     final band = usualRangeFor('readiness', scored, null);
-    final pick = _pick == null || _pick! >= win.length ? null : _pick;
     final n = DateTime.now();
     String dayOf(int i) => prettyDay(
         dayLabelOf(DateTime(n.year, n.month, n.day - (win.length - 1 - i))), l);
-    String says(int i) {
-      final v = win[i];
-      if (v == null) {
-        return '${dayOf(i)} · ${l?.metricDetailNoRecordLabel ?? 'No record'}';
-      }
-      return '${dayOf(i)} · ${v.round()} · ${readinessBand(v, l).label}';
-    }
 
-    // A bar owns its whole column, so the finger picks the column it is in.
-    int slot(double v) => (v * win.length).floor().clamp(0, win.length - 1);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      ChartFrame(
-        title: l?.readinessDetailTitle ?? 'Recovery',
-        unit: l?.readinessDetailUnit ?? '/100',
-        height: 120,
-        yAxis: axis,
-        band: band,
-        // Slot 0 is `length - 1` days behind today, not `length` — the last
-        // slot IS today. MetricDetail draws the same `recovery` series and
-        // already counts it this way; the two screens dated one chart
-        // differently.
-        xLabels: [
-          l?.readinessDetailDaysAgo(win.length - 1) ??
-              '${win.length - 1} day${win.length == 2 ? '' : 's'} ago',
-          l?.readinessDetailToday ?? 'Today',
-        ],
-        series: win,
-        legend: [
-          // Steady is green on the ring too, so the green key names both:
-          // a 45 inside the band is not "Good to go".
-          (
-            '${l?.homeReadinessGoodToGo ?? 'Good to go'} / '
-                '${l?.homeReadinessSteady ?? 'Steady'}',
-            p.on(C.green)
-          ),
-          (l?.homeReadinessTakeItEasy ?? 'Take it easy', p.on(C.orange)),
-          (l?.homeReadinessRestToday ?? 'Rest today', p.on(C.red)),
-        ],
-        footnote: band == null ? usualNeedsDaysText(l, scored.length) : null,
-        child: win.length < 2
-            ? CustomPaint(
-                size: Size.infinite,
-                painter: Bars(win, p.on(C.green),
-                    t: animate(c, 1),
-                    axis: axis,
-                    colorOf: (v) => p.on(readinessBand(v, l).color)),
-              )
-            : Scrubber(
-                value: pick == null ? null : (pick + .5) / win.length,
-                step: 1 / win.length,
-                label: l?.readinessDetailTitle ?? 'Recovery',
-                describe: (v) => says(slot(v)),
-                onChanged: (v) => setState(() => _pick = slot(v)),
-                child: CustomPaint(
-                  size: Size.infinite,
-                  painter: Bars(win, p.on(C.green),
-                      highlight: pick ?? -1,
-                      t: animate(c, 1),
-                      axis: axis,
-                      colorOf: (v) => p.on(readinessBand(v, l).color)),
-                ),
-              ),
-      ),
-      if (pick != null) ...[
-        const SizedBox(height: S.x2),
-        ExcludeSemantics(
-          child: Text(says(pick),
-              style: F.cap.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
-        ),
+    return ChartFrame(
+      title: l?.readinessDetailTitle ?? 'Recovery',
+      unit: l?.readinessDetailUnit ?? '/100',
+      height: 120,
+      yAxis: axis,
+      band: band,
+      // Slot 0 is `length - 1` days behind today, not `length` — the last
+      // slot IS today. MetricDetail draws the same `recovery` series and
+      // already counts it this way; the two screens dated one chart
+      // differently.
+      xLabels: [
+        l?.readinessDetailDaysAgo(win.length - 1) ??
+            '${win.length - 1} day${win.length == 2 ? '' : 's'} ago',
+        l?.readinessDetailToday ?? 'Today',
       ],
-    ]);
+      series: win,
+      legend: [
+        // Steady is green on the ring too, so the green key names both:
+        // a 45 inside the band is not "Good to go".
+        (
+          '${l?.homeReadinessGoodToGo ?? 'Good to go'} / '
+              '${l?.homeReadinessSteady ?? 'Steady'}',
+          p.on(C.green)
+        ),
+        (l?.homeReadinessTakeItEasy ?? 'Take it easy', p.on(C.orange)),
+        (l?.homeReadinessRestToday ?? 'Rest today', p.on(C.red)),
+      ],
+      footnote: band == null ? usualNeedsDaysText(l, scored.length) : null,
+      // A bar owns its whole column, so the finger reads the column it is in.
+      // The scrubbed day and score go in the chart's key row.
+      child: ChartScrub(
+        label: l?.readinessDetailTitle ?? 'Recovery',
+        // The last slot is today, as the x labels say.
+        gaps: hasChartGaps([win], trailing: true),
+        time: (at) => dayOf(ChartScrub.slotAt(win.length, at, bars: true)),
+        keys: [
+          ChartKey.slots(
+              '${l?.readinessDetailTitle ?? 'Recovery'} '
+              '(${l?.readinessDetailUnit ?? '/100'})',
+              p.on(C.green),
+              win,
+              (i, v) => '${v.round()} · ${readinessBand(v, l).label}',
+              bars: true),
+        ],
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: Bars(win, p.on(C.green),
+              t: animate(c, 1),
+              axis: axis,
+              colorOf: (v) => p.on(readinessBand(v, l).color)),
+        ),
+      ),
+    );
   }
 
   /// The pipeline's own absence diagnostic, one row per input: did last night

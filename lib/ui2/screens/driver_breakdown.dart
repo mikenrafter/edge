@@ -462,6 +462,7 @@ Widget _chart(BuildContext c, P p, DriverFacts f) {
     ],
     format: fmt,
   );
+  final unit = unitBeside(f.spec.unit);
 
   return ChartFrame(
     title: f.label,
@@ -482,14 +483,31 @@ Widget _chart(BuildContext c, P p, DriverFacts f) {
     bandColor: p.wash(f.spec.color),
     child: axis == null
         ? const SizedBox.shrink()
-        : CustomPaint(
-            size: Size.infinite,
-            // No fill. A gradient under the line and a tinted band behind it
-            // are two washes of the same colour arguing about which one the
-            // eye should read as "normal".
-            painter: LineChart(win, ink,
-                fill: false, dots: true, dotInk: p.card, t: animate(c, 1),
-                axis: axis),
+        : ChartScrub(
+            label: f.label,
+            // The window ends today, one slot per day.
+            gaps: hasChartGaps([win], trailing: true),
+            time: (at) => ChartScrub.dayBack(
+                win.length - 1 - ChartScrub.slotAt(win.length, at)),
+            // The usual range is keyed by ChartFrame itself (see `band`
+            // above), so the key row here carries only the scrubbed reading.
+            keys: [
+              ChartKey.slots(
+                  unit.isEmpty ? f.label : '${f.label} ($unit)',
+                  ink,
+                  win,
+                  (i, v) => '${metricValue(f.spec.unit, v)}'
+                      '${unit.isEmpty ? '' : ' $unit'}'),
+            ],
+            child: CustomPaint(
+              size: Size.infinite,
+              // No fill. A gradient under the line and a tinted band behind it
+              // are two washes of the same colour arguing about which one the
+              // eye should read as "normal".
+              painter: LineChart(win, ink,
+                  fill: false, dots: true, dotInk: p.card, t: animate(c, 1),
+                  axis: axis),
+            ),
           ),
   );
 }

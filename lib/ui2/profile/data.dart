@@ -42,6 +42,7 @@ import '../screens/home_screen.dart' show dbRebuiltCard;
 import '../ui2.dart';
 import 'phone_import.dart';
 import 'profile.dart';
+import 'settings.dart' show backToRoot;
 
 /// What an action has to say for itself: the line to show, and whether it is a
 /// failure. Without the second half every outcome rendered as "Done ✓".
@@ -169,7 +170,7 @@ class _DataScreenState extends State<DataScreen> {
     await Share.shareXFiles([XFile(path)],
         subject: 'OpenStrap database', sharePositionOrigin: origin);
     return (
-      l?.dataDatabaseShared ?? 'Database shared. It is the complete copy.',
+      l?.dataDatabaseShared ?? 'Database shared.',
       false
     );
   }
@@ -203,15 +204,24 @@ class _DataScreenState extends State<DataScreen> {
         subject: 'OpenStrap encrypted backup', sharePositionOrigin: origin);
     return (
       l?.dataEncryptedBackupShared ??
-          'Encrypted backup shared. Without that passphrase nobody can open it — '
-              'including this app, and including us.',
+          'Encrypted backup shared. Without the passphrase nobody '
+          'can open it, including this app and us.',
       false
     );
   }
 
   Future<_Note> _reanalyze(AppState app) async {
     final l = AppLocalizations.of(context);
+    // Captured before the confirm dialog's await; the context may be gone
+    // by the time the re-analysis returns.
     final ml = MaterialLocalizations.of(context);
+    final confirmed = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Rebuild all history?'),
+      content: const Text('Recalculating all stored days can take several minutes and use battery. Keep Edge open until it finishes. Days whose recordings were already removed cannot be recomputed.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Rebuild all history'))],
+    ));
+    if (confirmed != true) return ('', false);
     Future<Map<String, int>> recovery() async => {
           for (final r in await LocalDb.metricSeries('readiness'))
             r['date'] as String: (r['value'] as num).round(),
@@ -306,18 +316,105 @@ class _DataScreenState extends State<DataScreen> {
   @override
   Widget build(BuildContext c) {
     final app = c.watch<AppState>();
+    return DataScreenView(
+      rebuiltCard: dbRebuiltCard(app.dbRebuild),
+      busy: _busy,
+      note: _note,
+      noteFailed: _noteFailed,
+      outcome: _outcome,
+      cadence: app.backupCadence,
+      lastBackup: app.lastBackupAt,
+      backupFolder: app.backupFolder,
+      backupError: app.lastBackupError,
+      reanalyzeProgress: app.reanalyzeProgress,
+      reanalyzing: app.reanalyzing,
+      importRollupError: app.importRollupError,
+      onExportCsv: () => _run(_exportCsv),
+      onExportHeartRate: () => _run(_exportHeartRate),
+      onExportDb: () => _run(_exportDb),
+      onExportEncrypted: () => _run(_exportEncrypted),
+      onCycleCadence: () => app.setBackupCadence(_nextCadence(app.backupCadence)),
+      onChooseBackupFolder: () => _run(() => _chooseBackupFolder(app)),
+      onUseDefaultBackupFolder: () => _run(() => _useDefaultBackupFolder(app)),
+      onBackupNow: () => _run(() => _backupNow(app)),
+      onImport: () => _run(() => _import(app)),
+      onPhoneImport: () => goto(c, const PhoneImport()),
+      onReanalyze: () => _run(() => _reanalyze(app)),
+      onReset: () => confirmResetAllData(c, app),
+    );
+  }
+}
+
+/// Your data without AppState, so it can be pumped headless. Every input is
+/// optional; a null callback is an inert row.
+class DataScreenView extends StatelessWidget {
+  const DataScreenView({
+    super.key,
+    this.rebuiltCard,
+    this.busy = false,
+    this.note,
+    this.noteFailed = false,
+    this.outcome,
+    this.cadence = BackupCadence.off,
+    this.lastBackup,
+    this.backupFolder,
+    this.backupError,
+    this.reanalyzeProgress = '',
+    this.reanalyzing = false,
+    this.importRollupError,
+    this.onExportCsv,
+    this.onExportHeartRate,
+    this.onExportDb,
+    this.onExportEncrypted,
+    this.onCycleCadence,
+    this.onChooseBackupFolder,
+    this.onUseDefaultBackupFolder,
+    this.onBackupNow,
+    this.onImport,
+    this.onPhoneImport,
+    this.onReanalyze,
+    this.onReset,
+  });
+
+  final Widget? rebuiltCard;
+  final bool busy, noteFailed, reanalyzing;
+  final String? note, importRollupError;
+  final String reanalyzeProgress;
+  final ImportOutcome? outcome;
+  final BackupCadence cadence;
+  final DateTime? lastBackup;
+
+  /// The chosen Android backup folder; null is the app's own folder.
+  final BackupFolder? backupFolder;
+
+  /// Why the last automatic backup failed, if it did.
+  final String? backupError;
+  final VoidCallback? onExportCsv,
+      onExportHeartRate,
+      onExportDb,
+      onExportEncrypted,
+      onCycleCadence,
+      onChooseBackupFolder,
+      onUseDefaultBackupFolder,
+      onBackupNow,
+      onImport,
+      onPhoneImport,
+      onReanalyze,
+      onReset;
+
+  @override
+  Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final last = app.lastBackupAt;
-    final folder = app.backupFolder;
-    final backupError = app.lastBackupError;
+    final last = lastBackup;
+    final folder = backupFolder;
     final folderLabel = folder == null
         ? (l?.dataBackupFolderDefault ?? 'App folder (default)')
         : folder.name.isEmpty
             ? (l?.dataBackupFolder ?? 'Backup folder')
             : folder.name;
-    final o = _outcome;
-    final rebuilt = dbRebuiltCard(app.dbRebuild);
+    final o = outcome;
+    final rebuilt = rebuiltCard;
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -343,7 +440,9 @@ class _DataScreenState extends State<DataScreen> {
                   rebuilt,
                   const SizedBox(height: S.x5),
                 ],
-                settingsGroup(c, l?.dataExportGroup ?? 'Export', [
+                SettingsAccordion(l?.dataExportGroup ?? 'Export',
+                    id: 'data_export',
+                    children: [
                   SetRow(LucideIcons.fileSpreadsheet, C.green,
                       l?.dataExportSpreadsheets ?? 'Export as spreadsheets',
                       // export-provenance: the daily file now carries `source`
@@ -353,25 +452,26 @@ class _DataScreenState extends State<DataScreen> {
                       // provenance — never back-filled to 'band'.
                       sub: l?.dataExportSpreadsheetsSub(kCsvExportSets.length) ??
                           '${kCsvExportSets.length} CSV files: daily metrics, workouts, sleep, journal, labs and all you entered. Each day notes its source and scoring version',
-                      onTap: _busy ? null : () => _run(_exportCsv)),
+                      onTap: busy ? null : onExportCsv),
                   SetRow(LucideIcons.heartPulse, C.red,
                       l?.dataExportHeartRate ?? 'Export heart rate, minute by minute',
                       sub: l?.dataExportHeartRateSub ??
                           'One CSV for the days you pick, with a 1-minute average for every recorded minute. Second-by-second data is in the database export',
-                      onTap: _busy ? null : () => _run(_exportHeartRate)),
+                      onTap: busy ? null : onExportHeartRate),
                   SetRow(LucideIcons.database, C.blue,
                       l?.dataExportDatabase ?? 'Export the database',
                       sub: l?.dataExportDatabaseSub ??
                           'One .db file, lossless, and the only format that restores onto another phone. Any SQLite reader can open it, so keep it safe',
-                      onTap: _busy ? null : () => _run(_exportDb)),
+                      onTap: busy ? null : onExportDb),
                   SetRow(LucideIcons.lock, C.purple,
                       l?.dataExportEncrypted ?? 'Export an encrypted backup',
                       sub: l?.dataExportEncryptedSub ??
                           'The same full copy, locked with a passphrase, for somewhere like iCloud. Forget the passphrase and no one can open the file',
-                      onTap: _busy ? null : () => _run(_exportEncrypted)),
+                      onTap: busy ? null : onExportEncrypted),
                 ]),
-                const SizedBox(height: S.x5),
-                settingsGroup(c, l?.dataAutoBackupGroup ?? 'Automatic backup', [
+                SettingsAccordion(l?.dataAutoBackupGroup ?? 'Automatic backup',
+                    id: 'data_auto_backup',
+                    children: [
                   SetRow(LucideIcons.calendarClock, C.purple,
                       l?.dataHowOften ?? 'How often',
                       // Unencrypted, and it says so. The encrypted format is
@@ -382,22 +482,17 @@ class _DataScreenState extends State<DataScreen> {
                       sub: l?.dataHowOftenSub(folder == null ? kBackupDirName : folderLabel, kBackupsKept) ??
                           'Writes a compressed, unencrypted copy to '
                               '${folder == null ? kBackupDirName : folderLabel}, keeping the last $kBackupsKept',
-                      value: app.backupCadence.label,
-                      onTap: _busy
-                          ? null
-                          : () => _run(() async {
-                              await app.setBackupCadence(_nextCadence(app.backupCadence));
-                              return ('', false);
-                            })),
+                      value: cadence.label,
+                      onTap: busy ? null : onCycleCadence),
                   if (defaultTargetPlatform == TargetPlatform.android)
                     SetRow(LucideIcons.folder, C.purple,
                         l?.dataBackupFolder ?? 'Backup folder',
                         sub: '$folderLabel\n${l?.dataBackupFolderSub ?? 'Choose where new backups are saved. Existing backups stay where they are'}',
-                        onTap: _busy ? null : () => _run(() => _chooseBackupFolder(app))),
+                        onTap: busy ? null : onChooseBackupFolder),
                   if (defaultTargetPlatform == TargetPlatform.android && folder != null)
                     SetRow(LucideIcons.folderClosed, C.n500,
                         l?.dataBackupFolderUseDefault ?? 'Use default folder',
-                        onTap: _busy ? null : () => _run(() => _useDefaultBackupFolder(app))),
+                        onTap: busy ? null : onUseDefaultBackupFolder),
                   SetRow(LucideIcons.clock, C.n500,
                       l?.dataLastBackup ?? 'Last backup',
                       value: last == null
@@ -413,15 +508,16 @@ class _DataScreenState extends State<DataScreen> {
                         chevron: false),
                   SetRow(LucideIcons.hardDriveDownload, C.teal,
                       l?.dataBackUpNow ?? 'Back up now',
-                      onTap: _busy ? null : () => _run(() => _backupNow(app))),
+                      onTap: busy ? null : onBackupNow),
                 ]),
-                const SizedBox(height: S.x5),
-                settingsGroup(c, l?.dataBringDataInGroup ?? 'Bring data in', [
+                SettingsAccordion(l?.dataBringDataInGroup ?? 'Bring data in',
+                    id: 'data_bring_in',
+                    children: [
                   SetRow(LucideIcons.upload, C.orange,
                       l?.dataImportFile ?? 'Import a file',
                       sub: l?.dataImportFileSub ??
                           'An OpenStrap backup, a journal CSV, a raw sensor export or a vendor CSV. Days the band already measured are never overwritten',
-                      onTap: _busy ? null : () => _run(() => _import(app))),
+                      onTap: busy ? null : onImport),
                   // Progressive disclosure: two health-store reads, each with
                   // its own consent and its own ceiling, behind one row rather
                   // than two more rows on this screen.
@@ -430,51 +526,57 @@ class _DataScreenState extends State<DataScreen> {
                       sub: l?.dataFromYourPhoneSub ??
                           'Resting heart rate, blood pressure, glucose and '
                               'body temperature',
-                      onTap: _busy ? null : () => goto(c, const PhoneImport())),
+                      onTap: busy ? null : onPhoneImport),
                 ]),
-                const SizedBox(height: S.x5),
-                settingsGroup(c, l?.dataRebuildGroup ?? 'Rebuild', [
+                SettingsAccordion('Advanced',
+                    id: 'data_advanced',
+                    children: [
                   // The engine puts days on hold after a ≥3 h timezone jump
                   // "until Re-analyze data runs" — and nothing in the app ran
                   // it. A flight abroad quietly stopped days updating with no
                   // control anywhere to release them.
                   SetRow(LucideIcons.refreshCcw, C.blue,
-                      l?.dataReanalyzeEverything ?? 'Re-analyze everything',
+                      'Rebuild all history',
                       sub: l?.dataReanalyzeEverythingSub ??
-                          'Scores every day again from what is stored. Needed '
-                              'after a long-haul flight, and after an import that '
-                              'landed days out of order',
-                      value: app.reanalyzeProgress,
-                      onTap: _busy || app.reanalyzing
-                          ? null
-                          : () => _run(() => _reanalyze(app))),
+                          'Recalculates every day from stored data. Run it after a long-haul flight or after an import that added days out of order.',
+                      value: reanalyzeProgress,
+                      onTap: busy || reanalyzing ? null : onReanalyze),
+                  // Last, and inside Advanced: it was a red row at the foot of
+                  // Settings. The dialog and the flow behind it are unchanged.
+                  SetRow(LucideIcons.trash2, C.red,
+                      l?.settingsResetAllDataRowTitle ?? 'Reset all data',
+                      danger: true,
+                      chevron: false,
+                      onTap: busy ? null : onReset),
                 ]),
-                if (_busy) ...[
+                if (busy) ...[
                   const SizedBox(height: S.x6),
                   Center(child: CircularProgressIndicator(color: p.on(C.blue))),
                 ],
-                if (_note != null && _note!.isNotEmpty) ...[
+                if (note != null && note!.isNotEmpty) ...[
                   const SizedBox(height: S.x5),
                   StatusCard(
-                      _noteFailed
+                      noteFailed
                           ? (l?.dataThatDidNotWork ?? 'That did not work')
                           : (l?.actionDone ?? 'Done'),
-                      _note!,
-                      icon: _noteFailed
+                      note!,
+                      icon: noteFailed
                           ? LucideIcons.triangleAlert
                           : LucideIcons.check),
                 ],
-                if (app.importRollupError != null) ...[
+                if (importRollupError != null) ...[
                   const SizedBox(height: S.x5),
                   StatusCard(
                     l?.welcomeSummariesDidNotTitle ??
-                        'The days landed, the summaries did not',
+                        'Days imported, summaries not rebuilt',
                     l?.dataSummariesDidNotBodyShort(
-                            '${app.importRollupError}') ??
-                        'Every imported row is saved, but updating your trends failed (${app.importRollupError}). Trends and insights still show the data you had before.',
-                    fix: l?.dataReanalyzeEverything ?? 'Re-analyze everything',
+                            '$importRollupError') ??
+                        'Every imported row is saved, but updating your trends failed ($importRollupError). Trends and insights still show the data you had before.',
+                    // The Advanced row this runs is "Rebuild all history"; the
+                    // fix names it the same way.
+                    fix: 'Rebuild all history',
                     icon: LucideIcons.triangleAlert,
-                    onFix: _busy ? null : () => _run(() => _reanalyze(app)),
+                    onFix: busy ? null : onReanalyze,
                   ),
                 ],
                 // The onboarding report, not a second copy of it. This
@@ -492,6 +594,60 @@ class _DataScreenState extends State<DataScreen> {
       ),
     );
   }
+}
+
+/// "Reset all data": confirm, delete everything, then unwind to the gate. It
+/// lives in Your data > Advanced (it used to be the last row of Settings, front
+/// and centre) and has no other door.
+Future<void> confirmResetAllData(BuildContext c, AppState app) async {
+  final l = AppLocalizations.of(c);
+  final ok = await showDialog<bool>(
+    context: c,
+    builder: (d) => AlertDialog(
+      title: Text(l?.settingsResetTitle ?? 'Delete everything?'),
+      // Enumerated, because the previous wording ("every measured day, session
+      // and profile field") was false in about twenty places: it deleted the
+      // derived days and left the labs, the meals, the doses, the breathing
+      // sessions, the logged sets, the baselines, the consent flags, the
+      // install id, the stored API key and the home-screen widget standing.
+      // It now removes all of that, so it can say so.
+      content: Text(
+        l?.settingsResetBody ??
+            'This deletes, permanently and with no copy anywhere else:\n\n'
+                '· every measured day, sleep, workout and route\n'
+                '· every lab result, meal, medication dose, habit, breathing session '
+                'and logged set\n'
+                '· your journal, cycle log and rolling baselines\n'
+                '· your profile, every preference and any stored AI key\n'
+                '· the home-screen widget and every scheduled reminder\n\n'
+                'The band is unpaired, and it cannot re-send history it has already '
+                'handed over. Export from Your data first if you want a copy.',
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(d).pop(false),
+            child: Text(l?.settingsResetKeepData ?? 'Keep my data')),
+        TextButton(
+            onPressed: () => Navigator.of(d).pop(true),
+            child: Text(l?.settingsResetDeleteEverything ?? 'Delete everything')),
+      ],
+    ),
+  );
+  if (ok != true) return;
+  await app.resetAllData();
+  // "with no copy anywhere else" was false while automatic backup was on:
+  // `wipeAll` deletes rows and cannot touch files, so up to [kBackupsKept]
+  // gzipped whole-database copies survived in a folder the user can browse and
+  // Import a file can read straight back.
+  try {
+    await pruneBackups(await backupDirectory(), keep: 0);
+  } catch (_) {
+    // No backup folder is the normal case — nothing to delete.
+  }
+  // resetAllData swaps the gate to Welcome, which is UNDER this screen —
+  // without this the user stays on Settings, reading a profile that has been
+  // deleted.
+  if (c.mounted) backToRoot(c);
 }
 
 /// Off → Daily → Weekly → Off. Three states cycle in a row; a picker for three

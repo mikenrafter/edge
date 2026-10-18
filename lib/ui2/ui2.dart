@@ -6,14 +6,26 @@
 // should import its parts individually.
 
 export 'app_shell.dart';
+export 'as_of.dart';
+export 'chart_annotations.dart';
 export 'charts.dart';
 export 'community_links.dart';
 export 'grammar.dart';
+export 'inline_loading.dart';
+export 'last_result_cache.dart';
 export 'live_hr.dart';
+export 'metric_labels.dart';
 export 'ecg_widgets.dart';
+export 'gesture_failure_card.dart';
+export 'haptic_score.dart';
 export 'nudges.dart';
 export 'paint_activity.dart';
+export 'research_refs.dart';
 export 'revision.dart';
 export 'scroll_hint.dart';
+export 'sleep_ring_model.dart';
+export 'sync_control.dart';
 export 'theme.dart';
+export 'today_refresh.dart';
 export 'trend.dart';
+export 'water_display.dart';

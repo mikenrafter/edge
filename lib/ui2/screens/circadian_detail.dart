@@ -21,20 +21,15 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
-import '../../data/day_label.dart';
+import '../../data/circadian_artifact.dart';
+import '../../data/day_label.dart' show dayLabelOf, todayLabel;
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
+import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'home_screen.dart';
 import 'metric_detail.dart';
-
-/// How many nights the actogram draws. Each night costs one day-bundle decode,
-/// so this is a real cost, not a display choice.
-// ponytail: N bundle reads per open. If this ever feels slow, the fix is a
-// `sleepWindows({days})` repo method that reads onset/offset without the
-// payload, not a smaller number here.
-const _nights = 42;
 
 class CircadianData {
   /// Newest last. One entry per night: 24 hourly fractions from local noon, or
@@ -80,6 +75,11 @@ class CircadianData {
   /// this screen only draws what it published.
   final ana.Metric<ana.AlertnessForecast> alertness;
 
+  /// When the cross-day rollup this screen reads was written — what "As of"
+  /// says while the cross-day step recalculates it. Null when the reader gave
+  /// none.
+  final DateTime? computedAt;
+
   const CircadianData({
     this.actogram = const [],
     this.labels = const [],
@@ -104,6 +104,7 @@ class CircadianData {
       inputs_used: [],
       note: 'no night loaded',
     ),
+    this.computedAt,
   });
 
   /// The middle value of [xs], which must be non-empty. A median, not a mean:
@@ -114,8 +115,20 @@ class CircadianData {
     return s[s.length ~/ 2];
   }
 
-  static Future<CircadianData> load(LocalRepository repo) async {
-    final cd = await repo.getInsights();
+  /// Reads the artifact fresh from the repository's own readers: what the
+  /// warmer stores under `circadian` and a screen handed a bare repository
+  /// builds from.
+  static Future<CircadianData> load(LocalRepository repo) async =>
+      CircadianData.fromArtifact(await buildCircadianArtifact(repo));
+
+  /// The screen's data from the `circadian` artifact (`buildCircadianArtifact`):
+  /// the rollup's envelopes plus the actogram and hourly rows it carries. Both
+  /// the in-memory map and one read back from the store (lists of `dynamic`)
+  /// are accepted.
+  factory CircadianData.fromArtifact(Map<String, dynamic> art) {
+    final cd = art;
+    final scr = (art[kCircadianScreenKey] as Map?)?.cast<String, dynamic>() ??
+        const <String, dynamic>{};
     final chrono = cd['chronotype'];
     final sjl = cd['social_jetlag'];
     final reg = cd['regularity'];
@@ -126,62 +139,24 @@ class CircadianData {
     final cos = cd['circadian_cosinor'];
     final npV = envValue(np) ?? const {};
 
-    // One column per CALENDAR night, not per derived day. `availableDays`
-    // returns only the days that produced a result, so walking it directly
-    // packed a 42-night actogram out of whatever 42 days happened to exist —
-    // a fortnight of no records closed up, and every column left of it moved.
-    // An actogram is a picture of when things happen; the x spacing IS the
-    // measurement.
-    final days = await repo.availableDays(); // newest first
-    final have = days.toSet();
-    final cols = <List<double>?>[];
-    final labels = <String>[];
-    // The newest night that actually has a window, picked up as the actogram
-    // walks past it. MIND-11 needs exactly this and nothing else, so it costs no
-    // read of its own — the loop below is already decoding every one of them.
-    Map<String, dynamic>? latestNight;
-    if (days.isNotEmpty) {
-      final a = DateTime.parse(days.first);
-      for (var back = _nights - 1; back >= 0; back--) {
-        final day = dayLabelOf(DateTime(a.year, a.month, a.day - back));
-        labels.add(day);
-        if (!have.contains(day)) {
-          cols.add(null);
-          continue;
-        }
-        final n = await repo.getDaySleepV2(day);
-        cols.add(_column(n['onset_ts'] as num?, n['wake_ts'] as num?));
-        if (n['wake_ts'] is num) latestNight = n;
-      }
-    }
-
-    // The rolling week, TODAY EXCLUDED — today's daytime bins are a handful of
-    // five-minute windows and this row is only honest as a weekly median.
-    final today = dayLabelOf(DateTime.now());
-    // ponytail: 7 more bundle decodes on a screen that already does 42. If
-    // this screen ever feels slow the fix is one repo method that reads
-    // `daytime_hrv` without the payload, not a smaller week.
-    final week = days.where((d) => d != today).take(7).toList();
-    final byHour = List.generate(24, (_) => <double>[]);
-    String? hourlyNote;
-    for (final day in week) {
-      final dh = (await repo.getDayHeart(day))['daytime_hrv'];
-      if (dh is! Map) continue;
-      hourlyNote ??= dh['note']?.toString();
-      final tl = dh['timeline'];
-      for (final e in (tl is List ? tl : const [])) {
-        if (e is! Map) continue;
-        final t = e['t'], v = e['rmssd'];
-        if (t is! num || v is! num) continue;
-        final h = DateTime.fromMillisecondsSinceEpoch(t.round() * 1000).hour;
-        byHour[h].add(v.toDouble());
-      }
-    }
+    final cols = <List<double>?>[
+      for (final c in (scr['actogram'] as List? ?? const []))
+        c is List ? [for (final x in c) (x as num).toDouble()] : null,
+    ];
+    final labels = [
+      for (final l in (scr['labels'] as List? ?? const [])) l.toString(),
+    ];
     // An hour built from one or two stretches is not an hour. It goes absent
     // rather than being drawn faintly or averaged with its neighbours.
+    final byHour = [
+      for (final h in (scr['hourly_samples'] as List? ?? const []))
+        [for (final x in (h as List)) (x as num).toDouble()],
+    ];
     final hourly = [
       for (final xs in byHour) xs.length < 3 ? null : _median(xs),
     ];
+    final hourlyNote = scr['hourly_note']?.toString();
+    final week = (scr['hourly_days'] as num?)?.toInt() ?? 0;
 
     final cosV = envValue(cos) ?? const {};
     // MIND-11. Both inputs are REQUIRED by the analytics gate and neither has a
@@ -189,18 +164,20 @@ class CircadianData {
     // which is the gate the item says gets quietly removed later if it is not
     // pinned. Naps are not passed — the forecast is for today and today's naps
     // have not happened; the card says it only knows last night.
-    final wake = (latestNight?['wake_ts'] as num?)?.round();
+    final wake = (scr['latest_wake_ts'] as num?)?.round();
     final wakeAt = wake == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(wake * 1000);
-    // Last night only. `latestNight` is just the newest night in the window,
-    // which is weeks old when the band sat on the charger; a forecast for
-    // today built from that wake time is a fabricated one.
+    // Last night only. `latest_wake_ts` is just the newest night in the
+    // window, which is weeks old when the band sat on the charger; a forecast
+    // for today built from that wake time is a fabricated one. Checked here,
+    // at read time, because a stored artifact can outlive the day it was
+    // built on.
     final wakeLocal =
-        wakeAt != null && dayLabelOf(wakeAt) == today ? wakeAt : null;
+        wakeAt != null && dayLabelOf(wakeAt) == todayLabel() ? wakeAt : null;
     final tstMin = wakeLocal == null
         ? null
-        : (latestNight?['duration_min'] as num?)?.toDouble();
+        : (scr['latest_duration_min'] as num?)?.toDouble();
 
     return CircadianData(
       actogram: cols,
@@ -212,7 +189,7 @@ class CircadianData {
         circadianAcrophaseHours: (cosV['acrophase_hours'] as num?)?.toDouble(),
       ),
       hourly: hourly,
-      hourlyDays: week.length,
+      hourlyDays: week,
       hourlyN: [for (final xs in byHour) xs.length],
       hourlyNote: hourlyNote,
       chronotypeLabel: (chronoV['type_label'] ?? '').toString(),
@@ -236,25 +213,8 @@ class CircadianData {
       cosinorV: cosV,
       coverage: (cd['circadian_coverage'] as Map?)?.cast<String, dynamic>() ??
           const {},
+      computedAt: computedAtOf(cd['computed_at']),
     );
-  }
-
-  /// One night as 24 hourly asleep-fractions on a noon-anchored axis.
-  static List<double>? _column(num? onsetTs, num? wakeTs) {
-    if (onsetTs == null || wakeTs == null || wakeTs <= onsetTs) return null;
-    final onset = DateTime.fromMillisecondsSinceEpoch(onsetTs.round() * 1000);
-    // Anchor at the noon BEFORE sleep onset, so a 23:40 start and a 01:10 start
-    // land in the same column rather than a day apart.
-    final anchor = onset.hour < 12
-        ? DateTime(onset.year, onset.month, onset.day - 1, 12)
-        : DateTime(onset.year, onset.month, onset.day, 12);
-    final a = anchor.millisecondsSinceEpoch / 1000;
-    final lo = (onsetTs - a) / 3600, hi = (wakeTs - a) / 3600;
-    if (hi <= 0 || lo >= 24) return null;
-    return [
-      for (var h = 0; h < 24; h++)
-        ((hi < h + 1 ? hi : h + 1) - (lo > h ? lo : h)).clamp(0.0, 1.0).toDouble(),
-    ];
   }
 }
 
@@ -284,7 +244,7 @@ class CircadianDetail extends StatefulWidget {
   State<CircadianDetail> createState() => _CircadianDetailState();
 }
 
-class _CircadianDetailState extends State<CircadianDetail> {
+class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
   CircadianData? _d;
   bool _loading = true;
 
@@ -307,17 +267,56 @@ class _CircadianDetailState extends State<CircadianDetail> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// Handed its data (golden, gallery): nothing behind it to read again.
+  /// Otherwise a new cross-day rollup is read again, which is also what clears
+  /// the "As of" label.
+  @override
+  bool get revisionReloads => widget.data == null;
+
+  @override
+  void reload() => _load();
+
+  /// Set while the page shows the last stored result, stale, while the warmer
+  /// prepares a fresh one; null once the fresh one has replaced it.
+  DateTime? _cachedAt;
+
+  /// Opens from the stored `circadian` artifact: a fresh one is drawn as is,
+  /// with no day bundle read on this isolate. With none, the page is the shell
+  /// and an InlineLoading, the warm is requested, and the result is drawn when
+  /// it lands (the warm moves the revision, which reads again). Nothing is
+  /// computed here. A stale stored one is drawn under an "As of" label
+  /// meanwhile.
   Future<void> _load() async {
     final repo = repoOf(context);
     if (repo == null) {
       if (mounted) setState(() => _loading = false);
       return;
     }
+    final warm = warmRequesterOf(context);
+    final t = beginRead(#circadian);
+    const key = 'circadian';
     try {
-      final d = await CircadianData.load(repo);
-      if (mounted) setState(() => (_d = d, _loading = false));
+      final art = await LastResultCache.instance.loadWarmed<Map<String, dynamic>>(
+        key,
+        signature: () => repo.artifactSignature(key),
+        warm: () => warm == null ? Future<void>.value() : warm(key),
+        onLast: (hit) {
+          if (!stillNewest(#circadian, t) || _d != null) return;
+          setState(() => (
+                _d = CircadianData.fromArtifact(hit.value),
+                _cachedAt = hit.cachedAt,
+                _loading = false,
+              ));
+        },
+      );
+      if (!stillNewest(#circadian, t) || art == null) return;
+      setState(() => (
+            _d = CircadianData.fromArtifact(art),
+            _cachedAt = null,
+            _loading = false,
+          ));
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (stillNewest(#circadian, t)) setState(() => _loading = false);
     }
   }
 
@@ -336,9 +335,28 @@ class _CircadianDetailState extends State<CircadianDetail> {
             : (l?.circadianDetailTitle ?? 'Body clock'),
         [
       if (_loading && _d == null) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
-      ] else if (advanced) ...[
+        const SizedBox(height: S.x4),
+        const InlineLoading(),
+      ] else ...[
+        // Chronotype, jet lag, regularity and the rhythm battery all come off
+        // the cross-day rollup, so the label follows that step, not a day.
+        if (_cachedAt case final at?)
+          Padding(
+              padding: const EdgeInsets.only(bottom: S.x2),
+              child: AsOfLabel(at: at))
+        else
+          AsOfHold(
+            shown: d,
+            asOf: (recalc) => asOfFor(
+                shownDay: null,
+                computedAt: d.computedAt,
+                recalc: recalc,
+                dependsOnCrossDay: true),
+            builder: (c, at) => Padding(
+                padding: const EdgeInsets.only(bottom: S.x2),
+                child: AsOfLabel(at: at)),
+          ),
+        if (advanced) ...[
         if (drawn == 0)
           StatusCard(
             l?.circadianDetailNoNightsTitle ?? 'No nights to plot yet',
@@ -368,9 +386,46 @@ class _CircadianDetailState extends State<CircadianDetail> {
               footnote: l?.circadianDetailSleepFootnote(drawn) ??
                   '$drawn night${drawn == 1 ? '' : 's'}, one column each, '
                       'darker where more of that hour was asleep.',
-              child: CustomPaint(
-                size: Size.infinite,
-                painter: Actogram(d.actogram, p.on(C.indigo)),
+              // A grid: the finger selects the night (column) it is over. Each
+              // column is 24 hourly shares of that hour asleep, so the sum is
+              // the hours asleep that the shading adds up to. A night with no
+              // column is a night that was not recorded.
+              child: ChartScrub(
+                label: l?.circadianDetailSleepTitle ?? 'Sleep, night by night',
+                mode: ChartScrubMode.nearest,
+                // A night with no column was not recorded: the "Not recorded"
+                // entry, only when there is one.
+                gaps: hasChartGaps([
+                  [for (final col in d.actogram) col == null ? null : 1.0]
+                ], trailing: true),
+                time: (at) {
+                  final i = ChartScrub.slotAt(d.actogram.length, at, bars: true);
+                  return i < d.labels.length ? d.labels[i] : null;
+                },
+                keys: [
+                  ChartKey(
+                    l?.circadianDetailAsleep ?? 'Asleep',
+                    C.indigo,
+                    (at) {
+                      final n = d.actogram.length;
+                      if (n == 0) return null;
+                      final col = d.actogram[ChartScrub.slotAt(n, at, bars: true)];
+                      if (col == null) return null;
+                      final asleep = col
+                          .where((v) => v.isFinite)
+                          .fold<double>(0, (a, v) => a + v.clamp(0.0, 1.0));
+                      return axisHm(asleep * 60);
+                    },
+                    latest: () {
+                      final last = d.actogram.lastIndexWhere((col) => col != null);
+                      return last < 0 ? null : (last + .5) / d.actogram.length;
+                    }(),
+                  ),
+                ],
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter: Actogram(d.actogram, p.on(C.indigo)),
+                ),
               ),
             ),
           ),
@@ -410,6 +465,7 @@ class _CircadianDetailState extends State<CircadianDetail> {
           onAction: () => setState(() => _showStrength = !_showStrength),
         ),
 
+        ],
       ],
     ]);
   }
@@ -474,11 +530,25 @@ class _CircadianDetailState extends State<CircadianDetail> {
                 'stretches over '
                 '${d.hourlyDays} day${d.hourlyDays == 1 ? '' : 's'}, and $drawn '
                 'of 24 hours had enough, so read it as stillness, not stress.',
-        child: CustomPaint(
-          size: Size.infinite,
-          // Uncoloured. A hue here would be a verdict about an hour of your
-          // day, and there is no verdict available.
-          painter: Bars(d.hourly, p.ink3, axis: axis, t: animate(c, 1)),
+        child: ChartScrub(
+          label: l?.circadianDetailStillnessTitle ??
+              'Beat-to-beat variability while still',
+          // 24 bars, one per local hour; an hour without three stretches is
+          // blank on the chart and reads "No data here".
+          gaps: hasChartGaps([d.hourly], trailing: true),
+          time: (at) => ChartScrub.clock(
+              ChartScrub.slotAt(d.hourly.length, at, bars: true) * 60),
+          keys: [
+            ChartKey.slots('HRV while still (ms)', p.ink3, d.hourly,
+                (h, v) => '${v.round()} ms',
+                bars: true),
+          ],
+          child: CustomPaint(
+            size: Size.infinite,
+            // Uncoloured. A hue here would be a verdict about an hour of your
+            // day, and there is no verdict available.
+            painter: Bars(d.hourly, p.ink3, axis: axis, t: animate(c, 1)),
+          ),
         ),
       ),
     );
@@ -507,7 +577,7 @@ class _CircadianDetailState extends State<CircadianDetail> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ChartFrame(
           title: l?.circadianDetailForecastTitle ??
-              'How today is likely to run',
+              'Predicted alertness curve for today',
           // There is no unit. Saying so is more honest than borrowing one, and
           // the frame renders it in the slot a unit would have occupied.
           unit: 'shape only',
@@ -520,13 +590,34 @@ class _CircadianDetailState extends State<CircadianDetail> {
           // No `series:`. A shape has no reading; handing the frame one would
           // have it speak numbers off a curve that deliberately has none.
           footnote: l?.circadianDetailForecastFootnote ??
-              'No scale — the shape is the whole output.',
-          child: CustomPaint(
-            size: Size.infinite,
-            // p.ink3, like every other mark on this screen that is not a
-            // verdict. A colour would make the trough a warning.
-            painter: LineChart(v.shape, p.ink3,
-                fill: false, t: animate(c, 1)),
+              'The curve has no scale. Read its shape only.',
+          // The readout keeps the card's rule: a time and, inside the named
+          // window, that it is the flattest stretch. No figure comes off a
+          // curve that has no scale. The span is the 0 / +9 / +18 h the x
+          // labels above print.
+          child: ChartScrub(
+            label: l?.circadianDetailForecastTitle ??
+                'Predicted alertness curve for today',
+            gaps: hasChartGaps([v.shape]),
+            time: (at) => _hourClock(v.startHour +
+                18 * ChartScrub.slotAt(v.shape.length, at) / (v.shape.length - 1)),
+            keys: [
+              ChartKey.slots(
+                  'Predicted alertness',
+                  p.ink3,
+                  v.shape, (i, _) {
+                final h = v.startHour + 18 * i / (v.shape.length - 1);
+                final inTrough = h >= v.troughStartHour && h <= v.troughEndHour;
+                return inTrough ? 'Flattest stretch' : 'Shape only';
+              }),
+            ],
+            child: CustomPaint(
+              size: Size.infinite,
+              // p.ink3, like every other mark on this screen that is not a
+              // verdict. A colour would make the trough a warning.
+              painter: LineChart(v.shape, p.ink3,
+                  fill: false, t: animate(c, 1)),
+            ),
           ),
         ),
         const SizedBox(height: S.x3),
@@ -549,8 +640,8 @@ class _CircadianDetailState extends State<CircadianDetail> {
         const SizedBox(height: S.x3),
         Text(
           l?.circadianDetailNotADrivingCheck ??
-              'It is not a fitness-to-drive check and not a shift-safety '
-                  'tool, and it does not say you are impaired.',
+              'Do not use it to decide whether you can drive or work a shift safely. '
+              'It does not measure impairment.',
           style: F.cap.copyWith(color: p.ink2, height: 1.6),
         ),
       ]),
@@ -678,9 +769,8 @@ class _CircadianDetailState extends State<CircadianDetail> {
       Text(
         used == null
             ? (l?.circadianDetailStrengthFootnoteUnknown ??
-                'From a run of fully-recorded days of heart rate. These are '
-                    'your highest and lowest heart-rate hours, not your '
-                    'busiest.')
+                'From a run of days with every hour of heart rate recorded. '
+                'The hours shown have your highest and lowest heart rate.')
             : (l?.circadianDetailStrengthFootnoteKnown(used) ??
                 'From $used fully recorded day${used == 1 ? '' : 's'}. Your '
                     'highest and lowest heart-rate hours, not your busiest.'),

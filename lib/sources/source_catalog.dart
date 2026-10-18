@@ -106,6 +106,7 @@ class SourceService {
       sources,
       requires: declared,
       stored: stored,
+      now: now(),
     );
     final suffixes = _identitySuffixes([
       for (final id in sources.map(deviceIdOf).nonNulls)

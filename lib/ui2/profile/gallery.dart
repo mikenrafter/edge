@@ -36,7 +36,9 @@ import '../../coach/coach_config.dart';
 import '../../data/day_label.dart';
 import '../../ecg/ecg_controller.dart';
 import '../../ecg/ecg_models.dart';
+import '../../ecg/ecg_result.dart';
 import '../../ecg/ecg_waveform_buffer.dart';
+import '../../gestures/gesture_failures.dart';
 import '../../data/journal_fields.dart';
 import '../../data/med_store.dart';
 import '../../data/nutrition_store.dart';
@@ -58,7 +60,11 @@ import '../onboarding/welcome.dart' show ImportOutcome, ImportReport;
 // Screens are deliberately not re-exported from the ui2 barrel (see the
 // barrel test), so their components are imported by path.
 import '../screens/screens.dart';
+import '../../notify/buzz_sequence.dart';
+import '../../state/control_operations.dart';
 import '../ui2.dart';
+import 'buzz_pattern.dart';
+import 'device_lab.dart' show RepeatWindowAdjuster;
 import 'devices.dart';
 import 'profile.dart';
 import 'wearable_numbers.dart';
@@ -206,6 +212,15 @@ Map<String, Widget> componentCases() => {
           onView: () {},
         ),
       ),
+      // A result's metrics: a real name and value with its unit, and "—" for
+      // a value the result does not have (never a zero).
+      'ecg_metrics': const Surface(
+          child: EcgMetricsList(metrics: [
+        EcgMetric(
+            key: 'avgHr', name: 'Average heart rate', value: 77, unit: 'bpm'),
+        EcgMetric(key: 'quality', name: 'Signal quality', value: 3, unit: ''),
+        EcgMetric(key: 'rmssd', name: 'RMSSD', value: null, unit: 'ms'),
+      ])),
       'ecg_reading_row': Surface(
           pad: EdgeInsets.zero,
           child: EcgReadingRow(reading: _ecgDemoReading, onTap: () {})),
@@ -275,7 +290,7 @@ Map<String, Widget> componentCases() => {
       'recommendation': const Recommendation(
         'Keep it easy today',
         'HRV is six milliseconds below your baseline and resting heart rate '
-            'is up three — the same pattern as the day before your last cold.',
+        'is up three. The same pattern appeared the day before your last cold.',
         'See what changed',
       ),
       'goal_trajectory': const GoalTrajectory(
@@ -283,7 +298,7 @@ Map<String, Widget> componentCases() => {
       'observation': const Observation(
         'Your resting heart rate has risen on six of the last seven nights',
         'From 51 to 58 bpm, alongside a 0.4° skin-temperature rise.',
-        advice: 'Worth mentioning if it continues past a week.',
+        advice: 'Tell your doctor if it continues past a week.',
       ),
       'consistency': const Consistency(
           18, 24, 'Nights with a full sleep record', C.domHealth),
@@ -337,7 +352,7 @@ Map<String, Widget> componentCases() => {
       'day_nav_today': DayNav(
           day: _navDays.first, days: _navDays, onDay: (_) {}),
       'section': const Section('Recovery', StatusCard('Nothing yet today',
-          'The first sync of the day has not landed.'),
+          'The strap has not synced yet today.'),
           action: 'History'),
       ..._chartCases(),
       ..._coachFigureCases(),
@@ -439,9 +454,9 @@ Map<String, Widget> _chartCases() {
           yAxis: AxisSpec.of(rhr, floor: 40),
           xLabels: const ['30 Jul', '14 Aug', 'Today'],
           xMarks: const [.55],
-          footnote: 'The dotted line is a change in how these days were '
-              'computed. Readings either side of it came from different '
-              'versions.',
+          footnote: 'The dotted line marks a change in how these days were computed. '
+                    'Readings on either side came from different '
+                    'versions.',
           series: rhr,
           child: CustomPaint(
             size: Size.infinite,
@@ -451,6 +466,106 @@ Map<String, Widget> _chartCases() {
         ),
       );
     }),
+    // Journal items and a version mark on a trend: an icon and a dashed line
+    // each, a shaded range, and a crowd collapsed to one icon with "+n".
+    'chart_line_annotations': Builder(builder: (c) {
+      final p = P.of(c);
+      return Surface(
+        child: ChartFrame(
+          title: 'Resting heart rate',
+          unit: 'bpm',
+          yAxis: AxisSpec.of(rhr, floor: 40),
+          xLabels: const ['29 days ago', 'Today'],
+          footnote: 'The dashed line with the grey icon marks a change in how '
+              'these days were computed.',
+          series: rhr,
+          annotations: const AnnotationSet(
+            domainStart: 0,
+            domainEnd: 29,
+            items: [
+              ChartAnnotation(
+                  id: 'v',
+                  kind: AnnotationKind.algoVersion,
+                  at: 8.5,
+                  label: 'Algorithm version'),
+              ChartAnnotation(
+                  id: 'w',
+                  kind: AnnotationKind.water,
+                  at: 14,
+                  label: 'Drank water'),
+              ChartAnnotation(
+                  id: 'run',
+                  kind: AnnotationKind.workout,
+                  at: 18,
+                  until: 21,
+                  label: 'Evening run'),
+              ChartAnnotation(
+                  id: 's1',
+                  kind: AnnotationKind.symptom,
+                  at: 25,
+                  label: 'Headache'),
+              ChartAnnotation(
+                  id: 's2',
+                  kind: AnnotationKind.moment,
+                  at: 25.4,
+                  label: 'Marked moment'),
+            ],
+          ),
+          child: ChartScrub(
+            label: 'Resting heart rate',
+            keys: [
+              ChartKey.slots('Heart rate (bpm)', p.on(C.blue), rhr,
+                  (i, v) => '${v.round()} bpm'),
+            ],
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: LineChart(rhr, p.on(C.blue),
+                  axis: AxisSpec.of(rhr, floor: 40), dots: true),
+            ),
+          ),
+        ),
+      );
+    }),
+    // Every annotation kind's icon, resting and focused (bold).
+    'annotation_icons': Surface(
+      child: Wrap(spacing: S.x2, runSpacing: S.x2, children: [
+        for (final k in AnnotationKind.values) ...[
+          AnnotationIcon(kind: k, bold: false),
+          AnnotationIcon(kind: k, bold: true),
+        ],
+      ]),
+    ),
+    // The lane on its own, with the cursor on the workout: its label, its
+    // shaded range and its dashed edges, over an empty plot.
+    'annotation_lane': Surface(
+      child: ChartAnnotationLane(
+        cursor: .55,
+        plotHeight: 80,
+        set: const AnnotationSet(
+          domainStart: 0,
+          domainEnd: 100,
+          items: [
+            ChartAnnotation(
+                id: 'w',
+                kind: AnnotationKind.water,
+                at: 12,
+                label: 'Drank water'),
+            ChartAnnotation(
+                id: 'run',
+                kind: AnnotationKind.workout,
+                at: 50,
+                until: 62,
+                label: 'Evening run'),
+            ChartAnnotation(
+                id: 'nap',
+                kind: AnnotationKind.nap,
+                at: 75,
+                until: 80,
+                label: 'Nap'),
+          ],
+        ),
+      ),
+    ),
     'chart_bars': Builder(builder: (c) {
       final p = P.of(c);
       return Surface(
@@ -788,7 +903,7 @@ Map<String, Widget> extraCases() => {
       // place with the gap added after it.
       'status_wear_gap': StatusCard.forMetric('No sleep', Metric.empty,
           why: 'No sleep period long enough to score was recorded.',
-          gap: 'Your band was off your wrist 11:20 PM – 2:14 AM.')!,
+          gap: 'Your band was off your wrist from 11:20 PM to 2:14 AM.')!,
       // The three nap states, which are three different answers and must not
       // read as one: a day with naps, a judged day that had none (a MEASURED
       // zero, so it says None rather than a dash), and a day nothing could be
@@ -813,8 +928,7 @@ Map<String, Widget> extraCases() => {
           sub: 'None detected · Sunday, 16 August'),
       'nap_unjudged': const StatusCard(
         'No nap reading for Sunday, 16 August',
-        'Naps come off the same 1 Hz recording the rest of the day does, and '
-            'this day does not have enough of it.',
+        'Naps are detected from the 1 Hz recording. This day has too little of it.',
         icon: LucideIcons.sun,
       ),
       // A health watch in the log. Two accents across six detectors, not six:
@@ -825,17 +939,47 @@ Map<String, Widget> extraCases() => {
       'status_wear_gap_after_pipeline': StatusCard.forMetric(
         'No respiratory rate',
         const Metric(note: 'need_input:name=nn_beats,have=12,need=20'),
-        gap: 'Your band was off your wrist 11:20 PM – 2:14 AM.',
+        gap: 'Your band was off your wrist from 11:20 PM to 2:14 AM.',
       )!,
       // Both asks stacked, default (unloaded) Prefs state — the same state
       // an actual first run starts from, since an unset dismissed/last-shown
       // key reads as "eligible, never shown yet".
       'community_nudge': const CommunityNudge(),
+      // A failed gesture's Home card: an in-memory store holding one ECG failure.
+      'gesture_failure_card': GestureFailureCard(
+        store: GestureFailureStore()
+          ..record(
+              kind: GestureFailureKind.ecg,
+              reason: 'start_failed',
+              gestureId: 'gallery'),
+      ),
+      // "As of" while newer results are calculated: today's time, another day's
+      // date with it, and the hold that keeps it up until the reload lands.
+      'as_of_label': AsOfLabel(
+          at: DateTime(2026, 10, 3, 8, 42), now: DateTime(2026, 10, 3, 9)),
+      'as_of_label_other_day': AsOfLabel(
+          at: DateTime(2026, 9, 30, 8, 42), now: DateTime(2026, 10, 3, 9)),
+      // The staleness line: what the result covers, and why newer recordings
+      // are not in it yet.
+      'as_of_label_recordings': AsOfLabel(
+          at: DateTime(2026, 10, 3, 8, 42),
+          now: DateTime(2026, 10, 3, 9),
+          recordingsThrough: DateTime(2026, 10, 3, 8, 36)),
+      'as_of_label_paused': AsOfLabel(
+          at: DateTime(2026, 10, 3, 8, 42),
+          now: DateTime(2026, 10, 3, 9),
+          recordingsThrough: DateTime(2026, 10, 3, 8, 36),
+          newestRecording: DateTime(2026, 10, 3, 8, 50),
+          hold: StaleHold.workout),
+      'as_of_hold': AsOfHold(
+        shown: 0,
+        asOf: (_) => DateTime(2026, 10, 3, 8, 42),
+        builder: (c, at) => AsOfLabel(at: at, now: DateTime(2026, 10, 3, 9)),
+      ),
       'surface': Builder(
         builder: (c) => Surface(
           child: Text(
-            'The base card. Elevation, not outline — and the only surface a '
-            'component may sit on.',
+            'The base card. It has elevation and no outline. Every component sits on it.',
             style: F.body.copyWith(color: P.of(c).ink),
           ),
         ),
@@ -872,6 +1016,96 @@ Map<String, Widget> extraCases() => {
           ),
         );
       }),
+      // Two series keyed in the legend, the values under each key, and a hole in
+      // the heart rate so "Not recorded" is on show. Nothing is scrubbed, so the
+      // row reads the latest point.
+      'chart_key_readout': Builder(builder: (c) {
+        final p = P.of(c);
+        const hr = <double?>[58, 61, null, 66, 72, 69];
+        const mv = <double?>[.1, .2, .1, .5, .7, .3];
+        return Surface(
+          child: ChartFrame(
+            title: 'Heart rate and movement',
+            unit: 'bpm',
+            height: 96,
+            xLabels: const ['07:00', '12:00'],
+            legend: [
+              ('Movement (% of time moving)', p.on(C.domMove)),
+              ('Heart rate (bpm)', p.on(C.red)),
+            ],
+            child: ChartScrub(
+              label: 'Heart rate and movement',
+              gaps: hasChartGaps([hr, mv]),
+              time: (at) => '${7 + ChartScrub.slotAt(hr.length, at)}:00',
+              keys: [
+                ChartKey.slots('Movement (% of time moving)',
+                    p.on(C.domMove), mv, (i, v) => '${(v * 100).round()}%'),
+                ChartKey.slots('Heart rate (bpm)', p.on(C.red), hr,
+                    (i, v) => '${v.round()} bpm'),
+              ],
+              child: CustomPaint(
+                  size: Size.infinite,
+                  painter: LineChart(hr, p.on(C.red))),
+            ),
+          ),
+        );
+      }),
+      // The row on its own: a scrubbed point with every value, and a scrubbed
+      // point on a hole, where each series says "—" and "Not recorded" says why.
+      'chart_key_readout_row': Builder(builder: (c) {
+        final p = P.of(c);
+        return Surface(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ChartKeyReadout(
+              scrubbed: true,
+              time: '9:40 AM',
+              cells: [
+                ChartCell('Movement (% of time moving)', p.on(C.domMove),
+                    value: '34%'),
+                ChartCell('Heart rate (bpm)', p.on(C.red), value: '72 bpm'),
+                const ChartCell('Not recorded', null, hasValue: false),
+              ],
+            ),
+            const SizedBox(height: S.x4),
+            ChartKeyReadout(
+              scrubbed: true,
+              time: '2:15 AM',
+              cells: [
+                ChartCell('Movement (% of time moving)', p.on(C.domMove)),
+                ChartCell('Heart rate (bpm)', p.on(C.red)),
+                const ChartCell('Not recorded', null,
+                    value: ChartKeyReadout.here),
+              ],
+            ),
+          ]),
+        );
+      }),
+      // Nothing selected, like 'scrubber': the cursor appears on touch and the
+      // values in the row under the chart follow it.
+      'chart_scrub': Builder(builder: (c) {
+        final p = P.of(c);
+        const hr = <double?>[58, 61, null, 66, 72, 69];
+        return Surface(
+          child: ChartFrame(
+            title: 'Heart rate',
+            unit: 'bpm',
+            height: 96,
+            xLabels: const ['07:00', '12:00'],
+            child: ChartScrub(
+              label: 'Heart rate',
+              gaps: hasChartGaps([hr]),
+              time: (at) => '${7 + ChartScrub.slotAt(hr.length, at)}:00',
+              keys: [
+                ChartKey.slots('Heart rate (bpm)', p.on(C.red), hr,
+                    (i, v) => '${v.round()} bpm'),
+              ],
+              child: CustomPaint(
+                  size: Size.infinite,
+                  painter: LineChart(hr, p.on(C.red))),
+            ),
+          ),
+        );
+      }),
       'chart_ring': Builder(builder: (c) {
         final p = P.of(c);
         return Surface(
@@ -879,7 +1113,7 @@ Map<String, Widget> extraCases() => {
             title: 'Recovery',
             unit: 'out of 100',
             height: 120,
-            footnote: 'Against your own 14-day baseline, not a population.',
+            footnote: 'Compared with your own 14-day baseline.',
             child: CustomPaint(
                 size: Size.infinite,
                 painter: Ring(.72, p.on(C.green), p.track)),
@@ -1147,8 +1381,7 @@ const _roughFull = RoughNight(
   day: '2026-08-15',
   signs: 4,
   illnessFlagged: true,
-  descriptor: 'a rougher night than usual for you — your body worked harder '
-      'overnight',
+  descriptor: 'your body worked harder than usual overnight',
   moved: [
     'your resting heart rate ran higher',
     'your HRV ran lower',
@@ -1161,7 +1394,7 @@ const _roughFull = RoughNight(
         'to a rise above your own baseline, not a diagnosis.',
     'You are in the luteal phase, which lifts resting heart rate and skin '
         'temperature by itself.',
-    'Your skin ran warmer than your usual — a warm room does this too.',
+    'Your skin ran warmer than usual. A warm room does this too.',
   ],
 );
 
@@ -1170,8 +1403,7 @@ const _roughFull = RoughNight(
 const _roughBare = RoughNight(
   day: '2026-08-15',
   signs: 2,
-  descriptor: 'a rougher night than usual for you — your body worked harder '
-      'overnight',
+  descriptor: 'your body worked harder than usual overnight',
   moved: ['your resting heart rate ran higher', 'your HRV ran lower'],
   knows: [],
 );
@@ -1181,8 +1413,7 @@ const _roughBare = RoughNight(
 const _roughTwoSign = RoughNight(
   day: '2026-08-15',
   signs: 2,
-  descriptor: 'a rougher night than usual for you — your body worked harder '
-      'overnight',
+  descriptor: 'your body worked harder than usual overnight',
   moved: [
     'your HRV ran lower',
     'your heart rate dropped less overnight than it usually does',
@@ -1305,6 +1536,16 @@ Map<String, Widget> _stateCases() => {
             'steps': {'class': 'device', 'value': 8412, 'method': 'device'},
             'strain': {'class': 'unavailable', 'reason': 'noWakeHr'},
           }),
+      // A haptic pattern as one line of music: notes, rests, dots and the
+      // dynamics under them, then a tapped rhythm (no notes, no dynamics).
+      'haptic_score': Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        HapticScore(BuzzSequence(const [0],
+            durationsMs: const [125],
+            notes: 'N2mf R2 N3f R1 N6ff R2 N1mp R3 N8mf')),
+        const SizedBox(height: S.x3),
+        HapticScore(BuzzSequence(const [0, 500, 1000],
+            durationsMs: const [125, 250, 125])),
+      ]),
       // Every accent, so a palette change is one picture rather than a hunt.
       'pill_every_colour': const Wrap(spacing: S.x2, runSpacing: S.x2, children: [
         Pill('Measured', C.green),
@@ -1319,6 +1560,11 @@ Map<String, Widget> _stateCases() => {
       'sub_tabs_five': SubTabs(
           const ['Today', '7 days', '30 days', '6 months', 'Year'], 0, (_) {},
           color: C.domHealth),
+      // The Data Explorer with nothing picked (no repository above it, so it
+      // reads nothing): its scale and range tabs, the empty chart card and the
+      // whole picker, which is the part that has to survive 3.1x text.
+      // No database in a gallery: the Explorer's journal items are empty here.
+      'explorer': ExplorerView(annotationLoader: (_, _) async => const []),
       'nav_bar_no_sub': const NavBar('Component gallery'),
       // The oldest day on disk — back is dead, forward is live.
       'day_nav_oldest': DayNav(
@@ -1505,7 +1751,7 @@ Map<String, Widget> _listCases() => {
       'set_row': Builder(
         builder: (c) => settingsGroup(c, 'Settings row', [
           SetRow(LucideIcons.bell, C.purple, 'Manage notifications',
-              sub: 'Bedtime, recovery, and the ones the band raises itself',
+              sub: 'Bedtime, recovery and band-raised alerts',
               onTap: () {}),
           SetRow(LucideIcons.ruler, C.blue, 'Units',
               value: 'Metric', onTap: () {}),
@@ -1514,6 +1760,93 @@ Map<String, Widget> _listCases() => {
           SetRow(LucideIcons.trash2, C.red, 'Delete everything on this device',
               danger: true, onTap: () {}),
         ]),
+      ),
+      'sync_control': SyncControl(
+        state: SyncPresentationState(
+          phase: 'failed',
+          error: 'Bad state: Bluetooth is turned off on this phone',
+          failureReason: 'Bluetooth is turned off on this phone',
+          lastSuccess: DateTime(2026, 8, 16, 4, 12),
+          startedAt: DateTime(2026, 8, 16, 9),
+          finishedAt: DateTime(2026, 8, 16, 9, 0, 8),
+          steps: [
+            SyncStep(
+              id: SyncStepId.connect,
+              status: SyncStepStatus.failed,
+              startedAt: DateTime(2026, 8, 16, 9),
+              endedAt: DateTime(2026, 8, 16, 9, 0, 8),
+            ),
+            const SyncStep(
+              id: SyncStepId.download,
+              status: SyncStepStatus.skipped,
+              note: 'Not reached',
+            ),
+            const SyncStep(
+              id: SyncStepId.calculate,
+              status: SyncStepStatus.skipped,
+              note: 'Not reached',
+            ),
+            const SyncStep(
+              id: SyncStepId.done,
+              status: SyncStepStatus.skipped,
+              note: 'Not reached',
+            ),
+          ],
+        ),
+        onSync: () {},
+      ),
+      'settings_accordion': Column(children: [
+        SettingsAccordion('Alarms & Wake', children: [
+          SwitchRow('Buzz during Do Not Disturb', true, (_) {},
+              sub: 'Off respects Do Not Disturb. Edge never changes your '
+                  'Do Not Disturb setting.'),
+          SwitchRow('Only while worn', false, (_) {}),
+          // Present, dimmed and inert, with its reason.
+          const SwitchRow('Also run for taps replayed from history', false, null,
+              enabled: false, sub: 'Turn on Mark a moment first'),
+          const SetRow(LucideIcons.target, C.red, 'Target zone',
+              enabled: false,
+              sub: 'Turn on HR zone alert first',
+              value: 'Zone 3',
+              chevron: false),
+        ]),
+        // Folded: the summary stays under the header.
+        const SettingsAccordion('Haptics',
+            summary: 'The band alarm uses the band\'s own buzz',
+            initiallyExpanded: false,
+            children: [Text('Buzz pattern')]),
+      ]),
+      'buzz_pattern_row': Surface(
+        child: Column(children: [
+          BuzzPatternRow(
+              sequence: BuzzSequence.defaultFor(4),
+              patternName: 'Three pulses',
+              onTap: () {}),
+          BuzzPatternRow(
+              sequence: BuzzSequence.defaultFor(4),
+              patternName: 'Three pulses',
+              enabled: false),
+        ]),
+      ),
+      'repeat_window_adjuster': Surface(
+        child: Column(children: [
+          RepeatWindowAdjuster(windowMs: 2500, onChanged: (_) {}),
+          const RepeatWindowAdjuster(windowMs: 2500),
+        ]),
+      ),
+      'buzz_pattern_sheet': BuzzPatternSheet(
+        initial: BuzzSequence.defaultFor(4),
+        bandConnected: true,
+      ),
+      'moment_group_row': Surface(
+        child: MomentGroupRow(MomentGroup([
+          for (final m in [20, 21, 22])
+            Moment(
+                at: _tlAt(8, m),
+                title: 'You double-tapped the band',
+                icon: LucideIcons.hand,
+                eventId: 14),
+        ])),
       ),
       'source_row': Column(children: [
         SourceRow(
@@ -1763,13 +2096,12 @@ Map<String, Widget> _monthGridCases() => {
 const _wcFindings = [
   SweepFinding(
       key: 'rhr',
-      text: 'resting heart rate 68 bpm — the highest in 45 days '
-          '(usually 53–55 bpm)',
+      text: 'resting heart rate 68 bpm, the highest in 45 days, against a usual 53–55 bpm',
       z: 3.4,
       high: true),
   SweepFinding(
       key: 'rmssd',
-      text: 'HVR 32 ms — below your usual range (usually 41–58 ms)',
+      text: 'HRV 32 ms, below your usual range of 41–58 ms',
       z: -2.7,
       high: false),
 ];
@@ -1818,8 +2150,7 @@ Map<String, Widget> _onboardingCases() => {
           source: 'WHOOP export', days: 412, lateRows: 38, strandedDays: 2)),
       'import_report_failed': const ImportReport(ImportOutcome(
           source: 'physiological_cycles.csv',
-          error: 'The first row named columns this importer does not know, so '
-              'nothing in the file could be placed.')),
+          error: 'The first row has columns this importer does not recognise, so it could not place any data from the file.')),
     };
 
 /// A REAL run, on a real park loop, so the poster can be seen doing the one
@@ -2028,7 +2359,7 @@ class _PosterPreviewState extends State<_PosterPreview> {
         child: Column(children: [
           SetRow(LucideIcons.map, C.green,
               _mosaic == null ? 'Load the map' : 'Reload the map',
-              sub: 'A real lap of Cubbon Park — fetches OpenStreetMap tiles',
+              sub: 'A real lap of Cubbon Park. Fetches OpenStreetMap tiles over the network.',
               value: _loading ? 'Loading' : '',
               onTap: _loading ? null : _load),
           Divider(color: p.line, height: 1),
@@ -2042,7 +2373,7 @@ class _PosterPreviewState extends State<_PosterPreview> {
           ],
           Divider(color: p.line, height: 1),
           SetRow(LucideIcons.share2, C.blue, 'Share this card',
-              sub: 'The real export — the boundary above, at 3×',
+              sub: 'The exported image: the boundary above, rendered at 3×',
               chevron: false, onTap: _share),
         ]),
       ),
@@ -2050,8 +2381,7 @@ class _PosterPreviewState extends State<_PosterPreview> {
         const SizedBox(height: S.x3),
         const StatusCard(
           'No map came back',
-          'The tiles could not be fetched, so the route is drawn on its own — '
-              'which is exactly what the card does on a phone with no signal.',
+          'The tiles could not be fetched, so the route is drawn without a map. The card does the same on a phone with no signal.',
           icon: LucideIcons.mapPinOff,
         ),
       ],
@@ -2322,7 +2652,7 @@ class _FlowScreen extends StatelessWidget {
           const ActivityPicker()),
       ('Set up', LucideIcons.sliders, 'Goal, target and privacy',
           ActivitySetup(a)),
-      ('Live', LucideIcons.circleDot, 'Runs for real, with no band behind it',
+      ('Live', LucideIcons.circleDot, 'Runs a live session without a band',
           liveFor(a)),
       ('Summary', LucideIcons.flag, 'What this session becomes',
           ActivitySummary(r, weightKg: _fixtureWeightKg)),
@@ -2362,11 +2692,9 @@ class _FlowScreen extends StatelessWidget {
                 if (synthetic)
                   const StatusCard(
                     'These numbers are invented',
-                    'Derived from this activity\'s MET and name so the '
-                        'screens have something to draw — or from a '
-                        'preview-only stand-in, where the activity has no '
-                        'MET. The SHAPE is real: the fields this archetype '
-                        'fills, and the ones it leaves empty.',
+                    'Derived from this activity\'s MET and name, or from a preview-only '
+                    'stand-in when the activity has no MET. The fields this archetype '
+                    'fills and the ones it leaves empty are real.',
                     icon: LucideIcons.flaskConical,
                   )
                 else

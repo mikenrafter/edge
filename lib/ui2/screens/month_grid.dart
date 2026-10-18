@@ -250,15 +250,37 @@ class MonthGrid extends StatelessWidget {
                             'value. ${r.cells.where((s) => s == Side.below).length} '
                             'below and ${r.cells.where((s) => s == Side.above).length} '
                             'above your usual range.',
-                    child: SizedBox(
-                      height: 22,
-                      child: CustomPaint(
-                        size: Size.infinite,
-                        painter: _SideStrip(
-                          r.cells,
-                          (s) => _cellInk(p, r, s),
-                          p.line,
-                          p.ink,
+                    // A grid: the finger selects the day (cell) it is over and
+                    // the key row says where that day sat against the usual
+                    // range. An outlined cell is "—". The row under the strip
+                    // is its key; the 22 pt belongs to the strip alone.
+                    child: ChartScrub(
+                      label: uiText(c, r.spec.title),
+                      mode: ChartScrubMode.nearest,
+                      gaps: hasChartGaps([
+                        [for (final s in r.cells) s?.index.toDouble()]
+                      ], trailing: true),
+                      time: (at) => ChartScrub.dayBack(r.cells.length -
+                          1 -
+                          ChartScrub.slotAt(r.cells.length, at, bars: true)),
+                      keys: [
+                        ChartKey.slots(
+                            uiText(c, r.spec.title),
+                            p.on(r.spec.color),
+                            [for (final s in r.cells) s?.index.toDouble()],
+                            (i, v) => usualWord(l, Side.values[v.round()]),
+                            bars: true),
+                      ],
+                      child: SizedBox(
+                        height: 22,
+                        child: CustomPaint(
+                          size: Size.infinite,
+                          painter: _SideStrip(
+                            r.cells,
+                            (s) => _cellInk(p, r, s),
+                            p.line,
+                            p.ink,
+                          ),
                         ),
                       ),
                     ),

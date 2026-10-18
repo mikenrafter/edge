@@ -1,4 +1,3 @@
-import '../../l10n/display_text.dart';
 // OBSERVATIONS — the log of every health watch that has ever fired.
 //
 // Named for the card it is a history of: the Observation widget has printed
@@ -130,8 +129,13 @@ class FindingRow extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final ink = _ink(p, f);
+    // A view built without localizations (a bare test host) still says it in
+    // English rather than not at all.
+    final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    final title = findingTitle(l, f);
+    final detail = findingDetail(l, f);
     return Semantics(
-      label: '${uiText(c, f.title)}. ${uiText(c, f.detail)}',
+      label: '$title. $detail',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -144,8 +148,7 @@ class FindingRow extends StatelessWidget {
               ),
               const SizedBox(width: S.x2),
               Expanded(
-                child: Text(
-                  uiText(c, f.title),
+                child: Text(title,
                     style: F.body.copyWith(
                         color: p.ink, fontWeight: FontWeight.w600),
                 ),
@@ -153,10 +156,7 @@ class FindingRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: S.x2),
-          Text(
-            uiText(c, f.detail),
-            style: F.cap.copyWith(color: p.ink2, height: 1.5),
-          ),
+          Text(detail, style: F.cap.copyWith(color: p.ink2, height: 1.5)),
         ],
       ),
     );

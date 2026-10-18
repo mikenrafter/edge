@@ -240,9 +240,9 @@ class _ZonesDetailState extends State<ZonesDetail> {
             const SizedBox(height: S.x2),
             Text(
               l?.activityZonesEditYourOwnBody ??
-                  'Five bpm thresholds, lowest to highest — where each zone '
-                      'starts. Clear all five to go back to the zones we '
-                      'compute for you.',
+                  'Enter five thresholds in bpm, lowest first. Each one is where '
+                  'a zone starts. Clear all five to return to the '
+                  'computed zones.',
               style: F.cap.copyWith(color: P.of(s).ink3, height: 1.4),
             ),
             const SizedBox(height: S.x4),
@@ -286,8 +286,8 @@ class _ZonesDetailState extends State<ZonesDetail> {
       if (mounted) {
         ScaffoldMessenger.of(c).showSnackBar(SnackBar(
           content: Text(l?.activityZonesNeedAllFive ??
-              'All five thresholds are needed, lowest to highest. Nothing '
-                  'was saved.'),
+              'Enter all five thresholds, lowest first. '
+              'Nothing was saved.'),
         ));
       }
       return;
@@ -314,8 +314,8 @@ class _ZonesDetailState extends State<ZonesDetail> {
     final d = _d ?? const ZonesData();
     return detailScaffold(c, l?.activityZonesTitle ?? 'Heart-rate zones', [
       if (_loading && _d == null) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: S.x4),
+        const InlineLoading(),
       ] else ...[
         _ceiling(p, l, d),
         Section(l?.activityZonesYourZonesSection ?? 'Your zones', _zones(p, l, d)),
@@ -352,16 +352,15 @@ class _ZonesDetailState extends State<ZonesDetail> {
           // unconditionally it described a section that, on every database in
           // the measured run, was itself empty.
           ? (l?.activityZonesNoCeilingTanakaTail ??
-              ' Until one is measured, the zones below come off your age.')
+              ' Until the band measures one, the zones below use your age.')
           : '';
       return StatusCard(
         l?.activityZonesNoCeilingTitle ?? 'No measured ceiling yet',
         why != null
             ? '$why$tail'
             : (l?.activityZonesNoCeilingDefaultBody ??
-                    'We only count a high reading the band held for 15 seconds while '
-                        'you were moving. A one-second spike is not a heart '
-                        'rate.') +
+                    'A reading counts toward your maximum only if the band held it '
+                    'for 15 seconds while you were moving.') +
                 tail,
         // The hard-session instruction belongs to the hold gate alone.
         fix: why == null
@@ -407,8 +406,8 @@ class _ZonesDetailState extends State<ZonesDetail> {
           const SizedBox(height: S.x3),
           Text(
             l?.activityZonesHighestSeenFootnote ??
-                'The highest we have measured, not a limit — it creeps up as the '
-                    'band sees harder efforts. Do not go and test it.',
+                'The highest heart rate the band has recorded for you. It rises '
+                'when the band records a harder effort. Do not push to raise it.',
             style: F.cap.copyWith(color: p.ink3, height: 1.5),
           ),
         ],
@@ -431,10 +430,10 @@ class _ZonesDetailState extends State<ZonesDetail> {
         why ??
             (noAge
                 ? (l?.activityZonesNoAgeBody ??
-                    'Zone edges are percentages of a maximum heart rate, and '
-                        'without your age there is nothing to take a percentage of.')
+                    'Zone edges are percentages of a maximum heart rate. '
+                    'The app estimates that maximum from your age.')
                 : (l?.activityZonesNoZonesDefaultBody ??
-                    'Nothing recorded says why there are no zone edges yet.')),
+                    'Zone edges need your age.')),
         fix: noAge ? (l?.activityZonesAddAgeFix ?? 'Add your age in Profile') : '',
         icon: LucideIcons.activity,
       );
@@ -506,8 +505,8 @@ class _ZonesDetailState extends State<ZonesDetail> {
             'From $max bpm, estimated from your age, so it can be 20 bpm out. The zones move once the band sees a hard enough session.';
       case 'manual':
         return l?.activityZonesAnchorManual ??
-            'Set by you, not computed — these five thresholds override '
-                'whatever your age or a measured ceiling would have given you.';
+            'These five thresholds are the ones you entered. '
+            'They replace the age-based and measured zones.';
       default:
         return l?.activityZonesAnchorDefault ??
             'Zone edges are percentages of a maximum heart rate.';
@@ -535,9 +534,8 @@ class _ZonesDetailState extends State<ZonesDetail> {
                         'Needs about a month of recorded sessions, each with a '
                             'minute-by-minute heart rate.')
                     : (l?.activityZonesAgeEstimateBody ??
-                        'The bars would be a picture of the age estimate, not of '
-                            'your training. They appear once the zone edges above '
-                            'are measured.')),
+                        'The bars appear once the zone edges above are measured. '
+                        'Until then they would only reflect the age estimate.')),
             icon: LucideIcons.chartColumn,
           ),
         ),
@@ -579,21 +577,19 @@ class _ZonesDetailState extends State<ZonesDetail> {
   String _shapeCopy(AppLocalizations? l, ZonesData d) {
     final shape = switch (d.distShape) {
       'pyramidal' => l?.activityZonesShapePyramidal ??
-          'Most of your minutes are easy, fewer in the middle, '
-              'fewest hard — a pyramid.',
+          'Most of your minutes are easy, fewer are moderate, and the '
+          'fewest are hard. This shape is called pyramidal.',
       'polarised' => l?.activityZonesShapePolarised ??
           'Most of your minutes are easy and the rest are hard, '
               'with little in between.',
       'middle-heavy' => l?.activityZonesShapeMiddleHeavy ??
-          'Most of your minutes sit in the middle rather than '
-              'easy or hard.',
+          'Most of your minutes are moderate.',
       _ => '',
     };
     final summary = l?.activityZonesShapeSummary(
             d.distEasy, d.distModerate, d.distHard, d.distSessions) ??
         '${d.distEasy} min easy, ${d.distModerate} moderate, '
-            '${d.distHard} hard, over ${d.distSessions} recorded sessions. A '
-            'description, not a target.';
+        '${d.distHard} hard, over ${d.distSessions} recorded sessions.';
     return '$shape $summary';
   }
 }

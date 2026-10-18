@@ -56,6 +56,7 @@ import '../../data/journal_fields.dart' show formatMinuteOfDay;
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
+import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'home_screen.dart';
 import 'investigate.dart';
@@ -111,6 +112,10 @@ class BeatsData {
   /// Which strap measured [day], when the bundle recorded one.
   final String? deviceFamily;
 
+  /// When the row behind [day] was computed (the reader's `computed_at`) — what
+  /// "As of" says while a pass recalculates the night. Null with no row.
+  final DateTime? computedAt;
+
   const BeatsData({
     this.day,
     this.days = const [],
@@ -129,27 +134,40 @@ class BeatsData {
     this.rhythmPoints = const [],
     this.rhythm24h,
     this.deviceFamily,
+    this.computedAt,
   });
 
-  static Future<BeatsData> load(LocalRepository repo, {String? want}) async {
-    final today = await repo.getToday();
+  /// Which night the screen is about: the cheap half of [load], split out so a
+  /// cached result for that night can be shown before the beats are read.
+  static Future<({String? day, List<String> days})> pickNight(
+      LocalRepository repo,
+      {String? want}) async {
+    final today = await repo.getTodayStored();
     final days = await repo.availableDays();
-    final day = pickDay(
-        days, want, (today['status'] as Map?)?['today_day']?.toString());
+    return (
+      day: pickDay(
+          days, want, (today['status'] as Map?)?['today_day']?.toString()),
+      days: days,
+    );
+  }
+
+  /// Everything but the corrected-RR beats (`nn`, `rawBeats`, `cleanFraction`
+  /// stay empty): the stored night's own rows, which are cheap. The beats are
+  /// the slow read and come separately — [readBeats], [withBeats] — so the
+  /// panels that do not need them can be drawn first.
+  static Future<BeatsData> loadShell(LocalRepository repo,
+      {String? want, ({String? day, List<String> days})? night}) async {
+    final (:day, :days) = night ?? await pickNight(repo, want: want);
     if (day == null) return BeatsData(days: days);
 
     final hrv = await repo.getDayHrv(day);
     final heart = await repo.getDayHeart(day);
-    final beats = await repo.getNightBeats(day);
     final dcEnv = hrv['prsa_dc'];
     final shapeEnv = hrv['night_shape'];
 
     return BeatsData(
       day: day,
       days: days,
-      nn: beats.nn,
-      rawBeats: beats.rawBeats,
-      cleanFraction: beats.cleanFraction,
       poincare: hrv['irregular'] is Map
           ? (hrv['irregular'] as Map).cast<String, dynamic>()
           : const {},
@@ -164,6 +182,49 @@ class BeatsData {
       rhythmPoints: pointsOf(await repo.getChart('irregular_rhythm_flag')),
       rhythm24h: heart['irregular_24h'],
       deviceFamily: hrv['device_family']?.toString(),
+      computedAt: computedAtOf(hrv['computed_at']),
+    );
+  }
+
+  /// The corrected-RR read for [day] as the plain JSON map that is stored and
+  /// read back across restarts (never a widget object).
+  static Future<Map<String, dynamic>> readBeats(
+      LocalRepository repo, String day) async {
+    final b = await repo.getNightBeats(day);
+    return {
+      'nn': b.nn,
+      'raw_beats': b.rawBeats,
+      'clean_fraction': b.cleanFraction,
+    };
+  }
+
+  /// This result with the beats of a [readBeats] map. A map that is not that
+  /// shape adds no beats (they stay empty, never invented).
+  BeatsData withBeats(Map<String, dynamic> m) {
+    final raw = m['nn'];
+    final nn = [
+      for (final v in (raw is List ? raw : const []))
+        if (v is num) v.toDouble(),
+    ];
+    return BeatsData(
+      day: day,
+      days: days,
+      nn: nn,
+      rawBeats: (m['raw_beats'] as num?)?.toInt() ?? 0,
+      cleanFraction: (m['clean_fraction'] as num?)?.toDouble() ?? 0,
+      poincare: poincare,
+      bins: bins,
+      firstThirdMs: firstThirdMs,
+      lastThirdMs: lastThirdMs,
+      shape: shape,
+      originMs: originMs,
+      dcPoints: dcPoints,
+      dcAnchors: dcAnchors,
+      dc: dc,
+      rhythmPoints: rhythmPoints,
+      rhythm24h: rhythm24h,
+      deviceFamily: deviceFamily,
+      computedAt: computedAt,
     );
   }
 
@@ -203,13 +264,10 @@ class Beats extends StatefulWidget {
   State<Beats> createState() => _BeatsState();
 }
 
-class _BeatsState extends State<Beats> {
+class _BeatsState extends State<Beats> with RevisionReload {
   BeatsData? _d;
   bool _loading = true;
   String? _day;
-  // A quick second tap on the day stepper starts a second load; the first
-  // can finish last and must not paint the old day under the new label.
-  int _loadToken = 0;
 
   @override
   void initState() {
@@ -223,21 +281,133 @@ class _BeatsState extends State<Beats> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// Handed its data (golden, gallery): nothing behind it to read again.
+  /// Otherwise a derive that rewrites the night is read again, which is also
+  /// what clears the "As of" label.
+  @override
+  bool get revisionReloads => widget.data == null;
+
+  @override
+  void reload() => _load();
+
+  /// Set while the beats on screen are the last result of an earlier open
+  /// (memory or the stored copy), shown at once while they are read again; null
+  /// once the fresh read has replaced them.
+  DateTime? _cachedAt;
+
+  /// What [_d] is built from: the night's own rows (cheap) and, separately, the
+  /// corrected-RR beats (the slow read, as its stored JSON map).
+  BeatsData? _shell;
+  Map<String, dynamic>? _beats;
+  bool _beatsFailed = false;
+
+  /// The beats panel is still waiting on the slow read, with nothing to show.
+  bool get _beatsPending =>
+      widget.data == null && _beats == null && !_beatsFailed;
+
+  void _compose() {
+    final sh = _shell;
+    if (sh == null) return;
+    final m = _beats;
+    _d = m == null ? sh : sh.withBeats(m);
+  }
+
   Future<void> _load() async {
-    final token = ++_loadToken;
     final repo = repoOf(context);
     if (repo == null) {
       if (mounted) setState(() => _loading = false);
       return;
     }
+    final t = beginRead(#beats);
+    final warm = warmRequesterOf(context);
     try {
-      final d = await BeatsData.load(repo, want: _day);
-      if (mounted && token == _loadToken) {
-        setState(() => (_d = d, _loading = false));
+      final night = await BeatsData.pickNight(repo, want: _day);
+      if (!stillNewest(#beats, t)) return;
+      final day = night.day;
+      if (_d == null || _d!.day != day) {
+        // The night is known after the cheap pick: its header and day stepper
+        // are drawn now, around whatever is still being read.
+        setState(() {
+          _d = BeatsData(day: day, days: night.days);
+          _shell = null;
+          _beats = null;
+          _beatsFailed = false;
+          _cachedAt = null;
+          _loading = true;
+        });
       }
+      // The corrected-RR read is the slow part, and this screen does not run
+      // it: it is one artifact per night, prepared by the background warmer. A
+      // stored result whose input signature still matches is shown as is; a
+      // stale one (memory, else the stored copy) is shown under an "As of"
+      // label; with none the panel waits (InlineLoading) while the warm is
+      // requested, and the revision it moves reads the night again. Null when
+      // the warm left nothing fresh (held, failed): the panel waits for the
+      // next read.
+      final beatsKey =
+          day == null ? null : LastResultCache.keyOf('beats', [day]);
+      final slow = day == null || beatsKey == null
+          ? null
+          : LastResultCache.instance
+              .loadWarmed<Map<String, dynamic>>(
+                beatsKey,
+                signature: () => repo.artifactSignature(beatsKey),
+                warm: () => warm == null ? Future<void>.value() : warm(beatsKey),
+                onLast: (hit) {
+                  // Only while nothing is shown for this night: a re-read of a
+                  // night that already has fresh beats is not stale.
+                  if (!stillNewest(#beats, t) || _beats != null) return;
+                  setState(() {
+                    _beats = hit.value;
+                    _cachedAt = hit.cachedAt;
+                    _compose();
+                  });
+                },
+              )
+              .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
+      final shell = await BeatsData.loadShell(repo, night: night);
+      if (!stillNewest(#beats, t)) return;
+      setState(() {
+        _shell = shell;
+        _loading = false;
+        _compose();
+      });
+      if (slow == null) return;
+      final m = await slow;
+      if (!stillNewest(#beats, t)) return;
+      setState(() {
+        if (m != null) {
+          _beats = m;
+          _cachedAt = null;
+        } else {
+          // A failed read keeps an earlier result (labelled); with none, the
+          // panel is left out rather than claiming the beats are gone.
+          _beatsFailed = _beats == null;
+        }
+        _compose();
+      });
     } catch (_) {
-      if (mounted && token == _loadToken) setState(() => _loading = false);
+      if (stillNewest(#beats, t)) setState(() => _loading = false);
     }
+  }
+
+  /// "As of <time>": the last result of an earlier open while it recomputes,
+  /// or the shown night while a pass recalculates it.
+  Widget _asOf(BeatsData d) {
+    Widget place(BuildContext c, DateTime at) => Padding(
+        padding: const EdgeInsets.only(bottom: S.x2), child: AsOfLabel(at: at));
+    final cached = _cachedAt;
+    if (cached != null) return place(context, cached);
+    return AsOfHold(
+      // The night's own read, not the composed view: beats landing swap `_d`
+      // but must not release a label held for the old night rows.
+      shown: _shell ?? d,
+      day: d.day,
+      computedAt: d.computedAt,
+      asOf: (recalc) =>
+          asOfFor(shownDay: d.day, computedAt: d.computedAt, recalc: recalc),
+      builder: place,
+    );
   }
 
   void _goDay(String day) {
@@ -256,11 +426,12 @@ class _BeatsState extends State<Beats> {
       c,
       l?.beatsTitle ?? 'Beats',
       [
+        _asOf(d),
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
         if (_loading)
           const Padding(
-            padding: EdgeInsets.only(top: S.x8),
-            child: Center(child: CircularProgressIndicator()),
+            padding: EdgeInsets.only(top: S.x4),
+            child: InlineLoading(),
           )
         else if (d.day == null)
           StatusCard(
@@ -271,7 +442,13 @@ class _BeatsState extends State<Beats> {
             icon: LucideIcons.heartPulse,
           )
         else ...[
-          _poincare(c, d),
+          if (_beatsPending)
+            Section(
+              l?.beatsPoincareSection ?? 'Every beat against the one before it',
+              const InlineLoading(),
+            )
+          else if (!_beatsFailed)
+            _poincare(c, d),
           const SizedBox(height: S.x5),
           _nightCurve(c, d),
           const SizedBox(height: S.x5),
@@ -351,9 +528,24 @@ class _BeatsState extends State<Beats> {
                 'A point on the diagonal is a beat the same length as the one '
                     'before it, and the wider the cloud across that line, the '
                     'more your beats vary.',
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: Poincare(d.nn, p.on(C.green), axis: axis, grid: p.line),
+            // The plot is the largest centred square, so the finger's x has
+            // to be mapped through the same square the painter uses.
+            child: LayoutBuilder(
+              builder: (_, box) => ChartScrub(
+                label: l?.beatsScatterTitle ??
+                    'Each interval, plotted against the previous one',
+                mode: ChartScrubMode.nearest,
+                // A scatter point is a pair: the interval and the one after it.
+                // Under the finger it is the nearest point along x; at rest it
+                // is the last pair in the night.
+                keys: _poincareKeys(
+                    d.nn, axis, box.maxWidth, box.maxHeight, p.on(C.green)),
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter:
+                      Poincare(d.nn, p.on(C.green), axis: axis, grid: p.line),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: S.x4),
@@ -511,14 +703,24 @@ class _BeatsState extends State<Beats> {
             ],
             series: series,
             empty: axis == null ? const NoData() : null,
-            child: CustomPaint(
-              size: Size.infinite,
-              // Neutral ink and no fill, on purpose. A green line is a verdict,
-              // and a filled area is a quantity measured from a baseline this
-              // number does not have.
-              painter: LineChart(series, p.ink2,
-                  fill: false, dots: true, t: animate(c, 1), dotInk: p.card,
-                  axis: axis),
+            child: ChartScrub(
+              label: l?.beatsDcChartTitle ?? 'Your own nights, in order',
+              gaps: hasChartGaps([series]),
+              time: (at) => ChartScrub.dayBack(
+                  win - 1 - ChartScrub.slotAt(series.length, at)),
+              keys: [
+                ChartKey.slots('Deceleration capacity (ms)', p.ink2, series,
+                    (i, v) => '${v.toStringAsFixed(1)} ms'),
+              ],
+              child: CustomPaint(
+                size: Size.infinite,
+                // Neutral ink and no fill, on purpose. A green line is a
+                // verdict, and a filled area is a quantity measured from a
+                // baseline this number does not have.
+                painter: LineChart(series, p.ink2,
+                    fill: false, dots: true, t: animate(c, 1), dotInk: p.card,
+                    axis: axis),
+              ),
             ),
           ),
           const SizedBox(height: S.x4),
@@ -777,4 +979,58 @@ class _RhythmStrip extends StatelessWidget {
             }(),
         ]);
       });
+}
+
+/// What the Poincaré cloud holds under the finger, read off the same `nn` the
+/// painter draws and through the same centred square.
+///
+/// A scatter has two coordinates and a scrub carries one, so this selects the
+/// NEAREST POINT ALONG x: the interval closest to the touched x value, stated
+/// with the interval that followed it. Outside the square, or with no interval
+/// within a fortieth of the axis, there is nothing to say — never a value from
+/// further away.
+int? _poincareNearest(
+    List<double> nn, AxisSpec axis, double at, double w, double h) {
+  final side = w < h ? w : h;
+  if (side <= 0 || axis.max <= axis.min) return null;
+  final x = (at * w - (w - side) / 2) / side;
+  if (x < 0 || x > 1) return null;
+  final target = axis.min + x * (axis.max - axis.min);
+  final reach = (axis.max - axis.min) / 40;
+  int? best;
+  var bestGap = reach;
+  for (var i = 0; i + 1 < nn.length; i++) {
+    final a = nn[i], b = nn[i + 1];
+    if (!a.isFinite || !b.isFinite) continue;
+    final gap = (a - target).abs();
+    if (gap <= bestGap) {
+      bestGap = gap;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/// The two numbers of a Poincaré point, as a pair of keys for the row under the
+/// chart: the interval, and the one that followed it.
+List<ChartKey> _poincareKeys(List<double> nn, AxisSpec axis, double w, double h,
+    Color ink) {
+  String? at(int? i, int off) => i == null || i + off >= nn.length
+      ? null
+      : '${nn[i + off].round()} ms';
+  var last = -1;
+  for (var i = 0; i + 1 < nn.length; i++) {
+    if (nn[i].isFinite && nn[i + 1].isFinite) last = i;
+  }
+  ChartKey key(String label, int off) => ChartKey(
+        label,
+        ink,
+        (x) => at(_poincareNearest(nn, axis, x, w, h), off),
+        latest: null,
+        atRest: () => at(last < 0 ? null : last, off),
+      );
+  return [
+    key('Beat interval (ms)', 0),
+    key('Next interval (ms)', 1),
+  ];
 }

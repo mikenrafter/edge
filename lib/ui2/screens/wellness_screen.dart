@@ -30,6 +30,7 @@ import '../../data/med_store.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart' show whyFromNote;
 import '../../state/app_state.dart';
+import '../../state/recalc_state.dart';
 import '../../stress/breath_phases.dart';
 import '../ui2.dart';
 import 'calm_breathing.dart';
@@ -142,8 +143,8 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
     super.dispose();
   }
 
-  /// Readiness drivers, insights and journal metrics all move under this tab
-  /// when a derive or an import runs — and it is one of the three the shell
+  /// Readiness drivers, insights, stress, journal metrics and doses all move
+  /// under this tab when a derive or an import runs — and it is one of the three the shell
   /// keeps alive forever, so it read them once and stopped.
   @override
   void reload() => _load();
@@ -240,7 +241,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
     final l = AppLocalizations.of(c);
     if (widget.sleepPlanOnly) {
       return _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const InlineLoading()
           : _recovery(c);
     }
     final last = _breathing.isEmpty ? null : _breathing.first;
@@ -282,7 +283,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               color: C.domMind),
           const SizedBox(height: S.x5),
           if (_loading)
-            const Center(child: CircularProgressIndicator())
+            const InlineLoading()
           else ...[
             // Mind is the only tab here with something to START. The other
             // four are logs and reviews, and a "begin" card over a medication
@@ -295,7 +296,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
                 count: kBreathPatterns.length,
                 noun: l?.wellnessExercisesNoun ?? 'exercises',
                 sub: last == null
-                    ? (l?.wellnessPickOneAndGo ?? 'Pick one and go')
+                    ? (l?.wellnessPickOneAndGo ?? 'Pick a session')
                     : (l?.wellnessLastMinutes(
                             (_reading(last['seconds']) ?? 0) ~/ 60) ??
                         'Last: ${(_reading(last['seconds']) ?? 0) ~/ 60} min'),
@@ -349,8 +350,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
 
   Widget _mind(BuildContext c) {
     final l = AppLocalizations.of(c);
-    // Same rule as `_recovery`'s coach block, and for the same reason: this
-    // runs inside `build`, so a leaf of the wrong type here costs the whole
+    // Tested, never cast: this runs inside `build`, so a leaf of the wrong type here costs the whole
     // screen rather than this one card. See [_reading].
     final stress = _stress['stress'];
     final score = _reading(stress is Map ? stress['score'] : null);
@@ -369,7 +369,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
         ),
         const SizedBox(height: S.x4),
         ActionCard(
-          l?.wellnessWriteTheDayDown ?? 'Write the day down',
+          l?.wellnessWriteTheDayDown ?? 'Log your day',
           // Named from the field specs the journal actually holds. The old
           // literal listed four fields and went stale the moment a custom one
           // was added.
@@ -386,15 +386,30 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
         ),
         Section(
           l?.wellnessStressLastNight ?? 'Stress last night',
-          score == null
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // The stress on screen is today's stored row; while a pass
+            // recalculates today it says when that row was computed.
+            AsOfHold(
+              shown: _stress,
+              day: _date,
+              computedAt: computedAtOf(_stress['computed_at']),
+              asOf: (recalc) => asOfFor(
+                  shownDay: _date,
+                  computedAt: computedAtOf(_stress['computed_at']),
+                  recalc: recalc),
+              builder: (c, at) => Padding(
+                  padding: const EdgeInsets.only(bottom: S.x2),
+                  child: AsOfLabel(at: at)),
+            ),
+            score == null
               // "Last night had none" was a claim about a gate this screen
               // never read — the stress payload carries no reason, so the card
               // states what stress IS and stops there.
               ? StatusCard(
                   l?.wellnessNoStressTitle ?? 'No stress reading last night',
                   l?.wellnessNoStressBody ??
-                      'Stress is read from beat timing while you were resting '
-                          'overnight, and last night produced no reading.',
+                      'Stress comes from beat timing recorded while you rest overnight. '
+                      'Last night had no reading.',
                   icon: LucideIcons.activity,
                 )
               : SignalCard(
@@ -405,6 +420,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
                   unit: '/100',
                   sub: (level ?? '').toUpperCase(),
                 ),
+          ]),
         ),
       ],
     );
@@ -673,7 +689,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
         ActionCard(
           l?.wellnessWhatYouLogTitle ?? 'What you log, against your numbers',
           l?.wellnessWhatYouLogSubtitle ??
-              'Dose, habit difference, and the day of the week',
+              'Dose, days with and without it, and weekday',
           l?.wellnessOpen ?? 'Open',
           LucideIcons.scatterChart,
           C.domMind,
@@ -706,7 +722,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
       title: l?.wellnessRemoveHabitConfirmTitle(h.label) ??
           'Remove ${h.label}?',
       body: l?.wellnessRemoveHabitConfirmBody ??
-          'It stops being asked. The days you already recorded stay.',
+          'The app stops asking about this habit. Days you already recorded stay.',
     );
     if (!ok || !mounted) return;
     final repo = context.read<AppState>().repo;
@@ -845,7 +861,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
                       _adherence.taken,
                       _adherence.of,
                       l?.wellnessTakenOfScheduled ??
-                          'Taken, of those scheduled in the last seven days.',
+                          'Doses taken out of doses scheduled in the last seven days.',
                       C.blue,
                       // Doses, not days — three a day over a week is 21 of
                       // them inside a seven-day window.
@@ -951,7 +967,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               sub: skipped
                   ? (l?.wellnessBackToNotTaken ?? 'Back to not taken.')
                   : (l?.wellnessRecordedAsDecision ??
-                      'Recorded as a decision, not a miss.'),
+                      'Recorded as a deliberate skip.'),
               onTap: () {
                 Navigator.of(sheet).pop();
                 _skipDose(s);
@@ -971,7 +987,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               l?.wellnessRemoveMedTitle(s.def.label) ??
                   'Remove ${s.def.label}',
               sub: l?.wellnessRemoveMedBody ??
-                  'It stops being scheduled. Marked doses stay.',
+                  'This medication is no longer scheduled. Doses you marked stay.',
               onTap: () {
                 Navigator.of(sheet).pop();
                 _confirmRemoveMed(s.def);
@@ -1125,7 +1141,7 @@ double? _nested(Map<String, dynamic>? blk, String key, String field) {
 /// A stored leaf as a number this screen can print, or null.
 ///
 /// TESTED, NEVER CAST, and the finite check is not belt-and-braces. Every
-/// caller of this is evaluated inside `_recovery`, which `build` CALLS — so a
+/// caller of this is evaluated inside a tab builder, which `build` CALLS — so a
 /// throw here is not a broken card, it is `WellnessScreen.build` failing, the
 /// whole domain replaced by an `ErrorWidget`, and `RenderErrorBox` painting
 /// `0xF0C0C0C0` over the page. On a release build that is a flat grey screen
@@ -1136,7 +1152,8 @@ double? _nested(Map<String, dynamic>? blk, String key, String field) {
 ///     String — an older artifact, a hand-edited backup, an import — throws.
 ///   · `.round()` throws `UnsupportedError` on NaN and infinity, and every
 ///     number here is rounded a few lines later (`_hm`, `formatMinuteOfDay`,
-///     the strain and nap rows). `1e999` in JSON decodes to `Infinity`.
+///     the strain and nap rows, the stress score). `1e999` in JSON decodes to
+///     `Infinity`.
 ///
 /// The write seam already learned this: `sanitizeForJson` nulls a non-finite
 /// leaf rather than letting `jsonEncode` throw, because "the artifact is a bag
@@ -1554,7 +1571,18 @@ class JournalFindings extends StatefulWidget {
 class _JournalFindingsState extends State<JournalFindings> {
   List<Map<String, dynamic>> _rows = const [];
   Map<String, dynamic> _weekday = const {};
-  bool _loading = true;
+
+  /// Which of the two slow reads have something to show: the insight rows, and
+  /// the weekday effect. Until one does, its part of the page is an inline
+  /// loading card; the title and the other part are already drawn.
+  bool _rowsReady = false;
+  bool _weekdayReady = false;
+
+  /// Set while the rows / the weekday card on screen are the last result of an
+  /// earlier open, shown at once while the insights recompute; null once fresh
+  /// ones land.
+  DateTime? _rowsCachedAt;
+  DateTime? _weekdayCachedAt;
 
   @override
   void initState() {
@@ -1562,45 +1590,102 @@ class _JournalFindingsState extends State<JournalFindings> {
     if (widget.rows != null) {
       _rows = widget.rows!;
       _weekday = widget.weekday ?? const {};
-      _loading = false;
+      _rowsReady = _weekdayReady = true;
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  static List<Map<String, dynamic>> _rowsOf(Map<String, dynamic> j) => [
+        for (final e in (j['numeric_insights'] as List? ?? const []))
+          if (e is Map) e.cast<String, dynamic>(),
+      ];
+
   Future<void> _load() async {
     final repo = context.read<AppState>().repo;
     if (repo == null) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _rowsReady = _weekdayReady = true);
+      }
       return;
     }
-    try {
-      final j = await repo.getJournalInsights(range: '90d');
-      final w = await repo.getWeekdayEffect();
+    // The insight pass and the weekday effect are the slow parts of opening
+    // this. Each is one artifact (shared with MetricDetail and the warmer): a
+    // stored result whose input signature still matches is shown as is, a stale
+    // one is shown under an "As of" label while it recomputes; an error is never
+    // kept. A failure comes back as null so it cannot escape unawaited.
+    final cache = LastResultCache.instance;
+    final insightsKey = LastResultCache.keyOf('journal_insights', ['90d']);
+    final weekdayKey = LastResultCache.keyOf('weekday_effect');
+    final rowsF = cache
+        .loadArtifact<Map<String, dynamic>>(
+          insightsKey,
+          () => repo.getJournalInsights(range: '90d'),
+          signature: () => repo.artifactSignature(insightsKey),
+          onLast: (hit) {
+            if (!mounted || _rowsReady) return;
+            setState(() {
+              _rows = _rowsOf(hit.value);
+              _rowsReady = true;
+              _rowsCachedAt = hit.cachedAt;
+            });
+          },
+        )
+        .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
+    final weekdayF = cache
+        .loadArtifact<Map<String, dynamic>>(
+          weekdayKey,
+          () => repo.getWeekdayEffect(),
+          signature: () => repo.artifactSignature(weekdayKey),
+          onLast: (hit) {
+            if (!mounted || _weekdayReady) return;
+            setState(() {
+              _weekday = hit.value;
+              _weekdayReady = true;
+              _weekdayCachedAt = hit.cachedAt;
+            });
+          },
+        )
+        .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
+    // Each lands on its own: the weekday card does not wait for the slower
+    // insight pass, nor the other way round.
+    rowsF.then((j) {
       if (!mounted) return;
       setState(() {
-        _rows = [
-          for (final e in (j['numeric_insights'] as List? ?? const []))
-            if (e is Map) e.cast<String, dynamic>(),
-        ];
-        _weekday = w;
-        _loading = false;
+        // A failed read keeps an earlier result (labelled) and otherwise shows
+        // the empty state, as before.
+        if (j != null) {
+          _rows = _rowsOf(j);
+          _rowsCachedAt = null;
+        }
+        _rowsReady = true;
       });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
-    }
+    });
+    weekdayF.then((w) {
+      if (!mounted) return;
+      setState(() {
+        if (w != null) {
+          _weekday = w;
+          _weekdayCachedAt = null;
+        }
+        _weekdayReady = true;
+      });
+    });
+  }
+
+  /// The older of the two stale parts on screen: the label never claims more
+  /// recent than the oldest thing it covers.
+  DateTime? get _cachedAt {
+    final a = _rowsCachedAt, b = _weekdayCachedAt;
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isBefore(b) ? a : b;
   }
 
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     final title = l?.wellnessWhatYouLogScreenTitle ?? 'What you log';
-    if (_loading) {
-      return detailScaffold(c, title, const [
-        SizedBox(height: S.x8),
-        Center(child: CircularProgressIndicator()),
-      ]);
-    }
     final p = P.of(c);
     final doses = [
       for (final r in _rows)
@@ -1612,13 +1697,19 @@ class _JournalFindingsState extends State<JournalFindings> {
     ];
     return detailScaffold(c, title, [
       const SizedBox(height: S.x2),
-      if (_rows.isEmpty)
+      if (_cachedAt case final at?)
+        Padding(
+            padding: const EdgeInsets.only(bottom: S.x2),
+            child: AsOfLabel(at: at)),
+      if (!_rowsReady)
+        const InlineLoading()
+      else if (_rows.isEmpty)
         StatusCard(
-          l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
+          l?.wellnessNothingSeparatedTitle ?? 'No clear pattern yet',
           l?.wellnessNothingSeparatedBody ??
-              'Everything you log is tested against your recovery, HRV, '
-                  'resting heart rate and sleep efficiency. Nothing has '
-                  'cleared the bar yet.',
+              'Each item you log is compared with your recovery, HRV, '
+              'resting heart rate and sleep efficiency. None has shown '
+              'a difference yet.',
           icon: LucideIcons.scatterChart,
         )
       else ...[
@@ -1635,14 +1726,14 @@ class _JournalFindingsState extends State<JournalFindings> {
         const SizedBox(height: S.x2),
         Text(
           l?.wellnessLinkNeverCause ??
-              'A link on your own days — never a cause. The days you do a '
-                  'thing are days you were already that kind of day.',
+              'This shows an association in your own days. It does not show a cause. '
+              'Days when you do something often differ in other ways too.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
       ],
       Section(
         l?.wellnessWhichDayOfWeek ?? 'Which day of the week',
-        _weekdayCard(c),
+        _weekdayReady ? _weekdayCard(c) : const InlineLoading(),
       ),
     ]);
   }
@@ -1795,8 +1886,8 @@ class _JournalFindingsState extends State<JournalFindings> {
       return StatusCard(
         l?.wellnessNotEnoughWeeksTitle ?? 'Not enough weeks yet',
         l?.wellnessNotEnoughWeeksBody ??
-            'Comparing seven weekdays needs at least eight weeks of days, '
-                'with five of every weekday in them.',
+            'Weekday comparison needs at least eight weeks of data, '
+            'with at least five days of each weekday.',
         icon: LucideIcons.calendarDays,
       );
     }
@@ -1804,8 +1895,8 @@ class _JournalFindingsState extends State<JournalFindings> {
       return StatusCard(
         l?.wellnessNoDayStandsOutTitle ?? 'No day of the week stands out',
         l?.wellnessNoDayStandsOutBody ??
-            'No day stands apart from the other six once we account for '
-                'having checked all seven.',
+            'After correcting for comparing seven weekdays, '
+            'no day differs from the other six.',
         icon: LucideIcons.calendarDays,
       );
     }
@@ -1827,8 +1918,8 @@ class _JournalFindingsState extends State<JournalFindings> {
             '${_weekdayName(day)}s: recovery runs '
                 '${delta.abs().round()} $direction than your usual',
         detail: l?.wellnessWeekdayDetail('$n') ??
-            'From $n of them. A weekday is not a cause — it is a container '
-                'for what you do on it. Nothing here is advice.',
+            'From $n of them. A weekday causes nothing; it groups what you did on it. '
+            'This is not advice.',
       ),
     );
   }

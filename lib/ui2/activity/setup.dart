@@ -168,8 +168,8 @@ class _ActivitySetupState extends State<ActivitySetup> {
                           LucideIcons.mapPin,
                           l?.activitySetupRouteLabel ?? 'Route',
                           l?.activitySetupRouteDetail ??
-                              'Recorded if location is available, and kept '
-                                  'on this phone',
+                              'Recorded when location is available. '
+                              'Stays on this phone.',
                           null),
                       Divider(color: p.line, height: 1),
                     ],
@@ -289,7 +289,7 @@ class _ActivitySetupState extends State<ActivitySetup> {
   /// and pace" that nothing in this app can measure indoors.
   String _trackLabel(Track t, AppLocalizations? l) => switch (t) {
         Track.sets =>
-          l?.activitySetupTrackSets ?? 'Sets, reps and load — logged by you',
+          l?.activitySetupTrackSets ?? 'Sets, reps and load you log',
         Track.distance when widget.a.gps =>
           l?.activitySetupTrackDistanceGps ?? 'Distance, pace and heart rate',
         Track.distance || Track.duration =>

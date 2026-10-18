@@ -14,13 +14,11 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../settings/settings_repository.dart';
 import '../../state/app_state.dart';
 import '../../state/locale_controller.dart';
+import '../../state/prefs.dart';
 import '../ui2.dart';
-import '../screens/coach.dart' show CoachSetup, coachSubtitle;
-import '../screens/home_screen.dart' show deviceBatteryOf;
-import 'data.dart';
-import 'devices.dart';
 import 'settings.dart';
 
 // ══════════════════ shared list furniture ══════════════════
@@ -31,6 +29,11 @@ class SetRow extends StatelessWidget {
   final Color color;
   final String title, sub, value;
   final bool danger, chevron;
+
+  /// A row that does not apply right now stays in the list, dimmed and
+  /// inert, rather than appearing and disappearing with another setting. Say
+  /// why in [sub] when the reason is not obvious.
+  final bool enabled;
   final VoidCallback? onTap;
 
   /// Replaces the value and chevron (e.g. a [Switch]).
@@ -48,6 +51,7 @@ class SetRow extends StatelessWidget {
       this.danger = false,
       this.chevron = true,
       this.trailing,
+      this.enabled = true,
       this.onTap})
       : glyph = null;
 
@@ -57,6 +61,7 @@ class SetRow extends StatelessWidget {
       this.value = '',
       this.danger = false,
       this.chevron = true,
+      this.enabled = true,
       this.onTap})
       : icon = null,
         trailing = null;
@@ -65,8 +70,8 @@ class SetRow extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final accent = danger ? C.red : color;
-    return Pressable(
-      onTap: onTap,
+    final row = Pressable(
+      onTap: enabled ? onTap : null,
       semanticLabel: sub.isEmpty ? title : '$title. $sub',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -116,8 +121,12 @@ class SetRow extends StatelessWidget {
         ]),
       ),
     );
+    return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
   }
 }
+
+/// How far a disabled settings row is dimmed.
+const double kDisabledOpacity = .45;
 
 /// A titled card of [SetRow]s, hairline-separated.
 Widget settingsGroup(BuildContext c, String title, List<Widget> rows) {
@@ -136,15 +145,230 @@ Widget settingsGroup(BuildContext c, String title, List<Widget> rows) {
   );
 }
 
+/// The app-pref key under which an accordion remembers whether it is open. [id]
+/// is the screen and section as stable ids ("settings_band"), never the
+/// translated title, so the answer survives a change of language.
+String accordionPrefKey(String id) => 'accordion_$id';
+
+/// A titled card whose rows open and close behind an explicit header tap. It
+/// starts expanded: every setting is visible until the person folds a section
+/// away. The header always stays in place, so a group never appears or moves
+/// because some setting elsewhere changed; only this header's own tap changes
+/// its height. Folded, [summary] stays under the title as one line, so a closed
+/// section still says what is inside it.
+///
+/// With an [id] the open or folded state is remembered between visits, through
+/// the app-prefs section of [SettingsRepository] (one bool per section, written
+/// when it is toggled). A section that was never toggled starts as
+/// [initiallyExpanded]. Without an [id] nothing is stored.
+///
+/// The open flag lives in a State, and the lists these sit in gain and lose
+/// neighbours (a permission card, a "not connected" card). Positionally, a
+/// neighbour would inherit the folded section's State and fold or open with it.
+/// So this widget is a thin const description and the State sits in a card
+/// keyed by [id]: an accordion that moves gets the State for its own id.
+class SettingsAccordion extends StatelessWidget {
+  const SettingsAccordion(this.title,
+      {super.key,
+      required this.children,
+      this.summary,
+      this.id,
+      this.initiallyExpanded = true});
+  final String title;
+  final List<Widget> children;
+  final String? summary;
+
+  /// Screen id + section id, e.g. "settings_band". See [accordionPrefKey].
+  final String? id;
+  final bool initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) => _SettingsAccordionCard(
+      key: id == null ? null : ValueKey<String>('accordion_$id'), this);
+}
+
+class _SettingsAccordionCard extends StatefulWidget {
+  const _SettingsAccordionCard(this.a, {super.key});
+  final SettingsAccordion a;
+
+  @override
+  State<_SettingsAccordionCard> createState() => _SettingsAccordionState();
+}
+
+class _SettingsAccordionState extends State<_SettingsAccordionCard> {
+  late bool _open = _remembered();
+
+  /// Set once the person has toggled it: a stored answer that arrives after
+  /// that must not undo what they just did.
+  bool _toggled = false;
+
+  /// The stored answer for this id, read synchronously from the start-up
+  /// cache ([Prefs.ensureLoaded] runs before runApp), else [initiallyExpanded].
+  /// Building in the remembered state on the first frame matters: a folded
+  /// section built open and folded a frame later makes a long page shrink under
+  /// a person who has already started scrolling it. Before the cache is loaded
+  /// this is the default, and [_restore] still corrects it.
+  bool _remembered() {
+    final id = widget.a.id;
+    if (id == null) return widget.a.initiallyExpanded;
+    return Prefs.getBool(accordionPrefKey(id), widget.a.initiallyExpanded);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _restore();
+  }
+
+  @override
+  void didUpdateWidget(_SettingsAccordionCard old) {
+    super.didUpdateWidget(old);
+    if (old.a.id == widget.a.id) return;
+    // This State now belongs to another section: show that section's answer,
+    // not the one it held, and let a read still in flight for the old id lapse.
+    _toggled = false;
+    _open = _remembered();
+    _restore();
+  }
+
+  Future<void> _restore() async {
+    final id = widget.a.id;
+    if (id == null) return;
+    bool? stored;
+    try {
+      stored = await SettingsRepository.instance.appBool(accordionPrefKey(id));
+    } catch (_) {
+      return; // Unreadable: keep today's default.
+    }
+    if (!mounted || widget.a.id != id || _toggled) return;
+    final answer = stored ?? widget.a.initiallyExpanded;
+    if (answer == _open) return;
+    setState(() => _open = answer);
+  }
+
+  Future<void> _toggle() async {
+    final open = !_open;
+    setState(() {
+      _toggled = true;
+      _open = open;
+    });
+    final id = widget.a.id;
+    if (id == null) return;
+    try {
+      await SettingsRepository.instance.update(
+        (d) => d.setBool(accordionPrefKey(id), open),
+        sections: const {},
+      );
+    } catch (_) {
+      // The fold still happened on screen; it just will not be remembered.
+    }
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final summary = widget.a.summary;
+    return Padding(
+      padding: const EdgeInsets.only(top: S.x3),
+      // The card is drawn here rather than by Surface, which wraps its child in
+      // an inert Pressable: the first Pressable inside an accordion is its
+      // header, the only control a tap or a screen reader should find first.
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: S.x4),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: R.rLg,
+          boxShadow: p.el(1),
+        ),
+        child: Column(children: [
+          Pressable(
+            onTap: _toggle,
+            semanticLabel: '${widget.a.title}, ${_open ? 'expanded' : 'collapsed'}',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: S.x3),
+              child: Row(children: [
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.a.title,
+                            style: F.body.copyWith(
+                                color: p.ink, fontWeight: FontWeight.w600)),
+                        if (!_open && summary != null && summary.isNotEmpty)
+                          Text(summary,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: F.over.copyWith(color: p.ink3)),
+                      ]),
+                ),
+                Icon(_open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                    size: 17, color: p.ink3),
+              ]),
+            ),
+          ),
+          if (_open)
+            for (final row in widget.a.children) ...[
+              Divider(color: p.line, height: 1),
+              row,
+            ],
+        ]),
+      ),
+    );
+  }
+}
+
+/// A label with a switch. The switch carries the state, so the row prints no
+/// "On"/"Off" word that a screen would then have to count.
+class SwitchRow extends StatelessWidget {
+  const SwitchRow(this.title, this.value, this.onChanged,
+      {super.key,
+      this.sub = '',
+      this.enabled = true,
+      this.switchFirst = false});
+  final String title, sub;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  /// False keeps the row in the list, dimmed, with its switch inert.
+  final bool enabled;
+
+  /// The switch leads the label instead of trailing it. For a switch that sits
+  /// under another row's icon column (the phone's, in My devices), where it
+  /// reads as that row's own control.
+  final bool switchFirst;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final label = Expanded(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: F.body.copyWith(color: p.ink)),
+        if (sub.isNotEmpty) Text(sub, style: F.over.copyWith(color: p.ink3)),
+      ]),
+    );
+    final toggle = Switch(value: value, onChanged: enabled ? onChanged : null);
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(vertical: S.x2),
+      child: Row(children: [
+        if (switchFirst) ...[toggle, const SizedBox(width: S.x3), label]
+        else ...[label, const SizedBox(width: S.x2), toggle],
+      ]),
+    );
+    return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
+  }
+}
+
 /// Push a screen, keeping the enclosing domain accent. Returns when it pops,
 /// so a caller whose own numbers the pushed screen can change is able to
 /// re-read them.
 Future<void> goto(BuildContext c, Widget w) =>
     Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => w));
 
-/// The one way into the profile stack. [ProfileAvatar] calls this — profile
-/// is a pushed route, never a tab.
-void openProfile(BuildContext c) => goto(c, const ProfileHome());
+/// The one way into Settings from Home's Profile button. There is no profile
+/// landing screen in between: Settings is the landing, and it is a
+/// pushed route, never a sixth tab.
+void openProfile(BuildContext c) => goto(c, const MoreSettings());
 
 /// The way into Profile, in the top-right of every tab. It used to be a gear
 /// on Home only, so four tabs out of five had no road to devices, battery,
@@ -200,11 +424,11 @@ const Map<String, String> _kLanguageNames = {
   'ru': 'Русский',
 };
 
-String _languageLabel(BuildContext c, String? code) => code == null
+String languageLabel(BuildContext c, String? code) => code == null
     ? (AppLocalizations.of(c)?.languageSystemDefault ?? 'System default')
     : (_kLanguageNames[code] ?? code);
 
-Future<void> _pickLanguage(BuildContext c) async {
+Future<void> pickLanguage(BuildContext c) async {
   final p = P.of(c);
   final ctrl = c.read<LocaleController>();
   final options = <String?>[null, ...AppLocalizations.supportedLocales.map((l) => l.languageCode)];
@@ -218,7 +442,7 @@ Future<void> _pickLanguage(BuildContext c) async {
         children: [
           for (final code in options)
             ListTile(
-              title: Text(_languageLabel(sheet, code), style: F.body.copyWith(color: p.ink)),
+              title: Text(languageLabel(sheet, code), style: F.body.copyWith(color: p.ink)),
               trailing: ctrl.code == code
                   ? Icon(LucideIcons.check, size: 18, color: p.on(C.blue))
                   : null,
@@ -244,210 +468,4 @@ String formatBytes(int b) {
     i++;
   }
   return '${v < 10 ? v.toStringAsFixed(1) : v.round()} ${units[i]}';
-}
-
-// ══════════════════ 1 · PROFILE HOME ══════════════════
-
-/// What the profile screen still shows: who you are, how many sources are
-/// live, and how much room the data takes.
-///
-/// The workouts / records / days / sessions counters are gone with the tile
-/// that displayed them. They cost a `getRecords()` and a whole year-of-workouts
-/// query on every open, so leaving the fields behind would have kept paying for
-/// numbers nobody reads.
-class ProfileStats {
-  final String? name;
-  final int sources;
-  final int? storageBytes;
-
-  const ProfileStats({this.name, this.sources = 0, this.storageBytes});
-}
-
-class ProfileHome extends StatefulWidget {
-  const ProfileHome({super.key});
-
-  @override
-  State<ProfileHome> createState() => _ProfileHomeState();
-}
-
-class _ProfileHomeState extends State<ProfileHome> {
-  /// Re-read after every screen this one pushes. It used to be a single
-  /// `late final` Future, so pairing a band from My sources (which auto-pops
-  /// straight back here) left the row reading "0 sources", and an import or a
-  /// reset left Storage on the old size until the screen was left and
-  /// re-entered.
-  late Future<ProfileStats> _stats = _load();
-
-  Future<ProfileStats> _load() async {
-    final app = context.read<AppState>();
-    final repo = app.repo;
-    final sources = liveSources(app).length;
-    if (repo == null) {
-      return ProfileStats(
-          name: app.user?['name'] as String?, sources: sources);
-    }
-    final bytes = await app.dataFileBytes();
-    return ProfileStats(
-      name: app.user?['name'] as String?,
-      sources: sources,
-      storageBytes: bytes,
-    );
-  }
-
-  Future<void> _open(BuildContext c, Widget w) async {
-    await goto(c, w);
-    // A block body, not `=>`: the arrow form returns the assigned Future, which
-    // setState asserts against (debug builds throw and skip the rebuild).
-    if (!mounted) return;
-    setState(() {
-      _stats = _load();
-    });
-  }
-
-  @override
-  Widget build(BuildContext c) => FutureBuilder<ProfileStats>(
-        future: _stats,
-        builder: (c, snap) => ProfileHomeView(
-          stats: snap.data,
-          onDevices: () => _open(c, const MyDevices()),
-          onSettings: () => _open(c, const MoreSettings()),
-          onExport: () => _open(c, const DataScreen()),
-          onEdit: () => _open(c, const EditProfile()),
-          onCoach: () => _open(c, const CoachSetup()),
-        ),
-      );
-}
-
-class ProfileHomeView extends StatelessWidget {
-  /// Null while the counts are still being read — the numbers are absent, not
-  /// zero, and a zero rendered during a load is a wrong number on screen.
-  final ProfileStats? stats;
-  final VoidCallback? onDevices, onSettings, onExport, onEdit, onCoach;
-
-  const ProfileHomeView(
-      {super.key,
-      this.stats,
-      this.onDevices,
-      this.onCoach,
-      this.onSettings,
-      this.onExport,
-      this.onEdit,
-      });
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    final l = AppLocalizations.of(c);
-    final s = stats;
-    return Scaffold(
-      backgroundColor: p.bg,
-      body: SafeArea(
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.profileTitle ?? 'Profile'),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
-              children: [
-                const SizedBox(height: S.x4),
-                settingsGroup(c, l?.profileQuickAccessGroup ?? 'Quick access', [
-                  // The band's battery rides the devices row: Profile is
-                  // where "is my band all right?" is asked from every tab.
-                  Builder(builder: (c) {
-                    final battery = deviceBatteryOf(c);
-                    return SetRow(LucideIcons.watch, C.blue,
-                        l?.profileMyDevices ?? 'My devices',
-                        sub: [
-                          if (s != null)
-                            l?.profileSourcesCount(s.sources) ??
-                                '${s.sources} source${s.sources == 1 ? '' : 's'}',
-                          if (battery != null)
-                            l?.profileBandBattery(battery.$1.round()) ??
-                                'Band ${battery.$1.round()}%',
-                        ].join(' · '),
-                        onTap: onDevices);
-                  }),
-                  SetRow(LucideIcons.userPen, C.purple,
-                      l?.profileEditProfile ?? 'Edit profile',
-                      sub: l?.profileEditProfileSub ??
-                          'Sex, age, height, weight',
-                      onTap: onEdit),
-                  // THE ONLY DOOR TO THE COACH'S SETUP, and it has to be —
-                  // Home's sparkles button is now gated on `coachReady`, so on
-                  // a fresh install there is no icon to find it behind. It
-                  // belongs here anyway: a model, a base URL and a key are
-                  // settings, and the coach's own overflow menu offering the
-                  // same form was two doors onto one state.
-                  //
-                  // `watch` rather than `read` so the sub-line stops saying
-                  // "Not set up" the moment it is.
-                  Builder(builder: (c) => SetRow(
-                      LucideIcons.sparkles, C.purple,
-                      AppLocalizations.of(c)?.profileAiCoach ?? 'AI coach',
-                      sub: coachSubtitle(c) ??
-                          (AppLocalizations.of(c)?.profileNotSetUp ??
-                              'Not set up'),
-                      onTap: onCoach)),
-                  Builder(builder: (c) => SetRow(
-                      LucideIcons.languages, C.blue,
-                      AppLocalizations.of(c)?.profileLanguage ?? 'Language',
-                      sub: _languageLabel(c, c.watch<LocaleController>().code),
-                      onTap: () => _pickLanguage(c))),
-                ]),
-                settingsGroup(c, l?.profileYourDataGroup ?? 'Your data', [
-                  SetRow(LucideIcons.database, C.green,
-                      l?.profileStorage ?? 'Storage',
-                      value: s?.storageBytes == null
-                          ? ''
-                          : formatBytes(s!.storageBytes!),
-                      chevron: false),
-                  // Export straight from here: it used to be five taps deep,
-                  // behind a row named for its position ("More settings").
-                  SetRow(LucideIcons.download, C.green,
-                      l?.profileExportRow ?? 'Export and backup',
-                      sub: l?.profileExportRowSub ??
-                          'Spreadsheets, a full copy, and bringing history in',
-                      onTap: onExport),
-                  SetRow(LucideIcons.settings, C.n500,
-                      l?.profileSettingsRow ?? 'Settings',
-                      sub: l?.profileSettingsRowSub ??
-                          'Band, app, data, privacy and advanced',
-                      onTap: onSettings),
-                ]),
-                settingsGroup(c, l?.profileCommunityGroup ?? 'Community', [
-                  SetRow.brand(brandGlyph('assets/icons/github.svg'), C.n500,
-                      l?.profileGithubTitle ?? 'GitHub',
-                      sub: l?.profileGithubSub ??
-                          'Please star and show your support — it helps '
-                              'the project grow',
-                      onTap: () => open3rdPartyLink(kGithubUrl)),
-                  SetRow.brand(brandGlyph('assets/icons/reddit.svg'), C.orange,
-                      l?.profileRedditTitle ?? 'Reddit',
-                      sub: l?.profileRedditSub ??
-                          'Join r/OpenStrap — post your achievements, '
-                              'questions, anything',
-                      onTap: () => open3rdPartyLink(kRedditUrl)),
-                  SetRow.brand(brandGlyph('assets/icons/discord.svg'),
-                      C.indigo, l?.profileDiscordTitle ?? 'Discord',
-                      sub: l?.profileDiscordSub ??
-                          'Hang out with other users and the people '
-                              'building this',
-                      onTap: () => open3rdPartyLink(kDiscordUrl)),
-                  SetRow(LucideIcons.heartHandshake, C.pink,
-                      l?.profileSponsorTitle ?? 'Sponsor',
-                      sub: l?.profileSponsorSub ??
-                          'This is a free, open-source project — '
-                              'sponsoring keeps it going',
-                      onTap: () => open3rdPartyLink(kSponsorUrl)),
-                ]),
-              ],
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
-
 }

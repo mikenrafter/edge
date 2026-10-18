@@ -293,10 +293,21 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
             series: d.curve,
             footnote: l?.dayStrainChartFootnote(drawn) ??
                 'Effort above your usual waking pace. It can ease later if you slow back toward that pace. From $drawn recorded waking minutes.',
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: LineChart(d.curve, p.on(C.purple),
-                  axis: axis, t: animate(context, 1)),
+            child: ChartScrub(
+              label: l?.dayStrainChartTitle ?? 'Strain through the day',
+              // One slot per minute of the local day, as the grid was built.
+              gaps: hasChartGaps([d.curve]),
+              time: (at) =>
+                  ChartScrub.clock(ChartScrub.slotAt(d.curve.length, at)),
+              keys: [
+                ChartKey.slots('Strain (0–21)', p.on(C.purple), d.curve,
+                    (i, v) => v.toStringAsFixed(1)),
+              ],
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: LineChart(d.curve, p.on(C.purple),
+                    axis: axis, t: animate(context, 1)),
+              ),
             ),
           ),
           if (d.strain != null || d.peakHr != null || d.wornMin != null) ...[
