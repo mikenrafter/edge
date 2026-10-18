@@ -1278,7 +1278,8 @@ Uint8List _tamperRr(Uint8List blob, void Function(Map<String, dynamic> j) edit) 
   final body = Uint8List.sublistView(blob, 0, blob.length - 4);
   switch (kind) {
     case 0:
-      const fmts = [0, 1, 2, 3, 5, kDayCheckpointFmt + 1, -1, 0x7fffffff];
+      // Every layout but the current one, the one before it (4) included.
+      final fmts = [0, 1, 2, 3, kDayCheckpointFmt - 1, kDayCheckpointFmt + 1, -1, 0x7fffffff];
       final x = Uint8List.fromList(body);
       ByteData.sublistView(x).setInt32(4, fmts[a % fmts.length]);
       return (_resign(x), true);
