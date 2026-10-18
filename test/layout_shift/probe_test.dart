@@ -179,12 +179,110 @@ void main() {
     expect(b.elements.map((e) => e.id).toList(), ids,
         reason: 'inserting a sibling above must not rename anything');
     expect(a.elements.where((e) => e.role == ElementRole.control), isNotEmpty);
-    expect(ids.where((i) => i.startsWith('~text|') && i.contains('same')),
+    expect(ids.where((i) => i.startsWith('~text|')),
         hasLength(2));
     final r = score(probe.scenario(_viewport), ShiftPolicy.standard);
     expect(r.total, greaterThan(0));
     // Default mode still tracks keyed only.
     final keyedOnly = ShiftProbe();
     expect(keyedOnly.capture(t, atMs: 0).elements, isEmpty);
+  });
+
+  // ---- placeholder -> content is the same slot, not disappear + appear ----
+  late ShiftProbe last;
+  Future<ShiftReport> run(WidgetTester t, Widget a, Widget b) async {
+    final probe = last = ShiftProbe(trackUnkeyed: true);
+    await t.pumpWidget(MaterialApp(
+        home: Align(alignment: Alignment.topLeft, child: a)));
+    probe.capture(t, atMs: 0);
+    await t.pumpWidget(MaterialApp(
+        home: Align(alignment: Alignment.topLeft, child: b)));
+    probe.capture(t, atMs: 300);
+    return score(probe.scenario(_viewport), ShiftPolicy.standard);
+  }
+
+  testWidgets('slot: loading box 40 -> chart card 200 is one resize',
+      (t) async {
+    Widget slot(Widget c) => Column(
+        key: const ValueKey('slot'),
+        mainAxisSize: MainAxisSize.min,
+        children: [c]);
+    final r = await run(
+        t,
+        slot(const SizedBox(
+            height: 40, width: 200, child: CircularProgressIndicator())),
+        slot(const Card(child: SizedBox(height: 200, width: 200))));
+    expect(r.total, greaterThan(0));
+    expect(r.findings.where((f) => f.rule == 'shift' && f.elementId == 'slot'),
+        isNotEmpty);
+  });
+
+  testWidgets('unkeyed: loading indicator -> card in the same slot resizes',
+      (t) async {
+    final r = await run(
+        t,
+        Column(mainAxisSize: MainAxisSize.min, children: const [
+          Text('title'),
+          SizedBox(
+              height: 40, width: 200, child: CircularProgressIndicator()),
+        ]),
+        Column(mainAxisSize: MainAxisSize.min, children: const [
+          Text('title'),
+          Card(child: SizedBox(height: 200, width: 200)),
+        ]));
+    expect(r.total, greaterThan(0));
+    expect(r.findings.where((f) => f.rule == 'shift' && f.elementId.startsWith('~card|')),
+        isNotEmpty, reason: 'the slot itself is scored');
+  });
+
+  testWidgets('"—" -> "72" same size is not a shift and not an appearance',
+      (t) async {
+    final r = await run(
+        t,
+        const Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('\u2014', style: TextStyle(fontSize: 20)),
+          Text('after'),
+        ]),
+        const Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('72', style: TextStyle(fontSize: 20)),
+          Text('after'),
+        ]));
+    List<String> ids(int i) => last.frames[i].elements.map((e) => e.id).toList();
+    expect(ids(1), ids(0), reason: 'same slot, same id');
+    expect(r.total, 0);
+    expect(r.findings, isEmpty);
+  });
+
+  testWidgets('"—" -> taller text is a resize finding on that text', (t) async {
+    final r = await run(
+        t,
+        const Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('above'),
+          Text('\u2014', style: TextStyle(fontSize: 14)),
+        ]),
+        const Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('above'),
+          Text('72 bpm resting', style: TextStyle(fontSize: 40)),
+        ]));
+    expect(r.total, greaterThan(0));
+    expect(r.findings.where((f) => f.rule == 'shift'), isNotEmpty);
+    expect(r.findings.every((f) => f.elementId.startsWith('~text|')), isTrue);
+    List<String> ids(int i) => last.frames[i].elements.map((e) => e.id).toList();
+    expect(ids(1), ids(0), reason: 'same slot, same id');
+  });
+
+  testWidgets('regression: a widget appearing in a new position pushes the '
+      'sibling below it', (t) async {
+    final r = await run(
+        t,
+        const Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('stay'),
+        ]),
+        const Column(mainAxisSize: MainAxisSize.min, children: [
+          Card(child: SizedBox(height: 120, width: 200)),
+          Text('stay'),
+        ]));
+    expect(r.total, greaterThan(0));
+    expect(r.findings.where((f) => f.elementId.startsWith('~text|')), isNotEmpty);
   });
 }

@@ -16,19 +16,21 @@ class ShiftProbe {
   /// synthetic id (see [_synthKind]). Off by default so keyed-only tests are
   /// unchanged.
   ///
-  /// Id = `~<kind>|<scope>|<ancestor types>|<content>#<ordinal>`:
+  /// Id = `~<kind>|<scope>|<ancestor types>#<ordinal>` (identity is the SLOT,
+  /// never the content):
   ///  * scope: the nearest ancestor `ValueKey<String>` value (or empty), so a
   ///    keyed section anchors everything inside it;
-  ///  * ancestor types: runtimeTypes of the 3 nearest ancestors. Sibling INDEX
-  ///    is deliberately left out: a card inserted above would renumber every
-  ///    later sibling, the ids would no longer match across frames and the
-  ///    very shift we want to measure would vanish;
-  ///  * content: Text data (first 24 chars + FNV-1a hash), or the first Text
-  ///    inside a control/surface;
+  ///  * ancestor types: runtimeTypes of the 3 nearest ancestors (left empty for
+  ///    `card`, so a loading indicator and the card that replaces it match).
+  ///    Sibling INDEX is deliberately left out: a card inserted above would
+  ///    renumber every later sibling and the shift would vanish;
   ///  * ordinal: n-th element with the same prefix in tree order.
-  /// Deterministic: same tree gives the same ids. An element whose content
-  /// changes (placeholder text replaced by a value) gets a new id and is
-  /// treated as appearing, not shifting.
+  /// Content is NOT in the id: "—" replaced by "72" is the same element (a
+  /// resize if the box changed, nothing if not), not disappear + appear. The
+  /// content hash is kept in [contentOf] for diagnostics. A progress indicator
+  /// is tracked as a `card` slot sized by its outermost sizing wrapper
+  /// (SizedBox/Container/Padding/...), so loading box -> chart is one resize.
+  /// Deterministic: same tree gives the same ids.
   final bool trackUnkeyed;
 
   /// When set, elements whose rect does not intersect it are dropped (a
@@ -37,6 +39,9 @@ class ShiftProbe {
   ShiftProbe({this.trackUnkeyed = false, this.visibleOnly});
 
   Map<Element, String> _ids = {};
+
+  /// Content hash per element id from the last capture (not part of identity).
+  final Map<String, String> contentOf = {};
 
   /// The id of the nearest tracked element at or above the match of [f] in the
   /// last capture, for naming an Interaction source.
@@ -63,6 +68,7 @@ class ShiftProbe {
     final ids = <Element, String>{};
     final seen = <String, int>{};
     final ctlSeen = <String>{};
+    contentOf.clear();
     for (final e in _elements(tester)) {
       final k = e.widget.key;
       String? id;
@@ -72,7 +78,7 @@ class ShiftProbe {
         id = _synthId(e, seen);
       }
       if (id == null) continue;
-      final box = _box(e);
+      final box = _slotBox(e);
       if (box == null || !box.hasSize) continue;
       final o = box.localToGlobal(Offset.zero);
       final sub = _subtree(e);
@@ -94,6 +100,7 @@ class ShiftProbe {
         if (!ctlSeen.add(sig)) continue;
       }
       ids[e] = id;
+      contentOf[id] = _contentHash(e);
       out.add(ElementSnapshot(
         id: id,
         rect: ShiftRect(o.dx, o.dy, box.size.width, box.size.height),
@@ -141,7 +148,7 @@ class ShiftProbe {
     if (w is EditableText) return 'input';
     if (w is ButtonStyleButton || w is InkResponse) return 'ctl';
     if (w is GestureDetector && w.onTap != null) return 'ctl';
-    if (w is Card) return 'card';
+    if (w is Card || w is ProgressIndicator) return 'card';
     return null;
   }
 
@@ -168,6 +175,17 @@ class ShiftProbe {
       });
       if (nested) return null;
     }
+    if (e.widget is ProgressIndicator) {
+      // Inside a Card the Card is the slot.
+      var inCard = false;
+      var d = 0;
+      e.visitAncestorElements((a) {
+        d++;
+        if (a.widget is Card) inCard = true;
+        return !inCard && d < 8;
+      });
+      if (inCard) return null;
+    }
     var scope = '';
     final types = <String>[];
     e.visitAncestorElements((a) {
@@ -179,7 +197,13 @@ class ShiftProbe {
       if (types.length < 3) types.add(a.widget.runtimeType.toString());
       return true;
     });
-    String content = '';
+    final base = '~$kind|$scope|${kind == 'card' ? '' : types.join('<')}';
+    final n = seen[base] = (seen[base] ?? -1) + 1;
+    return '$base#$n';
+  }
+
+  static String _contentHash(Element e) {
+    var content = '';
     final w = e.widget;
     if (w is Text) {
       content = w.data ?? w.textSpan?.toPlainText() ?? '';
@@ -200,10 +224,37 @@ class ShiftProbe {
     for (final c in content.codeUnits) {
       h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF;
     }
-    final short = content.length > 24 ? content.substring(0, 24) : content;
-    final base = '~$kind|$scope|${types.join('<')}|$short:${h.toRadixString(16)}';
-    final n = seen[base] = (seen[base] ?? -1) + 1;
-    return '$base#$n';
+    return h.toRadixString(16);
+  }
+
+  /// The box that stands for [e]: its own, except a progress indicator, whose
+  /// slot is the outermost sizing wrapper around it.
+  static RenderBox? _slotBox(Element e) {
+    if (e.widget is! ProgressIndicator) return _box(e);
+    Element top = e;
+    var cur = e;
+    for (var i = 0; i < 8; i++) {
+      Element? parent;
+      cur.visitAncestorElements((a) {
+        parent = a;
+        return false;
+      });
+      final p = parent;
+      if (p == null) break;
+      final w = p.widget;
+      if (w is SizedBox ||
+          w is Container ||
+          w is Padding ||
+          w is ConstrainedBox ||
+          w is Center ||
+          w is Align) {
+        top = p;
+        cur = p;
+      } else {
+        break;
+      }
+    }
+    return _box(top);
   }
 
   static RenderBox? _box(Element e) {
