@@ -120,6 +120,14 @@ void main() {
       expect(jsonEncode(b.windows), jsonEncode(await repo.sleepWindows(days: 29)));
     });
 
+    test('bundle windows with before: equal sleepWindows(before:)', () async {
+      final b = await repo.getSleepDetailBundle('2026-08-05',
+          chartKeys: _keys, windowDays: 28, before: '2026-08-05');
+      final want = await repo.sleepWindows(days: 28, before: '2026-08-05');
+      expect(jsonEncode(b.windows), jsonEncode(want));
+      expect(want.map((w) => w['date']), isNot(contains('2026-08-05')));
+    });
+
     test('worn_min and the version table are read once per load', () async {
       // Re-open the same file through a logging factory, so every statement
       // the load sends to the handle is seen (a batch counts as its operations).
@@ -131,7 +139,12 @@ void main() {
         options: SqfliteLoggerOptions(
           type: SqfliteDatabaseFactoryLoggerType.all,
           log: (e) {
-            if (e is SqfliteLoggerSqlEvent || e is SqfliteLoggerBatchEvent) {
+            // The statement and its arguments in full: the event's
+            // `toString` cuts at ~200 characters, which drops the arguments
+            // off a long statement.
+            if (e is SqfliteLoggerSqlEvent) {
+              sql.add('${e.sql} ${e.arguments}');
+            } else if (e is SqfliteLoggerBatchEvent) {
               sql.add(e.toString());
             }
           },
@@ -168,7 +181,10 @@ void main() {
       final repo = _BundleOnlyRepo();
       final d = await SleepData.load(repo, want: '2026-08-05');
       expect(repo.bundleCalls, 1);
-      expect(repo.windowCalls, 1);
+      // The windows before the night come in the bundle (`before: day`), not
+      // as a second read beside it.
+      expect(repo.windowCalls, 0);
+      expect(repo.bundleBefore, '2026-08-05');
       expect(d.day, '2026-08-05');
       expect(d.night['duration_min'], 443);
       expect(d.tstHistory, [401.0, 402.0]);
@@ -203,10 +219,10 @@ class _BundleOnlyRepo extends LocalRepository {
   @override
   Future<List<String>> availableDays() async => ['2026-08-05', '2026-08-04'];
 
-  // The windows BEFORE the night ride beside the bundle in the same `.wait`
-  // (the bundle's own windows are the newest nights overall). One read, in
-  // parallel, not a per-piece sequence.
+  // The windows BEFORE the night come in the bundle (`before:`); a separate
+  // read is counted so the test can say there is none.
   int windowCalls = 0;
+  String? bundleBefore;
   @override
   Future<List<Map<String, dynamic>>> sleepWindows(
       {int days = 60, String? before}) async {
@@ -216,8 +232,11 @@ class _BundleOnlyRepo extends LocalRepository {
 
   @override
   Future<SleepDetailBundle> getSleepDetailBundle(String day,
-      {required List<String> chartKeys, required int windowDays}) async {
+      {required List<String> chartKeys,
+      required int windowDays,
+      String? before}) async {
     bundleCalls++;
+    bundleBefore = before;
     int noon(int d) =>
         DateTime(2026, 8, d, 12).millisecondsSinceEpoch ~/ 1000;
     Map<String, dynamic> pts(List<(int, double)> l) => {

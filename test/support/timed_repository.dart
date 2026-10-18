@@ -135,10 +135,12 @@ class TimedRepository extends LocalRepositoryImpl {
       _t('getRecords', () => super.getRecords());
   @override
   Future<SleepDetailBundle> getSleepDetailBundle(String day,
-          {required List<String> chartKeys, required int windowDays}) =>
+          {required List<String> chartKeys,
+          required int windowDays,
+          String? before}) =>
       _t('getSleepDetailBundle',
           () => super.getSleepDetailBundle(day,
-              chartKeys: chartKeys, windowDays: windowDays));
+              chartKeys: chartKeys, windowDays: windowDays, before: before));
   @override
   Future<Map<String, dynamic>> getChart(String metric,
           {int? from, int? to, Set<String> signals = const {}}) =>

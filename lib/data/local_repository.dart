@@ -131,11 +131,14 @@ abstract class LocalRepository {
 
   // ── day drill-down detail ────────────────────────────────────────────────────
   /// One read for the whole Sleep detail screen: the night, its timeline, the
-  /// insights, every named chart and the sleep windows ([windowDays] newest).
+  /// insights, every named chart and the sleep windows ([windowDays] newest,
+  /// or with [before] the newest strictly before that day — see
+  /// [sleepWindows]).
   Future<SleepDetailBundle> getSleepDetailBundle(
     String day, {
     required List<String> chartKeys,
     required int windowDays,
+    String? before,
   }) async => SleepDetailBundle(
     // The piece-by-piece composition, for repositories (fakes) without a
     // cheaper combined read. LocalRepositoryImpl overrides it.
@@ -143,7 +146,7 @@ abstract class LocalRepository {
     timeline: await getDayTimeline(day),
     insights: await getInsights(),
     charts: {for (final k in chartKeys) k: await getChart(k)},
-    windows: await sleepWindows(days: windowDays),
+    windows: await sleepWindows(days: windowDays, before: before),
   );
 
   Future<Map<String, dynamic>> getDaySleepV2(String date) =>

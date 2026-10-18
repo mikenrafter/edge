@@ -329,18 +329,17 @@ class SleepData {
     if (day == null) return SleepData(days: days, refreshPending: pending);
 
     // ONE repository call for everything the night needs: the repository reads
-    // all the series in a single statement instead of ~50 serialized ones.
-    // Two reads ride beside it, in parallel, so the night still lands in one
-    // paint: each paired device's own staging (not in the bundle), and the
-    // windows BEFORE this night. The bundle's windows are the newest nights
-    // overall, which would compare a past night against nights that came
-    // after it.
-    final (b, deviceNights, wins) = await (
+    // all the series in a single statement instead of ~50 serialized ones,
+    // and its windows are the nights BEFORE this one (`before: day`), so a
+    // past night is never compared against nights that came after it. Each
+    // paired device's own staging (not in the bundle) rides beside it in
+    // parallel, so the night still lands in one paint.
+    final (b, deviceNights) = await (
       repo.getSleepDetailBundle(day,
-          chartKeys: _chartKeys, windowDays: _window + 1),
+          chartKeys: _chartKeys, windowDays: _window, before: day),
       _deviceNightsOf(repo, day),
-      repo.sleepWindows(days: _window, before: day),
     ).wait;
+    final wins = b.windows;
     final night = b.night;
     final timeline = b.timeline;
     final cd = b.insights;

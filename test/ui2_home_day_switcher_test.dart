@@ -67,6 +67,7 @@ class _Repo extends LocalRepository {
     String day, {
     required List<String> chartKeys,
     required int windowDays,
+    String? before,
   }) async => SleepDetailBundle(
     night: await getDaySleepV2(day),
     timeline: const {},

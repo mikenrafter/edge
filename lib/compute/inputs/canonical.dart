@@ -1010,7 +1010,14 @@ SeriesMethod Function(String key)? seriesMethodFor(
 ///
 /// ponytail: removed, not labelled; the native cards grow an Estimated label
 /// if a wearable's estimates are wanted there.
-Map<String, dynamic> withoutWearableEstimates(Map<String, dynamic> b) {
+///
+/// [inPlace] edits [b] (and its `series` map) instead of copying them. The
+/// read seam passes a lazy bundle view it owns: spreading one decodes every
+/// curve in it, where removing a key decodes only that one.
+Map<String, dynamic> withoutWearableEstimates(
+  Map<String, dynamic> b, {
+  bool inPlace = false,
+}) {
   final family = b['device_family'] as String?;
   final of = columnFor(family) == null ? null : seriesMethodFor(family);
   final scalars = b['scalars'];
@@ -1023,21 +1030,22 @@ Map<String, dynamic> withoutWearableEstimates(Map<String, dynamic> b) {
   final provisional =
       ((b['clinical'] as Map?)?['readiness_composite'] as Map?)?['provisional'] ==
           true;
-  final out = {
-    ...b,
-    'scalars': {...scalars}..removeWhere(
-        (k, _) => est('$k') || (k == 'readiness' && provisional)),
-  };
+  final out = inPlace ? b : {...b};
+  out['scalars'] = {...scalars}..removeWhere(
+      (k, _) => est('$k') || (k == 'readiness' && provisional));
   final series = b['series'];
   if (series is Map) {
-    out['series'] = {
-      ...series,
-    }..removeWhere(
-        (k, _) =>
-            (k == 'hypnogram' &&
-                (est('deep_min') || b['sleep_source'] == 'auto_fallback')) ||
-            ((k == 'strain_curve' || k == 'zone_timeline') && est('strain')),
-      );
+    final s = inPlace ? series : {...series};
+    // By key, not `removeWhere`: that reads every value, which on a lazy view
+    // decodes every curve just to test its name.
+    final drop = [
+      if (est('deep_min') || b['sleep_source'] == 'auto_fallback') 'hypnogram',
+      if (est('strain')) ...['strain_curve', 'zone_timeline'],
+    ];
+    for (final k in drop) {
+      s.remove(k);
+    }
+    out['series'] = s;
   }
   if (est('strain')) out.remove('zones');
   // The night's stage minutes are the same estimate as deep_min: the Sleep

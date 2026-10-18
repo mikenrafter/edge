@@ -6154,6 +6154,44 @@ class LocalDb {
     };
   }
 
+  /// The newest of [metricNotOursDates] for [key], or null when there is none.
+  /// One indexed MAX instead of the whole set, for a reader that only needs to
+  /// know whether an estimate reaches back into a window.
+  static Future<String?> latestNotOursDate(String key) async {
+    return readerRun((db) async {
+      final rows = await db.rawQuery(
+        "SELECT MAX(date) AS d FROM metric_method WHERE key = ? "
+        "AND class IN ('estimated', 'unavailable')",
+        [key],
+      );
+      final d = rows.isEmpty ? null : rows.first['d'];
+      return d is String ? d : null;
+    });
+  }
+
+  /// The first day the stored `crossday_input` holds (`days[0].date`), or
+  /// null. Read in SQL so the 90-day artifact is never decoded on the
+  /// caller's isolate for one string.
+  static Future<String?> crossDayInputFirstDay() async {
+    return readerRun((db) async {
+      final rows = await db.rawQuery(
+        "SELECT CASE WHEN json_valid(payload_json) "
+        "THEN json_extract(payload_json, '\$.days[0].date') END AS d "
+        "FROM baselines WHERE key = 'crossday_input' LIMIT 1",
+      );
+      final d = rows.isEmpty ? null : rows.first['d'];
+      return d is String ? d : null;
+    });
+  }
+
+  /// `metric_series` rows whose day [metricNotOursDates] names, left out in
+  /// SQL (one statement, no second read): a wearable's estimate is not drawn
+  /// as a measured point (upstream 6d487f88).
+  static const String _ownOnlySql =
+      ' AND NOT EXISTS (SELECT 1 FROM metric_method mm '
+      'WHERE mm.date = metric_series.date AND mm.key = metric_series.key '
+      "AND mm.class IN ('estimated', 'unavailable'))";
+
   /// The algo version behind each day's `metric_series` scalars, oldest first.
   /// Days with no stamp are simply absent — never guessed at.
   static Future<List<Map<String, dynamic>>> metricSeriesVersions() async {
@@ -13199,16 +13237,21 @@ class LocalDb {
   /// COMPUTES against the series — a baseline, a personal percentile, a
   /// seed-versus-band comparison — where a foreign algorithm's output is not
   /// the same measurement.
+  ///
+  /// [ownOnly] drops days whose value is a wearable's estimate
+  /// ([metricNotOursDates]) in the same statement.
   static Future<List<Map<String, dynamic>>> metricSeries(
     String key, {
     int? limit,
     bool measuredOnly = false,
+    bool ownOnly = false,
   }) async {
     return readerRun((db) async {
     return db.query(
       'metric_series',
       where: 'key = ? AND value IS NOT NULL${_validSql(key)}'
-          '${measuredOnly ? ' AND date NOT IN ($_importedDatesSql)' : ''}',
+          '${measuredOnly ? ' AND date NOT IN ($_importedDatesSql)' : ''}'
+          '${ownOnly ? _ownOnlySql : ''}',
       whereArgs: [key],
       orderBy: 'date ASC',
       limit: limit,
@@ -13230,7 +13273,7 @@ class LocalDb {
       List<Map<String, dynamic>> meta,
     })
   >
-  metricSeriesBundle(List<String> keys) async {
+  metricSeriesBundle(List<String> keys, {bool ownOnly = false}) async {
     return readerRun((db) async {
     // `transaction` opens with BEGIN IMMEDIATE, which a query-only connection
     // refuses. On the reader each statement still reads one committed snapshot;
@@ -13246,7 +13289,7 @@ class LocalDb {
           'metric_series',
           where:
               'key IN (${List.filled(keys.length, '?').join(',')}) '
-              'AND value IS NOT NULL',
+              'AND value IS NOT NULL${ownOnly ? _ownOnlySql : ''}',
           whereArgs: keys,
           orderBy: 'date ASC',
         );

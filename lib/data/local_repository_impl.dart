@@ -13,7 +13,9 @@
 // Honesty: a metric whose value is absent stays absent ("—"); we never fabricate.
 // Profile-gated metrics are null when the profile field is missing.
 
-import '../compute/inputs/canonical.dart' show deviceFlagOn;
+import '../compute/findings.dart' show servedReadiness;
+import '../compute/inputs/canonical.dart'
+    show deviceFlagOn, withoutWearableEstimates;
 import '../ble/adapters/_registry.dart' show kBandRegistry;
 import '../compute/quiet_level.dart';
 import '../models/activity_suggestion.dart';
@@ -181,12 +183,19 @@ class LocalRepositoryImpl extends LocalRepository {
   /// recovery". Fallbacks, in order: latest day with sleep → latest day with any
   /// scalars → newest decodable → null. This is what makes Today show yesterday's
   /// data when today hasn't filled yet (and the day-detail seams inherit it).
-  Future<Map<String, dynamic>?> _latestBundle() async =>
-      (await _latestBundleAt()).bundle;
+  ///
+  /// [skipDay] leaves one day out: getToday passes today while today's night
+  /// is held back (#448, upstream 53be18a6), so a partial night can't be
+  /// served under the prior night's label.
+  Future<Map<String, dynamic>?> _latestBundle({String? skipDay}) async =>
+      (await _latestBundleAt(skipDay: skipDay)).bundle;
 
   /// [_latestBundle] with the computed time of the row it picked.
-  Future<_BundleAt> _latestBundleAt() async {
-    final rows = await LocalDb.recentDayResultMetas(14);
+  Future<_BundleAt> _latestBundleAt({String? skipDay}) async {
+    final rows = [
+      for (final r in await LocalDb.recentDayResultMetas(14))
+        if (skipDay == null || r['date'] != skipDay) r,
+    ];
     _BundleAt? newest, withScalars;
     for (var i = 0; i < rows.length; i += 3) {
       final chunk = rows.skip(i).take(3).toList();
@@ -196,7 +205,7 @@ class LocalRepositoryImpl extends LocalRepository {
       for (var j = 0; j < chunk.length; j++) {
         final read = reads[j];
         if (read is! BundleOk) continue;
-        final b = _readerMap(read);
+        final b = _dayMap(read);
         final at = _BundleAt(b, read.asOfMs);
         newest ??= at;
         if (b['skipped'] == true) continue;
@@ -237,7 +246,34 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<_BundleAt> _crossDayArtifactAt() async {
     final read = await BundleStore.shared.read(const BundleSource.baseline('crossday'));
     if (read is! BundleOk) return const _BundleAt(null, null);
-    return _BundleAt(_readerMap(read, crossday: true), read.asOfMs);
+    final cd = _readerMap(read, crossday: true);
+    if (await _crossDayLoadEstimated()) {
+      // A wearable's estimated TRIMP anywhere in the crossday input (a ring's,
+      // say) moves the load and the strain target built on it. Labelled
+      // Estimated where shown, not dropped (upstream 6d487f88). In place: the
+      // reader map is this read's own.
+      for (final k in const ['load', 'strain_coach']) {
+        final v = cd[k];
+        if (v is Map) cd[k] = {...v, 'estimated': true};
+      }
+    }
+    return _BundleAt(cd, read.asOfMs);
+  }
+
+  /// Whether a wearable's estimated `trimp` falls inside the span the crossday
+  /// input covers. The load's EWMA runs over the input's whole span (90 day
+  /// rows, which can reach back past 90 calendar days: the input's oldest day
+  /// wins). One indexed MAX in the common case (no estimate at all); the
+  /// input's first day is read only when the newest estimate is older than 90
+  /// days, and in SQL, never by decoding the artifact here.
+  Future<bool> _crossDayLoadEstimated() async {
+    final latest = await LocalDb.latestNotOursDate('trimp');
+    if (latest == null) return false;
+    final t = DateTime.parse(_todayLocalLabel());
+    final from = dayLabelOf(DateTime(t.year, t.month, t.day - 90));
+    if (latest.compareTo(from) >= 0) return true;
+    final first = await LocalDb.crossDayInputFirstDay();
+    return first != null && latest.compareTo(first) >= 0;
   }
 
   Future<Map<String, dynamic>?> _freshness(String key) async {
@@ -280,7 +316,7 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<_BundleAt> _bundleAtForDate(String date) async {
     final exact = await BundleStore.shared.read(BundleSource.day(date));
     if (exact is BundleOk) {
-      return _BundleAt(_readerMap(exact), exact.asOfMs);
+      return _BundleAt(_dayMap(exact), exact.asOfMs);
     }
     return _isTodayLabel(date)
         ? await _latestBundleAt()
@@ -289,13 +325,24 @@ class LocalRepositoryImpl extends LocalRepository {
 
   Future<Map<String, dynamic>?> _readBundle(String date) async {
     final read = await BundleStore.shared.read(BundleSource.day(date));
-    return read is BundleOk ? _readerMap(read) : null;
+    return read is BundleOk ? _dayMap(read) : null;
   }
+
+  /// A day bundle as the native cards may show it: a wearable's estimates
+  /// taken out ([withoutWearableEstimates], upstream 6d487f88). Every day read
+  /// on this class goes through here so no seam serves an estimate bare. In
+  /// place: the reader map is this read's own, and a copy would decode every
+  /// curve in it. A band's day comes back untouched.
+  static Map<String, dynamic> _dayMap(BundleOk read) =>
+      withoutWearableEstimates(_readerMap(read), inPlace: true);
 
   @override
   Future<Map<String, dynamic>> getDayBlock(String day, List<String> keys) async {
     if (keys.isEmpty) return const {};
-    final bundle = await _readBundle(day);
+    // Raw blocks by name (diagnostics, import source, the sleep block the
+    // engine re-reads), not a native card's view: unfiltered.
+    final read = await BundleStore.shared.read(BundleSource.day(day));
+    final bundle = read is BundleOk ? _readerMap(read) : null;
     if (bundle == null) return const {};
     return {for (final key in keys) if (bundle.containsKey(key)) key: bundle[key]};
   }
@@ -487,10 +534,25 @@ class LocalRepositoryImpl extends LocalRepository {
       );
     }
     var todayFresh = await _freshness('today');
+    // Also once a held-back night's give-up has passed (upstream 3efb856b):
+    // the strap that went quiet at wake never drains again, so no derive
+    // would ever refresh the row. Checked on the row already read, so the
+    // common case costs no extra round trip. Stored mode only says so
+    // (`refresh_pending`); its content is still today's, so it is served as is.
+    final recheckAt = (todayFresh?['overnight_recheck_at'] as num?)?.toInt();
+    final recheckDue = !stale &&
+        todayFresh?['overnight_state'] == 'building' &&
+        recheckAt != null &&
+        _nowSec() >= recheckAt;
+    if (recheckDue && refresh) {
+      await LocalDb.refreshComputeFreshness();
+      todayFresh = await _freshness('today');
+    }
     // Stored mode over a row that names another day: nothing in it is today's.
     // Its night survives only as the prior night under its own day; its
     // activity (and the day it named) is dropped.
     final pending = stale && !refresh;
+    final refreshPending = pending || (recheckDue && !refresh);
     if (pending) {
       todayDay = _todayLocalLabel();
       final night = todayFresh?['overnight_day']?.toString();
@@ -507,11 +569,21 @@ class LocalRepositoryImpl extends LocalRepository {
     todayDay ??= _todayLocalLabel();
     final todayBundle = await _bundle(todayDay);
     final overnightDay = todayFresh?['overnight_day']?.toString();
-    final overnightBundle = overnightDay == null
-        ? (pending ? null : await _latestBundle())
-        : await _bundle(overnightDay);
     final overnightState =
         todayFresh?['overnight_state']?.toString() ?? 'missing';
+    // Today's night is read off the bundle already in hand. The fallback for a
+    // row naming no night skips today unless its night is `ready` (#448,
+    // upstream 53be18a6): a held, partial night must not be served as the
+    // latest one.
+    final overnightBundle = overnightDay == null
+        ? (pending
+              ? null
+              : await _latestBundle(
+                  skipDay: overnightState == 'ready' ? null : todayDay,
+                ))
+        : overnightDay == todayDay
+        ? todayBundle
+        : await _bundle(overnightDay);
     final activityState =
         todayFresh?['activity_state']?.toString() ?? 'missing';
     final showingPriorOvernight =
@@ -534,7 +606,8 @@ class LocalRepositoryImpl extends LocalRepository {
           'today_day': todayDay,
           'overnight_state': overnightState,
           'activity_state': activityState,
-          if (pending) 'refresh_pending': true,
+          'recovery_state': todayFresh?['recovery_state'],
+          if (refreshPending) 'refresh_pending': true,
         },
         'step_goal': await _stepGoal(),
       };
@@ -544,9 +617,6 @@ class LocalRepositoryImpl extends LocalRepository {
         : (_sub(sleepBundle, 'clinical') ?? const <String, dynamic>{});
     final cd = await _crossDay();
 
-    final hrvTime = clinical['hrv_time'] is Map
-        ? (clinical['hrv_time'] as Map).cast<String, dynamic>()
-        : null;
     final rhrEnv = clinical['resting_hr'] is Map
         ? (clinical['resting_hr'] as Map).cast<String, dynamic>()
         : null;
@@ -565,11 +635,28 @@ class LocalRepositoryImpl extends LocalRepository {
     // ONLY the headline is pinned — every other metric below still reflects the
     // latest re-derive. Gated to today's OWN overnight (`ready`, matching day)
     // so a prior-night fallback or a stale yesterday pin can never leak in.
+    final recoveryState = todayFresh?['recovery_state']?.toString();
+    Map<String, int>? readinessUpdate;
     if (overnightState == 'ready') {
       // Only a pin taken on this night (LocalDb.headlinePinFor, upstream).
       final pin = await LocalDb.headlinePinFor(todayDay);
       if (pin != null) readinessScalar = pin.toDouble();
+      // A final number that changed after it was first shown is announced
+      // ("Updated 8:12 · 2 → 28"), not silently swapped (upstream 3efb856b).
+      if (readinessScalar != null) {
+        readinessUpdate = await LocalDb.noteHeadlineShown(
+          todayDay,
+          readinessScalar.round(),
+        );
+      }
     }
+    // A confirmed wake whose window has not settled yet: today's own number,
+    // served marked provisional (greyed, "Finishing up") — never pinned, and
+    // never in place of a settled one (upstream 3efb856b). Absent ⇒ absent.
+    final provisionalReadiness =
+        recoveryState == 'provisional' && overnightState != 'ready'
+        ? _scalar(todayBundle, 'readiness')
+        : null;
     // Everything on the overnight side of Home is absent for ONE reason when
     // there is no night to read: there is no scored night. Said once here so
     // readiness and resting HR stop going absent with nothing at all — measured
@@ -612,6 +699,9 @@ class LocalRepositoryImpl extends LocalRepository {
     final daily = <String, dynamic>{
       'readiness': readinessMetric,
       'recovery': readinessMetric,
+      if (provisionalReadiness != null)
+        'readiness_provisional': _scalarMetric(provisionalReadiness, 'HIGH'),
+      'readiness_update': ?readinessUpdate,
       'resting_hr': _scalarMetric(
         showOvernight ? _scalar(sleepBundle, 'rhr')?.round() : null,
         'HIGH',
@@ -685,10 +775,14 @@ class LocalRepositoryImpl extends LocalRepository {
         : {
             'rmssd': rmssd,
             'sdnn': _scalar(b, 'sdnn'),
-            // Same baseline getDayHeart emits. Without it TodayData.hrv.baseline
-            // was always null, WidgetService pushed -1, and the HRV ring on the
-            // widget and the Watch could never fill on any day.
-            'baseline': (await _seriesMean('rmssd'))?.round(),
+            // Same baseline getDayHeart emits: the 28 nights before this
+            // bundle's day (upstream 548a5ffa), so the night is never in its
+            // own baseline. Without it TodayData.hrv.baseline was always null,
+            // WidgetService pushed -1, and the HRV ring on the widget and the
+            // Watch could never fill on any day.
+            'baseline': (await _seriesMean('rmssd',
+                    before: (sleepBundle?['date'] as String?) ?? todayDay))
+                ?.round(),
             'confidence': hrvConfidenceForToday(clinical),
           };
 
@@ -700,7 +794,8 @@ class LocalRepositoryImpl extends LocalRepository {
       if (sleepBundle != null && rhrEnv != null)
         'nocturnal': _nocturnal(
           sleepBundle,
-          baselineRhr: await _seriesMean('rhr'),
+          baselineRhr: await _seriesMean('rhr',
+              before: (sleepBundle['date'] as String?) ?? todayDay),
         ),
       // No `resp['rsa'] is Map` gate. `getDayLungs` never had one, so Health →
       // Overview could say "no respiratory rate" on a day whose Vitals tab
@@ -748,7 +843,10 @@ class LocalRepositoryImpl extends LocalRepository {
         'overnight_computed_at': todayFresh?['overnight_computed_at'],
         'showing_prior_overnight':
             todayFresh?['showing_prior_overnight'] == true,
-        if (pending) 'refresh_pending': true,
+        // Today's own night: night_in_progress / provisional / final, read by
+        // `todayHeadlineOf` (upstream 3efb856b).
+        'recovery_state': recoveryState,
+        if (refreshPending) 'refresh_pending': true,
       },
       'step_goal': await _stepGoal(),
     };
@@ -972,10 +1070,20 @@ class LocalRepositoryImpl extends LocalRepository {
         'tier': (env?['tier'] as String?) ?? ana.Tier.relative,
         'inputs_used': env?['inputs_used'] ?? const ['skin_temp_raw'],
         'note': ?env?['note'],
+        // A ring's deviation rests on a settle band not yet measured on one:
+        // the row says so rather than read as a settled figure (upstream
+        // 669ceb92).
+        if (env?['provisional'] == true) 'provisional': true,
+        // WHOOP 5: the same night in °C away from the usual one.
+        'dev_c': ?_scalar(b, 'skin_temp_dev_c'),
       };
     }
     final have = (await LocalDb.metricSeries('skin_temp_adc')).length;
-    return {'value': null, 'note': 'need_baseline:have=$have,need=3'};
+    return {
+      'value': null,
+      'note': 'need_baseline:have=$have,need=3',
+      'dev_c': ?_scalar(b, 'skin_temp_dev_c'),
+    };
   }
 
   // ── day drill-downs ─────────────────────────────────────────────────────────
@@ -984,6 +1092,10 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>> getDayHeart(String date) => ReadPerf.reading('getDayHeart', () async {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
+    // The baseline window ends at the day actually served: Today falls back
+    // to the latest complete day, and that night must not sit in its own
+    // baseline (same as getToday; upstream 548a5ffa).
+    final served = (b['date'] as String?) ?? date;
     final hrCurve = (_sub(b, 'series')?['hr_curve'] as List?) ?? const [];
     final rmssd = _scalar(b, 'rmssd');
     final cd = await _crossDay();
@@ -996,7 +1108,7 @@ class LocalRepositoryImpl extends LocalRepository {
       'hrv': {
         if (rmssd != null) 'rmssd': rmssd.round(),
         'sdnn': _scalar(b, 'sdnn')?.round(),
-        'baseline': (await _seriesMean('rmssd'))?.round(),
+        'baseline': (await _seriesMean('rmssd', before: served))?.round(),
         // HRV stability (CV %) + LF/HF — both now computed.
         'cv': _sub(b, 'clinical')?['cv'],
         // Rounded to 2dp for display — the raw clinical metric is round6()'d
@@ -1019,7 +1131,10 @@ class LocalRepositoryImpl extends LocalRepository {
       'baselines': b['baselines'],
       // Waking ultradian HRV timeline (RMSSD over the day, outside sleep).
       'daytime_hrv': b['daytime_hrv'],
-      'nocturnal': _nocturnal(b, baselineRhr: await _seriesMean('rhr')),
+      'nocturnal': _nocturnal(
+        b,
+        baselineRhr: await _seriesMean('rhr', before: served),
+      ),
       'resp': _respObj(b),
       // 'spo2' (oxygen dips) moved to _daySleep()/getDaySleep — it's an
       // overnight signal, grouped with the Sleep tab's nocturnal numbers now,
@@ -1035,13 +1150,20 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>> getDayHrv(String date) => ReadPerf.reading('getDayHrv', () async {
     final _BundleAt(bundle: b, :computedAt) = await _bundleAtForDate(date);
     if (b == null) return const {};
+    // Baseline window ends at the served day, see getDayHeart.
+    final served = (b['date'] as String?) ?? date;
     return {
       'computed_at': computedAt,
       'timeline': (_sub(b, 'series')?['hrv_timeline'] as List?) ?? const [],
       'rmssd': _scalar(b, 'rmssd'),
       'sdnn': _scalar(b, 'sdnn'),
       'ln_rmssd': _scalar(b, 'ln_rmssd'),
-      'baseline': await _seriesMean('rmssd'),
+      'baseline': await _seriesMean('rmssd', before: served),
+      // Which estimator `rmssd` came from (upstream 837a67e9): the
+      // sleep-session mean when this envelope holds a value; on a bundle
+      // derived before `rmssd` became that single estimator, an earlier
+      // fallback stands beside an absent one.
+      'rmssd_sleep_session': _sub(b, 'clinical.rmssd_sleep_session'),
       'hrv_time': _sub(b, 'clinical.hrv_time'),
       'hrv_freq': _sub(b, 'clinical.hrv_freq'),
       'prsa_dc': _sub(b, 'clinical.prsa_dc'),
@@ -1142,6 +1264,8 @@ class LocalRepositoryImpl extends LocalRepository {
         ...savedWindow,
       };
     }
+    // Baseline window ends at the served day, see getDayHeart.
+    final served = (b['date'] as String?) ?? date;
     // Each is a Metric envelope — read the inner `.value` where the fields live.
     final acct = _sub(b, 'sleep.accounting.value');
     final win = _sub(b, 'sleep.window.value');
@@ -1249,7 +1373,10 @@ class LocalRepositoryImpl extends LocalRepository {
       // screen can say so. The night is published normally and the caveat rides
       // with it; see `sleepChargingBlock` for why it has no confidence penalty.
       'charging': b['sleep_charging'],
-      'nocturnal': _nocturnal(b, baselineRhr: await _seriesMean('rhr')),
+      'nocturnal': _nocturnal(
+        b,
+        baselineRhr: await _seriesMean('rhr', before: served),
+      ),
       'resp': _respObj(b),
       // Oxygen dips (SpO2/ODI) — moved here from getDayHeart's payload: an
       // overnight signal belongs with the rest of this night's numbers, not
@@ -1579,23 +1706,55 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<Map<String, dynamic>> getDaySteps(String date) => ReadPerf.reading('getDaySteps', () async {
     final r = await LocalDb.resolvedStepsForDay(date);
+    // THE EXACT DAY, never `_bundleForDate`'s latest-complete fallback: the
+    // spans come from this date's coverage rows, and pairing them with another
+    // day's published total is the one mismatch this screen must not show.
+    final st = _sub(await _bundle(date), 'steps');
+    final dayTotal = (st?['value'] as num?)?.toInt();
+    // A day answered by the strap's on-chip counter has no coverage spans;
+    // its own hourly spans (stamped by the derive) stand in for them
+    // (upstream 53be18a6, #475).
+    final counter = r.spans.isEmpty &&
+            st?['source'] == 'strap_counter' &&
+            st?['spans'] is List
+        ? st!['spans'] as List
+        : null;
     // Only for naming: a span that sits inside a session gets that session's
     // name. Cheap — one indexed read over one day.
-    final sessions = r.spans.isEmpty
+    final sessions = r.spans.isEmpty && counter == null
         ? const <Map<String, dynamic>>[]
         : await LocalDb.sessionsInRange(
             _localMidnightSec(date),
             _localDayEndSec(date),
           );
-    // THE EXACT DAY, never `_bundleForDate`'s latest-complete fallback: the
-    // spans come from this date's coverage rows, and pairing them with another
-    // day's published total is the one mismatch this screen must not show.
-    final st = _sub(await _bundle(date), 'steps');
+    if (counter != null) {
+      return {
+        'total': dayTotal ?? 0,
+        'strap': dayTotal ?? 0,
+        'phone': 0,
+        'day_total': dayTotal,
+        'day_source': 'strap_counter',
+        'note': st?['note'] as String?,
+        'spans': [
+          for (final s in counter)
+            if (s is Map && s['start_ts'] is num && s['end_ts'] is num)
+              {
+                ...s,
+                'source': LocalDb.kStepSourceBand,
+                'activity': _sessionOver(
+                  sessions,
+                  (s['start_ts'] as num).toInt(),
+                  (s['end_ts'] as num).toInt(),
+                ),
+              },
+        ],
+      };
+    }
     return {
       'total': r.total,
       'strap': r.strap,
       'phone': r.phone,
-      'day_total': (st?['value'] as num?)?.toInt(),
+      'day_total': dayTotal,
       'day_source': st?['source'] as String?,
       'note': st?['note'] as String?,
       'spans': [
@@ -1781,6 +1940,9 @@ class LocalRepositoryImpl extends LocalRepository {
       // footnote states what the bar IS rather than what it usually is.
       'zone_source': b['zone_source'],
       'zone_max_hr': (b['zone_max_hr'] as num?)?.round(),
+      // The edges those bins were cut at, so the zone rows can print them
+      // (upstream e364cfd9). Absent on a bundle that never stored them.
+      'zone_lower_bpm': b['zone_lower_bpm'],
       // The HEADLINE absence's reason, promoted to the top level because the
       // screen's primary content when there is no strain is a single card
       // explaining why. Same string as `absent.strain`.
@@ -1944,6 +2106,10 @@ class LocalRepositoryImpl extends LocalRepository {
       'resp': respLine,
       'skin_temp': tempLine,
       'activity': b['activity_curve'] ?? const [],
+      // Who owned each stretch of the merged HR curve (only on a day more
+      // than one device measured) — the zoomed chart's per-second read keeps
+      // the same device per second the stored curve did (upstream 6d487f88).
+      'hr_owner': (_sub(b, 'series')?['coverage'] as Map?)?['hr1Hz'],
       // The DISPLAYED day (bundle date) — when a partial "today" fell back to
       // the latest complete day this differs from the requested date, and the
       // screen must window/axis by THIS date, not "now".
@@ -2127,17 +2293,24 @@ class LocalRepositoryImpl extends LocalRepository {
       };
     }
     final key = _trendKey(metric);
-    final rows = await LocalDb.metricSeries(key);
+    // A wearable's estimate is not drawn as a measured point, as on the native
+    // cards (upstream 6d487f88); dropped in the same statement. The wear
+    // denominator likewise, so this and [_getCharts] stay one shape.
+    final rows = await LocalDb.metricSeries(key, ownOnly: true);
     final pin = key == 'readiness' ? await _readinessPin() : null;
+    final heldDay = key == 'readiness' ? await _heldReadinessDay() : null;
     // ONE read of metric_series_version, two consumers (see _seriesChart).
     final versions = await LocalDb.metricSeriesVersions();
-    final wear = await LocalDb.metricSeries('worn_min');
+    final wear = await LocalDb.metricSeries('worn_min', ownOnly: true);
     final seriesDays = {for (final r in rows) r['date'] as String};
     final meta = seriesDays.isEmpty
         ? const <Map<String, dynamic>>[]
         : await LocalDb.recentDayResultsMeta(seriesDays.length);
-    final oldestDaySec =
-        rows.isEmpty ? _nowSec() : _dateToEpoch(rows.first['date'] as String);
+    final oldest = [
+      if (rows.isNotEmpty) rows.first['date'] as String,
+      ?pin?.day,
+    ]..sort();
+    final oldestDaySec = oldest.isEmpty ? _nowSec() : _dateToEpoch(oldest.first);
     final distinctDevices = _coverageDevices(versions)
         .values
         .expand((ids) => ids)
@@ -2148,6 +2321,8 @@ class LocalRepositoryImpl extends LocalRepository {
       versions: versions,
       meta: meta,
       pin: pin,
+      readiness: key == 'readiness',
+      heldDay: heldDay,
       coverageRecording: signals.isEmpty || distinctDevices.length < 2
           ? const <String, List<String>>{}
           : await LocalDb.coverageDevicesByDay(
@@ -2166,12 +2341,12 @@ class LocalRepositoryImpl extends LocalRepository {
   ) async {
     assert(!keys.contains('hr'), 'hr is a curve, not a stored series');
     final trend = {for (final k in keys) k: _trendKey(k)};
-    final pin = trend.values.contains('readiness')
-        ? await _readinessPin()
-        : null;
+    final readiness = trend.values.contains('readiness');
+    final pin = readiness ? await _readinessPin() : null;
+    final heldDay = readiness ? await _heldReadinessDay() : null;
     final all = await LocalDb.metricSeriesBundle([
       ...{...trend.values, 'worn_min'},
-    ]);
+    ], ownOnly: true);
     final wear = all.rows['worn_min']!;
     return {
       for (final e in trend.entries)
@@ -2186,6 +2361,8 @@ class LocalRepositoryImpl extends LocalRepository {
               .take({for (final r in all.rows[e.value]!) r['date']}.length)
               .toList(),
           pin: e.value == 'readiness' ? pin : null,
+          readiness: e.value == 'readiness',
+          heldDay: e.value == 'readiness' ? heldDay : null,
           coverageRecording: const <String, List<String>>{},
         ),
     };
@@ -2196,12 +2373,13 @@ class LocalRepositoryImpl extends LocalRepository {
     String day, {
     required List<String> chartKeys,
     required int windowDays,
+    String? before,
   }) async {
     final night = await getDaySleepV2(day);
     final timeline = await getDayTimeline(day);
     final insights = await getInsights();
     final charts = await _getCharts(chartKeys);
-    final windows = await sleepWindows(days: windowDays);
+    final windows = await sleepWindows(days: windowDays, before: before);
     return SleepDetailBundle(
       night: night,
       timeline: timeline,
@@ -2237,8 +2415,20 @@ class LocalRepositoryImpl extends LocalRepository {
     required List<Map<String, dynamic>> meta,
     required ({String day, int value})? pin,
     required Map<String, List<String>> coverageRecording,
+    bool readiness = false,
+    String? heldDay,
   }) {
     final seriesDays = {for (final r in rows) r['date'] as String};
+    // The pinned day gets its point even with no stored value (upstream
+    // 4dff7a47): `metricSeries` drops null rows, and a partial derive can pin
+    // the headline without writing the day's readiness (or a later derive can
+    // write it as null). The ring and the push show the pin; the chart, and
+    // the Observations log built from it, must have the same number to show.
+    final stored = {for (final r in rows) r['date'] as String: r['value']};
+    final dates = [
+      ...stored.keys,
+      if (pin != null && !stored.containsKey(pin.day)) pin.day,
+    ]..sort();
     int? computedAt;
     for (final m in meta) {
       if (!seriesDays.contains(m['date'])) continue;
@@ -2250,11 +2440,20 @@ class LocalRepositoryImpl extends LocalRepository {
     return {
       'computed_at': computedAt,
       'points': [
-        for (final r in rows)
-          {
-            't': _dateToEpoch(r['date'] as String),
-            'v': r['date'] == pin?.day ? pin!.value : r['value'],
-          },
+        for (final d in dates)
+          // #448: every derive writes today's readiness, partial night or not,
+          // and a held night has no pin yet. Leave today's point out while
+          // getToday holds it back, or the chart plots the number the ring
+          // above it refuses.
+          if (d != heldDay || d == pin?.day)
+            {
+              't': _dateToEpoch(d),
+              // One value rule with the low-readiness push and log.
+              'v': readiness
+                  ? servedReadiness(d,
+                      pin: pin, stored: (stored[d] as num?)?.toDouble())
+                  : stored[d],
+            },
       ],
       // L4 — THE DENOMINATOR. Worn minutes for the same days, so a long trend
       // can be read against how much of it was actually measured instead of
@@ -2275,6 +2474,20 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   int _nowSec() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+  /// Today's label while getToday holds today's night back (#448, upstream
+  /// 53be18a6): the freshness row names today and its give-up has not passed.
+  /// Null otherwise.
+  Future<String?> _heldReadinessDay() async {
+    final today = _todayLocalLabel();
+    final fresh = await _freshness('today');
+    final recheckAt = (fresh?['overnight_recheck_at'] as num?)?.toInt();
+    return recheckAt != null &&
+            _nowSec() < recheckAt &&
+            fresh?['today_day']?.toString() == today
+        ? today
+        : null;
+  }
 
   /// Dates where `metric_series`'s algo version changes, with the versions on
   /// either side: `[{t, from, to}]`. The FIRST stamped day is not a break —
@@ -2347,7 +2560,10 @@ class LocalRepositoryImpl extends LocalRepository {
       [deviceId],
     );
     final oldestTs = (oldestRow.firstOrNull?['m'] as num?)?.toInt();
-    final bounded = oldestTs != null && dayStart < oldestTs;
+    // Bounded = the whole day predates this device's oldest kept row. The
+    // prune removes whole days, so the oldest kept day is complete even though
+    // its first row lands after midnight (upstream e364cfd9).
+    final bounded = oldestTs != null && dayEnd <= oldestTs;
     return {
       'points': points,
       'bounded': bounded,
@@ -2439,6 +2655,15 @@ class LocalRepositoryImpl extends LocalRepository {
     final fromTs = _rangeFromSec(range, now);
     final rows = await LocalDb.sessionsInRange(fromTs, nowSec);
     final workouts = [for (final r in rows) _workoutOf(r)];
+    // Seconds each session's banked trace was scored from. A substrate window
+    // thinner than that is the tail the prune cutoff left behind, not the
+    // session, so it must not replace the banked full-window avg/peak
+    // (upstream e364cfd9).
+    final banked = {
+      for (final r in rows)
+        if (r['trace_samples'] is num)
+          r['id']: (r['trace_samples'] as num).toInt(),
+    };
 
     // Per-session HR aggregates from the 1 Hz substrate (one indexed join).
     // Sessions have no avg_hr column — without this every workout looked like
@@ -2461,6 +2686,8 @@ class LocalRepositoryImpl extends LocalRepository {
       for (final w in workouts) {
         final s = stats[w['id']];
         final raw = rawBySession[w['id']];
+        final b = banked[w['id']];
+        if (b != null && (s?['n'] ?? 0) < b) continue;
         if (s != null && (s['n'] ?? 0) != 0) {
           w['avg_hr'] = (s['avg_hr'] as num).round();
         }
@@ -2541,7 +2768,10 @@ class LocalRepositoryImpl extends LocalRepository {
     // from the few minutes it was awake for. Persists on improvement, so the
     // list and the share card see the corrected value too.
     final rescored = await _rescoreSessionFromSubstrate(stored);
-    final w = _workoutOf(rescored.row);
+    // Rule R6 (upstream 6d487f88): a session only a now flag-off device
+    // measured serves no score of it, stored trace included.
+    final row = (await LocalDb.withoutFlagOffScores([rescored.row])).first;
+    final w = _workoutOf(row);
     // TS-04 — whether `zone_min` below and the `zone_bands` added further down
     // describe the SAME zone set. They are recomputed from the current anchors
     // while the minutes can be a kept live split binned against an older
@@ -2563,11 +2793,16 @@ class LocalRepositoryImpl extends LocalRepository {
       // rather than scanning it a second time on every detail open.
       final hrRows =
           rescored.hrRows ?? await LocalDb.hrSamplesInRange(startTs, endTs);
-      if (hrRows.isNotEmpty) {
+      // Fewer seconds than the banked trace was built from = the prune cutoff
+      // has cut into this window and only its tail is left. Redrawing from that
+      // would swap the full session for its cooldown, so serve the banked trace
+      // until the substrate is at least as complete as it (upstream e364cfd9).
+      final banked = (row['trace_samples'] as num?)?.toInt();
+      if (hrRows.isNotEmpty && (banked == null || hrRows.length >= banked)) {
         final ts = [for (final e in hrRows) (e['rec_ts'] as num).toInt()];
         final hr = [for (final e in hrRows) (e['hr'] as num).toInt()];
         w.addAll(_sessionTrace(ts, hr, startTs, endTs,
-            rescored.row['device_family'] as String?, await _zoneAnchors()));
+            row['device_family'] as String?, await _zoneAnchors()));
         final avg = hr.reduce((a, b) => a + b) / hr.length;
         w['avg_hr'] = avg.round();
         if (w['status'] == 'done') {
@@ -2582,7 +2817,8 @@ class LocalRepositoryImpl extends LocalRepository {
         // their own columns kept rendering. Nothing new is claimed here: these
         // are the numbers the app showed for the same session when it was two
         // days old.
-        w.addAll(_frozenTrace(rescored.row));
+        // (Or only its tail is left, see above.)
+        w.addAll(_frozenTrace(row));
       }
     } catch (_) {
       /* enrichment is best-effort — the summary scalars still render */
@@ -3183,12 +3419,20 @@ class LocalRepositoryImpl extends LocalRepository {
       return (row: row, hrRows: null, zoneMinutesRebinned: true);
     }
     try {
+      // Scored by a workout sensor whose flag is now off: what the window
+      // holds without it (the band's partial minutes) must not overwrite its
+      // stored score, which flag on serves again (rule R6, upstream 6d487f88).
+      if ((await LocalDb.sessionSensorsOf(id))
+          .any((s) => !LocalDb.sessionSensorSources.contains(s))) {
+        return (row: row, hrRows: null, zoneMinutesRebinned: true);
+      }
       // Returned to the caller: `getWorkout` enriches from the SAME 1 Hz window
       // straight after this, and a two-hour session is ~7200 rows to scan twice.
       final hrRows = await LocalDb.hrSamplesInRange(startTs, endTs);
       if (hrRows.isEmpty) {
         return (row: row, hrRows: hrRows, zoneMinutesRebinned: true);
       }
+      await _stampSessionSensor(id, hrRows);
 
       final profile = Profile.fromMap(getProfileMap());
       final hrBpm = [for (final e in hrRows) (e['hr'] as num).toInt()];
@@ -3373,14 +3617,17 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<int> rescoreRecentSessions({int sinceDays = 3}) async {
-    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final today0 = DateTime.now();
+    final nowSec = today0.millisecondsSinceEpoch ~/ 1000;
     var changed = 0;
     try {
       // Local-midnight bound, not `now - n * 86400`: a DST day is 23 or 25
       // hours, so a flat day-length silently moves the window by an hour.
       final fromTs =
           localDayStartSec(
-            dayLabelOf(DateTime.now().subtract(Duration(days: sinceDays))),
+            // Calendar days (upstream e364cfd9): a Duration step across a
+            // fall-back day lands on the day before.
+            dayLabelOf(DateTime(today0.year, today0.month, today0.day - sinceDays)),
           ) ??
           (nowSec - sinceDays * 86400);
       final rows = await LocalDb.sessionsInRange(fromTs, nowSec);
@@ -3790,7 +4037,10 @@ class LocalRepositoryImpl extends LocalRepository {
     for (final od in outcomeDefs) {
       final key = od['key'] as String;
       final m = <String, double>{};
-      for (final r in await LocalDb.metricSeries(key)) {
+      // A wearable's estimate (or provisional readiness) is not a measured
+      // outcome either, as on the trend charts (upstream 6d487f88); dropped
+      // in the same statement.
+      for (final r in await LocalDb.metricSeries(key, ownOnly: true)) {
         final d = r['date'];
         final v = (r['value'] as num?)?.toDouble();
         if (v != null && d is String && !imported.contains(d)) m[d] = v;
@@ -4211,8 +4461,12 @@ class LocalRepositoryImpl extends LocalRepository {
   }) async {
     // MEASURED DAYS ONLY — a permutation test over a series spliced from two
     // different algorithms reports the splice, not the weekday (same reasoning
-    // as the journal outcomes above).
-    final rows = await LocalDb.metricSeries(key, measuredOnly: true);
+    // as the journal outcomes above), nor a wearable's estimate.
+    final rows = await LocalDb.metricSeries(
+      key,
+      measuredOnly: true,
+      ownOnly: true,
+    );
     if (rows.isEmpty) return const {};
     final dates = <String>[];
     final values = <double?>[];
@@ -4251,7 +4505,9 @@ class LocalRepositoryImpl extends LocalRepository {
     if (range == 'all') return null;
     final m = RegExp(r'(\d+)').firstMatch(range);
     final days = m == null ? 30 : int.parse(m.group(1)!);
-    return dayLabelOf(DateTime.now().subtract(Duration(days: days)));
+    // Calendar days, not Duration(days:) (DST, upstream e364cfd9).
+    final now = DateTime.now();
+    return dayLabelOf(DateTime(now.year, now.month, now.day - days));
   }
 
   // ── menstrual cycle — local log + honest phase/prediction ───────────────────
@@ -4333,13 +4589,18 @@ class LocalRepositoryImpl extends LocalRepository {
     String? predictedNext, predictedFrom, predictedTo;
     num? daysUntilNext;
     if (predictOk && lastStart != null && medianLength != null) {
-      final next = lastStart.add(Duration(days: medianLength.round()));
+      // Calendar days, not Duration(days:): a 25 h fall-back day inside the
+      // span lands a Duration add at 23:00 the day before (upstream e364cfd9).
+      DateTime plusDays(int n) =>
+          DateTime(lastStart.year, lastStart.month, lastStart.day + n);
+      final n = medianLength.round();
+      final next = plusDays(n);
       predictedNext = dayLabelOf(next);
       daysUntilNext = calendarDaysBetween(today, next);
       if (gapSpread != null) {
         final w = gapSpread.round();
-        predictedFrom = dayLabelOf(next.subtract(Duration(days: w)));
-        predictedTo = dayLabelOf(next.add(Duration(days: w)));
+        predictedFrom = dayLabelOf(plusDays(n - w));
+        predictedTo = dayLabelOf(plusDays(n + w));
       }
     }
 
@@ -4531,8 +4792,10 @@ class LocalRepositoryImpl extends LocalRepository {
 
   // ── small series helpers ─────────────────────────────────────────────────────
 
-  Future<double?> _seriesMean(String key) async {
-    final vs = await LocalDb.trailingSeriesValues(key, 28);
+  /// Mean of the 28 newest stored [key] values; with [before], of the 28
+  /// days before that day, so a served night never sits in its own baseline.
+  Future<double?> _seriesMean(String key, {String? before}) async {
+    final vs = await LocalDb.trailingSeriesValues(key, 28, before: before);
     if (vs.isEmpty) return null;
     return vs.reduce((a, b) => a + b) / vs.length;
   }
@@ -4864,6 +5127,9 @@ Map<String, dynamic>? coachToday(Map<String, dynamic>? crossDay) {
       'low': lo,
       'high': hi,
       'rationale': (v['rationale'] ?? '').toString(),
+      // Built on a wearable's estimated TRIMP (`_crossDayArtifactAt`,
+      // upstream 6d487f88): the target says so where it is shown.
+      if (metric['estimated'] == true) 'estimated': true,
     },
   };
 }

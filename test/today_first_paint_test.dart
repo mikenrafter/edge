@@ -40,7 +40,9 @@ class _HangingRefreshRepo extends LocalRepository {
   Future<List<String>> availableDays() async => ['2026-08-05', '2026-08-04'];
   @override
   Future<SleepDetailBundle> getSleepDetailBundle(String day,
-      {required List<String> chartKeys, required int windowDays}) async {
+      {required List<String> chartKeys,
+      required int windowDays,
+      String? before}) async {
     return SleepDetailBundle(
       night: const {'duration_min': 443, 'in_bed_min': 486, 'efficiency': .91},
       timeline: const {},
@@ -50,7 +52,7 @@ class _HangingRefreshRepo extends LocalRepository {
     );
   }
 
-  // Read beside the bundle: the windows before this night.
+  // The windows before this night come in the bundle; any other reader.
   @override
   Future<List<Map<String, dynamic>>> sleepWindows(
           {int days = 60, String? before}) async =>
