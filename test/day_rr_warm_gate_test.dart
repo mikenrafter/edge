@@ -252,6 +252,54 @@ void main() {
     expect(warmDay, equals(await stored()), reason: 'whole stored day');
   });
 
+  test('(d) tonight\'s sleep becomes known (onset before midnight) under a warm '
+      'engine', () async {
+    // Daytime HRV is cut at tonight's onset, which the streamed value has no
+    // cut for, and a streamed pass holds only the tail's beats: the day's RR
+    // must not stream while tonight's sleep began inside the day.
+    final warm = DerivationEngine();
+    await rows(0, _steps[0]);
+    await warm.run(_profile);
+    await rows(_steps[0], _steps[1]);
+    await warm.run(_profile);
+    final midnight = DateTime.fromMillisecondsSinceEpoch(start * 1000);
+    final dayStart = DateTime(midnight.year, midnight.month, midnight.day);
+    final tonight = dayStart.add(const Duration(hours: 23));
+    final tomorrow = DateTime(dayStart.year, dayStart.month, dayStart.day + 1);
+    final db = await LocalDb.instance;
+    await db.insert(
+        'day_result',
+        {
+          'day_id': dayLabelOf(tomorrow),
+          'algo_version': kAlgoVersion,
+          'payload_json': '{}',
+          'window_json': jsonEncode({
+            'onset_ms': tonight.millisecondsSinceEpoch,
+            'offset_ms': tomorrow
+                .add(const Duration(hours: 6))
+                .millisecondsSinceEpoch,
+          }),
+          'computed_at': 0,
+          'finalized': 0,
+          'skipped': 0,
+          'partial': 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
+    await rows(_steps[1], _steps[2]);
+    await warm.run(_profile);
+    final warmDay = await stored();
+    final counts = warm.perf.summary()['counts'] as Map;
+    await DerivationEngine().run(_profile, force: true);
+    final cold = await stored();
+    expect(
+        jsonEncode((warmDay['payload'] as Map)['daytime_hrv']),
+        jsonEncode((cold['payload'] as Map)['daytime_hrv']),
+        reason: 'daytime HRV covers the whole day');
+    expect(warmDay, equals(cold), reason: 'whole stored day');
+    expect((counts['day_rr_batch_runs'] as num?)?.toInt(), 1,
+        reason: 'the whole-day batch ran: tonight began inside the day');
+  });
+
   test('the per-pass probe does not decode the checkpoint on the engine isolate',
       () {
     // Every warm pass probes; a decode there is O(blob) on the UI isolate
