@@ -998,36 +998,8 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/inputs/canonical.dart",
-      "symbol": "_withStrapBeats",
-      "element": "Substrate.rrMs",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/inputs/canonical.dart",
       "symbol": "hrLedWindow",
       "element": "hrLedSleepWindow",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/inputs/colmi_inputs.dart",
-      "symbol": "colmiSubstrate",
-      "element": "Substrate.tsSec",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/inputs/oura_inputs.dart",
-      "symbol": "ouraSubstrate",
-      "element": "Substrate.tsSec",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/inputs/ultrahuman_inputs.dart",
-      "symbol": "ultrahumanSubstrate",
-      "element": "Substrate.tsSec",
       "count": 1
     },
     {
@@ -1690,20 +1662,6 @@
     },
     {
       "rule": "rawTableRowLoopOutsideHeavy",
-      "file": "compute/inputs/canonical.dart",
-      "symbol": "withStrapSessions",
-      "element": "decoded_onehz",
-      "count": 2
-    },
-    {
-      "rule": "rawTableRowLoopOutsideHeavy",
-      "file": "compute/inputs/colmi_inputs.dart",
-      "symbol": "colmiSkinTemps",
-      "element": "raw_archive",
-      "count": 1
-    },
-    {
-      "rule": "rawTableRowLoopOutsideHeavy",
       "file": "compute/inputs/garmin_inputs.dart",
       "symbol": "sparseHrRecTsMaxByDay",
       "element": "decoded_onehz",
@@ -1711,30 +1669,9 @@
     },
     {
       "rule": "rawTableRowLoopOutsideHeavy",
-      "file": "compute/inputs/garmin_inputs.dart",
-      "symbol": "sparseHrSubstrate",
-      "element": "decoded_onehz",
-      "count": 2
-    },
-    {
-      "rule": "rawTableRowLoopOutsideHeavy",
       "file": "compute/inputs/oura_inputs.dart",
       "symbol": "ouraStrapOwnsNight",
       "element": "decoded_rr",
-      "count": 1
-    },
-    {
-      "rule": "rawTableRowLoopOutsideHeavy",
-      "file": "compute/inputs/oura_inputs.dart",
-      "symbol": "ouraSubstrate",
-      "element": "decoded_rr",
-      "count": 1
-    },
-    {
-      "rule": "rawTableRowLoopOutsideHeavy",
-      "file": "compute/inputs/ultrahuman_inputs.dart",
-      "symbol": "ultrahumanRecords",
-      "element": "raw_archive",
       "count": 1
     },
     {

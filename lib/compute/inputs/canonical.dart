@@ -25,6 +25,7 @@ import 'miband_inputs.dart';
 import 'oura_inputs.dart';
 import 'pebble_inputs.dart';
 import 'ultrahuman_inputs.dart';
+import 'wearable_substrate_heavy.dart';
 import 'validation_bands.dart';
 
 /// The method tag of our readiness on a wearable's day: the composite over
@@ -353,23 +354,27 @@ Future<Substrate> wearableSubstrate(
   (String, String) wearable,
   int from,
   int to,
-) async {
-  final own = await switch (wearable.$2) {
-    kGarminFamily ||
-    kPebbleFamily ||
-    kMiBandFamily => sparseHrSubstrate(wearable.$2, wearable.$1, from, to),
-    kUltrahumanFamily => ultrahumanSubstrate(wearable.$1, from, to),
-    kColmiFamily => colmiSubstrate(wearable.$1, from, to),
-    kOuraFamily => ouraSubstrate(wearable.$1, from, to),
-    _ => Future.value(Substrate.empty),
+) {
+  final (id, family) = wearable;
+  final plan = switch (family) {
+    kGarminFamily || kPebbleFamily || kMiBandFamily => WearablePlan.sparseHr,
+    kUltrahumanFamily => WearablePlan.ultrahuman,
+    kColmiFamily => WearablePlan.colmi,
+    kOuraFamily => WearablePlan.oura,
+    _ => null,
   };
-  if (!own.isEmpty || columnFor(wearable.$2) == null) {
-    return withStrapSessions(own, from, to);
-  }
-  return withStrapSessions(
-      Substrate.fromJson(own.toJson()..['device_family'] = wearable.$2),
-      from,
-      to);
+  // The rows are read here, the substrate is built and the strap laid over it
+  // in a worker (inputs/wearable_substrate_heavy.dart).
+  return buildWearableSubstrate(
+    // An adapter with no inputs mapping has no own day: the strap's alone.
+    plan ?? WearablePlan.strapOnly,
+    family,
+    id,
+    from,
+    to,
+    strap: true,
+    emptyFamily: emptyFamilyFor(family),
+  );
 }
 
 /// Seconds past a session's end a strap's rows still take over: the tail
@@ -394,63 +399,11 @@ const int kStrapTailSec = 180;
 /// Two sensors worn together are never blended: each session is the sensor's
 /// that recorded most of it, and each [kBeatSourceBucketMs] of beats the
 /// source's with most beats in it ([ownerBy]).
-Future<Substrate> withStrapSessions(Substrate sub, int from, int to) async {
-  final ids = LocalDb.sessionSensorSources;
-  if (ids.isEmpty) return sub;
-  final db = await LocalDb.instance;
-  final beats = await db.rawQuery(
-    'SELECT source AS src, COALESCE(beat_ts_ms, rr_ts_ms) AS t, rr_ms AS rr '
-    'FROM decoded_rr '
-    'WHERE source IN (${ids.map((s) => "'$s'").join(', ')}) '
-    'AND rec_ts >= ? AND rec_ts <= ? ORDER BY t, beat_index',
-    [from, to],
-  );
-  final all = await db.rawQuery(
-    'SELECT s.id AS sid, d.source AS src, d.rec_ts AS t, d.hr AS hr '
-    'FROM sessions s '
-    'JOIN decoded_onehz d ON d.rec_ts >= s.start_ts '
-    'AND d.rec_ts <= COALESCE(s.end_ts, s.start_ts) + $kStrapTailSec '
-    'WHERE d.hr > 0 AND d.source IN (${ids.map((s) => "'$s'").join(', ')}) '
-    'AND d.rec_ts >= ? AND d.rec_ts <= ? ORDER BY d.rec_ts',
-    [from, to],
-  );
-  final owner = ownerBy([for (final r in all) (r['sid'], r['src'])]);
-  final rows = [
-    for (final r in all)
-      if (r['src'] == owner[r['sid']]) r,
-  ];
-  // A day the wearable was off with no strap session in it stays empty.
-  if (rows.isEmpty) return sub.isEmpty ? sub : _withStrapBeats(sub, beats);
-  final strap = <int, int>{};
-  final spans = <Object?, (int, int)>{};
-  for (final r in rows) {
-    final t = (r['t'] as num).toInt();
-    strap[t] = (r['hr'] as num).toInt();
-    final s = spans[r['sid']];
-    spans[r['sid']] = s == null ? (t, t) : (s.$1, t);
-  }
-  bool covered(int t) => spans.values.any((s) => t >= s.$1 && t <= s.$2);
-  // Each per-second channel and its absent value on a strap's second.
-  const absent = <String, Object?>{
-    'ts_sec': null, 'hr': null, 'ax': 0.0, 'ay': 0.0, 'az': 0.0,
-    'spo2_red': 0, 'spo2_ir': 0, 'skin_temp': 0, 'skin_contact': 0,
-    'step_count': -1, 'hr_valid': -1, 'band_sleep_state': -1,
-  };
-  final order = [
-    for (var i = 0; i < sub.length; i++)
-      if (!covered(sub.tsSec[i])) (sub.tsSec[i], i),
-    for (final t in strap.keys) (t, -1),
-  ]..sort((a, b) => a.$1.compareTo(b.$1));
-  final j = sub.toJson();
-  for (final MapEntry(key: k, value: none) in absent.entries) {
-    final src = j[k] as List;
-    if (src.length != sub.length) continue;
-    j[k] = [
-      for (final (t, i) in order)
-        i >= 0 ? src[i] : (k == 'ts_sec' ? t : k == 'hr' ? strap[t] : none),
-    ];
-  }
-  return _withStrapBeats(Substrate.fromJson(j), beats);
+Future<Substrate> withStrapSessions(Substrate sub, int from, int to) {
+  if (LocalDb.sessionSensorSources.isEmpty) return Future.value(sub);
+  return buildWearableSubstrate(
+      WearablePlan.strapOnly, sub.deviceFamily ?? '', '', from, to,
+      strap: true, base: sub);
 }
 
 /// The span of beats one source owns on a wearable's day ([ownerBy]): long
@@ -473,28 +426,6 @@ Map<K, Object?> ownerBy<K>(Iterable<(K, Object?)> tagged) {
           ? b
           : a).key,
   };
-}
-
-/// [sub] with the strap's plausible [beats] (`src`, `t` ms, `rr` ms) merged
-/// into its own, in time order (ties in arrival order), one source per
-/// [kBeatSourceBucketMs]: beats of two sensors interleaved would make every
-/// successive difference a cross-device one.
-Substrate _withStrapBeats(Substrate sub, List<Map<String, Object?>> beats) {
-  final all = [
-    for (var i = 0; i < sub.rrMs.length; i++) ('', sub.rrTsMs[i], sub.rrMs[i]),
-    for (final b in beats)
-      if (plausibleRrOrNull(b['rr'] as num) case final rr?)
-        (b['src'], (b['t'] as num).toDouble(), rr),
-  ];
-  if (all.length == sub.rrMs.length) return sub;
-  final owner = ownerBy([for (final b in all) (b.$2 ~/ kBeatSourceBucketMs, b.$1)]);
-  final merged = [
-    for (final (i, b) in all.indexed)
-      if (b.$1 == owner[b.$2 ~/ kBeatSourceBucketMs]) (i, b.$2, b.$3),
-  ]..sort((a, b) => a.$2 != b.$2 ? a.$2.compareTo(b.$2) : a.$1.compareTo(b.$1));
-  return Substrate.fromJson(sub.toJson()
-    ..['rr_ts_ms'] = [for (final b in merged) b.$2]
-    ..['rr_ms'] = [for (final b in merged) b.$3]);
 }
 
 /// Our own night off the active wearable over `[from, to]`, for a day the

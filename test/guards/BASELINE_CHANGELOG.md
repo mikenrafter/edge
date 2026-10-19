@@ -215,3 +215,17 @@ BundleStore instead of adding keys. Each key above is to be retired the usual
 way (moved behind a registered worker or reader); none may grow further.
 CI's target-branch comparison will report these as growth: the merge PR needs
 the reviewer's sign-off on this entry.
+
+## Shrink (2026-10-19) - wearable day substrate -> registered wearableSubstrateHeavy; 9 keys removed (12 occurrences)
+The readers that built a wearable's day on the UI isolate (`withStrapSessions`,
+`_withStrapBeats`, `colmiSubstrate`, `colmiSkinTemps`, `sparseHrSubstrate`,
+`ouraSubstrate`, `ultrahumanSubstrate`, `ultrahumanRecords`) now only run their
+bounded SELECTs and hand the rows on unread; the loops, channel rebuilds and
+strap overlay are `@heavy` functions behind the registered `Dispatcher.run`
+entry `wearableSubstrateHeavy` (`lib/compute/inputs/wearable_substrate_heavy.dart`,
+audited as 'wearable substrate'). The engine adopts the result with
+`Substrate.fromTransfer`. Removed: heavyOriginOutsideHeavy x4 (`_withStrapBeats`,
+`colmiSubstrate`, `ouraSubstrate`, `ultrahumanSubstrate`) and
+rawTableRowLoopOutsideHeavy x5 (`withStrapSessions` 2, `colmiSkinTemps`,
+`sparseHrSubstrate` 2, `ouraSubstrate`, `ultrahumanRecords`). No key added, no
+count raised.

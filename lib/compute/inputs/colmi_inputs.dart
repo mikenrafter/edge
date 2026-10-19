@@ -26,13 +26,13 @@
 
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
-import '../../ble/adapters/colmi.dart' show kColmiHistoryDays;
 import '../../data/db.dart';
 import '../substrate.dart';
 import '../vendor_sleep.dart';
 import 'canonical.dart';
 import 'garmin_inputs.dart';
 import 'pebble_inputs.dart' show rhrOnlyReadiness;
+import 'wearable_substrate_heavy.dart';
 
 const String kColmiFamily = 'colmi';
 
@@ -49,42 +49,8 @@ Future<List<(int, int, int)>> colmiSkinTemps(
   String deviceId,
   int from,
   int to,
-) async {
-  final db = await LocalDb.instance;
-  final out = <int, (int, int, int)>{};
-  // A reply is banked on or after the day it describes and at most the
-  // ring's history (kColmiHistoryDays) later: scan only those captures.
-  for (final r in await db.rawQuery(
-    'SELECT hex, COALESCE(rec_ts * 1000, captured_at) AS anchor_ms '
-    'FROM raw_archive WHERE device_id = ? '
-    "AND reason = 'colmi_big_0x${kColmiBigTemperature.toRadixString(16)}' "
-    'AND captured_at >= ? AND captured_at <= ?',
-    [
-      deviceId,
-      (from - 86400) * 1000,
-      (to + (kColmiHistoryDays + 1) * 86400) * 1000,
-    ],
-  )) {
-    final hex = r['hex'] as String;
-    final bytes = [
-      for (var i = 0; i + 1 < hex.length; i += 2)
-        int.parse(hex.substring(i, i + 2), radix: 16),
-    ];
-    if (bytes.length < kColmiBigHeaderLength + 2) continue;
-    final span = bytes[kColmiBigHeaderLength + 1] * 60;
-    final banked = DateTime.fromMillisecondsSinceEpoch(r['anchor_ms'] as int);
-    for (final t in colmiTemperatures(bytes)) {
-      if (t.celsius < 30 || t.celsius > 42) continue;
-      final at = DateTime(banked.year, banked.month, banked.day - t.daysAgo,
-                  0, t.minuteOfDay)
-              .millisecondsSinceEpoch ~/
-          1000;
-      if (at + span <= from || at > to) continue;
-      out[at] = (at, at + span, (t.celsius * 100).round());
-    }
-  }
-  return out.values.toList()..sort((a, b) => a.$1.compareTo(b.$1));
-}
+) =>
+    buildColmiSkinTemps(deviceId, from, to);
 
 /// The ring's HR rows ([sparseHrSubstrate]) over `[from, to]`, or empty when
 /// they sit further apart than [kHrCadenceSec] says. The interval is the
@@ -96,16 +62,9 @@ Future<List<(int, int, int)>> colmiSkinTemps(
 ///
 /// ponytail: abstains; keep the interval the walk's page 0 announces per
 /// sync and scale by it if rings set slower turn up.
-Future<Substrate> colmiHr(String deviceId, int from, int to) async {
-  final sub = await sparseHrSubstrate(kColmiFamily, deviceId, from, to);
-  if (sub.length < 2) return sub;
-  final gaps = [
-    for (var i = 1; i < sub.length; i++) sub.tsSec[i] - sub.tsSec[i - 1],
-  ]..sort();
-  return gaps[gaps.length ~/ 2] > kHrCadenceSec[kColmiFamily]!
-      ? Substrate.empty
-      : sub;
-}
+Future<Substrate> colmiHr(String deviceId, int from, int to) =>
+    buildWearableSubstrate(
+        WearablePlan.colmiHr, kColmiFamily, deviceId, from, to);
 
 /// Our night off the ring's HR alone over `[from, to]` (the day's search
 /// window), for a night the ring staged none of: the HR-led window
@@ -158,37 +117,9 @@ Future<bool> colmiSleepUndecoded(String deviceId) async {
 
 /// The ring's HR rows ([colmiHr]) with the skin temperature of the slot each
 /// falls in beside its HR, in centi-°C (0 = none).
-Future<Substrate> colmiSubstrate(String deviceId, int from, int to) async {
-  final sub = await colmiHr(deviceId, from, to);
-  if (sub.isEmpty) return sub;
-  final temps = await colmiSkinTemps(deviceId, from, to);
-  final skin = <int>[];
-  var j = 0;
-  for (final t in sub.tsSec) {
-    while (j < temps.length && temps[j].$2 <= t) {
-      j++;
-    }
-    skin.add(j < temps.length && temps[j].$1 <= t ? temps[j].$3 : 0);
-  }
-  return Substrate(
-    tsSec: sub.tsSec,
-    hr: sub.hr,
-    rrTsMs: sub.rrTsMs,
-    rrMs: sub.rrMs,
-    ax: sub.ax,
-    ay: sub.ay,
-    az: sub.az,
-    spo2Red: sub.spo2Red,
-    spo2Ir: sub.spo2Ir,
-    skinTemp: skin,
-    skinContact: sub.skinContact,
-    stepCount: sub.stepCount,
-    hrValid: sub.hrValid,
-    bandSleepState: sub.bandSleepState,
-    deviceFamily: kColmiFamily,
-    deviceIds: sub.deviceIds,
-  );
-}
+Future<Substrate> colmiSubstrate(String deviceId, int from, int to) =>
+    buildWearableSubstrate(
+        WearablePlan.colmi, kColmiFamily, deviceId, from, to);
 
 /// Colmi's column of the metric x device table (PLAN §3b), as served.
 final Map<String, Cell> kColmiColumn = {

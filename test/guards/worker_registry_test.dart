@@ -39,6 +39,8 @@ const kExpected = <String, Dispatcher>{
   // payload text to frozen compact graphs.
   'decodeDayPayloadsHeavy': Dispatcher.run,
   'decodeJsonPayloadsHeavy': Dispatcher.run,
+  // A wearable's day substrate (compute/inputs/wearable_substrate_heavy.dart).
+  'wearableSubstrateHeavy': Dispatcher.run,
 };
 
 void main() {

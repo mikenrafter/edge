@@ -210,6 +210,15 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
         '(WorkerInit.ensure first, sendable texts in, @SendableShape frozen '
         'JSON graphs out)',
   ),
+  WorkerEntry(
+    #wearableSubstrateHeavy,
+    dispatcher: Dispatcher.run,
+    reason: 'a wearable\'s day substrate (Colmi/Garmin/Oura/Ultrahuman rows '
+        'to channels, the strap overlay, the Colmi temperature slots, the '
+        'Ultrahuman records); meets the contract (WorkerInit.ensure first, '
+        '@SendableShape row-map input and transfer-map result with a '
+        'round-trip test)',
+  ),
 ];
 
 /// Fingerprinted unresolved invocations. Shrink-only.

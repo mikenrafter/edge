@@ -29,12 +29,12 @@ import 'dart:math' as math;
 
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
-import '../../data/db.dart';
 import '../substrate.dart';
 import '../vendor_sleep.dart';
 import 'canonical.dart';
 import 'garmin_inputs.dart';
 import 'pebble_inputs.dart' show rhrOnlyReadiness;
+import 'wearable_substrate_heavy.dart';
 
 const String kUltrahumanFamily = 'ultrahuman';
 
@@ -45,61 +45,22 @@ Future<List<UltrahumanRecord>> ultrahumanRecords(
   String deviceId,
   int from,
   int to,
-) async {
-  final db = await LocalDb.instance;
-  final out = <UltrahumanRecord>[];
-  for (final r in await db.rawQuery(
-    "SELECT hex FROM raw_archive WHERE device_id = ? "
-    "AND reason = 'ultrahuman_record' AND rec_ts >= ? AND rec_ts <= ? "
-    'ORDER BY rec_ts',
-    [deviceId, from, to],
-  )) {
-    final hex = r['hex'] as String;
-    final rec = parseUltrahumanRecord([
-      for (var i = 0; i + 1 < hex.length; i += 2)
-        int.parse(hex.substring(i, i + 2), radix: 16),
-    ], 0);
-    if (rec != null) out.add(rec);
-  }
-  return out;
-}
+) =>
+    buildUltrahumanRecords(deviceId, from, to);
 
 /// The skin temperature a record carries, in °C, or null when the ring does
 /// not trust it (the adapter's own gate).
-double? _skinC(UltrahumanRecord r) {
+double? ultrahumanSkinC(UltrahumanRecord r) {
   final t = r.skinTempC;
   return r.tempQuality > 0 && t >= 20 && t <= 45 ? t : null;
 }
 
 /// The ring's HR rows ([sparseHrSubstrate]) with each record's skin
-/// temperature beside its HR, in centi-°C.
-Future<Substrate> ultrahumanSubstrate(String deviceId, int from, int to) async {
-  final sub =
-      await sparseHrSubstrate(kUltrahumanFamily, deviceId, from, to);
-  if (sub.isEmpty) return sub;
-  final temp = {
-    for (final r in await ultrahumanRecords(deviceId, from, to))
-      if (_skinC(r) case final c?) r.tsA: (c * 100).round(),
-  };
-  return Substrate(
-    tsSec: sub.tsSec,
-    hr: sub.hr,
-    rrTsMs: sub.rrTsMs,
-    rrMs: sub.rrMs,
-    ax: sub.ax,
-    ay: sub.ay,
-    az: sub.az,
-    spo2Red: sub.spo2Red,
-    spo2Ir: sub.spo2Ir,
-    skinTemp: [for (final t in sub.tsSec) temp[t] ?? 0],
-    skinContact: sub.skinContact,
-    stepCount: sub.stepCount,
-    hrValid: sub.hrValid,
-    bandSleepState: sub.bandSleepState,
-    deviceFamily: kUltrahumanFamily,
-    deviceIds: sub.deviceIds,
-  );
-}
+/// temperature beside its HR, in centi-°C. Built in a worker
+/// ([wearableSubstrateHeavy]).
+Future<Substrate> ultrahumanSubstrate(String deviceId, int from, int to) =>
+    buildWearableSubstrate(
+        WearablePlan.ultrahuman, kUltrahumanFamily, deviceId, from, to);
 
 /// The [q] quantile of [v] (nearest rank), NaN when empty.
 double _quantile(List<num> v, double q) {
@@ -129,7 +90,7 @@ String stageRingEpoch(
   required double hrvMedian,
   required double tempMedian,
 }) {
-  final skin = _skinC(r);
+  final skin = ultrahumanSkinC(r);
   if (_moving(r) ||
       r.hr >= hrBase + 10 ||
       (skin != null && skin < tempMedian - 1.0)) {
@@ -161,7 +122,7 @@ Future<VendorNight?> ultrahumanNight(String deviceId, int from, int to) async {
   ];
   if (night.isEmpty) return null;
   final hrv = [for (final r in night) if (r.hrv > 0) r.hrv];
-  final temp = [for (final r in night) ?_skinC(r)];
+  final temp = [for (final r in night) ?ultrahumanSkinC(r)];
   final hrBase = _quantile([for (final r in night) r.hr], 0.1);
   final hrvMedian = hrv.isEmpty ? 0.0 : _median(hrv);
   final tempMedian = temp.isEmpty ? 0.0 : _median(temp);
@@ -230,7 +191,7 @@ Future<Map<String, Object?>?> ultrahumanDayBlock(
         for (final r in worn)
           if (r.spo2 > 0 && r.spo2 <= 100) r.spo2,
       ]),
-      'skin_temp_c': mean([for (final r in night) ?_skinC(r)]),
+      'skin_temp_c': mean([for (final r in night) ?ultrahumanSkinC(r)]),
     },
     'movement_frac':
         night.where(_moving).length / math.max(1, night.length),

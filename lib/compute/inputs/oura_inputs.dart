@@ -29,6 +29,7 @@ import '../substrate.dart';
 import 'canonical.dart';
 import '../vendor_sleep.dart';
 import 'garmin_inputs.dart';
+import 'wearable_substrate_heavy.dart';
 import 'pebble_inputs.dart' show rhrOnlyReadiness;
 
 const String kOuraFamily = 'oura';
@@ -42,7 +43,7 @@ const String kOuraSkinMethod = 'skin_temp_c_event';
 /// [deviceId]'s temperature rows over `[from, to]` (or all of them), oldest
 /// first. Readings outside 30-42 °C are not skin on a finger: dropped, as on
 /// the other rings.
-Future<List<Map<String, Object?>>> _ouraTempRows(
+Future<List<Map<String, Object?>>> ouraTempRows(
   String deviceId, [
   int? from,
   int? to,
@@ -61,79 +62,17 @@ Future<List<Map<String, Object?>>> _ouraTempRows(
 /// The ring's day over `[from, to]` as a substrate: its HR readings
 /// ([sparseHrSubstrate]) with the skin temperature of the reading nearest
 /// each (within [kHrCadenceSec], centi-°C, 0 = none) and its own beats; with
-/// no HR, its temperature rows alone ([_ouraTempSubstrate]). Empty when
-/// there is neither.
-Future<Substrate> ouraSubstrate(String deviceId, int from, int to) async {
-  final sub = await sparseHrSubstrate(kOuraFamily, deviceId, from, to);
-  if (sub.isEmpty) return _ouraTempSubstrate(deviceId, from, to);
-  final c = kHrCadenceSec[kOuraFamily]!;
-  final temps = await _ouraTempRows(deviceId, from - c, to + c);
-  final skin = <int>[];
-  var j = 0;
-  for (final t in sub.tsSec) {
-    while (j + 1 < temps.length &&
-        ((temps[j + 1]['rec_ts'] as num) - t).abs() <=
-            ((temps[j]['rec_ts'] as num) - t).abs()) {
-      j++;
-    }
-    final near = j < temps.length &&
-        ((temps[j]['rec_ts'] as num) - t).abs() <= c;
-    skin.add(near ? ((temps[j]['skin_temp_c'] as num) * 100).round() : 0);
-  }
-  final db = await LocalDb.instance;
-  final beats = await db.rawQuery(
-    'SELECT COALESCE(beat_ts_ms, rr_ts_ms) AS t, rr_ms AS rr FROM decoded_rr '
-    'WHERE device_id = ? AND device_family = ? AND rec_ts >= ? AND rec_ts <= ? '
-    'ORDER BY t, beat_index',
-    [deviceId, kOuraFamily, from, to],
-  );
-  final rr = [
-    for (final b in beats)
-      if (plausibleRrOrNull(b['rr'] as num) case final ms?)
-        ((b['t'] as num).toDouble(), ms),
-  ];
-  return Substrate.fromJson(sub.toJson()
-    ..['skin_temp'] = skin
-    ..['rr_ts_ms'] = [for (final b in rr) b.$1]
-    ..['rr_ms'] = [for (final b in rr) b.$2]);
-}
-
-/// The ring's temperature rows for [deviceId] over `[from, to]` as a
-/// substrate: skin temperature in centi-°C, no HR (0), absent gravity, no
-/// beats. Empty when there are none.
-Future<Substrate> _ouraTempSubstrate(String deviceId, int from, int to) async {
-  final rows = await _ouraTempRows(deviceId, from, to);
-  if (rows.isEmpty) return Substrate.empty;
-  final n = rows.length;
-  final zeros = List<double>.filled(n, 0);
-  final none = List<int>.filled(n, -1);
-  return Substrate(
-    tsSec: [for (final r in rows) (r['rec_ts'] as num).toInt()],
-    hr: List<int>.filled(n, 0),
-    rrTsMs: const [],
-    rrMs: const [],
-    ax: zeros,
-    ay: zeros,
-    az: zeros,
-    spo2Red: List<int>.filled(n, 0),
-    spo2Ir: List<int>.filled(n, 0),
-    skinTemp: [
-      for (final r in rows) ((r['skin_temp_c'] as num) * 100).round(),
-    ],
-    skinContact: List<int>.filled(n, 0),
-    stepCount: none,
-    hrValid: none,
-    bandSleepState: none,
-    deviceFamily: kOuraFamily,
-    deviceIds: {deviceId},
-  );
-}
+/// no HR, its temperature rows alone. Empty when there is neither. Built in a
+/// worker ([wearableSubstrateHeavy]).
+Future<Substrate> ouraSubstrate(String deviceId, int from, int to) =>
+    buildWearableSubstrate(
+        WearablePlan.oura, kOuraFamily, deviceId, from, to);
 
 /// `{local day -> last HR or temperature second}` over [deviceId]'s rows:
 /// the days this ring alone can put up for derivation.
 Future<Map<String, int>> ouraRecTsMaxByDay(String deviceId) async {
   final out = await sparseHrRecTsMaxByDay(kOuraFamily, deviceId);
-  for (final r in await _ouraTempRows(deviceId)) {
+  for (final r in await ouraTempRows(deviceId)) {
     final t = (r['rec_ts'] as num).toInt();
     final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(t * 1000));
     if (t > (out[day] ?? 0)) out[day] = t;

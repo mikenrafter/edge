@@ -26,6 +26,7 @@ import 'miband_inputs.dart';
 import 'oura_inputs.dart';
 import 'pebble_inputs.dart';
 import 'ultrahuman_inputs.dart';
+import 'wearable_substrate_heavy.dart';
 
 const String kGarminFamily = 'garmin';
 
@@ -89,46 +90,14 @@ String? hrMethod(String? family) =>
 /// A [family] watch's HR rows for [deviceId] over `[from, to]` as a
 /// substrate: HR only, absent gravity (0,0,0), no beats. Empty when there are
 /// none, or when the rows are not this family's. Shared by every family in
-/// [kHrCadenceSec].
+/// [kHrCadenceSec]. Built in a worker ([wearableSubstrateHeavy]).
 Future<Substrate> sparseHrSubstrate(
   String family,
   String deviceId,
   int from,
   int to,
-) async {
-  if (ana.calibrationFor(kHrCadenceSec, family) == null) {
-    return Substrate.empty;
-  }
-  final db = await LocalDb.instance;
-  final rows = await db.rawQuery(
-    'SELECT rec_ts, hr FROM decoded_onehz '
-    'WHERE device_id = ? AND device_family = ? AND rec_ts >= ? '
-    'AND rec_ts <= ? AND hr > 0 ORDER BY rec_ts',
-    [deviceId, family, from, to],
-  );
-  if (rows.isEmpty) return Substrate.empty;
-  final n = rows.length;
-  final zeros = List<double>.filled(n, 0);
-  final none = List<int>.filled(n, -1);
-  return Substrate(
-    tsSec: [for (final r in rows) (r['rec_ts'] as num).toInt()],
-    hr: [for (final r in rows) (r['hr'] as num).toInt()],
-    rrTsMs: const [],
-    rrMs: const [],
-    ax: zeros,
-    ay: zeros,
-    az: zeros,
-    spo2Red: List<int>.filled(n, 0),
-    spo2Ir: List<int>.filled(n, 0),
-    skinTemp: List<int>.filled(n, 0),
-    skinContact: List<int>.filled(n, 0),
-    stepCount: none,
-    hrValid: none,
-    bandSleepState: none,
-    deviceFamily: family,
-    deviceIds: {deviceId},
-  );
-}
+) =>
+    buildWearableSubstrate(WearablePlan.sparseHr, family, deviceId, from, to);
 
 /// `{local day -> last HR second}` over [deviceId]'s rows: the days this
 /// watch alone can put up for derivation.

@@ -29,6 +29,7 @@ import 'package:openstrap_edge/compute/day_curve_states.dart';
 import 'package:openstrap_edge/compute/day_resume_state.dart';
 import 'package:openstrap_edge/compute/day_tail_fold.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
+import 'package:openstrap_edge/compute/inputs/wearable_substrate_heavy.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/sleep_staging_worker.dart';
@@ -267,6 +268,25 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
         () => decodeJsonPayloadsHeavy(bundleWorkerInputs, input),
         json: (JsonPayloadsResult r) => r.values,
       );
+    },
+  ),
+  'wearableSubstrateHeavy': (
+    roundTrip: () async {
+      // Plain row maps in, a Substrate transfer map out. The round trip over
+      // real sqflite rows is test/sendable_wearableSubstrateHeavy_test.dart.
+      final input = WearableSubstrateInput(
+        plan: WearablePlan.sparseHr,
+        family: 'garmin',
+        deviceId: 'dev',
+        from: 1000,
+        to: 2000,
+        hr: [
+          for (var i = 0; i < 5; i++) {'rec_ts': 1000 + i * 60, 'hr': 60 + i},
+        ],
+      );
+      await _sameInWorker(
+          () => wearableSubstrateHeavy(wearableWorkerInputs, input),
+          json: (WearableSubstrateResult r) => r.substrate);
     },
   ),
   'decodeDayPayloadsHeavy': (
