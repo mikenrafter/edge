@@ -1763,11 +1763,7 @@ class HealthExporter {
   /// because writing beside a survivor is what turns a retry into a duplicate.
   /// See [healthDeleteClearedRange] for what "did not clear" means per store.
   Future<bool> exportWorkout(Map<String, Object?> session) async {
-    await Prefs.ensureLoaded();
-    if (Prefs.getBool(Prefs.demoModeEnabled, false) ||
-        session['source'] == 'demo') {
-      return false;
-    }
+    if (session['source'] == 'demo') return false;
     if ((session['status']?.toString() ?? '') == 'live') return false;
     // Same fabricated-end_ts skip as _writeOneWorkout, but checked BEFORE any
     // delete: this session's window may still hold a real, previously
@@ -1777,8 +1773,12 @@ class HealthExporter {
     final st = (session['start_ts'] as num?)?.toInt();
     final en = (session['end_ts'] as num?)?.toInt();
     if (st == null || en == null || en <= st) return false;
+    // Nothing awaited before the lock: callers take it in call order (a
+    // prefs load here used to let a later call overtake an earlier one).
     return _workoutLock.run(() async {
     _storeHung = false;
+    // Demo mode never writes. Loaded inside the lock, see above.
+    await Prefs.ensureLoaded();
     if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
     try {
       await _ensureConfigured();
