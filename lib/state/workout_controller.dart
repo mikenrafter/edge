@@ -621,7 +621,7 @@ class WorkoutController {
     }
     // The permission round-trip can outlive the whole AppState (a resumed
     // workout kicks this off unawaited during startup), so re-check both.
-    if (_disposed) return;
+    if (_disposed || _hostDisposed()) return;
     // The session may have ended while we awaited the permission dialog.
     if (activeWorkout?.workoutId != id) return;
     if (perm != GpsPermissionStatus.granted) {
