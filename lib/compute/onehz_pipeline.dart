@@ -799,7 +799,10 @@ Map<String, dynamic> deriveDayBundle(
     age: (d.profile['age'] as num?)?.toDouble().round(),
     mode: mode,
   );
-  final dip = hrSummary == null
+  // The running wake total excludes this morning's sleep window only; once
+  // tonight's sleep began before midnight the day side must leave it out too,
+  // so that day reads the batch (same rule as the wake series).
+  final dip = hrSummary == null || d.tonightSleepOnsetSec > 0
       ? hrDip(_dayHrOutsideSleep(d), sleepHr)
       : hrDipFromDayTotals(
           hrSummary.wakeHr.count,
