@@ -132,16 +132,19 @@ void main() {
       expect(host.notifies, 4);
     });
 
-    test('the phone-step refresh runs once per full pass; recovery-ready and '
-        'disk reclaim only after a heavy one', () async {
+    // Recovery-ready is considered after light passes too (D16: upstream's
+    // settled-night #448 gate holds the announce until the night settles, and
+    // after the heavy pass only light drains may be left to see it settle).
+    test('the phone-step refresh and the recovery-ready check run once per '
+        'full pass; disk reclaim only after a heavy one', () async {
       final c = make();
       c.debugDeriveRun = deriveHook(days: ['d1']);
       await c.afterDrain();
       await settleMs();
-      expect((host.steps, host.recovery, host.reclaims), (1, 0, 0));
+      expect((host.steps, host.recovery, host.reclaims), (1, 1, 0));
       await c.afterDrain(heavy: true);
       await settleMs();
-      expect((host.steps, host.recovery, host.reclaims), (2, 1, 1));
+      expect((host.steps, host.recovery, host.reclaims), (2, 2, 1));
     });
 
     test('the nothing-changed early return skips the post-derive callbacks '
