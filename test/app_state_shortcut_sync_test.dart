@@ -349,10 +349,14 @@ void main() {
 
   test('opening the app during an in-flight session foregrounds it', () async {
     final engine = _ConnectedEngine();
-    final app = AppState.forTesting(engine: engine)
+    final app = AppState.forTesting(engine: engine);
+    addTearDown(app.dispose);
+    // Backgrounded first (D20: a busy openSession in the foreground still
+    // does nothing at all, sync_controller_test).
+    await app.pauseForBackground();
+    app
       ..paired = PairedDevice('r1', 's1', generation: 'gen4')
       ..busy = true;
-    addTearDown(app.dispose);
     await app.openSession();
     expect(engine.background, isFalse);
   });

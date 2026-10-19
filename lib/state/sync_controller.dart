@@ -784,12 +784,21 @@ class SyncController {
     // opens the app, and nothing else clears background. Back in the
     // foreground with an OS CPU/memory budget again — let the scheduler drain
     // any derive jobs that queued (durably) while backgrounded.
-    if (foreground) {
+    // A busy call that was not backgrounded still does nothing at all.
+    if (foreground && (!busy || wasBackground)) {
       background = false;
       engine.setBackground(false);
       _deriveScheduler.setBackground(false);
     }
-    if (busy) return;
+    if (busy) {
+      // The in-flight session keeps the link; the foreground owners (now
+      // applying) and the band prompt still need the flip (upstream).
+      if (foreground && wasBackground) {
+        _nudgeLive();
+        unawaited(_refreshHighFreqWakeWindow());
+      }
+      return;
+    }
     BandOwnership.markForegroundIntent(true);
     _log('[OWNERSHIP] foreground intent on (${BandOwnership.debugState})');
     // Coming back after hours (or days) suspended: re-read the phone's steps
@@ -948,6 +957,13 @@ class SyncController {
       if (!engine.isConnected || !_keepAlive) {
         _stopBackfillTimer();
         _releaseClaimsUnlessLooping();
+      }
+      // A background connect that failed (a Shortcut while the band is out of
+      // range) must hand the band back to the restore path, same as the
+      // background cold-launch does (upstream). Not after unpair/endSession
+      // dropped keep-alive mid-connect: nobody wants that pending connect.
+      if (_keepAlive && background && !engine.isConnected) {
+        await _armRecovery();
       }
       _setBusy(false);
     }
