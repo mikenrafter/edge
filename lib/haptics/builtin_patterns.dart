@@ -167,6 +167,9 @@ const Map<String, String> _alertPresets = {
   'breath': 'preset.one_pulse',
   'tasker': 'preset.two_pulses',
   'relay': 'preset.three_pulses',
+  // Upstream's detected-nap prompt (D19); not health's rhythm, and not the
+  // detected-workout one it can fire beside.
+  'napDetect': 'preset.four_pulses',
 };
 
 /// The preset key behind alert slot [slotKey] (`alert.<ruleId>`), or null for a

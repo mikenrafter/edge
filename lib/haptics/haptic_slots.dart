@@ -51,6 +51,7 @@ const List<HapticSlotSection> kHapticSlotSections = [
   ]),
   HapticSlotSection('activity', 'Activity', [
     HapticSlot('alert.autoDetect', 'Detected workouts'),
+    HapticSlot('alert.napDetect', 'Detected naps'),
     HapticSlot('alert.movement', 'Movement nudge'),
     HapticSlot('alert.stepGoal', 'Step goal alerts'),
     HapticSlot('alert.zone', 'HR zone alert'),

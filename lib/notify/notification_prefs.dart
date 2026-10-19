@@ -568,9 +568,6 @@ class NotificationPrefs {
     'device': legacyRule('device', deviceEnabled, 1),
     'water': legacyRule('water', waterEnabled, 3),
     'autoDetect': legacyRule('autoDetect', autoDetectEnabled, 1),
-    // A detected NAP's review prompt (upstream's activity review); off by
-    // default, as upstream ships it. The in-app review list is always there.
-    'napDetect': legacyRule('napDetect', napDetectEnabled, 1),
     'movement': legacyRule('movement', movementEnabled, 3),
     'meds': legacyRule('meds', medsEnabled, 3),
     'checkIn': legacyRule('checkIn', checkInEnabled, 1),
@@ -586,6 +583,10 @@ class NotificationPrefs {
     'nativeAlarm': legacyRule('nativeAlarm', true, 2),
     for (final id in ['zone', 'wake', 'breath', 'tasker', 'relay', 'gesture'])
       id: legacyRule(id, ['wake', 'breath', 'tasker'].contains(id), 2),
+    // A detected NAP's review prompt (upstream's activity review); off by
+    // default, as upstream ships it. The in-app review list is always there.
+    // Last, as in alertRuleOrder: the registry is append-only (D19).
+    'napDetect': legacyRule('napDetect', napDetectEnabled, 1),
     ...alertRules,
   };
 
