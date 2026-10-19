@@ -462,6 +462,10 @@ class WorkoutController {
     String type = 'other',
   }) {
     if (activeWorkout != null) return;
+    // A new session owns no draft yet. One left in Prefs belongs to a session
+    // that ended without clearing it (finalized as stale on relaunch), and its
+    // pause would hold this session's clock. Setup opens the fresh one after.
+    LiveDraft.clear();
     final start = DateTime.now();
     final id = workoutId ?? 'w${start.millisecondsSinceEpoch}';
     _resetWorkoutStepState();
@@ -1122,6 +1126,7 @@ class WorkoutController {
     ScreenWake.releaseOwner('workout');
     _setWorkoutActive(false);
     activeWorkout = null;
+    LiveDraft.clear(); // its pause would freeze the next session's tick
     _stopPending = false;
     _stopRow = null;
     _clearStopMarker();
@@ -1275,16 +1280,27 @@ class WorkoutController {
       unawaited(_dispatchBandAlert('zone'));
     }
 
-    // Forgotten-session watch: judged against the SAME gate calories bill
-    // with, so "quiet" here means exactly "billed as rest there" (null when
+    // Forgotten-session watch: judged against the calorie gate (null when
     // the anchors cannot define one — then only absence counts, see
-    // WorkoutIdleWatch). The ask is a notification, once per session; the
-    // session itself is never touched — there is deliberately no auto-stop.
+    // WorkoutIdleWatch), capped at the zone-1 floor (upstream #466): the
+    // calorie gate is 40 % HRR, so a steady 92 bpm session the live bar shows
+    // as ZONE 1 was told "nothing above resting effort". Quiet means below
+    // BOTH lines. The ask is a notification, once per session; the session
+    // itself is never touched — there is deliberately no auto-stop.
+    //
+    // The cap never goes below a quarter of the way from resting HR to the
+    // calorie gate: resting HR is the night's LOWEST 30-min mean, so a zone-1
+    // edge at or just above it would make a session left open overnight read
+    // active forever.
     final wRhr = w.restingHr;
     final wMax = w.hrMax;
-    final idleGate = (wRhr != null && wMax != null)
+    final calGate = (wRhr != null && wMax != null)
         ? ana.Calories.activeGateHr(wMax, wRhr)
         : null;
+    final z1Floor = w.zoneSet?.zones.first.lower;
+    final idleGate = (calGate == null || z1Floor == null)
+        ? calGate
+        : math.max(math.min(calGate, z1Floor), wRhr! + (calGate - wRhr) / 4);
     if (w.idleWatch.onTick(DateTime.now(), hr: hr, gate: idleGate)) {
       unawaited(_nudgeIdleWorkout(w));
     }
