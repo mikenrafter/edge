@@ -22,6 +22,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/band_ownership.dart';
 import 'package:openstrap_edge/sync/headless_gate.dart';
 import 'package:openstrap_edge/sync/reset_gate.dart';
+import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 
 import 'support/app_state_sync_harness.dart';
 
@@ -33,6 +34,8 @@ StrapEvent _event(int id) => StrapEvent(
       receivedAt: DateTime.fromMillisecondsSinceEpoch(1750000000000),
       hex: 'aa55',
       deviceId: '',
+      // D15: a live event carries the profile it was parsed with.
+      profile: proto.BandProfile.gen4,
     );
 
 RawRecord _raw(int ts) =>
