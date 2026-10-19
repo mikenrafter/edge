@@ -136,9 +136,11 @@ void main() {
         () async {
       SharedPreferences.setMockInitialValues({'locale_override': 'xx'});
       final l = await LocaleController.currentStrings();
+      // English fallback. Illness takes upstream's accumulated-RHR copy,
+      // merge log D16/D17.
       expect(
         findingTitle(l, const Finding(FindingKind.illness, 'd')),
-        'Possible illness onset',
+        'Resting heart rate has been raised',
       );
     });
   });
