@@ -143,12 +143,24 @@ class DeriveCoordinator {
   /// whose input has not moved since they were last derived ([changedOnly]);
   /// heavy keeps the full sweep (finalize extras, force paths). Returns how the
   /// pass ended, which decides whether the job is deleted or retried.
-  Future<DeriveOutcome> _runScheduled({required DeriveJobKind kind}) =>
-      afterDrain(
-        heavy: kind == DeriveJobKind.heavy,
-        changedOnly: kind == DeriveJobKind.light,
-        automatic: true,
-      );
+  ///
+  /// A heavy job stays running until its baseline rescan ends, so the next
+  /// queued job waits behind it rather than being refused by the engine.
+  Future<DeriveOutcome> _runScheduled({required DeriveJobKind kind}) async {
+    _rescanRun = null;
+    final outcome = await afterDrain(
+      heavy: kind == DeriveJobKind.heavy,
+      changedOnly: kind == DeriveJobKind.light,
+      automatic: true,
+    );
+    final rescan = _rescanRun;
+    _rescanRun = null;
+    if (rescan != null) await rescan;
+    return outcome;
+  }
+
+  /// The baseline rescan the last heavy [afterDrain] started (never throws).
+  Future<void>? _rescanRun;
 
   /// Whether a light pass may reuse cached calculations: only while the
   /// phone is unplugged and the causal stager says the wearer is awake.
@@ -652,15 +664,20 @@ class DeriveCoordinator {
       // Same signal, for the surfaces that can't listen: home/lock-screen
       // widget, Watch mirror, Siri intents (WidgetService.refresh).
       unawaited(WidgetService.refresh(_repo()));
-      // A heavy finalize is where a freshly-closed sleep window + recovery for a
-      // new physiological day lands — fire the "recovery ready" push off it.
+      // "Recovery ready" push, on light passes too (upstream): it waits for
+      // the settled night (#448), and once a heavy has run before the edge
+      // passed the wake, only light drains are left to see it settle.
+      unawaited(_maybeNotifyRecoveryReady());
       if (heavy) {
-        unawaited(_maybeNotifyRecoveryReady());
         // Baseline-dirty rescan: new data may have shifted the rolling baseline,
         // so refresh baseline-dependent scalars (readiness/illness/stress) on
         // recent FINALIZED days. Cheap when the baseline is unchanged (a single
         // signature read). Best-effort — never throws into the BLE path.
-        unawaited(() async {
+        // Not awaited here (the pass's caller gets its outcome now), but the
+        // scheduler job awaits it ([_runScheduled]): the rescan holds the
+        // engine's run latch, so a light job started meanwhile would be
+        // refused as busy and burn a retry attempt.
+        _rescanRun = () async {
           final rescanId = ++_recalcSeq;
           try {
             final n = await _rescanRecent(
@@ -679,7 +696,7 @@ class DeriveCoordinator {
           } finally {
             _recalcClear(rescanId);
           }
-        }());
+        }();
       }
       // Continuous health export: push freshly-derived days (incl. TODAY) to Apple
       // Health / Health Connect AS SOON as they're computed — runs on BOTH the
