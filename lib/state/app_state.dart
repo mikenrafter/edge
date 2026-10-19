@@ -3775,7 +3775,7 @@ class AppState extends ChangeNotifier {
   void _onDataStored() {
     // Synchronously, before the async read below: this is the moment records
     // became durable, and it is the only path that sees every commit.
-    _sync.markSyncActivity();
+    _markSyncActivity();
     unawaited(() async {
       final recTsHw = await LocalDb.getCursorInt('rec_ts_hw');
       if (recTsHw != null && recTsHw > (_lastRecTs ?? 0)) {
@@ -7794,6 +7794,9 @@ class AppState extends ChangeNotifier {
   /// only because a caller may want to say "about to" rather than "is".
   bool get derivePending =>
       _deriveScheduler.pendingLight || _deriveScheduler.pendingHeavy;
+
+  /// Records reached durable storage (see [SyncController.markSyncActivity]).
+  void _markSyncActivity() => _sync.markSyncActivity();
 
   /// REAL device timestamp of the newest record we hold (the band's own clock),
   /// NOT when the BLE frame arrived. This is what "last data: …" displays — a

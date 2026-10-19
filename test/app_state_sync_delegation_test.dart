@@ -112,8 +112,8 @@ void main() {
       expect(RegExp(r'warmHeld:\s*\(\)\s*=>\s*_liveSessionActive\s*\|\|\s*(_sync\.)?_?background').hasMatch(s)
           || s.contains('warmHeld: () => _liveSessionActive || _background'), isTrue);
       // The derive engine is built with the launch-time background flag.
-      expect(s.contains('DerivationEngine(log: _log, background: _background)')
-          || RegExp(r'DerivationEngine\(log: _log, background:').hasMatch(s), isTrue);
+      expect(RegExp(r'DerivationEngine\(\s*log: _log,\s*background: _background,')
+          .hasMatch(s), isTrue);
     });
 
     test('what this area hands the engine and the plugins (real constructor)',
@@ -228,7 +228,8 @@ void main() {
     test('openSession\'s finally releases the claim only when the link is '
         'gone or the wish for one is', () {
       final s = _src();
-      final at = s.indexOf('Future<void> openSession() async');
+      // D20: openSession takes upstream's `foreground` flag.
+      final at = s.indexOf('Future<void> openSession({bool foreground = true}) async');
       final body = s.substring(at, s.indexOf('static const int _directAttemptsBeforeOsFallback', at));
       final fin = body.lastIndexOf('} finally {');
       final tail = body.substring(fin);
