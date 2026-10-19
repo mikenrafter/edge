@@ -58,6 +58,14 @@ String _body(String code, String signature) {
   fail('unbalanced braces after $signature');
 }
 
+// Upstream's issue-report slice (merge log D17) lists every table to say how
+// much of it a ticket carries. Naming the archive there is not a read: its
+// rows are left out (SliceKeep.none), and only the per-day outcome table goes
+// whole. Those two entries, exactly, are allowed; any other mention is a read.
+final _sliceEntry = RegExp(
+    r"^\s*'spectral_archive': \(SliceKeep\.none, null, |"
+    r"^\s*'spectral_archive_status': \(SliceKeep\.all, null, ");
+
 void main() {
   group('the guard itself detects what it guards', () {
     test('a decode, a table read, a reconstruct all trip it', () {
@@ -111,6 +119,7 @@ void main() {
             final t = l.trimLeft();
             return !t.startsWith('//') &&
                 !t.startsWith('import ') &&
+                !_sliceEntry.hasMatch(l) &&
                 l.contains('spectral_archive');
           });
           if (hit) readers.add(f.path);
