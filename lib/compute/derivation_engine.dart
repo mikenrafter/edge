@@ -2160,7 +2160,9 @@ const int kAlgoVersion = 113;
 // OpenStrap/analytics main @ 724ede9 (77fe373 + the AGPL relicense) merged with
 // feat/aggregator @ e6dd526. Upstream's metric rules; the fork's streams and
 // aggregators ported to them (merge log D11).
-const String kAnalyticsPin = '1add367979dc308360dd02185517107cdfef3c66';
+// REPIN @ 07f7126 (same branch): law-test and stream fixes only (D23); batch
+// outputs bit-identical, so no kAlgoVersion bump.
+const String kAnalyticsPin = '07f71268d735b57cca52a2c2244e685185170e1d';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

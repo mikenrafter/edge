@@ -312,7 +312,7 @@ void main() {
       // or (day, 104) row is never served as current. The fork entries stay in
       // the changelog as `// | vNNN` history lines.
       expect(v, greaterThan(104));
-      expect(kAnalyticsPin, '1add367979dc308360dd02185517107cdfef3c66');
+      expect(kAnalyticsPin, '07f71268d735b57cca52a2c2244e685185170e1d');
       final lines = src.substring(0, m.start).split('\n');
       final entry =
           lines.lastWhere((l) => RegExp(r'^//\s*\|?\s*v104\b').hasMatch(l));

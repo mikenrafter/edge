@@ -603,7 +603,11 @@ dependencies:
       # (77fe373 + the AGPL relicense) merged with feat/aggregator @ e6dd526.
       # Upstream's metric rules, our streams/aggregators ported to them. See
       # edge.research/merge-decisions-log.md D10-D12. WIP branch, not a release.
-      ref: 1add367979dc308360dd02185517107cdfef3c66
+      # REPIN @ 07f7126 (same branch): the law tests follow upstream's rules;
+      # CVHR abstains on a non-finite beat time; hrvTimeAggregator and
+      # IncrementalHrvTime follow upstream's jitter gate (D23). Batch outputs
+      # are bit-identical and edge uses neither stream, so no kAlgoVersion bump.
+      ref: 07f71268d735b57cca52a2c2244e685185170e1d
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8

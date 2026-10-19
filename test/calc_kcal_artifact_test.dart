@@ -272,12 +272,14 @@ void main() {
     test('the artifact itself bumps nothing: 101 was the incremental repin\'s '
         'bump, 102 the streamed day RR\'s, 103 the PRV diagnostics\' and 104 their '
         'empty-input repin, not this artifact\'s', () {
-      expect(kAlgoVersion, 104);
+      // Upstream's numbering since the catch-up (merge log D4): the integrated
+      // build is 113, and nothing in this artifact bumped it.
+      expect(kAlgoVersion, 113);
     });
 
     test('the analytics pin carries minuteEnergy (7334289 and its '
-        'descendants 65c8901, aa67997, bf1be19, 0fc5768, bf79e84, db02896, 972f0b2, 07d6af0, 914bb6a, e6dd526, integration 1add367)', () {
-      expect(kAnalyticsPin, '1add367979dc308360dd02185517107cdfef3c66');
+        'descendants 65c8901, aa67997, bf1be19, 0fc5768, bf79e84, db02896, 972f0b2, 07d6af0, 914bb6a, e6dd526, integration 1add367, 07f7126)', () {
+      expect(kAnalyticsPin, '07f71268d735b57cca52a2c2244e685185170e1d');
     });
   });
 }
