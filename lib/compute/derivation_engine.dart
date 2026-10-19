@@ -92,6 +92,7 @@ import 'minute_bills.dart';
 import 'step_cadence.dart';
 import 'profile.dart';
 import 'substrate.dart';
+import 'substrate_retention.dart';
 import 'vendor_sleep.dart';
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
@@ -3031,6 +3032,10 @@ const int _rescanWindowDays = 21;
 class _PrepareStats {
   int pages = 0;
   int rows = 0;
+
+  /// A load of this day found a retained substrate it could not reuse and read
+  /// the whole range ([DerivationEngine._retained]).
+  bool fullReload = false;
 }
 
 /// Run [worker] over [items] with at most [concurrency] running at once. Each
@@ -3270,6 +3275,49 @@ class DerivationEngine {
   final Map<String, DayCalculationState> _calculationStates = {};
   static const _retainedCalculationDays = 3;
 
+  /// The substrate each recent day's band loads returned, keyed `day|label`
+  /// (`load_day`, `load_search`), so a warm pass reads only the rows that can
+  /// have changed (substrate_retention.dart). Kept only for the days that hold
+  /// a calculation state: dropped when the state is evicted or the day
+  /// finalizes, by [trimForBackground], and for any day without a state at the
+  /// end of a pass ([_pruneRetained]). Never held in the background.
+  final Map<String, RetainedLoad> _retained = {};
+
+  /// The zone [_retained] was loaded under ([_zoneKey]).
+  String? _retainedZone;
+
+  static String _zoneKey() {
+    final now = DateTime.now();
+    return '${now.timeZoneName}|${now.timeZoneOffset.inMinutes}';
+  }
+
+  /// Seconds of beats re-read per query for the seconds a retained load holds.
+  static const _rrPrefixSliceSec = 3600;
+
+  static String _retainedKey(String day, String label) => '$day|$label';
+  static String _retainedDay(String key) => key.substring(0, key.indexOf('|'));
+
+  void _dropRetained(String day) =>
+      _retained.removeWhere((k, _) => _retainedDay(k) == day);
+
+  /// Keeps retained loads for the days that have a calculation state only.
+  void _pruneRetained() => _retained
+      .removeWhere((k, _) => !_calculationStates.containsKey(_retainedDay(k)));
+
+  /// At most [_retainedCalculationDays] days are held, the newest.
+  void _boundRetained() {
+    final days = {for (final k in _retained.keys) _retainedDay(k)}.toList()
+      ..sort();
+    while (days.length > _retainedCalculationDays) {
+      _dropRetained(days.removeAt(0));
+    }
+  }
+
+  /// The days whose loaded substrate rows are held for the next pass.
+  @visibleForTesting
+  Iterable<String> get debugRetainedSubstrateDays =>
+      {for (final k in _retained.keys) _retainedDay(k)}.toList()..sort();
+
   /// A finished session's observed-HR-ceiling result, keyed `day|session id`.
   /// [sig] names everything the result was computed from (see
   /// [_ceilingSignatures]); an entry is reused only on an exact match, and only
@@ -3341,14 +3389,21 @@ class DerivationEngine {
   void _publishCalculationState(String day, DayCalculationState state,
       {bool finalized = false}) {
     _calculationStates.remove(day);
-    if (!finalized) _calculationStates[day] = state;
+    if (!finalized) {
+      _calculationStates[day] = state;
+    } else {
+      _dropRetained(day);
+    }
     // Prefer the newest calendar days when a heavy pass also visits history.
     final labels = _calculationStates.keys.toList()..sort();
     final keep = _lowMemory ? 1 : _retainedCalculationDays;
     while (labels.length > keep) {
-      _calculationStates.remove(labels.removeAt(0));
+      final evicted = labels.removeAt(0);
+      _calculationStates.remove(evicted);
+      _dropRetained(evicted);
     }
     if (_lowMemory) {
+      _retained.clear();
       for (final s in _calculationStates.values) {
         s.compact();
       }
@@ -3360,6 +3415,7 @@ class DerivationEngine {
   /// nothing when there is nothing to drop.
   void trimForBackground() {
     _cardioRowChunks.clear();
+    _retained.clear();
     final before = _calculationStates.length;
     final labels = _calculationStates.keys.toList()..sort();
     while (labels.length > 1) {
@@ -3636,6 +3692,7 @@ class DerivationEngine {
   /// A pass that computed no day (nothing to do, refused) keeps the previous
   /// real pass on show instead of overwriting it with an empty one.
   void _finishPassPerf() {
+    _pruneRetained();
     perf.endPass();
     final s = perf.summary();
     if (((s['days'] as int?) ?? 0) == 0) return;
@@ -4518,6 +4575,7 @@ class DerivationEngine {
       label: 'load_day',
       ownership: ownership,
       rrFromRecTs: rrResume?.skipBelowRecTs,
+      retain: true,
     );
     // A day the primary band never saw is the ACTIVE WEARABLE's, when one is
     // chosen and flagged on (inputs/canonical.dart). Never mixed: a day with
@@ -4549,6 +4607,7 @@ class DerivationEngine {
               ownership: ownership,
             );
     }
+    if (stats.fullReload) perf.addCount('substrate_full_reloads', 1);
     // Single safe merge into the shared max-tracking diagnostics — one
     // statement, no `await` in between, so it's atomic relative to any other
     // concurrently-running day's identical merge.
@@ -4807,6 +4866,7 @@ class DerivationEngine {
       stats: stats,
       label: 'load_search',
       ownership: searchOwnership,
+      retain: true,
     );
     // PERSONALIZED STAGER (v42): stage on a WORKER isolate, NOT the main/UI
     // thread. cardioStager reads analytics "ambient" globals — the rolling sleep
@@ -5244,9 +5304,57 @@ class DerivationEngine {
     // beats are still given to the substrate (as slots with no beat), so its 1 Hz
     // axis is the one a full load builds. Null reads every beat.
     int? rrFromRecTs,
+    // Keep this load for the next pass of the same day (see [_retained]) and
+    // start from the one kept last time when nothing behind its tail has
+    // changed. [label] names it. Null: always a full read, nothing kept.
+    bool retain = false,
   }) async {
     if (toRecTs < fromRecTs) return Substrate.empty;
     final loadStartedAt = DateTime.now().millisecondsSinceEpoch;
+    // The retained load is judged BEFORE any row is read (and its revisions
+    // with it), so a row landing mid-load leaves the next pass's check stale
+    // rather than falsely current.
+    final retainKey = retain && !_lowMemory ? _retainedKey(dayId, label) : null;
+    RetainedLoad? prior;
+    int? cut;
+    var keepBeats = true;
+    Map<int, int>? revsNow;
+    var multiOwner = false;
+    final generation = LocalDb.storeGeneration;
+    if (retainKey != null) {
+      // A move to another zone moves every day boundary: nothing kept for the
+      // days of the old zone is a window of the new one.
+      final zone = _zoneKey();
+      if (_retainedZone != zone) {
+        if (_retained.isNotEmpty && stats != null) stats.fullReload = true;
+        _retained.clear();
+        _retainedZone = zone;
+      }
+      revsNow = await LocalDb.inputRevisions(
+          fromRecTs ~/ kRevBucketSec, toRecTs ~/ kRevBucketSec + 1);
+      multiOwner = ownersOf(ownership).length > 1;
+      prior = _retained.remove(retainKey);
+      if (prior != null) {
+        final r = prior.reuse(
+          from: fromRecTs,
+          to: toRecTs,
+          rrFrom: rrFromRecTs,
+          revs: revsNow,
+          ownership: ownership,
+          multiOwner: multiOwner,
+          generation: generation,
+        );
+        cut = r?.cut;
+        keepBeats = r?.keepBeats ?? true;
+        if (r == null && stats != null) stats.fullReload = true;
+      }
+    }
+    // Rows are read from here; the part of the range before it is [prior]'s.
+    final readFrom = cut == null || cut < fromRecTs ? fromRecTs : cut;
+    final priorCut = prior?.cut;
+    Map<String, dynamic>? retainExtras;
+    // The rec_ts of the last decoded_onehz row read, ownership or not.
+    int? lastRowRecTs;
     var loadedRows = 0;
     var pagerPages = 0;
     var pagerBytes = 0;
@@ -5319,6 +5427,8 @@ class DerivationEngine {
       if (message is Map && message['type'] == 'result') {
         final kind = message['kind']?.toString();
         if (kind == 'substrate') {
+          final extras = message['retain'];
+          if (extras is Map) retainExtras = extras.cast<String, dynamic>();
           final payload = ((message['payload'] as Map?) ?? const {})
               .cast<String, dynamic>();
           if (!result.isCompleted) {
@@ -5372,7 +5482,33 @@ class DerivationEngine {
           'dispatch': prepareDispatch,
         });
       }
-      worker.send(const {'type': 'config', 'mode': 'substrate'});
+      worker.send({
+        'type': 'config',
+        'mode': 'substrate',
+        if (retainKey != null) 'retain': true,
+      });
+      if (prior != null && cut != null) {
+        worker.send(prior.seedMessage(cut, rrFromRecTs, keepBeats));
+        perf.addCount('substrate_reused_rows_$label', prior.samples);
+        if (!keepBeats) {
+          // The seed holds fewer beats than this load wants: read the ones of
+          // its seconds again, as a full load would (in slices, like its pages).
+          final lo = math.max(fromRecTs, rrFromRecTs ?? fromRecTs);
+          final hi = math.min(cut - 1, toRecTs);
+          for (var a = lo; a <= hi; a += _rrPrefixSliceSec) {
+            final rows = await LocalDb.decodedRrByRecTsRange(
+              fromRecTs: a,
+              toRecTs: math.min(a + _rrPrefixSliceSec - 1, hi),
+            );
+            rrRowsRead += rows.length;
+            final kept = [
+              for (final r in rows)
+                if (owned(rrOwnedSpans, r)) r,
+            ];
+            if (kept.isNotEmpty) worker.send({'type': 'rr_prefix', 'rr': kept});
+          }
+        }
+      }
       int? afterRecTs;
       int? afterCursor;
       var rangePages = 0;
@@ -5386,7 +5522,7 @@ class DerivationEngine {
       // its last, or in the seam between two pages. Each page instead reads
       // beats from wherever the previous page stopped, and the tail is swept
       // after the loop — so the day's beat window is covered exactly once.
-      var rrFrom = fromRecTs;
+      var rrFrom = readFrom;
       // A contended second's OTHER row can land on the far side of a page
       // boundary — `decodedOneHzBatchByRecTsRange`'s LIMIT is applied after
       // ordering by rec_ts, not aligned to rec_ts groups. Composing a page
@@ -5401,7 +5537,7 @@ class DerivationEngine {
       while (true) {
         final decodedRows = await LocalDb.decodedOneHzBatchByRecTsRange(
           limit: _rawDecodeBatchSize,
-          fromRecTs: fromRecTs,
+          fromRecTs: readFrom,
           toRecTs: toRecTs,
           afterRecTs: afterRecTs,
           afterCounter: afterCursor,
@@ -5460,6 +5596,7 @@ class DerivationEngine {
           }
           final last = decodedRows.last;
           afterRecTs = (last['rec_ts'] as num?)?.toInt() ?? afterRecTs;
+          lastRowRecTs = afterRecTs;
           afterCursor = (last['counter'] as num?)?.toInt() ?? afterCursor;
           if (isFinalPage) break;
           continue;
@@ -5501,12 +5638,42 @@ class DerivationEngine {
       // BOUNDED. `result.future` had no timeout at all, so any path that left
       // the worker unable to answer hung this call — and with it the whole
       // engine — permanently.
-      return await result.future.timeout(
+      final loaded = await result.future.timeout(
         _perDayTimeout,
         onTimeout: () => throw TimeoutException(
           'substrate prepare for $dayId timed out after $_perDayTimeout',
         ),
       );
+      final extras = retainExtras;
+      // The newest row this load read, or the old cut when it read none (the
+      // retained load held every row there is). No row at all: nothing to cut by.
+      final newCut = lastRowRecTs != null
+          ? (lastRowRecTs ~/ kRevBucketSec) * kRevBucketSec
+          : priorCut;
+      if (retainKey != null && extras != null && newCut != null && !_lowMemory) {
+        _retained[retainKey] = RetainedLoad(
+          from: fromRecTs,
+          to: toRecTs,
+          rrFrom: rrFromRecTs,
+          revs: revsNow!,
+          ownership: {
+            for (final sig in kExclusiveOwnershipSignals)
+              sig: ownership[sig] ?? const <OwnedSpan>[],
+          },
+          multiOwner: multiOwner,
+          generation: generation,
+          cut: newCut,
+          sub: loaded,
+          rrStart: extras['rr_start'] as Int32List,
+          rrTsRaw: extras['rr_ts_raw'] as Float64List,
+          meta: [
+            for (final w in (extras['meta'] as List))
+              BucketMeta.fromWire((w as List).cast<Object?>()),
+          ],
+        );
+        _boundRetained();
+      }
+      return loaded;
     } finally {
       // ALWAYS tear down: on success, on error, and on timeout. The isolate is
       // killed rather than abandoned so a wedged worker can never outlive the
@@ -7726,6 +7893,7 @@ class DerivationEngine {
       dayId: day.date,
       label: 'load_day',
       ownership: day.ownership,
+      retain: true,
     );
     return day.withFullRr(
       daySub: napSub.slice(dayStart, dayEnd),

@@ -1,4 +1,5 @@
 import 'dart:isolate';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
@@ -6,7 +7,9 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 import '../ble/adapters/signals.dart';
 import '../data/coverage_resolver.dart';
 import '../data/day_checkpoint.dart';
+import 'day_checkpoint_policy.dart' show kRevBucketSec;
 import 'substrate.dart';
+import 'substrate_retention.dart';
 import 'vendor_sleep.dart';
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
@@ -428,6 +431,24 @@ void derivationPrepareWorker(SendPort mainSendPort) {
       targetDay = message['target_day']?.toString();
       final cfgMode = message['mode']?.toString();
       if (cfgMode != null && cfgMode.isNotEmpty) mode = cfgMode;
+      state.retain = message['retain'] == true;
+      return;
+    }
+    if (type == 'rr_prefix') {
+      // Beats of the seconds the seed holds, read again (their rows were not
+      // reusable): after the seed, before any page.
+      state.addPrefixBeats(
+        ((message['rr'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList(),
+      );
+      return;
+    }
+    if (type == 'seed') {
+      // The previous load of this range, cut where the rows are read again
+      // (substrate_retention.dart). Before any page.
+      state.seed(message);
       return;
     }
     if (type == 'finish') {
@@ -440,6 +461,7 @@ void derivationPrepareWorker(SendPort mainSendPort) {
             'type': 'result',
             'kind': 'substrate',
             'payload': substrate.toJson(),
+            if (state.retainable) 'retain': state.retainExtras(),
           });
         } else {
           final payload = prepareDerivationPayload(
@@ -737,10 +759,138 @@ class _PrepareAccumulator {
   /// worker used to hang the whole engine (see [derivationPrepareWorker]).
   static num? _num(Object? v) => v is num ? v : null;
 
+  // ── Retention (substrate_retention.dart). Tracked only when [retain]. ──────
+  /// This load's result is kept by the engine for the next pass: record where
+  /// each second's beats start and what each revision bucket contributed to the
+  /// substrate-wide singletons, and build typed arrays.
+  bool retain = false;
+  bool _retainBroken = false;
+  bool get retainable => retain && !_retainBroken;
+
+  /// `rrMs.length` when each second began (parallel to [tsSec]).
+  final List<int> _rrStart = [];
+
+  /// Per revision bucket: what its rows contributed (see [BucketMeta]).
+  final Map<int, _BucketAcc> _buckets = {};
+
+  /// The beat axis as the pages delivered it, before [monotonizeBeatAxis].
+  Float64List? _rrTsRaw;
+
+  _BucketAcc _bucketFor(int recTs) =>
+      _buckets.putIfAbsent(recTs ~/ kRevBucketSec, _BucketAcc.new);
+
+  static int _lowerBound(List<int> a, int v) {
+    var lo = 0, hi = a.length;
+    while (lo < hi) {
+      final m = (lo + hi) >> 1;
+      if (a[m] < v) {
+        lo = m + 1;
+      } else {
+        hi = m;
+      }
+    }
+    return lo;
+  }
+
+  /// Start from the retained load in [m] (a `seed` message): its seconds before
+  /// `cut`, its beats from second `rr_from` to the cut, and what its buckets
+  /// before the cut contributed. Then the pages from the cut on add exactly what
+  /// a cold load of the whole range would have added after those seconds.
+  void seed(Map message) {
+    List<int> ints(String k) => message[k] as List<int>;
+    List<double> dbls(String k) => message[k] as List<double>;
+    final ts = ints('ts_sec');
+    final cut = message['cut'] as int;
+    final rrFrom = message['rr_from'] as int?;
+    final i = _lowerBound(ts, cut);
+    // Seconds before [j] keep their slot and lose their beats (a load that reads
+    // beats from [rrFrom] on).
+    final j = rrFrom == null ? 0 : math.min(_lowerBound(ts, rrFrom), i);
+    final rrStartOld = ints('rr_start');
+    final rrTsRaw = dbls('rr_ts_raw');
+    final rrMsOld = dbls('rr_ms');
+    final keepBeats = message['keep_beats'] != false;
+    final rrEnd = i < ts.length ? rrStartOld[i] : rrMsOld.length;
+    final rrDrop = !keepBeats
+        ? rrEnd
+        : (j < ts.length ? rrStartOld[j] : rrMsOld.length);
+    _seededSeconds = keepBeats ? 0 : i;
+    void take(List<int> into, String k) => into.addAll(ints(k).getRange(0, i));
+    take(tsSec, 'ts_sec');
+    take(hr, 'hr');
+    take(spo2Red, 'spo2_red');
+    take(spo2Ir, 'spo2_ir');
+    take(skinTemp, 'skin_temp');
+    take(skinContact, 'skin_contact');
+    take(stepCount, 'step_count');
+    take(hrValid, 'hr_valid');
+    take(bandSleepState, 'band_sleep_state');
+    ax.addAll(dbls('ax').getRange(0, i));
+    ay.addAll(dbls('ay').getRange(0, i));
+    az.addAll(dbls('az').getRange(0, i));
+    rrTsMs.addAll(rrTsRaw.getRange(rrDrop, rrEnd));
+    rrMs.addAll(rrMsOld.getRange(rrDrop, rrEnd));
+    for (var k = 0; k < i; k++) {
+      _rrStart.add(math.max(rrStartOld[k], rrDrop) - rrDrop);
+    }
+    final metas = [
+      for (final w in (message['meta'] as List))
+        BucketMeta.fromWire((w as List).cast<Object?>()),
+    ]..sort((a, b) => a.bucket.compareTo(b.bucket));
+    for (final m in metas) {
+      if (m.bucket >= cut ~/ kRevBucketSec) continue;
+      final acc = _buckets[m.bucket] = _BucketAcc()
+        ..families.addAll(m.families)
+        ..deviceIds.addAll(m.deviceIds)
+        ..skinUnit = m.skinUnit;
+      _families.addAll(acc.families);
+      _deviceIds.addAll(acc.deviceIds);
+      // The first row with a temperature picked the unit for the whole load.
+      _skinTempUnit ??= acc.skinUnit;
+    }
+  }
+
+  /// Seconds seeded without their beats, which `rr_prefix` messages deliver
+  /// ([_prefixBeatRecTs] holds the second of each accepted one, ascending).
+  int _seededSeconds = 0;
+  final List<int> _prefixBeatRecTs = [];
+
+  void addPrefixBeats(List<Map<String, dynamic>> rrRows) {
+    for (final beat in rrRows) {
+      final recTs = _num(beat['rec_ts'])?.toInt();
+      if (recTs != null && _addBeat(beat, recTs)) _prefixBeatRecTs.add(recTs);
+    }
+  }
+
+  /// What the engine keeps beside the substrate (see [RetainedLoad]).
+  Map<String, Object?> retainExtras() {
+    if (_seededSeconds > 0) {
+      // Where each seeded second's beats start: the prefix beats before it.
+      for (var k = 0; k < _seededSeconds; k++) {
+        _rrStart[k] = _lowerBound(_prefixBeatRecTs, tsSec[k]);
+      }
+    }
+    return _retainExtras();
+  }
+
+  Map<String, Object?> _retainExtras() => {
+        'rr_start': Int32List.fromList(_rrStart),
+        'rr_ts_raw': _rrTsRaw ?? Float64List(0),
+        'meta': [
+          for (final e in (_buckets.entries.toList()
+            ..sort((a, b) => a.key.compareTo(b.key))))
+            BucketMeta(e.key, e.value.families.toList(),
+                    e.value.deviceIds.toList(), e.value.skinUnit)
+                .toWire(),
+        ],
+      };
+
   void addRawPage(List<String> hexes) {
     if (hexes.isEmpty) return;
     final sub = decodeSubstrate(hexes);
     if (sub.isEmpty) return;
+    // The raw-hex path keeps no per-second beat starts: nothing to retain.
+    _retainBroken = true;
     tsSec.addAll(sub.tsSec);
     hr.addAll(sub.hr);
     rrTsMs.addAll(sub.rrTsMs);
@@ -809,6 +959,10 @@ class _PrepareAccumulator {
       final row = frameByRecTs[recTs];
       _noteFamily(row?['device_family']);
       _noteDeviceId(row?['device_id']);
+      if (retain) {
+        _rrStart.add(rrMs.length);
+        _bucketFor(recTs).note(row);
+      }
       tsSec.add(recTs);
       // NULL (absent), a beat-only second (no row at all) and an impossible
       // byte all land on the same 0 — the array's one "no usable HR this
@@ -868,27 +1022,33 @@ class _PrepareAccumulator {
       final beats = rrByRecTs[recTs];
       if (beats == null) continue;
       for (final beat in beats) {
-        // The SAME physiological bound the raw-replay path applies
-        // (`decodeSubstrate`), not just `> 0`: an interval outside
-        // kMinPlausibleRrMs..kMaxPlausibleRrMs is a missed or doubled beat
-        // detection, and it has to be refused on both ingest paths or the two
-        // disagree about the same band's beats.
-        final raw = _num(beat['rr_ms']);
-        final rr = raw == null ? null : plausibleRrOrNull(raw);
-        if (rr == null) continue;
-        // `beat_ts_ms` FIRST — it is where the beat actually was. `rr_ts_ms` is
-        // `rec_ts * 1000`, so every beat in a record shares one millisecond and
-        // the axis is a whole-second staircase: an inter-record gap shorter than
-        // a second is invisible to `_beatTimes`' re-anchor test and gets spliced
-        // out of the time base. COALESCE, never fabricate — the column is NULL
-        // for every row banked before it existed and for any source with no
-        // sub-second, and there the staircase is still the honest best answer.
-        rrTsMs.add(_num(beat['beat_ts_ms'])?.toDouble() ??
-            _num(beat['rr_ts_ms'])?.toDouble() ??
-            recTs * 1000.0);
-        rrMs.add(rr);
+        _addBeat(beat, recTs);
       }
     }
+  }
+
+  /// One beat of the second [recTs]; false when it is refused.
+  bool _addBeat(Map<String, dynamic> beat, int recTs) {
+    // The SAME physiological bound the raw-replay path applies
+    // (`decodeSubstrate`), not just `> 0`: an interval outside
+    // kMinPlausibleRrMs..kMaxPlausibleRrMs is a missed or doubled beat
+    // detection, and it has to be refused on both ingest paths or the two
+    // disagree about the same band's beats.
+    final raw = _num(beat['rr_ms']);
+    final rr = raw == null ? null : plausibleRrOrNull(raw);
+    if (rr == null) return false;
+    // `beat_ts_ms` FIRST — it is where the beat actually was. `rr_ts_ms` is
+    // `rec_ts * 1000`, so every beat in a record shares one millisecond and
+    // the axis is a whole-second staircase: an inter-record gap shorter than
+    // a second is invisible to `_beatTimes`' re-anchor test and gets spliced
+    // out of the time base. COALESCE, never fabricate — the column is NULL
+    // for every row banked before it existed and for any source with no
+    // sub-second, and there the staircase is still the honest best answer.
+    rrTsMs.add(_num(beat['beat_ts_ms'])?.toDouble() ??
+        _num(beat['rr_ts_ms'])?.toDouble() ??
+        recTs * 1000.0);
+    rrMs.add(rr);
+    return true;
   }
 
   Substrate buildSubstrate() {
@@ -896,6 +1056,7 @@ class _PrepareAccumulator {
     // `addRawPage` each place their own beats correctly and then APPEND, so an
     // overlap between the last record of one page and the first of the next is
     // only visible once every page is in. See [monotonizeBeatAxis].
+    if (retainable) _rrTsRaw = Float64List.fromList(rrTsMs);
     monotonizeBeatAxis(rrTsMs);
     // `_skinTempUnitDrops` (see [_skinTempFor]) is structurally 0 today —
     // `derivableSourceSql()` renders `source IS NULL` (db.dart:116), so a
@@ -909,23 +1070,47 @@ class _PrepareAccumulator {
     // which M0 must not take; M5 — which is what makes two-device admission
     // reachable for real — turns this into a refusal note on
     // `wellness.skin_temp` instead.
+    // A load the engine keeps is handed over as typed buffers: the next pass
+    // sends them back to a worker as a memcpy, not an object walk.
+    final typed = retainable;
+    List<int> i64(List<int> l) => typed ? Int64List.fromList(l) : l;
     return Substrate(
-      tsSec: tsSec,
-      hr: hr,
+      tsSec: i64(tsSec),
+      hr: i64(hr),
       rrTsMs: rrTsMs,
       rrMs: rrMs,
       ax: ax,
       ay: ay,
       az: az,
-      spo2Red: spo2Red,
-      spo2Ir: spo2Ir,
-      skinTemp: skinTemp,
-      skinContact: skinContact,
-      stepCount: stepCount,
-      hrValid: hrValid,
-      bandSleepState: bandSleepState,
+      spo2Red: i64(spo2Red),
+      spo2Ir: i64(spo2Ir),
+      skinTemp: i64(skinTemp),
+      skinContact: i64(skinContact),
+      stepCount: i64(stepCount),
+      hrValid: i64(hrValid),
+      bandSleepState: i64(bandSleepState),
       deviceFamily: deviceFamily,
       deviceIds: _deviceIds,
     );
+  }
+}
+
+/// What one revision bucket's rows contributed to the substrate-wide singletons
+/// (families, device ids, first skin-temperature unit); see [BucketMeta].
+class _BucketAcc {
+  final Set<String> families = {};
+  final Set<String> deviceIds = {};
+  String? skinUnit;
+
+  void note(Map<String, dynamic>? row) {
+    if (row == null) return;
+    final f = row['device_family'];
+    if (f is String && f.isNotEmpty) families.add(f);
+    final d = row['device_id'];
+    if (d is String) deviceIds.add(d);
+    // The unit `_skinTempFor` would pick for this row.
+    skinUnit ??= row['skin_temp_raw'] is num
+        ? 'raw'
+        : (row['skin_temp_c'] is num ? 'c' : null);
   }
 }
