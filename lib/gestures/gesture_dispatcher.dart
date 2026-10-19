@@ -65,7 +65,6 @@ import 'dart:async' show TimeoutException;
 
 import 'package:clock/clock.dart';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'device_action.dart';
 import 'double_tap_repeat.dart';

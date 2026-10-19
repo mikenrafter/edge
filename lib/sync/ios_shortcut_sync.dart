@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ble/ble_engine.dart';
 import '../ble/ble_state.dart';
-import '../compute/derivation_engine.dart';
 import '../data/db.dart';
 import '../data/local_repository_impl.dart';
 import '../state/prefs.dart';
