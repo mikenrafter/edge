@@ -1,29 +1,19 @@
-// RED (phase 1): per-pass dependency identity and prefix checks cost O(new
-// beats), not O(night beats).
+// RED: each distinct night list is hashed at most once per pass.
 //
-// An audit found two O(night) costs that are not the computation itself:
-//  (a) DayCalculationState.evaluate (the `memo()` seam in deriveDayBundle) calls
-//      `dependencyFingerprint(dependencies)` (lib/compute/state_fingerprint.dart)
-//      which walks every element of `nn`, `nnTimes`, `sleepRrMs`, `sleepRrTsMs`
-//      for each memo that lists them, every pass.
-//  (b) DayCalculationState.nightRr re-hashes the already-folded beats with
-//      `nightBeatsFingerprint(rrMs, rrTsMs, held)` to prove the slice extends
-//      the fold, and copies the result lists each pass.
+// nightRr / memo get plain lists with no change signal, so an edited earlier
+// beat can only be caught by hashing. What is avoidable is hashing the SAME
+// list again for every memo (~10 memos list nn / nnTimes / sleepRrMs /
+// sleepRrTsMs, each re-walked by dependencyFingerprint, plus nightRr's own
+// prefix proof). The fix is a per-pass identity-keyed digest cache.
 //
-// COUNTERS the implementation adds (names pinned; cumulative, per
-// DayCalculationState; the engine should also forward the per-pass delta to
-// `perf.addCount` under the same names):
-//   int get memoFpBeatsHashed    night beats (one beat = one index of the
-//       nn / sleep RR lists, however many lists or memos read it) newly digested
-//       for memo dependency identity. A beat already covered by a running
-//       digest that provably still matches costs 0.
-//   int get nightRrBeatsHashed   beats hashed by nightRr to prove the slice
-//       extends the fold (a rebuild/adopt may hash everything once).
-//
-// Budget on the 2nd and later warm passes over a growing night:
-//   delta <= new beats + kSeam.
-// Results stay bit-identical to a cold batch, and every fallback still fires
-// when an earlier beat changes (guards, green today).
+// COUNTER (name pinned): `int get nightListHashes` on DayCalculationState,
+// cumulative, counting full-list digests computed (one per distinct list per
+// pass, plus one for nightRr's folded-prefix proof when it hashes a prefix).
+//   deriveDayBundle pass:  delta <= 5   (nn, nnTimes, sleepRrMs, sleepRrTsMs,
+//                                        nightRr prefix proof)
+//   direct nightRr call:   delta <= 1
+// Results stay bit-identical to a cold batch; every fallback still fires
+// (guards below, green before and after).
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_analytics/onehz.dart' show CalculationMode;
 import 'package:openstrap_edge/compute/day_calculation_state.dart';
@@ -31,16 +21,13 @@ import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 
 import 'support/incremental_day_fixture.dart';
 
-const _seam = 200;
+const _maxListHashes = 5;
 
 /// A counter that the implementation has not added yet reads as null (not a
 /// compile error), so the red tests fail on the missing counter itself.
-int? _counter(DayCalculationState s, String name) {
-  final d = s as dynamic;
+int? _hashes(DayCalculationState s) {
   try {
-    return (name == 'memoFpBeatsHashed'
-        ? d.memoFpBeatsHashed
-        : d.nightRrBeatsHashed) as int?;
+    return (s as dynamic).nightListHashes as int?;
   } on NoSuchMethodError {
     return null;
   }
@@ -94,46 +81,31 @@ void main() {
     expect(total, greaterThan(6500));
   });
 
-  group('work counters: O(new beats) per warm pass (RED)', () {
+  group('work counters: each night list hashed once per pass (RED)', () {
     for (final mode in [CalculationMode.periodicAwake, CalculationMode.forced]) {
-      for (final name in ['memoFpBeatsHashed', 'nightRrBeatsHashed']) {
-        test('$name, $mode', () {
-          final s = DayCalculationState();
-          var prev = 0;
-          var pass = 0;
-          for (final n in cuts) {
-            final before = _counter(s, name);
-            _pass(_upTo(full, n), s, mode, 'beats=$n');
-            pass++;
-            final after = _counter(s, name);
-            expect(after, isNotNull, reason: '$name counter is exposed');
-            if (pass >= 2) {
-              final fresh = n - prev;
-              expect(after! - (before ?? 0), lessThanOrEqualTo(fresh + _seam),
-                  reason: '$name pass $pass: +$fresh new of $n beats');
-            }
-            prev = n;
-          }
-        });
-      }
+      test('deriveDayBundle passes, $mode', () {
+        final s = DayCalculationState();
+        for (final n in cuts) {
+          final before = _hashes(s);
+          _pass(_upTo(full, n), s, mode, 'beats=$n');
+          final after = _hashes(s);
+          expect(after, isNotNull, reason: 'nightListHashes is exposed');
+          expect(after! - (before ?? 0), lessThanOrEqualTo(_maxListHashes),
+              reason: 'beats=$n: a list is hashed once however many memos read it');
+        }
+      });
     }
 
     test('nightRr alone: direct many-pass chain', () {
       final s = DayCalculationState();
       final rr = _dbls(full['sleep_rr_ms']), ts = _dbls(full['sleep_rr_ts_ms']);
-      var prev = 0;
-      var pass = 0;
       for (final n in cuts) {
-        final before = _counter(s, 'nightRrBeatsHashed');
+        final before = _hashes(s);
         s.nightRr(rr.sublist(0, n), ts.sublist(0, n));
-        pass++;
-        final after = _counter(s, 'nightRrBeatsHashed');
-        expect(after, isNotNull, reason: 'nightRrBeatsHashed is exposed');
-        if (pass >= 2) {
-          expect(after! - (before ?? 0), lessThanOrEqualTo(n - prev + _seam),
-              reason: 'extension proof is O(new): pass $pass');
-        }
-        prev = n;
+        final after = _hashes(s);
+        expect(after, isNotNull, reason: 'nightListHashes is exposed');
+        expect(after! - (before ?? 0), lessThanOrEqualTo(1),
+            reason: 'one prefix proof per call: n=$n');
       }
     });
   });
