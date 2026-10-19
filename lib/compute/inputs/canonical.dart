@@ -172,7 +172,12 @@ Future<Set<String>> _wearableDays() async {
 
 /// Every day with substrate a derive can read: decoded band rows plus the
 /// active wearable's rows (only when its flag is on).
-Future<Set<String>> substrateDays() async => {
+Future<Set<String>> substrateDays() async {
+  debugSubstrateDaysCalls++;
+  return _substrateDays();
+}
+
+Future<Set<String>> _substrateDays() async => {
       ...(await LocalDb.decodedRecTsMaxByDay()).keys,
       ...await _wearableDays(),
     };
@@ -572,6 +577,7 @@ Future<List<String>> flagOnOrPrimary(List<String> ids,
 /// or charging ([wearableSubstrate] lays the session over the empty day).
 Future<Map<String, int>> wearableRecTsMaxByDay(
     (String, String) wearable) async {
+  debugWearableDayIndexScans++;
   final out = {
     ...await switch (wearable.$2) {
       kGarminFamily ||
@@ -1620,3 +1626,6 @@ Future<List<Map<String, Object?>>> _ouraNightRows(
           k == 'spo2_avg' ? '%' : 'ms', lo),
   ];
 }
+
+int debugWearableDayIndexScans = 0;
+int debugSubstrateDaysCalls = 0;
