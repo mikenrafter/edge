@@ -303,9 +303,12 @@ void main() {
     const night = (1 * 3600, 5 * 3600); // 01:00-05:00
     const afternoon = (14 * 3600, 14 * 3600 + 50 * 60);
 
+    // Detected naps are review candidates (upstream's nap review), not
+    // credited periods, so the detector's output is read from `candidates`.
     test('sanity: with no override both stretches are detected', () {
       final bundle = <String, dynamic>{};
-      final naps = DerivationEngine.debugAttachNaps(
+      final naps = <Map<String, dynamic>>[];
+      DerivationEngine.debugAttachNaps(
         bundle,
         <String, dynamic>{},
         day([night, afternoon]),
@@ -313,6 +316,7 @@ void main() {
         0,
         attributionStartSec: midnight,
         attributionEndSec: midnight + 86400,
+        candidates: naps,
       );
       expect(naps, hasLength(2));
     });
@@ -321,7 +325,8 @@ void main() {
         () {
       final bundle = <String, dynamic>{};
       final sc = <String, dynamic>{};
-      final naps = DerivationEngine.debugAttachNaps(
+      final naps = <Map<String, dynamic>>[];
+      DerivationEngine.debugAttachNaps(
         bundle,
         sc,
         day([night, afternoon]),
@@ -329,16 +334,18 @@ void main() {
         0,
         attributionStartSec: midnight,
         attributionEndSec: midnight + 86400,
+        candidates: naps,
         blanked: [
           [midnight + night.$1 - 600, midnight + night.$2 + 600]
         ],
       );
       expect(naps, hasLength(1));
-      final start = (naps!.single['onset_ts'] as num).toInt();
+      final start = (naps.single['start'] as num).toInt();
       expect(start, greaterThanOrEqualTo(midnight + afternoon.$1 - 60));
       expect(start, lessThan(midnight + afternoon.$2));
-      // Credited minutes are the afternoon's only.
-      expect(sc['nap_min'], lessThanOrEqualTo(55));
+      expect((naps.single['duration_min'] as num), lessThanOrEqualTo(55));
+      // Nothing is credited until the user accepts the suggestion.
+      expect(sc['nap_min'], 0);
     });
   });
 
@@ -371,21 +378,29 @@ void main() {
       await b.commit(noResult: true);
     }
 
-    List<int> napStarts(Map<String, dynamic> bundle) => [
-          for (final n
-              in ((bundle['naps'] as Map?)?['value'] as List?) ?? const [])
-            ((n as Map)['start'] as num).toInt(),
-        ];
+    // Detected naps land as review suggestions, not in the bundle; the
+    // bundle's own list must stay empty until one is accepted.
+    Future<List<int>> napStarts(Map<String, dynamic> bundle) async {
+      expect(((bundle['naps'] as Map?)?['value'] as List?) ?? const [],
+          isEmpty);
+      return [
+        for (final r in await _db.query('activity_suggestions',
+            columns: ['start_ts'], where: "kind = 'nap'"))
+          (r['start_ts'] as num).toInt(),
+      ];
+    }
 
     for (final source in ['rejected', 'manual']) {
       test('$source window: the span is no nap, the afternoon nap stays',
           () async {
         await seedDay();
+        // Review began before this fixed 2025 day, so its bouts are proposed.
+        await _db.update('activity_review_meta', {'activated_at': 1});
         await _override(
             _d2, _sec(2025, 9, 4, 23, 0), _sec(2025, 9, 5, 5, 30), source);
         await _derive(_d2);
         final bundle = await _bundle(_d2);
-        final starts = napStarts(bundle);
+        final starts = await napStarts(bundle);
         expect(
             starts.where((t) =>
                 t >= _sec(2025, 9, 4, 23, 0) && t < _sec(2025, 9, 5, 5, 30)),
