@@ -2,7 +2,7 @@
  "day_result": [
   {
    "day_id": "2026-07-13",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "date": "2026-07-13",
     "day_confidence": 0.6,
@@ -31,7 +31,40 @@
       "sd2": 107.6,
       "flag": false,
       "confidence": 0.9,
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms."
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "sd1_sd2": 0.211,
+      "pnn_pct": 1.8,
+      "n_beats": 24019,
+      "diagnostics": {
+       "version": 1,
+       "abstain": null,
+       "beats": {
+        "rr_raw": 24019,
+        "nn_in": 24019,
+        "nn_kept": 24019,
+        "corrected": 15,
+        "dropped": 0,
+        "artifact_fraction": 0.0006245055997335935
+       },
+       "windows": {
+        "total": 90,
+        "valid": 90,
+        "flagged": 0,
+        "sustained_observed": 0.0,
+        "open_beats": 237,
+        "open": "unflagged"
+       },
+       "thresholds": {
+        "min_beats": 500,
+        "max_artifact": 0.3,
+        "sd1sd2_flag": 0.7,
+        "pnn_threshold_ms": 70.0,
+        "pnn_flag_pct": 30.0,
+        "window_minutes": 5.0,
+        "min_window_beats": 40,
+        "sustained_fraction": 0.5
+       }
+      }
      },
      "irregular_24h": {
       "value": {
@@ -47,7 +80,37 @@
       "inputs_used": [
        "rr_cleaned"
       ],
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms."
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "diagnostics": {
+       "version": 1,
+       "abstain": null,
+       "beats": {
+        "rr_raw": 97883,
+        "nn_in": 97877,
+        "nn_kept": 97877,
+        "corrected": 17,
+        "dropped": 6,
+        "artifact_fraction": 0.00023497440822206617
+       },
+       "windows": {
+        "total": 288,
+        "valid": 288,
+        "flagged": 0,
+        "sustained_observed": 0.0,
+        "open_beats": 124,
+        "open": "unflagged"
+       },
+       "thresholds": {
+        "min_beats": 500,
+        "max_artifact": 0.3,
+        "sd1sd2_flag": 0.7,
+        "pnn_threshold_ms": 70.0,
+        "pnn_flag_pct": 30.0,
+        "window_minutes": 5.0,
+        "min_window_beats": 40,
+        "sustained_fraction": 0.5
+       }
+      }
      },
      "brv": {
       "value": {
@@ -4101,7 +4164,7 @@
        "spo2_red_raw",
        "spo2_ir_raw"
       ],
-      "note": "refused: the red and IR channels are one signal — ir − red is a fixed offset within a session, so any ratio built from them measures baseline drift, not oxygenation"
+      "note": "refused: within a session the IR channel is the red channel plus a fixed offset. A red/IR ratio therefore tracks baseline drift and cannot give blood oxygen"
      }
     },
     "hrv_night_shape": {
@@ -4242,7 +4305,7 @@
        "skin_temp_raw",
        "skin_temp_c"
       ],
-      "note": "relative deviation (z) vs your baseline; raw sensor units, never an absolute °C"
+      "note": "Deviation (z-score) from your baseline, in raw sensor units. Absolute °C is not available."
      }
     },
     "stress": {
@@ -4257,7 +4320,7 @@
      "inputs_used": [
       "rr_cleaned"
      ],
-     "note": "Baevsky Stress Index → 0–100; resting autonomic tension (PRV)."
+     "note": "Baevsky Stress Index scaled to 0–100, from resting pulse rate variability (PRV)."
     },
     "spo2": {
      "disabled": true,
@@ -4279,7 +4342,7 @@
       "spo2_red_raw",
       "spo2_ir_raw"
      ],
-     "note": "refused: the red and IR channels are one signal — ir − red is a fixed offset within a session, so any ratio built from them measures baseline drift, not oxygenation",
+     "note": "refused: within a session the IR channel is the red channel plus a fixed offset. A red/IR ratio therefore tracks baseline drift and cannot give blood oxygen",
      "debug": {
       "sleep_samples": 27038
      }
@@ -23082,7 +23145,7 @@
      "inputs_used": [
       "accel_1hz"
      ],
-     "note": "minutes of wrist movement over wake (1 Hz). This is activity volume, NOT walking, and is never converted to steps: at the wrist, arm work registers as strongly as ambulation. Real step counts come only from the 100 Hz or phone pedometer"
+     "note": "Minutes of wrist movement over wake (1 Hz). This is activity volume. The app never converts it to steps, because at the wrist arm work registers as strongly as walking. Step counts come only from the 100 Hz stream or the phone pedometer."
     },
     "activity_curve": [
      {
@@ -24439,7 +24502,7 @@
      "inputs_used": [
       "band_step_counter"
      ],
-     "note": "the strap's own on-chip pedometer, summed from its cumulative counter; wrapped and reset boundaries contribute nothing rather than a guess"
+     "note": "Steps from the strap's on-chip pedometer, summed from its cumulative counter. Intervals where the counter wrapped or reset add no steps."
     },
     "movement": {
      "active_min": 89,
@@ -24452,7 +24515,7 @@
       "dyn_amp_1hz",
       "personal_dyn_floor"
      ],
-     "note": "minutes of sustained wrist movement — activity volume, NOT walking, and deliberately not converted to steps"
+     "note": "Minutes of sustained wrist movement. This is activity volume, and the app does not convert it to steps."
     },
     "daytime_hrv": {
      "timeline": [
@@ -24685,7 +24748,7 @@
      "epochs": 787,
      "confidence": "low",
      "tier": "RELATIVE",
-     "note": "WRIST orientation during sleep (gravity-tilt). A body-position PROXY, NOT supine/side/prone body position — the wrist moves independently of the torso."
+     "note": "Wrist orientation during sleep, from gravity tilt. It cannot tell supine, side or prone position, because the wrist moves independently of the torso."
     },
     "advanced_sleep": {
      "present": false
@@ -25076,11 +25139,11 @@
    "readiness": 72.95885235383324,
    "skipped": 0,
    "partial": 0,
-   "payload_sha256": "1dc0892666ef22d6728bd2329f6bda7eacbe551676ce6c1b623df833b5e5bd9b"
+   "payload_sha256": "9d7a7938230534ffc91ed81a162bdea336259bc7d4130b02956c9e561cfb609e"
   },
   {
    "day_id": "2026-07-14",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "date": "2026-07-14",
     "day_confidence": 0.6,
@@ -25109,7 +25172,40 @@
       "sd2": 107.6,
       "flag": false,
       "confidence": 0.9,
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms."
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "sd1_sd2": 0.211,
+      "pnn_pct": 1.8,
+      "n_beats": 24019,
+      "diagnostics": {
+       "version": 1,
+       "abstain": null,
+       "beats": {
+        "rr_raw": 24019,
+        "nn_in": 24019,
+        "nn_kept": 24019,
+        "corrected": 15,
+        "dropped": 0,
+        "artifact_fraction": 0.0006245055997335935
+       },
+       "windows": {
+        "total": 90,
+        "valid": 90,
+        "flagged": 0,
+        "sustained_observed": 0.0,
+        "open_beats": 237,
+        "open": "unflagged"
+       },
+       "thresholds": {
+        "min_beats": 500,
+        "max_artifact": 0.3,
+        "sd1sd2_flag": 0.7,
+        "pnn_threshold_ms": 70.0,
+        "pnn_flag_pct": 30.0,
+        "window_minutes": 5.0,
+        "min_window_beats": 40,
+        "sustained_fraction": 0.5
+       }
+      }
      },
      "irregular_24h": {
       "value": {
@@ -25125,7 +25221,37 @@
       "inputs_used": [
        "rr_cleaned"
       ],
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms."
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "diagnostics": {
+       "version": 1,
+       "abstain": null,
+       "beats": {
+        "rr_raw": 97137,
+        "nn_in": 97127,
+        "nn_kept": 97127,
+        "corrected": 17,
+        "dropped": 10,
+        "artifact_fraction": 0.0002779579356990691
+       },
+       "windows": {
+        "total": 288,
+        "valid": 288,
+        "flagged": 0,
+        "sustained_observed": 0.0,
+        "open_beats": 122,
+        "open": "unflagged"
+       },
+       "thresholds": {
+        "min_beats": 500,
+        "max_artifact": 0.3,
+        "sd1sd2_flag": 0.7,
+        "pnn_threshold_ms": 70.0,
+        "pnn_flag_pct": 30.0,
+        "window_minutes": 5.0,
+        "min_window_beats": 40,
+        "sustained_fraction": 0.5
+       }
+      }
      },
      "brv": {
       "value": {
@@ -29179,7 +29305,7 @@
        "spo2_red_raw",
        "spo2_ir_raw"
       ],
-      "note": "refused: the red and IR channels are one signal — ir − red is a fixed offset within a session, so any ratio built from them measures baseline drift, not oxygenation"
+      "note": "refused: within a session the IR channel is the red channel plus a fixed offset. A red/IR ratio therefore tracks baseline drift and cannot give blood oxygen"
      }
     },
     "hrv_night_shape": {
@@ -29320,7 +29446,7 @@
        "skin_temp_raw",
        "skin_temp_c"
       ],
-      "note": "relative deviation (z) vs your baseline; raw sensor units, never an absolute °C"
+      "note": "Deviation (z-score) from your baseline, in raw sensor units. Absolute °C is not available."
      }
     },
     "stress": {
@@ -29335,7 +29461,7 @@
      "inputs_used": [
       "rr_cleaned"
      ],
-     "note": "Baevsky Stress Index → 0–100; resting autonomic tension (PRV)."
+     "note": "Baevsky Stress Index scaled to 0–100, from resting pulse rate variability (PRV)."
     },
     "spo2": {
      "disabled": true,
@@ -29357,7 +29483,7 @@
       "spo2_red_raw",
       "spo2_ir_raw"
      ],
-     "note": "refused: the red and IR channels are one signal — ir − red is a fixed offset within a session, so any ratio built from them measures baseline drift, not oxygenation",
+     "note": "refused: within a session the IR channel is the red channel plus a fixed offset. A red/IR ratio therefore tracks baseline drift and cannot give blood oxygen",
      "debug": {
       "sleep_samples": 27038
      }
@@ -47981,7 +48107,7 @@
      "inputs_used": [
       "accel_1hz"
      ],
-     "note": "minutes of wrist movement over wake (1 Hz). This is activity volume, NOT walking, and is never converted to steps: at the wrist, arm work registers as strongly as ambulation. Real step counts come only from the 100 Hz or phone pedometer"
+     "note": "Minutes of wrist movement over wake (1 Hz). This is activity volume. The app never converts it to steps, because at the wrist arm work registers as strongly as walking. Step counts come only from the 100 Hz stream or the phone pedometer."
     },
     "activity_curve": [
      {
@@ -49333,7 +49459,7 @@
      "inputs_used": [
       "band_step_counter"
      ],
-     "note": "the strap's own on-chip pedometer, summed from its cumulative counter; wrapped and reset boundaries contribute nothing rather than a guess"
+     "note": "Steps from the strap's on-chip pedometer, summed from its cumulative counter. Intervals where the counter wrapped or reset add no steps."
     },
     "movement": {
      "active_min": 239,
@@ -49346,7 +49472,7 @@
       "dyn_amp_1hz",
       "personal_dyn_floor"
      ],
-     "note": "minutes of sustained wrist movement — activity volume, NOT walking, and deliberately not converted to steps"
+     "note": "Minutes of sustained wrist movement. This is activity volume, and the app does not convert it to steps."
     },
     "daytime_hrv": {
      "timeline": [
@@ -49551,7 +49677,7 @@
      "epochs": 787,
      "confidence": "low",
      "tier": "RELATIVE",
-     "note": "WRIST orientation during sleep (gravity-tilt). A body-position PROXY, NOT supine/side/prone body position — the wrist moves independently of the torso."
+     "note": "Wrist orientation during sleep, from gravity tilt. It cannot tell supine, side or prone position, because the wrist moves independently of the torso."
     },
     "advanced_sleep": {
      "present": false
@@ -49942,11 +50068,11 @@
    "readiness": 72.95885235383324,
    "skipped": 0,
    "partial": 0,
-   "payload_sha256": "e82f76c2d4cd34faf73db2fa0f439fe79a9d1442f0862c3bd711d5b14e436d40"
+   "payload_sha256": "5e417e9a1578b820625893b119d32efee64895a33205c40d2c74150ce49e5a02"
   },
   {
    "day_id": "2026-07-15",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "date": "2026-07-15",
     "day_confidence": 0.6,
@@ -49975,7 +50101,40 @@
       "sd2": 107.6,
       "flag": false,
       "confidence": 0.9,
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms."
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "sd1_sd2": 0.211,
+      "pnn_pct": 1.8,
+      "n_beats": 24019,
+      "diagnostics": {
+       "version": 1,
+       "abstain": null,
+       "beats": {
+        "rr_raw": 24019,
+        "nn_in": 24019,
+        "nn_kept": 24019,
+        "corrected": 15,
+        "dropped": 0,
+        "artifact_fraction": 0.0006245055997335935
+       },
+       "windows": {
+        "total": 90,
+        "valid": 90,
+        "flagged": 0,
+        "sustained_observed": 0.0,
+        "open_beats": 237,
+        "open": "unflagged"
+       },
+       "thresholds": {
+        "min_beats": 500,
+        "max_artifact": 0.3,
+        "sd1sd2_flag": 0.7,
+        "pnn_threshold_ms": 70.0,
+        "pnn_flag_pct": 30.0,
+        "window_minutes": 5.0,
+        "min_window_beats": 40,
+        "sustained_fraction": 0.5
+       }
+      }
      },
      "irregular_24h": {
       "value": {
@@ -49991,7 +50150,37 @@
       "inputs_used": [
        "rr_cleaned"
       ],
-      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms."
+      "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+      "diagnostics": {
+       "version": 1,
+       "abstain": null,
+       "beats": {
+        "rr_raw": 90604,
+        "nn_in": 90600,
+        "nn_kept": 90600,
+        "corrected": 16,
+        "dropped": 4,
+        "artifact_fraction": 0.00022074080614542524
+       },
+       "windows": {
+        "total": 264,
+        "valid": 264,
+        "flagged": 0,
+        "sustained_observed": 0.0,
+        "open_beats": 199,
+        "open": "unflagged"
+       },
+       "thresholds": {
+        "min_beats": 500,
+        "max_artifact": 0.3,
+        "sd1sd2_flag": 0.7,
+        "pnn_threshold_ms": 70.0,
+        "pnn_flag_pct": 30.0,
+        "window_minutes": 5.0,
+        "min_window_beats": 40,
+        "sustained_fraction": 0.5
+       }
+      }
      },
      "brv": {
       "value": {
@@ -54045,7 +54234,7 @@
        "spo2_red_raw",
        "spo2_ir_raw"
       ],
-      "note": "refused: the red and IR channels are one signal — ir − red is a fixed offset within a session, so any ratio built from them measures baseline drift, not oxygenation"
+      "note": "refused: within a session the IR channel is the red channel plus a fixed offset. A red/IR ratio therefore tracks baseline drift and cannot give blood oxygen"
      }
     },
     "hrv_night_shape": {
@@ -54186,7 +54375,7 @@
        "skin_temp_raw",
        "skin_temp_c"
       ],
-      "note": "relative deviation (z) vs your baseline; raw sensor units, never an absolute °C"
+      "note": "Deviation (z-score) from your baseline, in raw sensor units. Absolute °C is not available."
      }
     },
     "stress": {
@@ -54201,7 +54390,7 @@
      "inputs_used": [
       "rr_cleaned"
      ],
-     "note": "Baevsky Stress Index → 0–100; resting autonomic tension (PRV)."
+     "note": "Baevsky Stress Index scaled to 0–100, from resting pulse rate variability (PRV)."
     },
     "spo2": {
      "disabled": true,
@@ -54223,7 +54412,7 @@
       "spo2_red_raw",
       "spo2_ir_raw"
      ],
-     "note": "refused: the red and IR channels are one signal — ir − red is a fixed offset within a session, so any ratio built from them measures baseline drift, not oxygenation",
+     "note": "refused: within a session the IR channel is the red channel plus a fixed offset. A red/IR ratio therefore tracks baseline drift and cannot give blood oxygen",
      "debug": {
       "sleep_samples": 27038
      }
@@ -71436,7 +71625,7 @@
      "trimp_net": null,
      "calories_total": 1595.2893200286808,
      "steps": 17640.0,
-     "dyn_p90": 0.016617360477042792,
+     "dyn_p90": 0.0166173604770428,
      "nap_min": 0.0,
      "hrr_bpm": 16.0
     },
@@ -71462,7 +71651,7 @@
      "inputs_used": [
       "accel_1hz"
      ],
-     "note": "minutes of wrist movement over wake (1 Hz). This is activity volume, NOT walking, and is never converted to steps: at the wrist, arm work registers as strongly as ambulation. Real step counts come only from the 100 Hz or phone pedometer"
+     "note": "Minutes of wrist movement over wake (1 Hz). This is activity volume. The app never converts it to steps, because at the wrist arm work registers as strongly as walking. Step counts come only from the 100 Hz stream or the phone pedometer."
     },
     "activity_curve": [
      {
@@ -72713,7 +72902,7 @@
      "inputs_used": [
       "band_step_counter"
      ],
-     "note": "the strap's own on-chip pedometer, summed from its cumulative counter; wrapped and reset boundaries contribute nothing rather than a guess"
+     "note": "Steps from the strap's on-chip pedometer, summed from its cumulative counter. Intervals where the counter wrapped or reset add no steps."
     },
     "movement": {
      "active_min": 40,
@@ -72726,7 +72915,7 @@
       "dyn_amp_1hz",
       "personal_dyn_floor"
      ],
-     "note": "minutes of sustained wrist movement — activity volume, NOT walking, and deliberately not converted to steps"
+     "note": "Minutes of sustained wrist movement. This is activity volume, and the app does not convert it to steps."
     },
     "daytime_hrv": {
      "timeline": [
@@ -72839,7 +73028,7 @@
      "epochs": 787,
      "confidence": "low",
      "tier": "RELATIVE",
-     "note": "WRIST orientation during sleep (gravity-tilt). A body-position PROXY, NOT supine/side/prone body position — the wrist moves independently of the torso."
+     "note": "Wrist orientation during sleep, from gravity tilt. It cannot tell supine, side or prone position, because the wrist moves independently of the torso."
     },
     "advanced_sleep": {
      "present": false
@@ -73230,7 +73419,7 @@
    "readiness": 61.79377627786914,
    "skipped": 0,
    "partial": 0,
-   "payload_sha256": "99f2bd90847f90067a05a6e034c5e248bbd84a45ee0b7e515ab6074556bb8a44"
+   "payload_sha256": "3529fa662785286ffb2af4109d79d2403df4cec6676a0c37571b7205388fe536"
   }
  ],
  "metric_series": [
@@ -73692,7 +73881,7 @@
   {
    "date": "2026-07-15",
    "key": "dyn_p90",
-   "value": 0.016617360477042792
+   "value": 0.0166173604770428
   },
   {
    "date": "2026-07-15",
@@ -73868,7 +74057,7 @@
  "metric_series_version": [
   {
    "date": "2026-07-13",
-   "algo_version": 113,
+   "algo_version": 114,
    "source": "band",
    "device_family": "gen5",
    "coverage_devices": "",
@@ -73876,7 +74065,7 @@
   },
   {
    "date": "2026-07-14",
-   "algo_version": 113,
+   "algo_version": 114,
    "source": "band",
    "device_family": "gen5",
    "coverage_devices": "",
@@ -73884,7 +74073,7 @@
   },
   {
    "date": "2026-07-15",
-   "algo_version": 113,
+   "algo_version": 114,
    "source": "band",
    "device_family": "gen5",
    "coverage_devices": "",
@@ -73894,7 +74083,7 @@
  "wake_day_features": [
   {
    "day_id": "2026-07-13",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "day_id": "2026-07-13",
     "active_min": 90,
@@ -73921,7 +74110,7 @@
      "inputs_used": [
       "accel_1hz"
      ],
-     "note": "minutes of wrist movement over wake (1 Hz). This is activity volume, NOT walking, and is never converted to steps: at the wrist, arm work registers as strongly as ambulation. Real step counts come only from the 100 Hz or phone pedometer"
+     "note": "Minutes of wrist movement over wake (1 Hz). This is activity volume. The app never converts it to steps, because at the wrist arm work registers as strongly as walking. Step counts come only from the 100 Hz stream or the phone pedometer."
     },
     "activity_curve": [
      {
@@ -75098,11 +75287,11 @@
      "coverage_pct": 100
     }
    },
-   "payload_sha256": "77057f4175cb24ea9fce5b59fa37ea8fab2442df13394c393d0ad0ef699484d9"
+   "payload_sha256": "897b1cf57c4b27e0262bb0f3bff5acd4497857ab5c3aec4aa58e3ebbe62f5cc5"
   },
   {
    "day_id": "2026-07-14",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "day_id": "2026-07-14",
     "active_min": 239,
@@ -75129,7 +75318,7 @@
      "inputs_used": [
       "accel_1hz"
      ],
-     "note": "minutes of wrist movement over wake (1 Hz). This is activity volume, NOT walking, and is never converted to steps: at the wrist, arm work registers as strongly as ambulation. Real step counts come only from the 100 Hz or phone pedometer"
+     "note": "Minutes of wrist movement over wake (1 Hz). This is activity volume. The app never converts it to steps, because at the wrist arm work registers as strongly as walking. Step counts come only from the 100 Hz stream or the phone pedometer."
     },
     "activity_curve": [
      {
@@ -76306,11 +76495,11 @@
      "coverage_pct": 100
     }
    },
-   "payload_sha256": "cfc60d107d9a1fd81788706171c84fc41901a764e2103f61ddc2cce5c9557be7"
+   "payload_sha256": "4f1459b01778419e461efe4f5fe1f5b76f4f0c28faf14d132479a64bf4c18128"
   },
   {
    "day_id": "2026-07-15",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "day_id": "2026-07-15",
     "active_min": 40,
@@ -76337,7 +76526,7 @@
      "inputs_used": [
       "accel_1hz"
      ],
-     "note": "minutes of wrist movement over wake (1 Hz). This is activity volume, NOT walking, and is never converted to steps: at the wrist, arm work registers as strongly as ambulation. Real step counts come only from the 100 Hz or phone pedometer"
+     "note": "Minutes of wrist movement over wake (1 Hz). This is activity volume. The app never converts it to steps, because at the wrist arm work registers as strongly as walking. Step counts come only from the 100 Hz stream or the phone pedometer."
     },
     "activity_curve": [
      {
@@ -77418,7 +77607,7 @@
      "coverage_pct": 100
     }
    },
-   "payload_sha256": "0d78d1b0c4a0da9ecc6efe4d35a23530830dab89a6b105c5b91740ef163d32ec"
+   "payload_sha256": "ded8dd809ddf9d50ceb9d3b3ae4a448fc82301d26fb63b006f56a7a76b2e97b1"
   }
  ],
  "activity_suggestions": [
@@ -77432,7 +77621,7 @@
    "detection_end": 1783966422,
    "details_json": "{\"id\":\"2026-07-13:1783963934\",\"date\":\"2026-07-13\",\"start_ts\":1783963934,\"end_ts\":1783966422,\"avg_bpm\":147,\"peak_bpm\":158,\"duration_min\":41,\"sport\":\"detected\",\"dismissed\":0}",
    "status": "pending",
-   "revision": 0,
+   "revision": 1,
    "linked_id": null
   },
   {
@@ -77706,7 +77895,8 @@
     70.9,
     68.98333333333333,
     52.36666666666667
-   ]
+   ],
+   "data_edge_sec": 1784152799
   },
   {
    "date": "2026-07-14",
@@ -77916,7 +78106,8 @@
     70.9,
     68.98333333333333,
     52.36666666666667
-   ]
+   ],
+   "data_edge_sec": 1784152799
   },
   {
    "date": "2026-07-15",
@@ -78126,7 +78317,8 @@
     70.9,
     null,
     null
-   ]
+   ],
+   "data_edge_sec": 1784152799
   }
  ],
  "crossday": {
