@@ -1724,6 +1724,7 @@
   "sleepDetailNoStageSplitTitle": "Keine Schlafphasen für diese Nacht",
   "sleepDetailNoStageSplitBody": "Für den gesamten Zeitraum fehlen die Herzschlag-Abstände.",
   "sleepDetailStageRangeExplain": "Jede Phase wird als Bereich angegeben, nicht als exakte Zahl – je besser die Nacht erfasst wurde, desto enger ist er. Beim Tiefschlaf ist er am breitesten. Wachzeit bleibt ein einzelner Wert. Die genauen Zahlen findest du unter „Detailwerte“.",
+  "sleepDetailStageBoundsExplain": "Das sind deine eigenen Zeiten, daher ist jede Phase ein Bereich, so breit wie die Zeit, die das Band nicht aufgezeichnet hat.",
   "sleepDetailTimeAsleep": "Schlafzeit",
   "sleepDetailShorterThanUsual": "kürzer als üblich",
   "sleepDetailLongerThanUsual": "länger als üblich",

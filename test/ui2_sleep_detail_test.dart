@@ -215,6 +215,85 @@ void main() {
       expect(find.textContaining('Not far enough from usual to call'),
           findsOneWidget);
     });
+
+    // D27 — a user's own window stores its bounds ({lo, hi} minutes, as wide
+    // as the time the band did not record). On a typed night every stage shows
+    // its bound, awake included; the estimator's interval steps aside so the
+    // screen never shows two different ranges for one stage.
+    Map<String, dynamic> bounds({double lightLo = 250, double lightHi = 250}) =>
+        {
+          'wake': {'lo': 10.0, 'hi': 30.0},
+          'light': {'lo': lightLo, 'hi': lightHi},
+          'deep': {'lo': 40.0, 'hi': 75.0},
+          'rem': {'lo': 80.0, 'hi': 100.0},
+        };
+
+    testWidgets('a typed night shows each stage as its stored bound',
+        (t) async {
+      final n = {
+        ...staged(),
+        'sleep_source': 'manual',
+        'stage_ranges': bounds(),
+      };
+      await _pump(t,
+          SleepData(day: '2026-05-20', night: n, tstHistory: _flat(20, 420)));
+      // The Stages row and the Deep comparison: one deep range on the screen.
+      expect(find.text('40–75 min'), findsNWidgets(2));
+      expect(find.text('80–100 min'), findsOneWidget);
+      // Awake has a bound too; a stage the data pins is one value.
+      expect(find.text('10–30 min'), findsOneWidget);
+      expect(find.text('250 min'), findsOneWidget);
+      // Not the estimator's interval.
+      expect(find.text('20m–2h 20m'), findsNothing);
+      expect(find.textContaining('as wide as the time the band did not record'),
+          findsOneWidget);
+      expect(find.textContaining('Each stage is a range'), findsNothing);
+    });
+
+    testWidgets('a confirmed night shows a stored bound only where it is a '
+        'range', (t) async {
+      final n = {
+        ...staged(),
+        'sleep_source': 'confirmed',
+        'stage_ranges': {
+          'wake': {'lo': 60.0, 'hi': 60.0},
+          'light': {'lo': 250.0, 'hi': 250.0},
+          'deep': {'lo': 40.0, 'hi': 75.0},
+          'rem': {'lo': 90.0, 'hi': 90.0},
+        },
+      };
+      await _pump(t,
+          SleepData(day: '2026-05-20', night: n, tstHistory: _flat(20, 420)));
+      expect(find.text('40–75 min'), findsNWidgets(2));
+      // Single-valued bounds leave the usual readings in place.
+      expect(find.text('60 min'), findsNothing);
+      expect(find.text('250 min'), findsNothing);
+    });
+
+    testWidgets('a typed window with nothing recorded shows the bounds and no '
+        'point value', (t) async {
+      final n = <String, dynamic>{
+        'has_sleep': false,
+        'sleep_source': 'manual',
+        'onset_ts': _onset,
+        'wake_ts': _onset + 480 * 60,
+        'stage_ranges': {
+          for (final s in const ['wake', 'light', 'deep', 'rem'])
+            s: {'lo': 0.0, 'hi': 480.0},
+        },
+      };
+      await _pump(t, SleepData(day: '2026-05-20', night: n));
+      expect(find.text('0–480 min'), findsNWidgets(4));
+      expect(find.text('Your times, no sleep numbers'), findsOneWidget);
+    });
+
+    testWidgets('a detected night has no stored bound and keeps the estimator '
+        'range', (t) async {
+      await _pump(t,
+          SleepData(day: '2026-05-20', night: staged(), tstHistory: _flat(20, 420)));
+      expect(find.textContaining(' min'), findsNothing);
+      expect(find.text('20m–2h 20m'), findsNWidgets(2));
+    });
   });
 
   testWidgets('an ordinary night says so rather than manufacturing a finding',

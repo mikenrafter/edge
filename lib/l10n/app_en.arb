@@ -8617,6 +8617,10 @@
   "@sleepDetailStageRangeExplain": {
     "description": "Explanatory footnote under the stage breakdown table about ranges vs. counts."
   },
+  "sleepDetailStageBoundsExplain": "These are your times, so each stage is a range as wide as the time the band did not record.",
+  "@sleepDetailStageBoundsExplain": {
+    "description": "Sleep detail, under the stage table when a night uses the user's own typed window: each stage is shown as a min–max range."
+  },
   "sleepDetailTimeAsleep": "Time asleep",
   "@sleepDetailTimeAsleep": {
     "description": "Row label in the 'against your usual' comparison: total time asleep."

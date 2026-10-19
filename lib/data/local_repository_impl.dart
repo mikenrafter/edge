@@ -361,6 +361,27 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   /// Pull a sub-map by dotted path (e.g. 'clinical.hrv_time').
+  /// `sleep.stage_ranges` as `{stage: {lo, hi}}` minutes, keeping only stages
+  /// whose bounds are finite and ordered. Null when the night has none.
+  Map<String, Map<String, double>>? _stageRanges(Map<String, dynamic>? b) {
+    final v = _sub(b, 'sleep.stage_ranges.value');
+    if (v == null) return null;
+    final out = <String, Map<String, double>>{
+      for (final MapEntry(:key, :value) in v.entries)
+        if (value is Map &&
+            value['lo'] is num &&
+            value['hi'] is num &&
+            (value['lo'] as num).isFinite &&
+            (value['hi'] as num).isFinite &&
+            (value['lo'] as num) <= (value['hi'] as num))
+          key: {
+            'lo': (value['lo'] as num).toDouble(),
+            'hi': (value['hi'] as num).toDouble(),
+          },
+    };
+    return out.isEmpty ? null : out;
+  }
+
   Map<String, dynamic>? _sub(Map<String, dynamic>? b, String path) {
     var cur = b;
     for (final part in path.split('.')) {
@@ -1288,8 +1309,16 @@ class LocalRepositoryImpl extends LocalRepository {
       // elsewhere. The periods ride along so the screen can show what it does
       // know instead of claiming nothing happened.
       final napPeriods = _periodsWithMainStages(b, const {});
+      // A typed window the band barely recorded still has its bounds (D27):
+      // every stage as wide as the unrecorded time, and no point value.
+      final ranges = _stageRanges(b);
       if (napPeriods.isEmpty) {
-        return {'has_sleep': false, 'sleep_source': assertion?['source'] ?? sleepSource, ...savedWindow};
+        return {
+          'has_sleep': false,
+          'sleep_source': assertion?['source'] ?? sleepSource,
+          ...savedWindow,
+          'stage_ranges': ?ranges,
+        };
       }
       return {
         'has_sleep': false,
@@ -1297,6 +1326,7 @@ class LocalRepositoryImpl extends LocalRepository {
         ...savedWindow,
         'periods': napPeriods,
         'total_asleep_min': _totalAsleepMin(b, napPeriods),
+        'stage_ranges': ?ranges,
       };
     }
     final spt = (win?['spt_sec'] as num?);
@@ -1349,6 +1379,10 @@ class LocalRepositoryImpl extends LocalRepository {
       'deep_min': min('deep_sec'),
       'rem_min': min('rem_sec'),
       'nrem_min': min('nrem_sec'),
+      // A user's own window only (D27): {wake, light, deep, rem} -> {lo, hi}
+      // minutes, as wide as the time the band did not record. Absent on a
+      // detected night.
+      'stage_ranges': ?_stageRanges(b),
       'stages_beta': true,
       // The 4-class stager is a low-confidence wrist ESTIMATE; Deep especially is
       // an unvalidated overlay. The screen badges the whole stage block honestly.

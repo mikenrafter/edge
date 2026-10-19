@@ -184,6 +184,39 @@ String _pts(double v) => '${v.round()} points';
 String _rangeText(ana.StageInterval i) =>
     '${hm(i.loSec / 60)}–${hm(i.hiSec / 60)}';
 
+/// D27 — a user's own window carries its stored stage bounds
+/// (`stage_ranges`, minutes), as wide as the time the band did not record.
+/// They replace the estimator's interval for a stage on a typed night, and on
+/// any night wherever the bound is not a single value. Null when there is no
+/// stored bound worth printing.
+Map<SleepStage, ({double lo, double hi})>? _storedRanges(
+    Map<String, dynamic> n) {
+  final raw = n['stage_ranges'];
+  if (raw is! Map || n['sleep_source'] == 'vendor_staged') return null;
+  final typed = n['sleep_source'] == 'manual';
+  const keys = {
+    'wake': SleepStage.awake,
+    'light': SleepStage.light,
+    'deep': SleepStage.deep,
+    'rem': SleepStage.rem,
+  };
+  final out = <SleepStage, ({double lo, double hi})>{
+    for (final MapEntry(:key, :value) in keys.entries)
+      if (raw[key] case {'lo': final num lo, 'hi': final num hi}
+          when lo.isFinite && hi.isFinite && lo <= hi &&
+              (typed || lo.round() != hi.round()))
+        value: (lo: lo.toDouble(), hi: hi.toDouble()),
+  };
+  return out.isEmpty ? null : out;
+}
+
+/// A stored bound as one label: "40–75 min", or "45 min" when the data pins
+/// it to one value.
+String _minRangeText(({double lo, double hi}) r) =>
+    r.lo.round() == r.hi.round()
+        ? '${r.lo.round()} min'
+        : '${r.lo.round()}–${r.hi.round()} min';
+
 String _capitalise(String s) =>
     s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
@@ -609,6 +642,13 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
                   'Wear the band overnight and sync in the morning'),
           icon: rejected ? LucideIcons.undo2 : LucideIcons.moon,
         ),
+        // A typed window with too little recorded still has its bounds (D27):
+        // the range, never a point value.
+        if (userSet && _storedRanges(d.night) != null) ...[
+          const SizedBox(height: S.x3),
+          Section(l?.sleepDetailStagesSection ?? 'Stages',
+              _stages(c, P.of(c), d.night)),
+        ],
         if (rejected) ...[
           const SizedBox(height: S.x2),
           TextButton(
@@ -1525,15 +1565,24 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     }
     final vendor = n['sleep_source'] == 'vendor_staged';
     final r = vendor ? null : _ranges(n);
+    final stored = _storedRanges(n);
+    String? bound(SleepStage st) =>
+        stored?[st] == null ? null : _minRangeText(stored![st]!);
     String? exact(String k) =>
         vendor && n[k] is num ? hm((n[k] as num).toDouble()) : null;
     final awake = n['awake_min'] as num?;
     return {
-      SleepStage.awake: ?(awake == null ? null : hm(awake)),
-      SleepStage.rem: ?(exact('rem_min') ??
+      SleepStage.awake: ?(bound(SleepStage.awake) ??
+          (awake == null ? null : hm(awake))),
+      SleepStage.rem: ?(bound(SleepStage.rem) ??
+          exact('rem_min') ??
           (r != null && n['rem_min'] != null ? _rangeText(r.rem) : null)),
-      SleepStage.light: ?(exact('light_min') ?? (r == null ? null : _rangeText(r.light))),
-      SleepStage.deep: ?(exact('deep_min') ?? (r == null ? null : _rangeText(r.deep))),
+      SleepStage.light: ?(bound(SleepStage.light) ??
+          exact('light_min') ??
+          (r == null ? null : _rangeText(r.light))),
+      SleepStage.deep: ?(bound(SleepStage.deep) ??
+          exact('deep_min') ??
+          (r == null ? null : _rangeText(r.deep))),
     };
   }
 
@@ -1624,7 +1673,15 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           ],
         ]),
       ),
-      if (r != null) ...[
+      if (_storedRanges(n) != null) ...[
+        const SizedBox(height: S.x2),
+        // Your own window's bounds are a different range from the estimator's:
+        // they widen with the time the band did not record, and awake has one.
+        Text(
+            l?.sleepDetailStageBoundsExplain ??
+                'These are your times, so each stage is a range as wide as the time the band did not record.',
+            style: F.over.copyWith(color: p.ink3, height: 1.5)),
+      ] else if (r != null) ...[
         const SizedBox(height: S.x2),
         // The range IS the reading, and the copy says so straight. A wrist
         // infers stages from beat timing and movement; it does not count them.
@@ -1677,7 +1734,26 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     // most confident thing on the card and the least supported.
     final deepRange =
         n['sleep_source'] == 'vendor_staged' ? null : _ranges(n)?.deep;
-    if (n['sleep_source'] == 'vendor_staged' && n['deep_min'] is num) {
+    // A stored bound replaces the estimator's on the Stages card, so it does
+    // here too: one deep range per screen. Compared only with a point value.
+    final deepBound = _storedRanges(n)?[SleepStage.deep];
+    final deepPoint = (n['deep_min'] as num?)?.toDouble();
+    if (deepBound != null) {
+      if (deepPoint != null) {
+        rows.add(_Compare(
+          label: l?.sleepDetailAskDeep ?? 'Did you get your usual deep sleep?',
+          value: _minRangeText(deepBound),
+          tonight: deepPoint,
+          blur: (deepBound.hi - deepBound.lo) / 2,
+          history: d.deepHistory,
+          color: C.blue,
+          low: l?.sleepDetailLessThanUsual ?? 'less than usual',
+          high: l?.sleepDetailMoreThanUsual ?? 'more than usual',
+          fmt: (v) => hm(v),
+          dfmt: (v) => hm(v),
+        ));
+      }
+    } else if (n['sleep_source'] == 'vendor_staged' && n['deep_min'] is num) {
       // The device's own count: no estimator interval to blur it by.
       final deep = (n['deep_min'] as num).toDouble();
       rows.add(_Compare(
