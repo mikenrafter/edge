@@ -3402,6 +3402,23 @@ class DerivationEngine {
   @visibleForTesting
   Future<void> Function(String day)? debugAfterDayBlocks;
 
+  /// Run once a pass's writes have landed (the end of [run], a rescan, an
+  /// import's rollup, applied activity reviews). Upstream restamped Today's
+  /// freshness here directly, because a night settled in an iOS background
+  /// pass otherwise kept serving the previous one. The owner of the engine
+  /// decides how: AppState requests a PublishGate publish (freshness, then
+  /// the bump); the headless builder (`newHeadlessDerivationEngine`), which
+  /// has no gate, refreshes freshness. Null does nothing.
+  Future<void> Function()? onSettled;
+
+  Future<void> _settled() async {
+    try {
+      await onSettled?.call();
+    } catch (e) {
+      _log('[derive] freshness refresh failed: $e');
+    }
+  }
+
   // ── the finalization audit ───────────────────────────────────────────────
   // When a day finalizes and the Calculations power policy allows heavy work,
   // the day is re-derived once on the pure batch path, compared with the
@@ -4140,11 +4157,7 @@ class DerivationEngine {
       // background pass has no caller to do it, and getToday reads the
       // night from `overnight_day`, so a night settled in the background
       // kept serving the previous one.
-      try {
-        await LocalDb.refreshComputeFreshness();
-      } catch (e) {
-        _log('[derive] freshness refresh failed: $e');
-      }
+      await _settled();
       _calcStage(null);
       _running = false;
       final finishedAt = DateTime.now().millisecondsSinceEpoch;
@@ -6038,7 +6051,7 @@ class DerivationEngine {
       await _runNotifications();
       // Store the new signature so the next tick is a cheap no-op until it moves.
       await LocalDb.setCursor('baseline_sig', await _baselineSignature());
-      await LocalDb.refreshComputeFreshness();
+      await _settled();
       return done;
     } catch (e, st) {
       _log('rescan ERROR: $e\n$st');
@@ -6231,7 +6244,7 @@ class DerivationEngine {
     // their own, so the import must not report failure.
     if (!await _runCrossDay(profile)) _log('import: crossday rollup deferred');
     await _runNotifications();
-    await LocalDb.refreshComputeFreshness();
+    await _settled();
   }
 
   /// Durable review jobs outlive a busy derive or a terminated process.
@@ -6244,7 +6257,7 @@ class DerivationEngine {
       // Rebuild from the accepted day rows, including when an input artifact
       // was already cached today. A failed rollup must leave the work durable.
       if (!await _runCrossDay(profile)) return false;
-      await LocalDb.refreshComputeFreshness();
+      await _settled();
       await LocalDb.finishActivityReviews(revisions);
       return (await (await LocalDb.instance).query('activity_review_days', limit: 1)).isEmpty;
     } finally {

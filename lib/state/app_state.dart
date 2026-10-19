@@ -417,7 +417,13 @@ class AppState extends ChangeNotifier {
     background: _background,
     offloadActive: () => _deriveScheduler.offloadActive,
     isBackgrounded: () => _background,
-  );
+  )
+    // A pass that lands writes outside a coordinator-run derive (an import's
+    // rollup, applied activity reviews, a forced re-derive) publishes through
+    // the same gate: freshness, then the bump, debounced.
+    ..onSettled = () async {
+      if (!_disposed) _deriveCoordinator.publishGate.request();
+    };
   /// The derive orchestration: scheduler wiring, the pass itself,
   /// recalc state, per-day publish, warmer hand-off. Everything it needs from
   /// here arrives as a callback; it never sees AppState.
@@ -1471,7 +1477,6 @@ class AppState extends ChangeNotifier {
       } else {
         await _derive.finalizeImport(_profile);
       }
-      await LocalDb.refreshComputeFreshness();
     } catch (e) {
       importRollupError = '$e';
     }
@@ -3441,8 +3446,8 @@ class AppState extends ChangeNotifier {
     // between, so this call cannot hit runDays' "already running" return.
     try {
       await _derive.runDays(_profile, days, force: true);
-      await LocalDb.refreshComputeFreshness();
-      bumpInsights();
+      // Freshness, then the bump, through the one publish path.
+      await _deriveCoordinator.publishNow();
     } catch (e) {
       _log('[derive] wearable re-derive failed: $e');
     }

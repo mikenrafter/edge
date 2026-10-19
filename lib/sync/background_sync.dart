@@ -303,6 +303,9 @@ Future<DerivationEngine> newHeadlessDerivationEngine(
     void Function(String) log) async {
   final engine = (debugHeadlessEngineFactory ?? DerivationEngine.new)(
       log: log, background: true);
+  // No coordinator publishes for a headless pass: the engine restamps Today's
+  // freshness itself once its writes land (see DerivationEngine.onSettled).
+  engine.onSettled = LocalDb.refreshComputeFreshness;
   try {
     engine.auditPolicy = CalcPowerPolicy(await _savedCalcPowerMode());
     engine.auditPowerRead = () async {

@@ -50,6 +50,12 @@ const Map<String, String> _directCallers = {
   'state/app_state.dart': 'startup (initState-time freshness; no bump follows)',
   'demo/demo_data_generator.dart': 'the demo clear: a static helper with no coordinator',
   'data/local_repository_impl.dart': 'getToday when its freshness row is stale (a reader)',
+  // Upstream restamped freshness at the end of every derive so a night settled
+  // in an iOS background pass is served (D18). Here only headless engines do
+  // it, through DerivationEngine.onSettled: they have no coordinator, and the
+  // foreground engine publishes through the gate instead.
+  'sync/background_sync.dart':
+      'newHeadlessDerivationEngine: onSettled for engines with no coordinator',
 };
 
 String _code(String path) => stripCommentsAndStrings(File(path).readAsStringSync());

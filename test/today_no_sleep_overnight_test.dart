@@ -14,6 +14,7 @@ import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
+import 'package:openstrap_edge/sync/background_sync.dart' show newHeadlessDerivationEngine;
 
 void main() {
   setUpAll(() async {
@@ -112,7 +113,10 @@ void main() {
       payloadJson: jsonEncode(night(64)),
       windowJson: '{}',
     );
-    await DerivationEngine().finalizeImport(const Profile());
+    // A headless engine: no coordinator publishes for it, so the engine's
+    // own onSettled restamps (DerivationEngine.onSettled).
+    await (await newHeadlessDerivationEngine((_) {}))
+        .finalizeImport(const Profile());
 
     final t = await LocalRepositoryImpl(getProfileMap: () => {}).getToday();
     expect((t['status'] as Map)['overnight_day'], today);
