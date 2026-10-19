@@ -4477,11 +4477,10 @@ class DerivationEngine {
         dayStart ~/ kRevBucketSec, (dayEnd - 1) ~/ kRevBucketSec + 1);
     final candidate =
         await _sleepCandidateForDay(dayId, stats: stats, banked: banked);
-    // A day another pass of this process left state for derives from that state;
-    // only a cold day (a headless wake, a fresh process) resumes from storage.
-    final rrResume = reuse && !_calculationStates.containsKey(dayId)
-        ? await _probeRrResume(dayId, inputRevs)
-        : null;
+    // The checkpoint carries the day's RR and curve states independently of
+    // the calculation state retained by this process. Probe it on warm passes
+    // too, so their substrate load contains only the tail that extends it.
+    final rrResume = reuse ? await _probeRrResume(dayId, inputRevs) : null;
 
     // M5: resolve ownership ONCE, over the union of every window this method
     // loads, and pass the same span lists to both the row filter and the
@@ -4585,6 +4584,7 @@ class DerivationEngine {
       // after a stream refusal ([_withFullRr]) reads the band's table, which
       // would hand the derive an empty day.
       rrResume: wearable != null ? null : rrResume,
+      isWearable: wearable != null,
     );
   }
 
@@ -6387,7 +6387,11 @@ class DerivationEngine {
     DayCalculationState? previousState =
         batchReference ? null : _calculationStates[day.date];
     DayResumeState? resumed;
-    if (previousState == null && ckptReuse) {
+    if (previousState != null) {
+      // A warm calculation state has no RR/curve state of its own. The
+      // prepared checkpoint is the immutable worker input for that tail.
+      resumed = day.rrResume?.state;
+    } else if (ckptReuse) {
       final restored = await _restoreCheckpoint(day, profile);
       if (restored != null) {
         previousState = restored.state;
@@ -6402,8 +6406,14 @@ class DerivationEngine {
       stream = await _streamDayTail(day, resumed);
       if (stream == null) day = await _withFullRr(day);
     }
+    final streamedBeats = stream?.tailRr.length ?? 0;
+    perf.addCount('day_rr_beats_folded', streamedBeats);
+    // Wearable days deliberately do not use the band's checkpoint stream.
+    if (stream == null && !day.isWearable) {
+      perf.addCount('day_rr_batch_runs', 1);
+    }
     perf.addCount('curve_beats_folded',
-        stream != null ? stream.tailRr.length : day.daySub.rrMs.length);
+        stream != null ? streamedBeats : day.daySub.rrMs.length);
     final daySub = day.daySub;
     final sleepSub = day.sleepSub;
     // Every edge this day is judged by (the wear window, aging, the stored

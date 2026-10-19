@@ -97,6 +97,10 @@ class PreparedDerivationDay {
   /// checkpoint (see [DayRrResume]). Null: every beat of the day is present.
   final DayRrResume? rrResume;
 
+  /// A vendor wearable supplied this day. Its beats never use the band
+  /// checkpoint stream.
+  final bool isWearable;
+
   const PreparedDerivationDay({
     required this.date,
     required this.endSec,
@@ -117,6 +121,7 @@ class PreparedDerivationDay {
     this.inputFp,
     this.inputRevs,
     this.rrResume,
+    this.isWearable = false,
   }) : napSub = napSub ?? daySub;
 
   /// This day with its substrates replaced by [daySub] / [napSub] (every beat
@@ -141,6 +146,7 @@ class PreparedDerivationDay {
     priority: priority,
     inputFp: inputFp,
     inputRevs: inputRevs,
+    isWearable: isWearable,
   );
 
   Map<String, dynamic> toJson() => {
@@ -331,6 +337,7 @@ class SleepSessionCandidate {
     String? inputFp,
     Map<int, int>? inputRevs,
     DayRrResume? rrResume,
+    bool isWearable = false,
   }) => PreparedDerivationDay(
     date: dayId,
     // `endSec` is what the engine anchors FINALIZATION on
@@ -360,6 +367,7 @@ class SleepSessionCandidate {
     inputFp: inputFp,
     inputRevs: inputRevs,
     rrResume: rrResume,
+    isWearable: isWearable,
   );
 }
 
