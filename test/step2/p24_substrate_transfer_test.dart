@@ -61,6 +61,7 @@ const _intKeys = [
   'skin_contact',
   'step_count',
   'hr_valid',
+  'band_sleep_state',
 ];
 const _dblKeys = ['rr_ts_ms', 'rr_ms', 'ax', 'ay', 'az'];
 const _allKeys = [..._intKeys, ..._dblKeys];
@@ -74,6 +75,7 @@ List<Object?> _col(Substrate s, String k) => switch (k) {
       'skin_contact' => s.skinContact,
       'step_count' => s.stepCount,
       'hr_valid' => s.hrValid,
+      'band_sleep_state' => s.bandSleepState,
       'rr_ts_ms' => s.rrTsMs,
       'rr_ms' => s.rrMs,
       'ax' => s.ax,
@@ -156,6 +158,7 @@ Map<String, dynamic> _normalDay({int n = 64}) {
     'skin_contact': ints((i) => i % 2),
     'step_count': ints((i) => i * 3),
     'hr_valid': ints((i) => i % 2),
+    'band_sleep_state': ints((i) => i % 4),
     'device_family': 'gen5',
     'device_ids': ['dev-b', 'dev-a', 'dev-b'],
   };

@@ -744,6 +744,7 @@ class Substrate {
       skinContact: _transferSafeInts(m, 'skin_contact', n),
       stepCount: _transferAbsentMarkerInts(m, 'step_count', n),
       hrValid: _transferAbsentMarkerInts(m, 'hr_valid', n),
+      bandSleepState: _transferAbsentMarkerInts(m, 'band_sleep_state', n),
       deviceFamily: m['device_family'] as String?,
       deviceIds: ((m['device_ids'] as List?) ?? const [])
           .map((e) => e.toString())
