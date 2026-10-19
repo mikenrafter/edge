@@ -436,7 +436,9 @@ class SyncController {
     // real progress, so this only runs long when there's genuinely a lot to pull.
     int maxSessions = 20,
   }) async {
-    var last = SyncReport(0, 0, false);
+    // Totals for the whole burst; `complete` is the final session's (upstream:
+    // a Shortcut reports what the burst banked, not its last session).
+    var total = SyncReport(0, 0, false);
     _lastBurstAdvanced = false;
     // The burst ended on a clean HISTORY_END with nothing left behind it.
     var clean = false;
@@ -488,7 +490,11 @@ class SyncController {
           strapNewest != null &&
           frontierAfter != null &&
           (strapNewest - frontierAfter) > 300;
-      last = report;
+      total = SyncReport(
+        total.records + report.records,
+        total.batches + report.batches,
+        report.complete,
+      );
       clean = report.complete && !backlogRemains;
       if (frontierAdvanced) _lastBurstAdvanced = true;
       await LocalDb.upsertSyncLedgerEntry(
@@ -558,7 +564,7 @@ class SyncController {
     if (clean && !_disposed && !_isDisposed()) {
       syncOperations.noteBackgroundSuccess(DateTime.now());
     }
-    return last;
+    return total;
   }
 
   /// The sync side of a link that just dropped ([AppState._onEngineState]'s
