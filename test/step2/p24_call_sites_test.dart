@@ -40,6 +40,21 @@ const Map<String, ({int count, String why})> _fromJsonCallers = {
     why: 'PreparedDerivationDay.fromJson: the prepared_day mirror of toJson; '
         'no production reader, not the substrate worker transfer',
   ),
+  // Upstream's wearable inputs, kept by the merge (log D16). Each rebuilds a
+  // substrate it just built itself, with columns swapped in (strap beats,
+  // ring skin temperature and beats, a device family) through its own
+  // toJson; none crosses a prepare-worker boundary, so the validating
+  // conversion stays.
+  'compute/inputs/canonical.dart': (
+    count: 3,
+    why: 'wearable substrate rebuilt from its own toJson with the strap\'s '
+        'beats or the device family swapped in; not a worker transfer',
+  ),
+  'compute/inputs/oura_inputs.dart': (
+    count: 1,
+    why: 'ring substrate rebuilt from its own toJson with skin temperature '
+        'and ring beats added; not a worker transfer',
+  ),
 };
 
 String _raw(String path) => File(path).readAsStringSync();
