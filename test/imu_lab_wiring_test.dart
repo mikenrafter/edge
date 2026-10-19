@@ -5,6 +5,7 @@
 // it is armed or running, and the stream is released however it ends.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
+import 'package:openstrap_edge/compute/derivation_engine.dart' show kProtocolPin;
 import 'package:openstrap_edge/data/models.dart' show DeviceState;
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/gestures/imu_recorder.dart';
@@ -149,7 +150,8 @@ void main() {
     rig.app.imuLab.stop();
     final m = rig.app.imuLab.recording!.meta;
     expect(m.bandModel, 'WHOOP 5.0');
-    expect(m.protocolVersion, 'bc7d8d0df706e40a2546ffde4545263f09d0fecb');
+    // The pin the build runs on (upstream's protocol pin since the merge, D10).
+    expect(m.protocolVersion, kProtocolPin);
     expect(m.label, 'rotate');
     expect(m.kind, ImuRecordingKind.action);
   });
