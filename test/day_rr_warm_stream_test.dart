@@ -28,6 +28,10 @@
 library;
 
 import 'dart:convert';
+import 'dart:math' as math;
+
+import 'package:openstrap_edge/compute/day_checkpoint_policy.dart'
+    show kRevBucketSec, kRrFoldGuardSec;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
@@ -165,21 +169,32 @@ void main() {
       if (pass >= 2) {
         final fresh = beatsIn(prev, upTo);
         final whole = beatsIn(0, upTo);
-        expect(fresh + _seam, lessThan(whole ~/ 2),
+        // The unsettled tail, by the checkpoint's own rule: folded beats end at
+        // the last closed rev bucket before the previous pass's newest beat,
+        // minus the fold guard (day_checkpoint_policy.dart).
+        final settled = ((start + prev - 1) ~/ kRevBucketSec) * kRevBucketSec -
+            kRrFoldGuardSec -
+            start;
+        final seam = beatsIn(math.max(0, settled), prev);
+        expect(fresh + seam, lessThan(whole ~/ 2),
             reason: 'fixture: new beats are a small part of the day');
         final why = 'warm pass $pass (+$fresh new of $whole)';
         final folded = _count(warm, 'day_rr_beats_folded');
         expect(folded, isNotNull,
             reason: 'the engine reports day_rr_beats_folded: $why');
-        expect(folded!, lessThanOrEqualTo(fresh + _seam), reason: why);
+        expect(folded!, lessThanOrEqualTo(fresh + seam), reason: why);
         expect(folded, greaterThanOrEqualTo(fresh), reason: why);
         expect(_count(warm, 'day_rr_batch_runs') ?? 0, 0,
             reason: 'no whole-day irregular/correctRr batch: $why');
         expect(_count(warm, 'curve_beats_folded') ?? whole,
-            lessThanOrEqualTo(fresh + _seam),
+            lessThanOrEqualTo(fresh + seam),
             reason: 'curves fold the tail only: $why');
+        // Rows are read by record time, and a record's beats sit up to the fold
+        // guard before its own second: one guard window more than the beats.
+        final guardRows =
+            beatsIn(math.max(0, settled - kRrFoldGuardSec), math.max(0, settled));
         expect(_count(warm, 'rr_rows_read') ?? whole,
-            lessThanOrEqualTo(fresh + _seam),
+            lessThanOrEqualTo(fresh + seam + guardRows),
             reason: 'RR rows are not re-read: $why');
       }
       prev = upTo;
