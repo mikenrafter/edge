@@ -592,6 +592,7 @@ Map<String, dynamic> deriveDayBundle(
   CalculationMode mode = CalculationMode.forced,
 }) {
   WorkerAudit.entered('deriveDayBundle');
+  state?.beginPass();
   final d = DayBundleInput.fromJson(inputJson);
   T memo<T>(String key, Object? dependencies, T Function() calculate) =>
       state == null

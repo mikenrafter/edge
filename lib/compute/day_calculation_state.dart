@@ -316,6 +316,7 @@ class DayCalculationState {
     var extends_ = n >= held && rrTsMs.length == n;
     if (extends_ && held > 0) {
       extends_ = rrTsMs[0] == _nightStart &&
+          _countProof() &&
           nightBeatsFingerprint(rrMs, rrTsMs, held) == _nightFp;
     }
     if (!extends_) {
@@ -357,6 +358,11 @@ class DayCalculationState {
       droppedCount: snap.droppedCount,
       correctedCount: snap.correctedCount,
     );
+  }
+
+  bool _countProof() {
+    _prefixProofs++;
+    return true;
   }
 
   /// The last [nightRr] result when it came from the batch path (the night was
@@ -554,6 +560,18 @@ class DayCalculationState {
   /// cache benchmark). Keys of per-window entries are collapsed to their prefix.
   Map<String, ({int hits, int misses, int micros})>? debugStats;
 
+  /// Digests of the long lists named by this pass's memo dependencies, by list
+  /// identity: each is walked once however many memos read it. Cleared by
+  /// [beginPass]; a state used without it digests per call, as before.
+  final ListDigestCache _digests = ListDigestCache();
+  int _prefixProofs = 0;
+
+  /// Full-list digests computed, plus night-prefix proofs hashed (work counter).
+  int get nightListHashes => _digests.computed + _prefixProofs;
+
+  /// Starts a derive pass: lists may have changed since the last one.
+  void beginPass() => _digests.clear();
+
   T evaluate<T>(
     String key,
     Object? dependencies,
@@ -564,7 +582,7 @@ class DayCalculationState {
     if (stats == null) {
       return _cache.evaluate(
         key,
-        dependencyFingerprint(dependencies),
+        dependencyFingerprint(dependencies, cache: _digests),
         calculate,
         full: mode != CalculationMode.periodicAwake,
       );
@@ -573,7 +591,7 @@ class DayCalculationState {
     final watch = Stopwatch()..start();
     final result = _cache.evaluate(
       key,
-      dependencyFingerprint(dependencies),
+      dependencyFingerprint(dependencies, cache: _digests),
       calculate,
       full: mode != CalculationMode.periodicAwake,
     );

@@ -9,8 +9,9 @@
 // COUNTER (name pinned): `int get nightListHashes` on DayCalculationState,
 // cumulative, counting full-list digests computed (one per distinct list per
 // pass, plus one for nightRr's folded-prefix proof when it hashes a prefix).
-//   deriveDayBundle pass:  delta <= 5   (nn, nnTimes, sleepRrMs, sleepRrTsMs,
-//                                        nightRr prefix proof)
+//   deriveDayBundle pass:  delta <= 10  (9 distinct long lists named by memos:
+//                                        nn, nnTimes, sleepRr*, dayRr*, sleep ts/hr..;
+//                                        + nightRr prefix proof)
 //   direct nightRr call:   delta <= 1
 // Results stay bit-identical to a cold batch; every fallback still fires
 // (guards below, green before and after).
@@ -21,7 +22,7 @@ import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 
 import 'support/incremental_day_fixture.dart';
 
-const _maxListHashes = 5;
+const _maxListHashes = 10;
 
 /// A counter that the implementation has not added yet reads as null (not a
 /// compile error), so the red tests fail on the missing counter itself.
