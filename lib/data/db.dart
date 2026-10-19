@@ -10786,18 +10786,25 @@ class LocalDb {
 
   /// Replace one stored bundle's JSON in place, same version. For raw-free
   /// one-shot heals of fields that only live in the bundle.
-  static Future<void> rewriteDayPayload(
+  ///
+  /// A compare-and-set on [expectedPayloadJson], the payload the heal read:
+  /// a derive or review that rewrote the row in between wins, and the heal
+  /// is dropped for that day (it only touches rows older than its fix, which
+  /// a fresh derive already gets right). Returns whether the row was written.
+  static Future<bool> rewriteDayPayload(
     String dayId,
     int algoVersion,
-    String payloadJson,
-  ) async {
+    String payloadJson, {
+    required String expectedPayloadJson,
+  }) async {
     final db = await instance;
-    await db.update(
+    final n = await db.update(
       'day_result',
       {'payload_json': payloadJson},
-      where: 'day_id = ? AND algo_version = ?',
-      whereArgs: [dayId, algoVersion],
+      where: 'day_id = ? AND algo_version = ? AND payload_json = ?',
+      whereArgs: [dayId, algoVersion, expectedPayloadJson],
     );
+    return n > 0;
   }
 
   static Future<Map<String, dynamic>?> dayResult(String dayId) async {

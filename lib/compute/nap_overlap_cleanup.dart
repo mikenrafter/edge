@@ -101,12 +101,14 @@ Future<int> cleanNextNightNapsOnce() async {
     // The trend reads `metric_series`; same value, same order as the readiness
     // backfill (series first, bundle second).
     await LocalDb.putMetricSeriesValue(day, 'nap_min', napMin);
-    await LocalDb.rewriteDayPayload(
+    if (await LocalDb.rewriteDayPayload(
       day,
       (row!['algo_version'] as num).toInt(),
       jsonEncode(payload),
-    );
-    cleaned++;
+      expectedPayloadJson: row['payload_json'] as String,
+    )) {
+      cleaned++;
+    }
   }
   await LocalDb.putComputeFreshness(
       kNapNextNightCleanupKey, jsonEncode({'cleaned': cleaned}));

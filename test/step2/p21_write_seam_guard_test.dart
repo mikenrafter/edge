@@ -32,11 +32,26 @@ const _allowed = <String, Map<String, Set<String>>>{
     'LocalDb.deleteDays': {'delete'},
     'LocalDb.reencodeLegacyDayResults': {'update'},
     'LocalDb.purgeDemoRows': {'delete'},
+    // Upstream's, kept by the merge (log D13/D14/D19). Each is a LocalDb
+    // method with its own rule, so the seam is still LocalDb:
+    // - the v72 migration heal of imported skin-temp keys (one statement,
+    //   imported rows only, inside the open like `_open`'s copy);
+    // - the raw-free nap/next-night one-shot heal, a compare-and-set on the
+    //   payload it read;
+    // - the user's nap review composed into the stored day (the review is a
+    //   user edit, the userOverride analog; it keeps the row's version and
+    //   finalized flag in one transaction with the review queue).
+    'LocalDb._scrubImportedSkinTempZ': {'update'},
+    'LocalDb.rewriteDayPayload': {'update'},
+    'LocalDb.applyPendingActivityReviews': {'insert'},
   },
   'baselines': {
     'LocalDb.putBaselines': {'insert'},
     'LocalDb.updateBaseline': {'insert'},
     'LocalDb.touchBaseline': {'update'},
+    // Upstream's activity review (log D19): a baselines write refused when a
+    // review landed since the calculation started.
+    'LocalDb.putReviewedBaseline': {'insert'},
   },
 };
 
@@ -68,8 +83,6 @@ const _pinnedDynamicWriters = <String, String>{
       'DATA: UPDATE device; only a column fragment is interpolated',
   'lib/data/db.dart LocalDb.deleteEvents':
       'DATA: DELETE FROM events; only the placeholder list is interpolated',
-  'lib/ui2/screens/nutrition_screen.dart _NutritionScreenState._confirmDelete':
-      'DATA: NutritionDb.delete(db, id) takes a database handle first; food tables only',
   'lib/data/db.dart LocalDb._rekeyTableByDevice':
       'MIGRATION (bounded row writes): decoded_onehz / decoded_rr / samples re-key, rows copied into a temp table and swapped in',
   'lib/data/db.dart LocalDb._rekeyByDeviceIdV51':
@@ -116,6 +129,49 @@ const _pinnedDynamicWriters = <String, String>{
       'NOT SQL: List.insert(0, line)',
   'lib/data/sample_import.dart importSamplePart':
       'NOT SQL: a local helper named insert(blob, ...) for spectral_archive parts',
+  // Upstream's, kept by the merge (log D14, D16, D17, D18). None names
+  // day_result or baselines except clearDerivedDays, which is the same
+  // delete as the allow-listed deleteDays over derived tables only.
+  'lib/data/db.dart LocalDb.clearDerivedDays':
+      'DATA: fixed list of derived tables (day_result, metric_series*, metric_method, candidates, wake features) for days whose only source was switched off; a delete, like deleteDays',
+  'lib/data/db.dart LocalDb.adoptDeviceWearing':
+      'DATA: UPDATE device via a const statement',
+  'lib/data/db.dart LocalDb._updateFreshnessJson':
+      'DATA: compute_freshness read-modify-write in one transaction',
+  'lib/data/db.dart LocalDb.exportCopy':
+      'DATA: deletes the substrate archive table from the EXPORT copy, not the store',
+  'lib/data/recent_slice.dart exportRecentSlice':
+      'DATA: writes the issue-report slice FILE (schema + recent rows copied from an attached store), not the store',
+  'lib/data/substrate_archive.dart SubstrateArchive.writePolicy':
+      'DATA: the substrate archive table only (SubstrateArchive.table)',
+  'lib/data/substrate_archive.dart SubstrateArchive._archiveBucket':
+      'DATA: the substrate archive table only',
+  'lib/data/substrate_archive.dart SubstrateArchive.deleteRanges':
+      'DATA: decoded_onehz / decoded_rr and the archive table, archive-then-delete',
+  'lib/data/substrate_archive.dart SubstrateArchive.copyArchiveInto':
+      'DATA: archive rows into an EXPORT copy',
+  'lib/data/substrate_archive.dart SubstrateArchive.restoreRows':
+      'DATA: decoded tables restored from the archive',
+  'lib/data/substrate_archive.dart SubstrateArchive.evict':
+      'DATA: the archive table only',
+  'lib/coach/coach_db.dart CoachDb._serveToday':
+      'SCHEMA: CREATE TEMP VIEW over main.v_daily / main.v_metric (coach read side)',
+  'lib/data/auto_backup.dart _runBackup':
+      'NOT SQL: backup storage file delete',
+  'lib/data/auto_backup.dart _pruneStorage':
+      'NOT SQL: backup storage file delete',
+  'lib/data/auto_backup.dart deleteAutomaticBackups':
+      'NOT SQL: backup storage file delete',
+  'lib/support/issue_report.dart _recentLog':
+      'NOT SQL: List.insert(0, bytes)',
+  'lib/support/issue_report.dart deleteReport':
+      'NOT SQL: HTTP DELETE',
+  'lib/sync/ios_shortcut_sync.dart IosShortcutSync._sync':
+      'NOT SQL: task progress update(...)',
+  'lib/ui2/screens/log_food.dart _LogFoodSheetState._write':
+      'DATA: NutritionDb.update(db, entry); food tables only',
+  'lib/ui2/screens/log_food.dart _LogFoodSheetState._remove':
+      'DATA: NutritionDb.delete(db, id); food tables only',
 };
 
 /// Plain-string lists that mention `day_result` or `baselines`, each with why
@@ -129,6 +185,16 @@ const _pinnedTableLists = <String, String>{
       'a DENY list for coach SQL',
   'lib/compute/sleep_blank.dart <top>':
       '_nightBlocks names payload keys ("baselines" is a bundle block)',
+  // Upstream's wearable input columns (log D16): `at(day, ['baselines', ...])`
+  // payload key paths into a stored bundle, read side only.
+  'lib/compute/inputs/colmi_inputs.dart kColmiColumn': 'bundle key paths',
+  'lib/compute/inputs/garmin_inputs.dart kGarminColumn': 'bundle key paths',
+  'lib/compute/inputs/miband_inputs.dart kMiBandColumn': 'bundle key paths',
+  'lib/compute/inputs/oura_inputs.dart kOuraColumn': 'bundle key paths',
+  'lib/compute/inputs/pebble_inputs.dart rhrOnlyReadiness': 'bundle key path',
+  'lib/compute/inputs/pebble_inputs.dart kPebbleColumn': 'bundle key paths',
+  'lib/compute/inputs/ultrahuman_inputs.dart kUltrahumanColumn':
+      'bundle key paths',
 };
 
 /// The text of member [name] in comment-blanked [code]: signature through the
@@ -664,6 +730,10 @@ class Queue {
   });
 
   group('(b) UPDATE day_result in exactly one place', () {
+    // Plus upstream's two heals kept by the merge (log D13, D14): the v72
+    // imported skin-temp scrub (one statement in the open) and the raw-free
+    // nap one-shot (a compare-and-set like the re-encode). Each sets only
+    // payload_json, so no flag or version on a frozen row ever moves.
     test('one site, in reencodeLegacyDayResults, setting only payload_json',
         () {
       final updates = <(String, WriteSite)>[];
@@ -674,16 +744,26 @@ class Queue {
           }
         }
       });
-      expect(updates, hasLength(1), reason: '$updates');
-      final (path, site) = updates.single;
-      expect(path, _dbFile);
-      expect(site.member, 'LocalDb.reencodeLegacyDayResults');
-      expect(updatedColumns(site), {'payload_json'});
       expect(
-        site.text,
-        contains('payload_json = ?'),
-        reason: 'the update must be a compare-and-set on the payload it read',
+        {for (final (p, s) in updates) '$p ${s.member}'},
+        {
+          '$_dbFile LocalDb.reencodeLegacyDayResults',
+          '$_dbFile LocalDb.rewriteDayPayload',
+          '$_dbFile LocalDb._scrubImportedSkinTempZ',
+        },
+        reason: '$updates',
       );
+      expect(updates, hasLength(3), reason: '$updates');
+      for (final (_, site) in updates) {
+        expect(updatedColumns(site), {'payload_json'}, reason: site.member);
+        if (site.member == 'LocalDb._scrubImportedSkinTempZ') continue;
+        expect(
+          site.text,
+          contains('payload_json = ?'),
+          reason: '${site.member}: the update must be a compare-and-set on '
+              'the payload it read',
+        );
+      }
     });
   });
 }
