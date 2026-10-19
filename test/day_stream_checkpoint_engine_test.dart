@@ -421,7 +421,13 @@ void main() {
       await oracle();
       expect(await stored(), equals(got));
       expect(out.rrRead, isNotNull);
-      expect(out.rrRead, beatsIn(start, start + second));
+      // The probe reads only the blob's header (no decode on the UI isolate),
+      // so the damage is found at restore, after the tail was queued: the pass
+      // reads the whole day once more than that tail, never less than the day.
+      final whole = beatsIn(start, start + second);
+      final tail = beatsIn(
+          start + first - kRevBucketSec - kRrReadSlackSec, start + second);
+      expect(out.rrRead, inInclusiveRange(whole, whole + tail));
     });
   });
 
