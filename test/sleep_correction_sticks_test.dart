@@ -41,7 +41,12 @@ void main() {
 
   tearDownAll(() async => LocalDb.close());
 
-  test('a typed window over a detected night is stored as typed', () async {
+  // Our rule (5e205cfe, merge log D27): "Set the times myself" means absence,
+  // not a number the app worked out. The typed bounds are kept exactly on the
+  // override row and the night's metrics stay blank, as for "Not sleep".
+  // Upstream staged the typed window instead.
+  test('a typed window over a detected night is stored as typed, metrics blank',
+      () async {
     expect(await DerivationEngine().runDays(_profile, {_dayId}, force: true), 1);
     expect(_window(await _payload()), isNotNull, reason: 'detected first');
 
@@ -53,9 +58,13 @@ void main() {
 
     final b = await _payload();
     expect(b['sleep_source'], 'manual');
-    final w = _window(b)!;
-    expect((w['onset_ms'] as num) ~/ 1000, onset);
-    expect((w['offset_ms'] as num) ~/ 1000, offset);
+    expect(((b['sleep'] as Map?)?['window'] as Map?)?['value'], isNot(isA<Map>()),
+        reason: 'no staged night for a typed window');
+    expect((b['scalars'] as Map)['tst_min'], isNull);
+    final ov = (await LocalDb.getSleepOverride(_dayId))!;
+    expect(ov['onset_ts'], onset);
+    expect(ov['offset_ts'], offset);
+    expect(ov['source'], 'manual');
   }, timeout: const Timeout(Duration(minutes: 5)));
 
   test('"Not sleep" over a stored night leaves the day with no night',
