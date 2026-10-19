@@ -72,7 +72,19 @@ class ListDigestCache {
 
   void clear() => _byList.clear();
 
+  /// Lists shorter than this are digested on every call and never kept: the
+  /// per-window sublists of the day curves are a few hundred long, cheap to
+  /// walk, and many, so caching them would only retain memory.
+  static const int minCachedLength = 2048;
+
   (int, int) digest(List<double> list) {
+    if (list.length < minCachedLength) {
+      final fp = PrefixFingerprint();
+      for (var i = 0; i < list.length; i++) {
+        fp.addDouble(list[i]);
+      }
+      return fp.words;
+    }
     final hit = _byList[list];
     if (hit != null && hit.$1 == list.length) return (hit.$2, hit.$3);
     final fp = PrefixFingerprint();

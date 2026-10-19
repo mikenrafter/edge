@@ -2126,6 +2126,9 @@ Map<String, dynamic> deriveDayBundle(
   // The night's state for the next checkpoint, encoded HERE so the UI isolate
   // only ever carries its bytes (AGENTS.md 3.10).
   if (state != null) state.exportedNightJson = state.exportNightJsonHeavy();
+  // The state goes back to the engine and is kept between passes: drop this
+  // pass's list digests so it carries no sample lists across the isolate.
+  state?.endPass();
   return state == null ? bundle : _ownedBundleJson(bundle) as Map<String, dynamic>;
 }
 

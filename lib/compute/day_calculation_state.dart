@@ -126,6 +126,8 @@ class DayCalculationState {
   void compact() {
     _enmo = IncrementalEnmoSeries();
     _enmoHeld = 0;
+    // A kept state must not hold the last pass's sample lists alive.
+    _digests.clear();
   }
 
   // ── Night RR correction, streamed ──────────────────────────────────────────
@@ -571,6 +573,10 @@ class DayCalculationState {
 
   /// Starts a derive pass: lists may have changed since the last one.
   void beginPass() => _digests.clear();
+
+  /// Ends a derive pass: drops the digests so a state kept between passes (the
+  /// engine keeps up to three days) does not hold their sample lists alive.
+  void endPass() => _digests.clear();
 
   T evaluate<T>(
     String key,
