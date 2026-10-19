@@ -7611,11 +7611,15 @@ class AppState extends ChangeNotifier {
   /// [foreground] false: a background Shortcut's session (no UI work).
   Future<void> openSession({bool foreground = true}) {
     // Fresh activity-review backoff budget per session start, so a review
-    // chain that gave up earlier retries. After the call: its synchronous
-    // prefix has already cleared the background flag the retry checks.
-    _activityReviewAttempts = 0;
+    // chain that gave up earlier retries. Only for a call that starts one: a
+    // busy (or unpaired) call returns early and must not grant a new budget
+    // (upstream). Read before the call, which may go busy. The refresh runs
+    // after it: its synchronous prefix has already cleared the background
+    // flag the retry checks.
+    final starts = paired != null && !_disposed && !busy;
+    if (starts) _activityReviewAttempts = 0;
     final run = _sync.openSession(foreground: foreground);
-    unawaited(refreshActivityReviews(retry: true));
+    if (starts) unawaited(refreshActivityReviews(retry: true));
     return run;
   }
 
