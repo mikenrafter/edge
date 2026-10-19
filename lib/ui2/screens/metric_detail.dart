@@ -1257,8 +1257,12 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
           _StepGoalGauge(
               steps: null, goal: d.stepGoal, color: spec.color, onSaved: _load),
         ],
-        const SizedBox(height: S.x5),
-        investigateRow(c, () => go(c, Investigate(widget.metricKey))),
+        // Not while the first read is out: the chart lands above it and would
+        // push the door down the screen. It arrives with the data instead.
+        if (!_loading) ...[
+          const SizedBox(height: S.x5),
+          investigateRow(c, () => go(c, Investigate(widget.metricKey))),
+        ],
       ] else ...[
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
