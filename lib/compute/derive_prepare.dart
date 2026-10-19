@@ -515,10 +515,14 @@ PreparedDerivationPayload prepareDerivationPayload(
         : (win.onsetMs != null
               ? (win.onsetMs! / 1000).round()
               : (sleepSub.firstTs ?? 0));
+    // A typed window's offset is already the exclusive end the user typed
+    // (D27 revised: staged inside exactly the typed bounds); every other
+    // window keeps the one-past-the-offset convention.
     final offsetSec = win == null
         ? 0
         : (win.offsetMs != null
-              ? (win.offsetMs! / 1000).round() + 1
+              ? (win.offsetMs! / 1000).round() +
+                  (day.sleepSource == 'manual' ? 0 : 1)
               : ((sleepSub.lastTs ?? -1) + 1));
     days.add(
       PreparedDerivationDay(

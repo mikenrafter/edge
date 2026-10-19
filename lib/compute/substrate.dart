@@ -1254,7 +1254,7 @@ class SleepWindowOverride {
   final String dayId;
   final int onsetSec;
   final int offsetSec;
-  final String source; // 'manual' | 'confirmed' | 'rejected' (manual and rejected blank the metrics)
+  final String source; // 'manual' | 'confirmed' | 'rejected' (only rejected blanks the metrics)
   // 'rejected': onsetSec/offsetSec still carry the window being rejected (the
   // auto-detected window at the time of rejection, same convention the
   // already-shipped rejected-nap rows use), but the window is never staged —
@@ -1268,11 +1268,16 @@ class SleepWindowOverride {
   });
 }
 
-/// Whether an override of this [source] blanks the night's metrics: "Not
-/// sleep" and the user's own times both mean absence rather than a number the
-/// app worked out. Only 'confirmed' (the user agreeing with the app's own
-/// window) still stages.
-bool userBlanksNight(String source) => source == 'rejected' || source == 'manual';
+/// Whether an override of this [source] blanks the night's staging: only
+/// "Not sleep" ('rejected'). A typed window ('manual') is staged inside exactly
+/// its bounds, like a confirmed one (merge log D27 revised, owner 2026-10-19).
+bool userBlanksNight(String source) => source == 'rejected';
+
+/// Whether an override of this [source] replaces the stored night even when
+/// nothing could be staged from it: "Not sleep", and a typed window over time
+/// the band did not record (the old night is gone, nothing is invented).
+bool userReplacesNight(String source) =>
+    source == 'rejected' || source == 'manual';
 
 /// Local YYYY-MM-DD label for an epoch-second instant.
 String localDateLabel(int epochSec) =>
@@ -1399,12 +1404,10 @@ List<PhysioDay> calendarDays(
       ana.SleepSegmentation s;
       String src;
       if (ov != null && userBlanksNight(ov.source)) {
-        // The user's word: this was NOT sleep ('rejected'), or the times are
-        // theirs and the metrics are not ('manual'). Skip detection/staging
-        // entirely rather than force a window — the day derives with no main
-        // sleep, same as the already-shipped rejected-nap path
-        // (`sleep_nap` source='rejected'). A 'manual' window's bounds are still
-        // on the override row and are what the Sleep screen shows.
+        // The user's word: this was NOT sleep ('rejected'). Skip
+        // detection/staging entirely rather than force a window — the day
+        // derives with no main sleep, same as the already-shipped rejected-nap
+        // path (`sleep_nap` source='rejected').
         s = ana.SleepSegmentation.absent;
         src = ov.source;
       } else if (ov != null) {

@@ -7,6 +7,7 @@
 // them (decode, merge, cut to the window, prune, encode) happens in here.
 
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:openstrap_analytics/onehz.dart' as ana;
@@ -149,6 +150,28 @@ SleepStagingResult stageSleepCandidateHeavy(
     rowCache: rowCache,
     vendorNights: input.vendorNights,
   );
+  // A user's own window carries per-stage minute ranges (D27 revised): from
+  // the stager's evidence where the band recorded, as wide as the window
+  // where it did not. Detected nights are left exactly as they were.
+  final ov = input.override;
+  final ranges = ov == null || userBlanksNight(ov.source)
+      ? null
+      : userWindowStageRangesHeavy(input.searchSub,
+          onsetSec: ov.onsetSec, offsetSec: ov.offsetSec, rowCache: rowCache);
+  final staged = ranges == null
+      ? candidate
+      : SleepSessionCandidate(
+          dayId: candidate.dayId,
+          confidence: candidate.confidence,
+          flags: candidate.flags,
+          sleepJson: {...candidate.sleepJson, 'stage_ranges': ranges},
+          hypnoStages: candidate.hypnoStages,
+          sleepOnsetSec: candidate.sleepOnsetSec,
+          sleepOffsetSec: candidate.sleepOffsetSec,
+          sleepSource: candidate.sleepSource,
+          deviceNight: candidate.deviceNight,
+          deviceId: candidate.deviceId,
+        );
   // Fold the MAIN sleep (most epochs) of a freshly-staged night into the
   // rolling profile — done here in the worker because the observations live in
   // THIS isolate's globals. Skipped for overrides. EWMA self-seeds.
@@ -200,7 +223,7 @@ SleepStagingResult stageSleepCandidateHeavy(
     return true;
   });
   return SleepStagingResult(
-    candidateJson: jsonEncode(candidate.toJson()),
+    candidateJson: jsonEncode(staged.toJson()),
     observationJson: observationJson,
     rowsJson: all.length == 0 ? null : encodeCardioRowsHeavy(all),
     rowsLoSec: all.length == 0 ? 0 : lo,
@@ -208,4 +231,113 @@ SleepStagingResult stageSleepCandidateHeavy(
     rowHits: rowCache.hits,
     rowMisses: rowCache.misses,
   );
+}
+
+/// Per-stage minute ranges (`sleep.stage_ranges`) for a user-asserted window
+/// [onsetSec, offsetSec) over [sub], as analytics `stageMinuteRanges` gives them:
+/// `{wake, light, deep, rem} -> {lo, hi}`. Null for an empty window.
+///
+/// The evidence is the cardio stager's own, from the same calls
+/// `segmentSleep`'s forced-window path makes (`AdvancedSleepStager.
+/// _stageSessionCardio`, which keeps its result private): the window is split
+/// into runs of usable accel (a real sample or a carry-forward of at most
+/// [ana.AdvancedSleepStager.maxAccelCarryForwardSec]), each run of at least
+/// three epochs is staged on its own, and the runs' epochs are concatenated.
+/// The arrays are built exactly as there, and [rowCache] holds the rows the
+/// staging just computed, so these calls reproduce its labels.
+///
+/// Every 30 s of the window that no staged epoch covers (no samples, a gap, a
+/// run too short to stage, or one the stager abstained on) is added as an
+/// UNCOVERED, unlabelled epoch: it could be any stage, so it widens every range
+/// and raises no `lo`. Nothing is labelled for it; the point minutes stay the
+/// segmentation's, from recorded time only. With no samples at all every
+/// stage is `{lo: 0, hi: window minutes}`.
+@heavy
+Map<String, Map<String, double>>? userWindowStageRangesHeavy(
+  Substrate sub, {
+  required int onsetSec,
+  required int offsetSec,
+  ana.CardioRowCache? rowCache,
+}) {
+  final span = offsetSec - onsetSec;
+  if (span <= 0) return null;
+  const epSec = 30;
+  final evidence = <ana.StageEpochEvidence>[];
+  final accel = sub.isEmpty ? const <ana.AccelSample>[] : sub.accelSamples();
+  final hr1hz = sub.isEmpty ? const <double>[] : sub.hr1hz();
+  final n = math.min(accel.length, hr1hz.length);
+  bool inWindow(int ts) => ts >= onsetSec && ts < offsetSec;
+  // Same maps as the stager: the last sample of a second wins.
+  final gBy = <int, ana.AccelSample>{
+    for (var i = 0; i < n; i++)
+      if (accel[i].valid && inWindow(accel[i].tsMs ~/ 1000))
+        accel[i].tsMs ~/ 1000: accel[i],
+  };
+  final hBy = <int, double>{
+    for (var i = 0; i < n; i++)
+      if (hr1hz[i] > 0 && inWindow(accel[i].tsMs ~/ 1000))
+        accel[i].tsMs ~/ 1000: hr1hz[i],
+  };
+  final rMs = <double>[], rTs = <double>[];
+  for (var i = 0; i < math.min(sub.rrMs.length, sub.rrTsMs.length); i++) {
+    final ms = sub.rrMs[i];
+    if (!ms.isFinite || ms <= 0) continue;
+    final ts = (sub.rrTsMs[i] / 1000.0).round();
+    if (!inWindow(ts)) continue;
+    rMs.add(ms);
+    rTs.add(ts * 1000.0);
+  }
+  if (span >= 3 * epSec && gBy.isNotEmpty) {
+    final acc = List<ana.AccelSample>.filled(
+        span, ana.AccelSample(onsetSec * 1000.0, 0, 0, 1.0));
+    final hr = List<double>.filled(span, 0.0);
+    final usable = List<bool>.filled(span, false);
+    var last = -1;
+    for (var i = 0; i < span; i++) {
+      final ts = onsetSec + i;
+      final g = gBy[ts];
+      if (g != null) {
+        acc[i] = ana.AccelSample(ts * 1000.0, g.x, g.y, g.z);
+        last = i;
+        usable[i] = true;
+      } else if (last >= 0 &&
+          i - last <= ana.AdvancedSleepStager.maxAccelCarryForwardSec) {
+        final p = acc[i - 1];
+        acc[i] = ana.AccelSample(ts * 1000.0, p.x, p.y, p.z);
+        usable[i] = true;
+      }
+      hr[i] = hBy[ts] ?? 0.0;
+    }
+    // Evidence only: this second pass must not record another observation
+    // for the rolling sleep profile.
+    final recording = ana.cardioRecordObservations;
+    ana.cardioRecordObservations = false;
+    try {
+      var i = 0;
+      while (i < span) {
+        if (!usable[i]) {
+          i++;
+          continue;
+        }
+        var j = i;
+        while (j < span && usable[j]) {
+          j++;
+        }
+        if (j - i >= 3 * epSec) {
+          evidence.addAll(ana
+              .cardioStager(hr.sublist(i, j), acc.sublist(i, j),
+                  rrMs: rMs, rrTsMs: rTs, rowCache: rowCache)
+              .epochEvidence);
+        }
+        i = j;
+      }
+    } finally {
+      ana.cardioRecordObservations = recording;
+    }
+  }
+  final uncovered = span ~/ epSec - evidence.length;
+  for (var k = 0; k < uncovered; k++) {
+    evidence.add(const ana.StageEpochEvidence(covered: false));
+  }
+  return ana.stageMinuteRanges(evidence, epochSec: epSec)?.toJson();
 }

@@ -1922,10 +1922,20 @@ import '../util/worker_entries.dart' show Dispatcher;
 // | finalized by a build on the bf1be198 pin holds artifact_fraction 1.0 for a day
 // | or night with no beats, and without this bump the 0fc57682 build would serve it
 // | as if derived under the new pin (AGENTS 3.4). No verdict or figure changes.
-// INTEGRATION (no separate number, owner's call): this build is upstream 113
-// plus the fork's derivation changes above and the analytics integration
-// branch (upstream's metric rules, the fork's streams; see kAnalyticsPin).
-const int kAlgoVersion = 113;
+// INTEGRATION: upstream 113 plus the fork's derivation changes above and the
+// analytics integration branch (upstream's metric rules, the fork's streams;
+// see kAnalyticsPin).
+// 114: our single bump atop upstream 113 (merge log D27 revised, owner
+// 2026-10-19), so no (day, 113) row derived by upstream is served as ours and
+// every fork (day, 101..104) row re-derives. It covers every stored-output
+// change of the integration: D16 (the fork's derivation changes and the
+// analytics merge), D25 (the waking-HR dip hand-off), D28 (ring/wearable
+// derive fixes) and D27: a typed sleep window ('manual') is no longer blanked
+// but staged inside exactly the typed bounds, and a user's window ('manual' /
+// 'confirmed') stores `sleep.stage_ranges` ({wake, light, deep, rem} ->
+// {lo, hi} minutes, analytics `stageMinuteRanges`, pin ddb61f7), widened by
+// every 30 s of the window the band did not record. 'rejected' still blanks.
+const int kAlgoVersion = 114;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -5090,7 +5100,7 @@ class DerivationEngine {
   /// Take every night the user blanked back out of the rolling sleep profile.
   ///
   /// A night folded in while it was an automatic one keeps shaping the staging
-  /// thresholds after the user rejects it or sets the times themselves, which
+  /// thresholds after the user rejects it ("Not sleep"), which
   /// is "in a baseline" by another name. An EWMA cannot be un-folded, so the
   /// profile is REFOLDED, chronologically, from the observations stored beside
   /// it, minus the blanked nights. Days in the profile with no stored
@@ -5103,7 +5113,8 @@ class DerivationEngine {
   /// [SleepProfilePolicy.maxStoredObservations] EWMA steps), so it stays on the
   /// calling isolate under the same exclusive transaction as the fold itself.
   Future<void> _forgetBlankedNightsInSleepProfile() async {
-    final blanked = await _blankingOverrideDays();
+    // A typed window is a staged night (D27 revised): it stays in the profile.
+    final blanked = await _blankingOverrideDays(null, true);
     if (blanked.isEmpty) return;
     await LocalDb.updateBaseline('sleep_user_profile', (current) {
       final usable = SleepProfilePolicy.usableProfileJson(current);
@@ -6597,6 +6608,20 @@ class DerivationEngine {
     final blankSource = await _userBlankedNight(day.date, scMap);
     if (blankSource != null) {
       bundle['sleep_source'] = blankSource;
+      // A typed window the band recorded none of: the night is the user's
+      // window with nothing staged in it (D27 revised). Keep the window they
+      // typed on the day; the stage ranges, if staging wrote them, say any
+      // stage is possible for all of it.
+      final sleep = bundle['sleep'];
+      final ov = blankSource == 'manual'
+          ? await LocalDb.getSleepOverride(day.date)
+          : null;
+      if (ov != null && sleep is Map && sleep['window'] is Map) {
+        (sleep['window'] as Map)['value'] = {
+          'onset_ms': (ov['onset_ts'] as num).toInt() * 1000,
+          'offset_ms': (ov['offset_ts'] as num).toInt() * 1000,
+        };
+      }
       if (producedNothing) {
         if (batchReference) return true;
         final committed = await _blankStoredNight(day, bundle, blankSource, reason);
@@ -8035,16 +8060,23 @@ class DerivationEngine {
     required bool nightScalarsNull,
   }) => !sleepRejected && sleepSubEmpty && nightScalarsNull;
 
-  /// Days whose night the user blanked ('Not sleep', or a window of their own),
-  /// optionally limited to [within]. Read from the override rows alone, so it
-  /// holds when there is no raw and no data edge at all.
-  Future<Set<String>> _blankingOverrideDays([Iterable<String>? within]) async {
+  /// Days whose stored night the user replaced ('Not sleep', or a window of
+  /// their own), optionally limited to [within]; with [rejectedOnly], only
+  /// "Not sleep" (a typed window over recorded time is a staged night).
+  /// Read from the override rows alone, so it holds when there is no raw and no
+  /// data edge at all.
+  Future<Set<String>> _blankingOverrideDays([
+    Iterable<String>? within,
+    bool rejectedOnly = false,
+  ]) async {
     final only = within?.toSet();
     final out = <String>{};
     for (final day in await LocalDb.sleepOverrideDays()) {
       if (only != null && !only.contains(day)) continue;
       final ov = await LocalDb.getSleepOverride(day);
-      if (ov != null && userBlanksNight(ov['source'] as String? ?? 'manual')) {
+      final source = ov?['source'] as String? ?? 'manual';
+      if (ov != null &&
+          (rejectedOnly ? userBlanksNight(source) : userReplacesNight(source))) {
         out.add(day);
       }
     }
@@ -8052,8 +8084,9 @@ class DerivationEngine {
   }
 
   /// Whether the user has blanked [dayId]'s night: the override source when
-  /// this derive found no night to compute, else null. "Not sleep" and a
-  /// window of the user's own ('manual') both blank; only 'confirmed' stages.
+  /// this derive found no night to compute, else null. "Not sleep" always
+  /// blanks; a window of the user's own ('manual') is staged, and blanks only
+  /// when the band recorded none of it. 'confirmed' never blanks.
   /// A user's override beats the edge#305 "raw was pruned" reading: with it the
   /// stored night is the thing to remove, not to protect.
   Future<String?> _userBlankedNight(
@@ -8063,7 +8096,7 @@ class DerivationEngine {
     final ov = await LocalDb.getSleepOverride(dayId);
     if (ov == null || scalars?['tst_min'] != null) return null;
     final source = ov['source'] as String? ?? 'manual';
-    return userBlanksNight(source) ? source : null;
+    return userReplacesNight(source) ? source : null;
   }
 
   /// Drop the pinned morning readiness when it belongs to [dayId]: the pin is a
@@ -8142,7 +8175,8 @@ class DerivationEngine {
     Map<String, dynamic> next, {
     // Blocks that must not be inherited (the night's own, for a blanked night).
     Set<String> skip = const {},
-    // The user blanked this night ('rejected' / 'manual'). The previous result
+    // The user blanked this night ('rejected', or a 'manual' window with
+    // nothing recorded in it). The previous result
     // still holds the night, and the scalar / series / sleep-period maps below
     // merge per key, so without this a failed second half gave the old night
     // back to a day that is supposed to have none.

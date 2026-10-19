@@ -1590,6 +1590,16 @@ Map<String, dynamic> deriveDayBundle(
       tier: Tier.estimate,
       inputs: const ['sleep_stages'],
     ),
+    // A user's own window only (D27 revised): {wake, light, deep, rem} ->
+    // {lo, hi} minutes, as wide as the time the band did not record. Written
+    // even when nothing could be staged; never on a detected night.
+    if (d.sleepJson['stage_ranges'] is Map)
+      'stage_ranges': _envelope(
+        (d.sleepJson['stage_ranges'] as Map).cast<String, dynamic>(),
+        confidence: sleepConf,
+        tier: Tier.estimate,
+        inputs: const ['sleep_stages'],
+      ),
     // Why this night produced nothing, when the segmenter knows. Null on a
     // normal night; never render a bare dash for an absence that carries one.
     'absence_reason': absenceReason,
