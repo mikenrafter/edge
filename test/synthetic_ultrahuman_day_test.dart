@@ -385,9 +385,11 @@ void main() {
     expect(await debugAgingEdge('ultrahuman', ringEdge + 999), ringEdge);
     // And a baseline change rescans the ring's recent days (the four, and
     // 30 Sep, where the first night began), not only the band's (which are
-    // past the rescan window here).
+    // past the rescan window here). 1 Oct finalized above, and a finalized
+    // row at this version is frozen (our storage rule, LocalDb.putDayResult),
+    // so the rescan leaves it: four of the five.
     await LocalDb.setCursor('baseline_sig', 'stale');
-    expect(await DerivationEngine().rescanRecent(_profile), 5);
+    expect(await DerivationEngine().rescanRecent(_profile), 4);
   }, timeout: const Timeout(Duration(minutes: 3)));
 
   test('the 5-minute stager reads a record against the night\'s levels', () {
