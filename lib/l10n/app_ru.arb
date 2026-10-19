@@ -699,8 +699,8 @@
   "scanBarcodeTypeInstead": "Ввести цифры вручную",
   "findingsLogTitle": "Наблюдения",
   "findingsLogEmptyTitle": "Отклонений не обнаружено",
-  "findingsLogEmptyBody": "Сообщать не о чем. Проверки признаков болезни, необычных ночей, температуры кожи и сдвига пульса в покое ничего не нашли.",
-  "findingsLogDerivedNote": "Рассчитывается по вашим дням при каждом открытии, а не сохраняется в момент события. После повторного анализа дня наблюдения могут измениться.",
+  "findingsLogEmptyBody": "Ничего необычного не найдено.",
+  "findingsLogDerivedNote": "Пересчитывается при каждом открытии, поэтому может измениться, если день проанализирован заново.",
   "startCardDefaultSub": "Выберите и начните",
   "monthGridCoverage": "{have} из {total} дней",
   "@monthGridCoverage": {
@@ -739,8 +739,8 @@
     }
   },
   "whatChangedNothingTitle": "Отклонений не обнаружено",
-  "whatChangedNothingBody": "Все показатели с достаточной историей находятся в диапазоне ваших предыдущих дней. Это полноценный результат проверки.",
-  "whatChangedMethodologyNote": "Сравнение с вашими недавними днями, в ваших единицах, с указанным периодом. Здесь нет причин и диагнозов.",
+  "whatChangedNothingBody": "Всё, по чему накоплено достаточно данных, в пределах вашего обычного диапазона.",
+  "whatChangedMethodologyNote": "Сравнение с вашими недавними днями. Это не диагноз.",
   "whatChangedDayLinkTitle": "Что было в этот день",
   "whatChangedDayLinkSub": "Сон, тренировки, питание и записи по времени",
   "whatChangedMonthSection": "Предшествующий месяц",
@@ -814,14 +814,14 @@
   "aiBriefingEmptyCardBody": "На момент составления ни у одного показателя не было значения, поэтому запрос их не содержал.",
   "napsFellAsleepHelp": "КОГДА ВЫ ЗАСНУЛИ",
   "napsWokeUpHelp": "КОГДА ВЫ ПРОСНУЛИСЬ",
-  "napsInvalidWindow": "Дневной сон длится от 5 минут до 6 часов. Более долгий сон относится к ночному, где можно просмотреть его стадии.",
-  "napsOverlap": "Этот период пересекается с уже записанным дневным сном. Сначала удалите прежнюю запись, чтобы не учитывать одно время дважды.",
+  "napsInvalidWindow": "Дневной сон длится от 5 минут до 6 часов.",
+  "napsOverlap": "Это пересекается с существующим дневным сном.",
   "napsNotReanalysed": "Повторный анализ дня не выполнен: уже идёт другой анализ. Изменение сохранено и будет учтено в следующий раз.",
   "napsTitle": "Дневной сон",
   "napsNoReadingTitle": "Нет данных о дневном сне за этот день",
-  "napsNoReadingBody": "Дневной сон определяется по той же записи с частотой 1 Гц, что и остальные показатели дня. За этот день записи недостаточно.",
+  "napsNoReadingBody": "Недостаточно записи для обнаружения дневного сна.",
   "napsEmptyTitle": "В этот день дневной сон не обнаружен",
-  "napsEmptyBody": "Не было достаточно долгого периода покоя со снижением пульса, характерным для сна.",
+  "napsEmptyBody": "Дневной сон не обнаружен.",
   "napsCountsToward": "{mins} дневного сна учитывается в потребности во сне на эту ночь.",
   "@napsCountsToward": {
     "placeholders": {
@@ -836,7 +836,6 @@
   "napsRemovedSection": "Удалённые",
   "napsPutBackSemantic": "Восстановить эту запись дневного сна",
   "napsPutBackLabel": "Восстановить",
-  "napsRemovalKept": "Удаление сохраняется как временной интервал, а не идентификатор. Поэтому оно действует и после изменения границ, найденных алгоритмом.",
   "napsYouLoggedThis": "Записано вами",
   "napsDetected": "Обнаружено",
   "napsLoggedWithMins": "{mins} · записано вами",
@@ -871,7 +870,7 @@
   },
   "readinessDetailWhatWasMissing": "Чего не хватило",
   "readinessDetailWhatWentIntoIt": "Что учтено",
-  "readinessDetailInputsFooter": "{used}/{total} исходных показателей. Каждый сравнивается с вашей историей. Это отдельное представление тех же данных, а не части оценки выше.",
+  "readinessDetailInputsFooter": "{used}/{total} показателей, каждый сравнивается с вашей историей.",
   "@readinessDetailInputsFooter": {
     "placeholders": {
       "used": {
@@ -882,7 +881,7 @@
       }
     }
   },
-  "readinessDetailBreakdownNoScoreNote": "Упрощённый взгляд на те же четыре показателя. Они не складываются в сегодняшнюю оценку, которой нет по причине выше.",
+  "readinessDetailBreakdownNoScoreNote": "Не складывается в оценку, которой нет по причине, указанной выше.",
   "readinessDetailNoBreakdownTitle": "Разбивка пока недоступна",
   "readinessDetailNoBreakdownBody": "Для сравнения каждого показателя с вашей историей нужно около двух недель ночных измерений.",
   "readinessDetailHistoryTitle": "История",
@@ -1027,7 +1026,7 @@
   "roughNightWarmRoom": "Температура кожи была выше обычного. Тёплая комната тоже может это объяснять.",
   "roughNightDismiss": "Скрыть",
   "roughNightDefaultHeadline": "Ночь была тяжелее обычного",
-  "roughNightSummary": "{sentence}, в сравнении с вашими ночами. Это измерения за ночь, а не оценка вас.",
+  "roughNightSummary": "{sentence}, по сравнению с вашими ночами.",
   "@roughNightSummary": {
     "placeholders": {
       "sentence": {
@@ -1036,7 +1035,6 @@
     }
   },
   "roughNightTellWhatHappened": "Записать, что произошло",
-  "roughNightNothingToAnswer": "Ответ не требуется — карточка только сообщает о ночи.",
   "roughNightWhatElse": "Что ещё происходило?",
   "roughNightAnythingElse": "Что-нибудь ещё?",
   "roughNightSaving": "Сохранение",
@@ -1095,11 +1093,11 @@
   "driverBreakdownRelativeUncalibrated": "относительное, без калибровки",
   "driverBreakdownWithinUsualSpread": "в пределах обычного разброса",
   "driverBreakdownBiggerThanNoise": "больше погрешности измерений",
-  "driverBreakdownSmallerThanNoise": "за пределами обычного разброса, но может объясняться погрешностью измерений",
+  "driverBreakdownSmallerThanNoise": "за пределами обычного диапазона, но в пределах обычной погрешности",
   "driverBreakdownWhatHelped": "Что помогло",
   "driverBreakdownWhatHeldYouBack": "Что мешало",
   "driverBreakdownNeither": "Без заметного влияния",
-  "driverBreakdownFooter": "Каждый показатель сравнивается с вашей историей и показан рядом с оценкой, а не как её часть. «Погрешность измерений» — насколько показание меняется само.",
+  "driverBreakdownFooter": "Каждый показатель сравнивается с вашей историей. Погрешность измерений — насколько показание меняется само.",
   "driverBreakdownHideHistory": "{label}, скрыть историю",
   "@driverBreakdownHideHistory": {
     "placeholders": {
@@ -1126,11 +1124,9 @@
   },
   "driverBreakdownToday": "Сегодня",
   "driverBreakdownAbsenceTitle": "Нет данных для разбивки",
-  "driverBreakdownAbsenceAlgoVersion": "В последнем обновлении изменился расчёт восстановления. Ваши дни пересчитываются.",
   "driverBreakdownAbsenceStale": "Тренды устарели. Синхронизируйте браслет, чтобы обновить их.",
-  "driverBreakdownAbsenceNoVersion": "Тренды обновляются. После синхронизации это занимает около минуты.",
   "driverBreakdownSyncTheBand": "Синхронизировать браслет",
-  "driverBreakdownAbsenceNoReason": "Причина отсутствия разбивки за прошлую ночь не записана.",
+  "driverBreakdownAbsenceNoReason": "Нет показания.",
   "coachFiguresCouldNotBeDrawn": "Не удалось построить график",
   "coachFiguresNoType": "Тренер прислал график без указания типа.",
   "coachFiguresUnsupportedType": "Тренер запросил график типа «{type}», который приложение не поддерживает.",
@@ -1204,26 +1200,17 @@
       }
     }
   },
-  "circadianDetailStillnessTitle": "Вариабельность между ударами в покое",
-  "circadianDetailStillnessFootnote": "Каждый час — середина {lo}–{hi} спокойных пятиминутных отрезков за {days, plural, one{{days} день} few{{days} дня} many{{days} дней} other{{days} дня}}, данных хватило для {drawn} из 24 часов, и это не оценка стресса.",
+  "circadianDetailStillnessTitle": "ВСР в покое",
+  "circadianDetailStillnessFootnote": "Для {drawn} из 24 часов набралось достаточно спокойного времени, чтобы показать их. Читайте это как спокойствие, а не стресс.",
   "@circadianDetailStillnessFootnote": {
     "placeholders": {
-      "lo": {
-        "type": "int"
-      },
-      "hi": {
-        "type": "int"
-      },
-      "days": {
-        "type": "int"
-      },
       "drawn": {
         "type": "int"
       }
     }
   },
   "circadianDetailForecastTitle": "Как может пройти сегодняшний день",
-  "circadianDetailForecastFootnote": "Без шкалы: результатом является только форма кривой.",
+  "circadianDetailForecastFootnote": "Только форма, без шкалы.",
   "circadianDetailTroughText": "Самый низкий участок приходится на {troughLabel}, примерно с {start} до {end}.",
   "@circadianDetailTroughText": {
     "placeholders": {
@@ -1238,9 +1225,9 @@
       }
     }
   },
-  "circadianDetailPredictionDisclaimer": "Это прогноз, а не измерение. Он знает только прошлую ночь: дневной сон, кофе и другое сегодня его не меняют.",
+  "circadianDetailPredictionDisclaimer": "Прогноз только по прошлой ночи. Дневной сон и кофе его не меняют.",
   "circadianDetailAssumedPhaseNote": "Пик вашего собственного ритма ещё не определён, поэтому используется средний.",
-  "circadianDetailNotADrivingCheck": "Это не проверка пригодности к вождению или безопасности работы в смену и не заключение о снижении ваших способностей.",
+  "circadianDetailNotADrivingCheck": "Это не проверка пригодности к вождению и не оценка безопасности при сменной работе.",
   "circadianDetailChronotype": "Естественное время сна",
   "circadianDetailMidSleepFree": "Середина сна в свободные дни",
   "circadianDetailMidSleepWork": "Середина сна в рабочие дни",
@@ -1252,7 +1239,7 @@
   "circadianDetailNightsLeastAlike": "Наименее похожие ночи",
   "circadianDetailSamePairScale": "Та же пара в одной шкале",
   "circadianDetailRhythmNotEstablished": "Ваш ритм ещё не определён",
-  "circadianDetailPairFootnote": "Наименее похожая пара из {count}. Поздние выходные — другой режим, а не худшая ночь. Дни с недостаточной записью исключены.",
+  "circadianDetailPairFootnote": "Наименее похожая пара соседних ночей из {count}. Дни со слишком малым объёмом записи не учитываются.",
   "@circadianDetailPairFootnote": {
     "placeholders": {
       "count": {
@@ -1270,7 +1257,7 @@
   "circadianDetailFitCurve": "Соответствие 24-часовой кривой",
   "circadianDetailStrengthNotMeasured": "Выраженность ритма ещё не измерена",
   "circadianDetailStrengthWhy": "Нужны последовательные дни с записью за все 24 часа.",
-  "circadianDetailStrengthFootnoteKnown": "По {used, plural, one{{used} полностью записанному дню} few{{used} полностью записанным дням} many{{used} полностью записанным дням} other{{used} полностью записанного дня}}. Часы с самым высоким и низким пульсом, а не самые активные.",
+  "circadianDetailStrengthFootnoteKnown": "По {used, plural, one{{used} полностью записанному дню} few{{used} полностью записанным дням} many{{used} полностью записанным дням} other{{used} полностью записанного дня}}. Часы с самым высоким и самым низким пульсом.",
   "@circadianDetailStrengthFootnoteKnown": {
     "placeholders": {
       "used": {
@@ -1278,7 +1265,7 @@
       }
     }
   },
-  "circadianDetailStrengthFootnoteUnknown": "По данным пульса за последовательность полностью записанных дней. Это часы с самым высоким и низким пульсом, а не с наибольшей активностью.",
+  "circadianDetailStrengthFootnoteUnknown": "По ряду полностью записанных дней. Это часы с самым высоким и самым низким пульсом.",
   "beatsTitle": "Удары сердца",
   "beatsNoNightTitle": "Пока нет ночи для графика",
   "beatsNoNightBody": "На этом телефоне ещё нет ночей с оценкой, поэтому показать удары сердца нельзя.",
@@ -1555,14 +1542,8 @@
     }
   },
   "dayTimelineTaggedTitle": "Отметки",
-  "dayTimelineDeviceBounded": "Подробности по устройствам хранятся только за недавние дни. До {oldest} известно, какое устройство записывало данные, но не сами показания.",
-  "@dayTimelineDeviceBounded": {
-    "placeholders": {
-      "oldest": {
-        "type": "String"
-      }
-    }
-  },
+  "dayTimelineDeviceBounded": "Подробности по устройствам хранятся только за недавние дни.",
+  "@dayTimelineDeviceBounded": {},
   "dayTimelineTitle": "Ваш день подробно",
   "dayTimelineSub": "ОТ ПОЛУНОЧИ ДО ПОЛУНОЧИ",
   "dayTimelineHeartRateTitle": "Пульс",
@@ -1571,13 +1552,11 @@
   "dayTimelineMoving": "Движение",
   "dayTimelineNotRecorded": "Не записано",
   "dayTimelineNothingRecordedTitle": "В этот день ничего не записано",
-  "dayTimelineNothingRecordedBody": "Нет сна, тренировок, записей или событий браслета с отметкой времени. Обычно пустой день означает, что браслет был снят.",
-  "dayTimelineNoTimeTitle": "У записей за этот день нет времени",
+  "dayTimelineNothingRecordedBody": "Ничего не записано. Скорее всего, браслет был выключен.",
+  "dayTimelineNoTimeTitle": "Записи без времени",
   "dayTimelineNoTimeBody": "Записи за этот день показаны ниже.",
   "dayTimelineWhatHappenedSection": "Что произошло",
   "dayTimelineAlsoLoggedSection": "Другие записи этого дня",
-  "dayTimelineNoTimeNote": "Эти записи относятся к дню без точного времени, поэтому на временной шкале их нет.",
-  "dayTimelinePatternsNote": "Это совпадения в ваших записях, а не причины. Соседние события лишь произошли примерно в одно время — большего эта страница не утверждает.",
   "journalComposeNotReady": "Ещё не готово — сначала откройте приложение.",
   "journalComposeSaveFailed": "Не удалось сохранить. Проверьте свободное место и повторите.",
   "journalComposeWhenWasLastOne": "Когда это было в последний раз?",
@@ -2000,7 +1979,6 @@
   "investigateCoverageLabel": "Покрытие",
   "investigateSleepWindowLabel": "Период сна",
   "investigateSourceLabel": "Источник",
-  "investigateSourceOnDevice": "Записи браслета · расчёт на этом телефоне",
   "investigateSourceImported": "Импортировано · {source}",
   "@investigateSourceImported": {
     "placeholders": {
@@ -2013,9 +1991,9 @@
   "investigateWhatHappenedTitle": "Что было в этот день",
   "investigateWhatHappenedSub": "Сон, тренировки, питание и записи по времени",
   "investigateWhichSensorCounted": "Какой датчик подсчитал",
-  "investigateStrapPedometer": "браслет · шагомер 100 Гц",
+  "investigateStrapPedometer": "Определение шагов браслетом",
   "investigateStrapOnChipCounter": "браслет · встроенный счётчик",
-  "investigateStrapCounterFactor": "встроенный счётчик · коэффициент телефона",
+  "investigateStrapCounterFactor": "Калибровка счётчика браслета",
   "investigatePhonePedometer": "телефон · шагомер",
   "investigateDayTotal": "итого за день",
   "investigateStrapChipReported": "сообщено чипом браслета",
@@ -2040,8 +2018,8 @@
   "investigateHfGated": "Ограничение HF",
   "investigateYes": "да",
   "investigateNo": "нет",
-  "investigateNoFrequencySpectrum": "Нет частотного спектра за эту ночь",
-  "investigateRecordingTooShort": "Запись слишком короткая для определения частотных диапазонов.",
+  "investigateNoFrequencySpectrum": "Для этой ночи нет разбивки по частотам",
+  "investigateRecordingTooShort": "Запись была слишком короткой.",
   "investigateNonLinear": "Нелинейные показатели",
   "investigateSd1Sleep": "SD1, сон",
   "investigateSd2Sleep": "SD2, сон",
@@ -2060,7 +2038,7 @@
   "investigateBeatsAnalysed": "Проанализированные удары",
   "investigateBeatsAnalysed24h": "Проанализированные удары за 24 ч",
   "investigateNoShapeForNight": "Нет профиля этой ночи",
-  "investigateTooFewBeatsToBin": "За ночь слишком мало чистых интервалов для расчёта по отрезкам.",
+  "investigateTooFewBeatsToBin": "В эту ночь слишком мало чистых ударов.",
   "investigateNightShape": "Профиль ночи",
   "investigateBinWidth": "Ширина интервала",
   "investigateBinsRead": "Прочитанные интервалы",
@@ -2072,7 +2050,7 @@
   "investigate12WeeksAgo": "12 недель назад",
   "investigateThisWeek": "Эта неделя",
   "investigateScreenRan": "Проверка выполнена",
-  "investigateRhythmStripFootnote": "Проверка выполнена за {ran, plural, one{{ran} день} few{{ran} дня} many{{ran} дней} other{{ran} дня}}, сигналов: {raised}. Контурный квадрат — день без проверки. Отсутствие сигнала не означает отрицательный результат: проверка пульсовых интервалов не различает внеочередной удар, потерянный удар и движение браслета на запястье.",
+  "investigateRhythmStripFootnote": "Проверка выполнена за {ran, plural, one{{ran} день} few{{ran} дня} many{{ran} дней} other{{ran} дня}}, сигналов: {raised}. Контурные квадраты обозначают дни без проверки. Отсутствие сигнала ничего не исключает.",
   "@investigateRhythmStripFootnote": {
     "placeholders": {
       "ran": {
@@ -2084,13 +2062,13 @@
     }
   },
   "investigateNoRestingBreathingRate": "Нет частоты дыхания в покое вне сна",
-  "investigateNoRestingBreathingRateBody": "Дыхание определяется только по трёхминутным отрезкам почти полной неподвижности вне сна. Во многие дни их нет: это означает движение, а не неисправность.",
+  "investigateNoRestingBreathingRateBody": "Нужно не менее трёх спокойных отрезков по три минуты вне сна. В большинстве дней их меньше.",
   "investigateBreathingAtRestAwake": "Дыхание в покое при бодрствовании",
   "investigateStillStretchesOutsideSleep": "Периоды покоя вне сна",
   "investigateLowest": "Наименьшее",
   "investigateNextLowest": "Следующее наименьшее",
   "investigateHighestOfThem": "Наибольшее из них",
-  "investigateFloorNotRateBody": "Это нижняя граница, а не частота дыхания за день. Оценка возможна лишь при почти полной неподвижности, поэтому здесь показаны самые спокойные минуты вне сна. Остальной день они не описывают; по интервалам пульса нельзя восстановить дыхание во время движения.",
+  "investigateFloorNotRateBody": "Частота дыхания в самые спокойные отрезки вне сна. Об остальной части дня она ничего не говорит.",
   "investigateCycleScreenDidNotRun": "Проверка циклических изменений за эту ночь не выполнена",
   "investigateNotEnoughCleanBeats": "Недостаточно чистых интервалов для проверки.",
   "investigateHeartRateCycles": "Циклы изменения пульса",
@@ -2143,8 +2121,7 @@
       }
     }
   },
-  "investigateCvhrExplainer": "Это закономерность пульса, а не измерение дыхания и не медицинский тест. Такие же колебания бывают при нерегулярном ритме, на высоте и при прерывистом сне. Бета-блокаторы, диабет и заболевания нервной системы сглаживают их, поэтому даже реальные нарушения дыхания могут никак не проявиться здесь.",
-  "investigateCvhrNotNegativeResult": "Ни отсутствие сигнала, ни другие значения здесь не исключают нарушения и не дают заключения за отдельную ночь: её результат может меняться по множеству причин.",
+  "investigateCvhrExplainer": "Закономерность пульса, а не проверка дыхания. Её дают и нерегулярный ритм, высота и прерывистый сон, а некоторые состояния и лекарства её скрывают.",
   "investigateCvhrSeeClinicianIfSymptoms": "Если вы храпите, просыпаетесь без ощущения отдыха или кто-то заметил остановки дыхания во сне, обратитесь к врачу для обследования.",
   "investigateStageMinutesAsCounted": "Подсчитанные минуты стадий",
   "investigateLight": "Лёгкий сон",
@@ -2347,7 +2324,6 @@
     }
   },
   "metricDetailNoValueYet": "За сегодня значения пока нет.",
-  "metricDetailNoValueYetWiderRanges": "За сегодня значения ещё нет. В более широких периодах выше есть дни с рассчитанными значениями.",
   "metricDetailNoValueInWindow": "За этот период значений нет.",
   "metricDetailWearBandFix": "Носите браслет ночью для начала ряда",
   "metricDetailBreakdownLinkTitle": "Подробности",
@@ -2379,7 +2355,7 @@
       }
     }
   },
-  "metricDetailAlgoBreakFootnote": "{n, plural, one{Пунктирная линия отмечает изменение метода расчёта. Значения по её сторонам получены разными версиями.} few{Пунктирные линии отмечают изменения метода расчёта. Значения по сторонам каждой из них получены разными версиями.} many{Пунктирные линии отмечают изменения метода расчёта. Значения по сторонам каждой из них получены разными версиями.} other{Пунктирные линии отмечают изменения метода расчёта. Значения по сторонам каждой из них получены разными версиями.}}",
+  "metricDetailAlgoBreakFootnote": "{n, plural, one{Пунктирная линия отмечает изменение метода расчёта этих дней.} few{Пунктирные линии отмечают изменения метода расчёта этих дней.} many{Пунктирные линии отмечают изменения метода расчёта этих дней.} other{Пунктирные линии отмечают изменения метода расчёта этих дней.}}",
   "@metricDetailAlgoBreakFootnote": {
     "placeholders": {
       "n": {
@@ -2397,7 +2373,7 @@
   },
   "metricDetailWornChartTitle": "Ношение",
   "metricDetailHoursADayUnit": "ч в день",
-  "metricDetailWearFootnote": "Данные о ношении есть за {have} из {win} дней. Остальные — пропуски на обоих графиках: линия выше не соединяется через них.",
+  "metricDetailWearFootnote": "Данные о ношении есть за {have} из {win} дней. Недостающие дни показаны пропусками.",
   "@metricDetailWearFootnote": {
     "placeholders": {
       "have": {
@@ -2429,7 +2405,7 @@
   "healthWhyNotMeasuredToday": "Сегодня ещё не измерено.",
   "healthCatRecovery": "Восстановление",
   "healthBlurbReadiness": "Насколько организм готов к нагрузке относительно вашего обычного уровня",
-  "healthBlurbStress": "Кластеризация интервалов между ударами в самый спокойный период",
+  "healthBlurbStress": "Насколько напряжённым выглядит пульс в покое",
   "healthWhyNoSpo2": "SpO2 здесь нет: приложение не оценивает кислород в крови.",
   "healthWhyNotEnoughOvernight": "Для этого показателя мало ночных данных",
   "healthVsDayAverage": "относительно среднего за {days} дн.",
@@ -2576,8 +2552,8 @@
   "exploreHint": "Выберите до 4 показателей ниже. У них общая ось времени, у каждого своя шкала.",
   "exploreLimit": "Можно сравнить до 4 показателей. Уберите один, чтобы добавить другой.",
   "exploreUnitNormalised": "Нормировано",
-  "exploreNormalised": "Нормировано: каждая линия идёт от своего минимума до максимума, поэтому сравнивается форма, а не значения. Коснитесь графика, чтобы увидеть реальные значения.",
-  "exploreNormalisedBaseline": "Нормировано. Линии в режиме обычного диапазона показывают отклонение от вашего обычного уровня (середина — обычный уровень, верх и низ — 3 стандартных отклонения); остальные идут от своего минимума до максимума. Коснитесь графика, чтобы увидеть реальные значения.",
+  "exploreNormalised": "Каждая линия масштабируется по своему диапазону, поэтому сравнивайте формы, а не значения. Коснитесь графика, чтобы увидеть реальные значения.",
+  "exploreNormalisedBaseline": "Каждая линия масштабируется по размеру. В режиме обычного диапазона ваша норма посередине, а далёкие значения у краёв. Коснитесь графика, чтобы увидеть реальные значения.",
   "exploreNoDataRange": "За этот период по ним ничего не записано.",
   "exploreNoDataDay": "За этот день по ним ничего не записано.",
   "exploreNoDataFor": "Нет данных: {metric}",
@@ -3021,7 +2997,7 @@
       }
     }
   },
-  "metricDetailRankTodayBand": "Сегодня значение выше, чем в {pct}% ваших дней — {band}.",
+  "metricDetailRankTodayBand": "Сегодня значение выше, чем в {pct}% ваших дней, {band}.",
   "@metricDetailRankTodayBand": {
     "placeholders": {
       "pct": {
@@ -3043,7 +3019,7 @@
       }
     }
   },
-  "metricDetailRankFromBand": "Значение за {date} выше, чем в {pct}% ваших дней — {band}.",
+  "metricDetailRankFromBand": "Значение за {date} выше, чем в {pct}% ваших дней, {band}.",
   "@metricDetailRankFromBand": {
     "placeholders": {
       "date": {
@@ -3068,7 +3044,7 @@
       }
     }
   },
-  "metricDetailPatternsNotCauses": "Связи в ваших записях не устанавливают причины.",
+  "metricDetailPatternsNotCauses": "Закономерности в ваших записях, а не причины.",
   "metricDetailChooseDayHelp": "Выбрать день",
   "metricDetailPreviousDay": "Предыдущий день",
   "metricDetailNextDay": "Следующий день",
@@ -3134,7 +3110,7 @@
   "cyclePhaseLuteal": "Лютеиновая",
   "cycleNextPeriodBetween": "СЛЕДУЮЩАЯ МЕНСТРУАЦИЯ ОЖИДАЕТСЯ МЕЖДУ",
   "cycleNextPeriodAround": "СЛЕДУЮЩАЯ МЕНСТРУАЦИЯ ОЖИДАЕТСЯ ОКОЛО",
-  "cycleFromOneMeasuredGap": "по единственному измеренному промежутку: он не показывает изменчивость вашего цикла",
+  "cycleFromOneMeasuredGap": "по одному измеренному промежутку",
   "cyclePastEndOfIt": "после конца диапазона прошло {days} дн. · ",
   "@cyclePastEndOfIt": {
     "placeholders": {
@@ -3217,7 +3193,7 @@
   "cycleUnitMs": "мс",
   "cycleNotEnoughDescribeDayTitle": "Пока недостаточно циклов для описания дня",
   "cycleNotEnoughDescribeDayBody": "Каждая точка — центральное значение одного и того же дня как минимум двух ваших циклов. Пока ни для одной точки нет двух циклов.",
-  "cycleOwnPastCyclesDescribed": "Описание ваших прошлых циклов. Дни, до которых дошёл только один цикл, пустые. Это прошлое, а не прогноз.",
+  "cycleOwnPastCyclesDescribed": "Ваши прошлые циклы. Дни, до которых дошёл только один цикл, остаются пустыми.",
   "cycleDayOneLabel": "День 1",
   "cycleDayNLabel": "День {n}",
   "@cycleDayNLabel": {
@@ -3264,7 +3240,7 @@
       }
     }
   },
-  "cycleComparisonNotCorrection": "Это сравнение, а не поправка. Оценка восстановления от него не меняется, и это не указание для тренировок.",
+  "cycleComparisonNotCorrection": "Не меняет вашу оценку восстановления.",
   "cycleCompareHrvLabel": "ВСР",
   "cycleCompareLine": "{label}: {z1} относительно последних 3 недель, {z2} относительно дня {cycleDay} в последних {n} циклах.",
   "@cycleCompareLine": {
@@ -3325,28 +3301,16 @@
       }
     }
   },
-  "cycleLengthChangesReasons": "Длительность цикла меняется по многим причинам: щитовидная железа, стресс, вес, контрацепция, СПКЯ. Это повод спросить врача, а не ответ.",
+  "cycleLengthChangesReasons": "Длительность цикла меняется по многим причинам. Если это тревожит, стоит спросить врача.",
   "cycleHideLengths": "Скрыть длительность циклов",
   "cycleDescriptiveOnly": "Только описание.",
   "cycleNotEnoughDerivedNights": "За этот цикл пока мало ночей с оценкой",
-  "cycleMdcNoteInsideSpread": " Все дни здесь в пределах вашего обычного разброса между ночами: наибольший разрыв — {s}, а {n} — наименьшее реальное изменение. Это форма, а не сдвиг.",
-  "@cycleMdcNoteInsideSpread": {
-    "placeholders": {
-      "s": {
-        "type": "String"
-      },
-      "n": {
-        "type": "String"
-      }
-    }
-  },
-  "cycleMdcNoteVaries": " Ваши ночи сами по себе различаются на {n}, поэтому меньшие различия между днями неразличимы. Наибольший разрыв здесь — {s}.",
+  "cycleMdcNoteInsideSpread": " Всё в пределах вашей обычной разницы между ночами.",
+  "@cycleMdcNoteInsideSpread": {},
+  "cycleMdcNoteVaries": " Ваши ночи сами по себе различаются на {n}, поэтому меньшие различия ничего не значат.",
   "@cycleMdcNoteVaries": {
     "placeholders": {
       "n": {
-        "type": "String"
-      },
-      "s": {
         "type": "String"
       }
     }
@@ -3365,7 +3329,7 @@
       }
     }
   },
-  "healthReadFailedBody": "Не удалось загрузить сохранённые строки. Ничего не удалено — ошибка произошла при чтении.",
+  "healthReadFailedBody": "Не удалось загрузить данные. Ничего не удалено.",
   "healthTryAgain": "Повторить",
   "healthWhatVitals": "показатели",
   "healthWhatLabResults": "результаты анализов",
@@ -3402,21 +3366,6 @@
       }
     }
   },
-  "healthIllnessBodyNoZ": "В последние ночи пульс в покое выше обычного. Отслеживается один сигнал, поэтому это закономерность, а не причина.",
-  "healthIllnessBodyWithZ": "В сумме за последние ночи пульс в покое выше обычного. Сама по себе та ночь была {direction} нормы на {z} вашего обычного разброса. Это закономерность, а не причина.",
-  "@healthIllnessBodyWithZ": {
-    "placeholders": {
-      "z": {
-        "type": "String"
-      },
-      "direction": {
-        "type": "String"
-      }
-    }
-  },
-  "healthDirectionAbove": "выше",
-  "healthDirectionBelow": "ниже",
-  "healthIllnessAdvice": "Обратите внимание, если это продолжается больше пары дней.",
   "healthObservationsTitle": "Наблюдения",
   "healthSeeAll": "Показать всё",
   "healthNapsTitle": "Дневной сон",
@@ -3482,7 +3431,7 @@
   "healthSocialJetlagLabel": "СДВИГ В ВЫХОДНЫЕ",
   "healthRegularityLabel": "ПОСТОЯНСТВО",
   "healthConsistencyTitle": "Постоянство",
-  "healthDaysWithRecord": "Дни с оценкой за последние 30 дней",
+  "healthDaysWithRecord": "Дни с оценкой, последние 30",
   "healthToday": "Сегодня",
   "healthRowHeartRate": "Пульс",
   "healthRowSkinTemp": "Температура кожи",
@@ -3513,7 +3462,7 @@
   "healthSyncTheBand": "Синхронизировать браслет",
   "healthDeepDivesTitle": "Подробный разбор",
   "healthHeartRateVariability": "Вариабельность сердечного ритма",
-  "healthTimeFrequencyNonLinear": "Временные, частотные и нелинейные показатели",
+  "healthTimeFrequencyNonLinear": "Подробные показатели ВСР",
   "healthRmssdOfLastNights": "ВСР, {have} из последних {days} ночей",
   "@healthRmssdOfLastNights": {
     "placeholders": {
@@ -3534,8 +3483,7 @@
     }
   },
   "healthOneNightNotTrend": "Одной ночи недостаточно для динамики",
-  "healthMeasuresWithHistory": "Показатели с историей на этом устройстве",
-  "healthEachOneOpens": "Каждый показатель открывает график, ваш диапазон и объяснение расчёта.",
+  "healthMeasuresWithHistory": "Показатели с историей",
   "healthCatHeartRhythm": "Сердце и ритм",
   "healthCatBreathing": "Дыхание",
   "healthCatMovementLoad": "Движение и нагрузка",
@@ -3543,22 +3491,22 @@
   "healthBlurbRestingHr": "Наименьший устойчивый пульс за ночь",
   "healthBlurbHrv": "Насколько меняются интервалы между ударами сердца во сне",
   "healthBlurbHrvCv": "Насколько стабильной была ВСР в течение ночи",
-  "healthBlurbLfHf": "Распределение мощности колебаний межударных интервалов по частотам",
+  "healthBlurbLfHf": "Баланс быстрых и медленных колебаний пульса",
   "healthBlurbDip": "Насколько снижается пульс во сне",
-  "healthBlurbHrr": "Снижение за минуту после нагрузки",
+  "healthBlurbHrr": "Как быстро пульс снижается после нагрузки",
   "healthBlurbSleep": "Время сна по движению и интервалам ударов",
   "healthBlurbEfficiency": "Доля сна во времени в постели",
-  "healthBlurbDeep": "Ровность пульса в NREM-сне",
-  "healthBlurbRem": "Стадии по вариабельности ударов и движению",
+  "healthBlurbDeep": "Время глубокого сна",
+  "healthBlurbRem": "Время REM-сна",
   "healthBlurbNapMin": "Сон вне основного ночного периода",
   "healthBlurbRespRate": "Дыханий в минуту, рассчитано по межударным интервалам",
   "healthBlurbBrv": "Изменчивость частоты за ночь",
   "healthBlurbSpo2": "Значение самого WHOOP, полученное при импорте",
   "healthBlurbSteps": "Подсчитано шагомером, без моделирования",
-  "healthBlurbActiveMin": "Минуты движения, не обязательно ходьбы",
+  "healthBlurbActiveMin": "Минуты активности",
   "healthBlurbCalories": "Активная энергия по пульсу и вашему профилю",
   "healthBlurbStrain": "Сердечно-сосудистая нагрузка за день, 0–21",
-  "healthBlurbTrimp": "Очки без предела; Нагрузка — то же по шкале 0–21",
+  "healthBlurbTrimp": "Общая нагрузка по пульсу, без предела 0–21, как у Нагрузки",
   "healthBlurbSkinTemp": "Отклонение от ваших недавних ночей",
   "healthBlurbWear": "Минуты с записью браслета",
   "healthNothingMeasuredHere": "Здесь пока ничего не измерено",
@@ -3685,7 +3633,7 @@
       }
     }
   },
-  "healthStillHoldsResults": "{count, plural, one{Для «{label}» ещё есть {count} результат. Сначала удалите его: показатель служит его названием.} few{Для «{label}» ещё есть {count} результата. Сначала удалите их: показатель служит их названием.} many{Для «{label}» ещё есть {count} результатов. Сначала удалите их: показатель служит их названием.} other{Для «{label}» ещё есть {count} результата. Сначала удалите их: показатель служит их названием.}}",
+  "healthStillHoldsResults": "{count, plural, one{Для «{label}» ещё есть {count} результат. Сначала удалите его.} few{Для «{label}» ещё есть {count} результата. Сначала удалите их.} many{Для «{label}» ещё есть {count} результатов. Сначала удалите их.} other{Для «{label}» ещё есть {count} результата. Сначала удалите их.}}",
   "@healthStillHoldsResults": {
     "placeholders": {
       "count": {
@@ -3704,7 +3652,7 @@
       }
     }
   },
-  "healthRemoveMarkerBody": "Показатель исчезнет из списка, и вводить его будет нельзя. Измеренные значения не удаляются: для него нет результатов.",
+  "healthRemoveMarkerBody": "Показатель исчезнет из списка, и вы больше не сможете его вносить.",
   "healthMarkerLabel": "Показатель",
   "healthValueUnit": "Значение ({unit})",
   "@healthValueUnit": {
@@ -3771,7 +3719,7 @@
   "homeDriverRhr": "Пульс в покое",
   "homeDriverResp": "Частота дыхания",
   "homeDriverTemp": "Температура кожи",
-  "homeDbRebuiltTitle": "Для запуска приложения база восстановлена заново",
+  "homeDbRebuiltTitle": "Ваша база данных пересоздана",
   "homeDbRebuiltNothingRecovered": "Ничего не удалось прочитать.",
   "homeDbRebuiltRecovered": "Восстановлено: {list}.",
   "@homeDbRebuiltRecovered": {
@@ -3801,9 +3749,9 @@
     }
   },
   "homeWorkoutHoldTitle": "Тренировка ещё идёт",
-  "homeWorkoutHoldBody": "Пока идёт тренировка, расчёт дня на паузе. Браслет продолжает запись; завершите тренировку на панели ниже, и день заполнится.",
-  "homeInsightsRebuildingTitle": "Выводы за несколько дней пересчитываются",
-  "homeInsightsRebuildingAlgoVersion": "После обновления способ расчёта изменился.",
+  "homeWorkoutHoldBody": "Сегодняшний день заполнится, когда вы завершите тренировку.",
+  "homeInsightsRebuildingTitle": "Обновляем ваши тренды",
+  "homeInsightsRebuildingAlgoVersion": "Обновляется после последнего обновления приложения.",
   "homeInsightsStaleOverWeek": "Тренды обновлялись больше недели назад. Синхронизируйте браслет, чтобы обновить их.",
   "homeInsightsStaleOnDay": "Тренды обновлялись {day}. Синхронизируйте браслет, чтобы обновить их.",
   "@homeInsightsStaleOnDay": {
@@ -3840,7 +3788,7 @@
       }
     }
   },
-  "homeGapNoReason": "Причина отсутствия данных не записана.",
+  "homeGapNoReason": "Нет показания.",
   "homeRingRecovery": "Восстановление",
   "homeRingStrain": "Нагрузка",
   "homeRingSleep": "Сон",
@@ -3859,7 +3807,6 @@
     }
   },
   "homeLoadFailedTitle": "Не удалось прочитать сегодняшний день",
-  "homeLoadFailedBody": "Сохранённый день не загрузился. Ничего не удалено: это ошибка чтения, а не отсутствие данных.",
   "homeTryAgain": "Повторить",
   "homeNothingDerivedTitle": "Ночей с оценкой пока нет",
   "homeNothingDerivedBody": "Наденьте браслет на ночь и откройте приложение утром.",
@@ -3876,13 +3823,12 @@
   "homeSyncingTitle": "Синхронизация с браслетом",
   "homeSyncingBody": "Загрузка данных. Если накопилось много записей, это может занять несколько минут.",
   "homeAnalyzingTitle": "Расчёт показателей прошлой ночи",
-  "homeAnalyzingBody": "Данные получены. Далее — сон, восстановление и нагрузка.",
   "homeConnectingTitle": "Подключение к браслету",
   "homeConnectingBody": "Подождите — обычно это занимает несколько секунд.",
   "homeAskCoach": "Спросить тренера",
   "homeProfileSettings": "Профиль и настройки",
   "homeNothingTodayTitle": "За сегодня ничего не записано",
-  "homeNothingTodayBody": "Последняя оценённая ночь: {day}. С тех пор данные не поступали.",
+  "homeNothingTodayBody": "Последняя оценённая ночь: {day}.",
   "@homeNothingTodayBody": {
     "placeholders": {
       "day": {
@@ -3901,7 +3847,7 @@
       }
     }
   },
-  "homeReadinessNoReason": "Причина не записана.",
+  "homeReadinessNoReason": "Нет показания.",
   "homeSeeWhatWasMissing": "Посмотреть, чего не хватило",
   "homeAtAGlance": "Краткий обзор",
   "homeTodaysPlan": "План на сегодня",
@@ -3920,25 +3866,11 @@
       }
     }
   },
-  "homeIllnessBodyNoZ": "В последние ночи пульс в покое выше обычного. Отслеживается один сигнал, поэтому это закономерность, а не причина.",
-  "homeIllnessBodyAbove": "В последние ночи пульс в покое выше обычного. В ту ночь он был выше на {z} вашего обычного разброса. Это закономерность, а не причина.",
-  "@homeIllnessBodyAbove": {
-    "placeholders": {
-      "z": {
-        "type": "String",
-        "example": "1.8"
-      }
-    }
-  },
-  "homeIllnessBodyBelow": "В сумме за последние ночи пульс в покое выше обычного, хотя сама по себе та ночь была ниже нормы на {z} вашего обычного разброса. Это закономерность, а не причина.",
-  "@homeIllnessBodyBelow": {
-    "placeholders": {
-      "z": {
-        "type": "String",
-        "example": "1.8"
-      }
-    }
-  },
+  "homeIllnessBodyNoZ": "В последние ночи ваш пульс в покое был выше обычного. Это закономерность, а не причина.",
+  "homeIllnessBodyAbove": "Последние ночи подняли ваш пульс в покое выше обычного. Та ночь тоже была выше. Это закономерность, а не причина.",
+  "@homeIllnessBodyAbove": {},
+  "homeIllnessBodyBelow": "В сумме последние ночи подняли ваш пульс в покое выше обычного, хотя сама та ночь была ниже. Это закономерность, а не причина.",
+  "@homeIllnessBodyBelow": {},
   "homeIllnessAdvice": "Обратите внимание, если это продолжается больше пары дней.",
   "homeHeartRate": "Пульс",
   "homeRestingSub": "В покое",
@@ -4019,7 +3951,6 @@
     }
   },
   "homeNoPlanTitle": "Плана на сегодня пока нет",
-  "homeNoPlanWhyStale": "Тренды обновляются. После синхронизации это занимает около минуты.",
   "homeNoPlanWhyNone": "Нужные показатели ещё не определены.",
   "homeGreetingStillUp": "Ещё не спите",
   "homeGreetingMorning": "Доброе утро",
@@ -4046,7 +3977,6 @@
   "wellnessOpen": "Открыть",
   "wellnessStressLastNight": "Стресс прошлой ночью",
   "wellnessNoStressTitle": "Нет показателя стресса за прошлую ночь",
-  "wellnessNoStressBody": "Стресс оценивается по межударным интервалам во время ночного отдыха. Прошлой ночью оценка не получена.",
   "wellnessAutonomicTension": "Уровень стресса",
   "wellnessStressLevelLow": "низкий",
   "wellnessStressLevelNormal": "обычный",
@@ -4097,7 +4027,7 @@
   "wellnessNoDriversBody": "Нужно достаточно ночей, чтобы определить ваш обычный уровень.",
   "wellnessSleepNeedTonight": "Потребность во сне на эту ночь",
   "wellnessNoSleepNeedTitle": "Потребность во сне ещё не определена",
-  "wellnessNoSleepNeedBody": "В записях нет объяснения, почему отсутствует потребность на эту ночь.",
+  "wellnessNoSleepNeedBody": "Нет показания.",
   "wellnessTonightsNeed": "Потребность на эту ночь",
   "wellnessSleepDebt": "Недосып",
   "wellnessAddedForStrain": "Добавлено из-за нагрузки",
@@ -4218,10 +4148,10 @@
   "wellnessMarkDone": "Отметить выполнение",
   "wellnessWhatYouLogScreenTitle": "Ваши записи",
   "wellnessNothingSeparatedTitle": "Различий пока не выявлено",
-  "wellnessNothingSeparatedBody": "Все ваши записи проверяются на связь с восстановлением, ВСР, пульсом в покое и эффективностью сна. Пока ничего не преодолело порог проверки.",
+  "wellnessNothingSeparatedBody": "Чётких связей пока не найдено.",
   "wellnessTheDaysYouDidIt": "Дни выполнения",
   "wellnessHowMuchAndWhatFollowed": "Количество и последующие показатели",
-  "wellnessLinkNeverCause": "Связь в ваших данных никогда не доказывает причину. Дни с определённым действием изначально могли отличаться от других.",
+  "wellnessLinkNeverCause": "Связь в ваших собственных днях, а не доказательство причины.",
   "wellnessWhichDayOfWeek": "День недели",
   "wellnessHigher": "выше",
   "wellnessLower": "ниже",
@@ -4296,35 +4226,13 @@
       }
     }
   },
-  "wellnessRangeTo": "от {lo} до {hi}",
-  "@wellnessRangeTo": {
-    "placeholders": {
-      "lo": {
-        "type": "String"
-      },
-      "hi": {
-        "type": "String"
-      }
-    }
-  },
-  "wellnessRankCorrelation": "Ранговая корреляция {rho}{ci}. ",
-  "@wellnessRankCorrelation": {
-    "placeholders": {
-      "rho": {
-        "type": "String"
-      },
-      "ci": {
-        "type": "String"
-      }
-    }
-  },
-  "wellnessCaffeineCaveat": "Учитывается только последний кофеин за день, поэтому две и пять чашек выглядят одинаково. Долгий напряжённый день может дать и поздний кофе, и плохую ночь.",
+  "wellnessCaffeineCaveat": "Учитывается только последний кофеин, поэтому две чашки и пять выглядят одинаково.",
   "wellnessHourLater": "час позже",
   "wellnessPointUnit": "балл",
   "wellnessNotEnoughWeeksTitle": "Пока недостаточно недель",
-  "wellnessNotEnoughWeeksBody": "Для сравнения семи дней недели нужны хотя бы восемь недель данных и по пять записей каждого дня недели.",
+  "wellnessNotEnoughWeeksBody": "Для сравнения по дням недели нужно не менее восьми недель данных.",
   "wellnessNoDayStandsOutTitle": "Ни один день недели не выделяется",
-  "wellnessNoDayStandsOutBody": "С учётом проверки всех семи дней ни один не отличается от остальных шести.",
+  "wellnessNoDayStandsOutBody": "Ни один день недели не выделяется.",
   "wellnessWeekdayHeadline": "{weekday}: восстановление на {delta} {direction} обычного",
   "@wellnessWeekdayHeadline": {
     "placeholders": {
@@ -4339,7 +4247,7 @@
       }
     }
   },
-  "wellnessWeekdayDetail": "По {n} таким дням. День недели — не причина, а набор ваших занятий в этот день. Здесь нет рекомендаций.",
+  "wellnessWeekdayDetail": "По {n} из них. Здесь нет никаких советов.",
   "@wellnessWeekdayDetail": {
     "placeholders": {
       "n": {
@@ -4376,7 +4284,7 @@
   "sleepDetailWatched": "НАБЛЮДАЛОСЬ",
   "sleepDetailAsleepOfThat": "ИЗ НИХ ВО СНЕ",
   "sleepDetailAsleep": "СОН",
-  "sleepDetailWatchedExplain": "Наблюдалось {watched} из {inBed} в постели; остальное не измерено. Длительность сна и доли стадий ниже рассчитаны только по наблюдавшемуся времени.",
+  "sleepDetailWatchedExplain": "Браслет записал {watched} из {inBed}, проведённых в постели. Данные о сне и стадиях считаются только по этому времени.",
   "@sleepDetailWatchedExplain": {
     "placeholders": {
       "watched": {
@@ -4419,7 +4327,7 @@
   "sleepDetailNoHypnogramBody": "Для определения стадий нужны движение и межударные интервалы. Одного из источников не было.",
   "sleepDetailThroughTheNight": "В течение ночи",
   "sleepDetailUnitStage": "стадия",
-  "sleepDetailTapDragCycles": "Нажмите или проведите по графику, чтобы выбрать момент. {n, plural, one{{n} цикл.} few{{n} цикла.} many{{n} циклов.} other{{n} цикла.}}",
+  "sleepDetailTapDragCycles": "{n, plural, one{{n} цикл.} few{{n} цикла.} many{{n} циклов.} other{{n} цикла.}}",
   "@sleepDetailTapDragCycles": {
     "placeholders": {
       "n": {
@@ -4427,7 +4335,7 @@
       }
     }
   },
-  "sleepDetailTapDragCyclesAvg": "Нажмите или проведите по графику, чтобы выбрать момент. {n, plural, one{{n} цикл} few{{n} цикла} many{{n} циклов} other{{n} цикла}}, в среднем {avg}.",
+  "sleepDetailTapDragCyclesAvg": "{n, plural, one{{n} цикл} few{{n} цикла} many{{n} циклов} other{{n} цикла}}, в среднем {avg}.",
   "@sleepDetailTapDragCyclesAvg": {
     "placeholders": {
       "n": {
@@ -4439,8 +4347,8 @@
     }
   },
   "sleepDetailTapDragNone": "Нажмите или проведите по графику, чтобы выбрать любой момент ночи.",
-  "sleepDetailNoWakeups": "Нет пробуждений длительностью 5 минут и более; более короткие не видны по запястью.",
-  "sleepDetailAtLeastWakeups": "{n, plural, one{Не менее {n} пробуждения} few{Не менее {n} пробуждений} many{Не менее {n} пробуждений} other{Не менее {n} пробуждения}} длительностью 5 минут и более; более короткие не видны по запястью.",
+  "sleepDetailNoWakeups": "Пробуждений длительностью 5 минут и более нет.",
+  "sleepDetailAtLeastWakeups": "{n, plural, one{Не менее {n} пробуждения} few{Не менее {n} пробуждений} many{Не менее {n} пробуждений} other{Не менее {n} пробуждения}} длительностью 5 минут и более.",
   "@sleepDetailAtLeastWakeups": {
     "placeholders": {
       "n": {
@@ -4491,7 +4399,7 @@
   "sleepDetailLight": "Лёгкий сон",
   "sleepDetailNoStageSplitTitle": "Нет распределения стадий за эту ночь",
   "sleepDetailNoStageSplitBody": "Нет интервалов ударов на всём протяжении периода.",
-  "sleepDetailStageRangeExplain": "Каждая стадия — диапазон: чем лучше видна ночь, тем он уже. Глубокий сон — самый широкий, бодрствование — одно значение. Точные данные — в подробной статистике.",
+  "sleepDetailStageRangeExplain": "Стадии показаны диапазонами; чем больше записанного времени, тем они уже.",
   "sleepDetailStageBoundsExplain": "Это ваше собственное время, поэтому каждая стадия — диапазон шириной во время, которое браслет не записал.",
   "sleepDetailTimeAsleep": "Время сна",
   "sleepDetailAskEnough": "Вы спали достаточно?",
@@ -4559,7 +4467,7 @@
   "sleepDetailShortestNightLately": "Самая короткая ночь за последнее время",
   "sleepDetailLongestNightLately": "Самая длинная ночь за последнее время",
   "sleepDetailSleepingHrHighTitle": "Пульс во сне был повышен",
-  "sleepDetailSleepingHrHighBody": "На {bpm} уд/мин выше обычного. Часто бывает после алкоголя, поздней еды, тяжёлой тренировки или в начале инфекции. Это измерение, а не диагноз.",
+  "sleepDetailSleepingHrHighBody": "На {bpm} уд/мин выше обычного. Причиной могут быть алкоголь, поздний ужин, тяжёлая тренировка или болезнь. Это не диагноз.",
   "@sleepDetailSleepingHrHighBody": {
     "placeholders": {
       "bpm": {
@@ -4956,7 +4864,7 @@
   "dayStrainTitle": "Нагрузка за день",
   "dayStrainNoTraceTitle": "Нет графика нагрузки за этот день",
   "dayStrainNoMinuteTraceTitle": "Нет поминутного графика за этот день",
-  "dayStrainNoReasonBody": "В записях нет объяснения, почему за этот день не получена нагрузка.",
+  "dayStrainNoReasonBody": "Нет показания.",
   "dayStrainScoredNoTraceBody": "Нагрузка за день — {strain}. Минуты бодрствования, по которым она рассчитана, за этот день не сохранены.",
   "@dayStrainScoredNoTraceBody": {
     "placeholders": {
@@ -6104,10 +6012,10 @@
   "profileSponsorTitle": "Поддержать проект",
   "profileSponsorSub": "Поддержите разработку",
   "nudgeDiscordTitle": "Присоединяйтесь",
-  "nudgeDiscordBody": "В Discord общаются пользователи OpenStrap: ошибки, идеи и люди с таким же браслетом, как у вас.",
+  "nudgeDiscordBody": "Общайтесь с другими пользователями OpenStrap в Discord.",
   "nudgeDiscordCta": "Присоединиться к Discord",
   "nudgeDonateTitle": "Нравится OpenStrap?",
-  "nudgeDonateBody": "Это бесплатный проект с открытым кодом и без подписки. Поддержка помогает его сопровождать.",
+  "nudgeDonateBody": "Бесплатно и с открытым кодом. Поддержка помогает его сопровождать.",
   "nudgeDonateCta": "Поддержать проект",
   "nudgeNotNow": "Не сейчас",
   "nudgeDontShowAgain": "Больше не показывать",
@@ -7657,7 +7565,7 @@
   },
   "nutritionTargetReached": "Цель достигнута",
   "dayTimelineZoomNoHr": "На этом отрезке нет данных о пульсе",
-  "dayTimelineZoomPerMinute": "Средние за минуту. Потяните ползунки, чтобы приблизить; при окне до двух часов показывается каждая секунда, пока она хранится.",
+  "dayTimelineZoomPerMinute": "Средние за минуту. Приблизьте до двух часов или меньше, чтобы увидеть данные по секундам, если они сохранены.",
   "dayTimelineZoomPerMinuteOnly": "Средние за минуту. Посекундные данные для этого отрезка уже не хранятся.",
   "dayTimelineZoomPerSecond": "Каждая секунда, записанная браслетом. Посекундные данные хранятся только за последние дни.",
   "dataExportHeartRate": "Экспортировать пульс по минутам",
@@ -7743,7 +7651,7 @@
   "monthGridLegendUsual": "Обычно для вас",
   "monthGridLegendWorse": "Хуже обычного",
   "monthGridLegendOutside": "Вне обычного диапазона",
-  "monthGridRangeFootnote": "Одна ячейка — один день. Полоска сверху — выше обычного диапазона, снизу — ниже. Контур без заливки — нет значения.",
+  "monthGridRangeFootnote": "Полоска сверху означает выше обычного диапазона, снизу — ниже. Ячейка с контуром — без значения.",
   "monthGridNoRangeTitle": "{title}: обычного диапазона пока нет",
   "@monthGridNoRangeTitle": {
     "placeholders": {
@@ -7752,7 +7660,7 @@
       }
     }
   },
-  "monthGridFlatBody": "Ваши дни пока почти не отличаются друг от друга, поэтому обычного диапазона, с которым можно сравнить день, ещё нет.",
+  "monthGridFlatBody": "Пока недостаточно изменчивости, чтобы показать обычный диапазон.",
   "monthGridRowSemantics": "{title}: значения есть за {have} из {total} дн. Ниже обычного диапазона: {below}, выше: {above}.",
   "@monthGridRowSemantics": {
     "placeholders": {
@@ -7777,13 +7685,13 @@
   "zoneRowsRangeTop": "{lo}+ уд/мин",
   "zoneRowsMinutes": "{minutes} мин",
   "advancedTitle": "Расширенные графики",
-  "advancedIntro": "Исследовательские представления тех же данных. Здесь ничего не меняет ваши оценки.",
+  "advancedIntro": "Подробные представления ваших данных.",
   "advancedBeatsTitle": "Удар за ударом",
   "advancedBeatsSub": "Каждый удар относительно предыдущего, ВСР за ночь, способность к замедлению",
   "advancedRhythmTitle": "Время сна и суточный ритм",
   "advancedRhythmSub": "Сон по часам, вариабельность в покое, прогнозируемая форма сегодняшнего дня",
   "healthAdvancedLinkTitle": "Расширенные графики",
-  "healthAdvancedLinkSub": "Подробности по ударам и время сна, для любознательных",
+  "healthAdvancedLinkSub": "Подробности по каждому удару и время сна",
   "@zoneRowsRange": {
     "placeholders": {
       "lo": {
@@ -7874,7 +7782,7 @@
       }
     }
   },
-  "homeCoachSetUpChip": "Задавайте вопросы о своих данных: настройте тренера",
+  "homeCoachSetUpChip": "Настроить коуча",
   "profileSetupCycleSub": "Отмечайте менструацию в разделе «Здоровье». Это можно изменить позже.",
   "homeRecoverySleeping": "Сон…",
   "homeRecoveryAfterWake": "Восстановление оценивается после пробуждения.",
@@ -8428,7 +8336,7 @@
       }
     }
   },
-  "investigatePrvArtifactShare": "Доля ударов, признанных артефактами (исправлены или отброшены), {scope}",
+  "investigatePrvArtifactShare": "Удары, которые браслет прочитал неверно (исправлены или отброшены), {scope}",
   "@investigatePrvArtifactShare": {
     "placeholders": {
       "scope": {
@@ -8520,7 +8428,7 @@
       }
     }
   },
-  "investigatePrvWhyArtifact": "Слишком много артефактов: {seen} ударов признаны артефактами (исправлены или отброшены), допустимо {allowed}",
+  "investigatePrvWhyArtifact": "Слишком много неверно прочитанных ударов: {seen}, предел {allowed}",
   "@investigatePrvWhyArtifact": {
     "placeholders": {
       "seen": {
@@ -8532,7 +8440,7 @@
     }
   },
   "investigatePrvWhyNoPairs": "Нет соседних пригодных ударов для сравнения",
-  "investigatePrvWhyNoVariability": "Нет долгосрочной вариабельности (SD2 равно нулю), поэтому отношение не определено",
+  "investigatePrvWhyNoVariability": "Недостаточно изменчивости для расчёта соотношения",
   "investigatePrvExport": "Экспорт журнала PRV",
   "investigatePrvExportFailed": "Не удалось сохранить журнал PRV: {reason}",
   "@investigatePrvExportFailed": {
@@ -8541,5 +8449,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "sleepDetailTimesSavedRanges": "Время сохранено. Стадии этой ночи показаны диапазонами.",
+  "sleepDetailUserWindowTitle": "Ваше время сохранено",
+  "sleepDetailUserWindowBody": "В ваше время браслет записал слишком мало, чтобы оценить эту ночь."
 }

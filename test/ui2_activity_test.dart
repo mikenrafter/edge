@@ -896,7 +896,7 @@ void main() {
           reason: 'the night WAS scored — a cause nobody gave this screen');
       expect(find.textContaining('Wear the band through the day'), findsNothing,
           reason: 'an action that cannot change the outcome is worse than none');
-      expect(find.textContaining('Nothing recorded says why'), findsOneWidget);
+      expect(find.text('No reading.'), findsOneWidget);
 
       // The same absence WITH the pipeline's reason attached renders that
       // reason, and still offers nothing to tap — no button can fix it.
@@ -905,7 +905,7 @@ void main() {
           coveragePct: 89,
           note: 'unknown_device_family:id=none'));
       expect(find.textContaining('which strap'), findsOneWidget);
-      expect(find.textContaining('Nothing recorded says why'), findsNothing);
+      expect(find.text('No reading.'), findsNothing);
 
       // A day the band genuinely never saw is the ONE state where "wear the
       // band" is an instruction rather than an insult, so it survives there.

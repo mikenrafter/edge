@@ -505,19 +505,9 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
     }
     final axis = AxisSpec.of(have, ticks: 3, floor: 0, format: axisInt);
     final drawn = d.hourly.where((v) => v != null).length;
-    // The per-hour depth, as a range. A bar chart has nowhere to print 24
-    // counts and "how many quiet stretches is this hour?" is the question that
-    // decides whether an hour means anything.
-    final counts = [
-      for (var h = 0; h < d.hourly.length && h < d.hourlyN.length; h++)
-        if (d.hourly[h] != null) d.hourlyN[h],
-    ]..sort();
-    final lo = counts.isEmpty ? 0 : counts.first;
-    final hi = counts.isEmpty ? 0 : counts.last;
     return Surface(
       child: ChartFrame(
-        title: l?.circadianDetailStillnessTitle ??
-            'Beat-to-beat variability while still',
+        title: l?.circadianDetailStillnessTitle ?? 'HRV while still',
         unit: 'ms',
         height: 120,
         yAxis: axis,
@@ -525,14 +515,11 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
         // are wall-clock times rather than positions in an array.
         xLabels: [clock(0), clock(12 * 60), clock(23 * 60)],
         series: d.hourly,
-        footnote: l?.circadianDetailStillnessFootnote(lo, hi, d.hourlyDays, drawn) ??
-            'Each hour is the middle of $lo–$hi still five-minute '
-                'stretches over '
-                '${d.hourlyDays} day${d.hourlyDays == 1 ? '' : 's'}, and $drawn '
-                'of 24 hours had enough, so read it as stillness, not stress.',
+        footnote: l?.circadianDetailStillnessFootnote(drawn) ??
+            '$drawn of 24 hours had enough still time to show. Read it as '
+                'stillness, not stress.',
         child: ChartScrub(
-          label: l?.circadianDetailStillnessTitle ??
-              'Beat-to-beat variability while still',
+          label: l?.circadianDetailStillnessTitle ?? 'HRV while still',
           // 24 bars, one per local hour; an hour without three stretches is
           // blank on the chart and reads "No data here".
           gaps: hasChartGaps([d.hourly], trailing: true),
@@ -590,7 +577,7 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
           // No `series:`. A shape has no reading; handing the frame one would
           // have it speak numbers off a curve that deliberately has none.
           footnote: l?.circadianDetailForecastFootnote ??
-              'No scale — the shape is the whole output.',
+              'Shape only; no scale.',
           // The readout keeps the card's rule: a time and, inside the named
           // window, that it is the flattest stretch. No figure comes off a
           // curve that has no scale. The span is the 0 / +9 / +18 h the x
@@ -633,15 +620,14 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
         ),
         const SizedBox(height: S.x3),
         Text(
-          '${l?.circadianDetailPredictionDisclaimer ?? 'A prediction, not a reading. It only knows last night; a nap, coffee or anything else today won’t change it.'}'
+          '${l?.circadianDetailPredictionDisclaimer ?? 'A prediction from last night only. Naps and coffee don’t change it.'}'
           '${assumedPhase ? ' ${l?.circadianDetailAssumedPhaseNote ?? 'Your own clock peak is not worked out yet, so this uses an average one.'}' : ''}',
           style: F.cap.copyWith(color: p.ink2, height: 1.6),
         ),
         const SizedBox(height: S.x3),
         Text(
           l?.circadianDetailNotADrivingCheck ??
-              'It is not a fitness-to-drive check and not a shift-safety '
-                  'tool, and it does not say you are impaired.',
+              'Not a fitness-to-drive or shift-safety check.',
           style: F.cap.copyWith(color: p.ink2, height: 1.6),
         ),
       ]),
@@ -708,7 +694,7 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
       const SizedBox(height: S.x3),
       Text(
         l?.circadianDetailPairFootnote(d.sriPairs.length) ??
-            'The least alike pair, out of ${d.sriPairs.length}. A late weekend is a different schedule, not a worse night. Days with too little recording are left out.',
+            'The least alike pair of consecutive nights, out of ${d.sriPairs.length}. Days with too little recording are left out.',
         style: F.over.copyWith(color: p.ink3, height: 1.5),
       ),
     ]);
@@ -769,11 +755,10 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
       Text(
         used == null
             ? (l?.circadianDetailStrengthFootnoteUnknown ??
-                'From a run of days with every hour of heart rate recorded. '
-                'The hours shown have your highest and lowest heart rate.')
+                'From a run of fully recorded days. These are your highest and lowest heart-rate hours.')
             : (l?.circadianDetailStrengthFootnoteKnown(used) ??
                 'From $used fully recorded day${used == 1 ? '' : 's'}. Your '
-                    'highest and lowest heart-rate hours, not your busiest.'),
+                    'highest and lowest heart-rate hours.'),
         style: F.over.copyWith(color: p.ink3, height: 1.5),
       ),
     ]);

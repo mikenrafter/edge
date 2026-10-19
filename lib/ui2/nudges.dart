@@ -151,8 +151,7 @@ class _AskCard extends StatelessWidget {
           C.indigo,
           l?.nudgeDiscordTitle ?? 'OpenStrap Discord',
           l?.nudgeDiscordBody ??
-              'Report bugs and ask other people running the same band '
-              'on the OpenStrap Discord.',
+              'Chat with other OpenStrap users on Discord.',
           l?.nudgeDiscordCta ?? 'Join Discord',
           kDiscordUrl,
         ),
@@ -162,8 +161,7 @@ class _AskCard extends StatelessWidget {
           C.pink,
           l?.nudgeDonateTitle ?? 'Support OpenStrap',
           l?.nudgeDonateBody ??
-              'OpenStrap is free and open source, with no subscription. '
-              'Sponsorships fund ongoing maintenance.',
+              'Free and open source. Sponsoring keeps it maintained.',
           l?.nudgeDonateCta ?? 'Support the project',
           kSponsorUrl,
         ),

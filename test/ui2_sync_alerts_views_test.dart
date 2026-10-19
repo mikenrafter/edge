@@ -555,7 +555,7 @@ void main() {
       'sleep_asserted_without_metrics', fixtures['sleep_asserted_without_metrics']!.$2,
       () {
     expect(find.text('You set this window'), findsOneWidget);
-    expect(find.text('Your times, no sleep numbers'), findsOneWidget);
+    expect(find.text('Your times are saved'), findsOneWidget);
     expect(find.text('Recalculate this night'), findsOneWidget);
     expect(find.text('Back to automatic'), findsOneWidget);
     // Honesty: no empty-night copy beside a window the user asserted.

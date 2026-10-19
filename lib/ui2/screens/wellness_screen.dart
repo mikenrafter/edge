@@ -407,9 +407,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               // states what stress IS and stops there.
               ? StatusCard(
                   l?.wellnessNoStressTitle ?? 'No stress reading last night',
-                  l?.wellnessNoStressBody ??
-                      'Stress comes from beat timing recorded while you rest overnight. '
-                      'Last night had no reading.',
+                  '',
                   icon: LucideIcons.activity,
                 )
               : SignalCard(
@@ -536,9 +534,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               ? StatusCard(
                   l?.wellnessNoSleepNeedTitle ?? 'No sleep need yet',
                   whyFromNote(_noteOf(coachMap?['need'])) ??
-                      (l?.wellnessNoSleepNeedBody ??
-                          'Nothing recorded says why there is no need for '
-                              'tonight.'),
+                      (l?.wellnessNoSleepNeedBody ?? 'No reading.'),
                   icon: LucideIcons.bedDouble,
                 )
               : Surface(
@@ -1706,10 +1702,7 @@ class _JournalFindingsState extends State<JournalFindings> {
       else if (_rows.isEmpty)
         StatusCard(
           l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
-          l?.wellnessNothingSeparatedBody ??
-              'Everything you log is tested against your recovery, HRV, '
-                  'resting heart rate and sleep efficiency. Nothing has '
-                  'cleared the bar yet.',
+          l?.wellnessNothingSeparatedBody ?? 'No clear links found yet.',
           icon: LucideIcons.scatterChart,
         )
       else ...[
@@ -1726,8 +1719,7 @@ class _JournalFindingsState extends State<JournalFindings> {
         const SizedBox(height: S.x2),
         Text(
           l?.wellnessLinkNeverCause ??
-              'A link on your own days — never a cause. The days you do a '
-                  'thing are days you were already that kind of day.',
+              'A link in your own days, not proof of a cause.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
       ],
@@ -1769,7 +1761,7 @@ class _JournalFindingsState extends State<JournalFindings> {
       final n = '${r['n_with']}';
       final amount = _amount(delta.abs(), unit);
       return l?.wellnessHeadlineBinary(n, field, outcome, amount, direction) ??
-          'On the $n days you logged $field, $outcome ran $amount $direction';
+          'On the $n days you logged $field, $outcome was $amount $direction';
     }
     final n = '${r['n']}';
     final slope = (r['slope_per_unit'] as num?)?.toDouble();
@@ -1788,7 +1780,7 @@ class _JournalFindingsState extends State<JournalFindings> {
         : (l?.wellnessLower ?? 'lower');
     final amount = _amount((slope * per).abs(), unit);
     return l?.wellnessHeadlineSlope(n, field, outcome, amount, direction, step) ??
-        'On the $n days you logged $field, $outcome ran '
+        'On the $n days you logged $field, $outcome was '
             '$amount $direction per $step';
   }
 
@@ -1834,23 +1826,13 @@ class _JournalFindingsState extends State<JournalFindings> {
       return '$against'
           '${d == null ? '' : ' · d ${d.abs().toStringAsFixed(1)}'}. $when';
     }
-    final lo = (r['rho_low'] as num?)?.toDouble();
-    final hi = (r['rho_high'] as num?)?.toDouble();
-    final rho = (r['rho'] as num?)?.toDouble();
-    final ci = (lo == null || hi == null)
-        ? ''
-        : ' (${l?.wellnessRangeTo(lo.toStringAsFixed(2), hi.toStringAsFixed(2)) ?? '${lo.toStringAsFixed(2)} to ${hi.toStringAsFixed(2)}'})';
-    final base = rho == null
-        ? ''
-        : (l?.wellnessRankCorrelation(rho.toStringAsFixed(2), ci) ??
-            'Rank correlation ${rho.toStringAsFixed(2)}$ci. ');
     // MT-06's own ceiling, said where the finding is: `at_min` is the LAST
     // occurrence, so timing cannot tell two coffees from five, and a late
     // stressful day produces both the late coffee and the bad night.
     if (r['field'] == 'caffeine_last_min') {
-      return '$base$when ${l?.wellnessCaffeineCaveat ?? 'This counts only your last caffeine of the day, so two cups and five look the same. A long, stressful day can bring both late coffee and a poor night.'}';
+      return '$when ${l?.wellnessCaffeineCaveat ?? 'Counts only your last caffeine, so two cups and five look the same.'}';
     }
-    return '$base$when'.trim();
+    return when;
   }
 
   /// How to say one step of this field. Minutes-past-midnight is unreadable per
@@ -1886,17 +1868,14 @@ class _JournalFindingsState extends State<JournalFindings> {
       return StatusCard(
         l?.wellnessNotEnoughWeeksTitle ?? 'Not enough weeks yet',
         l?.wellnessNotEnoughWeeksBody ??
-            'Weekday comparison needs at least eight weeks of data, '
-            'with at least five days of each weekday.',
+            'Weekday comparison needs at least eight weeks of data.',
         icon: LucideIcons.calendarDays,
       );
     }
     if (_weekday['meaningful'] != true) {
       return StatusCard(
         l?.wellnessNoDayStandsOutTitle ?? 'No day of the week stands out',
-        l?.wellnessNoDayStandsOutBody ??
-            'After correcting for comparing seven weekdays, '
-            'no day differs from the other six.',
+        l?.wellnessNoDayStandsOutBody ?? 'No weekday stands out.',
         icon: LucideIcons.calendarDays,
       );
     }
@@ -1918,8 +1897,7 @@ class _JournalFindingsState extends State<JournalFindings> {
             '${_weekdayName(day)}s: recovery runs '
                 '${delta.abs().round()} $direction than your usual',
         detail: l?.wellnessWeekdayDetail('$n') ??
-            'From $n of them. A weekday causes nothing; it groups what you did on it. '
-            'This is not advice.',
+            'From $n of them. Nothing here is advice.',
       ),
     );
   }

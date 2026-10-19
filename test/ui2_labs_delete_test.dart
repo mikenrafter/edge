@@ -284,7 +284,7 @@ void main() {
       await t.tap(_control('Remove the Lp(a) marker'));
       await t.pumpAndSettle();
       expect(find.text('Remove Lp(a)?'), findsOneWidget);
-      expect(find.textContaining('Nothing measured goes with it'),
+      expect(find.textContaining('you can no longer log it'),
           findsOneWidget);
 
       await t.tap(find.text('Remove'));

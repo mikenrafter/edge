@@ -475,7 +475,7 @@ class _RoughNightCardState extends State<RoughNightCard> {
           const SizedBox(height: S.x3),
           Text(
             l?.roughNightSummary(_sentence(l, n.moved)) ??
-                '${_sentence(l, n.moved)}, against your own nights.',
+                '${_sentence(l, n.moved)}, compared with your own nights.',
             style: F.cap.copyWith(color: p.ink2, height: 1.5),
           ),
           // WHAT THE APP ALREADY KNOWS. Stated, never asked — a screen that
@@ -516,12 +516,6 @@ class _RoughNightCardState extends State<RoughNightCard> {
           color: C.indigo,
           soft: true,
           onTap: () => _setAsk('on'),
-        )
-      else
-        Text(
-          l?.roughNightNothingToAnswer ??
-              'Nothing to answer. This card only reports the night.',
-          style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
     ];
   }

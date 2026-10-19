@@ -644,7 +644,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
           const SizedBox(height: S.x1),
           Text(
               l?.healthReadFailedBody ??
-                  'The stored rows failed to load. Nothing was deleted.',
+                  'Couldn’t load your data. Nothing was deleted.',
               style: F.cap.copyWith(color: p.ink3)),
           Pressable(
             key: const ValueKey('explore-retry'),
@@ -822,9 +822,9 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
         Text(
             zOn
                 ? (l?.exploreNormalisedBaseline ??
-                    'Normalised. Lines in baseline mode show distance from your usual level (the middle is usual, the top and bottom are 3 standard deviations away); the others span their own lowest to highest. Touch the chart for the real values.')
+                    'Each line is scaled to fit. Lines in usual-range mode put your normal in the middle and far-off values at the edges. Touch the chart for real values.')
                 : (l?.exploreNormalised ??
-                    'Normalised: each line spans its own lowest to highest, so shapes compare and values do not. Touch the chart for the real values.'),
+                    'Each line is scaled to its own range, so compare shapes, not values. Touch the chart for real values.'),
             key: const ValueKey('explore-normalised-note'),
             style: F.over.copyWith(color: p.ink3, height: 1.5)),
         ...notes,

@@ -515,7 +515,7 @@ void main() {
       // nights back under. Printing "1.3 deviations" without a direction read
       // as "above your baseline, 1.3 below it".
       await t.pumpWidget(frame(base.copyOrIllness('red', '2026-05-20', -1.3)));
-      expect(find.textContaining('1.3× your normal night-to-night swing below it'),
+      expect(find.textContaining('though that night alone was below it'),
           findsOneWidget);
     });
 
@@ -776,7 +776,7 @@ void main() {
       await t.tap(find.text('30 days'));
       await t.pumpAndSettle();
       expect(find.text('Worn'), findsOneWidget);
-      expect(find.textContaining('12 of these 30 days have a wear record'),
+      expect(find.textContaining('12 of 30 days have wear data'),
           findsOneWidget);
     });
 
@@ -850,7 +850,7 @@ void main() {
     testWidgets('no model: the chip says what the coach is for', (t) async {
       await t.pumpWidget(frame(false));
       expect(find.byIcon(LucideIcons.sparkles), findsOneWidget);
-      expect(find.text('Ask questions about your data: set up the coach'),
+      expect(find.text('Set up the coach'),
           findsOneWidget);
       // Profile is the avatar every tab carries, not a gear on Home.
       expect(find.byType(ProfileAvatar), findsOneWidget);
@@ -1012,7 +1012,7 @@ void main() {
       expect(find.textContaining('Ran on 10 days, flagged on 1'),
           findsOneWidget);
       // The permanent line. Not a tooltip, and not optional.
-      expect(find.textContaining('nothing flagged does not rule anything out'),
+      expect(find.textContaining('Nothing flagged doesn’t rule anything out'),
           findsOneWidget);
     });
   });
@@ -1090,7 +1090,7 @@ void main() {
         home: CircadianDetail(data: data),
       ));
       await t.pumpAndSettle();
-      expect(find.textContaining('still five-minute stretches'), findsNothing);
+      expect(find.textContaining('not stress'), findsNothing);
       expect(find.text('1h 30m later'), findsOneWidget);
       await t.pumpWidget(MaterialApp(
         theme: buildTheme(Brightness.light),
@@ -1099,8 +1099,6 @@ void main() {
       await t.pumpAndSettle();
       expect(find.textContaining('not stress'), findsOneWidget);
       // How deep each drawn hour is, not just a grand total.
-      expect(find.textContaining('middle of 5–5 still five-minute stretches'),
-          findsOneWidget);
       expect(find.textContaining('12 of 24 hours'), findsOneWidget);
       // The InsightCard this section was paid for with is gone, and its one
       // extra fact — the DIRECTION, which is the sign of free minus work — is
@@ -1182,13 +1180,13 @@ void main() {
       expect(find.text('Today, predicted'), findsOneWidget);
       expect(find.textContaining('flattest stretch lands in'), findsOneWidget);
       // No score, and the chart says why there is no axis to read one off.
-      expect(find.textContaining('No scale — the shape is the whole output'),
+      expect(find.textContaining('Shape only; no scale'),
           findsOneWidget);
       // The safety refusal is COPY, on the card, in both directions.
-      expect(find.textContaining('not a fitness-to-drive check'), findsOneWidget);
-      expect(find.textContaining('does not say you are impaired'),
+      expect(find.textContaining('Not a fitness-to-drive or shift-safety check'),
           findsOneWidget);
-      expect(find.textContaining('A prediction, not a reading'), findsOneWidget);
+      expect(find.textContaining('A prediction from last night only'),
+          findsOneWidget);
     });
 
     testWidgets('the card survives 3.1x text', (t) async {
@@ -1276,12 +1274,10 @@ void main() {
       await pumpI(t, ana.cvhrPersonalDistribution(nights(20)));
       // The same-card refusal, in the state where a user most wants it to be
       // reassurance. Not a footnote, not a tooltip, not conditional.
-      expect(find.textContaining('nothing here is a negative result'),
+      expect(find.textContaining('not a breathing test'), findsOneWidget);
+      expect(find.textContaining('some conditions and medicines hide it'),
           findsOneWidget);
       expect(find.textContaining('a clinician can test that properly'),
-          findsOneWidget);
-      // And it never generalises from the aggregate to a night.
-      expect(find.textContaining('says anything about any one night'),
           findsOneWidget);
     });
 
@@ -1300,7 +1296,7 @@ void main() {
 
     testWidgets('the card survives 3.1x text', (t) async {
       await pumpI(t, ana.cvhrPersonalDistribution(nights(20)), scale: 3.1);
-      expect(find.textContaining('nothing here is a negative result'),
+      expect(find.textContaining('some conditions and medicines hide it'),
           findsOneWidget);
     });
   });
@@ -1379,7 +1375,8 @@ void main() {
       expect(find.textContaining('14 Aug'), findsNothing);
       // The guard the item is mostly made of.
       expect(find.textContaining('The least alike pair'), findsOneWidget);
-      expect(find.textContaining('not a worse night'), findsOneWidget);
+      expect(find.textContaining('Days with too little recording are left out'),
+          findsOneWidget);
     });
 
     testWidgets('no pairs, no tap', (t) async {
@@ -1556,10 +1553,10 @@ void main() {
       expect(find.text('16.8 br/min'), findsOneWidget);
       expect(find.textContaining('11.0'), findsNothing);
       // It is a floor and it says so, in both directions.
-      expect(find.textContaining('A floor, not a rate for the day'),
+      expect(find.textContaining('Breathing rate from the stillest stretches'),
           findsOneWidget);
-      expect(find.textContaining('breathing while you move cannot be '
-          'recovered'), findsOneWidget);
+      expect(find.textContaining('says nothing about the rest of the day'),
+          findsOneWidget);
     });
 
     testWidgets('the common case is nothing, and it is written as such',
@@ -1578,8 +1575,7 @@ void main() {
       );
       expect(find.text('No resting breathing rate away from sleep'),
           findsOneWidget);
-      expect(find.textContaining('a day you were moving, not a day anything '
-          'went wrong'), findsOneWidget);
+      expect(find.textContaining('Most days have fewer'), findsOneWidget);
       expect(find.text('Lowest'), findsNothing);
     });
 

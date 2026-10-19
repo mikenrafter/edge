@@ -287,8 +287,7 @@ List<String> driverQualifiers(BuildContext c, DriverFacts f) {
       m.abs() >= 1
           ? (l?.driverBreakdownBiggerThanNoise ?? 'bigger than measurement noise')
           : (l?.driverBreakdownSmallerThanNoise ??
-              'outside your usual spread, but small enough to be measurement '
-                  'noise'),
+              'outside your usual range, but within normal reading noise'),
   ];
 }
 
@@ -360,7 +359,7 @@ class _DriverBreakdownState extends State<DriverBreakdown> {
         color: p.card2,
         child: Text(
           l?.driverBreakdownFooter ??
-              'Each input is compared with your own history, beside the score rather than part of it. "Measurement noise" is how far a reading moves on its own.',
+              'Each input is compared with your own history. Measurement noise is how much a reading moves on its own.',
           style: F.cap.copyWith(color: p.ink3, height: 1.5),
         ),
       ),
@@ -537,11 +536,11 @@ StatusCard driverAbsenceCard(
     return StatusCard(
       l?.driverBreakdownAbsenceTitle ?? 'No breakdown to show',
       switch (stale['kind']) {
-        'algo_version' => l?.driverBreakdownAbsenceAlgoVersion ??
-            'The way recovery is worked out changed in the last update. Your days are being recalculated.',
+        'algo_version' => l?.homeInsightsRebuildingAlgoVersion ??
+            'Updating after the latest app update.',
         'stale' => l?.driverBreakdownAbsenceStale ??
             'Your trends are out of date. Sync the band to update them.',
-        _ => l?.driverBreakdownAbsenceNoVersion ??
+        _ => l?.homeInsightsNoVersionStamp ??
             'Your trends are being updated. This takes a minute after a sync.',
       },
       fix: onSync == null ? '' : (l?.driverBreakdownSyncTheBand ?? 'Sync the band'),
@@ -552,8 +551,7 @@ StatusCard driverAbsenceCard(
   return StatusCard(
     l?.driverBreakdownAbsenceTitle ?? 'No breakdown to show',
     whyFromNote(note) ??
-        (l?.driverBreakdownAbsenceNoReason ??
-            'Nothing recorded says why last night has no breakdown.'),
+        (l?.driverBreakdownAbsenceNoReason ?? 'No reading.'),
     icon: LucideIcons.listTree,
   );
 }

@@ -594,17 +594,13 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
       ManualWindowError.endNotAfterStart => l?.momentReviewRangeEnd ??
           'The end has to be after the start.',
       ManualWindowError.tooShort || ManualWindowError.tooLong => nap
-          ? (l?.napsInvalidWindow ??
-              'A nap must be between 5 minutes and 6 hours. Longer periods '
-                  'count as night sleep, which shows sleep stages.')
+          ? (l?.napsInvalidWindow ?? 'A nap is 5 minutes to 6 hours.')
           : (l?.momentReviewRangeWorkoutLength ??
               'A workout has to last between 1 minute and 24 hours.'),
       ManualWindowError.inFuture => l?.momentReviewRangeFuture ??
           "A range can't end in the future.",
       ManualWindowError.overlapsExisting => nap
-          ? (l?.napsOverlap ??
-              'This overlaps a nap already logged on this day. Remove that '
-                  'nap first.')
+          ? (l?.napsOverlap ?? 'That overlaps an existing nap.')
           : (l?.momentReviewRangeWorkoutOverlap ??
               'That overlaps a workout already in your log.'),
     };

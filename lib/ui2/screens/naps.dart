@@ -221,15 +221,12 @@ class _NapsScreenState extends State<NapsScreen> {
     // Both refusals are the shared rules, not a second copy written here.
     if (!manualNapWindowIsValid(s, e)) {
       setState(() => _failed = l?.napsInvalidWindow ??
-          'A nap lasts 5 minutes to 6 hours. '
-          'Longer sleep goes in the night view, '
-          'where sleep stages are shown.');
+          'A nap is 5 minutes to 6 hours.');
       return;
     }
     if (napOverlapsExisting(s, e, _d?.naps ?? const [])) {
       setState(() => _failed = l?.napsOverlap ??
-          'This overlaps a nap already on this day. '
-          'Remove that nap first.');
+          'That overlaps an existing nap.');
       return;
     }
     await _edit(() => LocalDb.putNapEdit(
@@ -264,16 +261,14 @@ class _NapsScreenState extends State<NapsScreen> {
             l?.napsNoReadingTitle ?? 'No nap reading for this day',
             whyFromNote(d.note, unit: 'days') ??
                 l?.napsNoReadingBody ??
-                    'Naps come from the 1 Hz recording, '
-                    'and this day has too little of it.',
+                    'Not enough recording to detect naps.',
             icon: LucideIcons.circleHelp,
           )
         else if (d.naps.isEmpty)
           StatusCard(
             l?.napsEmptyTitle ?? 'No naps on this day',
             l?.napsEmptyBody ??
-                'No period on this day was still for long enough '
-                'with the heart-rate dip of sleep.',
+                'No naps detected.',
             icon: LucideIcons.sun,
           )
         else ...[
@@ -352,13 +347,6 @@ class _NapsScreenState extends State<NapsScreen> {
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: S.x2),
-          Text(
-            l?.napsRemovalKept ??
-                "A removal is stored as a time window, so it still "
-                "applies if the detector later shifts a nap's start or end.",
-            style: F.cap.copyWith(color: p.ink3, height: 1.5),
           ),
         ],
       ],

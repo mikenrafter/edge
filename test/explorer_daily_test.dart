@@ -173,11 +173,11 @@ void main() {
   });
 
   group('normalised', () {
-    testWidgets('the chart says Normalised, plainly', (t) async {
+    testWidgets('the chart says each line is scaled, plainly', (t) async {
       await _week7(t, _repo());
       final note = find.byKey(const ValueKey('explore-normalised-note'));
       expect(note, findsOneWidget);
-      expect(t.widget<Text>(note).data, contains('Normalised'));
+      expect(t.widget<Text>(note).data, contains('scaled to its own range'));
     });
 
     testWidgets('each metric spans 0..1 over its own range, on one chart',
@@ -232,7 +232,7 @@ void main() {
       ]..sort();
       expect([...raw]..sort(), [for (final e in expected) closeTo(e, 1e-9)]);
       expect(t.widget<Text>(find.byKey(const ValueKey('explore-normalised-note'))).data,
-          contains('baseline'));
+          contains('usual-range mode'));
     });
 
     testWidgets('off again: back to min..max', (t) async {

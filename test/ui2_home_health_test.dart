@@ -480,22 +480,22 @@ void main() {
       );
       expect(
         find.textContaining(
-          'On the 11 days you logged Alcohol, Resting HR ran 2.0 bpm '
+          'On the 11 days you logged Alcohol, Resting HR was 2.0 bpm '
           'higher per unit',
         ),
         findsOneWidget,
       );
       // Per hour, never a cutoff time.
       expect(
-        find.textContaining('Sleep efficiency ran 3.0 % lower per hour later'),
+        find.textContaining('Sleep efficiency was 3.0 % lower per hour later'),
         findsOneWidget,
       );
       expect(
-        find.textContaining('only your last caffeine of the day'),
+        find.textContaining('only your last caffeine'),
         findsOneWidget,
       );
       // Nothing here may read as a cause or a recommendation.
-      expect(find.textContaining('never a cause'), findsOneWidget);
+      expect(find.textContaining('not proof of a cause'), findsOneWidget);
     },
   );
 

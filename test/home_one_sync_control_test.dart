@@ -86,7 +86,7 @@ void main() {
     );
     await t.pump();
     expect(
-      find.text('Your cross-day insights are being rebuilt'),
+      find.text('Updating your trends'),
       findsOneWidget,
     );
     expectOne(t);

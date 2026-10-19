@@ -196,8 +196,7 @@ List<Widget> whatChangedBody(BuildContext c, WhatChangedData d) {
       StatusCard(
         l?.whatChangedNothingTitle ?? 'Nothing stood out',
         l?.whatChangedNothingBody ??
-            'Every metric with enough history sat inside the range your own days '
-                'have set. That is the normal answer, and it is a complete one.',
+            'Everything with enough history is within your usual range.',
         icon: LucideIcons.check,
       )
     else ...[
@@ -221,7 +220,7 @@ List<Widget> whatChangedBody(BuildContext c, WhatChangedData d) {
       const SizedBox(height: S.x3),
       Text(
         l?.whatChangedMethodologyNote ??
-            'Compared with your own recent days, in your own units, with the window shown. Nothing here is a cause or a diagnosis.',
+            'Compared with your recent days. Not a diagnosis.',
         style: F.over.copyWith(color: p.ink3, height: 1.5),
       ),
     ],

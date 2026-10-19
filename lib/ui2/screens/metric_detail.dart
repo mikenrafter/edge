@@ -1227,12 +1227,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                       ) ??
                       'No history for ${nounInSentence(l, uiText(context, spec.title))} yet'),
             win == 1
-                ? (all.isEmpty
-                    ? (l?.metricDetailNoValueYet ??
-                        'Today has not produced a value yet.')
-                    : (l?.metricDetailNoValueYetWiderRanges ??
-                        'Today has not produced a value yet. The wider ranges '
-                            'above hold the days that did.'))
+                ? (l?.metricDetailNoValueYet ??
+                    'Today has not produced a value yet.')
                 : (l?.metricDetailNoValueInWindow ??
                     'No day in this window produced a value.'),
             // Today opens first now, so this card is what someone with months
@@ -1306,7 +1302,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
               LucideIcons.heartPulse,
               l?.healthAdvancedLinkTitle ?? 'Advanced charts',
               l?.healthAdvancedLinkSub ??
-                  'Beat-to-beat detail and sleep timing, for the curious',
+                  'Beat-to-beat detail and sleep timing',
               () => go(c, const AdvancedScreen())),
           const SizedBox(height: S.x3),
         ],
@@ -1690,11 +1686,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                 : (l?.metricDetailAlgoBreakFootnote(marks.length) ??
                     (marks.length == 1
                         ? 'The dotted line is a change in how these days were '
-                            'computed. Readings either side of it came from '
-                            'different versions.'
+                            'computed.'
                         : 'The dotted lines are changes in how these days were '
-                            'computed. Readings either side of one came from '
-                            'different versions.')),
+                            'computed.')),
             // The window IS the span now: `series` has one slot per calendar
             // day whether or not that day derived, so both edges are dates
             // rather than array positions. It used to read the length of a
@@ -1831,9 +1825,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                 yAxis: axis,
                 series: hrs,
                 footnote: l?.metricDetailWearFootnote(have.length, win) ??
-                    '${have.length} of these $win days have a wear '
-                        'record. The rest are gaps in both charts — the line above '
-                        'is not carried across one.',
+                    '${have.length} of $win days have wear data. Missing '
+                        'days show as gaps.',
                 // The window ends today, one bar per day; a day with no wear
                 // record has no bar and reads "No data here".
                 child: ChartScrub(
@@ -2055,7 +2048,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                       ? (l?.metricDetailRankToday(share!) ??
                           'Today is higher than $share% of your own days.')
                       : (l?.metricDetailRankTodayBand(share!, band) ??
-                          'Today is higher than $share% of your own days — '
+                          'Today is higher than $share% of your own days, '
                               '$band.'))
                   : (band == null
                       ? (l?.metricDetailRankFrom(axisDay(latestTs), share!) ??
@@ -2064,7 +2057,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                       : (l?.metricDetailRankFromBand(
                               axisDay(latestTs), share!, band) ??
                           'Your reading from ${axisDay(latestTs)} is higher '
-                              'than $share% of your own days — $band.'))),
+                              'than $share% of your own days, $band.'))),
           style: F.cap.copyWith(color: p.ink3, height: 1.5),
         ),
       ]),
@@ -2122,7 +2115,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
       const SizedBox(height: S.x3),
       Text(
           l?.metricDetailPatternsNotCauses ??
-              'Patterns in your own logs, not causes.',
+              'Patterns in your logs, not causes.',
           style: F.over.copyWith(color: p.ink3, height: 1.5)),
     ]);
   }

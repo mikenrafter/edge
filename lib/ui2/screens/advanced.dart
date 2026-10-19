@@ -25,8 +25,7 @@ class AdvancedScreen extends StatelessWidget {
     final l = AppLocalizations.of(c);
     return detailScaffold(c, l?.advancedTitle ?? 'Advanced charts', [
       Text(
-        l?.advancedIntro ??
-            'Research views of the same data. Nothing here changes your scores.',
+        l?.advancedIntro ?? 'Detailed views of your data.',
         style: F.cap.copyWith(color: p.ink2, height: 1.5),
       ),
       const SizedBox(height: S.x4),

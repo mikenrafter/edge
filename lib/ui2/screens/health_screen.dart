@@ -651,8 +651,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     return StatusCard(
       l?.healthCouldNotRead(what) ?? 'Could not read your $what',
       l?.healthReadFailedBody ??
-          'The stored rows failed to load. Nothing was deleted — this is a '
-              'read that went wrong.',
+          'Couldn’t load your data. Nothing was deleted.',
       fix: l?.healthTryAgain ?? 'Try again',
       icon: LucideIcons.databaseZap,
       onFix: retry,
@@ -918,19 +917,14 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             // which read as "tracking above your own baseline, 1.3 deviations
             // below it".
             illnessZ == null
-                ? (l?.healthIllnessBodyNoZ ??
-                    'Your resting heart rate has run above your usual over recent nights. This tracks one signal, so it shows a pattern, not a cause.')
-                : (l?.healthIllnessBodyWithZ(
-                        illnessZ.abs().toStringAsFixed(1),
-                        illnessZ >= 0
-                            ? (l.healthDirectionAbove)
-                            : (l.healthDirectionBelow)) ??
-                    'Recent nights together put your resting heart rate above '
-                        'your usual. On its own, that night was '
-                        '${illnessZ.abs().toStringAsFixed(1)}× your normal '
-                        'night-to-night swing ${illnessZ >= 0 ? 'above' : 'below'} '
-                        'it. A pattern, not a cause.'),
-            advice: l?.healthIllnessAdvice ??
+                ? (l?.homeIllnessBodyNoZ ??
+                    'Your resting heart rate has been above your usual over recent nights. A pattern, not a cause.')
+                : (illnessZ >= 0
+                    ? (l?.homeIllnessBodyAbove ??
+                        'Recent nights put your resting heart rate above your usual. That night was above it too. A pattern, not a cause.')
+                    : (l?.homeIllnessBodyBelow ??
+                        'Recent nights together put your resting heart rate above your usual, though that night alone was below it. A pattern, not a cause.')),
+            advice: l?.homeIllnessAdvice ??
                 'Worth noting if it continues past a couple of days.',
           );
 
@@ -1185,7 +1179,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             d.daysWithData.clamp(0, 30),
             30,
             l?.healthDaysWithRecord ??
-                'Days with a score in the last 30 days',
+                'Scored days, last 30',
               C.domHealth,
             ),
           ),
@@ -1342,7 +1336,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               l?.healthHeartRateVariability ?? 'Heart rate variability',
               '${rmssd.round()}',
               'ms',
-              l?.healthTimeFrequencyNonLinear ?? 'Time, frequency and non-linear',
+              l?.healthTimeFrequencyNonLinear ?? 'Detailed HRV measures',
               C.green,
               preview: _hrvPreview(c, d),
               onTap: () => go(c, const Investigate('hrv'))),
@@ -1355,7 +1349,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
           LucideIcons.flaskConical,
           l?.healthAdvancedLinkTitle ?? 'Advanced charts',
           l?.healthAdvancedLinkSub ??
-              'Beat-to-beat detail and sleep timing, for the curious',
+              'Beat-to-beat detail and sleep timing',
           () => go(c, const AdvancedScreen())),
     ]);
   }
@@ -1438,19 +1432,12 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       Surface(
         child: Consistency(have, total,
             l?.healthMeasuresWithHistory ??
-                'Measures with stored history on this device',
+                'Metrics with history',
             C.domHealth,
             unit: 'measures',
           ),
         ),
         const SizedBox(height: S.x3),
-        // Not a promise of insight — a statement of what a tap gets you. Every
-        // row below opens the same drill-down: the chart, your own range, the
-        // method in full, and the paper it came from.
-      Text(
-          l?.healthEachOneOpens ??
-              'Each one opens its chart, your own range, and how it is worked out.',
-          style: F.over.copyWith(color: p.ink3, height: 1.6)),
       for (final f in kMetricCatalogue) _family(c, p, f, e.counts),
     ]);
   }
@@ -1805,8 +1792,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(l?.healthStillHoldsResults(results, m.label) ??
             '${m.label} still holds $results '
-                '${results == 1 ? 'result' : 'results'}. Remove those first — '
-                'the marker is what labels them.'),
+                '${results == 1 ? 'result' : 'results'}. Remove those first.'),
       ));
       return;
     }
@@ -1814,8 +1800,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       context,
       title: l?.healthRemoveMarkerQ(m.label) ?? 'Remove ${m.label}?',
       body: l?.healthRemoveMarkerBody ??
-          'It leaves the marker list, so you can no longer log it. Nothing '
-              'measured goes with it — you have no results under it.',
+          'It leaves the marker list, so you can no longer log it.',
     );
     if (!ok || !mounted) return;
     await LocalDb.deleteLabMarkerDef(m.key);

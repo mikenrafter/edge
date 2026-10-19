@@ -533,8 +533,7 @@ class _CycleTabState extends State<CycleTab> with RevisionReload {
     final n = d.gapN;
     if (d.predictedFrom == null || d.predictedTo == null) {
       final days = d.daysUntilNext?.round();
-      return '${_lead(l, days)}${l?.cycleFromOneMeasuredGap ?? 'from your one measured gap, which cannot show how '
-          'much your own cycle varies'}';
+      return '${_lead(l, days)}${l?.cycleFromOneMeasuredGap ?? 'from one measured gap'}';
     }
     // Offsets off the SAME `days_until_next` the point case uses, never a
     // second read of the clock: the repo already resolved "today" once, and a
@@ -1042,7 +1041,7 @@ class _CycleHistoryState extends State<_CycleHistory> {
           if (w != null) ...[w, const SizedBox(height: S.x3)],
         Text(
           l?.cycleOwnPastCyclesDescribed ??
-              'Your past cycles, described. Days only one cycle reached are left empty. It shows what happened, not what will.',
+              'Your past cycles. Days that only one cycle reached are left empty.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
         const SizedBox(height: S.x4),
@@ -1188,7 +1187,7 @@ class _CycleHistoryState extends State<_CycleHistory> {
           ],
           Text(
             l?.cycleComparisonNotCorrection ??
-                'A comparison, not a correction. Your recovery score is not adjusted by this, and nothing here is a training instruction.',
+                'Doesn’t change your recovery score.',
             style: F.over.copyWith(color: p.ink3, height: 1.5),
           ),
         ],
@@ -1378,7 +1377,7 @@ class _CycleHistoryState extends State<_CycleHistory> {
         // Non-dismissible, and deliberately not a card that can be closed.
         Text(
           l?.cycleLengthChangesReasons ??
-              'Cycle length changes for many reasons, such as thyroid, stress, weight, contraception or PCOS. A reason to ask a clinician, not an answer.',
+              'Cycle length changes for many reasons. Worth asking a clinician if it worries you.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
         const SizedBox(height: S.x3),
@@ -1495,14 +1494,13 @@ String _mdcNote(
 ) {
   if (noise == null || noise <= 0 || medians.isEmpty) return '';
   final swing = medians.reduce(math.max) - medians.reduce(math.min);
-  final s = '${swing.toStringAsFixed(1)} $unit';
   final n = '${noise.toStringAsFixed(1)} $unit';
   return swing < noise
-      ? (l?.cycleMdcNoteInsideSpread(s, n) ??
-            ' Every day here is within your normal night-to-night swing: the biggest gap is $s, and $n is the smallest real change. A shape, not a shift.')
-      : (l?.cycleMdcNoteVaries(n, s) ??
-            ' Your nights vary by $n on their own, so days closer together than '
-            'that cannot be told apart. The biggest gap here is $s.');
+      ? (l?.cycleMdcNoteInsideSpread ??
+            ' All within your normal night-to-night variation.')
+      : (l?.cycleMdcNoteVaries(n) ??
+            ' Your nights vary by $n on their own, so smaller differences '
+            'aren’t meaningful.');
 }
 
 /// A z with its sign always printed — "0.3" and "−0.3" are different findings

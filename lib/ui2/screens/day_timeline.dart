@@ -925,7 +925,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
   /// the day on screen.
   String? _device;
   bool _deviceBounded = false;
-  String? _deviceOldest;
 
   // `TimelineData` bakes `AppLocalizations` strings into `moments`/`notes` at
   // load time (see `TimelineData.load`), so a language switch while this
@@ -1004,7 +1003,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
           // and its oldest-day marker outlived the selection that produced
           // them and rendered against no selected device at all.
           _deviceBounded = false,
-          _deviceOldest = null,
           _loading = false,
         ));
       }
@@ -1022,7 +1020,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
       setState(() {
         _device = null;
         _deviceBounded = false;
-        _deviceOldest = null;
         _d = TimelineData(
           day: d!.day,
           days: d.days,
@@ -1053,7 +1050,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
     setState(() {
       _device = id;
       _deviceBounded = bounded;
-      _deviceOldest = c['oldest'] as String?;
       _d = TimelineData(
         day: d!.day,
         days: d.days,
@@ -1097,10 +1093,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
             Padding(
               padding: const EdgeInsets.only(top: S.x2),
               child: Text(
-                l?.dayTimelineDeviceBounded(_deviceOldest ?? '') ??
-                    'Per-device detail is kept for recent days only. Before '
-                        '${_deviceOldest ?? ''} we only know which device recorded, '
-                        'not its readings.',
+                l?.dayTimelineDeviceBounded ??
+                    'Per-device detail is kept for recent days only.',
                 style: F.over.copyWith(color: P.of(c).ink3),
               ),
             ),
@@ -1428,8 +1422,8 @@ class _ZoomState extends State<_DayGraphZoom> {
               'for this stretch.';
     } else {
       note = l?.dayTimelineZoomPerMinute ??
-          '1-minute averages. Drag the handles to zoom; two hours or less '
-              'shows every second while it is still kept.';
+          '1-minute averages. Zoom in to two hours or less for per-second '
+              'data, where kept.';
     }
     final card = dayGraphCard(c, g,
         zoomed: zoomed,
@@ -1496,14 +1490,13 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
       StatusCard(
         l?.dayTimelineNothingRecordedTitle ?? 'Nothing was recorded on this day',
         l?.dayTimelineNothingRecordedBody ??
-            'This day has no sleep, session, log or timed band event. '
-            'The band was probably off.',
+            'Nothing recorded. The band was probably off.',
         icon: LucideIcons.circleSlash,
       )
     else ...[
       if (d.moments.isEmpty)
         StatusCard(
-          l?.dayTimelineNoTimeTitle ?? 'Nothing on this day carries a time',
+          l?.dayTimelineNoTimeTitle ?? 'Entries without a time',
           l?.dayTimelineNoTimeBody ?? 'What was logged for it is below.',
           icon: LucideIcons.clock,
         )
@@ -1557,22 +1550,11 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
             ),
           ),
         ),
-      if (d.notes.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(top: S.x2, left: S.x1),
-          child: Text(
-            l?.dayTimelineNoTimeNote ??
-                'These entries belong to this day but have no time of day, so '
-                'they are not on the timeline.',
-            style: F.over.copyWith(color: p.ink3, height: 1.5),
-          ),
-        ),
     ],
     const SizedBox(height: S.x4),
     Text(
-      l?.dayTimelinePatternsNote ??
-          'Items shown together happened close in time in your own logs. '
-          'That does not show one caused the other.',
+      l?.metricDetailPatternsNotCauses ??
+          'Patterns in your logs, not causes.',
       style: F.over.copyWith(color: p.ink3, height: 1.5),
     ),
   ];

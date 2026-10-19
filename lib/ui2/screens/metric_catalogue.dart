@@ -47,21 +47,21 @@ const kMetricCatalogue = <MetricCategory>[
   // sit in a family of their own.
   MetricCategory('Recovery', [
     MetricCatalogueRow('readiness', 'readiness', 'How ready your body looks for strain, against your own usual'),
-    MetricCatalogueRow('stress', 'stress', 'Beat-interval clustering over your most restful stretch'),
+    MetricCatalogueRow('stress', 'stress', 'How tense your heartbeat looks at rest'),
   ]),
   MetricCategory('Heart & rhythm', [
     MetricCatalogueRow('resting_hr', 'rhr', 'The lowest sustained rate of the night'),
     MetricCatalogueRow('hrv', 'rmssd', 'RMSSD (beat-to-beat variation) over the cleanest stretch of sleep'),
     MetricCatalogueRow('hrv_cv', 'hrv_cv', 'How much HRV varies from night to night'),
-    MetricCatalogueRow('lf_hf', 'lf_hf', 'Beat-to-beat variation split by frequency band'),
+    MetricCatalogueRow('lf_hf', 'lf_hf', 'Balance of fast and slow heartbeat swings'),
     MetricCatalogueRow('dip', 'dip_pct', 'How far your heart rate falls while you sleep'),
-    MetricCatalogueRow('hrr', 'hrr_bpm', 'How fast your heart rate drops in the minute after exercise'),
+    MetricCatalogueRow('hrr', 'hrr_bpm', 'How fast heart rate drops after effort'),
   ]),
   MetricCategory('Sleep', [
     MetricCatalogueRow('sleep', 'tst_min', 'Time asleep, from motion and beat timing'),
     MetricCatalogueRow('efficiency', 'efficiency', 'Asleep as a share of time in bed'),
-    MetricCatalogueRow('deep', 'deep_min', 'Heart-rate steadiness during non-REM sleep'),
-    MetricCatalogueRow('rem', 'rem_min', 'Sleep stages from beat variability and movement'),
+    MetricCatalogueRow('deep', 'deep_min', 'Time in deep sleep'),
+    MetricCatalogueRow('rem', 'rem_min', 'Time in REM sleep'),
     MetricCatalogueRow('nap_min', 'nap_min', 'Sleep detected outside the main night'),
   ]),
   MetricCategory('Breathing', [
@@ -70,10 +70,10 @@ const kMetricCatalogue = <MetricCategory>[
   ]),
   MetricCategory('Movement & load', [
     MetricCatalogueRow('steps', 'steps', 'Counted by a pedometer'),
-    MetricCatalogueRow('active_min', 'active_min', 'Minutes of body movement, walking or not'),
+    MetricCatalogueRow('active_min', 'active_min', 'Minutes of activity'),
     MetricCatalogueRow('calories', 'calories', 'Active energy from heart rate and your profile'),
     MetricCatalogueRow('strain', 'strain', 'Cardiovascular load over the day, on 0–21'),
-    MetricCatalogueRow('trimp', 'trimp', 'Minutes weighted by heart-rate reserve, harder minutes count more'),
+    MetricCatalogueRow('trimp', 'trimp', 'Total heart-rate load, without Strain’s 0–21 cap'),
   ]),
   MetricCategory('Body & wear', [
     MetricCatalogueRow('skin_temp', 'skin_temp_z', 'Skin temperature vs your recent nights, in standard deviations'),

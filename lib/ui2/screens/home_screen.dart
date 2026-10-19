@@ -690,7 +690,7 @@ StatusCard? dbRebuiltCard(DbRebuild? r, [AppLocalizations? l]) {
   final savedList = saved.map((e) => '${e.key} ${thousands(e.value)}').join(' · ');
   final lostList = lost.map((e) => e.key).join(' · ');
   return StatusCard(
-    l?.homeDbRebuiltTitle ?? 'Your database was rebuilt to start the app',
+    l?.homeDbRebuiltTitle ?? 'Your database was rebuilt',
     '${r.cause}\n\n'
         '${saved.isEmpty ? (l?.homeDbRebuiltNothingRecovered ?? 'Nothing could be read back.') : (l?.homeDbRebuiltRecovered(savedList) ?? 'Recovered: $savedList.')}'
         '${lost.isEmpty ? '' : ' ${l?.homeDbRebuiltEmpty(lostList) ?? 'Empty: $lostList.'}'}'
@@ -709,7 +709,7 @@ StatusCard? dbRebuiltCard(DbRebuild? r, [AppLocalizations? l]) {
 StatusCard workoutHoldCard([AppLocalizations? l]) => StatusCard(
       l?.homeWorkoutHoldTitle ?? 'A workout is still running',
       l?.homeWorkoutHoldBody ??
-          'Today is paused while a workout runs. The band keeps recording; finish the workout from the bar below and today fills in.',
+          'Today fills in when you finish the workout.',
       icon: LucideIcons.timer,
     );
 
@@ -719,10 +719,10 @@ StatusCard? staleInsightsCard(
   if (s == null) return null;
   final built = s['built_for_day']?.toString();
   return StatusCard(
-    l?.homeInsightsRebuildingTitle ?? 'Your cross-day insights are being rebuilt',
+    l?.homeInsightsRebuildingTitle ?? 'Updating your trends',
     switch (s['kind']) {
       'algo_version' => l?.homeInsightsRebuildingAlgoVersion ??
-          'How these are computed changed with the last update.',
+          'Updating after the latest app update.',
       'stale' => built == null || built.isEmpty
           ? (l?.homeInsightsStaleOverWeek ??
               'Your trends were last updated over a week ago. Sync the band to bring them up to date.')
@@ -1321,7 +1321,7 @@ _RingState _gap(HomeRingKind k, String label, IconData icon, Color color,
       why: whyFromNote(m.note, unit: unit) ??
           (fallbackWhy.isNotEmpty
               ? fallbackWhy
-              : (l?.homeGapNoReason ?? 'Nothing recorded says why this is missing.')));
+              : (l?.homeGapNoReason ?? 'No reading.')));
 }
 
 /// The scored night split by stage, in the hypnogram's own colours — or null
@@ -2165,8 +2165,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (!derivingOf(c)) return null;
     return StatusCard(
       l?.homeAnalyzingTitle ?? 'Crunching last night\'s numbers',
-      l?.homeAnalyzingBody ?? 'The data is in — sleep, recovery and strain '
-          'are next.',
+      '',
       leading: SizedBox(
         width: 16,
         height: 16,
@@ -2199,8 +2198,7 @@ class _HomeScreenState extends State<HomeScreen>
       d.heldOverNight == null
           ? (l?.homeNothingDerivedBody ?? 'Wear the band tonight and open the app in the morning.')
           : (l?.homeNothingTodayBody(prettyDay(d.heldOverNight, l)) ??
-              'The last night this app scored was '
-                  '${prettyDay(d.heldOverNight, l)}. Nothing has reached it since.'),
+              'Last scored night: ${prettyDay(d.heldOverNight, l)}.'),
       // No button: Home's sync status line (greeting header) owns Sync now.
       icon: LucideIcons.watch,
     );
@@ -2260,9 +2258,8 @@ class _HomeScreenState extends State<HomeScreen>
         else if (_failed)
           StatusCard(
             l?.homeLoadFailedTitle ?? 'Today could not be read',
-            l?.homeLoadFailedBody ??
-                'The stored day failed to load. Nothing was deleted — this is a '
-                'read that went wrong, not missing data.',
+            l?.healthReadFailedBody ??
+                'Couldn’t load your data. Nothing was deleted.',
             fix: l?.homeTryAgain ?? 'Try again',
             icon: LucideIcons.databaseZap,
             onFix: () {
@@ -2546,7 +2543,7 @@ class _HomeScreenState extends State<HomeScreen>
                   // is what actually answers it.
                   : shortfall ??
                       whyFromNote(d.readiness.note) ??
-                      (l?.homeReadinessNoReason ?? 'Nothing recorded says why.'),
+                      (l?.homeReadinessNoReason ?? 'No reading.'),
               fix: l?.homeSeeWhatWasMissing ?? 'See what was missing',
               icon: LucideIcons.batteryCharging,
               onFix: () => go(c, const ReadinessDetail()),
@@ -2680,7 +2677,6 @@ class _HomeScreenState extends State<HomeScreen>
 
     final sameNight = day == today;
     final z = d.illnessZ;
-    final zAbs = z == null ? '' : z.abs().toStringAsFixed(1);
 
     return [
       Observation(
@@ -2692,12 +2688,12 @@ class _HomeScreenState extends State<HomeScreen>
                     '${prettyDay(d.illnessDay, l)} sat outside your normal range'),
         z == null
             ? (l?.homeIllnessBodyNoZ ??
-                'Your resting heart rate has run above your usual over recent nights. This tracks one signal, so it shows a pattern, not a cause.')
+                'Your resting heart rate has been above your usual over recent nights. A pattern, not a cause.')
             : (z >= 0
-                ? (l?.homeIllnessBodyAbove(zAbs) ??
-                    'Recent nights put your resting heart rate above your usual. That night was $zAbs× your normal night-to-night swing above it. A pattern, not a cause.')
-                : (l?.homeIllnessBodyBelow(zAbs) ??
-                    'Recent nights together put your resting heart rate above your usual, even though that night on its own was $zAbs× your normal night-to-night swing below it. A pattern, not a cause.')),
+                ? (l?.homeIllnessBodyAbove ??
+                    'Recent nights put your resting heart rate above your usual. That night was above it too. A pattern, not a cause.')
+                : (l?.homeIllnessBodyBelow ??
+                    'Recent nights together put your resting heart rate above your usual, though that night alone was below it. A pattern, not a cause.')),
         advice: l?.homeIllnessAdvice ?? 'Worth noting if it continues past a couple of days.',
         onTap: () => go(c, const MetricDetail('resting_hr')),
       ),
@@ -2943,7 +2939,7 @@ class _HomeScreenState extends State<HomeScreen>
                 // is a wrong answer when the baselines exist and are being
                 // withheld.
                 why: d.insightsStale != null
-                    ? (l?.homeNoPlanWhyStale ?? 'Your trends are being updated. This takes a minute after a sync.')
+                    ? (l?.homeInsightsNoVersionStamp ?? 'Your trends are being updated. This takes a minute after a sync.')
                     : (l?.homeNoPlanWhyNone ?? 'None are established yet.')) ??
             const SizedBox.shrink()
         : Surface(
@@ -3107,7 +3103,7 @@ Widget coachChip(BuildContext c) {
   final ready = coachReady(c);
   final text = ready
       ? (l?.homeAskCoach ?? 'Ask the coach')
-      : (l?.homeCoachSetUpChip ?? 'Ask questions about your data: set up the coach');
+      : (l?.homeCoachSetUpChip ?? 'Set up the coach');
   return Align(
     alignment: Alignment.centerLeft,
     child: Pressable(

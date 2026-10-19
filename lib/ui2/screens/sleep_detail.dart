@@ -609,8 +609,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       final rejectedDay = d.day;
       final rejected =
           (d.night['sleep_source'] as String?) == 'rejected' && rejectedDay != null;
-      // Times the user set leave the night blank on purpose (no numbers from
-      // a window the app did not find), so "wear the band" would be wrong here.
+      // A typed window with too little recorded inside it (D27 revised): the
+      // times are kept and the stages are ranges, so "wear the band" would be
+      // wrong here.
       final userSet = (d.night['sleep_source'] as String?) == 'manual';
       return _frame(c, title, [
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
@@ -625,15 +626,16 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           rejected
               ? (l?.sleepDetailRejectedTitle ?? 'Marked as not sleep')
               : userSet
-                  ? 'Your times, no sleep numbers'
+                  ? (l?.sleepDetailUserWindowTitle ?? 'Your times are saved')
                   : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
           rejected
               ? (l?.sleepDetailRejectedBody ??
                   'You told us this stretch was not sleep, so nothing is '
                       'scored for it.')
               : userSet
-                  ? 'You set this night\'s times, so its sleep numbers stay '
-                      'blank and it does not count toward your scores.'
+                  ? (l?.sleepDetailUserWindowBody ??
+                      'The band recorded too little inside your times to score '
+                          'this night.')
                   : (l?.sleepDetailNoNightBody ??
                       'No stretch of band recordings long enough to score.'),
           fix: rejected || userSet
@@ -819,9 +821,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           const SizedBox(height: S.x3),
           Text(
             l?.sleepDetailWatchedExplain(hm(watched), hm(inBed!)) ??
-                'We watched ${hm(watched)} of your ${hm(inBed!)} in bed; the rest '
-                    'is not a measurement. Asleep, and the stage shares below, are out '
-                    'of the time we watched.',
+                'The band covered ${hm(watched)} of your ${hm(inBed!)} in bed. '
+                    'Sleep and stage figures use only that time.',
             style: F.over.copyWith(color: p.ink3, height: 1.5),
           ),
         ],
@@ -906,8 +907,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
               ' to ${dayLabelOf(DateTime.fromMillisecondsSinceEpoch(t1 * 1000))} '
               '${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(t1 * 1000)).format(c)}',
               style: F.cap.copyWith(color: p.ink3)),
-            if (!d.hasNight)
-              Text('Your times are saved. Sleep numbers stay blank for times you set.',
+            if (!d.hasNight && _storedRanges(d.night) != null)
+              Text(
+                l?.sleepDetailTimesSavedRanges ??
+                    'Times saved. Stages for this night are shown as ranges.',
                 style: F.cap.copyWith(color: p.ink3)),
           ],
           if (fallback) ...[
@@ -1199,12 +1202,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           cycles > 0
               ? (mean == null
                   ? (l?.sleepDetailTapDragCycles(cycles) ??
-                      'Tap or drag the chart for any moment. $cycles '
-                          '${cycles == 1 ? 'cycle' : 'cycles'}.')
+                      '$cycles ${cycles == 1 ? 'cycle' : 'cycles'}.')
                   : (l?.sleepDetailTapDragCyclesAvg(cycles, hm(mean)) ??
-                      'Tap or drag the chart for any moment. $cycles '
-                          '${cycles == 1 ? 'cycle' : 'cycles'}, ${hm(mean)} '
-                          'on average.'))
+                      '$cycles ${cycles == 1 ? 'cycle' : 'cycles'}, '
+                          '${hm(mean)} on average.'))
               : (l?.sleepDetailTapDragNone ??
                   'Tap or drag the chart for any moment of the night.'),
           style: F.over.copyWith(color: p.ink3, height: 1.5),
@@ -1280,11 +1281,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       if (w != null)
         w == 0
             ? (l?.sleepDetailNoWakeups ??
-                'No wake-ups of 5 minutes or more; shorter ones are invisible to '
-                    'a wrist.')
+                'No wake-ups of 5 minutes or more.')
             : (l?.sleepDetailAtLeastWakeups(w) ??
-                'At least $w wake-up${w == 1 ? '' : 's'} of 5 minutes or more; '
-                    'shorter ones are invisible to a wrist.'),
+                'At least $w wake-up${w == 1 ? '' : 's'} of 5 minutes or more.'),
       if (longest != null)
         l?.sleepDetailLongestStretch(hm(longest)) ??
             'Longest unbroken stretch ${hm(longest)}.',
@@ -1689,7 +1688,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
         // rather than one published figure applied to every night.
         Text(
             l?.sleepDetailStageRangeExplain ??
-                'Each stage is a range, narrower the better we saw the night. Deep is the widest; awake is one figure. Nerd stats has exact counts.',
+                'Stages are ranges; more recorded time means narrower ranges.',
             style: F.over.copyWith(color: p.ink3, height: 1.5)),
       ],
     ]);
@@ -1955,7 +1954,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       items.add(InsightCard(
         l?.sleepDetailSleepingHrHighTitle ?? 'Sleeping heart rate ran high',
         l?.sleepDetailSleepingHrHighBody(vsBase.toStringAsFixed(1)) ??
-            '${vsBase.toStringAsFixed(1)} bpm above your usual. Common after alcohol, a late meal, a hard session or an infection starting. A measurement, not a diagnosis.',
+            '${vsBase.toStringAsFixed(1)} bpm above your usual. Alcohol, a late meal, hard training or illness can cause this. Not a diagnosis.',
         icon: LucideIcons.heartPulse,
         color: C.red,
       ));

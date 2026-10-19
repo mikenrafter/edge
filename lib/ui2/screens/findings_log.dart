@@ -73,7 +73,7 @@ class FindingsLog extends StatelessWidget {
           StatusCard(
             l?.findingsLogEmptyTitle ?? 'Nothing has stood out',
             l?.findingsLogEmptyBody ??
-                'Nothing to report. The checks for illness, unusual nights, skin temperature and a resting heart rate shift have all been quiet.',
+                'Nothing unusual found.',
             icon: LucideIcons.check,
           )
         else ...[
@@ -107,9 +107,8 @@ class FindingsLog extends StatelessWidget {
         // re-derived changes here with it — including out of existence.
           Text(
             l?.findingsLogDerivedNote ??
-                'Worked out from your own days each time this opens, not '
-                    'written down when it happened — so if a day is '
-                    're-analysed, what it says here changes with it.',
+                'Recalculated each time you open this, so it can change if a '
+                    'day is re-analysed.',
             style: F.cap.copyWith(color: p.ink3, height: 1.5),
           ),
       ],

@@ -5,9 +5,9 @@
 //        diagnostic fraction is absent (null) on the batch day path, the batch
 //        sleep path and the streaming path. Verdicts are unchanged.
 //  P2-b  `1 - cleanFraction` counts CORRECTED beats too, and those stay in the
-//        analysed series: the screen must not call the share "rejected". Every
-//        locale says "classified as artifacts (corrected or dropped)", and the
-//        abstention explanation says it too.
+//        analysed series: the screen must not call the share "rejected". The
+//        share row says the beats were misread and "fixed or dropped" in every
+//        locale; the abstention explanation just never says "rejected".
 //  P2-c  a day from before v103 has a verdict but no diagnostics (and no sleep
 //        pnn_pct): Export PRV log is still offered; the log says "not recorded".
 //
@@ -146,12 +146,12 @@ void main() {
     // Per locale: what the new strings must say, and the old wording that must
     // be gone.
     const must = {
-      'en': 'corrected or dropped',
+      'en': 'fixed or dropped',
       'de': 'korrigiert oder verworfen',
       'es': 'corregidos o descartados',
       'fr': 'corrigés ou écartés',
-      'hi': 'सुधारी या हटाई गई',
-      'zh': '已校正或已丢弃',
+      'hi': 'ठीक की गईं या हटाई गईं',
+      'zh': '已修正或已丢弃',
     };
     const gone = {
       'en': 'rejected',
@@ -167,10 +167,13 @@ void main() {
           'and no longer say rejected', () {
         final arb = jsonDecode(File('lib/l10n/app_$loc.arb').readAsStringSync())
             as Map<String, dynamic>;
+        // The share row keeps the fixed-or-dropped wording; the abstention
+        // reason is the shorter "misread beats" line (copy pass, batch A) and
+        // only has to stay free of the old "rejected" wording.
+        final share = arb['investigatePrvArtifactShare'] as String;
+        expect(share, contains(must[loc]!), reason: '$loc share');
         for (final k in ['investigatePrvArtifactShare', 'investigatePrvWhyArtifact']) {
-          final text = arb[k] as String;
-          expect(text, contains(must[loc]!), reason: '$loc $k');
-          expect(text, isNot(contains(gone[loc]!)), reason: '$loc $k');
+          expect(arb[k] as String, isNot(contains(gone[loc]!)), reason: '$loc $k');
         }
       });
     }
@@ -186,7 +189,7 @@ void main() {
           'diagnostics': _diag(abstain: 'artifact'),
         },
       });
-      expect(text, contains('classified as artifacts'));
+      expect(text, contains('misread'));
       expect(text.toLowerCase(), isNot(contains('rejected')));
       expect(text, contains('45.0 %'));
     });

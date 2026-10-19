@@ -43,20 +43,15 @@ Observation? illnessObservation(
             : (l?.healthIllnessDayTitle(prettyDay(day, l)) ??
                 '${prettyDay(day, l)} was outside your normal range'),
     z == null
-        ? (l?.healthIllnessBodyNoZ ??
-            'Your overnight resting heart rate has been above your own '
-                'baseline. This check uses that one signal and cannot '
-                'identify a cause.')
-        : (l?.healthIllnessBodyWithZ(
-                z.abs().toStringAsFixed(1),
-                z >= 0 ? l.healthDirectionAbove : l.healthDirectionBelow) ??
-            'Your overnight resting heart rate has been above your own '
-                'baseline. That night was ${z.abs().toStringAsFixed(1)} '
-                'standard deviations ${z >= 0 ? 'above' : 'below'} your '
-                'baseline. This check uses that one signal and cannot '
-                'identify a cause.'),
-    advice: l?.healthIllnessAdvice ??
-        'If it continues past a couple of days, make a note of it.',
+        ? (l?.homeIllnessBodyNoZ ??
+            'Your resting heart rate has been above your usual over recent nights. A pattern, not a cause.')
+        : (z >= 0
+            ? (l?.homeIllnessBodyAbove ??
+                'Recent nights put your resting heart rate above your usual. That night was above it too. A pattern, not a cause.')
+            : (l?.homeIllnessBodyBelow ??
+                'Recent nights together put your resting heart rate above your usual, though that night alone was below it. A pattern, not a cause.')),
+    advice: l?.homeIllnessAdvice ??
+        'Worth noting if it continues past a couple of days.',
     onTap: onTap,
   );
 }

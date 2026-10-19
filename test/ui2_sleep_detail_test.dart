@@ -113,7 +113,7 @@ void main() {
     expect(find.text('Sleeping heart rate ran high'), findsOneWidget);
     // Detection against the user's own baseline is never a diagnosis, and the
     // card has to say so on the card.
-    expect(find.textContaining('not a diagnosis'), findsOneWidget);
+    expect(find.textContaining('Not a diagnosis'), findsOneWidget);
     expect(find.textContaining('Nothing stood out'), findsNothing);
   });
 
@@ -284,7 +284,9 @@ void main() {
       };
       await _pump(t, SleepData(day: '2026-05-20', night: n));
       expect(find.text('0–480 min'), findsNWidgets(4));
-      expect(find.text('Your times, no sleep numbers'), findsOneWidget);
+      expect(find.text('Your times are saved'), findsOneWidget);
+      expect(find.text('Times saved. Stages for this night are shown as ranges.'),
+          findsOneWidget);
     });
 
     testWidgets('a detected night has no stored bound and keeps the estimator '
@@ -429,7 +431,7 @@ void main() {
     );
     expect(find.text('WATCHED'), findsOneWidget);
     expect(find.text('6h 20m'), findsOneWidget);
-    expect(find.textContaining('is not a measurement'), findsOneWidget);
+    expect(find.textContaining('use only that time'), findsOneWidget);
   });
 
   testWidgets('a fully observed night says nothing about watching', (t) async {
@@ -477,7 +479,6 @@ void main() {
     );
     expect(find.textContaining('At least 3 wake-ups of 5 minutes or more'),
         findsOneWidget);
-    expect(find.textContaining('invisible to a wrist'), findsOneWidget);
     expect(
         find.textContaining('Longest unbroken stretch 2h 42m'), findsOneWidget);
   });

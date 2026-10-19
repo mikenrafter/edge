@@ -1647,11 +1647,11 @@
   "@findingsLogEmptyTitle": {
     "description": "Title of the empty-state card on the Observations screen when no findings exist"
   },
-  "findingsLogEmptyBody": "Nothing to report. The checks for illness, unusual nights, skin temperature and a resting heart rate shift have all been quiet.",
+  "findingsLogEmptyBody": "Nothing unusual found.",
   "@findingsLogEmptyBody": {
     "description": "Body text of the empty-state card on the Observations screen listing the four quiet watches"
   },
-  "findingsLogDerivedNote": "Worked out from your own days each time this opens, not written down when it happened — so if a day is re-analysed, what it says here changes with it.",
+  "findingsLogDerivedNote": "Recalculated each time you open this, so it can change if a day is re-analysed.",
   "@findingsLogDerivedNote": {
     "description": "Footnote on the Observations screen explaining findings are recomputed each time the screen opens"
   },
@@ -1720,11 +1720,11 @@
   "@whatChangedNothingTitle": {
     "description": "What Changed screen: status card title when the sweep ran but found nothing unusual."
   },
-  "whatChangedNothingBody": "Every metric with enough history sat inside the range your own days have set. That is the normal answer, and it is a complete one.",
+  "whatChangedNothingBody": "Everything with enough history is within your usual range.",
   "@whatChangedNothingBody": {
     "description": "What Changed screen: status card body explaining that every metric sat within its normal range."
   },
-  "whatChangedMethodologyNote": "Compared with your own recent days, in your own units, with the window shown. Nothing here is a cause or a diagnosis.",
+  "whatChangedMethodologyNote": "Compared with your recent days. Not a diagnosis.",
   "@whatChangedMethodologyNote": {
     "description": "What Changed screen: footnote under the findings list explaining the methodology and its limits."
   },
@@ -1919,11 +1919,11 @@
   "@napsWokeUpHelp": {
     "description": "Time picker helper text for logging when a manual nap ended."
   },
-  "napsInvalidWindow": "A nap is between 5 minutes and 6 hours. Anything longer is a sleep, and it belongs in the night where the stages can be read.",
+  "napsInvalidWindow": "A nap is 5 minutes to 6 hours.",
   "@napsInvalidWindow": {
     "description": "Validation error when a manually logged nap window is outside 5 minutes to 6 hours."
   },
-  "napsOverlap": "That overlaps a nap already on this day. Remove that one first, rather than counting the same hour twice.",
+  "napsOverlap": "That overlaps an existing nap.",
   "@napsOverlap": {
     "description": "Validation error when a manually logged nap overlaps an existing one."
   },
@@ -1939,7 +1939,7 @@
   "@napsNoReadingTitle": {
     "description": "Status card title when a day has no nap detection result."
   },
-  "napsNoReadingBody": "Naps are worked out from the same 1 Hz recording the rest of the day is, and this day does not have enough of it.",
+  "napsNoReadingBody": "Not enough recording to detect naps.",
   "@napsNoReadingBody": {
     "description": "Fallback status card body explaining naps require enough 1Hz recording."
   },
@@ -1947,7 +1947,7 @@
   "@napsEmptyTitle": {
     "description": "Status card title when a judged day detected zero naps."
   },
-  "napsEmptyBody": "Nothing on this day was still enough, for long enough, with the heart-rate dip that goes with sleeping through it.",
+  "napsEmptyBody": "No naps detected.",
   "@napsEmptyBody": {
     "description": "Status card body explaining why no naps were detected that day."
   },
@@ -1983,10 +1983,6 @@
   "napsPutBackLabel": "Put it back",
   "@napsPutBackLabel": {
     "description": "Visible button label to restore a removed nap."
-  },
-  "napsRemovalKept": "A removal is kept as a window rather than an id, so it still applies after the detector’s edges move.",
-  "@napsRemovalKept": {
-    "description": "Footnote explaining removed naps are stored as a time window, not an id."
   },
   "napsYouLoggedThis": "You logged this",
   "@napsYouLoggedThis": {
@@ -2055,7 +2051,7 @@
   "@readinessDetailWhatWentIntoIt": {
     "description": "Section header for the readiness input breakdown (scored or empty-state)."
   },
-  "readinessDetailInputsFooter": "{used}/{total} inputs. Each one is ranked against your own history — a parallel view of the same inputs, not slices of the number above.",
+  "readinessDetailInputsFooter": "{used}/{total} inputs, each compared with your history.",
   "@readinessDetailInputsFooter": {
     "description": "Footnote below the breakdown stating how many inputs were used out of the total.",
     "placeholders": {
@@ -2067,7 +2063,7 @@
       }
     }
   },
-  "readinessDetailBreakdownNoScoreNote": "A looser view of the same four inputs. They don’t add up to today’s score, which is missing for the reason above.",
+  "readinessDetailBreakdownNoScoreNote": "Doesn’t add up to a score, which is missing for the reason above.",
   "@readinessDetailBreakdownNoScoreNote": {
     "description": "Shown above the breakdown rows only when readiness itself is absent, clarifying that this glass-box percentile view is a different calculation than the headline composite and does not explain or contradict its absence."
   },
@@ -2353,7 +2349,7 @@
   "@roughNightDefaultHeadline": {
     "description": "Fallback headline for the Rough Night card when the analytics descriptor has no leading clause."
   },
-  "roughNightSummary": "{sentence}, against your own nights. This is a measurement of the night, not a verdict on you.",
+  "roughNightSummary": "{sentence}, compared with your own nights.",
   "@roughNightSummary": {
     "description": "Rough Night card body sentence, combining the moved-measurements clause with the closing disclaimer.",
     "placeholders": {
@@ -2365,10 +2361,6 @@
   "roughNightTellWhatHappened": "Tell it what happened",
   "@roughNightTellWhatHappened": {
     "description": "Button inviting the user to open the optional attribution question on the Rough Night card."
-  },
-  "roughNightNothingToAnswer": "Nothing to answer — this card only reports the night.",
-  "@roughNightNothingToAnswer": {
-    "description": "Rough Night card note shown after the user has permanently declined the attribution question."
   },
   "roughNightWhatElse": "What else was going on?",
   "@roughNightWhatElse": {
@@ -2474,7 +2466,7 @@
   "@driverBreakdownBiggerThanNoise": {
     "description": "Driver qualifier: change is outside usual spread and bigger than measurement noise."
   },
-  "driverBreakdownSmallerThanNoise": "outside your usual spread, but small enough to be measurement noise",
+  "driverBreakdownSmallerThanNoise": "outside your usual range, but within normal reading noise",
   "@driverBreakdownSmallerThanNoise": {
     "description": "Driver qualifier: change is outside usual spread but still within measurement noise."
   },
@@ -2490,7 +2482,7 @@
   "@driverBreakdownNeither": {
     "description": "Driver breakdown group header: drivers unavailable or with zero net effect."
   },
-  "driverBreakdownFooter": "Each input is compared with your own history, beside the score rather than part of it. \"Measurement noise\" is how far a reading moves on its own.",
+  "driverBreakdownFooter": "Each input is compared with your own history. Measurement noise is how much a reading moves on its own.",
   "@driverBreakdownFooter": {
     "description": "Driver breakdown screen footer explaining what the list means."
   },
@@ -2529,23 +2521,15 @@
   "@driverBreakdownAbsenceTitle": {
     "description": "Title of the card shown when there is no readiness breakdown for the night."
   },
-  "driverBreakdownAbsenceAlgoVersion": "The way recovery is worked out changed in the last update. Your days are being recalculated.",
-  "@driverBreakdownAbsenceAlgoVersion": {
-    "description": "Absence card body when the breakdown is missing because the algorithm version changed and is rebuilding."
-  },
   "driverBreakdownAbsenceStale": "Your trends are out of date. Sync the band to update them.",
   "@driverBreakdownAbsenceStale": {
     "description": "Absence card body when the last stored rollup is too old to show."
-  },
-  "driverBreakdownAbsenceNoVersion": "Your trends are being updated. This takes a minute after a sync.",
-  "@driverBreakdownAbsenceNoVersion": {
-    "description": "Absence card body when the stored rollup has no version stamp."
   },
   "driverBreakdownSyncTheBand": "Sync the band",
   "@driverBreakdownSyncTheBand": {
     "description": "Absence card action button: sync the band to refresh the rollup."
   },
-  "driverBreakdownAbsenceNoReason": "Nothing recorded says why last night has no breakdown.",
+  "driverBreakdownAbsenceNoReason": "No reading.",
   "@driverBreakdownAbsenceNoReason": {
     "description": "Absence card body when nothing recorded explains the missing breakdown."
   },
@@ -2703,23 +2687,14 @@
       }
     }
   },
-  "circadianDetailStillnessTitle": "Beat-to-beat variability while still",
+  "circadianDetailStillnessTitle": "HRV while still",
   "@circadianDetailStillnessTitle": {
     "description": "Chart title for the hourly HRV-while-still chart"
   },
-  "circadianDetailStillnessFootnote": "Each hour is the middle of {lo}–{hi} still five-minute stretches over {days, plural, one{{days} day} other{{days} days}}, and {drawn} of 24 hours had enough, so read it as stillness, not stress.",
+  "circadianDetailStillnessFootnote": "{drawn} of 24 hours had enough still time to show. Read it as stillness, not stress.",
   "@circadianDetailStillnessFootnote": {
     "description": "Footnote explaining the HRV-while-still chart's methodology and coverage",
     "placeholders": {
-      "lo": {
-        "type": "int"
-      },
-      "hi": {
-        "type": "int"
-      },
-      "days": {
-        "type": "int"
-      },
       "drawn": {
         "type": "int"
       }
@@ -2729,7 +2704,7 @@
   "@circadianDetailForecastTitle": {
     "description": "Chart title for the alertness-shape forecast"
   },
-  "circadianDetailForecastFootnote": "No scale — the shape is the whole output.",
+  "circadianDetailForecastFootnote": "Shape only; no scale.",
   "@circadianDetailForecastFootnote": {
     "description": "Footnote noting the forecast chart has no numeric scale"
   },
@@ -2748,7 +2723,7 @@
       }
     }
   },
-  "circadianDetailPredictionDisclaimer": "A prediction, not a reading. It only knows last night; a nap, coffee or anything else today won’t change it.",
+  "circadianDetailPredictionDisclaimer": "A prediction from last night only. Naps and coffee don’t change it.",
   "@circadianDetailPredictionDisclaimer": {
     "description": "Disclaimer that the alertness forecast is a prediction, not a measurement"
   },
@@ -2756,7 +2731,7 @@
   "@circadianDetailAssumedPhaseNote": {
     "description": "Appended note when the user's own circadian acrophase is not yet known and an average is used"
   },
-  "circadianDetailNotADrivingCheck": "It is not a fitness-to-drive check and not a shift-safety tool, and it does not say you are impaired.",
+  "circadianDetailNotADrivingCheck": "Not a fitness-to-drive or shift-safety check.",
   "@circadianDetailNotADrivingCheck": {
     "description": "Safety disclaimer that the forecast is not a fitness-to-drive or shift-safety tool"
   },
@@ -2804,7 +2779,7 @@
   "@circadianDetailRhythmNotEstablished": {
     "description": "Empty-state title when the rhythm table has no rows yet"
   },
-  "circadianDetailPairFootnote": "The least alike pair, out of {count}. A late weekend is a different schedule, not a worse night. Days with too little recording are left out.",
+  "circadianDetailPairFootnote": "The least alike pair of consecutive nights, out of {count}. Days with too little recording are left out.",
   "@circadianDetailPairFootnote": {
     "description": "Footnote explaining the least-alike night pair table, out of how many pairs total",
     "placeholders": {
@@ -2853,7 +2828,7 @@
   "@circadianDetailStrengthWhy": {
     "description": "Empty-state reason: needs consecutive fully-recorded days"
   },
-  "circadianDetailStrengthFootnoteKnown": "From {used, plural, one{{used} fully recorded day} other{{used} fully recorded days}}. Your highest and lowest heart-rate hours, not your busiest.",
+  "circadianDetailStrengthFootnoteKnown": "From {used, plural, one{{used} fully recorded day} other{{used} fully recorded days}}. Your highest and lowest heart-rate hours.",
   "@circadianDetailStrengthFootnoteKnown": {
     "description": "Footnote citing how many fully-recorded days the rhythm-strength battery used",
     "placeholders": {
@@ -2862,7 +2837,7 @@
       }
     }
   },
-  "circadianDetailStrengthFootnoteUnknown": "From a run of fully-recorded days of heart rate. These are your highest and lowest heart-rate hours, not your busiest.",
+  "circadianDetailStrengthFootnoteUnknown": "From a run of fully recorded days. These are your highest and lowest heart-rate hours.",
   "@circadianDetailStrengthFootnoteUnknown": {
     "description": "Footnote for the rhythm-strength battery when the exact day count is unavailable"
   },
@@ -3575,14 +3550,9 @@
   "@dayTimelineTaggedTitle": {
     "description": "Fallback day-note title when a journal entry has tags but no written note."
   },
-  "dayTimelineDeviceBounded": "Per-device detail is kept for recent days only. Before {oldest} we know which device recorded, not what it said.",
+  "dayTimelineDeviceBounded": "Per-device detail is kept for recent days only.",
   "@dayTimelineDeviceBounded": {
-    "description": "Copy shown instead of a per-device curve when the day is outside decoded_onehz retention.",
-    "placeholders": {
-      "oldest": {
-        "type": "String"
-      }
-    }
+    "description": "Copy shown instead of a per-device curve when the day is outside decoded_onehz retention."
   },
   "dayTimelineTitle": "Breakdown of your day",
   "@dayTimelineTitle": {
@@ -3616,11 +3586,11 @@
   "@dayTimelineNothingRecordedTitle": {
     "description": "Empty-state title when a day has no chart and no timeline entries at all."
   },
-  "dayTimelineNothingRecordedBody": "No sleep, no session, no log and no band event carrying a time. A day with nothing on it is usually a day the band was off.",
+  "dayTimelineNothingRecordedBody": "Nothing recorded. The band was probably off.",
   "@dayTimelineNothingRecordedBody": {
     "description": "Empty-state body explaining a day with nothing recorded."
   },
-  "dayTimelineNoTimeTitle": "Nothing on this day carries a time",
+  "dayTimelineNoTimeTitle": "Entries without a time",
   "@dayTimelineNoTimeTitle": {
     "description": "Empty-state title when a day has notes but nothing with a time attached."
   },
@@ -3635,14 +3605,6 @@
   "dayTimelineAlsoLoggedSection": "Also logged on this day",
   "@dayTimelineAlsoLoggedSection": {
     "description": "Section heading over the day's untimed notes."
-  },
-  "dayTimelineNoTimeNote": "These were recorded against the day and carry no time of day, so they are not placed on it.",
-  "@dayTimelineNoTimeNote": {
-    "description": "Footnote explaining why untimed notes are not placed on the timeline."
-  },
-  "dayTimelinePatternsNote": "Patterns in your own logs, not causes. Two things next to each other here happened near each other, which is all this page claims.",
-  "@dayTimelinePatternsNote": {
-    "description": "Footnote reminding the user the timeline shows adjacency, not causation."
   },
   "journalComposeNotReady": "Not ready yet — open the app first.",
   "@journalComposeNotReady": {
@@ -4550,10 +4512,6 @@
   "@investigateSourceLabel": {
     "description": "Provenance table row label: data source"
   },
-  "investigateSourceOnDevice": "Band records · derived on this phone",
-  "@investigateSourceOnDevice": {
-    "description": "Provenance value: data derived on-device from band records"
-  },
   "investigateSourceImported": "Imported · {source}",
   "@investigateSourceImported": {
     "description": "Provenance value: data imported from another source",
@@ -4579,7 +4537,7 @@
   "@investigateWhichSensorCounted": {
     "description": "Table title for step-source breakdown"
   },
-  "investigateStrapPedometer": "strap · 100 Hz pedometer",
+  "investigateStrapPedometer": "Band step detection",
   "@investigateStrapPedometer": {
     "description": "Step source row: strap's 100 Hz pedometer"
   },
@@ -4587,7 +4545,7 @@
   "@investigateStrapOnChipCounter": {
     "description": "Step source row: strap's on-chip step counter"
   },
-  "investigateStrapCounterFactor": "on-chip counter · phone factor",
+  "investigateStrapCounterFactor": "Band counter calibration",
   "@investigateStrapCounterFactor": {
     "description": "Step source row: factor learned against the phone that scaled the on-chip counter"
   },
@@ -4695,11 +4653,11 @@
   "@investigateNo": {
     "description": "Generic no value for a nerd-stats table row"
   },
-  "investigateNoFrequencySpectrum": "No frequency-domain spectrum for this night",
+  "investigateNoFrequencySpectrum": "No frequency breakdown for this night",
   "@investigateNoFrequencySpectrum": {
     "description": "Status card title: no frequency-domain spectrum available"
   },
-  "investigateRecordingTooShort": "The recording was too short to resolve the bands.",
+  "investigateRecordingTooShort": "The recording was too short.",
   "@investigateRecordingTooShort": {
     "description": "Status card fallback body: recording too short for spectrum"
   },
@@ -4775,7 +4733,7 @@
   "@investigateNoShapeForNight": {
     "description": "Status card title: no night-shape data available"
   },
-  "investigateTooFewBeatsToBin": "The night carried too few clean beats to bin.",
+  "investigateTooFewBeatsToBin": "Too few clean beats this night.",
   "@investigateTooFewBeatsToBin": {
     "description": "Status card fallback body: too few beats to bin the night"
   },
@@ -4823,7 +4781,7 @@
   "@investigateScreenRan": {
     "description": "Chart legend label: day the irregular-rhythm screen ran"
   },
-  "investigateRhythmStripFootnote": "Ran on {ran} {ran, plural, one{day} other{days}}, flagged on {raised}. An outlined square marks a day it did not run. A strip with nothing flagged does not rule anything out. The screen reads pulse timing and cannot tell an ectopic beat, a dropped beat or wrist movement apart.",
+  "investigateRhythmStripFootnote": "Ran on {ran} {ran, plural, one{day} other{days}}, flagged on {raised}. Outlined squares are days it didn’t run. Nothing flagged doesn’t rule anything out.",
   "@investigateRhythmStripFootnote": {
     "description": "Footnote summarising how many days the irregular-rhythm screen ran and flagged",
     "placeholders": {
@@ -4839,7 +4797,7 @@
   "@investigateNoRestingBreathingRate": {
     "description": "Status card title: no resting breathing rate outside sleep"
   },
-  "investigateNoRestingBreathingRateBody": "This reads breathing only from three-minute stretches where the band saw you almost completely still, outside the sleep window. Most days have none — a day with none is a day you were moving, not a day anything went wrong.",
+  "investigateNoRestingBreathingRateBody": "Needs at least three still stretches of three minutes outside sleep. Most days have fewer.",
   "@investigateNoRestingBreathingRateBody": {
     "description": "Status card body explaining resting breathing rate requires stillness"
   },
@@ -4863,7 +4821,7 @@
   "@investigateHighestOfThem": {
     "description": "Table row: highest of the still-stretch readings"
   },
-  "investigateFloorNotRateBody": "A floor, not a rate for the day. Only stretches where you were almost completely still can be read at all, so these are the stillest few minutes the band saw outside your sleep — nothing here describes the rest of your day, and breathing while you move cannot be recovered from beat timing.",
+  "investigateFloorNotRateBody": "Breathing rate from the stillest stretches outside sleep. It says nothing about the rest of the day.",
   "@investigateFloorNotRateBody": {
     "description": "Explanatory paragraph: resting breathing rate is a floor, not a daily average"
   },
@@ -4960,13 +4918,9 @@
       }
     }
   },
-  "investigateCvhrExplainer": "It is a pattern in your pulse, not a measurement of your breathing, and it is not a test for anything. The same cycling comes from an irregular rhythm, from being at altitude, and from any broken-up night — and beta-blockers, diabetes and nerve conditions flatten it, so genuinely disturbed breathing often leaves nothing here at all.",
+  "investigateCvhrExplainer": "A pattern in your pulse, not a breathing test. Irregular rhythm, altitude and broken sleep cause it too, and some conditions and medicines hide it.",
   "@investigateCvhrExplainer": {
     "description": "Paragraph explaining what heart-rate cycling is and is not a measure of"
-  },
-  "investigateCvhrNotNegativeResult": "So nothing here is a negative result and nothing here clears anything, and none of it says anything about any one night — a single night's count moves for a dozen reasons on its own.",
-  "@investigateCvhrNotNegativeResult": {
-    "description": "Paragraph clarifying this is not a negative clinical result"
   },
   "investigateCvhrSeeClinicianIfSymptoms": "If you snore, wake unrefreshed, or someone has seen you stop breathing in your sleep, a clinician can test that properly.",
   "@investigateCvhrSeeClinicianIfSymptoms": {
@@ -5418,10 +5372,6 @@
   "@metricDetailNoValueYet": {
     "description": "Empty-state body: today has not produced a value and the install has no data at all yet."
   },
-  "metricDetailNoValueYetWiderRanges": "Today has not produced a value yet. The wider ranges above hold the days that did.",
-  "@metricDetailNoValueYetWiderRanges": {
-    "description": "Empty-state body: today has not produced a value but wider ranges above have data."
-  },
   "metricDetailNoValueInWindow": "No day in this window produced a value.",
   "@metricDetailNoValueInWindow": {
     "description": "Empty-state body for a multi-day window with no value in it."
@@ -5473,7 +5423,7 @@
       }
     }
   },
-  "metricDetailAlgoBreakFootnote": "{n, plural, one{The dotted line is a change in how these days were computed. Readings either side of it came from different versions.} other{The dotted lines are changes in how these days were computed. Readings either side of one came from different versions.}}",
+  "metricDetailAlgoBreakFootnote": "{n, plural, one{The dotted line is a change in how these days were computed.} other{The dotted lines are changes in how these days were computed.}}",
   "@metricDetailAlgoBreakFootnote": {
     "description": "Chart footnote explaining the dotted vertical line(s) marking an algorithm-version change.",
     "placeholders": {
@@ -5499,7 +5449,7 @@
   "@metricDetailHoursADayUnit": {
     "description": "Unit label on the wear-time bar chart (hours per day)."
   },
-  "metricDetailWearFootnote": "{have} of these {win} days have a wear record. The rest are gaps in both charts — the line above is not carried across one.",
+  "metricDetailWearFootnote": "{have} of {win} days have wear data. Missing days show as gaps.",
   "@metricDetailWearFootnote": {
     "description": "Footnote under the wear-time chart explaining coverage gaps.",
     "placeholders": {
@@ -5633,7 +5583,7 @@
       }
     }
   },
-  "metricDetailRankTodayBand": "Today is higher than {pct}% of your own days — {band}.",
+  "metricDetailRankTodayBand": "Today is higher than {pct}% of your own days, {band}.",
   "@metricDetailRankTodayBand": {
     "description": "As metricDetailRankToday, plus a qualitative band label.",
     "placeholders": {
@@ -5657,7 +5607,7 @@
       }
     }
   },
-  "metricDetailRankFromBand": "Your reading from {date} is higher than {pct}% of your own days — {band}.",
+  "metricDetailRankFromBand": "Your reading from {date} is higher than {pct}% of your own days, {band}.",
   "@metricDetailRankFromBand": {
     "description": "As metricDetailRankFrom, plus a qualitative band label.",
     "placeholders": {
@@ -5684,7 +5634,7 @@
       }
     }
   },
-  "metricDetailPatternsNotCauses": "Patterns in your own logs, not causes.",
+  "metricDetailPatternsNotCauses": "Patterns in your logs, not causes.",
   "@metricDetailPatternsNotCauses": {
     "description": "Disclaimer under the 'what moves it' journal-correlation list."
   },
@@ -5879,7 +5829,7 @@
   "@cycleNextPeriodAround": {
     "description": "Overline label when the next-period prediction is a single point date."
   },
-  "cycleFromOneMeasuredGap": "from your one measured gap, which cannot show how much your own cycle varies",
+  "cycleFromOneMeasuredGap": "from one measured gap",
   "@cycleFromOneMeasuredGap": {
     "description": "Trailing clause of the prediction footnote when only one cycle gap has been measured."
   },
@@ -6032,7 +5982,7 @@
   "@cycleNotEnoughDescribeDayBody": {
     "description": "Status card body when not enough cycles exist to chart cycle-day medians."
   },
-  "cycleOwnPastCyclesDescribed": "Your past cycles, described. Days only one cycle reached are left empty. It shows what happened, not what will.",
+  "cycleOwnPastCyclesDescribed": "Your past cycles. Days that only one cycle reached are left empty.",
   "@cycleOwnPastCyclesDescribed": {
     "description": "Explanatory footer under the by-cycle-day charts."
   },
@@ -6096,7 +6046,7 @@
       }
     }
   },
-  "cycleComparisonNotCorrection": "A comparison, not a correction. Your recovery score is not adjusted by this, and nothing here is a training instruction.",
+  "cycleComparisonNotCorrection": "Doesn’t change your recovery score.",
   "@cycleComparisonNotCorrection": {
     "description": "Disclaimer under the day-against-itself comparison."
   },
@@ -6194,7 +6144,7 @@
       }
     }
   },
-  "cycleLengthChangesReasons": "Cycle length changes for many reasons, such as thyroid, stress, weight, contraception or PCOS. A reason to ask a clinician, not an answer.",
+  "cycleLengthChangesReasons": "Cycle length changes for many reasons. Worth asking a clinician if it worries you.",
   "@cycleLengthChangesReasons": {
     "description": "Disclaimer under the cycle-length chart about medical causes of variation."
   },
@@ -6210,26 +6160,15 @@
   "@cycleNotEnoughDerivedNights": {
     "description": "Empty-state message on the current-cycle chart when too few nights have derived data."
   },
-  "cycleMdcNoteInsideSpread": " Every day here is within your normal night-to-night swing: the biggest gap is {s}, and {n} is the smallest real change. A shape, not a shift.",
+  "cycleMdcNoteInsideSpread": " All within your normal night-to-night variation.",
   "@cycleMdcNoteInsideSpread": {
-    "description": "Chart footnote addendum when the drawn swing is smaller than the user's own night-to-night noise.",
-    "placeholders": {
-      "s": {
-        "type": "String"
-      },
-      "n": {
-        "type": "String"
-      }
-    }
+    "description": "Chart footnote addendum when the drawn swing is smaller than the user's own night-to-night noise."
   },
-  "cycleMdcNoteVaries": " Your nights vary by {n} on their own, so days closer together than that are not separated. The biggest gap here is {s}.",
+  "cycleMdcNoteVaries": " Your nights vary by {n} on their own, so smaller differences aren’t meaningful.",
   "@cycleMdcNoteVaries": {
     "description": "Chart footnote addendum when the drawn swing exceeds the user's own night-to-night noise.",
     "placeholders": {
       "n": {
-        "type": "String"
-      },
-      "s": {
         "type": "String"
       }
     }
@@ -6267,7 +6206,7 @@
       }
     }
   },
-  "healthReadFailedBody": "The stored rows failed to load. Nothing was deleted — this is a read that went wrong.",
+  "healthReadFailedBody": "Couldn’t load your data. Nothing was deleted.",
   "@healthReadFailedBody": {
     "description": "Read-failure card body"
   },
@@ -6368,34 +6307,6 @@
         "type": "String"
       }
     }
-  },
-  "healthIllnessBodyNoZ": "Your resting heart rate has run above your usual over recent nights. This tracks one signal, so it shows a pattern, not a cause.",
-  "@healthIllnessBodyNoZ": {
-    "description": "Illness observation card body when no z-score is available"
-  },
-  "healthIllnessBodyWithZ": "Recent nights together put your resting heart rate above your usual. On its own, that night was {z}× your normal night-to-night swing {direction} it. A pattern, not a cause.",
-  "@healthIllnessBodyWithZ": {
-    "description": "Illness observation card body including the standard-deviation figure and direction",
-    "placeholders": {
-      "z": {
-        "type": "String"
-      },
-      "direction": {
-        "type": "String"
-      }
-    }
-  },
-  "healthDirectionAbove": "above",
-  "@healthDirectionAbove": {
-    "description": "Direction word: above (baseline)"
-  },
-  "healthDirectionBelow": "below",
-  "@healthDirectionBelow": {
-    "description": "Direction word: below (baseline)"
-  },
-  "healthIllnessAdvice": "Worth noting if it continues past a couple of days.",
-  "@healthIllnessAdvice": {
-    "description": "Illness observation card advice line"
   },
   "healthObservationsTitle": "Observations",
   "@healthObservationsTitle": {
@@ -6519,7 +6430,7 @@
   "@healthConsistencyTitle": {
     "description": "Section title: Consistency"
   },
-  "healthDaysWithRecord": "Days with a score in the last 30 days",
+  "healthDaysWithRecord": "Scored days, last 30",
   "@healthDaysWithRecord": {
     "description": "Consistency tile caption"
   },
@@ -6588,7 +6499,7 @@
   "@healthHeartRateVariability": {
     "description": "Deep-dive card title: heart rate variability"
   },
-  "healthTimeFrequencyNonLinear": "Time, frequency and non-linear",
+  "healthTimeFrequencyNonLinear": "Detailed HRV measures",
   "@healthTimeFrequencyNonLinear": {
     "description": "Deep-dive card subtitle"
   },
@@ -6617,13 +6528,9 @@
   "@healthOneNightNotTrend": {
     "description": "HRV preview chart empty message when fewer than two nights are stored"
   },
-  "healthMeasuresWithHistory": "Measures with stored history on this device",
+  "healthMeasuresWithHistory": "Metrics with history",
   "@healthMeasuresWithHistory": {
     "description": "Explore tab consistency tile caption"
-  },
-  "healthEachOneOpens": "Each one opens its chart, your own range, and how it is worked out.",
-  "@healthEachOneOpens": {
-    "description": "Explore tab intro line explaining what a tap gets you"
   },
   "healthCatHeartRhythm": "Heart & rhythm",
   "@healthCatHeartRhythm": {
@@ -6653,7 +6560,7 @@
   "@healthBlurbHrvCv": {
     "description": "Explore catalogue one-line description for HRV stability: within-night SDNN as a percentage of the mean beat interval (not a night-to-night variability)"
   },
-  "healthBlurbLfHf": "Where beat-timing power sits across frequencies",
+  "healthBlurbLfHf": "Balance of fast and slow heartbeat swings",
   "@healthBlurbLfHf": {
     "description": "Explore catalogue one-line description for LF/HF"
   },
@@ -6661,7 +6568,7 @@
   "@healthBlurbDip": {
     "description": "Explore catalogue one-line description for heart-rate dip"
   },
-  "healthBlurbHrr": "How fast it falls in the minute after a bout",
+  "healthBlurbHrr": "How fast heart rate drops after effort",
   "@healthBlurbHrr": {
     "description": "Explore catalogue one-line description for heart-rate recovery"
   },
@@ -6673,11 +6580,11 @@
   "@healthBlurbEfficiency": {
     "description": "Explore catalogue one-line description for sleep efficiency"
   },
-  "healthBlurbDeep": "Heart-rate flatness inside NREM",
+  "healthBlurbDeep": "Time in deep sleep",
   "@healthBlurbDeep": {
     "description": "Explore catalogue one-line description for deep sleep"
   },
-  "healthBlurbRem": "Staged from beat variability and movement",
+  "healthBlurbRem": "Time in REM sleep",
   "@healthBlurbRem": {
     "description": "Explore catalogue one-line description for REM sleep"
   },
@@ -6701,7 +6608,7 @@
   "@healthBlurbSteps": {
     "description": "Explore catalogue one-line description for steps"
   },
-  "healthBlurbActiveMin": "Minutes of movement volume, not locomotion",
+  "healthBlurbActiveMin": "Minutes of activity",
   "@healthBlurbActiveMin": {
     "description": "Explore catalogue one-line description for active minutes"
   },
@@ -6713,7 +6620,7 @@
   "@healthBlurbStrain": {
     "description": "Explore catalogue one-line description for strain"
   },
-  "healthBlurbTrimp": "Heart points with no cap; Strain is the 0–21 view",
+  "healthBlurbTrimp": "Total heart-rate load, without Strain’s 0–21 cap",
   "@healthBlurbTrimp": {
     "description": "Explore catalogue one-line description for TRIMP"
   },
@@ -6887,7 +6794,7 @@
       }
     }
   },
-  "healthStillHoldsResults": "{count, plural, one{{label} still holds {count} result. Remove those first — the marker is what labels them.} other{{label} still holds {count} results. Remove those first — the marker is what labels them.}}",
+  "healthStillHoldsResults": "{count, plural, one{{label} still holds {count} result. Remove those first.} other{{label} still holds {count} results. Remove those first.}}",
   "@healthStillHoldsResults": {
     "description": "Snackbar refusing to remove a marker definition that still holds results, ICU plural",
     "placeholders": {
@@ -6908,7 +6815,7 @@
       }
     }
   },
-  "healthRemoveMarkerBody": "It leaves the marker list, so you can no longer log it. Nothing measured goes with it — you have no results under it.",
+  "healthRemoveMarkerBody": "It leaves the marker list, so you can no longer log it.",
   "@healthRemoveMarkerBody": {
     "description": "Confirm-remove dialog body for a custom marker definition"
   },
@@ -7130,7 +7037,7 @@
   "@homeDriverTemp": {
     "description": "Readiness driver name: skin temperature, shown in the Why? row on Home."
   },
-  "homeDbRebuiltTitle": "Your database was rebuilt to start the app",
+  "homeDbRebuiltTitle": "Your database was rebuilt",
   "@homeDbRebuiltTitle": {
     "description": "Title of the card shown when the local database had to be rebuilt to start the app."
   },
@@ -7172,15 +7079,15 @@
   "@homeWorkoutHoldTitle": {
     "description": "Title of the card shown on Home while a workout session is live and derivation is paused."
   },
-  "homeWorkoutHoldBody": "Today is paused while a workout runs. The band keeps recording; finish the workout from the bar below and today fills in.",
+  "homeWorkoutHoldBody": "Today fills in when you finish the workout.",
   "@homeWorkoutHoldBody": {
     "description": "Body of the card shown on Home while a workout session is live and derivation is paused."
   },
-  "homeInsightsRebuildingTitle": "Your cross-day insights are being rebuilt",
+  "homeInsightsRebuildingTitle": "Updating your trends",
   "@homeInsightsRebuildingTitle": {
     "description": "Title of the card shown when the cross-day insights rollup was withheld rather than shown."
   },
-  "homeInsightsRebuildingAlgoVersion": "How these are computed changed with the last update.",
+  "homeInsightsRebuildingAlgoVersion": "Updating after the latest app update.",
   "@homeInsightsRebuildingAlgoVersion": {
     "description": "Reason the cross-day rollup is being rebuilt: the algorithm version changed."
   },
@@ -7238,7 +7145,7 @@
       }
     }
   },
-  "homeGapNoReason": "Nothing recorded says why this is missing.",
+  "homeGapNoReason": "No reading.",
   "@homeGapNoReason": {
     "description": "Fallback reason shown when a ring is empty and nothing explains why."
   },
@@ -7288,10 +7195,6 @@
   "@homeLoadFailedTitle": {
     "description": "Title of the card shown when today's data failed to load from the database."
   },
-  "homeLoadFailedBody": "The stored day failed to load. Nothing was deleted — this is a read that went wrong, not missing data.",
-  "@homeLoadFailedBody": {
-    "description": "Body of the card shown when today's data failed to load from the database."
-  },
   "homeTryAgain": "Try again",
   "@homeTryAgain": {
     "description": "Button label to retry loading today's data."
@@ -7330,10 +7233,6 @@
   "@homeAnalyzingTitle": {
     "description": "Title shown on a bare day once the backlog has landed and a derive job is computing today's numbers."
   },
-  "homeAnalyzingBody": "The data is in — sleep, recovery and strain are next.",
-  "@homeAnalyzingBody": {
-    "description": "Body shown on a bare day once the backlog has landed and a derive job is computing today's numbers."
-  },
   "homeConnectingTitle": "Connecting to your band",
   "@homeConnectingTitle": {
     "description": "Title shown right after tapping Sync the band, before any record has arrived yet."
@@ -7354,7 +7253,7 @@
   "@homeNothingTodayTitle": {
     "description": "Title shown when there is history but nothing recorded for today."
   },
-  "homeNothingTodayBody": "The last night this app scored was {day}. Nothing has reached it since.",
+  "homeNothingTodayBody": "Last scored night: {day}.",
   "@homeNothingTodayBody": {
     "description": "Body shown when there is history but nothing recorded for today, naming the last scored night.",
     "placeholders": {
@@ -7378,7 +7277,7 @@
       }
     }
   },
-  "homeReadinessNoReason": "Nothing recorded says why.",
+  "homeReadinessNoReason": "No reading.",
   "@homeReadinessNoReason": {
     "description": "Fallback body of the readiness-not-scored card when no reason is recorded."
   },
@@ -7428,29 +7327,17 @@
       }
     }
   },
-  "homeIllnessBodyNoZ": "Your resting heart rate has run above your usual over recent nights. This tracks one signal, so it shows a pattern, not a cause.",
+  "homeIllnessBodyNoZ": "Your resting heart rate has been above your usual over recent nights. A pattern, not a cause.",
   "@homeIllnessBodyNoZ": {
     "description": "Illness watch body text when no standardised-deviation figure is available."
   },
-  "homeIllnessBodyAbove": "Recent nights put your resting heart rate above your usual. That night was {z}× your normal night-to-night swing above it. A pattern, not a cause.",
+  "homeIllnessBodyAbove": "Recent nights put your resting heart rate above your usual. That night was above it too. A pattern, not a cause.",
   "@homeIllnessBodyAbove": {
-    "description": "Illness watch body text when the flagged night's heart rate sat above baseline, with the deviation amount.",
-    "placeholders": {
-      "z": {
-        "type": "String",
-        "example": "1.8"
-      }
-    }
+    "description": "Illness watch body text when the flagged night's heart rate sat above baseline, with the deviation amount."
   },
-  "homeIllnessBodyBelow": "Recent nights together put your resting heart rate above your usual, even though that night on its own was {z}× your normal night-to-night swing below it. A pattern, not a cause.",
+  "homeIllnessBodyBelow": "Recent nights together put your resting heart rate above your usual, though that night alone was below it. A pattern, not a cause.",
   "@homeIllnessBodyBelow": {
-    "description": "Illness watch body text when the flagged night's heart rate sat below baseline, with the deviation amount.",
-    "placeholders": {
-      "z": {
-        "type": "String",
-        "example": "1.8"
-      }
-    }
+    "description": "Illness watch body text when the flagged night's heart rate sat below baseline, with the deviation amount."
   },
   "homeIllnessAdvice": "Worth noting if it continues past a couple of days.",
   "@homeIllnessAdvice": {
@@ -7593,10 +7480,6 @@
   "@homeNoPlanTitle": {
     "description": "Title of the empty-state card when there is no plan for today yet."
   },
-  "homeNoPlanWhyStale": "Your trends are being updated. This takes a minute after a sync.",
-  "@homeNoPlanWhyStale": {
-    "description": "Reason there is no plan: the cross-day rollup they come from is being rebuilt."
-  },
   "homeNoPlanWhyNone": "None are established yet.",
   "@homeNoPlanWhyNone": {
     "description": "Reason there is no plan: no baselines are established yet."
@@ -7677,10 +7560,6 @@
   "wellnessNoStressTitle": "No stress reading last night",
   "@wellnessNoStressTitle": {
     "description": "Status card title when there is no stress reading for last night"
-  },
-  "wellnessNoStressBody": "Stress is read from beat timing while you were resting overnight, and last night produced no reading.",
-  "@wellnessNoStressBody": {
-    "description": "Status card body explaining why there is no stress reading"
   },
   "wellnessAutonomicTension": "Stress level",
   "@wellnessAutonomicTension": {
@@ -7772,7 +7651,7 @@
   "@wellnessNoSleepNeedTitle": {
     "description": "Status card title when no sleep need estimate exists"
   },
-  "wellnessNoSleepNeedBody": "Nothing recorded says why there is no need for tonight.",
+  "wellnessNoSleepNeedBody": "No reading.",
   "@wellnessNoSleepNeedBody": {
     "description": "Status card fallback body when there is no reason recorded for missing sleep need"
   },
@@ -8063,7 +7942,7 @@
   "@wellnessNothingSeparatedTitle": {
     "description": "Status card title when no journal findings cleared statistical significance"
   },
-  "wellnessNothingSeparatedBody": "Everything you log is tested against your recovery, HRV, resting heart rate and sleep efficiency. Nothing has cleared the bar yet.",
+  "wellnessNothingSeparatedBody": "No clear links found yet.",
   "@wellnessNothingSeparatedBody": {
     "description": "Status card body explaining what journal findings are tested against"
   },
@@ -8075,7 +7954,7 @@
   "@wellnessHowMuchAndWhatFollowed": {
     "description": "Section title for numeric dose-response findings in journal findings"
   },
-  "wellnessLinkNeverCause": "A link on your own days — never a cause. The days you do a thing are days you were already that kind of day.",
+  "wellnessLinkNeverCause": "A link in your own days, not proof of a cause.",
   "@wellnessLinkNeverCause": {
     "description": "Disclaimer text below journal findings emphasizing correlation not causation"
   },
@@ -8091,7 +7970,7 @@
   "@wellnessLower": {
     "description": "Direction word: lower, used when composing a finding sentence"
   },
-  "wellnessHeadlineBinary": "On the {n} days you logged {field}, {outcome} ran {amount} {direction}",
+  "wellnessHeadlineBinary": "On the {n} days you logged {field}, {outcome} was {amount} {direction}",
   "@wellnessHeadlineBinary": {
     "description": "Finding headline for a binary (habit) journal field, e.g. 'On the 5 days you logged X, Y ran 3 higher'",
     "placeholders": {
@@ -8130,7 +8009,7 @@
       }
     }
   },
-  "wellnessHeadlineSlope": "On the {n} days you logged {field}, {outcome} ran {amount} {direction} per {step}",
+  "wellnessHeadlineSlope": "On the {n} days you logged {field}, {outcome} was {amount} {direction} per {step}",
   "@wellnessHeadlineSlope": {
     "description": "Finding headline for a numeric field with a per-unit slope",
     "placeholders": {
@@ -8175,31 +8054,7 @@
       }
     }
   },
-  "wellnessRangeTo": "{lo} to {hi}",
-  "@wellnessRangeTo": {
-    "description": "Confidence interval range phrase, e.g. '0.10 to 0.40'",
-    "placeholders": {
-      "lo": {
-        "type": "String"
-      },
-      "hi": {
-        "type": "String"
-      }
-    }
-  },
-  "wellnessRankCorrelation": "Rank correlation {rho}{ci}. ",
-  "@wellnessRankCorrelation": {
-    "description": "Finding detail stating the rank correlation coefficient and its confidence interval",
-    "placeholders": {
-      "rho": {
-        "type": "String"
-      },
-      "ci": {
-        "type": "String"
-      }
-    }
-  },
-  "wellnessCaffeineCaveat": "This counts only your last caffeine of the day, so two cups and five look the same. A long, stressful day can bring both late coffee and a poor night.",
+  "wellnessCaffeineCaveat": "Counts only your last caffeine, so two cups and five look the same.",
   "@wellnessCaffeineCaveat": {
     "description": "Extra caveat paragraph shown for the last-caffeine-of-day finding"
   },
@@ -8215,7 +8070,7 @@
   "@wellnessNotEnoughWeeksTitle": {
     "description": "Status card title when there is not yet enough data for the weekday effect"
   },
-  "wellnessNotEnoughWeeksBody": "Comparing seven weekdays needs at least eight weeks of days, with five of every weekday in them.",
+  "wellnessNotEnoughWeeksBody": "Weekday comparison needs at least eight weeks of data.",
   "@wellnessNotEnoughWeeksBody": {
     "description": "Status card body explaining the weekday effect needs eight weeks of data"
   },
@@ -8223,7 +8078,7 @@
   "@wellnessNoDayStandsOutTitle": {
     "description": "Status card title when no weekday stands out as significant"
   },
-  "wellnessNoDayStandsOutBody": "No day stands apart from the other six once we account for having checked all seven.",
+  "wellnessNoDayStandsOutBody": "No weekday stands out.",
   "@wellnessNoDayStandsOutBody": {
     "description": "Status card body explaining no weekday cleared the multiple-comparison bar"
   },
@@ -8242,7 +8097,7 @@
       }
     }
   },
-  "wellnessWeekdayDetail": "From {n} of them. A weekday is not a cause — it is a container for what you do on it. Nothing here is advice.",
+  "wellnessWeekdayDetail": "From {n} of them. Nothing here is advice.",
   "@wellnessWeekdayDetail": {
     "description": "Finding detail giving the sample size and the correlation-not-causation caveat for the weekday effect",
     "placeholders": {
@@ -8344,7 +8199,7 @@
   "@sleepDetailAsleep": {
     "description": "Inline metric label for asleep percentage (efficiency)."
   },
-  "sleepDetailWatchedExplain": "We watched {watched} of your {inBed} in bed; the rest is not a measurement. Asleep, and the stage shares below, are out of the time we watched.",
+  "sleepDetailWatchedExplain": "The band covered {watched} of your {inBed} in bed. Sleep and stage figures use only that time.",
   "@sleepDetailWatchedExplain": {
     "description": "Explanatory sentence under the total-sleep card about the watched vs. in-bed window.",
     "placeholders": {
@@ -8461,7 +8316,7 @@
   "@sleepDetailUnitStage": {
     "description": "Unit label on the hypnogram chart frame."
   },
-  "sleepDetailTapDragCycles": "{n, plural, one{Tap or drag the chart for any moment. {n} cycle.} other{Tap or drag the chart for any moment. {n} cycles.}}",
+  "sleepDetailTapDragCycles": "{n, plural, one{{n} cycle.} other{{n} cycles.}}",
   "@sleepDetailTapDragCycles": {
     "description": "Hint sentence under the hypnogram, stating the sleep-cycle count with no average available.",
     "placeholders": {
@@ -8470,7 +8325,7 @@
       }
     }
   },
-  "sleepDetailTapDragCyclesAvg": "{n, plural, one{Tap or drag the chart for any moment. {n} cycle, {avg} on average.} other{Tap or drag the chart for any moment. {n} cycles, {avg} on average.}}",
+  "sleepDetailTapDragCyclesAvg": "{n, plural, one{{n} cycle, {avg} on average.} other{{n} cycles, {avg} on average.}}",
   "@sleepDetailTapDragCyclesAvg": {
     "description": "Hint sentence under the hypnogram, stating the sleep-cycle count and its average length.",
     "placeholders": {
@@ -8486,11 +8341,11 @@
   "@sleepDetailTapDragNone": {
     "description": "Hint sentence under the hypnogram when there were no complete sleep cycles."
   },
-  "sleepDetailNoWakeups": "No wake-ups of 5 minutes or more; shorter ones are invisible to a wrist.",
+  "sleepDetailNoWakeups": "No wake-ups of 5 minutes or more.",
   "@sleepDetailNoWakeups": {
     "description": "Sentence describing a night with zero qualifying wake-ups."
   },
-  "sleepDetailAtLeastWakeups": "{n, plural, one{At least {n} wake-up of 5 minutes or more; shorter ones are invisible to a wrist.} other{At least {n} wake-ups of 5 minutes or more; shorter ones are invisible to a wrist.}}",
+  "sleepDetailAtLeastWakeups": "{n, plural, one{At least {n} wake-up of 5 minutes or more.} other{At least {n} wake-ups of 5 minutes or more.}}",
   "@sleepDetailAtLeastWakeups": {
     "description": "Sentence stating a floor count of wake-ups of 5+ minutes.",
     "placeholders": {
@@ -8593,7 +8448,7 @@
   "@sleepDetailNoStageSplitBody": {
     "description": "Status card body explaining why no stage breakdown is available."
   },
-  "sleepDetailStageRangeExplain": "Each stage is a range, narrower the better we saw the night. Deep is the widest; awake is one figure. Nerd stats has exact counts.",
+  "sleepDetailStageRangeExplain": "Stages are ranges; more recorded time means narrower ranges.",
   "@sleepDetailStageRangeExplain": {
     "description": "Explanatory footnote under the stage breakdown table about ranges vs. counts."
   },
@@ -8733,7 +8588,7 @@
   "@sleepDetailSleepingHrHighTitle": {
     "description": "Insight card title: sleeping heart rate was elevated versus baseline."
   },
-  "sleepDetailSleepingHrHighBody": "{bpm} bpm above your usual. Common after alcohol, a late meal, a hard session or an infection starting. A measurement, not a diagnosis.",
+  "sleepDetailSleepingHrHighBody": "{bpm} bpm above your usual. Alcohol, a late meal, hard training or illness can cause this. Not a diagnosis.",
   "@sleepDetailSleepingHrHighBody": {
     "description": "Insight card body explaining the elevated sleeping heart rate.",
     "placeholders": {
@@ -9541,7 +9396,7 @@
   "@dayStrainNoMinuteTraceTitle": {
     "description": "Status card title when a day has a strain score but no per-minute trace stored"
   },
-  "dayStrainNoReasonBody": "Nothing recorded says why this day produced no strain.",
+  "dayStrainNoReasonBody": "No reading.",
   "@dayStrainNoReasonBody": {
     "description": "Fallback body text when no strain trace exists and no reason was given by the backend"
   },
@@ -12089,7 +11944,7 @@
   "@nudgeDiscordTitle": {
     "description": "Title of the Home nudge card inviting the user to join Discord."
   },
-  "nudgeDiscordBody": "Other OpenStrap users hang out on Discord — bugs, ideas, and people running the same band as you.",
+  "nudgeDiscordBody": "Chat with other OpenStrap users on Discord.",
   "@nudgeDiscordBody": {
     "description": "Body of the Home nudge card inviting the user to join Discord."
   },
@@ -12101,7 +11956,7 @@
   "@nudgeDonateTitle": {
     "description": "Title of the Home nudge card inviting the user to sponsor the project."
   },
-  "nudgeDonateBody": "It is a free, open-source project with no subscription. Sponsoring keeps it maintained.",
+  "nudgeDonateBody": "Free and open source. Sponsoring keeps it maintained.",
   "@nudgeDonateBody": {
     "description": "Body of the Home nudge card inviting the user to sponsor the project."
   },
@@ -14971,7 +14826,7 @@
   "@dayTimelineZoomNoHr": {
     "description": "Shown in place of the zoomed day chart when the chosen window has no heart rate."
   },
-  "dayTimelineZoomPerMinute": "1-minute averages. Drag the handles to zoom; two hours or less shows every second while it is still kept.",
+  "dayTimelineZoomPerMinute": "1-minute averages. Zoom in to two hours or less for per-second data, where kept.",
   "@dayTimelineZoomPerMinute": {
     "description": "Footnote under the day heart-rate chart at per-minute resolution."
   },
@@ -15100,7 +14955,7 @@
   "@monthGridLegendOutside": {
     "description": "Month grid legend: day outside the usual range for a metric with no better direction."
   },
-  "monthGridRangeFootnote": "One cell per day. A bar at the top means above your usual range, at the bottom below it. An outlined cell has no value.",
+  "monthGridRangeFootnote": "A bar at the top means above your usual range, at the bottom below it. An outlined cell has no value.",
   "@monthGridRangeFootnote": {
     "description": "Month grid footnote explaining the cell marks."
   },
@@ -15113,7 +14968,7 @@
       }
     }
   },
-  "monthGridFlatBody": "Your days have all been about the same, so there is no usual range to place a day against yet.",
+  "monthGridFlatBody": "Not enough variation yet to show a usual range.",
   "@monthGridFlatBody": {
     "description": "Month grid: status card body when there is enough history but it is too flat to give a usual range."
   },
@@ -15172,7 +15027,7 @@
   "@advancedTitle": {
     "description": "Title of the screen that holds the research charts, reached from Health."
   },
-  "advancedIntro": "Research views of the same data. Nothing here changes your scores.",
+  "advancedIntro": "Detailed views of your data.",
   "@advancedIntro": {
     "description": "One-line introduction at the top of the Advanced charts screen."
   },
@@ -15196,7 +15051,7 @@
   "@healthAdvancedLinkTitle": {
     "description": "Health tab: link row to the Advanced charts screen."
   },
-  "healthAdvancedLinkSub": "Beat-to-beat detail and sleep timing, for the curious",
+  "healthAdvancedLinkSub": "Beat-to-beat detail and sleep timing",
   "@healthAdvancedLinkSub": {
     "description": "Health tab: subtitle of the link row to the Advanced charts screen."
   },
@@ -15349,7 +15204,7 @@
       }
     }
   },
-  "homeCoachSetUpChip": "Ask questions about your data: set up the coach",
+  "homeCoachSetUpChip": "Set up the coach",
   "@homeCoachSetUpChip": {
     "description": "Today tab chip when no coach model is configured."
   },
@@ -15982,7 +15837,7 @@
   "@healthBlurbReadiness": {
     "description": "Trends catalogue one-line description for readiness"
   },
-  "healthBlurbStress": "Beat-interval clustering over your most restful stretch",
+  "healthBlurbStress": "How tense your heartbeat looks at rest",
   "@healthBlurbStress": {
     "description": "Trends catalogue one-line description for stress"
   },
@@ -16271,11 +16126,11 @@
   "@exploreUnitNormalised": {
     "description": "Data Explorer chart header, where a unit would be: the lines are not in the metrics' own units"
   },
-  "exploreNormalised": "Normalised: each line spans its own lowest to highest, so shapes compare and values do not. Touch the chart for the real values.",
+  "exploreNormalised": "Each line is scaled to its own range, so compare shapes, not values. Touch the chart for real values.",
   "@exploreNormalised": {
     "description": "Data Explorer note under the chart while every line is scaled to its own range"
   },
-  "exploreNormalisedBaseline": "Normalised. Lines in usual-range mode show distance from your usual level (the middle is usual, the top and bottom are 3 standard deviations away); the others span their own lowest to highest. Touch the chart for the real values.",
+  "exploreNormalisedBaseline": "Each line is scaled to fit. Lines in usual-range mode put your normal in the middle and far-off values at the edges. Touch the chart for real values.",
   "@exploreNormalisedBaseline": {
     "description": "Data Explorer note under the chart while at least one line is against its baseline"
   },
@@ -17591,7 +17446,7 @@
       }
     }
   },
-  "investigatePrvArtifactShare": "Share of beats classified as artifacts (corrected or dropped), {scope}",
+  "investigatePrvArtifactShare": "Beats the band misread (fixed or dropped), {scope}",
   "@investigatePrvArtifactShare": {
     "description": "Design 04 PRV diagnostics: Share of beats classified as artifacts (corrected or dropped), {scope}",
     "placeholders": {
@@ -17697,7 +17552,7 @@
       }
     }
   },
-  "investigatePrvWhyArtifact": "Too much artifact: {seen} of beats classified as artifacts (corrected or dropped), {allowed} allowed",
+  "investigatePrvWhyArtifact": "Too many misread beats: {seen}, limit {allowed}",
   "@investigatePrvWhyArtifact": {
     "description": "Design 04 PRV diagnostics: Too much artifact: {seen} of beats classified as artifacts (corrected or dropped), {allowed} allowed",
     "placeholders": {
@@ -17713,7 +17568,7 @@
   "@investigatePrvWhyNoPairs": {
     "description": "Design 04 PRV diagnostics: No successive usable beats to compare"
   },
-  "investigatePrvWhyNoVariability": "No long-term variability (SD2 is zero), so the ratio is undefined",
+  "investigatePrvWhyNoVariability": "Not enough variation to compute a ratio",
   "@investigatePrvWhyNoVariability": {
     "description": "Design 04 PRV diagnostics: No long-term variability (SD2 is zero), so the ratio is undefined"
   },
@@ -17729,5 +17584,17 @@
         "type": "String"
       }
     }
+  },
+  "sleepDetailTimesSavedRanges": "Times saved. Stages for this night are shown as ranges.",
+  "@sleepDetailTimesSavedRanges": {
+    "description": "Caption under a typed sleep window when the band recorded too little to score the night; stages are shown as ranges."
+  },
+  "sleepDetailUserWindowTitle": "Your times are saved",
+  "@sleepDetailUserWindowTitle": {
+    "description": "Status card title for a typed sleep window with nothing scored in it."
+  },
+  "sleepDetailUserWindowBody": "The band recorded too little inside your times to score this night.",
+  "@sleepDetailUserWindowBody": {
+    "description": "Status card body for a typed sleep window the band recorded too little inside."
   }
 }

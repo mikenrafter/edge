@@ -265,8 +265,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
                   'No minute-by-minute trace for this day'),
           s == null
               ? why ??
-                  (l?.dayStrainNoReasonBody ??
-                      'Nothing recorded says why this day produced no strain.')
+                  (l?.dayStrainNoReasonBody ?? 'No reading.')
               : (l?.dayStrainScoredNoTraceBody(s.toStringAsFixed(1)) ??
                   'The day strain is ${s.toStringAsFixed(1)}. The waking minutes '
                       'it was built from are not stored for this day.'),

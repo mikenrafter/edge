@@ -331,7 +331,7 @@ class MonthGrid extends StatelessWidget {
                 const SizedBox(height: S.x2),
                 Text(
                   l?.monthGridRangeFootnote ??
-                      'One cell per day. A bar at the top means above your usual range, at the bottom below it. An outlined cell has no value.',
+                      'A bar at the top means above your usual range, at the bottom below it. An outlined cell has no value.',
                   style: F.over.copyWith(color: p.ink3, height: 1.5),
                 ),
               ],
@@ -347,8 +347,7 @@ class MonthGrid extends StatelessWidget {
               r.historyDays < kGridMinHistory
                   ? usualNeedsDaysText(l, r.historyDays)
                   : (l?.monthGridFlatBody ??
-                      'Your days have all been about the same, so there is '
-                          'no usual range to place a day against yet.'),
+                      'Not enough variation yet to show a usual range.'),
             ),
           ),
       ],

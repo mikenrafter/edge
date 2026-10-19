@@ -355,7 +355,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
             const SizedBox(height: S.x2),
             Text(
               l?.readinessDetailBreakdownNoScoreNote ??
-                  'A looser view of the same four inputs. They don’t add up to today’s score, which is missing for the reason above.',
+                  'Doesn’t add up to a score, which is missing for the reason above.',
               style: F.cap.copyWith(color: p.ink3, height: 1.5),
             ),
           ],
@@ -368,9 +368,8 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
                 child: Text(
                   l?.readinessDetailInputsFooter(
                           d.inputsUsed, d.breakdown.length) ??
-                      '${d.inputsUsed}/${d.breakdown.length} inputs. Each one is '
-                          'ranked against your own history — a parallel view of the '
-                          'same inputs, not slices of the number above.',
+                      '${d.inputsUsed}/${d.breakdown.length} inputs, each '
+                          'compared with your history.',
                   style: F.cap.copyWith(color: p.ink3, height: 1.5),
                 ),
               ),

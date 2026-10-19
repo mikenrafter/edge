@@ -309,12 +309,10 @@ class _InvestigateState extends State<Investigate> {
                 '${clockOfTs(d.windowStart)} – ${clockOfTs(d.windowEnd)}'),
             // Asserted as "wrist optical · this device" for every day, including
             // days that were read out of somebody else's export.
-          (l?.investigateSourceLabel ?? 'Source',
-              d.importedFrom == null
-                  ? (l?.investigateSourceOnDevice ??
-                      'Band records · derived on this phone')
-                  : (l?.investigateSourceImported(d.importedFrom!) ??
-                      'Imported · ${d.importedFrom}')),
+          if (d.importedFrom != null)
+            (l?.investigateSourceLabel ?? 'Source',
+                l?.investigateSourceImported(d.importedFrom!) ??
+                    'Imported · ${d.importedFrom}'),
           (l?.investigateAlgoVersionLabel ?? 'Algorithm version',
               d.algoVersion == null ? '—' : 'v${d.algoVersion}'),
         ]),
@@ -359,12 +357,12 @@ class _InvestigateState extends State<Investigate> {
     String n(Object? v) => v is num ? thousands(v) : '—';
     return [
       MonoTable(l?.investigateWhichSensorCounted ?? 'Which sensor counted', [
-        (l?.investigateStrapPedometer ?? 'strap · 100 Hz pedometer',
+        (l?.investigateStrapPedometer ?? 'Band step detection',
             n(split['strap'])),
         (l?.investigateStrapOnChipCounter ?? 'strap · on-chip counter',
             n(split['strap_counter'])),
         if (d.steps['counter_calibration'] case {'factor': final num f})
-          (l?.investigateStrapCounterFactor ?? 'on-chip counter · phone factor',
+          (l?.investigateStrapCounterFactor ?? 'Band counter calibration',
               '× ${f.toStringAsFixed(2)}'),
         (l?.investigatePhonePedometer ?? 'phone · pedometer', n(split['phone'])),
         (l?.investigateDayTotal ?? 'day total', n(d.steps['value'])),
@@ -412,16 +410,14 @@ class _InvestigateState extends State<Investigate> {
         case 'artifact':
           return l?.investigatePrvWhyArtifact(
                   pct(beats['artifact_fraction']), pct(th['max_artifact'])) ??
-              'Too much artifact: ${pct(beats['artifact_fraction'])} of beats '
-                  'classified as artifacts (corrected or dropped), '
-                  '${pct(th['max_artifact'])} allowed';
+              'Too many misread beats: ${pct(beats['artifact_fraction'])}, '
+                  'limit ${pct(th['max_artifact'])}';
         case 'no_successive_pairs':
           return l?.investigatePrvWhyNoPairs ??
               'No successive usable beats to compare';
         case 'no_long_term_variability':
           return l?.investigatePrvWhyNoVariability ??
-              'No long-term variability (SD2 is zero), so the ratio is '
-                  'undefined';
+              'Not enough variation to compute a ratio';
       }
       return '—';
     }
@@ -459,8 +455,7 @@ class _InvestigateState extends State<Investigate> {
         (l?.investigatePrvBeatsAnalysed(scope) ?? 'Beats analysed, $scope',
             n(beats['nn_kept'])),
         (l?.investigatePrvArtifactShare(scope) ??
-            'Share of beats classified as artifacts (corrected or dropped), '
-                '$scope',
+            'Beats the band misread (fixed or dropped), $scope',
             pct(beats['artifact_fraction'])),
         ...extra,
         (l?.investigatePrvWindowsTotal(scope) ?? 'Windows, all, $scope',
@@ -689,7 +684,7 @@ class _InvestigateState extends State<Investigate> {
       if (freq['total'] == null)
         StatusCard(
           l?.investigateNoFrequencySpectrum ??
-              'No frequency-domain spectrum for this night',
+              'No frequency breakdown for this night',
           // THE ESTIMATOR'S OWN REASON. `total` goes null for three different
           // reasons and the envelope note distinguishes them; "too short" was
           // printed for all three, so a full 8 h night that failed the artifact
@@ -698,7 +693,7 @@ class _InvestigateState extends State<Investigate> {
           freqNote?.isNotEmpty == true
               ? freqNote!
               : (l?.investigateRecordingTooShort ??
-                  'The recording was too short to resolve the bands.'),
+                  'The recording was too short.'),
         ),
       const SizedBox(height: S.x3),
       MonoTable(l?.investigateNonLinear ?? 'Non-linear', [
@@ -790,7 +785,7 @@ class _InvestigateState extends State<Investigate> {
           note?.isNotEmpty == true
               ? note!
               : (l?.investigateTooFewBeatsToBin ??
-                  'The night carried too few clean beats to bin.'),
+                  'Too few clean beats this night.'),
           icon: LucideIcons.activity,
         ),
       ];
@@ -881,10 +876,8 @@ class _InvestigateState extends State<Investigate> {
         legend: [(ranLabel, p.on(C.purple))],
         footnote: l?.investigateRhythmStripFootnote(ran, raised) ??
             'Ran on $ran day${ran == 1 ? '' : 's'}, flagged on '
-            '$raised. An outlined square is a day it did not run. A strip '
-            'with nothing flagged does not rule anything out. The screen '
-            'reads pulse timing and cannot tell an ectopic beat from a '
-            'dropped beat or from the band moving on your wrist.',
+            '$raised. Outlined squares are days it didn’t run. Nothing '
+            'flagged doesn’t rule anything out.',
         // A grid: the finger selects the week (column) it is over, and the
         // readout counts that week's squares. A week with no day on which the
         // screen ran reads "No data here".
@@ -960,10 +953,8 @@ class _InvestigateState extends State<Investigate> {
         l?.investigateNoRestingBreathingRate ??
             'No resting breathing rate away from sleep',
         l?.investigateNoRestingBreathingRateBody ??
-            'This reads breathing only from three-minute stretches where the '
-                'band saw you almost completely still, outside the sleep '
-                'window. Most days have none — a day with none is a day you '
-                'were moving, not a day anything went wrong.',
+            'Needs at least three still stretches of three minutes outside '
+                'sleep. Most days have fewer.',
         icon: LucideIcons.wind,
       ),
     ];
@@ -1002,11 +993,8 @@ class _InvestigateState extends State<Investigate> {
         elevation: 0,
         child: Text(
           l?.investigateFloorNotRateBody ??
-              'A floor, not a rate for the day. Only stretches where you were '
-              'almost completely still can be read at all, so these are the '
-              'stillest few minutes the band saw outside your sleep — nothing '
-              'here describes the rest of your day, and breathing while you '
-              'move cannot be recovered from beat timing.',
+              'Breathing rate from the stillest stretches outside sleep. It '
+              'says nothing about the rest of the day.',
           style: F.cap.copyWith(color: P.of(context).ink2, height: 1.6),
         ),
       ),
@@ -1177,21 +1165,9 @@ class _InvestigateState extends State<Investigate> {
           const SizedBox(height: S.x3),
           Text(
             l?.investigateCvhrExplainer ??
-                'It is a pattern in your pulse, not a measurement of your '
-                'breathing, and it is not a test for anything. The same '
-                'cycling comes from an irregular rhythm, from being at '
-                'altitude, and from any broken-up night — and beta-blockers, '
-                'diabetes and nerve conditions flatten it, so genuinely '
-                'disturbed breathing often leaves nothing here at all.',
-            style: F.cap.copyWith(color: p.ink2, height: 1.6),
-          ),
-          const SizedBox(height: S.x3),
-          Text(
-            l?.investigateCvhrNotNegativeResult ??
-                'So nothing here is a negative result and nothing here '
-                'clears anything, and none of it says anything about any one '
-                'night — a single night’s count moves for a dozen reasons on '
-                'its own.',
+                'A pattern in your pulse, not a breathing test. Irregular '
+                'rhythm, altitude and broken sleep cause it too, and some '
+                'conditions and medicines hide it.',
             style: F.cap.copyWith(color: p.ink2, height: 1.6),
           ),
           const SizedBox(height: S.x3),
