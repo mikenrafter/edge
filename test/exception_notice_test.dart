@@ -8,6 +8,9 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/findings.dart';
+import 'package:openstrap_edge/l10n/app_localizations_en.dart';
+
+final _en = AppLocalizationsEn();
 
 void main() {
   Map<String, dynamic> cdWith({
@@ -107,14 +110,14 @@ void main() {
       Finding(FindingKind.illness, '2024-01-30'),
       Finding(FindingKind.anomaly, '2024-01-30'),
     ]);
-    expect(n.title, '2 things to look at');
-    expect('• '.allMatches(n.body), hasLength(2));
-    expect(n.body.split('\n'), hasLength(2));
+    expect(n.title(_en), '2 things to look at');
+    expect('• '.allMatches(n.body(_en)), hasLength(2));
+    expect(n.body(_en).split('\n'), hasLength(2));
 
     const one = Finding(FindingKind.anomaly, '2024-01-30');
     final single = ExceptionNotice('2024-01-30', const [one]);
-    expect(single.title, one.title);
-    expect(single.body, one.detail);
+    expect(single.title(_en), findingTitle(_en, one));
+    expect(single.body(_en), findingDetail(_en, one));
   });
 
   test('exceptionAnchor needs a dated newest row', () {
@@ -133,7 +136,7 @@ void main() {
   test('a low-readiness notice carries the score in its body', () {
     final n = ExceptionNotice(
         '2026-10-02', [lowReadinessFinding('2026-10-02', 22)!]);
-    expect(n.body, contains('22'));
+    expect(n.body(_en), contains('22'));
     expect(n.dedupeKey, '2026-10-02:exception');
   });
 }

@@ -8775,14 +8775,18 @@ class DerivationEngine {
       // presented medical exception burns the day's plain slot as well —
       // only on a real present, or a medical one lost to quiet hours would
       // take the plain one down with it.
+      // Composed here, with no BuildContext, so the words come from the ARBs
+      // in the language the app is showing (findingTitle / findingDetail).
+      final strings =
+          notices.isEmpty ? null : await LocaleController.currentStrings();
       for (final notice in notices) {
         final fired = await NotificationCenter.instance.emit(
           NotificationEvent(
             dedupeKey: notice.dedupeKey,
             category: NotifCategory.health,
             priority: NotifPriority.critical,
-            title: notice.title,
-            body: notice.body,
+            title: notice.title(strings!),
+            body: notice.body(strings),
             date: notice.date,
             route: '/heart',
           ),

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:openstrap_edge/l10n/app_localizations.dart';
+import 'package:openstrap_edge/l10n/app_localizations_en.dart';
 import 'package:openstrap_edge/l10n/app_localizations_ru.dart';
 import 'package:openstrap_edge/l10n/presentation_text.dart';
 import 'package:openstrap_edge/l10n/decimal_text.dart';
@@ -262,19 +263,20 @@ void main() {
 
   test('all owned finding sentences retain their medical cautions', () {
     final l = AppLocalizationsRu();
+    final en = AppLocalizationsEn();
     for (final kind in FindingKind.values) {
       for (final risen in [true, false]) {
         final finding = Finding(kind, '2026-10-05', risen: risen);
-        expect(localizedText(l, finding.title), isNot(finding.title));
-        expect(localizedText(l, finding.detail), isNot(finding.detail));
+        expect(findingTitle(l, finding), isNot(findingTitle(en, finding)));
+        expect(findingDetail(l, finding), isNot(findingDetail(en, finding)));
       }
     }
     final scored = Finding(FindingKind.lowReadiness, '2026-10-05', score: 21);
-    expect(localizedText(l, scored.detail), contains('21'));
-    expect(localizedText(l, scored.detail), isNot(scored.detail));
+    expect(findingDetail(l, scored), contains('21'));
+    expect(findingDetail(l, scored), isNot(findingDetail(en, scored)));
     final rhythm = Finding(FindingKind.irregularRhythm, '2026-10-05');
-    expect(localizedText(l, rhythm.detail), contains('не диагноз'));
-    expect(localizedText(l, rhythm.detail), contains('врач'));
+    expect(findingDetail(l, rhythm), contains('не диагноз'));
+    expect(findingDetail(l, rhythm), contains('врач'));
     const pair =
         'steps 12000 and strain 15.2 — both outside your usual range on the same day, which is worth noticing but is not a measured relationship between them';
     final rendered = sweepText(l, pair);

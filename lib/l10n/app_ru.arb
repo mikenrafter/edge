@@ -2414,6 +2414,521 @@
     }
   },
   "metricDetailJournalMarksToggle": "Отметки журнала",
+  "healthTabLastNight": "Прошлая ночь",
+  "healthTabToday": "Сегодня",
+  "healthNightOf": "Ночь на {day}",
+  "@healthNightOf": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "healthRowOvernightStress": "Ночной стресс",
+  "healthVsYourUsual": "относительно обычного",
+  "healthSkinTempSdNote": "Температура кожи — это отклонение от вашего обычного уровня в стандартных отклонениях (SD). Это не температура в градусах.",
+  "healthRowStrain": "Нагрузка",
+  "healthRowSteps": "Шаги",
+  "healthRowActiveMinutes": "Активные минуты",
+  "healthRowCalories": "Калории",
+  "healthWhyNotMeasuredToday": "Сегодня ещё не измерено.",
+  "healthCatRecovery": "Восстановление",
+  "healthBlurbReadiness": "Насколько организм готов к нагрузке относительно вашего обычного уровня",
+  "healthBlurbStress": "Кластеризация интервалов между ударами в самый спокойный период",
+  "healthWhyNoSpo2": "SpO2 здесь нет: приложение не оценивает кислород в крови.",
+  "healthWhyNotEnoughOvernight": "Для этого показателя мало ночных данных",
+  "healthVsDayAverage": "относительно среднего за {days} дн.",
+  "@healthVsDayAverage": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "healthFirstReadings": "первые показания",
+  "homeSleepPctOf": "{pct}% от {target}",
+  "@homeSleepPctOf": {
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String",
+        "example": "8h 00m"
+      }
+    }
+  },
+  "homeSleepPctOfDefault": "{pct}% от {target} (по умолчанию)",
+  "@homeSleepPctOfDefault": {
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String",
+        "example": "8h 00m"
+      }
+    }
+  },
+  "homeSleepOnTrack": "успеваете на {cycles, plural, =1{1 цикл} one{{cycles} цикл} few{{cycles} цикла} many{{cycles} циклов} other{{cycles} цикла}}, {duration}",
+  "@homeSleepOnTrack": {
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String",
+        "example": "7h 30m"
+      }
+    }
+  },
+  "homeSleepOnTrackDefault": "успеваете на {cycles, plural, =1{1 цикл} one{{cycles} цикл} few{{cycles} цикла} many{{cycles} циклов} other{{cycles} цикла}}, {duration} · цель {target} (по умолчанию)",
+  "@homeSleepOnTrackDefault": {
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String",
+        "example": "7h 30m"
+      },
+      "target": {
+        "type": "String",
+        "example": "8h 00m"
+      }
+    }
+  },
+  "homeSleepNoEstimate": "Нет оценки",
+  "homeSleepNoEstimateWhy": "Сон ещё не оценён, и нет будильника или обычного времени подъёма для оценки.",
+  "wellnessLastNightInHealth": "Прошлая ночь в разделе «Здоровье»",
+  "workoutMinutesUnit": "минуты",
+  "activitySummarySecondsPerLap": "секунд на круг",
+  "activityLiveLapXLabel": "Круг {n}",
+  "@activityLiveLapXLabel": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "gesturesSectionBodyMulti": "Работает, только когда приложение подключено и активно. Включайте сколько угодно действий; если все выключены, двойное касание ничего не делает. Если телефона нет рядом, браслет сохранит касание и передаст его позже. Запоздалое касание запускает только действие, которое это поддерживает.",
+  "gesturesReplayTitle": "Срабатывать и на касания из истории",
+  "gesturesReplaySub": "Запоздалое касание всё равно получает отметку минуты и дня, когда оно было. Другие действия на запоздалые касания не срабатывают.",
+  "gestureEcgTapName": "{n, plural, =0{Двойное касание} one{Двойное касание + {n} касание ЭКГ} few{Двойное касание + {n} касания ЭКГ} many{Двойное касание + {n} касаний ЭКГ} other{Двойное касание + {n} касания ЭКГ}}",
+  "@gestureEcgTapName": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "taskerTurnOnFirst": "Сначала включите Tasker",
+  "settingsTaskerConnectionSectionTitle": "Tasker",
+  "settingsTaskerConnectionTitle": "Связь с Tasker",
+  "settingsTaskerConnectionSub": "Позволяет Tasker и другим приложениям автоматизации включать вибрацию браслета, а жесту «Отправить в Tasker» — до них достучаться. Если выключено, всё это прекращается.",
+  "hapticsTaskerSectionSub": "Tasker воспроизводит их по номеру. Как и любые оповещения, они учитывают тихие часы и лимит вибраций.",
+  "deviceActionTellTimeLabel": "Сообщить время",
+  "deviceActionTellTimeBlurb": "Передать текущее время вибрацией браслета.",
+  "deviceActionBreatheLabel": "Дыхательное упражнение",
+  "deviceActionBreatheBlurb": "Начать дыхательную сессию в темпе, который задаёт браслет, или завершить текущую. Смотреть на телефон не нужно.",
+  "gesturesBreatheTitle": "Дыхательная сессия",
+  "gesturesBreathePatternTitle": "Схема",
+  "gesturesBreatheLengthTitle": "Длительность",
+  "gesturesTimeBuzzTitle": "Как передавать время",
+  "gesturesTimeBuzzCountTitle": "Счёт",
+  "gesturesTimeBuzzCountSub": "Часы вибрациями (короткая = AM, длинная = PM), затем щелчки по четвертям часа",
+  "gesturesTimeBuzzBinaryTitle": "Двоичный",
+  "gesturesTimeBuzzBinarySub": "Час 4 битами (длинная = 1), затем AM или PM, затем щелчки",
+  "gesturesTimeBuzzMorseTitle": "Морзе",
+  "gesturesTimeBuzzMorseSub": "Цифры часа азбукой Морзе, затем A или P, затем щелчки",
+  "gesturesTimeBuzzNow": "Сейчас",
+  "gesturesTimeBuzzLegend": "▬ длинная   · короткая   • щелчок   │ пауза",
+  "asOfTime": "На {time}",
+  "@asOfTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "asOfDateTime": "На {date}, {time}",
+  "@asOfDateTime": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "asOfSemantics": "Показаны результаты, рассчитанные в {when}; рассчитываются новые",
+  "@asOfSemantics": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "exploreScaleDaily": "По дням",
+  "exploreScaleDay": "День",
+  "exploreRange7": "7 дн",
+  "exploreRange30": "30 дн",
+  "exploreRange6m": "6 мес",
+  "exploreRange1y": "1 год",
+  "exploreRangeCustom": "Свой",
+  "exploreToday": "Сегодня",
+  "exploreHint": "Выберите до 4 показателей ниже. У них общая ось времени, у каждого своя шкала.",
+  "exploreLimit": "Можно сравнить до 4 показателей. Уберите один, чтобы добавить другой.",
+  "exploreUnitNormalised": "Нормировано",
+  "exploreNormalised": "Нормировано: каждая линия идёт от своего минимума до максимума, поэтому сравнивается форма, а не значения. Коснитесь графика, чтобы увидеть реальные значения.",
+  "exploreNormalisedBaseline": "Нормировано. Линии в режиме обычного диапазона показывают отклонение от вашего обычного уровня (середина — обычный уровень, верх и низ — 3 стандартных отклонения); остальные идут от своего минимума до максимума. Коснитесь графика, чтобы увидеть реальные значения.",
+  "exploreNoDataRange": "За этот период по ним ничего не записано.",
+  "exploreNoDataDay": "За этот день по ним ничего не записано.",
+  "exploreNoDataFor": "Нет данных: {metric}",
+  "@exploreNoDataFor": {
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
+  },
+  "exploreFailedTitle": "Не удалось прочитать эти показатели",
+  "exploreBaselineToggle": "Обычный",
+  "exploreBaselineSemantics": "{metric} относительно обычного уровня",
+  "@exploreBaselineSemantics": {
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
+  },
+  "exploreRemoveSemantics": "Убрать {metric}",
+  "@exploreRemoveSemantics": {
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
+  },
+  "gesturesFollowUpTitle": "Уточнять отмеченные моменты",
+  "gesturesFollowUpSub": "Позже спрашивать, что было в каждый отмеченный момент, чтобы добавить это в дневник.",
+  "momentChoicePillsMeds": "Таблетки и лекарства",
+  "momentChoiceNap": "Дневной сон",
+  "momentChoiceCaffeine": "Кофеин",
+  "momentChoiceAlcohol": "Алкоголь",
+  "momentChoiceMeal": "Еда",
+  "momentChoiceWorkout": "Тренировка",
+  "momentChoiceSymptom": "Симптом",
+  "momentChoiceOther": "Другое",
+  "momentChoiceWater": "Вода",
+  "momentFollowUpMomentsLine": "{n, plural, one{{n} отмеченный момент} few{{n} отмеченных момента} many{{n} отмеченных моментов} other{{n} отмеченного момента}}",
+  "@momentFollowUpMomentsLine": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "momentFollowUpAssumedWaterLine": "{n, plural, one{{n} предполагаемый стакан воды} few{{n} предполагаемых стакана воды} many{{n} предполагаемых стаканов воды} other{{n} предполагаемого стакана воды}}",
+  "@momentFollowUpAssumedWaterLine": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "momentFollowUpAnswer": "Ответить",
+  "momentFollowUpTitle": "Отмеченные моменты",
+  "momentFollowUpSub": "УТОЧНЕНИЕ",
+  "momentFollowUpSkip": "Пропустить",
+  "momentFollowUpSave": "Сохранить",
+  "momentFollowUpEmptyTitle": "Уточнять нечего",
+  "momentFollowUpEmptyBody": "Отмеченные моменты будут здесь, пока вы на них не ответите или не пройдёт неделя.",
+  "momentFollowUpAmountHint": "Количество, {unit} (необязательно)",
+  "@momentFollowUpAmountHint": {
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "momentFollowUpNoteHint": "Заметка (необязательно)",
+  "momentFollowUpLogWorkout": "Записать тренировку на это время",
+  "momentFollowUpLabelOnly": "Только отметить",
+  "momentFollowUpSaveFailed": "Не удалось сохранить ответ. Попробуйте ещё раз.",
+  "dayTimelineMarkedAt": "Отмеченный момент в {time}",
+  "@dayTimelineMarkedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticSimilarSameBeats": "Похоже на {slot} (столько же: {n, plural, one{1 импульс} few{{n} импульса} many{{n} импульсов} other{{n} импульса}})",
+  "@hapticSimilarSameBeats": {
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      },
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticSimilarCloseLength": "Похоже на {slot} (разница до 0,5 с)",
+  "@hapticSimilarCloseLength": {
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticScoreNotes": "{n, plural, one{{n} нота} few{{n} ноты} many{{n} нот} other{{n} ноты}}",
+  "@hapticScoreNotes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticScoreOneSecond": "1 секунда",
+  "hapticScoreSeconds": "{value} с",
+  "@hapticScoreSeconds": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticScoreSemantics": "{notes}, {length}",
+  "@hapticScoreSemantics": {
+    "placeholders": {
+      "notes": {
+        "type": "String"
+      },
+      "length": {
+        "type": "String"
+      }
+    }
+  },
+  "symptomSeveritySevere": "сильная",
+  "symptomSeverityModerate": "умеренная",
+  "symptomSeverityMild": "лёгкая",
+  "symptomSeverityFaint": "слабая",
+  "symptomSideLeft": "слева",
+  "symptomSideRight": "справа",
+  "symptomSideBoth": "с обеих сторон",
+  "symptomSideCenter": "по центру",
+  "symptomSideAll": "везде",
+  "symptomKindPain": "боль",
+  "symptomKindSwelling": "отёк",
+  "symptomKindItchiness": "зуд",
+  "symptomKindIrritation": "раздражение",
+  "symptomKindNumbness": "онемение",
+  "symptomKindSoreness": "болезненность",
+  "symptomKindTingling": "покалывание",
+  "symptomKindOther": "другое",
+  "symptomAreaFeet": "стопы",
+  "symptomAreaAnkles": "лодыжки",
+  "symptomAreaCalves": "икры",
+  "symptomAreaKnees": "колени",
+  "symptomAreaThighs": "бёдра",
+  "symptomAreaHips": "тазобедренная область",
+  "symptomAreaGlutes": "ягодицы",
+  "symptomAreaLowerAbdomen": "низ живота",
+  "symptomAreaLowerBack": "поясница",
+  "symptomAreaUpperAbdomen": "верх живота",
+  "symptomAreaMidBack": "середина спины",
+  "symptomAreaChest": "грудь",
+  "symptomAreaUpperBack": "верх спины",
+  "symptomAreaShoulders": "плечи",
+  "symptomAreaArms": "руки",
+  "symptomAreaElbows": "локти",
+  "symptomAreaWrists": "запястья",
+  "symptomAreaHands": "кисти",
+  "symptomAreaNeck": "шея",
+  "symptomAreaJaw": "челюсть",
+  "symptomAreaFace": "лицо",
+  "symptomAreaForehead": "лоб",
+  "symptomAreaSkull": "голова",
+  "symptomAreaOther": "другое",
+  "symptomDescription": "{kind}, {severity} степень — {area}",
+  "@symptomDescription": {
+    "placeholders": {
+      "severity": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      },
+      "area": {
+        "type": "String"
+      }
+    }
+  },
+  "symptomDescriptionSided": "{kind}, {severity} степень — {area} ({side})",
+  "@symptomDescriptionSided": {
+    "placeholders": {
+      "severity": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      },
+      "area": {
+        "type": "String"
+      },
+      "side": {
+        "type": "String"
+      }
+    }
+  },
+  "symptomDescriberSeverity": "Насколько сильно?",
+  "symptomDescriberSide": "С какой стороны? (необязательно)",
+  "symptomDescriberKind": "Что именно?",
+  "symptomDescriberArea": "Где?",
+  "symptomDescriberKindOtherHint": "Опишите ощущение",
+  "symptomDescriberAreaOtherHint": "Опишите место",
+  "symptomDescriberNoteHint": "Заметка (необязательно)",
+  "journalComposeSymptomsSection": "Симптомы",
+  "waterIncludesAssumed": "В том числе {amount} предположительно",
+  "@waterIncludesAssumed": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsWaterAssumeRowTitle": "Считать, что я выпил воды",
+  "settingsWaterAssumeRowSub": "Каждое напоминание записывает один предполагаемый стакан",
+  "assumedWaterTitle": "Предполагаемый стакан воды",
+  "assumedWaterBody": "Добавляет {amount} к выпитой воде — предположено по напоминанию о воде. Оставьте или удалите.",
+  "@assumedWaterBody": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "assumedWaterKeep": "Оставить",
+  "assumedWaterRemove": "Удалить",
+  "snoozeCardUntil": "Отложено до {time}",
+  "@snoozeCardUntil": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "snoozeCardBuzzing": "Будильник снова звонит",
+  "snoozeCardHint": "или дважды коснитесь браслета",
+  "snoozeImUp": "Я встал",
+  "snoozeDismissCopy": "{taps, plural, =1{1 двойное касание выключает — меньше откладывает} one{{taps} двойное касание выключает — меньше откладывает} few{{taps} двойных касания выключают — меньше откладывает} many{{taps} двойных касаний выключают — меньше откладывает} other{{taps} двойного касания выключают — меньше откладывает}}",
+  "@snoozeDismissCopy": {
+    "placeholders": {
+      "taps": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeRowTaps": "Двойных касаний для выключения",
+  "snoozeRowWindow": "Время на выключение",
+  "snoozeRowMinutes": "Отложить на",
+  "snoozeRowCap": "Перестать усиливать после",
+  "snoozeValueTaps": "{n, plural, =1{1 двойное касание} one{{n} двойное касание} few{{n} двойных касания} many{{n} двойных касаний} other{{n} двойного касания}}",
+  "@snoozeValueTaps": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeValueSeconds": "{s} с",
+  "@snoozeValueSeconds": {
+    "placeholders": {
+      "s": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeValueMinutes": "{m} мин",
+  "@snoozeValueMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeValueCap": "{n, plural, =1{1 откладывания} one{{n} откладывания} few{{n} откладываний} many{{n} откладываний} other{{n} откладывания}}",
+  "@snoozeValueCap": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeUnsupported": "Для повтора нужен браслет, который сообщает, как был остановлен будильник (WHOOP 5/MG)",
+  "snoozeEnable": "Повтор",
+  "snoozeExactNote": "Для точного времени нужно разрешение на будильники",
+  "momentReviewHint": "Ваш выбор в очереди. Ничего не сохранится, пока вы не нажмёте «Сохранить».",
+  "momentReviewSaveCount": "{count, plural, =0{Сохранить} one{Сохранить {count} ответ} few{Сохранить {count} ответа} many{Сохранить {count} ответов} other{Сохранить {count} ответа}}",
+  "@momentReviewSaveCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "momentReviewPending": "Будет сохранено: {what}",
+  "@momentReviewPending": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "momentReviewUndo": "Отменить",
+  "momentReviewQueueIt": "Добавить ответ в очередь",
+  "momentReviewPair": "Связать с другой отметкой…",
+  "momentReviewPairTitle": "Связать с другим отмеченным моментом",
+  "momentReviewPairNone": "Нет других моментов без ответа для связи.",
+  "momentReviewPairType": "Тип тренировки: {type}",
+  "@momentReviewPairType": {
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "momentReviewRange": "{what}: с {start} до {end}",
+  "@momentReviewRange": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      },
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "momentReviewItemFailed": "Не сохранено. Ответ всё ещё в очереди — нажмите «Сохранить», чтобы попробовать снова.",
+  "momentReviewRangeEnd": "Конец должен быть позже начала.",
+  "momentReviewRangeFuture": "Период не может заканчиваться в будущем.",
+  "momentReviewRangeWorkoutLength": "Тренировка должна длиться от 1 минуты до 24 часов.",
+  "momentReviewRangeWorkoutOverlap": "Пересекается с тренировкой, которая уже есть в журнале.",
+  "momentReviewRangeCheckFailed": "Не удалось проверить эту пару. Попробуйте ещё раз.",
+  "settingsTaskerMomentExportTitle": "Отправлять разобранные моменты в Tasker",
+  "settingsTaskerMomentExportSub": "Когда вы сохраняете разбор отмеченных моментов, каждый отправляется в Tasker: что это было, когда и указанное количество. Это данные о здоровье, поэтому они идут только в Tasker и не отправляются, пока вы это не включите.",
+  "momentReviewPersistFailed": "Не удалось сохранить ваш выбор на телефоне. Он хранится, пока приложение открыто, но может пропасть после закрытия.",
+  "momentReviewAmountInvalid": "Введите число больше 0 (в обычных пределах) или оставьте поле пустым.",
+  "momentReviewAmbiguous": "Это время повторилось дважды при переводе часов назад, поэтому его нельзя связать с другой отметкой.",
+  "momentReviewResume": "Часть сохранена. Нажмите «Сохранить», чтобы завершить пару.",
+  "momentReviewProgressNotSaved": "Не удалось записать ход сохранения этой пары, поэтому оно остановлено. Нажмите «Сохранить», чтобы попробовать снова.",
+  "settingsTaskerMomentExportSaveFailed": "Не удалось сохранить изменение. Переключатель показывает сохранённое состояние.",
   "metricDetailSlotNoRecord": "{day}, нет записи",
   "@metricDetailSlotNoRecord": {
     "placeholders": {
@@ -7517,16 +8032,164 @@
       }
     }
   },
+  "devicesSyncingTheWatch": "Синхронизация часов…",
+  "devicesConnectingZeTime": "Подключение…",
+  "devicesConnectedZeTime": "Подключено.",
+  "devicesCouldNotReachZeTime": "Не удалось связаться с часами. Они должны быть рядом и не подключены к другому приложению.",
+  "devicesConnectingWatch": "Подключение…",
+  "devicesCouldNotReachWatch": "Не удалось связаться с часами. Они должны быть рядом и не подключены к другому приложению.",
+  "devicesWhatItDoesUnranked": "Всё, что он передаёт, сохраняется с пометкой об источнике. Пока приложение ничего на этом не рассчитывает.",
+  "devicesWhatItDoesRanked": "Во время тренировки интервалы между ударами сохраняются с пометкой об источнике. Пока приложение ничего на этом не рассчитывает.",
+  "pairSensorExplainer": "Во время тренировки датчик записывает пульс и интервалы между ударами. Всё остальное по-прежнему записывает браслет, а ночью датчик не используется. Его показания сохраняются и отображаются. Пока ни одна оценка их не использует.",
+  "devicePickerBlurbO2Ring": "Считывает заряд, модель и серийный номер. Измерения пока не декодируются.",
+  "devicePickerBlurbWearFit": "Браслет Howear, который подключается через приложения WearFit.",
+  "devicePickerBlurbWithingsSteelHr": "Withings Steel HR. Сопрягается и подключается. Данные пока не декодируются.",
+  "devicePickerBlurbZeTime": "Часы ZeTime. Сопрягаются и подключаются. Декодируется только уровень заряда.",
+  "devicePickerBlurbBangleJs": "Сопрягает любое устройство Espruino или Nordic UART, включая часы Bangle.js. Сохраняет только сырые байты и ничего не декодирует.",
+  "monthGridSemanticsLabel": "{title}: значение есть за {have} из {total} дн. Цвет относительно вашего собственного диапазона.",
+  "@monthGridSemanticsLabel": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "have": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "monthGridNotShadedYetTitle": "{title}: цветовая шкала пока недоступна",
+  "@monthGridNotShadedYetTitle": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "monthGridNotShadedYetBody": "{days, plural, one{Данных за {days} день} few{Данных за {days} дня} many{Данных за {days} дней} other{Данных за {days} дня}} недостаточно, чтобы задать диапазон для цвета. Цвет появится с {min}.",
+  "@monthGridNotShadedYetBody": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      },
+      "min": {
+        "type": "int"
+      }
+    }
+  },
+  "driverBreakdownUsualRange": "Ваш обычный диапазон {lo}–{hi}{unit}",
+  "@driverBreakdownUsualRange": {
+    "placeholders": {
+      "lo": {
+        "type": "String"
+      },
+      "hi": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "beatsHolesFootnote": "{count, plural, one{ В {count} интервале слишком мало чистых ударов для расчёта, он показан пропуском.} few{ В {count} интервалах слишком мало чистых ударов для расчёта, они показаны пропусками.} many{ В {count} интервалах слишком мало чистых ударов для расчёта, они показаны пропусками.} other{ В {count} интервала слишком мало чистых ударов для расчёта, они показаны пропусками.}}",
+  "@beatsHolesFootnote": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dayTimelineMainSleep": "Основной сон с {start} до {end}",
+  "@dayTimelineMainSleep": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "investigateShapeOfTheNight": "Профиль ночи",
+  "investigateBinRmssd": "RMSSD интервала",
+  "investigateSamplingRange": "Разброс выборки",
+  "investigateShapeFootnote": "В {drawn} из {total} интервалов хватило ударов для расчёта. Остальные показаны пропусками. Внешняя пара линий — разброс выборки оценки. График описывает ночь, но не объясняет, почему она такая. Низкая первая треть бывает после алкоголя, позднего ужина, поздней тренировки, в тёплой комнате, в начале болезни — или без всякой причины.",
+  "@investigateShapeFootnote": {
+    "placeholders": {
+      "drawn": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "investigate29DaysAgo": "29 дней назад",
+  "investigateToday": "Сегодня",
+  "investigateDcFootnoteWithBeats": "Здесь сравниваются только ваши собственные ночи. Нормы для пульсовых волн не существует. Качество сигнала меняется от ночи к ночи и само по себе сдвигает эту линию. Прошлой ночью ударов: {beats}.",
+  "@investigateDcFootnoteWithBeats": {
+    "placeholders": {
+      "beats": {
+        "type": "String"
+      }
+    }
+  },
+  "investigateDcFootnote": "Здесь сравниваются только ваши собственные ночи. Нормы для пульсовых волн не существует. Качество сигнала меняется от ночи к ночи и само по себе сдвигает эту линию.",
+  "metricDetailBeatsLinkTitle": "Удары",
+  "metricDetailBeatsLinkSub": "Интервалы между ударами за ночь на графике",
   "hapticsPresetsGeneral": "Общие",
   "hapticsNewFromTaps": "Новый из касаний",
   "hapticsNewFromNotes": "Новый из нот",
   "hapticsCommandsCount": "{n, plural, one{{n} команда} few{{n} команды} many{{n} команд} other{{n} команды}}",
+  "@hapticsCommandsCount": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "hapticsRowSemantics": "{name}, {length}, {commands}",
+  "@hapticsRowSemantics": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "length": {
+        "type": "String"
+      },
+      "commands": {
+        "type": "String"
+      }
+    }
+  },
   "hapticScoreLength": "~{value} с",
+  "@hapticScoreLength": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "hapticsCommandLimitTitle": "Лимит вибраций браслета",
   "hapticsCommandLimitBody": "{n} команд за любые 2 минуты. Это наша мера предосторожности, чтобы беречь мотор и батарею, а не ограничение браслета. Уведомления ждут, пока появится место; жест без места не выполняется.",
+  "@hapticsCommandLimitBody": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "hapticsCommandLimitSaving": "Сохранение…",
   "hapticsCommandLimitFailed": "Не удалось сохранить изменение. Лимит остаётся {n}.",
+  "@hapticsCommandLimitFailed": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "hapticsYourPatterns": "Ваши шаблоны",
   "hapticsSafety": "Безопасность",
   "hapticsTest": "Проверка",
@@ -7538,5 +8201,349 @@
   "hapticsSectionGestures": "Жесты",
   "hapticsSectionBreathing": "Дыхание",
   "hapticsSectionAlarm": "Отложенный будильник",
-  "hapticsSectionEcg": "ЭКГ"
+  "hapticsSectionEcg": "ЭКГ",
+  "sampleArchiveLoadingDetail": "Загрузка подробностей…",
+  "sampleArchiveApproximation": "Приблизительно (архив)",
+  "ecgOutcomeNotReadable": "Не читается",
+  "ecgStoppedEarly": "Остановлено досрочно",
+  "ecgOutcomeNoRhythm": "По этой записи нельзя оценить ритм.",
+  "ecgCaveatQualityUnchecked": "Данные браслета. Приложение ещё не проверило качество этой записи.",
+  "ecgReasonUnknownBit": "Неизвестный бит причины от браслета: {bit}",
+  "@ecgReasonUnknownBit": {
+    "placeholders": {
+      "bit": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgReasonUnknownCode": "Код результата браслета {code} неизвестен приложению",
+  "@ecgReasonUnknownCode": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgReasonBandUnreadable": "Код результата браслета {code} означает, что запись прочитать не удалось",
+  "@ecgReasonBandUnreadable": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgReasonNoHeartRate": "Пульс не передан",
+  "ecgReasonHrOutOfRange": "Средний пульс ({hr} bpm) вне диапазона, в котором можно прочитать этот результат",
+  "@ecgReasonHrOutOfRange": {
+    "placeholders": {
+      "hr": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgExportAll": "Экспорт журналов ЭКГ",
+  "ecgExportReading": "Экспортировать эту запись",
+  "ecgExportFailed": "Не удалось сохранить журнал ЭКГ: {reason}",
+  "@ecgExportFailed": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgDeleteConfirmOne": "Удалить эту запись?",
+  "ecgDeleteConfirmMany": "Удалить эту запись и все попытки ({count})?",
+  "@ecgDeleteConfirmMany": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDeleteConfirm": "Удалить",
+  "ecgWaveformNotKept": "Кривая не сохранена",
+  "ecgCoachNoRhythm": "Нет оценки ритма для анализа — {reason}",
+  "@ecgCoachNoRhythm": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgDetails": "Подробности",
+  "ecgNotRecorded": "не записано",
+  "ecgNotKept": "не сохранено",
+  "ecgDetailNone": "нет",
+  "ecgDetailOutcome": "Решение приложения",
+  "ecgDetailResultCode": "Код результата браслета",
+  "ecgDetailStoredCategory": "Категория браслета (как сохранена)",
+  "ecgDetailAvgHr": "Средний пульс (решающий)",
+  "ecgDetailLiveHr": "Текущий пульс (не решающий)",
+  "ecgDetailQualityValue": "{value} · данные браслета, шкала неизвестна",
+  "@ecgDetailQualityValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgDetailFinalMask": "Причины от браслета, последняя секунда",
+  "ecgDetailMaskAny": "Причины от браслета, любая секунда",
+  "ecgDetailVariability": "Вариабельность (сырая, единица неизвестна)",
+  "ecgDetailMin": "Минимальный отсчёт",
+  "ecgDetailMax": "Максимальный отсчёт",
+  "ecgDetailRms": "Среднеквадратичная амплитуда (RMS)",
+  "ecgDetailSampleCount": "Отсчёты",
+  "ecgDetailStopReason": "Причина остановки",
+  "ecgDetailFirmware": "Прошивка браслета",
+  "ecgDetailAppVersion": "Версия приложения при записи",
+  "ecgDetailTableVersion": "Версия таблицы правил",
+  "ecgDetailTableBoth": "записано с таблицей v{captured}, показано с таблицей v{now}",
+  "@ecgDetailTableBoth": {
+    "placeholders": {
+      "captured": {
+        "type": "int"
+      },
+      "now": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailTableSame": "v{now} (при записи и сейчас)",
+  "@ecgDetailTableSame": {
+    "placeholders": {
+      "now": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailTableNotRecorded": "не записано; показано с таблицей v{now}",
+  "@ecgDetailTableNotRecorded": {
+    "placeholders": {
+      "now": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailUtcOffset": "Смещение от UTC при записи",
+  "ecgDetailPackets": "Сохранённая кривая",
+  "ecgDetailPacketsKept": "Сохранено секунд: {count}",
+  "@ecgDetailPacketsKept": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailAttempts": "Попытки в этой группе",
+  "ecgAttemptLine": "Попытка {n}: {outcome}",
+  "@ecgAttemptLine": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "outcome": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgAttemptThis": "эта запись",
+  "ecgDetailBandLogic": "Как браслет определяет результат — закрытая информация, приложению она неизвестна. Приложение только считывает числа, которые сообщает браслет.",
+  "ecgRateMapping": "Регулярный ритм сообщается только при 51–99 bpm; при 100–150 bpm браслет различает нерегулярный и не нерегулярный ритм; при 151–200 bpm он сообщает только о высоком пульсе; вне этих пределов браслет не даёт оценки ритма. Эти диапазоны следуют из того, как приложение читает коды браслета, а не из валидации этого устройства.",
+  "ecgDetailRuleHr": "Решающий пульс — средний пульс, который сообщает браслет. Текущий пульс показывается, но не учитывается.",
+  "ecgDetailRuleMask": "Любой бит причины, выставленный браслетом в любую секунду, неизвестный код результата или отсутствие пульса делают запись нечитаемой, что бы ни говорил код результата.",
+  "ecgTimelineTitle": "Посекундная шкала",
+  "ecgTimelineSecond": "Сек",
+  "ecgTimelineQuality": "Качество",
+  "ecgTimelineContact": "Контакт",
+  "ecgTimelineS2": "Состояние/флаг S2",
+  "ecgTimelineReasons": "Причины",
+  "ecgTimelineProgress": "Ход",
+  "ecgTimelineMissing": "пропущенная секунда",
+  "ecgTimelineUndecodable": "не декодируется",
+  "ecgScreenerSinusMeaning": "Браслет сообщил о регулярном ритме при пульсе от 51 до 99 ударов в минуту. Приложение не проверяло качество этой записи. Это не значит, что всё в порядке: скрининг ничего не может исключить и оценивает только одну короткую запись.",
+  "ecgScreenerLowHrMeaning": "Средний пульс был 50 ударов в минуту или ниже. У некоторых людей низкий пульс — норма, а о причине этот скрининг ничего не говорит. Если вы чувствуете слабость, головокружение или недомогание, обратитесь к врачу.",
+  "ecgScreenerPossibleAfibMeaning": "Скрининг браслета отметил нерегулярный ритм в этой записи при пульсе от 51 до 99 ударов в минуту. Отметка — повод для полноценного обследования, а не вывод. По одной короткой записи с браслета на запястье нельзя отличить устойчивую картину от временной, поэтому обратитесь к врачу для ЭКГ, особенно если есть симптомы.",
+  "ecgScreenerAfibHighHrMeaning": "Скрининг браслета отметил нерегулярный ритм при пульсе от 100 до 150 ударов в минуту. Отметка — повод для полноценного обследования, а не вывод. Обратитесь к врачу для ЭКГ, и поскорее, если вам плохо, не хватает воздуха или болит в груди.",
+  "ecgScreenerHighHrMeaning": "Пульс был от 151 до 200 ударов в минуту. При таком пульсе скрининг не отличает регулярный ритм от нерегулярного. Его повышают нагрузка, температура, кофеин и стресс. Если он остаётся высоким в покое или вам нехорошо, обратитесь к врачу.",
+  "ecgScreenerHighHrNoAfibMeaning": "Пульс был от 100 до 150 ударов в минуту, и скрининг не отметил нерегулярного ритма. Это не значит, что всё в порядке: скрининг ничего не может исключить. Если высокий пульс сохраняется в покое или вам нехорошо, обратитесь к врачу.",
+  "ecgScreenerInconclusiveMeaning": "Браслет не смог получить результат по этой записи: сигнал мог быть слишком шумным или коротким. Это ничего не говорит ни в одну сторону. Попробуйте ещё раз, положив руку и не двигая пальцами. Эта попытка сохранена в подробностях записи, а запись, начатая в течение 10 минут, попадёт в ту же группу.",
+  "ecgScreenerUnreadableMeaning": "Приложение не смогло оценить ритм по этой записи: браслет сообщил о низкой амплитуде, шуме, нестабильном сигнале или нехватке данных, либо его код результата или пульс не удалось сопоставить с результатом. Скрининг этой записи не проводился. «Не проверено» — не то же самое, что «ничего не отмечено».",
+  "ecgScreenerPartialMeaning": "Запись прервалась до завершения: приложение ушло в фон, истекло время или пропала связь с браслетом. Записанное сохранено как неполная запись. Скрининг не проводился, поэтому результата по ритму нет. Пульс и качество сигнала показываются, только если записано не менее 10 секунд сигнала.",
+  "ecgScreenerFailedMeaning": "Запись не удалось выполнить: браслет не начал её или связь пропала до появления сигнала. Скрининг не проводился, ничего не сохранено. Проверьте, что браслет подключён и плотно сидит, и попробуйте снова.",
+  "ecgScreenerIntro": "Это скрининг, а не медицинское обследование.\n\nЕсли ничего не отмечено, это не значит, что всё в порядке: скрининг ничего не может исключить. Если скрининг не проводился, результат ни о чём не говорит.\n\nРезультат выдаёт сам браслет. Приложение не анализирует кривую и не проверяло качество записи; оно лишь не показывает оценку ритма, когда браслет сообщает о проблеме. Браслет на запястье записывает одно отведение.\n\nПри симптомах обратитесь к врачу для полноценного обследования.",
+  "findingTitleIllness": "Возможное начало болезни",
+  "findingTitleAnomaly": "Необычные ночные показатели",
+  "findingTitleTemp": "Температура кожи повышена",
+  "findingTitleIrregularRhythm": "Отмечен нерегулярный пульс",
+  "findingTitleLowReadiness": "Сегодня низкое восстановление",
+  "findingTitleRhrShift": "Тренд пульса в покое сместился",
+  "findingDetailIllness": "За последние ночи пульс в покое вырос, а вариабельность сердечного ритма (HRV) снизилась.",
+  "findingDetailAnomaly": "Ночные показатели вне вашего обычного диапазона.",
+  "findingDetailTemp": "Устойчивый рост выше обычного; это может быть признаком болезни.",
+  "findingDetailIrregularRhythm": "Сегодня интервалы между ударами пульса выглядели нерегулярными. Этот скрининг использует пульс на запястье, который не показывает электрическую активность сердца, и это не диагноз. Если есть симптомы, обратитесь к врачу.",
+  "findingDetailLowReadiness": "Показатели восстановления ниже вашего обычного диапазона. Сегодня лучше полегче.",
+  "findingDetailRhrShiftRisen": "Пульс в покое заметно вырос относительно вашего недавнего обычного уровня.",
+  "findingDetailRhrShiftFallen": "Пульс в покое заметно снизился относительно вашего недавнего обычного уровня.",
+  "findingsAggregateTitle": "{count, plural, one{{count} пункт, на который стоит взглянуть} few{{count} пункта, на которые стоит взглянуть} many{{count} пунктов, на которые стоит взглянуть} other{{count} пункта, на которые стоит взглянуть}}",
+  "@findingsAggregateTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "investigateFlagNotScreened": "не проверено",
+  "investigateConfidence24h": "Достоверность, 24 ч",
+  "investigateConfidenceSleep": "Достоверность, сон",
+  "investigateCleanFractionSleep": "Доля ударов после очистки, сон",
+  "investigatePrvEvidenceTitle": "Данные скрининга нерегулярного ритма",
+  "investigatePrvScopeSleep": "сон",
+  "investigatePrvScope24h": "24 ч",
+  "investigatePrvBeatsRaw": "Удары до очистки, {scope}",
+  "@investigatePrvBeatsRaw": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvBeatsCorrected": "Исправленные удары, {scope}",
+  "@investigatePrvBeatsCorrected": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvBeatsDropped": "Отброшенные удары, {scope}",
+  "@investigatePrvBeatsDropped": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvBeatsAnalysed": "Проанализированные удары, {scope}",
+  "@investigatePrvBeatsAnalysed": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvArtifactShare": "Доля ударов, признанных артефактами (исправлены или отброшены), {scope}",
+  "@investigatePrvArtifactShare": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsTotal": "Окна, все, {scope}",
+  "@investigatePrvWindowsTotal": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsValid": "Окна с достаточным числом ударов, {scope}",
+  "@investigatePrvWindowsValid": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsFlagged": "Отмеченные окна, {scope}",
+  "@investigatePrvWindowsFlagged": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsShare": "Доля отмеченных, есть / нужно, {scope}",
+  "@investigatePrvWindowsShare": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenWindow": "Последнее (открытое) окно, {scope}",
+  "@investigatePrvOpenWindow": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenThin": "Ударов: {n}, слишком мало для учёта",
+  "@investigatePrvOpenThin": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenFlagged": "Ударов: {n}, отмечено",
+  "@investigatePrvOpenFlagged": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenUnflagged": "Ударов: {n}, не отмечено",
+  "@investigatePrvOpenUnflagged": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvPnnSleep": "Соседние интервалы с разницей более 70 ms, сон",
+  "investigatePrvWhy": "Почему не проверено, {scope}",
+  "@investigatePrvWhy": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWhyTooFew": "Мало пригодных ударов: {have} из {need} нужных",
+  "@investigatePrvWhyTooFew": {
+    "placeholders": {
+      "have": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWhyArtifact": "Слишком много артефактов: {seen} ударов признаны артефактами (исправлены или отброшены), допустимо {allowed}",
+  "@investigatePrvWhyArtifact": {
+    "placeholders": {
+      "seen": {
+        "type": "String"
+      },
+      "allowed": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWhyNoPairs": "Нет соседних пригодных ударов для сравнения",
+  "investigatePrvWhyNoVariability": "Нет долгосрочной вариабельности (SD2 равно нулю), поэтому отношение не определено",
+  "investigatePrvExport": "Экспорт журнала PRV",
+  "investigatePrvExportFailed": "Не удалось сохранить журнал PRV: {reason}",
+  "@investigatePrvExportFailed": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  }
 }

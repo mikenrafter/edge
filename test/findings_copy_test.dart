@@ -17,14 +17,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_edge/compute/findings.dart';
 import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/l10n/app_localizations_en.dart';
 import 'package:openstrap_edge/ui2/screens/home_screen.dart' show readinessBand;
+
+final _en = AppLocalizationsEn();
 
 void main() {
   test('the illness sentence claims no signal the detector does not read', () {
     const f = Finding(FindingKind.illness, '2026-10-01');
-    expect(f.detail.toLowerCase(), isNot(contains('hrv')));
-    expect(f.detail, contains('One signal'));
-    expect(f.title.toLowerCase(), isNot(contains('illness')));
+    expect(findingDetail(_en, f).toLowerCase(), isNot(contains('hrv')));
+    expect(findingDetail(_en, f), contains('One signal'));
+    expect(findingTitle(_en, f).toLowerCase(), isNot(contains('illness')));
   });
 
   // A red CUSUM state is accumulated EVIDENCE, not a run of high nights: one
@@ -48,7 +51,7 @@ void main() {
         reason: 'the premise: red on a night that is itself normal');
 
     final f = Finding(FindingKind.illness, out.last.date);
-    final copy = '${f.title} ${f.detail}'.toLowerCase();
+    final copy = '${findingTitle(_en, f)} ${findingDetail(_en, f)}'.toLowerCase();
     for (final claim in [
       'nights running',
       'consecutive',
@@ -58,8 +61,8 @@ void main() {
     ]) {
       expect(copy, isNot(contains(claim)), reason: claim);
     }
-    expect(f.detail, contains('One signal'));
-    expect(f.detail, contains('a pattern, not a cause.'));
+    expect(findingDetail(_en, f), contains('One signal'));
+    expect(findingDetail(_en, f), contains('a pattern, not a cause.'));
   });
 
   // The in-app illness cards (and the rough-night note naming the same
@@ -167,7 +170,7 @@ void main() {
   test('no finding title says "today"', () {
     // The same Finding renders under past dates in the log.
     for (final kind in FindingKind.values) {
-      expect(Finding(kind, '2026-10-01').title.toLowerCase(),
+      expect(findingTitle(_en, Finding(kind, '2026-10-01')).toLowerCase(),
           isNot(contains('today')),
           reason: '$kind');
     }
@@ -176,7 +179,7 @@ void main() {
   test("low readiness carries the ring's number", () {
     final f = lowReadinessFinding('2026-10-01', 22.4)!;
     expect(f.score, 22);
-    expect(f.detail, contains('22'));
+    expect(findingDetail(_en, f), contains('22'));
     // The ring bands the raw value and prints it rounded.
     expect(lowReadinessFinding('2026-10-01', 25.6)!.score, 26);
     expect(lowReadinessFinding('2026-10-01', 26.0), isNull);
@@ -185,7 +188,7 @@ void main() {
 
   test('an unscored low-readiness finding names no number', () {
     const f = Finding(FindingKind.lowReadiness, '2026-10-01');
-    expect(f.detail, startsWith('Recovery was in its lowest band.'));
+    expect(findingDetail(_en, f), startsWith('Recovery was in its lowest band.'));
   });
 
   test("the push threshold is the ring's lowest band", () {

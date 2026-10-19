@@ -17534,6 +17534,15 @@
   "@findingDetailRhrShiftFallen": {
     "description": "Design 04 cardio transparency: Your resting HR has fallen noticeably versus your recent baseline."
   },
+  "findingsAggregateTitle": "{count, plural, =1{1 thing to look at} other{{count} things to look at}}",
+  "@findingsAggregateTitle": {
+    "description": "Health-exception notification title when one day carries several findings (lib/compute/findings.dart ExceptionNotice).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "investigateFlagNotScreened": "not screened",
   "@investigateFlagNotScreened": {
     "description": "Design 04 cardio transparency: not screened"

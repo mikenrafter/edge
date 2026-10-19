@@ -85,37 +85,6 @@ class Finding {
         _ => false,
       };
 
-  String get title => switch (kind) {
-        FindingKind.illness => 'Resting heart rate has been raised',
-        FindingKind.anomaly => 'Unusual overnight physiology',
-        FindingKind.tempElevated => 'Skin temperature elevated',
-        FindingKind.irregularRhythm => 'Irregular heart rhythm — screen',
-        FindingKind.lowReadiness => 'Low recovery',
-        FindingKind.rhrShift => 'Your resting heart-rate trend shifted',
-      };
-
-  String get detail => switch (kind) {
-        // A red state is ACCUMULATED evidence: one very high night followed
-        // by an ordinary one is enough, so nothing here may claim a streak.
-        FindingKind.illness =>
-          'Recent nights put your resting heart rate above your usual, from '
-              'one very high night or a few slightly raised ones. One signal: a '
-              'pattern, not a cause.',
-        FindingKind.anomaly =>
-          'Your overnight signals are off your usual.',
-        FindingKind.tempElevated =>
-          'Sustained rise above your usual — a possible illness signal.',
-        FindingKind.irregularRhythm =>
-          'Your beat-to-beat pattern looked irregular today. This is a '
-              'screen, not a diagnosis — see a clinician if you have symptoms.',
-        FindingKind.lowReadiness =>
-          '${score == null ? 'Recovery was in its lowest band.' : 'Recovery scored $score, its lowest band.'} '
-              'Taken together, that night\'s signals sat well below your usual.',
-        FindingKind.rhrShift =>
-          'Your resting heart rate has ${risen == false ? 'fallen noticeably below' : 'risen noticeably above'} '
-              'its recent usual.',
-      };
-
   @override
   bool operator ==(Object other) =>
       other is Finding &&
@@ -270,13 +239,17 @@ class ExceptionNotice {
   String get dedupeKey =>
       medical ? '$date:exception:medical' : '$date:exception';
 
-  String get title => findings.length == 1
-      ? findings.first.title
-      : '${findings.length} things to look at';
+  /// The notification title, in [l]'s language (no English in this type:
+  /// every word comes from the ARBs through [findingTitle]).
+  String title(AppLocalizations l) => findings.length == 1
+      ? findingTitle(l, findings.first)
+      : l.findingsAggregateTitle(findings.length);
 
-  String get body => findings.length == 1
-      ? findings.first.detail
-      : findings.map((f) => '• ${f.title} — ${f.detail}').join('\n');
+  String body(AppLocalizations l) => findings.length == 1
+      ? findingDetail(l, findings.first)
+      : findings
+          .map((f) => '• ${findingTitle(l, f)} — ${findingDetail(l, f)}')
+          .join('\n');
 }
 
 /// Group the due findings by the day they are about, newest day first; drop
@@ -396,16 +369,18 @@ List<ExceptionNotice> planExceptionNotices(
   }
   return dueExceptionNotices(findings, today: today);
 }
-/// A finding's title from the ARBs (all six locales), so a notification and the
+/// A finding's title from the ARBs (all locales), so a notification and the
 /// log say it the same way. The irregular-rhythm one is "Irregular pulse
 /// pattern flagged": the screen reads the wrist pulse, which cannot show the
-/// heart's electrical activity (design 04 R5).
+/// heart's electrical activity (design 04 R5). Illness and low readiness use
+/// upstream's copy (its accumulated-RHR illness rule and the recovery score),
+/// merge log D16/D17.
 String findingTitle(AppLocalizations l, Finding f) => switch (f.kind) {
-  FindingKind.illness => l.findingTitleIllness,
+  FindingKind.illness => l.findingIllnessTitle,
   FindingKind.anomaly => l.findingTitleAnomaly,
   FindingKind.tempElevated => l.findingTitleTemp,
   FindingKind.irregularRhythm => l.findingTitleIrregularRhythm,
-  FindingKind.lowReadiness => l.findingTitleLowReadiness,
+  FindingKind.lowReadiness => l.findingLowReadinessTitle,
   FindingKind.rhrShift => l.findingTitleRhrShift,
 };
 
@@ -414,11 +389,13 @@ String findingTitle(AppLocalizations l, Finding f) => switch (f.kind) {
 /// uses the wrist pulse, which can't show the heart's electrical activity, and
 /// is not a diagnosis."
 String findingDetail(AppLocalizations l, Finding f) => switch (f.kind) {
-  FindingKind.illness => l.findingDetailIllness,
+  FindingKind.illness => l.findingIllnessDetail,
   FindingKind.anomaly => l.findingDetailAnomaly,
   FindingKind.tempElevated => l.findingDetailTemp,
   FindingKind.irregularRhythm => l.findingDetailIrregularRhythm,
-  FindingKind.lowReadiness => l.findingDetailLowReadiness,
+  FindingKind.lowReadiness => f.score == null
+      ? l.findingLowReadinessDetail
+      : l.findingLowReadinessScoredDetail(f.score!),
   FindingKind.rhrShift =>
     f.risen == false
         ? l.findingDetailRhrShiftFallen

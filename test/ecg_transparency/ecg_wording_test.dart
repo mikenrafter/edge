@@ -320,10 +320,12 @@ void main() {
     });
 
     test('the other five titles are unchanged, now read from the ARBs', () {
-      expect(findingTitle(en, const Finding(FindingKind.illness, 'd')), 'Possible illness onset');
+      // Illness and low readiness take upstream's copy (its accumulated-RHR
+      // illness rule; "recovery" for the score), merge log D16/D17.
+      expect(findingTitle(en, const Finding(FindingKind.illness, 'd')), 'Resting heart rate has been raised');
       expect(findingTitle(en, const Finding(FindingKind.anomaly, 'd')), 'Unusual overnight readings');
       expect(findingTitle(en, const Finding(FindingKind.tempElevated, 'd')), 'Skin temperature elevated');
-      expect(findingTitle(en, const Finding(FindingKind.lowReadiness, 'd')), 'Low readiness today');
+      expect(findingTitle(en, const Finding(FindingKind.lowReadiness, 'd')), 'Low recovery');
       expect(findingTitle(en, const Finding(FindingKind.rhrShift, 'd')),
           'Your resting heart-rate trend shifted');
     });
@@ -354,8 +356,9 @@ void main() {
       final f = codeOf('lib/compute/findings.dart');
       expect(f.contains('String get title'), isFalse);
       expect(f.contains('String get detail'), isFalse);
-      for (final t in ['Possible illness onset', 'Unusual overnight readings',
-          'Skin temperature elevated', 'Low readiness today',
+      for (final t in ['Resting heart rate has been raised',
+          'Unusual overnight readings', 'Unusual overnight physiology',
+          'Skin temperature elevated', 'Low recovery',
           'Your resting heart-rate trend shifted']) {
         expect(f.contains(t), isFalse, reason: t);
       }
@@ -363,9 +366,15 @@ void main() {
       expect(log.contains('findingTitle('), isTrue);
       expect(log.contains('findingDetail('), isTrue);
       expect(log.contains('f.title'), isFalse);
+      // The notification composes through ExceptionNotice.title / body
+      // (upstream's planner, merge log D16), which call findingTitle and
+      // findingDetail with the app's strings.
+      expect(f.contains('findingTitle(l, findings.first)'), isTrue);
+      expect(f.contains('findingDetail(l, findings.first)'), isTrue);
       final eng = codeOf('lib/compute/derivation_engine.dart');
       expect(eng.contains('findings.first.title'), isFalse);
-      expect(eng.contains('findingTitle('), isTrue);
+      expect(eng.contains('notice.title(strings'), isTrue);
+      expect(eng.contains('notice.body(strings'), isTrue);
     });
   });
 
