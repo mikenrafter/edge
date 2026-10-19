@@ -2163,7 +2163,10 @@ const int kAlgoVersion = 113;
 // aggregators ported to them (merge log D11).
 // REPIN @ 07f7126 (same branch): law-test and stream fixes only (D23); batch
 // outputs bit-identical, so no kAlgoVersion bump.
-const String kAnalyticsPin = '07f71268d735b57cca52a2c2244e685185170e1d';
+// REPIN @ ddb61f7 (same branch): stageMinuteRanges, kStageScoreMargin and
+// CardioStagerResult.epochEvidence, additive. Edge stores the ranges as
+// sleep.stage_ranges (kAlgoVersion 114, D27 revised).
+const String kAnalyticsPin = 'ddb61f78c49e4f3fd4d72b8261b2e73d9f0da646';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

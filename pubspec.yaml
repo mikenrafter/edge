@@ -607,7 +607,11 @@ dependencies:
       # CVHR abstains on a non-finite beat time; hrvTimeAggregator and
       # IncrementalHrvTime follow upstream's jitter gate (D23). Batch outputs
       # are bit-identical and edge uses neither stream, so no kAlgoVersion bump.
-      ref: 07f71268d735b57cca52a2c2244e685185170e1d
+      # REPIN @ ddb61f7 (same branch): stageMinuteRanges + kStageScoreMargin
+      # and CardioStagerResult.epochEvidence (additive; batch outputs
+      # unchanged). Edge stores the per-stage ranges as sleep.stage_ranges,
+      # part of the kAlgoVersion 114 bump (D27 revised).
+      ref: ddb61f78c49e4f3fd4d72b8261b2e73d9f0da646
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
