@@ -4567,7 +4567,11 @@ class DerivationEngine {
       priority: priority,
       inputFp: inputFp,
       inputRevs: inputRevs,
-      rrResume: rrResume,
+      // A wearable's day is read whole from its own store: the checkpoint's
+      // beat skip applies to the band's rows only, and the full-beat reload
+      // after a stream refusal ([_withFullRr]) reads the band's table, which
+      // would hand the derive an empty day.
+      rrResume: wearable != null ? null : rrResume,
     );
   }
 
