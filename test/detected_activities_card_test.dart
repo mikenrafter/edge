@@ -20,4 +20,15 @@ void main() {
     await _pump(t, 3);
     expect(find.text('Detected activities'), findsOneWidget);
   });
+
+  // Home's own read of the count threw: the retry text is there on the very
+  // first frame, not after a second read lands the card mid-screen.
+  testWidgets('a failed count read with the day shows on the first frame',
+      (t) async {
+    await t.pumpWidget(MaterialApp(
+      theme: buildTheme(Brightness.light),
+      home: const Scaffold(body: DetectedActivitiesCard(loadFailed: true)),
+    ));
+    expect(find.text('Could not load activities. Try again.'), findsOneWidget);
+  });
 }

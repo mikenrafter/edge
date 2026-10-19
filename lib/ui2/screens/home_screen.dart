@@ -1651,6 +1651,12 @@ class HomeData {
   /// read failed or was not made; the card then reads the count itself.
   final int? pendingActivities;
 
+  /// The count read with the day threw. The card shows its failed shape from
+  /// the first paint instead of reading again on its own: that second read
+  /// fails the same way a frame later and lands the card mid-screen, moving
+  /// everything under it.
+  final bool pendingActivitiesFailed;
+
   const HomeData({
     this.name,
     this.dayId,
@@ -1686,6 +1692,7 @@ class HomeData {
     this.activityDay,
     this.refreshPending = false,
     this.pendingActivities,
+    this.pendingActivitiesFailed = false,
   });
 
   /// The three illness fields, replaced together. Test-facing sugar, and they
@@ -1753,6 +1760,7 @@ class HomeData {
         activityDay: activityDay,
         refreshPending: refreshPending,
         pendingActivities: pendingActivities,
+        pendingActivitiesFailed: pendingActivitiesFailed,
       );
 
   /// A day OTHER than today, for the Home day switcher.
@@ -1786,6 +1794,7 @@ class HomeData {
     } catch (_) {
       coach = null;
     }
+    final pending = await _pendingActivitiesOf(repo);
     return HomeData(
       name: profile['name']?.toString(),
       dayId: date,
@@ -1800,17 +1809,19 @@ class HomeData {
       sleepNeedMin: coach?.need ?? Metric.empty,
       sleepStages: sleepStagesOf(sleep),
       stepGoal: (profile['step_goal'] as num?)?.toInt() ?? kDefaultStepGoal,
-      pendingActivities: await _pendingActivitiesOf(repo),
+      pendingActivities: pending.count,
+      pendingActivitiesFailed: pending.failed,
     );
   }
 
-  /// The review count for [pendingActivities]; null when the read fails, so
-  /// the card falls back to reading it itself.
-  static Future<int?> _pendingActivitiesOf(LocalRepository repo) async {
+  /// The review count for [pendingActivities], or [pendingActivitiesFailed]
+  /// when the read throws.
+  static Future<({int? count, bool failed})> _pendingActivitiesOf(
+      LocalRepository repo) async {
     try {
-      return await repo.pendingActivityCount();
+      return (count: await repo.pendingActivityCount(), failed: false);
     } catch (_) {
-      return null;
+      return (count: null, failed: true);
     }
   }
 
@@ -1881,6 +1892,7 @@ class HomeData {
         ? null
         : await ReadinessData.readAbsentDiag(
             repo, (today['status'] as Map?)?['today_day']?.toString());
+    final pending = await _pendingActivitiesOf(repo);
 
     return HomeData(
       name: profile['name']?.toString(),
@@ -1920,7 +1932,8 @@ class HomeData {
       activityAt: computedAtOf(status?['activity_computed_at']),
       activityDay: status?['activity_day']?.toString(),
       refreshPending: status?['refresh_pending'] == true,
-      pendingActivities: await _pendingActivitiesOf(repo),
+      pendingActivities: pending.count,
+      pendingActivitiesFailed: pending.failed,
     );
   }
 }
@@ -2229,9 +2242,13 @@ class _HomeScreenState extends State<HomeScreen>
         syncedThroughLine(c, null, l),
         // The connection and battery live on AppState.device, independent of
         // HomeData — a load failure or first run must not hide them too.
+        // A start-aligned Column, the wrapper the loaded header gives it, not
+        // an Align: same box on screen, and the line keeps its identity when
+        // the day lands instead of reading as a new line while another one
+        // further down takes over its slot.
         if (connectionLine(c, l) case final conn?) ...[
           const SizedBox(height: 2),
-          Align(alignment: Alignment.centerLeft, child: conn),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [conn]),
         ],
         const SizedBox(height: S.x3),
         // Not while the first read is out: the card reads its own count, and
@@ -2692,8 +2709,10 @@ class _HomeScreenState extends State<HomeScreen>
   /// its landed shape on the first paint. Keyed by the count: the card copies
   /// it once, so a new count (a reload after a review) needs a new card.
   static Widget _detectedActivities(HomeData d) => DetectedActivitiesCard(
-      key: ValueKey<int?>(d.pendingActivities),
-      pendingCount: d.pendingActivities);
+      key: ValueKey<(int?, bool)>(
+          (d.pendingActivities, d.pendingActivitiesFailed)),
+      pendingCount: d.pendingActivities,
+      loadFailed: d.pendingActivitiesFailed);
 
   /// Pull to reload. The screen also reloads itself on `insightsRevision`, but
   /// a derive that fails silently, an import, or anything that lands without

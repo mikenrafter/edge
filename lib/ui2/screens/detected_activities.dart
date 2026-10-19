@@ -303,8 +303,13 @@ class ActivityProposalCard extends StatelessWidget {
 }
 
 class DetectedActivitiesCard extends StatefulWidget {
-  const DetectedActivitiesCard({super.key, this.pendingCount});
+  const DetectedActivitiesCard(
+      {super.key, this.pendingCount, this.loadFailed = false});
   final int? pendingCount;
+
+  /// The caller's own read of the count failed: show the retry text from the
+  /// first paint rather than a second read that lands the card a frame late.
+  final bool loadFailed;
   @override
   State<DetectedActivitiesCard> createState() => _DetectedActivitiesCardState();
 }
@@ -317,6 +322,7 @@ class _DetectedActivitiesCardState extends State<DetectedActivitiesCard>
   void initState() {
     super.initState();
     _count = widget.pendingCount;
+    _failed = widget.loadFailed;
     reload();
   }
 
@@ -327,7 +333,7 @@ class _DetectedActivitiesCardState extends State<DetectedActivitiesCard>
 
   Future<void> _load() async {
     try {
-      if (widget.pendingCount != null) return;
+      if (widget.pendingCount != null || widget.loadFailed) return;
       final repo = repoOf(context);
       if (repo == null) return;
       final count = await repo.pendingActivityCount();
