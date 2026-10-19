@@ -91,6 +91,15 @@ void main() {
     for (var i = 0; i < 1800; i++) {
       await _record(start + i);
     }
+    // Strain is priced on the user's own quiet-waking level and abstains
+    // without three prior days of it (D16: upstream's net-TRIMP strain), so
+    // seed a level for the strain figure checked below.
+    for (var d = 1; d <= 3; d++) {
+      await LocalDb.putMetricSeriesValue(
+          dayLabelOf(DateTime(midnight.year, midnight.month, midnight.day - d)),
+          'quiet_hrr',
+          0.20);
+    }
 
     final awake = DerivationEngine();
     Future<void> awakePass() => awake.run(
