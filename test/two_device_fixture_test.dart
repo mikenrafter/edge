@@ -26,6 +26,8 @@ import 'package:openstrap_edge/compute/substrate.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/models.dart';
 
+import 'support/pin_tz.dart';
+
 // 2020-01-02T00:00:00Z, matching test/fixtures/two_device_day.json's "day".
 const int _dayStart = 1577923200;
 
@@ -128,6 +130,7 @@ Map<String, dynamic> _deriveSingleDay(Substrate sub) {
 }
 
 void main() {
+  pinProcessTimeZone('UTC');
   final rows = _buildRows();
 
   test('fixture covers all six documented regions', () {
@@ -147,25 +150,10 @@ void main() {
   group('case 1: single-device is byte-identical against the golden', () {
     test('deriveDayBundle over gen4-only rows matches the committed golden',
         () {
-      // sleepClockOffsetSec (onehz_pipeline.dart) is deliberately tz-corrected
-      // using the REAL system timezone at the recorded instant — correct in
-      // production, where the phone's own zone is the wearer's actual local
-      // time. That makes midsleep_sec/sleep_onset_sec the two fields in this
-      // bundle that are NOT machine-independent, so this golden is committed
-      // as computed under TZ=UTC (CI's default) and only means anything run
-      // the same way. Skip rather than fail-and-mislead on any other zone —
-      // regenerating this golden on a non-UTC machine would silently swap
-      // which zone the fixture is pinned to, not fix anything.
-      final tzAtDay =
-          DateTime.fromMillisecondsSinceEpoch(_dayStart * 1000, isUtc: false)
-              .timeZoneOffset;
-      if (tzAtDay != Duration.zero) {
-        markTestSkipped(
-          'this golden was captured under TZ=UTC; run with TZ=UTC to '
-          'compare it (current offset: $tzAtDay). See the comment above.',
-        );
-        return;
-      }
+      // sleepClockOffsetSec (onehz_pipeline.dart) is tz-corrected from the
+      // real system zone, so midsleep_sec/sleep_onset_sec are the two fields
+      // here that are not machine-independent. The golden is recorded under
+      // UTC; main() pins UTC for this file instead of skipping elsewhere.
       final f = _gen4FramesOnly(rows);
       final sub = substrateFromDecodedPage(f.frames, f.rrRows);
       final bundle = _deriveSingleDay(sub);

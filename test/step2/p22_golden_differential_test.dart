@@ -12,7 +12,7 @@
 // where a list used to be, or a number that changed type (1 vs 1.0) shows up
 // here as a byte difference.
 //
-// Recording: `P22_WRITE_GOLDEN=1 TZ=UTC flutter test <this file>` rewrites the
+// Recording: `P22_WRITE_GOLDEN=1 flutter test <this file>` rewrites the
 // golden from whatever code is checked out. Only do that from a commit whose
 // readers are known good (it was recorded at HEAD 68e1f676, before any P2.2
 // change). Today's label is the one value that moves; it is replaced by
@@ -20,8 +20,8 @@
 // repository reads the real local date for "today", so the test records which
 // label it ran under and skips if the date rolled over mid-run.
 //
-// Run with TZ=UTC (the repo's test convention); under another zone the local
-// day windows differ and the golden does not apply, so the test skips.
+// The golden is a UTC recording; main() pins the process zone to UTC for this
+// file (test/support/pin_tz.dart), so it runs the same in any zone.
 
 import 'dart:convert';
 import 'dart:io';
@@ -32,6 +32,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/bundle_store.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 
+import '../support/pin_tz.dart';
 import 'support/p22_support.dart';
 
 const _name = 'p22_golden.db';
@@ -79,6 +80,7 @@ Future<String> _run(Future<Object?> Function() read, String today) async {
 }
 
 void main() {
+  pinProcessTimeZone('UTC');
   TestWidgetsFlutterBinding.ensureInitialized();
   p21RestoreClockAfterEach();
 
@@ -93,10 +95,6 @@ void main() {
   });
 
   test('every reader returns exactly what the pre-P2.2 code returned', () async {
-    if (DateTime.now().timeZoneOffset != Duration.zero) {
-      markTestSkipped('golden is recorded under TZ=UTC');
-      return;
-    }
     final today = p22Today();
     await p22SeedReaderDb(db, today);
     final repo = LocalRepositoryImpl(getProfileMap: () => p22Profile);

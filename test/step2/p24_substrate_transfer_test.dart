@@ -46,6 +46,7 @@ import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
 
+import '../support/pin_tz.dart';
 import '../support/day_stream_fixture.dart';
 
 // ---------------------------------------------------------------------------
@@ -375,6 +376,7 @@ Map<String, dynamic> _derive(Substrate sub) {
 }
 
 void main() {
+  pinProcessTimeZone('UTC');
   group('oracle anchors (pass today: they pin what fromTransfer must equal)',
       () {
     test('fromJson normalises as the header of this file says', () {
@@ -423,13 +425,6 @@ void main() {
 
     test('the two_device fixture rebuilt here derives the committed golden '
         '(so section 4 compares against the right day)', () {
-      final tzAtDay = DateTime.fromMillisecondsSinceEpoch(
-        1577923200 * 1000,
-      ).timeZoneOffset;
-      if (tzAtDay != Duration.zero) {
-        markTestSkipped('the golden was captured under TZ=UTC');
-        return;
-      }
       final golden =
           jsonDecode(
                 File(
@@ -801,14 +796,7 @@ void main() {
 
     test('the golden day: derive over fromTransfer is byte-identical to '
         'test/fixtures/two_device_day_expected.json', () async {
-      // Same TZ=UTC caveat as the golden's own test (sleepClockOffsetSec).
-      final tzAtDay = DateTime.fromMillisecondsSinceEpoch(1577923200 * 1000)
-          .timeZoneOffset;
-      if (tzAtDay != Duration.zero) {
-        markTestSkipped('the golden was captured under TZ=UTC; run with '
-            'TZ=UTC (current offset: $tzAtDay)');
-        return;
-      }
+      // Same UTC caveat as the golden's own test (sleepClockOffsetSec); main() pins it.
       final golden = jsonDecode(File('test/fixtures/two_device_day_expected.json')
           .readAsStringSync()) as Map<String, dynamic>;
       final m = await Isolate.run(_twoDeviceMapFromIsolate);
