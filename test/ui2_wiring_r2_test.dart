@@ -1009,10 +1009,10 @@ void main() {
       ));
       await t.pumpAndSettle();
       expect(find.text('Irregular-rhythm screen'), findsOneWidget);
-      expect(find.textContaining('Ran on 10 days, raised its flag on 1'),
+      expect(find.textContaining('Ran on 10 days, flagged on 1'),
           findsOneWidget);
       // The permanent line. Not a tooltip, and not optional.
-      expect(find.textContaining('A clear strip is not a negative result'),
+      expect(find.textContaining('nothing flagged does not rule anything out'),
           findsOneWidget);
     });
   });
