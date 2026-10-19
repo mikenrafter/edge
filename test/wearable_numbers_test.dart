@@ -541,10 +541,10 @@ void main() {
               height: 1600,
               child: PairSensorView(
                   entryLabel: 'Mi Band 2/3', adapterId: kMiBandFamily)));
-      expect(find.textContaining('Working out our numbers from it'),
+      expect(find.textContaining('Not used for your scores yet'),
           findsOneWidget);
       expect(find.textContaining('feeds a score'), findsNothing);
-      expect(find.textContaining('for workouts'), findsNothing);
+            expect(find.textContaining('during workouts'), findsNothing);
     });
 
     testWidgets('a strap and a scale each get their own words', (t) async {
@@ -553,13 +553,13 @@ void main() {
           const SizedBox(
               height: 1600,
               child: PairSensorView(entryLabel: 'Strap', adapterId: 'ble_hrs')));
-      expect(find.textContaining('for workouts'), findsOneWidget);
+            expect(find.textContaining('during workouts'), findsOneWidget);
       // Flag off, it records nothing: the copy says so (rule R6).
-      expect(find.textContaining('until then it records nothing'),
+      expect(find.textContaining('Until then it records nothing'),
           findsOneWidget);
       // A workout arms the strap and nothing else does, so it never
       // records a night: the copy promises no overnight HRV.
-      expect(find.textContaining('records while a workout runs'),
+      expect(find.textContaining('Records heart rate during workouts'),
           findsOneWidget);
       expect(find.textContaining('overnight HRV'), findsNothing);
       expect(find.textContaining('never used overnight'), findsNothing);
@@ -569,7 +569,7 @@ void main() {
               height: 1600,
               child: PairSensorView(
                   entryLabel: 'Scale', adapterId: 'miscale_bc')));
-      expect(find.textContaining('Using them in your profile'),
+            expect(find.textContaining('not used for your scores yet'),
           findsOneWidget);
     });
 
@@ -582,10 +582,10 @@ void main() {
                   entryLabel: 'Coros',
                   adapterId: 'coros',
                   paired: (id: 'coros-1', label: 'COROS PACE'))));
-      expect(find.textContaining('No workout uses it'), findsOneWidget);
+            expect(find.textContaining('A sports watch'), findsOneWidget);
       expect(find.text('Synced in short windows'), findsOneWidget);
       expect(find.text('Used during workouts'), findsNothing);
-      expect(find.textContaining('records while a workout runs'), findsNothing);
+            expect(find.textContaining('during workouts'), findsNothing);
       expect(find.textContaining('Scoring a workout'), findsNothing);
     });
 
@@ -617,8 +617,9 @@ void main() {
           l.pairSensorExplainerWearable,
         ]) {
           expect(s, isNot(contains('calculated from it yet')), reason: '$loc');
-          if (loc.languageCode == 'en') {
-            expect(s, contains('experimental'), reason: '$loc');
+                              if (loc.languageCode == 'en' &&
+              s == l.pairSensorExplainerWearable) {
+            expect(s, contains('Not used for your scores yet'), reason: '$loc');
           }
         }
         // The wearable's explainer is in the reader's language.

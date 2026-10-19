@@ -439,8 +439,7 @@ String healthSyncSub(
   }
   return switch (state) {
     HealthLinkState.ready => l?.settingsHealthSyncReady(store) ??
-        "Writes each day's sleep, resting heart rate, HRV, respiratory rate, "
-        "energy and workouts to $store once the day is final",
+        'Saves each finished day’s data to $store.',
     HealthLinkState.needsPermission =>
       l?.settingsHealthSyncNeedsPermission(store) ??
           '$store has not granted write access. Tap to open it',
@@ -448,7 +447,7 @@ String healthSyncSub(
         'Health Connect is not installed. Tap to '
             'get it',
     HealthLinkState.needsUpdate => l?.settingsHealthSyncNeedsUpdate ??
-        'Health Connect needs an update before the app can write to it. Tap to update',
+        'Update Health Connect to sync. Tap to open it.',
     HealthLinkState.unsupported => l?.settingsHealthSyncUnsupported ??
         'This device has no health store to write to',
     HealthLinkState.unknown =>
@@ -477,7 +476,7 @@ Future<void> _toggleHealthShare(BuildContext c, AppState app) async {
         content: Text(
           last == null
               ? (l?.settingsHealthShareOffNeverUploaded ??
-                  'No data was uploaded, and none will be.')
+                  'Nothing has been uploaded.')
               // What we KNOW, not what we hope: the revocation is posted
               // once, unawaited, with no retry queue, so offline it never
               // arrives and nothing here can tell.
@@ -486,8 +485,8 @@ Future<void> _toggleHealthShare(BuildContext c, AppState app) async {
                   'Nothing further will be uploaded.\n\n'
                       'One copy of your database was uploaded on '
                       '${last.toLocal().toString().split('.').first}. The server keeps only the most recent copy per device. '
-                      'The app sent a withdrawal message once and does not retry it. '
-                      'If this phone was offline, the message did not arrive, and the app cannot confirm the copy is deleted.'),
+                      'We sent a withdrawal notice once and don’t retry. '
+                      'If you were offline, it didn’t arrive, and we can’t confirm the copy is gone.'),
         ),
         actions: [
           TextButton(
@@ -783,8 +782,7 @@ class MoreSettingsView extends StatelessWidget {
                   SetRow(LucideIcons.droplet, C.pink,
                       l?.settingsCycleTrackingRowTitle ?? 'Cycle tracking',
                       sub: l?.settingsCycleTrackingRowSubHealth ??
-                          'Adds Cycle to Health. Off hides it and keeps '
-                              'everything already logged',
+                          'Show Cycle in Health. Turning it off keeps your logs.',
                       value: cycleTracking ? on : off,
                       onTap: onToggleCycleTracking),
                 ]),
@@ -831,8 +829,7 @@ class MoreSettingsView extends StatelessWidget {
                       l?.settingsManageNotificationsRowTitle ??
                           'Alerts and notifications',
                       sub: l?.settingsManageNotificationsRowSub ??
-                          'Turn alerts on or off and set '
-                          'quiet hours',
+                          'Quiet hours and per-notification switches',
                       onTap: onNotifications),
                   // The one door to the relay screen. Android-only and
                   // omitted elsewhere rather than shown against nothing.
@@ -900,22 +897,22 @@ class MoreSettingsView extends StatelessWidget {
                   SetRow.brand(brandGlyph('assets/icons/github.svg'), C.n500,
                       l?.profileGithubTitle ?? 'GitHub',
                       sub: l?.profileGithubSub ??
-                          'Star the project to show support.',
+                          'Star the project on GitHub',
                       onTap: () => open3rdPartyLink(kGithubUrl)),
                   SetRow.brand(brandGlyph('assets/icons/reddit.svg'), C.orange,
                       l?.profileRedditTitle ?? 'Reddit',
                       sub: l?.profileRedditSub ??
-                          'Join r/OpenStrap to share results and ask questions.',
+                          'Join r/OpenStrap',
                       onTap: () => open3rdPartyLink(kRedditUrl)),
                   SetRow.brand(brandGlyph('assets/icons/discord.svg'),
                       C.indigo, l?.profileDiscordTitle ?? 'Discord',
                       sub: l?.profileDiscordSub ??
-                          'Chat with other users and the developers.',
+                          'Chat with users and developers',
                       onTap: () => open3rdPartyLink(kDiscordUrl)),
                   SetRow(LucideIcons.heartHandshake, C.pink,
                       l?.profileSponsorTitle ?? 'Sponsor',
                       sub: l?.profileSponsorSub ??
-                          'This is a free, open-source project. Sponsoring funds development.',
+                          'Support development',
                       onTap: () => open3rdPartyLink(kSponsorUrl)),
                 ]),
                 SettingsAccordion('Connections',
@@ -939,8 +936,7 @@ class MoreSettingsView extends StatelessWidget {
                       // the screen: someone on an iPhone should learn what they
                       // are not getting before they tap into it.
                       sub: l?.settingsTaskerShortcutsRowSub ??
-                          'Android can send events out. iOS can buzz the band '
-                          'but cannot receive events from it',
+                          'Android can send and receive events. iOS can only buzz the band.',
                       onTap: onAutomation),
                   if (showUpdateChecks)
                     SetRow(LucideIcons.refreshCw, C.blue,
@@ -965,8 +961,8 @@ class MoreSettingsView extends StatelessWidget {
                       l?.settingsBarcodeLookupRowTitle ??
                           'Look barcodes up online',
                       sub: l?.settingsBarcodeLookupRowSub ??
-                          'Sends a scanned barcode to openfoodfacts.org. '
-                          'It sees the barcode and your IP address, nothing else about you',
+                          'Looks up scanned barcodes on openfoodfacts.org. '
+                          'It sees the barcode and your IP address, nothing else about you.',
                       value: barcodeLookup ? on : off,
                       onTap: onToggleBarcodeLookup),
                 ]),
@@ -1375,7 +1371,7 @@ class NotificationSettingsView extends StatelessWidget {
                     l?.settingsNotificationsOffSystemTitle ??
                         'Notifications are off at the system level',
                     l?.settingsNotificationsOffSystemBody ??
-                        'No alert below is delivered until you allow notifications in system settings.',
+                        'Turn them on in system settings.',
                     fix: l?.settingsTurnThemOn ?? 'Turn them on',
                     icon: LucideIcons.bellOff,
                     onFix: onRequestPermission,
@@ -1402,8 +1398,7 @@ class NotificationSettingsView extends StatelessWidget {
                             l?.settingsAlarmNightCheckRowTitle ??
                                 'No-alarm check-in',
                             l?.settingsAlarmNightCheckRowSub ??
-                                'A 7pm reminder on any night with no wake alarm '
-                                'armed. Sends nothing otherwise'),
+                                'A 7pm heads-up on nights with no wake alarm set.'),
                       ]),
                   SettingsAccordion('Health',
                       id: 'notifications_health',
@@ -1412,8 +1407,7 @@ class NotificationSettingsView extends StatelessWidget {
                         l?.settingsHealthExceptionsRowTitle ??
                             'Health exceptions',
                         l?.settingsHealthExceptionsRowSub ??
-                            'At most one a day, and only when a metric moves '
-                            'outside your own baseline'),
+                            'When something moves away from your usual.'),
                     row('recovery', LucideIcons.activity, C.green,
                         l?.settingsRecoveryReadyRowTitle ?? 'Recovery ready',
                         l?.settingsRecoveryReadyRowSub ??
@@ -1430,9 +1424,7 @@ class NotificationSettingsView extends StatelessWidget {
                             l?.settingsDetectedWorkoutsRowTitle ??
                                 'Detected workouts',
                             l?.settingsDetectedWorkoutsRowSub ??
-                                'Asks about efforts the band detected that you did not start. '
-                                'Off hides the prompt and the review cards. '
-                                'The band keeps measuring either way'),
+                                'Ask about workouts the band detected. Off hides the prompts.'),
                         // The nap detector's prompt, off by default. Like the
                         // row above it stops the prompt, not the detection.
                         row('napDetect', LucideIcons.moon, C.blue,
@@ -1442,9 +1434,9 @@ class NotificationSettingsView extends StatelessWidget {
                                     'Detected activities.'),
                         row('movement', LucideIcons.footprints, C.orange,
                             l?.settingsMovementNudgeRowTitle ?? 'Movement nudge',
-                            'Nudges you after two hours with no movement '
-                            'or 90 minutes in a desk '
-                            'posture'),
+                            l?.settingsMovementNudgeRowSub ??
+                                'After 2 hours without moving, or 90 minutes at a desk. '
+                                    'A phone notification, plus a band buzz when connected.'),
                         row('stepGoal', LucideIcons.trophy, C.orange,
                             l?.settingsStepGoalAlertsRowTitle ??
                                 'Step goal alerts',
@@ -1485,28 +1477,24 @@ class NotificationSettingsView extends StatelessWidget {
                             l?.settingsWeeklyLookbackRowTitle ??
                                 'Weekly lookback',
                             l?.settingsWeeklyLookbackRowSub ??
-                                'Sunday evening, only for a week '
-                                'with a finding'),
+                                'Sunday evening, but only for a week that found something.'),
                         // The notification names no drug: it lands on a lock
                         // screen in front of whoever is in the room.
                         row('meds', LucideIcons.pill, C.blue,
                             l?.settingsMedicationRemindersRowTitle ??
                                 'Medication reminders',
-                            'One alert per scheduled dose, at the times you '
-                            'entered. No alert for a dose already '
-                            'marked taken or skipped'),
+                            l?.settingsMedicationRemindersRowSub ??
+                                'A notification at each scheduled dose, plus a band buzz when connected.'),
                         row('checkIn', LucideIcons.notebookPen, C.purple,
                             l?.settingsDailyCheckInRowTitle ?? 'Daily check-in',
                             l?.settingsDailyCheckInRowSub ??
-                                'One evening prompt to log your '
-                                'mood, energy and stress. Skipped if the day '
-                                'already has a rating'),
+                                'An evening prompt to log mood, energy and stress.'),
                         // A prompt to log, not a reading: the app measures no
                         // hydration and this may never imply it does.
                         row('water', LucideIcons.glassWater, C.teal,
                             l?.settingsWaterReminderRowTitle ?? 'Water reminder',
-                            'Reminds you during your waking hours to log a '
-                            'drink'),
+                            l?.settingsWaterReminderRowSub ??
+                                'Reminds you to log a drink during the day.'),
                         // Always drawn; dimmed while the reminder is off.
                         SetRow(LucideIcons.timer, C.teal,
                               l?.settingsRemindMeEveryRowTitle ??
@@ -1546,10 +1534,8 @@ class NotificationSettingsView extends StatelessWidget {
                         row('windDown', LucideIcons.moonStar, C.indigo,
                             l?.settingsWindDownRowTitle ?? 'Wind-down',
                             l?.settingsWindDownRowSub ??
-                                'Notifies you about 45 minutes before the bedtime '
-                                'learned from your own nights, outside '
-                                'your quiet hours. Appears after about a '
-                                'week of wear'),
+                                'A reminder about 45 minutes before your usual bedtime. '
+                                    'Needs about a week of data.'),
                       ]),
                   SettingsAccordion('Device',
                       id: 'notifications_device',
@@ -1786,10 +1772,10 @@ class EditProfile extends StatelessWidget {
             isAppleHealth
                 ? (l?.settingsImportEmptyWithBirthday(storeName) ??
                     '$storeName has no height, weight, birthday '
-                    'or sex on record for you. Enter them here.')
+                    'or sex for you. Enter them here.')
                 : (l?.settingsImportEmpty(storeName) ??
                     '$storeName has no height, weight'
-                    ' or sex on record for you. Enter them here.'),
+                    ' or sex for you. Enter them here.'),
             false,
             null,
           );
@@ -2075,9 +2061,8 @@ class _EditProfileViewState extends State<EditProfileView> {
                 StatusCard(
                   l?.settingsFourFieldsTitle ?? 'These four fields affect your metrics',
                   l?.settingsFourFieldsBody ??
-                      'They feed heart-rate zones, calorie estimates and training '
-                          'load. Clear one and only the metrics that need it stay '
-                          'unavailable.',
+                      'These improve your heart-rate zones, calories and training '
+                          'load. All optional.',
                   icon: LucideIcons.info,
                 ),
                 ],
@@ -2108,9 +2093,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                 ? (l?.settingsImportBlockAppleHealth(storeName) ??
                     'Height, weight, birthday and sex from $storeName. Height and weight update every time; age and sex only fill an empty field.')
                 : (l?.settingsImportBlockOther(storeName) ??
-                    'Height and weight from $storeName. It has no '
-                    'birthday or sex to read, so set those '
-                    'two above.'),
+                    'Height and weight from $storeName. Set birthday and sex above.'),
             style: F.cap.copyWith(color: p.ink3, height: 1.5),
           ),
           const SizedBox(height: S.x4),
@@ -2316,10 +2299,8 @@ class AutomationSettingsView extends StatelessWidget {
                         onTaskerOn,
                         key: const ValueKey('tasker-connection'),
                         sub: l?.settingsTaskerConnectionSub ??
-                            'Lets Tasker and other automation apps buzz the '
-                                'band, and lets the Broadcast to Tasker '
-                                'gesture action reach them. Off, all of it '
-                                'stops.',
+                            'Lets Tasker and other automation apps buzz your band '
+                                'and receive gesture triggers.',
                       ),
                       SwitchRow(
                         l?.settingsTaskerMomentExportTitle ??
@@ -2329,12 +2310,9 @@ class AutomationSettingsView extends StatelessWidget {
                         key: const ValueKey('tasker-moment-export'),
                         enabled: taskerOn && !momentExportBusy,
                         sub: (l?.settingsTaskerMomentExportSub ??
-                                'When you save the review of your marked '
-                                    'moments, sends each one to Tasker: what '
-                                    'it was, when, and any amount you typed. '
-                                    'This is health information, so it goes '
-                                    'to Tasker only and is off until you turn '
-                                    'it on.') +
+                                'Sends each marked moment (what, when, any amount) '
+                                    'to Tasker when you save the review. This is '
+                                    'health data. Off until you turn it on.') +
                             (taskerOn
                                 ? ''
                                 : '\n${l?.taskerTurnOnFirst ?? 'Turn on Tasker first'}'),
@@ -2364,9 +2342,9 @@ class AutomationSettingsView extends StatelessWidget {
                           Text(
                             android
                                 ? (l?.settingsSyncFinishesAndroidBody ??
-                                    'The app broadcasts an intent your automation app can react to. Filter on the action below; it says how many records arrived and when.')
+                                    'Automation apps like Tasker can react when a sync finishes. Use the action name below.')
                                 : (l?.settingsSyncFinishesIosBody ??
-                                    'iOS can’t do this: Shortcuts automations only start on Apple’s own fixed events, and apps can’t add one. This is an iOS limit, not a setting.'),
+                                    'Not available on iOS.'),
                             style: F.body.copyWith(color: p.ink2, height: 1.4),
                           ),
                           if (android) ...[
@@ -2393,7 +2371,7 @@ class AutomationSettingsView extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: S.x3),
                     child: Text(
                       l?.settingsNeverSendBody ??
-                          'No recovery, strain or sleep score is sent, on either platform. A missing number would arrive as a bare zero. Sync facts go out, not measurements.',
+                          'Scores are never sent. Only sync status is.',
                       style: F.body,
                     ),
                     ),
@@ -2412,9 +2390,9 @@ class AutomationSettingsView extends StatelessWidget {
                           Text(
                             android
                                 ? (l?.settingsBuzzFromShortcutAndroidBody ??
-                                    'Send wtf.openstrap.openstrap_edge.BUZZ_STRAP with this token as the string extra "token". The token stops other apps on the phone from buzzing your band.')
+                                    'Send wtf.openstrap.openstrap_edge.BUZZ_STRAP with this token as the “token” extra. It stops other apps buzzing your band.')
                                 : (l?.settingsBuzzFromShortcutIosBody ??
-                                    'On iOS, a shortcut you run yourself can reach the app. It cannot start itself when the band syncs.'),
+                                    'On iOS, a shortcut you run yourself can buzz the band.'),
                             style: F.body.copyWith(color: p.ink2, height: 1.4),
                           ),
                           if (android && !taskerOn) ...[

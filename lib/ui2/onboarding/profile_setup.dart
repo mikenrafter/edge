@@ -160,8 +160,7 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
             const SizedBox(height: S.x3),
             Text(
               l?.profileSetupBody ??
-                  'Sex, age, height and weight change how your data is scored. '
-                  'If you leave one blank, only the metrics that need it are unavailable.',
+                  'These improve your heart-rate zones, calories and training load. All optional.',
               style: F.body.copyWith(color: p.ink2),
             ),
             const SizedBox(height: S.x6),
@@ -187,9 +186,7 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
               const SizedBox(height: S.x2),
               Text(
                 l?.profileSetupOtherSexNote ??
-                    'Calories average the male and female constants. Training load '
-                    'and strain use Banister TRIMP, which has only a male and a '
-                    'female set, so they use the male constants.',
+                    'Calories use averaged values. Strain and training load use the male values.',
                 style: F.cap.copyWith(color: p.ink3, height: 1.45),
               ),
             ],

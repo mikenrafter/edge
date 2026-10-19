@@ -469,10 +469,9 @@ class AlarmScreenView extends StatefulWidget {
       AlarmArmState.confirmed => l?.alarmDetailConfirmed ??
           'The band reported that it latched the alarm.',
       AlarmArmState.pending => l?.alarmDetailPending ??
-          'The write reached the band. Its confirmation usually arrives within '
-              'a few seconds.',
+          'Sent to the band. Confirmation usually takes a few seconds.',
       AlarmArmState.unknown => l?.alarmDetailUnknown ??
-          'This is the time the app last sent, but the band never confirmed it. Set it again while connected if you need to be sure.',
+          'The band never confirmed this time. Set it again while connected.',
       AlarmArmState.none => null,
     };
   }

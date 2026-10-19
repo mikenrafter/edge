@@ -1,5 +1,5 @@
 // The snooze UI: Home's "Snoozed until HH:MM" card with "I'm up", and the alarm
-// settings rows ("n double taps to dismiss — fewer is a snooze", with the live
+// settings rows ("Dismiss with n double taps. Fewer taps snooze.", with the live
 // n). RED: SnoozeCard, snoozeCardFor, SnoozeSettingsRows and the alarm screen's
 // rows are stubs.
 
@@ -132,15 +132,15 @@ void main() {
         SnoozeSettingsRows(settings: s, onChanged: (v) => changed = v)));
 
     test('the copy says what n does, with the live n', () {
-      expect(snoozeDismissCopy(2), '2 double taps to dismiss — fewer is a snooze');
-      expect(snoozeDismissCopy(5), '5 double taps to dismiss — fewer is a snooze');
-      expect(snoozeDismissCopy(1), '1 double tap to dismiss — fewer is a snooze');
+      expect(snoozeDismissCopy(2), 'Dismiss with 2 double taps. Fewer taps snooze.');
+      expect(snoozeDismissCopy(5), 'Dismiss with 5 double taps. Fewer taps snooze.');
+      expect(snoozeDismissCopy(1), 'Dismiss with 1 double tap. Fewer taps snooze.');
     });
 
     testWidgets('shows the copy and the four settings with their values',
         (t) async {
       await pump(t, _on());
-      expect(find.text('2 double taps to dismiss — fewer is a snooze'),
+      expect(find.text('Dismiss with 2 double taps. Fewer taps snooze.'),
           findsOneWidget);
       for (final label in [
         'Double taps to dismiss',
@@ -164,12 +164,12 @@ void main() {
         builder: (c, s, _) =>
             SnoozeSettingsRows(settings: s, onChanged: (v) => n.value = v),
       )));
-      expect(find.textContaining('2 double taps to dismiss'), findsOneWidget);
+      expect(find.textContaining('Dismiss with 2 double taps'), findsOneWidget);
       n.value = _on({'requiredTaps': 4});
       await t.pump();
-      expect(find.text('4 double taps to dismiss — fewer is a snooze'),
+      expect(find.text('Dismiss with 4 double taps. Fewer taps snooze.'),
           findsOneWidget);
-      expect(find.textContaining('2 double taps to dismiss'), findsNothing);
+      expect(find.textContaining('Dismiss with 2 double taps'), findsNothing);
     });
 
     testWidgets('n: offers 1 to 5 and applies the choice', (t) async {
@@ -267,7 +267,7 @@ void main() {
             snoozeSettings: _on({'requiredTaps': 3}),
             onSnoozeSettings: (s) => changed = s,
           ));
-      expect(find.text('3 double taps to dismiss — fewer is a snooze'),
+      expect(find.text('Dismiss with 3 double taps. Fewer taps snooze.'),
           findsOneWidget);
       await t.tap(find.text('Snooze for'));
       await t.pumpAndSettle();
@@ -276,7 +276,7 @@ void main() {
       expect(changed, _on({'requiredTaps': 3, 'minutes': 15}));
 
       await pumpTall(t, AlarmScreenView(connected: true, schedule: week));
-      expect(find.textContaining('double taps to dismiss'), findsNothing);
+      expect(find.textContaining('double taps. Fewer taps snooze'), findsNothing);
       expect(find.text('Snooze for'), findsNothing);
     });
   });

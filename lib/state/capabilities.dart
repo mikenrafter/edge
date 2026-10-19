@@ -290,8 +290,7 @@ class Capabilities {
 
   /// Shown under the disabled snooze rows (also its l10n fallback).
   static const String noSnoozeBand =
-      'Snooze needs a band that reports how the alarm was stopped '
-      '(WHOOP 5/MG)';
+      'Snooze needs a WHOOP 5 or MG.';
   static const String _noStepSensor = 'This device cannot count steps';
 
   bool _on(FeatureFlag f) => !inputs.flagsOff.contains(f);

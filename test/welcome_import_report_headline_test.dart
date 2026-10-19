@@ -100,7 +100,7 @@ void main() {
       const ImportOutcome(source: 'OpenStrap backup', archiveBucketsRestored: 3),
     );
     expect(find.textContaining('Nothing was imported'), findsNothing);
-    expect(find.textContaining('restored or extended for 3 days'),
+    expect(find.textContaining('Sensor history restored for 3 days'),
         findsOneWidget);
   });
 }

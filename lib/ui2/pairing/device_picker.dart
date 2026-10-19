@@ -479,8 +479,7 @@ class DevicePickerView extends StatelessWidget {
                   const SizedBox(height: S.x2),
                   Text(
                     l?.pairingSkipNote ??
-                        'The app opens without a band. Nothing is measured until '
-                            'one is paired.',
+                        'The app opens without a band.',
                     style: F.cap.copyWith(color: p.ink3),
                   ),
                   if (onDemoMode != null) ...[

@@ -64,7 +64,7 @@
   "@pairingSkipForNow": {
     "description": "Onboarding pairing screen: skip button."
   },
-  "pairingSkipNote": "The app opens without a band. Nothing is measured until one is paired.",
+  "pairingSkipNote": "The app opens without a band.",
   "@pairingSkipNote": {
     "description": "Note under the skip button."
   },
@@ -80,7 +80,7 @@
   "@pairingScanningTitle": {
     "description": "Pairing state title: scanning."
   },
-  "pairingScanningBody": "A band that has just come off the charger can take up to half a minute to start advertising.",
+  "pairingScanningBody": "A band fresh off the charger can take up to 30 seconds to appear.",
   "@pairingScanningBody": {
     "description": "Pairing state body: scanning."
   },
@@ -88,7 +88,7 @@
   "@pairingNotFoundTitle": {
     "description": "Pairing state title: not found."
   },
-  "pairingNotFoundBody": "Nothing answered the scan. The band advertises only when it is awake and not already connected to another phone.",
+  "pairingNotFoundBody": "No band found. It must be awake and not connected to another phone.",
   "@pairingNotFoundBody": {
     "description": "Pairing state body: not found."
   },
@@ -96,7 +96,7 @@
   "@pairingBondRefusedTitle": {
     "description": "Pairing state title: bond refused."
   },
-  "pairingBondRefusedBody": "The band connected but refused the encryption key. That usually means an old pairing record on this phone, not a fault in the band.",
+  "pairingBondRefusedBody": "The band connected but rejected the pairing. This phone probably has an old pairing saved.",
   "@pairingBondRefusedBody": {
     "description": "Pairing state body: bond refused."
   },
@@ -104,15 +104,11 @@
   "@pairingCancelledTitle": {
     "description": "Pairing state title: cancelled."
   },
-  "pairingCancelledBody": "The system picker was dismissed before a band was chosen.",
-  "@pairingCancelledBody": {
-    "description": "Pairing state body: cancelled."
-  },
   "pairingFailedTitle": "Pairing did not complete",
   "@pairingFailedTitle": {
     "description": "Pairing state title: failed."
   },
-  "pairingFailedBody": "The band was reachable but the session did not finish.",
+  "pairingFailedBody": "Couldn’t finish pairing. Try again from about a metre away.",
   "@pairingFailedBody": {
     "description": "Pairing state body: failed."
   },
@@ -140,11 +136,11 @@
   "@pairingTryAgain": {
     "description": "Pairing CTA: default retry."
   },
-  "pairingNotFoundAdviceTitle": "Three things stop a band answering",
+  "pairingNotFoundAdviceTitle": "Check these",
   "@pairingNotFoundAdviceTitle": {
     "description": "Advice card title: not found."
   },
-  "pairingNotFoundAdviceBody": "It is still on the charger; it is out of range; or it is still connected to another phone or to the vendor app.",
+  "pairingNotFoundAdviceBody": "It may be on the charger, out of range, or connected to another phone or the WHOOP app.",
   "@pairingNotFoundAdviceBody": {
     "description": "Advice card body: not found."
   },
@@ -156,7 +152,7 @@
   "@pairingBondRefusedAdviceTitle": {
     "description": "Advice card title: bond refused."
   },
-  "pairingBondRefusedAdviceBody": "In the phone’s Bluetooth settings, forget the band, then scan again here. Only the system can clear the old pairing record.",
+  "pairingBondRefusedAdviceBody": "Forget the band in the phone’s Bluetooth settings, then scan again.",
   "@pairingBondRefusedAdviceBody": {
     "description": "Advice card body: bond refused."
   },
@@ -164,19 +160,11 @@
   "@pairingBondRefusedAdviceFix": {
     "description": "Advice card fix: bond refused."
   },
-  "pairingFailedAdviceTitle": "The band was found but the session did not finish",
-  "@pairingFailedAdviceTitle": {
-    "description": "Advice card title: failed."
-  },
-  "pairingFailedAdviceBody": "Scanning again from a metre away normally works.",
-  "@pairingFailedAdviceBody": {
-    "description": "Advice card body: failed."
-  },
   "profileSetupTitle": "About you",
   "@profileSetupTitle": {
     "description": "Profile setup screen header."
   },
-  "profileSetupBody": "Four numbers change how your data is scored. Leave any of them blank and only the metrics that need it stay unavailable.",
+  "profileSetupBody": "These improve your heart-rate zones, calories and training load. All optional.",
   "@profileSetupBody": {
     "description": "Profile setup intro body."
   },
@@ -196,7 +184,7 @@
   "@profileSetupSexPreferNotToSay": {
     "description": "Sex option: prefer not to say."
   },
-  "profileSetupOtherSexNote": "Calories use the mean of the two published sets. Training load and strain have only two published constants and no third, so they use the male pair.",
+  "profileSetupOtherSexNote": "Calories use averaged values. Strain and training load use the male values.",
   "@profileSetupOtherSexNote": {
     "description": "Note shown when 'prefer not to say' is picked."
   },
@@ -273,7 +261,7 @@
   "@alarmNotConnectedTitle": {
     "description": "Status card: band not connected."
   },
-  "alarmNotConnectedBody": "Changing, testing or cancelling the alarm needs a live connection. An alarm that is already set still works; it lives on the band.",
+  "alarmNotConnectedBody": "Connect your band to change, test or cancel the alarm. An alarm that is already set still works.",
   "@alarmNotConnectedBody": {
     "description": "Status card body: band not connected."
   },
@@ -366,11 +354,11 @@
   "@alarmDetailConfirmed": {
     "description": "Detail card body: confirmed."
   },
-  "alarmDetailPending": "The write reached the band. Its confirmation usually arrives within a few seconds.",
+  "alarmDetailPending": "Sent to the band. Confirmation usually takes a few seconds.",
   "@alarmDetailPending": {
     "description": "Detail card body: pending."
   },
-  "alarmDetailUnknown": "This is the time the app last sent, but the band never confirmed it. Set it again while connected if you need to be sure.",
+  "alarmDetailUnknown": "The band never confirmed this time. Set it again while connected.",
   "@alarmDetailUnknown": {
     "description": "Detail card body: unknown."
   },
@@ -462,7 +450,7 @@
   "@dataExportSpreadsheets": {
     "description": "Row title."
   },
-  "dataExportSpreadsheetsSub": "{count} CSV files: daily metrics, workouts, sleep, journal, labs and all you entered. Each day notes its source and scoring version",
+  "dataExportSpreadsheetsSub": "{count} CSV files: daily metrics, workouts, sleep, journal and labs.",
   "@dataExportSpreadsheetsSub": {
     "description": "Row sub with file count.",
     "placeholders": {
@@ -475,7 +463,7 @@
   "@dataExportDatabase": {
     "description": "Row title."
   },
-  "dataExportDatabaseSub": "One .db file, lossless, and the only format that restores onto another phone. Any SQLite reader can open it, so keep it safe",
+  "dataExportDatabaseSub": "One file with everything, and the only format that restores onto another phone. Anyone with the file can read it.",
   "@dataExportDatabaseSub": {
     "description": "Row sub."
   },
@@ -495,7 +483,7 @@
   "@dataHowOften": {
     "description": "Row title."
   },
-  "dataHowOftenSub": "Writes a compressed, unencrypted copy to {dir}, keeping the last {kept}",
+  "dataHowOftenSub": "Saves an unencrypted copy to {dir} and keeps the last {kept}.",
   "@dataHowOftenSub": {
     "description": "Row sub.",
     "placeholders": {
@@ -527,7 +515,7 @@
   "@dataImportFile": {
     "description": "Row title."
   },
-  "dataImportFileSub": "An OpenStrap backup, a journal CSV, a raw sensor export or a vendor CSV. Days the band already measured are never overwritten",
+  "dataImportFileSub": "A backup, a journal CSV or another app’s export. Days your band already measured are kept.",
   "@dataImportFileSub": {
     "description": "Row sub."
   },
@@ -547,7 +535,7 @@
   "@dataReanalyzeEverything": {
     "description": "Row title."
   },
-  "dataReanalyzeEverythingSub": "Scores every day again from what is stored. Needed after a long-haul flight, and after an import that landed days out of order",
+  "dataReanalyzeEverythingSub": "Recalculates every day from stored data. Use after changing time zones or importing.",
   "@dataReanalyzeEverythingSub": {
     "description": "Row sub."
   },
@@ -586,7 +574,7 @@
       }
     }
   },
-  "dataSetsFailed": "{count} set(s) failed: {list}.",
+  "dataSetsFailed": "Couldn’t export: {list}.",
   "@dataSetsFailed": {
     "description": "N export sets failed, with names.",
     "placeholders": {
@@ -598,11 +586,11 @@
       }
     }
   },
-  "dataDatabaseShared": "Database shared. It is the complete copy.",
+  "dataDatabaseShared": "Database shared.",
   "@dataDatabaseShared": {
     "description": "Export result: database shared."
   },
-  "dataEncryptedBackupShared": "Encrypted backup shared. Without that passphrase nobody can open it — including this app, and including us.",
+  "dataEncryptedBackupShared": "Encrypted backup shared. Without the passphrase, nobody can open it, including this app.",
   "@dataEncryptedBackupShared": {
     "description": "Export result: encrypted backup shared."
   },
@@ -646,7 +634,7 @@
       }
     }
   },
-  "dataSummariesDidNotBodyShort": "Every imported row is saved, but updating your trends failed ({error}). Trends and insights still show the data you had before.",
+  "dataSummariesDidNotBodyShort": "Imported data was saved, but trends couldn’t update ({error}).",
   "@dataSummariesDidNotBodyShort": {
     "description": "Rollup error body (shorter, no re-analyze CTA copy).",
     "placeholders": {
@@ -996,7 +984,7 @@
   "@pairSensorKeyTitle": {
     "description": "Section title for pairing with an existing device key."
   },
-  "pairSensorKeyBody": "Have this device’s key? Paste it to pair without a factory reset. Several keys, one per line, are tried in turn. Leave it empty to pair normally.",
+  "pairSensorKeyBody": "Have this device’s key? Paste it to pair without a factory reset. One key per line.",
   "@pairSensorKeyBody": {
     "description": "Explainer under the existing-key section title."
   },
@@ -1104,7 +1092,7 @@
   "@pairSensorNothingFoundYet": {
     "description": "Status card title: empty result."
   },
-  "pairSensorNothingFoundBody": "A sensor answers a search only while it is awake, worn or damp, and not already connected to another phone or app.",
+  "pairSensorNothingFoundBody": "Make sure the sensor is on, worn and not connected to another phone or app.",
   "@pairSensorNothingFoundBody": {
     "description": "Status card body: empty result."
   },
@@ -1473,7 +1461,7 @@
       }
     }
   },
-  "welcomeNothingUsableInFile": "The file was read but there was nothing in it this app could use, or every day in it was one this band had already measured.",
+  "welcomeNothingUsableInFile": "Nothing new to import from this file.",
   "@welcomeNothingUsableInFile": {
     "description": "Status card body: nothing usable."
   },
@@ -1540,7 +1528,7 @@
       }
     }
   },
-  "welcomeRejectedDetail": "{rejects} Nothing was trimmed to fit — fix those lines and import again.",
+  "welcomeRejectedDetail": "{rejects} Fix those lines and import again.",
   "@welcomeRejectedDetail": {
     "description": "Status card body: rejected rows detail + advice.",
     "placeholders": {
@@ -1562,11 +1550,11 @@
       }
     }
   },
-  "welcomeSummariesDidNotTitle": "The days landed, the summaries did not",
+  "welcomeSummariesDidNotTitle": "Trends didn’t update",
   "@welcomeSummariesDidNotTitle": {
     "description": "Status card title: rollup error."
   },
-  "welcomeSummariesDidNotBody": "Every imported row is saved, but updating your trends failed ({error}). To fix it, open Your data and tap Re-analyze everything.",
+  "welcomeSummariesDidNotBody": "Imported data was saved, but trends couldn’t update ({error}). Open Your data and tap Rebuild all history.",
   "@welcomeSummariesDidNotBody": {
     "description": "Status card body: rollup error.",
     "placeholders": {
@@ -1579,7 +1567,7 @@
   "@welcomePartOfFileNotUsedTitle": {
     "description": "Status card title: partial data loss."
   },
-  "welcomeStrandedDays": "{n, plural, one{1 day arrived out of order and was only used as context for the day that followed.} other{{n} days arrived out of order and were only used as context for the day that followed.}}",
+  "welcomeStrandedDays": "{n, plural, one{1 day was imported out of order and not scored on its own.} other{{n} days were imported out of order and not scored on their own.}}",
   "@welcomeStrandedDays": {
     "description": "N stranded days.",
     "placeholders": {
@@ -1597,7 +1585,7 @@
       }
     }
   },
-  "welcomeArchiveRestored": "{n, plural, one{Raw sensor history restored or extended for 1 day} other{Raw sensor history restored or extended for {n} days}}",
+  "welcomeArchiveRestored": "{n, plural, one{Sensor history restored for 1 day} other{Sensor history restored for {n} days}}",
   "@welcomeArchiveRestored": {
     "description": "Backup import: N days of archived raw sensor history were restored. Short; shown as a headline or a secondary line.",
     "placeholders": {
@@ -1606,7 +1594,7 @@
       }
     }
   },
-  "welcomeLateRows": "{n, plural, one{1 row arrived after its day had already been scored and closed.} other{{n} rows arrived after their day had already been scored and closed.}}",
+  "welcomeLateRows": "{n, plural, one{1 row came in after its day was scored and was left out.} other{{n} rows came in after their day was scored and were left out.}}",
   "@welcomeLateRows": {
     "description": "N late rows.",
     "placeholders": {
@@ -11151,7 +11139,7 @@
       }
     }
   },
-  "settingsHealthSyncReady": "Writes each day’s sleep, resting heart rate, HRV, respiratory rate, energy and workouts to {store} once it is final",
+  "settingsHealthSyncReady": "Saves each finished day’s data to {store}.",
   "@settingsHealthSyncReady": {
     "description": "Health-sync subtitle when the write is active and ready",
     "placeholders": {
@@ -11173,7 +11161,7 @@
   "@settingsHealthSyncNotInstalled": {
     "description": "Health-sync subtitle when Health Connect is missing (Android)"
   },
-  "settingsHealthSyncNeedsUpdate": "Health Connect is too old to write to. Tap to update it",
+  "settingsHealthSyncNeedsUpdate": "Update Health Connect to sync. Tap to open it.",
   "@settingsHealthSyncNeedsUpdate": {
     "description": "Health-sync subtitle when Health Connect needs an update"
   },
@@ -11203,11 +11191,11 @@
   "@settingsHealthShareOffTitle": {
     "description": "Dialog title after withdrawing health-data contribution consent"
   },
-  "settingsHealthShareOffNeverUploaded": "Nothing was ever uploaded. Nothing will be.",
+  "settingsHealthShareOffNeverUploaded": "Nothing has been uploaded.",
   "@settingsHealthShareOffNeverUploaded": {
     "description": "Dialog body when consent is withdrawn and no upload had ever happened"
   },
-  "settingsHealthShareOffDetail": "Nothing further will be uploaded.\n\nOne copy of your database was uploaded on {date}. The server keeps only the most recent copy per device. We tried to tell it your consent is withdrawn — that message is sent once and is not retried, so if this phone is offline it will not have arrived, and we cannot show you that the copy is gone either.",
+  "settingsHealthShareOffDetail": "Nothing further will be uploaded.\n\nOne copy of your database was uploaded on {date}. The server keeps only the most recent copy per device. We sent a withdrawal notice once and don’t retry. If you were offline, it didn’t arrive, and we can’t confirm the copy is gone.",
   "@settingsHealthShareOffDetail": {
     "description": "Dialog body when consent is withdrawn and a previous upload exists, {date} is a local date/time string",
     "placeholders": {
@@ -11301,7 +11289,7 @@
   "@settingsStepsRowTitle": {
     "description": "Settings row title for the phone's own step counter"
   },
-  "settingsStepsRowSub": "This phone’s own step counter, for the hours the band doesn’t cover. Nothing leaves the device",
+  "settingsStepsRowSub": "Uses this phone’s step counter when the band isn’t worn.",
   "@settingsStepsRowSub": {
     "description": "Settings row subtitle explaining the phone step counter"
   },
@@ -11313,7 +11301,7 @@
   "@settingsManageNotificationsRowTitle": {
     "description": "Settings row title opening the notification settings screen"
   },
-  "settingsManageNotificationsRowSub": "What may interrupt you, quiet hours, and off switches for all of them",
+  "settingsManageNotificationsRowSub": "Quiet hours and per-notification switches",
   "@settingsManageNotificationsRowSub": {
     "description": "Settings row subtitle for the manage-notifications row"
   },
@@ -11349,7 +11337,7 @@
   "@settingsCycleTrackingRowTitle": {
     "description": "Settings row title toggling cycle tracking"
   },
-  "settingsCycleTrackingRowSub": "Adds the Cycle tab to Wellness. Off hides it and keeps everything already logged",
+  "settingsCycleTrackingRowSub": "Show the Cycle tab. Turning it off keeps your logs.",
   "@settingsCycleTrackingRowSub": {
     "description": "Settings row subtitle for the cycle-tracking toggle"
   },
@@ -11381,7 +11369,7 @@
   "@settingsTaskerShortcutsRowTitle": {
     "description": "Settings row title opening the automation screen"
   },
-  "settingsTaskerShortcutsRowSub": "Android only for events out. iOS can buzz the band but cannot be triggered by it",
+  "settingsTaskerShortcutsRowSub": "Android can send and receive events. iOS can only buzz the band.",
   "@settingsTaskerShortcutsRowSub": {
     "description": "Settings row subtitle stating the Android/iOS automation asymmetry"
   },
@@ -11401,7 +11389,7 @@
   "@settingsBarcodeLookupRowTitle": {
     "description": "Settings row title toggling online barcode lookup"
   },
-  "settingsBarcodeLookupRowSub": "Sends a scanned barcode to openfoodfacts.org. Nothing about you goes with it",
+  "settingsBarcodeLookupRowSub": "Looks up scanned barcodes on openfoodfacts.org. It sees the barcode and your IP address, nothing else about you.",
   "@settingsBarcodeLookupRowSub": {
     "description": "Settings row subtitle for the barcode-lookup toggle"
   },
@@ -11477,7 +11465,7 @@
   "@settingsNotificationsOffSystemTitle": {
     "description": "Status card title when OS-level notification permission is denied"
   },
-  "settingsNotificationsOffSystemBody": "Nothing below can reach you until the OS lets it.",
+  "settingsNotificationsOffSystemBody": "Turn them on in system settings.",
   "@settingsNotificationsOffSystemBody": {
     "description": "Status card body when OS-level notification permission is denied"
   },
@@ -11493,7 +11481,7 @@
   "@settingsHealthExceptionsRowTitle": {
     "description": "Notification row title for the health-exception alert toggle"
   },
-  "settingsHealthExceptionsRowSub": "One a day at most, and only when something moved away from your usual",
+  "settingsHealthExceptionsRowSub": "When something moves away from your usual.",
   "@settingsHealthExceptionsRowSub": {
     "description": "Notification row subtitle for the health-exception alert toggle"
   },
@@ -11517,7 +11505,7 @@
   "@settingsAlarmNightCheckRowTitle": {
     "description": "Notification row title for the 7pm no-alarm-tonight check"
   },
-  "settingsAlarmNightCheckRowSub": "A 7pm heads-up on any night with no wake alarm armed — silent otherwise",
+  "settingsAlarmNightCheckRowSub": "A 7pm heads-up on nights with no wake alarm set.",
   "@settingsAlarmNightCheckRowSub": {
     "description": "Notification row subtitle for the 7pm no-alarm-tonight check"
   },
@@ -11541,7 +11529,7 @@
   "@settingsWeeklyLookbackRowTitle": {
     "description": "Notification row title for the weekly summary alert"
   },
-  "settingsWeeklyLookbackRowSub": "Sunday evening, but only for a week that actually found something. Most weeks are quiet",
+  "settingsWeeklyLookbackRowSub": "Sunday evening, but only for a week that found something.",
   "@settingsWeeklyLookbackRowSub": {
     "description": "Notification row subtitle for the weekly summary alert"
   },
@@ -11549,7 +11537,7 @@
   "@settingsDetectedWorkoutsRowTitle": {
     "description": "Notification row title for auto-detected workout prompts"
   },
-  "settingsDetectedWorkoutsRowSub": "Ask about efforts the band spotted that you did not start. Off hides the prompt and the review cards; the band goes on measuring either way",
+  "settingsDetectedWorkoutsRowSub": "Ask about workouts the band detected. Off hides the prompts.",
   "@settingsDetectedWorkoutsRowSub": {
     "description": "Notification row subtitle for auto-detected workout prompts"
   },
@@ -11557,7 +11545,7 @@
   "@settingsMovementNudgeRowTitle": {
     "description": "Notification row title for the sedentary-movement nudge"
   },
-  "settingsMovementNudgeRowSub": "After two hours without moving, or 90 minutes at a desk. A phone notification plus a buzz on the band when it’s connected",
+  "settingsMovementNudgeRowSub": "After 2 hours without moving, or 90 minutes at a desk. A phone notification, plus a band buzz when connected.",
   "@settingsMovementNudgeRowSub": {
     "description": "Notification row subtitle for the sedentary-movement nudge"
   },
@@ -11565,7 +11553,7 @@
   "@settingsWindDownRowTitle": {
     "description": "Notification row title for the bedtime wind-down nudge"
   },
-  "settingsWindDownRowSub": "A heads-up about 45 minutes before the bedtime learned from your own nights, kept clear of your quiet hours. Appears after about a week of wear",
+  "settingsWindDownRowSub": "A reminder about 45 minutes before your usual bedtime. Needs about a week of data.",
   "@settingsWindDownRowSub": {
     "description": "Notification row subtitle for the bedtime wind-down nudge"
   },
@@ -11581,7 +11569,7 @@
   "@settingsMedicationRemindersRowTitle": {
     "description": "Notification row title for medication-dose reminders"
   },
-  "settingsMedicationRemindersRowSub": "One notification per scheduled dose, plus a buzz on the band when it’s connected. Skipped for doses already marked",
+  "settingsMedicationRemindersRowSub": "A notification at each scheduled dose, plus a band buzz when connected.",
   "@settingsMedicationRemindersRowSub": {
     "description": "Notification row subtitle for medication-dose reminders"
   },
@@ -11589,7 +11577,7 @@
   "@settingsDailyCheckInRowTitle": {
     "description": "Notification row title for the evening journal check-in prompt"
   },
-  "settingsDailyCheckInRowSub": "One prompt in the evening to write the day — mood, energy, stress. Skipped once the day already has a rating in it",
+  "settingsDailyCheckInRowSub": "An evening prompt to log mood, energy and stress.",
   "@settingsDailyCheckInRowSub": {
     "description": "Notification row subtitle for the evening journal check-in prompt"
   },
@@ -11597,7 +11585,7 @@
   "@settingsWaterReminderRowTitle": {
     "description": "Notification row title for the water-logging reminder"
   },
-  "settingsWaterReminderRowSub": "A buzz on the strap and a notification on your phone through your waking hours, to remind you to log a drink. Nothing is measured either way",
+  "settingsWaterReminderRowSub": "Reminds you to log a drink during the day.",
   "@settingsWaterReminderRowSub": {
     "description": "Notification row subtitle for the water-logging reminder"
   },
@@ -11658,7 +11646,7 @@
       }
     }
   },
-  "settingsImportEmptyWithBirthday": "Nothing came back. {store} holds no height, weight, birthday or sex for you — type them in here instead.",
+  "settingsImportEmptyWithBirthday": "{store} has no height, weight, birthday or sex for you. Enter them here.",
   "@settingsImportEmptyWithBirthday": {
     "description": "Result message when the health store (with birthday support) has no profile fields for the user",
     "placeholders": {
@@ -11667,7 +11655,7 @@
       }
     }
   },
-  "settingsImportEmpty": "Nothing came back. {store} holds no height, weight or sex for you — type them in here instead.",
+  "settingsImportEmpty": "{store} has no height, weight or sex for you. Enter them here.",
   "@settingsImportEmpty": {
     "description": "Result message when the health store (no birthday support) has no profile fields for the user",
     "placeholders": {
@@ -11742,7 +11730,7 @@
   "@settingsFourFieldsTitle": {
     "description": "Status card title explaining what the four profile fields affect"
   },
-  "settingsFourFieldsBody": "They feed heart-rate zones, calorie estimates and training load. Clear one and only the metrics that need it stay unavailable.",
+  "settingsFourFieldsBody": "These improve your heart-rate zones, calories and training load. All optional.",
   "@settingsFourFieldsBody": {
     "description": "Status card body explaining what the four profile fields affect"
   },
@@ -11755,7 +11743,7 @@
       }
     }
   },
-  "settingsImportBlockOther": "Height and weight, straight out of {store}. It has no birthday and no sex to read — no app can — so set those two above yourself.",
+  "settingsImportBlockOther": "Height and weight from {store}. Set birthday and sex above.",
   "@settingsImportBlockOther": {
     "description": "Import-block explainer text on Health Connect (no birthday support)",
     "placeholders": {
@@ -11776,11 +11764,11 @@
   "@settingsSyncFinishesSectionTitle": {
     "description": "Section heading explaining the outbound sync-complete event"
   },
-  "settingsSyncFinishesAndroidBody": "The app broadcasts an intent your automation app can react to. Filter on the action below; it says how many records arrived and when.",
+  "settingsSyncFinishesAndroidBody": "Automation apps like Tasker can react when a sync finishes. Use the action name below.",
   "@settingsSyncFinishesAndroidBody": {
     "description": "Section body on Android explaining the sync-complete broadcast"
   },
-  "settingsSyncFinishesIosBody": "iOS can’t do this: Shortcuts automations only start on Apple’s own fixed events, and apps can’t add one. This is an iOS limit, not a setting.",
+  "settingsSyncFinishesIosBody": "Not available on iOS.",
   "@settingsSyncFinishesIosBody": {
     "description": "Section body on iOS explaining why the sync-complete trigger cannot work"
   },
@@ -11792,7 +11780,7 @@
   "@settingsNeverSendSectionTitle": {
     "description": "Section heading listing what the automation event never includes"
   },
-  "settingsNeverSendBody": "No recovery, strain or sleep score is sent, on either platform. A missing number would arrive as a bare zero. Sync facts go out, not measurements.",
+  "settingsNeverSendBody": "Scores are never sent. Only sync status is.",
   "@settingsNeverSendBody": {
     "description": "Section body listing what the automation event never includes"
   },
@@ -11800,11 +11788,11 @@
   "@settingsBuzzFromShortcutSectionTitle": {
     "description": "Section heading explaining the inbound band-buzz endpoint"
   },
-  "settingsBuzzFromShortcutAndroidBody": "Send wtf.openstrap.openstrap_edge.BUZZ_STRAP with this token as the “token” string extra. Without it any app on the phone could buzz your band.",
+  "settingsBuzzFromShortcutAndroidBody": "Send wtf.openstrap.openstrap_edge.BUZZ_STRAP with this token as the “token” extra. It stops other apps buzzing your band.",
   "@settingsBuzzFromShortcutAndroidBody": {
     "description": "Section body on Android explaining how to trigger the band buzz"
   },
-  "settingsBuzzFromShortcutIosBody": "This direction works on iOS: a shortcut you run yourself can reach the app. What it cannot do is run itself when the band syncs.",
+  "settingsBuzzFromShortcutIosBody": "On iOS, a shortcut you run yourself can buzz the band.",
   "@settingsBuzzFromShortcutIosBody": {
     "description": "Section body on iOS explaining the inbound band-buzz endpoint"
   },
@@ -12069,7 +12057,7 @@
   "@profileGithubTitle": {
     "description": "Title of the Profile row linking to the project's GitHub repo."
   },
-  "profileGithubSub": "Please star and show your support — it helps the project grow",
+  "profileGithubSub": "Star the project on GitHub",
   "@profileGithubSub": {
     "description": "Subtitle of the Profile row linking to the project's GitHub repo."
   },
@@ -12077,7 +12065,7 @@
   "@profileRedditTitle": {
     "description": "Title of the Profile row linking to the project's subreddit."
   },
-  "profileRedditSub": "Join r/OpenStrap — post your achievements, questions, anything",
+  "profileRedditSub": "Join r/OpenStrap",
   "@profileRedditSub": {
     "description": "Subtitle of the Profile row linking to the project's subreddit."
   },
@@ -12085,7 +12073,7 @@
   "@profileDiscordTitle": {
     "description": "Title of the Profile row linking to the project's Discord server."
   },
-  "profileDiscordSub": "Hang out with other users and the people building this",
+  "profileDiscordSub": "Chat with users and developers",
   "@profileDiscordSub": {
     "description": "Subtitle of the Profile row linking to the project's Discord server."
   },
@@ -12093,7 +12081,7 @@
   "@profileSponsorTitle": {
     "description": "Title of the Profile row linking to GitHub Sponsors."
   },
-  "profileSponsorSub": "This is a free, open-source project — sponsoring keeps it going",
+  "profileSponsorSub": "Support development",
   "@profileSponsorSub": {
     "description": "Subtitle of the Profile row linking to GitHub Sponsors."
   },
@@ -14409,19 +14397,19 @@
   "@devicesWhatItDoesBeats": {
     "description": "Row sub: a workout sensor ranked for beat timing."
   },
-  "pairSensorExplainerWorkout": "Heart rate for workouts; it doesn’t replace your band. It records while a workout runs, once checked against the hardware; until then it records nothing.",
+  "pairSensorExplainerWorkout": "Records heart rate during workouts, but only once it’s been checked against the hardware. Until then it records nothing. Doesn’t replace your band.",
   "@pairSensorExplainerWorkout": {
     "description": "Explanatory body before pairing a workout sensor (chest strap, arm band)."
   },
-  "pairSensorExplainerCoros": "A sports watch. Each sync reads battery and a few seconds of heart rate. No workout uses it, and its readings never feed a score.",
+  "pairSensorExplainerCoros": "A sports watch. Only battery and a few seconds of heart rate are read.",
   "@pairSensorExplainerCoros": {
     "description": "Explanatory body before pairing a Coros watch (synced in short windows, never armed by a workout)."
   },
-  "pairSensorExplainerWearable": "Its own records are saved and labelled as its own. Working out our numbers from it (sleep, resting heart rate, strain) is experimental and off for now.",
+  "pairSensorExplainerWearable": "Its data is saved under its own name. Not used for your scores yet.",
   "@pairSensorExplainerWearable": {
     "description": "Explanatory body before pairing a watch, ring or band that is not the primary band."
   },
-  "pairSensorExplainerMeasurement": "Its readings are saved under its name. Using them in your profile is experimental and off until it’s been checked against the hardware.",
+  "pairSensorExplainerMeasurement": "Its readings are saved under its name and not used for your scores yet.",
   "@pairSensorExplainerMeasurement": {
     "description": "Explanatory body before pairing a scale or thermometer."
   },
@@ -14429,7 +14417,7 @@
   "@pairSensorKeyReplacesTitle": {
     "description": "Warning title on the ring pairing screen, shown before the user pairs."
   },
-  "pairSensorKeyReplacesBody": "The ring holds one key. Pairing without the Oura app’s key gives it a new one, and the Oura app stops working with it until the ring is reset.",
+  "pairSensorKeyReplacesBody": "Pairing without the Oura app’s key replaces it. The Oura app will stop working with this ring until you reset it.",
   "@pairSensorKeyReplacesBody": {
     "description": "Warning body: pairing installs a new key that replaces the key the ring's own app uses."
   },
@@ -14999,7 +14987,7 @@
   "@dataExportHeartRate": {
     "description": "Data screen row: export per-minute heart rate as CSV."
   },
-  "dataExportHeartRateSub": "One CSV for the days you pick, with a 1-minute average for every recorded minute. Second-by-second data is in the database export",
+  "dataExportHeartRateSub": "One CSV for the days you pick, one row per minute.",
   "@dataExportHeartRateSub": {
     "description": "Subtitle for the per-minute heart rate CSV export row."
   },
@@ -15261,7 +15249,7 @@
   "@settingsGroupAdvanced": {
     "description": "Settings group: automation and other rarely changed settings."
   },
-  "settingsCycleTrackingRowSubHealth": "Adds Cycle to Health. Off hides it and keeps everything already logged",
+  "settingsCycleTrackingRowSubHealth": "Show Cycle in Health. Turning it off keeps your logs.",
   "@settingsCycleTrackingRowSubHealth": {
     "description": "Subtitle of the cycle tracking switch."
   },
@@ -15535,7 +15523,7 @@
   "@reportDatabaseRow": {
     "description": "Issue report: switch to attach the database. Off by default."
   },
-  "reportDatabaseWarning": "Your sleep, heart rate and other health data from the last 14 days (fewer days of second-by-second data if the ticket would be too big), plus your daily scores and settings. It goes only if this is on, and the server deletes it after 14 days. A ticket with health data can be up to 95 MB, so use Wi-Fi if you can.",
+  "reportDatabaseWarning": "Your sleep, heart rate and other health data from the last 14 days, plus your daily scores and settings. It goes only if this is on, and the server deletes it after 14 days. A ticket with health data can be up to 95 MB, so use Wi-Fi if you can.",
   "@reportDatabaseWarning": {
     "description": "Issue report: plain warning under the database switch."
   },
@@ -15543,7 +15531,7 @@
   "@reportIncludedGroup": {
     "description": "Issue report: heading over the list of files in the report."
   },
-  "reportIncludedNote": "The category, title, description, app version, platform, system version, phone model, install ID, and whether a database or screenshot is attached travel unencrypted so we can track the report, and are kept for 90 days. Everything else is encrypted on this phone before it leaves, so only the maintainers can read it, and is deleted after 30 days, or after 14 days if your database is attached. “Share locally” is different: the ZIP it hands to the share sheet is not encrypted.",
+  "reportIncludedNote": "The category, title, description, app version, platform, system version, phone model, install ID and whether a database or screenshot is attached travel unencrypted and are kept for 90 days. Everything else is encrypted on this phone before it leaves, so only the maintainers can read it, and is deleted after 30 days (14 if your database is attached). “Share locally” makes an unencrypted ZIP.",
   "@reportIncludedNote": {
     "description": "Issue report: note under the file list."
   },
@@ -15784,7 +15772,7 @@
   "@devicesWhatItDoesRanked": {
     "description": "Row sub: ranked sensor."
   },
-  "pairSensorExplainer": "During a workout, a sensor records heart rate and beat timing. The band keeps recording everything else, and the sensor is not used overnight. Its readings are stored and shown. No score uses them yet.",
+  "pairSensorExplainer": "A sensor records heart rate during workouts. Your band keeps recording everything else.",
   "@pairSensorExplainer": {
     "description": "Explanatory body."
   },
@@ -16137,11 +16125,11 @@
   "@settingsTaskerConnectionTitle": {
     "description": "Title of the switch that turns the Tasker integration on or off"
   },
-  "settingsTaskerConnectionSub": "Lets Tasker and other automation apps buzz the band, and lets the Broadcast to Tasker gesture action reach them. Off, all of it stops.",
+  "settingsTaskerConnectionSub": "Lets Tasker and other automation apps buzz your band and receive gesture triggers.",
   "@settingsTaskerConnectionSub": {
     "description": "Explains what the Tasker connection switch controls"
   },
-  "hapticsTaskerSectionSub": "Tasker plays these by number. Like any alert they follow quiet hours and the haptic limit.",
+  "hapticsTaskerSectionSub": "Tasker plays these by number. Quiet hours and the buzz limit apply.",
   "@hapticsTaskerSectionSub": {
     "description": "Note at the top of the Tasker group on the Haptics screen"
   },
@@ -16801,7 +16789,7 @@
   "@snoozeImUp": {
     "description": "Button that dismisses the snooze."
   },
-  "snoozeDismissCopy": "{taps, plural, =1{1 double tap to dismiss — fewer is a snooze} other{{taps} double taps to dismiss — fewer is a snooze}}",
+  "snoozeDismissCopy": "{taps, plural, =1{Dismiss with 1 double tap. Fewer taps snooze.} other{Dismiss with {taps} double taps. Fewer taps snooze.}}",
   "@snoozeDismissCopy": {
     "description": "Alarm settings: how many double taps dismiss the alarm; fewer is a snooze.",
     "placeholders": {
@@ -16862,7 +16850,7 @@
       }
     }
   },
-  "snoozeUnsupported": "Snooze needs a band that reports how the alarm was stopped (WHOOP 5/MG)",
+  "snoozeUnsupported": "Snooze needs a WHOOP 5 or MG.",
   "@snoozeUnsupported": {
     "description": "Shown under the disabled alarm snooze rows on a band (WHOOP 4.0) that does not report how the alarm was stopped."
   },
@@ -16968,7 +16956,7 @@
   "@settingsTaskerMomentExportTitle": {
     "description": "Switch in Automation: send the marked-moment review's answers to Tasker"
   },
-  "settingsTaskerMomentExportSub": "When you save the review of your marked moments, sends each one to Tasker: what it was, when, and any amount you typed. This is health information, so it goes to Tasker only and stays off until you turn it on.",
+  "settingsTaskerMomentExportSub": "Sends each marked moment (what, when, any amount) to Tasker when you save the review. This is health data. Off until you turn it on.",
   "@settingsTaskerMomentExportSub": {
     "description": "Explains what the switch sends (health information) and that it is off by default and goes to Tasker only"
   },
@@ -17045,7 +17033,7 @@
   "@hapticsCommandLimitTitle": {
     "description": "Title of the control that sets how many haptic commands the band may be sent in 2 minutes"
   },
-  "hapticsCommandLimitBody": "{n} commands in any 2 minutes. A precaution we chose to spare the motor and the battery, not a limit of the band. Alerts wait for room; a gesture without room is not acted on.",
+  "hapticsCommandLimitBody": "At most {n} buzzes every 2 minutes, to protect the motor and battery. Extra alerts wait; extra gestures are ignored.",
   "@hapticsCommandLimitBody": {
     "description": "Explains the haptic command limit; n is the limit",
     "placeholders": {

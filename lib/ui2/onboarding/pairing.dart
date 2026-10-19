@@ -189,7 +189,8 @@ class PairingView extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    final busy = phase == PairPhase.scanning;
+        final busy = phase == PairPhase.scanning;
+    final body = _body(c, phase, blocker);
     // The copy for this one lives in the BLE layer, so this screen and the
     // Devices screen cannot drift into two different accounts of one state.
     final blocked = phase == PairPhase.bluetoothBlocked
@@ -210,8 +211,10 @@ class PairingView extends StatelessWidget {
                 color: p.on(C.blue)),
             const SizedBox(height: S.x5),
             Text(_title(c, phase, blocker), style: F.t1.copyWith(color: p.ink)),
-            const SizedBox(height: S.x3),
-            Text(_body(c, phase, blocker), style: F.body.copyWith(color: p.ink2)),
+                        if (body != null) ...[
+              const SizedBox(height: S.x3),
+              Text(body, style: F.body.copyWith(color: p.ink2)),
+            ],
             if (blocked?.fix != null) ...[
               const SizedBox(height: S.x3),
               Text(blocked!.fix!,
@@ -237,8 +240,7 @@ class PairingView extends StatelessWidget {
               const SizedBox(height: S.x2),
               Text(
                 AppLocalizations.of(c)?.pairingSkipNote ??
-                    'The app opens without a band. It records nothing until '
-                    'you pair one.',
+                    'The app opens without a band.',
                 style: F.cap.copyWith(color: p.ink3),
               ),
             ],
@@ -265,7 +267,7 @@ class PairingView extends StatelessWidget {
     };
   }
 
-  static String _body(BuildContext c, PairPhase phase, [BleBlocker? blocker]) {
+  static String? _body(BuildContext c, PairPhase phase, [BleBlocker? blocker]) {
     final l = AppLocalizations.of(c);
     return switch (phase) {
       PairPhase.bluetoothBlocked => localizedBandStatus(
@@ -275,17 +277,16 @@ class PairingView extends StatelessWidget {
           "Take the band off the charger, put it on your wrist and keep the "
           "phone within arm's reach.",
       PairPhase.scanning => l?.pairingScanningBody ??
-          'A band that just came off the charger can take a while to '
-          'show up in the scan.',
+          'A band fresh off the charger can take up to 30 seconds to appear.',
       PairPhase.notFound => l?.pairingNotFoundBody ??
-          'No band answered the scan. A band shows up only when it is '
-          'awake and not connected to another phone.',
+          'No band found. It must be awake and not connected to another phone.',
       PairPhase.bondRefused => l?.pairingBondRefusedBody ??
-          'The band connected but refused the encryption key. That usually means an old pairing record on this phone, not a fault in the band.',
-      PairPhase.cancelled => l?.pairingCancelledBody ??
-          'The system picker was dismissed before a band was chosen.',
+                    'The band connected but rejected the pairing. This phone probably has an old pairing saved.',
+      PairPhase.cancelled => null,
+
+      
       PairPhase.failed => l?.pairingFailedBody ??
-          'The band was reachable but the session did not finish.',
+          'Couldn’t finish pairing. Try again from about a metre away.',
       PairPhase.paired => l?.pairingPairedBody ?? 'Setting up the first sync.',
     };
   }
@@ -309,10 +310,10 @@ class PairingView extends StatelessWidget {
           const SizedBox(height: S.x6),
           StatusCard(
             l?.pairingNotFoundAdviceTitle ??
-                'Why the band does not answer',
+                'Check these',
             l?.pairingNotFoundAdviceBody ??
-                'The band is on the charger, out of range, or connected to '
-                'another phone or the vendor app.',
+                'It may be on the charger, out of range, or connected to '
+                'another phone or the WHOOP app.',
             fix: l?.pairingNotFoundAdviceFix ??
                 'Force-quit the other app, then scan again',
             icon: LucideIcons.searchX,
@@ -324,7 +325,7 @@ class PairingView extends StatelessWidget {
             l?.pairingBondRefusedAdviceTitle ??
                 'Forget the band in Bluetooth settings first',
             l?.pairingBondRefusedAdviceBody ??
-                'In the phone’s Bluetooth settings, forget the band, then scan again here. Only the system can clear the old pairing record.',
+                'Forget the band in the phone’s Bluetooth settings, then scan again.',
             fix: l?.pairingBondRefusedAdviceFix ?? 'Open Bluetooth settings',
             icon: LucideIcons.unlink,
           ),
@@ -333,17 +334,9 @@ class PairingView extends StatelessWidget {
             _Detail(detail),
           ],
         ],
-      PairPhase.failed => [
-          const SizedBox(height: S.x6),
-          StatusCard(
-            l?.pairingFailedAdviceTitle ??
-                'The band was found but the session did not finish',
-            l?.pairingFailedAdviceBody ??
-                'Scan again with the band about a metre from the phone.',
-            icon: LucideIcons.triangleAlert,
-          ),
+            PairPhase.failed => [
           if (detail.isNotEmpty) ...[
-            const SizedBox(height: S.x3),
+            const SizedBox(height: S.x6),
             _Detail(detail),
           ],
         ],

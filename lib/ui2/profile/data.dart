@@ -117,7 +117,7 @@ class _DataScreenState extends State<DataScreen> {
         subject: 'OpenStrap export', sharePositionOrigin: origin);
     final n = res.paths.length;
     final failed = res.hasFailures
-        ? ' ${l?.dataSetsFailed(res.failed.length, res.failed.join(', ')) ?? '${res.failed.length} set(s) failed: ${res.failed.join(', ')}.'}'
+        ? ' ${l?.dataSetsFailed(res.failed.length, res.failed.join(', ')) ?? 'Couldn’t export: ${res.failed.join(', ')}.'}'
         : '';
     return (
       (l?.dataFilesShared(n) ?? '$n file${n == 1 ? '' : 's'} shared.') + failed,
@@ -205,8 +205,8 @@ class _DataScreenState extends State<DataScreen> {
         subject: 'OpenStrap encrypted backup', sharePositionOrigin: origin);
     return (
       l?.dataEncryptedBackupShared ??
-          'Encrypted backup shared. Without the passphrase nobody '
-          'can open it, including this app and us.',
+          'Encrypted backup shared. Without the passphrase, nobody '
+          'can open it, including this app.',
       false
     );
   }
@@ -452,17 +452,17 @@ class DataScreenView extends StatelessWidget {
                       // byte-identical. An empty source cell is unknown
                       // provenance — never back-filled to 'band'.
                       sub: l?.dataExportSpreadsheetsSub(kCsvExportSets.length) ??
-                          '${kCsvExportSets.length} CSV files: daily metrics, workouts, sleep, journal, labs and all you entered. Each day notes its source and scoring version',
+                          '${kCsvExportSets.length} CSV files: daily metrics, workouts, sleep, journal and labs.',
                       onTap: busy ? null : onExportCsv),
                   SetRow(LucideIcons.heartPulse, C.red,
                       l?.dataExportHeartRate ?? 'Export heart rate, minute by minute',
                       sub: l?.dataExportHeartRateSub ??
-                          'One CSV for the days you pick, with a 1-minute average for every recorded minute. Second-by-second data is in the database export',
+                          'One CSV for the days you pick, one row per minute.',
                       onTap: busy ? null : onExportHeartRate),
                   SetRow(LucideIcons.database, C.blue,
                       l?.dataExportDatabase ?? 'Export the database',
                       sub: l?.dataExportDatabaseSub ??
-                          'One .db file, lossless, and the only format that restores onto another phone. Any SQLite reader can open it, so keep it safe',
+                          'One file with everything, and the only format that restores onto another phone. Anyone with the file can read it.',
                       onTap: busy ? null : onExportDb),
                   SetRow(LucideIcons.lock, C.purple,
                       l?.dataExportEncrypted ?? 'Export an encrypted backup',
@@ -481,8 +481,8 @@ class DataScreenView extends StatelessWidget {
                       // automatic copy to a format that might not open is
                       // worse than the plaintext it replaced.
                       sub: l?.dataHowOftenSub(folder == null ? kBackupDirName : folderLabel, kBackupsKept) ??
-                          'Writes a compressed, unencrypted copy to '
-                              '${folder == null ? kBackupDirName : folderLabel}, keeping the last $kBackupsKept',
+                          'Saves an unencrypted copy to '
+                              '${folder == null ? kBackupDirName : folderLabel} and keeps the last $kBackupsKept.',
                       value: cadence.label,
                       onTap: busy ? null : onCycleCadence),
                   if (defaultTargetPlatform == TargetPlatform.android)
@@ -519,7 +519,7 @@ class DataScreenView extends StatelessWidget {
                   SetRow(LucideIcons.upload, C.orange,
                       l?.dataImportFile ?? 'Import a file',
                       sub: l?.dataImportFileSub ??
-                          'An OpenStrap backup, a journal CSV, a raw sensor export or a vendor CSV. Days the band already measured are never overwritten',
+                          'A backup, a journal CSV or another app’s export. Days your band already measured are kept.',
                       onTap: busy ? null : onImport),
                   // Progressive disclosure: two health-store reads, each with
                   // its own consent and its own ceiling, behind one row rather
@@ -541,7 +541,7 @@ class DataScreenView extends StatelessWidget {
                   SetRow(LucideIcons.refreshCcw, C.blue,
                       'Rebuild all history',
                       sub: l?.dataReanalyzeEverythingSub ??
-                          'Recalculates every day from stored data. Run it after a long-haul flight or after an import that added days out of order.',
+                          'Recalculates every day from stored data. Use after changing time zones or importing.',
                       value: reanalyzeProgress,
                       onTap: busy || reanalyzing ? null : onReanalyze),
                   // Last, and inside Advanced: it was a red row at the foot of
@@ -571,10 +571,10 @@ class DataScreenView extends StatelessWidget {
                   const SizedBox(height: S.x5),
                   StatusCard(
                     l?.welcomeSummariesDidNotTitle ??
-                        'Days imported, summaries not rebuilt',
+                        'Trends didn’t update',
                     l?.dataSummariesDidNotBodyShort(
                             '$importRollupError') ??
-                        'Every imported row is saved, but updating your trends failed ($importRollupError). Trends and insights still show the data you had before.',
+                        'Imported data was saved, but trends couldn’t update ($importRollupError).',
                     // The Advanced row this runs is "Rebuild all history"; the
                     // fix names it the same way.
                     fix: 'Rebuild all history',

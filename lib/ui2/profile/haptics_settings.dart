@@ -770,8 +770,7 @@ class HapticsSettingsView extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: S.x3),
           child: Text(
             AppLocalizations.of(c)?.hapticsTaskerSectionSub ??
-                'Tasker plays these by number. Like any alert they follow '
-                    'quiet hours and the haptic limit.',
+                'Tasker plays these by number. Quiet hours and the buzz limit apply.',
             style: F.over.copyWith(color: P.of(c).ink3),
           ),
         ),
@@ -949,9 +948,8 @@ class HapticsSettingsView extends StatelessWidget {
             style: F.body.copyWith(color: p.ink)),
         Text(
           l?.hapticsCommandLimitBody(limit) ??
-              '$limit commands in any 2 minutes. A precaution we chose to '
-                  'spare the motor and the battery, not a limit of the band. '
-                  'Alerts wait for room; a gesture without room is not acted on.',
+              'At most $limit buzzes every 2 minutes, to protect the motor '
+                  'and battery. Extra alerts wait; extra gestures are ignored.',
           style: F.over.copyWith(color: p.ink3),
         ),
         Slider(

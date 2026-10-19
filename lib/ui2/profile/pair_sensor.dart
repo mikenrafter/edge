@@ -416,18 +416,17 @@ class PairSensorView extends StatelessWidget {
                       switch (categoryOf(adapterId)) {
                         _ when adapterId == kCoros.id =>
                           l?.pairSensorExplainerCoros ??
-                              'A sports watch. Each sync reads battery and a few seconds of heart rate. No workout uses it, and its readings never feed a score.',
+                              'A sports watch. Only battery and a few seconds of heart rate are read.',
                         DeviceCategory.wearable =>
                           l?.pairSensorExplainerWearable ??
-                              'Its own records are saved and labelled as its own. Working out our numbers from it (sleep, resting heart rate, strain) is experimental and off for now.',
+                              'Its data is saved under its own name. Not used for your scores yet.',
                         DeviceCategory.healthMeasurement =>
                           l?.pairSensorExplainerMeasurement ??
-                              'Its readings are saved under its name. Using them in your profile is experimental and off until it’s been checked against the hardware.',
+                              'Its readings are saved under its name and not used for your scores yet.',
                         _ => l?.pairSensorExplainerWorkout ??
-                            'Heart rate for workouts; it doesn’t replace your '
-                                'band. It records while a workout runs, once '
-                                'checked against the hardware; until then it '
-                                'records nothing.',
+                            'Records heart rate during workouts, but only once it’s been '
+                                'checked against the hardware. Until then it records '
+                                'nothing. Doesn’t replace your band.',
                       }),
                       style: F.cap.copyWith(color: p.ink3, height: 1.5),
                     ),
@@ -442,7 +441,7 @@ class PairSensorView extends StatelessWidget {
                     l?.pairSensorKeyReplacesTitle ??
                         "Pairing replaces the Oura app's key",
                     l?.pairSensorKeyReplacesBody ??
-                        'The ring holds one key. Pairing without the Oura app’s key gives it a new one, and the Oura app stops working with it until the ring is reset.',
+                        'Pairing without the Oura app’s key replaces it. The Oura app will stop working with this ring until you reset it.',
                     icon: LucideIcons.triangleAlert,
                   ),
                   const SizedBox(height: S.x4),
@@ -506,9 +505,8 @@ class PairSensorView extends StatelessWidget {
                     child: StatusCard(
                       l?.pairSensorNothingFoundYet ?? 'Nothing found yet',
                       l?.pairSensorNothingFoundBody ??
-                          'A sensor answers a search only while it is awake, worn '
-                              'or damp, and not already connected to another phone '
-                              'or app.',
+                          'Make sure the sensor is on, worn and not connected '
+                              'to another phone or app.',
                       icon: LucideIcons.searchX,
                     ),
                   ),
@@ -531,7 +529,7 @@ class PairSensorView extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
             l?.pairSensorKeyBody ??
-                'Have this device’s key? Paste it to pair without a factory reset. Several keys, one per line, are tried in turn. Leave it empty to pair normally.',
+                'Have this device’s key? Paste it to pair without a factory reset. One key per line.',
             style: F.cap.copyWith(color: p.ink3, height: 1.5),
           ),
           TextField(

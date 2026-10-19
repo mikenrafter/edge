@@ -14,11 +14,11 @@ import '../../l10n/app_localizations.dart';
 import '../ui2.dart';
 import 'profile.dart' show SetRow, SwitchRow;
 
-/// The copy that says what [taps] double taps do, with the live value: "2 double
-/// taps to dismiss — fewer is a snooze" ("1 double tap" when it is 1).
+/// The copy that says what [taps] double taps do, with the live value: "Dismiss
+/// with 2 double taps. Fewer taps snooze." ("1 double tap" when it is 1).
 String snoozeDismissCopy(int taps, [AppLocalizations? l]) =>
     l?.snoozeDismissCopy(taps) ??
-    '$taps double tap${taps == 1 ? '' : 's'} to dismiss — fewer is a snooze';
+    'Dismiss with $taps double tap${taps == 1 ? '' : 's'}. Fewer taps snooze.';
 
 class SnoozeSettingsRows extends StatelessWidget {
   const SnoozeSettingsRows({

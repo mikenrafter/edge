@@ -656,9 +656,7 @@ class ImportReport extends StatelessWidget {
                 'Every row was refused: ${_rejects(o)}')
             : o.readError ??
                 (l?.welcomeNothingUsableInFile ??
-                    'The file was read but there was nothing in it this app could '
-                        'use, or every day in it was one this band had already '
-                        'measured.'),
+                    'Nothing new to import from this file.'),
         fix: l?.actionTryAnotherFile ?? 'Try another file',
         icon: LucideIcons.fileWarning,
       );
@@ -709,7 +707,7 @@ class ImportReport extends StatelessWidget {
         : null;
     final archive = o.archiveBucketsRestored > 0
         ? l?.welcomeArchiveRestored(o.archiveBucketsRestored) ??
-            'Raw sensor history restored or extended for '
+            'Sensor history restored for '
                 '${o.archiveBucketsRestored} day'
                 '${o.archiveBucketsRestored == 1 ? '' : 's'}'
         : null;
@@ -748,8 +746,7 @@ class ImportReport extends StatelessWidget {
               '${o.rejectedRows.length} '
                   'row${o.rejectedRows.length == 1 ? ' was' : 's were'} refused',
           l?.welcomeRejectedDetail(_rejects(o)) ??
-              '${_rejects(o)} Nothing was trimmed to fit — fix those lines and '
-                  'import again.',
+              '${_rejects(o)} Fix those lines and import again.',
           icon: LucideIcons.fileWarning,
         ),
       ],
@@ -767,9 +764,9 @@ class ImportReport extends StatelessWidget {
         const SizedBox(height: S.x3),
         StatusCard(
           l?.welcomeSummariesDidNotTitle ??
-              'The days landed, the summaries did not',
+              'Trends didn’t update',
           l?.welcomeSummariesDidNotBody('${o.rollupError}') ??
-              'Every imported row is saved, but updating your trends failed (${o.rollupError}). To fix it, open Your data and tap Re-analyze everything.',
+              'Imported data was saved, but trends couldn’t update (${o.rollupError}). Open Your data and tap Rebuild all history.',
           icon: LucideIcons.triangleAlert,
         ),
       ],
@@ -781,13 +778,14 @@ class ImportReport extends StatelessWidget {
           [
             if (o.strandedDays > 0)
               l?.welcomeStrandedDays(o.strandedDays) ??
-                  '${o.strandedDays} day${o.strandedDays == 1 ? '' : 's'} arrived '
-                  'out of order and were only used as context for the day '
-                  'that followed.',
+                  (o.strandedDays == 1
+                      ? '1 day was imported out of order and not scored on its own.'
+                      : '${o.strandedDays} days were imported out of order and not scored on their own.'),
             if (o.lateRows > 0)
               l?.welcomeLateRows(o.lateRows) ??
-                  '${o.lateRows} row${o.lateRows == 1 ? '' : 's'} arrived after '
-                      'their day had already been scored and closed.',
+                  (o.lateRows == 1
+                      ? '1 row came in after its day was scored and was left out.'
+                      : '${o.lateRows} rows came in after their day was scored and were left out.'),
             if (o.corruptTables.isNotEmpty)
               '${o.corruptTables.join(', ')} could not be read — SQLite '
                   'reported the file itself as corrupted for those tables. '

@@ -33,8 +33,7 @@ const _rows = [
   'Snooze for',
   'Stop escalating after',
 ];
-const _note = 'Snooze needs a band that reports how the alarm was stopped '
-    '(WHOOP 5/MG)';
+const _note = 'Snooze needs a WHOOP 5 or MG.';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
