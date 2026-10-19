@@ -314,7 +314,7 @@ void main() {
       expect(alone['counter_calibration'], {'factor': 1.5, 'n_days': 4});
       // The chip's row says what the chip counted; the factor is separate.
       expect(alone['by_source'], {'strap_counter': 622});
-      expect(alone['note'], contains('scaled by 1.50 from 4 days'));
+      expect(alone['note'], contains('Scaled by 1.50 from 4 days'));
       // The hourly spans carry the same factor, so the chart sums to `value`.
       final spans = (alone['spans'] as List).cast<Map>();
       expect(spans.fold<int>(0, (a, s) => a + (s['steps'] as int)), 933);

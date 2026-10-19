@@ -61,6 +61,9 @@ Future<Database> p21Reopen() async {
 }
 
 Future<void> p21Drop(String name) async {
+  // A test that skipped before opening anything (the UTC-only goldens) still
+  // runs this teardown.
+  p21InitFfi();
   await LocalDb.close();
   LocalDb.lastRebuild = null;
   await databaseFactory.deleteDatabase(await p21Path(name));

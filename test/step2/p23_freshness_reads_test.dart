@@ -87,6 +87,8 @@ void main() {
       expect(leafPaths(view), isEmpty);
     });
 
+    // D14: the projection also carries the two fields upstream's #448
+    // settled-night check reads (the window's offset and the data edge).
     test('nothing outside the four keys survives, whatever the bundle holds',
         () {
       final view = p22View(p22Stored(p22DayBundle('2025-03-01', i: 2)),
@@ -98,6 +100,8 @@ void main() {
           'skipped',
           'scalars.readiness',
           'sleep.accounting.value.tst_sec',
+          'sleep.window.value.offset_ms',
+          'data_edge_sec',
           'flags[]',
           'flags',
         })),
