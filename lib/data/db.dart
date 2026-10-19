@@ -309,8 +309,17 @@ class LocalDb {
     // object)` — a sustained crash burst (seen in the wild on background event
     // ingest). Reopen whenever the cached handle isn't actually open.
     if (db != null && db.isOpen) return db;
-    return _db = await _openOrRebuild();
+    // Single-flight. Two callers racing the first open used to run
+    // _openOrRebuild twice (migrations included) and keep whichever handle
+    // landed last; the other leaked, along with any transaction on it. A
+    // rebuild publishes `_db` before its salvage, so the salvage's own
+    // `instance` returns above and never waits on this future.
+    return _opening ??= _openOrRebuild()
+        .then((d) => _db = d)
+        .whenComplete(() => _opening = null);
   }
+
+  static Future<Database>? _opening;
 
   /// Set when [_openOrRebuild] had to quarantine an unopenable database and
   /// rebuild. Null on every normal launch. AppState reads it so the user is
@@ -508,6 +517,15 @@ class LocalDb {
   static bool get isStoreOpen => _db?.isOpen ?? false;
 
   static Future<void> close() async {
+    // An open in flight would otherwise publish its handle after this close.
+    final opening = _opening;
+    if (opening != null) {
+      try {
+        await opening;
+      } catch (_) {
+        // A failed open leaves nothing to close.
+      }
+    }
     // Reader first: it is a view of the writer's file and must never outlive it.
     await _closeReader();
     if (_db != null) {
