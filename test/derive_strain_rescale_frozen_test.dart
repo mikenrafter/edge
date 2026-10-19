@@ -11,6 +11,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/compute/strain_backfill.dart';
+import 'package:openstrap_edge/data/db.dart';
 
 import 'support/frozen_day_result_fixtures.dart';
 
@@ -53,6 +54,12 @@ void main() {
     db = await freshDb('openstrap_strain_rescale_test.db');
     // The newest day only sets the retention cutoff; it is never rescaled.
     await _seed(db, _newest, version: kAlgoVersion, strain: 5.0, finalized: false);
+    // The rescale prices strain at the user's own quiet-waking level (D16) and
+    // does nothing without one. A settled week at the reference level keeps
+    // the pinned 9.03 comparable with strain_rescale_backfill_test.
+    for (var d = 1; d <= 7; d++) {
+      await LocalDb.putMetricSeriesValue('2026-05-0$d', 'quiet_hrr', 0.20);
+    }
   });
   tearDownAll(dropDb);
 
