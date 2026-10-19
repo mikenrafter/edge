@@ -229,3 +229,12 @@ audited as 'wearable substrate'). The engine adopts the result with
 rawTableRowLoopOutsideHeavy x5 (`withStrapSessions` 2, `colmiSkinTemps`,
 `sparseHrSubstrate` 2, `ouraSubstrate`, `ultrahumanRecords`). No key added, no
 count raised.
+
+## Shrink (2026-10-19) - session HR windows -> registered sessionWindowsHeavy; 2 keys removed
+With a workout sensor flagged on, the workout list grouped every session's 1 Hz
+seconds on the UI isolate, twice per load. `LocalDb.sessionHrReads` now runs ONE
+SELECT (`groupSessionWindows`, `lib/data/session_windows_heavy.dart`) and hands
+the rows unread to the registered `Dispatcher.run` entry `sessionWindowsHeavy`
+(audited as 'session windows'). Removed: rawReaderUnregistered x1
+(`LocalDb._sessionWindows`) and unresolvedInvocation x1 (`LocalDb.sessionHrStats`).
+No key added, no count raised.

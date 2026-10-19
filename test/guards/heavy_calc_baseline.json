@@ -1579,13 +1579,6 @@
     {
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
-      "symbol": "LocalDb._sessionWindows",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
       "symbol": "LocalDb.dataHistoryDays",
       "element": "decoded_onehz",
       "count": 1
@@ -5179,13 +5172,6 @@
       "file": "data/db.dart",
       "symbol": "LocalDb.retryComputeJob",
       "element": "nowMs()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.sessionHrStats",
-      "element": "() { final hr = [for (final r in rs) (r['hr'] as num).toInt()]; final low = [ for (final h in hr) if (minHrFloor <= 0 || h >= minHrFloor) h, ]; final high = [ for (final h in hr) if (maxHrCeiling <= 0 || h <= maxHrCeiling) h, ]; return <String, num>{ 'n': hr.length, 'avg_hr': hr.fold<int>(0, (a, b) => a + b) / hr.length, 'min_hr': low.isEmpty ? 0 : low.reduce((a, b) => a < b ? a : b), 'max_hr': high.isEmpty ? 0 : high.reduce((a, b) => a > b ? a : b), }; }()",
       "count": 1
     },
     {

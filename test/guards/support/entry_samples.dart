@@ -30,6 +30,7 @@ import 'package:openstrap_edge/compute/day_resume_state.dart';
 import 'package:openstrap_edge/compute/day_tail_fold.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/inputs/wearable_substrate_heavy.dart';
+import 'package:openstrap_edge/data/session_windows_heavy.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/sleep_staging_worker.dart';
@@ -287,6 +288,25 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       await _sameInWorker(
           () => wearableSubstrateHeavy(wearableWorkerInputs, input),
           json: (WearableSubstrateResult r) => r.substrate);
+    },
+  ),
+  'sessionWindowsHeavy': (
+    roundTrip: () async {
+      // Plain row maps and the sensor flags in; maps of numbers out. The round
+      // trip over real sqflite rows is test/sendable_sessionWindowsHeavy_test.dart.
+      final input = SessionWindowsInput(
+        rows: [
+          for (var i = 0; i < 5; i++)
+            {'id': 's', 'source': null, 'rec_ts': 1000 + i, 'hr': 100 + i},
+        ],
+        sensors: const ['ble-hrs'],
+        wearable: null,
+        maxHrCeiling: 200,
+        minHrFloor: 30,
+      );
+      await _sameInWorker(
+          () => sessionWindowsHeavy(sessionWindowsWorkerInputs, input),
+          json: (SessionWindowsResult r) => {'stats': r.stats, 'samples': r.samples});
     },
   ),
   'decodeDayPayloadsHeavy': (

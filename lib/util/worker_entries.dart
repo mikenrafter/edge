@@ -219,6 +219,14 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
         '@SendableShape row-map input and transfer-map result with a '
         'round-trip test)',
   ),
+  WorkerEntry(
+    #sessionWindowsHeavy,
+    dispatcher: Dispatcher.run,
+    reason: 'a workout list\'s per-session HR windows with a workout sensor '
+        'flagged on (group, window rule, stats, samples); meets the contract '
+        '(WorkerInit.ensure first, @SendableShape row-map input, sendable '
+        'result with a round-trip test)',
+  ),
 ];
 
 /// Fingerprinted unresolved invocations. Shrink-only.

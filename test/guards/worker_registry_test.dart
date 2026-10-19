@@ -41,6 +41,8 @@ const kExpected = <String, Dispatcher>{
   'decodeJsonPayloadsHeavy': Dispatcher.run,
   // A wearable's day substrate (compute/inputs/wearable_substrate_heavy.dart).
   'wearableSubstrateHeavy': Dispatcher.run,
+  // A workout list's per-session HR windows (data/session_windows_heavy.dart).
+  'sessionWindowsHeavy': Dispatcher.run,
 };
 
 void main() {
