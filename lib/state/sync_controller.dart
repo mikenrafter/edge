@@ -1255,14 +1255,14 @@ class SyncController {
     final cancel = syncOperations.cancelToken;
     // A link that is already up never announces 'connecting': the panel then
     // shows "Already connected" instead of timing a step that did not happen.
-    if (!engine.isConnected) {
+    final wasConnected = engine.isConnected;
+    if (!wasConnected) {
       progress('connecting');
       if (paired == null) throw StateError('Pair a band before syncing');
       await openSession();
       cancel.throwIfCancelled();
       if (!engine.isConnected) throw StateError('Could not connect to the band');
     }
-    progress('downloading');
     // This sync is the one deriving what its download stores, so the debounced
     // light derive those commits arm stands down for the duration. Handed back
     // on EVERY exit; the queued light job is dropped only if this sync's own
@@ -1270,26 +1270,50 @@ class SyncController {
     final hold = _deriveScheduler.beginManualSync();
     var derived = false;
     try {
-      final report = await _kickSyncBurst(kickFirst: true);
+      // Over a link that was already up (D24, upstream's rule): join a burst
+      // already pulling, else ask for the floored foreground pull. A manual
+      // request is never floored, so quick taps on a band that just drained
+      // each got an empty offload, and EmptySyncTracker reads three of those
+      // as a lost clock and backs the periodic pull off. Floored: no download
+      // this time; what is stored is still calculated below.
+      final Future<SyncReport>? download;
+      if (!wasConnected) {
+        // openSession started the burst; this joins it.
+        download = _kickSyncBurst(kickFirst: true);
+      } else if (_syncBurst != null) {
+        download = _syncBurst;
+      } else if (await engine.requestForegroundSync()) {
+        download = _kickSyncBurst(kickFirst: false);
+      } else {
+        download = null;
+        _log('[sync] manual sync: foreground pull floored — no download');
+      }
       cancel.throwIfCancelled();
-      if (!engine.isConnected) throw StateError('Band disconnected during sync');
-      final verdict = classifyDownload(
-        connected: true,
-        complete: report.complete,
-        progressed: _lastBurstAdvanced ||
-            (syncOperations.presentation.download?.records ?? 0) > 0,
-        stuck: engine.historyStuckThisSession,
-      );
-      switch (verdict) {
-        case DownloadVerdict.failed:
-          throw StateError('Download stopped before completion. Retry sync.');
-        case DownloadVerdict.partial:
-          // Stopped at the time cap with data banked: not an error. What
-          // arrived is calculated below and the rest is the next sync's.
-          _log('[sync] download ended before the band finished — partial');
-          syncOperations.reportPartialDownload();
-        case DownloadVerdict.complete:
-          break;
+      if (download != null) {
+        progress('downloading');
+        final report = await download;
+        cancel.throwIfCancelled();
+        if (!engine.isConnected) {
+          throw StateError('Band disconnected during sync');
+        }
+        final verdict = classifyDownload(
+          connected: true,
+          complete: report.complete,
+          progressed: _lastBurstAdvanced ||
+              (syncOperations.presentation.download?.records ?? 0) > 0,
+          stuck: engine.historyStuckThisSession,
+        );
+        switch (verdict) {
+          case DownloadVerdict.failed:
+            throw StateError('Download stopped before completion. Retry sync.');
+          case DownloadVerdict.partial:
+            // Stopped at the time cap with data banked: not an error. What
+            // arrived is calculated below and the rest is the next sync's.
+            _log('[sync] download ended before the band finished — partial');
+            syncOperations.reportPartialDownload();
+          case DownloadVerdict.complete:
+            break;
+        }
       }
       progress('deriving');
       // Blocked behind another calculation? Say so, and clear the flag on every

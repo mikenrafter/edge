@@ -321,18 +321,33 @@ void main() {
   });
 
   group('the manual sync (Sync now, pull-to-sync)', () {
-    test('over a live link: kicked offload, then the changed-only HEAVY derive; '
-        'the presentation settles on completed', syncCase((rig, timers) async {
+    // D24: over an already-open link a manual sync takes upstream's rule —
+    // join a running burst, else the floored foreground pull — instead of
+    // kicking an unconditional offload (three quick taps on a drained band
+    // gave three empty offloads, which EmptySyncTracker reads as a lost clock).
+    test('over a live link: the floored foreground pull, then the changed-only '
+        'HEAVY derive; the presentation settles on completed',
+        syncCase((rig, timers) async {
       await _open(rig);
       expect(rig.app.syncPresentation.phase, 'idle');
       await rig.app.syncNow(); // the AppState entry: same coordinator
-      expect(rig.engine.events, ['requestHistorySync', 'runSync:180']);
+      expect(rig.engine.events, ['requestForegroundSync', 'runSync:180']);
       expect(rig.passes, hasLength(1));
       expect(rig.passes.single.heavy, isTrue);
       expect(rig.passes.single.changedOnly, isTrue);
       expect(rig.app.syncPresentation.phase, 'completed');
       expect(rig.app.syncPresentation.busy, isFalse);
       expect(rig.app.syncPresentation.lastSuccess, isNotNull);
+    }));
+
+    test('over a live link with the foreground pull floored: no download, '
+        'what is stored is still calculated (D24)', syncCase((rig, timers) async {
+      await _open(rig);
+      rig.engine.foregroundSyncAllowed = false;
+      final result = await rig.app.syncOperations.syncNow();
+      expect(result.success, isTrue);
+      expect(rig.engine.events, ['requestForegroundSync']);
+      expect(rig.passes, hasLength(1));
     }));
 
     test('with the link down it opens the session first, then JOINS the burst '
