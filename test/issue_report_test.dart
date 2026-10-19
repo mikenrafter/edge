@@ -275,6 +275,27 @@ void main() {
       }
     });
 
+    test('gesture contact on the ECG electrodes never leaves in the slice',
+        () async {
+      final db = await LocalDb.instance;
+      final now = DateTime(2030, 1, 20, 12);
+      final recent = now.millisecondsSinceEpoch ~/ 1000 - 3600;
+      for (final (hex, origin) in [('aa', null), ('bb', 'gesture')]) {
+        await db.insert('ecg_raw_packet', {
+          'hex': hex,
+          'device_id': 'd',
+          'captured_at': recent,
+          'origin': origin,
+        });
+      }
+      final path = await exportRecentSlice(now: now);
+      addTearDown(() => deleteDatabase(path));
+      final copy = await databaseFactory.openDatabase(path);
+      addTearDown(copy.close);
+      expect([for (final r in await copy.query('ecg_raw_packet')) r['hex']],
+          ['aa']);
+    });
+
     test('old raw rows go, recent stay, daily rows all stay, live untouched',
         () async {
       final db = await LocalDb.instance;

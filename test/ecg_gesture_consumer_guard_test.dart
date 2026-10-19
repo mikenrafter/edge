@@ -38,6 +38,8 @@ final _allow = <String, RegExp>{
       RegExp(r"txn\.update\(\s*'ecg_raw_packet'"),
   'restore: retag after merging ecg tables':
       RegExp(r"counts\['ecg_raw_packet'\]"),
+  'issue-report slice: kept on a time expression that drops gesture contact':
+      RegExp(r"'ecg_raw_packet':\s*\(SliceKeep\.highRate,\s*_ecgRawNot"),
   'ownership lists (salvage / restore) and the coach deny list':
       RegExp(r"'ecg_reading_packet',\s*'ecg_raw_packet'"),
 };
@@ -81,6 +83,13 @@ void main() {
       }
     }
     expect(readers, greaterThan(0), reason: 'the guard found no reader at all');
+    // The slice's allow-listed entry is only safe while its expression drops
+    // gesture contact (upstream's issue report, merge log D17).
+    expect(
+      File('lib/data/recent_slice.dart').readAsStringSync(),
+      contains('_ecgRawNotGesture =\n'
+          "    \"(CASE WHEN origin = 'gesture' THEN NULL ELSE captured_at END)\";"),
+    );
     expect(problems, isEmpty, reason: problems.join('\n'));
   });
 

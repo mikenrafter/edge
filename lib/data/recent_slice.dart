@@ -39,6 +39,13 @@ enum SliceKeep {
   none,
 }
 
+/// The time expression the slice keeps raw ECG packets on. Gesture contact on
+/// the electrodes is not an ECG reading, so its packets never leave the phone
+/// in a report: NULL fails the cutoff and the row is dropped
+/// (ecg_gesture_consumer_guard_test).
+const String _ecgRawNotGesture =
+    "(CASE WHEN origin = 'gesture' THEN NULL ELSE captured_at END)";
+
 /// Every table in the live schema: what the slice keeps, by which column, and
 /// why. A table missing here falls back to [_fallback]; the test
 /// test/issue_report_test.dart fails when one is missing, so add it here.
@@ -67,12 +74,21 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'ecg_reading_packet': (SliceKeep.highRate,
       '(SELECT r.start_ts FROM src.ecg_reading r WHERE r.id = reading_id)',
       'ECG samples, kept for the readings kept'),
-  'ecg_raw_packet': (SliceKeep.highRate, 'captured_at', 'raw ECG packets'),
+  'ecg_raw_packet': (SliceKeep.highRate, _ecgRawNotGesture,
+      'raw ECG packets, gesture contact left out'),
+  'ecg_gesture_session': (SliceKeep.recent, 'created_at', 'ECG-gesture attempts'),
+  'wake_trace': (SliceKeep.recent, 'at_ms', 'wake-detection trace events'),
+  'wake_evidence': (SliceKeep.recent, 'at_sec', 'noted wake events per sleep block'),
+  'input_rev': (SliceKeep.highRate, '(bucket * 900)',
+      'revision per 15-minute bucket of raw input, kept with the raw it counts'),
   // Per-night working data: up to ~200 KB a night.
   'sleep_session_candidates': (SliceKeep.recentDay, 'day_id', 'per-night sleep candidates (large)'),
   'wake_day_features': (SliceKeep.recentDay, 'day_id', 'per-day intermediate features'),
   // Long-term archive: already compressed and grows for ever.
   'substrate_archive': (SliceKeep.none, null, 'compressed long-term archive of old raw data'),
+  'spectral_archive': (SliceKeep.none, null, 'compressed sample archive of old 1 Hz data'),
+  // Resumable derive state: large blobs, only the recent days are useful.
+  'day_checkpoint': (SliceKeep.recentDay, 'day_id', 'derive resume checkpoints'),
   // Daily scores and everything they are built from: every day.
   'day_result': (SliceKeep.all, null, 'daily scores, every day'),
   'derived_day': (SliceKeep.all, null, 'older daily scores'),
@@ -81,6 +97,12 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'metric_method': (SliceKeep.all, null, 'how each daily metric was measured'),
   'baselines': (SliceKeep.all, null, 'personal baselines'),
   'compute_freshness': (SliceKeep.all, null, 'compute bookkeeping'),
+  'last_result': (SliceKeep.all, null, 'last good result per screen, one row each'),
+  'store_rev': (SliceKeep.all, null, 'store revision counter (rows are deleted at once)'),
+  'row_rev': (SliceKeep.all, null, 'per-row revisions of the derived tables'),
+  'spectral_archive_status': (SliceKeep.all, null, 'sample archive outcome per day'),
+  'wake_meta': (SliceKeep.all, null, 'wake detection settings'),
+  'wake_confirmation': (SliceKeep.all, null, 'confirmed wake times'),
   'sleep_nap': (SliceKeep.all, null, 'naps'),
   'sleep_override': (SliceKeep.all, null, 'sleep times the user edited'),
   // Workouts and activity: one row each.
@@ -100,6 +122,9 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'journal': (SliceKeep.all, null, 'journal'),
   'journal_metric': (SliceKeep.all, null, 'journal values'),
   'journal_field_def': (SliceKeep.all, null, 'journal fields'),
+  'moment_label': (SliceKeep.all, null, 'answers to marked moments'),
+  'symptom_entry': (SliceKeep.all, null, 'symptom descriptions'),
+  'assumed_water': (SliceKeep.all, null, 'assumed water entries'),
   'cycle_log': (SliceKeep.all, null, 'cycle log'),
   'cycle_symptom': (SliceKeep.all, null, 'cycle symptoms'),
   'lab_result': (SliceKeep.all, null, 'lab results'),
