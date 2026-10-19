@@ -8994,8 +8994,11 @@ class LocalDb {
   /// [insertEvent] for a [StrapEvent]: keeps its sub-second remainder and the
   /// time the frame was received. A re-insert keeps the FIRST receipt time.
   /// The event must carry the profile it was parsed with; there is no gen4
-  /// default (see [insertEvent]).
-  static Future<void> insertStrapEvent(StrapEvent e) => insertEvent(
+  /// default (see [insertEvent]). A missing profile fails the returned future
+  /// rather than throwing synchronously: the live event path persists
+  /// fire-and-forget with a `catchError`, and a synchronous throw skipped
+  /// that and the alarm and gesture handling after it.
+  static Future<void> insertStrapEvent(StrapEvent e) async => insertEvent(
     e.eventId,
     e.tsEpoch,
     e.hex,

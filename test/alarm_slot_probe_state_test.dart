@@ -250,7 +250,8 @@ void main() {
       expect(app.alarmEpoch, e);
 
       // After that, an event stamped after the restore is the real alarm's.
-      app.debugOnLiveEvent(_ev(57, _nowSec() + 60));
+      // Stamped at its wake time: a fire before it is a replay (D15).
+      app.debugOnLiveEvent(_ev(57, e));
       expect(app.alarmEpoch, isNull, reason: 'normal handling is back');
     });
   });
