@@ -2177,7 +2177,9 @@ const int kAlgoVersion = 114;
 // REPIN @ ddb61f7 (same branch): stageMinuteRanges, kStageScoreMargin and
 // CardioStagerResult.epochEvidence, additive. Edge stores the ranges as
 // sleep.stage_ranges (kAlgoVersion 114, D27 revised).
-const String kAnalyticsPin = 'ddb61f78c49e4f3fd4d72b8261b2e73d9f0da646';
+// REPIN @ d9eda83 (same branch): hrvTime, nocturnalRmssd and session RMSSD abstain on
+// a non-finite beat time instead of throwing; finite output unchanged, no bump.
+const String kAnalyticsPin = 'd9eda83f69391e9d8f6913db9e9aa3dfc5cbb171';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both
