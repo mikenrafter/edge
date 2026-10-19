@@ -457,6 +457,13 @@ void main() {
         app.engine.state.generation = 'gen4';
         app.startWorkout(workoutId: 'w4-keep', type: 'strength');
         await sessionLanded('w4-keep');
+        // Strain is priced on the user's own quiet-waking level (D16:
+        // upstream's net-TRIMP strain): seed one, as the measured-session
+        // test does, so the tallies this test checks include strain.
+        for (var d = 1; d <= 3; d++) {
+          await LocalDb.putMetricSeriesValue('2020-01-0$d', 'quiet_hrr', 0.20);
+        }
+        await app.debugRefreshNightlyRhr();
         setLiveHr(app, 150);
         final tick = probe.active(kTick).single;
         for (var i = 0; i < 90; i++) {
@@ -490,6 +497,13 @@ void main() {
         app.engine.state.generation = 'gen4';
         app.startWorkout(workoutId: 'w4-die', type: 'strength');
         await sessionLanded('w4-die');
+        // Strain is priced on the user's own quiet-waking level (D16:
+        // upstream's net-TRIMP strain): seed one, as the measured-session
+        // test does, so the tallies this test checks include strain.
+        for (var d = 1; d <= 3; d++) {
+          await LocalDb.putMetricSeriesValue('2020-01-0$d', 'quiet_hrr', 0.20);
+        }
+        await app.debugRefreshNightlyRhr();
         setLiveHr(app, 150);
         final tick = probe.active(kTick).single;
         for (var i = 0; i < 90; i++) {

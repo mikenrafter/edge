@@ -100,12 +100,6 @@ void main() {
     await workoutDbTearDown(_db);
   });
 
-  Future<Future<void> Function()> breakSessionWrites() async {
-    final db = await LocalDb.instance;
-    await db.execute('ALTER TABLE sessions RENAME TO sessions_hidden');
-    return () => db.execute('ALTER TABLE sessions_hidden RENAME TO sessions');
-  }
-
   Future<void> started(_Rig r, String id, {String type = 'strength'}) async {
     r.c.startWorkout(workoutId: id, type: type);
     await sessionLanded(id);
@@ -179,41 +173,10 @@ void main() {
       expect(spies.keepAwake, [true, false]);
     });
 
-    test('a failed write keeps the session live and leaves the Live '
-        'Activity, step base and zone alert alone; a retry then finishes it',
-        () async {
-      // A linked band, so the stop reaches the write itself (an unlinked one
-      // first reads the stamped family back from the row).
-      final r = _Rig()
-        ..raw = 10
-        ..family = 'gen4';
-      await started(r, 'wc-fail');
-      await until(() => spies.liveActivityMethods.contains('start'));
-      r.c.noteWorkoutSample(nowMs());
-      r.raw = 50;
-      final steps = r.c.workoutStepsMeasured;
-      expect(steps, greaterThan(0));
-      final restore = await breakSessionWrites();
-      r.trace.clear();
-      await expectLater(r.c.stopWorkout(), throwsA(anything));
-      // Teardown ran (idempotent), the write failed, nothing was cleared.
-      expect(r.trace, ['hold:false', 'notify']);
-      expect(r.c.activeWorkout, isNotNull);
-      expect(r.c.workoutStepsMeasured, steps,
-          reason: 'the raw base is only reset after the write lands');
-      expect(spies.liveActivityMethods, ['start'],
-          reason: 'the Live Activity ends only after a successful write');
-      expect(r.logs.last, contains('keeping it live'));
-
-      await restore();
-      r.trace.clear();
-      await r.c.stopWorkout();
-      expect(r.c.activeWorkout, isNull);
-      expect(r.c.workoutStepsMeasured, isNull);
-      expect(r.trace, contains('bump'));
-      await until(() => spies.liveActivityMethods.contains('end'));
-      expect((await sessionRow('wc-fail'))!['steps'], steps);
-    });
+    // Upstream's "a failed write keeps the session live" case is dropped
+    // (D20.4): ours holds a failed save as "stop pending" (streams released,
+    // Live Activity ended once, retried), pinned in workout_stop_pending_test
+    // and app_state_workout_lifecycle_test.
 
     test('step coverage is judged at stop entry, before the teardown it '
         'awaits', () async {
