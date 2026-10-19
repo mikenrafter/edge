@@ -129,8 +129,9 @@ void main() {
         await app.debugArmNextAlarmOccurrence();
         expect(band.setEpochs, [_epochOf(week)]);
         // The alarm fires and the app books it as spent; the link stays up in
-        // the background, so no connect, sync or resume follows.
-        app.debugHandleAlarmEvent(57);
+        // the background, so no connect, sync or resume follows. Stamped at
+        // the wake time: a fire stamped before it is a replay (D15).
+        app.debugHandleAlarmEvent(57, ts: _epochOf(week));
         expect(app.alarmEpoch, isNull);
         band.sets.clear();
         await app.debugKeepAliveTick();
@@ -214,7 +215,8 @@ void main() {
     });
 
     test('a fresh EXECUTED still clears it (the alarm really fired)', () {
-      app.debugHandleAlarmEvent(57);
+      // Stamped at the wake time: a fire before it is a replay (D15).
+      app.debugHandleAlarmEvent(57, ts: app.alarmEpoch);
       expect(app.alarmEpoch, isNull);
     });
   });

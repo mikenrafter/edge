@@ -641,15 +641,19 @@ void main() {
     expect(guard.hasMatch(src), isTrue);
   });
 
-  test('an offline first window ends before the warning rebuild', () {
-    // The first grace timer fires 250ms before its window closes; when the
-    // link is down that window is also the last, so the escalation branch must
-    // close it itself or the row sits on "waiting" next to the alert.
+  test('the grace timer fires after its window; the offline branch keeps '
+      'the replay floor', () {
+    // D20.2: upstream's early-fire timer (graceMs - 250, its "Setting alarm…"
+    // hint) is not ported; it raced the retry against the arm that started it.
+    // Firing after the window, the offline branch has nothing to close, and
+    // nulling setAtMs there would drop the floor the replay gate holds a late
+    // event 56/57/59 against.
     final src = File('lib/state/app_state.dart').readAsStringSync();
-    final branch = RegExp(
-      r'if \(_alarmAutoRetried \|\| !isConnected\) \{[^}]*?'
-      r'_alarm\.setAtMs = null;\s*\n\s*notifyListeners\(\);',
-    );
-    expect(branch.hasMatch(src), isTrue);
+    expect(
+        RegExp(r'_alarmGraceTimer = Timer\(\s*Duration\(milliseconds: '
+                r'_alarm\.graceMs \+ 250\)')
+            .hasMatch(src),
+        isTrue);
+    expect(src, isNot(contains('_alarm.setAtMs = null')));
   });
 }

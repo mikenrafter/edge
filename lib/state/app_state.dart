@@ -7265,8 +7265,11 @@ class AppState extends ChangeNotifier {
   /// duration and the retry wiring can't drift between the two call sites.
   void _armAlarmGraceTimer(DateTime when) {
     _alarmGraceTimer?.cancel();
+    // Fires just AFTER the window closes (D20.2: upstream's early-fire
+    // "Setting alarm…" hint is not ported). The retry goes through the arm
+    // flight either way; firing early only raced the arm that started it.
     _alarmGraceTimer = Timer(
-      alarmGraceTimerDelay(_alarm.graceMs, retryLeft: !_alarmAutoRetried),
+      Duration(milliseconds: _alarm.graceMs + 250),
       () => unawaited(_onAlarmGraceElapsed(when)),
     );
   }
@@ -7303,9 +7306,6 @@ class AppState extends ChangeNotifier {
       if (_alarmGraceTimer?.isActive ?? false) return;
     }
     if (_alarmAutoRetried || !isConnected) {
-      // Offline, the first window is also the last, but its timer fired just
-      // before it closes; end it so this rebuild lands on the warning.
-      _alarm.setAtMs = null;
       notifyListeners();
       _escalateAlarmLatchFailed(epoch);
       return;
