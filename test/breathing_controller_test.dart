@@ -76,8 +76,10 @@ void main() {
     expect(controller.breathingWindowOpen, isFalse);
     expect(nudges, 2);
     expect(notifications, 4);
-    expect(clockReads, 3,
-        reason: 'start reads twice and stop reads the same injected clock once');
+    // Ours reads the clock once at start and hands that reading to the Live
+    // Activity too (D20: our controllers), so the two never disagree.
+    expect(clockReads, 2,
+        reason: 'start and stop each read the same injected clock once');
 
     await controller.startBreathingSession();
     clock = clock.add(const Duration(milliseconds: 59999));
@@ -299,27 +301,29 @@ void main() {
       expect(trace, ['notify', 'reconcile:begin', 'reconcile:end']);
     });
 
+    // One clock read, shared by the session and the Live Activity (D20:
+    // ours; upstream read the clock again for the Live Activity).
     test('startBreathingSession reads the clock, notifies, starts the Live '
         'Activity, then waits on reconcile before arming the timer', () async {
       final probe = TimerProbe();
       await probe.run(() async {
         reconcileGate = Completer<void>();
         final done = controller.startBreathingSession();
-        expect(trace, ['now:1', 'notify', 'now:2', 'reconcile:begin']);
+        expect(trace, ['now:1', 'notify', 'reconcile:begin']);
         expect(controller.breathingStartedAt, read(1));
         await until(() => spies.breathingMethods.isNotEmpty,
             what: 'the Live Activity start');
         expect(spies.breathingMethods, ['start']);
         expect(spies.breathingActivity.single.args,
-            containsPair('startedAtMs', read(2).millisecondsSinceEpoch),
-            reason: 'the Live Activity takes its own, later clock read');
+            containsPair('startedAtMs', read(1).millisecondsSinceEpoch),
+            reason: 'the Live Activity takes the session\'s own start');
         expect(probe.active(kBreathRecompute), isEmpty,
             reason: 'the timer is armed only after reconcile completes');
 
         reconcileGate!.complete();
         await done;
         expect(trace.last, 'reconcile:end');
-        expect(trace, hasLength(5));
+        expect(trace, hasLength(4));
         expect(probe.active(kBreathRecompute), hasLength(1));
         await controller.stopBreathingSession();
       });
@@ -332,7 +336,7 @@ void main() {
         await controller.startBreathingSession();
         trace.clear();
         await controller.stopBreathingSession();
-        expect(trace, ['nudge', 'now:3', 'notify']);
+        expect(trace, ['nudge', 'now:2', 'notify']);
         expect(spies.breathingMethods.last, 'end');
       });
     });
@@ -345,10 +349,10 @@ void main() {
         await controller.startBreathingSession();
         trace.clear();
         final done = controller.stopBreathingSession();
-        expect(trace, ['nudge', 'now:3'],
+        expect(trace, ['nudge', 'now:2'],
             reason: 'the insert is awaited, so notify cannot have run yet');
         await done;
-        expect(trace, ['nudge', 'now:3', 'notify']);
+        expect(trace, ['nudge', 'now:2', 'notify']);
         final rows = await LocalDb.breathingSessions();
         expect(rows, hasLength(1));
         expect(rows.single['started_at'], read(1).millisecondsSinceEpoch);
