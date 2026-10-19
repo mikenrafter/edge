@@ -506,6 +506,26 @@ Substrate substrateFromDecodedPage(
   List<Map<String, dynamic>> rrRows,
 ) => (_PrepareAccumulator()..addDecodedPage(frames, rrRows)).buildSubstrate();
 
+/// A retained-load build the way the worker does it: optionally [seed]ed (see
+/// `RetainedLoad.seedMessage`), the [prefixBeats] a seed without beats is sent,
+/// then the pages. Exists so the seam is testable without an isolate.
+@visibleForTesting
+({Substrate sub, Map<String, Object?> extras}) accumulateRetained({
+  Map? seed,
+  List<Map<String, dynamic>> prefixBeats = const [],
+  required List<({List<Map<String, dynamic>> frames, List<Map<String, dynamic>> rr})>
+      pages,
+}) {
+  final acc = _PrepareAccumulator()..retain = true;
+  if (seed != null) acc.seed(seed);
+  if (prefixBeats.isNotEmpty) acc.addPrefixBeats(prefixBeats);
+  for (final p in pages) {
+    acc.addDecodedPage(p.frames, p.rr);
+  }
+  final sub = acc.buildSubstrate();
+  return (sub: sub, extras: acc.retainExtras());
+}
+
 @visibleForTesting
 PreparedDerivationPayload prepareDerivationPayload(
   Substrate sub, {
