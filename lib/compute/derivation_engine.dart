@@ -4637,11 +4637,15 @@ class DerivationEngine {
         },
       );
       if (!decision.resume) return null;
-      final state = decodeDayResumeState(cp.state);
-      if (state == null || state.folded == 0) return null;
+      // The header only: this runs on every warm pass, on the engine's isolate,
+      // so the blob is not decoded here. The gates ([_checkpointGate], [_foldedGate]) judge the
+      // figure; the worker that folds the tail decodes the blob and refuses a
+      // damaged one, which reads the day's whole beats.
+      final folded = peekDayResumeFolded(cp.state);
+      if (folded == null || folded == 0) return null;
       return DayRrResume(
         cp: cp,
-        state: state,
+        folded: folded,
         skipBelowRecTs: cp.cpRecTs - kRrReadSlackSec,
       );
     } catch (e) {
@@ -6386,16 +6390,25 @@ class DerivationEngine {
     final ckptReuse = reason == DayResultWrite.derive && !batchReference;
     DayCalculationState? previousState =
         batchReference ? null : _calculationStates[day.date];
-    DayResumeState? resumed;
+    // Whether the day's beat-driven figures may continue the checkpoint it was
+    // loaded against. A warm calculation state has no RR/curve state of its own,
+    // so the stored checkpoint is the worker's input for that tail; it is judged
+    // by the gate a cold resume passes (context, folded rows, revisions) and
+    // never trusted for having been probed: ownership, the zone or the rows
+    // before its cursor may have moved under a process that stayed up.
+    var resumed = false;
     if (previousState != null) {
-      // A warm calculation state has no RR/curve state of its own. The
-      // prepared checkpoint is the immutable worker input for that tail.
-      resumed = day.rrResume?.state;
+      final probe = day.rrResume;
+      if (probe != null && ckptReuse) {
+        var gate = _checkpointGate(day, profile, probe.cp);
+        if (gate.resume) gate = _foldedGate(day, probe.cp, probe.folded);
+        resumed = _noteGate(day, gate, probe.folded);
+      }
     } else if (ckptReuse) {
       final restored = await _restoreCheckpoint(day, profile);
       if (restored != null) {
         previousState = restored.state;
-        resumed = restored.resume;
+        resumed = true;
       }
     }
     // A day loaded without the beats its checkpoint folded takes the beat-driven
@@ -6403,7 +6416,7 @@ class DerivationEngine {
     // plus the tail; when it cannot, the missing beats are read back.
     DayTailResult? stream;
     if (day.rrResume != null) {
-      stream = await _streamDayTail(day, resumed);
+      if (resumed) stream = await _streamDayTail(day);
       if (stream == null) day = await _withFullRr(day);
     }
     final streamedBeats = stream?.tailRr.length ?? 0;
@@ -7541,6 +7554,56 @@ class DerivationEngine {
     );
   }
 
+  /// Whether [cp] may be continued over [day], first half: the gate a cold
+  /// resume ([_restoreCheckpoint]) and a warm streamed tail
+  /// ([_derivePreparedDay]) both pass, so a process that stayed up cannot trust
+  /// a checkpoint a fresh one would refuse. [cp]'s algorithm version and layout,
+  /// the day context (profile, ownership and priority, family, zone offsets,
+  /// source) and the revisions of the buckets it folded. Pure: no decode, no
+  /// seeding, no row chunks, no counters (see [_noteGate]). The second half is
+  /// [_foldedGate], once the blob's folded figure is known.
+  ResumeDecision _checkpointGate(
+    PreparedDerivationDay day,
+    Profile profile,
+    DayCheckpoint cp,
+  ) {
+    final revs = day.inputRevs;
+    if (revs == null || day.daySub.tsSec.isEmpty) {
+      return const ResumeDecision.full('none');
+    }
+    final cpBucket = cp.cpRecTs ~/ kRevBucketSec;
+    return decideResume(
+      cp: cp,
+      algoVersion: kAlgoVersion,
+      ctxSig: _checkpointContext(day, profile, clipEndSec: cp.cpRecTs).sig,
+      liveRevs: {
+        for (final e in revs.entries)
+          if (e.key < cpBucket) e.key: e.value,
+      },
+    );
+  }
+
+  /// Second half: the blob must have folded exactly the day's rows before the
+  /// cursor ([folded] null: a blob that cannot be read).
+  ResumeDecision _foldedGate(
+      PreparedDerivationDay day, DayCheckpoint cp, int? folded) {
+    if (folded == null) return const ResumeDecision.full('unreadable_state');
+    final before = firstIndexAtOrAfter(day.daySub.tsSec, cp.cpRecTs);
+    if (folded != before || before == 0) {
+      return const ResumeDecision.full('folded');
+    }
+    return const ResumeDecision.resume();
+  }
+
+  /// Logs and counts a gate verdict (one line and one counter per
+  /// resumed day, cold or warm).
+  bool _noteGate(PreparedDerivationDay day, ResumeDecision decision, int? folded) {
+    _log('[perf] checkpoint ${day.date} '
+        '${decision.resume ? 'resume folded=$folded' : 'full ${decision.reason}'}');
+    perf.addCount(decision.resume ? 'cp_resumed' : 'cp_full', 1);
+    return decision.resume;
+  }
+
   /// [day]'s stored checkpoint when it may be resumed, as a state whose
   /// summaries start where the checkpoint stopped (and the decoded checkpoint
   /// itself, whose streaming RR state a streamed day continues); null (a full
@@ -7561,38 +7624,23 @@ class DerivationEngine {
       var decision = const ResumeDecision.full('none');
       DayResumeState? state;
       if (cp != null) {
-        final cpBucket = cp.cpRecTs ~/ kRevBucketSec;
-        final ctx =
-            _checkpointContext(day, profile, clipEndSec: cp.cpRecTs);
-        decision = decideResume(
-          cp: cp,
-          algoVersion: kAlgoVersion,
-          ctxSig: ctx.sig,
-          liveRevs: {
-            for (final e in revs.entries)
-              if (e.key < cpBucket) e.key: e.value,
-          },
-        );
+        // Decoded only once the context and revisions have passed, and here
+        // because the seeded calculation state needs it: this is the cold
+        // path, once per process and day.
+        decision = _checkpointGate(day, profile, cp);
         if (decision.resume) {
-          state = probed?.state ?? decodeDayResumeState(cp.state);
-          // The blob must have folded exactly the day's rows before the cursor.
-          final before = firstIndexAtOrAfter(ts, cp.cpRecTs);
-          if (state == null) {
-            decision = const ResumeDecision.full('unreadable_state');
-          } else if (state.folded != before || before == 0) {
-            decision = const ResumeDecision.full('folded');
-            state = null;
-          }
+          state = decodeDayResumeState(cp.state);
+          decision = _foldedGate(day, cp, state?.folded);
+          if (!decision.resume) state = null;
         }
       }
-      _log('[perf] checkpoint ${day.date} '
-          '${decision.resume ? 'resume folded=${state!.folded}' : 'full ${decision.reason}'}');
-      perf.addCount(decision.resume ? 'cp_resumed' : 'cp_full', 1);
-      if (state == null) return null;
+      final decoded = state;
+      _noteGate(day, decision, decoded?.folded);
+      if (decoded == null) return null;
       // The rows the stager computed before the restart: staging finds them as
       // hits instead of recomputing the night. The night RR / spectral part
       // rides in `state` and is armed by seedFrom.
-      final rows = state.cardioRowsJson;
+      final rows = decoded.cardioRowsJson;
       if (rows != null) {
         // Still encoded: the staging worker decodes and merges it. Its start
         // seconds lie in the staging window it was cut to when it was written.
@@ -7602,7 +7650,7 @@ class DerivationEngine {
             window.$1 - kCardioRowsSlackSec,
             window.$2 + kCardioRowsSlackSec));
       }
-      return (state: DayCalculationState()..seedFrom(state), resume: state);
+      return (state: DayCalculationState()..seedFrom(decoded), resume: decoded);
     } catch (e) {
       _log('checkpoint ${day.date} not resumed: $e');
       return null;
@@ -7616,32 +7664,23 @@ class DerivationEngine {
   /// checkpoint, its family has no quiet cut, the curves were folded under
   /// another one, or the tail does not continue the state. The caller then
   /// reads the day's whole beats.
-  Future<DayTailResult?> _streamDayTail(
-    PreparedDerivationDay day,
-    DayResumeState? resumed,
-  ) async {
+  Future<DayTailResult?> _streamDayTail(PreparedDerivationDay day) async {
     final probe = day.rrResume!;
-    if (resumed == null || !identical(resumed, probe.state)) return null;
     final sub = day.daySub;
     final cut = ana.calibrationFor(_quietEnmoCutG, sub.deviceFamily);
-    if (cut == null || resumed.curves.cut != cut) return null;
+    if (cut == null) return null;
     try {
-      final tail = rrTailBeats(
-        sub.rrMs,
-        sub.rrTsMs,
-        floorMs: resumed.rr.lastTsMs,
-        edgeMs: rrFoldEdgeMs(probe.cp.cpRecTs),
-      );
-      final from = resumed.folded;
-      // The worker decodes the STORED checkpoint blob itself: `resumed` came
-      // from exactly these bytes and its streaming parts are not changed here,
-      // so nothing is serialised on this isolate. It folds its own copies, so
-      // `resumed` stays untouched and a fold killed by the timeout leaves
-      // nothing behind.
+      final from = probe.folded;
+      // The worker decodes the STORED checkpoint blob itself and cuts the tail
+      // off the beats read (it alone holds the state's last beat), so the blob
+      // is neither decoded nor serialised on this isolate. It folds its own
+      // copies, so a fold killed by the timeout leaves nothing behind.
       final input = DayTailInput(
         checkpoint: probe.cp.state,
-        tailRr: tail.rrMs,
-        tailTs: tail.rrTsMs,
+        tailRr: sub.rrMs,
+        tailTs: sub.rrTsMs,
+        edgeMs: rrFoldEdgeMs(probe.cp.cpRecTs),
+        cutG: cut,
         accTs: sub.tsSec.sublist(from),
         ax: sub.ax.sublist(from),
         ay: sub.ay.sublist(from),

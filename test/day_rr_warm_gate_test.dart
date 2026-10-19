@@ -24,6 +24,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -32,7 +33,6 @@ import 'package:openstrap_edge/compute/day_checkpoint_fold.dart';
 import 'package:openstrap_edge/compute/day_resume_state.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
-import 'package:openstrap_edge/data/day_checkpoint.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:path/path.dart' as p;
@@ -250,5 +250,21 @@ void main() {
     }
     await DerivationEngine().run(_profile, force: true);
     expect(warmDay, equals(await stored()), reason: 'whole stored day');
+  });
+
+  test('the per-pass probe does not decode the checkpoint on the engine isolate',
+      () {
+    // Every warm pass probes; a decode there is O(blob) on the UI isolate
+    // (AGENTS 3.10). The probe reads the header, the worker decodes.
+    final src = File('lib/compute/derivation_engine.dart')
+        .readAsLinesSync()
+        .where((l) => !l.trimLeft().startsWith('//'))
+        .join('\n');
+    final a = src.indexOf('Future<DayRrResume?> _probeRrResume(');
+    final b = src.indexOf('Who owns each anchor signal', a);
+    final probe = src.substring(a, b < 0 ? a + 2000 : b);
+    expect(a, isNonNegative);
+    expect(probe, contains('peekDayResumeFolded'));
+    expect(probe, isNot(contains('decodeDayResumeState')));
   });
 }

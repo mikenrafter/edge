@@ -12,6 +12,7 @@
 
 import 'dart:typed_data';
 
+import 'day_checkpoint_fold.dart' show rrTailBeats;
 import 'day_resume_state.dart';
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
@@ -32,13 +33,18 @@ class DayTailInput {
     required this.az,
     required this.onsetSec,
     required this.offsetSec,
+    this.edgeMs,
+    this.cutG,
   });
 
   /// The stored `DayCheckpoint.state` the resumed pass was decoded from
   /// (`encodeDayResumeState` bytes), exactly as stored.
   final Uint8List checkpoint;
 
-  /// Beats after the checkpoint: interval (ms) and stamp (epoch ms).
+  /// Beats after the checkpoint: interval (ms) and stamp (epoch ms). With
+  /// [edgeMs] set they are the beats READ from a little before the checkpoint
+  /// and the worker cuts the tail itself (it alone holds the state's last beat,
+  /// which the engine does not decode).
   final List<double> tailRr;
   final List<double> tailTs;
 
@@ -47,6 +53,14 @@ class DayTailInput {
   final List<double> ax;
   final List<double> ay;
   final List<double> az;
+
+  /// The edge (epoch ms) at which the beats [tailRr] / [tailTs] begin to be the
+  /// tail (`rrFoldEdgeMs(cpRecTs)`); null: they are the tail already.
+  final double? edgeMs;
+
+  /// The quiet-second cut (g) the curves must have been folded under; the fold
+  /// refuses (null) a state folded under another. Null: not checked.
+  final double? cutG;
 
   /// The pass's sleep window (seconds), applied when the curves are read.
   final int onsetSec;
@@ -89,7 +103,15 @@ DayTailResult? foldDayTailHeavy(WorkerInputs inputs, DayTailInput input) {
   final state = decodeDayResumeState(input.checkpoint);
   if (state == null) return null;
   final rr = state.rr, curves = state.curves;
-  final (tailRr, tailTs, accTs) = (input.tailRr, input.tailTs, input.accTs);
+  if (input.cutG != null && curves.cut != input.cutG) return null;
+  final edge = input.edgeMs;
+  final cut = edge == null
+      ? null
+      : rrTailBeats(input.tailRr, input.tailTs,
+          floorMs: rr.lastTsMs, edgeMs: edge);
+  final tailRr = cut?.rrMs ?? input.tailRr;
+  final tailTs = cut?.rrTsMs ?? input.tailTs;
+  final accTs = input.accTs;
   // The first beats of a day, whose rows went with the pass before.
   if (!curves.continuesWith(tailTs, accTs)) return null;
   rr.fold(tailRr, tailTs);

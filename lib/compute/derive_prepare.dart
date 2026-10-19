@@ -6,14 +6,15 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 import '../ble/adapters/signals.dart';
 import '../data/coverage_resolver.dart';
 import '../data/day_checkpoint.dart';
-import 'day_resume_state.dart';
 import 'substrate.dart';
 import 'vendor_sleep.dart';
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
 
 /// A day whose substrate was loaded WITHOUT the beats the stored checkpoint
-/// already folded: [cp] resumes it, [state] is [cp]'s blob decoded, and `decoded_rr`
+/// already folded: [cp] resumes it, [folded] is the seconds its blob says it
+/// folded (header only: the blob is not decoded on the engine's isolate, the
+/// worker that folds the tail decodes it), and `decoded_rr`
 /// rows with `rec_ts` below [skipBelowRecTs] were not read (only the seconds
 /// they sit in, so the 1 Hz slots still match a full load). `daySub`'s beats are
 /// therefore the tail only. When the checkpoint turns out not to be usable the
@@ -21,12 +22,12 @@ import '../util/worker_audit.dart';
 class DayRrResume {
   const DayRrResume({
     required this.cp,
-    required this.state,
+    required this.folded,
     required this.skipBelowRecTs,
   });
 
   final DayCheckpoint cp;
-  final DayResumeState state;
+  final int folded;
   final int skipBelowRecTs;
 }
 

@@ -171,6 +171,19 @@ Uint8List encodeDayResumeState(DayResumeState state) {
   return out;
 }
 
+/// The number of seconds [bytes] say they folded, read from the 16-byte header
+/// alone (magic, layout, folded); null when the header is not a
+/// [kDayCheckpointFmt] blob's. O(1): the checksum and the parts are NOT read, so
+/// this is a gate's figure, never a licence to use the blob. Whatever decodes
+/// the blob for use ([decodeDayResumeState], in a worker for a streamed tail)
+/// still finds a damaged one and refuses it.
+int? peekDayResumeFolded(Uint8List bytes) {
+  if (bytes.length < 4 + 4 + 4 + 8) return null;
+  final d = ByteData.sublistView(bytes);
+  if (d.getInt32(0) != _magic || d.getInt32(4) != kDayCheckpointFmt) return null;
+  return d.getInt64(8);
+}
+
 /// The state [bytes] hold, or null when they are not exactly a
 /// [kDayCheckpointFmt] blob this code wrote.
 DayResumeState? decodeDayResumeState(Uint8List bytes) {
