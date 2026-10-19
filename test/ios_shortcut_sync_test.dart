@@ -6,6 +6,7 @@ import 'package:flutter_blue_plus_platform_interface/flutter_blue_plus_platform_
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/sync/background_sync.dart';
 import 'package:openstrap_edge/sync/band_ownership.dart';
@@ -145,8 +146,16 @@ void main() {
     final engine = createHeadlessSyncEngine(
       paired: PairedDevice('test', 'serial'),
     );
-    final onEvent = engine.onEvent!
-        as Future<void> Function(int, int, String, BandProfile);
+    // Our StrapEvent callback shape (D15), not upstream's positional one.
+    Future<void> onEvent(int id, int ts, String hex, BandProfile profile) async =>
+        engine.onEvent!(StrapEvent(
+          eventId: id,
+          tsEpoch: ts,
+          receivedAt: DateTime.now(),
+          hex: hex,
+          deviceId: 'test',
+          profile: profile,
+        ));
     await onEvent(56, 1, '', BandProfile.gen4);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('alarm_epoch_confirmed'), isTrue);

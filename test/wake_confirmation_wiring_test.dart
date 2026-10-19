@@ -979,7 +979,8 @@ void main() {
                   .hasMatch(body),
           isTrue,
           reason: 'onEvent keeps the confirmed moment');
-      final disconnect = body.indexOf('engine.disconnect()');
+      // The drain ends in the shared headless disconnect helper (D18).
+      final disconnect = body.indexOf('disconnectHeadless(engine)');
       final rederive = body.indexOf('headlessDeriveConfirmedWakeDay');
       final light = body.indexOf('headlessDeriveAfterSync()');
       expect(rederive, isNonNegative, reason: 'the run re-derives');
