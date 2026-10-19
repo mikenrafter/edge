@@ -327,7 +327,7 @@ void main() {
       expect(findingTitle(en, const Finding(FindingKind.tempElevated, 'd')), 'Skin temperature elevated');
       expect(findingTitle(en, const Finding(FindingKind.lowReadiness, 'd')), 'Low recovery');
       expect(findingTitle(en, const Finding(FindingKind.rhrShift, 'd')),
-          'Your resting heart-rate trend shifted');
+          'Resting heart rate changed');
     });
 
     for (final loc in ['de', 'es', 'fr', 'hi', 'zh']) {
@@ -359,7 +359,7 @@ void main() {
       for (final t in ['Resting heart rate has been raised',
           'Unusual overnight readings', 'Unusual overnight physiology',
           'Skin temperature elevated', 'Low recovery',
-          'Your resting heart-rate trend shifted']) {
+          'Resting heart rate changed']) {
         expect(f.contains(t), isFalse, reason: t);
       }
       final log = codeOf('lib/ui2/screens/findings_log.dart');

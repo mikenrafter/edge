@@ -270,8 +270,8 @@ const activityLibrary = <ActGroup>[
 /// What the app has to say about a calorie figure, in one place because it was
 /// said in four and drifted: one site kept quoting a "±15%" error bar that no
 /// estimator computes, long after the others dropped it.
-const kCalorieWhy = 'Calories use the activity MET (metabolic equivalent) value × your weight, adjusted by heart rate. '
-                    'Activities with no MET value use heart rate alone.';
+const kCalorieWhy = 'Calorie figures are estimates from your weight and the activity, adjusted by heart rate. '
+                    'Some activities use heart rate alone.';
 
 /// TS-03 — what every zone chart in the app has to admit about its own edges.
 ///
@@ -316,17 +316,13 @@ String zonesWhyFootnote([AppLocalizations? l]) => l?.catalogueZonesWhy ?? kZones
 /// both "we cannot say this was measured on you", which is what the estimate
 /// sentence already says. [l] is optional so the non-UI test seam
 /// (`hr_ceiling_zones_test.dart`) can call this with the plain English copy.
-String zonesWhy(String? source, num? maxHr, [AppLocalizations? l]) => maxHr == null
+///
+/// Null for zones banded on a measured ceiling: nothing needs hedging there,
+/// and the zones screen says where the edges came from.
+String? zonesWhy(String? source, num? maxHr, [AppLocalizations? l]) => maxHr == null
     ? zonesWhyFootnote(l)
     : switch (source) {
-        'karvonen' =>
-          l?.dayStrainZoneFootnoteKarvonen(maxHr.round()) ??
-              'Zone edges are set between your measured resting heart rate '
-              'and the highest heart rate recorded for you (${maxHr.round()} bpm).',
-        'observed' =>
-          l?.dayStrainZoneFootnoteObserved(maxHr.round()) ??
-              'Zone edges are percentages of the highest heart rate recorded for you '
-              '(${maxHr.round()} bpm).',
+        'karvonen' || 'observed' => null,
         _ => zonesWhyFootnote(l),
       };
 

@@ -34,7 +34,7 @@ class AdvancedScreen extends StatelessWidget {
         LucideIcons.heartPulse,
         l?.advancedBeatsTitle ?? 'Beat to beat',
         l?.advancedBeatsSub ??
-            'Each beat against the last, HRV through the night, deceleration capacity',
+            'Beat-by-beat view and overnight HRV',
         () => go(c, const Beats()),
       ),
       const SizedBox(height: S.x3),

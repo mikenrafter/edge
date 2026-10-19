@@ -101,7 +101,7 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
                     StatusCard(
                       l?.aiBriefingNoModelTitle ?? 'No model is set up',
                       l?.aiBriefingNoModelBody ??
-                          'A model you choose writes the briefing. Pick one to generate briefings. Nothing has been sent anywhere.',
+                          'Pick a model to generate briefings.',
                       fix: l?.aiBriefingChooseModel ?? 'Choose a model',
                       icon: LucideIcons.sparkles,
                       onFix: () => go(c, const CoachSetup()),
@@ -110,7 +110,7 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
                     StatusCard(
                       l?.aiBriefingNothingTitle ?? 'Nothing written for today',
                       l?.aiBriefingNothingBody ??
-                          'Briefings generate on a schedule. You can also write one here.',
+                          'Briefings appear here.',
                       fix: _busy
                           ? (l?.aiBriefingWriting ?? 'Writing…')
                           : (l?.aiBriefingWriteNow ?? 'Write one now'),
@@ -247,13 +247,12 @@ class SentPayload extends StatelessWidget {
                   child: Text(
                     none
                         ? (l?.aiBriefingNoneBody ??
-                            'Nothing. The note above was written on this phone, so no request was made.')
+                            'Nothing was sent.')
                         : local
                             ? (l?.aiBriefingLocalBody(host) ??
-                                'These numbers went to $host, on this machine. '
-                                    'Nothing left it.')
+                                'These numbers went to $host on this device.')
                             : (l?.aiBriefingCloudBody(host, config.model) ??
-                                'The app sent only these numbers to $host as ${config.model}. It sent no raw recordings, name or identifier.'),
+                                'Only these numbers were sent to $host (${config.model}). No name or raw recordings.'),
                     style: F.cap.copyWith(color: p.ink, height: 1.5),
                   ),
                 ),
@@ -263,16 +262,15 @@ class SentPayload extends StatelessWidget {
           const SizedBox(height: S.x3),
           if (none)
             StatusCard(
-              l?.aiBriefingNoneCardTitle ?? 'Nothing stood out, so no model was called',
               l?.aiBriefingNoneCardBody ??
-                  'The check for findings runs on this phone. It calls a model only when it finds something, and today it found nothing.',
+                  'No model was called because nothing stood out.',
+              '',
               icon: LucideIcons.circleSlash,
             )
           else if (keys.isEmpty)
             StatusCard(
-              l?.aiBriefingEmptyCardTitle ?? 'Nothing was available to send',
-              l?.aiBriefingEmptyCardBody ??
-                  'No metric had a value when this was written, so the prompt held no numbers.',
+              l?.aiBriefingEmptyCardBody ?? 'No data to send.',
+              '',
               icon: LucideIcons.circleSlash,
             )
           else

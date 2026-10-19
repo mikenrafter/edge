@@ -500,9 +500,8 @@ class _BeatsState extends State<Beats> with RevisionReload {
               // reads as a finding.
               '${sd1 == null || sd2 == null ? '' : (l?.beatsBeatsGoneMeasured(
                       metricValue('ms', sd1), metricValue('ms', sd2)) ??
-                  ' — this night measured '
-                      'SD1 ${metricValue('ms', sd1)} ms, '
-                      'SD2 ${metricValue('ms', sd2)} ms')}.',
+                  '. Spread: ${metricValue('ms', sd1)} ms short-term, '
+                      '${metricValue('ms', sd2)} ms long-term')}.',
           icon: LucideIcons.scatterChart,
         ),
       );
@@ -525,9 +524,8 @@ class _BeatsState extends State<Beats> with RevisionReload {
             // trend this picture does not draw. The footnote below carries the
             // meaning instead, and the frame speaks it.
             footnote: l?.beatsScatterFootnote ??
-                'A point on the diagonal is a beat the same length as the one '
-                    'before it, and the wider the cloud across that line, the '
-                    'more your beats vary.',
+                'Dots on the diagonal are beats the same length as the one '
+                    'before. A wider spread means more variation.',
             // The plot is the largest centred square, so the finger's x has
             // to be mapped through the same square the painter uses.
             child: LayoutBuilder(
@@ -551,10 +549,10 @@ class _BeatsState extends State<Beats> with RevisionReload {
           const SizedBox(height: S.x4),
           InlineMetrics([
             if (sd1 != null)
-              (l?.beatsSd1Label ?? 'SD1', '${metricValue('ms', sd1)} ms',
+              (l?.beatsSd1Label ?? 'Short-term', '${metricValue('ms', sd1)} ms',
                   C.green),
             if (sd2 != null)
-              (l?.beatsSd2Label ?? 'SD2', '${metricValue('ms', sd2)} ms',
+              (l?.beatsSd2Label ?? 'Long-term', '${metricValue('ms', sd2)} ms',
                   C.green),
             (l?.beatsIntervalsLabel ?? 'Intervals', thousands(d.nn.length),
                 C.green),
@@ -563,11 +561,8 @@ class _BeatsState extends State<Beats> with RevisionReload {
           _note(
             p,
             // The denominator, and the honesty about what the wrist sees.
-            '${l?.beatsIntervalsSurvived(d.nn.length) ?? '${thousands(d.nn.length)} intervals survived correction'}'
-            '${dropped <= 0 ? '' : (l?.beatsDroppedArtifact(dropped) ?? ' — $dropped were rejected as artifact and '
-                'are not in the cloud')}. '
-            '${l?.beatsPulseNotEcg ?? 'Pulse, not ECG — real and yours, but '
-                'not the picture an ECG draws.'}'
+            '${l?.beatsIntervalsSurvived(d.nn.length) ?? '${thousands(d.nn.length)} usable beats'}'
+            '${dropped <= 0 ? '' : (l?.beatsDroppedArtifact(dropped) ?? ' ($dropped bad beats ignored)')}.'
             '${d.deviceFamily == null ? '' : ' ${l?.beatsMeasuredOn(d.deviceFamily!) ?? 'Measured on ${d.deviceFamily}; '
                 'straps do not read the same numbers as each other.'}'}',
           ),
@@ -628,9 +623,8 @@ class _BeatsState extends State<Beats> with RevisionReload {
             xLabels: _nightHours(c, d),
             series: [for (final b in d.bins) b.v],
             footnote: l?.beatsBandFootnote ??
-                'Each bar is how sure we are of that block and the mark '
-                    'inside it is the value, with a blank where too few clean '
-                    'beats were left.',
+                'Bar height is our confidence. The mark is the value. Blank '
+                    'means too few clean beats.',
             child: _NightBand(d.bins, axis,
                 color: p.on(C.green), empty: p.line),
           ),
@@ -672,13 +666,13 @@ class _BeatsState extends State<Beats> with RevisionReload {
     final l = AppLocalizations.of(c);
     if (d.dcPoints.isEmpty) {
       return Section(
-        l?.beatsDcSection ?? 'Deceleration capacity',
+        l?.beatsDcSection ?? 'How your heart slows',
         StatusCard.forMetric(
-                l?.beatsDcSection ?? 'Deceleration capacity', d.dc,
+                l?.beatsDcSection ?? 'How your heart slows', d.dc,
                 unit: l?.beatsUnitNights ?? 'nights',
                 why: l?.beatsDcWhy ??
                     'No stored night has produced one yet.') ??
-            StatusCard(l?.beatsDcSection ?? 'Deceleration capacity',
+            StatusCard(l?.beatsDcSection ?? 'How your heart slows',
                 l?.beatsDcNoData ?? 'No night has produced one yet.'),
       );
     }
@@ -689,7 +683,7 @@ class _BeatsState extends State<Beats> with RevisionReload {
     final axis = AxisSpec.of(vals, ticks: 3, format: axisFixed);
 
     return Section(
-      l?.beatsDcSection ?? 'Deceleration capacity',
+      l?.beatsDcSection ?? 'How your heart slows',
       Surface(
         child: Column(children: [
           ChartFrame(
@@ -736,8 +730,7 @@ class _BeatsState extends State<Beats> with RevisionReload {
           _note(
             p,
             l?.beatsDcNote ??
-                'Compare it only with your own nights, because a cleaner '
-                    'signal can raise it as much as a change in you.',
+                'Compare only with your own nights.',
           ),
         ]),
       ),
@@ -804,16 +797,8 @@ class _BeatsState extends State<Beats> with RevisionReload {
           _note(
             p,
             l?.beatsScreenNote ??
-                'A day the screen did not fire does not mean you were cleared. The screen cannot rule anything out.\n\n'
-                'Outlined days were not screened because they had too few clean beats or too much movement.\n\n'
-                    // "a clinician can test that properly" is the project's
-                    // settled termination for this whole surface — the same
-                    // sentence the CVHR card ends on. It ends in a person,
-                    // never in a number. The symptom clause is phrased to
-                    // keep the string "you have" off the screen entirely:
-                    // that is the grammar of a diagnosis, and the wiring
-                    // test greps for it on the neighbouring card.
-                    'A wrist pulse reading cannot replace an ECG. If symptoms are why you are here, see a clinician for an ECG.',
+                'This is a screen, not a diagnosis. A day without a flag does not mean you were cleared, and the screen cannot rule anything out.\n\n'
+                'Outlined days had too few clean beats or too much movement. A wrist pulse is not an ECG. For symptoms, see a clinician for an ECG.',
           ),
           const SizedBox(height: S.x3),
           _note(

@@ -545,11 +545,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
         ),
       if (d.weightKg != null) ...[
         const SizedBox(height: S.x5),
-        StatusCard(
-          loc?.workoutCalorieEstimatesTitle ?? 'Calorie figures are estimates',
-          uiText(c, kCalorieWhy),
-          icon: LucideIcons.flame,
-        ),
+        Text(uiText(c, kCalorieWhy),
+            style: F.cap.copyWith(color: P.of(c).ink3, height: 1.5)),
       ],
     ];
   }

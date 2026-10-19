@@ -265,14 +265,14 @@ class _CoachScreenState extends State<CoachScreen> {
               coachActionSummary(context, req),
               style: F.body.copyWith(color: p.ink2, height: 1.4),
             ),
-            const SizedBox(height: S.x3),
-            Text(
-              destructive
-                  ? (l?.coachDestructiveWarning ??
-                      'This removes data from this device and cannot be undone.')
-                  : (l?.coachSafeWarning ?? 'Nothing is written until you tap below.'),
-              style: F.cap.copyWith(color: p.ink3),
-            ),
+            if (destructive) ...[
+              const SizedBox(height: S.x3),
+              Text(
+                l?.coachDestructiveWarning ??
+                    'This removes data and cannot be undone.',
+                style: F.cap.copyWith(color: p.ink3),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -383,7 +383,7 @@ class _CoachScreenState extends State<CoachScreen> {
                     if (list.isEmpty) {
                       return Text(
                         l?.coachNoChatsYet ??
-                            'Nothing yet — this is your first conversation.',
+                            'No chats yet.',
                         style: F.cap.copyWith(color: p.ink3),
                       );
                     }
@@ -486,8 +486,7 @@ class _CoachScreenState extends State<CoachScreen> {
           StatusCard(
             l?.coachKeyStillSavedTitle ?? 'Your key is still saved',
             l?.coachKeyStillSavedBody ??
-                'It could not be read from the keychain this time, which happens '
-                    'when the app is woken while the phone is locked.',
+                'Your key is saved. It could not be read just now.',
             fix: l?.coachTryAgainFix ?? 'Try again',
             icon: LucideIcons.lock,
             onFix: () async {
@@ -506,7 +505,7 @@ class _CoachScreenState extends State<CoachScreen> {
           StatusCard(
             l?.coachNotSetUpTitle ?? 'The coach is not set up',
             l?.coachNotSetUpBody ??
-                'Pick a model on your own computer, or any OpenAI-compatible provider with your own key. Nothing goes through OpenStrap either way.',
+                'Use a model on your computer, or any OpenAI-compatible provider with your own key.',
             fix: l?.coachChooseModelFix ?? 'Choose a model',
             icon: LucideIcons.sparkles,
             onFix: () => go(c, const CoachSetup()),
@@ -556,9 +555,7 @@ class _CoachScreenState extends State<CoachScreen> {
                 const SizedBox(height: S.x3),
                 Text(
                   l?.coachIntroBody ??
-                      'Ask about anything the app measures, and it can log food, '
-                          'water, workouts, doses and how you felt — always asking '
-                          'first.',
+                      'Ask about your data. It can also log food, water, workouts and doses, and always asks first.',
                   style: F.body.copyWith(color: p.ink, height: 1.45),
                 ),
               ],
@@ -1118,8 +1115,7 @@ class _CoachSetupState extends State<CoachSetup> {
                       const SizedBox(height: S.x2),
                       Text(
                         l?.coachApiFormatHelp ??
-                            'Choose the API your endpoint supports. Responses '
-                                'supports OpenAI reasoning with tools.',
+                            'Choose the API your endpoint supports.',
                         style: F.cap.copyWith(color: p.ink3, height: 1.5),
                       ),
                     ],
@@ -1140,12 +1136,10 @@ class _CoachSetupState extends State<CoachSetup> {
                   Text(
                     isPrivateCoachHost(_base.text.trim())
                         ? (l?.coachLocalDataNote ??
-                            'Your questions and the rows the coach reads stay on '
-                                'your own machine.')
+                            'Stays on your machine.')
                         : (l?.coachCloudDataNote ??
-                            'Your questions and the rows the coach reads are sent '
-                                'to this endpoint. See exactly what that is on '
-                                '"What was sent".'),
+                            'Your questions and the data the coach reads are sent '
+                                'to this endpoint. See "What was sent".'),
                     style: F.cap.copyWith(color: p.ink3, height: 1.5),
                   ),
                   const SizedBox(height: S.x4),

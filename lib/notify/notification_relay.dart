@@ -801,7 +801,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
         dedupeKey: 'relay:${now.microsecondsSinceEpoch}',
         category: NotifCategory.reminders,
         title: 'Relayed alert',
-        body: 'An alert you chose to relay arrived while the band was disconnected.',
+        body: 'Alert received while the band was disconnected.',
         date: dayLabelOf(now),
       ),
       sourceTime: now,

@@ -240,9 +240,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
             const SizedBox(height: S.x2),
             Text(
               l?.activityZonesEditYourOwnBody ??
-                  'Enter five thresholds in bpm, lowest first. Each one is where '
-                  'a zone starts. Clear all five to return to the '
-                  'computed zones.',
+                  'Set where each zone starts, lowest to highest. Clear all five to reset.',
               style: F.cap.copyWith(color: P.of(s).ink3, height: 1.4),
             ),
             const SizedBox(height: S.x4),
@@ -286,8 +284,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
       if (mounted) {
         ScaffoldMessenger.of(c).showSnackBar(SnackBar(
           content: Text(l?.activityZonesNeedAllFive ??
-              'Enter all five thresholds, lowest first. '
-              'Nothing was saved.'),
+              'All five thresholds are needed.'),
         ));
       }
       return;
@@ -297,8 +294,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
       if (mounted) {
         ScaffoldMessenger.of(c).showSnackBar(SnackBar(
           content: Text(l?.activityZonesMustAscend ??
-              'Each zone must start higher than the last, at 30 bpm or '
-                  'above. Nothing was saved.'),
+              'Each zone must start higher than the last.'),
         ));
       }
       return;
@@ -359,8 +355,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
         why != null
             ? '$why$tail'
             : (l?.activityZonesNoCeilingDefaultBody ??
-                    'A reading counts toward your maximum only if the band held it '
-                    'for 15 seconds while you were moving.') +
+                    'Only readings held for 15 seconds while moving count.') +
                 tail,
         // The hard-session instruction belongs to the hold gate alone.
         fix: why == null
@@ -406,8 +401,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
           const SizedBox(height: S.x3),
           Text(
             l?.activityZonesHighestSeenFootnote ??
-                'The highest heart rate the band has recorded for you. It rises '
-                'when the band records a harder effort. Do not push to raise it.',
+                'The highest we have measured. It rises as you train harder.',
             style: F.cap.copyWith(color: p.ink3, height: 1.5),
           ),
         ],
@@ -430,10 +424,9 @@ class _ZonesDetailState extends State<ZonesDetail> {
         why ??
             (noAge
                 ? (l?.activityZonesNoAgeBody ??
-                    'Zone edges are percentages of a maximum heart rate. '
-                    'The app estimates that maximum from your age.')
+                    'Add your age to see zones.')
                 : (l?.activityZonesNoZonesDefaultBody ??
-                    'Zone edges need your age.')),
+                    'No zones yet.')),
         fix: noAge ? (l?.activityZonesAddAgeFix ?? 'Add your age in Profile') : '',
         icon: LucideIcons.activity,
       );
@@ -477,11 +470,13 @@ class _ZonesDetailState extends State<ZonesDetail> {
               ],
             ),
           ],
-          const SizedBox(height: S.x4),
-          Text(
-            _anchorCopy(l, d),
-            style: F.cap.copyWith(color: p.ink3, height: 1.5),
-          ),
+          if (_anchorCopy(l, d) case final anchor?) ...[
+            const SizedBox(height: S.x4),
+            Text(
+              anchor,
+              style: F.cap.copyWith(color: p.ink3, height: 1.5),
+            ),
+          ],
         ],
       ),
     );
@@ -489,27 +484,24 @@ class _ZonesDetailState extends State<ZonesDetail> {
 
   /// WHERE THESE EDGES CAME FROM — the whole point of the screen. Three
   /// different claims, three different sentences, never a shared hedge.
-  String _anchorCopy(AppLocalizations? l, ZonesData d) {
+  String? _anchorCopy(AppLocalizations? l, ZonesData d) {
     final max = d.maxHr;
     switch (d.source) {
       case 'karvonen':
         return l?.activityZonesAnchorKarvonen(
                 d.restingHr ?? 0, d.restingDays, max ?? 0) ??
-            'From your resting rate (${d.restingHr}, middle of your last ${d.restingDays} nights) and the highest we’ve seen ($max). Standard zones, not tested ones.';
+            'Based on your resting rate (${d.restingHr}) and highest rate ($max).';
       case 'observed':
         return l?.activityZonesAnchorObserved(
                 max ?? 0, d.restingMinDays, d.restingDays) ??
-            'From the highest heart rate we’ve seen ($max). After ${d.restingMinDays} nights of resting rate (you have ${d.restingDays}), that joins in too.';
+            'Based on your highest heart rate ($max). Resting rate is added after ${d.restingMinDays} nights.';
       case 'tanaka':
         return l?.activityZonesAnchorTanaka(max ?? 0) ??
-            'From $max bpm, estimated from your age, so it can be 20 bpm out. The zones move once the band sees a hard enough session.';
+            'Based on $max bpm, estimated from your age. Zones adjust after a hard session.';
       case 'manual':
-        return l?.activityZonesAnchorManual ??
-            'These five thresholds are the ones you entered. '
-            'They replace the age-based and measured zones.';
+        return l?.activityZonesAnchorManual ?? 'Set by you.';
       default:
-        return l?.activityZonesAnchorDefault ??
-            'Zone edges are percentages of a maximum heart rate.';
+        return null;
     }
   }
 
@@ -531,11 +523,9 @@ class _ZonesDetailState extends State<ZonesDetail> {
             whyFromNote(d.distNote, unit: 'days') ??
                 (d.measured
                     ? (l?.activityZonesNeedsMonthBody ??
-                        'Needs about a month of recorded sessions, each with a '
-                            'minute-by-minute heart rate.')
+                        'Needs about a month of recorded sessions.')
                     : (l?.activityZonesAgeEstimateBody ??
-                        'The bars appear once the zone edges above are measured. '
-                        'Until then they would only reflect the age estimate.')),
+                        'Shown once zones are measured from your training.')),
             icon: LucideIcons.chartColumn,
           ),
         ),
@@ -559,8 +549,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
               _shapeCopy(l, d),
               if (d.zones.length == 5)
                 l?.activityZonesCurrentEdgesNote ??
-                    'Ranges are your current zone edges; older sessions may '
-                        'have been counted with different ones.',
+                    'Uses your current zones.',
             ].where((s) => s.isNotEmpty).join(' '),
           ),
         ),
@@ -577,13 +566,11 @@ class _ZonesDetailState extends State<ZonesDetail> {
   String _shapeCopy(AppLocalizations? l, ZonesData d) {
     final shape = switch (d.distShape) {
       'pyramidal' => l?.activityZonesShapePyramidal ??
-          'Most of your minutes are easy, fewer are moderate, and the '
-          'fewest are hard. This shape is called pyramidal.',
+          'Mostly easy, some moderate, little hard.',
       'polarised' => l?.activityZonesShapePolarised ??
-          'Most of your minutes are easy and the rest are hard, '
-              'with little in between.',
+          'Mostly easy or hard, little in between.',
       'middle-heavy' => l?.activityZonesShapeMiddleHeavy ??
-          'Most of your minutes are moderate.',
+          'Mostly moderate.',
       _ => '',
     };
     final summary = l?.activityZonesShapeSummary(

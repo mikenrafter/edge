@@ -861,12 +861,6 @@ class _WeightRow extends StatelessWidget {
               hint: imperial ? '154' : '70.0',
               keyboard: const TextInputType.numberWithOptions(decimal: true),
             ),
-            const SizedBox(height: S.x3),
-            Text(
-              l?.journalComposeWeightScaleNote ??
-                  'What you or your scale read. The band does not measure this.',
-              style: F.over.copyWith(color: P.of(dc).ink3, height: 1.4),
-            ),
           ],
         ),
         actions: [
@@ -982,8 +976,7 @@ class _WeightTrendState extends State<_WeightTrend> {
         StatusCard(
           l?.journalComposeNotEnoughEntriesTitle ?? 'Not enough entries for a trend',
           l?.journalComposeNotEnoughEntriesBody ??
-              'The line is a seven-day average through what you entered, so it '
-                  'needs at least two days. Nothing is filled in between them.',
+              'A trend needs at least two days of entries.',
           icon: LucideIcons.scale,
         ),
       ]);
@@ -1017,8 +1010,6 @@ class _WeightTrendState extends State<_WeightTrend> {
           height: 140,
           yAxis: axis,
           xLabels: [days.first, days.last],
-          footnote: l?.journalComposeTrendFootnote ??
-              'Entered by you. Days with no entry are left empty.',
           series: vals,
           empty: axis == null ? const NoData() : null,
           child: axis == null
@@ -1056,9 +1047,7 @@ class _WeightTrendState extends State<_WeightTrend> {
       const SizedBox(height: S.x4),
       Text(
         l?.journalComposeWeightTrendExplainer(trend.length) ??
-            'From you or your scale; the band doesn’t measure weight. The line '
-            'is a 7-day average, because water and food alone move a scale '
-            '1–2 kg. ${trend.length} '
+            '7-day average of the weights you enter. ${trend.length} '
             '${trend.length == 1 ? 'day' : 'days'} entered.',
         style: F.over.copyWith(color: p.ink3, height: 1.5),
       ),

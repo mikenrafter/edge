@@ -1615,7 +1615,7 @@
   "@scanBarcodeClose": {
     "description": "Semantic label for the close (X) button on the barcode-scanner sheet"
   },
-  "scanBarcodeInstructions": "Hold the barcode inside the frame. Nothing is recorded — the digits are all this reads.",
+  "scanBarcodeInstructions": "Hold the barcode inside the frame.",
   "@scanBarcodeInstructions": {
     "description": "Instructional caption under the camera preview in the barcode scanner"
   },
@@ -1821,7 +1821,7 @@
   "@aiBriefingNoModelTitle": {
     "description": "Status card title when no coach model is configured."
   },
-  "aiBriefingNoModelBody": "A briefing is written by a model you choose. Until you pick one there is nothing to generate and nothing has been sent anywhere.",
+  "aiBriefingNoModelBody": "Pick a model to generate briefings.",
   "@aiBriefingNoModelBody": {
     "description": "Status card body when no coach model is configured."
   },
@@ -1833,7 +1833,7 @@
   "@aiBriefingNothingTitle": {
     "description": "Status card title when no briefing exists for today."
   },
-  "aiBriefingNothingBody": "Briefings are generated on a schedule, or on demand here.",
+  "aiBriefingNothingBody": "Briefings appear here.",
   "@aiBriefingNothingBody": {
     "description": "Status card body when no briefing exists for today."
   },
@@ -1870,11 +1870,11 @@
   "@aiBriefingReadSection": {
     "description": "Section header: payload was only read on-device (local endpoint)."
   },
-  "aiBriefingNoneBody": "Nothing. There was no request — the note above was written on this phone.",
+  "aiBriefingNoneBody": "Nothing was sent.",
   "@aiBriefingNoneBody": {
     "description": "Banner text when no model request was made at all (nightly sweep found nothing)."
   },
-  "aiBriefingLocalBody": "These numbers went to {host}, on this machine. Nothing left it.",
+  "aiBriefingLocalBody": "These numbers went to {host} on this device.",
   "@aiBriefingLocalBody": {
     "description": "Banner text when the model endpoint is on the same machine (nothing left the device).",
     "placeholders": {
@@ -1883,7 +1883,7 @@
       }
     }
   },
-  "aiBriefingCloudBody": "These numbers, and nothing else, were sent to {host} as {model}. No raw recordings, no name, no identifier.",
+  "aiBriefingCloudBody": "Only these numbers were sent to {host} ({model}). No name or raw recordings.",
   "@aiBriefingCloudBody": {
     "description": "Banner text describing exactly what was sent to a remote model host.",
     "placeholders": {
@@ -1895,19 +1895,11 @@
       }
     }
   },
-  "aiBriefingNoneCardTitle": "Nothing stood out, so nothing was asked",
-  "@aiBriefingNoneCardTitle": {
-    "description": "Status card title when the nightly sweep found nothing worth asking a model about."
-  },
-  "aiBriefingNoneCardBody": "The sweep runs on this phone. It only calls a model when it has a finding to hand it, and today it had none.",
+  "aiBriefingNoneCardBody": "No model was called because nothing stood out.",
   "@aiBriefingNoneCardBody": {
     "description": "Status card body explaining the sweep only calls a model when it has a finding."
   },
-  "aiBriefingEmptyCardTitle": "Nothing was available to send",
-  "@aiBriefingEmptyCardTitle": {
-    "description": "Status card title when the payload had no metric values to send."
-  },
-  "aiBriefingEmptyCardBody": "No metric had a value when this was written, so the prompt carried none.",
+  "aiBriefingEmptyCardBody": "No data to send.",
   "@aiBriefingEmptyCardBody": {
     "description": "Status card body when the payload had no metric values to send."
   },
@@ -2251,7 +2243,7 @@
       }
     }
   },
-  "dayStepsStrapCounterBody": "The {count} steps {when} came from the strap’s own counter, which didn’t keep times for this day, so they can’t go on a clock.",
+  "dayStepsStrapCounterBody": "{count} steps {when} have no time data.",
   "@dayStepsStrapCounterBody": {
     "description": "Empty-state body explaining the strap's own running counter has no times.",
     "placeholders": {
@@ -2292,15 +2284,15 @@
   "@dayStepsCounted": {
     "description": "Label for the combined total in the inline metrics row."
   },
-  "dayStepsHonestyMixed": "Counted by your wrist and your phone. A wrist can read a walk low and hand work as walking; a phone only counts steps while you carry it.",
+  "dayStepsHonestyMixed": "Counted by your band and phone. A wrist can undercount walking and count hand movement. A phone only counts while carried.",
   "@dayStepsHonestyMixed": {
     "description": "Footnote explaining wrist vs phone step-counting error when both sources contributed."
   },
-  "dayStepsHonestyStrap": "Counted at your wrist, where a real walk tends to read low and rhythmic hand work can read as walking.",
+  "dayStepsHonestyStrap": "Counted by your band. It can undercount walking and count hand movement.",
   "@dayStepsHonestyStrap": {
     "description": "Footnote explaining wrist step-counting error when only the strap contributed."
   },
-  "dayStepsHonestyPhone": "Counted by your phone, so only the steps you had it on you for are here.",
+  "dayStepsHonestyPhone": "Counted by your phone, only while you carried it.",
   "@dayStepsHonestyPhone": {
     "description": "Footnote explaining phone step-counting coverage when only the phone contributed."
   },
@@ -2878,7 +2870,7 @@
   "@beatsBeatsGoneBody": {
     "description": "Empty-state body explaining beat intervals are pruned after a few days but derived numbers persist"
   },
-  "beatsBeatsGoneMeasured": " — this night measured SD1 {sd1} ms, SD2 {sd2} ms",
+  "beatsBeatsGoneMeasured": ". Spread: {sd1} ms short-term, {sd2} ms long-term",
   "@beatsBeatsGoneMeasured": {
     "description": "Appended clause reporting the SD1/SD2 values still available even though raw beats are gone",
     "placeholders": {
@@ -2894,15 +2886,15 @@
   "@beatsScatterTitle": {
     "description": "Chart title for the Poincaré (beat vs previous beat) scatter"
   },
-  "beatsScatterFootnote": "A point on the diagonal is a beat the same length as the one before it, and the wider the cloud across that line, the more your beats vary.",
+  "beatsScatterFootnote": "Dots on the diagonal are beats the same length as the one before. A wider spread means more variation.",
   "@beatsScatterFootnote": {
     "description": "Footnote explaining how to read the Poincaré scatter's SD1/SD2 axes"
   },
-  "beatsSd1Label": "SD1",
+  "beatsSd1Label": "Short-term",
   "@beatsSd1Label": {
     "description": "Inline metric label: SD1 (short-term Poincaré axis)"
   },
-  "beatsSd2Label": "SD2",
+  "beatsSd2Label": "Long-term",
   "@beatsSd2Label": {
     "description": "Inline metric label: SD2 (long-term Poincaré axis)"
   },
@@ -2910,7 +2902,7 @@
   "@beatsIntervalsLabel": {
     "description": "Inline metric label: count of intervals plotted"
   },
-  "beatsIntervalsSurvived": "{count, plural, one{{count} interval survived correction} other{{count} intervals survived correction}}",
+  "beatsIntervalsSurvived": "{count, plural, one{{count} usable beat} other{{count} usable beats}}",
   "@beatsIntervalsSurvived": {
     "description": "Note fragment: how many beat intervals survived artifact correction",
     "placeholders": {
@@ -2919,7 +2911,7 @@
       }
     }
   },
-  "beatsDroppedArtifact": " — {count, plural, one{{count} was} other{{count} were}} rejected as artifact and {count, plural, one{is} other{are}} not in the cloud",
+  "beatsDroppedArtifact": " ({count, plural, one{{count} bad beat ignored} other{{count} bad beats ignored}})",
   "@beatsDroppedArtifact": {
     "description": "Note fragment appended when some beats were rejected as artifact",
     "placeholders": {
@@ -2927,10 +2919,6 @@
         "type": "int"
       }
     }
-  },
-  "beatsPulseNotEcg": "Pulse, not ECG — real and yours, but not the picture an ECG draws.",
-  "@beatsPulseNotEcg": {
-    "description": "Disclaimer that this is pulse-derived data, not an ECG reading"
   },
   "beatsMeasuredOn": "Measured on {device}; straps do not read the same numbers as each other.",
   "@beatsMeasuredOn": {
@@ -2969,7 +2957,7 @@
   "@beatsStart": {
     "description": "X-axis label for the start of the night when no wall-clock origin is known"
   },
-  "beatsBandFootnote": "Each bar is how sure we are of that block and the mark inside it is the value, with a blank where too few clean beats were left.",
+  "beatsBandFootnote": "Bar height is our confidence. The mark is the value. Blank means too few clean beats.",
   "@beatsBandFootnote": {
     "description": "Footnote explaining the RMSSD band chart's bar-vs-mark meaning"
   },
@@ -2981,7 +2969,7 @@
   "@beatsLastThird": {
     "description": "Inline metric label: RMSSD in the last third of the night"
   },
-  "beatsDcSection": "Deceleration capacity",
+  "beatsDcSection": "How your heart slows",
   "@beatsDcSection": {
     "description": "Section title for the deceleration-capacity (PRSA DC) panel"
   },
@@ -3018,7 +3006,7 @@
   "@beatsCleanBeats": {
     "description": "Inline metric label: percentage of beats that were clean"
   },
-  "beatsDcNote": "Compare it only with your own nights, because a cleaner signal can raise it as much as a change in you.",
+  "beatsDcNote": "Compare only with your own nights.",
   "@beatsDcNote": {
     "description": "Explanatory note under the deceleration-capacity chart about how to interpret it"
   },
@@ -3046,7 +3034,7 @@
   "@beatsNoDayScreened": {
     "description": "Empty-state message when no day in the window was screened at all"
   },
-  "beatsScreenNote": "This is a screen. It cannot diagnose a condition.\n\nA day without a flag does not mean you were cleared, and the screen cannot rule anything out. Outlined days were not screened because they had too few clean beats or too much movement.\n\nWrist pulse is not an ECG. If you have symptoms, see a clinician for a proper test.",
+  "beatsScreenNote": "This is a screen, not a diagnosis. A day without a flag does not mean you were cleared, and the screen cannot rule anything out.\n\nOutlined days had too few clean beats or too much movement. A wrist pulse is not an ECG. For symptoms, see a clinician for an ECG.",
   "@beatsScreenNote": {
     "description": "Multi-paragraph disclaimer that the rhythm strip is a screen, not a diagnosis, and to see a clinician for symptoms"
   },
@@ -3104,7 +3092,7 @@
   "@logWorkoutReadFailedTitle": {
     "description": "Status card title when reading detected workout suggestions fails"
   },
-  "logWorkoutReadFailedBody": "The store did not answer. Nothing has been logged or dismissed.",
+  "logWorkoutReadFailedBody": "Could not read your activity. Nothing was changed.",
   "@logWorkoutReadFailedBody": {
     "description": "Status card body when reading detected workout suggestions fails"
   },
@@ -3225,11 +3213,11 @@
   "@logWorkoutScoreWithBand": {
     "description": "Title of the log form when scoring an imported workout from the band's own heart rate."
   },
-  "logWorkoutImportedHrGone": "Heart rate for this workout is no longer stored, so the band cannot score it.",
+  "logWorkoutImportedHrGone": "Heart rate for this workout is no longer stored.",
   "@logWorkoutImportedHrGone": {
     "description": "Shown when an imported workout's window has no stored band heart rate left to score."
   },
-  "logWorkoutUnscoredSaved": "Saved. No heart rate was recorded over that window, so it has no strain and no calorie figure — the times are all this one carries.",
+  "logWorkoutUnscoredSaved": "Saved. No heart rate was recorded in that window, so there is no strain or calorie figure.",
   "@logWorkoutUnscoredSaved": {
     "description": "Status card body when a saved workout has no heart-rate data so it could not be scored"
   },
@@ -3237,11 +3225,7 @@
   "@logWorkoutCouldNotSave": {
     "description": "Status card body when saving the workout form fails"
   },
-  "logWorkoutScoredTitle": "Scored from what the band recorded",
-  "@logWorkoutScoredTitle": {
-    "description": "Status card title explaining that strain/calories are computed from recorded heart rate"
-  },
-  "logWorkoutScoredBody": "Strain and calories come from your heart rate within these times, the same way the day is scored. Nothing is guessed from duration.",
+  "logWorkoutScoredBody": "Strain and calories are calculated from your heart rate in this window.",
   "@logWorkoutScoredBody": {
     "description": "Status card body explaining that strain/calories are computed from recorded heart rate, not estimated"
   },
@@ -3261,7 +3245,7 @@
   "@logWorkoutNoActivityByName": {
     "description": "Empty-state message when the activity search finds no matches"
   },
-  "logFoodTitle": "Log an eating occasion",
+  "logFoodTitle": "Log a meal",
   "@logFoodTitle": {
     "description": "Heading of the log-food bottom sheet"
   },
@@ -3290,7 +3274,7 @@
   "@logFoodScanBarcode": {
     "description": "Row label to scan a product barcode"
   },
-  "logFoodScanSubOn": "Asks openfoodfacts.org about the barcode, and fills in what it can stand behind",
+  "logFoodScanSubOn": "Looks the barcode up on Open Food Facts.",
   "@logFoodScanSubOn": {
     "description": "Subtitle under the scan-barcode row when online lookups are already allowed"
   },
@@ -3354,15 +3338,15 @@
   "@logFoodConsentTitle": {
     "description": "Heading of the barcode-lookup consent sheet"
   },
-  "logFoodConsentBody1": "A scan sends the barcode to openfoodfacts.org, a free, open food database. They see the barcode and your IP address. Nothing about you, your meals or your health leaves this phone, and a barcode you have scanned before is answered from your own copy without asking them again.",
+  "logFoodConsentBody1": "Scanning sends the barcode and your IP address to openfoodfacts.org, a free food database. Nothing else leaves your phone.",
   "@logFoodConsentBody1": {
     "description": "First paragraph of the barcode-lookup consent sheet, explaining what data leaves the phone"
   },
-  "logFoodConsentBody2": "Their numbers are typed in by the public and a fair few of them are wrong, so anything that fails a sanity check is left blank rather than filled in. Everything it does fill in is yours to edit before you save.",
+  "logFoodConsentBody2": "The database is user-submitted and can be wrong. Suspect values are left blank. You can edit everything before saving.",
   "@logFoodConsentBody2": {
     "description": "Second paragraph of the barcode-lookup consent sheet, explaining data quality and editability"
   },
-  "logFoodConsentBody3": "You can turn this back off in Settings › Privacy. Typing the numbers off the pack works either way.",
+  "logFoodConsentBody3": "You can turn this off in Settings › Privacy.",
   "@logFoodConsentBody3": {
     "description": "Third paragraph of the barcode-lookup consent sheet, explaining how to revoke consent"
   },
@@ -3394,7 +3378,7 @@
   "@logFoodNoNumbersTitle": {
     "description": "Status card title when a barcode lookup found the product but no usable nutrition numbers"
   },
-  "logFoodNoNumbersBody": "Open Food Facts has the product but nothing usable on its nutrition — or what it had did not survive a sanity check.",
+  "logFoodNoNumbersBody": "No usable nutrition data for this product.",
   "@logFoodNoNumbersBody": {
     "description": "Status card body when a barcode lookup found the product but no usable nutrition numbers"
   },
@@ -3410,7 +3394,7 @@
   "@logFoodFlaggedTitle": {
     "description": "Status card title when Open Food Facts flags the scanned product record as wrong"
   },
-  "logFoodFlaggedBody": "Open Food Facts marks this product as containing errors, so none of its numbers were filled in.",
+  "logFoodFlaggedBody": "Open Food Facts flags this product as wrong, so nothing was filled in.",
   "@logFoodFlaggedBody": {
     "description": "Status card body when Open Food Facts flags the scanned product record as wrong"
   },
@@ -3430,11 +3414,11 @@
   "@logFoodRefusedBody": {
     "description": "Status card body when barcode lookup is turned off in privacy settings"
   },
-  "logFoodPortionNoteBase": "Open Food Facts lists this per 100 g. Change the portion and the numbers follow.",
+  "logFoodPortionNoteBase": "Listed per 100 g. Numbers scale with your portion.",
   "@logFoodPortionNoteBase": {
     "description": "Note under the portion field explaining nutrition numbers are per 100g and rescale with portion, used when the product has no stated serving size"
   },
-  "logFoodPortionNoteServing": "Open Food Facts lists this per 100 g. Change the portion and the numbers follow. The pack’s own serving is {serving}.",
+  "logFoodPortionNoteServing": "Listed per 100 g. Numbers scale with your portion. Pack serving: {serving}.",
   "@logFoodPortionNoteServing": {
     "description": "Note under the portion field explaining nutrition numbers are per 100g and rescale with portion, including the pack's own stated serving size",
     "placeholders": {
@@ -3756,10 +3740,6 @@
   "@journalComposeWeightKgLabel": {
     "description": "Fallback text-field label for weight in kilograms when no units controller is available."
   },
-  "journalComposeWeightScaleNote": "What you or your scale read. The band does not measure this.",
-  "@journalComposeWeightScaleNote": {
-    "description": "Note in the weight-entry dialog clarifying the band does not measure weight."
-  },
   "journalComposeClear": "Clear",
   "@journalComposeClear": {
     "description": "Button to clear today's weight entry."
@@ -3768,7 +3748,7 @@
   "@journalComposeNotEnoughEntriesTitle": {
     "description": "Empty-state title on the weight trend screen when fewer than two entries exist."
   },
-  "journalComposeNotEnoughEntriesBody": "The line is a seven-day average through what you entered, so it needs at least two days. Nothing is filled in between them.",
+  "journalComposeNotEnoughEntriesBody": "A trend needs at least two days of entries.",
   "@journalComposeNotEnoughEntriesBody": {
     "description": "Empty-state body explaining the weight trend needs at least two entries."
   },
@@ -3776,11 +3756,7 @@
   "@journalComposeSevenDayTrend": {
     "description": "Title of the weight trend chart."
   },
-  "journalComposeTrendFootnote": "Entered by you. Days with no entry are left empty.",
-  "@journalComposeTrendFootnote": {
-    "description": "Footnote under the weight trend chart."
-  },
-  "journalComposeWeightTrendExplainer": "From you or your scale; the band doesn’t measure weight. The line is a 7-day average, because water and food alone move a scale 1–2 kg. {count, plural, one{{count} day entered.} other{{count} days entered.}}",
+  "journalComposeWeightTrendExplainer": "7-day average of the weights you enter. {count, plural, one{{count} day entered.} other{{count} days entered.}}",
   "@journalComposeWeightTrendExplainer": {
     "description": "Closing explainer under the weight trend chart, ending in a count of days entered.",
     "placeholders": {
@@ -3817,11 +3793,11 @@
   "@nutritionEmptyTodayBody": {
     "description": "Nutrition Today tab: body text under the empty-today title"
   },
-  "nutritionLogOccasionFix": "Log an eating occasion",
+  "nutritionLogOccasionFix": "Log a meal",
   "@nutritionLogOccasionFix": {
     "description": "Nutrition screen: call-to-action button text to log an eating occasion (used in two empty/low-data states)"
   },
-  "nutritionOccasionsSection": "Occasions",
+  "nutritionOccasionsSection": "Meals",
   "@nutritionOccasionsSection": {
     "description": "Nutrition Today tab: section header above the meal rows"
   },
@@ -3829,11 +3805,11 @@
   "@nutritionAddAction": {
     "description": "Nutrition Today tab: 'Add' action link on the Occasions section header"
   },
-  "nutritionFloorTitle": "Today's energy is a floor, not a total",
+  "nutritionFloorTitle": "Calories so far are a minimum",
   "@nutritionFloorTitle": {
     "description": "Nutrition Today tab: title warning that today's energy total is a lower bound"
   },
-  "nutritionFloorBody": "{unknown} of {total} occasions were logged without an energy figure, so the number above is the least you ate rather than what you ate.",
+  "nutritionFloorBody": "{unknown} of {total} meals have no calories, so the total above is a minimum.",
   "@nutritionFloorBody": {
     "description": "Nutrition Today tab: body explaining how many occasions lack an energy figure",
     "placeholders": {
@@ -3845,7 +3821,7 @@
       }
     }
   },
-  "nutritionAddNumbersFix": "Add the numbers to an occasion",
+  "nutritionAddNumbersFix": "Add the numbers to a meal",
   "@nutritionAddNumbersFix": {
     "description": "Nutrition screen: call-to-action to add missing energy numbers to an occasion (used in two places)"
   },
@@ -3861,7 +3837,7 @@
       }
     }
   },
-  "nutritionDayCountsRule": "A day counts once every occasion carries an energy figure.",
+  "nutritionDayCountsRule": "A day counts once every meal carries an energy figure.",
   "@nutritionDayCountsRule": {
     "description": "Nutrition Today tab: short rule explaining what makes a day count for averages"
   },
@@ -3869,7 +3845,7 @@
   "@nutritionDaysLoggedLabel": {
     "description": "Nutrition Week tab: consistency-card label when there are no partial days"
   },
-  "nutritionPartialExcluded": "{partial} logged but partial, so excluded from every average below",
+  "nutritionPartialExcluded": "{partial} incomplete, left out of averages",
   "@nutritionPartialExcluded": {
     "description": "Nutrition Week tab: consistency-card label naming how many days were partial and excluded from averages",
     "placeholders": {
@@ -3930,7 +3906,7 @@
   "@nutritionLabelBalance": {
     "description": "Nutrition Week tab: all-caps inline metric label for the eaten-minus-burned balance"
   },
-  "nutritionEatenMeanNote": "Eaten is the mean of {days} complete days. Burned is today only.",
+  "nutritionEatenMeanNote": "Eaten: {days}-day average. Burned: today.",
   "@nutritionEatenMeanNote": {
     "description": "Nutrition Week tab: footnote explaining the eaten mean is over N complete days while burned is today only",
     "placeholders": {
@@ -3988,10 +3964,6 @@
   "@nutritionNoTargetsTitle": {
     "description": "Nutrition Goals tab: title shown when the user has set no targets"
   },
-  "nutritionNoTargetsBody": "A target here is one you type.",
-  "@nutritionNoTargetsBody": {
-    "description": "Nutrition Goals tab: body text under the no-targets title"
-  },
   "nutritionSetTargetFix": "Set a target",
   "@nutritionSetTargetFix": {
     "description": "Nutrition Goals tab: call-to-action button to set a target"
@@ -4025,7 +3997,7 @@
       }
     }
   },
-  "nutritionRemoveBody": "It leaves the day and every average that counted it. There is no undo.",
+  "nutritionRemoveBody": "This cannot be undone.",
   "@nutritionRemoveBody": {
     "description": "Nutrition screen: confirmation sheet body warning the removal cannot be undone"
   },
@@ -4038,7 +4010,7 @@
       }
     }
   },
-  "nutritionFloorAverageBody": "Every complete day had an occasion logged without a {nutrient} figure, so the average would only be a lower bound.",
+  "nutritionFloorAverageBody": "Some meals have no {nutrient} figure, so no average yet.",
   "@nutritionFloorAverageBody": {
     "description": "Nutrition Goals tab: explanation that every complete day lacked this nutrient's figure",
     "placeholders": {
@@ -4047,7 +4019,7 @@
       }
     }
   },
-  "nutritionCountedNoFigureBody": "{count} of the last {span} days counted, but none of them carried a {nutrient} figure.",
+  "nutritionCountedNoFigureBody": "No {nutrient} figures in the last {span} days.",
   "@nutritionCountedNoFigureBody": {
     "description": "Nutrition Goals tab: explanation that counted days carried no figure for this nutrient",
     "placeholders": {
@@ -4062,7 +4034,7 @@
       }
     }
   },
-  "nutritionDayCountsRuleFull": "A day counts once every occasion carries a figure and the log reaches the evening. None of the last {span} days has.",
+  "nutritionDayCountsRuleFull": "A day counts once every meal has a figure and you have logged into the evening.",
   "@nutritionDayCountsRuleFull": {
     "description": "Nutrition Goals tab: full rule explaining what makes a day count, when none of the recent days qualify",
     "placeholders": {
@@ -4120,7 +4092,7 @@
   "@nutritionAtLeast": {
     "description": "Nutrition Today card: pill label shown when the energy total is a floor, not an exact total"
   },
-  "nutritionOccasionsUnit": "{n, plural, one{occasion} other{occasions}}",
+  "nutritionOccasionsUnit": "{n, plural, one{meal} other{meals}}",
   "@nutritionOccasionsUnit": {
     "description": "Nutrition Today card: unit word next to the raw occasion count when no energy figure exists",
     "placeholders": {
@@ -4129,7 +4101,7 @@
       }
     }
   },
-  "nutritionOccasionsCount": "{n, plural, one{{n} occasion} other{{n} occasions}}",
+  "nutritionOccasionsCount": "{n, plural, one{{n} meal} other{{n} meals}}",
   "@nutritionOccasionsCount": {
     "description": "Nutrition Today card: '· N occasions' note shown alongside the energy total",
     "placeholders": {
@@ -4183,7 +4155,7 @@
   "@nutritionNotRecorded": {
     "description": "Nutrition Week tab: nutrient mean value when no complete day recorded this nutrient"
   },
-  "nutritionEveryDayNoFigure": "EVERY COMPLETE DAY HAD AN OCCASION WITH NO {label} FIGURE",
+  "nutritionEveryDayNoFigure": "EVERY COMPLETE DAY HAD A MEAL WITH NO {label} FIGURE",
   "@nutritionEveryDayNoFigure": {
     "description": "Nutrition Week tab: all-caps subtext when every complete day lacked this nutrient's figure",
     "placeholders": {
@@ -4239,7 +4211,7 @@
   "@nutritionRemoveWater": {
     "description": "Nutrition Today tab: semantic label on the water minus-step button"
   },
-  "coachApiFormatHelp": "Choose the API your endpoint supports. Responses supports OpenAI reasoning with tools.",
+  "coachApiFormatHelp": "Choose the API your endpoint supports.",
   "@coachApiFormatHelp": {
     "description": "Coach AI settings: helper text under the provider API format dropdown (Responses / Chat Completions are API names, keep untranslated)"
   },
@@ -4279,7 +4251,7 @@
   "@coachChooseModelFix": {
     "description": "Coach screen: call-to-action button to open AI setup when no model is configured"
   },
-  "coachCloudDataNote": "Your questions and the rows the coach reads are sent to this endpoint. See exactly what that is on \"What was sent\".",
+  "coachCloudDataNote": "Your questions and the data the coach reads are sent to this endpoint. See \"What was sent\".",
   "@coachCloudDataNote": {
     "description": "Coach AI settings: privacy note shown when a cloud provider is selected"
   },
@@ -4296,7 +4268,7 @@
   "@coachDeleteIt": {
     "description": "Coach screen: confirm-dialog button text for a destructive write action"
   },
-  "coachDestructiveWarning": "This removes data from this device and cannot be undone.",
+  "coachDestructiveWarning": "This removes data and cannot be undone.",
   "@coachDestructiveWarning": {
     "description": "Coach screen: confirm-dialog warning text for a destructive write action"
   },
@@ -4317,7 +4289,7 @@
   "@coachInputHint": {
     "description": "Coach screen: placeholder text in the empty chat input field"
   },
-  "coachIntroBody": "Ask about anything the app measures, and it can log food, water, workouts, doses and how you felt — always asking first.",
+  "coachIntroBody": "Ask about your data. It can also log food, water, workouts and doses, and always asks first.",
   "@coachIntroBody": {
     "description": "Coach screen: intro paragraph shown in the empty-chat welcome card"
   },
@@ -4330,7 +4302,7 @@
       }
     }
   },
-  "coachKeyStillSavedBody": "It could not be read from the keychain this time, which happens when the app is woken while the phone is locked.",
+  "coachKeyStillSavedBody": "Your key is saved. It could not be read just now.",
   "@coachKeyStillSavedBody": {
     "description": "Coach screen: body text explaining why the saved API key could not be read this time"
   },
@@ -4342,7 +4314,7 @@
   "@coachListModels": {
     "description": "Coach AI settings: button label to fetch the list of available models"
   },
-  "coachLocalDataNote": "Your questions and the rows the coach reads stay on your own machine.",
+  "coachLocalDataNote": "Stays on your machine.",
   "@coachLocalDataNote": {
     "description": "Coach AI settings: privacy note shown when a local provider is selected"
   },
@@ -4379,7 +4351,7 @@
   "@coachNewChat": {
     "description": "Coach screen: menu row to start a new chat"
   },
-  "coachNoChatsYet": "Nothing yet — this is your first conversation.",
+  "coachNoChatsYet": "No chats yet.",
   "@coachNoChatsYet": {
     "description": "Coach screen: message in the past-chats menu list when there is no chat history yet"
   },
@@ -4399,7 +4371,7 @@
   "@coachNotSetUp": {
     "description": "Coach screen: subtitle shown wherever the coach has no model configured yet"
   },
-  "coachNotSetUpBody": "Pick a model on your own computer, or any OpenAI-compatible provider with your own key. Nothing goes through OpenStrap either way.",
+  "coachNotSetUpBody": "Use a model on your computer, or any OpenAI-compatible provider with your own key.",
   "@coachNotSetUpBody": {
     "description": "Coach screen: body text explaining how to set up the coach and its privacy stance"
   },
@@ -4414,10 +4386,6 @@
   "coachPickModelFirst": "Pick or type a model first.",
   "@coachPickModelFirst": {
     "description": "Coach AI settings: validation message when saving without a chosen model"
-  },
-  "coachSafeWarning": "Nothing is written until you tap below.",
-  "@coachSafeWarning": {
-    "description": "Coach screen: confirm-dialog reassurance text for a non-destructive write action"
   },
   "coachSaveIt": "Save it",
   "@coachSaveIt": {
@@ -5031,11 +4999,11 @@
   "@investigateNotDocumented": {
     "description": "Fallback text when the method is not documented"
   },
-  "calmBreathingResonanceLabel": "Resonance",
+  "calmBreathingResonanceLabel": "Your pace",
   "@calmBreathingResonanceLabel": {
     "description": "Pattern name for a custom-paced resonance breathing exercise"
   },
-  "calmBreathingResonanceDescription": "Even in and out at about {rate} breaths a minute. The one with a coherence score.",
+  "calmBreathingResonanceDescription": "Even breathing at about {rate} a minute. This pace is scored.",
   "@calmBreathingResonanceDescription": {
     "description": "Description of a custom-paced resonance breathing exercise",
     "placeholders": {
@@ -5110,7 +5078,7 @@
   "@calmBreathingMeasureBeforeAfter": {
     "description": "Row title for the before/after quiet-window toggle"
   },
-  "calmBreathingNeedsBandBeatTiming": "Needs the band on — the comparison is made from beat timing.",
+  "calmBreathingNeedsBandBeatTiming": "Needs the band on.",
   "@calmBreathingNeedsBandBeatTiming": {
     "description": "Body text explaining a feature needs the band connected for beat timing"
   },
@@ -5118,7 +5086,7 @@
   "@calmBreathingFindYourPace": {
     "description": "Row title inviting the user to run the personal-pace sweep"
   },
-  "calmBreathingSweepIntro": "Six minutes: {rates} breaths a minute, two minutes each. It takes two sittings that agree before anything changes.",
+  "calmBreathingSweepIntro": "Six minutes at {rates} breaths a minute, two minutes each. Two matching sittings update your pace.",
   "@calmBreathingSweepIntro": {
     "description": "Body text describing the personal-pace sweep before it has ever run",
     "placeholders": {
@@ -5127,7 +5095,7 @@
       }
     }
   },
-  "calmBreathingSweepAgreed": "Two sittings agreed on {rate} breaths a minute, and Resonance is paced there. Run it again to check.",
+  "calmBreathingSweepAgreed": "Two sittings agreed on {rate} breaths a minute. Your paced breathing now uses it.",
   "@calmBreathingSweepAgreed": {
     "description": "Body text describing the pace two sittings agreed on",
     "placeholders": {
@@ -5160,11 +5128,11 @@
       }
     }
   },
-  "calmBreathingNoScoreForSession": "No coherence score for this session",
+  "calmBreathingNoScoreForSession": "No score for this session",
   "@calmBreathingNoScoreForSession": {
     "description": "Status card / title: no coherence score for this session"
   },
-  "calmBreathingScoringNeedsBand": "Scoring needs beat timing from the band. Not connected, so this one paces you but is not saved.",
+  "calmBreathingScoringNeedsBand": "Band not connected. This session is paced but not scored or saved.",
   "@calmBreathingScoringNeedsBand": {
     "description": "Status card body: scoring needs the band connected"
   },
@@ -5184,11 +5152,11 @@
   "@calmBreathingStaySitting": {
     "description": "Instruction during the post-session quiet window"
   },
-  "calmBreathingNothingPacingScored": "Breathe however you normally would. Nothing is pacing you and nothing is being scored.",
+  "calmBreathingNothingPacingScored": "Breathe normally. Nothing is paced or scored.",
   "@calmBreathingNothingPacingScored": {
     "description": "Body text reassuring the quiet window is unpaced and unscored"
   },
-  "calmBreathingPatternNotScored": "{pattern} is not scored. Resonance is the one paced at the rate the score is built for.",
+  "calmBreathingPatternNotScored": "{pattern} is not scored.",
   "@calmBreathingPatternNotScored": {
     "description": "Explanation that the current breathing pattern is not coherence-scored",
     "placeholders": {
@@ -5197,7 +5165,7 @@
       }
     }
   },
-  "calmBreathingTooFewBeatTimings": "Too few clean beat timings across the session to score it.",
+  "calmBreathingTooFewBeatTimings": "Too few clean beats to score this session.",
   "@calmBreathingTooFewBeatTimings": {
     "description": "Fallback reason: too few clean beat timings to score the session"
   },
@@ -5205,7 +5173,7 @@
   "@calmBreathingThatIsDone": {
     "description": "Headline shown when a session finishes normally"
   },
-  "calmBreathingCardiacCoherence": "Cardiac coherence",
+  "calmBreathingCardiacCoherence": "Breathing score",
   "@calmBreathingCardiacCoherence": {
     "description": "Result card title for the coherence score"
   },
@@ -5238,23 +5206,23 @@
   "@calmBreathingTooFewCleanBeats": {
     "description": "Sweep result row value: this block ran but could not be scored"
   },
-  "calmBreathingRankingExplainer": "A ranking of three paces from one sitting. Each pace starts while you settle from the last, so it only says which one your heart followed most.",
+  "calmBreathingRankingExplainer": "Which pace your heart followed most this sitting.",
   "@calmBreathingRankingExplainer": {
     "description": "Footnote explaining the sweep is a ranking with real limits, not a diagnosis"
   },
-  "calmBreathingVerdictAborted": "You stopped part way, so there was nothing to compare. Nothing has changed.",
+  "calmBreathingVerdictAborted": "You stopped part way, so there was nothing to compare.",
   "@calmBreathingVerdictAborted": {
     "description": "Verdict text when the sweep was stopped before comparing any paces"
   },
-  "calmBreathingVerdictCouldNotScore": "At least one pace could not be scored, so there is nothing to rank. Nothing has changed.",
+  "calmBreathingVerdictCouldNotScore": "At least one pace could not be scored, so there is nothing to rank.",
   "@calmBreathingVerdictCouldNotScore": {
     "description": "Verdict text when at least one pace could not be scored"
   },
-  "calmBreathingVerdictTied": "Two of the paces scored the same, so this sitting cannot separate them. Nothing has changed.",
+  "calmBreathingVerdictTied": "Two of the paces scored the same, so this sitting cannot separate them.",
   "@calmBreathingVerdictTied": {
     "description": "Verdict text when two paces scored the same and cannot be separated"
   },
-  "calmBreathingVerdictConfirmed": "Of the paces tested, {w} gave your strongest response — and that is now two sittings in a row. Resonance is paced there.",
+  "calmBreathingVerdictConfirmed": "{w} gave your strongest response twice in a row. It is now your pace.",
   "@calmBreathingVerdictConfirmed": {
     "description": "Verdict text when the winning pace matches the prior agreed pace",
     "placeholders": {
@@ -5263,7 +5231,7 @@
       }
     }
   },
-  "calmBreathingVerdictFirstWin": "Of the paces tested, {w} gave your strongest response. Nothing is set yet: the pace only changes when two sittings pick the same one.",
+  "calmBreathingVerdictFirstWin": "{w} gave your strongest response. Your pace changes after two sittings agree.",
   "@calmBreathingVerdictFirstWin": {
     "description": "Verdict text when a pace won but has not yet been confirmed by a second sitting",
     "placeholders": {
@@ -8882,10 +8850,6 @@
   "@workoutAddWeightFix": {
     "description": "Fix action label on the missing-weight card"
   },
-  "workoutCalorieEstimatesTitle": "Calorie figures are estimates",
-  "@workoutCalorieEstimatesTitle": {
-    "description": "StatusCard title reminding calories are estimated"
-  },
   "workoutSuggestionsTitle": "{n, plural, one{{n} effort we spotted but did not log} other{{n} efforts we spotted but did not log}}",
   "@workoutSuggestionsTitle": {
     "description": "Title of the detected-but-unlogged effort card on History",
@@ -9266,15 +9230,15 @@
   "@activitySetupCaloriesNeedWeight": {
     "description": "Shown instead of a calorie estimate when the user has no weight on file"
   },
-  "activitySetupNoMetEstimate": "No estimate up front: this activity has no published effort level. Calories come from heart rate once your profile and heart-rate range are known.",
+  "activitySetupNoMetEstimate": "No estimate up front. Calories come from your heart rate.",
   "@activitySetupNoMetEstimate": {
     "description": "Shown instead of a calorie estimate when the activity has no published MET (e.g. General workout, Padel)"
   },
-  "activitySummaryCalorieNoMet": "Estimated from your heart rate and weight. This activity has no published effort level, so none is used.",
+  "activitySummaryCalorieNoMet": "Estimated from your heart rate and weight.",
   "@activitySummaryCalorieNoMet": {
     "description": "Calorie basis line on the summary screen for a session whose activity has no published MET (e.g. General workout, Padel)"
   },
-  "activitySetupCalorieEstimate": "About {est} kcal per {minutes} min, from the activity's effort level ({met}× resting) and your weight.",
+  "activitySetupCalorieEstimate": "About {est} kcal per {minutes} min, based on your weight.",
   "@activitySetupCalorieEstimate": {
     "description": "Calorie estimate line on the activity setup screen, e.g. 'About 250 kcal per 30 min, from 8.0 MET and your weight.'",
     "placeholders": {
@@ -9346,7 +9310,7 @@
   "@activityPickerNoMatchTitle": {
     "description": "Status card title when a search finds no matching activity"
   },
-  "activityPickerNoMatchBody": "The catalogue covers about seventy activities with a published energy cost. Pick the closest one.",
+  "activityPickerNoMatchBody": "No match. Pick the closest activity.",
   "@activityPickerNoMatchBody": {
     "description": "Status card body when a search finds no matching activity"
   },
@@ -9357,19 +9321,6 @@
   "activityPickerRecent": "RECENT",
   "@activityPickerRecent": {
     "description": "Section heading over the recent-activities row"
-  },
-  "activityPickerCalorieEstimatesTitle": "Calorie figures are estimates",
-  "@activityPickerCalorieEstimatesTitle": {
-    "description": "Status card title explaining that calorie figures are estimates"
-  },
-  "activityPickerMetValue": "{met}× resting",
-  "@activityPickerMetValue": {
-    "description": "MET value shown on an activity row when no calorie estimate is available, e.g. '8.0 MET'",
-    "placeholders": {
-      "met": {
-        "type": "String"
-      }
-    }
   },
   "activityPickerKcalPer30": "{kcal} kcal / 30 min",
   "@activityPickerKcalPer30": {
@@ -9400,7 +9351,7 @@
   "@dayStrainNoReasonBody": {
     "description": "Fallback body text when no strain trace exists and no reason was given by the backend"
   },
-  "dayStrainScoredNoTraceBody": "The day strain is {strain}. The waking minutes it was built from are not stored for this day.",
+  "dayStrainScoredNoTraceBody": "Day strain is {strain}. The minute-by-minute detail isn't stored.",
   "@dayStrainScoredNoTraceBody": {
     "description": "Body text when a day has a strain score but no per-minute curve stored",
     "placeholders": {
@@ -9417,7 +9368,7 @@
   "@dayStrainChartTitle": {
     "description": "Chart title above the day's strain-over-time curve"
   },
-  "dayStrainChartFootnote": "Effort above your usual waking pace. It can ease later if you slow back toward that pace. From {drawn} recorded waking minutes.",
+  "dayStrainChartFootnote": "Effort above your usual waking pace, from {drawn} recorded minutes.",
   "@dayStrainChartFootnote": {
     "description": "Footnote under the strain curve chart explaining it tracks effort above baseline pace, not a raw accumulator, so it can dip",
     "placeholders": {
@@ -9443,7 +9394,7 @@
       }
     }
   },
-  "dayStrainLowCoverageBody": "Strain is a total over the minutes that were recorded, so a partly-worn day reads lower than a full one and the two are not comparable.",
+  "dayStrainLowCoverageBody": "Strain counts recorded minutes only, so a partly worn day reads lower.",
   "@dayStrainLowCoverageBody": {
     "description": "Status card body explaining why a partly-worn day is not comparable to a full one"
   },
@@ -9454,24 +9405,6 @@
   "dayStrainZonesChartTitle": "Time in zones",
   "@dayStrainZonesChartTitle": {
     "description": "Chart title for the day's time-in-zones bar"
-  },
-  "dayStrainZoneFootnoteKarvonen": "Zone edges span the gap between your measured resting heart rate and the highest we have seen ({maxHr} bpm). Both measured on you.",
-  "@dayStrainZoneFootnoteKarvonen": {
-    "description": "Footnote under the day's zone bar when both resting HR and ceiling are measured (karvonen)",
-    "placeholders": {
-      "maxHr": {
-        "type": "int"
-      }
-    }
-  },
-  "dayStrainZoneFootnoteObserved": "Zone edges are percentages of the highest heart rate we have seen ({maxHr} bpm) — measured, not estimated.",
-  "@dayStrainZoneFootnoteObserved": {
-    "description": "Footnote under the day's zone bar when only the ceiling is measured",
-    "placeholders": {
-      "maxHr": {
-        "type": "int"
-      }
-    }
   },
   "dayStrainHowSet": "How these are set",
   "@dayStrainHowSet": {
@@ -9485,7 +9418,7 @@
   "@dayStrainInputsBase": {
     "description": "First sentence of the day strain 'what this is made of' explanation"
   },
-  "dayStrainInputsMaxHr": "It was integrated against an assumed maximum of {maxHr} bpm — estimated from your age and your strap, not measured.",
+  "dayStrainInputsMaxHr": "Based on an estimated maximum of {maxHr} bpm.",
   "@dayStrainInputsMaxHr": {
     "description": "Sentence naming the assumed max heart rate the strain score was integrated against",
     "placeholders": {
@@ -9493,14 +9426,6 @@
         "type": "int"
       }
     }
-  },
-  "dayStrainInputsMeasuredCeilingNote": "The zone bar uses your measured maximum. Strain does not, so the strain scores you have already seen stay the same.",
-  "@dayStrainInputsMeasuredCeilingNote": {
-    "description": "Sentence noting the zone bar uses a different, measured ceiling than the strain score"
-  },
-  "dayStrainInputsRhrAnchor": "The other anchor is your resting heart rate from the night before, so a night the band missed moves the whole day.",
-  "@dayStrainInputsRhrAnchor": {
-    "description": "Sentence naming resting heart rate as the strain score's other anchor"
   },
   "activityZonesTitle": "Heart-rate zones",
   "@activityZonesTitle": {
@@ -9522,7 +9447,7 @@
   "@activityZonesNoCeilingTanakaTail": {
     "description": "Trailing sentence fragment appended when age-estimated zones are shown below (note the leading space, appended directly after another sentence)"
   },
-  "activityZonesNoCeilingDefaultBody": "We only count a high reading the band held for 15 seconds while you were moving. A one-second spike is not a heart rate.",
+  "activityZonesNoCeilingDefaultBody": "Only readings held for 15 seconds while moving count.",
   "@activityZonesNoCeilingDefaultBody": {
     "description": "Default explanation of the 15-second hold rule for a measured ceiling, shown when no other reason was given"
   },
@@ -9556,7 +9481,7 @@
       }
     }
   },
-  "activityZonesHighestSeenFootnote": "The highest we have measured, not a limit — it creeps up as the band sees harder efforts. Do not go and test it.",
+  "activityZonesHighestSeenFootnote": "The highest we have measured. It rises as you train harder.",
   "@activityZonesHighestSeenFootnote": {
     "description": "Footnote clarifying the highest-seen heart rate is not a limit and should not be deliberately tested"
   },
@@ -9564,15 +9489,15 @@
   "@activityZonesNoZonesTitle": {
     "description": "Status card title when there are no zone edges at all"
   },
-  "activityZonesNoAgeBody": "Zone edges are percentages of a maximum heart rate, and without your age there is nothing to take a percentage of.",
+  "activityZonesNoAgeBody": "Add your age to see zones.",
   "@activityZonesNoAgeBody": {
     "description": "Explanation shown when zone edges are missing because the user's age is not set"
   },
-  "catalogueZonesWhy": "Zone edges are percentages of a maximum heart rate estimated from your age — not one measured on you.",
+  "catalogueZonesWhy": "Zones are estimated from your age.",
   "@catalogueZonesWhy": {
     "description": "Shared footnote under the zone chart on the workout summary and day-strain screens, when the ceiling is a Tanaka age estimate rather than a measured one"
   },
-  "activityZonesNoZonesDefaultBody": "Nothing recorded says why there are no zone edges yet.",
+  "activityZonesNoZonesDefaultBody": "No zones yet.",
   "@activityZonesNoZonesDefaultBody": {
     "description": "Fallback explanation when zone edges are missing and no reason was given"
   },
@@ -9580,7 +9505,7 @@
   "@activityZonesAddAgeFix": {
     "description": "Suggested fix action to add age in Profile, shown only when age truly is missing"
   },
-  "activityZonesAnchorKarvonen": "From your resting rate ({restingHr}, middle of your last {restingDays} nights) and the highest we’ve seen ({maxHr}). Standard zones, not tested ones.",
+  "activityZonesAnchorKarvonen": "Based on your resting rate ({restingHr}) and highest rate ({maxHr}).",
   "@activityZonesAnchorKarvonen": {
     "description": "Explanation of how zone edges were built when both resting HR and ceiling are measured",
     "placeholders": {
@@ -9595,7 +9520,7 @@
       }
     }
   },
-  "activityZonesAnchorObserved": "From the highest heart rate we’ve seen ({maxHr}). After {restingMinDays} nights of resting rate (you have {restingDays}), that joins in too.",
+  "activityZonesAnchorObserved": "Based on your highest heart rate ({maxHr}). Resting rate is added after {restingMinDays} nights.",
   "@activityZonesAnchorObserved": {
     "description": "Explanation of how zone edges were built when only the ceiling is measured and resting HR history is still short",
     "placeholders": {
@@ -9610,7 +9535,7 @@
       }
     }
   },
-  "activityZonesAnchorTanaka": "From {maxHr} bpm, estimated from your age, so it can be 20 bpm out. The zones move once the band sees a hard enough session.",
+  "activityZonesAnchorTanaka": "Based on {maxHr} bpm, estimated from your age. Zones adjust after a hard session.",
   "@activityZonesAnchorTanaka": {
     "description": "Explanation of how zone edges were built from an age-estimated maximum heart rate",
     "placeholders": {
@@ -9619,11 +9544,7 @@
       }
     }
   },
-  "activityZonesAnchorDefault": "Zone edges are percentages of a maximum heart rate.",
-  "@activityZonesAnchorDefault": {
-    "description": "Generic fallback explanation of what zone edges are"
-  },
-  "activityZonesAnchorManual": "Set by you, not computed — these five thresholds override whatever your age or a measured ceiling would have given you.",
+  "activityZonesAnchorManual": "Set by you.",
   "@activityZonesAnchorManual": {
     "description": "Explanation shown when the user's own manual zone boundaries are in effect"
   },
@@ -9639,15 +9560,15 @@
   "@activityZonesEditYourOwnTitle": {
     "description": "Title of the manual zone-boundary editor sheet"
   },
-  "activityZonesEditYourOwnBody": "Five bpm thresholds, lowest to highest — where each zone starts. Clear all five to go back to the zones we compute for you.",
+  "activityZonesEditYourOwnBody": "Set where each zone starts, lowest to highest. Clear all five to reset.",
   "@activityZonesEditYourOwnBody": {
     "description": "Explanation text in the manual zone-boundary editor sheet"
   },
-  "activityZonesNeedAllFive": "All five thresholds are needed, lowest to highest. Nothing was saved.",
+  "activityZonesNeedAllFive": "All five thresholds are needed.",
   "@activityZonesNeedAllFive": {
     "description": "Error shown when only some of the five manual zone fields were filled in"
   },
-  "activityZonesMustAscend": "Each zone must start higher than the last. Nothing was saved.",
+  "activityZonesMustAscend": "Each zone must start higher than the last.",
   "@activityZonesMustAscend": {
     "description": "Error shown when the five manual zone thresholds are not strictly ascending"
   },
@@ -9655,15 +9576,15 @@
   "@activityZonesNotShownTitle": {
     "description": "Status card title when the 28-day intensity distribution is not yet shown"
   },
-  "activityZonesNeedsMonthBody": "Needs about a month of recorded sessions, each with a minute-by-minute heart rate.",
+  "activityZonesNeedsMonthBody": "Needs about a month of recorded sessions.",
   "@activityZonesNeedsMonthBody": {
     "description": "Explanation of what is needed before the intensity distribution chart appears, when zones are measured"
   },
-  "activityZonesAgeEstimateBody": "The bars would be a picture of the age estimate, not of your training. They appear once the zone edges above are measured.",
+  "activityZonesAgeEstimateBody": "Shown once zones are measured from your training.",
   "@activityZonesAgeEstimateBody": {
     "description": "Explanation of why the intensity distribution is withheld when zones are only age-estimated"
   },
-  "activityZonesCurrentEdgesNote": "Ranges are your current zone edges; older sessions may have been counted with different ones.",
+  "activityZonesCurrentEdgesNote": "Uses your current zones.",
   "@activityZonesCurrentEdgesNote": {
     "description": "Footnote under the 28-day zone minutes: the printed bpm ranges are today's edges"
   },
@@ -9671,19 +9592,19 @@
   "@activityZonesSessionMinutesChartTitle": {
     "description": "Chart title for the 28-day session-minutes-by-zone bar"
   },
-  "activityZonesShapePyramidal": "Most of your minutes are easy, fewer in the middle, fewest hard — a pyramid.",
+  "activityZonesShapePyramidal": "Mostly easy, some moderate, little hard.",
   "@activityZonesShapePyramidal": {
     "description": "Description of a pyramidal training-intensity distribution shape"
   },
-  "activityZonesShapePolarised": "Most of your minutes are easy and the rest are hard, with little in between.",
+  "activityZonesShapePolarised": "Mostly easy or hard, little in between.",
   "@activityZonesShapePolarised": {
     "description": "Description of a polarised training-intensity distribution shape"
   },
-  "activityZonesShapeMiddleHeavy": "Most of your minutes sit in the middle rather than easy or hard.",
+  "activityZonesShapeMiddleHeavy": "Mostly moderate.",
   "@activityZonesShapeMiddleHeavy": {
     "description": "Description of a middle-heavy training-intensity distribution shape"
   },
-  "activityZonesShapeSummary": "{easy} min easy, {moderate} moderate, {hard} hard, over {sessions} recorded sessions. A description, not a target.",
+  "activityZonesShapeSummary": "{easy} min easy, {moderate} moderate, {hard} hard, over {sessions} recorded sessions.",
   "@activityZonesShapeSummary": {
     "description": "Sentence summarizing minutes spent easy/moderate/hard across recorded sessions",
     "placeholders": {
@@ -9721,7 +9642,7 @@
   "@activityShareChangePhoto": {
     "description": "Row label when a photo has already been chosen, to pick a different one"
   },
-  "activitySharePhotoHint": "From this phone. Nothing is uploaded",
+  "activitySharePhotoHint": "From your phone. Not uploaded.",
   "@activitySharePhotoHint": {
     "description": "Subtitle under the photo row explaining the photo stays on-device"
   },
@@ -9737,7 +9658,7 @@
   "@activityShareDrawMap": {
     "description": "Row label for the toggle that fetches real map tiles for the route"
   },
-  "activityShareMapHint": "Asks openstreetmap.org for the tiles covering this route. Off, the route draws on its own",
+  "activityShareMapHint": "Loads a map from openstreetmap.org. Off, only the route is drawn.",
   "@activityShareMapHint": {
     "description": "Subtitle explaining the basemap toggle asks openstreetmap.org for tiles"
   },
@@ -9745,15 +9666,11 @@
   "@activityShareFetchingMapTitle": {
     "description": "Status card title while map tiles are being fetched"
   },
-  "activityShareFetchingMapBody": "The card draws as soon as every tile is here.",
-  "@activityShareFetchingMapBody": {
-    "description": "Status card body while map tiles are being fetched"
-  },
   "activityShareNoMapTitle": "No map for this card",
   "@activityShareNoMapTitle": {
     "description": "Status card title when the map tile fetch failed"
   },
-  "activityShareNoMapBody": "The map tiles could not be fetched, so the route is drawn on its own. Everything else on the card is unchanged.",
+  "activityShareNoMapBody": "Map unavailable. Showing the route only.",
   "@activityShareNoMapBody": {
     "description": "Status card body explaining the map tile fetch failed and the route drew on its own"
   },
@@ -9761,7 +9678,7 @@
   "@activityShareStatusPrivateTitle": {
     "description": "Status card title shown when the session being shared is marked private"
   },
-  "activityShareStatusPrivateBody": "Hidden from summaries and exports.",
+  "activityShareStatusPrivateBody": "Hidden from summaries and exports",
   "@activityShareStatusPrivateBody": {
     "description": "Status card body explaining a private session is hidden from summaries and exports"
   },
@@ -9777,7 +9694,7 @@
   "@activitySummaryRpeHeadline": {
     "description": "Header of the TS-09 post-session effort rating card"
   },
-  "activitySummaryRpeBody": "Your own rating of the effort. It is a feeling, not a measurement — which is the point, because it can disagree with the numbers above.",
+  "activitySummaryRpeBody": "Your own rating of the effort.",
   "@activitySummaryRpeBody": {
     "description": "Explanatory body text under the effort rating card header"
   },
@@ -9839,7 +9756,7 @@
   "@activitySummaryPrivate": {
     "description": "Pill label shown next to the hero stat when the session is marked private"
   },
-  "activitySummaryStepsBasis": "Steps came from the strap's own motion sensor, which only counts them on foot.",
+  "activitySummaryStepsBasis": "Counted by the band's motion sensor.",
   "@activitySummaryStepsBasis": {
     "description": "Sentence explaining where the step count came from, appended to the calorie basis note"
   },
@@ -9847,15 +9764,15 @@
   "@activitySummaryCaloriesNeedWeight": {
     "description": "Calorie basis note when the user has no weight on file"
   },
-  "activitySummaryNoCalorieNoStrain": "No calorie figure for this session. An energy estimate from heart rate needs your maximum and resting heart rates, and one of them is not set.",
+  "activitySummaryNoCalorieNoStrain": "No calories. Set your maximum and resting heart rates to get them.",
   "@activitySummaryNoCalorieNoStrain": {
     "description": "Calorie basis note when there is no calorie figure and no strain figure either"
   },
-  "activitySummaryNoCalorieWithStrain": "No calories for this session: set your maximum and resting heart rates to get them. Strain above is the measured effort, on 0–21.",
+  "activitySummaryNoCalorieWithStrain": "No calories. Set your maximum and resting heart rates.",
   "@activitySummaryNoCalorieWithStrain": {
     "description": "Calorie basis note when there is no calorie figure but a strain figure exists"
   },
-  "activitySummaryCalorieNoHr": "Estimated from the activity's effort level ({met}× resting) and your weight. No heart rate reached this session.",
+  "activitySummaryCalorieNoHr": "Estimated from your weight.",
   "@activitySummaryCalorieNoHr": {
     "description": "Calorie basis note when calories were estimated from MET and weight with no heart rate",
     "placeholders": {
@@ -9864,7 +9781,7 @@
       }
     }
   },
-  "activitySummaryCalorieWithHr": "Estimated from the activity's effort level ({met}× resting), your weight and heart rate.",
+  "activitySummaryCalorieWithHr": "Estimated from your weight and heart rate.",
   "@activitySummaryCalorieWithHr": {
     "description": "Calorie basis note when calories were estimated using heart rate too",
     "placeholders": {
@@ -10096,11 +10013,11 @@
   "@activitySummaryPeak": {
     "description": "Inline metric label for peak elevation reached on a journey session"
   },
-  "activitySummaryColdPlungeWhy": "Cold closes the blood vessels the sensor reads through. Finding nothing here is expected, not a fault.",
+  "activitySummaryColdPlungeWhy": "Cold limits the sensor's pulse reading. Gaps are expected.",
   "@activitySummaryColdPlungeWhy": {
     "description": "Explanation shown on a cold plunge session for why the sensor found no pulse"
   },
-  "activitySummaryHeatWhy": "Heat, sweat and a strap that loosens as you warm up all stop the sensor seeing a pulse. Finding nothing here is ordinary, not a fault.",
+  "activitySummaryHeatWhy": "Heat, sweat and a loosening strap can block the pulse reading. Gaps are normal.",
   "@activitySummaryHeatWhy": {
     "description": "Explanation shown on a sauna/heat session for why the sensor found no pulse"
   },
@@ -10117,7 +10034,7 @@
   "@activitySummaryOneMinutePulse": {
     "description": "Status card title when a heat/cold session found only one minute of pulse"
   },
-  "activitySummaryPulseGapNote": "The band found a pulse in {have} of {total} minutes. The gaps are expected, so what is drawn is the part it could see.",
+  "activitySummaryPulseGapNote": "Pulse found in {have} of {total} minutes.",
   "@activitySummaryPulseGapNote": {
     "description": "Footnote on the heart-rate chart of a heat/cold session noting partial pulse coverage",
     "placeholders": {
@@ -10133,7 +10050,7 @@
   "@activitySummaryTooShortTitle": {
     "description": "Status card title when a session is too short to chart heart rate"
   },
-  "activitySummaryTooShortBody": "One minute of heart rate is a point, not a line.",
+  "activitySummaryTooShortBody": "One minute is too short to chart.",
   "@activitySummaryTooShortBody": {
     "description": "Status card body when a session is too short to chart heart rate"
   },
@@ -10149,7 +10066,7 @@
   "@activitySummaryCheckBandConnection": {
     "description": "Fix button label pointing the user at the profile's sources list"
   },
-  "activitySummaryPartialTrace": "Partial trace — the band handed over {pct}% of these minutes.",
+  "activitySummaryPartialTrace": "Pulse recorded for {pct}% of these minutes.",
   "@activitySummaryPartialTrace": {
     "description": "Heart-rate chart footnote when the stored trace covers less than 90% of the session",
     "placeholders": {
@@ -10432,7 +10349,7 @@
       }
     }
   },
-  "activityLiveDeniedForeverBody": "Location is denied for this app, which only Settings can change.",
+  "activityLiveDeniedForeverBody": "Location is blocked. Change it in Settings.",
   "@activityLiveDeniedForeverBody": {
     "description": "Live measured session: explanation when location is permanently denied for the app."
   },
@@ -10522,7 +10439,7 @@
       }
     }
   },
-  "activityLiveLapsFootnote": "Fastest {time}, in bold; bar length is speed against it.",
+  "activityLiveLapsFootnote": "Fastest lap in bold.",
   "@activityLiveLapsFootnote": {
     "description": "Live swim screen: footnote naming the fastest lap under the laps chart.",
     "placeholders": {
@@ -10587,7 +10504,7 @@
       }
     }
   },
-  "activityLiveNoHrBody": "The band is not connected, so nothing is arriving for this session.",
+  "activityLiveNoHrBody": "The band is not connected.",
   "@activityLiveNoHrBody": {
     "description": "Live heart-rate block: explanation shown when the band is not connected at all."
   },
@@ -10595,7 +10512,7 @@
   "@activityLiveNoHrTitle": {
     "description": "Live heart-rate block: title shown when the band is not connected."
   },
-  "activityLiveNoHrYetBody": "The band is connected but has not reported a beat, so it needs to be snug, a finger-width above the wrist bone.",
+  "activityLiveNoHrYetBody": "No heartbeat yet. Wear the band snug, a finger-width above the wrist bone.",
   "@activityLiveNoHrYetBody": {
     "description": "Live heart-rate block: explanation shown when the band is connected but has no beat yet."
   },
@@ -10607,7 +10524,7 @@
   "@activityLiveNoneYet": {
     "description": "Live strength screen: placeholder for a previous/best reference that has no data."
   },
-  "activityLiveNoRouteFailedBody": "The phone returned an error when asked for a fix.",
+  "activityLiveNoRouteFailedBody": "Could not get your location.",
   "@activityLiveNoRouteFailedBody": {
     "description": "Live measured session: explanation when a GPS fix request errored out."
   },
@@ -10619,7 +10536,7 @@
   "@activityLiveNoRouteNotAllowedTitle": {
     "description": "Live measured session: title when location permission is denied (once or forever)."
   },
-  "activityLiveNoRouteOffBody": "Location services are off on this phone, so no fixes are arriving.",
+  "activityLiveNoRouteOffBody": "Location is off, so no route is recorded.",
   "@activityLiveNoRouteOffBody": {
     "description": "Live measured session: explanation when the phone's location services are off."
   },
@@ -10792,7 +10709,7 @@
       }
     }
   },
-  "activityLiveRouteFootnoteNoDistance": "Start pinned; distance appears once the fixes settle.",
+  "activityLiveRouteFootnoteNoDistance": "Distance appears once GPS settles.",
   "@activityLiveRouteFootnoteNoDistance": {
     "description": "Live measured session: route-chart footnote before any distance has been computed."
   },
@@ -12093,7 +12010,7 @@
   "@ecgHistoryEmpty": {
     "description": "WHOOP MG ECG: No readings yet."
   },
-  "ecgHistoryEmptyWhy": "Readings you take are saved here and stay readable while the band is away.",
+  "ecgHistoryEmptyWhy": "Your readings are saved here.",
   "@ecgHistoryEmptyWhy": {
     "description": "WHOOP MG ECG: Readings you take are saved here and stay readable while the band is away."
   },
@@ -12113,7 +12030,7 @@
   "@ecgInstruction": {
     "description": "WHOOP MG ECG: Rest your arm. Touch both metal sides with your opposite thumb and index finger. Keep still."
   },
-  "ecgIllustration": "Illustration: the band on your wrist, and the thumb and index finger of your other hand touching its two metal sides.",
+  "ecgIllustration": "Touch the band's two metal sides with your other thumb and index finger.",
   "@ecgIllustration": {
     "description": "WHOOP MG ECG: Illustration: the band on your wrist, and the thumb and index finger of your other hand touching its two metal sides."
   },
@@ -12363,11 +12280,11 @@
   "@ecgWaveformEmpty": {
     "description": "WHOOP MG ECG: No waveform was saved with this reading."
   },
-  "ecgWaveformLabel": "Accepted waveform, microvolts as the band sent them. Gaps are missing seconds.",
+  "ecgWaveformLabel": "Heart signal. Gaps are missing seconds.",
   "@ecgWaveformLabel": {
     "description": "WHOOP MG ECG: Accepted waveform, microvolts as the band sent them. Gaps are missing seconds."
   },
-  "ecgSampleNote": "{count} samples at {rate} Hz, filtered, input-referred µV. No lead or polarity is claimed.",
+  "ecgSampleNote": "{count} samples at {rate} Hz.",
   "@ecgSampleNote": {
     "description": "WHOOP MG ECG: {count} samples at {rate} Hz, filtered, input-referred µV. No lead or polarity is claimed.",
     "placeholders": {
@@ -12952,7 +12869,7 @@
       }
     }
   },
-  "supplementCoachMedication": "Schedule {name} at {time}, {days}. This app does not check interactions.",
+  "supplementCoachMedication": "Schedule {name} at {time}, {days}. Interactions are not checked.",
   "@supplementCoachMedication": {
     "description": "Presentation-only text; interpolated values remain unchanged.",
     "placeholders": {
@@ -14223,7 +14140,7 @@
   "@findingIllnessTitle": {
     "description": "Findings log / health-exception copy (lib/compute/findings.dart)."
   },
-  "findingIllnessDetail": "Recent nights put your resting heart rate above your usual, from one very high night or a few slightly raised ones. One signal: a pattern, not a cause.",
+  "findingIllnessDetail": "Your resting heart rate has been above your usual lately. A pattern, not a cause.",
   "@findingIllnessDetail": {
     "description": "Findings log / health-exception copy (lib/compute/findings.dart)."
   },
@@ -14231,11 +14148,11 @@
   "@findingLowReadinessTitle": {
     "description": "Findings log / health-exception copy (lib/compute/findings.dart)."
   },
-  "findingLowReadinessDetail": "Recovery was in its lowest band. Taken together, that night's signals sat well below your usual.",
+  "findingLowReadinessDetail": "Recovery was low. Your night's signals sat well below your usual.",
   "@findingLowReadinessDetail": {
     "description": "Findings log / health-exception copy (lib/compute/findings.dart)."
   },
-  "findingLowReadinessScoredDetail": "Recovery scored {score}, its lowest band. Taken together, that night's signals sat well below your usual.",
+  "findingLowReadinessScoredDetail": "Recovery scored {score}, well below your usual.",
   "@findingLowReadinessScoredDetail": {
     "description": "Findings log / health-exception copy (lib/compute/findings.dart).",
     "placeholders": {
@@ -15035,7 +14952,7 @@
   "@advancedBeatsTitle": {
     "description": "Advanced charts screen: row opening the beat-to-beat charts."
   },
-  "advancedBeatsSub": "Each beat against the last, HRV through the night, deceleration capacity",
+  "advancedBeatsSub": "Beat-by-beat view and overnight HRV",
   "@advancedBeatsSub": {
     "description": "Advanced charts screen: what the beat-to-beat row contains."
   },
@@ -16717,7 +16634,7 @@
   "@snoozeExactNote": {
     "description": "One line under the snooze settings when Android will not let the app set exact alarms."
   },
-  "momentReviewHint": "Your choices are queued. Nothing is saved until you press Save.",
+  "momentReviewHint": "Nothing is saved until you press Save.",
   "@momentReviewHint": {
     "description": "Hint at the top of the marked-moment review: choices are queued until Save"
   },
@@ -16783,7 +16700,7 @@
       }
     }
   },
-  "momentReviewItemFailed": "Not saved. It is still queued — press Save to try again.",
+  "momentReviewItemFailed": "Not saved. Press Save to retry.",
   "@momentReviewItemFailed": {
     "description": "Shown on a review card whose decision could not be saved; it stays queued"
   },
@@ -16815,15 +16732,15 @@
   "@settingsTaskerMomentExportSub": {
     "description": "Explains what the switch sends (health information) and that it is off by default and goes to Tasker only"
   },
-  "momentReviewPersistFailed": "Could not store your choices on this phone. They are kept while the app is open but may be lost if it closes.",
+  "momentReviewPersistFailed": "Could not save your choices. They may be lost if the app closes.",
   "@momentReviewPersistFailed": {
     "description": "Warning on the marked-moment review when the phone did not confirm storing the queued choices"
   },
-  "momentReviewAmountInvalid": "Type a number above 0 (within the usual range), or leave it empty.",
+  "momentReviewAmountInvalid": "Enter a number above 0, or leave it empty.",
   "@momentReviewAmountInvalid": {
     "description": "Error under the amount field of a marked moment when the typed value is not a usable number"
   },
-  "momentReviewAmbiguous": "This time came round twice when the clocks went back, so it cannot be paired with another mark.",
+  "momentReviewAmbiguous": "This time is ambiguous after the clock change, so it cannot be paired.",
   "@momentReviewAmbiguous": {
     "description": "Shown on a nap or workout mark made in the hour that repeats when the clocks go back; it cannot be paired"
   },
@@ -16831,7 +16748,7 @@
   "@momentReviewResume": {
     "description": "Note on a paired range whose first half was saved and whose rest is still to do"
   },
-  "momentReviewProgressNotSaved": "Could not record progress on this pair, so it was stopped. Press Save to try again.",
+  "momentReviewProgressNotSaved": "This pair was not saved. Press Save to retry.",
   "@momentReviewProgressNotSaved": {
     "description": "Shown on a paired range that was stopped because its progress could not be stored; it stays queued"
   },
@@ -16982,7 +16899,7 @@
   "@ecgCaveatQualityUnchecked": {
     "description": "WHOOP MG ECG: Band-reported. The app has not checked this recording's quality yet."
   },
-  "ecgReasonUnknownBit": "Unknown band reason bit {bit}",
+  "ecgReasonUnknownBit": "The band reported an unrecognised result.",
   "@ecgReasonUnknownBit": {
     "description": "WHOOP MG ECG: Unknown band reason bit {bit}",
     "placeholders": {
@@ -16991,7 +16908,7 @@
       }
     }
   },
-  "ecgReasonUnknownCode": "The band's result code {code} is not one this app knows",
+  "ecgReasonUnknownCode": "The band reported an unrecognised result.",
   "@ecgReasonUnknownCode": {
     "description": "WHOOP MG ECG: The band's result code {code} is not one this app knows",
     "placeholders": {
@@ -17000,7 +16917,7 @@
       }
     }
   },
-  "ecgReasonBandUnreadable": "The band's result code {code} means it could not read the recording",
+  "ecgReasonBandUnreadable": "The band could not read the recording.",
   "@ecgReasonBandUnreadable": {
     "description": "WHOOP MG ECG: The band's result code {code} means it could not read the recording",
     "placeholders": {
@@ -17013,7 +16930,7 @@
   "@ecgReasonNoHeartRate": {
     "description": "WHOOP MG ECG: No heart rate was reported"
   },
-  "ecgReasonHrOutOfRange": "The average heart rate ({hr} bpm) is outside the range this result can be read at",
+  "ecgReasonHrOutOfRange": "Average heart rate ({hr} bpm) is outside the readable range.",
   "@ecgReasonHrOutOfRange": {
     "description": "WHOOP MG ECG: The average heart rate ({hr} bpm) is outside the range this result can be read at",
     "placeholders": {
@@ -17097,11 +17014,11 @@
   "@ecgDetailStoredCategory": {
     "description": "WHOOP MG ECG: Band category as stored"
   },
-  "ecgDetailAvgHr": "Average heart rate (decides)",
+  "ecgDetailAvgHr": "Average heart rate",
   "@ecgDetailAvgHr": {
     "description": "WHOOP MG ECG: Average heart rate (decides)"
   },
-  "ecgDetailLiveHr": "Live heart rate (never decides)",
+  "ecgDetailLiveHr": "Live heart rate",
   "@ecgDetailLiveHr": {
     "description": "WHOOP MG ECG: Live heart rate (never decides)"
   },
@@ -17225,7 +17142,7 @@
   "@ecgAttemptThis": {
     "description": "WHOOP MG ECG: this reading"
   },
-  "ecgDetailBandLogic": "How the band decides its result is proprietary and unknown to this app. The app only reads the numbers the band reports.",
+  "ecgDetailBandLogic": "The band decides the result, and its logic is proprietary and unknown. This app only shows what the band reports.",
   "@ecgDetailBandLogic": {
     "description": "WHOOP MG ECG: How the band decides its result is proprietary and unknown to this app. The app only reads the numbers the ban"
   },
@@ -17233,11 +17150,7 @@
   "@ecgRateMapping": {
     "description": "WHOOP MG ECG: Regular rhythm is only reported at 51–99 bpm; at 100–150 bpm the band separates irregular from not irregular; "
   },
-  "ecgDetailRuleHr": "The heart rate that decides is the average heart rate the band reports. The live rate is shown but never decides.",
-  "@ecgDetailRuleHr": {
-    "description": "WHOOP MG ECG: The heart rate that decides is the average heart rate the band reports. The live rate is shown but never decid"
-  },
-  "ecgDetailRuleMask": "Any reason bit the band set in any second, an unknown result code or a missing heart rate makes the reading Not readable, whatever the result code says.",
+  "ecgDetailRuleMask": "Anything the band flags as unreliable makes the reading Not readable.",
   "@ecgDetailRuleMask": {
     "description": "WHOOP MG ECG: Any reason bit the band set in any second, an unknown result code or a missing heart rate makes the reading No"
   },
@@ -17341,7 +17254,7 @@
   "@findingTitleLowReadiness": {
     "description": "Design 04 cardio transparency: Low readiness today"
   },
-  "findingTitleRhrShift": "Your resting heart-rate trend shifted",
+  "findingTitleRhrShift": "Resting heart rate changed",
   "@findingTitleRhrShift": {
     "description": "Design 04 cardio transparency: Your resting heart-rate trend shifted"
   },
@@ -17353,7 +17266,7 @@
   "@findingDetailAnomaly": {
     "description": "Design 04 cardio transparency: Your overnight readings are outside your usual range."
   },
-  "findingDetailTemp": "Sustained rise above your usual, which can be a sign of illness.",
+  "findingDetailTemp": "Your skin temperature has stayed above your usual.",
   "@findingDetailTemp": {
     "description": "Design 04 cardio transparency: Sustained rise above your baseline, which can be a sign of illness."
   },
@@ -17365,11 +17278,11 @@
   "@findingDetailLowReadiness": {
     "description": "Design 04 cardio transparency: Your recovery markers are below your usual range. Take an easier day."
   },
-  "findingDetailRhrShiftRisen": "Your resting HR has risen noticeably above your recent usual.",
+  "findingDetailRhrShiftRisen": "Your resting heart rate is above your usual.",
   "@findingDetailRhrShiftRisen": {
     "description": "Design 04 cardio transparency: Your resting HR has risen noticeably versus your recent baseline."
   },
-  "findingDetailRhrShiftFallen": "Your resting HR has fallen noticeably below your recent usual.",
+  "findingDetailRhrShiftFallen": "Your resting heart rate is below your usual.",
   "@findingDetailRhrShiftFallen": {
     "description": "Design 04 cardio transparency: Your resting HR has fallen noticeably versus your recent baseline."
   },

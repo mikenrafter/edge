@@ -691,7 +691,7 @@
   "welcomeExportAgainInDateOrder": "Экспортировать заново по порядку дат",
   "scanBarcodeTitle": "Сканировать штрихкод",
   "scanBarcodeClose": "Закрыть",
-  "scanBarcodeInstructions": "Поместите штрихкод в рамку. Съёмка не записывается — считываются только цифры.",
+  "scanBarcodeInstructions": "Поместите штрихкод в рамку.",
   "scanBarcodeNoAccessTitle": "Нет доступа к камере",
   "scanBarcodeCameraFailedTitle": "Камера не запустилась",
   "scanBarcodeNoAccessBody": "Для сканирования нужна камера. Приложению пока не предоставлен доступ к ней.",
@@ -770,10 +770,10 @@
     }
   },
   "aiBriefingNoModelTitle": "Модель не настроена",
-  "aiBriefingNoModelBody": "Сводку составляет выбранная вами модель. Пока вы её не выберете, сводки не создаются и данные никуда не отправляются.",
+  "aiBriefingNoModelBody": "Выберите модель, чтобы создавать сводки.",
   "aiBriefingChooseModel": "Выбрать модель",
   "aiBriefingNothingTitle": "За сегодня сводки нет",
-  "aiBriefingNothingBody": "Сводки создаются по расписанию или по запросу здесь.",
+  "aiBriefingNothingBody": "Сводки появятся здесь.",
   "aiBriefingWriting": "Составление…",
   "aiBriefingWriteNow": "Составить сейчас",
   "aiBriefingWriteAgain": "Составить заново",
@@ -788,8 +788,8 @@
   },
   "aiBriefingSentSection": "Что отправлено",
   "aiBriefingReadSection": "Что прочитано",
-  "aiBriefingNoneBody": "Ничего. Запроса не было — сообщение выше составлено на этом телефоне.",
-  "aiBriefingLocalBody": "Эти показатели переданы в {host} на этом компьютере. За его пределы данные не отправлялись.",
+  "aiBriefingNoneBody": "Ничего не отправлено.",
+  "aiBriefingLocalBody": "Эти показатели отправлены в {host} на этом устройстве.",
   "@aiBriefingLocalBody": {
     "placeholders": {
       "host": {
@@ -797,7 +797,7 @@
       }
     }
   },
-  "aiBriefingCloudBody": "Только эти показатели отправлены в {host} для модели {model}. Исходные записи, имя и идентификатор не передавались.",
+  "aiBriefingCloudBody": "В {host} ({model}) отправлены только эти показатели. Без имени и исходных записей.",
   "@aiBriefingCloudBody": {
     "placeholders": {
       "host": {
@@ -808,10 +808,8 @@
       }
     }
   },
-  "aiBriefingNoneCardTitle": "Отклонений нет — запрос не отправлен",
-  "aiBriefingNoneCardBody": "Проверка выполняется на этом телефоне. Модель вызывается только при наличии наблюдения, которое можно ей передать. Сегодня таких наблюдений нет.",
-  "aiBriefingEmptyCardTitle": "Нет данных для отправки",
-  "aiBriefingEmptyCardBody": "На момент составления ни у одного показателя не было значения, поэтому запрос их не содержал.",
+  "aiBriefingNoneCardBody": "Модель не вызывалась: ничего заметного не нашлось.",
+  "aiBriefingEmptyCardBody": "Нет данных для отправки.",
   "napsFellAsleepHelp": "КОГДА ВЫ ЗАСНУЛИ",
   "napsWokeUpHelp": "КОГДА ВЫ ПРОСНУЛИСЬ",
   "napsInvalidWindow": "Дневной сон длится от 5 минут до 6 часов.",
@@ -982,7 +980,7 @@
       }
     }
   },
-  "dayStepsStrapCounterBody": "Шаги ({count}) {when} получены из счётчика браслета без времени за этот день, поэтому их нельзя разместить по часам.",
+  "dayStepsStrapCounterBody": "Для {count} шагов {when} нет данных о времени.",
   "@dayStepsStrapCounterBody": {
     "placeholders": {
       "count": {
@@ -1006,9 +1004,9 @@
   "dayStepsYourPhone": "Ваш телефон",
   "dayStepsYourBand": "Ваш браслет",
   "dayStepsCounted": "Подсчитано",
-  "dayStepsHonestyMixed": "Подсчитано браслетом и телефоном. Браслет может занижать ходьбу и принимать работу руками за шаги; телефон считает шаги, только когда он при вас.",
-  "dayStepsHonestyStrap": "Подсчитано на запястье: шаги при ходьбе могут недосчитываться, а ритмичная работа руками — приниматься за ходьбу.",
-  "dayStepsHonestyPhone": "Подсчитано телефоном: учтены только шаги, когда вы носили его с собой.",
+  "dayStepsHonestyMixed": "Считают браслет и телефон. Запястье может занижать ходьбу и считать движения рук. Телефон считает, только когда он при вас.",
+  "dayStepsHonestyStrap": "Считает браслет. Он может занижать ходьбу и считать движения рук.",
+  "dayStepsHonestyPhone": "Считает телефон, только пока вы носили его с собой.",
   "roughNightSignRhr": "пульс в покое был выше",
   "roughNightSignHrv": "ВСР была ниже",
   "roughNightSignDip": "ночью пульс снижался меньше обычного",
@@ -1281,7 +1279,7 @@
   "beatsPoincareSection": "Каждый интервал относительно предыдущего",
   "beatsBeatsGoneTitle": "Интервалы за эту ночь больше не хранятся на телефоне",
   "beatsBeatsGoneBody": "Отдельные интервалы хранятся несколько дней после расчёта ночных показателей, затем удаляются. Рассчитанные по ним значения сохраняются постоянно",
-  "beatsBeatsGoneMeasured": " — за эту ночь: SD1 {sd1} мс, SD2 {sd2} мс",
+  "beatsBeatsGoneMeasured": ". Разброс: {sd1} мс краткосрочный, {sd2} мс долгосрочный",
   "@beatsBeatsGoneMeasured": {
     "placeholders": {
       "sd1": {
@@ -1293,11 +1291,11 @@
     }
   },
   "beatsScatterTitle": "Каждый интервал в сравнении с предыдущим",
-  "beatsScatterFootnote": "Точка на диагонали — удар той же длины, что и предыдущий, и чем шире облако поперёк этой линии, тем сильнее меняются ваши интервалы.",
-  "beatsSd1Label": "SD1",
-  "beatsSd2Label": "SD2",
+  "beatsScatterFootnote": "Точки на диагонали: удары той же длины, что и предыдущий. Чем шире разброс, тем больше изменчивость.",
+  "beatsSd1Label": "Краткосрочный",
+  "beatsSd2Label": "Долгосрочный",
   "beatsIntervalsLabel": "Интервалы",
-  "beatsIntervalsSurvived": "{count, plural, one{После коррекции остался {count} интервал} few{После коррекции осталось {count} интервала} many{После коррекции осталось {count} интервалов} other{После коррекции осталось {count} интервала}}",
+  "beatsIntervalsSurvived": "{count, plural, one{{count} пригодный удар} few{{count} пригодных удара} many{{count} пригодных ударов} other{{count} пригодного удара}}",
   "@beatsIntervalsSurvived": {
     "placeholders": {
       "count": {
@@ -1305,7 +1303,7 @@
       }
     }
   },
-  "beatsDroppedArtifact": " — {count, plural, one{{count} исключён как артефакт и не показан на диаграмме} few{{count} исключены как артефакты и не показаны на диаграмме} many{{count} исключены как артефакты и не показаны на диаграмме} other{{count} исключены как артефакты и не показаны на диаграмме}}",
+  "beatsDroppedArtifact": " ({count, plural, one{{count} плохой удар не учтён} few{{count} плохих удара не учтены} many{{count} плохих ударов не учтены} other{{count} плохого удара не учтено}}) ",
   "@beatsDroppedArtifact": {
     "placeholders": {
       "count": {
@@ -1313,7 +1311,6 @@
       }
     }
   },
-  "beatsPulseNotEcg": "Это ваш реальный пульс, но не ЭКГ: он не даёт того изображения, которое регистрирует электрокардиограмма.",
   "beatsMeasuredOn": "Измерено устройством {device}; разные браслеты дают разные значения.",
   "@beatsMeasuredOn": {
     "placeholders": {
@@ -1329,10 +1326,10 @@
   "beatsNoBinsStored": "За эту ночь интервалы не сохранены.",
   "beatsRmssdTitle": "ВСР по получасовым отрезкам",
   "beatsStart": "Начало",
-  "beatsBandFootnote": "Каждый столбец показывает, насколько мы уверены в этом отрезке, метка внутри — значение, а пропуск — отрезок, где осталось слишком мало чистых ударов.",
+  "beatsBandFootnote": "Высота столбца показывает нашу уверенность. Метка обозначает значение. Пропуск значит, что чистых ударов слишком мало.",
   "beatsFirstThird": "Первая треть",
   "beatsLastThird": "Последняя треть",
-  "beatsDcSection": "Способность к замедлению ритма",
+  "beatsDcSection": "Как замедляется ваш пульс",
   "beatsDcWhy": "Ни за одну сохранённую ночь показатель не получен.",
   "beatsDcNoData": "Ни за одну ночь показатель не получен.",
   "beatsDcChartTitle": "Ваши ночи по порядку",
@@ -1347,14 +1344,14 @@
   "beatsTodayLabel": "Сегодня",
   "beatsAnchorsLastNight": "Опорные точки прошлой ночи",
   "beatsCleanBeats": "Чистые интервалы",
-  "beatsDcNote": "Сравнивайте только со своими ночами: более чистый сигнал может поднять показатель так же, как изменения в вас.",
+  "beatsDcNote": "Сравнивайте только со своими ночами.",
   "beatsRhythmSection": "Проверка ритма",
   "beatsRhythmChartTitle": "Одна ячейка на день",
   "beatsScreenNotFired": "Признаки не обнаружены",
   "beatsScreenFired": "Обнаружены признаки",
   "beatsNotScreened": "Не проверено",
   "beatsNoDayScreened": "За этот период ни один день не проверен",
-  "beatsScreenNote": "Это предварительная проверка, а не медицинское исследование.\n\nОтсутствие сигнала в какой-либо день не означает, что нарушений нет: такая проверка ничего не исключает. Дни с контуром вообще не проверялись — было мало чистых интервалов или слишком много движения.\n\nПульс на запястье не заменяет ЭКГ. Если вас беспокоят симптомы, обратитесь к врачу для обследования.",
+  "beatsScreenNote": "Это предварительная проверка, а не диагноз. День без отметки не значит, что всё в порядке: проверка ничего не исключает.\n\nДни с контуром: чистых ударов было слишком мало или слишком много движения. Пульс на запястье не заменяет ЭКГ. Если вас беспокоят симптомы, обратитесь к врачу для ЭКГ.",
   "beatsScreenedSummary": "Проверено {screened} из последних {win} дней",
   "@beatsScreenedSummary": {
     "placeholders": {
@@ -1388,7 +1385,7 @@
   "logWorkoutDetectedActivityTitle": "Обнаруженная активность",
   "logWorkoutYoursToConfirmSub": "ПОДТВЕРДИТЕ САМИ",
   "logWorkoutReadFailedTitle": "Не удалось прочитать обнаруженную активность",
-  "logWorkoutReadFailedBody": "Хранилище не ответило. Ничего не записано и не отклонено.",
+  "logWorkoutReadFailedBody": "Не удалось прочитать вашу активность. Ничего не изменено.",
   "logWorkoutTryAgain": "Повторить",
   "logWorkoutReadingSpotted": "Чтение обнаруженной активности…",
   "logWorkoutNothingToReviewTitle": "Нет записей для проверки",
@@ -1424,11 +1421,10 @@
   "logWorkoutTimesUpdatedTitle": "Время обновлено",
   "logWorkoutLoggedTitle": "Тренировка записана",
   "logWorkoutScoreWithBand": "Оценить по пульсу с браслета",
-  "logWorkoutImportedHrGone": "Пульс за эту тренировку больше не хранится, поэтому браслет не может её оценить.",
-  "logWorkoutUnscoredSaved": "Сохранено. В этом отрезке пульс не записывался, поэтому нагрузка и калории не рассчитаны — сохранено только время.",
+  "logWorkoutImportedHrGone": "Пульс этой тренировки больше не хранится.",
+  "logWorkoutUnscoredSaved": "Сохранено. В этом отрезке пульс не записан, поэтому нагрузки и калорий нет.",
   "logWorkoutCouldNotSave": "Не удалось сохранить. Повторите попытку.",
-  "logWorkoutScoredTitle": "Рассчитано по записи браслета",
-  "logWorkoutScoredBody": "Нагрузка и калории считаются по пульсу в этом отрезке так же, как для всего дня. По одной длительности ничего не оценивается.",
+  "logWorkoutScoredBody": "Нагрузка и калории считаются по вашему пульсу в этом отрезке.",
   "logWorkoutSaving": "Сохранение…",
   "logWorkoutSaveNewTimes": "Сохранить новое время",
   "logWorkoutSearchActivities": "Поиск активностей",
@@ -1446,7 +1442,7 @@
   "logFoodAgain": "Повторить",
   "logFoodAddNumbers": "Добавить значения",
   "logFoodScanBarcode": "Сканировать штрихкод",
-  "logFoodScanSubOn": "Запрашивает штрихкод на openfoodfacts.org и заполняет пригодные данные",
+  "logFoodScanSubOn": "Ищет штрихкод в Open Food Facts.",
   "logFoodScanSubOff": "Ищет продукт в интернете с вашего разрешения",
   "logFoodLookingUpTitle": "Поиск",
   "logFoodLookingUpBody": "Поля заполнятся, когда придёт ответ.",
@@ -1462,9 +1458,9 @@
   "logFoodBlankHint": "Пустые значения останутся пустыми. Обязательно только поле «Что».",
   "logFoodSayWhatFirst": "Сначала укажите, что вы съели.",
   "logFoodConsentTitle": "Искать штрихкоды в интернете?",
-  "logFoodConsentBody1": "При сканировании штрихкод отправляется на openfoodfacts.org — в бесплатную открытую базу продуктов. Сервис видит штрихкод и ваш IP-адрес. Данные о вас, питании и здоровье не покидают телефон. Ранее отсканированный штрихкод берётся из локальной копии без повторного запроса.",
-  "logFoodConsentBody2": "Данные вводят пользователи, и в них встречаются ошибки. Значения, не прошедшие проверку правдоподобности, останутся пустыми. Все заполненные значения можно изменить перед сохранением.",
-  "logFoodConsentBody3": "Можно отключить эту функцию в «Настройки › Конфиденциальность». Данные с упаковки можно вводить вручную в любом случае.",
+  "logFoodConsentBody1": "При сканировании штрихкод и ваш IP-адрес отправляются на openfoodfacts.org, в бесплатную базу продуктов. Больше ничего не покидает телефон.",
+  "logFoodConsentBody2": "Базу заполняют пользователи, в ней бывают ошибки. Подозрительные значения остаются пустыми. Перед сохранением всё можно изменить.",
+  "logFoodConsentBody3": "Это можно отключить в «Настройки › Конфиденциальность».",
   "logFoodAllowLookups": "Разрешить поиск",
   "logFoodNotNow": "Не сейчас",
   "logFoodBreakfast": "Завтрак",
@@ -1472,17 +1468,17 @@
   "logFoodDinner": "Ужин",
   "logFoodSnack": "Перекус",
   "logFoodNoNumbersTitle": "Нет пищевой ценности",
-  "logFoodNoNumbersBody": "Продукт есть в Open Food Facts, но пригодных сведений о пищевой ценности нет — либо они не прошли проверку правдоподобности.",
+  "logFoodNoNumbersBody": "Для этого продукта нет пригодных данных о питании.",
   "logFoodNotFoundTitle": "Нет в Open Food Facts",
   "logFoodNotFoundBody": "Этот штрихкод ещё никто не добавил.",
   "logFoodFlaggedTitle": "Запись отмечена как ошибочная",
-  "logFoodFlaggedBody": "Open Food Facts отмечает ошибки в карточке этого продукта, поэтому значения не заполнены.",
+  "logFoodFlaggedBody": "Open Food Facts отмечает этот продукт как ошибочный, поэтому ничего не заполнено.",
   "logFoodUnreachableTitle": "Нет ответа от Open Food Facts",
   "logFoodUnreachableBody": "Не удалось связаться с openfoodfacts.org.",
   "logFoodRefusedTitle": "Поиск штрихкодов выключен",
   "logFoodRefusedBody": "Ничего не отправлено. Функцию можно включить в «Настройки › Конфиденциальность».",
-  "logFoodPortionNoteBase": "В Open Food Facts значения указаны на 100 г. При изменении порции значения пересчитываются.",
-  "logFoodPortionNoteServing": "В Open Food Facts значения указаны на 100 г. При изменении порции значения пересчитываются. Порция на упаковке: {serving}.",
+  "logFoodPortionNoteBase": "Указано на 100 г. Значения пересчитываются по вашей порции.",
+  "logFoodPortionNoteServing": "Указано на 100 г. Значения пересчитываются по вашей порции. Порция на упаковке: {serving}.",
   "@logFoodPortionNoteServing": {
     "placeholders": {
       "serving": {
@@ -1629,13 +1625,11 @@
   "journalComposeSeeTheTrend": "Посмотреть динамику",
   "journalComposeWeightToday": "Вес сегодня",
   "journalComposeWeightKgLabel": "Вес (кг)",
-  "journalComposeWeightScaleNote": "Ваше значение или показание весов. Браслет это не измеряет.",
   "journalComposeClear": "Очистить",
   "journalComposeNotEnoughEntriesTitle": "Недостаточно записей для динамики",
-  "journalComposeNotEnoughEntriesBody": "Линия показывает среднее за семь дней по введённым значениям, поэтому нужны записи хотя бы за два дня. Пропуски не заполняются.",
+  "journalComposeNotEnoughEntriesBody": "Для тренда нужны записи минимум за два дня.",
   "journalComposeSevenDayTrend": "Динамика за семь дней",
-  "journalComposeTrendFootnote": "Введено вами. Дни без записей оставлены пустыми.",
-  "journalComposeWeightTrendExplainer": "Введено вами или весами: браслет не измеряет вес. Линия — среднее за 7 дней, потому что вода и еда сами меняют вес на 1–2 кг. {count, plural, one{Записи за {count} день.} few{Записи за {count} дня.} many{Записи за {count} дней.} other{Записи за {count} дня.}}",
+  "journalComposeWeightTrendExplainer": "Среднее за 7 дней по введённому весу. {count, plural, one{Введён {count} день.} few{Введено {count} дня.} many{Введено {count} дней.} other{Введено {count} дня.}}",
   "@journalComposeWeightTrendExplainer": {
     "placeholders": {
       "count": {
@@ -1653,8 +1647,8 @@
   "nutritionLogOccasionFix": "Записать приём пищи",
   "nutritionOccasionsSection": "Приёмы пищи",
   "nutritionAddAction": "Добавить",
-  "nutritionFloorTitle": "Сегодняшние калории — нижняя граница",
-  "nutritionFloorBody": "В {unknown} из {total} приёмов пищи не указана энергетическая ценность, поэтому число выше — нижняя граница съеденного, а не его полное количество.",
+  "nutritionFloorTitle": "Калории на сейчас минимальные",
+  "nutritionFloorBody": "В {unknown} из {total} приёмов пищи нет калорий, поэтому сумма выше минимальная.",
   "@nutritionFloorBody": {
     "placeholders": {
       "unknown": {
@@ -1677,9 +1671,9 @@
       }
     }
   },
-  "nutritionDayCountsRule": "День учитывается, если у каждого приёма пищи указана энергетическая ценность.",
+  "nutritionDayCountsRule": "День учитывается, когда у каждого приёма пищи указана энергетическая ценность.",
   "nutritionDaysLoggedLabel": "Дни с записями",
-  "nutritionPartialExcluded": "{partial} дней с неполными записями исключены из всех средних ниже",
+  "nutritionPartialExcluded": "{partial} неполных дней не вошли в средние",
   "@nutritionPartialExcluded": {
     "placeholders": {
       "partial": {
@@ -1700,7 +1694,7 @@
   "nutritionLabelEaten": "СЪЕДЕНО",
   "nutritionLabelBurned": "ПОТРАЧЕНО",
   "nutritionLabelBalance": "БАЛАНС",
-  "nutritionEatenMeanNote": "Съедено — среднее за {days} полных дней. Израсходовано — только за сегодня.",
+  "nutritionEatenMeanNote": "Съедено: среднее за {days} дн. Израсходовано: сегодня.",
   "@nutritionEatenMeanNote": {
     "placeholders": {
       "days": {
@@ -1726,7 +1720,6 @@
   "nutritionYourTargetsSection": "Ваши цели",
   "nutritionHintNone": "нет",
   "nutritionNoTargetsTitle": "Цели не заданы",
-  "nutritionNoTargetsBody": "Цель вы задаёте самостоятельно.",
   "nutritionSetTargetFix": "Задать цель",
   "nutritionEditAction": "Изменить",
   "nutritionBodySpentToday": "Расход энергии за сегодня",
@@ -1741,7 +1734,7 @@
       }
     }
   },
-  "nutritionRemoveBody": "Запись исчезнет из дня и всех средних, где учитывалась. Отменить удаление нельзя.",
+  "nutritionRemoveBody": "Отменить нельзя.",
   "nutritionNothingToMeasure": "Пока не с чем сравнить {label}",
   "@nutritionNothingToMeasure": {
     "placeholders": {
@@ -1750,7 +1743,7 @@
       }
     }
   },
-  "nutritionFloorAverageBody": "В каждом полном дне есть приём пищи без значения «{nutrient}», поэтому среднее было бы лишь нижней границей.",
+  "nutritionFloorAverageBody": "У некоторых приёмов пищи нет значения «{nutrient}», поэтому среднего пока нет.",
   "@nutritionFloorAverageBody": {
     "placeholders": {
       "nutrient": {
@@ -1758,7 +1751,7 @@
       }
     }
   },
-  "nutritionCountedNoFigureBody": "Учтено {count} из последних {span} дней, но ни в одном нет значения «{nutrient}».",
+  "nutritionCountedNoFigureBody": "За последние {span} дней нет значений «{nutrient}».",
   "@nutritionCountedNoFigureBody": {
     "placeholders": {
       "count": {
@@ -1772,7 +1765,7 @@
       }
     }
   },
-  "nutritionDayCountsRuleFull": "День учитывается, если все значения внесены и журнал доведён до вечера. Ни один из последних {span} дней не соответствует этим условиям.",
+  "nutritionDayCountsRuleFull": "День учитывается, когда у каждого приёма пищи есть значение и записи доведены до вечера.",
   "@nutritionDayCountsRuleFull": {
     "placeholders": {
       "span": {
@@ -1892,7 +1885,7 @@
   "coachBriefingMenuSub": "Точный снимок данных, отправленный с устройства",
   "coachBriefingMenuTitle": "Сводка и отправленные данные",
   "coachChooseModelFix": "Выбрать модель",
-  "coachCloudDataNote": "Ваши вопросы и строки данных, которые читает помощник, отправляются на этот адрес. Их точный состав можно посмотреть в разделе «Что отправлено».",
+  "coachCloudDataNote": "Ваши вопросы и данные, которые читает помощник, отправляются на этот адрес. См. «Что отправлено».",
   "coachDeleteChat": "Удалить {title}",
   "@coachDeleteChat": {
     "placeholders": {
@@ -1902,7 +1895,7 @@
     }
   },
   "coachDeleteIt": "Удалить",
-  "coachDestructiveWarning": "Данные будут удалены с этого устройства. Отменить действие нельзя.",
+  "coachDestructiveWarning": "Это удалит данные, отменить нельзя.",
   "coachEndpointUnreachable": "Не удалось связаться с этим адресом: {error}",
   "@coachEndpointUnreachable": {
     "placeholders": {
@@ -1913,7 +1906,7 @@
   },
   "coachErrorTitle": "Не удалось выполнить запрос",
   "coachInputHint": "Спросите о своём здоровье…",
-  "coachIntroBody": "Спрашивайте обо всём, что измеряет приложение. Помощник может записывать питание, воду, тренировки, дозы и самочувствие — всегда после вашего подтверждения.",
+  "coachIntroBody": "Спрашивайте о своих данных. Помощник также может записывать питание, воду, тренировки и дозы, и всегда спрашивает сначала.",
   "coachKeychainRefused": "Хранилище ключей отклонило ключ: {error}",
   "@coachKeychainRefused": {
     "placeholders": {
@@ -1922,10 +1915,10 @@
       }
     }
   },
-  "coachKeyStillSavedBody": "Сейчас ключ не удалось прочитать из защищённого хранилища. Это бывает, когда приложение запускается при заблокированном телефоне.",
+  "coachKeyStillSavedBody": "Ваш ключ сохранён. Сейчас его не удалось прочитать.",
   "coachKeyStillSavedTitle": "Ваш ключ сохранён",
   "coachListModels": "Список моделей",
-  "coachLocalDataNote": "Ваши вопросы и строки данных, которые читает помощник, остаются на вашем компьютере.",
+  "coachLocalDataNote": "Остаётся на вашем компьютере.",
   "coachLocalSub": "В этой сети. Данные не покидают ваш компьютер.",
   "coachMenuSemantic": "Чаты и настройки ИИ",
   "coachModelHint": "найдите или введите идентификатор",
@@ -1940,16 +1933,15 @@
   },
   "coachNavTitle": "Тренер",
   "coachNewChat": "Новый чат",
-  "coachNoChatsYet": "Пока пусто — это ваш первый разговор.",
+  "coachNoChatsYet": "Чатов пока нет.",
   "coachNoDataBody": "Помощник отвечает по дням с оценкой, а на этом телефоне их ещё нет. Наденьте браслет на ночь и синхронизируйте его утром.",
   "coachNoDataTitle": "Пока нет данных для чтения",
   "coachNoModelsListed": "Сервис не предоставил список моделей. Введите название ниже.",
   "coachNotSetUp": "Не настроено",
-  "coachNotSetUpBody": "Выберите модель на своём компьютере или любого совместимого с OpenAI провайдера со своим ключом. Данные в любом случае не проходят через OpenStrap.",
+  "coachNotSetUpBody": "Используйте модель на своём компьютере или любого провайдера, совместимого с OpenAI, со своим ключом.",
   "coachNotSetUpTitle": "Тренер не настроен",
   "coachPastChats": "ПРОШЛЫЕ ЧАТЫ",
   "coachPickModelFirst": "Сначала выберите или укажите модель.",
-  "coachSafeWarning": "Ничего не записывается до нажатия ниже.",
   "coachSaveIt": "Сохранить",
   "coachSendLabel": "Отправить",
   "coachSetupNavSub": "Подключите свою модель",
@@ -2155,8 +2147,8 @@
   "investigateOneValuePerDerivedDay": "одно значение на рассчитанный день",
   "investigateMethodLabel": "МЕТОД",
   "investigateNotDocumented": "Не описан.",
-  "calmBreathingResonanceLabel": "Резонанс",
-  "calmBreathingResonanceDescription": "Ровные вдохи и выдохи, около {rate} дыханий в минуту. В этом режиме оценивается согласованность.",
+  "calmBreathingResonanceLabel": "Ваш темп",
+  "calmBreathingResonanceDescription": "Ровное дыхание, около {rate} в минуту. Этот темп оценивается.",
   "@calmBreathingResonanceDescription": {
     "placeholders": {
       "rate": {
@@ -2192,9 +2184,9 @@
   "calmBreathingYourOwnPace": "Ваш темп",
   "calmBreathingWindowRowSemantic": "Измерить до и после: ещё четыре минуты",
   "calmBreathingMeasureBeforeAfter": "Измерить до и после · ещё 4 мин",
-  "calmBreathingNeedsBandBeatTiming": "Нужен надетый браслет: сравнение выполняется по интервалам между ударами.",
+  "calmBreathingNeedsBandBeatTiming": "Нужен надетый браслет.",
   "calmBreathingFindYourPace": "Найдите темп, которому следует сердце",
-  "calmBreathingSweepIntro": "Шесть минут: {rates} дыханий в минуту, по две минуты на каждый темп. Настройка изменится только после двух согласующихся сеансов.",
+  "calmBreathingSweepIntro": "Шесть минут при {rates} дыханиях в минуту, по две минуты на каждый темп. Два совпавших сеанса обновят ваш темп.",
   "@calmBreathingSweepIntro": {
     "placeholders": {
       "rates": {
@@ -2202,7 +2194,7 @@
       }
     }
   },
-  "calmBreathingSweepAgreed": "Два сеанса указали на {rate} дыханий в минуту; этот темп установлен для резонанса. Повторите, чтобы проверить.",
+  "calmBreathingSweepAgreed": "Два сеанса сошлись на {rate} дыханиях в минуту. Теперь дыхание по темпу использует его.",
   "@calmBreathingSweepAgreed": {
     "placeholders": {
       "rate": {
@@ -2232,14 +2224,14 @@
       }
     }
   },
-  "calmBreathingNoScoreForSession": "Нет оценки согласованности за эту сессию",
-  "calmBreathingScoringNeedsBand": "Для оценки нужны интервалы с браслета. Он не подключён: темп задаётся, но сеанс не сохраняется.",
+  "calmBreathingNoScoreForSession": "Нет оценки за этот сеанс",
+  "calmBreathingScoringNeedsBand": "Браслет не подключён. Сеанс идёт с заданным темпом, но не оценивается и не сохраняется.",
   "calmBreathingBeforeLabel": "ДО",
   "calmBreathingAfterLabel": "ПОСЛЕ",
   "calmBreathingSitStill": "Немного посидите неподвижно.",
   "calmBreathingStaySitting": "Оставайтесь сидеть.",
-  "calmBreathingNothingPacingScored": "Дышите как обычно. Темп не задаётся, оценка не выполняется.",
-  "calmBreathingPatternNotScored": "Для режима «{pattern}» оценка не выполняется. Она рассчитана для темпа резонансного дыхания.",
+  "calmBreathingNothingPacingScored": "Дышите как обычно. Темп не задаётся, оценки нет.",
+  "calmBreathingPatternNotScored": "Режим «{pattern}» не оценивается.",
   "@calmBreathingPatternNotScored": {
     "placeholders": {
       "pattern": {
@@ -2247,9 +2239,9 @@
       }
     }
   },
-  "calmBreathingTooFewBeatTimings": "За сеанс слишком мало чистых интервалов для оценки.",
+  "calmBreathingTooFewBeatTimings": "Слишком мало чистых ударов, чтобы оценить этот сеанс.",
   "calmBreathingThatIsDone": "Готово.",
-  "calmBreathingCardiacCoherence": "Согласованность сердечного ритма",
+  "calmBreathingCardiacCoherence": "Оценка дыхания",
   "calmBreathingHowStronglyFollowedPace": "НАСКОЛЬКО СИЛЬНО ПУЛЬС СЛЕДОВАЛ ТЕМПУ ДЫХАНИЯ",
   "calmBreathingStoppedThere": "Остановлено.",
   "calmBreathingHowStronglyEachPace": "НАСКОЛЬКО СИЛЬНО ПУЛЬС СЛЕДОВАЛ КАЖДОМУ ТЕМПУ",
@@ -2263,11 +2255,11 @@
   },
   "calmBreathingNotReached": "не достигнуто",
   "calmBreathingTooFewCleanBeats": "слишком мало чистых интервалов",
-  "calmBreathingRankingExplainer": "Сравнение трёх темпов за один сеанс. Каждый начинается, пока вы ещё отходите от предыдущего, поэтому видно лишь, за каким темпом сильнее следовал пульс.",
-  "calmBreathingVerdictAborted": "Вы остановились раньше времени, сравнение невозможно. Настройка не изменена.",
-  "calmBreathingVerdictCouldNotScore": "Хотя бы один темп не удалось оценить, сравнение невозможно. Настройка не изменена.",
-  "calmBreathingVerdictTied": "Два темпа получили одинаковую оценку: этот сеанс не позволяет выбрать один. Настройка не изменена.",
-  "calmBreathingVerdictConfirmed": "Среди проверенных темпов самый сильный отклик дал {w} — уже во втором сеансе подряд. Этот темп установлен для резонанса.",
+  "calmBreathingRankingExplainer": "За каким темпом ваш пульс следовал сильнее всего в этом сеансе.",
+  "calmBreathingVerdictAborted": "Вы остановились раньше, поэтому сравнивать нечего.",
+  "calmBreathingVerdictCouldNotScore": "Хотя бы один темп не удалось оценить, поэтому ранжировать нечего.",
+  "calmBreathingVerdictTied": "Два темпа получили одинаковую оценку, этот сеанс не может их разделить.",
+  "calmBreathingVerdictConfirmed": "{w} дал ваш самый сильный отклик два раза подряд. Теперь это ваш темп.",
   "@calmBreathingVerdictConfirmed": {
     "placeholders": {
       "w": {
@@ -2275,7 +2267,7 @@
       }
     }
   },
-  "calmBreathingVerdictFirstWin": "Среди проверенных темпов самый сильный отклик дал {w}. Настройка пока не изменена: два сеанса должны выбрать один и тот же темп.",
+  "calmBreathingVerdictFirstWin": "{w} дал ваш самый сильный отклик. Темп изменится, когда два сеанса совпадут.",
   "@calmBreathingVerdictFirstWin": {
     "placeholders": {
       "w": {
@@ -2842,7 +2834,7 @@
   "snoozeUnsupported": "Для отсрочки нужен WHOOP 5 или MG.",
   "snoozeEnable": "Повтор",
   "snoozeExactNote": "Для точного времени нужно разрешение на будильники",
-  "momentReviewHint": "Ваш выбор в очереди. Ничего не сохранится, пока вы не нажмёте «Сохранить».",
+  "momentReviewHint": "Ничего не сохранится, пока вы не нажмёте «Сохранить».",
   "momentReviewSaveCount": "{count, plural, =0{Сохранить} one{Сохранить {count} ответ} few{Сохранить {count} ответа} many{Сохранить {count} ответов} other{Сохранить {count} ответа}}",
   "@momentReviewSaveCount": {
     "placeholders": {
@@ -2886,7 +2878,7 @@
       }
     }
   },
-  "momentReviewItemFailed": "Не сохранено. Ответ всё ещё в очереди — нажмите «Сохранить», чтобы попробовать снова.",
+  "momentReviewItemFailed": "Не сохранено. Нажмите «Сохранить», чтобы повторить.",
   "momentReviewRangeEnd": "Конец должен быть позже начала.",
   "momentReviewRangeFuture": "Период не может заканчиваться в будущем.",
   "momentReviewRangeWorkoutLength": "Тренировка должна длиться от 1 минуты до 24 часов.",
@@ -2894,11 +2886,11 @@
   "momentReviewRangeCheckFailed": "Не удалось проверить эту пару. Попробуйте ещё раз.",
   "settingsTaskerMomentExportTitle": "Отправлять разобранные моменты в Tasker",
   "settingsTaskerMomentExportSub": "Отправляет в Tasker каждый отмеченный момент (что, когда и количество, если есть) при сохранении обзора. Это данные о здоровье. Выключено, пока вы не включите.",
-  "momentReviewPersistFailed": "Не удалось сохранить ваш выбор на телефоне. Он хранится, пока приложение открыто, но может пропасть после закрытия.",
-  "momentReviewAmountInvalid": "Введите число больше 0 (в обычных пределах) или оставьте поле пустым.",
-  "momentReviewAmbiguous": "Это время повторилось дважды при переводе часов назад, поэтому его нельзя связать с другой отметкой.",
+  "momentReviewPersistFailed": "Не удалось сохранить ваш выбор. Он может пропасть, если приложение закроется.",
+  "momentReviewAmountInvalid": "Введите число больше 0 или оставьте поле пустым.",
+  "momentReviewAmbiguous": "Это время неоднозначно после перевода часов, поэтому его нельзя связать в пару.",
   "momentReviewResume": "Часть сохранена. Нажмите «Сохранить», чтобы завершить пару.",
-  "momentReviewProgressNotSaved": "Не удалось записать ход сохранения этой пары, поэтому оно остановлено. Нажмите «Сохранить», чтобы попробовать снова.",
+  "momentReviewProgressNotSaved": "Эта пара не сохранена. Нажмите «Сохранить», чтобы повторить.",
   "settingsTaskerMomentExportSaveFailed": "Не удалось сохранить изменение. Переключатель показывает сохранённое состояние.",
   "metricDetailSlotNoRecord": "{day}, нет записи",
   "@metricDetailSlotNoRecord": {
@@ -4608,7 +4600,6 @@
   "workoutQuickStartHeader": "БЫСТРЫЙ СТАРТ",
   "workoutCalorieNeedWeightTitle": "Для оценки калорий нужен ваш вес",
   "workoutAddWeightFix": "Укажите вес в профиле",
-  "workoutCalorieEstimatesTitle": "Калории — оценочные значения",
   "workoutSuggestionsTitle": "{n, plural, one{Обнаружен {n} эпизод усилия без записи} few{Обнаружено {n} эпизода усилия без записи} many{Обнаружено {n} эпизодов усилия без записи} other{Обнаружено {n} эпизода усилия без записи}}",
   "@workoutSuggestionsTitle": {
     "placeholders": {
@@ -4804,9 +4795,9 @@
   "activitySetupRoundsLabel": "Раунды",
   "activitySetupPrivateDetail": "Скрыто из сводок и экспорта",
   "activitySetupCaloriesNeedWeight": "Для калорий нужен ваш вес.",
-  "activitySetupNoMetEstimate": "Предварительной оценки нет: у активности нет опубликованного уровня усилия. Калории будут по пульсу, когда известны профиль и ваш диапазон пульса.",
-  "activitySummaryCalorieNoMet": "Оценка по пульсу и весу. Для этой активности нет опубликованного уровня усилия, поэтому он не используется.",
-  "activitySetupCalorieEstimate": "Около {est} ккал за {minutes} мин, по уровню усилия активности ({met}× от покоя) и вашему весу.",
+  "activitySetupNoMetEstimate": "Предварительной оценки нет. Калории считаются по вашему пульсу.",
+  "activitySummaryCalorieNoMet": "Оценка по вашему пульсу и весу.",
+  "activitySetupCalorieEstimate": "Около {est} ккал за {minutes} мин, по вашему весу.",
   "@activitySetupCalorieEstimate": {
     "placeholders": {
       "est": {
@@ -4840,18 +4831,9 @@
     }
   },
   "activityPickerNoMatchTitle": "Подходящей активности нет",
-  "activityPickerNoMatchBody": "В каталоге около семидесяти активностей с опубликованными энергозатратами. Выберите ближайшую.",
+  "activityPickerNoMatchBody": "Ничего не найдено. Выберите ближайшую активность.",
   "activityPickerQuickStart": "БЫСТРЫЙ СТАРТ",
   "activityPickerRecent": "НЕДАВНИЕ",
-  "activityPickerCalorieEstimatesTitle": "Калории — оценочные значения",
-  "activityPickerMetValue": "{met}× от покоя",
-  "@activityPickerMetValue": {
-    "placeholders": {
-      "met": {
-        "type": "String"
-      }
-    }
-  },
   "activityPickerKcalPer30": "{kcal} ккал / 30 мин",
   "@activityPickerKcalPer30": {
     "placeholders": {
@@ -4865,7 +4847,7 @@
   "dayStrainNoTraceTitle": "Нет графика нагрузки за этот день",
   "dayStrainNoMinuteTraceTitle": "Нет поминутного графика за этот день",
   "dayStrainNoReasonBody": "Нет показания.",
-  "dayStrainScoredNoTraceBody": "Нагрузка за день — {strain}. Минуты бодрствования, по которым она рассчитана, за этот день не сохранены.",
+  "dayStrainScoredNoTraceBody": "Нагрузка за день: {strain}. Данные по минутам не сохранены.",
   "@dayStrainScoredNoTraceBody": {
     "placeholders": {
       "strain": {
@@ -4875,7 +4857,7 @@
   },
   "dayStrainWearBandFix": "Носите браслет в течение дня",
   "dayStrainChartTitle": "Нагрузка в течение дня",
-  "dayStrainChartFootnote": "Усилие выше вашего обычного темпа бодрствования. Позже может снизиться, если вы вернётесь к этому темпу. По {drawn} записанным минутам бодрствования.",
+  "dayStrainChartFootnote": "Усилие выше вашего обычного темпа бодрствования, по {drawn} записанным минутам.",
   "@dayStrainChartFootnote": {
     "placeholders": {
       "drawn": {
@@ -4893,29 +4875,13 @@
       }
     }
   },
-  "dayStrainLowCoverageBody": "Нагрузка суммируется по записанным минутам. День с неполным ношением даёт меньшее значение, чем полный; их нельзя сравнивать напрямую.",
+  "dayStrainLowCoverageBody": "Нагрузка считается только по записанным минутам, поэтому при неполном ношении значение ниже.",
   "dayStrainTimeInZonesSection": "Время в зонах",
   "dayStrainZonesChartTitle": "Время в зонах",
-  "dayStrainZoneFootnoteKarvonen": "Границы зон делят промежуток между измеренным пульсом в покое и наибольшим наблюдавшимся ({maxHr} уд/мин). Оба значения измерены у вас.",
-  "@dayStrainZoneFootnoteKarvonen": {
-    "placeholders": {
-      "maxHr": {
-        "type": "int"
-      }
-    }
-  },
-  "dayStrainZoneFootnoteObserved": "Границы зон — доли наибольшего наблюдавшегося пульса ({maxHr} уд/мин), измеренного, а не оценённого.",
-  "@dayStrainZoneFootnoteObserved": {
-    "placeholders": {
-      "maxHr": {
-        "type": "int"
-      }
-    }
-  },
   "dayStrainHowSet": "Как определяются зоны",
   "dayStrainInputsSection": "Из чего складывается",
   "dayStrainInputsBase": "Насколько усердно сердце работало во время бодрствования, по минутам в каждой зоне пульса, по шкале 0–21.",
-  "dayStrainInputsMaxHr": "Расчёт выполнен с предполагаемым максимальным пульсом {maxHr} уд/мин — оценкой по возрасту и браслету, а не измерением.",
+  "dayStrainInputsMaxHr": "Расчёт по оценке максимального пульса: {maxHr} уд/мин.",
   "@dayStrainInputsMaxHr": {
     "placeholders": {
       "maxHr": {
@@ -4923,14 +4889,12 @@
       }
     }
   },
-  "dayStrainInputsMeasuredCeilingNote": "Шкала зон использует измеренный максимум. Нагрузка — нет, поэтому уже показанные оценки нагрузки не меняются.",
-  "dayStrainInputsRhrAnchor": "Вторая опорная точка — пульс в покое за предыдущую ночь. Пропущенная браслетом ночь влияет на весь день.",
   "activityZonesTitle": "Зоны пульса",
   "activityZonesYourZonesSection": "Ваши зоны",
   "activityZonesIntensitySection": "Распределение интенсивности",
   "activityZonesNoCeilingTitle": "Максимальный пульс ещё не измерен",
   "activityZonesNoCeilingTanakaTail": " Пока максимум не измерен, зоны ниже определяются по возрасту.",
-  "activityZonesNoCeilingDefaultBody": "Учитывается только высокий пульс, сохранявшийся 15 секунд во время движения. Односекундный скачок не считается пульсом.",
+  "activityZonesNoCeilingDefaultBody": "Учитываются только значения, державшиеся 15 секунд во время движения.",
   "activityZonesWearBandFix": "Носите браслет на обычных интенсивных тренировках",
   "activityZonesHighestSeenLabel": "НАИБОЛЬШИЙ ИЗМЕРЕННЫЙ",
   "activityZonesBpmUnit": "уд/мин",
@@ -4950,13 +4914,13 @@
       }
     }
   },
-  "activityZonesHighestSeenFootnote": "Это наибольшее измеренное значение, а не предел. Оно растёт, когда браслет регистрирует более интенсивную нагрузку. Не пытайтесь специально его проверить.",
+  "activityZonesHighestSeenFootnote": "Самое высокое из измеренных значений. Растёт, когда вы тренируетесь интенсивнее.",
   "activityZonesNoZonesTitle": "Зоны пока не определены",
-  "activityZonesNoAgeBody": "Границы зон — доли максимального пульса. Без возраста нельзя определить значение, от которого их рассчитывать.",
-  "catalogueZonesWhy": "Границы зон — доли максимального пульса, оценённого по возрасту, а не измеренного у вас.",
-  "activityZonesNoZonesDefaultBody": "Причина отсутствия границ зон не записана.",
+  "activityZonesNoAgeBody": "Укажите возраст, чтобы увидеть зоны.",
+  "catalogueZonesWhy": "Зоны оценены по вашему возрасту.",
+  "activityZonesNoZonesDefaultBody": "Зон пока нет.",
   "activityZonesAddAgeFix": "Укажите возраст в профиле",
-  "activityZonesAnchorKarvonen": "По пульсу в покое ({restingHr}, середина последних {restingDays} ночей) и максимальному замеченному ({maxHr}). Стандартные зоны, а не измеренные пороги.",
+  "activityZonesAnchorKarvonen": "По вашему пульсу в покое ({restingHr}) и максимальному пульсу ({maxHr}).",
   "@activityZonesAnchorKarvonen": {
     "placeholders": {
       "restingHr": {
@@ -4970,7 +4934,7 @@
       }
     }
   },
-  "activityZonesAnchorObserved": "По максимальному замеченному пульсу ({maxHr}). После {restingMinDays} ночей пульса в покое (у вас {restingDays}) он тоже будет учтён.",
+  "activityZonesAnchorObserved": "По вашему максимальному пульсу ({maxHr}). Пульс в покое добавится через {restingMinDays} ночей.",
   "@activityZonesAnchorObserved": {
     "placeholders": {
       "maxHr": {
@@ -4984,7 +4948,7 @@
       }
     }
   },
-  "activityZonesAnchorTanaka": "По {maxHr} уд/мин — оценке по возрасту, поэтому ошибка может быть до 20 уд/мин. Зоны уточнятся после достаточно тяжёлой тренировки.",
+  "activityZonesAnchorTanaka": "Основано на {maxHr} уд/мин, оценке по возрасту. После тяжёлой тренировки зоны уточнятся.",
   "@activityZonesAnchorTanaka": {
     "placeholders": {
       "maxHr": {
@@ -4992,23 +4956,22 @@
       }
     }
   },
-  "activityZonesAnchorDefault": "Границы зон — доли максимального пульса.",
-  "activityZonesAnchorManual": "Заданы вами, а не рассчитаны. Эти пять порогов заменяют значения по возрасту или измеренному максимуму.",
+  "activityZonesAnchorManual": "Заданы вами.",
   "activityZonesSetYourOwnLink": "Задать свои зоны",
   "activityZonesEditYourOwnLink": "Изменить свои зоны",
   "activityZonesEditYourOwnTitle": "Задать свои зоны",
-  "activityZonesEditYourOwnBody": "Пять порогов пульса от меньшего к большему: начало каждой зоны. Очистите все пять, чтобы вернуться к рассчитанным зонам.",
-  "activityZonesNeedAllFive": "Нужны все пять порогов от меньшего к большему. Ничего не сохранено.",
-  "activityZonesMustAscend": "Каждая зона должна начинаться выше предыдущей. Ничего не сохранено.",
+  "activityZonesEditYourOwnBody": "Укажите, где начинается каждая зона, от меньшей к большей. Очистите все пять, чтобы сбросить.",
+  "activityZonesNeedAllFive": "Нужны все пять порогов.",
+  "activityZonesMustAscend": "Каждая зона должна начинаться выше предыдущей.",
   "activityZonesNotShownTitle": "Пока не показано",
-  "activityZonesNeedsMonthBody": "Нужен примерно месяц записанных тренировок с поминутным пульсом.",
-  "activityZonesAgeEstimateBody": "Столбцы отражали бы оценку по возрасту, а не ваши тренировки. Они появятся после определения границ зон по измерениям.",
-  "activityZonesCurrentEdgesNote": "Диапазоны — ваши текущие границы зон; старые тренировки могли считаться по другим.",
+  "activityZonesNeedsMonthBody": "Нужен примерно месяц записанных тренировок.",
+  "activityZonesAgeEstimateBody": "Появится, когда зоны будут определены по вашим тренировкам.",
+  "activityZonesCurrentEdgesNote": "Используются ваши текущие зоны.",
   "activityZonesSessionMinutesChartTitle": "Минуты тренировок за 28 дней",
-  "activityZonesShapePyramidal": "Большинство минут — лёгкая нагрузка, меньше — средняя, ещё меньше — высокая: пирамида.",
-  "activityZonesShapePolarised": "Большинство минут — лёгкая нагрузка, остальные — высокая. Средней почти нет.",
-  "activityZonesShapeMiddleHeavy": "Большинство минут приходится на среднюю нагрузку.",
-  "activityZonesShapeSummary": "Лёгкая нагрузка: {easy} мин, средняя: {moderate}, высокая: {hard}, за {sessions} тренировок. Это описание, а не цель.",
+  "activityZonesShapePyramidal": "В основном лёгкая нагрузка, немного средней, мало высокой.",
+  "activityZonesShapePolarised": "В основном лёгкая или высокая нагрузка, мало средней.",
+  "activityZonesShapeMiddleHeavy": "В основном средняя нагрузка.",
+  "activityZonesShapeSummary": "Лёгкая: {easy} мин, средняя: {moderate}, высокая: {hard}, за {sessions} записанных тренировок.",
   "@activityZonesShapeSummary": {
     "placeholders": {
       "easy": {
@@ -5030,21 +4993,20 @@
   "activitySharePhotoHeader": "ВАШЕ ФОТО",
   "activityShareAddPhoto": "Добавить фото",
   "activityShareChangePhoto": "Изменить фото",
-  "activitySharePhotoHint": "С этого телефона. Ничего не загружается",
+  "activitySharePhotoHint": "С вашего телефона. Не загружается.",
   "activityShareRemovePhoto": "Удалить фото",
   "activityShareBasemapHeader": "КАРТА",
   "activityShareDrawMap": "Показать настоящую карту",
-  "activityShareMapHint": "Запрашивает участки карты маршрута у openstreetmap.org. При отключении показан только маршрут",
+  "activityShareMapHint": "Загружает карту с openstreetmap.org. Если выключено, рисуется только маршрут.",
   "activityShareFetchingMapTitle": "Загрузка карты",
-  "activityShareFetchingMapBody": "Карточка появится после загрузки всех участков карты.",
   "activityShareNoMapTitle": "Нет карты для этой карточки",
-  "activityShareNoMapBody": "Не удалось загрузить карту, поэтому показан только маршрут. Остальное содержимое карточки не изменилось.",
+  "activityShareNoMapBody": "Карта недоступна. Показан только маршрут.",
   "activityShareStatusPrivateTitle": "Это личная тренировка",
-  "activityShareStatusPrivateBody": "Скрыта из сводок и экспорта.",
+  "activityShareStatusPrivateBody": "Скрыта из сводок и экспорта",
   "activityPosterFormatPost": "Публикация",
   "activityPosterFormatStory": "История",
   "activitySummaryRpeHeadline": "НАСКОЛЬКО ТЯЖЕЛО БЫЛО?",
-  "activitySummaryRpeBody": "Ваша собственная оценка усилия. Это ощущение, а не измерение: оно может отличаться от показателей выше.",
+  "activitySummaryRpeBody": "Ваша собственная оценка усилия.",
   "activitySummaryRateEffort": "Оценить усилие: {n} из 10",
   "@activitySummaryRateEffort": {
     "placeholders": {
@@ -5071,11 +5033,11 @@
   "activitySummarySaving": "Сохранение",
   "activitySummaryTryAgain": "Повторить",
   "activitySummaryPrivate": "Личная",
-  "activitySummaryStepsBasis": "Шаги получены от датчика движения браслета, который считает их только при движении на ногах.",
+  "activitySummaryStepsBasis": "Считает датчик движения браслета.",
   "activitySummaryCaloriesNeedWeight": "Для калорий нужен ваш вес.",
-  "activitySummaryNoCalorieNoStrain": "Нет оценки калорий. Для оценки энергии по пульсу нужны максимальный пульс и пульс в покое; один из них не задан.",
-  "activitySummaryNoCalorieWithStrain": "Калорий за эту тренировку нет: укажите максимальный пульс и пульс в покое. Нагрузка выше — измеренное усилие по шкале 0–21.",
-  "activitySummaryCalorieNoHr": "Оценка по уровню усилия активности ({met}× от покоя) и вашему весу. Пульс за эту тренировку не получен.",
+  "activitySummaryNoCalorieNoStrain": "Калорий нет. Укажите максимальный пульс и пульс в покое, чтобы их получить.",
+  "activitySummaryNoCalorieWithStrain": "Калорий нет. Укажите максимальный пульс и пульс в покое.",
+  "activitySummaryCalorieNoHr": "Оценка по вашему весу.",
   "@activitySummaryCalorieNoHr": {
     "placeholders": {
       "met": {
@@ -5083,7 +5045,7 @@
       }
     }
   },
-  "activitySummaryCalorieWithHr": "Оценка по уровню усилия активности ({met}× от покоя), вашему весу и пульсу.",
+  "activitySummaryCalorieWithHr": "Оценка по вашему весу и пульсу.",
   "@activitySummaryCalorieWithHr": {
     "placeholders": {
       "met": {
@@ -5218,8 +5180,8 @@
   "activitySummaryGain": "Набор высоты",
   "activitySummaryLoss": "Спуск",
   "activitySummaryPeak": "Пик",
-  "activitySummaryColdPlungeWhy": "Холод сужает сосуды, по которым датчик считывает сигнал. Отсутствие данных здесь ожидаемо и не означает неисправность.",
-  "activitySummaryHeatWhy": "Жара, пот и ослабление посадки браслета при нагреве мешают датчику видеть пульс. Отсутствие данных здесь обычно и не означает неисправность.",
+  "activitySummaryColdPlungeWhy": "Холод мешает датчику считывать пульс. Пробелы ожидаемы.",
+  "activitySummaryHeatWhy": "Жара, пот и ослабление ремешка могут мешать считыванию пульса. Пробелы нормальны.",
   "activitySummaryNoPulseTitle": "Нет записи пульса: {activity}",
   "@activitySummaryNoPulseTitle": {
     "placeholders": {
@@ -5229,7 +5191,7 @@
     }
   },
   "activitySummaryOneMinutePulse": "Только одна минута пульса",
-  "activitySummaryPulseGapNote": "Браслет определил пульс в {have} из {total} минут. Пробелы ожидаемы; показана только доступная часть.",
+  "activitySummaryPulseGapNote": "Пульс найден в {have} из {total} минут.",
   "@activitySummaryPulseGapNote": {
     "placeholders": {
       "have": {
@@ -5241,11 +5203,11 @@
     }
   },
   "activitySummaryTooShortTitle": "Слишком мало для графика",
-  "activitySummaryTooShortBody": "Одна минута пульса — точка, а не линия.",
+  "activitySummaryTooShortBody": "Одна минута слишком мало для графика.",
   "activitySummaryNoHrTitle": "Нет пульса за эту тренировку",
   "activitySummaryNoHrBody": "Во время тренировки браслет ничего не передал.",
   "activitySummaryCheckBandConnection": "Проверить подключение браслета",
-  "activitySummaryPartialTrace": "Неполный график: браслет передал {pct}% этих минут.",
+  "activitySummaryPartialTrace": "Пульс записан за {pct}% этих минут.",
   "@activitySummaryPartialTrace": {
     "placeholders": {
       "pct": {
@@ -5387,7 +5349,7 @@
       }
     }
   },
-  "activityLiveDeniedForeverBody": "Геолокация запрещена для приложения. Изменить это можно только в настройках.",
+  "activityLiveDeniedForeverBody": "Геолокация заблокирована. Измените это в настройках.",
   "activityLiveDurationHeader": "ДЛИТЕЛЬНОСТЬ",
   "activityLiveEffortRpeHeader": "УСИЛИЕ (RPE)",
   "activityLiveEndSet": "Завершить сет",
@@ -5445,7 +5407,7 @@
       }
     }
   },
-  "activityLiveLapsFootnote": "Быстрейший: {time}, выделен жирным; длина столбца — скорость относительно него.",
+  "activityLiveLapsFootnote": "Быстрейший круг выделен жирным.",
   "@activityLiveLapsFootnote": {
     "placeholders": {
       "time": {
@@ -5490,15 +5452,15 @@
       }
     }
   },
-  "activityLiveNoHrBody": "Браслет не подключён. Данные тренировки не поступают.",
+  "activityLiveNoHrBody": "Браслет не подключён.",
   "activityLiveNoHrTitle": "Нет пульса",
-  "activityLiveNoHrYetBody": "Браслет подключён, но пульс ещё не передал. Наденьте его плотно, на ширину пальца выше косточки запястья.",
+  "activityLiveNoHrYetBody": "Пульса пока нет. Наденьте браслет плотно, на ширину пальца выше косточки запястья.",
   "activityLiveNoHrYetTitle": "Пульс пока не получен",
   "activityLiveNoneYet": "Пока нет",
-  "activityLiveNoRouteFailedBody": "Телефон вернул ошибку при запросе координат.",
+  "activityLiveNoRouteFailedBody": "Не удалось определить ваше местоположение.",
   "activityLiveNoRouteFailedTitle": "Нет маршрута: ошибка геолокации",
   "activityLiveNoRouteNotAllowedTitle": "Нет маршрута: геолокация запрещена",
-  "activityLiveNoRouteOffBody": "Геолокация телефона выключена. Координаты не поступают.",
+  "activityLiveNoRouteOffBody": "Геолокация выключена, маршрут не записывается.",
   "activityLiveNoRouteOffTitle": "Нет маршрута: геолокация выключена",
   "activityLiveOneLapFewer": "Убрать один круг",
   "activityLiveOpenSettings": "Открыть настройки",
@@ -5586,7 +5548,7 @@
       }
     }
   },
-  "activityLiveRouteFootnoteNoDistance": "Старт отмечен. Расстояние появится после уточнения координат.",
+  "activityLiveRouteFootnoteNoDistance": "Расстояние появится, когда GPS поймает сигнал.",
   "activityLiveRouteFootnoteWithDistance": "{distance} по записанным координатам.",
   "@activityLiveRouteFootnoteWithDistance": {
     "placeholders": {
@@ -6055,12 +6017,12 @@
   "ecgTakeEcg": "Снять ЭКГ",
   "ecgNeedsMg": "Для снятия ЭКГ нужен подключённый WHOOP MG.",
   "ecgHistoryEmpty": "Измерений пока нет.",
-  "ecgHistoryEmptyWhy": "Измерения сохраняются здесь и доступны для просмотра без браслета.",
+  "ecgHistoryEmptyWhy": "Ваши измерения сохраняются здесь.",
   "ecgWristPrompt": "На каком запястье браслет?",
   "ecgWristLeft": "Левое запястье",
   "ecgWristRight": "Правое запястье",
   "ecgInstruction": "Положите руку на опору. Большим и указательным пальцами другой руки коснитесь обеих металлических сторон. Не двигайтесь.",
-  "ecgIllustration": "Иллюстрация: браслет на запястье, большой и указательный пальцы другой руки касаются его металлических сторон.",
+  "ecgIllustration": "Коснитесь двух металлических сторон браслета большим и указательным пальцами другой руки.",
   "ecgContactLost": "Поправьте пальцы и не двигайтесь",
   "ecgPreparing": "Подготовка браслета…",
   "ecgRecovering": "Остановка предыдущего измерения…",
@@ -6142,8 +6104,8 @@
     }
   },
   "ecgWaveformEmpty": "Сигнал этого измерения не сохранён.",
-  "ecgWaveformLabel": "Принятый сигнал в микровольтах, переданных браслетом. Пробелы означают отсутствующие секунды.",
-  "ecgSampleNote": "{count} отсчётов с частотой {rate} Гц, после фильтрации, в мкВ на входе. Отведение и полярность не установлены.",
+  "ecgWaveformLabel": "Сигнал сердца. Пробелы означают пропущенные секунды.",
+  "ecgSampleNote": "{count} отсчётов с частотой {rate} Гц.",
   "@ecgSampleNote": {
     "placeholders": {
       "count": {
@@ -6643,7 +6605,7 @@
       }
     }
   },
-  "supplementCoachMedication": "Добавить напоминание о приёме {name}: {time}, {days}. Приложение не проверяет взаимодействие лекарств.",
+  "supplementCoachMedication": "Добавить напоминание: {name}, {time}, {days}. Взаимодействия не проверяются.",
   "@supplementCoachMedication": {
     "placeholders": {
       "name": {
@@ -7123,7 +7085,7 @@
   "devicesBatteryPackSub": "Браслет сообщает данные примерно раз в 10 минут",
   "welcomeArchiveSkipped": "{n, plural, one{{n} день сохранённой истории датчиков в формате, который эта версия не читает. Обновите приложение и снова импортируйте копию.} few{{n} дня сохранённой истории датчиков в формате, который эта версия не читает. Обновите приложение и снова импортируйте копию.} many{{n} дней сохранённой истории датчиков в формате, который эта версия не читает. Обновите приложение и снова импортируйте копию.} other{{n} дня сохранённой истории датчиков в формате, который эта версия не читает. Обновите приложение и снова импортируйте копию.}}",
   "welcomeArchiveRestored": "{n, plural, one{История датчиков восстановлена за {n} день} few{История датчиков восстановлена за {n} дня} many{История датчиков восстановлена за {n} дней} other{История датчиков восстановлена за {n} дня}}",
-  "coachApiFormatHelp": "Выберите API, который поддерживает ваш сервер. Responses поддерживает рассуждения OpenAI с инструментами.",
+  "coachApiFormatHelp": "Выберите API, который поддерживает ваш сервер.",
   "coachApiFormatLabel": "API",
   "settingsResetBackupWarning": "Данные приложения удалены. Очистка резервных копий завершилась не полностью: некоторые файлы или доступ к папке могут остаться.",
   "dataBackupFolder": "Папка резервных копий",
@@ -7133,10 +7095,10 @@
   "dataBackupFolderSaved": "Папка резервных копий сохранена.",
   "dataBackupFolderRetry": "Повторите через «Создать копию сейчас» или выберите другую папку",
   "findingIllnessTitle": "Пульс в покое повышен",
-  "findingIllnessDetail": "В последние ночи пульс в покое выше обычного: для этого достаточно одной очень высокой ночи или нескольких слегка повышенных. Здесь отслеживается один сигнал: это закономерность, а не причина.",
+  "findingIllnessDetail": "В последнее время ваш пульс в покое выше обычного. Это закономерность, а не причина.",
   "findingLowReadinessTitle": "Низкое восстановление",
-  "findingLowReadinessDetail": "Восстановление было в самом низком диапазоне. В целом показатели той ночи были заметно хуже обычного.",
-  "findingLowReadinessScoredDetail": "Восстановление — {score}, самый низкий диапазон. В целом показатели той ночи были заметно хуже обычного.",
+  "findingLowReadinessDetail": "Восстановление было низким. Показатели той ночи были заметно ниже обычных.",
+  "findingLowReadinessScoredDetail": "Восстановление: {score}, заметно ниже обычного.",
   "@findingLowReadinessScoredDetail": {
     "placeholders": {
       "score": {
@@ -7687,7 +7649,7 @@
   "advancedTitle": "Расширенные графики",
   "advancedIntro": "Подробные представления ваших данных.",
   "advancedBeatsTitle": "Удар за ударом",
-  "advancedBeatsSub": "Каждый удар относительно предыдущего, ВСР за ночь, способность к замедлению",
+  "advancedBeatsSub": "Удар за ударом и ВСР за ночь",
   "advancedRhythmTitle": "Время сна и суточный ритм",
   "advancedRhythmSub": "Сон по часам, вариабельность в покое, прогнозируемая форма сегодняшнего дня",
   "healthAdvancedLinkTitle": "Расширенные графики",
@@ -8112,7 +8074,7 @@
   "ecgStoppedEarly": "Остановлено досрочно",
   "ecgOutcomeNoRhythm": "По этой записи нельзя оценить ритм.",
   "ecgCaveatQualityUnchecked": "Данные браслета. Приложение ещё не проверило качество этой записи.",
-  "ecgReasonUnknownBit": "Неизвестный бит причины от браслета: {bit}",
+  "ecgReasonUnknownBit": "Браслет сообщил неизвестный результат.",
   "@ecgReasonUnknownBit": {
     "placeholders": {
       "bit": {
@@ -8120,7 +8082,7 @@
       }
     }
   },
-  "ecgReasonUnknownCode": "Код результата браслета {code} неизвестен приложению",
+  "ecgReasonUnknownCode": "Браслет сообщил неизвестный результат.",
   "@ecgReasonUnknownCode": {
     "placeholders": {
       "code": {
@@ -8128,7 +8090,7 @@
       }
     }
   },
-  "ecgReasonBandUnreadable": "Код результата браслета {code} означает, что запись прочитать не удалось",
+  "ecgReasonBandUnreadable": "Браслет не смог прочитать запись.",
   "@ecgReasonBandUnreadable": {
     "placeholders": {
       "code": {
@@ -8137,7 +8099,7 @@
     }
   },
   "ecgReasonNoHeartRate": "Пульс не передан",
-  "ecgReasonHrOutOfRange": "Средний пульс ({hr} bpm) вне диапазона, в котором можно прочитать этот результат",
+  "ecgReasonHrOutOfRange": "Средний пульс ({hr} bpm) вне допустимого диапазона.",
   "@ecgReasonHrOutOfRange": {
     "placeholders": {
       "hr": {
@@ -8181,8 +8143,8 @@
   "ecgDetailOutcome": "Решение приложения",
   "ecgDetailResultCode": "Код результата браслета",
   "ecgDetailStoredCategory": "Категория браслета (как сохранена)",
-  "ecgDetailAvgHr": "Средний пульс (решающий)",
-  "ecgDetailLiveHr": "Текущий пульс (не решающий)",
+  "ecgDetailAvgHr": "Средний пульс",
+  "ecgDetailLiveHr": "Текущий пульс",
   "ecgDetailQualityValue": "{value} · данные браслета, шкала неизвестна",
   "@ecgDetailQualityValue": {
     "placeholders": {
@@ -8252,10 +8214,9 @@
     }
   },
   "ecgAttemptThis": "эта запись",
-  "ecgDetailBandLogic": "Как браслет определяет результат — закрытая информация, приложению она неизвестна. Приложение только считывает числа, которые сообщает браслет.",
+  "ecgDetailBandLogic": "Результат определяет браслет, а его логика закрыта и неизвестна. Приложение лишь показывает то, что сообщает браслет.",
   "ecgRateMapping": "Регулярный ритм сообщается только при 51–99 bpm; при 100–150 bpm браслет различает нерегулярный и не нерегулярный ритм; при 151–200 bpm он сообщает только о высоком пульсе; вне этих пределов браслет не даёт оценки ритма. Эти диапазоны следуют из того, как приложение читает коды браслета, а не из валидации этого устройства.",
-  "ecgDetailRuleHr": "Решающий пульс — средний пульс, который сообщает браслет. Текущий пульс показывается, но не учитывается.",
-  "ecgDetailRuleMask": "Любой бит причины, выставленный браслетом в любую секунду, неизвестный код результата или отсутствие пульса делают запись нечитаемой, что бы ни говорил код результата.",
+  "ecgDetailRuleMask": "Если браслет отметил запись как ненадёжную, она считается нечитаемой.",
   "ecgTimelineTitle": "Посекундная шкала",
   "ecgTimelineSecond": "Сек",
   "ecgTimelineQuality": "Качество",
@@ -8281,14 +8242,14 @@
   "findingTitleTemp": "Температура кожи повышена",
   "findingTitleIrregularRhythm": "Отмечен нерегулярный пульс",
   "findingTitleLowReadiness": "Сегодня низкое восстановление",
-  "findingTitleRhrShift": "Тренд пульса в покое сместился",
+  "findingTitleRhrShift": "Пульс в покое изменился",
   "findingDetailIllness": "За последние ночи пульс в покое вырос, а вариабельность сердечного ритма (HRV) снизилась.",
   "findingDetailAnomaly": "Ночные показатели вне вашего обычного диапазона.",
-  "findingDetailTemp": "Устойчивый рост выше обычного; это может быть признаком болезни.",
+  "findingDetailTemp": "Температура вашей кожи остаётся выше обычной.",
   "findingDetailIrregularRhythm": "Сегодня интервалы между ударами пульса выглядели нерегулярными. Этот скрининг использует пульс на запястье, который не показывает электрическую активность сердца, и это не диагноз. Если есть симптомы, обратитесь к врачу.",
   "findingDetailLowReadiness": "Показатели восстановления ниже вашего обычного диапазона. Сегодня лучше полегче.",
-  "findingDetailRhrShiftRisen": "Пульс в покое заметно вырос относительно вашего недавнего обычного уровня.",
-  "findingDetailRhrShiftFallen": "Пульс в покое заметно снизился относительно вашего недавнего обычного уровня.",
+  "findingDetailRhrShiftRisen": "Ваш пульс в покое выше обычного.",
+  "findingDetailRhrShiftFallen": "Ваш пульс в покое ниже обычного.",
   "findingsAggregateTitle": "{count, plural, one{{count} пункт, на который стоит взглянуть} few{{count} пункта, на которые стоит взглянуть} many{{count} пунктов, на которые стоит взглянуть} other{{count} пункта, на которые стоит взглянуть}}",
   "@findingsAggregateTitle": {
     "placeholders": {

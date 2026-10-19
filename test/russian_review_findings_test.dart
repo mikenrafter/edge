@@ -381,7 +381,7 @@ void main() {
       );
       await t.pumpAndSettle();
       expect(summary!.contains(localizedText(ru, 'every day')), daily);
-      expect(summary, contains('не проверяет взаимодействие лекарств'));
+      expect(summary, contains('Взаимодействия не проверяются'));
       expect(jsonEncode(args), before);
     });
   }

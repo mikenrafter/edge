@@ -212,8 +212,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
       context,
       title: l?.nutritionRemoveTitle(e.label) ?? 'Remove ${e.label}?',
       body: l?.nutritionRemoveBody ??
-          'It leaves the day and every average that counted it. There is no '
-              'undo.',
+          'This cannot be undone.',
     );
     if (!ok) return;
     await NutritionDb.delete(await LocalDb.instance, e.id);
@@ -365,8 +364,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
       OffOutcome.ok => StatusCard(
           l?.logFoodNoNumbersTitle ?? 'No numbers for this one',
           l?.logFoodNoNumbersBody ??
-              'Open Food Facts lists this product but has no usable nutrition '
-              'data. Its values were missing or failed the app\'s range checks.',
+              'No usable nutrition data for this product.',
           icon: LucideIcons.scanBarcode,
         ),
       OffOutcome.notFound => StatusCard(
@@ -377,8 +375,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
       OffOutcome.flagged => StatusCard(
           l?.logFoodFlaggedTitle ?? 'This record is flagged as wrong',
           l?.logFoodFlaggedBody ??
-              'Open Food Facts marks this product as containing errors, so the '
-              'app left every number blank.',
+              'Open Food Facts flags this product as wrong, so nothing was filled in.',
           icon: LucideIcons.triangleAlert,
         ),
       OffOutcome.unreachable => StatusCard(
@@ -402,12 +399,11 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
   String _portionNote(BuildContext c, OffProduct p) {
     final l = AppLocalizations.of(c);
     final base = l?.logFoodPortionNoteBase ??
-        'Open Food Facts lists values per 100 g. The numbers scale when '
-        'you change the portion.';
+        'Listed per 100 g. Numbers scale with your portion.';
     if (p.servingLabel.isEmpty && p.servingG == null) return base;
     final serving =
         p.servingLabel.isNotEmpty ? p.servingLabel : '${_plain(p.servingG)} g';
-    return l?.logFoodPortionNoteServing(serving) ?? '$base The pack lists a serving of $serving.';
+    return l?.logFoodPortionNoteServing(serving) ?? '$base Pack serving: $serving.';
   }
 
   void _fillFrom(OffProduct p, double grams) {
@@ -452,7 +448,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                   child: Text(
                       _editing != null
                           ? (l?.logFoodEditTitle ?? 'Edit this entry')
-                          : (l?.logFoodTitle ?? 'Log an eating occasion'),
+                          : (l?.logFoodTitle ?? 'Log a meal'),
                       style: F.t2.copyWith(color: p.ink)),
                 ),
                 Pressable(
@@ -604,8 +600,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                   l?.logFoodScanBarcode ?? 'Scan a barcode',
                   sub: offLookupAllowed
                       ? (l?.logFoodScanSubOn ??
-                          'Sends the barcode to openfoodfacts.org and fills in the values '
-                          'that pass range checks')
+                          'Looks the barcode up on Open Food Facts.')
                       : (l?.logFoodScanSubOff ?? 'Looks the pack up online. Asks permission first.'),
                   chevron: false,
                   onTap: _looking ? null : _scan,
@@ -803,26 +798,22 @@ Future<bool?> _askLookupConsent(BuildContext c) => showModalBottomSheet<bool>(
                 const SizedBox(height: S.x4),
                 Text(
                   l?.logFoodConsentBody1 ??
-                      'A scan sends the barcode to openfoodfacts.org, a free, '
-                          'open food database. They see the barcode and your IP '
-                          'address. Nothing about you, your meals or your health '
-                          'leaves this phone, and a barcode you have scanned before '
-                          'is answered from your own copy without asking them again.',
+                      'Scanning sends the barcode and your IP address to '
+                          'openfoodfacts.org, a free food database. Nothing else '
+                          'leaves your phone.',
                   style: F.body.copyWith(color: p.ink2, height: 1.5),
                 ),
                 const SizedBox(height: S.x3),
                 Text(
                   l?.logFoodConsentBody2 ??
-                      'Anyone can edit Open Food Facts, so some of its numbers are '
-                      'wrong. The app leaves blank any value that fails a range check. '
-                      'You can edit every value it fills in before you save.',
+                      'The database is user-submitted and can be wrong. Suspect '
+                      'values are left blank. You can edit everything before saving.',
                   style: F.body.copyWith(color: p.ink2, height: 1.5),
                 ),
                 const SizedBox(height: S.x3),
                 Text(
                   l?.logFoodConsentBody3 ??
-                      'You can turn this off again in Settings › Privacy. Typing the '
-                      'numbers from the pack works with lookups on or off.',
+                      'You can turn this off in Settings › Privacy.',
                   style: F.cap.copyWith(color: p.ink3, height: 1.45),
                 ),
                 const SizedBox(height: S.x5),

@@ -81,8 +81,7 @@ class _ScanSheet extends StatelessWidget {
             const SizedBox(height: S.x4),
             Text(
               l?.scanBarcodeInstructions ??
-                  'Hold the barcode inside the frame. The scanner reads only the '
-                  'digits and records nothing else.',
+                  'Hold the barcode inside the frame.',
               style: F.cap.copyWith(color: p.ink3, height: 1.45),
             ),
           ],

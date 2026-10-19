@@ -315,8 +315,7 @@ class _LogWorkoutState extends State<LogWorkout> {
           setState(() {
             _saving = false;
             _wrote = l?.logWorkoutImportedHrGone ??
-                'Heart rate for this workout is no longer stored, so the band '
-                    'cannot score it.';
+                'Heart rate for this workout is no longer stored.';
           });
           return;
         }
@@ -336,9 +335,7 @@ class _LogWorkoutState extends State<LogWorkout> {
         setState(() {
           _saving = false;
           _wrote = l?.logWorkoutUnscoredSaved ??
-              'Saved. No heart rate was recorded in that window, so this entry '
-              'has no strain or calories. It keeps only the start and end '
-              'times.';
+              'Saved. No heart rate was recorded in that window, so there is no strain or calorie figure.';
         });
         return;
       }
@@ -442,9 +439,9 @@ class _LogWorkoutState extends State<LogWorkout> {
                       _wrote!, icon: LucideIcons.circleCheck)
                 else
                   StatusCard(
-                    l?.logWorkoutScoredTitle ?? 'Scored from what the band recorded',
                     l?.logWorkoutScoredBody ??
-                        'Strain and calories come from your heart rate within these times, the same way the day is scored. Nothing is guessed from duration.',
+                        'Strain and calories are calculated from your heart rate in this window.',
+                    '',
                     icon: LucideIcons.heartPulse,
                   ),
                 const SizedBox(height: S.x4),
@@ -602,8 +599,7 @@ Future<void> scoreImportedWorkout(
   if (!stored) {
     ScaffoldMessenger.of(c).showSnackBar(SnackBar(
       content: Text(l?.logWorkoutImportedHrGone ??
-          'Heart rate for this workout is no longer stored, so the band '
-              'cannot score it.'),
+          'Heart rate for this workout is no longer stored.'),
     ));
     return;
   }

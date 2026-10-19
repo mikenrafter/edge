@@ -133,9 +133,7 @@ class _ActivityPickerState extends State<ActivityPicker> {
                       l?.activityPickerNoMatchTitle ??
                           'No activity matches that',
                       l?.activityPickerNoMatchBody ??
-                          'Activities come from the Compendium of Physical '
-                          'Activities, which lists an energy cost (MET) for each. '
-                          'Pick the closest one.',
+                          'No match. Pick the closest activity.',
                       icon: LucideIcons.search,
                     )
                   else
@@ -238,12 +236,8 @@ class _ActivityPickerState extends State<ActivityPicker> {
                   ],
                   if (widget.weightKg != null) ...[
                     const SizedBox(height: S.x5),
-                    StatusCard(
-                      l?.activityPickerCalorieEstimatesTitle ??
-                          'Calorie figures are estimates',
-                        uiText(c, kCalorieWhy),
-                        icon: LucideIcons.flame,
-                      ),
+                    Text(uiText(c, kCalorieWhy),
+                        style: F.cap.copyWith(color: p.ink3, height: 1.5)),
                     ],
                   ],
                 ],
@@ -269,16 +263,8 @@ class ActivityRow extends StatelessWidget {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final kcal = a.kcal(weightKg, 30);
-    final met = a.met;
-    final metStr = met?.toStringAsFixed(1);
-    // An unpriced row (the catch-all, Padel) has neither: no weight means no
-    // kcal, and there is no MET to fall back to. It gets no trailing number
-    // rather than a placeholder standing in for one.
-    final trailing = kcal != null
-        ? '$kcal kcal / 30 min'
-        : metStr == null
-            ? null
-            : '$metStr× resting';
+    // A row with no weight on file (or no priced activity) has no kcal. It gets
+    // no trailing number rather than a placeholder standing in for one.
     return Pressable(
       onTap: onTap,
       child: Padding(
@@ -311,13 +297,9 @@ class ActivityRow extends StatelessWidget {
           // estimate drops off the row rather than overflowing it — the name
           // and the tap are what the row is for, and the same number is on
           // the setup screen the tap opens.
-          if (!bigText(c) && trailing != null) ...[
+          if (!bigText(c) && kcal != null) ...[
             const SizedBox(width: S.x2),
-            Text(
-                kcal == null
-                    ? (l?.activityPickerMetValue(metStr!) ?? '$metStr× resting')
-                    : (l?.activityPickerKcalPer30(kcal) ??
-                        '$kcal kcal / 30 min'),
+            Text(l?.activityPickerKcalPer30(kcal) ?? '$kcal kcal / 30 min',
                 style: F.over.copyWith(color: p.ink3)),
           ],
           const SizedBox(width: S.x2),

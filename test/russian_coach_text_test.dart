@@ -129,7 +129,7 @@ void main() {
       expect(rendered[4], contains('Original food'));
       expect(rendered[5], contains('500'));
       expect(rendered[7], contains('Original medication'));
-      expect(rendered[7], contains('не проверяет взаимодействие лекарств'));
+      expect(rendered[7], contains('Взаимодействия не проверяются'));
       expect(rendered[7], isNot(contains('Mon')));
       expect(rendered[8], contains('не принято'));
       expect(requests[7].args['time'], '08:15');

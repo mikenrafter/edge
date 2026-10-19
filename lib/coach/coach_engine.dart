@@ -925,7 +925,7 @@ class CoachEngine {
             tool: name, title: 'Add a medication',
             summary: 'Schedule ${args['name']} at ${args['time']}, '
                 '${_daysSummary(args['weekdays'])}. '
-                'This app does not check interactions.',
+                'Interactions are not checked.',
             args: args,
           ), () async => CoachActions.addMedication(await LocalDb.instance, args));
         case 'mark_medication':

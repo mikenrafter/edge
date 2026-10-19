@@ -79,19 +79,18 @@ String ecgReasonText(AppLocalizations? l, EcgReason r) {
     EcgReasonId.notEnoughData =>
       l?.ecgReasonNotEnoughData ?? 'Not enough data',
     EcgReasonId.unknownBandReasonBit =>
-      l?.ecgReasonUnknownBit(n) ?? 'Unknown band reason bit $n',
+      l?.ecgReasonUnknownBit(n) ?? 'The band reported an unrecognised result.',
     EcgReasonId.unknownResultCode =>
       l?.ecgReasonUnknownCode(n) ??
-          'The band\'s result code $n is not one this app knows',
+          'The band reported an unrecognised result.',
     EcgReasonId.bandUnreadableResult =>
       l?.ecgReasonBandUnreadable(n) ??
-          'The band\'s result code $n means it could not read the recording',
+          'The band could not read the recording.',
     EcgReasonId.noHeartRate =>
       l?.ecgReasonNoHeartRate ?? 'No heart rate was reported',
     EcgReasonId.heartRateOutOfRange =>
       l?.ecgReasonHrOutOfRange(n) ??
-          'The average heart rate ($n bpm) is outside the range this result '
-              'can be read at',
+          'Average heart rate ($n bpm) is outside the readable range.',
     _ => r.id,
   };
 }
@@ -430,7 +429,7 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
             StatusCard(
               l?.ecgHistoryEmpty ?? 'No readings yet.',
               l?.ecgHistoryEmptyWhy ??
-                  'Your saved readings appear here and open without the band connected.',
+                  'Your readings are saved here.',
               icon: LucideIcons.activity,
             ),
           if (_readings.isNotEmpty)
@@ -794,8 +793,7 @@ class EcgCaptureBody extends StatelessWidget {
             contact: measuring,
             semanticLabel:
                 l?.ecgIllustration ??
-                'Illustration: the band on your wrist, and the thumb and index '
-                    'finger of your other hand touching its two metal sides.',
+                'Touch the band\'s two metal sides with your other thumb and index finger.',
           ),
           const SizedBox(height: S.x4),
           body(
@@ -1408,12 +1406,12 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
       ),
       row(
         'avg_hr',
-        l?.ecgDetailAvgHr ?? 'Average heart rate (decides)',
+        l?.ecgDetailAvgHr ?? 'Average heart rate',
         opt(r.avgHr == null ? null : '${r.avgHr} bpm'),
       ),
       row(
         'live_hr',
-        l?.ecgDetailLiveHr ?? 'Live heart rate (never decides)',
+        l?.ecgDetailLiveHr ?? 'Live heart rate',
         opt(r.liveHr == null ? null : '${r.liveHr} bpm'),
       ),
       row(
@@ -1546,8 +1544,8 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
         padding: const EdgeInsets.only(top: S.x3),
         child: Text(
           l?.ecgDetailBandLogic ??
-              'How the band decides its result is proprietary and unknown to '
-                  'this app. The app only reads the numbers the band reports.',
+              'The band decides the result, and its logic is proprietary and '
+                  'unknown. This app only shows what the band reports.',
           style: F.cap.copyWith(color: p.ink2, height: 1.4),
         ),
       ),
@@ -1559,13 +1557,9 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
           children: [
             for (final t in [
               (l ?? lookupAppLocalizations(const Locale('en'))).ecgRateMapping,
-              l?.ecgDetailRuleHr ??
-                  'The heart rate that decides is the average heart rate the '
-                      'band reports. The live rate is shown but never decides.',
               l?.ecgDetailRuleMask ??
-                  'Any reason bit the band set in any second, an unknown '
-                      'result code or a missing heart rate makes the reading '
-                      'Not readable, whatever the result code says.',
+                  'Anything the band flags as unreliable makes the reading '
+                      'Not readable.',
             ])
               Padding(
                 padding: const EdgeInsets.only(bottom: S.x1),
@@ -1796,8 +1790,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
           const SizedBox(height: S.x4),
           Section(
             l?.ecgWaveformLabel ??
-                'Accepted waveform, microvolts as the band sent them. Gaps are '
-                    'missing seconds.',
+                'Heart signal. Gaps are missing seconds.',
             packets.isEmpty
                 ? StatusCard(
                     l?.ecgWaveformEmpty ??
@@ -1867,9 +1860,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
                         const SizedBox(height: S.x2),
                         Text(
                           l?.ecgSampleNote(r.sampleCount, kEcgSampleRateHz) ??
-                              '${r.sampleCount} samples at $kEcgSampleRateHz Hz, '
-                                  'filtered, input-referred µV. No lead or '
-                                  'polarity is claimed.',
+                              '${r.sampleCount} samples at $kEcgSampleRateHz Hz.',
                           style: F.cap.copyWith(color: p.ink3),
                         ),
                       ],

@@ -291,7 +291,7 @@ class _ShareSheetState extends State<ShareSheet> {
                                   'Change photo'),
                           sub: _photo == null
                               ? (l?.activitySharePhotoHint ??
-                                  'From this phone. Nothing is uploaded')
+                                  'From your phone. Not uploaded.')
                               : _photo!.path.split('/').last,
                           onTap: _pickPhoto),
                       if (_photo != null) ...[
@@ -319,8 +319,7 @@ class _ShareSheetState extends State<ShareSheet> {
                         r.activity.color,
                         l?.activityShareDrawMap ?? 'Draw the map',
                         sub: l?.activityShareMapHint ??
-                            'Downloads the map tiles for this route from openstreetmap.org. '
-                            'When off, the card draws the route alone.',
+                            'Loads a map from openstreetmap.org. Off, only the route is drawn.',
                         value: _mapConsent
                             ? (l?.stateOn ?? 'On')
                             : (l?.stateOff ?? 'Off'),
@@ -337,8 +336,7 @@ class _ShareSheetState extends State<ShareSheet> {
                     const SizedBox(height: S.x3),
                     StatusCard(
                       l?.activityShareFetchingMapTitle ?? 'Fetching the map',
-                      l?.activityShareFetchingMapBody ??
-                          'The card draws once every tile has downloaded.',
+                      '',
                       icon: LucideIcons.map,
                     ),
                   ]
@@ -354,8 +352,7 @@ class _ShareSheetState extends State<ShareSheet> {
                     StatusCard(
                       l?.activityShareNoMapTitle ?? 'No map for this card',
                       l?.activityShareNoMapBody ??
-                          'Map tiles failed to download. '
-                          'The card shows the route alone.',
+                          'Map unavailable. Showing the route only.',
                       icon: LucideIcons.mapPinOff,
                     ),
                   ],
@@ -376,7 +373,7 @@ class _ShareSheetState extends State<ShareSheet> {
                       l?.activityShareStatusPrivateTitle ??
                           'This session is private',
                       l?.activityShareStatusPrivateBody ??
-                          'Hidden from summaries and exports.',
+                          'Hidden from summaries and exports',
                       icon: LucideIcons.lock,
                     ),
                   ],

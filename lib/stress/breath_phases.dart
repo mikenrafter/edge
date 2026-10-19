@@ -95,9 +95,8 @@ class BreathPattern {
 /// with a coherence score attached.
 const _resonance = BreathPattern(
   key: 'resonance',
-  label: 'Resonance',
-  description: 'Equal inhale and exhale at about 5.5 breaths a minute. '
-               'This pattern gets a coherence score.',
+  label: 'Your pace',
+  description: 'Even breathing at about 5.5 a minute. This pace is scored.',
   phases: [
     BreathPhase(BreathPhaseKind.inhale, 5.45),
     BreathPhase(BreathPhaseKind.exhale, 5.45),

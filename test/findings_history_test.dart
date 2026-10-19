@@ -103,7 +103,7 @@ void main() {
         .where((f) => f.kind == FindingKind.rhrShift);
     expect(shifts, isNotEmpty);
     expect(shifts.first.risen, isTrue);
-    expect(findingDetail(AppLocalizationsEn(), shifts.first), contains('risen'));
+    expect(findingDetail(AppLocalizationsEn(), shifts.first), contains('above your usual'));
     // Nothing before the step is called a shift.
     expect(shifts.every((f) => f.date.compareTo('2026-08-14') > 0), isTrue);
   });

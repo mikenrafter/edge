@@ -267,8 +267,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
               ? why ??
                   (l?.dayStrainNoReasonBody ?? 'No reading.')
               : (l?.dayStrainScoredNoTraceBody(s.toStringAsFixed(1)) ??
-                  'The day strain is ${s.toStringAsFixed(1)}. The waking minutes '
-                      'it was built from are not stored for this day.'),
+                  'Day strain is ${s.toStringAsFixed(1)}. The minute-by-minute detail isn\'t stored.'),
           fix: (s == null && !saw)
               ? (l?.dayStrainWearBandFix ?? 'Wear the band through the day')
               : '',
@@ -291,7 +290,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
             xLabels: const ['00:00', '12:00', '24:00'],
             series: d.curve,
             footnote: l?.dayStrainChartFootnote(drawn) ??
-                'Effort above your usual waking pace. It can ease later if you slow back toward that pace. From $drawn recorded waking minutes.',
+                'Effort above your usual waking pace, from $drawn recorded minutes.',
             child: ChartScrub(
               label: l?.dayStrainChartTitle ?? 'Strain through the day',
               // One slot per minute of the local day, as the grid was built.
@@ -330,9 +329,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
             l?.dayStrainLowCoverageTitle(d.coveragePct!) ??
                 'The band saw ${d.coveragePct}% of this day',
             l?.dayStrainLowCoverageBody ??
-                'Strain is a total over the minutes that were recorded, so a '
-                    'partly-worn day reads lower than a full one and the two are '
-                    'not comparable.',
+                'Strain counts recorded minutes only, so a partly worn day reads lower.',
             icon: LucideIcons.watch,
           ),
         ),
@@ -384,19 +381,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
               'How hard your heart worked while awake, by minutes in each heart-rate zone, on a 0–21 scale.',
           if (max != null)
             l?.dayStrainInputsMaxHr(max.round()) ??
-                'It was integrated against an assumed maximum of '
-                    '${max.round()} bpm — estimated from your age and your strap, '
-                    'not measured.',
-          // Said out loud because the zone bar above can now be banded on a
-          // MEASURED ceiling while this number is still the age estimate, and
-          // two different ceilings on one screen with nothing saying so is
-          // exactly the defect TS-03a removed.
-          if (max != null && d.zoneSource != null && d.zoneSource != 'tanaka')
-            l?.dayStrainInputsMeasuredCeilingNote ??
-                'The zone bar uses your measured maximum. Strain does not, so the strain scores you have already seen stay the same.',
-          l?.dayStrainInputsRhrAnchor ??
-              'The other anchor is your resting heart rate from the night before, '
-                  'so a night the band missed moves the whole day.',
+                'Based on an estimated maximum of ${max.round()} bpm.',
         ].join(' '),
         style: F.cap.copyWith(color: p.ink3, height: 1.5),
       ),

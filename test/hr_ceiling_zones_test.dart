@@ -291,14 +291,12 @@ void main() {
   // the stamp, so the same bands were described two ways and the card in the
   // report claimed the age estimate for edges that came off a measured ceiling.
   group('zonesWhy', () {
-    test('names the measured ceiling when the set was measured', () {
-      expect(zonesWhy('observed', 184), contains('184 bpm'));
-      expect(zonesWhy('observed', 184), contains('recorded for you'));
-      expect(zonesWhy('karvonen', 184), contains('184 bpm'));
-      expect(zonesWhy('karvonen', 184), contains('your measured resting heart rate'));
-      // The estimate's sentence is the one thing a measured set must not say.
-      expect(zonesWhy('observed', 184), isNot(kZonesWhy));
-      expect(zonesWhy('karvonen', 184), isNot(kZonesWhy));
+    test('says nothing when the set was measured', () {
+      // A measured set carries no footnote: the zones screen says where the
+      // edges came from, and the estimate's sentence is the one thing a
+      // measured set must not say.
+      expect(zonesWhy('observed', 184), isNull);
+      expect(zonesWhy('karvonen', 184), isNull);
     });
 
     test('falls back to the estimate sentence, never to a "null bpm"', () {
@@ -306,7 +304,7 @@ void main() {
       expect(zonesWhy(null, null), kZonesWhy);
       // A measured stamp with no ceiling to name has no measured sentence.
       expect(zonesWhy('observed', null), kZonesWhy);
-      expect(zonesWhy('karvonen', null), isNot(contains('null')));
+      expect(zonesWhy('karvonen', null), kZonesWhy);
     });
   });
 

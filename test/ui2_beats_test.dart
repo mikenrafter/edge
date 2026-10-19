@@ -119,7 +119,7 @@ void main() {
     for (final panel in const [
       'Every beat against the one before it',
       'Variability across the night',
-      'Deceleration capacity',
+      'How your heart slows',
       'Rhythm screen',
     ]) {
       expect(text, contains(panel), reason: '$panel is missing');
@@ -282,7 +282,7 @@ void main() {
           reason: '"$banned" is a threshold on a number that has none');
     }
     // The two caveats that must travel with the number, always.
-    expect(text, contains('cleaner signal'));
+    expect(text, contains('compare only with your own nights'));
     expect(text, contains('10,435')); // the anchor count, beside it
     expect(text, contains('98.3%')); // the artifact gate, beside it
 
@@ -314,7 +314,7 @@ void main() {
 
     expect(text, contains('no longer on this phone'));
     // The numbers taken from those beats are still real and still printed.
-    expect(text, contains('SD1 30 ms'));
+    expect(text, contains('Spread: 30 ms short-term'));
     expect(text, isNot(contains('No data')));
     // And nothing pretends to plot a cloud that is not there.
     expect(
@@ -343,7 +343,7 @@ void main() {
     await _pump(t, _night());
     final text = _allText(t);
     // One sentence covers it: a blank is a block with too few clean beats.
-    expect(text, contains('a blank where too few clean beats were left'));
+    expect(text, contains('Blank means too few clean beats'));
     // The band is a band: every drawn bin carries its lo/hi, so the series
     // handed to the frame keeps the hole in place rather than compacting it.
     final frame = t

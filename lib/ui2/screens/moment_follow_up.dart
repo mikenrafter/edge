@@ -612,16 +612,14 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     }
     if (error is ProgressNotPersistedException) {
       return l?.momentReviewProgressNotSaved ??
-          'Could not record progress on this pair, so it was stopped. Press '
-              'Save to try again.';
+          'This pair was not saved. Press Save to retry.';
     }
     if (error is AmbiguousMarkException) {
       return l?.momentReviewAmbiguous ??
-          'This time came round twice when the clocks went back, so it cannot '
-              'be paired with another mark.';
+          'This time is ambiguous after the clock change, so it cannot be paired.';
     }
     return l?.momentReviewItemFailed ??
-        'Not saved. It is still queued — press Save to try again.';
+        'Not saved. Press Save to retry.';
   }
 
   /// What a queued decision will do, for the card ("Caffeine · 80 mg").
@@ -704,7 +702,7 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
                   StatusCard(
                     l?.logWorkoutReadFailedTitle ?? 'Could not read your moments',
                     l?.logWorkoutReadFailedBody ??
-                        'The local database did not respond. Nothing was changed.',
+                        'Could not read your activity. Nothing was changed.',
                     fix: l?.logWorkoutTryAgain ?? 'Try again',
                     icon: LucideIcons.refreshCw,
                     onFix: _load,
@@ -729,17 +727,14 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
                       padding: const EdgeInsets.only(bottom: S.x3),
                       child: Text(
                           l?.momentReviewPersistFailed ??
-                              'Could not store your choices on this phone. '
-                                  'They are kept while the app is open but may '
-                                  'be lost if it closes.',
+                              'Could not save your choices. They may be lost if the app closes.',
                           style: F.cap.copyWith(color: p.ink)),
                     ),
                   Padding(
                     padding: const EdgeInsets.only(bottom: S.x3),
                     child: Text(
                         l?.momentReviewHint ??
-                            'Your choices are queued. Nothing is saved until '
-                                'you press Save.',
+                            'Nothing is saved until you press Save.',
                         style: F.cap.copyWith(color: p.ink2)),
                   ),
                   for (final e in _chronological(items, _glasses)) ...[
@@ -1028,8 +1023,7 @@ class _MomentRow extends StatelessWidget {
               padding: const EdgeInsets.only(top: S.x1),
               child: Text(
                   l?.momentReviewAmountInvalid ??
-                      'Type a number above 0 (within the usual range), or '
-                          'leave it empty.',
+                      'Enter a number above 0, or leave it empty.',
                   style: F.cap.copyWith(color: p.ink2)),
             ),
         ],
@@ -1087,8 +1081,7 @@ class _MomentRow extends StatelessWidget {
             padding: const EdgeInsets.only(top: S.x2),
             child: Text(
                 l?.momentReviewAmbiguous ??
-                    'This time came round twice when the clocks went back, so '
-                        'it cannot be paired with another mark.',
+                    'This time is ambiguous after the clock change, so it cannot be paired.',
                 style: F.cap.copyWith(color: p.ink2)),
           ),
         if (pairError != null)

@@ -229,7 +229,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
     final v = day.protein.value;
     if (v == null) {
       return GoalTrajectory(label, l?.nutritionNotRecorded ?? 'Not recorded',
-          goal, l?.nutritionAddNumbersFix ?? 'Add the numbers to an occasion',
+          goal, l?.nutritionAddNumbersFix ?? 'Add the numbers to a meal',
           0, C.red, rateDown: false);
     }
     // Rounded up: 99.6 of 100 g is still 1 g to go, never "reached".
@@ -301,7 +301,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
           StatusCard(
             l?.nutritionEmptyTodayTitle ?? 'Nothing logged today',
             l?.nutritionEmptyTodayBody ?? 'Add an entry with one tap. Numbers are optional.',
-            fix: l?.nutritionLogOccasionFix ?? 'Log an eating occasion',
+            fix: l?.nutritionLogOccasionFix ?? 'Log a meal',
             icon: LucideIcons.utensils,
             onFix: _logFood,
           )
@@ -312,7 +312,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
           protein,
         ],
         Section(
-          l?.nutritionOccasionsSection ?? 'Occasions',
+          l?.nutritionOccasionsSection ?? 'Meals',
           Surface(
             pad: const EdgeInsets.symmetric(horizontal: S.x4),
             child: Column(
@@ -363,12 +363,11 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         if (day != null && day.logged && day.kcal.isFloor) ...[
           const SizedBox(height: S.x4),
           StatusCard(
-            l?.nutritionFloorTitle ?? 'Today\'s energy is a minimum',
+            l?.nutritionFloorTitle ?? 'Calories so far are a minimum',
             l?.nutritionFloorBody(day.kcal.unknown, day.entries.length) ??
-                '${day.kcal.unknown} of ${day.entries.length} occasions have '
-                'no energy figure, so the number above is '
-                'a minimum.',
-            fix: l?.nutritionAddNumbersFix ?? 'Add the numbers to an occasion',
+                '${day.kcal.unknown} of ${day.entries.length} meals have '
+                'no calories, so the total above is a minimum.',
+            fix: l?.nutritionAddNumbersFix ?? 'Add the numbers to a meal',
             icon: LucideIcons.circleDashed,
             onFix: _logFood,
           ),
@@ -380,7 +379,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
                 '${w.daysExcluded} of the last ${w.span} days could not be '
                     'counted',
             l?.nutritionDayCountsRule ??
-                'A day counts once every occasion carries an energy figure.',
+                'A day counts once every meal carries an energy figure.',
           ),
         ],
       ],
@@ -408,8 +407,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
             partial == 0
                 ? (l?.nutritionDaysLoggedLabel ?? 'Days with something logged')
                 : (l?.nutritionPartialExcluded(partial) ??
-                    '$partial partial, left out of '
-                    'every average below'),
+                    '$partial incomplete, left out of averages'),
             C.domFood,
           ),
         ),
@@ -420,7 +418,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
               ? StatusCard(
                   l?.nutritionNoCompleteDayTitle ?? 'No complete day to average yet',
                   l?.nutritionNoCompleteDayBody ??
-                      'Give every occasion in a day an energy figure and that '
+                      'Give every meal in a day an energy figure and that '
                       'day counts toward the average.',
                   icon: LucideIcons.chartNoAxesColumn,
                 )
@@ -462,8 +460,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
                   const SizedBox(height: S.x3),
                   Text(
                     l?.nutritionEatenMeanNote(w.meanKcal.days) ??
-                        'Eaten is the mean of ${w.meanKcal.days} complete '
-                            'days. Burned is today only.',
+                        'Eaten: ${w.meanKcal.days}-day average. Burned: today.',
                     style: F.cap.copyWith(color: P.of(c).ink3, height: 1.45),
                   ),
                 ],
@@ -648,7 +645,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         if (set.isEmpty)
           StatusCard(
             l?.nutritionNoTargetsTitle ?? 'No targets set',
-            l?.nutritionNoTargetsBody ?? 'Targets are values you enter.',
+            '',
             fix: l?.nutritionSetTargetFix ?? 'Set a target',
             icon: LucideIcons.target,
             onFix: _editTargets,
@@ -732,22 +729,17 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         // completeness is a sentence the user can see is false.
         (m?.floorDays ?? 0) > 0
             ? (l?.nutritionFloorAverageBody(nutrient) ??
-                'Every complete day has an entry with no '
-                '$nutrient figure, so an average would '
-                'be a minimum.')
+                'Some meals have no $nutrient figure, so no average yet.')
             : (_week?.counted.length ?? 0) > 0
                 ? (l?.nutritionCountedNoFigureBody(
                         _week!.counted.length, _week!.span, nutrient) ??
-                    '${_week!.counted.length} of the last ${_week!.span} days '
-                    'counted, but none had a $nutrient '
-                    'figure.')
+                    'No $nutrient figures in the last ${_week!.span} days.')
                 : (l?.nutritionDayCountsRuleFull(_week?.span ?? 7) ??
-                    'A day counts once every occasion carries a figure and '
-                    'the log reaches the evening. None of the last '
-                    '${_week?.span ?? 7} days qualifies.'),
+                    'A day counts once every meal has a figure and you have '
+                    'logged into the evening.'),
         fix: (m?.floorDays ?? 0) > 0 || (_week?.counted.length ?? 0) > 0
-            ? (l?.nutritionAddNumbersFix ?? 'Add the numbers to an occasion')
-            : (l?.nutritionLogOccasionFix ?? 'Log an eating occasion'),
+            ? (l?.nutritionAddNumbersFix ?? 'Add the numbers to a meal')
+            : (l?.nutritionLogOccasionFix ?? 'Log a meal'),
         icon: LucideIcons.target,
         onFix: _logFood,
       );
@@ -838,14 +830,14 @@ class DayEnergyCard extends StatelessWidget {
               Text(
                 k.value == null
                     ? (l?.nutritionOccasionsUnit(day.entries.length) ??
-                        'occasion${day.entries.length == 1 ? '' : 's'}')
+                        'meal${day.entries.length == 1 ? '' : 's'}')
                     : 'kcal',
                 style: F.cap.copyWith(color: p.ink3),
               ),
               if (k.value != null)
                 Text(
                   '· ${l?.nutritionOccasionsCount(day.entries.length) ??
-                      '${day.entries.length} occasion'
+                      '${day.entries.length} meal'
                           '${day.entries.length == 1 ? '' : 's'}'}',
                   style: F.cap.copyWith(color: p.ink2),
                 ),
@@ -1004,7 +996,7 @@ class _Mean extends StatelessWidget {
       sub: mean.value == null
           ? (floors > 0
                 ? (l?.nutritionEveryDayNoFigure(label.toUpperCase()) ??
-                    'EVERY COMPLETE DAY HAD AN ENTRY WITH NO '
+                    'EVERY COMPLETE DAY HAD A MEAL WITH NO '
                     '${label.toUpperCase()} FIGURE')
                 : (l?.nutritionNoDayRecorded(label.toUpperCase()) ??
                     'NO COMPLETE DAY RECORDED ${label.toUpperCase()}'))

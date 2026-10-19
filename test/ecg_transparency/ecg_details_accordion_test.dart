@@ -173,9 +173,7 @@ void main() {
       expect(rules, contains('100–150 bpm'));
       expect(rules, contains('151–200 bpm'));
       expect(rules, contains('not from a validation of this device'));
-      expect(rules, contains('average heart rate'),
-          reason: 'the one HR source is named');
-      expect(rules, anyOf(contains('reason bit'), contains('mask')),
+      expect(rules, anyOf(contains('reason bit'), contains('mask'), contains('unreliable')),
           reason: 'the override rule is stated');
     });
 
@@ -316,15 +314,17 @@ void main() {
       expect(_allText(t), contains('Stopped early'));
     });
 
-    testWidgets('DETAIL: an unknown band result code is not readable and says '
-        'which code', (t) async {
+    testWidgets('DETAIL: an unknown band result code is not readable, and the '
+        'code is in the details', (t) async {
       await _pump(
         t,
         EcgDetailScreen(data: _data(cardioReading(resultCode: 9, category: EcgCategory.unreadable))),
       );
       final text = _allText(t);
       expect(text, contains('Not readable'));
-      expect(text, contains('9'));
+      expect(text, contains('unrecognised result'));
+      await _expand(t);
+      expect(_rowText(t, 'result_code'), contains('9'));
     });
 
     testWidgets('HISTORY ROW: the same outcome', (t) async {

@@ -585,7 +585,7 @@ class NotificationCenter {
       category: NotifCategory.reminders,
       title: 'How was today?',
       // No guilt, no count, no reference to a day that was missed.
-      body: 'Log mood, energy and stress. It takes about a minute.',
+      body: 'Log mood, energy and stress.',
       at: at,
       route: kRouteJournalCompose,
     );

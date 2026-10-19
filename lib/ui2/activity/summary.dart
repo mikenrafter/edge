@@ -858,9 +858,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
         const SizedBox(height: S.x2),
         Text(
             l?.activitySummaryRpeBody ??
-                'Your own rating of the effort. It is a feeling, not a '
-                    'measurement — which is the point, because it can '
-                    'disagree with the numbers above.',
+                'Your own rating of the effort.',
             style: F.cap.copyWith(color: p.ink2, height: 1.4)),
         const SizedBox(height: S.x4),
         for (var row = 0; row < 2; row++) ...[
@@ -1223,8 +1221,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
                 _calorieBasis(),
                 if (r.stepsCounted != null)
                   l?.activitySummaryStepsBasis ??
-                      "Steps came from the strap's own motion sensor, which "
-                          'only counts them on foot.',
+                      'Counted by the band\'s motion sensor.',
               ].join(' '),
               style: F.cap.copyWith(color: p.ink3, height: 1.5)),
         ),
@@ -1257,24 +1254,22 @@ class _ActivitySummaryState extends State<ActivitySummary> {
     if (r.calories == null) {
       return r.strain == null
           ? l?.activitySummaryNoCalorieNoStrain ??
-              'No calorie figure for this session. An energy estimate from '
-                  'heart rate needs your maximum and resting heart rates, and '
-                  'one of them is not set.'
+              'No calories. Set your maximum and resting heart rates to get them.'
           : l?.activitySummaryNoCalorieWithStrain ??
-              'No calories for this session: set your maximum and resting heart rates to get them. Strain above is the measured effort, on 0–21.';
+              'No calories. Set your maximum and resting heart rates.';
     }
     // No MET (the catch-all, or a named sport the compendium does not price)
     // means the figure is entirely the heart-rate estimate — saying "from MET"
     // over it would name a basis this session does not have.
     if (met == null) {
       return l?.activitySummaryCalorieNoMet ??
-          'Estimated from your heart rate and weight. This activity has no published effort level, so none is used.';
+          'Estimated from your heart rate and weight.';
     }
     return r.avgHr == null
         ? l?.activitySummaryCalorieNoHr(met) ??
-            'Estimated from the activity\'s effort level ($met× resting) and your weight. No heart rate reached this session.'
+            'Estimated from your weight.'
         : l?.activitySummaryCalorieWithHr(met) ??
-            'Estimated from the activity\'s effort level ($met× resting), your weight and heart rate.';
+            'Estimated from your weight and heart rate.';
   }
 
   /// (value, unit, caption). The hero is the archetype's own headline — and
@@ -1615,12 +1610,9 @@ class _ActivitySummaryState extends State<ActivitySummary> {
     final l = AppLocalizations.of(context);
     return a.name == 'Cold plunge'
         ? l?.activitySummaryColdPlungeWhy ??
-            'Cold closes the blood vessels the sensor reads through. Finding '
-                'nothing here is expected, not a fault.'
+            'Cold limits the sensor\'s pulse reading. Gaps are expected.'
         : l?.activitySummaryHeatWhy ??
-            'Heat, sweat and a strap that loosens as you warm up all stop '
-                'the sensor seeing a pulse. Finding nothing here is '
-                'ordinary, not a fault.';
+            'Heat, sweat and a loosening strap can block the pulse reading. Gaps are normal.';
   }
 
   IconData get _thermalIcon =>
@@ -1653,9 +1645,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
           p,
           extra: have < total
               ? (l?.activitySummaryPulseGapNote(have, total) ??
-                  'The band found a pulse in $have of $total minutes. The '
-                      'gaps are expected, so what is drawn is the part it '
-                      'could see.')
+                  'Pulse found in $have of $total minutes.')
               : null,
         ),
       ),
@@ -1675,7 +1665,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
         ? StatusCard(
             l?.activitySummaryTooShortTitle ?? 'Too short to chart',
             l?.activitySummaryTooShortBody ??
-                'One minute of heart rate is a point, not a line.',
+                'One minute is too short to chart.',
             icon: LucideIcons.heartPulse,
           )
         // MT-08 — a third reason, and it is not a fault. On a heat or cold
@@ -1720,7 +1710,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
     if (pct == null || pct >= 90) return null;
     final l = AppLocalizations.of(context);
     return l?.activitySummaryPartialTrace(pct) ??
-        'Partial trace — the band handed over $pct% of these minutes.';
+        'Pulse recorded for $pct% of these minutes.';
   }
 
   Widget _hrFrame(P p, {double height = 130, String? extra}) {
@@ -2220,7 +2210,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
           StatusCard(
             l?.activitySummaryTooShortTitle ?? 'Too short to chart',
             l?.activitySummaryTooShortBody ??
-                'One minute of heart rate is a point, not a line.',
+                'One minute is too short to chart.',
             icon: LucideIcons.chartLine,
           )
         // MT-08 — same guard as `_noHrCard`: a plunge with no trace has a

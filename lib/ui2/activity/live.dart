@@ -801,15 +801,13 @@ class LiveHeart extends StatelessWidget {
           ? StatusCard(
               l?.activityLiveNoHrYetTitle ?? 'No heart rate yet',
               l?.activityLiveNoHrYetBody ??
-                  'The band is connected but has sent no heartbeat. '
-                  'Wear it snug, a finger-width above the wrist bone.',
+                  'No heartbeat yet. Wear the band snug, a finger-width above the wrist bone.',
               icon: LucideIcons.heartPulse,
             )
           : StatusCard(
               l?.activityLiveNoHrTitle ?? 'No heart rate',
               l?.activityLiveNoHrBody ??
-                  'The band is not connected. Connect it to record '
-                  'heart rate for this session.',
+                  'The band is not connected.',
               icon: LucideIcons.heartPulse,
             );
     }
@@ -874,8 +872,7 @@ Widget? _routeIssueCard(
     GpsPermissionStatus.serviceOff => StatusCard(
         l?.activityLiveNoRouteOffTitle ?? 'No route: location is off',
         l?.activityLiveNoRouteOffBody ??
-            'Location services are off on this phone, so the '
-            'route cannot be recorded.',
+            'Location is off, so no route is recorded.',
         fix: l?.activityLiveTurnOnLocation ?? 'Turn on location',
         onFix: onFix,
         icon: LucideIcons.mapPin,
@@ -884,8 +881,7 @@ Widget? _routeIssueCard(
         l?.activityLiveNoRouteNotAllowedTitle ??
             'No route: location not allowed',
         l?.activityLiveDeniedForeverBody ??
-            'Location access is denied for this app. '
-            'Change it in Settings.',
+            'Location is blocked. Change it in Settings.',
         fix: l?.activityLiveOpenSettings ?? 'Open Settings',
         onFix: onFix,
         icon: LucideIcons.mapPin,
@@ -894,7 +890,7 @@ Widget? _routeIssueCard(
     _ => StatusCard(
         l?.activityLiveNoRouteFailedTitle ?? 'No route: location failed',
         l?.activityLiveNoRouteFailedBody ??
-            'The phone could not get a location.',
+            'Could not get your location.',
         fix: l?.activityLiveTryAgain ?? 'Try again',
         onFix: onFix,
         icon: LucideIcons.mapPin,
@@ -1109,7 +1105,7 @@ class LiveMeasured extends StatelessWidget {
               height: 150,
               footnote: f.distanceKm == null
                   ? (l?.activityLiveRouteFootnoteNoDistance ??
-                      'Start point saved. Distance appears once enough location readings arrive.')
+                      'Distance appears once GPS settles.')
                   : (l?.activityLiveRouteFootnoteWithDistance(
                           _distanceText(ctx, f.distanceKm!)) ??
                       '${_distanceText(ctx, f.distanceKm!)} so far.'),
@@ -2029,8 +2025,7 @@ class _LiveSwimState extends State<LiveSwim> {
               const SizedBox(height: S.x3),
               Text(
                   l?.activityLiveLapsFootnote(clock(fastest)) ??
-                      'Fastest ${clock(fastest)} · bar length is speed '
-                          'against it.',
+                      'Fastest lap in bold.',
                   style: F.cap.copyWith(color: p.ink3)),
             ]);
           }),

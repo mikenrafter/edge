@@ -331,9 +331,7 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
           : (l?.dayStepsNoStepsTitle(when) ?? 'No steps counted $when'),
       chip
           ? (l?.dayStepsStrapCounterBody(thousands(d.dayTotal), when) ??
-                'The ${thousands(d.dayTotal)} steps $when came from the '
-                    'strap’s own counter, which didn’t keep times for this day, '
-                    'so they can’t go on a clock.')
+                '${thousands(d.dayTotal)} steps $when have no time data.')
           : whyFromNote(d.note, unit: 'days') ??
                 (l?.dayStepsNothingCounted(when) ??
                     'Nothing that can count steps recorded $when.'),
@@ -456,14 +454,12 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
     final l = AppLocalizations.of(c);
     return d.mixed
         ? (l?.dayStepsHonestyMixed ??
-              'Counted by your wrist and your phone. A wrist can read a walk low and hand work as walking; a phone only counts steps while you carry it.')
+              'Counted by your band and phone. A wrist can undercount walking and count hand movement. A phone only counts while carried.')
         : d.strap > 0
         ? (l?.dayStepsHonestyStrap ??
-              'Counted at your wrist. A real walk tends to read low, and '
-              'rhythmic hand work can read as walking.')
+              'Counted by your band. It can undercount walking and count hand movement.')
         : (l?.dayStepsHonestyPhone ??
-              'Counted by your phone, so only the steps you had it on you for '
-              'are here.');
+              'Counted by your phone, only while you carried it.');
   }
 
   // ── the stretches themselves ───────────────────────────────────────────────
