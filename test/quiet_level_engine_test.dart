@@ -454,7 +454,11 @@ void main() {
       finalized: true,
       source: 'band',
     );
-    DerivationEngine.debugQuietBetweenReads = () => commit(days[2]);
+    // The level lands straight in the series: our putDayResult refuses to
+    // rewrite a finalized row (D16: frozen-row refusal kept), so re-committing
+    // days[2] here would write nothing at all.
+    DerivationEngine.debugQuietBetweenReads =
+        () => LocalDb.putMetricSeriesValue(days[2], 'quiet_hrr', 0.2);
     addTearDown(() => DerivationEngine.debugQuietBetweenReads = null);
     expect(await engine.debugQuietRepassOwed(days[3], blocked), isTrue);
     DerivationEngine.debugQuietBetweenReads = null;
