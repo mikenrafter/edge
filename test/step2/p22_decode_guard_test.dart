@@ -37,6 +37,10 @@ const Map<String, String> _legacyCallers = {
   'data/db.dart': 'P2.10 putDayResult and the import/measured predicates',
   'compute/derivation_engine.dart': 'P2.9 _decodeBundle and the derive-side reads',
   'compute/crossday_input.dart': 'P2.9 assembleCrossDayInput',
+  // Upstream's quiet-level strain (merge log D16): the one-shot quiet_hrr seed
+  // for installs that predate it decodes and scores its days inside one
+  // Isolate.run, never on the UI isolate, once per install.
+  'compute/quiet_level_seed.dart': 'one-shot quiet_hrr history seed (D16)',
 };
 
 /// Files that always exempt: the codec defines it, the store may use it.

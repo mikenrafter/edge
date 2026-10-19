@@ -23,7 +23,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../ui2/activity/catalogue.dart' show exerciseByKey;
 import 'db.dart';
-import 'series_codec.dart';
+import 'bundle_store.dart';
 
 /// One exportable table: a filename stem, a header, and the query behind it.
 class CsvExportSet {
@@ -504,13 +504,18 @@ Future<String?> exportHeartRateCsv(String from, String to,
       (r['date'] as String, (r['algo_version'] as num?)?.toInt()):
           r['source'] as String?,
   };
+  // Through the one decode door: the bundles decode in its worker, and only
+  // the HR curve is expanded here. The key's k2 is the served algo_version.
+  final reads = await BundleStore.shared
+      .readStream([for (final d in days) BundleSource.day(d)]);
   final rows = <Map<String, Object?>>[];
-  for (final day in days) {
-    final res = await LocalDb.dayResult(day);
-    final b = SeriesCodec.decodePayloadJson(res?['payload_json']);
-    final curve = (b?['series'] as Map?)?['hr_curve'];
-    final v = (res?['algo_version'] as num?)?.toInt();
-    if (curve is List) rows.addAll(heartRateMinuteRows(curve, source[(day, v)]));
+  for (final read in reads) {
+    if (read is! BundleOk) continue;
+    final curve = read.view.curve('series.hr_curve');
+    if (curve is List) {
+      rows.addAll(
+          heartRateMinuteRows(curve, source[(read.key.k1, read.key.k2)]));
+    }
   }
   if (rows.isEmpty) return null;
   // A long range is hundreds of thousands of rows: render off the UI isolate.

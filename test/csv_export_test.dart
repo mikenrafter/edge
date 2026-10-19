@@ -5,6 +5,7 @@
 // once the file is in a spreadsheet, and a column of zeroes where a metric was
 // never computed is a fabrication the user will then average.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -393,6 +394,37 @@ void main() {
       expect(lines[1], contains(',Alternating dumbbell hammer curl,'));
       expect(lines[2], contains(',retired_lift,,'),
           reason: 'an unknown key has no name, so the field is empty');
+    });
+
+    test('heart rate: each day\'s stored curve, through the bundle store, with '
+        'the provenance of the version that wrote it', () async {
+      final t0 = DateTime(2026, 9, 10, 8).millisecondsSinceEpoch ~/ 1000;
+      await LocalDb.putDayResult(
+        dayId: '2026-09-10',
+        algoVersion: 7,
+        payloadJson: jsonEncode({
+          'series': {
+            'hr_curve': [
+              {'t': t0, 'v': 61},
+              {'t': t0 + 60, 'v': 0}, // not a reading
+              {'t': t0 + 120, 'v': 64},
+            ],
+          },
+        }),
+        windowJson: '{}',
+        series: {'rhr': 50},
+        source: 'band',
+      );
+      final path = await exportHeartRateCsv('2026-09-10', '2026-09-10',
+          now: DateTime(2026, 9, 11));
+      final lines = (await File(path!).readAsString()).trim().split('\n');
+      expect(lines.first, endsWith('timestamp,local_time,bpm,source'));
+      expect(lines.skip(1).map((l) => l.split(',')[2]), ['61', '64']);
+      expect(lines.skip(1).map((l) => l.split(',').last), ['band', 'band']);
+      expect(
+          await exportHeartRateCsv('2026-09-12', '2026-09-12',
+              now: DateTime(2026, 9, 12)),
+          isNull);
     });
   });
 }
