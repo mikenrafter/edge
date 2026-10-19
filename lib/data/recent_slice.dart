@@ -14,7 +14,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../sync/file_log.dart';
+import '../sync/dev_log.dart';
 import 'day_label.dart';
 import 'db.dart';
 
@@ -229,8 +229,9 @@ Future<String?> _where(DatabaseExecutor db, String table, int cutoff,
   var rule = kSliceTables[table];
   if (rule == null) {
     rule = await _fallback(db, table);
-    await FileLog.write('[report] slice: unlisted table $table -> '
-        '${rule.$1.name}${rule.$2 == null ? '' : ' on ${rule.$2}'}');
+    await DevLog.write('[report] slice: unlisted table $table -> '
+        '${rule.$1.name}${rule.$2 == null ? '' : ' on ${rule.$2}'}',
+        always: true);
   }
   final col = rule.$2;
   return switch (rule.$1) {

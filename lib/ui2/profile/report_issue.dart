@@ -17,7 +17,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../support/issue_report.dart';
-import '../../sync/file_log.dart';
+import '../../sync/dev_log.dart';
 import '../activity/share.dart' show shareOrigin;
 import '../ui2.dart';
 import 'profile.dart';
@@ -116,11 +116,11 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
       if (mounted) setState(() => _sent = sent);
       await _reload();
     } on ReportSendError catch (e) {
-      unawaited(FileLog.write('[report] create ticket failed: $e'));
+      unawaited(DevLog.write('[report] create ticket failed: $e', always: true));
       if (mounted) setState(() => _error = e.status);
     } catch (e, st) {
       // Kept in the sync log, so the next report (or Share locally) carries it.
-      unawaited(FileLog.write('[report] create ticket failed: $e\n$st'));
+      unawaited(DevLog.write('[report] create ticket failed: $e\n$st', always: true));
       if (mounted) setState(() => _error = 0);
     } finally {
       for (final f in files) {

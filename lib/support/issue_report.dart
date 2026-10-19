@@ -23,7 +23,7 @@ import '../data/db.dart';
 import '../data/recent_slice.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
-import '../sync/file_log.dart';
+import '../sync/dev_log.dart';
 import '../telemetry/telemetry_service.dart';
 import 'report_crypto.dart';
 
@@ -294,7 +294,7 @@ Future<({File zip, Map<String, Object?> meta})> collectReport(
   onStage?.call(ReportStage.logs);
   // No log file (older iOS builds never wrote one): fall back to the lines
   // this session kept in memory, oldest first.
-  var syncLog = await _recentLog();
+  var syncLog = await recentReportLog();
   if (syncLog.isEmpty) syncLog = app.logLines.reversed.join('\n');
   final shot = draft.screenshotPath == null
       ? null
@@ -351,8 +351,9 @@ Future<({File zip, Map<String, Object?> meta})> collectReport(
     }
     if (fits(zip)) {
       if (days != kSliceDays) {
-        unawaited(FileLog.write('[report] slice cut to $days days of '
-            'second-by-second data to fit ${zip.lengthSync()} bytes'));
+        unawaited(DevLog.write('[report] slice cut to $days days of '
+            'second-by-second data to fit ${zip.lengthSync()} bytes',
+            always: true));
       }
       return (zip: zip, meta: meta);
     }
@@ -367,25 +368,32 @@ Future<void> _rm(String path) async {
   } catch (_) {}
 }
 
-/// The newest [kReportLogBytes] of the sync log, across its one rotation.
+/// The newest [kReportLogBytes] of the dev log (the app's one log), read from
+/// its per-day files and returned oldest to newest.
 ///
-/// ponytail: capped by size, not by a 7-day cut; the log lines carry no
-/// parseable date, and 1.5 MB is already well past a week of normal syncing.
-Future<String> _recentLog() async {
-  final path = await FileLog.path();
-  if (path == null) return '';
+/// ponytail: capped by size, not by a 7-day cut; the dev log keeps a week and
+/// 1.5 MB is already well past that for normal use.
+Future<String> recentReportLog() async {
   final parts = <List<int>>[];
   var left = kReportLogBytes;
-  for (final f in [File(path), File('$path.1')]) {
-    if (left <= 0) break;
-    try {
-      if (!await f.exists()) continue;
-      final b = await f.readAsBytes();
-      final take = b.length < left ? b.length : left;
-      parts.insert(0, b.sublist(b.length - take));
-      left -= take;
-    } catch (_) {}
-  }
+  try {
+    final files = (await DevLog.instance.dayFiles()).reversed;
+    for (final f in files) {
+      if (left <= 0) break;
+      try {
+        final raf = await f.open();
+        try {
+          final len = await raf.length();
+          final take = len < left ? len : left;
+          await raf.setPosition(len - take);
+          parts.insert(0, await raf.read(take));
+          left -= take;
+        } finally {
+          await raf.close();
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
   return utf8.decode(parts.expand((e) => e).toList(), allowMalformed: true);
 }
 
