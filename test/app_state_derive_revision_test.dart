@@ -9,9 +9,15 @@ import 'package:openstrap_edge/state/app_state.dart';
 
 import 'support/app_state_derive_harness.dart';
 
+const _db = 'openstrap_app_state_derive_revision.db';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // A real (empty) store: the publish gate's freshness refresh reads it, and
+  // without one every pass fails that step and retries, bumping twice.
+  setUpAll(() => deriveDbSetUp(_db));
+  tearDownAll(() => deriveDbTearDown(_db));
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   AppState make() {
@@ -53,7 +59,11 @@ void main() {
     await app.debugAfterDrain();
     await app.debugAfterDrain(heavy: true);
     expect(identical(app.insightsRevision, first), isTrue);
-    expect(first.value, 3);
+    // At least one bump per pass, not exactly one: our publish gate also
+    // publishes each day as it lands (derive_publish_each_day_test), so a
+    // pass that computes a day bumps for the day and again at its end (D20:
+    // our derive coordinator, upstream's features on top).
+    expect(first.value, greaterThanOrEqualTo(3));
   });
 
   test('a listener registered once keeps hearing every bump', () async {
