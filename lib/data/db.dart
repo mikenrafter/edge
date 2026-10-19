@@ -15895,6 +15895,7 @@ class LocalDb {
     int fromTs,
     int toTs,
   ) async {
+    debugSessionWindowReads++;
     final db = await instance;
     final rows = await db.rawQuery(
       'SELECT s.id AS id, d.source AS source, d.rec_ts AS rec_ts, d.hr AS hr '
@@ -15919,6 +15920,22 @@ class LocalDb {
             case final kept when kept.isNotEmpty)
           id: kept,
     };
+  }
+
+  /// Test seam: how many times a session-window SELECT has run.
+  static int debugSessionWindowReads = 0;
+
+  static Future<
+      ({
+        Map<String, Map<String, num>> stats,
+        Map<String, List<int>> samples,
+      })> sessionHrReads(int fromTs, int toTs,
+      {int maxHrCeiling = 0, int minHrFloor = 0}) async {
+    return (
+      stats: await sessionHrStats(fromTs, toTs,
+          maxHrCeiling: maxHrCeiling, minHrFloor: minHrFloor),
+      samples: await sessionHrSamplesBySession(fromTs, toTs),
+    );
   }
 
   /// Per-session HR aggregates over the 1 Hz substrate for every session in
