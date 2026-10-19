@@ -272,9 +272,10 @@ void main() {
     test('the artifact itself bumps nothing: 101 was the incremental repin\'s '
         'bump, 102 the streamed day RR\'s, 103 the PRV diagnostics\' and 104 their '
         'empty-input repin, not this artifact\'s', () {
-      // Upstream's numbering since the catch-up (merge log D4): the integrated
-      // build is 113, and nothing in this artifact bumped it.
-      expect(kAlgoVersion, 113);
+      // Upstream's numbering since the catch-up (merge log D4), plus our one
+      // bump atop upstream 113 (D27 revised): 114. Nothing in this artifact
+      // bumped it.
+      expect(kAlgoVersion, 114);
     });
 
     test('the analytics pin carries minuteEnergy (7334289 and its '

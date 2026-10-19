@@ -1,0 +1,762 @@
+{
+ "user_version": 71,
+ "commit": "2b8c957b",
+ "objects": [
+  {
+   "type": "table",
+   "name": "samples",
+   "tbl_name": "samples",
+   "sql": "CREATE TABLE samples (\n        device_id TEXT NOT NULL DEFAULT '',\n        ts_ms INTEGER NOT NULL DEFAULT 0,\n        counter INTEGER,\n        ts INTEGER NOT NULL,\n        hr INTEGER,\n        PRIMARY KEY (device_id, ts_ms)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "decoded_onehz",
+   "tbl_name": "decoded_onehz",
+   "sql": "CREATE TABLE decoded_onehz (\n        device_id TEXT NOT NULL DEFAULT '',\n        ts_ms INTEGER NOT NULL DEFAULT 0,\n        -- NOT re-asserted NOT NULL, deliberately: [_rekeyTableByDevice] copies\n        -- this column verbatim out of a table where SQLite never enforced it\n        -- (a declared PRIMARY KEY on a legacy rowid table does not imply NOT\n        -- NULL), and a constraint failure inside onUpgrade's one exclusive\n        -- transaction quarantines the whole database (invariant 11).\n        rec_ts INTEGER,\n        counter INTEGER NOT NULL,\n        hr INTEGER,\n        ax REAL,\n        ay REAL,\n        az REAL,\n        spo2_red_raw INTEGER,\n        spo2_ir_raw INTEGER,\n        skin_temp_raw INTEGER,\n        step_count INTEGER,\n        step_cadence INTEGER,\n        activity_class INTEGER,\n        skin_temp_c REAL,\n        on_wrist INTEGER,\n        hr_valid INTEGER,\n        hr_alt INTEGER,\n        ambient_raw INTEGER,\n        device_family TEXT,\n        source TEXT,\n        temp_ch2_c REAL,\n        temp_ch3_c REAL,\n        signal_quality_logvar REAL,\n        dyn_accel_g REAL, ts_subsec INTEGER, band_sleep_state INTEGER,\n        PRIMARY KEY (device_id, ts_ms)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "decoded_rr",
+   "tbl_name": "decoded_rr",
+   "sql": "CREATE TABLE decoded_rr (\n        device_id TEXT NOT NULL DEFAULT '',\n        ts_ms INTEGER NOT NULL DEFAULT 0,\n        rec_ts INTEGER NOT NULL,\n        beat_index INTEGER NOT NULL,\n        rr_ts_ms INTEGER NOT NULL,\n        rr_ms INTEGER NOT NULL,\n        device_family TEXT,\n        source TEXT, beat_ts_ms INTEGER,\n        PRIMARY KEY (device_id, ts_ms, beat_index)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "events",
+   "tbl_name": "events",
+   "sql": "CREATE TABLE events (\n        device_id TEXT NOT NULL DEFAULT '',\n        hex TEXT NOT NULL,\n        event_id INTEGER,\n        ts INTEGER,\n        captured_at INTEGER NOT NULL,\n        ts_subsec INTEGER NOT NULL DEFAULT 0,\n        PRIMARY KEY (device_id, hex)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "band_events",
+   "tbl_name": "band_events",
+   "sql": "CREATE TABLE band_events (\n        device_id TEXT NOT NULL DEFAULT '',\n        hex TEXT NOT NULL,\n        event_id INTEGER NOT NULL,\n        name TEXT NOT NULL,\n        ts INTEGER NOT NULL,\n        payload_json TEXT NOT NULL DEFAULT '{}',\n        captured_at INTEGER NOT NULL,\n        PRIMARY KEY (device_id, hex)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "band_battery",
+   "tbl_name": "band_battery",
+   "sql": "CREATE TABLE band_battery (\n        device_id TEXT NOT NULL DEFAULT '',\n        ts INTEGER NOT NULL,\n        battery_pct REAL,\n        charging INTEGER,\n        wrist_on INTEGER,\n        millivolts INTEGER,\n        charge_units INTEGER,\n        source TEXT NOT NULL,\n        PRIMARY KEY (device_id, ts, source)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "band_backlog",
+   "tbl_name": "band_backlog",
+   "sql": "CREATE TABLE band_backlog (\n        device_id TEXT NOT NULL DEFAULT '',\n        ts INTEGER NOT NULL,\n        written INTEGER,\n        used INTEGER,\n        capacity INTEGER,\n        trim_page INTEGER,\n        wrap_count INTEGER,\n        free_records INTEGER,\n        device_family TEXT,\n        PRIMARY KEY (device_id, ts)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "raw_archive",
+   "tbl_name": "raw_archive",
+   "sql": "CREATE TABLE raw_archive (\n        device_id TEXT NOT NULL DEFAULT '',\n        hex TEXT NOT NULL,\n        counter INTEGER,\n        packet_type INTEGER NOT NULL,\n        rec_ts INTEGER,\n        captured_at INTEGER NOT NULL,\n        reason TEXT NOT NULL,\n        PRIMARY KEY (device_id, hex)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "derived_day",
+   "tbl_name": "derived_day",
+   "sql": "CREATE TABLE derived_day (\n        date TEXT PRIMARY KEY,\n        payload_json TEXT NOT NULL,\n        version INTEGER NOT NULL,\n        last_raw_ts INTEGER NOT NULL,\n        computed_at INTEGER NOT NULL,\n        rhr REAL,\n        rmssd REAL,\n        readiness REAL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "baselines",
+   "tbl_name": "baselines",
+   "sql": "CREATE TABLE baselines (\n        key TEXT PRIMARY KEY,\n        payload_json TEXT NOT NULL,\n        updated_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "metric_series",
+   "tbl_name": "metric_series",
+   "sql": "CREATE TABLE metric_series (\n        date TEXT NOT NULL,\n        key TEXT NOT NULL,\n        value REAL,\n        PRIMARY KEY (date, key)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "metric_series_version",
+   "tbl_name": "metric_series_version",
+   "sql": "CREATE TABLE metric_series_version (\n        date TEXT PRIMARY KEY,\n        algo_version INTEGER NOT NULL,\n        source TEXT\n      , device_family TEXT, coverage_devices TEXT, priority_hash TEXT)"
+  },
+  {
+   "type": "table",
+   "name": "day_result",
+   "tbl_name": "day_result",
+   "sql": "CREATE TABLE day_result (\n        day_id TEXT NOT NULL,\n        algo_version INTEGER NOT NULL,\n        payload_json TEXT NOT NULL,\n        window_json TEXT NOT NULL DEFAULT '{}',\n        computed_at INTEGER NOT NULL,\n        finalized INTEGER NOT NULL DEFAULT 0,\n        rhr REAL,\n        rmssd REAL,\n        readiness REAL,\n        skipped INTEGER NOT NULL DEFAULT 0,\n        partial INTEGER NOT NULL DEFAULT 0,\n        PRIMARY KEY (day_id, algo_version)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "journal",
+   "tbl_name": "journal",
+   "sql": "CREATE TABLE journal (\n        date TEXT PRIMARY KEY,\n        tags_json TEXT NOT NULL DEFAULT '[]',\n        note TEXT NOT NULL DEFAULT '',\n        updated_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "journal_metric",
+   "tbl_name": "journal_metric",
+   "sql": "CREATE TABLE journal_metric (\n        date TEXT NOT NULL,\n        field TEXT NOT NULL,\n        value REAL NOT NULL,\n        at_min INTEGER,\n        updated_at INTEGER NOT NULL,\n        PRIMARY KEY (date, field)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "journal_field_def",
+   "tbl_name": "journal_field_def",
+   "sql": "CREATE TABLE journal_field_def (\n        key TEXT PRIMARY KEY,\n        label TEXT NOT NULL,\n        kind TEXT NOT NULL,\n        unit TEXT NOT NULL DEFAULT '',\n        max_value REAL NOT NULL,\n        step REAL NOT NULL,\n        has_time INTEGER NOT NULL DEFAULT 0,\n        created_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "lab_result",
+   "tbl_name": "lab_result",
+   "sql": "CREATE TABLE lab_result (\n        marker TEXT NOT NULL,\n        taken_on TEXT NOT NULL,\n        value REAL NOT NULL,\n        unit TEXT NOT NULL,\n        note TEXT NOT NULL DEFAULT '',\n        updated_at INTEGER NOT NULL,\n        PRIMARY KEY (marker, taken_on)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "lab_marker_def",
+   "tbl_name": "lab_marker_def",
+   "sql": "CREATE TABLE lab_marker_def (\n        key TEXT PRIMARY KEY,\n        label TEXT NOT NULL,\n        unit TEXT NOT NULL,\n        category TEXT NOT NULL,\n        decimals INTEGER NOT NULL DEFAULT 1,\n        ref_low REAL,\n        ref_high REAL,\n        created_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "breathing_session",
+   "tbl_name": "breathing_session",
+   "sql": "CREATE TABLE breathing_session (\n        started_at INTEGER PRIMARY KEY,\n        ended_at INTEGER NOT NULL,\n        pattern TEXT NOT NULL,\n        seconds INTEGER NOT NULL,\n        coherence REAL,\n        confidence REAL,\n        pre_rmssd REAL,\n        post_rmssd REAL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "strength_set",
+   "tbl_name": "strength_set",
+   "sql": "CREATE TABLE strength_set (\n        session_id TEXT NOT NULL,\n        seq INTEGER NOT NULL,\n        exercise_key TEXT NOT NULL,\n        set_index INTEGER NOT NULL,\n        reps INTEGER,\n        load_kg REAL,\n        rpe INTEGER,\n        hold_sec INTEGER,\n        rest_sec INTEGER,\n        at_ts INTEGER,\n        note TEXT NOT NULL DEFAULT '',\n        PRIMARY KEY (session_id, seq)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "exercise_def",
+   "tbl_name": "exercise_def",
+   "sql": "CREATE TABLE exercise_def (\n        key TEXT PRIMARY KEY,\n        label TEXT NOT NULL,\n        muscles_json TEXT NOT NULL DEFAULT '{}',\n        equipment TEXT NOT NULL DEFAULT '',\n        unilateral INTEGER NOT NULL DEFAULT 0,\n        custom INTEGER NOT NULL DEFAULT 0,\n        created_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "food_entry",
+   "tbl_name": "food_entry",
+   "sql": "CREATE TABLE food_entry (\n      id            TEXT PRIMARY KEY,\n      date          TEXT NOT NULL,\n      at_ts         INTEGER,\n      meal          TEXT NOT NULL,\n      food_key      TEXT,\n      label         TEXT NOT NULL,\n      quantity      REAL,\n      unit          TEXT NOT NULL DEFAULT 'g',\n      kcal          REAL,\n      protein_g     REAL,\n      carbs_g       REAL,\n      fat_g         REAL,\n      fibre_g       REAL,\n      sugar_g       REAL,\n      sat_fat_g     REAL,\n      sodium_mg     REAL,\n      iron_mg       REAL,\n      calcium_mg    REAL,\n      source        TEXT NOT NULL DEFAULT 'manual',\n      confirmed     INTEGER NOT NULL DEFAULT 0,\n      note          TEXT NOT NULL DEFAULT '',\n      created_at    INTEGER NOT NULL,\n      updated_at    INTEGER NOT NULL\n    )"
+  },
+  {
+   "type": "table",
+   "name": "food_def",
+   "tbl_name": "food_def",
+   "sql": "CREATE TABLE food_def (\n      key            TEXT PRIMARY KEY,\n      label          TEXT NOT NULL,\n      brand          TEXT NOT NULL DEFAULT '',\n      serving_g      REAL,\n      serving_label  TEXT NOT NULL DEFAULT '',\n      kcal_100       REAL,\n      protein_g_100  REAL,\n      carbs_g_100    REAL,\n      fat_g_100      REAL,\n      fibre_g_100    REAL,\n      sugar_g_100    REAL,\n      sat_fat_g_100  REAL,\n      sodium_mg_100  REAL,\n      iron_mg_100    REAL,\n      calcium_mg_100 REAL,\n      source         TEXT NOT NULL DEFAULT 'manual',\n      created_at     INTEGER NOT NULL\n    )"
+  },
+  {
+   "type": "table",
+   "name": "med_def",
+   "tbl_name": "med_def",
+   "sql": "CREATE TABLE med_def (\n      key           TEXT PRIMARY KEY,\n      label         TEXT NOT NULL,\n      dose_value    REAL,\n      dose_unit     TEXT NOT NULL DEFAULT '',\n      kind          TEXT NOT NULL DEFAULT 'medication',\n      schedule_json TEXT NOT NULL DEFAULT '[]',\n      active        INTEGER NOT NULL DEFAULT 1,\n      note          TEXT NOT NULL DEFAULT '',\n      created_at    INTEGER NOT NULL\n    )"
+  },
+  {
+   "type": "table",
+   "name": "med_dose",
+   "tbl_name": "med_dose",
+   "sql": "CREATE TABLE med_dose (\n      med_key     TEXT NOT NULL,\n      date        TEXT NOT NULL,\n      slot_min    INTEGER NOT NULL,\n      taken_ts    INTEGER,\n      skipped     INTEGER NOT NULL DEFAULT 0,\n      dose_value  REAL,\n      note        TEXT NOT NULL DEFAULT '',\n      updated_at  INTEGER NOT NULL,\n      PRIMARY KEY (med_key, date, slot_min)\n    )"
+  },
+  {
+   "type": "table",
+   "name": "cycle_log",
+   "tbl_name": "cycle_log",
+   "sql": "CREATE TABLE cycle_log (\n        date TEXT PRIMARY KEY,\n        kind TEXT NOT NULL,\n        note TEXT\n      )"
+  },
+  {
+   "type": "table",
+   "name": "sessions",
+   "tbl_name": "sessions",
+   "sql": "CREATE TABLE sessions (\n        id TEXT PRIMARY KEY,\n        start_ts INTEGER NOT NULL,\n        end_ts INTEGER,\n        type TEXT NOT NULL,\n        status TEXT NOT NULL,\n        calories REAL,\n        strain REAL,\n        max_hr INTEGER,\n        duration_min INTEGER,\n        zone_min_json TEXT,\n        steps INTEGER,\n        cadence_spm INTEGER,\n        hrr_bpm REAL,\n        source TEXT NOT NULL DEFAULT 'manual',\n        private INTEGER NOT NULL DEFAULT 0,\n        device_family TEXT,\n        trace_json TEXT,\n        trace_samples INTEGER,\n        rpe REAL,\n        created_at INTEGER NOT NULL\n      , avg_hr INTEGER, vo2max_estimate REAL, end_ts_fabricated INTEGER NOT NULL DEFAULT 0)"
+  },
+  {
+   "type": "table",
+   "name": "workout_suggestions",
+   "tbl_name": "workout_suggestions",
+   "sql": "CREATE TABLE workout_suggestions (\n        id TEXT PRIMARY KEY,\n        date TEXT NOT NULL,\n        start_ts INTEGER NOT NULL,\n        end_ts INTEGER NOT NULL,\n        avg_bpm INTEGER,\n        peak_bpm INTEGER,\n        duration_min INTEGER,\n        sport TEXT,\n        dismissed INTEGER NOT NULL DEFAULT 0,\n        created_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "notifications",
+   "tbl_name": "notifications",
+   "sql": "CREATE TABLE notifications (\n        id TEXT PRIMARY KEY,\n        kind TEXT NOT NULL,\n        title TEXT NOT NULL,\n        body TEXT NOT NULL,\n        date TEXT NOT NULL,\n        created_at INTEGER NOT NULL,\n        read INTEGER NOT NULL DEFAULT 0\n      )"
+  },
+  {
+   "type": "table",
+   "name": "sync_ledger",
+   "tbl_name": "sync_ledger",
+   "sql": "CREATE TABLE sync_ledger (\n        chunk_id TEXT PRIMARY KEY,\n        kind TEXT NOT NULL,\n        status TEXT NOT NULL,\n        created_at INTEGER NOT NULL,\n        updated_at INTEGER NOT NULL,\n        acked_at INTEGER,\n        last_error TEXT,\n        meta_json TEXT NOT NULL DEFAULT '{}'\n      )"
+  },
+  {
+   "type": "table",
+   "name": "sync_quarantine",
+   "tbl_name": "sync_quarantine",
+   "sql": "CREATE TABLE sync_quarantine (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        kind TEXT NOT NULL,\n        payload_json TEXT NOT NULL,\n        reason TEXT NOT NULL,\n        created_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "sync_cursor",
+   "tbl_name": "sync_cursor",
+   "sql": "CREATE TABLE sync_cursor (\n        name TEXT PRIMARY KEY,\n        value TEXT,\n        updated_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "compute_freshness",
+   "tbl_name": "compute_freshness",
+   "sql": "CREATE TABLE compute_freshness (\n        key TEXT PRIMARY KEY,\n        payload_json TEXT NOT NULL,\n        updated_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "compute_jobs",
+   "tbl_name": "compute_jobs",
+   "sql": "CREATE TABLE compute_jobs (\n        id TEXT PRIMARY KEY,\n        type TEXT NOT NULL,\n        scope TEXT NOT NULL,\n        priority INTEGER NOT NULL DEFAULT 0,\n        state TEXT NOT NULL,\n        reason TEXT,\n        depends_on TEXT,\n        input_from_ts INTEGER,\n        input_to_ts INTEGER,\n        algo_version INTEGER,\n        attempts INTEGER NOT NULL DEFAULT 0,\n        next_run_at INTEGER,\n        created_at INTEGER NOT NULL,\n        updated_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "sleep_session_candidates",
+   "tbl_name": "sleep_session_candidates",
+   "sql": "CREATE TABLE sleep_session_candidates (\n        day_id TEXT NOT NULL,\n        algo_version INTEGER NOT NULL,\n        payload_json TEXT NOT NULL,\n        computed_at INTEGER NOT NULL,\n        PRIMARY KEY(day_id, algo_version)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "wake_day_features",
+   "tbl_name": "wake_day_features",
+   "sql": "CREATE TABLE wake_day_features (\n        day_id TEXT NOT NULL,\n        algo_version INTEGER NOT NULL,\n        payload_json TEXT NOT NULL,\n        computed_at INTEGER NOT NULL,\n        PRIMARY KEY(day_id, algo_version)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "live_coverage",
+   "tbl_name": "live_coverage",
+   "sql": "CREATE TABLE live_coverage (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        start_ts INTEGER NOT NULL,\n        end_ts INTEGER NOT NULL,\n        steps INTEGER NOT NULL,\n        day TEXT NOT NULL,\n        source TEXT NOT NULL DEFAULT 'band',\n        device_id TEXT NOT NULL DEFAULT ''\n      )"
+  },
+  {
+   "type": "table",
+   "name": "device",
+   "tbl_name": "device",
+   "sql": "CREATE TABLE device (\n        id          TEXT PRIMARY KEY,\n        adapter_id  TEXT,\n        remote_id   TEXT,\n        label       TEXT,\n        tier        TEXT,\n        first_seen  INTEGER NOT NULL,\n        last_seen   INTEGER NOT NULL,\n        role        TEXT NOT NULL DEFAULT 'paired',\n        wearing     INTEGER NOT NULL DEFAULT 1\n      )"
+  },
+  {
+   "type": "table",
+   "name": "device_coverage",
+   "tbl_name": "device_coverage",
+   "sql": "CREATE TABLE device_coverage (\n        device_id TEXT NOT NULL,\n        signal    TEXT NOT NULL,\n        start_ts  INTEGER NOT NULL,\n        end_ts    INTEGER NOT NULL,\n        PRIMARY KEY (device_id, signal, start_ts)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "signal_priority",
+   "tbl_name": "signal_priority",
+   "sql": "CREATE TABLE signal_priority (\n        signal    TEXT NOT NULL,\n        device_id TEXT NOT NULL,\n        rank      INTEGER NOT NULL,\n        user_set  INTEGER NOT NULL DEFAULT 0,\n        PRIMARY KEY (signal, device_id)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "ecg_reading",
+   "tbl_name": "ecg_reading",
+   "sql": "CREATE TABLE ecg_reading (\n        id                    TEXT PRIMARY KEY,\n        device_id             TEXT NOT NULL,\n        source                TEXT NOT NULL,\n        wrist                 TEXT NOT NULL,\n        start_ts              INTEGER NOT NULL,\n        end_ts                INTEGER NOT NULL,\n        strap_terminal_ts     INTEGER,\n        strap_terminal_subsec INTEGER,\n        result_code           INTEGER NOT NULL,\n        category              TEXT NOT NULL,\n        avg_hr                INTEGER,\n        quality               INTEGER,\n        unreadable_mask       INTEGER NOT NULL DEFAULT 0,\n        interruptions         INTEGER NOT NULL DEFAULT 0,\n        sample_rate_hz        INTEGER NOT NULL DEFAULT 100,\n        sample_unit           TEXT NOT NULL DEFAULT 'filtered_input_referred_uv',\n        sample_count          INTEGER NOT NULL,\n        min_uv                INTEGER,\n        max_uv                INTEGER,\n        rms_uv                REAL,\n        missing_segments      INTEGER NOT NULL DEFAULT 0,\n        status                TEXT NOT NULL,\n        notes                 TEXT,\n        created_at            INTEGER NOT NULL\n      , stop_reason TEXT, mask_any INTEGER, superseded_by TEXT, attempt_group TEXT, attempt INTEGER, live_hr INTEGER, variability_raw INTEGER, firmware_version TEXT, capture_app_version TEXT, capture_table_version INTEGER, start_offset_min INTEGER)"
+  },
+  {
+   "type": "table",
+   "name": "ecg_reading_packet",
+   "tbl_name": "ecg_reading_packet",
+   "sql": "CREATE TABLE ecg_reading_packet (\n        reading_id     TEXT NOT NULL,\n        ordinal        INTEGER NOT NULL,\n        sequence       INTEGER NOT NULL,\n        strap_seconds  INTEGER,\n        strap_subsec   INTEGER,\n        sample_count   INTEGER NOT NULL,\n        samples        BLOB NOT NULL,\n        inner_hex      TEXT NOT NULL,\n        is_placeholder INTEGER NOT NULL DEFAULT 0,\n        PRIMARY KEY (reading_id, ordinal)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "ecg_raw_packet",
+   "tbl_name": "ecg_raw_packet",
+   "sql": "CREATE TABLE ecg_raw_packet (\n        hex           TEXT PRIMARY KEY,\n        device_id     TEXT NOT NULL,\n        sequence      INTEGER,\n        strap_seconds INTEGER,\n        strap_subsec  INTEGER,\n        captured_at   INTEGER NOT NULL,\n        reading_id    TEXT\n      , origin TEXT)"
+  },
+  {
+   "type": "table",
+   "name": "ecg_gesture_session",
+   "tbl_name": "ecg_gesture_session",
+   "sql": "CREATE TABLE ecg_gesture_session (\n        device_id   TEXT NOT NULL,\n        created_at  INTEGER NOT NULL,\n        strap_start INTEGER,\n        strap_end   INTEGER,\n        final_count INTEGER,\n        outcome     TEXT NOT NULL,\n        reason      TEXT,\n        PRIMARY KEY (device_id, created_at)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "sleep_override",
+   "tbl_name": "sleep_override",
+   "sql": "CREATE TABLE sleep_override (\n        day_id TEXT PRIMARY KEY,\n        onset_ts INTEGER NOT NULL,\n        offset_ts INTEGER NOT NULL,\n        source TEXT NOT NULL,\n        created_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "sleep_nap",
+   "tbl_name": "sleep_nap",
+   "sql": "CREATE TABLE sleep_nap (\n        day_id TEXT NOT NULL,\n        start_ts INTEGER NOT NULL,\n        end_ts INTEGER NOT NULL,\n        source TEXT NOT NULL,\n        created_at INTEGER NOT NULL,\n        PRIMARY KEY (day_id, start_ts)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "workout_route",
+   "tbl_name": "workout_route",
+   "sql": "CREATE TABLE workout_route (\n        session_id TEXT NOT NULL,\n        seq INTEGER NOT NULL,\n        ts_ms INTEGER NOT NULL,\n        lat REAL NOT NULL,\n        lng REAL NOT NULL,\n        alt REAL,\n        accuracy REAL, speed REAL,\n        PRIMARY KEY (session_id, seq)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "notif_fired",
+   "tbl_name": "notif_fired",
+   "sql": "CREATE TABLE notif_fired (\n        key TEXT PRIMARY KEY,\n        fired_at INTEGER NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "notif_slots",
+   "tbl_name": "notif_slots",
+   "sql": "CREATE TABLE notif_slots (\n        category TEXT NOT NULL,\n        dedupe_key TEXT NOT NULL,\n        slot INTEGER NOT NULL,\n        PRIMARY KEY (category, dedupe_key)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "alarm_schedule",
+   "tbl_name": "alarm_schedule",
+   "sql": "CREATE TABLE alarm_schedule (\n        weekday INTEGER NOT NULL,\n        hour    INTEGER NOT NULL,\n        minute  INTEGER NOT NULL,\n        enabled INTEGER NOT NULL DEFAULT 1,\n        smart_window_minutes INTEGER NOT NULL DEFAULT 0,\n        natural_window_minutes INTEGER NOT NULL DEFAULT 0,\n        gradual_window_minutes INTEGER NOT NULL DEFAULT 0,\n        gradual_pattern TEXT NOT NULL DEFAULT 'ramp',\n        gradual_cadence_sec INTEGER NOT NULL DEFAULT 180,\n        PRIMARY KEY (weekday)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "wake_meta",
+   "tbl_name": "wake_meta",
+   "sql": "CREATE TABLE wake_meta (\n        key   TEXT PRIMARY KEY,\n        value TEXT NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "wake_trace",
+   "tbl_name": "wake_trace",
+   "sql": "CREATE TABLE wake_trace (\n        id         INTEGER PRIMARY KEY AUTOINCREMENT,\n        wake_epoch INTEGER NOT NULL,\n        at_ms      INTEGER NOT NULL,\n        kind       TEXT NOT NULL,\n        data_json  TEXT NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "store_rev",
+   "tbl_name": "store_rev",
+   "sql": "CREATE TABLE store_rev (\n        id INTEGER PRIMARY KEY AUTOINCREMENT\n      )"
+  },
+  {
+   "type": "table",
+   "name": "row_rev",
+   "tbl_name": "row_rev",
+   "sql": "CREATE TABLE row_rev (\n        kind TEXT NOT NULL,\n        k1 TEXT NOT NULL,\n        k2 INTEGER NOT NULL DEFAULT 0,\n        rev INTEGER NOT NULL,\n        PRIMARY KEY (kind, k1, k2)\n      ) WITHOUT ROWID\n    "
+  },
+  {
+   "type": "table",
+   "name": "external_hr",
+   "tbl_name": "external_hr",
+   "sql": "CREATE TABLE external_hr (\n        ts INTEGER NOT NULL,\n        source TEXT NOT NULL,\n        hr INTEGER NOT NULL,\n        rr_ms TEXT,\n        session_id TEXT,\n        PRIMARY KEY (ts, source)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "imported_measurement",
+   "tbl_name": "imported_measurement",
+   "sql": "CREATE TABLE imported_measurement (\n        uuid TEXT PRIMARY KEY,\n        ts INTEGER NOT NULL,\n        kind TEXT NOT NULL,\n        value REAL NOT NULL,\n        unit TEXT NOT NULL,\n        source TEXT NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "imported_workout",
+   "tbl_name": "imported_workout",
+   "sql": "CREATE TABLE imported_workout (\n        uuid TEXT PRIMARY KEY,\n        start_ts INTEGER NOT NULL,\n        end_ts INTEGER NOT NULL,\n        kind TEXT NOT NULL,\n        energy_kcal REAL,\n        distance_m REAL,\n        steps INTEGER,\n        source TEXT NOT NULL\n      )"
+  },
+  {
+   "type": "table",
+   "name": "observation",
+   "tbl_name": "observation",
+   "sql": "CREATE TABLE observation (\n        device_id    TEXT NOT NULL DEFAULT '',\n        ts_ms        INTEGER NOT NULL,\n        date         TEXT NOT NULL,\n        source_kind  TEXT NOT NULL,\n        vendor_key   TEXT,\n        key          TEXT,\n        value        REAL,\n        unit         TEXT,\n        attribution  TEXT NOT NULL,\n        CHECK (vendor_key IS NOT NULL OR key IS NOT NULL)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "cycle_symptom",
+   "tbl_name": "cycle_symptom",
+   "sql": "CREATE TABLE cycle_symptom (\n        date TEXT PRIMARY KEY,\n        symptoms_json TEXT NOT NULL,\n        note TEXT,\n        updated_at INTEGER\n      )"
+  },
+  {
+   "type": "table",
+   "name": "workout_split",
+   "tbl_name": "workout_split",
+   "sql": "CREATE TABLE workout_split (\n        session_id TEXT NOT NULL,\n        km INTEGER NOT NULL,\n        meters REAL NOT NULL,\n        duration_sec INTEGER NOT NULL,\n        avg_hr REAL,\n        net_elev_m REAL,\n        PRIMARY KEY (session_id, km)\n      )"
+  },
+  {
+   "type": "table",
+   "name": "live_workout_tally",
+   "tbl_name": "live_workout_tally",
+   "sql": "CREATE TABLE live_workout_tally (\n        workout_id     TEXT PRIMARY KEY,\n        updated_ts     INTEGER NOT NULL,\n        per_minute_hr  TEXT NOT NULL,\n        zone_seconds   TEXT NOT NULL,\n        seconds_by_bpm TEXT NOT NULL,\n        max_hr_seen    INTEGER NOT NULL DEFAULT 0\n      )"
+  },
+  {
+   "type": "table",
+   "name": "input_rev",
+   "tbl_name": "input_rev",
+   "sql": "CREATE TABLE input_rev (bucket INTEGER PRIMARY KEY, rev INTEGER NOT NULL)"
+  },
+  {
+   "type": "table",
+   "name": "last_result",
+   "tbl_name": "last_result",
+   "sql": "CREATE TABLE last_result (key TEXT PRIMARY KEY, computed_at INTEGER NOT NULL, payload_json TEXT NOT NULL, input_sig TEXT)"
+  },
+  {
+   "type": "table",
+   "name": "day_checkpoint",
+   "tbl_name": "day_checkpoint",
+   "sql": "CREATE TABLE day_checkpoint (day_id TEXT NOT NULL, algo_version INTEGER NOT NULL, fmt INTEGER NOT NULL, ctx_sig TEXT NOT NULL, cp_rec_ts INTEGER NOT NULL, rev_vec BLOB NOT NULL, state BLOB NOT NULL, night_ref TEXT, computed_at INTEGER NOT NULL, PRIMARY KEY (day_id, algo_version))"
+  },
+  {
+   "type": "table",
+   "name": "wake_confirmation",
+   "tbl_name": "wake_confirmation",
+   "sql": "CREATE TABLE wake_confirmation (day_id TEXT PRIMARY KEY, at_sec INTEGER NOT NULL, basis TEXT NOT NULL, created_at INTEGER NOT NULL)"
+  },
+  {
+   "type": "table",
+   "name": "wake_evidence",
+   "tbl_name": "wake_evidence",
+   "sql": "CREATE TABLE wake_evidence (onset_sec INTEGER NOT NULL, kind TEXT NOT NULL, at_sec INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (onset_sec, kind, at_sec))"
+  },
+  {
+   "type": "table",
+   "name": "moment_label",
+   "tbl_name": "moment_label",
+   "sql": "CREATE TABLE moment_label (date TEXT NOT NULL, hhmm TEXT NOT NULL, label TEXT, note TEXT, answered_at INTEGER NOT NULL, PRIMARY KEY (date, hhmm))"
+  },
+  {
+   "type": "table",
+   "name": "assumed_water",
+   "tbl_name": "assumed_water",
+   "sql": "CREATE TABLE assumed_water (date TEXT NOT NULL, at_min INTEGER NOT NULL, ml REAL NOT NULL, state TEXT NOT NULL DEFAULT 'assumed', logged_at INTEGER NOT NULL, PRIMARY KEY (date, at_min))"
+  },
+  {
+   "type": "table",
+   "name": "symptom_entry",
+   "tbl_name": "symptom_entry",
+   "sql": "CREATE TABLE symptom_entry (date TEXT NOT NULL, hhmm TEXT NOT NULL, severity TEXT NOT NULL, side TEXT, kind TEXT NOT NULL, kind_other TEXT, area TEXT NOT NULL, area_other TEXT, note TEXT, created_at INTEGER NOT NULL, PRIMARY KEY (date, hhmm))"
+  },
+  {
+   "type": "table",
+   "name": "spectral_archive",
+   "tbl_name": "spectral_archive",
+   "sql": "CREATE TABLE spectral_archive (day_id TEXT NOT NULL, device_id TEXT NOT NULL DEFAULT '', signal TEXT NOT NULL, codec_version INTEGER NOT NULL, part INTEGER NOT NULL DEFAULT 0, blob BLOB NOT NULL, n_valid INTEGER NOT NULL, rms_err REAL NOT NULL, max_err REAL NOT NULL, created_at INTEGER NOT NULL, origin_sec INTEGER, n_slots INTEGER, slot_sec INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (day_id, device_id, signal, codec_version, part))"
+  },
+  {
+   "type": "table",
+   "name": "spectral_archive_status",
+   "tbl_name": "spectral_archive_status",
+   "sql": "CREATE TABLE spectral_archive_status (day_id TEXT NOT NULL, device_id TEXT NOT NULL DEFAULT '', outcome TEXT NOT NULL, reason TEXT, updated_at INTEGER NOT NULL, PRIMARY KEY (day_id, device_id))"
+  },
+  {
+   "type": "index",
+   "name": "idx_decoded_onehz_rects",
+   "tbl_name": "decoded_onehz",
+   "sql": "CREATE INDEX idx_decoded_onehz_rects ON decoded_onehz(rec_ts, counter)"
+  },
+  {
+   "type": "index",
+   "name": "idx_decoded_rr_rects",
+   "tbl_name": "decoded_rr",
+   "sql": "CREATE INDEX idx_decoded_rr_rects ON decoded_rr(rec_ts, beat_index)"
+  },
+  {
+   "type": "index",
+   "name": "idx_samples_ts",
+   "tbl_name": "samples",
+   "sql": "CREATE INDEX idx_samples_ts ON samples(ts)"
+  },
+  {
+   "type": "index",
+   "name": "idx_events_ts",
+   "tbl_name": "events",
+   "sql": "CREATE INDEX idx_events_ts ON events(ts)"
+  },
+  {
+   "type": "index",
+   "name": "idx_band_events_ts",
+   "tbl_name": "band_events",
+   "sql": "CREATE INDEX idx_band_events_ts ON band_events(ts, event_id)"
+  },
+  {
+   "type": "index",
+   "name": "idx_band_battery_ts",
+   "tbl_name": "band_battery",
+   "sql": "CREATE INDEX idx_band_battery_ts ON band_battery(ts DESC)"
+  },
+  {
+   "type": "index",
+   "name": "idx_raw_archive_captured",
+   "tbl_name": "raw_archive",
+   "sql": "CREATE INDEX idx_raw_archive_captured ON raw_archive(captured_at DESC)"
+  },
+  {
+   "type": "index",
+   "name": "idx_metric_series_key",
+   "tbl_name": "metric_series",
+   "sql": "CREATE INDEX idx_metric_series_key ON metric_series(key, date)"
+  },
+  {
+   "type": "index",
+   "name": "idx_day_result_day",
+   "tbl_name": "day_result",
+   "sql": "CREATE INDEX idx_day_result_day ON day_result(day_id, algo_version)"
+  },
+  {
+   "type": "index",
+   "name": "idx_journal_metric_field",
+   "tbl_name": "journal_metric",
+   "sql": "CREATE INDEX idx_journal_metric_field ON journal_metric(field, date)"
+  },
+  {
+   "type": "index",
+   "name": "idx_strength_set_ex",
+   "tbl_name": "strength_set",
+   "sql": "CREATE INDEX idx_strength_set_ex ON strength_set(exercise_key, at_ts)"
+  },
+  {
+   "type": "index",
+   "name": "idx_food_entry_date",
+   "tbl_name": "food_entry",
+   "sql": "CREATE INDEX idx_food_entry_date ON food_entry(date, at_ts)"
+  },
+  {
+   "type": "index",
+   "name": "idx_food_entry_food",
+   "tbl_name": "food_entry",
+   "sql": "CREATE INDEX idx_food_entry_food ON food_entry(food_key, date)"
+  },
+  {
+   "type": "index",
+   "name": "idx_med_dose_date",
+   "tbl_name": "med_dose",
+   "sql": "CREATE INDEX idx_med_dose_date ON med_dose(date)"
+  },
+  {
+   "type": "index",
+   "name": "idx_sync_quarantine_created",
+   "tbl_name": "sync_quarantine",
+   "sql": "CREATE INDEX idx_sync_quarantine_created ON sync_quarantine(created_at)"
+  },
+  {
+   "type": "index",
+   "name": "idx_compute_jobs_state_pri",
+   "tbl_name": "compute_jobs",
+   "sql": "CREATE INDEX idx_compute_jobs_state_pri ON compute_jobs(state, priority DESC, updated_at ASC)"
+  },
+  {
+   "type": "index",
+   "name": "idx_live_coverage_day",
+   "tbl_name": "live_coverage",
+   "sql": "CREATE INDEX idx_live_coverage_day ON live_coverage(day)"
+  },
+  {
+   "type": "index",
+   "name": "idx_coverage_window",
+   "tbl_name": "device_coverage",
+   "sql": "CREATE INDEX idx_coverage_window ON device_coverage(signal, start_ts, end_ts)"
+  },
+  {
+   "type": "index",
+   "name": "idx_coverage_device",
+   "tbl_name": "device_coverage",
+   "sql": "CREATE INDEX idx_coverage_device ON device_coverage(device_id, signal, start_ts DESC)"
+  },
+  {
+   "type": "index",
+   "name": "idx_ecg_reading_start",
+   "tbl_name": "ecg_reading",
+   "sql": "CREATE INDEX idx_ecg_reading_start ON ecg_reading(start_ts DESC)"
+  },
+  {
+   "type": "index",
+   "name": "idx_ecg_raw_packet_strap",
+   "tbl_name": "ecg_raw_packet",
+   "sql": "CREATE INDEX idx_ecg_raw_packet_strap ON ecg_raw_packet(strap_seconds)"
+  },
+  {
+   "type": "index",
+   "name": "idx_ecg_reading_group",
+   "tbl_name": "ecg_reading",
+   "sql": "CREATE INDEX idx_ecg_reading_group ON ecg_reading(attempt_group, attempt)"
+  },
+  {
+   "type": "index",
+   "name": "idx_workout_route_session",
+   "tbl_name": "workout_route",
+   "sql": "CREATE INDEX idx_workout_route_session ON workout_route(session_id, seq)"
+  },
+  {
+   "type": "index",
+   "name": "idx_notif_slots_owner",
+   "tbl_name": "notif_slots",
+   "sql": "CREATE UNIQUE INDEX idx_notif_slots_owner ON notif_slots(category, slot)"
+  },
+  {
+   "type": "index",
+   "name": "idx_wake_trace_wake",
+   "tbl_name": "wake_trace",
+   "sql": "CREATE INDEX idx_wake_trace_wake ON wake_trace(wake_epoch, id)"
+  },
+  {
+   "type": "index",
+   "name": "idx_external_hr_session",
+   "tbl_name": "external_hr",
+   "sql": "CREATE INDEX idx_external_hr_session ON external_hr(session_id)"
+  },
+  {
+   "type": "index",
+   "name": "idx_imported_measurement_kind",
+   "tbl_name": "imported_measurement",
+   "sql": "CREATE INDEX idx_imported_measurement_kind ON imported_measurement(kind, ts)"
+  },
+  {
+   "type": "index",
+   "name": "idx_imported_workout_start",
+   "tbl_name": "imported_workout",
+   "sql": "CREATE INDEX idx_imported_workout_start ON imported_workout(start_ts)"
+  },
+  {
+   "type": "index",
+   "name": "idx_observation_identity",
+   "tbl_name": "observation",
+   "sql": "CREATE UNIQUE INDEX idx_observation_identity ON observation(device_id, ts_ms, source_kind, COALESCE(vendor_key, key))"
+  },
+  {
+   "type": "index",
+   "name": "idx_observation_date",
+   "tbl_name": "observation",
+   "sql": "CREATE INDEX idx_observation_date ON observation(date, source_kind)"
+  },
+  {
+   "type": "index",
+   "name": "idx_sessions_start",
+   "tbl_name": "sessions",
+   "sql": "CREATE INDEX idx_sessions_start ON sessions(start_ts)"
+  },
+  {
+   "type": "view",
+   "name": "v_metric",
+   "tbl_name": "v_metric",
+   "sql": "CREATE VIEW v_metric AS\n      SELECT date, key, value FROM metric_series"
+  },
+  {
+   "type": "view",
+   "name": "v_daily",
+   "tbl_name": "v_daily",
+   "sql": "CREATE VIEW v_daily AS\n      SELECT date,\n        MAX(CASE WHEN key='rhr' THEN value END)            AS resting_hr,\n        MAX(CASE WHEN key='rmssd' THEN value END)          AS hrv,\n        MAX(CASE WHEN key='sdnn' THEN value END)           AS sdnn,\n        MAX(CASE WHEN key='readiness' THEN value END)      AS readiness,\n        MAX(CASE WHEN key='strain' THEN value END)         AS strain,\n        MAX(CASE WHEN key='resp_rate' THEN value END)      AS resp_rate,\n        MAX(CASE WHEN key='stress' THEN value END)         AS stress,\n        MAX(CASE WHEN key='efficiency' THEN value END)     AS sleep_efficiency,\n        MAX(CASE WHEN key='tst_min' THEN value END)        AS sleep_min,\n        MAX(CASE WHEN key='deep_min' THEN value END)       AS deep_min,\n        MAX(CASE WHEN key='rem_min' THEN value END)        AS rem_min,\n        MAX(CASE WHEN key='light_min' THEN value END)      AS light_min,\n        MAX(CASE WHEN key='nap_min' THEN value END)        AS nap_min,\n        MAX(CASE WHEN key='steps' THEN value END)          AS steps,\n        MAX(CASE WHEN key='calories' THEN value END)       AS active_calories,\n        MAX(CASE WHEN key='calories_total' THEN value END) AS total_calories,\n        MAX(CASE WHEN key='skin_temp_z' THEN value END)    AS skin_temp_z,\n        MAX(CASE WHEN key='lf_hf' THEN value END)          AS lf_hf,\n        MAX(CASE WHEN key='hrv_cv' THEN value END)         AS hrv_cv,\n        MAX(CASE WHEN key='dip_pct' THEN value END)        AS dip_pct,\n        MAX(CASE WHEN key='odi_per_hour' THEN value END)   AS odi_per_hour,\n        MAX(CASE WHEN key='worn_min' THEN value END)       AS worn_min,\n        MAX(CASE WHEN key='hrr_bpm' THEN value END)        AS hrr_bpm,\n        MAX(CASE WHEN key='brv_cv' THEN value END)         AS brv_cv,\n        MAX(CASE WHEN key='irregular_rhythm_flag' THEN value END) AS irregular_flag\n      FROM metric_series GROUP BY date"
+  },
+  {
+   "type": "view",
+   "name": "v_series",
+   "tbl_name": "v_series",
+   "sql": "CREATE VIEW v_series AS\n      WITH latest AS (\n        SELECT r.day_id, r.payload_json FROM day_result r\n        JOIN (SELECT day_id, MAX(algo_version) AS v FROM day_result WHERE algo_version <= 104 GROUP BY day_id) m ON r.day_id = m.day_id AND r.algo_version = m.v\n        WHERE json_valid(r.payload_json)\n      ),\n      curve(sk, pth, vk) AS (\n        SELECT 'hr_curve','$.series.hr_curve','$.v'\n        UNION ALL SELECT 'strain_curve','$.series.strain_curve','$.v'\n        UNION ALL SELECT 'hrv_timeline','$.series.hrv_timeline','$.v'\n        UNION ALL SELECT 'hrv_day','$.series.hrv_day','$.v'\n        UNION ALL SELECT 'resp_day','$.series.resp_day','$.v'\n        UNION ALL SELECT 'skin_temp_day','$.series.skin_temp_day','$.v'\n        UNION ALL SELECT 'zone_timeline','$.series.zone_timeline','$.z'\n        UNION ALL SELECT 'activity_curve','$.activity_curve','$.v'\n      )\n      SELECT l.day_id AS date, c.sk AS series,\n             json_extract(e.value,'$.t') AS t,\n             json_extract(e.value, c.vk) AS v\n      FROM latest l JOIN curve c\n      JOIN json_each(json_extract(l.payload_json, c.pth)) e\n      WHERE json_type(json_extract(l.payload_json, c.pth)) = 'array'\n      UNION ALL\n      SELECT l.day_id, c.sk,\n             json_extract(l.payload_json, c.pth||'.t0')\n               + e.key * json_extract(l.payload_json, c.pth||'.dt'),\n             e.value\n      FROM latest l JOIN curve c\n      JOIN json_each(json_extract(l.payload_json, c.pth||'.v')) e\n      WHERE json_extract(l.payload_json, c.pth||'.dt') IS NOT NULL\n      UNION ALL\n      SELECT l.day_id, c.sk,\n             json_extract(l.payload_json, c.pth||'.t0')\n               + json_extract(l.payload_json, c.pth||'.to['||e.key||']'),\n             e.value\n      FROM latest l JOIN curve c\n      JOIN json_each(json_extract(l.payload_json, c.pth||'.v')) e\n      WHERE json_extract(l.payload_json, c.pth||'.dt') IS NULL\n        AND json_extract(l.payload_json, c.pth||'.to') IS NOT NULL\n        AND e.key < json_array_length(json_extract(l.payload_json, c.pth||'.to'))"
+  },
+  {
+   "type": "view",
+   "name": "v_hypnogram",
+   "tbl_name": "v_hypnogram",
+   "sql": "CREATE VIEW v_hypnogram AS\n      WITH latest AS (\n        SELECT r.day_id, r.payload_json FROM day_result r\n        JOIN (SELECT day_id, MAX(algo_version) AS v FROM day_result WHERE algo_version <= 104 GROUP BY day_id) m ON r.day_id = m.day_id AND r.algo_version = m.v\n        WHERE json_valid(r.payload_json)\n      )\n      SELECT l.day_id AS date,\n             json_extract(e.value,'$.start') AS start_ts,\n             json_extract(e.value,'$.end')   AS end_ts,\n             json_extract(e.value,'$.stage') AS stage\n      FROM latest l, json_each(json_extract(l.payload_json,'$.series.hypnogram')) e"
+  },
+  {
+   "type": "view",
+   "name": "v_sessions",
+   "tbl_name": "v_sessions",
+   "sql": "CREATE VIEW v_sessions AS\n      SELECT id, start_ts, end_ts,\n             strftime('%Y-%m-%d', start_ts, 'unixepoch', 'localtime') AS date,\n             type, status, calories, strain, max_hr,\n             duration_min, steps, hrr_bpm, source, zone_min_json\n      FROM sessions"
+  },
+  {
+   "type": "view",
+   "name": "v_baselines",
+   "tbl_name": "v_baselines",
+   "sql": "CREATE VIEW v_baselines AS\n      SELECT key,\n             json_extract(payload_json,'$.value')           AS value,\n             json_extract(payload_json,'$.mean')            AS mean,\n             json_extract(payload_json,'$.z')               AS z,\n             json_extract(payload_json,'$.delta')           AS delta,\n             json_extract(payload_json,'$.ratio')           AS ratio,\n             json_extract(payload_json,'$.n')               AS n,\n             updated_at\n      FROM baselines"
+  },
+  {
+   "type": "view",
+   "name": "v_insights",
+   "tbl_name": "v_insights",
+   "sql": "CREATE VIEW v_insights AS\n      SELECT id, kind, title, body, date, created_at, read FROM notifications"
+  },
+  {
+   "type": "view",
+   "name": "v_ecg_readings",
+   "tbl_name": "v_ecg_readings",
+   "sql": "CREATE VIEW v_ecg_readings AS\n      SELECT id, start_ts, end_ts,\n             strftime('%Y-%m-%d', start_ts, 'unixepoch', 'localtime') AS date,\n             wrist, status, category AS band_category, result_code, avg_hr,\n             quality, unreadable_mask, interruptions, stop_reason,\n             (end_ts - start_ts) AS duration_s,\n             sample_count, sample_rate_hz, sample_unit,\n             min_uv, max_uv, rms_uv, missing_segments\n      FROM ecg_reading\n      WHERE superseded_by IS NULL"
+  },
+  {
+   "type": "trigger",
+   "name": "day_result_rev_insert",
+   "tbl_name": "day_result",
+   "sql": "CREATE TRIGGER day_result_rev_insert\n      AFTER INSERT ON day_result BEGIN\n        INSERT INTO store_rev (id) VALUES (NULL);\n        INSERT OR REPLACE INTO row_rev (kind, k1, k2, rev)\n          VALUES ('day_result', NEW.day_id, NEW.algo_version, last_insert_rowid());\n        DELETE FROM store_rev;\n      END"
+  },
+  {
+   "type": "trigger",
+   "name": "day_result_rev_delete",
+   "tbl_name": "day_result",
+   "sql": "CREATE TRIGGER day_result_rev_delete\n      AFTER DELETE ON day_result BEGIN\n        DELETE FROM row_rev\n          WHERE kind = 'day_result' AND k1 = OLD.day_id AND k2 = OLD.algo_version;\n      END"
+  },
+  {
+   "type": "trigger",
+   "name": "baselines_rev_insert",
+   "tbl_name": "baselines",
+   "sql": "CREATE TRIGGER baselines_rev_insert\n      AFTER INSERT ON baselines BEGIN\n        INSERT INTO store_rev (id) VALUES (NULL);\n        INSERT OR REPLACE INTO row_rev (kind, k1, k2, rev)\n          VALUES ('baselines', NEW.key, 0, last_insert_rowid());\n        DELETE FROM store_rev;\n      END"
+  },
+  {
+   "type": "trigger",
+   "name": "baselines_rev_update",
+   "tbl_name": "baselines",
+   "sql": "CREATE TRIGGER baselines_rev_update\n      AFTER UPDATE OF payload_json ON baselines BEGIN\n        INSERT INTO store_rev (id) VALUES (NULL);\n        INSERT OR REPLACE INTO row_rev (kind, k1, k2, rev)\n          VALUES ('baselines', NEW.key, 0, last_insert_rowid());\n        DELETE FROM store_rev;\n      END"
+  },
+  {
+   "type": "trigger",
+   "name": "baselines_rev_delete",
+   "tbl_name": "baselines",
+   "sql": "CREATE TRIGGER baselines_rev_delete\n      AFTER DELETE ON baselines BEGIN\n        DELETE FROM row_rev WHERE kind = 'baselines' AND k1 = OLD.key AND k2 = 0;\n      END"
+  },
+  {
+   "type": "trigger",
+   "name": "wake_day_features_rev_insert",
+   "tbl_name": "wake_day_features",
+   "sql": "CREATE TRIGGER wake_day_features_rev_insert\n      AFTER INSERT ON wake_day_features BEGIN\n        INSERT INTO store_rev (id) VALUES (NULL);\n        INSERT OR REPLACE INTO row_rev (kind, k1, k2, rev)\n          VALUES ('wake_day_features', NEW.day_id, NEW.algo_version, last_insert_rowid());\n        DELETE FROM store_rev;\n      END"
+  },
+  {
+   "type": "trigger",
+   "name": "wake_day_features_rev_update",
+   "tbl_name": "wake_day_features",
+   "sql": "CREATE TRIGGER wake_day_features_rev_update\n      AFTER UPDATE OF payload_json ON wake_day_features BEGIN\n        INSERT INTO store_rev (id) VALUES (NULL);\n        INSERT OR REPLACE INTO row_rev (kind, k1, k2, rev)\n          VALUES ('wake_day_features', NEW.day_id, NEW.algo_version, last_insert_rowid());\n        DELETE FROM store_rev;\n      END"
+  },
+  {
+   "type": "trigger",
+   "name": "wake_day_features_rev_delete",
+   "tbl_name": "wake_day_features",
+   "sql": "CREATE TRIGGER wake_day_features_rev_delete\n      AFTER DELETE ON wake_day_features BEGIN\n        DELETE FROM row_rev\n          WHERE kind = 'wake_day_features' AND k1 = OLD.day_id AND k2 = OLD.algo_version;\n      END"
+  },
+  {
+   "type": "trigger",
+   "name": "decoded_onehz_rev_ai",
+   "tbl_name": "decoded_onehz",
+   "sql": "CREATE TRIGGER decoded_onehz_rev_ai AFTER INSERT ON decoded_onehz WHEN NEW.rec_ts IS NOT NULL AND NEW.rec_ts > 0 BEGIN INSERT INTO input_rev(bucket, rev) SELECT NEW.rec_ts / 900, 0 WHERE NOT EXISTS (SELECT 1 FROM input_rev WHERE bucket = NEW.rec_ts / 900); UPDATE input_rev SET rev = rev + 1 WHERE bucket = NEW.rec_ts / 900; END"
+  },
+  {
+   "type": "trigger",
+   "name": "decoded_onehz_rev_au",
+   "tbl_name": "decoded_onehz",
+   "sql": "CREATE TRIGGER decoded_onehz_rev_au AFTER UPDATE ON decoded_onehz WHEN NEW.rec_ts IS NOT NULL AND NEW.rec_ts > 0 BEGIN INSERT INTO input_rev(bucket, rev) SELECT NEW.rec_ts / 900, 0 WHERE NOT EXISTS (SELECT 1 FROM input_rev WHERE bucket = NEW.rec_ts / 900); UPDATE input_rev SET rev = rev + 1 WHERE bucket = NEW.rec_ts / 900; END"
+  },
+  {
+   "type": "trigger",
+   "name": "decoded_onehz_rev_au_old",
+   "tbl_name": "decoded_onehz",
+   "sql": "CREATE TRIGGER decoded_onehz_rev_au_old AFTER UPDATE ON decoded_onehz WHEN OLD.rec_ts IS NOT NULL AND OLD.rec_ts > 0 AND (NEW.rec_ts IS NULL OR NEW.rec_ts / 900 != OLD.rec_ts / 900) BEGIN INSERT INTO input_rev(bucket, rev) SELECT OLD.rec_ts / 900, 0 WHERE NOT EXISTS (SELECT 1 FROM input_rev WHERE bucket = OLD.rec_ts / 900); UPDATE input_rev SET rev = rev + 1 WHERE bucket = OLD.rec_ts / 900; END"
+  },
+  {
+   "type": "trigger",
+   "name": "decoded_onehz_rev_ad",
+   "tbl_name": "decoded_onehz",
+   "sql": "CREATE TRIGGER decoded_onehz_rev_ad AFTER DELETE ON decoded_onehz WHEN OLD.rec_ts IS NOT NULL AND OLD.rec_ts > 0 BEGIN INSERT INTO input_rev(bucket, rev) SELECT OLD.rec_ts / 900, 0 WHERE NOT EXISTS (SELECT 1 FROM input_rev WHERE bucket = OLD.rec_ts / 900); UPDATE input_rev SET rev = rev + 1 WHERE bucket = OLD.rec_ts / 900; END"
+  },
+  {
+   "type": "trigger",
+   "name": "decoded_rr_rev_ai",
+   "tbl_name": "decoded_rr",
+   "sql": "CREATE TRIGGER decoded_rr_rev_ai AFTER INSERT ON decoded_rr WHEN NEW.rec_ts IS NOT NULL AND NEW.rec_ts > 0 BEGIN INSERT INTO input_rev(bucket, rev) SELECT NEW.rec_ts / 900, 0 WHERE NOT EXISTS (SELECT 1 FROM input_rev WHERE bucket = NEW.rec_ts / 900); UPDATE input_rev SET rev = rev + 1 WHERE bucket = NEW.rec_ts / 900; END"
+  },
+  {
+   "type": "trigger",
+   "name": "decoded_rr_rev_au",
+   "tbl_name": "decoded_rr",
+   "sql": "CREATE TRIGGER decoded_rr_rev_au AFTER UPDATE ON decoded_rr WHEN NEW.rec_ts IS NOT NULL AND NEW.rec_ts > 0 BEGIN INSERT INTO input_rev(bucket, rev) SELECT NEW.rec_ts / 900, 0 WHERE NOT EXISTS (SELECT 1 FROM input_rev WHERE bucket = NEW.rec_ts / 900); UPDATE input_rev SET rev = rev + 1 WHERE bucket = NEW.rec_ts / 900; END"
+  },
+  {
+   "type": "trigger",
+   "name": "decoded_rr_rev_au_old",
+   "tbl_name": "decoded_rr",
+   "sql": "CREATE TRIGGER decoded_rr_rev_au_old AFTER UPDATE ON decoded_rr WHEN OLD.rec_ts IS NOT NULL AND OLD.rec_ts > 0 AND (NEW.rec_ts IS NULL OR NEW.rec_ts / 900 != OLD.rec_ts / 900) BEGIN INSERT INTO input_rev(bucket, rev) SELECT OLD.rec_ts / 900, 0 WHERE NOT EXISTS (SELECT 1 FROM input_rev WHERE bucket = OLD.rec_ts / 900); UPDATE input_rev SET rev = rev + 1 WHERE bucket = OLD.rec_ts / 900; END"
+  },
+  {
+   "type": "trigger",
+   "name": "decoded_rr_rev_ad",
+   "tbl_name": "decoded_rr",
+   "sql": "CREATE TRIGGER decoded_rr_rev_ad AFTER DELETE ON decoded_rr WHEN OLD.rec_ts IS NOT NULL AND OLD.rec_ts > 0 BEGIN INSERT INTO input_rev(bucket, rev) SELECT OLD.rec_ts / 900, 0 WHERE NOT EXISTS (SELECT 1 FROM input_rev WHERE bucket = OLD.rec_ts / 900); UPDATE input_rev SET rev = rev + 1 WHERE bucket = OLD.rec_ts / 900; END"
+  }
+ ]
+}

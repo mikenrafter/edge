@@ -323,9 +323,13 @@ void main() {
     });
   });
 
-  group('a user-set window blanks the night, with or without samples', () {
-    test('over hours the band did not record: the old night is blanked, the '
-        'saved window survives', () async {
+  // D27 revised (owner 2026-10-19): a user-set window is staged inside its
+  // typed bounds where the band recorded, and invents nothing where it did
+  // not. 5e205cfe's "a user-set window blanks the night" is retired.
+  group('a user-set window replaces the night; staged where there is data',
+      () {
+    test('over hours the band did not record: the old night is gone, nothing '
+        'is invented, the saved window survives', () async {
       await _realNight(_d2, prevDay: 4);
       final onset = _sec(2025, 9, 5, 12, 30);
       final wake = _sec(2025, 9, 5, 15, 30);
@@ -348,7 +352,7 @@ void main() {
       expect(n['wake_ts'], wake);
     });
 
-    test('over hours the band DID record: still blank, window still shown',
+    test('over hours the band DID record: staged inside the typed window',
         () async {
       await _realNight(_d2, prevDay: 4);
       final onset = _sec(2025, 9, 5, 0, 0);
@@ -357,16 +361,15 @@ void main() {
       await _derive(_d2);
 
       final sc = await _scalars(_d2);
-      for (final k in ['tst_min', 'efficiency', 'rhr', 'rem_min', 'sol_min']) {
-        expect(sc[k], isNull, reason: '$k: the user\'s times blank the metrics');
+      for (final k in ['tst_min', 'light_min']) {
+        expect(sc[k], isA<num>(), reason: '$k: the typed window is staged');
       }
-      final series = await _series(_d2);
-      for (final k in _sleepKeys) {
-        expect(series.containsKey(k), isFalse, reason: k);
-      }
+      expect(sc['tst_min'] as num, inInclusiveRange(1, 300),
+          reason: 'inside the 5 h typed window, not the 7 h night');
+      expect((await _series(_d2)).containsKey('tst_min'), isTrue);
       final repo = LocalRepositoryImpl(getProfileMap: () => {});
       final n = await repo.getDaySleep(_d2);
-      expect(n['has_sleep'], isFalse);
+      expect(n['has_sleep'], isTrue);
       expect(n['sleep_source'], 'manual');
       expect(n['onset_ts'], onset);
       expect(n['wake_ts'], wake);

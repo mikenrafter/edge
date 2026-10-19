@@ -307,8 +307,9 @@ void main() {
     test('the empty-input repin (artifact_fraction null, not 1.0, with no beats) '
         'is its own version: a (day, 103) row finalized under the bf1be19 pin '
         'must not be served as if derived under 0fc5768 (AGENTS 3.4)', () {
-      // The upstream catch-up (merge log D4) took upstream's numbering: the
-      // integrated build is 113, past every fork version, so a fork (day, 103)
+      // The upstream catch-up (merge log D4) took upstream's numbering, and
+      // the integrated build is our single bump atop it (114, D27 revised),
+      // past every fork version, so a fork (day, 103)
       // or (day, 104) row is never served as current. The fork entries stay in
       // the changelog as `// | vNNN` history lines.
       expect(v, greaterThan(104));
@@ -338,10 +339,11 @@ void main() {
       }
       // The contiguous comment block holds many versions' entries. Since the
       // upstream catch-up (merge log D4) the diagnostics entry is the fork's
-      // v103 history line, and the current version is named by the
-      // integration note that closes the block.
-      expect(block.join('\n'), contains('this build is upstream $v'),
-          reason: 'the integration note names the current version');
+      // v103 history line. The current version is our single bump atop
+      // upstream 113 (D27 revised), named in the entry that closes the block.
+      expect(v, 114);
+      expect(block.join('\n'), contains('single bump atop upstream 113'),
+          reason: 'the 114 entry names what it sits on');
       final from =
           block.lastIndexWhere((l) => RegExp(r'^//\s*\|?\s*v103\b').hasMatch(l));
       expect(from, isNonNegative, reason: 'the fork v103 entry above the constant');

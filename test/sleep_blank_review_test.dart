@@ -1,6 +1,12 @@
-// Review follow-ups to "Not sleep" / "Set the times myself" blanking the night.
+// Review follow-ups to "Not sleep" blanking the night.
 // "I'd rather absence than wrong data": a blanked night shows nothing and is in
 // no score or baseline afterwards.
+//
+// "Set the times myself" ('manual') no longer blanks (merge log D27 revised,
+// owner 2026-10-19): the typed window is staged inside exactly its bounds,
+// each stage carries a {lo, hi} minute range from the data available
+// (`sleep.stage_ranges.value`), and nothing is invented for time with no
+// data. The 'manual' cases below pin that; every 'rejected' case is unchanged.
 //
 //  A. The blank must not depend on the global data watermark. With NO decoded
 //     rows left at all (everything pruned, only `day_result` remains), both
@@ -153,12 +159,30 @@ void main() {
       await expectBlank();
     });
 
+    // A typed window with no data under it at all: the window is the typed
+    // one, the old night is gone, no stage minute is invented, and each
+    // stage's range is the whole window (nothing rules any stage out).
     test('runDays (manual window) with no decoded rows at all', () async {
       await pruneEverything();
-      await _override(_d2, _sec(2025, 9, 5, 12, 30), _sec(2025, 9, 5, 15, 30),
-          'manual');
+      final onset = _sec(2025, 9, 5, 12, 30), offset = _sec(2025, 9, 5, 15, 30);
+      await _override(_d2, onset, offset, 'manual');
       await DerivationEngine().runDays(const Profile(), {_d2}, force: true);
       await expectBlank();
+      final b = await _bundle(_d2);
+      expect(b['sleep_source'], 'manual');
+      final w = ((b['sleep'] as Map?)?['window'] as Map?)?['value'];
+      expect(w, isA<Map>(), reason: 'the typed window is kept on the day');
+      expect(((w as Map)['onset_ms'] as num) ~/ 1000, onset);
+      expect((w['offset_ms'] as num) ~/ 1000, offset);
+      final sc = await _scalars(_d2);
+      for (final k in ['light_min', 'deep_min', 'rem_min']) {
+        expect(sc[k], isNull, reason: '$k: no data, nothing invented');
+      }
+      final r = ((b['sleep'] as Map)['stage_ranges'] as Map?)?['value'] as Map?;
+      expect(r, isNotNull, reason: 'sleep.stage_ranges.value');
+      for (final k in ['wake', 'light', 'deep', 'rem']) {
+        expect(r![k], {'lo': 0, 'hi': 180}, reason: k);
+      }
     });
 
     test('run() with no decoded rows at all', () async {
@@ -413,7 +437,14 @@ void main() {
             reason: 'the unrelated afternoon nap survives: $starts');
         final sc = await _scalars(_d2);
         expect(sc['nap_min'], lessThanOrEqualTo(55));
-        expect(sc['tst_min'], isNull);
+        if (source == 'rejected') {
+          expect(sc['tst_min'], isNull);
+        } else {
+          // D27 revised: the typed window is staged. Only 00:00-05:30 of it
+          // has data (330 min); the still 01:00-05:00 block is the sleep.
+          expect(sc['tst_min'], isA<num>(), reason: 'typed window is staged');
+          expect(sc['tst_min'] as num, inInclusiveRange(1, 331));
+        }
       });
     }
   });
@@ -502,8 +533,10 @@ void main() {
       expect(core(await profile()), after);
     });
 
-    test('a user-set window drops the night too; a CONFIRMED one does not',
-        () async {
+    // D27 revised: a typed window over recorded sleep is a staged night, so it
+    // stays in the profile like a confirmed one. Only "Not sleep" drops it.
+    test('a CONFIRMED or user-set window keeps the night; a rejected one drops '
+        'it', () async {
       await seedEarlierNight();
       await _derive(_d2);
       await _override(_d2, _sec(2025, 9, 4, 23, 30), _sec(2025, 9, 5, 6, 30),
@@ -512,9 +545,13 @@ void main() {
       expect((await profile())['folded_days'], [earlierDay, _d2],
           reason: 'confirmed is a normal staged night');
 
-      await _override(_d2, _sec(2025, 9, 5, 12, 30), _sec(2025, 9, 5, 15, 30),
+      await _override(_d2, _sec(2025, 9, 4, 23, 0), _sec(2025, 9, 5, 7, 0),
           'manual');
       await DerivationEngine().rederiveAfterSleepEdit(const Profile(), _d2);
+      expect((await profile())['folded_days'], [earlierDay, _d2],
+          reason: 'a typed window over the recorded night is staged');
+
+      await reject();
       expect((await profile())['folded_days'], [earlierDay]);
     });
 

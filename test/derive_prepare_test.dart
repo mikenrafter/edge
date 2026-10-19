@@ -123,17 +123,21 @@ void main() {
     expect(inBed, lessThanOrEqualTo(4 * 3600 + 60));
   });
 
-  test('a MANUAL window ("Set the times myself") is blank, even with data in it',
-      () {
+  // D27 revised (owner 2026-10-19): a typed window is staged inside exactly
+  // the typed bounds (upstream's behaviour); 5e205cfe's blanking is retired.
+  test('a MANUAL window ("Set the times myself") is staged inside exactly the '
+      'typed bounds', () {
     final out = withOverride('manual');
     expect(out.days, hasLength(1));
     final day = out.days.first;
-    // The user's times are on record, but nothing is staged from them.
     expect(day.sleepSource, 'manual');
-    expect(day.sleepJson['tst_sec'], isNull);
-    expect(day.sleepOnsetSec, 0);
-    expect(day.sleepOffsetSec, 0);
-    expect(day.flags, isNot(contains('SLEEP_MANUAL')));
+    expect(day.sleepJson['tst_sec'], isNotNull, reason: 'staged, not blank');
+    expect(day.sleepOnsetSec,
+        DateTime(2026, 6, 27, 0, 30).millisecondsSinceEpoch ~/ 1000);
+    expect(day.sleepOffsetSec,
+        DateTime(2026, 6, 27, 4, 30).millisecondsSinceEpoch ~/ 1000);
+    final inBed = (day.sleepJson['in_bed_sec'] as num).toInt();
+    expect(inBed, lessThanOrEqualTo(4 * 3600 + 60));
   });
 
   test(

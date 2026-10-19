@@ -97,8 +97,8 @@ void main() {
       () async {
     final db = await LocalDb.instance;
     await _seedNight(db);
-    // 'confirmed', not 'manual': on this branch a user-typed window blanks the
-    // night's metrics (userBlanksNight), and this test needs the window staged.
+    // 'confirmed': a staged window that agrees with the app, so this test does
+    // not depend on the typed-window ('manual') path.
     await LocalDb.putSleepOverride(
         dayId: _dayId, onsetTs: _onset, offsetTs: _offset, source: 'confirmed');
     // A real prior night for the baseline, and a same-day number written by
