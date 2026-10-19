@@ -152,13 +152,6 @@
       "rule": "dispatcherClosureContract",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "DerivationEngine._crossDayRecord",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
       "element": "DerivationEngine.crossDayInputRecord",
       "count": 1
     },
@@ -684,13 +677,6 @@
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._buildWakeDayFeatures",
-      "element": "banisterTrimp",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._buildWakeDayFeatures",
       "element": "dailyActiveMinutes",
       "count": 1
     },
@@ -720,13 +706,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._buildWakeDayFeatures",
       "element": "strainFromNetTrimp",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._buildWakeDayFeatures",
-      "element": "strainScoreMetric",
       "count": 1
     },
     {
@@ -769,13 +748,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._daytimeHrv",
       "element": "Substrate.rrMs",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._daytimeHrv",
-      "element": "calibrationFor",
       "count": 1
     },
     {
@@ -844,13 +816,6 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._perMinuteMeanWake",
-      "element": "calibrationFor",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._refreshCheckpoint",
       "element": "Substrate.ax",
       "count": 1
@@ -879,13 +844,6 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCheckpoint",
-      "element": "calibrationFor",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._resolveMovementFloor",
       "element": "personalDynFloorFromDailySummaries",
       "count": 1
@@ -902,27 +860,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._restlessness",
       "element": "zAngle",
-      "count": 2
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._runNotificationsUntimed",
-      "element": "cusumChangePoints",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._stepModulusFor",
-      "element": "calibrationFor",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._stepsAndEnergy",
-      "element": "calibrationFor",
       "count": 2
     },
     {
@@ -965,27 +902,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._streamDayTail",
       "element": "Substrate.tsSec",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._streamDayTail",
-      "element": "calibrationFor",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._wakeZoneMinutes",
-      "element": "HeartRateZones.timeInZone",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._wakeZoneMinutes",
-      "element": "TimeInHeartRateZone.toRoundedMinuteMap",
       "count": 1
     },
     {
@@ -1034,13 +950,6 @@
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine.dayRespCurve",
-      "element": "calibrationFor",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine.dayRespCurve",
       "element": "rsaRespRate",
       "count": 1
     },
@@ -1049,13 +958,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine.quietLevelRepassDays",
       "element": "personalQuietWakingHrr",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine.updateStepCalibration",
-      "element": "calibrationFor",
       "count": 1
     },
     {
@@ -1109,37 +1011,9 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/inputs/canonical.dart",
-      "symbol": "sparseHrNight",
-      "element": "calibrationFor",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
       "file": "compute/inputs/colmi_inputs.dart",
       "symbol": "colmiSubstrate",
       "element": "Substrate.tsSec",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/inputs/garmin_inputs.dart",
-      "symbol": "hrMethod",
-      "element": "calibrationFor",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/inputs/garmin_inputs.dart",
-      "symbol": "methodFamily",
-      "element": "calibrationFor",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/inputs/garmin_inputs.dart",
-      "symbol": "sparseHrSubstrate",
-      "element": "calibrationFor",
       "count": 1
     },
     {
@@ -1174,21 +1048,7 @@
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/manual_session.dart",
       "symbol": "strainFromPerMinuteHr",
-      "element": "banisterTrimp",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/manual_session.dart",
-      "symbol": "strainFromPerMinuteHr",
       "element": "strainScoreFromSeries",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/manual_session.dart",
-      "symbol": "strainFromPerMinuteHr",
-      "element": "strainScoreMetric",
       "count": 1
     },
     {
@@ -1203,20 +1063,6 @@
       "file": "compute/onehz_pipeline.dart",
       "symbol": "_dayHrOutsideSleep",
       "element": "DayBundleInput.dayHr",
-      "count": 2
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "_perMinuteWakeSeries",
-      "element": "DayBundleInput.dayHr",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "_perMinuteWakeSeries",
-      "element": "calibrationFor",
       "count": 1
     },
     {
@@ -1224,13 +1070,6 @@
       "file": "compute/onehz_pipeline.dart",
       "symbol": "_strainCurve",
       "element": "strainCurveFromSeries",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "_strainCurve",
-      "element": "strainScore",
       "count": 1
     },
     {
@@ -1595,13 +1434,6 @@
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl.getWeekdayEffect",
       "element": "weekdayEffect",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "LocalRepositoryImpl.getZones",
-      "element": "calibrationFor",
       "count": 1
     },
     {
@@ -2065,13 +1897,6 @@
       "symbol": "DerivationEngine._sleepCandidateForDay",
       "element": "jsonDecode",
       "count": 3
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._storedSleepHistory",
-      "element": "jsonDecode",
-      "count": 1
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
@@ -2657,20 +2482,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/adapters/colmi.dart",
-      "symbol": "ColmiAdapter._collect",
-      "element": "onLog('colmi: dropped a ${f.length}-byte frame, not a real ' '16-byte reply.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/adapters/colmi.dart",
-      "symbol": "ColmiAdapter._collect",
-      "element": "onLog('colmi: dropped a reply tagged ' '0x${f[0].toRadixString(16)} while awaiting ' '0x${cmd.toRadixString(16)} (e.g. an unsolicited push mid-walk).')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/adapters/colmi.dart",
       "symbol": "ColmiAdapter._night",
       "element": "at(n.daysAgo, 0)",
       "count": 1
@@ -2712,13 +2523,6 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "ble/adapters/dafit.dart",
-      "symbol": "DafitAdapter.run",
-      "element": "now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "ble/adapters/garmin.dart",
       "symbol": "GarminAdapter.run",
       "element": "nowSeconds()",
@@ -2736,13 +2540,6 @@
       "file": "ble/adapters/gatt_link.dart",
       "symbol": "GattBandLink.log",
       "element": "onLog(message)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/adapters/gatt_link.dart",
-      "symbol": "GattBandLink.notify",
-      "element": "() async* { if (!_closed) { try { await c.setNotifyValue(true).timeout(_notifyTimeout); } catch (e) { log('notify: setNotifyValue failed: $e'); return; } } // The arrival second is stamped HERE, at the edge of the radio, and // not inside the adapter — it is the closest we can get to when the // notification actually landed, and it keeps `DateTime.now()` out of // adapter code so a fixture can replay one deterministically. yield* c.onValueReceived.map( (v) => (DateTime.now().millisecondsSinceEpoch ~/ 1000, v), ); }()",
       "count": 1
     },
     {
@@ -2978,41 +2775,6 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "ble/adapters/ring11m.dart",
-      "symbol": "Ring11mAdapter.run",
-      "element": "now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/adapters/ring11m.dart",
-      "symbol": "_Inbox.firstWhere",
-      "element": "test(f)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/adapters/ringconn.dart",
-      "symbol": "RingConnAdapter._drainChannel",
-      "element": "nowSeconds()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/adapters/ringconn.dart",
-      "symbol": "_Inbox.firstWhere",
-      "element": "onEach?.call(rec.$2)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/adapters/ringconn.dart",
-      "symbol": "_Inbox.firstWhere",
-      "element": "test(rec.$1)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "ble/adapters/thermometer.dart",
       "symbol": "ThermometerAdapter._observation",
       "element": "nowSeconds()",
@@ -3044,13 +2806,6 @@
       "file": "ble/adapters/ultrahuman.dart",
       "symbol": "_Inbox.firstWhere",
       "element": "test(r)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/adapters/withings_steel_hr.dart",
-      "symbol": "_Inbox.firstWhere",
-      "element": "test(rec.$1)",
       "count": 1
     },
     {
@@ -3114,41 +2869,6 @@
       "file": "ble/android_native_name.dart",
       "symbol": "AndroidNativeName.of",
       "element": "debugPrint('[ble_native] remoteDeviceName($remoteId) failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/banglejs_link.dart",
-      "symbol": "BangleJsLink._sync",
-      "element": "debugPrint('[banglejs] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/banglejs_link.dart",
-      "symbol": "BangleJsLink._sync",
-      "element": "debugPrint('[banglejs] ${kBangleJs.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/banglejs_link.dart",
-      "symbol": "BangleJsLink._sync",
-      "element": "debugPrint('[banglejs] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/banglejs_link.dart",
-      "symbol": "BangleJsLink._sync",
-      "element": "debugPrint('[banglejs] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/banglejs_link.dart",
-      "symbol": "BangleJsLink.forget",
-      "element": "debugPrint('[banglejs] refusing to forget the primary band from here.')",
       "count": 1
     },
     {
@@ -3358,13 +3078,6 @@
       "rule": "unresolvedInvocation",
       "file": "ble/ble_engine.dart",
       "symbol": "BleEngine._processImmediateFrame",
-      "element": "onEvent?.call( StrapEvent.fromEventInfo( e, receivedAt: clock(), hex: _innerHex(frame.inner), deviceId: LocalDb.kPrimaryDeviceId, ), )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ble_engine.dart",
-      "symbol": "BleEngine._processImmediateFrame",
       "element": "onEvent?.call( StrapEvent.fromEventInfo( e, receivedAt: clock(), hex: _innerHex(frame.inner), deviceId: LocalDb.kPrimaryDeviceId, profile: profile, ), )",
       "count": 1
     },
@@ -3450,13 +3163,6 @@
       "file": "ble/ble_engine.dart",
       "symbol": "BleEngine._storeRecord",
       "element": "onRecord(sample, raw)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ble_engine.dart",
-      "symbol": "BleEngine._subscribe",
-      "element": "onState(state)",
       "count": 1
     },
     {
@@ -3602,20 +3308,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/ble_engine.dart",
-      "symbol": "DrainController.commit",
-      "element": "commit(raws, samples, tokenHex, archives: archives, ecgRawPackets: ecgRaw)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ble_engine.dart",
-      "symbol": "DrainController.commit",
-      "element": "log('offload commit FAILED ($e) — ${raws.length} records + ' '${archives.length} archived + ${ecgRaw.length} raw ECG ' 're-buffered; the caller MUST NOT ACK ' 'this chunk (the band still holds it).')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ble_engine.dart",
       "symbol": "DrainController.discardOpenChunk",
       "element": "log('discarding ${_raws.length} un-ACKed buffered records + ' '${_archives.length} archived + ${_ecgRaw.length} raw ECG (idle). ' 'This burst\\'s HISTORY_END token is now un-ACKable — the band keeps ' 'the chunk.')",
       "count": 1
@@ -3678,55 +3370,6 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "ble/casio_link.dart",
-      "symbol": "CasioLink._sync",
-      "element": "debugPrint('[casio] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/casio_link.dart",
-      "symbol": "CasioLink._sync",
-      "element": "debugPrint('[casio] ${kCasio.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/casio_link.dart",
-      "symbol": "CasioLink._sync",
-      "element": "debugPrint('[casio] connect failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/casio_link.dart",
-      "symbol": "CasioLink._sync",
-      "element": "debugPrint('[casio] paired-row lookup failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/casio_link.dart",
-      "symbol": "CasioLink._sync",
-      "element": "debugPrint('[casio] probe window elapsed before the session ' 'finished.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/casio_link.dart",
-      "symbol": "CasioLink._sync",
-      "element": "debugPrint('[casio] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/casio_link.dart",
-      "symbol": "CasioLink._sync",
-      "element": "debugPrint('[casio] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "ble/colmi_link.dart",
       "symbol": "ColmiLink._sync",
       "element": "debugPrint('[colmi] $m')",
@@ -3778,13 +3421,6 @@
       "rule": "unresolvedInvocation",
       "file": "ble/colmi_link.dart",
       "symbol": "ColmiLink.ingestForTest",
-      "element": "reply(served, link.writes[served].$2)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/colmi_link.dart",
-      "symbol": "ColmiLink.ingestForTest",
       "element": "reply(served, value)",
       "count": 1
     },
@@ -3825,83 +3461,6 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "ble/dafit_link.dart",
-      "symbol": "DafitLink._makeHost",
-      "element": "debugPrint('[dafit] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/dafit_link.dart",
-      "symbol": "DafitLink._sync",
-      "element": "debugPrint('[dafit] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/dafit_link.dart",
-      "symbol": "DafitLink._sync",
-      "element": "debugPrint('[dafit] ${kDafit.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/dafit_link.dart",
-      "symbol": "DafitLink._sync",
-      "element": "debugPrint('[dafit] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/dafit_link.dart",
-      "symbol": "DafitLink._sync",
-      "element": "debugPrint('[dafit] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/dafit_link.dart",
-      "symbol": "DafitLink.forget",
-      "element": "debugPrint('[dafit] refusing to forget the primary band from here.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/dt78_link.dart",
-      "symbol": "Dt78Link._sync",
-      "element": "debugPrint('[dt78] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/dt78_link.dart",
-      "symbol": "Dt78Link._sync",
-      "element": "debugPrint('[dt78] ${kDt78.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/dt78_link.dart",
-      "symbol": "Dt78Link._sync",
-      "element": "debugPrint('[dt78] connect failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/dt78_link.dart",
-      "symbol": "Dt78Link._sync",
-      "element": "debugPrint('[dt78] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/dt78_link.dart",
-      "symbol": "Dt78Link._sync",
-      "element": "debugPrint('[dt78] sync failed: $e')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "ble/garmin_link.dart",
       "symbol": "GarminLink._handleNote",
       "element": "debugPrint('[garmin] $key = $value')",
@@ -3919,13 +3478,6 @@
       "file": "ble/garmin_link.dart",
       "symbol": "GarminLink._sync",
       "element": "debugPrint('[garmin] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/garmin_link.dart",
-      "symbol": "GarminLink._sync",
-      "element": "debugPrint('[garmin] ${kGarmin.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
       "count": 1
     },
     {
@@ -3968,41 +3520,6 @@
       "file": "ble/garmin_link.dart",
       "symbol": "GarminLink.ingestForTest",
       "element": "reply(link.writes[served++].$2)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/hplus_link.dart",
-      "symbol": "HPlusLink._handleNote",
-      "element": "debugPrint('[hplus] $key = $value')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/hplus_link.dart",
-      "symbol": "HPlusLink._sync",
-      "element": "debugPrint('[hplus] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/hplus_link.dart",
-      "symbol": "HPlusLink._sync",
-      "element": "debugPrint('[hplus] ${kHPlus.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/hplus_link.dart",
-      "symbol": "HPlusLink._sync",
-      "element": "debugPrint('[hplus] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/hplus_link.dart",
-      "symbol": "HPlusLink._sync",
-      "element": "debugPrint('[hplus] sync failed: $e')",
       "count": 1
     },
     {
@@ -4140,177 +3657,9 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "ble/id115_link.dart",
-      "symbol": "Id115Link._sync",
-      "element": "debugPrint('[id115] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/id115_link.dart",
-      "symbol": "Id115Link._sync",
-      "element": "debugPrint('[id115] ${kId115.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/id115_link.dart",
-      "symbol": "Id115Link._sync",
-      "element": "debugPrint('[id115] connect failed: $e')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/id115_link.dart",
-      "symbol": "Id115Link._sync",
-      "element": "debugPrint('[id115] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/id115_link.dart",
-      "symbol": "Id115Link._sync",
-      "element": "debugPrint('[id115] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "ble/ios_ble_restore.dart",
       "symbol": "IosBleRestore.init",
       "element": "debugPrint('[ios-restore] headless sync threw: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/jyou_link.dart",
-      "symbol": "JyouLink._handleNote",
-      "element": "debugPrint('[jyou] $key = $value')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/jyou_link.dart",
-      "symbol": "JyouLink._sync",
-      "element": "debugPrint('[jyou] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/jyou_link.dart",
-      "symbol": "JyouLink._sync",
-      "element": "debugPrint('[jyou] ${kJyou.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/jyou_link.dart",
-      "symbol": "JyouLink._sync",
-      "element": "debugPrint('[jyou] connect failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/jyou_link.dart",
-      "symbol": "JyouLink._sync",
-      "element": "debugPrint('[jyou] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/jyou_link.dart",
-      "symbol": "JyouLink._sync",
-      "element": "debugPrint('[jyou] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/lefun_link.dart",
-      "symbol": "LefunLink._syncOne",
-      "element": "debugPrint('[lefun] $key = $value')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/lefun_link.dart",
-      "symbol": "LefunLink._syncOne",
-      "element": "debugPrint('[lefun] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/lefun_link.dart",
-      "symbol": "LefunLink._syncOne",
-      "element": "debugPrint('[lefun] ${kLefun.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/lefun_link.dart",
-      "symbol": "LefunLink._syncOne",
-      "element": "debugPrint('[lefun] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/lefun_link.dart",
-      "symbol": "LefunLink._syncOne",
-      "element": "debugPrint('[lefun] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/lefun_link.dart",
-      "symbol": "LefunLink.ingestForTest",
-      "element": "debugPrint('[lefun] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/lefun_link.dart",
-      "symbol": "LefunLink.ingestForTest",
-      "element": "reply(served, link.writes[served].$2)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/makibeshr3_link.dart",
-      "symbol": "MakibesHr3Link._sync",
-      "element": "debugPrint('[makibeshr3] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/makibeshr3_link.dart",
-      "symbol": "MakibesHr3Link._sync",
-      "element": "debugPrint('[makibeshr3] ${kMakibesHr3.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/makibeshr3_link.dart",
-      "symbol": "MakibesHr3Link._sync",
-      "element": "debugPrint('[makibeshr3] connect failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/makibeshr3_link.dart",
-      "symbol": "MakibesHr3Link._sync",
-      "element": "debugPrint('[makibeshr3] refusing to sync: the row claims the ' 'primary device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/makibeshr3_link.dart",
-      "symbol": "MakibesHr3Link._sync",
-      "element": "debugPrint('[makibeshr3] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/makibeshr3_link.dart",
-      "symbol": "MakibesHr3Link.ingestForTest",
-      "element": "debugPrint('[makibeshr3] $m')",
       "count": 1
     },
     {
@@ -4394,13 +3743,6 @@
       "rule": "unresolvedInvocation",
       "file": "ble/miband_link.dart",
       "symbol": "MiBand234Link.ingestForTest",
-      "element": "reply(served, link.writes[served].$2)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/miband_link.dart",
-      "symbol": "MiBand234Link.ingestForTest",
       "element": "reply(served, value)",
       "count": 1
     },
@@ -4423,69 +3765,6 @@
       "file": "ble/miband_link.dart",
       "symbol": "pairMiBand234",
       "element": "matches(f)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/o2ring_link.dart",
-      "symbol": "O2RingLink._handleNote",
-      "element": "debugPrint('[o2ring] $key = $value')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/o2ring_link.dart",
-      "symbol": "O2RingLink._makeHost",
-      "element": "debugPrint('[o2ring] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/o2ring_link.dart",
-      "symbol": "O2RingLink._sync",
-      "element": "debugPrint('[o2ring] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/o2ring_link.dart",
-      "symbol": "O2RingLink._sync",
-      "element": "debugPrint('[o2ring] ${kO2Ring.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/o2ring_link.dart",
-      "symbol": "O2RingLink._sync",
-      "element": "debugPrint('[o2ring] refusing to sync: the ring row claims the ' 'primary device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/o2ring_link.dart",
-      "symbol": "O2RingLink._sync",
-      "element": "debugPrint('[o2ring] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/o2ring_link.dart",
-      "symbol": "O2RingLink.forgetRing",
-      "element": "debugPrint('[o2ring] refusing to forget the primary band from here.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/o2ring_link.dart",
-      "symbol": "pairO2Ring",
-      "element": "debugPrint('[o2ring pair] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/o2ring_link.dart",
-      "symbol": "pairO2Ring",
-      "element": "debugPrint('[o2ring pair] failed: $e')",
       "count": 1
     },
     {
@@ -4652,20 +3931,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/oura_link.dart",
-      "symbol": "OuraLink.ingestForTest",
-      "element": "_now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/oura_link.dart",
-      "symbol": "OuraLink.ingestForTest",
-      "element": "reply(served, link.writes[served].$2)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/oura_link.dart",
       "symbol": "OuraLink.startSessionForTest",
       "element": "onLink?.call(link)",
       "count": 1
@@ -4756,27 +4021,6 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "ble/oura_link.dart",
-      "symbol": "pairOuraRing",
-      "element": "debugPrint('[oura pair] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/oura_link.dart",
-      "symbol": "pairOuraRing",
-      "element": "debugPrint('[oura pair] failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/oura_link.dart",
-      "symbol": "pairOuraRing",
-      "element": "matches(f)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "ble/pebble_link.dart",
       "symbol": "PebbleLink._makeHost",
       "element": "debugPrint('[pebble] $m')",
@@ -4787,7 +4031,7 @@
       "file": "ble/pebble_link.dart",
       "symbol": "PebbleLink._sync",
       "element": "debugPrint('[pebble] $m')",
-      "count": 2
+      "count": 1
     },
     {
       "rule": "unresolvedInvocation",
@@ -4821,13 +4065,6 @@
       "rule": "unresolvedInvocation",
       "file": "ble/pebble_link.dart",
       "symbol": "PebbleLink.ingestForTest",
-      "element": "debugPrint('[pebble] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/pebble_link.dart",
-      "symbol": "PebbleLink.ingestForTest",
       "element": "now()",
       "count": 2
     },
@@ -4840,178 +4077,10 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "ble/pinetime_link.dart",
-      "symbol": "PineTimeLink._makeHost",
-      "element": "debugPrint('[pinetime] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/pinetime_link.dart",
-      "symbol": "PineTimeLink._sync",
-      "element": "debugPrint('[pinetime] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/pinetime_link.dart",
-      "symbol": "PineTimeLink._sync",
-      "element": "debugPrint('[pinetime] ${kPineTime.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/pinetime_link.dart",
-      "symbol": "PineTimeLink._sync",
-      "element": "debugPrint('[pinetime] connect failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/pinetime_link.dart",
-      "symbol": "PineTimeLink._sync",
-      "element": "debugPrint('[pinetime] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/pinetime_link.dart",
-      "symbol": "PineTimeLink._sync",
-      "element": "debugPrint('[pinetime] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "ble/polar_pmd_link.dart",
       "symbol": "PolarPmdLink._arm",
       "element": "debugPrint('[polar_pmd] $m')",
       "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/qhybrid_link.dart",
-      "symbol": "QHybridLink._sync",
-      "element": "debugPrint('[qhybrid] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/qhybrid_link.dart",
-      "symbol": "QHybridLink._sync",
-      "element": "debugPrint('[qhybrid] ${kQHybrid.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/qhybrid_link.dart",
-      "symbol": "QHybridLink._sync",
-      "element": "debugPrint('[qhybrid] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/qhybrid_link.dart",
-      "symbol": "QHybridLink._sync",
-      "element": "debugPrint('[qhybrid] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/qhybrid_link.dart",
-      "symbol": "QHybridLink.forget",
-      "element": "debugPrint('[qhybrid] refusing to forget the primary band from here.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ring11m_link.dart",
-      "symbol": "Ring11mLink._sync",
-      "element": "debugPrint('[ring11m] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ring11m_link.dart",
-      "symbol": "Ring11mLink._sync",
-      "element": "debugPrint('[ring11m] ${kRing11m.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ring11m_link.dart",
-      "symbol": "Ring11mLink._sync",
-      "element": "debugPrint('[ring11m] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ring11m_link.dart",
-      "symbol": "Ring11mLink._sync",
-      "element": "debugPrint('[ring11m] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ring11m_link.dart",
-      "symbol": "Ring11mLink.forget",
-      "element": "debugPrint('[ring11m] refusing to forget the primary band from here.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ringconn_link.dart",
-      "symbol": "RingConnLink._makeHost",
-      "element": "debugPrint('[ringconn] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ringconn_link.dart",
-      "symbol": "RingConnLink._sync",
-      "element": "debugPrint('[ringconn] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ringconn_link.dart",
-      "symbol": "RingConnLink._sync",
-      "element": "debugPrint('[ringconn] ${kRingConn.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ringconn_link.dart",
-      "symbol": "RingConnLink._sync",
-      "element": "debugPrint('[ringconn] refusing to sync: the ring row claims the ' 'primary device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ringconn_link.dart",
-      "symbol": "RingConnLink._sync",
-      "element": "debugPrint('[ringconn] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ringconn_link.dart",
-      "symbol": "RingConnLink.forgetRing",
-      "element": "debugPrint('[ringconn] refusing to forget the primary band from here.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ringconn_link.dart",
-      "symbol": "RingConnLink.ingestForTest",
-      "element": "_now()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ringconn_link.dart",
-      "symbol": "RingConnLink.ingestForTest",
-      "element": "reply(served, link.writes[served].$2)",
-      "count": 1
     },
     {
       "rule": "unresolvedInvocation",
@@ -5099,83 +4168,6 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "ble/smaq2oss_link.dart",
-      "symbol": "Smaq2ossLink._sync",
-      "element": "debugPrint('[smaq2oss] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/smaq2oss_link.dart",
-      "symbol": "Smaq2ossLink._sync",
-      "element": "debugPrint('[smaq2oss] ${kSmaq2oss.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/smaq2oss_link.dart",
-      "symbol": "Smaq2ossLink._sync",
-      "element": "debugPrint('[smaq2oss] connect failed: $e')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/smaq2oss_link.dart",
-      "symbol": "Smaq2ossLink._sync",
-      "element": "debugPrint('[smaq2oss] refusing to sync: the row claims the ' 'primary device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/smaq2oss_link.dart",
-      "symbol": "Smaq2ossLink._sync",
-      "element": "debugPrint('[smaq2oss] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/tlw64_link.dart",
-      "symbol": "Tlw64Link._sync",
-      "element": "debugPrint('[tlw64] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/tlw64_link.dart",
-      "symbol": "Tlw64Link._sync",
-      "element": "debugPrint('[tlw64] ${kNo1Band.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/tlw64_link.dart",
-      "symbol": "Tlw64Link._sync",
-      "element": "debugPrint('[tlw64] connect failed: $e')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/tlw64_link.dart",
-      "symbol": "Tlw64Link._sync",
-      "element": "debugPrint('[tlw64] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/tlw64_link.dart",
-      "symbol": "Tlw64Link._sync",
-      "element": "debugPrint('[tlw64] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/tlw64_link.dart",
-      "symbol": "Tlw64Link.ingestForTest",
-      "element": "debugPrint('[tlw64] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "ble/transport.dart",
       "symbol": "BleEngineTransport._scanLocked",
       "element": "e.nameMatcher?.call(name)",
@@ -5186,13 +4178,6 @@
       "file": "ble/ultrahuman_link.dart",
       "symbol": "UltrahumanLink._handleNote",
       "element": "debugPrint('[ultrahuman] $key = $value')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/ultrahuman_link.dart",
-      "symbol": "UltrahumanLink._handleNote",
-      "element": "debugPrint('[ultrahuman] the bookmark is past the end of the ring — ' 'dropping it so the next sync re-reads from the beginning.')",
       "count": 1
     },
     {
@@ -5276,237 +4261,6 @@
       "rule": "unresolvedInvocation",
       "file": "ble/ultrahuman_link.dart",
       "symbol": "UltrahumanLink.ingestForTest",
-      "element": "reply(served, link.writes[served].$2)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/watch9_link.dart",
-      "symbol": "Watch9Link._sync",
-      "element": "debugPrint('[watch9] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/watch9_link.dart",
-      "symbol": "Watch9Link._sync",
-      "element": "debugPrint('[watch9] ${kWatch9.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/watch9_link.dart",
-      "symbol": "Watch9Link._sync",
-      "element": "debugPrint('[watch9] connect failed: $e')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/watch9_link.dart",
-      "symbol": "Watch9Link._sync",
-      "element": "debugPrint('[watch9] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/watch9_link.dart",
-      "symbol": "Watch9Link._sync",
-      "element": "debugPrint('[watch9] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/wearfit_link.dart",
-      "symbol": "WearFitLink._handleNote",
-      "element": "debugPrint('[wearfit] $key = $value')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/wearfit_link.dart",
-      "symbol": "WearFitLink._sync",
-      "element": "debugPrint('[wearfit] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/wearfit_link.dart",
-      "symbol": "WearFitLink._sync",
-      "element": "debugPrint('[wearfit] ${kWearFit.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/wearfit_link.dart",
-      "symbol": "WearFitLink._sync",
-      "element": "debugPrint('[wearfit] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/wearfit_link.dart",
-      "symbol": "WearFitLink._sync",
-      "element": "debugPrint('[wearfit] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/wearfit_link.dart",
-      "symbol": "WearFitLink.forgetDevice",
-      "element": "debugPrint('[wearfit] refusing to forget the primary band from here.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/withings_steel_hr_link.dart",
-      "symbol": "WithingsSteelHrLink._makeHost",
-      "element": "debugPrint('[withings_steel_hr] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/withings_steel_hr_link.dart",
-      "symbol": "WithingsSteelHrLink._sync",
-      "element": "debugPrint('[withings_steel_hr] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/withings_steel_hr_link.dart",
-      "symbol": "WithingsSteelHrLink._sync",
-      "element": "debugPrint('[withings_steel_hr] ${kWithingsSteelHr.label}: ' 'missing required characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/withings_steel_hr_link.dart",
-      "symbol": "WithingsSteelHrLink._sync",
-      "element": "debugPrint('[withings_steel_hr] refusing to sync: the row claims the ' 'primary device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/withings_steel_hr_link.dart",
-      "symbol": "WithingsSteelHrLink._sync",
-      "element": "debugPrint('[withings_steel_hr] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/withings_steel_hr_link.dart",
-      "symbol": "WithingsSteelHrLink.forgetDevice",
-      "element": "debugPrint('[withings_steel_hr] refusing to forget the primary band ' 'from here.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/withings_steel_hr_link.dart",
-      "symbol": "WithingsSteelHrLink.ingestForTest",
-      "element": "reply(served, link.writes[served].$2)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/withings_steel_hr_link.dart",
-      "symbol": "pairWithingsSteelHr",
-      "element": "debugPrint('[withings_steel_hr pair] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/withings_steel_hr_link.dart",
-      "symbol": "pairWithingsSteelHr",
-      "element": "debugPrint('[withings_steel_hr pair] failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/xwatch_link.dart",
-      "symbol": "XWatchLink._sync",
-      "element": "debugPrint('[xwatch] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/xwatch_link.dart",
-      "symbol": "XWatchLink._sync",
-      "element": "debugPrint('[xwatch] ${kXWatch.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/xwatch_link.dart",
-      "symbol": "XWatchLink._sync",
-      "element": "debugPrint('[xwatch] connect failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/xwatch_link.dart",
-      "symbol": "XWatchLink._sync",
-      "element": "debugPrint('[xwatch] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/xwatch_link.dart",
-      "symbol": "XWatchLink._sync",
-      "element": "debugPrint('[xwatch] session failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/xwatch_link.dart",
-      "symbol": "XWatchLink._sync",
-      "element": "debugPrint('[xwatch] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/zetime_link.dart",
-      "symbol": "ZeTimeLink._handleNote",
-      "element": "debugPrint('[zetime] $key = $value')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/zetime_link.dart",
-      "symbol": "ZeTimeLink._sync",
-      "element": "debugPrint('[zetime] $m')",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/zetime_link.dart",
-      "symbol": "ZeTimeLink._sync",
-      "element": "debugPrint('[zetime] ${kZeTime.label}: missing required ' 'characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/zetime_link.dart",
-      "symbol": "ZeTimeLink._sync",
-      "element": "debugPrint('[zetime] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/zetime_link.dart",
-      "symbol": "ZeTimeLink._sync",
-      "element": "debugPrint('[zetime] sync failed: $e')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/zetime_link.dart",
-      "symbol": "ZeTimeLink.ingestForTest",
-      "element": "debugPrint('[zetime] $m')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/zetime_link.dart",
-      "symbol": "ZeTimeLink.ingestForTest",
       "element": "reply(served, link.writes[served].$2)",
       "count": 1
     },
@@ -6325,13 +5079,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "data/auto_backup.dart",
-      "symbol": "_runBackup",
-      "element": "(exportSnapshot ?? LocalDb.exportCopy)()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/auto_backup.dart",
       "symbol": "_serialize",
       "element": "body()",
       "count": 1
@@ -6437,13 +5184,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "data/db.dart",
-      "symbol": "LocalDb.exportDaysDb",
-      "element": "onPage(clean)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
       "symbol": "LocalDb.failComputeJob",
       "element": "nowMs()",
       "count": 1
@@ -6459,21 +5199,7 @@
       "rule": "unresolvedInvocation",
       "file": "data/db.dart",
       "symbol": "LocalDb.insertEvent",
-      "element": "() { try { return proto.parseEvent(proto.hexToBytes(hex)); } catch (_) { return null; } }()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.insertEvent",
       "element": "() { try { return proto.parseEvent(proto.hexToBytes(hex), profile: profile); } catch (_) { return null; } }()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.putBaseline",
-      "element": "nowMs()",
       "count": 1
     },
     {
@@ -10546,13 +9272,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "state/app_state.dart",
-      "symbol": "AppState.requestPhoneSteps",
-      "element": "() async { await syncPhoneSteps(days: PhonePedometer.fullSyncDays); // `_reanalyzeForOverride` no-ops while another derive is running, and // the full sync above takes long enough (7 days of hourly platform // reads) that a drain-triggered pass can easily have started. Dropping // it silently leaves the freshly-banked rows out of `day_result` and // the tile on a dash — the exact \"looks broken\" symptom this call was // added to prevent. Wait for the other pass, bounded, then run. for (var i = 0; i < 60 && reanalyzing; i++) { await Future<void>.delayed(const Duration(seconds: 1)); } await _reanalyzeForOverride(); }()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/app_state.dart",
       "symbol": "AppState.setExpectedSleepSchedule",
       "element": "sleepOperations.saveSchedule(next.toJson())",
       "count": 1
@@ -12220,13 +10939,6 @@
       "rule": "unresolvedInvocation",
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
-      "element": "_dismissSupersededSuggestions( startSec: row['start_ts'] as int, endSec: finalEndTs, )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
       "element": "_dismissSupersededSuggestions( startSec: startTs, endSec: finalEndTs, )",
       "count": 1
     },
@@ -12234,21 +10946,7 @@
       "rule": "unresolvedInvocation",
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
-      "element": "_linkDeviceFamily()",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
       "element": "_liveRaw()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
-      "element": "_liveRestingHr()",
       "count": 1
     },
     {
@@ -12304,21 +11002,7 @@
       "rule": "unresolvedInvocation",
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
-      "element": "_observedCeilingBpm()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
       "element": "_refreshNightlyRhr()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
-      "element": "_rhr28()",
       "count": 1
     },
     {
@@ -12327,13 +11011,6 @@
       "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
       "element": "_setWorkoutActive(true)",
       "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
-      "element": "_user()",
-      "count": 5
     },
     {
       "rule": "unresolvedInvocation",
@@ -12354,20 +11031,13 @@
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.startWorkout",
       "element": "_linkDeviceFamily()",
-      "count": 3
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.startWorkout",
-      "element": "_liveRaw()",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.startWorkout",
-      "element": "_liveRestingHr()",
+      "element": "_liveRaw()",
       "count": 1
     },
     {
@@ -12388,13 +11058,6 @@
       "rule": "unresolvedInvocation",
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.startWorkout",
-      "element": "_observedCeilingBpm()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.startWorkout",
       "element": "_refreshNightlyRhr()",
       "count": 1
     },
@@ -12409,22 +11072,8 @@
       "rule": "unresolvedInvocation",
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.startWorkout",
-      "element": "_rhr28()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.startWorkout",
       "element": "_setWorkoutActive(true)",
       "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.startWorkout",
-      "element": "_user()",
-      "count": 5
     },
     {
       "rule": "unresolvedInvocation",
@@ -12508,13 +11157,6 @@
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.stopWorkout",
       "element": "_setWorkoutActive(false)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController.workoutStepsMeasured",
-      "element": "_liveRaw()",
       "count": 1
     },
     {
@@ -13433,13 +12075,6 @@
       "symbol": "Scrubber.build",
       "element": "onEnd?.call()",
       "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/grammar.dart",
-      "symbol": "SubTabs.build",
-      "element": "onTap(i)",
-      "count": 1
     },
     {
       "rule": "unresolvedInvocation",
@@ -14370,13 +13005,6 @@
       "file": "ui2/profile/pair_sensor.dart",
       "symbol": "_PairSensorScreenState._pickDevice",
       "element": "widget.onPickedWithKey!(device, typedKey)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/pair_sensor.dart",
-      "symbol": "_PairSensorScreenState._pick",
-      "element": "widget.onPicked!(c.device)",
       "count": 1
     },
     {

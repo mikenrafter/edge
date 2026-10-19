@@ -359,6 +359,7 @@ class HeavyGuardConfig {
     LightApi('unknownFamilyNote', 'formats one string'),
     LightApi('needBaselineNote', 'formats one string'),
     LightApi('StrainScorer.banisterY', 'O(1) scalar math'),
+    LightApi('calibrationFor', 'one map lookup by device family'),
   ];
 
   /// The real `lib/` of this repo.
