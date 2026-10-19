@@ -31,7 +31,10 @@ import 'dart:math' as math;
 import 'quiet_level_seed.dart' show seedQuietHrrHistoryOnce;
 import 'strain_backfill.dart' show backfillStrainScale;
 import 'readiness_calibration_backfill.dart'
-    show backfillReadinessCalibration, seedRecentReadinessZ;
+    show
+        backfillReadinessCalibration,
+        readinessCalibrationDone,
+        seedRecentReadinessZ;
 
 import 'package:crypto/crypto.dart' show sha1, sha256;
 import 'package:flutter/foundation.dart';
@@ -3740,6 +3743,7 @@ class DerivationEngine {
       return 0;
     }
     _running = true;
+    beginWearableDayIndexPass();
     _calcStage('Reading recordings');
     var passComputed = 0;
     var passTransient = 0;
@@ -4204,7 +4208,9 @@ class DerivationEngine {
       // derive" and "no decoded data".
       _diag['stage'] = 'readiness_calibration';
       try {
-        final r = await backfillReadinessCalibration(
+        final r = await readinessCalibrationDone()
+            ? (seeded: 0, rescored: 0, forced: 0)
+            : await backfillReadinessCalibration(
           // Both substrate sources, as `_deriveScope` reads them: a wearable
           // day with rows is the derive's, not the re-score's.
           rawDays: await substrateDays(),
@@ -4231,6 +4237,7 @@ class DerivationEngine {
       // kept serving the previous one.
       await _settled();
       _calcStage(null);
+      endWearableDayIndexPass();
       _running = false;
       final finishedAt = DateTime.now().millisecondsSinceEpoch;
       _diag
@@ -4267,6 +4274,7 @@ class DerivationEngine {
     if (days.isEmpty) return 0;
     if (_running) return 0;
     _running = true;
+    beginWearableDayIndexPass();
     _calcStage('Reading recordings');
     perf.startPass();
     final startedAt = DateTime.now().millisecondsSinceEpoch;
@@ -4452,6 +4460,7 @@ class DerivationEngine {
         ..['stage'] = 'idle'
         ..['finished_at'] = finishedAt
         ..['duration_ms'] = finishedAt - startedAt;
+      endWearableDayIndexPass();
       _running = false;
     }
   }
@@ -6107,6 +6116,7 @@ class DerivationEngine {
   }) async {
     if (_running) return 0;
     _running = true;
+    beginWearableDayIndexPass();
     // Measured only once the baseline gate lets a rescan through: the gated
     // no-op runs after every heavy pass and must not wipe the last real pass.
     var perfStarted = false;
@@ -6252,6 +6262,7 @@ class DerivationEngine {
       if (perfStarted) _calcStage('Tidying up');
       await _runStorageHousekeeping();
       _calcStage(null);
+      endWearableDayIndexPass();
       _running = false;
     }
   }

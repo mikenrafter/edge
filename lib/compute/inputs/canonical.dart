@@ -174,13 +174,11 @@ Future<Set<String>> _wearableDays() async {
 /// active wearable's rows (only when its flag is on).
 Future<Set<String>> substrateDays() async {
   debugSubstrateDaysCalls++;
-  return _substrateDays();
-}
-
-Future<Set<String>> _substrateDays() async => {
+  return {
       ...(await LocalDb.decodedRecTsMaxByDay()).keys,
       ...await _wearableDays(),
     };
+}
 
 /// Runs [change], then hands every day it moved (each day the old wearable
 /// or the new one has rows for) to [onWearableDaysChanged], and returns them.
@@ -576,6 +574,34 @@ Future<List<String>> flagOnOrPrimary(List<String> ids,
 /// days a flagged-on strap recorded a session in while the wearable was off
 /// or charging ([wearableSubstrate] lays the session over the empty day).
 Future<Map<String, int>> wearableRecTsMaxByDay(
+    (String, String) wearable) {
+  final cache = _passDayIndex;
+  if (cache == null) return _scanWearableRecTsMaxByDay(wearable);
+  return cache.putIfAbsent(
+      '${wearable.$1}|${wearable.$2}', () => _scanWearableRecTsMaxByDay(wearable));
+}
+
+/// Full scans of the active wearable's day index (a test reads this).
+int debugWearableDayIndexScans = 0;
+
+/// Calls to [substrateDays] (a test reads this).
+int debugSubstrateDaysCalls = 0;
+
+// The per-day index for the length of one derive pass: it is a scan of every
+// retained wearable row, and a pass asks for it from the scope, the data
+// edge, the aging edge and the rescan. Null outside a pass (every call scans).
+// Wearable rows are written by the link, never by a derive, so the index
+// holds for the pass; the next pass starts a fresh one.
+Map<String, Future<Map<String, int>>>? _passDayIndex;
+
+/// A derive pass begins: [wearableRecTsMaxByDay] scans once until
+/// [endWearableDayIndexPass].
+void beginWearableDayIndexPass() => _passDayIndex = {};
+
+/// The pass is over (call from `finally`): the next call scans afresh.
+void endWearableDayIndexPass() => _passDayIndex = null;
+
+Future<Map<String, int>> _scanWearableRecTsMaxByDay(
     (String, String) wearable) async {
   debugWearableDayIndexScans++;
   final out = {
@@ -1626,6 +1652,3 @@ Future<List<Map<String, Object?>>> _ouraNightRows(
           k == 'spo2_avg' ? '%' : 'ms', lo),
   ];
 }
-
-int debugWearableDayIndexScans = 0;
-int debugSubstrateDaysCalls = 0;

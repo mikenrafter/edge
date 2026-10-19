@@ -164,6 +164,13 @@ Future<int> seedRecentReadinessZ() async {
   return n;
 }
 
+/// True once the backfill has finished for good: the caller then skips
+/// building its [backfillReadinessCalibration] inputs (a day set that costs a
+/// scan of every retained row) on every later pass.
+Future<bool> readinessCalibrationDone() async =>
+    _decode((await LocalDb.computeFreshness(
+        kReadinessCalibrationKey))?['payload_json'])?['done'] == true;
+
 /// AFTER the derive: seed `readiness_z` for the rest of history, then re-score
 /// every stored day below [kAlgoVersion] that has no raw substrate left
 /// ([rawDays] = the days that still have decoded rows; a day with substrate
