@@ -6416,7 +6416,13 @@ class DerivationEngine {
     // plus the tail; when it cannot, the missing beats are read back.
     DayTailResult? stream;
     if (day.rrResume != null) {
-      if (resumed) stream = await _streamDayTail(day);
+      // Tonight's sleep begun before midnight cuts daytime HRV, which the
+      // streamed value has no cut for and the tail's beats alone cannot give
+      // (same rule as the wake series and the HR dip: D16/D25): that day reads
+      // its whole beats.
+      if (resumed && day.tonightSleepOnsetSec <= 0) {
+        stream = await _streamDayTail(day);
+      }
       if (stream == null) day = await _withFullRr(day);
     }
     final streamedBeats = stream?.tailRr.length ?? 0;
