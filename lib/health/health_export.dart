@@ -447,6 +447,12 @@ class HealthExporter {
   final _health = Health();
   final HealthExportPlatform _platform;
   final _workoutLock = _AsyncMutex();
+  /// Each day's sleep end (null = no night) from the `sleepWindow` light
+  /// reads of the running [exportAll] pass, so the Android scan and the
+  /// "previous wake" of a night-less day never read one day twice. Reset at
+  /// the start of every pass, under the export lock.
+  Map<String, DateTime?>? _passWakes;
+
   final _androidSleep = HealthConnectSleepSessionExporter(
     writer: MethodChannelHealthConnectSleepSessionWriter(),
   );
@@ -868,6 +874,7 @@ class HealthExporter {
     if (await _androidUnavailable() != null) return 0; // HC missing/outdated
     return _workoutLock.run(() async {
     _storeHung = false;
+    _passWakes = {};
     if (Prefs.getBool(Prefs.demoModeEnabled, false)) return 0;
     // The store this export started on. A wipe, merge, rebuild or reopen
     // during the pass aborts it: nothing may be exported from, or stamped
@@ -995,9 +1002,10 @@ class HealthExporter {
           projection: ProjectionId.sleepWindow,
         );
         final read = reads.single;
-        if (read is! BundleOk) return false;
-        final light = bundleReaderMap(read.view);
-        return light['skipped'] != true && normalizeHealthSleepSession(light) != null;
+        final light = read is BundleOk ? bundleReaderMap(read.view) : null;
+        final night = light == null ? null : normalizeHealthSleepSession(light);
+        _passWakes?[date] = night?.end;
+        return light != null && light['skipped'] != true && night != null;
       }
 
       late final Future<int> Function(String? androidSleepAlreadyWritten)
@@ -1324,19 +1332,27 @@ class HealthExporter {
         // night if that one woke after noon.
         DateTime? previousWake;
         if (normalizeHealthSleepSession(b) == null) {
-          final prev = DateTime(dayStart.year, dayStart.month, dayStart.day - 1);
-          // The sleep-window projection is all normalizeHealthSleepSession
-          // reads; no full decode of yesterday's bundle.
-          final reads = await BundleStore.shared.readStream(
-            [BundleSource.day(dayLabelOf(prev))],
-            chunkRows: 1,
-            projection: ProjectionId.sleepWindow,
-          );
-          _requireSameStore(generation);
-          final read = reads.single;
-          if (read is BundleOk) {
-            previousWake =
-                normalizeHealthSleepSession(bundleReaderMap(read.view))?.end;
+          final prev = dayLabelOf(
+              DateTime(dayStart.year, dayStart.month, dayStart.day - 1));
+          final seen = _passWakes;
+          if (seen != null && seen.containsKey(prev)) {
+            // The Android scan already light-read that day this pass.
+            previousWake = seen[prev];
+          } else {
+            // The sleep-window projection is all normalizeHealthSleepSession
+            // reads; no full decode of yesterday's bundle.
+            final reads = await BundleStore.shared.readStream(
+              [BundleSource.day(prev)],
+              chunkRows: 1,
+              projection: ProjectionId.sleepWindow,
+            );
+            _requireSameStore(generation);
+            final read = reads.single;
+            if (read is BundleOk) {
+              previousWake =
+                  normalizeHealthSleepSession(bundleReaderMap(read.view))?.end;
+            }
+            seen?[prev] = previousWake;
           }
         }
         if (!await _androidSleep.replace(
