@@ -583,15 +583,6 @@ class WelcomeView extends StatelessWidget {
           children: [
             Icon(LucideIcons.activity, size: 40, color: p.on(C.green)),
             const SizedBox(height: S.x5),
-            Text(l?.welcomeHeadline ?? 'Your band, decoded here',
-                style: F.display.copyWith(color: p.ink)),
-            const SizedBox(height: S.x3),
-            Text(
-              l?.welcomeSubhead ??
-                  'Every number is computed on this phone from the raw signal.',
-              style: F.body.copyWith(color: p.ink2),
-            ),
-            const SizedBox(height: S.x6),
             Pill(l?.pillLocalNoCloud ?? 'Local · no cloud', C.green,
                 icon: LucideIcons.shieldCheck),
             const SizedBox(height: S.x8),
@@ -615,14 +606,8 @@ class WelcomeView extends StatelessWidget {
               ),
             ),
             Text(
-              // Was: "imported days are marked as imported — they are never
-              // mixed into days this app measured itself". There is no source
-              // column on day_result or metric_series, two of the four
-              // importers write no marker at all, and imported values do feed
-              // the same rolling baselines. What IS true is the half that
-              // protects data: no import overwrites a day this band measured.
               l?.welcomeImportFooterNote ??
-                  'A sensor export, an OpenStrap backup or a vendor CSV. Imported days count toward your usual range, and never overwrite a day the band measured.',
+                  'A sensor export, an OpenStrap backup or a vendor CSV.',
               style: F.cap.copyWith(color: p.ink3),
             ),
             if (busy) ...[

@@ -1390,14 +1390,6 @@
       }
     }
   },
-  "welcomeHeadline": "Your band, decoded here",
-  "@welcomeHeadline": {
-    "description": "Welcome screen headline."
-  },
-  "welcomeSubhead": "Every number is computed on this phone from the raw signal.",
-  "@welcomeSubhead": {
-    "description": "Welcome screen subhead."
-  },
   "welcomeSetUpMyBand": "Set up my band",
   "@welcomeSetUpMyBand": {
     "description": "Button label."
@@ -1410,7 +1402,7 @@
   "@welcomeBringMyHistoryFirst": {
     "description": "Button label: idle."
   },
-  "welcomeImportFooterNote": "A sensor export, an OpenStrap backup or a vendor CSV. Imported days count toward your usual range, and never overwrite a day the band measured.",
+  "welcomeImportFooterNote": "A sensor export, an OpenStrap backup or a vendor CSV.",
   "@welcomeImportFooterNote": {
     "description": "Footer note about imports."
   },
