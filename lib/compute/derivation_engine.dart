@@ -10161,8 +10161,14 @@ class DerivationEngine {
     );
     // Tonight's sleep begun before midnight leaves the waking series (upstream
     // v106). The streamed summary knows no such cut, so it serves only a day
-    // without one, where the two are the same series.
-    final wakeSeries = tonightSleepOnsetSec > 0
+    // without one, where the two are the same series. Nor does it know
+    // upstream's spread rule (a reading every few minutes stands for the
+    // minutes up to the next), so a day whose family stores HR that sparsely
+    // reads the batch too.
+    final spreadsReadings =
+        (ana.calibrationFor(kHrCadenceSec, daySub.deviceFamily) ?? 60) ~/ 60 >
+            1;
+    final wakeSeries = tonightSleepOnsetSec > 0 || spreadsReadings
         ? _perMinuteMeanWake(daySub, sleepOnsetSec, sleepOffsetSec,
             tonightSleepOnsetSec: tonightSleepOnsetSec)
         : hrSummary?.wakeMinutes() ??
