@@ -20,6 +20,7 @@
 // metric_series each time.
 
 import '../data/activity_store.dart';
+import 'accepted_naps.dart' show composeAcceptedNaps;
 import '../models/activity_suggestion.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -3493,10 +3494,30 @@ class DerivationEngine {
         await LocalDb.updateFinalizationAudit((s) => s.pending.remove(day));
         continue;
       }
-      await _recordAudit(day, auditFinalization(stored!, batch));
+      await _recordAudit(
+          day, auditFinalization(stored!, await _asWritten(row!, batch)));
       audited++;
     }
     return audited;
+  }
+
+  /// [batch] as the write that froze [row] would have stored it, for the late
+  /// audit (which compares against the STORED payload): the write stamps the
+  /// data edge (an input stamp like computed_at, not a metric, so the stored
+  /// one is carried over) and `putDayResult` composes the day's reviewed naps
+  /// into it.
+  Future<Map<String, dynamic>> _asWritten(
+      Map<String, Object?> row, Map<String, dynamic> batch) async {
+    final out = <String, dynamic>{...batch};
+    final stored = _decodeBundle(row['payload_json']);
+    if (stored != null && stored.containsKey('data_edge_sec')) {
+      out['data_edge_sec'] = stored['data_edge_sec'];
+    }
+    // A pending audit is always of a derive-finalized day, which the engine
+    // writes as source 'band'.
+    composeAcceptedNaps(out,
+        await ActivityStore.napEdits(await LocalDb.instance, '${row['day_id']}'));
+    return out;
   }
 
   /// The audit at a day's finalization: [bundle] is the accumulator result
@@ -3549,11 +3570,14 @@ class DerivationEngine {
     _BaselineHistoryCache history, {
     ana.CalculationMode calculationMode = ana.CalculationMode.forced,
     DayResultWrite reason = DayResultWrite.derive,
+    void Function(String day)? onStaleTonight,
   }) async {
     final sw = Stopwatch()..start();
     try {
       return await _derivePreparedDay(day, profile, dataNowSec, history,
-          calculationMode: calculationMode, reason: reason);
+          calculationMode: calculationMode,
+          reason: reason,
+          onStaleTonight: onStaleTonight);
     } finally {
       final persist = _persistMs.remove(day.date);
       final total = sw.elapsedMilliseconds;
@@ -3870,7 +3894,10 @@ class DerivationEngine {
       // which Dart's cooperative single-threaded scheduler makes atomic
       // relative to the other concurrent workers even though the actual
       // isolate CPU work they await genuinely runs in parallel across cores.
-      Future<void> processDay(String dayId) async {
+      // Days that would have finalized on a tonight's sleep the next day's
+      // concurrent derive has since moved: derived again after the pool.
+      final staleTonight = <String>{};
+      Future<void> processDay(String dayId, {bool repass = false}) async {
         activeDays.add(dayId);
         _diag['active_days'] = activeDays.toList();
         var reportDone = true;
@@ -3897,8 +3924,13 @@ class DerivationEngine {
                 // doing, so they may rewrite a frozen (finalized) row.
                 reason: force || overrideDays.contains(dayId)
                     ? DayResultWrite.userOverride
-                    : DayResultWrite.derive);
-            if (committed) {
+                    : DayResultWrite.derive,
+                onStaleTonight: repass ? null : staleTonight.add);
+            if (repass) {
+              // Counted and reported by its first derive.
+              if (committed) await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              reportDone = false;
+            } else if (committed) {
               done++;
               _diag['done_days'] = done;
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
@@ -3941,6 +3973,7 @@ class DerivationEngine {
           failures++;
         }
         activeDays.remove(dayId);
+        _passPendingDays.remove(dayId);
         _diag['active_days'] = activeDays.toList();
         if (reportDone) {
           completed++;
@@ -3948,7 +3981,21 @@ class DerivationEngine {
         }
       }
 
-      await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
+      _passPendingDays = orderedDays.toSet();
+      try {
+        await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
+      } finally {
+        _passPendingDays = <String>{};
+      }
+      if (staleTonight.isNotEmpty) {
+        _diag['stage'] = 'tonight_repass';
+        _log('derive: ${staleTonight.length} day(s) again, tonight\'s sleep '
+            'moved under them');
+        await runWithConcurrency(
+            [for (final d in orderedDays) if (staleTonight.contains(d)) d],
+            _deriveConcurrency,
+            (d) => processDay(d, repass: true));
+      }
       // BEFORE the prune below: a day still owed a strain score is re-scored
       // while its raw exists (and the prune holds it if this fails).
       _diag['stage'] = 'quiet_repass';
@@ -4214,7 +4261,10 @@ class DerivationEngine {
       var failures = 0;
       final activeDays = <String>{};
 
-      Future<void> processDay(String dayId) async {
+      // Days that would have finalized on a tonight's sleep the next day's
+      // concurrent derive has since moved: derived again after the pool.
+      final staleTonight = <String>{};
+      Future<void> processDay(String dayId, {bool repass = false}) async {
         activeDays.add(dayId);
         _diag['active_days'] = activeDays.toList();
         var reportDone = true;
@@ -4228,8 +4278,13 @@ class DerivationEngine {
                 prepared, profile, dataNowSec, history,
                 reason: force
                     ? DayResultWrite.userOverride
-                    : DayResultWrite.derive);
-            if (committed) {
+                    : DayResultWrite.derive,
+                onStaleTonight: repass ? null : staleTonight.add);
+            if (repass) {
+              // Counted and reported by its first derive.
+              if (committed) await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              reportDone = false;
+            } else if (committed) {
               done++;
               _diag['done_days'] = done;
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
@@ -4249,6 +4304,7 @@ class DerivationEngine {
           failures++;
         }
         activeDays.remove(dayId);
+        _passPendingDays.remove(dayId);
         _diag['active_days'] = activeDays.toList();
         if (reportDone) {
           completed++;
@@ -4256,7 +4312,19 @@ class DerivationEngine {
         }
       }
 
-      await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
+      _passPendingDays = orderedDays.toSet();
+      try {
+        await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
+      } finally {
+        _passPendingDays = <String>{};
+      }
+      // As in [run]: days that would have finalized on a moved tonight.
+      if (staleTonight.isNotEmpty) {
+        await runWithConcurrency(
+            [for (final d in orderedDays) if (staleTonight.contains(d)) d],
+            _deriveConcurrency,
+            (d) => processDay(d, repass: true));
+      }
       done += await _quietLevelRepass(profile, dataNowSec);
       // A SELECTED re-analyze that happens to cover the whole raw history, with
       // every day resolved, is a full restage by any other name — it re-derived
@@ -4468,8 +4536,10 @@ class DerivationEngine {
     // Tonight's sleep is the NEXT day's main sleep; it is only known once
     // that day has derived, and this day keeps re-deriving until it
     // finalizes, so it converges on the following pass.
+    final nextSpan = await _nextDayWindowSpan(dayId);
+    _tonightSpanAtPrep[dayId] = nextSpan;
     final tonight = tonightSleep(
-      storedWindowSpan(await LocalDb.sleepWindowJsonFor(localDateLabel(dayEnd))),
+      nextSpan,
       dayStartSec: dayStart,
       dayEndSec: dayEnd,
       sleepOffsetSec: candidate.present ? candidate.sleepOffsetSec : 0,
@@ -4487,6 +4557,20 @@ class DerivationEngine {
       rrResume: rrResume,
     );
   }
+
+  /// The stored main-sleep span of the day after [dayId], which decides
+  /// [dayId]'s tonight's sleep ([tonightSleep]).
+  Future<({int startSec, int endSec})?> _nextDayWindowSpan(String dayId) async =>
+      storedWindowSpan(await LocalDb.sleepWindowJsonFor(
+          localDateLabel(_localNextDayLabelToSec(dayId))));
+
+  /// The next-day span each day was last prepared with ([_prepareTargetDay]),
+  /// so the finalization decision can tell the input moved under it.
+  final Map<String, ({int startSec, int endSec})?> _tonightSpanAtPrep = {};
+
+  /// The days of the running pass's pool that have not committed yet. A day
+  /// whose next day is among them does not finalize this round.
+  Set<String> _passPendingDays = <String>{};
 
   /// [next] (the following day's main sleep) when it is TONIGHT's from this
   /// day's side: begun inside this day and after its own sleep ended.
@@ -6260,6 +6344,10 @@ class DerivationEngine {
     // whole day with nothing carried over, stopped where the write would be
     // (the bundle is left in [_batchBundles]); it writes nothing.
     bool batchReference = false,
+    // Told when the day would finalize but tonight's sleep (the next day's
+    // stored window) changed since it was prepared; the day is then written
+    // provisional and the caller re-derives it. Null: finalize as decided.
+    void Function(String day)? onStaleTonight,
   }) async {
     // No state from an earlier pass in this process (a headless wake, a cold
     // start): resume from the stored checkpoint when what it folded is still
@@ -7047,6 +7135,25 @@ class DerivationEngine {
         await LocalDb.putComputeFreshness(quietKey, '{}');
         effectiveFinalized = false;
       }
+    }
+
+    // Tonight's sleep is the next day's stored window, read when this day was
+    // prepared. A concurrent derive of the next day can write it after that
+    // read (or still will: it is in this pass and not done), so the waking
+    // series behind strain/TRIMP/zones/calories, daytime HRV and the HR dip
+    // may be cut on an older night. A provisional row
+    // converges on the next derive; a frozen one never would. So the day is
+    // left provisional and the pass derives it again once the pool is done.
+    if (effectiveFinalized &&
+        reason == DayResultWrite.derive &&
+        onStaleTonight != null &&
+        (_passPendingDays.contains(
+                localDateLabel(_localNextDayLabelToSec(day.date))) ||
+            (_tonightSpanAtPrep.containsKey(day.date) &&
+                await _nextDayWindowSpan(day.date) !=
+                    _tonightSpanAtPrep[day.date]))) {
+      effectiveFinalized = false;
+      onStaleTonight(day.date);
     }
 
     // The finalization audit sits between the decision and the write: only a
