@@ -33,6 +33,13 @@
       "rule": "captureNotSendable",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
+      "element": "imported",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
       "element": "kept",
       "count": 1
     },
@@ -94,6 +101,20 @@
     },
     {
       "rule": "captureNotSendable",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.rebuildCrossDayAsOf",
+      "element": "this",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "data/csv_export.dart",
+      "symbol": "exportHeartRateCsv",
+      "element": "rows",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl._numericJournalInsights",
       "element": "days",
@@ -104,6 +125,20 @@
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl.getJournalInsights",
       "element": "jdays",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._encodeOffIsolate",
+      "element": "onehz",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._encodeOffIsolate",
+      "element": "rr",
       "count": 1
     },
     {
@@ -124,6 +159,13 @@
       "rule": "dispatcherClosureContract",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
+      "element": "DerivationEngine.crossDayInputRecord",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
       "element": "assembleCrossDayInput",
       "count": 1
     },
@@ -133,6 +175,13 @@
       "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
       "element": "jsonEncode",
       "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
+      "element": "num.toInt",
+      "count": 2
     },
     {
       "rule": "dispatcherClosureContract",
@@ -165,8 +214,78 @@
     {
       "rule": "dispatcherClosureContract",
       "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.rebuildCrossDayAsOf",
+      "element": "Map.cast",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.rebuildCrossDayAsOf",
+      "element": "Map.remove",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.rebuildCrossDayAsOf",
+      "element": "String.compareTo",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.rebuildCrossDayAsOf",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.rebuildCrossDayAsOf",
+      "element": "num.toInt",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/derivation_engine.dart",
       "symbol": "runCancellableIsolate",
       "element": "compute",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/quiet_level_seed.dart",
+      "symbol": "seedQuietHrrHistoryOnce",
+      "element": "SeriesCodec.decodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/quiet_level_seed.dart",
+      "symbol": "seedQuietHrrHistoryOnce",
+      "element": "quietHrrFromStoredBundle",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "_seedZ",
+      "element": "_decode",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "_seedZ",
+      "element": "storedReadinessZ",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/csv_export.dart",
+      "symbol": "exportHeartRateCsv",
+      "element": "renderCsv",
       "count": 1
     },
     {
@@ -202,6 +321,104 @@
       "file": "data/sample_progressive.dart",
       "symbol": "refineStream",
       "element": "SampleCodec.refinementAt",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._blobIntactOffIsolate",
+      "element": "SubstrateArchiveCodec.decode",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._blobIntactOffIsolate",
+      "element": "SubstrateArchiveCodec.fingerprint",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._dropOffIsolate",
+      "element": "SubstrateArchiveCodec.decode",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._dropOffIsolate",
+      "element": "SubstrateArchiveCodec.dropRanges",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._encodeOffIsolate",
+      "element": "ArchiveBucket.new",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._encodeOffIsolate",
+      "element": "ArchiveTable.concat",
+      "count": 2
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._encodeOffIsolate",
+      "element": "SubstrateArchiveCodec.encodeMergeVerify",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._keepOffIsolate",
+      "element": "ArchiveWrite.empty",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._keepOffIsolate",
+      "element": "SubstrateArchiveCodec.decode",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._keepOffIsolate",
+      "element": "SubstrateArchiveCodec.keepRanges",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._mergeBlobsOffIsolate",
+      "element": "StateError.new",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._mergeBlobsOffIsolate",
+      "element": "SubstrateArchiveCodec.decode",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._mergeBlobsOffIsolate",
+      "element": "SubstrateArchiveCodec.encodeMergeVerify",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "support/issue_report.dart",
+      "symbol": "sealReport",
+      "element": "osr1EncryptFile",
       "count": 1
     },
     {
@@ -481,6 +698,34 @@
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._buildWakeDayFeatures",
+      "element": "dailyQuietWakingHrr",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._buildWakeDayFeatures",
+      "element": "netTrimpAboveQuiet",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._buildWakeDayFeatures",
+      "element": "personalQuietWakingHrr",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._buildWakeDayFeatures",
+      "element": "strainFromNetTrimp",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._buildWakeDayFeatures",
       "element": "strainScoreMetric",
       "count": 1
     },
@@ -599,6 +844,13 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._perMinuteMeanWake",
+      "element": "calibrationFor",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._refreshCheckpoint",
       "element": "Substrate.ax",
       "count": 1
@@ -665,6 +917,13 @@
       "symbol": "DerivationEngine._stepModulusFor",
       "element": "calibrationFor",
       "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._stepsAndEnergy",
+      "element": "calibrationFor",
+      "count": 2
     },
     {
       "rule": "heavyOriginOutsideHeavy",
@@ -788,6 +1047,20 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.quietLevelRepassDays",
+      "element": "personalQuietWakingHrr",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.updateStepCalibration",
+      "element": "calibrationFor",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine.wakeDayEnergy",
       "element": "Calories.dailyEnergy",
       "count": 1
@@ -801,9 +1074,86 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derive_prepare.dart",
+      "symbol": "prepareSleepSessionCandidate",
+      "element": "SleepSegmentation.toJson",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
       "file": "compute/findings.dart",
       "symbol": "findingsHistory",
       "element": "cusumChangePoints",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/findings.dart",
+      "symbol": "planExceptionNotices",
+      "element": "cusumChangePoints",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "_withStrapBeats",
+      "element": "Substrate.rrMs",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "hrLedWindow",
+      "element": "hrLedSleepWindow",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "sparseHrNight",
+      "element": "calibrationFor",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/inputs/colmi_inputs.dart",
+      "symbol": "colmiSubstrate",
+      "element": "Substrate.tsSec",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/inputs/garmin_inputs.dart",
+      "symbol": "hrMethod",
+      "element": "calibrationFor",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/inputs/garmin_inputs.dart",
+      "symbol": "methodFamily",
+      "element": "calibrationFor",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/inputs/garmin_inputs.dart",
+      "symbol": "sparseHrSubstrate",
+      "element": "calibrationFor",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/inputs/oura_inputs.dart",
+      "symbol": "ouraSubstrate",
+      "element": "Substrate.tsSec",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/inputs/ultrahuman_inputs.dart",
+      "symbol": "ultrahumanSubstrate",
+      "element": "Substrate.tsSec",
       "count": 1
     },
     {
@@ -825,6 +1175,13 @@
       "file": "compute/manual_session.dart",
       "symbol": "strainFromPerMinuteHr",
       "element": "banisterTrimp",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/manual_session.dart",
+      "symbol": "strainFromPerMinuteHr",
+      "element": "strainScoreFromSeries",
       "count": 1
     },
     {
@@ -858,6 +1215,20 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/onehz_pipeline.dart",
+      "symbol": "_perMinuteWakeSeries",
+      "element": "calibrationFor",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/onehz_pipeline.dart",
+      "symbol": "_strainCurve",
+      "element": "strainCurveFromSeries",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/onehz_pipeline.dart",
       "symbol": "_strainCurve",
       "element": "strainScore",
       "count": 1
@@ -874,6 +1245,76 @@
       "file": "compute/onehz_pipeline.dart",
       "symbol": "_wakeZoneMinutesFromSeries",
       "element": "TimeInHeartRateZone.toRoundedMinuteMap",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/quiet_level.dart",
+      "symbol": "personalQuietLevelBefore",
+      "element": "personalQuietWakingHrr",
+      "count": 2
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/quiet_level_seed.dart",
+      "symbol": "quietHrrFromStoredBundle",
+      "element": "dailyQuietWakingHrr",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/quiet_level_seed.dart",
+      "symbol": "seedQuietHrrHistoryOnce",
+      "element": "SeriesCodec.decodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "_weights",
+      "element": "hrvInput",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "_weights",
+      "element": "respInput",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "_weights",
+      "element": "rhrInput",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "_weights",
+      "element": "tempInput",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "rescoreStoredReadiness",
+      "element": "Readiness.toJson",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "rescoreStoredReadiness",
+      "element": "calibratedReadinessScore",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "storedReadinessZ",
+      "element": "combineReadinessZ",
       "count": 1
     },
     {
@@ -895,6 +1336,13 @@
       "file": "compute/substrate.dart",
       "symbol": "Substrate.accelSamples",
       "element": "Substrate.tsSec",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.bandSleepStateSlice",
+      "element": "Substrate.bandSleepState",
       "count": 1
     },
     {
@@ -1056,7 +1504,7 @@
       "file": "compute/substrate.dart",
       "symbol": "calendarDays",
       "element": "segmentSleep",
-      "count": 3
+      "count": 4
     },
     {
       "rule": "heavyOriginOutsideHeavy",
@@ -1327,6 +1775,13 @@
     {
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
+      "symbol": "LocalDb._sessionWindows",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawReaderUnregistered",
+      "file": "data/db.dart",
       "symbol": "LocalDb.dataHistoryDays",
       "element": "decoded_onehz",
       "count": 1
@@ -1388,6 +1843,69 @@
       "count": 1
     },
     {
+      "rule": "rawReaderUnregistered",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.skinTempAmbientMinutes",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "_strapSessionRecTsMaxByDay",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "withStrapSessions",
+      "element": "decoded_onehz",
+      "count": 2
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "compute/inputs/colmi_inputs.dart",
+      "symbol": "colmiSkinTemps",
+      "element": "raw_archive",
+      "count": 1
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "compute/inputs/garmin_inputs.dart",
+      "symbol": "sparseHrRecTsMaxByDay",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "compute/inputs/garmin_inputs.dart",
+      "symbol": "sparseHrSubstrate",
+      "element": "decoded_onehz",
+      "count": 2
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "compute/inputs/oura_inputs.dart",
+      "symbol": "ouraStrapOwnsNight",
+      "element": "decoded_rr",
+      "count": 1
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "compute/inputs/oura_inputs.dart",
+      "symbol": "ouraSubstrate",
+      "element": "decoded_rr",
+      "count": 1
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "compute/inputs/ultrahuman_inputs.dart",
+      "symbol": "ultrahumanRecords",
+      "element": "raw_archive",
+      "count": 1
+    },
+    {
       "rule": "rawTableRowLoopOutsideHeavy",
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl.getDeviceChart",
@@ -1405,6 +1923,13 @@
       "rule": "rawTableRowLoopOutsideHeavy",
       "file": "data/sample_archive.dart",
       "symbol": "SampleArchiver._archiveDevice",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive.archiveAndDeleteBefore",
       "element": "decoded_onehz",
       "count": 1
     },
@@ -1510,6 +2035,13 @@
       "rule": "storedPayloadDecodeOutsideHeavy",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._derivePreparedDay",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._derivePreparedDay",
       "element": "jsonEncode",
       "count": 2
     },
@@ -1564,8 +2096,57 @@
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/nap_overlap_cleanup.dart",
+      "symbol": "cleanNextNightNapsOnce",
+      "element": "jsonEncode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/quiet_level_seed.dart",
+      "symbol": "seedQuietHrrHistoryOnce",
+      "element": "SeriesCodec.decodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "backfillReadinessCalibration",
+      "element": "jsonEncode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
       "file": "compute/strain_backfill.dart",
       "symbol": "backfillStrainScale",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/activity_store.dart",
+      "symbol": "ActivityStore._overlapsSleep",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/activity_store.dart",
+      "symbol": "ActivityStore.confirm",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/activity_store.dart",
+      "symbol": "ActivityStore.napEdits",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/activity_store.dart",
+      "symbol": "ActivityStore.preserveLegacyNaps",
       "element": "jsonEncode",
       "count": 1
     },
@@ -1586,6 +2167,27 @@
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
       "file": "data/db.dart",
+      "symbol": "LocalDb._mergeFromDbFileBody",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb._updateFreshnessJson",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb._updateFreshnessJson",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
       "symbol": "LocalDb._writeCaptureFreshness",
       "element": "jsonDecode",
       "count": 1
@@ -1600,8 +2202,43 @@
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
       "file": "data/db.dart",
+      "symbol": "LocalDb.applyPendingActivityReviews",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.applyPendingActivityReviews",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
       "symbol": "LocalDb.crossDayStats",
       "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.deleteDays",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.deleteNapEdit",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.deleteNapEdit",
+      "element": "jsonEncode",
       "count": 1
     },
     {
@@ -1630,7 +2267,7 @@
       "file": "data/db.dart",
       "symbol": "LocalDb.insertEvent",
       "element": "jsonEncode",
-      "count": 1
+      "count": 2
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
@@ -1644,6 +2281,48 @@
       "file": "data/db.dart",
       "symbol": "LocalDb.putDayResult",
       "element": "SeriesCodec.encodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.putDayResult",
+      "element": "jsonDecode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.putDayResult",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.putNapEdit",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.readinessAbsentDiag",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.redriveArchiveOnce",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.redriveArchiveOnce",
+      "element": "jsonEncode",
       "count": 1
     },
     {
@@ -1707,6 +2386,20 @@
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl.getNightBeats",
       "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive._readFailures",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive.archiveAndDeleteBefore",
+      "element": "jsonEncode",
       "count": 1
     },
     {
@@ -1949,6 +2642,20 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "ble/adapters/adapter.dart",
+      "symbol": "ReplayBandLink.write",
+      "element": "onWrite?.call(characteristicUuid, value)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/colmi.dart",
+      "symbol": "ColmiAdapter._big",
+      "element": "log('colmi: big-data reply 0x${whole[1].toRadixString(16)} CRC ' 'mismatch (got 0x${got.toRadixString(16)}, want ' '0x${want.toRadixString(16)}); keeping it.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "ble/adapters/colmi.dart",
       "symbol": "ColmiAdapter._collect",
       "element": "onLog('colmi: dropped a ${f.length}-byte frame, not a real ' '16-byte reply.')",
@@ -1959,6 +2666,41 @@
       "file": "ble/adapters/colmi.dart",
       "symbol": "ColmiAdapter._collect",
       "element": "onLog('colmi: dropped a reply tagged ' '0x${f[0].toRadixString(16)} while awaiting ' '0x${cmd.toRadixString(16)} (e.g. an unsolicited push mid-walk).')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/colmi.dart",
+      "symbol": "ColmiAdapter._night",
+      "element": "at(n.daysAgo, 0)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/colmi.dart",
+      "symbol": "ColmiAdapter._night",
+      "element": "at(n.daysAgo, n.endMinute)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/colmi.dart",
+      "symbol": "ColmiAdapter._night",
+      "element": "at(n.daysAgo, n.startMinute)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/colmi.dart",
+      "symbol": "ColmiAdapter._walk",
+      "element": "done(f)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/colmi.dart",
+      "symbol": "ColmiAdapter._walk",
+      "element": "log('colmi: ring rejected command 0x${cmd.toRadixString(16)}.')",
       "count": 1
     },
     {
@@ -2006,8 +2748,22 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/adapters/gatt_link.dart",
+      "symbol": "GattBandLink.notify",
+      "element": "() async* { if (!await subscribed) return; // The arrival second is stamped HERE, at the edge of the radio, and // not inside the adapter — it is the closest we can get to when the // notification actually landed, and it keeps `DateTime.now()` out of // adapter code so a fixture can replay one deterministically. yield* c.onValueReceived.map( (v) => (DateTime.now().millisecondsSinceEpoch ~/ 1000, v), ); }()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/gatt_link.dart",
       "symbol": "GattBandLink.write",
       "element": "hook(value)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/host.dart",
+      "symbol": "BandHost._bankVendorScalars",
+      "element": "extra(o.at.millisecondsSinceEpoch ~/ 1000)",
       "count": 1
     },
     {
@@ -2056,7 +2812,21 @@
       "rule": "unresolvedInvocation",
       "file": "ble/adapters/host.dart",
       "symbol": "BandHost._commitLocked",
+      "element": "fault(commit)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/host.dart",
+      "symbol": "BandHost._commitLocked",
       "element": "onLog('[${adapter.id}] commit failed, ${batchRows.length} second(s) ' 'and ${archive.length} archived frame(s) re-buffered: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/host.dart",
+      "symbol": "BandHost._commitLocked",
+      "element": "onLog('[${adapter.id}] cursor commit failed: $e')",
       "count": 1
     },
     {
@@ -2070,7 +2840,28 @@
       "rule": "unresolvedInvocation",
       "file": "ble/adapters/host.dart",
       "symbol": "BandHost._commitThenConfirm",
+      "element": "onLog('[${adapter.id}] a vendor write failed; not confirming.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/host.dart",
+      "symbol": "BandHost._commitThenConfirm",
       "element": "onLog('[${adapter.id}] batch not committed; leaving the cursor where ' 'it is.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/host.dart",
+      "symbol": "BandHost._commitThenConfirm",
+      "element": "onNote?.call('host_commit_failed', null)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/host.dart",
+      "symbol": "BandHost._onEvent",
+      "element": "extra(ep.startSec)",
       "count": 1
     },
     {
@@ -2084,8 +2875,22 @@
       "rule": "unresolvedInvocation",
       "file": "ble/adapters/host.dart",
       "symbol": "BandHost._onEvent",
-      "element": "onNote?.call(key, value)",
+      "element": "onLog('[${adapter.id}] $key held back: a vendor write failed.')",
       "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/host.dart",
+      "symbol": "BandHost._onEvent",
+      "element": "onLog('[${adapter.id}] vendor hypnogram not banked: $err')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/host.dart",
+      "symbol": "BandHost._onEvent",
+      "element": "onNote?.call(key, value)",
+      "count": 2
     },
     {
       "rule": "unresolvedInvocation",
@@ -2103,10 +2908,45 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "ble/adapters/host.dart",
+      "symbol": "BandHost.stop",
+      "element": "onLog('[${adapter.id}] derive not ' 'queued: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/host.dart",
+      "symbol": "BandHost.stop",
+      "element": "poke()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/miband234.dart",
+      "symbol": "<ext>._fetchHistory",
+      "element": "nowSeconds()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "ble/adapters/miband234.dart",
       "symbol": "_Inbox.firstWhere",
       "element": "test(rec)",
       "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/miscale.dart",
+      "symbol": "MiScaleAdapter._clockWasLocal",
+      "element": "nowSeconds()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/miscale.dart",
+      "symbol": "MiScaleAdapter.run",
+      "element": "nowSeconds()",
+      "count": 2
     },
     {
       "rule": "unresolvedInvocation",
@@ -2118,9 +2958,23 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/adapters/oura.dart",
+      "symbol": "OuraAdapter.run",
+      "element": "tzHalfHours()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/oura.dart",
       "symbol": "_Inbox.firstWhere",
       "element": "test(rec.$2)",
       "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/pebble.dart",
+      "symbol": "PebbleAdapter.run",
+      "element": "nowSeconds()",
+      "count": 3
     },
     {
       "rule": "unresolvedInvocation",
@@ -2155,6 +3009,34 @@
       "file": "ble/adapters/ringconn.dart",
       "symbol": "_Inbox.firstWhere",
       "element": "test(rec.$1)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/thermometer.dart",
+      "symbol": "ThermometerAdapter._observation",
+      "element": "nowSeconds()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/thermometer.dart",
+      "symbol": "ThermometerAdapter.run",
+      "element": "nowSeconds()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/ultrahuman.dart",
+      "symbol": "UltrahumanAdapter._drain",
+      "element": "nowSeconds()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/adapters/ultrahuman.dart",
+      "symbol": "UltrahumanAdapter.run",
+      "element": "nowSeconds()",
       "count": 1
     },
     {
@@ -2274,7 +3156,7 @@
       "file": "ble/ble_engine.dart",
       "symbol": "BleEngine._absorbState",
       "element": "onState(state)",
-      "count": 8
+      "count": 10
     },
     {
       "rule": "unresolvedInvocation",
@@ -2405,6 +3287,13 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/ble_engine.dart",
+      "symbol": "BleEngine._historyRequestGate",
+      "element": "onForeign()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ble_engine.dart",
       "symbol": "BleEngine._keepAliveFire",
       "element": "onTick()",
       "count": 1
@@ -2440,6 +3329,13 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/ble_engine.dart",
+      "symbol": "BleEngine._onChunk",
+      "element": "onState(state)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ble_engine.dart",
       "symbol": "BleEngine._onOffloadFinished",
       "element": "onState(state)",
       "count": 3
@@ -2463,6 +3359,13 @@
       "file": "ble/ble_engine.dart",
       "symbol": "BleEngine._processImmediateFrame",
       "element": "onEvent?.call( StrapEvent.fromEventInfo( e, receivedAt: clock(), hex: _innerHex(frame.inner), deviceId: LocalDb.kPrimaryDeviceId, ), )",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ble_engine.dart",
+      "symbol": "BleEngine._processImmediateFrame",
+      "element": "onEvent?.call( StrapEvent.fromEventInfo( e, receivedAt: clock(), hex: _innerHex(frame.inner), deviceId: LocalDb.kPrimaryDeviceId, profile: profile, ), )",
       "count": 1
     },
     {
@@ -2588,6 +3491,13 @@
       "rule": "unresolvedInvocation",
       "file": "ble/ble_engine.dart",
       "symbol": "BleEngine._write",
+      "element": "beforeTransport()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ble_engine.dart",
+      "symbol": "BleEngine._write",
       "element": "hook(raw)",
       "count": 1
     },
@@ -2645,6 +3555,20 @@
       "file": "ble/ble_engine.dart",
       "symbol": "BleEngine.waitForOsAutoConnect",
       "element": "keepWaiting()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ble_engine.dart",
+      "symbol": "DrainController._commitNow",
+      "element": "commit(raws, samples, tokenHex, archives: archives, ecgRawPackets: ecgRaw)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ble_engine.dart",
+      "symbol": "DrainController._commitNow",
+      "element": "log('offload commit FAILED ($e) — ${raws.length} records + ' '${archives.length} archived + ${ecgRaw.length} raw ECG ' 're-buffered; the caller MUST NOT ACK ' 'this chunk (the band still holds it).')",
       "count": 1
     },
     {
@@ -2848,13 +3772,20 @@
       "file": "ble/colmi_link.dart",
       "symbol": "ColmiLink.ingestForTest",
       "element": "now()",
-      "count": 1
+      "count": 2
     },
     {
       "rule": "unresolvedInvocation",
       "file": "ble/colmi_link.dart",
       "symbol": "ColmiLink.ingestForTest",
       "element": "reply(served, link.writes[served].$2)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/colmi_link.dart",
+      "symbol": "ColmiLink.ingestForTest",
+      "element": "reply(served, value)",
       "count": 1
     },
     {
@@ -3001,6 +3932,13 @@
       "rule": "unresolvedInvocation",
       "file": "ble/garmin_link.dart",
       "symbol": "GarminLink._sync",
+      "element": "debugPrint('[garmin] ${kGarmin.label}: no multi-link data ' 'characteristic under ${kGarminService.substring(0, 8)}.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/garmin_link.dart",
+      "symbol": "GarminLink._sync",
       "element": "debugPrint('[garmin] refusing to sync: the row claims the primary ' 'device id — re-pair it with a minted id.')",
       "count": 1
     },
@@ -3016,6 +3954,20 @@
       "file": "ble/garmin_link.dart",
       "symbol": "GarminLink.forget",
       "element": "debugPrint('[garmin] refusing to forget the primary band from here.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/garmin_link.dart",
+      "symbol": "GarminLink.ingestForTest",
+      "element": "nowSeconds()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/garmin_link.dart",
+      "symbol": "GarminLink.ingestForTest",
+      "element": "reply(link.writes[served++].$2)",
       "count": 1
     },
     {
@@ -3113,6 +4065,13 @@
       "rule": "unresolvedInvocation",
       "file": "ble/hrs_link.dart",
       "symbol": "HrsLink._scanForEntries",
+      "element": "debugPrint('[hrs] systemDevices(${e.id}) failed: $err')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/hrs_link.dart",
+      "symbol": "HrsLink._scanForEntries",
       "element": "e.nameMatcher?.call(lowercaseName)",
       "count": 1
     },
@@ -3121,7 +4080,7 @@
       "file": "ble/hrs_link.dart",
       "symbol": "HrsLink._scanForEntries",
       "element": "onResults(_ranked(seen))",
-      "count": 2
+      "count": 3
     },
     {
       "rule": "unresolvedInvocation",
@@ -3135,6 +4094,13 @@
       "file": "ble/hrs_link.dart",
       "symbol": "HrsLink.forgetDevice",
       "element": "debugPrint('[hrs] refusing to forget the primary band from here.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/hrs_link.dart",
+      "symbol": "HrsLink.hintedNameMatch",
+      "element": "e.nameMatcher?.call(lowercaseName)",
       "count": 1
     },
     {
@@ -3415,13 +4381,27 @@
       "file": "ble/miband_link.dart",
       "symbol": "MiBand234Link.ingestForTest",
       "element": "_now()",
-      "count": 2
+      "count": 3
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/miband_link.dart",
+      "symbol": "MiBand234Link.ingestForTest",
+      "element": "history?.call(char, value)",
+      "count": 1
     },
     {
       "rule": "unresolvedInvocation",
       "file": "ble/miband_link.dart",
       "symbol": "MiBand234Link.ingestForTest",
       "element": "reply(served, link.writes[served].$2)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/miband_link.dart",
+      "symbol": "MiBand234Link.ingestForTest",
+      "element": "reply(served, value)",
       "count": 1
     },
     {
@@ -3511,6 +4491,13 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/oura_link.dart",
+      "symbol": "OuraLink._doStop",
+      "element": "debugPrint('[oura] disconnect during teardown failed: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
       "symbol": "OuraLink._dropKey",
       "element": "debugPrint('[oura] could not drop the stored key: $e')",
       "count": 1
@@ -3553,8 +4540,57 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/oura_link.dart",
+      "symbol": "OuraLink._persistCursor",
+      "element": "fault(_cursorItem(deviceId), '$ds')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
       "symbol": "OuraLink._readKey",
       "element": "debugPrint('[oura] the keychain was unavailable: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "OuraLink._replaySession",
+      "element": "_now()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "OuraLink._replaySession",
+      "element": "onLink?.call(link)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "OuraLink._replaySession",
+      "element": "reply(served, link.writes[served].$2)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "OuraLink._resetCursor",
+      "element": "debugPrint('[oura] stranded reset incomplete; the bookmark stays and ' 'the next sync re-runs it: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "OuraLink._runSessionAndTeardown",
+      "element": "debugPrint('[oura] teardown failed as well: $e — the session\\'s ' 'own error is the one reported.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "OuraLink._runSession",
+      "element": "debugPrint('[oura] session ended before the drain reached its ' 'end — reporting the sync as unsuccessful.')",
       "count": 1
     },
     {
@@ -3595,6 +4631,20 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/oura_link.dart",
+      "symbol": "OuraLink._sync",
+      "element": "debugPrint('[oura] teardown failed: $e — the session\\'s own ' 'verdict is the one reported.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "OuraLink._writeCursor",
+      "element": "debugPrint('[oura] cursor write failed: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
       "symbol": "OuraLink.forgetRing",
       "element": "debugPrint('[oura] refusing to forget the primary band from here.')",
       "count": 1
@@ -3616,6 +4666,97 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/oura_link.dart",
+      "symbol": "OuraLink.startSessionForTest",
+      "element": "onLink?.call(link)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "OuraLink.stop",
+      "element": "debugPrint('[oura] teardown finished with an error: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "_pairOuraRing",
+      "element": "debugPrint('[oura pair] $m')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "_pairOuraRing",
+      "element": "debugPrint('[oura pair] candidate ${i + 1} of ${keys.length} was ' 'accepted; it is the one stored')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "_pairOuraRing",
+      "element": "debugPrint('[oura pair] candidate ${i + 1} of ${keys.length}')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "_pairOuraRing",
+      "element": "debugPrint('[oura pair] could not restore the prior key: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "_pairOuraRing",
+      "element": "debugPrint('[oura pair] failed: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "_pairOuraRing",
+      "element": "debugPrint('[oura pair] the keychain was unavailable: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "_pairOuraRing",
+      "element": "debugPrint(install ? '[oura pair] INSTALL path: minting a fresh 16-byte key. Needs a ' 'factory-reset ring.' : '[oura pair] EXISTING-KEY path: trying ${keys.length} key(s) supplied ' 'by the user, one connection each. No key is written to the ring.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "ouraPairHandshake",
+      "element": "matches(f)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "ouraPairHandshake",
+      "element": "onKeyInstalled?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "pairOuraRingWithTypedKey",
+      "element": "debugPrint('[oura pair] key field parsed to ${draft.keys.length} ' 'candidate key(s) of 16 bytes' '${draft.malformed > 0 ? \", ${draft.malformed} unparseable line(s) \" \"skipped\" : \"\"}' '${draft.overflow > 0 ? \", ${draft.overflow} beyond the \" \"$kOuraMaxCandidateKeys-key limit not tried\" : \"\"}')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
+      "symbol": "pairOuraRingWithTypedKey",
+      "element": "debugPrint('[oura pair] nothing in the key field parsed — ' '${draft.malformed} line(s) of ${raw.trim().length} character(s), ' 'need 32 hex or 24 base64 each')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/oura_link.dart",
       "symbol": "pairOuraRing",
       "element": "debugPrint('[oura pair] $m')",
       "count": 1
@@ -3632,6 +4773,13 @@
       "file": "ble/oura_link.dart",
       "symbol": "pairOuraRing",
       "element": "matches(f)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/pebble_link.dart",
+      "symbol": "PebbleLink._makeHost",
+      "element": "debugPrint('[pebble] $m')",
       "count": 1
     },
     {
@@ -3674,6 +4822,20 @@
       "file": "ble/pebble_link.dart",
       "symbol": "PebbleLink.ingestForTest",
       "element": "debugPrint('[pebble] $m')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/pebble_link.dart",
+      "symbol": "PebbleLink.ingestForTest",
+      "element": "now()",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/pebble_link.dart",
+      "symbol": "PebbleLink.ingestForTest",
+      "element": "reply?.call(endpoint, p)",
       "count": 1
     },
     {
@@ -3853,6 +5015,90 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink._makeHost",
+      "element": "_adapter(now)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink._makeHost",
+      "element": "debugPrint('$_tag $m')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink._sync",
+      "element": "debugPrint('$_tag $m')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink._sync",
+      "element": "debugPrint('$_tag missing required characteristic(s) ' '${missing.map((u) => u.substring(0, 8)).join(\", \")}.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink._sync",
+      "element": "debugPrint('$_tag refusing to sync: the row claims the primary id.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink._sync",
+      "element": "debugPrint('$_tag session failed: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink._sync",
+      "element": "debugPrint('$_tag sync failed: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink.forget",
+      "element": "onSessionDone?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink.ingestForTest",
+      "element": "nowSeconds()",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink.ingestForTest",
+      "element": "reply?.call(uuid, value)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink.sync",
+      "element": "debugPrint('$_tag session-done hook failed: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/session_link.dart",
+      "symbol": "SessionLink.sync",
+      "element": "onSessionDone?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "ble/smaq2oss_link.dart",
       "symbol": "Smaq2ossLink._sync",
       "element": "debugPrint('[smaq2oss] $m')",
@@ -3987,8 +5233,50 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/ultrahuman_link.dart",
+      "symbol": "UltrahumanLink.enableNotifyWithBondRetry",
+      "element": "bond()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ultrahuman_link.dart",
+      "symbol": "UltrahumanLink.enableNotifyWithBondRetry",
+      "element": "debugPrint('[ultrahuman] notify refused (${e.code}); bonding once.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ultrahuman_link.dart",
+      "symbol": "UltrahumanLink.enableNotifyWithBondRetry",
+      "element": "enable()",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ultrahuman_link.dart",
       "symbol": "UltrahumanLink.forgetRing",
       "element": "debugPrint('[ultrahuman] refusing to forget the primary band from here.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ultrahuman_link.dart",
+      "symbol": "UltrahumanLink.ingestForTest",
+      "element": "debugPrint('[ultrahuman] $m')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ultrahuman_link.dart",
+      "symbol": "UltrahumanLink.ingestForTest",
+      "element": "nowSeconds()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ble/ultrahuman_link.dart",
+      "symbol": "UltrahumanLink.ingestForTest",
+      "element": "reply(served, link.writes[served].$2)",
       "count": 1
     },
     {
@@ -4329,6 +5617,13 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "compute/crossday_input.dart",
+      "symbol": "assembleCrossDayInput",
+      "element": "unsettled(rec, m)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "compute/day_activity_state.dart",
       "symbol": "DayHrSummary._eachWake",
       "element": "each(m, v == 255 ? _bigBpm[j]! : v)",
@@ -4407,6 +5702,34 @@
     {
       "rule": "unresolvedInvocation",
       "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._quietLevelRepass",
+      "element": "debugQuietRepassHook?.call(dayId)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._quietLevelRepass",
+      "element": "debugQuietRepassHook?.call(null)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._quietLevelUnreachable",
+      "element": "debugQuietBetweenReads?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._quietRepassOwed",
+      "element": "debugQuietBetweenReads?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._resolveMovementFloor",
       "element": "debugPrint('[derive] movement floor FROZEN at ' '${floor.toStringAsFixed(4)} g from ${hist.length} days ($dayId)')",
       "count": 1
@@ -4423,6 +5746,20 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._runCrossDayUntimed",
       "element": "debugPrint('[derive] crossday: ${dropped.length} field(s) were not ' 'JSON-encodable and were stored as absent: ${dropped.join(\", \")}')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._scaleSpans",
+      "element": "() { cum += s.steps; final upTo = raw <= 0 ? 0 : (cum * target / raw).round(); final n = upTo - placed; placed = upTo; return {'start_ts': s.startTs, 'end_ts': s.endTs, 'steps': n}; }()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._settled",
+      "element": "onSettled?.call()",
       "count": 1
     },
     {
@@ -4451,6 +5788,13 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine.deriveImportedDays",
       "element": "onDayDone?.call(day.date)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.quietLevelRepassDays",
+      "element": "after(day)",
       "count": 1
     },
     {
@@ -4861,6 +6205,55 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "_rederiveAround",
+      "element": "change()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "_rederiveAround",
+      "element": "onWearableDaysChanged?.call(days)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "resolveCells",
+      "element": "() { final ours = c.ours?.call(day, crossDay); final dev = c.device == null ? null : deviceValues[c.device]; final est = dev == null ? c.estimated?.call(day, crossDay) : null; // Ours off the device's stages only on a night the device staged; on a // night our HR-led window found, ours off its HR ([seriesMethodFor]). final ourHow = c.ourMethod == 'device_stages' && day['sleep_source'] != 'vendor_staged' ? method : c.ourMethod ?? method; final (cls, value, how) = ours != null ? (MetricClass.ours, ours, ourHow) : dev != null ? (MetricClass.device, dev, 'device') : est != null ? (MetricClass.estimated, est, c.estimatedMethod) : (MetricClass.unavailable, null, null); return <String, Object?>{ 'class': cls.name, 'value': value, 'method': how, if (dev != null && cls != MetricClass.device) 'device_value': dev, if (cls == MetricClass.unavailable) 'reason': c.reason.name, if (cls == MetricClass.ours || cls == MetricClass.estimated) 'band': ?methodBand(family, row, how), if (cls == MetricClass.ours && c.provisionalAt != null && c.provisionalAt!.fold<Object?>( day, (v, k) => v is Map ? v[k] : null, ) == true) 'provisional': true, }; }()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "resolveCells",
+      "element": "c.estimated?.call(day, crossDay)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "resolveCells",
+      "element": "c.ours?.call(day, crossDay)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "tagEnvelopes",
+      "element": "of(kEnvelopeSeriesKey[key] ?? key)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/inputs/canonical.dart",
+      "symbol": "withoutWearableEstimates",
+      "element": "of(k)",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "compute/periodic_calculation_policy.dart",
       "symbol": "PeriodicCalculationPolicy._observe",
       "element": "_loadSamples(to.subtract(_kLookback), to)",
@@ -4875,6 +6268,27 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "backfillReadinessCalibration",
+      "element": "lookup(day, payload['device_family'] as String?)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/readiness_calibration_backfill.dart",
+      "symbol": "backfillReadinessCalibration",
+      "element": "zHistoryLoader()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.fromJson",
+      "element": "() { final l = ints(m, 'band_sleep_state'); return l.length == n ? l : List<int>.filled(n, -1); }()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "compute/substrate.dart",
       "symbol": "Substrate.fromJson",
       "element": "() { final l = ints(m, 'hr_valid'); return l.length == n ? l : List<int>.filled(n, -1); }()",
@@ -4885,6 +6299,27 @@
       "file": "compute/substrate.dart",
       "symbol": "Substrate.fromJson",
       "element": "() { final l = ints(m, 'step_count'); return l.length == n ? l : List<int>.filled(n, -1); }()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/substrate.dart",
+      "symbol": "calendarDays",
+      "element": "tzOffset(cand.onsetSec)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/substrate.dart",
+      "symbol": "counterTicksPerWindow",
+      "element": "() { final i0 = lowerBound(ts, start + 1) - 1; // last record <= start var i1 = lowerBound(ts, end); // first record >= end // Data ending at `end - 1` closes the last 1 Hz second of the window. if (i1 == ts.length && ts.last == end - 1) i1--; if (i0 < 0 || i1 >= ts.length) return null; if (start - ts[i0] > maxGapSec || ts[i1] - end > maxGapSec) return null; if (breaks[i1] != breaks[i0]) return null; return cum[i1] - cum[i0]; }()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/auto_backup.dart",
+      "symbol": "_runBackup",
+      "element": "(exportSnapshot ?? () => LocalDb.exportCopy(includeSubstrateArchive: false))()",
       "count": 1
     },
     {
@@ -4920,6 +6355,20 @@
       "file": "data/auto_backup.dart",
       "symbol": "runBackupIfDue",
       "element": "markRun(when)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/csv_export.dart",
+      "symbol": "exportCsvFiles",
+      "element": "add(r)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/csv_export.dart",
+      "symbol": "heartRateMinuteRows",
+      "element": "() { final t = (e['t'] as num).toInt(); final d = DateTime.fromMillisecondsSinceEpoch(t * 1000); return <String, Object?>{ 'timestamp': t, 'local_time': '${d.year}-${two(d.month)}-${two(d.day)} ' '${two(d.hour)}:${two(d.minute)}', 'bpm': e['v'], 'source': source, }; }()",
       "count": 1
     },
     {
@@ -4960,6 +6409,13 @@
     {
       "rule": "unresolvedInvocation",
       "file": "data/db.dart",
+      "symbol": "LocalDb._updateFreshnessJson",
+      "element": "update(m)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db.dart",
       "symbol": "LocalDb._withCommitGate",
       "element": "body()",
       "count": 1
@@ -4995,8 +6451,22 @@
     {
       "rule": "unresolvedInvocation",
       "file": "data/db.dart",
+      "symbol": "LocalDb.frozenHeadline",
+      "element": "debugBeforeOrphanPinClear?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db.dart",
       "symbol": "LocalDb.insertEvent",
       "element": "() { try { return proto.parseEvent(proto.hexToBytes(hex)); } catch (_) { return null; } }()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.insertEvent",
+      "element": "() { try { return proto.parseEvent(proto.hexToBytes(hex), profile: profile); } catch (_) { return null; } }()",
       "count": 1
     },
     {
@@ -5010,6 +6480,20 @@
       "rule": "unresolvedInvocation",
       "file": "data/db.dart",
       "symbol": "LocalDb.putDayResult",
+      "element": "nowMs()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.putDayResult",
+      "element": "seriesMethod(key)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.putReviewedBaseline",
       "element": "nowMs()",
       "count": 1
     },
@@ -5032,6 +6516,13 @@
       "file": "data/db.dart",
       "symbol": "LocalDb.retryComputeJob",
       "element": "nowMs()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.sessionHrStats",
+      "element": "() { final hr = [for (final r in rs) (r['hr'] as num).toInt()]; final low = [ for (final h in hr) if (minHrFloor <= 0 || h >= minHrFloor) h, ]; final high = [ for (final h in hr) if (maxHrCeiling <= 0 || h <= maxHrCeiling) h, ]; return <String, num>{ 'n': hr.length, 'avg_hr': hr.fold<int>(0, (a, b) => a + b) / hr.length, 'min_hr': low.isEmpty ? 0 : low.reduce((a, b) => a < b ? a : b), 'max_hr': high.isEmpty ? 0 : high.reduce((a, b) => a > b ? a : b), }; }()",
       "count": 1
     },
     {
@@ -5130,6 +6621,20 @@
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl.computeArtifact",
       "element": "getProfileMap()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/local_repository_impl.dart",
+      "symbol": "LocalRepositoryImpl.confirmActivity",
+      "element": "onActivitiesChanged?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/local_repository_impl.dart",
+      "symbol": "LocalRepositoryImpl.discardActivity",
+      "element": "onActivitiesChanged?.call()",
       "count": 1
     },
     {
@@ -5284,6 +6789,69 @@
       "file": "data/sample_lock.dart",
       "symbol": "SampleLock.run",
       "element": "job()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive.archiveAndDeleteBefore",
+      "element": "debugBeforeBucket?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive.archiveAndDeleteBefore",
+      "element": "debugBeforeFallbackDelete?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive.archiveAndDeleteBefore",
+      "element": "log?.call( 'substrate archive failed for $deviceId/$day ($e) and the ' 'unarchived delete failed too ($e2); kept live for the next ' 'pass', )",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive.archiveAndDeleteBefore",
+      "element": "log?.call( 'substrate archive failed for $deviceId/$day ($e); kept live for ' 'the next pass', )",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive.archiveAndDeleteBefore",
+      "element": "log?.call( 'substrate archive failed for $deviceId/$day ($e); past the ' 'hold, deleted unarchived', )",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive.archiveAndDeleteBefore",
+      "element": "log?.call( 'substrate archive: offload active, leaving the rest live for the ' 'next pass', )",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive.archiveAndDeleteBefore",
+      "element": "onDeleted?.call(txn, hi)",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/substrate_archive.dart",
+      "symbol": "SubstrateArchive.archiveAndDeleteBefore",
+      "element": "shouldYield?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/substrate_archive_codec.dart",
+      "symbol": "ArchiveTable.where",
+      "element": "keep(i)",
       "count": 1
     },
     {
@@ -7845,6 +9413,13 @@
       "rule": "unresolvedInvocation",
       "file": "health/health_export.dart",
       "symbol": "HealthExporter.exportAll",
+      "element": "debugPrint('[health] day $date not exported, store unavailable')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "health/health_export.dart",
+      "symbol": "HealthExporter.exportAll",
       "element": "debugPrint('[health] exportAll: $e')",
       "count": 1
     },
@@ -7914,6 +9489,13 @@
     {
       "rule": "unresolvedInvocation",
       "file": "health/health_export.dart",
+      "symbol": "HealthExporter.reexportFrom",
+      "element": "debugPrint('[health] reexportFrom $date: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "health/health_export.dart",
       "symbol": "HealthExporter.request",
       "element": "debugPrint('[health] requestAuthorization: $e')",
       "count": 1
@@ -7965,6 +9547,41 @@
       "file": "health/health_export.dart",
       "symbol": "exportPrioritySleepBeforeBulk",
       "element": "exportBulk(priorityResult.date)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "health/health_export.dart",
+      "symbol": "purgeLegacyStepsBehindCursor",
+      "element": "debugPrint('[health] purge legacy steps behind $cursor: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "health/health_export.dart",
+      "symbol": "purgeLegacyStepsBehindCursor",
+      "element": "deleteSteps( DateTime.fromMillisecondsSinceEpoch(0), DateTime(d.year, d.month, d.day + 1), )",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "health/health_export.dart",
+      "symbol": "purgeLegacyStepsBehindCursor",
+      "element": "getCursor(kHealthStepsPrefixPurgeCursor)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "health/health_export.dart",
+      "symbol": "purgeLegacyStepsBehindCursor",
+      "element": "setCursor(kHealthStepsPrefixPurgeCursor, cursor)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "health/health_heart_rate_batch.dart",
+      "symbol": "exportContinuousHeartRateDay",
+      "element": "clearGeneric(from, end)",
       "count": 1
     },
     {
@@ -8021,6 +9638,13 @@
       "file": "health/health_rhr_seed.dart",
       "symbol": "RhrSeedImporter.requestPermission",
       "element": "debugPrint('[rhr_seed] permission: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "health/health_rhr_seed.dart",
+      "symbol": "RhrSeedImporter.seed",
+      "element": "debugPrint('[rhr_seed] package info: $e')",
       "count": 1
     },
     {
@@ -8175,6 +9799,13 @@
       "file": "main.dart",
       "symbol": "main",
       "element": "debugPrint('Firebase init failed (run flutterfire configure!): $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "main.dart",
+      "symbol": "main",
+      "element": "debugPrint('[main] ClockFormatController.bootstrap failed, using system: $e\\n$st')",
       "count": 1
     },
     {
@@ -8634,6 +10265,20 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "scan/barcode_reader.dart",
+      "symbol": "_BarcodeReaderWidgetState._onDetect",
+      "element": "widget.onDetect(code.trim())",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "scan/barcode_reader.dart",
+      "symbol": "_BarcodeReaderWidgetState.build",
+      "element": "widget.errorBuilder( context, BarcodeReaderError( permissionDenied: e.errorCode == ms.MobileScannerErrorCode.permissionDenied, ), )",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "settings/settings_repository.dart",
       "symbol": "SettingsDraft.propagatePattern",
       "element": "_propagate( id, prefs: alerts, channels: channels, replacement: replacement, )",
@@ -8746,6 +10391,13 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "state/alarm_schedule.dart",
+      "symbol": "awaitAlarmLatch",
+      "element": "latched()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "state/app_state.dart",
       "symbol": "AppState._breathing",
       "element": "(_breathingNowForTesting ?? DateTime.now)()",
@@ -8791,6 +10443,13 @@
       "file": "state/app_state.dart",
       "symbol": "AppState._handleAlarmEvent",
       "element": "() async { try { final prefs = await SharedPreferences.getInstance(); await prefs.setBool('alarm_epoch_confirmed', true); } catch (e) { _log('[alarm] persisting confirmation failed: $e'); } }()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/app_state.dart",
+      "symbol": "AppState._initSteps",
+      "element": "debugPrint('[AppState] adoptWeighing failed: $e')",
       "count": 1
     },
     {
@@ -8868,6 +10527,20 @@
       "file": "state/app_state.dart",
       "symbol": "AppState.disablePhoneSteps",
       "element": "debugPrint('[phone_steps] clear: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/app_state.dart",
+      "symbol": "AppState.refreshActivityReviews",
+      "element": "debugRefreshActivityReviews?.call(_profile)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/app_state.dart",
+      "symbol": "AppState.requestPhoneSteps",
+      "element": "() async { await syncPhoneSteps(days: PhonePedometer.fullSyncDays); // Waits out any derive already running (see _reanalyzeForOverride). await _reanalyzeForOverride(); }()",
       "count": 1
     },
     {
@@ -9064,6 +10737,13 @@
       "file": "state/breathing_controller.dart",
       "symbol": "BreathingController.stopBreathingSession",
       "element": "_nudgeLive()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/clock_format.dart",
+      "symbol": "ClockMaterialLocalizationsDelegate.load",
+      "element": "make( fullYearFormat: intl.DateFormat.y(n), compactDateFormat: intl.DateFormat.yMd(n), shortDateFormat: intl.DateFormat.yMMMd(n), mediumDateFormat: intl.DateFormat.MMMEd(n), longDateFormat: intl.DateFormat.yMMMMEEEEd(n), yearMonthFormat: intl.DateFormat.yMMMM(n), shortMonthDayFormat: intl.DateFormat.MMMd(n), decimalFormat: intl.NumberFormat.decimalPattern(n), twoDigitZeroPaddedFormat: intl.NumberFormat('00', n), )",
       "count": 1
     },
     {
@@ -9679,6 +11359,13 @@
       "rule": "unresolvedInvocation",
       "file": "state/sync_controller.dart",
       "symbol": "SyncController._manualSync",
+      "element": "_log('[sync] manual sync: foreground pull floored — no download')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/sync_controller.dart",
+      "symbol": "SyncController._manualSync",
       "element": "_reanalyzing()",
       "count": 1
     },
@@ -9903,6 +11590,13 @@
       "rule": "unresolvedInvocation",
       "file": "state/sync_controller.dart",
       "symbol": "SyncController._runSyncBurst",
+      "element": "_log('Backfill continuation ${i + 1}/$maxSessions — the history task ' 'is still running; waiting on it again.')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/sync_controller.dart",
+      "symbol": "SyncController._runSyncBurst",
       "element": "_log('Backfill stop — history complete acknowledged by strap.')",
       "count": 1
     },
@@ -10100,7 +11794,7 @@
       "file": "state/sync_controller.dart",
       "symbol": "SyncController.openSession",
       "element": "_nudgeLive()",
-      "count": 1
+      "count": 2
     },
     {
       "rule": "unresolvedInvocation",
@@ -10121,7 +11815,7 @@
       "file": "state/sync_controller.dart",
       "symbol": "SyncController.openSession",
       "element": "_refreshHighFreqWakeWindow()",
-      "count": 3
+      "count": 4
     },
     {
       "rule": "unresolvedInvocation",
@@ -10231,6 +11925,34 @@
     {
       "rule": "unresolvedInvocation",
       "file": "state/sync_controller.dart",
+      "symbol": "SyncController.syncForShortcut",
+      "element": "_initError()",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/sync_controller.dart",
+      "symbol": "SyncController.syncForShortcut",
+      "element": "_initialized()",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/sync_controller.dart",
+      "symbol": "SyncController.syncForShortcut",
+      "element": "_isDisposed()",
+      "count": 5
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/sync_controller.dart",
+      "symbol": "SyncController.syncForShortcut",
+      "element": "_notify()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/sync_controller.dart",
       "symbol": "SyncController.syncOperations",
       "element": "_bumpInsights()",
       "count": 1
@@ -10309,6 +12031,13 @@
       "rule": "unresolvedInvocation",
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController._maybeStartRouteTracking",
+      "element": "_hostDisposed()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController._maybeStartRouteTracking",
       "element": "_log('Route tracking started for $type.')",
       "count": 1
     },
@@ -10325,6 +12054,41 @@
       "symbol": "WorkoutController._maybeStartRouteTracking",
       "element": "_notify()",
       "count": 3
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController._newLiveSession",
+      "element": "_linkDeviceFamily()",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController._newLiveSession",
+      "element": "_liveRestingHr()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController._newLiveSession",
+      "element": "_observedCeilingBpm()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController._newLiveSession",
+      "element": "_rhr28()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController._newLiveSession",
+      "element": "_user()",
+      "count": 5
     },
     {
       "rule": "unresolvedInvocation",
@@ -10371,6 +12135,20 @@
     {
       "rule": "unresolvedInvocation",
       "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController._startStrapTail",
+      "element": "_hostDisposed()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController._startStrapTail",
+      "element": "onStrapTailBanked()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
       "symbol": "WorkoutController._tickWorkout",
       "element": "_dispatchBandAlert('zone')",
       "count": 1
@@ -10380,6 +12158,13 @@
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController._tickWorkout",
       "element": "_liveHr()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController._tickWorkout",
+      "element": "_liveSensor()",
       "count": 1
     },
     {
@@ -10399,6 +12184,13 @@
     {
       "rule": "unresolvedInvocation",
       "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController._workoutStepsMeasuredAt",
+      "element": "_liveRaw()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.deleteWorkout",
       "element": "_notify()",
       "count": 1
@@ -10413,6 +12205,13 @@
     {
       "rule": "unresolvedInvocation",
       "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController.fillLiveQuietLevel",
+      "element": "_notify()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.rebaseWorkoutSteps",
       "element": "_liveRaw()",
       "count": 1
@@ -10422,6 +12221,13 @@
       "file": "state/workout_controller.dart",
       "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
       "element": "_dismissSupersededSuggestions( startSec: row['start_ts'] as int, endSec: finalEndTs, )",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "state/workout_controller.dart",
+      "symbol": "WorkoutController.reconcileOrphanedLiveWorkout",
+      "element": "_dismissSupersededSuggestions( startSec: startTs, endSec: finalEndTs, )",
       "count": 1
     },
     {
@@ -10713,6 +12519,41 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "support/issue_report.dart",
+      "symbol": "collectReport",
+      "element": "onStage?.call(ReportStage.collecting)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "support/issue_report.dart",
+      "symbol": "collectReport",
+      "element": "onStage?.call(ReportStage.database)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "support/issue_report.dart",
+      "symbol": "collectReport",
+      "element": "onStage?.call(ReportStage.logs)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "support/issue_report.dart",
+      "symbol": "collectReport",
+      "element": "onStage?.call(ReportStage.packing)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "support/issue_report.dart",
+      "symbol": "collectReport",
+      "element": "onStage?.call(ReportStage.slice)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "sync/android_boot_signal.dart",
       "symbol": "AndroidBootSignal.consumePendingHeadlessBoot",
       "element": "debugPrint('[android-boot-signal] consume failed: $e')",
@@ -10730,6 +12571,55 @@
       "file": "sync/background_sync.dart",
       "symbol": "_bgLog",
       "element": "debugPrint(line)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/background_sync.dart",
+      "symbol": "connectHeadless",
+      "element": "connect()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/background_sync.dart",
+      "symbol": "createHeadlessSyncEngine",
+      "element": "onCommitError?.call(e)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/background_sync.dart",
+      "symbol": "createHeadlessSyncEngine",
+      "element": "onCommitted?.call(samples.length)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/background_sync.dart",
+      "symbol": "createHeadlessSyncEngine",
+      "element": "onWakeConfirmed?.call(moment)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/background_sync.dart",
+      "symbol": "finishHeadlessDrain",
+      "element": "rearm(engine)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/background_sync.dart",
+      "symbol": "headlessArmAndConfirm",
+      "element": "arm()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/background_sync.dart",
+      "symbol": "headlessArmAndConfirm",
+      "element": "latchedSince(armedAtMs)",
       "count": 1
     },
     {
@@ -10972,9 +12862,93 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "sync/ios_shortcut_sync.dart",
+      "symbol": "IosShortcutSync._derive",
+      "element": "debugPrint('[shortcut-derive] $line')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/ios_shortcut_sync.dart",
+      "symbol": "IosShortcutSync._headless",
+      "element": "debugPrint('[shortcut-sync] teardown: $error')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/ios_shortcut_sync.dart",
+      "symbol": "IosShortcutSync._sync",
+      "element": "foregroundEngine?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/ios_shortcut_sync.dart",
+      "symbol": "IosShortcutSync._sync",
+      "element": "liveSync(task)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/ios_shortcut_sync.dart",
+      "symbol": "IosShortcutSync.attachForeground",
+      "element": "debugPrint('[shortcut-sync] ready: $error')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/ios_shortcut_sync.dart",
+      "symbol": "IosShortcutSync.foregroundCommitFailed",
+      "element": "_onForegroundCommitFailure?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/ios_shortcut_sync.dart",
+      "symbol": "IosShortcutSync.foregroundCommitted",
+      "element": "_onForegroundCommitted?.call(records)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/ios_shortcut_sync.dart",
+      "symbol": "IosShortcutSync.run",
+      "element": "() async { try { return await HeadlessSyncGate.tryRun('shortcut', () => _sync(task)) ?? const ShortcutSyncResult('alreadyRunning'); } catch (e, st) { debugPrint('[shortcut-sync] failed: $e\\n$st'); return ShortcutSyncResult('failed', records: task.records); } finally { task.onStop = null; if (identical(_active, task)) _active = null; } }()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/ios_shortcut_sync.dart",
+      "symbol": "IosShortcutSync.run",
+      "element": "debugPrint('[shortcut-sync] failed: $e\\n$st')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/ios_shortcut_sync.dart",
+      "symbol": "IosShortcutSync.run",
+      "element": "debugPrint('[shortcut-sync] progress: $error')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "sync/paired_device.dart",
       "symbol": "PairedDevice._serialized",
       "element": "op()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/shortcut_sync_task.dart",
+      "symbol": "ShortcutSyncTask.stop",
+      "element": "onStop?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "sync/shortcut_sync_task.dart",
+      "symbol": "ShortcutSyncTask.update",
+      "element": "onProgress?.call({ 'id': id, 'phase': phase, 'records': this.records, 'batches': this.batches, })",
       "count": 1
     },
     {
@@ -11122,7 +13096,7 @@
       "file": "ui2/activity/live.dart",
       "symbol": "_LiveStrengthState._body",
       "element": "widget.feed?.call()",
-      "count": 1
+      "count": 2
     },
     {
       "rule": "unresolvedInvocation",
@@ -11204,6 +13178,13 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ui2/app_shell.dart",
+      "symbol": "_AppShellState._back",
+      "element": "widget.onSelect?.call(_current)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/app_shell.dart",
       "symbol": "_AppShellState._select",
       "element": "widget.onSelect?.call(d)",
       "count": 1
@@ -11242,6 +13223,13 @@
       "symbol": "Bars._columns",
       "element": "() { final lo = (c * n / cols).floor(); final hi = ((c + 1) * n / cols).ceil().clamp(lo + 1, n); double? m; for (var i = lo; i < hi; i++) { final v = d[i]; if (v == null || !v.isFinite) continue; if (m == null || v > m) m = v; } return m; }()",
       "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/charts.dart",
+      "symbol": "Bars.paint",
+      "element": "colorOf?.call(value)",
+      "count": 2
     },
     {
       "rule": "unresolvedInvocation",
@@ -11318,28 +13306,42 @@
       "file": "ui2/grammar.dart",
       "symbol": "ChartFrame._spoken",
       "element": "fmt(delta.abs())",
-      "count": 1
+      "count": 2
     },
     {
       "rule": "unresolvedInvocation",
       "file": "ui2/grammar.dart",
       "symbol": "ChartFrame._spoken",
       "element": "fmt(hi)",
-      "count": 1
+      "count": 2
     },
     {
       "rule": "unresolvedInvocation",
       "file": "ui2/grammar.dart",
       "symbol": "ChartFrame._spoken",
       "element": "fmt(last)",
-      "count": 1
+      "count": 2
     },
     {
       "rule": "unresolvedInvocation",
       "file": "ui2/grammar.dart",
       "symbol": "ChartFrame._spoken",
       "element": "fmt(lo)",
-      "count": 1
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/grammar.dart",
+      "symbol": "ChartFrame.build",
+      "element": "a.format(band!.hi)",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/grammar.dart",
+      "symbol": "ChartFrame.build",
+      "element": "a.format(band!.lo)",
+      "count": 2
     },
     {
       "rule": "unresolvedInvocation",
@@ -11428,6 +13430,13 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ui2/grammar.dart",
+      "symbol": "Scrubber.build",
+      "element": "onEnd?.call()",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/grammar.dart",
       "symbol": "SubTabs.build",
       "element": "onTap(i)",
       "count": 1
@@ -11465,6 +13474,27 @@
       "file": "ui2/grammar.dart",
       "symbol": "_PressableState.build",
       "element": "widget.onPressStart?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/grammar.dart",
+      "symbol": "_SubTabsState.build",
+      "element": "widget.onTap(i)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/grammar.dart",
+      "symbol": "_TrendCardState._fmt",
+      "element": "widget.format?.call(v)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/grammar.dart",
+      "symbol": "_TrendCardState.build",
+      "element": "w.dayOf!(held)",
       "count": 1
     },
     {
@@ -11576,6 +13606,13 @@
       "rule": "unresolvedInvocation",
       "file": "ui2/onboarding/profile_setup.dart",
       "symbol": "_ProfileSetupViewState._continue",
+      "element": "widget.onCycleTracking?.call(_cycleOn)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/onboarding/profile_setup.dart",
+      "symbol": "_ProfileSetupViewState._continue",
       "element": "widget.onSave(_fields())",
       "count": 1
     },
@@ -11633,6 +13670,20 @@
       "file": "ui2/profile/alarm.dart",
       "symbol": "_AlarmScreenViewState._timelineChildren",
       "element": "w.timelineFor?.call(wakeAt, shown)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/profile/alarm.dart",
+      "symbol": "_AlarmTick.wrap",
+      "element": "build(now)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/profile/alarm.dart",
+      "symbol": "_AlarmTickState.build",
+      "element": "widget.build(clock.now())",
       "count": 1
     },
     {
@@ -11773,6 +13824,13 @@
       "file": "ui2/profile/buzz_pattern.dart",
       "symbol": "showBuzzPatternSheet",
       "element": "onSaveNamed(name, s)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/profile/data.dart",
+      "symbol": "_DataScreenState._exportHeartRate",
+      "element": "() { final week = DateTime(last.year, last.month, last.day - 6); return week.isBefore(first) ? first : week; }()",
       "count": 1
     },
     {
@@ -12303,6 +14361,20 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ui2/profile/pair_sensor.dart",
+      "symbol": "_PairSensorScreenState._pickDevice",
+      "element": "widget.onPicked!(device)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/profile/pair_sensor.dart",
+      "symbol": "_PairSensorScreenState._pickDevice",
+      "element": "widget.onPickedWithKey!(device, typedKey)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/profile/pair_sensor.dart",
       "symbol": "_PairSensorScreenState._pick",
       "element": "widget.onPicked!(c.device)",
       "count": 1
@@ -12484,6 +14556,34 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "ui2/profile/wearable_numbers.dart",
+      "symbol": "WearableDisplay.toggleDevice",
+      "element": "SessionLink.onSessionDone?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/profile/wearable_numbers.dart",
+      "symbol": "WearableDisplay.toggleDevice",
+      "element": "debugPrint('[devices] toggle $adapter failed: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/profile/wearable_numbers.dart",
+      "symbol": "WearableUnlocks.build",
+      "element": "inGroup(row)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/profile/wearable_numbers.dart",
+      "symbol": "formatCell",
+      "element": "() { final m = (v * 60).round() % (24 * 60); return ('${m ~/ 60}:${(m % 60).toString().padLeft(2, '0')}', ''); }()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "ui2/research_refs.dart",
       "symbol": "researchCitation",
       "element": "open(ref.url!)",
@@ -12659,6 +14759,13 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "ui2/screens/log_workout.dart",
+      "symbol": "scoreImportedWorkout",
+      "element": "(hasHr ?? (s, e) async => (await LocalDb.hrSamplesInRange(s, e)).isNotEmpty)(s, e)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "ui2/screens/metric_detail.dart",
       "symbol": "DayNav.build",
       "element": "onDay(picked)",
@@ -12729,6 +14836,13 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "ui2/screens/month_grid.dart",
+      "symbol": "_SideStrip.paint",
+      "element": "ink(v)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "ui2/screens/naps.dart",
       "symbol": "_NapsScreenState._edit",
       "element": "write()",
@@ -12775,6 +14889,34 @@
       "symbol": "_Compare.build",
       "element": "fmt(band.lo)",
       "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/screens/sleep_detail.dart",
+      "symbol": "_SleepDetailState._labelledHypnogram",
+      "element": "text(s)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/screens/sleep_detail.dart",
+      "symbol": "_SleepDetailState._overnight",
+      "element": "format(hi)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/screens/sleep_detail.dart",
+      "symbol": "_SleepDetailState._overnight",
+      "element": "format(lo)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "ui2/screens/sleep_detail.dart",
+      "symbol": "_SleepDetailState._runOverride",
+      "element": "applied?.call(_d?.night ?? const <String, dynamic>{})",
+      "count": 1
     },
     {
       "rule": "unresolvedInvocation",

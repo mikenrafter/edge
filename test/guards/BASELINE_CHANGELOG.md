@@ -186,3 +186,32 @@ as members that are not iteration (both are O(1)). This only NARROWS what the
 rule reports, so it adds no key, raises no count and needs no version bump or
 entry; this note records the widening of the cheap-member set. `single`,
 `elementAt`, `toList`, `firstWhere` and every other member stay findings.
+
+## Upstream merge (no version change) - legacy keys from OpenStrap/edge main (2026-10-18)
+The integration branch merges upstream main (1f1025ad) into the fork (merge log
+D3). Upstream never ran this guard, so its code arrives with 320 occurrences
+the fork's baseline did not list (306 new keys, 14 raised counts). They are
+legacy code in the sense of the header, kept deliberately per the merge log,
+not new heavy work written against the guard:
+- `unresolvedInvocation` (219): log sinks and callbacks in upstream's device
+  links and adapters (Oura, Ultrahuman, Garmin, Pebble, Mi Band, Colmi, HRS,
+  scale, thermometer; D7, D15, D16), the iOS Shortcut sync (D18), the workout
+  and sync controllers (D20), health export (D21), the issue report (D17) and
+  ui2 files the CLS agent re-applies (D9).
+- `heavyOriginOutsideHeavy`, `storedPayloadDecodeOutsideHeavy`,
+  `rawTableRowLoopOutsideHeavy`, `dispatcherClosureContract`,
+  `captureNotSendable`, `rawReaderUnregistered` (101): upstream's wearable
+  inputs (compute/inputs/*, D16), quiet-level strain and its seed (D16), the
+  readiness calibration backfill (D16), step calibration (D16), the lossless
+  substrate archive (D14), activity review and nap edits (D14, D19), the
+  heart-rate session windows and skin-temp ambient readers in LocalDb, the
+  issue report's file encryption (D17), and the upstream rules ported into our
+  own engine functions (D16).
+Structure rules were fixed in code, not baselined: `crossDayAsOf` now
+dispatches the cross-day build through the engine's cancellable dispatcher
+(`DerivationEngine.rebuildCrossDayAsOf`), and kUnresolvedOk follows the
+`_derivePreparedDay` seams. The heart-rate CSV export moved its decode to
+BundleStore instead of adding keys. Each key above is to be retired the usual
+way (moved behind a registered worker or reader); none may grow further.
+CI's target-branch comparison will report these as growth: the merge PR needs
+the reviewer's sign-off on this entry.

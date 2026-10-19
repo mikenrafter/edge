@@ -11831,6 +11831,43 @@ class DerivationEngine {
     ).then((r) => (bundle: r.bundle, state: DayCalculationState()));
   }
 
+  /// The cross-day rollup rebuilt over the stored inputs [raw] (the
+  /// `crossday_input` baseline JSON) up to [date], for `crossDayAsOf`
+  /// (compute/inputs/canonical.dart). Empty when the inputs are another
+  /// algorithm version's, predate review [reviewRevision], or hold under the
+  /// rollup's three-day minimum. The rows' `is_today` stamps are the build
+  /// day's, so they are restamped for [date].
+  static Future<Map<String, dynamic>> rebuildCrossDayAsOf(
+    String raw,
+    String date,
+    int reviewRevision,
+  ) =>
+      _runIsolateCancellable(
+        () {
+          final input = jsonDecode(raw);
+          if (input is! Map ||
+              (input['algo_version'] as num?)?.toInt() != kAlgoVersion ||
+              input['review_revision'] != reviewRevision) {
+            return const <String, dynamic>{};
+          }
+          final days = <Map<String, dynamic>>[
+            for (final d in (input['days'] as List?) ?? const [])
+              if (d is Map &&
+                  d['date'] is String &&
+                  (d['date'] as String).compareTo(date) <= 0)
+                {
+                  ...d.cast<String, dynamic>()..remove('is_today'),
+                  if (d['date'] == date) 'is_today': true,
+                },
+          ];
+          return days.length < 3
+              ? const <String, dynamic>{}
+              : buildCrossDayBundle(days, const {});
+        },
+        _crossDayTimeout,
+        label: 'crossday-asof $date',
+      );
+
   static Future<R> _runIsolateCancellable<R>(
     FutureOr<R> Function() compute,
     Duration timeout, {

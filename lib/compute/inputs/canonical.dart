@@ -8,7 +8,6 @@
 // the display table (`LocalDb.observationsForDay`), never during a derive.
 
 import 'dart:convert';
-import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:openstrap_analytics/onehz.dart' as ana;
@@ -17,8 +16,7 @@ import '../../ble/adapters/_registry.dart'
     show DeviceCategory, categoryOf, kBleHrs, kCoros, kPolarPmd;
 import '../../data/day_label.dart';
 import '../../data/db.dart';
-import '../crossday_pipeline.dart' show buildCrossDayBundle;
-import '../derivation_engine.dart' show kAlgoVersion;
+import '../derivation_engine.dart' show DerivationEngine, kAlgoVersion;
 import '../substrate.dart';
 import '../vendor_sleep.dart';
 import 'colmi_inputs.dart';
@@ -1381,26 +1379,10 @@ Future<Map> crossDayAsOf(String date) async {
   final raw = (await LocalDb.baseline('crossday_input'))?['payload_json'];
   if (raw is! String) return const {};
   final reviewRevision = await LocalDb.activityReviewRevision();
-  return Isolate.run(() {
-    final input = jsonDecode(raw);
-    if (input is! Map ||
-        (input['algo_version'] as num?)?.toInt() != kAlgoVersion ||
-        input['review_revision'] != reviewRevision) {
-      return const <String, dynamic>{};
-    }
-    final days = <Map<String, dynamic>>[
-      for (final d in (input['days'] as List?) ?? const [])
-        if (d is Map && d['date'] is String &&
-            (d['date'] as String).compareTo(date) <= 0)
-          {
-            ...d.cast<String, dynamic>()..remove('is_today'),
-            if (d['date'] == date) 'is_today': true,
-          },
-    ];
-    return days.length < 3
-        ? const <String, dynamic>{}
-        : buildCrossDayBundle(days, const {});
-  });
+  // The cross-day entry's own dispatcher (kWorkerEntries registers
+  // buildCrossDayBundle as cancellable): a stuck rebuild is killed on the
+  // engine's timeout instead of holding an isolate forever.
+  return DerivationEngine.rebuildCrossDayAsOf(raw, date, reviewRevision);
 }
 
 /// [deviceId]'s own values on [date] that have no slot of ours — a vendor's

@@ -392,9 +392,24 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
     file: 'compute/derivation_engine.dart',
     symbol: 'DerivationEngine._derivePreparedDay',
+    source: 'debugSecondHalfHook?.call(day.date)',
+    ordinal: 0,
+    reason: 'upstream\'s test-only seam (static, null in production)',
+  ),
+  UnresolvedOk(
+    file: 'compute/derivation_engine.dart',
+    symbol: 'DerivationEngine._derivePreparedDay',
     source: 'debugAccumulatorTamper?.call(day.date, bundle)',
-    ordinal: 1,
+    ordinal: 2,
     reason: 'test-only seam (@visibleForTesting), null in production',
+  ),
+  UnresolvedOk(
+    file: 'compute/derivation_engine.dart',
+    symbol: 'DerivationEngine._derivePreparedDay',
+    source: 'onStaleTonight(day.date)',
+    ordinal: 3,
+    reason: 'the pass\'s Set.add tear-off: records a day to derive once more '
+        'after the pool (D25)',
   ),
   UnresolvedOk(
     file: 'data/db.dart',
