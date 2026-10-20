@@ -41,6 +41,8 @@ import '../onboarding/welcome.dart'
         runImport;
 import '../screens/home_screen.dart' show dbRebuiltCard;
 import '../ui2.dart';
+import '../../data/import_progress.dart';
+import 'import_progress_view.dart';
 import 'phone_import.dart';
 import 'profile.dart';
 import 'settings.dart' show backToRoot;
@@ -322,7 +324,16 @@ class _DataScreenState extends State<DataScreen> {
   Widget build(BuildContext c) {
     final app = c.watch<AppState>();
     final l = AppLocalizations.of(c);
+    return ValueListenableBuilder<ImportProgress?>(
+      valueListenable: app.importProgress,
+      builder: (c, importProgress, _) => _view(c, app, l, importProgress),
+    );
+  }
+
+  Widget _view(BuildContext c, AppState app, AppLocalizations? l,
+      ImportProgress? importProgress) {
     return DataScreenView(
+      importProgress: importProgress,
       rebuiltCard: dbRebuiltCard(app.dbRebuild),
       busy: _busy,
       busyStatus: _busyStatus,
@@ -373,6 +384,7 @@ class DataScreenView extends StatelessWidget {
     this.rebuiltCard,
     this.busy = false,
     this.busyStatus,
+    this.importProgress,
     this.note,
     this.noteFailed = false,
     this.outcome,
@@ -401,6 +413,9 @@ class DataScreenView extends StatelessWidget {
 
   /// What the running action is doing, under the spinner while [busy].
   final String? busyStatus;
+
+  /// A running import's stage; replaces the busy spinner while non-null.
+  final ImportProgress? importProgress;
   final bool busy, noteFailed, reanalyzing;
   final String? note, importRollupError;
   final String reanalyzeProgress;
@@ -577,7 +592,10 @@ class DataScreenView extends StatelessWidget {
                 ]),
                 if (busy) ...[
                   const SizedBox(height: S.x6),
-                  InlineLoading(
+                  if (importProgress != null)
+                    ImportProgressView(importProgress!)
+                  else
+                    InlineLoading(
                       status: busyStatus ??
                           l?.loadingDataBusy ??
                           'Working on your data'),

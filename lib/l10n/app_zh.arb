@@ -2994,5 +2994,21 @@
   "loadingReanalyze": "正在重新计算每一天",
   "loadingDataBusy": "正在处理你的数据",
   "loadingPhoneRhr": "正在从{store}读取静息心率",
-  "loadingPhoneMeasurements": "正在从{store}读取测量数据"
+  "loadingPhoneMeasurements": "正在从{store}读取测量数据",
+  "importPrepInflating": "正在解压备份",
+  "importPrepOpening": "正在打开备份",
+  "importPrepChecking": "正在检查备份",
+  "importCopying": "正在复制{stage}",
+  "importStep": "第 {index}/{count} 步 · {done}/{total} 行",
+  "importRecalculating": "正在重新计算 · 第 {done}/{total} 天",
+  "importRecalculatingDay": "正在重新计算 · 第 {done}/{total} 天 · {day}",
+  "importStageJournal": "日志",
+  "importStageWorkouts": "锻炼",
+  "importStageSleep": "睡眠",
+  "importStageHeartRate": "心率",
+  "importStageBeats": "心跳",
+  "importStageEvents": "事件",
+  "importStageResults": "计算结果",
+  "importStageArchive": "手环原始记录",
+  "importStageOther": "其他数据"
 }

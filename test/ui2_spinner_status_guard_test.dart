@@ -28,6 +28,8 @@ const _allowed = <String, String>{
       'replaces the switch while the row subtitle reads deviceUseWorking',
   'lib/ui2/pairing/device_picker.dart':
       'ends the "Scanning for devices nearby…" row',
+  'lib/ui2/profile/import_progress_view.dart':
+      'sits above the import stage status and its done/total line',
 };
 
 String _rel(File f) => f.path.replaceAll('\\', '/');

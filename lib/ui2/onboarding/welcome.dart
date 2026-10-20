@@ -23,7 +23,9 @@ import '../../import/import_container.dart';
 import '../../import/journal_csv_import.dart';
 import '../../import/lab_csv_import.dart';
 import '../../l10n/app_localizations.dart';
+import '../../data/import_progress.dart';
 import '../../state/app_state.dart';
+import '../profile/import_progress_view.dart';
 import '../ui2.dart';
 
 /// What an import actually achieved, including what it could NOT use.
@@ -299,7 +301,22 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   }
 
   @override
-  Widget build(BuildContext c) => WelcomeView(
+  Widget build(BuildContext c) {
+    // No AppState in a headless pump: no progress, the plain spinner.
+    ValueNotifier<ImportProgress?>? notifier;
+    try {
+      notifier = Provider.of<AppState>(c, listen: false).importProgress;
+    } on ProviderNotFoundException {
+      return _view(null);
+    }
+    return ValueListenableBuilder<ImportProgress?>(
+      valueListenable: notifier,
+      builder: (_, prog, _) => _view(prog),
+    );
+  }
+
+  Widget _view(ImportProgress? prog) => WelcomeView(
+        importProgress: prog,
         busy: _busy,
         outcome: _outcome,
         onNew: () => context.read<AppState>().chooseNewUser(),
@@ -559,6 +576,9 @@ bool _isDbBackup(String path) {
 class WelcomeView extends StatelessWidget {
   final bool busy;
   final ImportOutcome? outcome;
+
+  /// A running import's stage; replaces the busy spinner while non-null.
+  final ImportProgress? importProgress;
   final VoidCallback onNew;
   final VoidCallback onImport;
 
@@ -568,6 +588,7 @@ class WelcomeView extends StatelessWidget {
     required this.onImport,
     this.busy = false,
     this.outcome,
+    this.importProgress,
   });
 
   @override
@@ -612,8 +633,12 @@ class WelcomeView extends StatelessWidget {
             ),
             if (busy) ...[
               const SizedBox(height: S.x6),
-              InlineLoading(
-                  status: l?.loadingImportHistory ?? 'Importing your history'),
+              if (importProgress != null)
+                ImportProgressView(importProgress!)
+              else
+                InlineLoading(
+                    status:
+                        l?.loadingImportHistory ?? 'Importing your history'),
             ],
             if (o != null) ...[
               const SizedBox(height: S.x6),

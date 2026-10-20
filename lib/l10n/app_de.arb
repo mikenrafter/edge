@@ -3107,5 +3107,21 @@
   "loadingReanalyze": "Jeder Tag wird neu berechnet",
   "loadingDataBusy": "Deine Daten werden bearbeitet",
   "loadingPhoneRhr": "Ruhepuls wird aus {store} gelesen",
-  "loadingPhoneMeasurements": "Messwerte werden aus {store} gelesen"
+  "loadingPhoneMeasurements": "Messwerte werden aus {store} gelesen",
+  "importPrepInflating": "Sicherung wird entpackt",
+  "importPrepOpening": "Sicherung wird geöffnet",
+  "importPrepChecking": "Sicherung wird geprüft",
+  "importCopying": "Kopiere {stage}",
+  "importStep": "Schritt {index} von {count} · {done} von {total} Zeilen",
+  "importRecalculating": "Neuberechnung · Tag {done} von {total}",
+  "importRecalculatingDay": "Neuberechnung · Tag {done} von {total} · {day}",
+  "importStageJournal": "Tagebuch",
+  "importStageWorkouts": "Workouts",
+  "importStageSleep": "Schlaf",
+  "importStageHeartRate": "Herzfrequenz",
+  "importStageBeats": "Herzschläge",
+  "importStageEvents": "Ereignisse",
+  "importStageResults": "berechnete Ergebnisse",
+  "importStageArchive": "rohe Banddaten",
+  "importStageOther": "weitere Daten"
 }

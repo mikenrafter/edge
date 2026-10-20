@@ -8480,5 +8480,67 @@
         "type": "String"
       }
     }
-  }
+  },
+  "importPrepInflating": "Распаковываем резервную копию",
+  "importPrepOpening": "Открываем резервную копию",
+  "importPrepChecking": "Проверяем резервную копию",
+  "importCopying": "Копируем: {stage}",
+  "@importCopying": {
+    "placeholders": {
+      "stage": {
+        "type": "String"
+      }
+    }
+  },
+  "importStep": "Шаг {index} из {count} · {done} из {total} строк",
+  "@importStep": {
+    "placeholders": {
+      "index": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      },
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importRecalculating": "Пересчёт · день {done} из {total}",
+  "@importRecalculating": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importRecalculatingDay": "Пересчёт · день {done} из {total} · {day}",
+  "@importRecalculatingDay": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "importStageJournal": "дневник",
+  "importStageWorkouts": "тренировки",
+  "importStageSleep": "сон",
+  "importStageHeartRate": "пульс",
+  "importStageBeats": "удары сердца",
+  "importStageEvents": "события",
+  "importStageResults": "рассчитанные результаты",
+  "importStageArchive": "необработанные записи браслета",
+  "importStageOther": "прочие данные"
 }

@@ -3016,5 +3016,21 @@
   "loadingReanalyze": "Recalculando cada día",
   "loadingDataBusy": "Trabajando con tus datos",
   "loadingPhoneRhr": "Leyendo la frecuencia cardiaca en reposo de {store}",
-  "loadingPhoneMeasurements": "Leyendo mediciones de {store}"
+  "loadingPhoneMeasurements": "Leyendo mediciones de {store}",
+  "importPrepInflating": "Descomprimiendo la copia",
+  "importPrepOpening": "Abriendo la copia",
+  "importPrepChecking": "Comprobando la copia",
+  "importCopying": "Copiando {stage}",
+  "importStep": "Paso {index} de {count} · {done} de {total} filas",
+  "importRecalculating": "Recalculando · día {done} de {total}",
+  "importRecalculatingDay": "Recalculando · día {done} de {total} · {day}",
+  "importStageJournal": "diario",
+  "importStageWorkouts": "entrenamientos",
+  "importStageSleep": "sueño",
+  "importStageHeartRate": "frecuencia cardíaca",
+  "importStageBeats": "latidos",
+  "importStageEvents": "eventos",
+  "importStageResults": "resultados calculados",
+  "importStageArchive": "registros sin procesar de la pulsera",
+  "importStageOther": "otros datos"
 }

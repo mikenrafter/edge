@@ -13,9 +13,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/import_progress.dart';
 import 'package:openstrap_edge/ui2/profile/data.dart';
-import 'package:openstrap_edge/ui2/ui2.dart' show InlineLoading;
+import 'package:openstrap_edge/ui2/ui2.dart' show InlineLoading, buildTheme;
 
-import 'support/settings_sections.dart';
+
+// A spinner animates forever, so pumpAndSettle never returns: explicit pumps.
+Future<void> pumpTall(WidgetTester t, Widget w) async {
+  t.view.physicalSize = const Size(1170, 24000);
+  t.view.devicePixelRatio = 3;
+  addTearDown(t.view.reset);
+  await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.light), home: w));
+  await t.pump();
+  await t.pump(const Duration(milliseconds: 100));
+}
 
 Widget _data({required bool busy, ImportProgress? progress}) =>
     Function.apply(DataScreenView.new, const [], {

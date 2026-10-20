@@ -2994,5 +2994,21 @@
   "loadingReanalyze": "हर दिन की फिर से गणना हो रही है",
   "loadingDataBusy": "आपके डेटा पर काम हो रहा है",
   "loadingPhoneRhr": "{store} से आराम की हृदय गति पढ़ी जा रही है",
-  "loadingPhoneMeasurements": "{store} से माप पढ़े जा रहे हैं"
+  "loadingPhoneMeasurements": "{store} से माप पढ़े जा रहे हैं",
+  "importPrepInflating": "बैकअप अनपैक किया जा रहा है",
+  "importPrepOpening": "बैकअप खोला जा रहा है",
+  "importPrepChecking": "बैकअप जाँचा जा रहा है",
+  "importCopying": "{stage} कॉपी हो रहा है",
+  "importStep": "चरण {index}/{count} · {done}/{total} पंक्तियाँ",
+  "importRecalculating": "दोबारा गणना · दिन {done}/{total}",
+  "importRecalculatingDay": "दोबारा गणना · दिन {done}/{total} · {day}",
+  "importStageJournal": "जर्नल",
+  "importStageWorkouts": "वर्कआउट",
+  "importStageSleep": "नींद",
+  "importStageHeartRate": "हृदय गति",
+  "importStageBeats": "धड़कनें",
+  "importStageEvents": "इवेंट",
+  "importStageResults": "गणना किए गए परिणाम",
+  "importStageArchive": "बैंड के कच्चे रिकॉर्ड",
+  "importStageOther": "अन्य डेटा"
 }

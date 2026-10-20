@@ -17708,5 +17708,67 @@
         "type": "String"
       }
     }
-  }
+  },
+  "importPrepInflating": "Unpacking the backup",
+  "importPrepOpening": "Opening the backup",
+  "importPrepChecking": "Checking the backup",
+  "importCopying": "Copying {stage}",
+  "@importCopying": {
+    "placeholders": {
+      "stage": {
+        "type": "String"
+      }
+    }
+  },
+  "importStep": "Step {index} of {count} · {done} of {total} rows",
+  "@importStep": {
+    "placeholders": {
+      "index": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      },
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importRecalculating": "Recalculating · day {done} of {total}",
+  "@importRecalculating": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importRecalculatingDay": "Recalculating · day {done} of {total} · {day}",
+  "@importRecalculatingDay": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "importStageJournal": "journal",
+  "importStageWorkouts": "workouts",
+  "importStageSleep": "sleep",
+  "importStageHeartRate": "heart rate",
+  "importStageBeats": "beats",
+  "importStageEvents": "events",
+  "importStageResults": "calculated results",
+  "importStageArchive": "raw band records",
+  "importStageOther": "other data"
 }

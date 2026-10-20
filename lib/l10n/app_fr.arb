@@ -2994,5 +2994,21 @@
   "loadingReanalyze": "Recalcul de chaque jour",
   "loadingDataBusy": "Traitement de vos données",
   "loadingPhoneRhr": "Lecture de la fréquence cardiaque au repos depuis {store}",
-  "loadingPhoneMeasurements": "Lecture des mesures depuis {store}"
+  "loadingPhoneMeasurements": "Lecture des mesures depuis {store}",
+  "importPrepInflating": "Décompression de la sauvegarde",
+  "importPrepOpening": "Ouverture de la sauvegarde",
+  "importPrepChecking": "Vérification de la sauvegarde",
+  "importCopying": "Copie : {stage}",
+  "importStep": "Étape {index} sur {count} · {done} sur {total} lignes",
+  "importRecalculating": "Recalcul · jour {done} sur {total}",
+  "importRecalculatingDay": "Recalcul · jour {done} sur {total} · {day}",
+  "importStageJournal": "journal",
+  "importStageWorkouts": "entraînements",
+  "importStageSleep": "sommeil",
+  "importStageHeartRate": "fréquence cardiaque",
+  "importStageBeats": "battements",
+  "importStageEvents": "événements",
+  "importStageResults": "résultats calculés",
+  "importStageArchive": "enregistrements bruts du bracelet",
+  "importStageOther": "autres données"
 }

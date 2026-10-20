@@ -39,6 +39,7 @@ import '../../ecg/ecg_models.dart';
 import '../../ecg/ecg_result.dart';
 import '../../ecg/ecg_waveform_buffer.dart';
 import '../../gestures/gesture_failures.dart';
+import '../../data/import_progress.dart';
 import '../../data/journal_fields.dart';
 import '../../data/med_store.dart';
 import '../../data/nutrition_store.dart';
@@ -66,6 +67,7 @@ import '../ui2.dart';
 import 'buzz_pattern.dart';
 import 'device_lab.dart' show RepeatWindowAdjuster;
 import 'devices.dart';
+import 'import_progress_view.dart';
 import 'profile.dart';
 import 'wearable_numbers.dart';
 
@@ -164,6 +166,8 @@ Map<String, Widget> componentCases() => {
       // leaves someone else's phone. Both are photographed rather than merely
       // swept: they are the two components a regression would be noticed in
       // last and cost the most.
+      'import_progress': const ImportProgressView(
+          ImportCopying(ImportStage.heartRate, 1200, 48000, 4, 9)),
       'rings': const RingTrio(d: _ringsMeasured),
       // The two states that decide whether the trio is honest, in one picture:
       // recovery still filling its baseline (progress, not a bad score), and a
