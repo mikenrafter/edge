@@ -5654,17 +5654,63 @@ class LocalDb {
     return completer.future;
   }
 
+  /// The connection an offload session raised to `synchronous=FULL`, or null
+  /// when none is open. Held as the HANDLE, not a bool: `synchronous` is
+  /// per-connection, so a session is only true of the connection it was set on.
+  /// After [close] or a recovery reopen the new handle is at NORMAL, and a bool
+  /// would let commits skip their own FULL bracket against it — an ACKed chunk
+  /// at weaker durability, silently.
+  static Database? _offloadSessionDb;
+
   /// Offload-session durability bracket (design-sync-throughput.md, plan 2).
   ///
-  /// RED-PHASE STUB: does nothing, so every commit still brackets
-  /// `synchronous=FULL/NORMAL` per chunk, which is today's behaviour. The
-  /// implementation will set FULL once at begin (verified), NORMAL at end, and
-  /// make [commitSyncBatch] skip its own per-chunk bracket while a session is
-  /// open. `test/sync_chunk_overhead_test.dart` pins that.
-  static Future<void> beginOffloadSession() async {}
+  /// The band waits on each HISTORY_END ACK before the next burst, so the
+  /// per-commit FULL / read-back / NORMAL (3 round trips) was a fixed cost on
+  /// every chunk. Held once for the whole offload instead: FULL is set and
+  /// verified here, every commit inside it runs at FULL without touching the
+  /// pragma, and [endOffloadSession] puts it back. Durability of the
+  /// ACK-gating commit is unchanged; only the number of pragma calls is.
+  ///
+  /// Serialised behind [_withCommitGate] so it can never flip the level under
+  /// an in-flight commit. Never throws, and is a no-op when the store is not
+  /// already open. A refused or non-sticking FULL leaves the session closed, and
+  /// the commits then keep their own per-commit bracket (and downgrade
+  /// accounting) rather than trusting a level that never took.
+  static Future<void> beginOffloadSession() => _withCommitGate(() async {
+    try {
+      // The already-open handle only — never `instance`. A session is a speed
+      // optimisation, so it must not be what opens (or hangs opening) the
+      // store; with no open handle the commits keep their own bracket.
+      final db = _db;
+      if (db == null || !db.isOpen) return;
+      if (identical(_offloadSessionDb, db)) return;
+      await db.execute('PRAGMA synchronous=FULL');
+      final got = await db.rawQuery('PRAGMA synchronous');
+      final level = got.isEmpty ? null : got.first.values.firstOrNull;
+      if (level is num && level.toInt() == 2) {
+        _offloadSessionDb = db;
+      } else {
+        _syncFullDowngrades++;
+      }
+    } catch (_) {
+      _syncFullDowngrades++;
+    }
+  });
 
-  /// Counterpart of [beginOffloadSession]; see there. Stub in the red phase.
-  static Future<void> endOffloadSession() async {}
+  /// Counterpart of [beginOffloadSession]. Idempotent, and safe to call with no
+  /// session open (a give-up path calls it unconditionally). The flag is
+  /// dropped BEFORE the pragma is attempted, so a refused NORMAL can never leave
+  /// the session latched open (AGENTS 4.3); a leaked FULL only costs speed.
+  static Future<void> endOffloadSession() => _withCommitGate(() async {
+    final db = _offloadSessionDb;
+    _offloadSessionDb = null;
+    if (db == null) return;
+    try {
+      await db.execute('PRAGMA synchronous=NORMAL');
+    } catch (_) {
+      /* non-fatal — see open-time PRAGMA discipline */
+    }
+  });
 
   static Future<void> commitSyncBatch(
     List<RawRecord> raws,
@@ -5785,6 +5831,12 @@ class LocalDb {
     // What it must not do is fail SILENTLY, which is what "best-effort" meant
     // before: read it back, so a downgrade shows up in the log and the counter
     // instead of being invisible for the life of the install.
+    // Inside an offload session FULL is already held and verified on this very
+    // connection ([beginOffloadSession]), so the three pragma round trips per
+    // chunk are skipped; outside one (headless drains, one-off commits) the
+    // bracket below is unchanged.
+    final inSession = identical(_offloadSessionDb, db);
+    if (!inSession) {
     try {
       await db.execute('PRAGMA synchronous=FULL');
       final got = await db.rawQuery('PRAGMA synchronous');
@@ -5805,6 +5857,7 @@ class LocalDb {
         'ACK-gating commit is running at NORMAL '
         '(downgrades_total=$_syncFullDowngrades).',
       );
+    }
     }
     try {
       await db.transaction((txn) async {
@@ -5968,17 +6021,25 @@ class LocalDb {
           'cursor_advanced counter_hw=$maxCounter rec_ts_hw=$maxRecTs '
           'trim=${trimToken != null}',
         );
+        // Freshness rides the batch transaction: it used to be a select +
+        // insert after COMMIT, two extra round trips per chunk that the band
+        // waits out, and a window where rows were durable but the "capture is
+        // fresh" marker was not. It is only a derive trigger, so atomicity with
+        // the rows is the correct failure mode (rolls back with them).
+        await _writeCaptureFreshness(txn, raws);
       });
     } finally {
       // ALWAYS restore NORMAL — even if the commit threw — so a leaked FULL does
-      // not fsync every subsequent write on this connection. Non-fatal.
-      try {
-        await db.execute('PRAGMA synchronous=NORMAL');
-      } catch (_) {
-        /* non-fatal — see open-time PRAGMA discipline */
+      // not fsync every subsequent write on this connection. Non-fatal. A
+      // session commit leaves FULL up: [endOffloadSession] owns that reset.
+      if (!inSession) {
+        try {
+          await db.execute('PRAGMA synchronous=NORMAL');
+        } catch (_) {
+          /* non-fatal — see open-time PRAGMA discipline */
+        }
       }
     }
-    await _writeCaptureFreshness(raws);
   }
 
   // ── DERIVED STORE (permanent, rich) ────────────────────────────────────────
@@ -8139,7 +8200,10 @@ class LocalDb {
     return fallbackSec;
   }
 
-  static Future<void> _writeCaptureFreshness(List<RawRecord> raws) async {
+  static Future<void> _writeCaptureFreshness(
+    DatabaseExecutor txn,
+    List<RawRecord> raws,
+  ) async {
     if (raws.isEmpty) return;
     var latest = 0;
     for (final raw in raws) {
@@ -8147,9 +8211,16 @@ class LocalDb {
       if (recTs > latest) latest = recTs;
     }
     if (latest <= 0) return;
-    final prev = await computeFreshness('capture');
+    // Through the txn, never the global handle: that would deadlock against
+    // the open commit transaction.
+    final prevRows = await txn.query(
+      'compute_freshness',
+      where: 'key = ?',
+      whereArgs: ['capture'],
+      limit: 1,
+    );
     Map<String, dynamic> payload = const {};
-    final rawJson = prev?['payload_json'];
+    final rawJson = prevRows.isEmpty ? null : prevRows.first['payload_json'];
     if (rawJson is String && rawJson.isNotEmpty) {
       try {
         final d = jsonDecode(rawJson);
@@ -8163,7 +8234,7 @@ class LocalDb {
       'latest_raw_rec_ts': latest,
       'latest_raw_day': _localDayLabelFromEpoch(latest),
     };
-    await putComputeFreshness('capture', jsonEncode(payload));
+    await putComputeFreshness('capture', jsonEncode(payload), txn: txn);
   }
 
   // Canonical LOCAL day label — shared with the UI/coach via day_label.dart so
@@ -9922,8 +9993,9 @@ class LocalDb {
 
   static Future<Map<String, dynamic>?> syncLedgerEntry([
     String chunkId = 'capture',
+    DatabaseExecutor? txn,
   ]) async {
-    final db = await instance;
+    final db = txn ?? await instance;
     final rows = await db.query(
       'sync_ledger',
       where: 'chunk_id = ?',
@@ -9942,9 +10014,12 @@ class LocalDb {
     int? ackedAt,
     String? lastError,
     Map<String, dynamic>? metaPatch,
+    // Inside [syncLedgerTransaction]: the read-merge-write goes through the
+    // caller's transaction, never the global handle (which would deadlock).
+    DatabaseExecutor? txn,
   }) async {
-    final db = await instance;
-    final existing = await syncLedgerEntry(chunkId);
+    final db = txn ?? await instance;
+    final existing = await syncLedgerEntry(chunkId, txn);
     final now = DateTime.now().millisecondsSinceEpoch;
     final meta = <String, dynamic>{};
     if (existing != null) {
@@ -9971,6 +10046,16 @@ class LocalDb {
       'last_error': lastError,
       'meta_json': jsonEncode(meta),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Several ledger upserts as ONE commit. The post-ACK pair per HISTORY_END
+  /// was two autocommits (each its own fsync) on the path the band is waiting
+  /// on; pass [upsertSyncLedgerEntry] the `txn` this hands you.
+  static Future<void> syncLedgerTransaction(
+    Future<void> Function(Transaction txn) body,
+  ) async {
+    final db = await instance;
+    await db.transaction(body);
   }
 
   static Future<List<Map<String, dynamic>>> syncLedger() async {
@@ -14466,9 +14551,10 @@ class LocalDb {
 
   static Future<void> putComputeFreshness(
     String key,
-    String payloadJson,
-  ) async {
-    final db = await instance;
+    String payloadJson, {
+    DatabaseExecutor? txn,
+  }) async {
+    final db = txn ?? await instance;
     await db.insert('compute_freshness', {
       'key': key,
       'payload_json': payloadJson,

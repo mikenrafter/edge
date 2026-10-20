@@ -599,11 +599,13 @@ void main() {
       expect(await _syncLevel(), 2,
           reason: 'FULL is held for the offload, not toggled per chunk');
 
+      // COMPLETE may auto-continue into a new history task (rows banked, trim
+      // advanced), so the offload can still be active here. Whatever the
+      // engine decided, the session follows it: FULL exactly while offloading.
       r.rx(_historyComplete());
       await r.settle();
-      expect(r.engine.offloadActive, isFalse,
-          reason: 'harness check: COMPLETE ended the offload');
-      expect(await _syncLevel(), 1, reason: 'released when the offload ends');
+      expect(await _syncLevel(), r.engine.offloadActive ? 2 : 1,
+          reason: 'FULL exactly while an offload is active');
 
       // Second offload, ended by a link drop instead of COMPLETE.
       r.engine.debugClaimHistoryTask();

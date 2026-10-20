@@ -7512,7 +7512,10 @@ class BleEngine implements AlarmBandWriter {
       // band never trimming and re-flooding the same chunk forever. On
       // persistent failure bounce the link — the committed data is safe, and
       // the next session's re-delivery is dedup-safe (rows REPLACE by rec_ts).
-      if (!await _writeAckVerified(ack, session, taskGen: taskGen)) {
+      final ackWatch = _packageClockStopwatch()..start();
+      final ackWritten = await _writeAckVerified(ack, session, taskGen: taskGen);
+      final ackMs = ackWatch.elapsedMilliseconds;
+      if (!ackWritten) {
         // False for one of three reasons: the writes genuinely exhausted, the
         // session died, or the TASK ended under the retries. Only the first is
         // this continuation's to handle — a stale one must not touch the
@@ -7602,43 +7605,59 @@ class BleEngine implements AlarmBandWriter {
       // over — records were banked and the band may advance.
       _noDurableProgress.trimAcked();
       d.noteBatchAcked(); // ACKed and KEEP listening
-      await _bestEffortLedgerWrite(() => LocalDb.upsertSyncLedgerEntry(
-        status: 'acknowledged',
-        ackedAt: DateTime.now().millisecondsSinceEpoch,
-        metaPatch: {
-          'last_batch_token': tokenHex,
-          'last_batch_id': m.batchId,
-          'last_batch_records': d.records,
-          'last_ack_batches': d.batches,
-          'strap_history_oldest_ts': _strapHistoryOldestTs,
-          'strap_history_newest_ts': _strapHistoryNewestTs,
-          // Which WHOOP generation this batch came from — records/sessions
-          // vary hugely in richness by generation (and, for gen5, by whether
-          // the R22 deep-buffer opt-in was sent), so downstream diagnostics
-          // need this without reaching into the transport layer.
-          'band_generation': state.generation,
-        },
-      ));
-      // Same event, but a REAL per-chunk row keyed by the token — closes out
-      // whatever ack_failed history this token accumulated above.
-      await _bestEffortLedgerWrite(() => LocalDb.upsertSyncLedgerEntry(
-        chunkId: 'batch:$tokenHex',
-        kind: 'historical_batch',
-        status: 'acked',
-        ackedAt: DateTime.now().millisecondsSinceEpoch,
-        metaPatch: {
-          'batch_id': m.batchId,
-          // Cumulative for the connection, not this chunk (kept as it was);
-          // the chunk's own counts and record-time range follow.
-          'records': d.records,
-          if (d.lastChunkStats case final c?) ...{
-            'chunk_rows': c.raws,
-            'chunk_archived': c.archives,
-            'chunk_ts_min': ?c.tsMin,
-            'chunk_ts_max': ?c.tsMax,
+      // The two rows are one commit, not two: each autocommit upsert cost its
+      // own select + fsync between this ACK and the next marker, which the band
+      // is waiting on. Still strictly after the ACK, and best-effort as before.
+      final postWatch = _packageClockStopwatch()..start();
+      await _bestEffortLedgerWrite(
+          () => LocalDb.syncLedgerTransaction((txn) async {
+        await LocalDb.upsertSyncLedgerEntry(
+          txn: txn,
+          status: 'acknowledged',
+          ackedAt: DateTime.now().millisecondsSinceEpoch,
+          metaPatch: {
+            'last_batch_token': tokenHex,
+            'last_batch_id': m.batchId,
+            'last_batch_records': d.records,
+            'last_ack_batches': d.batches,
+            'strap_history_oldest_ts': _strapHistoryOldestTs,
+            'strap_history_newest_ts': _strapHistoryNewestTs,
+            // Which WHOOP generation this batch came from — records/sessions
+            // vary hugely in richness by generation (and, for gen5, by whether
+            // the R22 deep-buffer opt-in was sent), so downstream diagnostics
+            // need this without reaching into the transport layer.
+            'band_generation': state.generation,
           },
-        },
-      ));
+        );
+        // Same event, but a REAL per-chunk row keyed by the token — closes out
+        // whatever ack_failed history this token accumulated above.
+        await LocalDb.upsertSyncLedgerEntry(
+          txn: txn,
+          chunkId: 'batch:$tokenHex',
+          kind: 'historical_batch',
+          status: 'acked',
+          ackedAt: DateTime.now().millisecondsSinceEpoch,
+          metaPatch: {
+            'batch_id': m.batchId,
+            // Cumulative for the connection, not this chunk (kept as it was);
+            // the chunk's own counts and record-time range follow.
+            'records': d.records,
+            if (d.lastChunkStats case final c?) ...{
+              'chunk_rows': c.raws,
+              'chunk_archived': c.archives,
+              'chunk_ts_min': ?c.tsMin,
+              'chunk_ts_max': ?c.tsMax,
+            },
+          },
+        );
+      }));
+      // One line per completed HISTORY_END (commit + ACK both succeeded), so a
+      // slow sync can be attributed from an issue report: per-chunk counts, not
+      // the connection totals.
+      final stats = d.lastChunkStats;
+      _log('[perf] sync chunk records=${stats?.raws ?? 0} '
+          'beats=${stats?.beats ?? 0} commit_ms=${stats?.commitMs ?? 0} '
+          'ack_ms=$ackMs post_ms=${postWatch.elapsedMilliseconds}');
       _noteStored(); // a banked batch → schedule a (debounced) derive
     } else if (m.sub == SyncMeta.historyComplete) {
       final d = _drain;
@@ -9417,6 +9436,16 @@ class BleEngine implements AlarmBandWriter {
   void _setOffloadActive(bool active) {
     if (_offloadActive == active) return;
     _offloadActive = active;
+    // Hold synchronous=FULL for the whole offload instead of toggling it per
+    // chunk. This is the one choke point for the flag, so every release in the
+    // table above (COMPLETE, watchdogs, rollbacks, abort terminals, link
+    // teardown) also ends the session; a separate begin/end pair would be a
+    // second latch to leak (AGENTS 4.3). Both calls are serialised in LocalDb
+    // behind the commit gate and never throw, so fire-and-forget is safe and
+    // cannot reorder against the commits that follow.
+    unawaited(active
+        ? LocalDb.beginOffloadSession()
+        : LocalDb.endOffloadSession());
     // An offload is the one thing that genuinely needs the fast interval; as
     // soon as it ends the link steps back down (issue #200).
     unawaited(_applyLinkPriority());
@@ -9623,7 +9652,8 @@ class DrainController {
 
   /// What the last token commit banked: rows, archived frames and the range of
   /// record times. Written to that chunk's ledger row when it is ACKed.
-  ({int raws, int archives, int? tsMin, int? tsMax})? lastChunkStats;
+  ({int raws, int archives, int? tsMin, int? tsMax, int beats, int commitMs})?
+      lastChunkStats;
   int recordsThisOffload = 0; // since the last HISTORY_COMPLETE / rearm
   int batches = 0; // total this connection
   // Since the last [startFreshTask] — what [awaitComplete]'s report carries.
@@ -10091,6 +10121,7 @@ class DrainController {
     _samples.clear();
     _archives.clear();
     _ecgRaw.clear();
+    var commitMs = 0;
     try {
       // Defense in depth (constructor already rejects onRecordsBatch-only):
       // never report durable success for buffered content without onCommit.
@@ -10106,15 +10137,19 @@ class DrainController {
             'archives=${archives.length}, token=${tokenHex != null})',
           );
         }
+        final commitWatch = _packageClockStopwatch()..start();
         await commit(raws, samples, tokenHex,
             archives: archives, ecgRawPackets: ecgRaw);
+        commitMs = commitWatch.elapsedMilliseconds;
       }
       if (tokenHex != null) {
         // What this chunk actually banked, and the record times it carried
         // (#450: a chunk whose times sit far behind the stored edge is a band
         // clock that moved, which the per-chunk ledger row then shows).
         int? lo, hi;
+        var beats = 0;
         for (final x in samples) {
+          beats += x?.rrIntervalsMs.length ?? 0;
           final t = x?.tsEpoch;
           if (t == null || t <= 0) continue;
           if (lo == null || t < lo) lo = t;
@@ -10125,6 +10160,8 @@ class DrainController {
           archives: archives.length,
           tsMin: lo,
           tsMax: hi,
+          beats: beats,
+          commitMs: commitMs,
         );
       }
       return raws.length + archives.length + ecgRaw.length;
