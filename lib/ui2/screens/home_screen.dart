@@ -74,7 +74,7 @@ import '../profile/devices.dart' show formatDayTime;
 import '../profile/profile.dart' show ProfileAvatar;
 import '../profile/settings.dart' show MoreSettings;
 import '../profile/wearable_numbers.dart'
-    show WearableCells, kHomeWearableRows;
+    show WearableCells, kHomeWearableRows, wearableName;
 import '../ui2.dart';
 import 'ai_briefing.dart' show AiBriefingScreen;
 import 'coach.dart';
@@ -1690,6 +1690,12 @@ class HomeData {
   /// everything under it.
   final bool pendingActivitiesFailed;
 
+  /// The active wearable's cells for this day, read with the day so its card
+  /// starts in its final place instead of landing above the rings after the
+  /// first paint. Null: no active wearable, no cells, or the read failed
+  /// (nothing is drawn, as before).
+  final WearableDay? wearable;
+
   const HomeData({
     this.name,
     this.dayId,
@@ -1726,6 +1732,7 @@ class HomeData {
     this.refreshPending = false,
     this.pendingActivities,
     this.pendingActivitiesFailed = false,
+    this.wearable,
   });
 
   /// The three illness fields, replaced together. Test-facing sugar, and they
@@ -1794,6 +1801,7 @@ class HomeData {
         refreshPending: refreshPending,
         pendingActivities: pendingActivities,
         pendingActivitiesFailed: pendingActivitiesFailed,
+        wearable: wearable,
       );
 
   /// A day OTHER than today, for the Home day switcher.
@@ -1844,7 +1852,18 @@ class HomeData {
       stepGoal: (profile['step_goal'] as num?)?.toInt() ?? kDefaultStepGoal,
       pendingActivities: pending.count,
       pendingActivitiesFailed: pending.failed,
+      wearable: await _wearableOf(repo, date),
     );
+  }
+
+  /// The active wearable's day for [wearable]; null when the read throws.
+  static Future<WearableDay?> _wearableOf(
+      LocalRepository repo, String date) async {
+    try {
+      return await repo.wearableDay(date);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// The review count for [pendingActivities], or [pendingActivitiesFailed]
@@ -1967,6 +1986,7 @@ class HomeData {
       refreshPending: status?['refresh_pending'] == true,
       pendingActivities: pending.count,
       pendingActivitiesFailed: pending.failed,
+      wearable: await _wearableOf(repo, todayLabel()),
     );
   }
 }
@@ -2428,7 +2448,12 @@ class _HomeScreenState extends State<HomeScreen>
       // The active wearable's day, cell by cell. Nothing on a WHOOP-only
       // install, nor when the screen is handed its data.
       if (widget.data == null)
-        WearableCells(kHomeWearableRows, date: isToday ? null : _day),
+        WearableCells.seeded(kHomeWearableRows,
+            date: isToday ? null : _day,
+            initialDevice: d.wearable == null
+                ? null
+                : wearableName(d.wearable!.adapterId),
+            initialCells: d.wearable?.cells ?? const {}),
 
       if (bare) ...[
         // A live workout holds derivation, so a bare day with a session open

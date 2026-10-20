@@ -64,7 +64,17 @@ class SleepDetailBundle {
 bool rmssdFromSessionEstimator(Object? sessionEnvelope) =>
     sessionEnvelope is Map && sessionEnvelope['value'] is num;
 
+/// The active wearable's served day: its adapter id and the cells by row.
+typedef WearableDay = ({
+  String adapterId,
+  Map<String, Map<String, Object?>> cells
+});
+
 abstract class LocalRepository {
+  /// The active wearable's cells for [date]; null with no active wearable or
+  /// no cells for the day (every WHOOP-only install).
+  Future<WearableDay?> wearableDay(String date) async => null;
+
   Future<int> pendingActivityCount() async => (await pendingActivities()).length;
 
   Future<List<ActivitySuggestion>> pendingActivities() =>

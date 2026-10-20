@@ -29,6 +29,14 @@ final String _yesterday =
 /// Home's own numbers off a stub; the wearable card reads the database.
 class _Repo extends LocalRepository {
   @override
+  Future<WearableDay?> wearableDay(String date) async {
+    final w = await activeWearable();
+    if (w == null) return null;
+    final cells = await dayCells(date);
+    return cells == null ? null : (adapterId: w.$2, cells: cells);
+  }
+
+  @override
   Future<Map<String, dynamic>> getToday() async => {
         'daily': {
           'readiness': {'value': 70, 'confidence': .8, 'tier': 'HIGH'},
@@ -43,7 +51,7 @@ class _Repo extends LocalRepository {
   Future<List<String>> availableDays() async => [_today, _yesterday];
   @override
   Future<Map<String, dynamic>> getDayOverview(String date) async =>
-      {'readiness': 42};
+      {'readiness': {'value': 42, 'tier': 'HIGH'}};
   @override
   Future<Map<String, dynamic>> getDayStrain(String date) async => const {};
   @override
@@ -133,7 +141,8 @@ void main() {
     expect(t.widget<WearableCells>(find.byType(WearableCells)).date, isNull);
     expect(_rhr(t), 58);
 
-    await t.tap(find.bySemanticsLabel('Previous day'));
+    // In the real zone, as the page's own read of the day starts on the tap.
+    await t.runAsync(() => t.tap(find.bySemanticsLabel('Previous day')));
     await _settle(t);
     expect(t.widget<WearableCells>(find.byType(WearableCells)).date,
         _yesterday);
@@ -146,11 +155,15 @@ void main() {
   });
 
   testWidgets("Health draws the wearable's heart rows", (t) async {
+    final app = AppState.forTesting()..repo = _Repo();
+    addTearDown(app.dispose);
     await _settle(
         t,
-        MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: const Scaffold(body: HealthScreen())));
+        ChangeNotifierProvider<AppState>.value(
+            value: app,
+            child: MaterialApp(
+                theme: buildTheme(Brightness.light),
+                home: const Scaffold(body: HealthScreen()))));
     expect(find.byType(WearableCells), findsOneWidget);
     expect(
         [for (final w in t.widgetList<WearableCell>(find.byType(WearableCell)))
@@ -203,13 +216,17 @@ void main() {
 
   testWidgets('a developer toggle redraws the card without a derive',
       (t) async {
+    final app = AppState.forTesting()..repo = _Repo();
+    addTearDown(app.dispose);
     await _settle(
         t,
-        MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: const Scaffold(
-            body: SingleChildScrollView(
-                child: WearableCells(kHomeWearableRows)))));
+        ChangeNotifierProvider<AppState>.value(
+            value: app,
+            child: MaterialApp(
+                theme: buildTheme(Brightness.light),
+                home: const Scaffold(
+                    body: SingleChildScrollView(
+                        child: WearableCells(kHomeWearableRows))))));
     expect(find.byType(WearableCell), findsWidgets);
 
     // Off: no day of the band's is its own, so nothing re-derives and no

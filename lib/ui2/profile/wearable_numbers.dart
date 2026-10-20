@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
 
 import '../../ble/adapters/_registry.dart'
     show DeviceCategory, categoryOf, kBandRegistry, kThermometer;
@@ -22,6 +23,7 @@ import '../../compute/inputs/validation_bands.dart' show kTruthBandRows;
 import '../../data/day_label.dart' show todayLabel;
 import '../../data/db.dart' show LocalDb;
 import '../../l10n/app_localizations.dart';
+import '../../state/app_state.dart' show AppState;
 import '../../state/prefs.dart';
 import '../ui2.dart';
 import 'profile.dart';
@@ -655,15 +657,29 @@ const List<String> kHealthWearableRows = [
 class WearableCells extends StatefulWidget {
   final List<String> rows;
   final String? date;
-  const WearableCells(this.rows, {super.key, this.date});
+
+  /// What the screen's own read already holds for [date], so the card draws
+  /// in its final place on the first frame instead of reading again and
+  /// landing a frame later. Null reads on its own (Health). [seeded] says the
+  /// screen made the read, so [initialDevice] null means "no wearable".
+  final String? initialDevice;
+  final Map<String, Map<String, Object?>> initialCells;
+  final bool seeded;
+  const WearableCells(this.rows, {super.key, this.date})
+      : initialDevice = null,
+        initialCells = const {},
+        seeded = false;
+  const WearableCells.seeded(this.rows,
+      {super.key, this.date, this.initialDevice, this.initialCells = const {}})
+      : seeded = true;
 
   @override
   State<WearableCells> createState() => _WearableCellsState();
 }
 
 class _WearableCellsState extends State<WearableCells> with RevisionReload {
-  String? _device;
-  Map<String, Map<String, Object?>> _cells = const {};
+  late String? _device = widget.initialDevice;
+  late Map<String, Map<String, Object?>> _cells = widget.initialCells;
 
   @override
   void initState() {
@@ -671,7 +687,7 @@ class _WearableCellsState extends State<WearableCells> with RevisionReload {
     // A developer toggle can switch or turn off the wearable without a
     // derive (none of its days are its own), so a toggle re-reads too.
     WearableDisplay.instance.addListener(reload);
-    reload();
+    if (!widget.seeded) reload();
   }
 
   @override
@@ -683,20 +699,28 @@ class _WearableCellsState extends State<WearableCells> with RevisionReload {
   @override
   void didUpdateWidget(WearableCells old) {
     super.didUpdateWidget(old);
-    if (old.date != widget.date) reload();
+    if (widget.seeded &&
+        (old.initialDevice != widget.initialDevice ||
+            !identical(old.initialCells, widget.initialCells))) {
+      // The screen read again: take its answer and drop any read in flight.
+      beginRead(#cells);
+      _device = widget.initialDevice;
+      _cells = widget.initialCells;
+    } else if (!widget.seeded && old.date != widget.date) {
+      reload();
+    }
   }
 
   @override
   Future<void> reload() async {
     final t = beginRead(#cells);
     try {
-      final w = await activeWearable();
-      final cells =
-          w == null ? null : await dayCells(widget.date ?? todayLabel());
+      final repo = context.read<AppState>().repo;
+      final w = await repo?.wearableDay(widget.date ?? todayLabel());
       if (stillNewest(#cells, t)) {
         setState(() => (
-              _device = w == null ? null : wearableName(w.$2),
-              _cells = cells ?? const {},
+              _device = w == null ? null : wearableName(w.adapterId),
+              _cells = w?.cells ?? const {},
             ));
       }
     } catch (_) {

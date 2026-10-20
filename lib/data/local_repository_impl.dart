@@ -15,7 +15,11 @@
 
 import '../compute/findings.dart' show servedReadiness;
 import '../compute/inputs/canonical.dart'
-    show deviceFlagOn, withoutWearableEstimates;
+    show
+        activeWearable,
+        dayCells,
+        deviceFlagOn,
+        withoutWearableEstimates;
 import '../ble/adapters/_registry.dart' show kBandRegistry;
 import '../compute/quiet_level.dart';
 import '../models/activity_suggestion.dart';
@@ -76,6 +80,14 @@ class LocalRepositoryImpl extends LocalRepository {
   saveProfileFields;
 
   final Future<void> Function()? onActivitiesChanged;
+
+  @override
+  Future<WearableDay?> wearableDay(String date) async {
+    final w = await activeWearable();
+    if (w == null) return null;
+    final cells = await dayCells(date);
+    return cells == null ? null : (adapterId: w.$2, cells: cells);
+  }
 
   @override
   Future<int> pendingActivityCount() async => ActivityStore(await LocalDb.instance).pendingCount();

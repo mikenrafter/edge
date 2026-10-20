@@ -20,9 +20,12 @@ import 'package:openstrap_edge/compute/inputs/miband_inputs.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/vendor_sleep.dart' show VendorEpoch;
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/local_repository_impl.dart';
+import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/profile/wearable_numbers.dart';
 import 'package:path/path.dart' as p;
+import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/strap_day.dart';
@@ -48,15 +51,20 @@ const Profile _profile =
 
 /// Home's wearable card, loaded off the real database for [_dayId].
 Future<void> _pumpHomeCard(WidgetTester t) async {
+  final app = AppState.forTesting()
+    ..repo = LocalRepositoryImpl(getProfileMap: () => const {});
+  addTearDown(app.dispose);
   await t.runAsync(() async {
-    await t.pumpWidget(MaterialApp(
+    await t.pumpWidget(ChangeNotifierProvider<AppState>.value(
+        value: app,
+        child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
           body: ListView(children: const [
         WearableCells(kHomeWearableRows, date: _dayId),
       ])),
-    ));
+    )));
     await Future<void>.delayed(const Duration(seconds: 2));
   });
   await t.pump();

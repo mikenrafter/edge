@@ -59,6 +59,28 @@ const Map<String, Object?> _spo2None = {
 };
 
 void main() {
+  group('seeded card', () {
+    testWidgets('draws on its first frame from the screen\'s read',
+        (t) async {
+      await t.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: const Scaffold(
+            body: WearableCells.seeded(['resting_hr'],
+                initialDevice: _device, initialCells: {'resting_hr': _rhr})),
+      ));
+      expect(find.byType(WearableCellsCard), findsOneWidget);
+      expect(find.text('Resting heart rate'), findsOneWidget);
+    });
+
+    testWidgets('seeded with no wearable draws nothing', (t) async {
+      await t.pumpWidget(const MaterialApp(
+          home: Scaffold(body: WearableCells.seeded(['resting_hr']))));
+      expect(find.byType(WearableCellsCard), findsNothing);
+    });
+  });
+
   group('one number', () {
     testWidgets('ours is the number, with a quiet source line', (t) async {
       await _pump(t, const WearableCell('resting_hr', _rhr, device: _device));
