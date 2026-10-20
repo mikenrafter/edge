@@ -240,9 +240,11 @@ void main() {
       // The Stages row and the Deep comparison: one deep range on the screen.
       expect(find.text('40–75 min'), findsNWidgets(2));
       expect(find.text('80–100 min'), findsOneWidget);
-      // Awake has a bound too; a stage the data pins is one value.
+      // Awake has a bound too; a stage the data pins is one value, marked
+      // approximate: it is a bound that happens to be tight, not a reading.
       expect(find.text('10–30 min'), findsOneWidget);
-      expect(find.text('250 min'), findsOneWidget);
+      expect(find.text('~250 min'), findsOneWidget);
+      expect(find.text('250 min'), findsNothing);
       // Not the estimator's interval.
       expect(find.text('20m–2h 20m'), findsNothing);
       expect(find.textContaining('as wide as the time the band did not record'),
@@ -268,6 +270,8 @@ void main() {
       // Single-valued bounds leave the usual readings in place.
       expect(find.text('60 min'), findsNothing);
       expect(find.text('250 min'), findsNothing);
+      expect(find.text('~60 min'), findsNothing);
+      expect(find.text('~250 min'), findsNothing);
     });
 
     testWidgets('a typed window with nothing recorded shows the bounds and no '

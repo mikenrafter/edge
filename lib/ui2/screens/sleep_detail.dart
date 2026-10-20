@@ -212,9 +212,10 @@ Map<SleepStage, ({double lo, double hi})>? _storedRanges(
 
 /// A stored bound as one label: "40–75 min", or "45 min" when the data pins
 /// it to one value.
+// A tight bound is still a bound, not a reading: '~' says so (owner).
 String _minRangeText(({double lo, double hi}) r) =>
     r.lo.round() == r.hi.round()
-        ? '${r.lo.round()} min'
+        ? '~${r.lo.round()} min'
         : '${r.lo.round()}–${r.hi.round()} min';
 
 String _capitalise(String s) =>
