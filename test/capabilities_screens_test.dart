@@ -325,11 +325,11 @@ void main() {
     testWidgets('the beat-timing rows follow breathingBeatTiming', (t) async {
       await pump(t, const CalmBreathing(), _caps());
       expect(
-          find.text('Needs the band on. The comparison uses beat timing.'),
+          find.text('Needs the band on.'),
           findsNWidgets(2));
       await pump(t, const CalmBreathing(), _caps(connected: true));
       expect(
-          find.text('Needs the band on. The comparison uses beat timing.'),
+          find.text('Needs the band on.'),
           findsNothing);
     });
   });
@@ -338,9 +338,9 @@ void main() {
     testWidgets('the Android intent copy follows androidAutomation', (t) async {
       await pump(t, const AutomationSettings(),
           _caps(platform: TargetPlatform.iOS));
-      expect(find.textContaining('broadcasts an intent'), findsNothing);
+      expect(find.textContaining('Automation apps like Tasker'), findsNothing);
       await pump(t, const AutomationSettings(), _caps());
-      expect(find.textContaining('broadcasts an intent'),
+      expect(find.textContaining('Automation apps like Tasker'),
           findsOneWidget);
     });
   });
