@@ -1460,8 +1460,8 @@ class AppState extends ChangeNotifier {
     importRollupError = null;
     lastImportArchiveSkipped = 0;
     lastImportArchiveRestored = 0;
-    // The restore copies the data, then recalculates once; the screen shows
-    // which of the two it is in. Cleared on every exit (4.3): a throw reports
+    // The restore copies the data, then queues one recalculation; the screen
+    // shows which stage it is in. Cleared on every exit (4.3): a throw reports
     // Failed first, and the finally leaves null.
     try {
       // Gzipped auto-backups (`.db.gz`) are inflated INSIDE importFromDbFile —
@@ -1491,17 +1491,12 @@ class AppState extends ChangeNotifier {
         } else {
           await _derive.finalizeImport(_profile);
         }
-        // Then the scheduler's own heavy pass, awaited: it recalculates the
-        // imported days that are not finalized, one day at a time, so the
-        // import ends when the numbers do. It blocks for as long as that
-        // pass takes, which grows with the number of days to derive.
-        final pass = await _deriveCoordinator.runHeavyPass(
-          onDay: (day, index, total) =>
-              importProgress.value = ImportRebuilding(index, total, day),
-        );
-        if (pass.failed) {
-          _log('import: recalculation did not complete: ${pass.error ?? 'busy'}');
-        }
+        // The imported days are recalculated by a durable heavy job on the
+        // scheduler, not a pass run here: the queue waits out a band sync
+        // (whose commits must land before the ACK), retries a refused or
+        // partial pass, and survives the app closing. The import ends when
+        // the data is in; deriveProgress shows the recalculation.
+        _deriveCoordinator.scheduler.requestHeavy(reason: 'import');
       } catch (e) {
         importRollupError = '$e';
       }

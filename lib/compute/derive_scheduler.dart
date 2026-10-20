@@ -209,8 +209,8 @@ class DeriveScheduler {
     unawaited(_enqueue(type: 'derive_light', reason: 'stored_data'));
   }
 
-  void requestHeavy() {
-    unawaited(_enqueue(type: 'derive_heavy', reason: 'capture_settled'));
+  void requestHeavy({String reason = 'capture_settled'}) {
+    unawaited(_enqueue(type: 'derive_heavy', reason: reason));
   }
 
   /// Hold derivation for the duration of a live workout (see [_workoutActive]).

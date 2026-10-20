@@ -147,31 +147,18 @@ class DeriveCoordinator {
   ///
   /// A heavy job stays running until its baseline rescan ends, so the next
   /// queued job waits behind it rather than being refused by the engine.
-  Future<DeriveOutcome> _runScheduled({
-    required DeriveJobKind kind,
-    void Function(String day, int index, int total)? onDay,
-  }) async {
+  Future<DeriveOutcome> _runScheduled({required DeriveJobKind kind}) async {
     _rescanRun = null;
     final outcome = await afterDrain(
       heavy: kind == DeriveJobKind.heavy,
       changedOnly: kind == DeriveJobKind.light,
       automatic: true,
-      onDay: onDay,
     );
     final rescan = _rescanRun;
     _rescanRun = null;
     if (rescan != null) await rescan;
     return outcome;
   }
-
-  /// The scheduler's heavy pass, run now and awaited, for a caller that has to
-  /// know when the recalculation is done (a backup restore). [onDay] hears each
-  /// finished day. Returns how the pass ended; never throws. A pass the engine
-  /// refused as busy comes back `failed`.
-  Future<DeriveOutcome> runHeavyPass({
-    void Function(String day, int index, int total)? onDay,
-  }) =>
-      _runScheduled(kind: DeriveJobKind.heavy, onDay: onDay);
 
   /// The baseline rescan the last heavy [afterDrain] started (never throws).
   Future<void>? _rescanRun;
@@ -266,17 +253,30 @@ class DeriveCoordinator {
     _recalc.value = s;
   }
 
+  // The recalc bookkeeping also drives [deriveProgress], so every pass that
+  // reports its days (the baseline rescan included) reports its progress too.
+  int _recalcScopeSize = 0;
+
   void _recalcScope(int owner, List<String> days) {
     if (days.isEmpty) return;
     _recalcOwner = owner;
+    _recalcScopeSize = days.toSet().length;
     _setRecalc(RecalcState(days: {...days}, passStartedAt: DateTime.now()));
+    _setProgress(owner, DeriveProgress(dayIndex: 0, dayTotal: _recalcScopeSize));
   }
 
   void _recalcDayDone(int owner, String day) {
     if (_recalcOwner != owner) return;
     final cur = _recalc.value;
     if (!cur.days.contains(day)) return;
-    _setRecalc(cur.copyWith(days: {...cur.days}..remove(day)));
+    final left = {...cur.days}..remove(day);
+    _setRecalc(cur.copyWith(days: left));
+    _setProgress(
+        owner,
+        DeriveProgress(
+            dayIndex: _recalcScopeSize - left.length,
+            dayTotal: _recalcScopeSize,
+            day: day));
   }
 
   void _recalcCrossDay(int owner, bool active) {
@@ -285,6 +285,7 @@ class DeriveCoordinator {
   }
 
   void _recalcClear(int owner) {
+    _clearProgress(owner);
     if (_recalcOwner != owner) return;
     _recalcOwner = 0;
     final cut = _recalc.value;
@@ -717,15 +718,9 @@ class DeriveCoordinator {
           final rescanId = ++_recalcSeq;
           try {
             final n = await _rescanRecent(
-              onScopeDays: (days) {
-                _recalcScope(rescanId, days);
-                _setProgress(
-                    rescanId, DeriveProgress(dayIndex: 0, dayTotal: days.length));
-              },
+              onScopeDays: (days) => _recalcScope(rescanId, days),
               onDayDone: (day, index, total) {
                 _recalcDayDone(rescanId, day);
-                _setProgress(rescanId,
-                    DeriveProgress(dayIndex: index, dayTotal: total, day: day));
                 _dayPublisher.request();
               },
             );
@@ -737,7 +732,6 @@ class DeriveCoordinator {
             _log('[derive] rescan failed: $e');
           } finally {
             _recalcClear(rescanId);
-            _clearProgress(rescanId);
           }
         }();
       }

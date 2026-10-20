@@ -233,6 +233,34 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
 const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
     file: 'data/db.dart',
+    symbol: 'LocalDb.importFromDbFile',
+    source: 'onProgress?.call(const ImportPreparing(ImportPrepStep.inflating))',
+    ordinal: 0,
+    reason: 'import progress callback: sets one ValueNotifier on the caller side',
+  ),
+  UnresolvedOk(
+    file: 'data/db.dart',
+    symbol: 'LocalDb._mergeFromDbFileBody',
+    source: 'onProgress?.call(const ImportPreparing(ImportPrepStep.opening))',
+    ordinal: 0,
+    reason: 'import progress callback: sets one ValueNotifier on the caller side',
+  ),
+  UnresolvedOk(
+    file: 'data/db.dart',
+    symbol: 'LocalDb._mergeFromDbFileBody',
+    source: 'onProgress?.call(const ImportPreparing(ImportPrepStep.checking))',
+    ordinal: 1,
+    reason: 'import progress callback: sets one ValueNotifier on the caller side',
+  ),
+  UnresolvedOk(
+    file: 'data/import_copy_plan.dart',
+    symbol: 'ImportCopyPlan._report',
+    source: '_emit(ImportCopying(run.stage, done, run.total, slot.run, _runs.length))',
+    ordinal: 0,
+    reason: 'import progress callback: sets one ValueNotifier on the caller side',
+  ),
+  UnresolvedOk(
+    file: 'data/db.dart',
     symbol: 'LocalDb._openReader',
     source: 'readerOpenerForTest?.call(path)',
     ordinal: 0,

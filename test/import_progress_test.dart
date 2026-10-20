@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/compute/profile.dart';
+import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/import_progress.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 
@@ -178,5 +179,24 @@ void main() {
     expect((steps.last as ImportFailed).error, isNotEmpty);
     expect(steps.whereType<ImportDone>(), isEmpty);
     expect(seen.last, isNull);
+  });
+
+  test('the import queues one durable heavy recalculation instead of running it',
+      () async {
+    final path = await _backup(tmp.path, seconds: 100);
+    await app.importEdgeBackup(path);
+    await cleared();
+    // Through the scheduler's queue, so it waits out a band sync and retries
+    // a refused or partial pass (Sol, import review r1).
+    Future<List<Map<String, Object?>>> jobs() async =>
+        (await LocalDb.instance).query('compute_jobs',
+            where: "scope = 'derive' AND type = 'derive_heavy'");
+    var found = await jobs();
+    for (var i = 0; i < 50 && found.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      found = await jobs();
+    }
+    expect(found, hasLength(1), reason: 'a queued heavy job');
+    expect(found.single['reason'], 'import');
   });
 }

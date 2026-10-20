@@ -12492,6 +12492,10 @@ class LocalDb {
       final insertSql = 'INSERT OR REPLACE INTO main.${quoteSql(t)} '
           '(${columns.map(quoteSql).join(', ')}) $selectSql ORDER BY s.rowid';
 
+      // Small enough that a band-sync commit (which must land before the ACK)
+      // never waits long behind one, and a salvage loses little to one
+      // unreadable chunk.
+      const chunkRows = 25000;
       var protectedDayResults = false;
       var rrSourceMax = false;
       var copied = 0;
@@ -12505,18 +12509,25 @@ class LocalDb {
           await db.execute('''CREATE TEMP TABLE _restore_rr_src_max
             (d TEXT, k INTEGER, m INTEGER, PRIMARY KEY (d, k))''');
           rrSourceMax = true;
-          await db.execute('''INSERT INTO temp._restore_rr_src_max
-            SELECT $derivedDeviceId AS d, $derivedTsMs AS k,
-                MAX(${sourceColumn('beat_index')}) AS m
-            FROM imp.${quoteSql(t)} s
-            WHERE $unbounded AND ${numericSql(sourceColumn('beat_index'))}
-            GROUP BY d, k''');
+          // Paged like the copy below, so a band-sync commit can land between
+          // pages instead of waiting out a scan of the whole source.
+          for (var lo = 0; lo < maxRowid; lo += chunkRows) {
+            // REPLACE with a LEFT JOIN rather than an UPSERT: Android 8-10
+            // ship a system SQLite older than ON CONFLICT DO UPDATE.
+            await db.execute('''INSERT OR REPLACE INTO temp._restore_rr_src_max
+                (d, k, m)
+              SELECT c.d, c.k, MAX(c.m, COALESCE(x.m, c.m))
+              FROM (SELECT $derivedDeviceId AS d, $derivedTsMs AS k,
+                      MAX(${sourceColumn('beat_index')}) AS m
+                    FROM imp.${quoteSql(t)} s
+                    WHERE s.rowid > ? AND s.rowid <= ? AND $unbounded
+                      AND ${numericSql(sourceColumn('beat_index'))}
+                    GROUP BY d, k) c
+              LEFT JOIN temp._restore_rr_src_max x ON x.d = c.d AND x.k = c.k''',
+                [lo, lo + chunkRows]);
+          }
         }
         var lower = 0;
-        // Small enough that a band-sync commit (which must land before the
-        // ACK) never waits long behind one, and a salvage loses little to one
-        // unreadable chunk.
-        const chunkRows = 25000;
         while (lower < maxRowid) {
           final upper = lower + chunkRows > maxRowid ? maxRowid : lower + chunkRows;
           final first = lower == 0;
