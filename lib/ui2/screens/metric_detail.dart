@@ -2388,21 +2388,26 @@ class DayNav extends StatelessWidget {
   final List<String> days;
   final ValueChanged<String> onDay;
 
+  /// Draws the bar (both arrows dimmed) with fewer than two days, for a screen
+  /// that must not gain a row when the second day arrives.
+  final bool alwaysShow;
+
   const DayNav({
     super.key,
     required this.day,
     required this.days,
     required this.onDay,
+    this.alwaysShow = false,
   });
 
   @override
   Widget build(BuildContext c) {
-    if (days.length < 2) return const SizedBox.shrink();
+    if (days.length < 2 && !alwaysShow) return const SizedBox.shrink();
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final i = days.indexOf(day ?? '');
     // days is newest first: the OLDER day is further down the list.
-    final older = i < 0 ? days.first : (i + 1 < days.length ? days[i + 1] : null);
+    final older = i < 0 ? days.firstOrNull : (i + 1 < days.length ? days[i + 1] : null);
     final newer = i > 0 ? days[i - 1] : null;
 
     Widget arrow(IconData icon, String label, String? to) => Opacity(

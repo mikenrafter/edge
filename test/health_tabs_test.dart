@@ -526,14 +526,14 @@ void main() {
       }
     });
 
-    testWidgets('a family with no history folds into one card', (t) async {
+    testWidgets('a family with no history keeps its rows, dimmed', (t) async {
       await _pump(t, _screen(tab: 1));
-      // Body & wear has nothing stored: one card, naming both, and no rows.
-      expect(find.textContaining('Skin temperature · Wear time'),
-          findsOneWidget);
-      expect(_rowNamed('Wear time'), findsNothing,
-          reason: 'an empty measure is named in the fold, not given a row');
-      expect(find.text('Nothing measured here yet'), findsOneWidget);
+      // Body & wear has nothing stored: its rows stay in the family's card
+      // (same card first launch and loaded) instead of folding into a
+      // status card.
+      expect(_rowNamed('Wear time'), findsOneWidget);
+      expect(find.text('Nothing measured here yet'), findsNothing);
+      expect(find.textContaining('Skin temperature · Wear time'), findsNothing);
     });
 
     testWidgets('SpO2 is listed only once an import has written it',

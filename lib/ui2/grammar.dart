@@ -1295,6 +1295,11 @@ class TrendCard extends StatefulWidget {
   /// The day a series slot stands for, for the press-and-hold readout.
   final String Function(int slot)? dayOf;
 
+  /// Keeps the verdict line's place when there is no [band], so a card that
+  /// abstains (or has no data yet) is as tall as one that judges. Off by
+  /// default: only a screen that must not move when the band arrives asks.
+  final bool reserveVerdict;
+
   const TrendCard(
     this.label,
     this.value,
@@ -1312,6 +1317,7 @@ class TrendCard extends StatefulWidget {
     this.higherBetter = true,
     this.format,
     this.dayOf,
+    this.reserveVerdict = false,
   });
 
   @override
@@ -1526,10 +1532,16 @@ class _TrendCardState extends State<TrendCard> {
               side: side!,
               detail: verdictDetail,
               higherBetter: w.higherBetter,
+              oneLine: w.reserveVerdict,
             ),
+          ] else if (w.reserveVerdict) ...[
+            const SizedBox(height: S.x1),
+            ExcludeSemantics(child: Text(' ', style: F.cap)),
           ],
           const SizedBox(height: S.x1),
-          Text(small, style: F.over.copyWith(color: p.ink3)),
+          // An empty line is still a line when the slot is reserved.
+          Text(w.reserveVerdict && small.isEmpty ? ' ' : small,
+              style: F.over.copyWith(color: p.ink3)),
           const SizedBox(height: S.x4),
           SizedBox(height: 64, child: plot),
         ],

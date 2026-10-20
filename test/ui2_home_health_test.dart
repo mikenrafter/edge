@@ -361,6 +361,13 @@ void main() {
                   of: find.byWidget(r),
                   matching: find.text('—'))
               .evaluate(),
+        // The same for a deep-dive card: its line under the dash is the reason.
+        for (final r in tester
+            .widgetList<DeepDiveCard>(find.byType(DeepDiveCard))
+            .where((r) => r.value.trim() == '—' && r.cta.trim().isNotEmpty))
+          ...find
+              .descendant(of: find.byWidget(r), matching: find.text('—'))
+              .evaluate(),
       };
       final dashes = tester
           .widgetList<Text>(find.byType(Text))

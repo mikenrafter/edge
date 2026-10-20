@@ -1120,10 +1120,20 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // Statistics off the STORED values; the painter gets the dense window.
       final s = valuesOf(pts);
       if (s.isEmpty) {
-        return StatusCard(
-          l?.healthNoTrendYet(label) ?? 'No $label trend yet',
+        // The same card, drawn empty: a dash for the value, the reason in the
+        // window line and no line. A StatusCard here was a different card in
+        // a different height, so the first stored day moved everything below.
+        return TrendCard(
+          label,
+          '—',
+          '',
+          '',
           l?.healthZeroDaysStored ?? '0 days stored.',
-          icon: LucideIcons.chartLine,
+          const [],
+          col,
+          good: null,
+          reserveVerdict: true,
+          key: ValueKey('card:trend-$key'),
         );
       }
       String fmt(double v) => key == 'sleep' ? hm(v) : metricValue(unit, v);
@@ -1155,6 +1165,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
           : '$small$asOf';
       final n = DateTime.now();
       return TrendCard(
+        key: ValueKey('card:trend-$key'),
+        reserveVerdict: true,
         label,
         fmt(s.last),
         key == 'sleep' ? '' : unit,
@@ -1211,6 +1223,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // the Sleep tab, beside the night it is about.
 
       Section(
+        key: const ValueKey('card:consistency'),
         l?.healthConsistencyTitle ?? 'Consistency',
         Surface(
           child: Consistency(
@@ -1277,15 +1290,26 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     // two values landed on the same x. The qualifier is not a unit and does
     // not belong beside the number: it goes under the name, where every other
     // list in the app already puts it.
+    // Every row is always there: an absent one keeps its slot with a dash and
+    // the one-line reason, so the card is the same card with or without a
+    // recorded day (it used to be replaced by a StatusCard when all four were
+    // absent, and grew a row at a time as each landed).
+    final none = l?.healthNoBandRecordings ?? 'No band recordings reached this day.';
     final rows = <Widget>[
       if (lo != null && hi != null)
         MetricRow(LucideIcons.heart, C.red, l?.healthRowHeartRate ?? 'Heart rate',
             '${lo.round()} – ${hi.round()}',
-            sub: dayWord, unit: 'bpm'),
+            sub: dayWord, unit: 'bpm', subMaxLines: 1)
+      else
+        MetricRow(LucideIcons.heart, C.red, l?.healthRowHeartRate ?? 'Heart rate',
+            '—', sub: none, unit: '', subMaxLines: 1),
       if (resp != null)
         MetricRow(LucideIcons.wind, C.teal, l?.healthRowRespRate ?? 'Respiratory rate',
             resp.toStringAsFixed(1),
-            sub: l?.healthSubAsleep ?? 'Asleep', unit: 'br/min'),
+            sub: l?.healthSubAsleep ?? 'Asleep', unit: 'br/min', subMaxLines: 1)
+      else
+        MetricRow(LucideIcons.wind, C.teal, l?.healthRowRespRate ?? 'Respiratory rate',
+            '—', sub: none, unit: '', subMaxLines: 1),
       if (skinTemp.value != null || tempDevC != null)
         // NAME THE QUANTITY. This is `skin_temp_z` — standard deviations from
         // the user's own baseline. It printed signed and unitless beside a
@@ -1309,11 +1333,17 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                       'vs your own nights · ${prettyDay(tempNight, l)}'),
           ].join(' · '),
           unit: tempDevC != null ? '°C' : 'SD',
+          subMaxLines: 1,
           // Both this row and the wear row below it carry a FULL, written,
           // cited spec in `metric_detail.dart` that no tap in the app opened.
           // The number was on screen and its method was unreachable.
           onTap: () => go(c, const MetricDetail('skin_temp')),
-        ),
+        )
+      else
+        MetricRow(LucideIcons.thermometer, C.orange,
+            l?.healthRowSkinTemp ?? 'Skin temperature', '—',
+            sub: none, unit: '', subMaxLines: 1,
+            onTap: () => go(c, const MetricDetail('skin_temp'))),
       if (worn != null)
         MetricRow(LucideIcons.watch, C.green, l?.healthRowWearTime ?? 'Wear time',
             hm(worn),
@@ -1324,6 +1354,11 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                         isToday ? (l.healthTheDay) : dayWord) ??
                     '${coverage.round()}% of '
                         '${isToday ? 'the day' : dayWord}'),
+            subMaxLines: 1,
+            onTap: () => go(c, const MetricDetail('wear')))
+      else
+        MetricRow(LucideIcons.watch, C.green, l?.healthRowWearTime ?? 'Wear time',
+            '—', sub: none, unit: '', subMaxLines: 1,
             onTap: () => go(c, const MetricDetail('wear'))),
     ];
 
@@ -1343,25 +1378,25 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               asOfFor(shownDay: v.day, computedAt: dayAt, recalc: recalc),
           day: v.day,
           computedAt: dayAt),
-      ...dayNavRow(_vDay ?? v.day, v.days, _goVitalsDay),
-      if (rows.isEmpty)
-        StatusCard(
-          l?.healthNothingMeasuredDay ?? 'Nothing measured for this day',
-          l?.healthNoBandRecordings ?? 'No band recordings reached this day.',
-          fix: syncOf(c) == null ? '' : (l?.healthSyncTheBand ?? 'Sync the band'),
-          icon: LucideIcons.watch,
-          onFix: syncOf(c),
-        )
-      else
-        Surface(
-          pad: const EdgeInsets.symmetric(horizontal: S.x4),
-          child: Column(children: [
-            for (var i = 0; i < rows.length; i++) ...[
-              if (i > 0) Divider(color: p.line, height: 1),
-              rows[i],
-            ],
-          ]),
-        ),
+      // Always drawn (dimmed with fewer than two days) so the rows below do
+      // not move when the second day arrives.
+      DayNav(
+          key: const ValueKey('card:daynav'),
+          alwaysShow: true,
+          day: _vDay ?? v.day,
+          days: v.days,
+          onDay: _goVitalsDay),
+      const SizedBox(height: S.x3),
+      Surface(
+        key: const ValueKey('card:vitals-rows'),
+        pad: const EdgeInsets.symmetric(horizontal: S.x4),
+        child: Column(children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Divider(color: p.line, height: 1),
+            rows[i],
+          ],
+        ]),
+      ),
 
       // No skin-temperature caveat card here. The row's own unit already says
       // the reading is relative, and `metric_detail` carries the method for
@@ -1371,14 +1406,17 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // No "Sleep architecture" deep dive either: Sleep is a tab of its own,
       // and a second door into it from Vitals is a duplicate entry point, not
       // a feature.
-      if (rmssd != null)
-        Section(
+      // Always there: an absent HRV is a dash, and the preview says so.
+      Section(
+          key: const ValueKey('card:deep-dive'),
           l?.healthDeepDivesTitle ?? 'Deep dives',
           DeepDiveCard(
               l?.healthHeartRateVariability ?? 'Heart rate variability',
-              '${rmssd.round()}',
-              'ms',
-              l?.healthTimeFrequencyNonLinear ?? 'Detailed HRV measures',
+              rmssd == null ? '—' : '${rmssd.round()}',
+              rmssd == null ? '' : 'ms',
+              rmssd == null
+                  ? none
+                  : (l?.healthTimeFrequencyNonLinear ?? 'Detailed HRV measures'),
               C.green,
               preview: _hrvPreview(c, d),
               onTap: () => go(c, const Investigate('hrv'))),
@@ -1386,13 +1424,16 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
 
       // The research charts, all behind one door.
       const SizedBox(height: S.x3),
-      detailLinkRow(
+      KeyedSubtree(
+        key: const ValueKey('card:advanced'),
+        child: detailLinkRow(
           c,
           LucideIcons.flaskConical,
           l?.healthAdvancedLinkTitle ?? 'Advanced charts',
           l?.healthAdvancedLinkSub ??
               'Beat-to-beat detail and sleep timing',
           () => go(c, const AdvancedScreen())),
+      ),
     ]);
   }
 
@@ -1474,6 +1515,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Surface(
+        key: const ValueKey('card:explore-summary'),
         child: Consistency(have, total,
             l?.healthMeasuresWithHistory ??
                 'Metrics with history',
@@ -1490,78 +1532,55 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       BuildContext c, P p, MetricCategory f, Map<String, int> counts) {
     final l = AppLocalizations.of(c);
     final rows = _rowsOf(f, counts);
-    final have = [
-      for (final r in rows)
-        if ((counts[r.series] ?? 0) > 0) r,
-    ];
-    final none = [
-      for (final r in rows)
-        if ((counts[r.series] ?? 0) == 0) r,
-    ];
 
+    // One card per family with EVERY row in catalogue order, first launch and
+    // loaded alike: a metric with no history keeps its slot, dimmed. It used to sort the measured rows above
+    // and name the rest in a StatusCard below, so the card was a different
+    // height the moment the first day derived.
     return Section(
+      key: ValueKey('card:family-${f.title}'),
       metricCategoryTitle(l, f.title),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (have.isNotEmpty)
-            Surface(
-              pad: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: Column(
-                children: [
-                  for (var i = 0; i < have.length; i++) ...[
-                    if (i > 0) Divider(color: p.line, height: 1),
-                    Builder(
-                      builder: (c) {
-                        final r = have[i];
-                        final s = specOf(r.key);
-                        // NO NUMBER IN THE VALUE SLOT, on purpose.
-                        //
-                        // This used to print the day count. It read as a score: nine
-                        // days of breathing rate beside seventeen of resting HR looks
-                        // like the app is worse at breathing, when what it means is
-                        // that the estimator abstains more — which is the behaviour
-                        // we want. It also collapsed three different causes into one
-                        // number: genuinely rare, key shipped last week, substrate
-                        // pruned. `midsleep_sec` is forward-only and can never be
-                        // backfilled, so it would sit at 1 next to everything else's
-                        // 17 and mean nothing of the sort.
-                        //
-                        // And it was redundant. Rows with history sort above rows
-                        // without, and the empty ones are named in the StatusCard
-                        // below. Has / hasn't is the only thing an index owes you,
-                        // and the layout already says it.
-                        return MetricRow(
-                          s.icon,
-                          s.color,
-                          uiText(c, s.title),
-                          '',
-                          sub: _rowBlurb(l, r.key, r.blurb),
-                          onTap: () => go(c, MetricDetail(r.key)),
-                        );
-                      },
-                    ),
-                  ],
-                ],
+      Surface(
+        pad: const EdgeInsets.symmetric(horizontal: S.x4),
+        child: Column(
+          children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0) Divider(color: p.line, height: 1),
+              Builder(
+                builder: (c) {
+                  final r = rows[i];
+                  final s = specOf(r.key);
+                  // NO NUMBER IN THE VALUE SLOT, on purpose.
+                  //
+                  // This used to print the day count. It read as a score: nine
+                  // days of breathing rate beside seventeen of resting HR looks
+                  // like the app is worse at breathing, when what it means is
+                  // that the estimator abstains more. It also collapsed three
+                  // causes into one number: genuinely rare, key shipped last
+                  // week, substrate pruned. Has / hasn't is all an index owes
+                  // you, and a dash is the "hasn't".
+                  final row = MetricRow(
+                    s.icon,
+                    s.color,
+                    uiText(c, s.title),
+                    '',
+                    sub: _rowBlurb(l, r.key, r.blurb),
+                    onTap: () => go(c, MetricDetail(r.key)),
+                  );
+                  if ((counts[r.series] ?? 0) > 0) return row;
+                  // Dimmed, not reworded: any text in the row (a dash in the
+                  // value slot, a different sub) changes how the blurb wraps,
+                  // and the card must be the same height with or without
+                  // history.
+                  return Semantics(
+                    hint: l?.healthNotMeasuredYet ?? 'Not measured yet',
+                    child: Opacity(opacity: .5, child: row),
+                  );
+                },
               ),
-            ),
-          if (none.isNotEmpty) ...[
-            if (have.isNotEmpty) const SizedBox(height: S.x3),
-            StatusCard(
-            have.isEmpty
-                ? (l?.healthNothingMeasuredHere ?? 'Nothing measured here yet')
-                : (l?.healthNotMeasuredYet ?? 'Not measured yet'),
-              // No cause is named, because none is known here: this screen reads
-              // a row count, and a count of zero says the day never produced one
-              // — never why. No `fix:` either; there is no button that makes a
-              // derive happen for a night that has already been scored.
-              '${none.map((r) => uiText(c, specOf(r.key).title)).join(' · ')}. '
-                '${l?.healthNoDayProduced ?? 'No day on this device has '
-                    'produced one yet.'}',
-              icon: LucideIcons.chartLine,
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1605,6 +1624,24 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // The entry point leads: the results below are a list that grows, and
+      // nothing that must stay put may sit under it.
+      KeyedSubtree(
+        key: const ValueKey('card:add'),
+        child: BigButton(loc?.healthAddAResult ?? 'Add a result',
+            icon: LucideIcons.plus,
+            color: C.blue,
+            soft: true,
+            onTap: () => _addLab(c, l)),
+      ),
+      const SizedBox(height: S.x4),
+      // List-shaped: the section is as tall as its entries, so it is keyed
+      // 'list:results', not 'card:*' (the first-launch test holds the cards to
+      // a fixed size; this one's place is fixed, its body is not).
+      Column(
+        key: const ValueKey('list:results'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
       if (rows.isEmpty)
         StatusCard(
           loc?.healthNoLabResults ?? 'No lab results',
@@ -1631,13 +1668,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                 'Last panel ${lastDraw ?? ''} · logged by hand',
             style: F.over.copyWith(color: p.ink3)),
       ],
+        ],
+      ),
       if (mine.isNotEmpty) _myMarkers(p, mine, counts),
-      const SizedBox(height: S.x4),
-      BigButton(loc?.healthAddAResult ?? 'Add a result',
-          icon: LucideIcons.plus,
-          color: C.blue,
-          soft: true,
-          onTap: () => _addLab(c, l)),
       const SizedBox(height: S.x4),
       // The app never prints "abnormal" anywhere, so it does not need to say
       // it does not. What the user cannot know without being told is that the
@@ -1777,6 +1810,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   Widget _myMarkers(P p, List<LabMarker> mine, Map<String, int> counts) {
     final l = AppLocalizations.of(context);
     return Section(
+      key: const ValueKey('card:my-markers'),
       l?.healthMarkersYouNamed ?? 'Markers you named',
       Surface(
         pad: const EdgeInsets.symmetric(horizontal: S.x4),

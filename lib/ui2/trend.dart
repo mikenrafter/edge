@@ -171,9 +171,14 @@ class ReadingVerdict extends StatelessWidget {
     required this.side,
     required this.detail,
     this.higherBetter = true,
+    this.oneLine = false,
   });
 
   final Side side;
+
+  /// One line whatever the detail's length (the detail gives way with an
+  /// ellipsis) for a card whose height must not depend on it.
+  final bool oneLine;
 
   /// "−6 ms from your usual 54". Empty draws the word alone.
   final String detail;
@@ -187,6 +192,33 @@ class ReadingVerdict extends StatelessWidget {
     final l = AppLocalizations.of(c);
     final good = sideIsGood(side, higherBetter: higherBetter);
     final ink = good == null ? p.ink2 : p.on(good ? C.green : C.orange);
+    if (oneLine) {
+      return Row(children: [
+        if (side != Side.inside) ...[
+          Icon(
+            side == Side.above
+                ? LucideIcons.arrowUpRight
+                : LucideIcons.arrowDownRight,
+            size: 14,
+            color: ink,
+          ),
+          const SizedBox(width: S.x1),
+        ],
+        Text(
+          usualWord(l, side),
+          style: F.cap.copyWith(color: ink, fontWeight: FontWeight.w600),
+        ),
+        if (detail.isNotEmpty) ...[
+          const SizedBox(width: S.x1),
+          Flexible(
+            child: Text('· $detail',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: F.cap.copyWith(color: p.ink3)),
+          ),
+        ],
+      ]);
+    }
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: S.x1,
