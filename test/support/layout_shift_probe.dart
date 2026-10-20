@@ -155,12 +155,16 @@ class ShiftProbe {
         animations: List.of(animations),
       );
 
-  /// Elements in tree order, skipping Offstage subtrees (not painted).
+  /// Elements in tree order, skipping Offstage and hidden-Visibility subtrees
+  /// (not painted).
   static List<Element> _elements(WidgetTester tester, bool skipCovered) {
     final l = <Element>[];
     void visit(Element x) {
       final w = x.widget;
       if (w is Offstage && w.offstage) return;
+      // A parked IndexedStack tab (Visibility with maintainState, not
+      // painted): built and sized, but not on screen.
+      if (w is Visibility && !w.visible) return;
       // The framework's private per-route status widget; read dynamically.
       if (skipCovered &&
           w.runtimeType.toString() == '_ModalScopeStatus' &&
