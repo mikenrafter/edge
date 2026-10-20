@@ -12,11 +12,17 @@ import '../../l10n/app_localizations.dart';
 /// takes), the `metric_series` key its history is stored under, and the single
 /// line that says what it answers.
 ///
+/// [importOnly] marks a measure this app does not produce: only an import
+/// writes its history. Such a row is listed (Trends) or offered (Explorer)
+/// only when `metric_series` holds at least one value for [series].
+///
 /// Icon, colour and title are NOT here — they come off the spec. A second copy
 /// is how two screens end up disagreeing about what a metric is called.
 class MetricCatalogueRow {
   final String key, series, blurb;
-  const MetricCatalogueRow(this.key, this.series, this.blurb);
+  final bool importOnly;
+  const MetricCatalogueRow(this.key, this.series, this.blurb,
+      {this.importOnly = false});
 }
 
 class MetricCategory {
@@ -28,10 +34,12 @@ class MetricCategory {
 /// The families, in the order a person looks for them.
 ///
 /// What is deliberately NOT here:
-/// - SpO2, ODI and anything apnea-shaped. Refused outright — a capability this
-///   app does not produce has no entry, no card and no key. The one exception
-///   is a single line under Breathing (see `_family`) saying why there is no
-///   SpO2, because people look for it there; it is a sentence, not a row.
+/// - ODI and anything apnea-shaped, and SpO2 as something we PRODUCE. Refused
+///   outright — a capability this app does not produce has no entry, no card
+///   and no key. The one exception is the imported vendor SpO2 value: its row
+///   is `importOnly` and is listed only when an import wrote history for it.
+///   With none, a single line under Breathing (see `_family`) says why there
+///   is no SpO2, because people look for it there; it is a sentence, not a row.
 /// - Cycle. It is a Wellness tab with its own door and its own on/off switch;
 ///   a second entrance from Health would be a duplicate route, not a feature.
 /// - `rmssd_whole`, `stress_si`, `brv_slope`. Real numbers, but single-night
@@ -67,6 +75,9 @@ const kMetricCatalogue = <MetricCategory>[
   MetricCategory('Breathing', [
     MetricCatalogueRow('resp_rate', 'resp_rate', 'Breaths per minute, estimated from beat timing'),
     MetricCatalogueRow('brv', 'brv_cv', 'How much that rate varies across the night'),
+    MetricCatalogueRow(
+        'spo2', 'spo2', "WHOOP's own derived value, carried from an import",
+        importOnly: true),
   ]),
   MetricCategory('Movement & load', [
     MetricCatalogueRow('steps', 'steps', 'Counted by a pedometer'),

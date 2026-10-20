@@ -223,6 +223,8 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
   late final List<String> _daily, _intra;
   late final Set<String> _z;
   late String _dayLabel = _today;
+  // Import-only rows with stored history; nothing else may be offered.
+  Set<String> _imported = const {};
   bool _full = false, _loading = false, _failed = false;
 
   // What has been read. A daily metric's WHOLE stored series, oldest first (the
@@ -262,8 +264,32 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
     // The remembered picks are on the first frame; their data follows it.
     _loading = _picks.isNotEmpty;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load();
+      if (mounted) {
+        _load();
+        _loadImported();
+      }
     });
+  }
+
+  Future<void> _loadImported() async {
+    final rows = [
+      for (final c in kMetricCatalogue)
+        for (final r in c.rows)
+          if (r.importOnly) r,
+    ];
+    try {
+      final repo = repoOf(context);
+      if (repo == null) return;
+      final n = await Future.sync(
+          () => repo.getSeriesCounts([for (final r in rows) r.series]));
+      if (!mounted) return;
+      setState(() => _imported = {
+            for (final r in rows)
+              if ((n[r.series] ?? 0) > 0) r.key
+          });
+    } catch (_) {
+      // Unknown history is no history: the row stays out.
+    }
   }
 
   List<String> get _picks => _day ? _intra : _daily;
@@ -862,7 +888,8 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
         ),
         Wrap(spacing: S.x1, children: [
           for (final r in cat.rows)
-            if (_dailyKeys.contains(r.key))
+            if (_dailyKeys.contains(r.key) &&
+                (!r.importOnly || _imported.contains(r.key)))
               pick(r.key, specOf(r.key).title, specOf(r.key).color),
         ]),
       ],

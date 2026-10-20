@@ -97,6 +97,9 @@ class ExplorerRepo extends LocalRepository {
   final Map<String, Map<String, dynamic>> timelines;
   final Map<String, Map<String, dynamic>?> calorieCurves;
 
+  /// Stored-history counts per `metric_series` key, for the import-only rows.
+  final Map<String, int> counts;
+
   final List<String> chartCalls = [];
   final List<String> timelineCalls = [];
   final List<String> calorieCalls = [];
@@ -111,7 +114,12 @@ class ExplorerRepo extends LocalRepository {
     this.charts = const {},
     this.timelines = const {},
     this.calorieCurves = const {},
+    this.counts = const {},
   });
+
+  @override
+  Future<Map<String, int>> getSeriesCounts(List<String> keys) async =>
+      {for (final k in keys) k: counts[k] ?? 0};
 
   @override
   Future<Map<String, dynamic>> getChart(String metric,

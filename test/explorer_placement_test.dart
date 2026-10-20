@@ -143,8 +143,20 @@ void main() {
         'readiness', 'stress', 'resting_hr', 'hrv', 'hrv_cv', 'lf_hf', 'dip',
         'hrr', 'sleep', 'efficiency', 'deep', 'rem', 'nap_min', 'resp_rate',
         'brv', 'steps', 'active_min', 'calories', 'strain', 'trimp',
-        'skin_temp', 'wear',
+        'skin_temp', 'wear', 'spo2',
       });
+      final imp = [
+        for (final c in kMetricCatalogue)
+          for (final r in c.rows)
+            if (r.importOnly) r.key,
+      ];
+      expect(imp, ['spo2'], reason: 'the one import-only row, in Breathing');
+      expect(
+          kMetricCatalogue
+              .singleWhere((c) => c.title == 'Breathing')
+              .rows
+              .any((r) => r.key == 'spo2' && r.importOnly),
+          isTrue);
       final series = {
         for (final c in kMetricCatalogue)
           for (final r in c.rows) r.key: r.series,

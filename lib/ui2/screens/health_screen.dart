@@ -363,27 +363,14 @@ class LabsData {
 // has — which is the only honest answer to "is there anything in there".
 
 // The list itself is `kMetricCatalogue` (metric_catalogue.dart), shared with
-// the Data Explorer; what is local here is the localised one-line blurb and
-// the import-only rows below.
+// the Data Explorer; what is local here is the localised one-line blurb.
 
-/// Rows only an import writes, by catalogue family. With no history such a row
-/// is left out entirely instead of being listed as not measured yet.
-// TODO(merge): fold into `kMetricCatalogue` as an import-only flag so the Data
-// Explorer offers imported SpO2 too; kept here until metric_catalogue.dart
-// takes upstream's row.
-const _importOnly = <String, List<MetricCatalogueRow>>{
-  'Breathing': [
-    MetricCatalogueRow(
-        'spo2', 'spo2', "WHOOP's own derived value, carried from an import"),
-  ],
-};
-
-/// [f]'s rows as this screen lists them: the shared catalogue's, plus any
-/// import-only row an import has actually written history for.
+/// [f]'s rows as this screen lists them: the shared catalogue's, minus any
+/// import-only row no import has written history for (left out entirely
+/// instead of being listed as not measured yet).
 List<MetricCatalogueRow> _rowsOf(MetricCategory f, Map<String, int> counts) => [
-      ...f.rows,
-      for (final r in _importOnly[f.title] ?? const <MetricCatalogueRow>[])
-        if ((counts[r.series] ?? 0) > 0) r,
+      for (final r in f.rows)
+        if (!r.importOnly || (counts[r.series] ?? 0) > 0) r,
     ];
 
 String _rowBlurb(AppLocalizations? l, String key, String blurb) =>
@@ -430,8 +417,6 @@ class ExploreData {
         counts: await LocalDb.metricSeriesCounts([
           for (final f in kMetricCatalogue)
             for (final r in f.rows) r.series,
-          for (final rows in _importOnly.values)
-            for (final r in rows) r.series,
         ]),
       );
 }

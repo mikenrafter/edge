@@ -20,7 +20,9 @@ import 'package:openstrap_edge/ui2/screens/screens.dart' show specOf;
 
 import 'support/explorer_harness.dart';
 
-ExplorerRepo _repo() => ExplorerRepo(charts: {
+ExplorerRepo _repo({Map<String, int> counts = const {}}) => ExplorerRepo(
+    counts: counts,
+    charts: {
       for (final k in const [
         'readiness',
         'resting_hr',
@@ -56,7 +58,7 @@ void main() {
     var offered = 0;
     for (final c in kMetricCatalogue) {
       for (final r in c.rows) {
-        final charted = specOf(r.key).suppress == null;
+        final charted = specOf(r.key).suppress == null && !r.importOnly;
         expect(pick(r.key).evaluate().length, charted ? 1 : 0,
             reason: '${r.key}: ${charted ? 'offered' : 'suppressed, not offered'}');
         if (charted) offered++;
@@ -65,6 +67,24 @@ void main() {
     expect(offered, greaterThanOrEqualTo(20));
     expect(pick('skin_temp'), findsNothing,
         reason: 'its spec says there is no trend to draw');
+  });
+
+  testWidgets('imported SpO2 is not offered without history', (t) async {
+    await pumpExplorer(t, _repo());
+    expect(pick('spo2'), findsNothing, reason: 'no history, no chip');
+  });
+
+  testWidgets('imported SpO2 is not offered at a zero count', (t) async {
+    await pumpExplorer(t, _repo(counts: {'spo2': 0}));
+    expect(pick('spo2'), findsNothing);
+  });
+
+  testWidgets('imported SpO2 is offered once an import wrote history',
+      (t) async {
+    await pumpExplorer(t, _repo(counts: {'spo2': 12}));
+    expect(pick('spo2'), findsOneWidget);
+    expect(specOf('spo2').title, 'Blood oxygen');
+    expect(specOf('spo2').unit, '%');
   });
 
   testWidgets('picking adds a chip with the metric title and reads its chart',

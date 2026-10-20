@@ -4487,6 +4487,10 @@ class LocalRepositoryImpl extends LocalRepository {
     return sec == null ? null : DateTime.fromMillisecondsSinceEpoch(sec * 1000);
   }
 
+  @override
+  Future<Map<String, int>> getSeriesCounts(List<String> keys) =>
+      LocalDb.metricSeriesCounts(keys);
+
   /// A day's intraday calories: one record per minute, gaps null, as the
   /// derive stored them (`kcal_minutes|<day>`); null when there is none (no raw
   /// ever, or the profile could not price the day). Never interpolated or

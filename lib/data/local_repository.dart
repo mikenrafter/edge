@@ -377,6 +377,11 @@ abstract class LocalRepository {
   /// null when none is stored. A read, no compute.
   Future<Map<String, dynamic>?> getDayCalorieCurve(String day) async => null;
 
+  /// Non-null `metric_series` rows per key: has-history only, never a value.
+  /// The Explorer reads it to offer import-only catalogue rows.
+  Future<Map<String, int>> getSeriesCounts(List<String> keys) =>
+      throw UnimplementedError('re-layer: getSeriesCounts');
+
   /// One day's numeric journal fields, keyed by field name.
   Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) =>
       throw UnimplementedError('re-layer: getJournalMetrics');
