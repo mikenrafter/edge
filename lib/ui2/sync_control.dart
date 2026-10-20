@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../settings/settings_repository.dart';
 import '../state/app_state.dart';
+import '../state/derive_progress.dart';
 import 'grammar.dart';
+import 'inline_loading.dart';
 import 'profile/devices.dart' show formatDayTime;
 import 'profile/profile.dart' show accordionPrefKey;
 import 'theme.dart';
@@ -305,14 +308,40 @@ String? calcProgressLine(SyncPresentationState s) {
       : 'Calculating · day $i of $total · $day';
 }
 
-/// [calcProgressLine] for the [AppState] above [c], rebuilding only when the
-/// line changes. Null with no AppState (fixtures render without one).
-String? calcProgressOf(BuildContext c) {
-  try {
-    return c.select<AppState, String?>(
-        (a) => calcProgressLine(a.syncPresentation));
-  } catch (_) {
-    return null;
+/// [calcProgressLine] for any derive pass, sync or not, from
+/// AppState.deriveProgress: a pass after an import or a baseline rescan
+/// reports here and never on the sync's own steps.
+String? deriveProgressLine(DeriveProgress? p) {
+  if (p == null) return null;
+  if (p.waiting) return 'Waiting for another calculation';
+  final i = p.dayIndex, total = p.dayTotal;
+  if (i == null || total == null || i <= 0) return 'Calculating…';
+  final day = p.day;
+  return day == null
+      ? 'Calculating · day $i of $total'
+      : 'Calculating · day $i of $total · $day';
+}
+
+/// An [InlineLoading] for data that waits on a calculation: its detail line
+/// follows AppState.deriveProgress. Without an AppState (fixtures) it is the
+/// plain status.
+class CalcLoading extends StatelessWidget {
+  final String status;
+  const CalcLoading({super.key, required this.status});
+
+  @override
+  Widget build(BuildContext c) {
+    ValueListenable<DeriveProgress?>? src;
+    try {
+      src = c.read<AppState>().deriveProgress;
+    } on ProviderNotFoundException {
+      return InlineLoading(status: status);
+    }
+    return ValueListenableBuilder<DeriveProgress?>(
+      valueListenable: src,
+      builder: (_, p, _) =>
+          InlineLoading(status: status, detail: deriveProgressLine(p)),
+    );
   }
 }
 

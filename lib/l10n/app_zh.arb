@@ -3000,6 +3000,7 @@
   "importPrepChecking": "正在检查备份",
   "importCopying": "正在复制{stage}",
   "importStep": "第 {index}/{count} 步 · {done}/{total} 行",
+  "importRecalculatingStarting": "正在重新计算你的每一天",
   "importRecalculating": "正在重新计算 · 第 {done}/{total} 天",
   "importRecalculatingDay": "正在重新计算 · 第 {done}/{total} 天 · {day}",
   "importStageJournal": "日志",

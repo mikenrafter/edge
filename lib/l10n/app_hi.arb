@@ -3000,6 +3000,7 @@
   "importPrepChecking": "बैकअप जाँचा जा रहा है",
   "importCopying": "{stage} कॉपी हो रहा है",
   "importStep": "चरण {index}/{count} · {done}/{total} पंक्तियाँ",
+  "importRecalculatingStarting": "आपके दिनों की दोबारा गणना",
   "importRecalculating": "दोबारा गणना · दिन {done}/{total}",
   "importRecalculatingDay": "दोबारा गणना · दिन {done}/{total} · {day}",
   "importStageJournal": "जर्नल",

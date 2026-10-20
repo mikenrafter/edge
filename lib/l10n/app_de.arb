@@ -3113,6 +3113,7 @@
   "importPrepChecking": "Sicherung wird geprüft",
   "importCopying": "Kopiere {stage}",
   "importStep": "Schritt {index} von {count} · {done} von {total} Zeilen",
+  "importRecalculatingStarting": "Deine Tage werden neu berechnet",
   "importRecalculating": "Neuberechnung · Tag {done} von {total}",
   "importRecalculatingDay": "Neuberechnung · Tag {done} von {total} · {day}",
   "importStageJournal": "Tagebuch",

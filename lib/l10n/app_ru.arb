@@ -8509,6 +8509,7 @@
       }
     }
   },
+  "importRecalculatingStarting": "Пересчёт ваших дней",
   "importRecalculating": "Пересчёт · день {done} из {total}",
   "@importRecalculating": {
     "placeholders": {

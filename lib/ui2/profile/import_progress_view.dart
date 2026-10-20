@@ -49,7 +49,10 @@ class ImportProgressView extends StatelessWidget {
         bar = s.rowsTotal > 0 ? s.rowsDone / s.rowsTotal : null;
       case ImportRebuilding():
         final day = s.day;
-        status = day == null
+        // Rebuilding(0, 0, null) comes before the pass has chosen its days.
+        status = s.daysTotal == 0
+            ? (l?.importRecalculatingStarting ?? 'Recalculating your days')
+            : day == null
             ? (l?.importRecalculating('${s.daysDone}', '${s.daysTotal}') ??
                 'Recalculating · day ${s.daysDone} of ${s.daysTotal}')
             : (l?.importRecalculatingDay(

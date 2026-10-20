@@ -3022,6 +3022,7 @@
   "importPrepChecking": "Comprobando la copia",
   "importCopying": "Copiando {stage}",
   "importStep": "Paso {index} de {count} · {done} de {total} filas",
+  "importRecalculatingStarting": "Recalculando tus días",
   "importRecalculating": "Recalculando · día {done} de {total}",
   "importRecalculatingDay": "Recalculando · día {done} de {total} · {day}",
   "importStageJournal": "diario",

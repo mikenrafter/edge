@@ -61,6 +61,15 @@ void main() {
     expect(find.textContaining('2026'), findsNothing);
   });
 
+  // The importer posts Rebuilding(0, 0, null) before the pass has chosen its
+  // days: no "day 0 of 0", and no bar that claims a fraction.
+  testWidgets('rebuilding before the day count is known', (t) async {
+    await _pump(t, const ImportRebuilding(0, 0, null));
+    expect(find.text('Recalculating your days'), findsOneWidget);
+    expect(find.textContaining('of 0'), findsNothing);
+    expect(_barValue(t), isNull);
+  });
+
   testWidgets('failed: the error text', (t) async {
     await _pump(t, const ImportFailed('disk full'));
     expect(find.textContaining('disk full'), findsOneWidget);

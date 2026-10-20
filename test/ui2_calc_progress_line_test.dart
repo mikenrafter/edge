@@ -10,6 +10,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/derive_progress.dart';
 import 'package:openstrap_edge/ui2/sync_control.dart';
 
 SyncPresentationState _state(String phase, SyncCalculateDetail? calc) =>
@@ -75,5 +76,34 @@ void main() {
           isNull,
           reason: phase);
     }
+  });
+
+  // deriveProgressLine: the same line from AppState.deriveProgress, which every
+  // derive pass feeds (sync or not), so a post-import pass shows too.
+  group('deriveProgressLine', () {
+    test('no pass running => null', () {
+      expect(deriveProgressLine(null), isNull);
+    });
+    test('day count with the last finished day', () {
+      expect(
+          deriveProgressLine(const DeriveProgress(
+              dayIndex: 3, dayTotal: 12, day: '2026-03-14')),
+          'Calculating · day 3 of 12 · 2026-03-14');
+    });
+    test('day count without a day', () {
+      expect(
+          deriveProgressLine(const DeriveProgress(dayIndex: 3, dayTotal: 12)),
+          'Calculating · day 3 of 12');
+    });
+    test('no finished day yet, or no count => Calculating…', () {
+      expect(
+          deriveProgressLine(const DeriveProgress(dayIndex: 0, dayTotal: 12)),
+          'Calculating…');
+      expect(deriveProgressLine(const DeriveProgress()), 'Calculating…');
+    });
+    test('waiting', () {
+      expect(deriveProgressLine(const DeriveProgress(waiting: true)),
+          'Waiting for another calculation');
+    });
   });
 }

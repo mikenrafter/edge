@@ -3000,6 +3000,7 @@
   "importPrepChecking": "Vérification de la sauvegarde",
   "importCopying": "Copie : {stage}",
   "importStep": "Étape {index} sur {count} · {done} sur {total} lignes",
+  "importRecalculatingStarting": "Recalcul de vos jours",
   "importRecalculating": "Recalcul · jour {done} sur {total}",
   "importRecalculatingDay": "Recalcul · jour {done} sur {total} · {day}",
   "importStageJournal": "journal",

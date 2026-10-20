@@ -2163,9 +2163,8 @@ class _HomeScreenState extends State<HomeScreen>
   /// through to its own "nothing yet" copy.
   Widget? _phaseStatusCard(BuildContext c, AppLocalizations? l) {
     if (!derivingOf(c)) return null;
-    return InlineLoading(
+    return CalcLoading(
       status: l?.homeAnalyzingTitle ?? 'Crunching last night\'s numbers',
-      detail: calcProgressOf(c),
     );
   }
 
@@ -2465,9 +2464,8 @@ class _HomeScreenState extends State<HomeScreen>
         // PAST day the switcher stepped onto has nothing on it.
         if (building)
           derivingOf(c)
-              ? InlineLoading(
-                  status: l?.loadingCalculatingToday ?? 'Calculating today',
-                  detail: calcProgressOf(c))
+              ? CalcLoading(
+                  status: l?.loadingCalculatingToday ?? 'Calculating today')
               : InlineLoading(
                   status: l?.loadingWaitingToCalculateToday ??
                       'Waiting to calculate today')
