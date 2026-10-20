@@ -1,9 +1,5 @@
 {
   "@@locale": "en",
-  "appTitle": "OpenStrap",
-  "@appTitle": {
-    "description": "App name shown in the OS task switcher / MaterialApp title."
-  },
   "profileTitle": "Profile",
   "@profileTitle": {
     "description": "Profile screen header."
@@ -35,10 +31,6 @@
   "actionDone": "Done",
   "@actionDone": {
     "description": "Generic Done status label."
-  },
-  "actionSettings": "Settings",
-  "@actionSettings": {
-    "description": "Settings icon semantic label."
   },
   "actionUpdateApp": "Update the app",
   "@actionUpdateApp": {
@@ -241,17 +233,9 @@
   "@alarmNavSub": {
     "description": "Alarm screen subtitle."
   },
-  "alarmArmedFor": "ARMED FOR",
-  "@alarmArmedFor": {
-    "description": "Armed-for section label."
-  },
   "alarmNextLabel": "NEXT",
   "@alarmNextLabel": {
     "description": "Next-occurrence section label."
-  },
-  "alarmScheduleGroup": "Weekly schedule",
-  "@alarmScheduleGroup": {
-    "description": "Settings group: the 7-day alarm schedule."
   },
   "alarmWakeTimeRowTitle": "Wake time",
   "@alarmWakeTimeRowTitle": {
@@ -261,17 +245,9 @@
   "@alarmNotConnectedTitle": {
     "description": "Status card: band not connected."
   },
-  "alarmNotConnectedBody": "Connect your band to change, test or cancel the alarm. An alarm that is already set still works.",
-  "@alarmNotConnectedBody": {
-    "description": "Status card body: band not connected."
-  },
   "alarmSetAnAlarm": "Set an alarm",
   "@alarmSetAnAlarm": {
     "description": "Button: set an alarm."
-  },
-  "alarmChangeTheTime": "Change the time",
-  "@alarmChangeTheTime": {
-    "description": "Button: change the time."
   },
   "alarmTestTheBuzz": "Test the buzz",
   "@alarmTestTheBuzz": {
@@ -288,10 +264,6 @@
   "alarmCancelled": "Alarm cancelled",
   "@alarmCancelled": {
     "description": "Snackbar: alarm cancelled."
-  },
-  "alarmSentToBand": "Alarm sent to the band",
-  "@alarmSentToBand": {
-    "description": "Snackbar: alarm sent."
   },
   "alarmInThePast": "In the past — it has already fired or been missed",
   "@alarmInThePast": {
@@ -414,17 +386,9 @@
   "@bandNotifEmptyBody": {
     "description": "Status card body: no apps yet."
   },
-  "bandNotifAppsGroup": "Apps that notify you",
-  "@bandNotifAppsGroup": {
-    "description": "Settings group header: apps list."
-  },
   "bandNotifOneBuzzTitle": "One buzz, not a stream",
   "@bandNotifOneBuzzTitle": {
     "description": "Status card: rate limiting explained."
-  },
-  "bandNotifOneBuzzBody": "Repeats from one app within four seconds are ignored. Ongoing notifications (music, downloads) never buzz, and nothing buzzes while disconnected.",
-  "@bandNotifOneBuzzBody": {
-    "description": "Status card body: rate limiting explained."
   },
   "bandNotifBuzzesDescription": "buzzes",
   "@bandNotifBuzzesDescription": {
@@ -526,14 +490,6 @@
   "dataFromYourPhoneSub": "Resting heart rate, blood pressure, glucose and body temperature",
   "@dataFromYourPhoneSub": {
     "description": "Row sub."
-  },
-  "dataRebuildGroup": "Rebuild",
-  "@dataRebuildGroup": {
-    "description": "Group header."
-  },
-  "dataReanalyzeEverything": "Re-analyze everything",
-  "@dataReanalyzeEverything": {
-    "description": "Row title."
   },
   "dataReanalyzeEverythingSub": "Recalculates every day from stored data. Use after changing time zones or importing.",
   "@dataReanalyzeEverythingSub": {
@@ -658,10 +614,6 @@
   "devicesWhichSourceWinsSub": "When two of your devices measure the same thing",
   "@devicesWhichSourceWinsSub": {
     "description": "Row sub for the priority-editor entry."
-  },
-  "devicesResetToDefault": "Back to the default order",
-  "@devicesResetToDefault": {
-    "description": "Per-signal reset-to-physics-ladder action in the priority editor."
   },
   "devicesMySources": "My sources",
   "@devicesMySources": {
@@ -1324,14 +1276,6 @@
       }
     }
   },
-  "profileDefaultName": "You",
-  "@profileDefaultName": {
-    "description": "Default display name."
-  },
-  "profileQuickAccessGroup": "Quick access",
-  "@profileQuickAccessGroup": {
-    "description": "Group header."
-  },
   "profileSourcesCount": "{n, plural, one{1 source} other{{n} sources}}",
   "@profileSourcesCount": {
     "description": "Row sub: N sources.",
@@ -1357,26 +1301,9 @@
   "@profileNotSetUp": {
     "description": "Row sub: not configured."
   },
-  "profileYourDataGroup": "Your data",
-  "@profileYourDataGroup": {
-    "description": "Group header."
-  },
   "profileStorage": "Storage",
   "@profileStorage": {
     "description": "Row title."
-  },
-  "profileMoreSettings": "More settings",
-  "@profileMoreSettings": {
-    "description": "Row title."
-  },
-  "profileMoreSettingsSub": "Import from {store}, export, backup, units, privacy, reset",
-  "@profileMoreSettingsSub": {
-    "description": "Row sub with health-store name.",
-    "placeholders": {
-      "store": {
-        "type": "String"
-      }
-    }
   },
   "welcomeSetUpMyBand": "Set up my band",
   "@welcomeSetUpMyBand": {
@@ -2117,15 +2044,6 @@
   "@readinessDetailNotMeasured": {
     "description": "Row value in the absence diagnostic: this input was not measured."
   },
-  "readinessDetailNightsOfHistory": "{n, plural, one{{n} night of your own history} other{{n} nights of your own history}}",
-  "@readinessDetailNightsOfHistory": {
-    "description": "Row value in the absence diagnostic stating how many of the user's own nights back the baseline.",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
-  },
   "readinessDetailNightsOfTarget": "{have} of {need} nights",
   "@readinessDetailNightsOfTarget": {
     "description": "Row value in the absence diagnostic: how many of the user's own nights back this input against the floor every input needs before it can be used.",
@@ -2137,19 +2055,6 @@
         "type": "int"
       }
     }
-  },
-  "readinessDetailNeedSuffix": "{need}. Each input is ranked against your own nights, so the score cannot start before there are enough of them.",
-  "@readinessDetailNeedSuffix": {
-    "description": "Sentence appended after the pipeline's own 'need N more nights' message.",
-    "placeholders": {
-      "need": {
-        "type": "String"
-      }
-    }
-  },
-  "readinessDetailNoNoteFallback": "Everything above was present, and the comparison against your own history still could not be made.",
-  "@readinessDetailNoNoteFallback": {
-    "description": "Fallback sentence when readiness is absent but the pipeline left no specific note."
   },
   "readinessDetailNotAvailable": "not available",
   "@readinessDetailNotAvailable": {
@@ -3068,26 +2973,6 @@
       }
     }
   },
-  "logWorkoutCouldNotLog": "Could not log this one — try again.",
-  "@logWorkoutCouldNotLog": {
-    "description": "Error snack bar when confirming a detected workout suggestion fails to save"
-  },
-  "logWorkoutCouldNotDismiss": "Could not dismiss this one — try again.",
-  "@logWorkoutCouldNotDismiss": {
-    "description": "Error snack bar when dismissing a detected workout suggestion fails"
-  },
-  "logWorkoutAdjustTimes": "Adjust the times",
-  "@logWorkoutAdjustTimes": {
-    "description": "Button/screen-title for widening the times on a detected workout before logging it"
-  },
-  "logWorkoutDetectedActivityTitle": "Detected activity",
-  "@logWorkoutDetectedActivityTitle": {
-    "description": "Nav bar title on the detected-workout review screen"
-  },
-  "logWorkoutYoursToConfirmSub": "YOURS TO CONFIRM",
-  "@logWorkoutYoursToConfirmSub": {
-    "description": "Nav bar subtitle (all caps) on the detected-workout review screen"
-  },
   "logWorkoutReadFailedTitle": "Could not read your detected activity",
   "@logWorkoutReadFailedTitle": {
     "description": "Status card title when reading detected workout suggestions fails"
@@ -3100,54 +2985,13 @@
   "@logWorkoutTryAgain": {
     "description": "Retry action label on the failed-read status card"
   },
-  "logWorkoutReadingSpotted": "Reading what the band spotted…",
-  "@logWorkoutReadingSpotted": {
-    "description": "Loading message while detected workout suggestions are being read"
-  },
-  "logWorkoutNothingToReviewTitle": "Nothing to review",
-  "@logWorkoutNothingToReviewTitle": {
-    "description": "Status card title when there are no detected workouts left to review"
-  },
-  "logWorkoutNothingToReviewBody": "This one may already have been logged or dismissed.",
-  "@logWorkoutNothingToReviewBody": {
-    "description": "Status card body when there are no detected workouts left to review"
-  },
-  "logWorkoutHardMinutesTitle": "These are the hard minutes, not the whole session",
-  "@logWorkoutHardMinutesTitle": {
-    "description": "Status card title explaining that detection only reports the hard-effort core of a session"
-  },
-  "logWorkoutHardMinutesBody": "Detection catches only the sustained effort, so a warm-up and rests between sets fall outside it. Widen the times before logging if needed.",
-  "@logWorkoutHardMinutesBody": {
-    "description": "Status card body explaining that detection only reports the hard-effort core of a session"
-  },
-  "logWorkoutMinutesOfEffort": "{mins} min of effort",
-  "@logWorkoutMinutesOfEffort": {
-    "description": "Duration line on a detected-workout card, e.g. '25 min of effort'",
-    "placeholders": {
-      "mins": {
-        "type": "int"
-      }
-    }
-  },
   "logWorkoutAvgHr": "Avg HR",
   "@logWorkoutAvgHr": {
     "description": "Metric label: average heart rate over a detected bout"
   },
-  "logWorkoutPeakHr": "Peak HR",
-  "@logWorkoutPeakHr": {
-    "description": "Metric label: peak heart rate over a detected bout"
-  },
-  "logWorkoutLooksLike": "Looks like",
-  "@logWorkoutLooksLike": {
-    "description": "Metric label naming the guessed activity type of a detected bout"
-  },
   "logWorkoutLogIt": "Log it",
   "@logWorkoutLogIt": {
     "description": "Primary button to confirm/log a workout"
-  },
-  "logWorkoutNotAWorkout": "Not a workout",
-  "@logWorkoutNotAWorkout": {
-    "description": "Button to dismiss a detected bout as not a workout"
   },
   "logWorkoutToday": "Today",
   "@logWorkoutToday": {
@@ -3557,14 +3401,6 @@
   "dayTimelineNoon": "Noon",
   "@dayTimelineNoon": {
     "description": "X-axis label for noon on the day chart."
-  },
-  "dayTimelineMoving": "Moving",
-  "@dayTimelineMoving": {
-    "description": "Legend label for the movement lane on the day chart."
-  },
-  "dayTimelineNotRecorded": "Not recorded",
-  "@dayTimelineNotRecorded": {
-    "description": "Legend label for unmeasured stretches on the day chart."
   },
   "dayTimelineNothingRecordedTitle": "Nothing was recorded on this day",
   "@dayTimelineNothingRecordedTitle": {
@@ -6284,56 +6120,9 @@
   "@healthSeeAll": {
     "description": "Section action button: open the full findings log"
   },
-  "healthNapsTitle": "Naps",
-  "@healthNapsTitle": {
-    "description": "Section title: Naps"
-  },
-  "healthNoNapReading": "No nap reading",
-  "@healthNoNapReading": {
-    "description": "Empty-state title when there is no nap day to name"
-  },
-  "healthNoNapReadingFor": "No nap reading for {day}",
-  "@healthNoNapReadingFor": {
-    "description": "Empty-state title when there is no nap reading for a named day",
-    "placeholders": {
-      "day": {
-        "type": "String"
-      }
-    }
-  },
-  "healthNapsBody": "Naps come off the same second-by-second recording as the rest of the day, and this day does not have enough of it.",
-  "@healthNapsBody": {
-    "description": "Empty-state body explaining why naps may be missing"
-  },
   "healthDaytimeSleep": "Daytime sleep",
   "@healthDaytimeSleep": {
     "description": "Nap row label"
-  },
-  "healthValueNone": "None",
-  "@healthValueNone": {
-    "description": "Value shown when zero naps were measured (a measured zero, not absence)"
-  },
-  "healthNoneDetectedOn": "None detected · {day}",
-  "@healthNoneDetectedOn": {
-    "description": "Nap row sub-label when zero naps were detected on a day",
-    "placeholders": {
-      "day": {
-        "type": "String"
-      }
-    }
-  },
-  "healthNapCountLabel": "{n, plural, one{{n} nap} other{{n} naps}}",
-  "@healthNapCountLabel": {
-    "description": "Nap row sub-label: N naps counted, ICU plural",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
-  },
-  "healthAddOrCorrect": "Add or correct",
-  "@healthAddOrCorrect": {
-    "description": "Naps section action button"
   },
   "healthNoTrendYet": "No {label} trend yet",
   "@healthNoTrendYet": {
@@ -6381,18 +6170,6 @@
   "healthChronotypeJetlagRegularity": "Natural bedtime, weekend shift and schedule consistency",
   "@healthChronotypeJetlagRegularity": {
     "description": "Body clock card subtitle"
-  },
-  "healthChronotypeLabel": "NATURAL BEDTIME",
-  "@healthChronotypeLabel": {
-    "description": "Body clock inline-metric label: CHRONOTYPE"
-  },
-  "healthSocialJetlagLabel": "WEEKEND SHIFT",
-  "@healthSocialJetlagLabel": {
-    "description": "Body clock inline-metric label: SOCIAL JETLAG"
-  },
-  "healthRegularityLabel": "CONSISTENCY",
-  "@healthRegularityLabel": {
-    "description": "Body clock inline-metric label: REGULARITY"
   },
   "healthConsistencyTitle": "Consistency",
   "@healthConsistencyTitle": {
@@ -6941,34 +6718,6 @@
   "@homeMonthDecemberShort": {
     "description": "Abbreviated month name: December, for compact date chips."
   },
-  "homeWeekdayMonday": "Monday",
-  "@homeWeekdayMonday": {
-    "description": "Full weekday name: Monday, used in the Home date line."
-  },
-  "homeWeekdayTuesday": "Tuesday",
-  "@homeWeekdayTuesday": {
-    "description": "Full weekday name: Tuesday, used in the Home date line."
-  },
-  "homeWeekdayWednesday": "Wednesday",
-  "@homeWeekdayWednesday": {
-    "description": "Full weekday name: Wednesday, used in the Home date line."
-  },
-  "homeWeekdayThursday": "Thursday",
-  "@homeWeekdayThursday": {
-    "description": "Full weekday name: Thursday, used in the Home date line."
-  },
-  "homeWeekdayFriday": "Friday",
-  "@homeWeekdayFriday": {
-    "description": "Full weekday name: Friday, used in the Home date line."
-  },
-  "homeWeekdaySaturday": "Saturday",
-  "@homeWeekdaySaturday": {
-    "description": "Full weekday name: Saturday, used in the Home date line."
-  },
-  "homeWeekdaySunday": "Sunday",
-  "@homeWeekdaySunday": {
-    "description": "Full weekday name: Sunday, used in the Home date line."
-  },
   "homeReadinessNotScored": "Not scored",
   "@homeReadinessNotScored": {
     "description": "Readiness band label when there is no score."
@@ -7137,27 +6886,9 @@
   "@homeRingNoSleep": {
     "description": "Sleep ring value when there is no sleep reading."
   },
-  "homeSleepGapFallback": "No night long enough to score was recorded.",
-  "@homeSleepGapFallback": {
-    "description": "Fallback reason the sleep ring is empty: no night long enough to score."
-  },
   "homeStrainOf21": "of 21",
   "@homeStrainOf21": {
     "description": "Strain ring subtitle: out of the fixed 21-point scale."
-  },
-  "homeSleepNoTarget": "No target yet",
-  "@homeSleepNoTarget": {
-    "description": "Sleep ring subtitle when no computed sleep-need target exists yet."
-  },
-  "homeOfSpan": "of {duration}",
-  "@homeOfSpan": {
-    "description": "Sleep ring subtitle: duration measured against a computed sleep-need target.",
-    "placeholders": {
-      "duration": {
-        "type": "String",
-        "example": "7h 45m"
-      }
-    }
   },
   "homeLoadFailedTitle": "Today could not be read",
   "@homeLoadFailedTitle": {
@@ -7189,25 +6920,9 @@
   "@homeSyncedNever": {
     "description": "Home header line when no record has ever been banked from a band."
   },
-  "homeSyncingTitle": "Syncing with your band",
-  "@homeSyncingTitle": {
-    "description": "Title shown on a bare day while records are actively arriving from the band."
-  },
-  "homeSyncingBody": "Pulling data now — this can take a few minutes on a full backlog.",
-  "@homeSyncingBody": {
-    "description": "Body shown on a bare day while records are actively arriving from the band."
-  },
   "homeAnalyzingTitle": "Crunching last night's numbers",
   "@homeAnalyzingTitle": {
     "description": "Title shown on a bare day once the backlog has landed and a derive job is computing today's numbers."
-  },
-  "homeConnectingTitle": "Connecting to your band",
-  "@homeConnectingTitle": {
-    "description": "Title shown right after tapping Sync the band, before any record has arrived yet."
-  },
-  "homeConnectingBody": "Hang on — this usually takes a few seconds.",
-  "@homeConnectingBody": {
-    "description": "Body shown right after tapping Sync the band, before any record has arrived yet."
   },
   "homeAskCoach": "Ask the coach",
   "@homeAskCoach": {
@@ -8252,10 +7967,6 @@
   "@sleepDetailReanalysing": {
     "description": "Progress label shown while the night is being re-derived after a window edit."
   },
-  "sleepDetailCorrectionFailedTitle": "That correction has not been applied",
-  "@sleepDetailCorrectionFailedTitle": {
-    "description": "Status card title when a sleep window correction failed to apply."
-  },
   "sleepDetailBedTimeHelp": "WHEN YOU GOT INTO BED",
   "@sleepDetailBedTimeHelp": {
     "description": "Help text on the time picker for when the user got into bed."
@@ -8460,10 +8171,6 @@
   "@sleepDetailMoreThanUsual": {
     "description": "Verdict phrase: this night's deep sleep was more than usual."
   },
-  "sleepDetailAsleepWhileInBed": "Asleep while in bed",
-  "@sleepDetailAsleepWhileInBed": {
-    "description": "Row label in the 'against your usual' comparison: sleep efficiency."
-  },
   "sleepDetailLowerThanUsual": "lower than usual",
   "@sleepDetailLowerThanUsual": {
     "description": "Verdict phrase: sleep efficiency was lower than usual."
@@ -8471,10 +8178,6 @@
   "sleepDetailHigherThanUsual": "higher than usual",
   "@sleepDetailHigherThanUsual": {
     "description": "Verdict phrase: sleep efficiency was higher than usual."
-  },
-  "sleepDetailFellAsleep": "Fell asleep",
-  "@sleepDetailFellAsleep": {
-    "description": "Row label in the 'against your usual' comparison: sleep onset time."
   },
   "sleepDetailEarlierThanUsual": "earlier than usual",
   "@sleepDetailEarlierThanUsual": {
@@ -8692,10 +8395,6 @@
   "workoutTabHistory": "History",
   "@workoutTabHistory": {
     "description": "Workout screen sub-tab label"
-  },
-  "workoutScreenTitle": "Workout",
-  "@workoutScreenTitle": {
-    "description": "Workout screen title"
   },
   "workoutStartSessionLabel": "START A SESSION",
   "@workoutStartSessionLabel": {
@@ -10861,14 +10560,6 @@
   "@gesturesSectionTitle": {
     "description": "Section heading explaining the double-tap gesture on the band"
   },
-  "gesturesSectionBody": "Works only while the app is connected. A tap the band saved while your phone was away is ignored, so it never fires hours late.",
-  "@gesturesSectionBody": {
-    "description": "Body text explaining when the double-tap gesture actually works"
-  },
-  "gesturesItDoesTitle": "It does",
-  "@gesturesItDoesTitle": {
-    "description": "Heading for the group of selectable double-tap actions"
-  },
   "gesturesNoPhoneActionsTitle": "Nothing on the phone?",
   "@gesturesNoPhoneActionsTitle": {
     "description": "Heading shown when no phone-side actions are available"
@@ -11020,10 +10711,6 @@
   "@settingsNavTitle": {
     "description": "Title of the main settings screen"
   },
-  "settingsGroupTheBand": "The band",
-  "@settingsGroupTheBand": {
-    "description": "Settings group heading for band-related rows"
-  },
   "settingsAlarmRowTitle": "Alarm",
   "@settingsAlarmRowTitle": {
     "description": "Settings row title opening the alarm screen"
@@ -11061,14 +10748,6 @@
   "@settingsStepsRowTitle": {
     "description": "Settings row title for the phone's own step counter"
   },
-  "settingsStepsRowSub": "Uses this phone’s step counter when the band isn’t worn.",
-  "@settingsStepsRowSub": {
-    "description": "Settings row subtitle explaining the phone step counter"
-  },
-  "settingsGroupNotifications": "Notifications",
-  "@settingsGroupNotifications": {
-    "description": "Settings group heading for the notifications row"
-  },
   "settingsManageNotificationsRowTitle": "Manage notifications",
   "@settingsManageNotificationsRowTitle": {
     "description": "Settings row title opening the notification settings screen"
@@ -11076,10 +10755,6 @@
   "settingsManageNotificationsRowSub": "Quiet hours and per-notification switches",
   "@settingsManageNotificationsRowSub": {
     "description": "Settings row subtitle for the manage-notifications row"
-  },
-  "settingsGroupPreferences": "Preferences",
-  "@settingsGroupPreferences": {
-    "description": "Settings group heading for units/appearance/cycle-tracking"
   },
   "settingsUnitsRowTitle": "Units",
   "@settingsUnitsRowTitle": {
@@ -11109,14 +10784,6 @@
   "@settingsCycleTrackingRowTitle": {
     "description": "Settings row title toggling cycle tracking"
   },
-  "settingsCycleTrackingRowSub": "Show the Cycle tab. Turning it off keeps your logs.",
-  "@settingsCycleTrackingRowSub": {
-    "description": "Settings row subtitle for the cycle-tracking toggle"
-  },
-  "settingsGroupYourData": "Your data",
-  "@settingsGroupYourData": {
-    "description": "Settings group heading for export/backup/health-write rows"
-  },
   "settingsExportBackupImportRowTitle": "Export, backup, import",
   "@settingsExportBackupImportRowTitle": {
     "description": "Settings row title opening the data screen"
@@ -11124,14 +10791,6 @@
   "settingsExportBackupImportRowSub": "Spreadsheets, a full copy, and bringing history in",
   "@settingsExportBackupImportRowSub": {
     "description": "Settings row subtitle for the data screen entry"
-  },
-  "settingsGroupAutomation": "Automation",
-  "@settingsGroupAutomation": {
-    "description": "Settings group heading for double-tap and Tasker/Shortcuts rows"
-  },
-  "settingsDoubleTapRowTitle": "Double-tap",
-  "@settingsDoubleTapRowTitle": {
-    "description": "Settings row title opening the double-tap gesture screen"
   },
   "settingsDoubleTapRowSub": "What a double-tap on the band does",
   "@settingsDoubleTapRowSub": {
@@ -11144,10 +10803,6 @@
   "settingsTaskerShortcutsRowSub": "Android can send and receive events. iOS can only buzz the band.",
   "@settingsTaskerShortcutsRowSub": {
     "description": "Settings row subtitle stating the Android/iOS automation asymmetry"
-  },
-  "settingsGroupPrivacy": "Privacy",
-  "@settingsGroupPrivacy": {
-    "description": "Settings group heading for telemetry/barcode/health-share/update rows"
   },
   "settingsCrashReportsRowTitle": "Crash reports",
   "@settingsCrashReportsRowTitle": {
@@ -11244,10 +10899,6 @@
   "settingsTurnThemOn": "Turn them on",
   "@settingsTurnThemOn": {
     "description": "Fix button turning on OS notification permission"
-  },
-  "settingsGroupManageNotifications": "Manage notifications",
-  "@settingsGroupManageNotifications": {
-    "description": "Settings group heading listing every individual notification toggle"
   },
   "settingsHealthExceptionsRowTitle": "Health exceptions",
   "@settingsHealthExceptionsRowTitle": {
@@ -11364,18 +11015,6 @@
   "settingsRemindMeEveryRowTitle": "Remind me every",
   "@settingsRemindMeEveryRowTitle": {
     "description": "Notification row title cycling the water-reminder interval"
-  },
-  "settingsGroupTheStrap": "The strap",
-  "@settingsGroupTheStrap": {
-    "description": "Settings group heading for the strap-buzz-on-notification row"
-  },
-  "settingsBuzzOnAppNotificationsRowTitle": "Buzz on app notifications",
-  "@settingsBuzzOnAppNotificationsRowTitle": {
-    "description": "Settings row title opening the band-notification relay screen"
-  },
-  "settingsBuzzOnAppNotificationsRowSub": "Pick which phone apps make the strap buzz",
-  "@settingsBuzzOnAppNotificationsRowSub": {
-    "description": "Settings row subtitle for the band-notification relay screen entry"
   },
   "settingsGroupQuietHours": "Quiet hours",
   "@settingsGroupQuietHours": {
@@ -12058,10 +11697,6 @@
   "@ecgRestarting": {
     "description": "WHOOP MG ECG: Restarting…"
   },
-  "ecgSaving": "Saving…",
-  "@ecgSaving": {
-    "description": "WHOOP MG ECG: Saving…"
-  },
   "ecgCleaningUp": "Stopping the band…",
   "@ecgCleaningUp": {
     "description": "WHOOP MG ECG: Stopping the band…"
@@ -12301,7 +11936,6 @@
   "activityPossibleWorkout": "Possible workout",
   "activityConfirm": "Confirm",
   "activityEdit": "Edit",
-  "activityDiscard": "Discard",
   "activityChangeSport": "Change sport",
   "@activityChangeSport": {
     "description": "Action on a detected workout: open the editor to pick the right sport (and times)."
@@ -12316,7 +11950,6 @@
   "activityLoadFailed": "Could not load activities. Try again.",
   "activityReviewProblem": "Could not finish",
   "activityReview": "Review",
-  "activityLoading": "Loading…",
   "activityPending": "{count} to review",
   "@activityPending": {
     "placeholders": {
@@ -12381,14 +12014,7 @@
   "@devicesWornOtherSub": {
     "description": "Step calibration wearing-location setting"
   },
-  "tabHome": "Home",
   "tabHealth": "Health",
-  "tabNutrition": "Nutrition",
-  "tabWorkout": "Workout",
-  "tabWellness": "Wellness",
-  "@tabHome": {
-    "description": "Bottom tab bar labels (tabHome..tabWellness). Keep short; the five must read as different words."
-  },
   "activityCatalogueName": "{key, select, other{{name}}}",
   "@activityCatalogueName": {
     "description": "Display name only. Never persist translated activity or group names.",
@@ -12398,15 +12024,6 @@
       },
       "name": {
         "type": "String"
-      }
-    }
-  },
-  "supplementSmartWindowMinutes": "{m} min before wake time",
-  "@supplementSmartWindowMinutes": {
-    "description": "Presentation-only text; interpolated values remain unchanged.",
-    "placeholders": {
-      "m": {
-        "type": "int"
       }
     }
   },
@@ -14993,34 +14610,6 @@
       }
     }
   },
-  "profileExportRow": "Export and backup",
-  "@profileExportRow": {
-    "description": "Profile row: open export, backup and import."
-  },
-  "profileExportRowSub": "Spreadsheets, a full copy, and bringing history in",
-  "@profileExportRowSub": {
-    "description": "Subtitle of the export row on Profile."
-  },
-  "profileSettingsRow": "Settings",
-  "@profileSettingsRow": {
-    "description": "Profile row: open Settings."
-  },
-  "profileSettingsRowSub": "Band, app, data, privacy and advanced",
-  "@profileSettingsRowSub": {
-    "description": "Subtitle of the Settings row on Profile: its groups."
-  },
-  "settingsGroupApp": "App",
-  "@settingsGroupApp": {
-    "description": "Settings group: notifications, units, appearance, time format, cycle tracking."
-  },
-  "settingsGroupData": "Data",
-  "@settingsGroupData": {
-    "description": "Settings group: export, health app sync, phone steps."
-  },
-  "settingsGroupAdvanced": "Advanced",
-  "@settingsGroupAdvanced": {
-    "description": "Settings group: automation and other rarely changed settings."
-  },
   "settingsCycleTrackingRowSubHealth": "Show Cycle in Health. Turning it off keeps your logs.",
   "@settingsCycleTrackingRowSubHealth": {
     "description": "Subtitle of the cycle tracking switch."
@@ -15036,22 +14625,6 @@
   "healthWellbeingTitle": "Mind, habits and medication",
   "@healthWellbeingTitle": {
     "description": "Health tab section with doors to mind, habits, medication and cycle."
-  },
-  "healthWellbeingMindSub": "Breathing, mood and the journal",
-  "@healthWellbeingMindSub": {
-    "description": "Health tab: subtitle of the Mind door."
-  },
-  "healthWellbeingHabitsSub": "Daily habits, counted as days kept",
-  "@healthWellbeingHabitsSub": {
-    "description": "Health tab: subtitle of the Habits door."
-  },
-  "healthWellbeingMedsSub": "Today's doses and the last week",
-  "@healthWellbeingMedsSub": {
-    "description": "Health tab: subtitle of the Medication door."
-  },
-  "healthWellbeingCycleSub": "Log your period and see where you are in the cycle",
-  "@healthWellbeingCycleSub": {
-    "description": "Health tab: subtitle of the Cycle door."
   },
   "activityStepsFoodTitle": "Steps and food",
   "@activityStepsFoodTitle": {
@@ -15512,122 +15085,6 @@
       }
     }
   },
-  "devicesSyncingTheWatch": "Syncing the watch…",
-  "@devicesSyncingTheWatch": {
-    "description": "Snackbar: syncing Bangle.js."
-  },
-  "devicesConnectingZeTime": "Connecting…",
-  "@devicesConnectingZeTime": {
-    "description": "Snackbar: connecting to the ZeTime."
-  },
-  "devicesConnectedZeTime": "Connected.",
-  "@devicesConnectedZeTime": {
-    "description": "Snackbar: ZeTime connect succeeded."
-  },
-  "devicesCouldNotReachZeTime": "Could not reach the watch. It has to be nearby, and not connected to another app.",
-  "@devicesCouldNotReachZeTime": {
-    "description": "Snackbar: ZeTime connect failed."
-  },
-  "devicesConnectingWatch": "Connecting…",
-  "@devicesConnectingWatch": {
-    "description": "Snackbar: connecting to the watch."
-  },
-  "devicesCouldNotReachWatch": "Could not reach the watch. It has to be nearby, and not connected to another app.",
-  "@devicesCouldNotReachWatch": {
-    "description": "Snackbar: sync failed."
-  },
-  "devicesWhatItDoesUnranked": "Everything it sends is stored and attributed to it. Nothing in the app is calculated from it yet.",
-  "@devicesWhatItDoesUnranked": {
-    "description": "Row sub: unranked sensor."
-  },
-  "devicesWhatItDoesRanked": "Beat timing is stored and attributed to it during a workout. Nothing in the app is calculated from it yet.",
-  "@devicesWhatItDoesRanked": {
-    "description": "Row sub: ranked sensor."
-  },
-  "pairSensorExplainer": "A sensor records heart rate during workouts. Your band keeps recording everything else.",
-  "@pairSensorExplainer": {
-    "description": "Explanatory body."
-  },
-  "devicePickerBlurbO2Ring": "Reads battery, model and serial number. Its measurements are not decoded yet.",
-  "@devicePickerBlurbO2Ring": {
-    "description": "Category row subtitle for the Wellue O2Ring."
-  },
-  "devicePickerBlurbWearFit": "A Howear band that pairs through the WearFit apps.",
-  "@devicePickerBlurbWearFit": {
-    "description": "Category row subtitle for a WearFit-family band."
-  },
-  "devicePickerBlurbWithingsSteelHr": "A Withings Steel HR. Pairs and connects. Its data is not decoded yet.",
-  "@devicePickerBlurbWithingsSteelHr": {
-    "description": "Category row subtitle for the Withings Steel HR / Activité."
-  },
-  "devicePickerBlurbZeTime": "A ZeTime watch. Pairs and connects. Only its battery level is decoded.",
-  "@devicePickerBlurbZeTime": {
-    "description": "Category row subtitle for the MyKronoz ZeTime."
-  },
-  "devicePickerBlurbBangleJs": "Pairs any Espruino or Nordic UART device, including Bangle.js watches. Stores raw bytes only and decodes nothing.",
-  "@devicePickerBlurbBangleJs": {
-    "description": "Category row subtitle for Bangle.js and other Nordic-UART devices."
-  },
-  "monthGridSemanticsLabel": "{title}: {have} of {total} days have a value. Shaded against your own range.",
-  "@monthGridSemanticsLabel": {
-    "description": "Month grid: accessibility label read for one metric's heat-map strip.",
-    "placeholders": {
-      "title": {
-        "type": "String"
-      },
-      "have": {
-        "type": "int"
-      },
-      "total": {
-        "type": "int"
-      }
-    }
-  },
-  "monthGridNotShadedYetTitle": "{title} is not shaded yet",
-  "@monthGridNotShadedYetTitle": {
-    "description": "Month grid: status card title when a metric has too little history to shade, e.g. 'Sleep is not shaded yet'.",
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
-  "monthGridNotShadedYetBody": "With {days, plural, one{{days} day} other{{days} days}} of data there is no range to shade against. Shading starts at {min}.",
-  "@monthGridNotShadedYetBody": {
-    "description": "Month grid: status card body explaining how many days of history exist and how many are needed before shading starts.",
-    "placeholders": {
-      "days": {
-        "type": "int"
-      },
-      "min": {
-        "type": "int"
-      }
-    }
-  },
-  "driverBreakdownUsualRange": "Your usual range {lo}–{hi}{unit}",
-  "@driverBreakdownUsualRange": {
-    "description": "Chart footnote stating the user's usual range for this driver.",
-    "placeholders": {
-      "lo": {
-        "type": "String"
-      },
-      "hi": {
-        "type": "String"
-      },
-      "unit": {
-        "type": "String"
-      }
-    }
-  },
-  "beatsHolesFootnote": "{count, plural, one{ {count} bin has too few clean beats to calculate a value and shows as a gap.} other{ {count} bins have too few clean beats to calculate a value and show as gaps.}}",
-  "@beatsHolesFootnote": {
-    "description": "Footnote fragment noting how many bins were left empty for too few clean beats",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "dayTimelineMainSleep": "Main sleep {start} to {end}",
   "@dayTimelineMainSleep": {
     "description": "Day timeline chart label for the night's main sleep annotation; start and end are local clock times such as 11:10 PM and 6:40 AM.",
@@ -15640,70 +15097,9 @@
       }
     }
   },
-  "investigateShapeOfTheNight": "Shape of the night",
-  "@investigateShapeOfTheNight": {
-    "description": "Chart title: RMSSD shape across the night"
-  },
-  "investigateBinRmssd": "Bin RMSSD",
-  "@investigateBinRmssd": {
-    "description": "Chart legend label: per-bin RMSSD line"
-  },
-  "investigateSamplingRange": "Sampling range",
-  "@investigateSamplingRange": {
-    "description": "Chart legend label: sampling spread band"
-  },
-  "investigateShapeFootnote": "{drawn} of {total} bins had enough beats to read. The rest are gaps. The outer pair is the estimator's sampling spread. This chart describes the night and cannot say why it looks that way. A low first third fits alcohol, a late meal, late training, a warm room, an illness starting, or nothing at all.",
-  "@investigateShapeFootnote": {
-    "description": "Chart footnote explaining night-shape bin coverage and caveats",
-    "placeholders": {
-      "drawn": {
-        "type": "int"
-      },
-      "total": {
-        "type": "int"
-      }
-    }
-  },
-  "investigate29DaysAgo": "29 days ago",
-  "@investigate29DaysAgo": {
-    "description": "Chart x-axis label: 29 days before today"
-  },
-  "investigateToday": "Today",
-  "@investigateToday": {
-    "description": "Chart x-axis label: today"
-  },
-  "investigateDcFootnoteWithBeats": "This compares only your own nights. No reference range exists for pulse arrivals. Signal quality varies from night to night and moves this line on its own. Last night had {beats} beats.",
-  "@investigateDcFootnoteWithBeats": {
-    "description": "Deceleration capacity chart footnote, including last night's beat count",
-    "placeholders": {
-      "beats": {
-        "type": "String"
-      }
-    }
-  },
-  "investigateDcFootnote": "This compares only your own nights. No reference range exists for pulse arrivals. Signal quality varies from night to night and moves this line on its own.",
-  "@investigateDcFootnote": {
-    "description": "Deceleration capacity chart footnote, no beat count available"
-  },
-  "metricDetailBeatsLinkTitle": "Beats",
-  "@metricDetailBeatsLinkTitle": {
-    "description": "Title of the doorway row from the HRV metric screen into the Beats (Poincare/rhythm) screen."
-  },
-  "metricDetailBeatsLinkSub": "Beat-to-beat intervals for the night, charted",
-  "@metricDetailBeatsLinkSub": {
-    "description": "Subtitle of the doorway row into the Beats screen."
-  },
   "metricDetailJournalMarksToggle": "Journal marks",
   "@metricDetailJournalMarksToggle": {
     "description": "Toggle chip above the metric-detail trend chart: show or hide journal items (workouts, marked moments, water, symptoms, timed journal entries) as icons with dashed lines on the chart. Off by default."
-  },
-  "healthTabLastNight": "Last night",
-  "@healthTabLastNight": {
-    "description": "Health screen sub-tab label: one night (readiness, sleep, overnight vitals)"
-  },
-  "healthTabToday": "Today",
-  "@healthTabToday": {
-    "description": "Health screen sub-tab label: today so far (strain, steps, heart rate range, wear)"
   },
   "healthNightOf": "Night of {day}",
   "@healthNightOf": {
@@ -15713,38 +15109,6 @@
         "type": "String"
       }
     }
-  },
-  "healthRowOvernightStress": "Overnight stress",
-  "@healthRowOvernightStress": {
-    "description": "Last night row label: stress measured overnight"
-  },
-  "healthVsYourUsual": "vs your usual",
-  "@healthVsYourUsual": {
-    "description": "Skin temperature row sub-label: the reading is a deviation from the person's own usual level"
-  },
-  "healthSkinTempSdNote": "Skin temperature is a deviation from your own usual level, in standard deviations (SD). It is not a temperature in degrees.",
-  "@healthSkinTempSdNote": {
-    "description": "Caption under the Last night rows explaining the SD unit on the skin temperature row"
-  },
-  "healthRowStrain": "Strain",
-  "@healthRowStrain": {
-    "description": "Today row label: strain"
-  },
-  "healthRowSteps": "Steps",
-  "@healthRowSteps": {
-    "description": "Today row label: steps"
-  },
-  "healthRowActiveMinutes": "Active minutes",
-  "@healthRowActiveMinutes": {
-    "description": "Today row label: active minutes"
-  },
-  "healthRowCalories": "Calories",
-  "@healthRowCalories": {
-    "description": "Today row label: calories"
-  },
-  "healthWhyNotMeasuredToday": "Not measured yet today.",
-  "@healthWhyNotMeasuredToday": {
-    "description": "Reason on a Today gap card when the day has no value yet"
   },
   "healthCatRecovery": "Recovery",
   "@healthCatRecovery": {
@@ -15758,26 +15122,9 @@
   "@healthBlurbStress": {
     "description": "Trends catalogue one-line description for stress"
   },
-  "healthWhyNoSpo2": "No SpO2 here: this app does not estimate blood oxygen.",
-  "@healthWhyNoSpo2": {
-    "description": "One-line note in the Breathing family on Trends saying why there is no SpO2 row"
-  },
   "healthWhyNotEnoughOvernight": "Not enough overnight data for this one",
   "@healthWhyNotEnoughOvernight": {
     "description": "Generic reason on an absent Last night card when no specific reason is known"
-  },
-  "healthVsDayAverage": "vs your {days}-day average",
-  "@healthVsDayAverage": {
-    "description": "Trend card comparison window label",
-    "placeholders": {
-      "days": {
-        "type": "int"
-      }
-    }
-  },
-  "healthFirstReadings": "first readings",
-  "@healthFirstReadings": {
-    "description": "Trend card window label on the very first readings"
   },
   "homeSleepPctOf": "{pct}% of {target}",
   "@homeSleepPctOf": {
@@ -15842,27 +15189,6 @@
   "homeSleepNoEstimateWhy": "No sleep scored yet, and no alarm or typical wake time to estimate from.",
   "@homeSleepNoEstimateWhy": {
     "description": "Why the sleep ring has no estimate."
-  },
-  "wellnessLastNightInHealth": "Last night in Health",
-  "@wellnessLastNightInHealth": {
-    "description": "Recovery tab link row title: opens Health on its Last night sub-tab"
-  },
-  "workoutMinutesUnit": "minutes",
-  "@workoutMinutesUnit": {
-    "description": "Chart unit label on the history row zone bar"
-  },
-  "activitySummarySecondsPerLap": "seconds per lap",
-  "@activitySummarySecondsPerLap": {
-    "description": "Unit label on the lap-time bar chart"
-  },
-  "activityLiveLapXLabel": "Lap {n}",
-  "@activityLiveLapXLabel": {
-    "description": "Live swim screen: x-axis label on the laps chart, e.g. 'Lap 1'.",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
   },
   "gesturesSectionBodyMulti": "Works only while the app is connected and awake. Turn on as many actions as you like; with every action off, a double-tap does nothing. If you tap while your phone is away, the band stores the tap and sends it later. A late tap runs only an action that says it can.",
   "@gesturesSectionBodyMulti": {
@@ -16171,10 +15497,6 @@
   "momentFollowUpSkip": "Skip",
   "@momentFollowUpSkip": {
     "description": "Button that marks a moment answered without a label"
-  },
-  "momentFollowUpSave": "Save",
-  "@momentFollowUpSave": {
-    "description": "Button that saves the amount or note typed for a marked moment"
   },
   "momentFollowUpEmptyTitle": "Nothing to follow up on",
   "@momentFollowUpEmptyTitle": {
@@ -17234,10 +16556,6 @@
   "@ecgScreenerIntro": {
     "description": "WHOOP MG ECG: This is a screen, not a medical test.  A result with nothing flagged does not mean you were cleared, and the s"
   },
-  "findingTitleIllness": "Possible illness onset",
-  "@findingTitleIllness": {
-    "description": "Design 04 cardio transparency: Possible illness onset"
-  },
   "findingTitleAnomaly": "Unusual overnight readings",
   "@findingTitleAnomaly": {
     "description": "Design 04 cardio transparency: Unusual overnight readings"
@@ -17250,17 +16568,9 @@
   "@findingTitleIrregularRhythm": {
     "description": "Design 04 cardio transparency: Irregular pulse pattern flagged"
   },
-  "findingTitleLowReadiness": "Low recovery today",
-  "@findingTitleLowReadiness": {
-    "description": "Design 04 cardio transparency: Low readiness today"
-  },
   "findingTitleRhrShift": "Resting heart rate changed",
   "@findingTitleRhrShift": {
     "description": "Design 04 cardio transparency: Your resting heart-rate trend shifted"
-  },
-  "findingDetailIllness": "Resting heart rate is up and heart rate variability (HRV) is down over recent nights.",
-  "@findingDetailIllness": {
-    "description": "Design 04 cardio transparency: Resting heart rate is up and heart rate variability (HRV) is down over recent nights."
   },
   "findingDetailAnomaly": "Your overnight readings are outside your usual range.",
   "@findingDetailAnomaly": {
@@ -17273,10 +16583,6 @@
   "findingDetailIrregularRhythm": "Your beat-to-beat pulse timing looked irregular today. This screen uses the wrist pulse, which can't show the heart's electrical activity, and is not a diagnosis. See a clinician if you have symptoms.",
   "@findingDetailIrregularRhythm": {
     "description": "Design 04 cardio transparency: Your beat-to-beat pulse timing looked irregular today. This screen uses the wrist pulse, which can't show the "
-  },
-  "findingDetailLowReadiness": "Your recovery markers are below your usual range. Take an easier day.",
-  "@findingDetailLowReadiness": {
-    "description": "Design 04 cardio transparency: Your recovery markers are below your usual range. Take an easier day."
   },
   "findingDetailRhrShiftRisen": "Your resting heart rate is above your usual.",
   "@findingDetailRhrShiftRisen": {
