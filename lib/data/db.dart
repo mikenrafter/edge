@@ -5654,6 +5654,18 @@ class LocalDb {
     return completer.future;
   }
 
+  /// Offload-session durability bracket (design-sync-throughput.md, plan 2).
+  ///
+  /// RED-PHASE STUB: does nothing, so every commit still brackets
+  /// `synchronous=FULL/NORMAL` per chunk, which is today's behaviour. The
+  /// implementation will set FULL once at begin (verified), NORMAL at end, and
+  /// make [commitSyncBatch] skip its own per-chunk bracket while a session is
+  /// open. `test/sync_chunk_overhead_test.dart` pins that.
+  static Future<void> beginOffloadSession() async {}
+
+  /// Counterpart of [beginOffloadSession]; see there. Stub in the red phase.
+  static Future<void> endOffloadSession() async {}
+
   static Future<void> commitSyncBatch(
     List<RawRecord> raws,
     List<Sample?> samples, {
