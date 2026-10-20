@@ -718,7 +718,6 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final rows = <Widget>[];
-    final gaps = <Widget>[];
     final building = _building(d);
 
     // Five of these rows come off the overnight block, and `getToday` holds
@@ -749,10 +748,16 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         // card swapping for a short row moved everything under it when the
         // refresh landed. Never another day's number.
         rows.add(MetricRow(icon, col, name, '—',
-            sub: sub, unit: '', series: series, onTap: open));
+            sub: sub, unit: '', series: series, onTap: open,
+            subMaxLines: 1));
         return;
       }
       if (m.isEmpty) {
+        // An absent metric keeps its row, in the rows surface, so the card is
+        // the same card first launch and loaded: a dash for the value and the
+        // reason (or what it needs) as the row's one-line status. It used to
+        // be a StatusCard BELOW the surface, which made first launch a
+        // different layout from the loaded one.
         final s = StatusCard.forMetric(
             l?.healthNoMetric(nounInSentence(l, name)) ??
                 'No ${name.toLowerCase()}',
@@ -766,7 +771,14 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                     'Not enough overnight data for this one')
                 : whyAbsent,
             gap: overnight ? d.nightGap : null);
-        if (s != null) gaps.add(s);
+        rows.add(MetricRow(icon, col, name, '—',
+            sub: s == null
+                ? sub
+                : (s.fix.isNotEmpty ? s.fix : s.why),
+            unit: '',
+            series: series,
+            onTap: open,
+            subMaxLines: 1));
         return;
       }
       rows.add(MetricRow(icon, col, name, value,
@@ -943,32 +955,29 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
           computedAt: computedAtOf(
               status is Map ? status['overnight_computed_at'] : null)),
       // WHOOP MG only: the ECG door appears once the paired band has
-      // positively identified itself as an MG, and stays while it is away.
+      // positively identified itself as an MG, and stays while it is away. It
+      // depends on the paired device, not on whether data has arrived, so it is
+      // in the same place first launch and loaded.
       if (c.caps.has(Feature.ecgEntry)) ...[
-        const EcgEntryCard(),
+        const EcgEntryCard(key: ValueKey('card:ecg')),
         const SizedBox(height: S.x3),
       ],
-      // Where today's recovery stands, in Home's words: the overnight rows
-      // below can be a held-over night while Home greys today's own number.
-      if (recoveryStateLine(todayHeadlineOf(d.today), l) case final note?) ...[
-        Text('${l?.homeRingRecovery ?? 'Recovery'} · $note',
-            style: F.cap.copyWith(color: p.ink3)),
-        const SizedBox(height: S.x2),
-      ],
-      if (rows.isNotEmpty)
-        Surface(
-          pad: const EdgeInsets.symmetric(horizontal: S.x4),
-          child: Column(children: [
-            for (var i = 0; i < rows.length; i++) ...[
-              if (i > 0) Divider(color: p.line, height: 1),
-              rows[i],
-            ],
-          ]),
-        ),
-      for (final g in gaps) ...[const SizedBox(height: S.x3), g],
+      // Every metric has its row, present or not: the surface is the same
+      // card with the same rows first launch and loaded.
+      Surface(
+        key: const ValueKey('card:metrics'),
+        pad: const EdgeInsets.symmetric(horizontal: S.x4),
+        child: Column(children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Divider(color: p.line, height: 1),
+            rows[i],
+          ],
+        ]),
+      ),
       // The active wearable's heart rows, each with its class, source line
       // and reason. Nothing on a WHOOP-only install, nor when handed data.
-      if (widget.data == null) const WearableCells(kHealthWearableRows),
+      if (widget.data == null)
+        const WearableCells(kHealthWearableRows, key: ValueKey('card:wearables')),
 
       // OBSERVATIONS — the illness watch, wrapped, plus a door to the other
       // three detectors.
@@ -979,33 +988,50 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // and resting-HR findings, which fired for months and reached no screen
       // at all. NOT a feed — see findings_log.dart. Nothing here is unread,
       // badged or dismissible, and it does not appear on Home.
-      if (!building && (illnessCard != null || d.findings.isNotEmpty)) ...[
-        const SizedBox(height: S.x4),
-        Section(
-          l?.healthObservationsTitle ?? 'Observations',
-          illnessCard ??
-              // No live illness, but the log is not empty: the newest entry in
-              // place and the rest one tap away. ONE row — a wall of findings
-              // on the tab you land on is the feed this is not.
-              Surface(
-                onTap: () => go(c, FindingsLog(d.findings)),
-                child: FindingRow(d.findings.first),
-              ),
-          action: d.findings.isEmpty ? null : (l?.healthSeeAll ?? 'See all'),
-          onAction:
-              d.findings.isEmpty ? null : () => go(c, FindingsLog(d.findings)),
-        ),
-      ],
+      //
+      // ALWAYS PRESENT. With nothing to say it is a one-line empty state in the
+      // same card, not an absent section: first launch and loaded show the same
+      // cards. It used to be skipped while today's figures were building, but
+      // the rows above no longer change shape when they land, so there is
+      // nothing left for it to move.
+      const SizedBox(height: S.x4),
+      Section(
+        key: const ValueKey('card:observations'),
+        l?.healthObservationsTitle ?? 'Observations',
+        illnessCard ??
+            // No live illness, but the log is not empty: the newest entry in
+            // place and the rest one tap away. ONE row — a wall of findings
+            // on the tab you land on is the feed this is not.
+            (d.findings.isNotEmpty
+                ? Surface(
+                    onTap: () => go(c, FindingsLog(d.findings)),
+                    child: FindingRow(d.findings.first),
+                  )
+                : Surface(
+                    child: Row(children: [
+                      Icon(LucideIcons.check, size: 16, color: p.ink3),
+                      const SizedBox(width: S.x2),
+                      Expanded(
+                        child: Text(
+                            l?.findingsLogEmptyTitle ?? 'Nothing has stood out',
+                            style: F.cap.copyWith(color: p.ink2)),
+                      ),
+                    ]),
+                  )),
+        action: d.findings.isEmpty ? null : (l?.healthSeeAll ?? 'See all'),
+        onAction:
+            d.findings.isEmpty ? null : () => go(c, FindingsLog(d.findings)),
+      ),
 
       // Naps moved to the Sleep tab, beside the night (the Naps door there).
 
       // What used to be the Wellness tab: the things you tell the app back.
       // ONE door now, not one per tab: in the contributed data breathing,
       // medication and cycle were each used by a handful of people, so they
-      // share a row and the screen behind it keeps its own tabs. Held back
-      // while today's figures are building, like everything under the rows.
-      if (!building)
+      // share a row and the screen behind it keeps its own tabs. Always
+      // present: a door, not data.
       Section(
+        key: const ValueKey('card:mind'),
         l?.healthWellbeingTitle ?? 'Mind, habits and medication',
         detailLinkRow(
             c,
@@ -1019,6 +1045,17 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                     'Breathing, mood, the journal, habits and medication'),
             () => go(c, const WellnessScreen(initialTab: 0))),
       ),
+
+      // Where today's recovery stands, in Home's words: the overnight rows
+      // can be a held-over night while Home greys today's own number. Last,
+      // below every card that is always there: it exists only once there is a
+      // state to report, and above them it moved everything when it appeared.
+      if (recoveryStateLine(todayHeadlineOf(d.today), l) case final note?) ...[
+        const SizedBox(height: S.x3),
+        Text('${l?.homeRingRecovery ?? 'Recovery'} · $note',
+            key: const ValueKey('card:recovery-line'),
+            style: F.cap.copyWith(color: p.ink3)),
+      ],
 
       // THERE IS NO "BODY COMPOSITION" SECTION, AND THE NEXT PERSON SHOULD NOT
       // BUILD ONE. It used to print the onboarding weight scalar, and the ask

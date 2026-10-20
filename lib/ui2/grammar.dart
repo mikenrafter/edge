@@ -2120,6 +2120,11 @@ class MetricRow extends StatelessWidget {
   final String? status;
   final VoidCallback? onTap;
 
+  /// Caps [sub] at this many lines (ellipsis). Null leaves it unbounded. An
+  /// empty row's [sub] is a status sentence, and a screen that wants its empty
+  /// rows the same height as its loaded ones holds it to one line.
+  final int? subMaxLines;
+
   const MetricRow(
     this.icon,
     this.color,
@@ -2132,6 +2137,7 @@ class MetricRow extends StatelessWidget {
     this.rising = Rising.neither,
     this.status,
     this.onTap,
+    this.subMaxLines,
   });
 
   @override
@@ -2147,7 +2153,11 @@ class MetricRow extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        if (sub.isNotEmpty) Text(sub, style: F.over.copyWith(color: p.ink3)),
+        if (sub.isNotEmpty)
+          Text(sub,
+              style: F.over.copyWith(color: p.ink3),
+              maxLines: subMaxLines,
+              overflow: subMaxLines == null ? null : TextOverflow.ellipsis),
       ],
     );
     final amount = Row(

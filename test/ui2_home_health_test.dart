@@ -349,15 +349,30 @@ void main() {
     ]) {
       await tester.pumpWidget(_frame(w, Brightness.light, 1));
       await tester.pumpAndSettle();
+      // A dash is not bare when it is a MetricRow's value and the row's status
+      // line says why (an absent metric keeps its slot, so first launch and
+      // loaded show the same card).
+      final explained = <Element>{
+        for (final r in tester
+            .widgetList<MetricRow>(find.byType(MetricRow))
+            .where((r) => r.value.trim() == '—' && r.sub.trim().isNotEmpty))
+          ...find
+              .descendant(
+                  of: find.byWidget(r),
+                  matching: find.text('—'))
+              .evaluate(),
+      };
       final dashes = tester
           .widgetList<Text>(find.byType(Text))
-          .where((t) => (t.data ?? '').trim() == '—');
+          .where((t) => (t.data ?? '').trim() == '—')
+          .where((t) => !explained.any((e) => e.widget == t));
       expect(
         dashes,
         isEmpty,
         reason:
             '${w.runtimeType} rendered a bare em-dash. An absent value '
-            'is a StatusCard: what is missing, why, what fixes it.',
+            'is a StatusCard (what is missing, why, what fixes it) or a '
+            'MetricRow with its reason as the status line.',
       );
     }
   });

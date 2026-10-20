@@ -1,5 +1,8 @@
 // German capitalises nouns. The blank-metric title used to lowercase the row
-// name for every locale, so a German user read "Kein Wert: ruhepuls".
+// name for every locale, so a German user read "Kein Wert: ruhepuls". An absent
+// metric now keeps its row (name, a dash, the reason as the status line), so
+// the name is shown as the row's own label and never inside a lowercased
+// sentence.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -47,7 +50,7 @@ void main() {
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);
     await _pump(t, const Locale('de'));
-    expect(find.text('Kein Wert: Ruhepuls'), findsOneWidget);
+    expect(find.text('Ruhepuls'), findsOneWidget);
     expect(find.text('Kein Wert: ruhepuls'), findsNothing);
   });
 
@@ -56,6 +59,7 @@ void main() {
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);
     await _pump(t, const Locale('en'));
-    expect(find.text('No resting heart rate'), findsOneWidget);
+    expect(find.text('Resting heart rate'), findsOneWidget);
+    expect(find.text('No resting heart rate'), findsNothing);
   });
 }

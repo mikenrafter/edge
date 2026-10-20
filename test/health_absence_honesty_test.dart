@@ -66,6 +66,11 @@ Future<void> _pump(WidgetTester t, HealthData d, {int tab = 0}) async {
   await _settled(t);
 }
 
+/// An absent metric keeps its row in the rows surface (so first launch and
+/// loaded are the same card): a dash, and the reason as the row's status line.
+Iterable<MetricRow> _emptyRows(WidgetTester t) =>
+    t.widgetList<MetricRow>(find.byType(MetricRow)).where((r) => r.value == '—');
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -125,13 +130,13 @@ void main() {
         'stress missing on a night that had sleep gets a reason, not an empty gap card',
         (t) async {
       await _pump(t, sleepOnly);
-      final cards = t.widgetList<StatusCard>(find.byType(StatusCard)).toList();
-      final stress = cards.where((c) => c.what.toLowerCase().contains('stress'));
+      final stress =
+          _emptyRows(t).where((r) => r.name.toLowerCase().contains('stress'));
       expect(stress, isNotEmpty,
-          reason: 'an absent stress row still owes the user a card');
-      for (final c in stress) {
-        expect(c.why.trim(), isNotEmpty);
-        expect(c.why, 'Not enough overnight data for this one',
+          reason: 'an absent stress row keeps its slot, with a dash');
+      for (final r in stress) {
+        expect(r.sub.trim(), isNotEmpty);
+        expect(r.sub, 'Not enough overnight data for this one',
             reason: 'no specific reason was supplied, so the honest generic one');
       }
     });
@@ -150,12 +155,12 @@ void main() {
         'Overview with nothing measured: every card has a reason, and none says "no record of why"',
         (t) async {
       await _pump(t, const HealthData());
-      final cards = t.widgetList<StatusCard>(find.byType(StatusCard)).toList();
-      expect(cards, isNotEmpty);
-      for (final c in cards) {
-        expect(c.why.trim(), isNotEmpty, reason: '"${c.what}"');
-        expect(c.why, isNot('The app has no record of why this is missing.'),
-            reason: '"${c.what}" says it does not know instead of naming the gap');
+      final rows = _emptyRows(t).toList();
+      expect(rows, isNotEmpty);
+      for (final r in rows) {
+        expect(r.sub.trim(), isNotEmpty, reason: '"${r.name}"');
+        expect(r.sub, isNot('The app has no record of why this is missing.'),
+            reason: '"${r.name}" says it does not know instead of naming the gap');
       }
     });
 
@@ -166,6 +171,10 @@ void main() {
       for (final c in t.widgetList<StatusCard>(find.byType(StatusCard))) {
         expect(c.why, isNot('The app has no record of why this is missing.'),
             reason: '"${c.what}"');
+      }
+      for (final r in _emptyRows(t)) {
+        expect(r.sub, isNot('The app has no record of why this is missing.'),
+            reason: '"${r.name}"');
       }
     });
 
@@ -183,13 +192,12 @@ void main() {
               },
             },
           ));
-      final stress = t
-          .widgetList<StatusCard>(find.byType(StatusCard))
-          .where((c) => c.what.toLowerCase().contains('stress'));
+      final stress =
+          _emptyRows(t).where((r) => r.name.toLowerCase().contains('stress'));
       expect(stress, isNotEmpty);
-      for (final c in stress) {
-        expect(c.why, contains('12 min'));
-        expect(c.why, isNot('Not enough overnight data for this one'));
+      for (final r in stress) {
+        expect(r.sub, contains('12 min'));
+        expect(r.sub, isNot('Not enough overnight data for this one'));
       }
     });
   });
