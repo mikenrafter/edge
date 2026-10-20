@@ -2933,5 +2933,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeHelpFirstWeek": "你的第一周：戴着它入睡。恢复从第 {recoveryNight} 晚开始，消耗从第 {strainDay} 天开始。",
+  "homeHelpFirstWeekCounting": "你的第一周：戴着它入睡。{recoveryStarts}，消耗从第 {strainDay} 天开始。",
+  "homeGlanceFillsNight": "有一晚被评分后显示",
+  "homeGlanceFillsMove": "随着你的活动显示"
 }

@@ -2933,5 +2933,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeHelpFirstWeek": "आपका पहला सप्ताह: इसे पहनकर सोएँ। रिकवरी रात {recoveryNight} से, स्ट्रेन दिन {strainDay} से।",
+  "homeHelpFirstWeekCounting": "आपका पहला सप्ताह: इसे पहनकर सोएँ। {recoveryStarts}, स्ट्रेन दिन {strainDay} से।",
+  "homeGlanceFillsNight": "एक स्कोर की गई रात के बाद भरेगा",
+  "homeGlanceFillsMove": "आपके चलने-फिरने से भरेगा"
 }

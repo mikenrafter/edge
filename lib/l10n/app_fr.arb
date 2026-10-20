@@ -2933,5 +2933,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeHelpFirstWeek": "Votre première semaine : portez-le pour dormir. Récupération dès la nuit {recoveryNight}, effort dès le jour {strainDay}.",
+  "homeHelpFirstWeekCounting": "Votre première semaine : portez-le pour dormir. {recoveryStarts}, effort dès le jour {strainDay}.",
+  "homeGlanceFillsNight": "Se remplit après une nuit évaluée",
+  "homeGlanceFillsMove": "Se remplit quand vous bougez"
 }

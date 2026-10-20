@@ -2951,5 +2951,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeHelpFirstWeek": "Tu primera semana: llévala puesta al dormir. Recuperación desde la noche {recoveryNight}, esfuerzo desde el día {strainDay}.",
+  "homeHelpFirstWeekCounting": "Tu primera semana: llévala puesta al dormir. {recoveryStarts}, esfuerzo desde el día {strainDay}.",
+  "homeGlanceFillsNight": "Se rellena tras una noche puntuada",
+  "homeGlanceFillsMove": "Se rellena cuando te mueves"
 }

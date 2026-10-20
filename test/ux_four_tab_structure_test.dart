@@ -12,8 +12,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/onboarding/profile_setup.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
-import 'package:openstrap_edge/ui2/screens/home_screen.dart'
-    show firstWeekCard;
+import 'package:openstrap_edge/ui2/screens/home_screen.dart' show HomeScreen;
 import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -46,19 +45,22 @@ void main() {
     expect(find.byType(ProfileAvatar), findsNothing);
   });
 
-  testWidgets('the first-weeks card names the gates the pipeline uses',
+  testWidgets('the first-week guidance names the gates the pipeline uses',
       (t) async {
-    await t.pumpWidget(_app(Builder(
-        builder: (c) => firstWeekCard(c, days: 2, strainScored: false))));
+    t.view.physicalSize = const Size(390 * 3, 2400 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    // No repository: first launch. The help strip under the rings says what
+    // arrives when (it replaced the separate "first weeks" card).
+    await t.pumpWidget(_app(const HomeScreen(hour: 9)));
+    await t.pump();
     // Strain needs this many earlier days with a resting level; recovery
-    // this many earlier nights. The card is one past each.
-    expect(find.text('Strain: from day ${quietHrrMinDays + 1}'),
-        findsOneWidget);
+    // this many earlier nights. The guidance is one past each.
     expect(
-        find.text('Recovery: from night ${readinessCompositeMinBaseline + 1}, '
-            'once it knows your normal'),
+        find.textContaining('Recovery from night '
+            '${readinessCompositeMinBaseline + 1}, '
+            'strain from day ${quietHrrMinDays + 1}'),
         findsOneWidget);
-    expect(find.text('2 days recorded so far'), findsOneWidget);
   });
 
   testWidgets('onboarding offers cycle tracking, on for a female profile',

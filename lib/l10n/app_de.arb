@@ -3040,5 +3040,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeHelpFirstWeek": "Deine erste Woche: trag das Band im Schlaf. Erholung ab Nacht {recoveryNight}, Strain ab Tag {strainDay}.",
+  "homeHelpFirstWeekCounting": "Deine erste Woche: trag das Band im Schlaf. {recoveryStarts}, Strain ab Tag {strainDay}.",
+  "homeGlanceFillsNight": "Füllt sich nach einer gewerteten Nacht",
+  "homeGlanceFillsMove": "Füllt sich mit deiner Bewegung"
 }

@@ -41,7 +41,9 @@ void main() {
   testWidgets('first run (nothing derived, nothing loaded)', (t) async {
     await t.pumpWidget(_home(app));
     await t.pump();
-    expect(find.text('No nights scored yet'), findsOneWidget);
+    // Nothing loaded and nothing scored: the rings' help strip says what
+    // arrives when.
+    expect(find.textContaining('Your first week'), findsOneWidget);
     expectOne(t);
   });
 
@@ -53,14 +55,15 @@ void main() {
       ),
     );
     await t.pump();
-    expect(find.text('Nothing recorded for today'), findsOneWidget);
+    expect(find.textContaining('Nothing recorded for today'), findsOneWidget);
     expectOne(t);
   });
 
   testWidgets('a bare day on a fresh install', (t) async {
     await t.pumpWidget(_home(app, data: const HomeData(dayId: '2026-05-20')));
     await t.pump();
-    expect(find.text('No nights scored yet'), findsOneWidget);
+    // The rings' help strip carries title and body in one line.
+    expect(find.textContaining('No nights scored yet'), findsOneWidget);
     expectOne(t);
   });
 

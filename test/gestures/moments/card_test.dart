@@ -209,8 +209,9 @@ void main() {
     final wake = RegExp(r'\?_naturalWakeCard\(c\)').allMatches(code).length;
     final moments =
         RegExp(r'\?momentFollowUpCard\(c\)').allMatches(code).length;
-    expect(wake, greaterThanOrEqualTo(2));
+    // Home has one list for every state (loaded and no-day alike).
+    expect(wake, greaterThanOrEqualTo(1));
     expect(moments, wake,
-        reason: 'the loaded and the no-day Home paths both show the card');
+        reason: 'the card sits wherever the natural-wake card does');
   });
 }

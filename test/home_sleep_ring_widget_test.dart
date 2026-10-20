@@ -446,7 +446,8 @@ void main() {
       final app = AppState.forTesting();
       addTearDown(app.dispose);
       await pumpHome(t, app);
-      expect(find.text('No estimate'), findsOneWidget);
+      // An absence is a dash in the ring; the reason is in the help strip.
+      expect(find.textContaining('Sleep · No sleep scored yet'), findsOneWidget);
     });
   });
 
@@ -477,7 +478,7 @@ void main() {
       addTearDown(app.dispose);
       app.sleepOperations.schedule = _schedule;
       await pumpBare(t, app);
-      expect(find.text('No nights scored yet'), findsNothing);
+      expect(find.textContaining('No nights scored yet'), findsNothing);
       expect(find.text('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
     });
 
@@ -486,7 +487,7 @@ void main() {
       final app = AppState.forTesting();
       addTearDown(app.dispose);
       await pumpBare(t, app);
-      expect(find.text('No nights scored yet'), findsOneWidget);
+      expect(find.textContaining('No nights scored yet'), findsOneWidget);
       expect(find.text('No estimate'), findsNothing);
     });
   });
@@ -689,7 +690,8 @@ void main() {
           learnedOnset: 1380,
         ),
       );
-      expect(find.text('No estimate'), findsOneWidget);
+      // An absence is a dash in the ring; the reason is in the help strip.
+      expect(find.textContaining('Sleep · No sleep scored yet'), findsOneWidget);
       expect(find.textContaining('on track'), findsNothing);
       final ring = _sleepPainter(t) as Ring;
       expect(ring.v, 0);

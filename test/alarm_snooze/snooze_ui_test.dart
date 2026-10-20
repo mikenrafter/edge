@@ -115,12 +115,13 @@ void main() {
       expect(got, isNull);
     });
 
-    test('both of Home\'s list sites insert it, next to the Natural Wake card',
+    test('Home\'s one list inserts it, next to the Natural Wake card',
         () {
       final code =
           codeOnly(File('lib/ui2/screens/home_screen.dart').readAsStringSync());
-      expect('?snoozeCardFor('.allMatches(code), hasLength(2));
-      expect('?_naturalWakeCard('.allMatches(code), hasLength(2));
+      // One list for every state now (no separate no-day list), so one site.
+      expect('?snoozeCardFor('.allMatches(code), hasLength(1));
+      expect('?_naturalWakeCard('.allMatches(code), hasLength(1));
     });
   });
 

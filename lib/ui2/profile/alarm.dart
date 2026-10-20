@@ -133,6 +133,8 @@ Widget alarmGlanceCard(BuildContext c, DateTime? at, AlarmArmState state,
                 ? '${AlarmScreenView._whichDay(c, at, n)} · '
                     '${AlarmScreenView._localizedStateLabel(c, state)}'
                 : (l?.alarmGlanceInThePast ?? 'Fired or missed'),
+        // Two caption lines reserved, like every other tile in the row.
+        subMinLines: 2,
         onTap: () => go(c, const AlarmScreen()),
       );
     });

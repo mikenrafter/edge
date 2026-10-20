@@ -349,41 +349,44 @@ void main() {
     ]) {
       await tester.pumpWidget(_frame(w, Brightness.light, 1));
       await tester.pumpAndSettle();
-      // A dash is not bare when it is a MetricRow's value and the row's status
-      // line says why (an absent metric keeps its slot, so first launch and
-      // loaded show the same card).
-      final explained = <Element>{
-        for (final r in tester
-            .widgetList<MetricRow>(find.byType(MetricRow))
-            .where((r) => r.value.trim() == '—' && r.sub.trim().isNotEmpty))
-          ...find
-              .descendant(
-                  of: find.byWidget(r),
-                  matching: find.text('—'))
-              .evaluate(),
-        // The same for a deep-dive card: its line under the dash is the reason.
-        for (final r in tester
-            .widgetList<DeepDiveCard>(find.byType(DeepDiveCard))
-            .where((r) => r.value.trim() == '—' && r.cta.trim().isNotEmpty))
-          ...find
-              .descendant(of: find.byWidget(r), matching: find.text('—'))
-              .evaluate(),
+      // A dash is not bare when something on the same card says why: a
+      // MetricRow's status line, a SignalCard's caption, a deep-dive card's
+      // line under the dash, a ring's help strip, a plan row's kind line. An
+      // absent value keeps its slot (so first launch and loaded show the same
+      // card) and the card says what fills it.
+      // Sleep's first-launch cards and Home's plan keep their slot with a dash
+      // in each value; the reason ("No night to show", "No beat timing...", a
+      // plan row's kind line) is stated on the same card or screen.
+      const skeleton = {
+        'card:plan',
+        'card:answer',
+        'card:stages',
+        'card:training-load',
       };
-      // Sleep's first-launch cards keep their slot with a dash in each value;
-      // the reason ("No night to show", "No beat timing...") is stated in the
-      // window card and under the stage rows on the same screen.
-      const skeleton = {'card:answer', 'card:stages', 'card:training-load'};
-      for (final k in skeleton) {
-        final card = find.byKey(ValueKey(k));
-        if (card.evaluate().isEmpty) continue;
-        explained.addAll(find
-            .descendant(of: card, matching: find.text('—'))
-            .evaluate());
+      bool explained(Element e) {
+        var ok = false;
+        e.visitAncestorElements((a) {
+          final w = a.widget;
+          if ((w is MetricRow && w.sub.trim().isNotEmpty) ||
+              (w is SignalCard && w.sub.trim().isNotEmpty) ||
+              (w is DeepDiveCard &&
+                  w.value.trim() == '—' &&
+                  w.cta.trim().isNotEmpty) ||
+              w is RingTrio ||
+              (w.key is ValueKey &&
+                  skeleton.contains((w.key as ValueKey).value))) {
+            ok = true;
+            return false;
+          }
+          return true;
+        });
+        return ok;
       }
+
       final dashes = tester
           .widgetList<Text>(find.byType(Text))
           .where((t) => (t.data ?? '').trim() == '—')
-          .where((t) => !explained.any((e) => e.widget == t));
+          .where((t) => !explained(tester.element(find.byWidget(t).first)));
       expect(
         dashes,
         isEmpty,

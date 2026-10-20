@@ -14,22 +14,42 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/lab_catalogue.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/ui2/grammar.dart' show Pressable;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_tab.dart';
 
 import '../../support/as_of_recalc_fakes.dart';
-import '../../support/shift_run.dart';
+import '../../support/bundled_fonts.dart';
 import '../../support/tabs_consistency_fakes.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() {
+  setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    // Real type, not the test font: with Ahem every glyph is a full em wide, so
+    // captions wrap at counts no real screen reaches and card heights would
+    // differ for reasons that are not the layout's.
+    await loadFonts();
   });
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    // The community asks are optional cards (they come and go with eligibility
+    // and cooldown), so they are dismissed here: this test is about the cards
+    // that must be there either way. `DetectedActivitiesCard` is likewise held
+    // at zero pending by the fake repos.
+    await Prefs.ensureLoaded();
+    for (final k in ['nudge.discord.dismissed', 'nudge.donate.dismissed']) {
+      Prefs.setBool(k, true);
+      addTearDown(() => Prefs.setBool(k, false));
+    }
+  });
+
+  // Tall enough that the whole Home list is on screen: a card below the fold
+  // would be "missing" from one state's frame for the wrong reason.
+  const tall = ShiftRect(0, 0, 390, 3000);
 
   const p = ShiftPolicy.standard;
 
@@ -41,7 +61,7 @@ void main() {
       await drive(t);
       await settleShell(t);
     }
-    final f = captureFrame(t);
+    final f = captureFrame(t, viewport: tall);
     await t.pumpWidget(const SizedBox.shrink());
     await t.pump(const Duration(seconds: 5));
     return f;
@@ -52,7 +72,9 @@ void main() {
       AppState Function()? loadedApp0,
       Widget Function()? emptyScreen,
       Future<void> Function(WidgetTester)? drive}) async {
-    phoneSurface(t);
+    t.view.physicalSize = const Size(390 * 3, 3000 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
     final loadedApp = loadedApp0 != null
         ? loadedApp0()
         : (AppState.forTesting()
@@ -69,7 +91,7 @@ void main() {
     final loaded = await settled(t, screen(), loadedApp, drive);
 
     // Informational on failure: how the two states compare on EVERY id.
-    final all = compareLayouts(empty, loaded, p, viewport: shiftViewport);
+    final all = compareLayouts(empty, loaded, p, viewport: tall);
     printOnFailure(top('$name empty vs loaded, all ids', all, n: 12));
     printOnFailure('$name empty: ${empty.elements.length} elements, '
         'loaded: ${loaded.elements.length}');
@@ -88,7 +110,7 @@ void main() {
         reason: '$name: first launch and loaded must show the same cards; '
             'only-empty: ${a.difference(b)}, only-loaded: ${b.difference(a)}');
     final r = compareLayouts(empty, loaded, p,
-        viewport: shiftViewport, only: cardOrShared);
+        viewport: tall, only: cardOrShared);
     printOnFailure(top('$name empty vs loaded, card/shared', r));
     expect(r.findings.where((f) => f.score >= p.warnAt), isEmpty,
         reason: worst(name, r, p));

@@ -17131,5 +17131,37 @@
         "type": "String"
       }
     }
+  },
+  "homeHelpFirstWeek": "Your first week: wear it to sleep. Recovery from night {recoveryNight}, strain from day {strainDay}.",
+  "@homeHelpFirstWeek": {
+    "description": "Help strip under the Home rings on first launch: what arrives when. recoveryNight is the first night recovery can score; strainDay the first day strain can.",
+    "placeholders": {
+      "recoveryNight": {
+        "type": "int"
+      },
+      "strainDay": {
+        "type": "int"
+      }
+    }
+  },
+  "homeHelpFirstWeekCounting": "Your first week: wear it to sleep. {recoveryStarts}, strain from day {strainDay}.",
+  "@homeHelpFirstWeekCounting": {
+    "description": "Help strip under the Home rings while recovery counts nights down. recoveryStarts is the sentence 'Recovery starts in N nights'; strainDay the first day strain can score.",
+    "placeholders": {
+      "recoveryStarts": {
+        "type": "String"
+      },
+      "strainDay": {
+        "type": "int"
+      }
+    }
+  },
+  "homeGlanceFillsNight": "Fills after a scored night",
+  "@homeGlanceFillsNight": {
+    "description": "Caption on an empty At a glance tile that is read from a scored night (resting heart rate)."
+  },
+  "homeGlanceFillsMove": "Fills as you move",
+  "@homeGlanceFillsMove": {
+    "description": "Caption on an empty At a glance tile that fills from movement (steps, active energy)."
   }
 }

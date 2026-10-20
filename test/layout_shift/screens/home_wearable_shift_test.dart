@@ -1,6 +1,7 @@
 // Home cold open on an install with an active wearable: the wearable card is
 // part of the day read, so it is in its final place when the day lands and
-// neither it nor the rings under it move. Fake-async pumps only.
+// neither it nor the rings move (it sits at the foot, so it moves nothing). Fake-async pumps only.
+import 'package:flutter/widgets.dart' show Size;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -11,6 +12,7 @@ import 'package:openstrap_edge/ui2/profile/wearable_numbers.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 
 import '../../support/as_of_recalc_fakes.dart';
+import '../../support/bundled_fonts.dart';
 import '../../support/shift_run.dart';
 
 class _WearableHomeRepo extends HomeRepo {
@@ -36,15 +38,20 @@ class _WearableHomeRepo extends HomeRepo {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() {
+  setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    await loadFonts();
   });
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('Home cold open with an active wearable: the card does not land late',
       (t) async {
-    phoneSurface(t);
+    // Tall, so the lazily built list reaches the wearable card, which now sits
+    // at the foot of Home; the probe still scores only the first 844 pt.
+    t.view.physicalSize = const Size(390 * 3, 2600 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
     final app = AppState.forTesting()
       ..repo = _WearableHomeRepo(homeBundle(
           readiness: 70, overnightAt: todayAtMs(8, 42), activityAt: todayAtMs(8, 42)));

@@ -163,7 +163,9 @@ Finder _text(Pattern p) => find.byWidgetPredicate(
 Finder get _through => find.text('Synced through 15:33');
 
 /// Row 1 when idle.
-Finder get _date => find.text('Sunday, 4 October');
+// Inside the sync row: the day switcher under it prints the same date.
+Finder get _date => find.descendant(
+    of: find.byType(HomeSyncStatus), matching: find.text('Sunday, 4 October'));
 
 /// The settings button is the profile avatar (no name set: the user glyph).
 Finder get _gear => find.byIcon(LucideIcons.user);

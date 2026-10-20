@@ -201,11 +201,12 @@ void main() {
     await t.tap(find.bySemanticsLabel('Previous day'));
     await _settle(t);
 
-    expect(find.text('No data for this day'), findsOneWidget);
+    // The rings' help strip carries the sentence.
+    expect(find.textContaining('No data for this day'), findsOneWidget);
     expect(find.text('Sync the band'), findsNothing);
   });
 
-  testWidgets('a failed read still shows the alarm door', (t) async {
+  testWidgets('a failed read still shows the alarm', (t) async {
     // The alarm lives on AppState, not HomeData, so the error card must not
     // take it down with it.
     final app = AppState.forTesting();
@@ -221,8 +222,9 @@ void main() {
     ));
     await _settle(t);
 
-    expect(find.text('Today could not be read'), findsOneWidget);
-    expect(find.text('Set an alarm'), findsOneWidget);
+    expect(find.textContaining('Today could not be read'), findsOneWidget);
+    expect(find.text('Set an alarm'), findsOneWidget,
+        reason: 'the alarm tile in At a glance');
   });
 }
 

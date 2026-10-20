@@ -8299,5 +8299,29 @@
         "type": "String"
       }
     }
-  }
+  },
+  "homeHelpFirstWeek": "Ваша первая неделя: носите браслет во сне. Восстановление с ночи {recoveryNight}, нагрузка с дня {strainDay}.",
+  "@homeHelpFirstWeek": {
+    "placeholders": {
+      "recoveryNight": {
+        "type": "int"
+      },
+      "strainDay": {
+        "type": "int"
+      }
+    }
+  },
+  "homeHelpFirstWeekCounting": "Ваша первая неделя: носите браслет во сне. {recoveryStarts}, нагрузка с дня {strainDay}.",
+  "@homeHelpFirstWeekCounting": {
+    "placeholders": {
+      "recoveryStarts": {
+        "type": "String"
+      },
+      "strainDay": {
+        "type": "int"
+      }
+    }
+  },
+  "homeGlanceFillsNight": "Заполнится после оценённой ночи",
+  "homeGlanceFillsMove": "Заполнится по мере движения"
 }

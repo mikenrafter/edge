@@ -105,6 +105,9 @@ class _FakeRepo extends LocalRepository {
   Future<Map<String, dynamic>> getDayNaps(String date) async => const {};
 }
 
+// The coach chip's card (the briefing door in Today's plan wears the same icon).
+final _coachCard = find.byKey(const ValueKey('card:coach'));
+
 void main() {
   // ── the artifact behind four screens ──
   group('crossDayStaleReason', () {
@@ -437,7 +440,8 @@ void main() {
         (t) async {
       await t.pumpWidget(frame(
           const HomeData(dayId: '2026-05-20', heldOverNight: '2026-05-16')));
-      expect(find.text('Nothing recorded for today'), findsOneWidget);
+      // Title and body share the rings' help strip.
+      expect(find.textContaining('Nothing recorded for today'), findsOneWidget);
       expect(find.textContaining('16 May'), findsOneWidget);
     });
 
@@ -445,7 +449,7 @@ void main() {
     // a first run and gets the first-run words.
     testWidgets('a genuine first run keeps its own card', (t) async {
       await t.pumpWidget(frame(const HomeData(dayId: '2026-05-20')));
-      expect(find.text('No nights scored yet'), findsOneWidget);
+      expect(find.textContaining('No nights scored yet'), findsOneWidget);
     });
 
     // A bare day during a live workout is missing COMPUTE, not data: the
@@ -462,8 +466,8 @@ void main() {
                       dayId: '2026-05-20', heldOverNight: '2026-05-16'),
                   hour: 20,
                   workoutLive: true))));
-      expect(find.text('A workout is still running'), findsOneWidget);
-      expect(find.text('Nothing recorded for today'), findsNothing);
+      expect(find.textContaining('A workout is still running'), findsOneWidget);
+      expect(find.textContaining('Nothing recorded for today'), findsNothing);
       expect(find.text('Sync the band'), findsNothing);
     });
   });
@@ -679,8 +683,14 @@ void main() {
                       unit: 'steps',
                       confidence: .9,
                       tier: MetricTier.high))));
-      expect(find.text('Recovery is not scored today'), findsOneWidget);
-      expect(find.text('See what was missing'), findsOneWidget);
+      // The rings' help strip says why, and is the door to the Readiness
+      // screen (it used to be a card with a "See what was missing" button).
+      expect(find.text('No reading.'), findsOneWidget);
+      final door = find
+          .ancestor(of: find.text('No reading.'), matching: find.byType(Pressable))
+          .first;
+      expect(t.widget<Pressable>(door).onTap, isNotNull,
+          reason: 'the strip is the door to the Readiness screen');
     });
 
     testWidgets('the detail names each input and QUOTES the pipeline',
@@ -847,9 +857,18 @@ void main() {
               body: HomeScreen(data: HomeData(dayId: '2026-05-20'), hour: 20)),
         ));
 
+    // Tall: the chip is the last thing on Home, and the list builds lazily.
+    void tall(WidgetTester t) {
+      t.view.physicalSize = const Size(800, 3000);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+    }
+
     testWidgets('no model: the chip says what the coach is for', (t) async {
+      tall(t);
       await t.pumpWidget(frame(false));
-      expect(find.byIcon(LucideIcons.sparkles), findsOneWidget);
+      expect(find.descendant(of: _coachCard, matching: find.byIcon(LucideIcons.sparkles)),
+          findsOneWidget);
       expect(find.text('Set up the coach'),
           findsOneWidget);
       // Profile is the avatar every tab carries, not a gear on Home.
@@ -858,8 +877,10 @@ void main() {
     });
 
     testWidgets('a configured coach: the chip asks it', (t) async {
+      tall(t);
       await t.pumpWidget(frame(true));
-      expect(find.byIcon(LucideIcons.sparkles), findsOneWidget);
+      expect(find.descendant(of: _coachCard, matching: find.byIcon(LucideIcons.sparkles)),
+          findsOneWidget);
       expect(find.text('Ask the coach'), findsOneWidget);
     });
   });

@@ -67,6 +67,8 @@ class TabsRepo extends HomeRepo {
   Future<Map<String, dynamic>> getInsights() async => const {};
   @override
   Future<Map<String, dynamic>> getProfile() async => const {};
+  @override
+  Future<int> pendingActivityCount() async => 0;
 }
 
 /// The real shell with the same tab builder app.dart uses.
@@ -108,8 +110,8 @@ Future<void> goTab(WidgetTester t, ShellDomain d) async {
 }
 
 /// A fresh probe capture of what is on screen now (offstage tabs excluded).
-Frame captureFrame(WidgetTester t) {
-  final p = ShiftProbe(trackUnkeyed: true, visibleOnly: shiftViewport);
+Frame captureFrame(WidgetTester t, {ShiftRect viewport = shiftViewport}) {
+  final p = ShiftProbe(trackUnkeyed: true, visibleOnly: viewport);
   return p.capture(t, atMs: 0);
 }
 
@@ -160,9 +162,17 @@ class EmptyTabsRepo extends TabsRepo {
   Future<List<String>> availableDays() async => const [];
 }
 
+/// Cards that may appear or disappear with the user's data, by design (the
+/// community asks, and detected activities when there is something to review),
+/// so they are not part of the "same cards in the same places" contract.
+bool _optionalCard(String id) =>
+    id.startsWith('card:nudge') || id == 'card:detected';
+
 /// The ids `only` should keep for the empty-vs-loaded comparison.
 bool cardOrShared(String id) =>
-    id.startsWith('card:') || id.startsWith('shared:');
+    (id.startsWith('card:') && !_optionalCard(id)) || id.startsWith('shared:');
 
-Set<String> cardIds(Frame f) =>
-    {for (final e in f.elements) if (e.id.startsWith('card:')) e.id};
+Set<String> cardIds(Frame f) => {
+      for (final e in f.elements)
+        if (e.id.startsWith('card:') && !_optionalCard(e.id)) e.id
+    };

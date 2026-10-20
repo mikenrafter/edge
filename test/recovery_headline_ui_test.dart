@@ -68,7 +68,7 @@ void main() {
     expect(find.text('28'), findsOneWidget);
     expect(find.text('Finishing up'), findsNothing);
     final clock = formatClockOf(DateTime.fromMillisecondsSinceEpoch(at));
-    expect(find.text('Updated $clock · 2 → 28'), findsOneWidget);
+    expect(find.textContaining('Updated $clock · 2 → 28'), findsOneWidget);
   });
 
   group('Coach get_today and Home read the same recovery', () {
@@ -138,7 +138,7 @@ void main() {
           }, readiness: const Metric(value: 28, confidence: .8)));
       await t.pumpAndSettle();
       final clock = formatClockOf(DateTime.fromMillisecondsSinceEpoch(at));
-      expect(find.text('Updated $clock · 2 → 28'), findsOneWidget);
+      expect(find.textContaining('Updated $clock · 2 → 28'), findsOneWidget);
       expect(find.text('Finishing up'), findsNothing);
     });
 

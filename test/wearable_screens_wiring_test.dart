@@ -99,6 +99,11 @@ Future<void> _settle(WidgetTester t, [Widget? w]) async {
 }
 
 Future<void> _pumpHome(WidgetTester t, {bool handed = false}) async {
+  // Tall: the wearable card is the last thing on Home, and the list builds
+  // lazily.
+  t.view.physicalSize = const Size(800, 3000);
+  t.view.devicePixelRatio = 1;
+  addTearDown(t.view.reset);
   final app = AppState.forTesting();
   addTearDown(app.dispose);
   app.repo = _Repo();

@@ -28,18 +28,40 @@ class InlineLoading extends StatelessWidget {
   /// appearing later pushes nothing.
   final bool reserveDetail;
 
+  /// One row, no card: a small spinner and the status, for a line inside a card
+  /// that already exists (the Home rings' help strip), where a card in a card
+  /// would be taller than the line it stands in for.
+  final bool compact;
+
   const InlineLoading({
     super.key,
     required this.status,
     this.detail,
     this.height,
     this.reserveDetail = false,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final p = P.of(context);
     final d = detail;
+    if (compact) {
+      return Row(children: [
+        const SizedBox(
+          width: 15,
+          height: 15,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        const SizedBox(width: S.x2),
+        Expanded(
+          child: Text(
+            [status, if (d != null && d.isNotEmpty) d].join(' · '),
+            style: F.cap.copyWith(color: p.ink2),
+          ),
+        ),
+      ]);
+    }
     final body = Column(
       mainAxisSize: MainAxisSize.min,
       children: [

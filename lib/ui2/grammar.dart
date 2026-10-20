@@ -1087,6 +1087,10 @@ class SignalCard extends StatelessWidget {
   /// showing progress toward its goal without a second card.
   final Widget? trailing;
 
+  /// Reserves this many lines for [sub] (its text may be shorter or empty), so
+  /// a tile that is empty first and filled later is the same height both ways.
+  final int subMinLines;
+
   const SignalCard(
     this.icon,
     this.color,
@@ -1097,6 +1101,7 @@ class SignalCard extends StatelessWidget {
     this.sub = '',
     this.onTap,
     this.trailing,
+    this.subMinLines = 0,
   });
 
   @override
@@ -1142,13 +1147,21 @@ class SignalCard extends StatelessWidget {
               ],
             ],
           ),
-          if (sub.isNotEmpty) ...[
+          if (sub.isNotEmpty || subMinLines > 0) ...[
             const SizedBox(height: S.x1),
-            Text(
-              sub,
-              style: F.over.copyWith(color: p.ink3),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                  minHeight: MediaQuery.textScalerOf(c).scale(
+                          (F.over.fontSize ?? 11) * (F.over.height ?? 1.3)) *
+                      subMinLines),
+              child: sub.isEmpty
+                  ? null
+                  : Text(
+                      sub,
+                      style: F.over.copyWith(color: p.ink3),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
             ),
           ],
         ],
