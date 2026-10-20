@@ -462,11 +462,13 @@ void main() {
       expect(counts['decoded_rr'], nRr);
       final onehz = _callsTouching('decoded_onehz');
       final rr = _callsTouching('decoded_rr');
-      // ≤ 1 statement per 50,000 rows plus a constant (prep, PRAGMAs, the
+      // ≤ 1 statement per 5,000 rows plus a constant (prep, PRAGMAs, the
       // trailing beat sweep). The per-page path is ~2 calls per 2,000 rows.
-      expect(onehz, lessThanOrEqualTo(nOneHz ~/ 50000 + 10),
+      // Not tighter: chunks stay small so a band-sync commit, which must land
+      // before the ACK, never waits long behind one.
+      expect(onehz, lessThanOrEqualTo(nOneHz ~/ 5000 + 10),
           reason: 'decoded_onehz: $onehz sqflite calls');
-      expect(rr, lessThanOrEqualTo(nRr ~/ 50000 + 10),
+      expect(rr, lessThanOrEqualTo(nRr ~/ 5000 + 10),
           reason: 'decoded_rr: $rr sqflite calls');
     }, timeout: const Timeout(Duration(minutes: 10)));
 

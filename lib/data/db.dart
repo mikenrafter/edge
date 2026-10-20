@@ -12460,7 +12460,13 @@ class LocalDb {
       ];
       if (columns.isEmpty) return false;
 
-      final filters = <String>['s.rowid > ?', 's.rowid <= ?'];
+      final filters = <String>[];
+      if (t == 'decoded_rr') {
+        // The oracle drops a beat with no rec_ts and no usable rr_ts_ms even
+        // when ts_ms is present; letting it through fails NOT NULL for the
+        // whole chunk.
+        filters.add('NOT ($sourceRecTs IS NULL AND NOT (${numericSql(sourceRrTsMs)}))');
+      }
       if (isDeviceKeyed) {
         filters.add('NOT ($sourceTsMs IS NULL AND NOT (${numericSql(keyTime)}))');
       }
@@ -12475,27 +12481,57 @@ class LocalDb {
         filters.add('NOT EXISTS (SELECT 1 FROM temp._restore_finalized_days p '
             'WHERE p.day_id = ${sourceColumn('date')})');
       }
-      final where = filters.join(' AND ');
+      final unbounded = filters.isEmpty ? '1' : filters.join(' AND ');
+      final where = ['s.rowid > ?', 's.rowid <= ?', ...filters].join(' AND ');
       final selectSql = 'SELECT ${[
         for (final column in columns)
           '${expressions[column]} AS ${quoteSql(column)}',
       ].join(', ')} FROM imp.${quoteSql(t)} s WHERE $where';
+      // Rowid order: when derived keys collide, the later source row wins, as
+      // on the per-row path.
       final insertSql = 'INSERT OR REPLACE INTO main.${quoteSql(t)} '
-          '(${columns.map(quoteSql).join(', ')}) $selectSql';
+          '(${columns.map(quoteSql).join(', ')}) $selectSql ORDER BY s.rowid';
 
       var protectedDayResults = false;
+      var rrSourceMax = false;
       var copied = 0;
       try {
-        if (t == 'day_result') {
-          await db.execute('CREATE TEMP TABLE _restore_protected_day_results AS '
-              'SELECT day_id, algo_version FROM main.day_result WHERE finalized = 1');
-          protectedDayResults = true;
+        if (t == 'decoded_rr') {
+          // The highest beat per second over the WHOLE source, not one chunk:
+          // REPLACE renumbers rowids, so one second's beats can straddle
+          // chunks out of order, and a per-chunk max would clear beats an
+          // earlier chunk just restored.
+          await db.execute('DROP TABLE IF EXISTS temp._restore_rr_src_max');
+          await db.execute('''CREATE TEMP TABLE _restore_rr_src_max
+            (d TEXT, k INTEGER, m INTEGER, PRIMARY KEY (d, k))''');
+          rrSourceMax = true;
+          await db.execute('''INSERT INTO temp._restore_rr_src_max
+            SELECT $derivedDeviceId AS d, $derivedTsMs AS k,
+                MAX(${sourceColumn('beat_index')}) AS m
+            FROM imp.${quoteSql(t)} s
+            WHERE $unbounded AND ${numericSql(sourceColumn('beat_index'))}
+            GROUP BY d, k''');
         }
         var lower = 0;
-        const chunkRows = 100000;
+        // Small enough that a band-sync commit (which must land before the
+        // ACK) never waits long behind one, and a salvage loses little to one
+        // unreadable chunk.
+        const chunkRows = 25000;
         while (lower < maxRowid) {
           final upper = lower + chunkRows > maxRowid ? maxRowid : lower + chunkRows;
+          final first = lower == 0;
           await db.transaction((txn) async {
+            if (t == 'day_result' && first) {
+              // Inside the first chunk's transaction, so a day the engine
+              // finalizes while the restore runs is still protected.
+              await txn.execute(
+                  'DROP TABLE IF EXISTS temp._restore_protected_day_results');
+              await txn.execute(
+                  'CREATE TEMP TABLE _restore_protected_day_results AS '
+                  'SELECT day_id, algo_version FROM main.day_result '
+                  'WHERE finalized = 1');
+              protectedDayResults = true;
+            }
             if (t == 'day_result') {
               final days = await txn.rawQuery(
                 'SELECT DISTINCT ${sourceColumn('day_id')} AS day_id '
@@ -12518,11 +12554,11 @@ class LocalDb {
               // scanned every local beat against every carried second.
               await txn.execute('DROP TABLE IF EXISTS temp._restore_rr_carried');
               await txn.execute('''CREATE TEMP TABLE _restore_rr_carried AS
-                SELECT $derivedDeviceId AS d, $derivedTsMs AS k,
-                    MAX(${sourceColumn('beat_index')}) AS m
-                FROM imp.${quoteSql(t)} s
-                WHERE $where AND ${numericSql(sourceColumn('beat_index'))}
-                GROUP BY d, k''', [lower, upper]);
+                SELECT DISTINCT x.d AS d, x.k AS k, x.m AS m
+                FROM (SELECT $derivedDeviceId AS d, $derivedTsMs AS k
+                      FROM imp.${quoteSql(t)} s WHERE $where) c
+                JOIN temp._restore_rr_src_max x ON x.d = c.d AND x.k = c.k''',
+                  [lower, upper]);
               await txn.execute('''DELETE FROM main.decoded_rr WHERE rowid IN (
                 SELECT r.rowid FROM temp._restore_rr_carried c
                 JOIN main.decoded_rr r
@@ -12535,9 +12571,17 @@ class LocalDb {
           plan?.advance(t, upper);
         }
       } finally {
-        if (protectedDayResults) {
-          await db.execute('DROP TABLE temp._restore_protected_day_results');
-        }
+        // Never let a cleanup error mask the copy's own error; a leftover
+        // temp table is dropped before the next restore creates it.
+        try {
+          if (protectedDayResults) {
+            await db.execute(
+                'DROP TABLE IF EXISTS temp._restore_protected_day_results');
+          }
+          if (rrSourceMax) {
+            await db.execute('DROP TABLE IF EXISTS temp._restore_rr_src_max');
+          }
+        } catch (_) {}
       }
       counts[t] = copied;
       return true;
@@ -12555,6 +12599,7 @@ class LocalDb {
           impAttached = false;
         }
         if (impAttached) {
+          await db.execute('DROP TABLE IF EXISTS temp._restore_finalized_days');
           await db.execute('CREATE TEMP TABLE _restore_finalized_days AS '
               'SELECT day_id FROM main.day_result WHERE finalized = 1');
           finalizedDaysSnapshot = true;
@@ -13047,17 +13092,16 @@ class LocalDb {
       }
       plan?.finish();
     } finally {
+      // Cleanup errors are swallowed so they never mask the restore's own.
       try {
         if (finalizedDaysSnapshot) {
-          await db.execute('DROP TABLE temp._restore_finalized_days');
+          await db.execute('DROP TABLE IF EXISTS temp._restore_finalized_days');
         }
-      } finally {
-        try {
-          if (impAttached) await db.execute('DETACH DATABASE imp');
-        } finally {
-          await src.close();
-        }
-      }
+      } catch (_) {}
+      try {
+        if (impAttached) await db.execute('DETACH DATABASE imp');
+      } catch (_) {}
+      await src.close();
     }
     if (counts.values.any((count) => count > 0)) {
       await ActivityStore.suppressImportedAlerts(db);
