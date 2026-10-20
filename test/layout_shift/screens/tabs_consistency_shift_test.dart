@@ -83,4 +83,23 @@ void main() {
     }
     expect(bad.toString(), isEmpty);
   });
+
+  // Home's own sync row becomes this line later; until then it is compared
+  // among the tabs that carry the StatusLine.
+  testWidgets('status line sits in the same place on Sleep, Activity, Health',
+      (t) async {
+    final tabs = await settledTabs(t);
+    const among = [ShellDomain.sleep, ShellDomain.activity, ShellDomain.health];
+    for (final d in among) {
+      expect(tabs[d]!.elements.any((e) => e.id == 'shared:status-line'), isTrue,
+          reason: '${d.label} lacks shared:status-line');
+    }
+    const p = ShiftPolicy.standard;
+    for (final d in among.skip(1)) {
+      final r = compareLayouts(tabs[among.first]!, tabs[d]!, p,
+          viewport: shiftViewport, only: (id) => id == 'shared:status-line');
+      expect(r.findings.any((f) => f.score >= p.warnAt), isFalse,
+          reason: worst('Sleep vs ${d.label}', r, p));
+    }
+  });
 }

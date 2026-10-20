@@ -2920,5 +2920,7 @@
   "importStageEvents": "eventos",
   "importStageResults": "resultados calculados",
   "importStageArchive": "registros sin procesar de la pulsera",
-  "importStageOther": "otros datos"
+  "importStageOther": "otros datos",
+  "statusLineImporting": "Importando · {status}",
+  "statusLineImportingStep": "Importando · {status} · paso {index} de {count}"
 }

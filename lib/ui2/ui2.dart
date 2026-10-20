@@ -25,6 +25,7 @@ export 'revision.dart';
 export 'scroll_hint.dart';
 export 'shared_slot.dart';
 export 'sleep_ring_model.dart';
+export 'status_line.dart';
 export 'sync_control.dart';
 export 'theme.dart';
 export 'today_refresh.dart';

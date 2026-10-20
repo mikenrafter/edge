@@ -107,6 +107,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
           children: [
             for (final w in <Widget>[
               ScreenTitle(loc?.tabActivity ?? 'Activity',
+                  statusLine: true,
                   avatar: const ProfileAvatar(accent: C.domMove)),
               SubTabs(_tabs(loc), tab, (i) => setState(() => tab = i),
                   color: C.domMove),

@@ -44,6 +44,7 @@ import 'shared_slot.dart';
 import 'chart_annotations.dart' show AnnotationSet, ChartAnnotationLane;
 import 'charts.dart';
 import 'scroll_hint.dart';
+import 'status_line.dart';
 import 'theme.dart';
 import 'trend.dart';
 
@@ -2898,7 +2899,12 @@ class ScreenTitle extends StatelessWidget {
 
   /// The profile button (or its syncing stand-in): marked `shared:avatar`.
   final Widget? avatar;
-  const ScreenTitle(this.title, {super.key, this.trailing, this.avatar});
+
+  /// Adds the app-wide [StatusLine] directly under the title (after the
+  /// content-top marker, so that marker stays where it is on every tab).
+  final bool statusLine;
+  const ScreenTitle(this.title,
+      {super.key, this.trailing, this.avatar, this.statusLine = false});
 
   @override
   Widget build(BuildContext c) {
@@ -2927,6 +2933,7 @@ class ScreenTitle extends StatelessWidget {
           ),
         ),
         const ContentTopMarker(),
+        if (statusLine) const StatusLine(),
       ],
     );
   }

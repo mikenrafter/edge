@@ -466,6 +466,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
         padding: kTabRootPad,
         children: [
           ScreenTitle(title,
+              statusLine: true,
               avatar: const ProfileAvatar(accent: C.domSleep)),
           if (sub.isNotEmpty)
             Padding(

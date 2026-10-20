@@ -17080,5 +17080,27 @@
   "importStageEvents": "events",
   "importStageResults": "calculated results",
   "importStageArchive": "raw band records",
-  "importStageOther": "other data"
+  "importStageOther": "other data",
+  "statusLineImporting": "Importing · {status}",
+  "@statusLineImporting": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "statusLineImportingStep": "Importing · {status} · step {index} of {count}",
+  "@statusLineImportingStep": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      },
+      "index": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      }
+    }
+  }
 }

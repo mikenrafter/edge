@@ -25,22 +25,14 @@ class ImportProgressView extends StatelessWidget {
     final s = progress;
     if (s is ImportDone) return const SizedBox.shrink();
 
-    final String status;
+    final status = statusOf(l, s);
     String? detail;
     double? bar;
     var counted = false;
     switch (s) {
-      case ImportPreparing(:final step):
-        status = switch (step) {
-          ImportPrepStep.inflating =>
-            l?.importPrepInflating ?? 'Unpacking the backup',
-          ImportPrepStep.checking =>
-            l?.importPrepChecking ?? 'Checking the backup',
-          _ => l?.importPrepOpening ?? 'Opening the backup',
-        };
+      case ImportPreparing():
+        break;
       case ImportCopying():
-        final name = _stageName(l, s.stage);
-        status = l?.importCopying(name) ?? 'Copying $name';
         detail = l?.importStep('${s.stageIndex}', '${s.stageCount}', grouped(s.rowsDone),
                 grouped(s.rowsTotal)) ??
             'Step ${s.stageIndex} of ${s.stageCount} · '
@@ -48,20 +40,10 @@ class ImportProgressView extends StatelessWidget {
         counted = true;
         bar = s.rowsTotal > 0 ? s.rowsDone / s.rowsTotal : null;
       case ImportRebuilding():
-        final day = s.day;
-        // Rebuilding(0, 0, null) comes before the pass has chosen its days.
-        status = s.daysTotal == 0
-            ? (l?.importRecalculatingStarting ?? 'Recalculating your days')
-            : day == null
-            ? (l?.importRecalculating('${s.daysDone}', '${s.daysTotal}') ??
-                'Recalculating · day ${s.daysDone} of ${s.daysTotal}')
-            : (l?.importRecalculatingDay(
-                '${s.daysDone}', '${s.daysTotal}', day) ??
-                'Recalculating · day ${s.daysDone} of ${s.daysTotal} · $day');
         counted = true;
         bar = s.daysTotal > 0 ? s.daysDone / s.daysTotal : null;
-      case ImportFailed(:final error):
-        status = l?.dataFailed(error) ?? 'Failed: $error';
+      case ImportFailed():
+        break;
       case ImportDone():
         return const SizedBox.shrink();
     }
@@ -103,6 +85,38 @@ class ImportProgressView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// The first status line for [s], shared with the app-wide StatusLine.
+  static String statusOf(AppLocalizations? l, ImportProgress s) {
+    switch (s) {
+      case ImportPreparing(:final step):
+        return switch (step) {
+          ImportPrepStep.inflating =>
+            l?.importPrepInflating ?? 'Unpacking the backup',
+          ImportPrepStep.checking =>
+            l?.importPrepChecking ?? 'Checking the backup',
+          _ => l?.importPrepOpening ?? 'Opening the backup',
+        };
+      case ImportCopying():
+        final name = _stageName(l, s.stage);
+        return l?.importCopying(name) ?? 'Copying $name';
+      case ImportRebuilding():
+        final day = s.day;
+        // Rebuilding(0, 0, null) comes before the pass has chosen its days.
+        return s.daysTotal == 0
+            ? (l?.importRecalculatingStarting ?? 'Recalculating your days')
+            : day == null
+            ? (l?.importRecalculating('${s.daysDone}', '${s.daysTotal}') ??
+                'Recalculating · day ${s.daysDone} of ${s.daysTotal}')
+            : (l?.importRecalculatingDay(
+                '${s.daysDone}', '${s.daysTotal}', day) ??
+                'Recalculating · day ${s.daysDone} of ${s.daysTotal} · $day');
+      case ImportFailed(:final error):
+        return l?.dataFailed(error) ?? 'Failed: $error';
+      case ImportDone():
+        return '';
+    }
   }
 
   static String _stageName(AppLocalizations? l, ImportStage st) =>

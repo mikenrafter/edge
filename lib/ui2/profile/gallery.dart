@@ -1000,6 +1000,7 @@ Map<String, Widget> extraCases() => {
       ),
       'screen_title': const ScreenTitle('Sleep and recovery',
           trailing: Pill('Estimated', C.yellow)),
+      'status_line': const StatusLine(),
       // Static on purpose: the gallery shows the control, and its position is
       // a fixture like every other value here.
       'scrubber': Builder(builder: (c) {

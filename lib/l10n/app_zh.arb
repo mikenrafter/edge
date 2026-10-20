@@ -2902,5 +2902,7 @@
   "importStageEvents": "事件",
   "importStageResults": "计算结果",
   "importStageArchive": "手环原始记录",
-  "importStageOther": "其他数据"
+  "importStageOther": "其他数据",
+  "statusLineImporting": "导入 · {status}",
+  "statusLineImportingStep": "导入 · {status} · 第 {index} 步，共 {count} 步"
 }

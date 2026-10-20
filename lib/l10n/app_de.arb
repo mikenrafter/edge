@@ -3009,5 +3009,7 @@
   "importStageEvents": "Ereignisse",
   "importStageResults": "berechnete Ergebnisse",
   "importStageArchive": "rohe Banddaten",
-  "importStageOther": "weitere Daten"
+  "importStageOther": "weitere Daten",
+  "statusLineImporting": "Import · {status}",
+  "statusLineImportingStep": "Import · {status} · Schritt {index} von {count}"
 }

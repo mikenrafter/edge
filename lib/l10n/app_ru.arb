@@ -8248,5 +8248,27 @@
   "importStageEvents": "события",
   "importStageResults": "рассчитанные результаты",
   "importStageArchive": "необработанные записи браслета",
-  "importStageOther": "прочие данные"
+  "importStageOther": "прочие данные",
+  "statusLineImporting": "Импорт · {status}",
+  "@statusLineImporting": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "statusLineImportingStep": "Импорт · {status} · шаг {index} из {count}",
+  "@statusLineImportingStep": {
+    "placeholders": {
+      "status": {
+        "type": "String"
+      },
+      "index": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      }
+    }
+  }
 }

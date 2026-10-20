@@ -678,6 +678,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     final l = AppLocalizations.of(c);
     return ListView(padding: kTabRootPad, children: [
       ScreenTitle(l?.healthTitle ?? 'Health',
+          statusLine: true,
           avatar: const ProfileAvatar(accent: C.domHealth)),
       SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
       const SizedBox(height: S.x5),
