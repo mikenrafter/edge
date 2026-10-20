@@ -1291,7 +1291,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
         else if (_moversPending)
           Section(
               l?.metricDetailWhatMovesItSection ?? 'What moves it',
+              // Keyed: it is not the first-read loader moving down the page
+              // when that read lands above it, it is a second, later one.
               InlineLoading(
+                  key: const ValueKey('metric-movers-loading'),
                   status: l?.loadingJournalComparison ??
                       'Comparing 90 days of journal entries')),
         const SizedBox(height: S.x5),

@@ -41,4 +41,23 @@ void main() {
     await t.pump(const Duration(seconds: 3));
     run.expectNoErrors('metric detail open + range chip');
   });
+
+  // Opening alone: the first read lands above the "What moves it" loader and
+  // must not carry it down the page (it is a different element, not the first
+  // loader moving).
+  testWidgets('MetricDetail open: nothing already drawn moves', (t) async {
+    phoneSurface(t);
+    final app = AppState.forTesting()..repo = _SlowMetricRepo();
+    addTearDown(app.dispose);
+    final run = ShiftRun(t);
+    await t.pumpWidget(perfApp(app, const MetricDetail('resting_hr')));
+    run.opened();
+    await run.frames();
+    final r = run.score();
+    printOnFailure(formatShiftReport('metric detail open', r, run.probe.frames.length));
+    for (final f in r.findings.where((f) => f.rule == 'shift')) {
+      expect(f.score, lessThan(0.002), reason: '${f.elementId} @${f.atMs}');
+    }
+    expect(r.total, lessThan(0.016));
+  });
 }
