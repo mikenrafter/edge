@@ -3112,6 +3112,11 @@ class ChartFrame extends StatelessWidget {
   final List<(String, Color)> legend;
   final String? footnote;
 
+  /// Lines the footnote's slot keeps even when its text is shorter, so a card
+  /// whose footnote changes with its state (a reason when empty, a method note
+  /// when loaded) stays one height. 0 reserves nothing.
+  final int footnoteLines;
+
   /// The series behind [child], for the SPOKEN version of the chart. A painter
   /// is a picture and a picture has no screen-reader form, so before this a
   /// fully-specified frame read out its title, its unit and then the three bare
@@ -3163,6 +3168,7 @@ class ChartFrame extends StatelessWidget {
     this.xLabels = const [],
     this.legend = const [],
     this.footnote,
+    this.footnoteLines = 0,
     this.empty,
     this.series = const [],
     this.xMarks = const [],
@@ -3556,7 +3562,12 @@ class ChartFrame extends StatelessWidget {
             ExcludeSemantics(
               child: Padding(
                 padding: const EdgeInsets.only(top: S.x2),
-                child: Text(footnote!, style: F.cap.copyWith(color: p.ink3)),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                      minHeight: footnoteLines *
+                          _measure('0', F.cap, scaler, dir).height),
+                  child: Text(footnote!, style: F.cap.copyWith(color: p.ink3)),
+                ),
               ),
             ),
         ],

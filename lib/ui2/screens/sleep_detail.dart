@@ -626,7 +626,15 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
         ..._nightControls(d, recalc: false),
         _answer(c, p, d, d.night),
         const SizedBox(height: S.x3),
-        _night(c, p, d, d.night),
+        _night(c, p, d, d.night,
+            reason: windowCard != null
+                ? null
+                : rejected
+                    ? (l?.sleepDetailRejectedBody ??
+                        'You told us this stretch was not sleep, so nothing is '
+                            'scored for it.')
+                    : (l?.sleepDetailNoNightBody ??
+                        'No stretch of band recordings long enough to score.')),
         // The window slot: the window card when the times are saved, else the
         // reason there is no night, in the same place.
         ...?windowCard,
@@ -717,8 +725,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     ]);
   }
 
-  /// The window card's place when there are no saved times: why there is no
-  /// night, and the actions that apply, in the same box the window card has.
+  /// The window card's place when there are no saved times: the title and the
+  /// actions that apply, the loaded card's shape. Why there is no night is
+  /// said in the night card's hint slot above (see `_night`'s `reason`).
   Widget _emptyWindowCard(BuildContext c, P p, SleepData d,
       {required bool rejected}) {
     final l = AppLocalizations.of(c);
@@ -740,16 +749,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
             ),
           ),
         ]),
-        const SizedBox(height: S.x2),
-        Text(
-          rejected
-              ? (l?.sleepDetailRejectedBody ??
-                  'You told us this stretch was not sleep, so nothing is '
-                      'scored for it.')
-              : (l?.sleepDetailNoNightBody ??
-                  'No stretch of band recordings long enough to score.'),
-          style: F.cap.copyWith(color: p.ink3),
-        ),
         const SizedBox(height: S.x2),
         Wrap(spacing: S.x2, children: [
           _recalculateButton(_day ?? day ?? todayLabel()),
@@ -1238,8 +1237,22 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     return null;
   }
 
+  /// A two-line note slot: under the night chart (the cycle hint, or the
+  /// reason there is none) and under the stage rows (what the figures are, or
+  /// why there are none). Two lines in every state, so the card is one height
+  /// empty and loaded.
+  Widget _hintSlot(BuildContext c, P p, String text) => ConstrainedBox(
+        constraints: BoxConstraints(
+            minHeight:
+                MediaQuery.textScalerOf(c).scale(F.over.fontSize!) * 1.5 * 2),
+        child: Text(text, style: F.over.copyWith(color: p.ink3, height: 1.5)),
+      );
+
+  /// [reason] says why there is no night when the window card below has no
+  /// times to show; it takes the hint's slot so the window card keeps the
+  /// loaded card's shape (title and actions).
   Widget _night(BuildContext c, P p, SleepData d, Map<String, dynamic> n,
-      {Map<String, dynamic>? device}) {
+      {Map<String, dynamic>? device, String? reason}) {
     final l = AppLocalizations.of(c);
     final stages = device == null ? d.stages : SleepData.stagesOf(device);
     if (stages.isEmpty) {
@@ -1260,15 +1273,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
             child: const SizedBox.expand(),
           ),
           const SizedBox(height: S.x2),
-          // Two lines tall, like the hint it stands in for.
-          ConstrainedBox(
-            constraints: BoxConstraints(
-                minHeight: scaler.scale(F.over.fontSize!) * 1.5 * 2),
-            child: Text(
-              l?.sleepDetailNoHypnogramTitle ?? 'No hypnogram for this night',
-              style: F.over.copyWith(color: p.ink3, height: 1.5),
-            ),
-          ),
+          _hintSlot(
+              c,
+              p,
+              reason ??
+                  l?.sleepDetailNoHypnogramTitle ??
+                  'No hypnogram for this night'),
         ]),
       );
     }
@@ -1302,7 +1312,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           Pill(l?.sleepDetailStagedByRing ?? 'Staged by your device', C.n500),
         ],
         const SizedBox(height: S.x2),
-        Text(
+        _hintSlot(
+          c,
+          p,
           cycles > 0
               ? (mean == null
                   ? (l?.sleepDetailTapDragCycles(cycles) ??
@@ -1312,7 +1324,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
                           '${hm(mean)} on average.'))
               : (l?.sleepDetailTapDragNone ??
                   'Tap or drag the chart for any moment of the night.'),
-          style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
         if (_shape(c, d) case final shape?) ...[
           const SizedBox(height: S.x2),
@@ -1756,7 +1767,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
         if (totals[s] case final v?) (s.label(l), v, ink[s]!),
     ];
     // No split: the same four rows with "—" and the reason under them, so the
-    // card keeps its size and place.
+    // card keeps its size and place. The note under the rows (the reason, or
+    // what the figures are) takes the same two-line slot either way.
     final none = rows.isEmpty;
     if (none) {
       rows.addAll([
@@ -1784,28 +1796,31 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       ),
       if (none) ...[
         const SizedBox(height: S.x2),
-        Text(
+        _hintSlot(
+            c,
+            p,
             l?.sleepDetailNoStageSplitBody ??
-                'No beat timing across the whole window.',
-            style: F.over.copyWith(color: p.ink3, height: 1.5)),
+                'No beat timing across the whole window.'),
       ] else if (_storedRanges(n) != null) ...[
         const SizedBox(height: S.x2),
         // Your own window's bounds are a different range from the estimator's:
         // they widen with the time the band did not record, and awake has one.
-        Text(
+        _hintSlot(
+            c,
+            p,
             l?.sleepDetailStageBoundsExplain ??
-                'These are your times, so each stage is a range as wide as the time the band did not record.',
-            style: F.over.copyWith(color: p.ink3, height: 1.5)),
+                'These are your times, so each stage is a range as wide as the time the band did not record.'),
       ] else if (r != null) ...[
         const SizedBox(height: S.x2),
         // The range IS the reading, and the copy says so straight. A wrist
         // infers stages from beat timing and movement; it does not count them.
         // The width is this night's own — better coverage, narrower range —
         // rather than one published figure applied to every night.
-        Text(
+        _hintSlot(
+            c,
+            p,
             l?.sleepDetailStageRangeExplain ??
-                'Stages are ranges; more recorded time means narrower ranges.',
-            style: F.over.copyWith(color: p.ink3, height: 1.5)),
+                'Stages are ranges; more recorded time means narrower ranges.'),
       ],
     ]);
   }

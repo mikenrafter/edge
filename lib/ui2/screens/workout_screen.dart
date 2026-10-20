@@ -382,8 +382,17 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                 Pill(loc?.wearableEstimated ?? 'Estimated', C.purple),
                 const SizedBox(width: S.x2),
               ],
+              // The form pill's slot is kept without a form, so the headline
+              // row is one height empty and loaded.
               if (tsb != null)
-                Pill(_form(c, tsb), tsb >= 0 ? C.green : C.orange),
+                Pill(_form(c, tsb), tsb >= 0 ? C.green : C.orange)
+              else
+                const Visibility(
+                    visible: false,
+                    maintainSize: true,
+                    maintainAnimation: true,
+                    maintainState: true,
+                    child: Pill(' ', C.green)),
             ]),
         ...[
           const SizedBox(height: S.x4),
@@ -414,6 +423,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                       : (loc?.workoutDailyLoadPartialDays(days) ??
                           '$days of the last '
                               'seven days produced a figure.')),
+              // The loaded note is the longer of the two; its lines are kept
+              // for the reason that stands in for it before there is a load.
+              footnoteLines: 3,
               series: trimp7,
               child: ChartScrub(
                 label: loc?.workoutDailyLoadTitle ?? 'Heart effort by day',
