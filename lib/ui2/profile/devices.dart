@@ -400,7 +400,16 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
             child: NavBar(l?.devicesWhichSourceWins ?? 'Which source wins'),
           ),
           if (_loading)
-            const Expanded(child: Center(child: CircularProgressIndicator()))
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: S.x4),
+                children: [
+                  InlineLoading(
+                      status: l?.loadingSignalPriorities ??
+                          'Reading which source wins each signal'),
+                ],
+              ),
+            )
           else if (_failed)
             Expanded(
               child: Center(

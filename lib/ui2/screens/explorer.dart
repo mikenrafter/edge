@@ -659,7 +659,10 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
         ]),
       );
     }
-    if (_loading) return const InlineLoading();
+    if (_loading) {
+      return InlineLoading(
+          status: l?.loadingExplorer ?? 'Reading the metrics you picked');
+    }
 
     final lines = <ExplorePlotLine>[
       for (final m in picked)

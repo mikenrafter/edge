@@ -12,7 +12,9 @@ import '../../data/db.dart' show LocalDb;
 import '../../sources/resolved_window.dart';
 import '../../sources/source_catalog.dart' show SourceCard;
 import '../../state/app_state.dart';
+import '../../l10n/app_localizations.dart';
 import '../grammar.dart';
+import '../inline_loading.dart';
 import '../profile/devices.dart' show SignalPriorityScreen, signalDisplayName;
 import '../profile/profile.dart' show SetRow, goto;
 import '../theme.dart';
@@ -23,9 +25,16 @@ import 'source_views.dart';
 /// empty list.
 class _Loaded<T> extends StatefulWidget {
   final String title;
+
+  /// What [load] is doing, shown while it runs.
+  final String status;
   final Future<T> Function(BuildContext) load;
   final Widget Function(BuildContext, T, Future<void> Function() reload) build;
-  const _Loaded({required this.title, required this.load, required this.build});
+  const _Loaded(
+      {required this.title,
+      required this.status,
+      required this.load,
+      required this.build});
 
   @override
   State<_Loaded<T>> createState() => _LoadedState<T>();
@@ -84,7 +93,12 @@ class _LoadedState<T> extends State<_Loaded<T>> {
                     ),
                   )
                 : _value == null
-                    ? const Center(child: CircularProgressIndicator())
+                    ? ListView(
+                        padding: const EdgeInsets.symmetric(horizontal: S.x4),
+                        children: [
+                          InlineLoading(status: widget.status),
+                        ],
+                      )
                     : widget.build(c, _value as T, _reload),
           ),
         ]),
@@ -99,6 +113,8 @@ class SourceCatalogScreen extends StatelessWidget {
   @override
   Widget build(BuildContext c) => _Loaded<List<SourceCard>>(
         title: 'Source catalog',
+        status: AppLocalizations.of(c)?.loadingSources ??
+            'Reading your sources',
         load: (c) => c.read<AppState>().sourceService.cards(),
         build: (c, cards, _) => ListView(
           padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
@@ -186,6 +202,8 @@ class _ResolvedDataScreenState extends State<ResolvedDataScreen> {
   @override
   Widget build(BuildContext c) => _Loaded<_Resolved>(
         title: 'Resolved data',
+        status: AppLocalizations.of(c)?.loadingResolvedData ??
+            'Working out which source won each stretch',
         load: _load,
         build: (c, data, reload) {
           if (data.signals.isEmpty) {

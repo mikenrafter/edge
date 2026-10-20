@@ -243,8 +243,8 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
     // today's number with somebody else's day.
     return detailScaffold(c, l?.readinessDetailTitle ?? 'Recovery', [
       if (_loading && _d == null) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: S.x4),
+        InlineLoading(status: l?.loadingRecovery ?? 'Reading your recovery'),
       ] else ...[
         AsOfHold(
           shown: d,

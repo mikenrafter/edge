@@ -429,9 +429,10 @@ class _BeatsState extends State<Beats> with RevisionReload {
         _asOf(d),
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
         if (_loading)
-          const Padding(
-            padding: EdgeInsets.only(top: S.x4),
-            child: InlineLoading(),
+          Padding(
+            padding: const EdgeInsets.only(top: S.x4),
+            child: InlineLoading(
+                status: l?.loadingSleepNight ?? 'Reading the night'),
           )
         else if (d.day == null)
           StatusCard(
@@ -445,7 +446,8 @@ class _BeatsState extends State<Beats> with RevisionReload {
           if (_beatsPending)
             Section(
               l?.beatsPoincareSection ?? 'Every beat against the one before it',
-              const InlineLoading(),
+              InlineLoading(
+                  status: l?.loadingBeats ?? "Reading the night's beats"),
             )
           else if (!_beatsFailed)
             _poincare(c, d),

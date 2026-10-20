@@ -268,7 +268,8 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         SubTabs(_tabs(c), _tab, (i) => setState(() => _tab = i), color: C.domFood),
         const SizedBox(height: S.x5),
         if (_loading)
-          const Center(child: CircularProgressIndicator())
+          InlineLoading(
+              status: l?.loadingNutrition ?? 'Reading your meals and water')
         else
           [_todayTab, _weekTab, _goalsTab][_tab](c),
       ],

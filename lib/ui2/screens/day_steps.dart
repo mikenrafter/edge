@@ -302,7 +302,7 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       if (_loading && _d == null) ...[
         const SizedBox(height: S.x4),
-        const InlineLoading(),
+        InlineLoading(status: l?.loadingDaySteps ?? "Reading this day's steps"),
       ] else if (d.spans.isEmpty)
         _absent(c, d)
       else ...[

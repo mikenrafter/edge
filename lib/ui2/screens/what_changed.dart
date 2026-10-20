@@ -157,7 +157,9 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> {
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       if (_loading) ...[
         const SizedBox(height: S.x4),
-        const InlineLoading(),
+        InlineLoading(
+            status: l?.loadingWhatChanged ??
+                'Comparing this day with your history'),
       ] else
         ...whatChangedBody(c, d),
     ]);

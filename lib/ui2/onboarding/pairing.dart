@@ -223,7 +223,9 @@ class PairingView extends StatelessWidget {
             ],
             if (busy) ...[
               const SizedBox(height: S.x8),
-              Center(child: CircularProgressIndicator(color: p.on(C.blue))),
+              InlineLoading(
+                  status: AppLocalizations.of(c)?.loadingPairing ??
+                      'Finding and pairing your band'),
             ],
             ..._advice(c, phase, detail),
             const SizedBox(height: S.x8),

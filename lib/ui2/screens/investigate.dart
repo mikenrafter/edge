@@ -288,8 +288,9 @@ class _InvestigateState extends State<Investigate> {
       [
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
         if (_loading) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: S.x4),
+        InlineLoading(
+            status: l?.loadingInvestigateDay ?? "Reading this day's numbers"),
       ] else ...[
           if (hrvish) ..._hrvPanels(c, d) else ..._genericPanels(c, spec, d),
           if (widget.metricKey == 'resp_rate') ..._restingBreathPanels(d),

@@ -889,17 +889,10 @@ class EcgCaptureBody extends StatelessWidget {
       case EcgCapturePhase.saving:
       case EcgCapturePhase.cleaningUp:
         return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: S.x4),
-              body(
-                s.phase == EcgCapturePhase.saving
-                    ? (l?.ecgSaving ?? 'Saving…')
-                    : (l?.ecgCleaningUp ?? 'Stopping the band…'),
-              ),
-            ],
+          child: InlineLoading(
+            status: s.phase == EcgCapturePhase.saving
+                ? (l?.loadingEcgSaving ?? 'Saving the recording')
+                : (l?.ecgCleaningUp ?? 'Stopping the band…'),
           ),
         );
       case EcgCapturePhase.completed:

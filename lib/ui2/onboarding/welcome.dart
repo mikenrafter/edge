@@ -612,7 +612,8 @@ class WelcomeView extends StatelessWidget {
             ),
             if (busy) ...[
               const SizedBox(height: S.x6),
-              Center(child: CircularProgressIndicator(color: p.on(C.blue))),
+              InlineLoading(
+                  status: l?.loadingImportHistory ?? 'Importing your history'),
             ],
             if (o != null) ...[
               const SizedBox(height: S.x6),

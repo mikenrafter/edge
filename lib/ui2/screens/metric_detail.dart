@@ -1216,7 +1216,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
         if (_loading)
-          const InlineLoading()
+          InlineLoading(
+              status: l?.loadingMetricHistory(
+                      nounInSentence(l, uiText(context, spec.title))) ??
+                  'Reading your ${nounInSentence(l, uiText(context, spec.title))} history')
         else
           StatusCard(
             win == 1
@@ -1286,8 +1289,11 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
           Section(l?.metricDetailWhatMovesItSection ?? 'What moves it',
               _movers(c, d.movers))
         else if (_moversPending)
-          Section(l?.metricDetailWhatMovesItSection ?? 'What moves it',
-              const InlineLoading()),
+          Section(
+              l?.metricDetailWhatMovesItSection ?? 'What moves it',
+              InlineLoading(
+                  status: l?.loadingJournalComparison ??
+                      'Comparing 90 days of journal entries')),
         const SizedBox(height: S.x5),
         // Steps are the one metric assembled from SPANS of the day, each
         // counted by a different sensor. That breakdown is a day's worth of

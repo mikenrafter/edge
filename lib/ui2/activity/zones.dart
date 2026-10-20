@@ -311,7 +311,8 @@ class _ZonesDetailState extends State<ZonesDetail> {
     return detailScaffold(c, l?.activityZonesTitle ?? 'Heart-rate zones', [
       if (_loading && _d == null) ...[
         const SizedBox(height: S.x4),
-        const InlineLoading(),
+        InlineLoading(
+            status: l?.loadingZones ?? 'Reading your heart-rate zones'),
       ] else ...[
         _ceiling(p, l, d),
         Section(l?.activityZonesYourZonesSection ?? 'Your zones', _zones(p, l, d)),

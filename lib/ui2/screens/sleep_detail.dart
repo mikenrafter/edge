@@ -596,9 +596,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     final title = l?.sleepDetailNavTitle ?? 'Sleep';
 
     if (_loading && _d == null) {
-      return _frame(c, title, const [
-        SizedBox(height: S.x4),
-        InlineLoading(),
+      return _frame(c, title, [
+        const SizedBox(height: S.x4),
+        InlineLoading(status: l?.loadingSleepNight ?? 'Reading the night'),
       ]);
     }
 

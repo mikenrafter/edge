@@ -239,10 +239,11 @@ class _NapsScreenState extends State<NapsScreen> {
     final l = AppLocalizations.of(c);
     final d = _d;
     if (d == null) {
-      return detailScaffold(c, l?.napsTitle ?? 'Naps', const [
+      return detailScaffold(c, l?.napsTitle ?? 'Naps', [
         Padding(
-          padding: EdgeInsets.only(top: S.x4),
-          child: InlineLoading(),
+          padding: const EdgeInsets.only(top: S.x4),
+          child: InlineLoading(
+              status: l?.loadingNaps ?? "Reading this day's naps"),
         ),
       ]);
     }

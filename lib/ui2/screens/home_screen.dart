@@ -2163,14 +2163,9 @@ class _HomeScreenState extends State<HomeScreen>
   /// through to its own "nothing yet" copy.
   Widget? _phaseStatusCard(BuildContext c, AppLocalizations? l) {
     if (!derivingOf(c)) return null;
-    return StatusCard(
-      l?.homeAnalyzingTitle ?? 'Crunching last night\'s numbers',
-      '',
-      leading: SizedBox(
-        width: 16,
-        height: 16,
-        child: CircularProgressIndicator(strokeWidth: 2, color: P.of(c).ink3),
-      ),
+    return InlineLoading(
+      status: l?.homeAnalyzingTitle ?? 'Crunching last night\'s numbers',
+      detail: calcProgressOf(c),
     );
   }
 
@@ -2254,7 +2249,7 @@ class _HomeScreenState extends State<HomeScreen>
         // below hand it the count read with the day.
         if (!_loading) const DetectedActivitiesCard(),
         if (_loading)
-          const InlineLoading()
+          InlineLoading(status: l?.loadingHomeToday ?? 'Reading today')
         else if (_failed)
           StatusCard(
             l?.homeLoadFailedTitle ?? 'Today could not be read',
@@ -2424,14 +2419,7 @@ class _HomeScreenState extends State<HomeScreen>
                       height: 40,
                       decoration: BoxDecoration(
                           shape: BoxShape.circle, color: p.fill(C.domHome)),
-                      child: Center(
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: p.inkOnFill),
-                        ),
-                      ),
+                      child: Center(child: syncBusyMark(p.inkOnFill)),
                     ),
                   )
                 : const ProfileAvatar(accent: C.domHome),
@@ -2476,7 +2464,13 @@ class _HomeScreenState extends State<HomeScreen>
         // Only for TODAY: a live workout right now says nothing about why a
         // PAST day the switcher stepped onto has nothing on it.
         if (building)
-          const InlineLoading()
+          derivingOf(c)
+              ? InlineLoading(
+                  status: l?.loadingCalculatingToday ?? 'Calculating today',
+                  detail: calcProgressOf(c))
+              : InlineLoading(
+                  status: l?.loadingWaitingToCalculateToday ??
+                      'Waiting to calculate today')
         else
           isToday && (widget.workoutLive ?? workoutLiveOf(c))
               ? workoutHoldCard(l)

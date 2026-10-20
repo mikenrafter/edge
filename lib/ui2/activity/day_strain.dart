@@ -223,8 +223,9 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
       l?.dayStrainTitle ?? 'Day strain',
       [
         if (_loading && _d == null) ...[
-          const SizedBox(height: S.x8),
-          const Center(child: CircularProgressIndicator()),
+          const SizedBox(height: S.x4),
+          InlineLoading(
+              status: l?.loadingDayStrain ?? "Reading today's strain"),
         ] else ...[
           ..._trace(p, l, d),
           ..._zones(p, l, d),

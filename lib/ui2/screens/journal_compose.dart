@@ -270,7 +270,14 @@ class _JournalComposeState extends State<JournalCompose> {
                 sub: _date, onBack: () => Navigator.of(c).pop()),
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? ListView(
+                      padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x8),
+                      children: [
+                        InlineLoading(
+                            status: l?.loadingJournalDay ??
+                                "Reading this day's journal"),
+                      ],
+                    )
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x8),
                       children: [
@@ -962,9 +969,10 @@ class _WeightTrendState extends State<_WeightTrend> {
     final l = AppLocalizations.of(c);
     final title = l?.journalComposeWeightLabel ?? 'Weight';
     if (_loading) {
-      return detailScaffold(c, title, const [
-        SizedBox(height: S.x8),
-        Center(child: CircularProgressIndicator()),
+      return detailScaffold(c, title, [
+        const SizedBox(height: S.x2),
+        InlineLoading(
+            status: l?.loadingWeightEntries ?? 'Reading your weight entries'),
       ]);
     }
     final p = P.of(c);
@@ -1186,8 +1194,20 @@ class _JournalAiSheetState extends State<_JournalAiSheet> {
                         controller: _scroll,
                         padding: const EdgeInsets.symmetric(
                             horizontal: S.x4, vertical: S.x2),
-                        itemCount: _turns.length,
+                        // While the reply is out, its place at the foot of
+                        // the conversation says so.
+                        itemCount: _turns.length + (_busy ? 1 : 0),
                         itemBuilder: (_, i) {
+                          if (i == _turns.length) {
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: S.x1),
+                              child: InlineLoading(
+                                  status: AppLocalizations.of(c)
+                                          ?.loadingAiReply ??
+                                      'Waiting for the reply'),
+                            );
+                          }
                           final t = _turns[i];
                           return Align(
                             alignment: t.fromUser
@@ -1258,14 +1278,10 @@ class _JournalAiSheetState extends State<_JournalAiSheet> {
                           color: p.fill(C.domMind),
                           borderRadius: R.rMd,
                         ),
-                        child: _busy
-                            ? SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: p.inkOnFill),
-                              )
-                            : Icon(LucideIcons.arrowUp, color: p.inkOnFill),
+                        child: Icon(LucideIcons.arrowUp,
+                            color: _busy
+                                ? p.inkOnFill.withValues(alpha: .5)
+                                : p.inkOnFill),
                       ),
                     ),
                   ],

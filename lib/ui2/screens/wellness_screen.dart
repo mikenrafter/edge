@@ -241,7 +241,9 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
     final l = AppLocalizations.of(c);
     if (widget.sleepPlanOnly) {
       return _loading
-          ? const InlineLoading()
+          ? InlineLoading(
+              status: l?.loadingWellness ??
+                  "Reading today's journal and medications")
           : _recovery(c);
     }
     final last = _breathing.isEmpty ? null : _breathing.first;
@@ -283,7 +285,9 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               color: C.domMind),
           const SizedBox(height: S.x5),
           if (_loading)
-            const InlineLoading()
+            InlineLoading(
+                status: l?.loadingWellness ??
+                    "Reading today's journal and medications")
           else ...[
             // Mind is the only tab here with something to START. The other
             // four are logs and reviews, and a "begin" card over a medication
@@ -1698,7 +1702,9 @@ class _JournalFindingsState extends State<JournalFindings> {
             padding: const EdgeInsets.only(bottom: S.x2),
             child: AsOfLabel(at: at)),
       if (!_rowsReady)
-        const InlineLoading()
+        InlineLoading(
+            status: l?.loadingJournalComparison ??
+                'Comparing 90 days of journal entries')
       else if (_rows.isEmpty)
         StatusCard(
           l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
@@ -1725,7 +1731,11 @@ class _JournalFindingsState extends State<JournalFindings> {
       ],
       Section(
         l?.wellnessWhichDayOfWeek ?? 'Which day of the week',
-        _weekdayReady ? _weekdayCard(c) : const InlineLoading(),
+        _weekdayReady
+            ? _weekdayCard(c)
+            : InlineLoading(
+                status: l?.loadingWeekdays ??
+                    'Comparing your days of the week'),
       ),
     ]);
   }

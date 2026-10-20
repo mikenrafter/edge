@@ -8413,5 +8413,72 @@
   },
   "sleepDetailTimesSavedRanges": "Время сохранено. Стадии этой ночи показаны диапазонами.",
   "sleepDetailUserWindowTitle": "Ваше время сохранено",
-  "sleepDetailUserWindowBody": "В ваше время браслет записал слишком мало, чтобы оценить эту ночь."
+  "sleepDetailUserWindowBody": "В ваше время браслет записал слишком мало, чтобы оценить эту ночь.",
+  "loadingSources": "Читаем ваши источники",
+  "loadingResolvedData": "Определяем, какой источник выбран для каждого отрезка",
+  "loadingSleepNight": "Читаем ночь",
+  "loadingMetricHistory": "Читаем историю: {metric}",
+  "@loadingMetricHistory": {
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
+  },
+  "loadingJournalComparison": "Сравниваем 90 дней дневника",
+  "loadingJournalDay": "Читаем дневник за этот день",
+  "loadingWeightEntries": "Читаем ваши записи веса",
+  "loadingAiReply": "Ждём ответа",
+  "loadingInvestigateDay": "Читаем показатели за этот день",
+  "loadingNaps": "Читаем дневной сон за этот день",
+  "loadingExplorer": "Читаем выбранные показатели",
+  "loadingHomeToday": "Читаем сегодняшний день",
+  "loadingCalculatingToday": "Считаем сегодняшний день",
+  "loadingWaitingToCalculateToday": "Ждём расчёта сегодняшнего дня",
+  "loadingHealthOverview": "Читаем сегодняшний день и ваши тренды",
+  "loadingVitals": "Читаем ваши жизненные показатели",
+  "loadingMeasures": "Читаем ваши измерения",
+  "loadingLabs": "Читаем ваши анализы",
+  "loadingDaySteps": "Читаем шаги за этот день",
+  "loadingRecovery": "Читаем ваше восстановление",
+  "loadingEcgSaving": "Сохраняем запись",
+  "loadingNutrition": "Читаем ваши приёмы пищи и воду",
+  "loadingWhatChanged": "Сравниваем этот день с вашей историей",
+  "loadingDayTimeline": "Читаем хронологию этого дня",
+  "loadingWellness": "Читаем сегодняшний дневник и лекарства",
+  "loadingWeekdays": "Сравниваем дни недели",
+  "loadingCycle": "Читаем ваш цикл",
+  "loadingSignalPriorities": "Читаем, какой источник выбран для каждого сигнала",
+  "loadingPairing": "Ищем и подключаем ваш браслет",
+  "loadingCircadian": "Читаем ваш суточный ритм",
+  "loadingActivitiesToReview": "Читаем занятия для проверки",
+  "loadingBeats": "Читаем удары сердца за ночь",
+  "loadingZones": "Читаем ваши пульсовые зоны",
+  "loadingDayStrain": "Читаем сегодняшнюю нагрузку",
+  "loadingWorkout": "Читаем эту тренировку",
+  "loadingExportCsv": "Экспортируем ваши данные в CSV",
+  "loadingExportHeartRate": "Экспортируем ваш пульс",
+  "loadingExportDb": "Экспортируем базу данных",
+  "loadingExportEncrypted": "Записываем зашифрованную копию",
+  "loadingBackupFolder": "Задаём папку для копий",
+  "loadingBackupNow": "Записываем резервную копию",
+  "loadingImportHistory": "Импортируем вашу историю",
+  "loadingReanalyze": "Пересчитываем каждый день",
+  "loadingDataBusy": "Работаем с вашими данными",
+  "loadingPhoneRhr": "Читаем пульс покоя из {store}",
+  "@loadingPhoneRhr": {
+    "placeholders": {
+      "store": {
+        "type": "String"
+      }
+    }
+  },
+  "loadingPhoneMeasurements": "Читаем измерения из {store}",
+  "@loadingPhoneMeasurements": {
+    "placeholders": {
+      "store": {
+        "type": "String"
+      }
+    }
+  }
 }

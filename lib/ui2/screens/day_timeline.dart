@@ -1080,7 +1080,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       if (_loading) ...[
         const SizedBox(height: S.x4),
-        const InlineLoading(),
+        InlineLoading(
+            status: l?.loadingDayTimeline ?? "Reading this day's timeline"),
       ] else ...[
         if (_candidates.length >= 2) ...[
           const SizedBox(height: S.x2),

@@ -17509,5 +17509,204 @@
   "sleepDetailUserWindowBody": "The band recorded too little inside your times to score this night.",
   "@sleepDetailUserWindowBody": {
     "description": "Status card body for a typed sleep window the band recorded too little inside."
+  },
+  "loadingSources": "Reading your sources",
+  "@loadingSources": {
+    "description": "Loading status while the source catalog is read."
+  },
+  "loadingResolvedData": "Working out which source won each stretch",
+  "@loadingResolvedData": {
+    "description": "Loading status while resolved data is worked out per signal."
+  },
+  "loadingSleepNight": "Reading the night",
+  "@loadingSleepNight": {
+    "description": "Loading status while a night of sleep is read from storage."
+  },
+  "loadingMetricHistory": "Reading your {metric} history",
+  "@loadingMetricHistory": {
+    "description": "Loading status while a metric's stored days are read. metric is the metric name in a sentence.",
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
+  },
+  "loadingJournalComparison": "Comparing 90 days of journal entries",
+  "@loadingJournalComparison": {
+    "description": "Loading status while 90 days of journal entries are compared with outcomes."
+  },
+  "loadingJournalDay": "Reading this day's journal",
+  "@loadingJournalDay": {
+    "description": "Loading status while the journal for one day is read."
+  },
+  "loadingWeightEntries": "Reading your weight entries",
+  "@loadingWeightEntries": {
+    "description": "Loading status while weight entries for the trend are read."
+  },
+  "loadingAiReply": "Waiting for the reply",
+  "@loadingAiReply": {
+    "description": "Status while the journal assistant's reply is awaited."
+  },
+  "loadingInvestigateDay": "Reading this day's numbers",
+  "@loadingInvestigateDay": {
+    "description": "Loading status while one day's stored results are read for Nerd stats."
+  },
+  "loadingNaps": "Reading this day's naps",
+  "@loadingNaps": {
+    "description": "Loading status while one day's naps are read."
+  },
+  "loadingExplorer": "Reading the metrics you picked",
+  "@loadingExplorer": {
+    "description": "Loading status while the explorer reads the picked metrics."
+  },
+  "loadingHomeToday": "Reading today",
+  "@loadingHomeToday": {
+    "description": "Loading status while Home reads today."
+  },
+  "loadingCalculatingToday": "Calculating today",
+  "@loadingCalculatingToday": {
+    "description": "Status while today is being calculated and has no figures yet."
+  },
+  "loadingWaitingToCalculateToday": "Waiting to calculate today",
+  "@loadingWaitingToCalculateToday": {
+    "description": "Status while today is owed a calculation that has not started."
+  },
+  "loadingHealthOverview": "Reading today and your trends",
+  "@loadingHealthOverview": {
+    "description": "Loading status while the Health overview reads today and the trend charts."
+  },
+  "loadingVitals": "Reading your vitals",
+  "@loadingVitals": {
+    "description": "Loading status for the Vitals tab."
+  },
+  "loadingMeasures": "Reading your measures",
+  "@loadingMeasures": {
+    "description": "Loading status for the Explore tab of Health."
+  },
+  "loadingLabs": "Reading your lab results",
+  "@loadingLabs": {
+    "description": "Loading status for the Labs tab."
+  },
+  "loadingDaySteps": "Reading this day's steps",
+  "@loadingDaySteps": {
+    "description": "Loading status while one day's steps are read."
+  },
+  "loadingRecovery": "Reading your recovery",
+  "@loadingRecovery": {
+    "description": "Loading status while the Recovery detail is read."
+  },
+  "loadingEcgSaving": "Saving the recording",
+  "@loadingEcgSaving": {
+    "description": "Status while a finished ECG recording is saved."
+  },
+  "loadingNutrition": "Reading your meals and water",
+  "@loadingNutrition": {
+    "description": "Loading status for Nutrition."
+  },
+  "loadingWhatChanged": "Comparing this day with your history",
+  "@loadingWhatChanged": {
+    "description": "Loading status for What changed."
+  },
+  "loadingDayTimeline": "Reading this day's timeline",
+  "@loadingDayTimeline": {
+    "description": "Loading status for the day breakdown."
+  },
+  "loadingWellness": "Reading today's journal and medications",
+  "@loadingWellness": {
+    "description": "Loading status for Wellness."
+  },
+  "loadingWeekdays": "Comparing your days of the week",
+  "@loadingWeekdays": {
+    "description": "Loading status for the weekday card."
+  },
+  "loadingCycle": "Reading your cycle",
+  "@loadingCycle": {
+    "description": "Loading status for Cycle."
+  },
+  "loadingSignalPriorities": "Reading which source wins each signal",
+  "@loadingSignalPriorities": {
+    "description": "Loading status for the source priority screen."
+  },
+  "loadingPairing": "Finding and pairing your band",
+  "@loadingPairing": {
+    "description": "Status while pairing scans for and pairs with the band."
+  },
+  "loadingCircadian": "Reading your daily rhythm",
+  "@loadingCircadian": {
+    "description": "Loading status for Body clock."
+  },
+  "loadingActivitiesToReview": "Reading activities to review",
+  "@loadingActivitiesToReview": {
+    "description": "Loading status for Detected activities."
+  },
+  "loadingBeats": "Reading the night's beats",
+  "@loadingBeats": {
+    "description": "Loading status for the beat-to-beat panel."
+  },
+  "loadingZones": "Reading your heart-rate zones",
+  "@loadingZones": {
+    "description": "Loading status for Heart-rate zones."
+  },
+  "loadingDayStrain": "Reading today's strain",
+  "@loadingDayStrain": {
+    "description": "Loading status for Day strain."
+  },
+  "loadingWorkout": "Reading this workout",
+  "@loadingWorkout": {
+    "description": "Loading status for one past workout."
+  },
+  "loadingExportCsv": "Exporting your data as CSV",
+  "@loadingExportCsv": {
+    "description": "Status while the CSV export runs."
+  },
+  "loadingExportHeartRate": "Exporting your heart rate",
+  "@loadingExportHeartRate": {
+    "description": "Status while the heart-rate export runs."
+  },
+  "loadingExportDb": "Exporting the database",
+  "@loadingExportDb": {
+    "description": "Status while the database export runs."
+  },
+  "loadingExportEncrypted": "Writing the encrypted backup",
+  "@loadingExportEncrypted": {
+    "description": "Status while the encrypted backup export runs."
+  },
+  "loadingBackupFolder": "Setting the backup folder",
+  "@loadingBackupFolder": {
+    "description": "Status while the backup folder is being set."
+  },
+  "loadingBackupNow": "Writing the backup",
+  "@loadingBackupNow": {
+    "description": "Status while a backup is written now."
+  },
+  "loadingImportHistory": "Importing your history",
+  "@loadingImportHistory": {
+    "description": "Status while an import runs."
+  },
+  "loadingReanalyze": "Recalculating every day",
+  "@loadingReanalyze": {
+    "description": "Status while every day is recalculated from stored data."
+  },
+  "loadingDataBusy": "Working on your data",
+  "@loadingDataBusy": {
+    "description": "Status on Your data when the running action is not named."
+  },
+  "loadingPhoneRhr": "Reading resting heart rate from {store}",
+  "@loadingPhoneRhr": {
+    "description": "Status while resting heart rate is read from the phone health store.",
+    "placeholders": {
+      "store": {
+        "type": "String"
+      }
+    }
+  },
+  "loadingPhoneMeasurements": "Reading measurements from {store}",
+  "@loadingPhoneMeasurements": {
+    "description": "Status while measurements are read from the phone health store.",
+    "placeholders": {
+      "store": {
+        "type": "String"
+      }
+    }
   }
 }

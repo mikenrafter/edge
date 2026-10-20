@@ -150,7 +150,9 @@ class _DetectedActivitiesScreenState extends State<DetectedActivitiesScreen>
                       onFix: _load,
                     ),
                   if (items == null && _error == null)
-                    const Center(child: CircularProgressIndicator()),
+                    InlineLoading(
+                        status: l?.loadingActivitiesToReview ??
+                            'Reading activities to review'),
                   if (_error == null && items != null && items.isEmpty)
                     StatusCard(
                       l?.activityNothing ?? 'Nothing to review',

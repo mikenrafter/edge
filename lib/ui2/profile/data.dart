@@ -58,6 +58,9 @@ class DataScreen extends StatefulWidget {
 
 class _DataScreenState extends State<DataScreen> {
   bool _busy = false;
+
+  /// What the running action is doing, shown under the spinner while [_busy].
+  String? _busyStatus;
   String? _note;
 
   /// Whether [_note] is a failure. Every outcome used to render as "Done" with
@@ -78,10 +81,11 @@ class _DataScreenState extends State<DataScreen> {
   ///
   /// Every action on this screen is slow, destructive-adjacent or both, and a
   /// second tap while one is running would race the first over the same files.
-  Future<void> _run(Future<_Note> Function() job) async {
+  Future<void> _run(String status, Future<_Note> Function() job) async {
     if (_busy) return;
     setState(() {
       _busy = true;
+      _busyStatus = status;
       _note = null;
       _outcome = null;
     });
@@ -317,9 +321,11 @@ class _DataScreenState extends State<DataScreen> {
   @override
   Widget build(BuildContext c) {
     final app = c.watch<AppState>();
+    final l = AppLocalizations.of(c);
     return DataScreenView(
       rebuiltCard: dbRebuiltCard(app.dbRebuild),
       busy: _busy,
+      busyStatus: _busyStatus,
       note: _note,
       noteFailed: _noteFailed,
       outcome: _outcome,
@@ -330,17 +336,30 @@ class _DataScreenState extends State<DataScreen> {
       reanalyzeProgress: app.reanalyzeProgress,
       reanalyzing: app.reanalyzing,
       importRollupError: app.importRollupError,
-      onExportCsv: () => _run(_exportCsv),
-      onExportHeartRate: () => _run(_exportHeartRate),
-      onExportDb: () => _run(_exportDb),
-      onExportEncrypted: () => _run(_exportEncrypted),
+      onExportCsv: () => _run(
+          l?.loadingExportCsv ?? 'Exporting your data as CSV', _exportCsv),
+      onExportHeartRate: () => _run(
+          l?.loadingExportHeartRate ?? 'Exporting your heart rate',
+          _exportHeartRate),
+      onExportDb: () =>
+          _run(l?.loadingExportDb ?? 'Exporting the database', _exportDb),
+      onExportEncrypted: () => _run(
+          l?.loadingExportEncrypted ?? 'Writing the encrypted backup',
+          _exportEncrypted),
       onCycleCadence: () => app.setBackupCadence(_nextCadence(app.backupCadence)),
-      onChooseBackupFolder: () => _run(() => _chooseBackupFolder(app)),
-      onUseDefaultBackupFolder: () => _run(() => _useDefaultBackupFolder(app)),
-      onBackupNow: () => _run(() => _backupNow(app)),
-      onImport: () => _run(() => _import(app)),
+      onChooseBackupFolder: () => _run(
+          l?.loadingBackupFolder ?? 'Setting the backup folder',
+          () => _chooseBackupFolder(app)),
+      onUseDefaultBackupFolder: () => _run(
+          l?.loadingBackupFolder ?? 'Setting the backup folder',
+          () => _useDefaultBackupFolder(app)),
+      onBackupNow: () => _run(l?.loadingBackupNow ?? 'Writing the backup',
+          () => _backupNow(app)),
+      onImport: () => _run(l?.loadingImportHistory ?? 'Importing your history',
+          () => _import(app)),
       onPhoneImport: () => goto(c, const PhoneImport()),
-      onReanalyze: () => _run(() => _reanalyze(app)),
+      onReanalyze: () => _run(l?.loadingReanalyze ?? 'Recalculating every day',
+          () => _reanalyze(app)),
       onReset: () => confirmResetAllData(c, app),
     );
   }
@@ -353,6 +372,7 @@ class DataScreenView extends StatelessWidget {
     super.key,
     this.rebuiltCard,
     this.busy = false,
+    this.busyStatus,
     this.note,
     this.noteFailed = false,
     this.outcome,
@@ -378,6 +398,9 @@ class DataScreenView extends StatelessWidget {
   });
 
   final Widget? rebuiltCard;
+
+  /// What the running action is doing, under the spinner while [busy].
+  final String? busyStatus;
   final bool busy, noteFailed, reanalyzing;
   final String? note, importRollupError;
   final String reanalyzeProgress;
@@ -554,7 +577,10 @@ class DataScreenView extends StatelessWidget {
                 ]),
                 if (busy) ...[
                   const SizedBox(height: S.x6),
-                  Center(child: CircularProgressIndicator(color: p.on(C.blue))),
+                  InlineLoading(
+                      status: busyStatus ??
+                          l?.loadingDataBusy ??
+                          'Working on your data'),
                 ],
                 if (note != null && note!.isNotEmpty) ...[
                   const SizedBox(height: S.x5),

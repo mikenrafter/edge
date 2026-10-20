@@ -291,9 +291,38 @@ String syncStatusLine(SyncPresentationState s, DateTime now) {
 }
 
 /// The live calculation line for a screen whose data waits on derivation.
-// Phase 1 stub so the red tests compile; phase 2 implements it.
-String? calcProgressLine(SyncPresentationState s) =>
-    throw UnimplementedError('calcProgressLine');
+/// Null unless a calculation is running. Unlike [syncStatusLine], waiting
+/// says only that: the download's result belongs to the sync sheet.
+String? calcProgressLine(SyncPresentationState s) {
+  if (s.phase != 'deriving') return null;
+  final calc = s.calculate;
+  if (calc != null && calc.waiting) return 'Waiting for another calculation';
+  final i = calc?.dayIndex, total = calc?.dayTotal;
+  if (i == null || total == null || i <= 0) return 'Calculating…';
+  final day = calc?.day;
+  return day == null
+      ? 'Calculating · day $i of $total'
+      : 'Calculating · day $i of $total · $day';
+}
+
+/// [calcProgressLine] for the [AppState] above [c], rebuilding only when the
+/// line changes. Null with no AppState (fixtures render without one).
+String? calcProgressOf(BuildContext c) {
+  try {
+    return c.select<AppState, String?>(
+        (a) => calcProgressLine(a.syncPresentation));
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The busy face the profile button shows while a sync runs. The status
+/// sentence on the same header row says what the sync is doing.
+Widget syncBusyMark(Color color) => SizedBox(
+      width: 18,
+      height: 18,
+      child: CircularProgressIndicator(strokeWidth: 2, color: color),
+    );
 
 /// The first clause of [syncStatusLine]: "Downloading…", "Calculating", "Sync
 /// failed". The header says it without the backlog or the day count, which the

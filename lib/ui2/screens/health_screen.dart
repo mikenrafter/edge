@@ -684,7 +684,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
       const SizedBox(height: S.x5),
       if (_loading && _d == null)
-        const InlineLoading()
+        InlineLoading(
+            status: l?.loadingHealthOverview ?? 'Reading today and your trends')
       else
         switch (_tab) {
           0 => _overview(c, d),
@@ -1200,8 +1201,10 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               setState(() => _vFailed = false);
               _loadVitals();
             })
-          : const Padding(
-              padding: EdgeInsets.only(top: S.x3), child: InlineLoading());
+          : Padding(
+              padding: const EdgeInsets.only(top: S.x3),
+              child: InlineLoading(
+                  status: l?.loadingVitals ?? 'Reading your vitals'));
     }
 
     // WHICH DAY this tab is showing. Every row here used to say "Today" for a
@@ -1416,8 +1419,10 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               setState(() => _eFailed = false);
               _loadExplore();
             })
-          : const Padding(
-              padding: EdgeInsets.only(top: S.x3), child: InlineLoading());
+          : Padding(
+              padding: const EdgeInsets.only(top: S.x3),
+              child: InlineLoading(
+                  status: l?.loadingMeasures ?? 'Reading your measures'));
     }
 
     var have = 0, total = 0;
@@ -1533,7 +1538,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               setState(() => _lFailed = false);
               _loadLabs();
             })
-          : const InlineLoading();
+          : InlineLoading(
+              status: loc?.loadingLabs ?? 'Reading your lab results');
     }
 
     final sex = (_d?.profile['sex'])?.toString();

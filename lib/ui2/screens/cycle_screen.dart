@@ -341,7 +341,9 @@ class _CycleTabState extends State<CycleTab> with RevisionReload {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final d = _d;
-    if (d == null) return const InlineLoading();
+    if (d == null) {
+      return InlineLoading(status: l?.loadingCycle ?? 'Reading your cycle');
+    }
 
     if (!d.enabled) {
       return StatusCard(

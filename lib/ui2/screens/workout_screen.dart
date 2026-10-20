@@ -1098,7 +1098,11 @@ class _PastSummaryState extends State<_PastSummary> {
     return detailScaffold(
       c,
       w.importedTitle ?? w.activity.displayName(c),
-      const [InlineLoading()],
+      [
+        InlineLoading(
+            status: AppLocalizations.of(c)?.loadingWorkout ??
+                'Reading this workout'),
+      ],
       sub: prettyDay(dayLabelOf(w.start), AppLocalizations.of(c)),
     );
   }

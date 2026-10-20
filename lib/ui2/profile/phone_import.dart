@@ -70,6 +70,9 @@ class PhoneImport extends StatefulWidget {
 
 class _PhoneImportState extends State<PhoneImport> {
   bool _busy = false;
+
+  /// What the running read is doing, shown under the spinner while [_busy].
+  String? _busyStatus;
   String? _note;
   bool _noteFailed = false;
 
@@ -102,10 +105,11 @@ class _PhoneImportState extends State<PhoneImport> {
     });
   }
 
-  Future<void> _run(Future<(String, bool)> Function() job) async {
+  Future<void> _run(String status, Future<(String, bool)> Function() job) async {
     if (_busy) return;
     setState(() {
       _busy = true;
+      _busyStatus = status;
       _note = null;
     });
     try {
@@ -235,7 +239,10 @@ class _PhoneImportState extends State<PhoneImport> {
                             icon: LucideIcons.heartPulse,
                             color: C.blue,
                             soft: true,
-                            onTap: _busy ? null : () => _run(_seedRhr),
+                            onTap: _busy ? null : () => _run(
+                                l?.loadingPhoneRhr(storeName) ??
+                                    'Reading resting heart rate from $storeName',
+                                _seedRhr),
                           ),
                         ],
                       ),
@@ -327,7 +334,10 @@ class _PhoneImportState extends State<PhoneImport> {
                             icon: LucideIcons.stethoscope,
                             color: C.teal,
                             soft: true,
-                            onTap: _busy ? null : () => _run(_syncMeasurements),
+                            onTap: _busy ? null : () => _run(
+                                l?.loadingPhoneMeasurements(storeName) ??
+                                    'Reading measurements from $storeName',
+                                _syncMeasurements),
                           ),
                         ],
                       ),
@@ -359,9 +369,7 @@ class _PhoneImportState extends State<PhoneImport> {
                   const SizedBox(height: S.x2),
                   if (_busy) ...[
                     const SizedBox(height: S.x6),
-                    Center(
-                      child: CircularProgressIndicator(color: p.on(C.blue)),
-                    ),
+                    InlineLoading(status: _busyStatus ?? ''),
                   ],
                   if (_note != null && _note!.isNotEmpty) ...[
                     const SizedBox(height: S.x5),

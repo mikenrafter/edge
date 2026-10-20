@@ -20,7 +20,8 @@ const _allowed = <String, String>{
   'lib/ui2/grammar.dart':
       'BigButton busy state: the spinner sits beside the button label',
   'lib/ui2/sync_control.dart':
-      'leads the sync status sentence ("Calculating · day 3 of 12")',
+      'leads the sync status sentence ("Calculating · day 3 of 12"); '
+          'syncBusyMark is the profile button beside that sentence',
   'lib/ui2/screens/coach.dart':
       'leads the coach status row, whose text names the current step',
   'lib/ui2/profile/wearable_numbers.dart':
