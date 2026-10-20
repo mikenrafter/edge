@@ -614,78 +614,55 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       // times are kept and the stages are ranges, so "wear the band" would be
       // wrong here.
       final userSet = (d.night['sleep_source'] as String?) == 'manual';
+      final p = P.of(c);
+      final windowCard = _windowCard(c, p, d, d.night);
+      // The same cards in the same places as a scored night, drawn empty
+      // (first launch, a rejected night, a day the band was off): the answer,
+      // the night, the window, the stages and the sections under them. Only
+      // what is inside each card differs.
       return _frame(c, title, [
-        ...dayNavRow(_day ?? d.day, d.days, _goDay),
-        ..._nightControls(d),
-        const SizedBox(height: S.x2),
-        ...?_windowCard(c, P.of(c), d, d.night),
+        ..._dayNav(d),
+        ..._nightControls(d, recalc: false),
+        _answer(c, p, d, d.night),
+        const SizedBox(height: S.x3),
+        _night(c, p, d, d.night),
+        // The window slot: the window card when the times are saved, else the
+        // reason there is no night, in the same place.
+        ...?windowCard,
+        if (windowCard == null) const SizedBox(height: S.x3),
         // A day CAN be in `availableDays` and still hold no night — the band
         // was worn through the day and off overnight. Stepping onto one of
         // those says so and leaves the stepper above it, so it is a day you
         // walk off rather than a dead end.
-        StatusCard(
-          rejected
-              ? (l?.sleepDetailRejectedTitle ?? 'Marked as not sleep')
-              : userSet
-                  ? (l?.sleepDetailUserWindowTitle ?? 'Your times are saved')
-                  : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
-          rejected
-              ? (l?.sleepDetailRejectedBody ??
-                  'You told us this stretch was not sleep, so nothing is '
-                      'scored for it.')
-              : userSet
-                  ? (l?.sleepDetailUserWindowBody ??
-                      'The band recorded too little inside your times to score '
-                          'this night.')
-                  : (l?.sleepDetailNoNightBody ??
-                      'No stretch of band recordings long enough to score.'),
-          fix: rejected || userSet
-              ? ''
-              : (l?.sleepDetailNoNightFix ??
-                  'Wear the band overnight and sync in the morning'),
-          icon: rejected ? LucideIcons.undo2 : LucideIcons.moon,
-        ),
-        // A typed window with too little recorded still has its bounds (D27):
-        // the range, never a point value.
-        if (userSet && _storedRanges(d.night) != null) ...[
-          const SizedBox(height: S.x3),
-          Section(l?.sleepDetailStagesSection ?? 'Stages',
-              _stages(c, P.of(c), d.night)),
-        ],
-        if (rejected) ...[
-          const SizedBox(height: S.x2),
-          TextButton(
-            onPressed: _saving ? null : () => _clearWindow(rejectedDay),
-            child: Text(
-                l?.sleepDetailUndoRejection ?? 'Undo — go back to automatic'),
+        if (windowCard == null)
+          _emptyWindowCard(c, p, d, rejected: rejected)
+        else
+          // Saved times, but too little recorded inside them to score.
+          StatusCard(
+            userSet
+                ? (l?.sleepDetailUserWindowTitle ?? 'Your times are saved')
+                : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
+            userSet
+                ? (l?.sleepDetailUserWindowBody ??
+                    'The band recorded too little inside your times to score '
+                        'this night.')
+                : (l?.sleepDetailNoNightBody ??
+                    'No stretch of band recordings long enough to score.'),
+            icon: LucideIcons.moon,
           ),
-        ] else if (rejectedDay != null && !_hasWindowCard(d)) ...[
-          // A night the detector missed is the other half of "it got it
-          // wrong": the same manual window a mis-staged night gets, stored as
-          // an override so every later re-analysis stages from it. A night
-          // with a window (times the user set) has the window card's controls.
-          const SizedBox(height: S.x2),
-          TextButton(
-            onPressed: _saving || _loading
-                ? null
-                : () => _addWindow(rejectedDay),
-            child: Text(l?.sleepDetailIWasAsleep ?? 'I was asleep'),
-          ),
-          // Why a correction did not take is said once, by [_nightControls].
-          if (_saving)
-            Text(l?.sleepDetailReanalysing ?? 'Re-analysing the night…',
-                style: F.cap.copyWith(color: P.of(c).ink3)),
-        ],
+        if (_saving)
+          Text(l?.sleepDetailReanalysing ?? 'Re-analysing the night…',
+              style: F.cap.copyWith(color: P.of(c).ink3)),
         // A day with no main-sleep window can still have naps — worn all
         // day, off overnight, or a rejected night — so this door to the naps
         // screen does not live inside the window card.
         ..._napsButton(c, l, d.day),
+        ..._sections(c, p, d, d.night),
       ]);
     }
 
     final p = P.of(c);
     final n = d.night;
-    final unusual = _unusual(c, p, d, n);
 
     // The stepper names the night, so the nav bar does not say it twice. With
     // one night on disk there is no stepper, and then the subtitle is the only
@@ -693,7 +670,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     return _frame(c, title,
         sub: d.days.length < 2 ? (d.day ?? '').toUpperCase() : '', [
       _asOf(d),
-      ...dayNavRow(_day ?? d.day, d.days, _goDay),
+      ..._dayNav(d),
       ..._nightControls(d),
 
       // ── 1 · THE ANSWER ──
@@ -735,31 +712,133 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       ...?_windowCard(c, p, d, n),
       ..._napsButton(c, l, d.day),
 
+      ..._sections(c, p, d, n),
+    ]);
+  }
+
+  /// The window card's place when there are no saved times: why there is no
+  /// night, and the actions that apply, in the same box the window card has.
+  Widget _emptyWindowCard(BuildContext c, P p, SleepData d,
+      {required bool rejected}) {
+    final l = AppLocalizations.of(c);
+    final day = d.day;
+    final busy = _saving || _loading;
+    return Surface(
+      key: const ValueKey('card:window'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(rejected ? LucideIcons.undo2 : LucideIcons.moon,
+              size: 16, color: p.ink3),
+          const SizedBox(width: S.x2),
+          Expanded(
+            child: Text(
+              rejected
+                  ? (l?.sleepDetailRejectedTitle ?? 'Marked as not sleep')
+                  : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
+              style: F.body.copyWith(color: p.ink),
+            ),
+          ),
+        ]),
+        const SizedBox(height: S.x2),
+        Text(
+          rejected
+              ? (l?.sleepDetailRejectedBody ??
+                  'You told us this stretch was not sleep, so nothing is '
+                      'scored for it.')
+              : (l?.sleepDetailNoNightBody ??
+                  'No stretch of band recordings long enough to score.'),
+          style: F.cap.copyWith(color: p.ink3),
+        ),
+        const SizedBox(height: S.x2),
+        Wrap(spacing: S.x2, children: [
+          _recalculateButton(_day ?? day ?? todayLabel()),
+          // A rejected night's way back takes the place of "I was asleep" and
+          // "Not sleep": one more answer would contradict the reason above.
+          if (rejected && day != null)
+            TextButton(
+              onPressed: _saving ? null : () => _clearWindow(day),
+              child: Text(
+                  l?.sleepDetailUndoRejection ?? 'Undo — go back to automatic'),
+            )
+          else ...[
+            TextButton(
+              onPressed: busy || day == null ? null : () => _addWindow(day),
+              child: Text(l?.sleepDetailIWasAsleep ?? 'I was asleep'),
+            ),
+            TextButton(
+              onPressed: busy || day == null ? null : () => _rejectWindow(day),
+              child: Text(l?.sleepDetailNotSleep ?? 'Not sleep'),
+            ),
+          ],
+        ]),
+      ]),
+    );
+  }
+
+  /// The night stepper. On the tab it is always drawn (dimmed with fewer than
+  /// two nights), so the second night arriving does not push the screen down.
+  List<Widget> _dayNav(SleepData d) => widget.embedded
+      ? [
+          DayNav(
+              day: _day ?? d.day,
+              days: d.days,
+              onDay: _goDay,
+              alwaysShow: true),
+          const SizedBox(height: S.x3),
+        ]
+      : dayNavRow(_day ?? d.day, d.days, _goDay);
+
+  /// Everything under the window: stages, the comparison, what stood out, the
+  /// overnight signals, tonight and the door to the numbers. ONE list for a
+  /// scored night and for none, so first launch and loaded show the same cards
+  /// in the same places; each card is keyed `card:<name>` and only its content
+  /// differs.
+  List<Widget> _sections(
+      BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
+    final l = AppLocalizations.of(c);
+    final unusual = _unusual(c, p, d, n);
+    return [
       // ── 3 · WHAT IT WAS MADE OF ──
-      Section(l?.sleepDetailStagesSection ?? 'Stages', _stages(c, p, n)),
+      Section(l?.sleepDetailStagesSection ?? 'Stages', _stages(c, p, n),
+          key: const ValueKey('card:stages')),
 
       // ── 4 · AGAINST THE USER'S OWN NIGHTS ──
       if (_versusUsual(c, p, d, n) case final versus?)
-        Section(l?.sleepDetailVersusUsualSection ?? 'Against your usual', versus),
+        Section(l?.sleepDetailVersusUsualSection ?? 'Against your usual', versus,
+            key: const ValueKey('card:versus')),
 
       // ── 5 · WHAT STOOD OUT ──
       // Named after the night the nav bar is already showing. "Unusual last
       // night — Nothing stood out." is a present-tense all-clear, and it was
       // printed over a night that could be days old.
-      if (unusual != null)
-        Section(
-            (daysBehind(_noonOf(d.day)) ?? 0) <= 0
-                ? (l?.sleepDetailUnusualLastNight ?? 'Unusual last night')
-                : (l?.sleepDetailUnusualOnDay(prettyDay(d.day, l)) ??
-                    'Unusual on ${prettyDay(d.day, l)}'),
-            unusual),
+      Section(
+          (daysBehind(_noonOf(d.day)) ?? 0) <= 0
+              ? (l?.sleepDetailUnusualLastNight ?? 'Unusual last night')
+              : (l?.sleepDetailUnusualOnDay(prettyDay(d.day, l)) ??
+                  'Unusual on ${prettyDay(d.day, l)}'),
+          // Too few nights to have looked: say so, in the card's place, rather
+          // than dropping the section (which moved everything under it) or
+          // reassuring from no evidence.
+          unusual ??
+              StatusCard(
+                l?.sleepDetailNotEnoughNightsTitle ??
+                    'Not enough nights to compare',
+                '',
+                fix: l?.sleepDetailNightsSoFar(
+                        d.tstHistory.length, _recordNights) ??
+                    '${d.tstHistory.length} of $_recordNights nights so far',
+                icon: LucideIcons.chartNoAxesColumn,
+              ),
+          key: const ValueKey('card:unusual')),
 
       // ── 6 · THE SIGNALS UNDERNEATH ──
       Section(l?.sleepDetailOvernightSection ?? 'Overnight signals',
-          _overnight(c, p, d)),
+          _overnight(c, p, d),
+          key: const ValueKey('card:overnight')),
 
       // ── 7 · ONE TAKEAWAY ──
-      Section(l?.sleepDetailTonightSection ?? 'Tonight', _tonight(c, p, d)),
+      Section(l?.sleepDetailTonightSection ?? 'Tonight', _tonight(c, p, d),
+          key: const ValueKey('card:tonight')),
 
       const SizedBox(height: S.x5),
       // The night this screen is steered to, not the newest one. Dropping it
@@ -768,7 +847,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       // came from.
       investigateRow(
           c, () => go(c, Investigate('sleep', day: _day ?? d.day))),
-    ]);
+    ];
   }
 
   /// Total sleep, when it ran, and the two ratios that qualify it. Everything
@@ -788,36 +867,35 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
         ? null
         : math.max(0, inBed - unobserved);
     return Surface(
+      key: const ValueKey('card:answer'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(hm(tst), style: F.n48.copyWith(color: p.ink)),
+        Text(tst == null ? '—' : hm(tst), style: F.n48.copyWith(color: p.ink)),
         const SizedBox(height: S.x1),
         Text(l?.sleepDetailTotalSleep ?? 'Total sleep',
             style: F.cap.copyWith(color: p.ink3)),
-        if (from.isNotEmpty && to.isNotEmpty) ...[
-          const SizedBox(height: S.x4),
-          Row(children: [
-            Icon(LucideIcons.moon, size: 15, color: p.ink3),
-            const SizedBox(width: S.x2),
-            Flexible(
-              child: Text('$from → $to',
-                  style: F.body
-                      .copyWith(color: p.ink, fontWeight: FontWeight.w600)),
-            ),
-          ]),
-        ],
-        if (inBed != null || eff != null) ...[
-          const SizedBox(height: S.x4),
-          InlineMetrics([
-            if (inBed != null) (l?.sleepDetailInBed ?? 'IN BED', hm(inBed), C.indigo),
-            if (watched != null)
-              (l?.sleepDetailWatched ?? 'WATCHED', hm(watched), C.sky),
-            if (eff != null)
-              (watched == null
-                  ? (l?.sleepDetailAsleepOfThat ?? 'ASLEEP OF THAT')
-                  : (l?.sleepDetailAsleep ?? 'ASLEEP'),
-                  _pct(eff * 100), C.green),
-          ]),
-        ],
+        // Both rows are always here: with no night they read "—", so the card
+        // is the same height first launch and loaded.
+        const SizedBox(height: S.x4),
+        Row(children: [
+          Icon(LucideIcons.moon, size: 15, color: p.ink3),
+          const SizedBox(width: S.x2),
+          Flexible(
+            child: Text(from.isNotEmpty && to.isNotEmpty ? '$from → $to' : '—',
+                style: F.body
+                    .copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+          ),
+        ]),
+        const SizedBox(height: S.x4),
+        InlineMetrics([
+          (l?.sleepDetailInBed ?? 'IN BED', inBed == null ? '—' : hm(inBed),
+              C.indigo),
+          if (watched != null)
+            (l?.sleepDetailWatched ?? 'WATCHED', hm(watched), C.sky),
+          (watched == null
+              ? (l?.sleepDetailAsleepOfThat ?? 'ASLEEP OF THAT')
+              : (l?.sleepDetailAsleep ?? 'ASLEEP'),
+              eff == null ? '—' : _pct(eff * 100), C.green),
+        ]),
         if (watched != null) ...[
           const SizedBox(height: S.x3),
           Text(
@@ -881,6 +959,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     return [
       const SizedBox(height: S.x3),
       Surface(
+        key: const ValueKey('card:window'),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Icon(mine ? LucideIcons.userCheck : LucideIcons.wandSparkles,
@@ -1082,10 +1161,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
 
   /// Recalculate when no window card carries it, and why the last correction
   /// did not take (or that its times were saved without numbers).
-  List<Widget> _nightControls(SleepData d) {
+  List<Widget> _nightControls(SleepData d, {bool recalc = true}) {
     final day = _day ?? d.day ?? todayLabel();
     return [
-      if (!_hasWindowCard(d)) _recalculateButton(day),
+      if (recalc && !_hasWindowCard(d)) _recalculateButton(day),
       if (_overrideFailed case final error?)
         StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
     ];
@@ -1163,11 +1242,33 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     final l = AppLocalizations.of(c);
     final stages = device == null ? d.stages : SleepData.stagesOf(device);
     if (stages.isEmpty) {
-      return StatusCard(
-        l?.sleepDetailNoHypnogramTitle ?? 'No hypnogram for this night',
-        l?.sleepDetailNoHypnogramBody ??
-            'Staging needs movement and beat timing. One was missing.',
-        icon: LucideIcons.chartNoAxesColumn,
+      // The same card with the chart's box left empty, so no night (or a night
+      // whose staging failed) does not change the card's size or place. The
+      // reason takes the line the chart's hint has.
+      final scaler = MediaQuery.textScalerOf(c);
+      final lane =
+          math.max(33.0, scaler.scale(F.over.fontSize!) * F.over.height! + 8);
+      return Surface(
+        key: const ValueKey('card:night'),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ChartFrame(
+            title: l?.sleepDetailThroughTheNight ?? 'Through the night',
+            unit: l?.sleepDetailUnitStage ?? 'stage',
+            height: lane * 4,
+            xLabels: const ['', ''],
+            child: const SizedBox.expand(),
+          ),
+          const SizedBox(height: S.x2),
+          // Two lines tall, like the hint it stands in for.
+          ConstrainedBox(
+            constraints: BoxConstraints(
+                minHeight: scaler.scale(F.over.fontSize!) * 1.5 * 2),
+            child: Text(
+              l?.sleepDetailNoHypnogramTitle ?? 'No hypnogram for this night',
+              style: F.over.copyWith(color: p.ink3, height: 1.5),
+            ),
+          ),
+        ]),
       );
     }
     final t0 = (n['onset_ts'] as num?)?.round();
@@ -1179,6 +1280,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     final lane = math.max(33.0, scaler.scale(F.over.fontSize!) * F.over.height! + 8);
     final totals = _stageTotals(device ?? n, device: device != null);
     return Surface(
+      key: const ValueKey('card:night'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ChartFrame(
           title: l?.sleepDetailThroughTheNight ?? 'Through the night',
@@ -1652,13 +1754,19 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       ])
         if (totals[s] case final v?) (s.label(l), v, ink[s]!),
     ];
-    if (rows.isEmpty) {
-      return StatusCard(
-        l?.sleepDetailNoStageSplitTitle ?? 'No stage split for this night',
-        l?.sleepDetailNoStageSplitBody ??
-            'No beat timing across the whole window.',
-        icon: LucideIcons.chartNoAxesColumn,
-      );
+    // No split: the same four rows with "—" and the reason under them, so the
+    // card keeps its size and place.
+    final none = rows.isEmpty;
+    if (none) {
+      rows.addAll([
+        for (final s in const [
+          SleepStage.deep,
+          SleepStage.rem,
+          SleepStage.light,
+          SleepStage.awake,
+        ])
+          (s.label(l), '—', ink[s]!),
+      ]);
     }
     return Column(children: [
       Surface(
@@ -1673,7 +1781,13 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           ],
         ]),
       ),
-      if (_storedRanges(n) != null) ...[
+      if (none) ...[
+        const SizedBox(height: S.x2),
+        Text(
+            l?.sleepDetailNoStageSplitBody ??
+                'No beat timing across the whole window.',
+            style: F.over.copyWith(color: p.ink3, height: 1.5)),
+      ] else if (_storedRanges(n) != null) ...[
         const SizedBox(height: S.x2),
         // Your own window's bounds are a different range from the estimator's:
         // they widen with the time the band did not record, and awake has one.

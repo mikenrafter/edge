@@ -7,13 +7,17 @@
 // carries a key 'card:<name>' (the same name in both states).
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/lab_catalogue.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/units_controller.dart';
+import 'package:openstrap_edge/ui2/grammar.dart' show Pressable;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
+import 'package:openstrap_edge/ui2/screens/sleep_tab.dart';
 
 import '../../support/as_of_recalc_fakes.dart';
 import '../../support/shift_run.dart';
@@ -29,9 +33,14 @@ void main() {
 
   const p = ShiftPolicy.standard;
 
-  Future<Frame> settled(WidgetTester t, Widget screen, AppState app) async {
+  Future<Frame> settled(WidgetTester t, Widget screen, AppState app,
+      Future<void> Function(WidgetTester)? drive) async {
     await t.pumpWidget(perfApp(app, screen));
     await settleShell(t);
+    if (drive != null) {
+      await drive(t);
+      await settleShell(t);
+    }
     final f = captureFrame(t);
     await t.pumpWidget(const SizedBox.shrink());
     await t.pump(const Duration(seconds: 5));
@@ -39,18 +48,25 @@ void main() {
   }
 
   Future<void> check(WidgetTester t, String name, Widget Function() screen,
-      {AppState Function()? emptyApp, Widget Function()? emptyScreen}) async {
+      {AppState Function()? emptyApp,
+      AppState Function()? loadedApp0,
+      Widget Function()? emptyScreen,
+      Future<void> Function(WidgetTester)? drive}) async {
     phoneSurface(t);
-    final loadedApp = AppState.forTesting()
-      ..repo = TabsRepo(homeBundle(
-          readiness: 70, overnightAt: todayAtMs(8, 42), activityAt: todayAtMs(8, 42)));
+    final loadedApp = loadedApp0 != null
+        ? loadedApp0()
+        : (AppState.forTesting()
+          ..repo = TabsRepo(homeBundle(
+              readiness: 70,
+              overnightAt: todayAtMs(8, 42),
+              activityAt: todayAtMs(8, 42))));
     final emptyAppState = emptyApp != null
         ? emptyApp()
         : (AppState.forTesting()..repo = EmptyTabsRepo());
     addTearDown(loadedApp.dispose);
     addTearDown(emptyAppState.dispose);
-    final empty = await settled(t, (emptyScreen ?? screen)(), emptyAppState);
-    final loaded = await settled(t, screen(), loadedApp);
+    final empty = await settled(t, (emptyScreen ?? screen)(), emptyAppState, drive);
+    final loaded = await settled(t, screen(), loadedApp, drive);
 
     // Informational on failure: how the two states compare on EVERY id.
     final all = compareLayouts(empty, loaded, p, viewport: shiftViewport);
@@ -58,6 +74,13 @@ void main() {
     printOnFailure('$name empty: ${empty.elements.length} elements, '
         'loaded: ${loaded.elements.length}');
 
+    String rects(Frame f) => [
+          for (final e in f.elements)
+            if (e.id.startsWith('card:'))
+              '${e.id} ${e.rect.top.toStringAsFixed(1)}+${e.rect.height.toStringAsFixed(1)}'
+        ].join('\n  ');
+    printOnFailure('$name empty rects:\n  ${rects(empty)}');
+    printOnFailure('$name loaded rects:\n  ${rects(loaded)}');
     final a = cardIds(empty), b = cardIds(loaded);
     expect(b, isNotEmpty, reason: '$name: no top-level section is keyed card:*');
     expect(a, isNotEmpty, reason: '$name: first launch shows no card:* section');
@@ -108,6 +131,81 @@ void main() {
           () => const HealthScreen(tab: 4, data: HealthData(), labs: _labsLoaded),
           emptyScreen: () => const HealthScreen(
               tab: 4, data: HealthData(), labs: LabsData(markers: kLabMarkers))));
+
+  testWidgets('Sleep: empty database vs loaded - same cards, same places',
+      (t) => check(t, 'sleep', () => const SleepTab()));
+
+
+  // The Activity tab keeps its sub-tab in state; the case opens each by its
+  // label, the way a user does.
+  for (final (i, label) in [(0, 'For you'), (1, 'Activities'), (2, 'History')]) {
+    testWidgets('Activity $label: empty database vs loaded - same cards, same places',
+        (t) => check(t, 'activity $label', () => ChangeNotifierProvider(
+                create: (_) => UnitsController.seed(UnitSystem.metric),
+                child: const WorkoutScreen()),
+            loadedApp0: () => AppState.forTesting()..repo = _ActivityRepo(),
+            drive: i == 0
+                ? null
+                : (t) async {
+                    final tab = find.widgetWithText(Pressable, label).first;
+                    await t.ensureVisible(tab);
+                    await t.pump();
+                    await t.tap(tab);
+                    await t.pump();
+                    // ensureVisible may have scrolled the page; both states
+                    // are compared from the top.
+                    await t.fling(
+                        find.byWidgetPredicate((w) =>
+                            w is Scrollable && w.axis == Axis.vertical).first,
+                        const Offset(0, 2000),
+                        4000);
+                  }));
+  }
+}
+
+/// Loaded Activity: a load, a week of heart effort and two sessions.
+class _ActivityRepo extends TabsRepo {
+  _ActivityRepo()
+      : super(homeBundle(
+            readiness: 70,
+            overnightAt: todayAtMs(8, 42),
+            activityAt: todayAtMs(8, 42)));
+
+  @override
+  Future<Map<String, dynamic>> getProfile() async => {'weight_kg': 70.0};
+  @override
+  Future<Map<String, dynamic>> getInsights() async => {
+        'load': {
+          'value': {'ctl': 42.0, 'atl': 38.0, 'tsb': 4.0},
+        },
+      };
+  @override
+  Future<Map<String, dynamic>> getRecords() async => {'workouts_tracked': 2};
+  @override
+  Future<Map<String, dynamic>> getChart(String metric,
+      {int? from, int? to, Set<String> signals = const {}}) async {
+    if (metric != 'trimp') return const {'points': []};
+    final noon = todayAtMs(12, 0) ~/ 1000;
+    return {
+      'points': [
+        for (var i = 0; i < 7; i++) {'t': noon - i * 86400, 'v': 40.0 + i},
+      ],
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> getWorkouts({String range = 'month'}) async => {
+        'workouts': [
+          for (var i = 0; i < 2; i++)
+            {
+              'id': 'w$i',
+              'type': 'Running',
+              'start_ts': todayAtMs(7, 0) ~/ 1000 - i * 3600,
+              'duration_min': 30,
+              'strain': 8.0,
+            },
+        ],
+      };
 }
 
 final _exploreLoaded = ExploreData(counts: {

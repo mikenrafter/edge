@@ -144,6 +144,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
     final loc = AppLocalizations.of(c);
     return [
       StartCard(
+        key: const ValueKey('card:start'),
         label: loc?.workoutStartSessionLabel ?? 'START A SESSION',
         count: allActivities.length,
         noun: loc?.workoutActivitiesNoun ?? 'activities',
@@ -154,6 +155,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
       ),
       const SizedBox(height: S.x3),
       Row(
+        key: const ValueKey('card:quick-start'),
         children: [
           for (var i = 0; i < 3; i++) ...[
             if (i > 0) const SizedBox(width: S.x3),
@@ -172,6 +174,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
       // Doors, not cards: the numbers live one tap down.
       Section(
         loc?.activityStepsFoodTitle ?? 'Steps and food',
+        key: const ValueKey('card:steps-food'),
         Column(children: [
           detailLinkRow(
               c,
@@ -192,6 +195,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
       ),
       Section(
         loc?.workoutThisWeek ?? 'This week',
+        key: const ValueKey('card:this-week'),
         Surface(
           child: Row(
             children: List.generate(7, (i) {
@@ -352,43 +356,41 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
 
   Widget _loadCard(BuildContext c, P p, _WorkoutData d) {
     final loc = AppLocalizations.of(c);
-    if (d.load == null) {
-      return StatusCard(
-        loc?.workoutNoLoadTitle ?? 'No training load yet',
-        d.loadNote ??
-            (loc?.workoutNoLoadBody ??
-                'Fitness and fatigue are 42-day and 7-day averages. They need '
-                    'about two weeks of sessions.'),
-        icon: LucideIcons.trendingUp,
-      );
-    }
-    final ld = d.load!;
+    // One card whether or not there is a load yet: with none it reads "—" and
+    // the reason replaces the chart's footnote, so first launch and loaded
+    // share the card's size and place.
+    final ld = d.load;
+    // Before the first read the list is empty: seven empty slots, not none.
+    final trimp7 =
+        d.trimp7.isEmpty ? List<double?>.filled(7, null) : d.trimp7;
+    final tsb = ld?.tsb;
     final notYet = loc?.workoutNotYet ?? 'Not yet';
     return Surface(
+      key: const ValueKey('card:training-load'),
       child: Column(children: [
         Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(ld.ctl.round().toString(),
+              Text(ld == null ? '—' : ld.ctl.round().toString(),
                   style: F.n34.copyWith(color: p.ink)),
               const SizedBox(width: S.x2),
               Text(loc?.workoutFitnessLabel ?? 'fitness',
                   style: F.cap.copyWith(color: p.ink3)),
               const Spacer(),
-              if (ld.estimated) ...[
+              if (ld != null && ld.estimated) ...[
                 Pill(loc?.wearableEstimated ?? 'Estimated', C.purple),
                 const SizedBox(width: S.x2),
               ],
-              if (ld.tsb != null)
-                Pill(_form(c, ld.tsb!), ld.tsb! >= 0 ? C.green : C.orange),
+              if (tsb != null)
+                Pill(_form(c, tsb), tsb >= 0 ? C.green : C.orange),
             ]),
-        if (d.trimp7.any((v) => v != null)) ...[
+        ...[
           const SizedBox(height: S.x4),
           Builder(builder: (_) {
             final end = d.trimpEnd ?? DateTime.now();
-            final axis = AxisSpec.of([for (final v in d.trimp7) ?v], floor: 0);
-            final days = d.trimp7.where((v) => v != null).length;
+            final axis = AxisSpec.of([for (final v in trimp7) ?v], floor: 0);
+            final days = trimp7.where((v) => v != null).length;
             return ChartFrame(
               title: loc?.workoutDailyLoadTitle ?? 'Heart effort by day',
               unit: loc?.workoutTrimpUnit ?? 'points',
@@ -400,20 +402,25 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                 for (var i = 6; i >= 0; i--)
                   _weekdayLetter(c, DateTime(end.year, end.month, end.day - i)),
               ],
-              footnote: (loc?.workoutDailyLoadFootnoteIntro ??
+              footnote: ld == null
+                  ? (d.loadNote ??
+                      (loc?.workoutNoLoadBody ??
+                          'Fitness and fatigue are 42-day and 7-day averages. They need '
+                              'about two weeks of sessions.'))
+                  : (loc?.workoutDailyLoadFootnoteIntro ??
                       'Heart points with no cap: minutes in each heart-rate zone, harder zones counting more. Strain reads the same heart rate on a 0–21 scale. ') +
                   (days == 7
                       ? (loc?.workoutDailyLoadAllDays ?? 'Last seven days.')
                       : (loc?.workoutDailyLoadPartialDays(days) ??
                           '$days of the last '
                               'seven days produced a figure.')),
-              series: d.trimp7,
+              series: trimp7,
               child: ChartScrub(
                 label: loc?.workoutDailyLoadTitle ?? 'Heart effort by day',
-                gaps: hasChartGaps([d.trimp7], trailing: true),
+                gaps: hasChartGaps([trimp7], trailing: true),
                 time: (at) {
                   final i =
-                      ChartScrub.slotAt(d.trimp7.length, at, bars: true);
+                      ChartScrub.slotAt(trimp7.length, at, bars: true);
                   return ChartScrub.day(
                       DateTime(end.year, end.month, end.day - (6 - i)));
                 },
@@ -421,7 +428,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                   ChartKey.slots(
                       loc?.workoutDailyLoadTitle ?? 'Heart effort by day',
                       p.on(C.purple),
-                      d.trimp7,
+                      trimp7,
                       (i, v) =>
                           '${v.round()} ${loc?.workoutTrimpUnit ?? 'points'}',
                       bars: true),
@@ -429,8 +436,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                 child: CustomPaint(
                     size: Size.infinite,
                     // Today is the last slot, always — not "the newest value".
-                    painter: Bars(d.trimp7, p.on(C.purple),
-                        highlight: d.trimp7.last == null ? -1 : 6,
+                    painter: Bars(trimp7, p.on(C.purple),
+                        highlight: trimp7.last == null ? -1 : 6,
                         axis: axis,
                         t: animate(context, 1))),
               ),
@@ -445,12 +452,13 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
         // already printing at 34 pt under the word "fitness". One number, once.
         InlineMetrics([
           (loc?.workoutFatigueLabel ?? 'Fatigue',
-              ld.atl?.round().toString() ?? notYet, C.orange),
+              ld?.atl?.round().toString() ?? (ld == null ? '—' : notYet),
+              C.orange),
           (
             loc?.workoutFormLabel ?? 'Form',
-            ld.tsb == null
-                ? notYet
-                : '${ld.tsb! >= 0 ? '+' : '−'}${ld.tsb!.abs().round()}',
+            tsb == null
+                ? (ld == null ? '—' : notYet)
+                : '${tsb >= 0 ? '+' : '−'}${tsb.abs().round()}',
             C.purple
           ),
         ]),
@@ -476,7 +484,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
     final p = P.of(c);
     final loc = AppLocalizations.of(c);
     return [
-      Pressable(
+      KeyedSubtree(
+        key: const ValueKey('card:search'),
+        child: Pressable(
         onTap: () => _openPicker(c, d),
         semanticLabel: loc?.workoutSearchActivitiesLabel ?? 'Search activities',
         child: Container(
@@ -492,7 +502,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                 style: F.body.copyWith(color: p.ink3)),
           ]),
         ),
-      ),
+      )),
       const SizedBox(height: S.x5),
       Text(loc?.workoutQuickStartHeader ?? 'QUICK START',
           style: F.over.copyWith(color: p.ink3)),
@@ -518,6 +528,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
       for (final g in activityLibrary)
         Section(
           g.displayName(c),
+          key: ValueKey('card:group-${g.displayName(c)}'),
           Surface(
             pad: const EdgeInsets.symmetric(horizontal: S.x4),
             child: Column(children: [
@@ -597,6 +608,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
   Widget _logPastCard(BuildContext c) {
     final loc = AppLocalizations.of(c);
     return StatusCard(
+      key: const ValueKey('card:log-past'),
       loc?.workoutLogPastTitle ?? 'Did something the band missed?',
       loc?.workoutLogPastBody ??
           'Enter the times yourself and it is scored from the heart rate '
@@ -610,36 +622,33 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
   List<Widget> _history(BuildContext c, _WorkoutData d) {
     final p = P.of(c);
     final loc = AppLocalizations.of(c);
-    if (d.workouts.isEmpty) {
-      return [
-        ..._suggestionCards(c, d),
-        StatusCard(
-          loc?.workoutNoSessionsTitle ?? 'No sessions recorded yet',
-          loc?.workoutNoSessionsBody ?? 'Sessions appear here once you start one.',
-          fix: loc?.workoutStartWorkoutFix ?? 'Start a workout',
-          onFix: () => _openPicker(c, d),
-          icon: LucideIcons.dumbbell,
-        ),
-        const SizedBox(height: S.x5),
-        _logPastCard(c),
-      ];
-    }
+    final none = d.workouts.isEmpty;
     final importedThisWeek = d.weekImported;
     return [
       ..._suggestionCards(c, d),
-      Row(children: [
-        Expanded(child: _sum(p, '${d.workoutsTracked ?? d.workouts.length}',
-            loc?.workoutTrackedLabel ?? 'Tracked')),
+      // The same three tiles with or without sessions; with none they read
+      // "—", not a count of zero nobody measured.
+      Row(key: const ValueKey('card:summary'), children: [
+        Expanded(
+            child: _sum(
+                p,
+                none && d.workoutsTracked == null
+                    ? '—'
+                    : '${d.workoutsTracked ?? d.workouts.length}',
+                loc?.workoutTrackedLabel ?? 'Tracked')),
         const SizedBox(width: S.x3),
-        Expanded(child: _sum(p, '${d.weekCount}',
-            loc?.workoutThisWeek ?? 'This week')),
+        Expanded(
+            child: _sum(p, none ? '—' : '${d.weekCount}',
+                loc?.workoutThisWeek ?? 'This week')),
         const SizedBox(width: S.x3),
         Expanded(
             child: _sum(
                 p,
-                d.weekLoad == null
-                    ? (loc?.workoutNoneLabel ?? 'None')
-                    : d.weekLoad!.round().toString(),
+                none
+                    ? '—'
+                    : d.weekLoad == null
+                        ? (loc?.workoutNoneLabel ?? 'None')
+                        : d.weekLoad!.round().toString(),
                 loc?.workoutWeeklyLoadLabel ?? 'Weekly load')),
       ]),
       // The seam, said where the two numbers sit next to each other. "This
@@ -661,8 +670,27 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
       // session it exists to fill.
       const SizedBox(height: S.x3),
       ..._importCard(c, d),
+      // Above the list, not under it: a card after a list of any length sits
+      // wherever the list ends.
+      const SizedBox(height: S.x3),
+      _logPastCard(c),
       ..._morningAfter(c, p, d),
       const SizedBox(height: S.x5),
+      // The list's slot. Empty, it says so in the same place.
+      if (none)
+        KeyedSubtree(
+          key: const ValueKey('list:sessions'),
+          child: StatusCard(
+            loc?.workoutNoSessionsTitle ?? 'No sessions recorded yet',
+            loc?.workoutNoSessionsBody ??
+                'Sessions appear here once you start one.',
+            fix: loc?.workoutStartWorkoutFix ?? 'Start a workout',
+            onFix: () => _openPicker(c, d),
+            icon: LucideIcons.dumbbell,
+          ),
+        )
+      else
+        Column(key: const ValueKey('list:sessions'), children: [
       for (final w in d.workouts) ...[
         _HistoryRow(w,
             weightKg: d.weightKg,
@@ -697,8 +725,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                 : null),
         const SizedBox(height: S.x3),
       ],
-      const SizedBox(height: S.x3),
-      _logPastCard(c),
+        ]),
     ];
   }
 
@@ -748,6 +775,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
     final loc = AppLocalizations.of(c);
     return [
       Surface(
+        key: const ValueKey('card:import'),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           // ONE ROW in the parent card — no nested box: tick = hourly sweep,
           // ↻ = fetch NOW (only meaningful while the tick is on). The

@@ -369,6 +369,17 @@ void main() {
               .descendant(of: find.byWidget(r), matching: find.text('—'))
               .evaluate(),
       };
+      // Sleep's first-launch cards keep their slot with a dash in each value;
+      // the reason ("No night to show", "No beat timing...") is stated in the
+      // window card and under the stage rows on the same screen.
+      const skeleton = {'card:answer', 'card:stages', 'card:training-load'};
+      for (final k in skeleton) {
+        final card = find.byKey(ValueKey(k));
+        if (card.evaluate().isEmpty) continue;
+        explained.addAll(find
+            .descendant(of: card, matching: find.text('—'))
+            .evaluate());
+      }
       final dashes = tester
           .widgetList<Text>(find.byType(Text))
           .where((t) => (t.data ?? '').trim() == '—')

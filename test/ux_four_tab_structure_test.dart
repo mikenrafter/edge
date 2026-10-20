@@ -34,6 +34,8 @@ void main() {
     )));
     await t.pump();
     expect(find.byType(ProfileAvatar), findsOneWidget);
+    // Below the empty night's cards, so off screen in a short viewport.
+    await t.scrollUntilVisible(find.text('plan below the night'), 300);
     expect(find.text('plan below the night'), findsOneWidget);
     // A tab has no way back; the pushed screen keeps its arrow.
     expect(find.byIcon(LucideIcons.chevronLeft), findsNothing);
