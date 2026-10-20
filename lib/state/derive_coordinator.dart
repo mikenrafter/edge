@@ -30,6 +30,7 @@ import '../telemetry/telemetry_service.dart';
 import '../wake/wake_stores.dart';
 import '../widget/widget_service.dart';
 import 'artifact_warmer.dart';
+import 'derive_progress.dart';
 import 'power_source.dart';
 import 'publish_gate.dart';
 import 'recalc_state.dart';
@@ -146,18 +147,31 @@ class DeriveCoordinator {
   ///
   /// A heavy job stays running until its baseline rescan ends, so the next
   /// queued job waits behind it rather than being refused by the engine.
-  Future<DeriveOutcome> _runScheduled({required DeriveJobKind kind}) async {
+  Future<DeriveOutcome> _runScheduled({
+    required DeriveJobKind kind,
+    void Function(String day, int index, int total)? onDay,
+  }) async {
     _rescanRun = null;
     final outcome = await afterDrain(
       heavy: kind == DeriveJobKind.heavy,
       changedOnly: kind == DeriveJobKind.light,
       automatic: true,
+      onDay: onDay,
     );
     final rescan = _rescanRun;
     _rescanRun = null;
     if (rescan != null) await rescan;
     return outcome;
   }
+
+  /// The scheduler's heavy pass, run now and awaited, for a caller that has to
+  /// know when the recalculation is done (a backup restore). [onDay] hears each
+  /// finished day. Returns how the pass ended; never throws. A pass the engine
+  /// refused as busy comes back `failed`.
+  Future<DeriveOutcome> runHeavyPass({
+    void Function(String day, int index, int total)? onDay,
+  }) =>
+      _runScheduled(kind: DeriveJobKind.heavy, onDay: onDay);
 
   /// The baseline rescan the last heavy [afterDrain] started (never throws).
   Future<void>? _rescanRun;
@@ -228,6 +242,24 @@ class DeriveCoordinator {
   /// pass (engine busy) returning early cannot wipe a running rescan's days.
   int _recalcSeq = 0;
   int _recalcOwner = 0;
+
+  /// Where the running pass is; null when none runs. Owned like [_recalc]: a
+  /// pass clears only what it set, so a refused pass cannot wipe a running one.
+  final ValueNotifier<DeriveProgress?> deriveProgress =
+      ValueNotifier<DeriveProgress?>(null);
+  int _progressOwner = 0;
+
+  void _setProgress(int owner, DeriveProgress p) {
+    if (_disposed) return;
+    _progressOwner = owner;
+    deriveProgress.value = p;
+  }
+
+  void _clearProgress(int owner) {
+    if (_progressOwner != owner) return;
+    _progressOwner = 0;
+    if (!_disposed) deriveProgress.value = null;
+  }
 
   void _setRecalc(RecalcState s) {
     if (_disposed) return;
@@ -547,6 +579,7 @@ class DeriveCoordinator {
     _dayPublisher.dispose();
     insightsRevision.dispose();
     _recalc.dispose();
+    deriveProgress.dispose();
   }
 
   /// Compute trigger: kick the DerivationEngine after data is persisted.
@@ -593,6 +626,7 @@ class DeriveCoordinator {
         changedOnly: changedOnly,
         onScope: (total) {
           scopeTotal = total;
+          _setProgress(recalcId, DeriveProgress(dayIndex: 0, dayTotal: total));
           onScope?.call(total);
         },
         onScopeDays: (days) => _recalcScope(recalcId, days),
@@ -601,6 +635,8 @@ class DeriveCoordinator {
           // The day's row is committed: it is no longer "recalculating", and
           // Home / Health can re-read it now rather than after the pass.
           _recalcDayDone(recalcId, day);
+          _setProgress(recalcId,
+              DeriveProgress(dayIndex: index, dayTotal: total, day: day));
           _dayPublisher.request();
           computedDays.add(day);
           onDay?.call(day, index, total);
@@ -681,9 +717,15 @@ class DeriveCoordinator {
           final rescanId = ++_recalcSeq;
           try {
             final n = await _rescanRecent(
-              onScopeDays: (days) => _recalcScope(rescanId, days),
+              onScopeDays: (days) {
+                _recalcScope(rescanId, days);
+                _setProgress(
+                    rescanId, DeriveProgress(dayIndex: 0, dayTotal: days.length));
+              },
               onDayDone: (day, index, total) {
                 _recalcDayDone(rescanId, day);
+                _setProgress(rescanId,
+                    DeriveProgress(dayIndex: index, dayTotal: total, day: day));
                 _dayPublisher.request();
               },
             );
@@ -695,6 +737,7 @@ class DeriveCoordinator {
             _log('[derive] rescan failed: $e');
           } finally {
             _recalcClear(rescanId);
+            _clearProgress(rescanId);
           }
         }();
       }
@@ -731,6 +774,7 @@ class DeriveCoordinator {
       // On every path (success, failure, cancel): a pass puts back
       // RecalcState.idle if it is the one that set the days.
       _recalcClear(recalcId);
+      _clearProgress(recalcId);
       TelemetryService.instance.setContext('derive_active', false);
     }
     return outcome;

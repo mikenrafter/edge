@@ -61,6 +61,8 @@ import 'day_payload_read.dart';
 import 'journal_fields.dart';
 import 'sample_codec.dart' show SampleCodec;
 import 'sample_import.dart' show importSamplePart;
+import 'import_copy_plan.dart';
+import 'import_progress.dart';
 import 'sample_lock.dart' show SampleLock;
 import 'live_coverage_policy.dart';
 import 'step_calibration.dart';
@@ -12091,13 +12093,21 @@ class LocalDb {
   /// renames on the way through is exactly the situation a restore has to
   /// survive. Plain `.db` files (older backups, and `exportCopy` output) take
   /// the same path they always did.
-  static Future<Map<String, int>> importFromDbFile(String path) async {
+  ///
+  /// [onProgress] hears the preparing and copying stages (see
+  /// [ImportProgress]); the caller owns the rebuilding stage after the merge.
+  static Future<Map<String, int>> importFromDbFile(
+    String path, {
+    void Function(ImportProgress p)? onProgress,
+  }) async {
     if (!await File(path).exists()) {
       throw const FileSystemException('Backup file not found');
     }
     if (await sniffFile(path) != ImportContainer.gzip) {
-      return SampleLock.run(() => _mergeFromDbFile(path));
+      return SampleLock.run(
+          () => _mergeFromDbFile(path, onProgress: onProgress));
     }
+    onProgress?.call(const ImportPreparing(ImportPrepStep.inflating));
     final work = await Directory.systemTemp.createTemp('openstrap_restore_');
     try {
       final inflated = await inflateGzip(path, work);
@@ -12107,7 +12117,8 @@ class LocalDb {
           'That file is not an OpenStrap database.',
         );
       }
-      return await SampleLock.run(() => _mergeFromDbFile(inflated));
+      return await SampleLock.run(
+          () => _mergeFromDbFile(inflated, onProgress: onProgress));
     } finally {
       // The inflated copy is a full second copy of the database, so it goes
       // whether the import worked or not.
@@ -12275,10 +12286,12 @@ class LocalDb {
     String path, {
     List<String>? only,
     bool tolerant = false,
+    void Function(ImportProgress p)? onProgress,
   }) async {
     final committedBefore = _mergePagesCommitted;
     try {
-      return await _mergeFromDbFileBody(path, only: only, tolerant: tolerant);
+      return await _mergeFromDbFileBody(path,
+          only: only, tolerant: tolerant, onProgress: onProgress);
     } finally {
       if (_mergePagesCommitted != committedBefore) _markStoreReplaced();
     }
@@ -12288,7 +12301,9 @@ class LocalDb {
     String path, {
     List<String>? only,
     bool tolerant = false,
+    void Function(ImportProgress p)? onProgress,
   }) async {
+    onProgress?.call(const ImportPreparing(ImportPrepStep.opening));
     final src = await openDatabase(path, readOnly: true);
     final db = await instance;
     const tables = _restoreTables;
@@ -12334,6 +12349,7 @@ class LocalDb {
     // version stamp and this device's baselines are the same day's history and
     // get the same protection, or trends and the rolling baselines would be
     // rebuilt from the other export's numbers while day detail serves ours.
+    onProgress?.call(const ImportPreparing(ImportPrepStep.checking));
     final finalizedDays = {
       for (final r in await db.query(
         'day_result',
@@ -12347,6 +12363,7 @@ class LocalDb {
     int? archiveEdgeSec;
     var impAttached = false;
     var finalizedDaysSnapshot = false;
+    ImportCopyPlan? plan; // set before the first table when [onProgress] is
 
     String quoteSql(String name) => '"${name.replaceAll('"', '""')}"';
     String sourceColumn(String name) => 's.${quoteSql(name)}';
@@ -12515,6 +12532,7 @@ class LocalDb {
           });
           _mergePagesCommitted++;
           lower = upper;
+          plan?.advance(t, upper);
         }
       } finally {
         if (protectedDayResults) {
@@ -12566,8 +12584,28 @@ class LocalDb {
             ? srcEdge
             : (srcEdge == null || localEdge > srcEdge ? localEdge : srcEdge);
       }
+      // Rowid sizes up front (O(1) each), so every table reports its place in
+      // its stage; see ImportCopyPlan for why stages are runs.
+      if (onProgress != null) {
+        final sizes = <(String, int)>[];
+        for (final t in (only ?? tables)) {
+          int? max;
+          try {
+            max = Sqflite.firstIntValue(
+              await src.rawQuery('SELECT MAX(rowid) FROM ${quoteSql(t)}'),
+            );
+          } on DatabaseException catch (e) {
+            // A table this export lacks has nothing to report; any other read
+            // failure is the copy's to raise, with its own handling.
+            if (!e.isNoSuchTableError()) rethrow;
+          }
+          sizes.add((t, max ?? 0));
+        }
+        plan = ImportCopyPlan(sizes, onProgress);
+      }
       for (final t in (only ?? tables)) {
         try {
+          plan?.start(t);
           if (await mergeBulkTable(t)) continue;
           // PAGED SOURCE READ — never `SELECT *` a whole table.
           //
@@ -12993,6 +13031,7 @@ class LocalDb {
             // cursor BEFORE dropping the page, and stop on a short page rather
             // than issuing one more query to discover the end.
             lastRowid = (page.last[rowidKey] as num).toInt();
+            plan?.advance(t, lastRowid);
             if (page.length < pageSize) break;
             page = await nextPage();
           }
@@ -13006,6 +13045,7 @@ class LocalDb {
           counts[t] = 0;
         }
       }
+      plan?.finish();
     } finally {
       try {
         if (finalizedDaysSnapshot) {

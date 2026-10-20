@@ -27,6 +27,7 @@ import 'control_operations.dart';
 import 'recalc_state.dart';
 import 'artifact_warmer.dart';
 import 'derive_coordinator.dart';
+import 'derive_progress.dart';
 export 'control_operations.dart';
 export 'derive_coordinator.dart' show DeriveRunHook, RescanHook;
 
@@ -1459,37 +1460,64 @@ class AppState extends ChangeNotifier {
     importRollupError = null;
     lastImportArchiveSkipped = 0;
     lastImportArchiveRestored = 0;
-    // Gzipped auto-backups (`.db.gz`) are inflated INSIDE importFromDbFile —
-    // do not add it back here. Its inflate checks the gzip trailer, so a
-    // truncated backup fails loudly; `gzip.decoder` returns partial output
-    // without raising and would restore short while reporting success.
-    final counts = await LocalDb.importFromDbFile(path);
-    lastImportArchiveSkipped = counts['_substrate_archive_skipped'] ?? 0;
-    lastImportArchiveRestored = counts['substrate_archive'] ?? 0;
-    if (lastImportArchiveSkipped > 0) {
-      _log(
-        'import: $lastImportArchiveSkipped raw-history archive buckets are in '
-        'a format this build cannot read; not imported',
-      );
-    }
-    // Imported rows include derived day_result/metric_series → refresh rollups.
+    // The restore copies the data, then recalculates once; the screen shows
+    // which of the two it is in. Cleared on every exit (4.3): a throw reports
+    // Failed first, and the finally leaves null.
     try {
-      await refreshActivityReviews();
-      final probe = debugFinalizeImport;
-      if (probe != null) {
-        await probe.finalize(_profile);
-      } else {
-        await _derive.finalizeImport(_profile);
+      // Gzipped auto-backups (`.db.gz`) are inflated INSIDE importFromDbFile —
+      // do not add it back here. Its inflate checks the gzip trailer, so a
+      // truncated backup fails loudly; `gzip.decoder` returns partial output
+      // without raising and would restore short while reporting success.
+      final counts = await LocalDb.importFromDbFile(
+        path,
+        onProgress: (p) => importProgress.value = p,
+      );
+      lastImportArchiveSkipped = counts['_substrate_archive_skipped'] ?? 0;
+      lastImportArchiveRestored = counts['substrate_archive'] ?? 0;
+      if (lastImportArchiveSkipped > 0) {
+        _log(
+          'import: $lastImportArchiveSkipped raw-history archive buckets are in '
+          'a format this build cannot read; not imported',
+        );
       }
+      // Visible even when nothing needs recalculating.
+      importProgress.value = const ImportRebuilding(0, 0, null);
+      // Imported rows include derived day_result/metric_series → refresh rollups.
+      try {
+        await refreshActivityReviews();
+        final probe = debugFinalizeImport;
+        if (probe != null) {
+          await probe.finalize(_profile);
+        } else {
+          await _derive.finalizeImport(_profile);
+        }
+        // Then the scheduler's own heavy pass, awaited: it recalculates the
+        // imported days that are not finalized, one day at a time, so the
+        // import ends when the numbers do. It blocks for as long as that
+        // pass takes, which grows with the number of days to derive.
+        final pass = await _deriveCoordinator.runHeavyPass(
+          onDay: (day, index, total) =>
+              importProgress.value = ImportRebuilding(index, total, day),
+        );
+        if (pass.failed) {
+          _log('import: recalculation did not complete: ${pass.error ?? 'busy'}');
+        }
+      } catch (e) {
+        importRollupError = '$e';
+      }
+      // The merged rows are committed whether or not the rollup rebuild threw.
+      await _deriveCoordinator.publishNow(); // see importNoopCsv
+      notifyListeners();
+      importProgress.value = const ImportDone();
+      // DAYS, not rows. `_days` is a distinct day_id count taken from the source
+      // file; the caller reports "N days imported" and a row total is not that.
+      return counts['_days'] ?? 0;
     } catch (e) {
-      importRollupError = '$e';
+      importProgress.value = ImportFailed('$e');
+      rethrow;
+    } finally {
+      importProgress.value = null;
     }
-    // The merged rows are committed whether or not the rollup rebuild threw.
-    await _deriveCoordinator.publishNow(); // see importNoopCsv
-    notifyListeners();
-    // DAYS, not rows. `_days` is a distinct day_id count taken from the source
-    // file; the caller reports "N days imported" and a row total is not that.
-    return counts['_days'] ?? 0;
   }
 
   // ── platform health export (Apple Health / Health Connect) ──────────────────
@@ -2307,6 +2335,11 @@ class AppState extends ChangeNotifier {
   /// The last pass that computed a day, as [DerivePerf.summary] — null until
   /// one has. Read-only, for Settings > Developer.
   Map<String, Object?>? get lastPassPerf => _deriveCoordinator.lastPassPerf;
+
+  /// Where a running derive pass is (any kind, not only a user sync); null when
+  /// none runs.
+  ValueListenable<DeriveProgress?> get deriveProgress =>
+      _deriveCoordinator.deriveProgress;
 
   /// Test seams: the engine is not injectable, so a test replaces the two
   /// calls the derive pass makes on it.
