@@ -3358,6 +3358,25 @@ class DerivationEngine {
   @visibleForTesting
   bool debugDisableStagedSleepCache = false;
 
+  /// Test seam (red phase of the single-load work): true = every day's
+  /// search, day and sleep windows are loaded one by one, as today. The union
+  /// load (one read per pass of what a day needs, sliced in memory) does not
+  /// exist yet; the law test compares both settings byte for byte.
+  @visibleForTesting
+  bool debugDisableSubstrateUnionLoad = false;
+
+  /// Most rows the loader held in RAM at once for one day's prepare: the
+  /// largest of any single load's rows and of the loads alive together
+  /// (day/nap + sleep). Slices of a held load are views of it, not counted.
+  @visibleForTesting
+  int debugSubstrateRowsHeldHighWater = 0;
+
+  void _noteHeldRows(int rows) {
+    if (rows > debugSubstrateRowsHeldHighWater) {
+      debugSubstrateRowsHeldHighWater = rows;
+    }
+  }
+
   /// Most days of staged sleep the engine keeps in RAM for reuse.
   static const int kStagedSleepCacheMaxDays = 14;
 
@@ -4652,6 +4671,7 @@ class DerivationEngine {
               ownership: ownership,
             );
     }
+    _noteHeldRows(napSub.length + sleepSub.length);
     if (stats.fullReload) perf.addCount('substrate_full_reloads', 1);
     // Single safe merge into the shared max-tracking diagnostics — one
     // statement, no `await` in between, so it's atomic relative to any other
@@ -5795,6 +5815,7 @@ class DerivationEngine {
         );
         _boundRetained();
       }
+      _noteHeldRows(loaded.length);
       return loaded;
     } finally {
       // ALWAYS tear down: on success, on error, and on timeout. The isolate is
