@@ -12245,6 +12245,22 @@ class LocalDb {
   @visibleForTesting
   static List<String> get salvageTablesForTest => _salvageTables;
 
+  /// While true, every table merges on the per-row Dart path: the oracle the
+  /// bulk restore is held equal to (import_bulk_restore_test). Tests only.
+  @visibleForTesting
+  static bool debugRowByRowMerge = false;
+
+  /// [importFromDbFile] for a plain `.db`, forced down the per-row path.
+  @visibleForTesting
+  static Future<Map<String, int>> debugMergeRowByRow(String path) async {
+    debugRowByRowMerge = true;
+    try {
+      return await SampleLock.run(() => _mergeFromDbFile(path));
+    } finally {
+      debugRowByRowMerge = false;
+    }
+  }
+
   /// Pages [_mergeFromDbFileBody] has committed, process-wide. The wrapper
   /// below reads it to learn whether ANY page landed, whatever the body then did.
   static int _mergePagesCommitted = 0;
