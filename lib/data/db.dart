@@ -12250,6 +12250,65 @@ class LocalDb {
       'substrate_archive',
   ];
 
+  /// The import screen's stage for each restore table (ImportCopyPlan).
+  static ImportStage _importStageOf(String table) => switch (table) {
+        'journal' ||
+        'journal_metric' ||
+        'journal_field_def' ||
+        'lab_result' ||
+        'lab_marker_def' ||
+        'strength_set' ||
+        'exercise_def' ||
+        'food_entry' ||
+        'food_def' ||
+        'med_def' ||
+        'med_dose' ||
+        'cycle_log' ||
+        'cycle_symptom' ||
+        'breathing_session' ||
+        'observation' =>
+          ImportStage.journal,
+        'workout_route' ||
+        'workout_split' ||
+        'workout_suggestions' ||
+        'sessions' ||
+        'session_sensor' ||
+        'activity_suggestions' ||
+        'activity_review_meta' ||
+        'activity_review_days' ||
+        'external_hr' ||
+        'imported_workout' ||
+        'imported_measurement' =>
+          ImportStage.workouts,
+        'sleep_override' || 'sleep_nap' || 'vendor_sleep_epoch' =>
+          ImportStage.sleep,
+        'samples' ||
+        'decoded_onehz' ||
+        'spectral_archive' ||
+        'spectral_archive_status' =>
+          ImportStage.heartRate,
+        'decoded_rr' => ImportStage.beats,
+        'events' || 'band_events' || 'band_battery' || 'notifications' =>
+          ImportStage.events,
+        'day_result' ||
+        'metric_series' ||
+        'metric_series_version' ||
+        'metric_method' ||
+        'baselines' ||
+        'live_coverage' ||
+        'step_calibration' ||
+        'step_calibration_day' =>
+          ImportStage.results,
+        'raw_archive' ||
+        'substrate_archive' ||
+        'ecg_reading' ||
+        'ecg_reading_packet' ||
+        'ecg_raw_packet' ||
+        'ecg_gesture_session' =>
+          ImportStage.archive,
+        _ => ImportStage.other,
+      };
+
   @visibleForTesting
   static List<String> get restoreTablesForTest => _restoreTables;
 
@@ -12643,7 +12702,7 @@ class LocalDb {
       // Rowid sizes up front (O(1) each), so every table reports its place in
       // its stage; see ImportCopyPlan for why stages are runs.
       if (onProgress != null) {
-        final sizes = <(String, int)>[];
+        final sizes = <(String, ImportStage, int)>[];
         for (final t in (only ?? tables)) {
           int? max;
           try {
@@ -12655,7 +12714,7 @@ class LocalDb {
             // failure is the copy's to raise, with its own handling.
             if (!e.isNoSuchTableError()) rethrow;
           }
-          sizes.add((t, max ?? 0));
+          sizes.add((t, _importStageOf(t), max ?? 0));
         }
         plan = ImportCopyPlan(sizes, onProgress);
       }

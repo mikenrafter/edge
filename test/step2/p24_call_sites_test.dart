@@ -40,20 +40,14 @@ const Map<String, ({int count, String why})> _fromJsonCallers = {
     why: 'PreparedDerivationDay.fromJson: the prepared_day mirror of toJson; '
         'no production reader, not the substrate worker transfer',
   ),
-  // Upstream's wearable inputs, kept by the merge (log D16). Each rebuilds a
-  // substrate it just built itself, with columns swapped in (strap beats,
-  // ring skin temperature and beats, a device family) through its own
-  // toJson; none crosses a prepare-worker boundary, so the validating
-  // conversion stays.
-  'compute/inputs/canonical.dart': (
-    count: 3,
+  // Upstream's wearable inputs (log D16), moved off the UI isolate into this
+  // worker (log D26 #2). Each rebuilds a substrate it just built itself, with
+  // columns swapped in, through its own toJson; none crosses a prepare-worker
+  // boundary, so the validating conversion stays.
+  'compute/inputs/wearable_substrate_heavy.dart': (
+    count: 6,
     why: 'wearable substrate rebuilt from its own toJson with the strap\'s '
         'beats or the device family swapped in; not a worker transfer',
-  ),
-  'compute/inputs/oura_inputs.dart': (
-    count: 1,
-    why: 'ring substrate rebuilt from its own toJson with skin temperature '
-        'and ring beats added; not a worker transfer',
   ),
 };
 
@@ -144,7 +138,12 @@ void main() {
         }
       }
 
-      expect(callers, {'compute/derivation_engine.dart'},
+      // wearable_substrate_heavy.dart adopts its own worker's result
+      // (wearableSubstrateHeavy), a toJson map that never left memory.
+      expect(callers, {
+        'compute/derivation_engine.dart',
+        'compute/inputs/wearable_substrate_heavy.dart',
+      },
           reason: 'a persisted or user-supplied map needs the validating '
               'fromJson; add a caller only with a test that its map is a '
               'worker transfer');

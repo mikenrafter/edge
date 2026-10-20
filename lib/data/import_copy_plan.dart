@@ -10,74 +10,16 @@
 
 import 'import_progress.dart';
 
-ImportStage importStageOf(String table) => switch (table) {
-      'journal' ||
-      'journal_metric' ||
-      'journal_field_def' ||
-      'lab_result' ||
-      'lab_marker_def' ||
-      'strength_set' ||
-      'exercise_def' ||
-      'food_entry' ||
-      'food_def' ||
-      'med_def' ||
-      'med_dose' ||
-      'cycle_log' ||
-      'cycle_symptom' ||
-      'breathing_session' ||
-      'observation' =>
-        ImportStage.journal,
-      'workout_route' ||
-      'workout_split' ||
-      'workout_suggestions' ||
-      'sessions' ||
-      'session_sensor' ||
-      'activity_suggestions' ||
-      'activity_review_meta' ||
-      'activity_review_days' ||
-      'external_hr' ||
-      'imported_workout' ||
-      'imported_measurement' =>
-        ImportStage.workouts,
-      'sleep_override' || 'sleep_nap' || 'vendor_sleep_epoch' =>
-        ImportStage.sleep,
-      'samples' ||
-      'decoded_onehz' ||
-      'spectral_archive' ||
-      'spectral_archive_status' =>
-        ImportStage.heartRate,
-      'decoded_rr' => ImportStage.beats,
-      'events' || 'band_events' || 'band_battery' || 'notifications' =>
-        ImportStage.events,
-      'day_result' ||
-      'metric_series' ||
-      'metric_series_version' ||
-      'metric_method' ||
-      'baselines' ||
-      'live_coverage' ||
-      'step_calibration' ||
-      'step_calibration_day' =>
-        ImportStage.results,
-      'raw_archive' ||
-      'substrate_archive' ||
-      'ecg_reading' ||
-      'ecg_reading_packet' ||
-      'ecg_raw_packet' ||
-      'ecg_gesture_session' =>
-        ImportStage.archive,
-      _ => ImportStage.other,
-    };
-
 class ImportCopyPlan {
-  /// [maxRowids] lists the tables to copy in restore order with their
-  /// MAX(rowid); tables with nothing to copy (<= 0) are left out.
+  /// [maxRowids] lists the tables to copy in restore order with their stage
+  /// and MAX(rowid); tables with nothing to copy (<= 0) are left out. The
+  /// table-to-stage map lives in LocalDb, the only file that names tables.
   ImportCopyPlan(
-    Iterable<(String table, int maxRowid)> maxRowids,
+    Iterable<(String table, ImportStage stage, int maxRowid)> maxRowids,
     this._emit,
   ) {
-    for (final (table, max) in maxRowids) {
+    for (final (table, stage, max) in maxRowids) {
       if (max <= 0) continue;
-      final stage = importStageOf(table);
       if (_runs.isEmpty || _runs.last.stage != stage) {
         _runs.add(_Run(stage));
       }

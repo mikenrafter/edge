@@ -76,7 +76,7 @@ void main() {
       final a = _caps(generation: 'gen4').of(Feature.alarmSnooze);
       expect(a.isDisabled, isTrue);
       expect(a.isHidden, isFalse);
-      expect(a.reason, contains('WHOOP 5/MG'));
+      expect(a.reason, contains('WHOOP 5 or MG'));
     });
 
     test('a 5/MG, and a band not identified yet, keep the rows', () {

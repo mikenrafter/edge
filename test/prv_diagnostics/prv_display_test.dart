@@ -262,7 +262,7 @@ void main() {
       });
       expect(
           _words(a,
-              r'no (long-term )?variability|variability (is )?(zero|absent|missing)|SD2 (is )?(zero|0)|undefined'),
+              r'not enough variation|no (long-term )?variability|variability (is )?(zero|absent|missing)|SD2 (is )?(zero|0)|undefined'),
           isTrue);
       expect(a.contains('no_long_term_variability'), isFalse);
     });

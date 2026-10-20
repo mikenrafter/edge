@@ -137,7 +137,7 @@ void main() {
       final r = gridRow('sleep', pts(List<double>.filled(40, 400)));
       expect(r.shaded, isFalse);
       await host(t, [r]);
-      expect(find.textContaining('all been about the same'), findsOneWidget);
+      expect(find.textContaining('Not enough variation yet'), findsOneWidget);
     });
 
     test('a long history with no value this month still has a range', () {

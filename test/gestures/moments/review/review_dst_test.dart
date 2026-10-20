@@ -19,6 +19,7 @@ import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/platform/tasker_moment_export.dart';
 
 import '../../../support/moment_review_fakes.dart';
+import '../../../support/pin_tz.dart';
 
 // Denver, Sunday 2026-11-01, clocks go back at 02:00 MDT to 01:00 MST. One
 // stored wall minute can be either side. Epochs are real UTC instants.
@@ -34,6 +35,9 @@ const oldMark = PendingMoment(date: '2026-11-01', hhmm: '01:30', ambiguous: true
 bool _repeatedHour(DateTime t) => t.hour == 1 && t.minute <= 59;
 
 void main() {
+  // The file assumes UTC (see the header); a local run on a DST zone made
+  // 01:30 on the fall-back night genuinely ambiguous.
+  pinProcessTimeZone('UTC');
   group('absolute time of a mark', () {
     test('sec is the recorded epoch, else the wall clock', () {
       expect(late0150.sec, _t0150mdt);

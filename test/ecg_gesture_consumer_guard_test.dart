@@ -40,6 +40,8 @@ final _allow = <String, RegExp>{
       RegExp(r"counts\['ecg_raw_packet'\]"),
   'issue-report slice: kept on a time expression that drops gesture contact':
       RegExp(r"'ecg_raw_packet':\s*\(SliceKeep\.highRate,\s*_ecgRawNot"),
+  'restore: the import screen\'s stage for the table (no read)':
+      RegExp(r"'ecg_reading_packet'\s*\|\|\s*'ecg_raw_packet'\s*\|\|"),
   'ownership lists (salvage / restore) and the coach deny list':
       RegExp(r"'ecg_reading_packet',\s*'ecg_raw_packet'"),
 };

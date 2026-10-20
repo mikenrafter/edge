@@ -162,7 +162,7 @@ const _pinnedDynamicWriters = <String, String>{
       'NOT SQL: backup storage file delete',
   'lib/data/auto_backup.dart deleteAutomaticBackups':
       'NOT SQL: backup storage file delete',
-  'lib/support/issue_report.dart _recentLog':
+  'lib/support/issue_report.dart recentReportLog':
       'NOT SQL: List.insert(0, bytes)',
   'lib/support/issue_report.dart deleteReport':
       'NOT SQL: HTTP DELETE',
@@ -179,6 +179,8 @@ const _pinnedDynamicWriters = <String, String>{
 const _pinnedTableLists = <String, String>{
   'lib/data/db.dart LocalDb._restoreTables': 'feeds _mergeFromDbFileBody',
   'lib/data/db.dart LocalDb._salvageTables': 'feeds _mergeFromDbFileBody',
+  'lib/data/db.dart LocalDb._mergeFromDbFileBody':
+      'the bulk-copy subset of _restoreTables; feeds the same pinned writer',
   'lib/data/db.dart LocalDb.schemaHealth':
       'requiredTables: read side, only checked against sqlite_master',
   'lib/coach/coach_db.dart CoachDb.reservedTableNames':
