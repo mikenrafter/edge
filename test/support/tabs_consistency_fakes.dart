@@ -62,6 +62,11 @@ class TabsRepo extends HomeRepo {
       const [];
   @override
   Future<List<String>> availableDays() async => [todayId, yesterdayId];
+  // The Health overview read needs these; a throw now shows the retry card.
+  @override
+  Future<Map<String, dynamic>> getInsights() async => const {};
+  @override
+  Future<Map<String, dynamic>> getProfile() async => const {};
 }
 
 /// The real shell with the same tab builder app.dart uses.

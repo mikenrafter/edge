@@ -8270,5 +8270,34 @@
         "type": "String"
       }
     }
+  },
+  "healthObservationsNotYet": "Начнётся после первой оценённой ночи",
+  "healthWhatOverview": "обзор",
+  "deriveProgressWaiting": "Ожидание другого расчёта",
+  "deriveProgressCalculating": "Считаем…",
+  "deriveProgressDay": "Расчёт · день {i} из {total}",
+  "@deriveProgressDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "deriveProgressDayOn": "Расчёт · день {i} из {total} · {day}",
+  "@deriveProgressDayOn": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
   }
 }

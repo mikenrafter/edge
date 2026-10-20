@@ -2904,5 +2904,34 @@
   "importStageArchive": "手环原始记录",
   "importStageOther": "其他数据",
   "statusLineImporting": "导入 · {status}",
-  "statusLineImportingStep": "导入 · {status} · 第 {index} 步，共 {count} 步"
+  "statusLineImportingStep": "导入 · {status} · 第 {index} 步，共 {count} 步",
+  "healthObservationsNotYet": "首个已评分的夜晚之后开始",
+  "healthWhatOverview": "概览",
+  "deriveProgressWaiting": "正在等待另一项计算",
+  "deriveProgressCalculating": "正在计算…",
+  "deriveProgressDay": "正在计算 · 第 {i}/{total} 天",
+  "@deriveProgressDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "deriveProgressDayOn": "正在计算 · 第 {i}/{total} 天 · {day}",
+  "@deriveProgressDayOn": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
+  }
 }

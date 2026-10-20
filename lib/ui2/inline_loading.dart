@@ -24,11 +24,16 @@ class InlineLoading extends StatelessWidget {
   /// The final content's height, reserved while loading. Null: natural size.
   final double? height;
 
+  /// Keep the detail line's height when [detail] is null, so the line
+  /// appearing later pushes nothing.
+  final bool reserveDetail;
+
   const InlineLoading({
     super.key,
     required this.status,
     this.detail,
     this.height,
+    this.reserveDetail = false,
   });
 
   @override
@@ -48,6 +53,10 @@ class InlineLoading extends StatelessWidget {
             textAlign: TextAlign.center, style: F.cap.copyWith(color: p.ink2)),
         if (d != null && d.isNotEmpty)
           Text(d,
+              textAlign: TextAlign.center,
+              style: F.cap.copyWith(color: p.ink3))
+        else if (reserveDetail)
+          Text('',
               textAlign: TextAlign.center,
               style: F.cap.copyWith(color: p.ink3)),
       ],

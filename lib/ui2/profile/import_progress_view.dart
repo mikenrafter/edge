@@ -15,8 +15,16 @@ class ImportProgressView extends StatelessWidget {
   final ImportProgress progress;
   const ImportProgressView(this.progress, {super.key});
 
-  /// Spinner row + two text lines + bar. Every stage fits inside it.
-  static const double _height = 130;
+  /// Built from its parts, so a nonlinear text scaler (Android 14+) cannot
+  /// grow the text without growing the box: fixed parts (padding, spinner,
+  /// gaps, bar) plus each text line at its scaled font size. Room for the
+  /// widest stage: a two-line status and a one-line detail.
+  static double heightFor(BuildContext c) {
+    // Laid-out lines round up to whole pixels, so the box must too.
+    final line = (MediaQuery.textScalerOf(c).scale(F.cap.fontSize!) * F.cap.height!)
+        .ceilToDouble();
+    return 2 * S.x4 + 22 + S.x2 + line * (2 + 1) + S.x2 + 4;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,10 +56,9 @@ class ImportProgressView extends StatelessWidget {
         return const SizedBox.shrink();
     }
 
-    // Fixed at a given text size so stage changes never resize it; scaled
-    // with the text so an accessibility size does not clip the counts.
+    // Fixed at a given text size so stage changes never resize it.
     return SizedBox(
-      height: MediaQuery.textScalerOf(context).scale(_height),
+      height: heightFor(context),
       child: Surface(
         pad: const EdgeInsets.symmetric(vertical: S.x4, horizontal: S.x4),
         child: Center(

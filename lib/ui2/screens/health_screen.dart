@@ -164,7 +164,18 @@ class HealthData {
   Metric get stress => metricOf(today['stress']);
   Metric get resp => metricOf(today['resp']);
 
+  static Future<WearableDay?> _wearableOrNull(LocalRepository repo) async {
+    try {
+      return await repo.wearableDay(todayLabel());
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<HealthData> load(LocalRepository repo) async {
+    // Started first and awaited last: first paint waits for the slowest read,
+    // not the sum. A failed read is null (no card), never a failed load.
+    final wearableRead = _wearableOrNull(repo);
     final today = await repo.getTodayStored();
     final cd = await repo.getInsights();
     final profile = await repo.getProfile();
@@ -249,12 +260,7 @@ class HealthData {
     final napDay = days.isEmpty ? todayLabel() : days.first;
     final naps = await _soft(() => repo.getDayNaps(napDay));
     final heart = await _soft(() => repo.getDayHeart(todayLabel()));
-    WearableDay? wearable;
-    try {
-      wearable = await repo.wearableDay(todayLabel());
-    } catch (_) {
-      wearable = null; // a failed read draws no card, as before
-    }
+    final wearable = await wearableRead;
 
     return HealthData(
       wearable: wearable,
@@ -491,6 +497,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   ExploreData? _e;
   bool _loading = true;
 
+  /// The overview read threw: show the retry card, not an empty-data screen.
+  bool _dFailed = false;
+
   @override
   void initState() {
     super.initState();
@@ -587,7 +596,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     try {
       final d = await HealthData.load(repo);
       if (stillNewest(#day, t)) {
-        setState(() => (_d = d, _loading = false));
+        setState(() => (_d = d, _loading = false, _dFailed = false));
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
           if (!mounted) return;
           if (landed) {
@@ -598,7 +607,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         });
       }
     } catch (_) {
-      if (stillNewest(#day, t)) setState(() => _loading = false);
+      if (stillNewest(#day, t)) {
+        setState(() => (_loading = false, _dFailed = _d == null));
+      }
     }
   }
 
@@ -687,6 +698,11 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             status: l?.loadingHealthOverview ?? 'Reading today and your trends')
       else
         switch (_tab) {
+          0 || 2 when _dFailed && _d == null =>
+            _readFailed(l?.healthWhatOverview ?? 'overview', () {
+              setState(() => (_dFailed = false, _loading = true));
+              _load();
+            }),
           0 => _overview(c, d),
           1 => _explore(c),
           2 => _trends(c, d),
@@ -1011,15 +1027,32 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                     child: FindingRow(d.findings.first),
                   )
                 : Surface(
-                    child: Row(children: [
+                    // Two lines tall in both states: the "not yet" sentence is
+                    // longer than the quiet one and wraps on a phone, and the
+                    // card must not change height when the watch first runs.
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                          minHeight: 2 *
+                              MediaQuery.textScalerOf(c)
+                                  .scale(F.cap.fontSize!) *
+                              F.cap.height!),
+                      child: Row(children: [
                       Icon(LucideIcons.check, size: 16, color: p.ink3),
                       const SizedBox(width: S.x2),
                       Expanded(
                         child: Text(
-                            l?.findingsLogEmptyTitle ?? 'Nothing has stood out',
+                            // "Nothing stood out" is a claim that the watch
+                            // looked. Until it has (no illness state, no
+                            // derived day), say why there is nothing instead.
+                            state != null || d.daysWithData > 0
+                                ? (l?.findingsLogEmptyTitle ??
+                                    'Nothing has stood out')
+                                : (l?.healthObservationsNotYet ??
+                                    'Starts after your first scored night'),
                             style: F.cap.copyWith(color: p.ink2)),
                       ),
                     ]),
+                    ),
                   )),
         action: d.findings.isEmpty ? null : (l?.healthSeeAll ?? 'See all'),
         onAction:
@@ -1372,6 +1405,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     final dayAt = activityDay != null && activityDay == v.day
         ? computedAtOf(status is Map ? status['activity_computed_at'] : null)
         : null;
+    final sync = syncOf(c);
+    final nothingMeasured =
+        rows.every((r) => r is MetricRow && r.value == '—');
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _asOf(
           d,
@@ -1397,6 +1433,21 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             rows[i],
           ],
         ]),
+      ),
+
+      // Nothing measured for this day: the way out is a sync. A fixed-height
+      // slot, so offering it (or not, with no AppState) moves nothing.
+      SizedBox(
+        key: const ValueKey('card:vitals-sync'),
+        height: 44,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: nothingMeasured && sync != null
+              ? TextButton(
+                  onPressed: sync,
+                  child: Text(l?.healthSyncTheBand ?? 'Sync the band'))
+              : null,
+        ),
       ),
 
       // No skin-temperature caveat card here. The row's own unit already says

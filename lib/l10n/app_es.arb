@@ -2922,5 +2922,34 @@
   "importStageArchive": "registros sin procesar de la pulsera",
   "importStageOther": "otros datos",
   "statusLineImporting": "Importando · {status}",
-  "statusLineImportingStep": "Importando · {status} · paso {index} de {count}"
+  "statusLineImportingStep": "Importando · {status} · paso {index} de {count}",
+  "healthObservationsNotYet": "Empieza tras tu primera noche puntuada",
+  "healthWhatOverview": "resumen",
+  "deriveProgressWaiting": "Esperando a otro cálculo",
+  "deriveProgressCalculating": "Calculando…",
+  "deriveProgressDay": "Calculando · día {i} de {total}",
+  "@deriveProgressDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "deriveProgressDayOn": "Calculando · día {i} de {total} · {day}",
+  "@deriveProgressDayOn": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
+  }
 }

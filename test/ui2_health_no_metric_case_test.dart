@@ -22,6 +22,14 @@ class _Repo extends LocalRepository {
 
   @override
   Future<List<String>> availableDays() async => const ['2026-08-16'];
+  @override
+  Future<Map<String, dynamic>> getInsights() async => const {};
+  @override
+  Future<Map<String, dynamic>> getProfile() async => const {};
+  @override
+  Future<Map<String, dynamic>> getChart(String metric,
+          {int? from, int? to, Set<String> signals = const {}}) async =>
+      const {'points': []};
 }
 
 Future<void> _pump(WidgetTester t, Locale locale) async {

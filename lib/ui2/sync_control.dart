@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/app_localizations.dart';
 import '../settings/settings_repository.dart';
 import '../state/app_state.dart';
 import '../state/derive_progress.dart';
@@ -296,30 +297,38 @@ String syncStatusLine(SyncPresentationState s, DateTime now) {
 /// The live calculation line for a screen whose data waits on derivation.
 /// Null unless a calculation is running. Unlike [syncStatusLine], waiting
 /// says only that: the download's result belongs to the sync sheet.
-String? calcProgressLine(SyncPresentationState s) {
+String? calcProgressLine(SyncPresentationState s, [AppLocalizations? l]) {
   if (s.phase != 'deriving') return null;
   final calc = s.calculate;
-  if (calc != null && calc.waiting) return 'Waiting for another calculation';
-  final i = calc?.dayIndex, total = calc?.dayTotal;
-  if (i == null || total == null || i <= 0) return 'Calculating…';
-  final day = calc?.day;
+  return _calcLine(l,
+      waiting: calc != null && calc.waiting,
+      i: calc?.dayIndex,
+      total: calc?.dayTotal,
+      day: calc?.day);
+}
+
+String _calcLine(AppLocalizations? l,
+    {required bool waiting, int? i, int? total, String? day}) {
+  if (waiting) {
+    return l?.deriveProgressWaiting ?? 'Waiting for another calculation';
+  }
+  if (i == null || total == null || i <= 0) {
+    return l?.deriveProgressCalculating ?? 'Calculating…';
+  }
   return day == null
-      ? 'Calculating · day $i of $total'
-      : 'Calculating · day $i of $total · $day';
+      ? (l?.deriveProgressDay('$i', '$total') ??
+          'Calculating · day $i of $total')
+      : (l?.deriveProgressDayOn('$i', '$total', day) ??
+          'Calculating · day $i of $total · $day');
 }
 
 /// [calcProgressLine] for any derive pass, sync or not, from
 /// AppState.deriveProgress: a pass after an import or a baseline rescan
 /// reports here and never on the sync's own steps.
-String? deriveProgressLine(DeriveProgress? p) {
+String? deriveProgressLine(DeriveProgress? p, [AppLocalizations? l]) {
   if (p == null) return null;
-  if (p.waiting) return 'Waiting for another calculation';
-  final i = p.dayIndex, total = p.dayTotal;
-  if (i == null || total == null || i <= 0) return 'Calculating…';
-  final day = p.day;
-  return day == null
-      ? 'Calculating · day $i of $total'
-      : 'Calculating · day $i of $total · $day';
+  return _calcLine(l,
+      waiting: p.waiting, i: p.dayIndex, total: p.dayTotal, day: p.day);
 }
 
 /// An [InlineLoading] for data that waits on a calculation: its detail line
@@ -335,12 +344,14 @@ class CalcLoading extends StatelessWidget {
     try {
       src = c.read<AppState>().deriveProgress;
     } on ProviderNotFoundException {
-      return InlineLoading(status: status);
+      return InlineLoading(status: status, reserveDetail: true);
     }
     return ValueListenableBuilder<DeriveProgress?>(
       valueListenable: src,
-      builder: (_, p, _) =>
-          InlineLoading(status: status, detail: deriveProgressLine(p)),
+      builder: (_, p, _) => InlineLoading(
+          status: status,
+          detail: deriveProgressLine(p, AppLocalizations.of(c)),
+          reserveDetail: true),
     );
   }
 }

@@ -2904,5 +2904,34 @@
   "importStageArchive": "enregistrements bruts du bracelet",
   "importStageOther": "autres données",
   "statusLineImporting": "Import · {status}",
-  "statusLineImportingStep": "Import · {status} · étape {index} sur {count}"
+  "statusLineImportingStep": "Import · {status} · étape {index} sur {count}",
+  "healthObservationsNotYet": "Commence après votre première nuit évaluée",
+  "healthWhatOverview": "aperçu",
+  "deriveProgressWaiting": "En attente d'un autre calcul",
+  "deriveProgressCalculating": "Calcul en cours…",
+  "deriveProgressDay": "Calcul · jour {i} sur {total}",
+  "@deriveProgressDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "deriveProgressDayOn": "Calcul · jour {i} sur {total} · {day}",
+  "@deriveProgressDayOn": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
+  }
 }

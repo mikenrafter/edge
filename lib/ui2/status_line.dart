@@ -35,7 +35,7 @@ class StatusLine extends StatelessWidget {
 
   /// One line of F.cap at the current text scale plus the padding.
   static double heightFor(BuildContext c) =>
-      MediaQuery.textScalerOf(c).scale(F.cap.fontSize! * F.cap.height!) +
+      MediaQuery.textScalerOf(c).scale(F.cap.fontSize!) * F.cap.height! +
       _pad.vertical;
 
   /// The import's line: "Importing · Copying heart rate · step 4 of 9".
@@ -87,7 +87,7 @@ class StatusLine extends StatelessWidget {
     final String text;
     if (imp != null && imp is! ImportDone) {
       text = importLine(l, imp);
-    } else if (deriveProgressLine(der) case final d?) {
+    } else if (deriveProgressLine(der, l) case final d?) {
       text = d;
     } else if (sync.$1) {
       text = sync.$2;

@@ -2904,5 +2904,34 @@
   "importStageArchive": "बैंड के कच्चे रिकॉर्ड",
   "importStageOther": "अन्य डेटा",
   "statusLineImporting": "आयात · {status}",
-  "statusLineImportingStep": "आयात · {status} · चरण {index} / {count}"
+  "statusLineImportingStep": "आयात · {status} · चरण {index} / {count}",
+  "healthObservationsNotYet": "आपकी पहली स्कोर की गई रात के बाद शुरू होगा",
+  "healthWhatOverview": "अवलोकन",
+  "deriveProgressWaiting": "दूसरी गणना की प्रतीक्षा",
+  "deriveProgressCalculating": "गणना हो रही है…",
+  "deriveProgressDay": "गणना · दिन {i}/{total}",
+  "@deriveProgressDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "deriveProgressDayOn": "गणना · दिन {i}/{total} · {day}",
+  "@deriveProgressDayOn": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
+  }
 }

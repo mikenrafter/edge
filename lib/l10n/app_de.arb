@@ -3011,5 +3011,34 @@
   "importStageArchive": "rohe Banddaten",
   "importStageOther": "weitere Daten",
   "statusLineImporting": "Import · {status}",
-  "statusLineImportingStep": "Import · {status} · Schritt {index} von {count}"
+  "statusLineImportingStep": "Import · {status} · Schritt {index} von {count}",
+  "healthObservationsNotYet": "Beginnt nach deiner ersten bewerteten Nacht",
+  "healthWhatOverview": "Übersicht",
+  "deriveProgressWaiting": "Warten auf eine andere Berechnung",
+  "deriveProgressCalculating": "Berechnung läuft…",
+  "deriveProgressDay": "Berechnung · Tag {i} von {total}",
+  "@deriveProgressDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "deriveProgressDayOn": "Berechnung · Tag {i} von {total} · {day}",
+  "@deriveProgressDayOn": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
+  }
 }

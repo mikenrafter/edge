@@ -17102,5 +17102,34 @@
         "type": "String"
       }
     }
+  },
+  "healthObservationsNotYet": "Starts after your first scored night",
+  "healthWhatOverview": "overview",
+  "deriveProgressWaiting": "Waiting for another calculation",
+  "deriveProgressCalculating": "Calculating…",
+  "deriveProgressDay": "Calculating · day {i} of {total}",
+  "@deriveProgressDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "deriveProgressDayOn": "Calculating · day {i} of {total} · {day}",
+  "@deriveProgressDayOn": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
   }
 }
