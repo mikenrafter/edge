@@ -2,7 +2,9 @@
 //
 // Only elements whose widget has a `ValueKey<String>` are tracked; the key's
 // value is the element id. Role is inferred from the keyed widget and its
-// subtree: Text/RichText => paragraph, EditableText => input, Semantics
+// subtree: a 'skeleton:' key, an InlineLoading at, in or around it =>
+// placeholder (wins over text: InlineLoading carries a status line),
+// Text/RichText => paragraph, EditableText => input, Semantics
 // button or Focus with canRequestFocus => control, otherwise other. Colour is
 // the nearest ColoredBox/DecoratedBox colour at or below the keyed element
 // (0x00000000 when none). focusable/focused come from the Focus in the
@@ -11,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import 'package:openstrap_edge/ui2/inline_loading.dart';
 
 class ShiftProbe {
   /// Opt-in: also track widgets WITHOUT a `ValueKey<String>` under a stable
@@ -129,7 +132,9 @@ class ShiftProbe {
         rect: seen0,
         role: _synthKind(e.widget) == 'ctl'
             ? ElementRole.control
-            : _role(e.widget, sub, canFocus),
+            : _isPlaceholder(e, sub)
+                ? ElementRole.placeholder
+                : _role(e.widget, sub, canFocus),
         colorArgb: _color(sub),
         focusable: canFocus,
         focused: node?.hasFocus ?? false,
@@ -332,6 +337,22 @@ class ShiftProbe {
     FocusNode? n;
     focusEl.visitChildren((c) => n ??= Focus.maybeOf(c, scopeOk: false));
     return n;
+  }
+
+  /// A loading stand-in: a 'skeleton:' key, or an InlineLoading in its
+  /// subtree or within a few levels above it (the spinner and status text an
+  /// unkeyed probe tracks inside one are part of the placeholder).
+  static bool _isPlaceholder(Element e, List<Element> sub) {
+    final k = e.widget.key;
+    if (k is ValueKey<String> && k.value.startsWith('skeleton:')) return true;
+    if (sub.any((x) => x.widget is InlineLoading)) return true;
+    var inside = false;
+    var depth = 0;
+    e.visitAncestorElements((a) {
+      inside = a.widget is InlineLoading;
+      return !inside && ++depth < 40;
+    });
+    return inside;
   }
 
   static ElementRole _role(Widget w, List<Element> sub, bool canFocus) {
