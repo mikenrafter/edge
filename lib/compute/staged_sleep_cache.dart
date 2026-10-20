@@ -18,6 +18,8 @@
 import 'dart:collection';
 import 'dart:convert';
 
+import '../ble/adapters/signals.dart';
+import '../data/coverage_resolver.dart' show OwnedSpan;
 import 'sleep_profile_policy.dart';
 import 'sleep_staging_worker.dart';
 import 'state_fingerprint.dart';
@@ -94,8 +96,93 @@ class StagedSleepCache {
   }
 }
 
+/// What the search substrate was read from, as tracked provenance instead of
+/// the samples themselves. Hashing every column and beat walked ~345k samples
+/// on the UI isolate per night (AGENTS §3.10), a cost paid even on a hit.
+///
+/// The substrate is a pure function of three things and nothing else
+/// (`_loadSubstrateRange` / derive_prepare.dart; the same rule retained loads
+/// rest on, substrate_retention.dart):
+///  * the `decoded_onehz` / `decoded_rr` rows of `[fromSec, toSec]`, whose
+///    `input_rev` bucket counters (kRevBucketSec) are bumped by INSERT, UPDATE
+///    and DELETE triggers, so an in-place replace, an eviction or a late row
+///    moves them ([revs]);
+///  * the resolved ownership spans (which device's row wins each second);
+///  * the store itself ([wipeEpoch], [openCount]): a wiped, rebuilt or merged
+///    store resets `input_rev`.
+/// `substrate_archive` is NOT a source: the derive path never reads it (rows
+/// pruned from the live tables are archived write-only), and the prune that
+/// moves rows there deletes them, which bumps `input_rev`.
+///
+/// Read BEFORE the rows are, like a retained load's: a row landing mid-load
+/// leaves the key stale (one extra staging), never falsely current.
+class StagingProvenance {
+  const StagingProvenance({
+    required this.fromSec,
+    required this.toSec,
+    required this.revs,
+    required this.ownership,
+    required this.wipeEpoch,
+    required this.openCount,
+  });
+
+  final int fromSec, toSec;
+
+  /// `input_rev` by bucket over `[fromSec ~/ 900, toSec ~/ 900]` (buckets that
+  /// were never written have no entry).
+  final Map<int, int> revs;
+  final Map<InputSignal, List<OwnedSpan>> ownership;
+  final int wipeEpoch, openCount;
+}
+
+/// The UTC offset in force at an instant. The process zone by default; tests
+/// subclass it to stand in for another zone.
+class ZoneOffsets {
+  const ZoneOffsets();
+
+  int minutesAt(int epochSec) =>
+      DateTime.fromMillisecondsSinceEpoch(epochSec * 1000)
+          .timeZoneOffset
+          .inMinutes;
+}
+
+/// UTC offset, in minutes, in force at every [stepSec] over `[loSec, hiSec]`,
+/// as `[atSec, minutes]` pairs where it changed (the first sample always).
+///
+/// The stager's local-day arithmetic reads the offset AT the night's own
+/// instants, not today's: two zones that agree today (Denver and Phoenix in
+/// winter) still disagree on a summer night. A transition inside the window
+/// (DST) shows as a second pair, so its position is keyed too. [zone]
+/// defaults to the process zone; tests inject another.
+List<List<int>> nightZoneOffsets(
+  int loSec,
+  int hiSec, {
+  int stepSec = 900,
+  ZoneOffsets zone = const ZoneOffsets(),
+}) {
+  final out = <List<int>>[];
+  int? last;
+  void sample(int t) {
+    final m = zone.minutesAt(t);
+    if (m == last) return;
+    out.add([t, m]);
+    last = m;
+  }
+
+  for (var t = loSec; t < hiSec; t += stepSec) {
+    sample(t);
+  }
+  sample(hiSec);
+  return out;
+}
+
 /// 128-bit digest of everything [stageSleepCandidateHeavy] receives, plus the
-/// ambient zone the worker's local-day arithmetic reads ([zoneKey]).
+/// ambient zone the worker's local-day arithmetic reads ([zoneKey], and the
+/// offsets at the night's own instants, [nightZoneOffsets]).
+///
+/// The substrate enters as its [provenance], not its samples (see
+/// [StagingProvenance]); the small inputs (override, confirmed wake, vendor
+/// nights, profile, history) are hashed as they are.
 ///
 /// Left out, each because it cannot reach the candidate:
 ///  * `input.mayFold`: it only gates extracting the profile observation after
@@ -113,23 +200,10 @@ class StagedSleepCache {
   WorkerInputs inputs,
   SleepStagingInput input, {
   required String zoneKey,
+  required StagingProvenance provenance,
+  ZoneOffsets zone = const ZoneOffsets(),
 }) {
   final fp = PrefixFingerprint();
-  void ints(List<int> l) {
-    fp.addInt(l.length);
-    for (var i = 0; i < l.length; i++) {
-      fp.addInt(l[i]);
-    }
-  }
-
-  final digests = ListDigestCache();
-  void doubles(List<double> l) {
-    fp.addInt(l.length);
-    final d = digests.digest(l);
-    fp.addInt(d.$1);
-    fp.addInt(d.$2);
-  }
-
   void small(Object? v) {
     // [a, b, ...opaque]: nothing passed here is opaque (plain values only).
     final d = dependencyFingerprint(v);
@@ -138,21 +212,34 @@ class StagedSleepCache {
     fp.addInt(d[1] as int);
   }
 
+  // A day label or a window is not enough on its own: the stager's local
+  // midnights reach a day past either end of the window.
+  const zoneMarginSec = 86400;
+  final p = provenance;
   final s = input.searchSub;
-  ints(s.tsSec);
-  ints(s.hr);
-  doubles(s.rrTsMs);
-  doubles(s.rrMs);
-  doubles(s.ax);
-  doubles(s.ay);
-  doubles(s.az);
-  ints(s.spo2Red);
-  ints(s.spo2Ir);
-  ints(s.skinTemp);
-  ints(s.skinContact);
-  ints(s.stepCount);
-  ints(s.hrValid);
-  ints(s.bandSleepState);
+  final revKeys = p.revs.keys.toList()..sort();
+  small([
+    p.fromSec,
+    p.toSec,
+    p.wipeEpoch,
+    p.openCount,
+    [for (final b in revKeys) [b, p.revs[b]]],
+    [
+      for (final sig in InputSignal.values)
+        [
+          sig.name,
+          for (final o in p.ownership[sig] ?? const <OwnedSpan>[])
+            [o.start, o.end, o.deviceId],
+        ],
+    ],
+    nightZoneOffsets(p.fromSec - zoneMarginSec, p.toSec + zoneMarginSec,
+        zone: zone),
+    // Cheap shape checks on what was loaded; the content is the provenance.
+    s.tsSec.length,
+    s.tsSec.isEmpty ? null : s.tsSec.first,
+    s.tsSec.isEmpty ? null : s.tsSec.last,
+    s.rrMs.length,
+  ]);
   final ov = input.override;
   small([
     zoneKey,

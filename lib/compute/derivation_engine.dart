@@ -4904,6 +4904,31 @@ class DerivationEngine {
     // while `napSub`/`sleepSub` score it off one device's is a window found in
     // a night that was never scored.
     final (searchOwnership, _) = await _resolveOwnership(range.$1, range.$2);
+    // What the staged-sleep key stands on instead of the samples (see
+    // [StagingProvenance]): read BEFORE the rows, so a row landing during the
+    // load leaves the key stale, never falsely current.
+    final useCache = !debugDisableStagedSleepCache;
+    StagingProvenance? provenance;
+    var keyMs = 0;
+    if (useCache) {
+      final t0 = DateTime.now().microsecondsSinceEpoch;
+      try {
+        final gen = LocalDb.storeGeneration;
+        provenance = StagingProvenance(
+          fromSec: range.$1,
+          toSec: range.$2,
+          revs: await LocalDb.inputRevisions(
+              range.$1 ~/ kRevBucketSec, range.$2 ~/ kRevBucketSec + 1),
+          ownership: searchOwnership,
+          wipeEpoch: gen.wipeEpoch,
+          openCount: gen.openCount,
+        );
+      } catch (e) {
+        provenance = null;
+        _log('[derive] staged-sleep provenance failed for $dayId: $e');
+      }
+      keyMs += DateTime.now().microsecondsSinceEpoch - t0;
+    }
     final searchSub = await _loadSubstrateRange(
       range.$1,
       range.$2,
@@ -5013,15 +5038,15 @@ class DerivationEngine {
     // Reuse the staged night when this exact input was staged at this algo
     // version already (a rescan after a heavy pass). The key is built here from
     // the very objects handed to the worker.
-    final useCache = !debugDisableStagedSleepCache;
     (int, int)? digest;
     StagedSleepEntry? hit;
-    if (useCache) {
-      final keyStartedAt = DateTime.now().microsecondsSinceEpoch;
+    final keyStartedAt = DateTime.now().microsecondsSinceEpoch;
+    if (useCache && provenance != null) {
       // A key that cannot be computed only costs the reuse: stage as before,
       // and the Sleep stages status still ends on the staging path (4.3).
       try {
-        digest = stagingInputDigest(inputs, input, zoneKey: _zoneKey());
+        digest = stagingInputDigest(inputs, input,
+            zoneKey: _zoneKey(), provenance: provenance);
         hit = _stagedSleep.lookup(dayId, kAlgoVersion, digest,
             mayFold: mayFold);
       } catch (e) {
@@ -5029,8 +5054,11 @@ class DerivationEngine {
         hit = null;
         _log('[derive] staged-sleep key failed for $dayId: $e');
       }
+    }
+    if (useCache) {
       perf.addStage('stage_candidate_key',
-          (DateTime.now().microsecondsSinceEpoch - keyStartedAt) ~/ 1000);
+          (keyMs + DateTime.now().microsecondsSinceEpoch - keyStartedAt) ~/
+              1000);
     }
     final String candidateJson;
     final String? observationJson;
