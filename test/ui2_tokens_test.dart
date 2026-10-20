@@ -191,6 +191,10 @@ void main() {
 /// this list fails the test above, so the choice has to be made rather than
 /// drifted into.
 const _notComponents = {
+  // Invisible identity markers for the layout consistency rule (a keyed
+  // wrapper and a 1 px line under ScreenTitle); nothing to look at. Pumped
+  // in test/layout_shift/probe_shared_slot_test.dart and the tabs test.
+  'SharedSlot', 'ContentTopMarker',
   // Device lab panel bound to a live AlarmSlotProbeRunner, which arms real
   // band alarms; every state it draws is pumped in
   // alarm_slot_probe_panel_test.dart with a fake runner.

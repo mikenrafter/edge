@@ -90,7 +90,7 @@ import 'sleep_detail.dart';
 // ═══════════════════ shared plumbing ═══════════════════
 
 /// Page padding. The bottom inset clears the shell's floating nav.
-const pad = EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x16 + S.x8);
+const pad = kTabRootPad;
 
 /// Push a detail screen. Every drill-down in ui2 goes through here.
 ///
@@ -364,31 +364,64 @@ Widget syncedThroughLine(BuildContext c, String? todayId,
   );
 }
 
-/// Rows 1 and 2 of the greeting header. Row 1 is the sync row
-/// ([HomeSyncStatus], with [end], the settings button, at its right end): the
-/// date when idle, replaced by the progress status or the problem while one
-/// shows. Row 2 is always "Synced through 15:33", plain text, inset on the
-/// right so it never runs under the button's overhang.
+/// The rows under the greeting title: the sync row ([HomeSyncStatus]; the date
+/// when idle, replaced by the progress status or the problem while one shows),
+/// then "Synced through 15:33" (plain text), then the connection line. The
+/// avatar is in the title row above, not here. [date] null is the no-day path
+/// (loading, failed, first run): just the dated "synced through" line.
 List<Widget> homeHeaderRows(
   BuildContext c, {
   required String? todayId,
-  required String date,
-  required Widget end,
-  required double endInset,
+  required String? date,
   AppLocalizations? l,
 }) {
   return [
-    HomeSyncStatus(through: date, throughShort: date, end: end),
-    Padding(
-      padding: EdgeInsets.only(right: endInset),
-      child: _HeldSyncedThrough(
-        at: lastDataAtOf(c),
-        busy: syncBusyOf(c),
-        todayId: todayId,
-        l: l,
+    if (date == null)
+      syncedThroughLine(c, null, l)
+    else ...[
+      HomeSyncStatus(through: date, throughShort: date),
+      // Stops short of the right edge so the sync row's 44 pt targets, which
+      // overhang this row, still receive taps there.
+      Padding(
+        padding: const EdgeInsets.only(right: S.tap + HomeSyncStatus.endGap),
+        child: _HeldSyncedThrough(
+          at: lastDataAtOf(c),
+          busy: syncBusyOf(c),
+          todayId: todayId,
+          l: l,
+        ),
       ),
-    ),
+    ],
+    // The connection and battery live on AppState.device, independent of
+    // HomeData — a load failure or first run must not hide them too. A
+    // start-aligned Column, so the line keeps its identity when the day lands.
+    if (connectionLine(c, l) case final conn?) ...[
+      const SizedBox(height: 2),
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [conn]),
+    ],
   ];
+}
+
+/// The profile button in the title row. While a sync runs it gives way to a
+/// spinner: same slot, same 40 pt size, same on-colour, so the title row never
+/// changes shape and the sync row is left to the status text. Present in every
+/// Home state, including before the first read lands.
+Widget _homeAvatar(BuildContext c, AppLocalizations? l) {
+  final p = P.of(c);
+  return syncBusyOf(c)
+      ? Pressable(
+          semanticLabel:
+              '${l?.homeProfileSettings ?? 'Profile and settings'}, syncing',
+          onTap: () => go(c, const MoreSettings()),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration:
+                BoxDecoration(shape: BoxShape.circle, color: p.fill(C.domHome)),
+            child: Center(child: syncBusyMark(p.inkOnFill)),
+          ),
+        )
+      : const ProfileAvatar(accent: C.domHome);
 }
 
 /// "Synced through …" that holds its last value while a sync runs: records
@@ -2222,26 +2255,19 @@ class _HomeScreenState extends State<HomeScreen>
 
     if (d == null) {
       return _refreshable(ListView(padding: pad, children: [
-        const SizedBox(height: S.x4),
         ?_naturalWakeCard(c),
         ?snoozeCardFor(c),
         ?momentFollowUpCard(c),
-        // No day on screen ⇒ no `todayId`, so this renders the dated form.
-        // Shown here TOO: a first run, a failed read and a sync in flight are
-        // exactly when "how far are we?" is worth answering, and the header
-        // this line normally sits under does not exist on this path. It is
-        // also where Sync now lives, so a failed load can still be retried.
-        syncedThroughLine(c, null, l),
-        // The connection and battery live on AppState.device, independent of
-        // HomeData — a load failure or first run must not hide them too.
-        // A start-aligned Column, the wrapper the loaded header gives it, not
-        // an Align: same box on screen, and the line keeps its identity when
-        // the day lands instead of reading as a new line while another one
-        // further down takes over its slot.
-        if (connectionLine(c, l) case final conn?) ...[
-          const SizedBox(height: 2),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [conn]),
-        ],
+        // The same header as the loaded screen, avatar included: a first run,
+        // a failed read and a sync in flight are exactly when "how far are
+        // we?" is worth answering, and Sync now lives in this row, so a failed
+        // load can still be retried. No day on screen means no name and no
+        // `todayId`, so the title is the bare greeting and the line below
+        // renders the dated form.
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ScreenTitle(g.word, avatar: _homeAvatar(c, l)),
+          ...homeHeaderRows(c, todayId: null, date: null, l: l),
+        ]),
         const SizedBox(height: S.x3),
         // Not while the first read is out: the card reads its own count, and
         // landing above the loading row would push it down. The loaded paths
@@ -2343,11 +2369,6 @@ class _HomeScreenState extends State<HomeScreen>
     // to start, that outranks anything else this screen has to say today.
     final rebuilt = dbRebuiltCard(dbRebuildOf(c), l);
 
-    // The width the button takes at row 1's right end (a Pressable is S.tap
-    // wide), and the text above and below stops short of it. One button: the
-    // coach moved to its own chip at the foot of the screen.
-    final endInset = S.tap + HomeSyncStatus.endGap;
-
     return _refreshable(ListView(padding: pad, children: [
       ?rebuilt,
       // Natural Wake is buzzing and waiting for "I'm up": above everything.
@@ -2367,72 +2388,24 @@ class _HomeScreenState extends State<HomeScreen>
       // exactly the morning you would most want to be told.
       ...?_bodyWatch(c, d, todayLabel(widget.now)),
       // ── greeting ──
-      Padding(
-        padding: const EdgeInsets.only(top: S.x3, bottom: S.x5),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // The greeting stops short of the buttons: they are centred on row 1,
-          // so their top overlaps the greeting's lower edge.
-          Padding(
-            padding: EdgeInsets.only(right: endInset),
-            child: Row(children: [
-              Flexible(
-                child: Text(
-                  d.name == null || d.name!.isEmpty
-                      ? g.word
-                      : '${g.word}, ${d.name}',
-                  style: F.t2.copyWith(color: p.ink),
-                ),
-              ),
-              const SizedBox(width: S.x2),
-              Icon(g.icon, size: 17, color: p.on(g.color)),
-            ]),
-          ),
-          const SizedBox(height: 2),
-          // The first row under the greeting is the sync row, and its centre
-          // is the buttons' centre: the date when idle, the status or problem
-          // while one shows. How far the band's data reaches is always said, on
-          // the row below — "am I looking at today, or at last night?" used to
-          // be answerable only by opening Profile > Devices. Time since the
-          // last sync and Sync now are right-aligned on the sync row, just left
-          // of the avatar. The row is a direct child of this Column: its tap
-          // targets overhang the lines around it (see [HitOverhang]), and no
-          // tighter ancestor may clip them.
-          ...homeHeaderRows(
-            c,
-            todayId: d.dayId,
-            date: prettyDay(d.dayId, l),
-            endInset: endInset,
-            l: l,
-            // Profile is the same avatar every tab carries; the coach moved to
-            // its own chip at the foot of the screen. While a sync runs the
-            // avatar gives way to a spinner: same button, same size, same tap,
-            // same on-colour. It is where the eye already is, and it leaves the
-            // sync row to the status text.
-            end: syncBusyOf(c)
-                ? Pressable(
-                    semanticLabel:
-                        '${l?.homeProfileSettings ?? 'Profile and settings'}, syncing',
-                    onTap: () => go(c, const MoreSettings()),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                          shape: BoxShape.circle, color: p.fill(C.domHome)),
-                      child: Center(child: syncBusyMark(p.inkOnFill)),
-                    ),
-                  )
-                : const ProfileAvatar(accent: C.domHome),
-          ),
-          // Its own line, not squeezed into the sync row: at accessibility text
-          // sizes that row has no slack left, and `Expanded` would only shrink
-          // the sync text into extra wrapped lines to make room rather than
-          // ever actually overflow.
-          if (connectionLine(c, l) case final conn?) ...[
-            const SizedBox(height: 2),
-            conn,
-          ],
-        ]),
-      ),
+      //
+      // The same header every tab has: the greeting is the title, the profile
+      // button is the avatar. Below it, the sync row, then "Synced through",
+      // then the connection. The sync row is the first content, as on every
+      // other tab; its end is no longer shared with the button.
+      //
+      // ONE list child: the sync row's 44 pt targets overhang the lines around
+      // it (see [HitOverhang]), and a list item only hit-tests inside its own
+      // box, so the title and the rows must share a box.
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ScreenTitle(
+          d.name == null || d.name!.isEmpty ? g.word : '${g.word}, ${d.name}',
+          avatar: _homeAvatar(c, l),
+        ),
+        ...homeHeaderRows(c,
+            todayId: d.dayId, date: prettyDay(d.dayId, l), l: l),
+      ]),
+      const SizedBox(height: S.x5),
 
       if (bare && !building) ...[
         _detectedActivities(d),

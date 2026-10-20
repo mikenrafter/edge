@@ -463,10 +463,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       onRefresh: _load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(S.x4, S.x4, S.x4, S.x16),
+        padding: kTabRootPad,
         children: [
           ScreenTitle(title,
-              trailing: const ProfileAvatar(accent: C.domSleep)),
+              avatar: const ProfileAvatar(accent: C.domSleep)),
           if (sub.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(left: S.x1, bottom: S.x2),

@@ -678,9 +678,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   Widget build(BuildContext c) {
     final d = _d ?? const HealthData();
     final l = AppLocalizations.of(c);
-    return ListView(padding: pad, children: [
+    return ListView(padding: kTabRootPad, children: [
       ScreenTitle(l?.healthTitle ?? 'Health',
-          trailing: const ProfileAvatar(accent: C.domHealth)),
+          avatar: const ProfileAvatar(accent: C.domHealth)),
       SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
       const SizedBox(height: S.x5),
       if (_loading && _d == null)

@@ -5,6 +5,11 @@
 //   Synced through 15:33
 //   59% · Connected
 //
+// (Revised with the shared tab header: the greeting is now the ScreenTitle and
+// the settings button its avatar, in the title row ABOVE row 1. Row 1 is the
+// first content under it and its right-aligned cluster ends at the list's right
+// edge, not against the button.)
+//
 // Row 1 is the first row under the greeting and its centre is level with the
 // settings button's centre. The date stays left; the timer and the clickable
 // (Show details while syncing, Sync now when idle) are right-aligned, just left
@@ -189,20 +194,22 @@ Finder get _disc => find.descendant(
   ),
 );
 
-/// Row 1's centre must be level with the button's, whichever text is on it.
+/// Row 1 is the first content UNDER the title row: below the button (which
+/// sits in the title row beside the greeting), whichever text is on it.
 void _expectLevel(WidgetTester t, Finder row1Text) {
   expect(
-    (t.getCenter(row1Text.first).dy - t.getCenter(_disc).dy).abs(),
-    lessThanOrEqualTo(2),
-    reason: 'row 1 centre vs settings button centre',
+    t.getCenter(row1Text.first).dy,
+    greaterThan(t.getBottomLeft(_disc).dy),
+    reason: 'row 1 centre is under the settings button',
   );
 }
 
-/// The gap from the right-aligned cluster's last text to the button's disc:
-/// tight, but not touching.
+/// The right-aligned cluster ends at the list's right edge (16 pt in), with
+/// only the clickable's own padding between.
 void _expectButtonGap(WidgetTester t, Finder lastRight) {
-  final gap = t.getTopLeft(_disc).dx - t.getTopRight(lastRight.first).dx;
-  expect(gap, inInclusiveRange(6, 16), reason: 'text to button gap');
+  final edge = t.getSize(find.byType(HomeScreen)).width - 16;
+  final gap = edge - t.getTopRight(lastRight.first).dx;
+  expect(gap, inInclusiveRange(0, 12), reason: 'cluster to list edge');
 }
 
 void main() {
@@ -219,7 +226,7 @@ void main() {
 
   group('idle', () {
     testWidgets('row 1: the date, then time since sync and Sync now '
-        'right-aligned against the gear, level with it', (t) async {
+        'right-aligned against the list edge, under the gear', (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
@@ -233,9 +240,8 @@ void main() {
       // Left to right, all on the one line.
       expect(_x(t, _date), lessThan(_x(t, find.text('1 h ago'))));
       expect(_x(t, find.text('1 h ago')), lessThan(_x(t, find.text('Sync now'))));
-      expect(t.getTopRight(find.text('Sync now')).dx,
-          lessThan(t.getTopLeft(_gear).dx),
-          reason: 'the button sits just left of the settings gear');
+      expect(t.getCenter(_gear).dy, lessThan(_y(t, _date)),
+          reason: 'the settings gear is in the title row, above row 1');
       expect((_y(t, _date) - _y(t, find.text('1 h ago'))).abs(), lessThan(2));
       expect((_y(t, _date) - _y(t, find.text('Sync now'))).abs(), lessThan(2));
 
@@ -309,7 +315,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the settings button is level with row 1, not the block',
+    testWidgets('the settings button is in the title row, above row 1',
         (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
@@ -439,9 +445,8 @@ void main() {
           findsOneWidget);
       expect(_gear, findsNothing);
 
-      // Same place as the gear was: far right, level with row 1.
-      expect((t.getCenter(_spinner).dy - _y(t, _status)).abs(),
-          lessThanOrEqualTo(2));
+      // Same slot as the gear: far right, in the title row above row 1.
+      expect(t.getCenter(_spinner).dy, lessThan(_y(t, _status)));
       expect(t.getTopRight(_settingsButton).dx, lessThanOrEqualTo(390));
       expect(t.getTopLeft(_settingsButton).dx, greaterThan(300));
 
@@ -593,8 +598,6 @@ void main() {
           lessThan(2));
       _expectLevel(t, find.text('Sync failed'));
       _expectButtonGap(t, find.text('Retry'));
-      expect(t.getTopRight(find.text('Retry')).dx,
-          lessThan(t.getTopLeft(_gear).dx));
       expect(find.text('Retry'), findsOneWidget);
       expect(find.text('Sync now'), findsNothing);
       expect(find.text('1 h ago'), findsOneWidget);
@@ -665,7 +668,7 @@ void main() {
       ('syncing', _syncing),
       ('failed', _failed),
     ]) {
-      testWidgets('$name: nothing overflows, row 1 is level with the button',
+      testWidgets('$name: nothing overflows, row 1 is under the button',
           (t) async {
         final app = _App(pres: make(), through: _edge);
         addTearDown(app.dispose);
@@ -748,8 +751,7 @@ void main() {
       expect(status.maxLines, 1);
       expect(find.text('Show details'), findsOneWidget);
       expect(_text(_clockRe), findsOneWidget);
-      expect(t.getTopRight(find.text('Show details')).dx,
-          lessThan(t.getTopLeft(_disc).dx));
+      expect(t.getTopRight(find.text('Show details')).dx, lessThanOrEqualTo(300 - 16));
       expect(t.getTopRight(_status).dx,
           lessThan(t.getTopLeft(_text(_clockRe)).dx));
       await _end(t);

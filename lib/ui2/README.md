@@ -292,7 +292,7 @@ zero. Do not add one.
 ```dart
 SubTabs(List<String> items, int index, ValueChanged<int> onTap,
         {Color color = C.green})
-ScreenTitle(String title, {Widget? trailing})
+ScreenTitle(String title, {Widget? trailing, Widget? avatar})
 Pill(String text, Color color, {IconData? icon})
 BigButton(String label, {IconData? icon, Color color = C.green,
                          bool soft = false, VoidCallback? onTap})

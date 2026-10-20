@@ -66,8 +66,10 @@ class ImportProgressView extends StatelessWidget {
         return const SizedBox.shrink();
     }
 
+    // Fixed at a given text size so stage changes never resize it; scaled
+    // with the text so an accessibility size does not clip the counts.
     return SizedBox(
-      height: _height,
+      height: MediaQuery.textScalerOf(context).scale(_height),
       child: Surface(
         pad: const EdgeInsets.symmetric(vertical: S.x4, horizontal: S.x4),
         child: Center(

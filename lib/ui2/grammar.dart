@@ -40,6 +40,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/journal_fields.dart' show formatMinuteOfDay;
 import '../models/metric.dart';
+import 'shared_slot.dart';
 import 'chart_annotations.dart' show AnnotationSet, ChartAnnotationLane;
 import 'charts.dart';
 import 'scroll_hint.dart';
@@ -2854,29 +2855,57 @@ class _SubTabsState extends State<SubTabs> {
   }
 }
 
+/// The list padding every tab root uses: 16 on the sides, nothing on top (the
+/// [ScreenTitle] supplies the top gap), and room at the bottom to clear the
+/// floating nav. Activity applies only the vertical part, because its hero card
+/// runs edge to edge and each of its other children pads itself by 16.
+const kTabRootPad = EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x16 + S.x8);
+
+/// The header every tab root shares: a one-line title and, at its end, either
+/// the profile [avatar] or another [trailing] control.
+///
+/// Home passes its greeting as the title, so one header serves all four tabs.
+/// The title, the avatar slot and the point where the content starts are marked
+/// (`shared:title`, `shared:avatar`, `shared:content-top`) so a layout check
+/// can hold them still from tab to tab. The content-top marker has no layout
+/// footprint: it sits at the bottom edge of this widget, where the first
+/// content begins, so it matches across tabs whatever that content is.
 class ScreenTitle extends StatelessWidget {
   final String title;
   final Widget? trailing;
-  const ScreenTitle(this.title, {super.key, this.trailing});
+
+  /// The profile button (or its syncing stand-in): marked `shared:avatar`.
+  final Widget? avatar;
+  const ScreenTitle(this.title, {super.key, this.trailing, this.avatar});
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(S.x1, S.x2, S.x1, S.x3),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: F.t1.copyWith(color: p.ink),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(S.x1, S.x2, S.x1, S.x3),
+          child: Row(
+            children: [
+              Expanded(
+                child: SharedSlot(
+                  'title',
+                  child: Text(
+                    title,
+                    style: F.t1.copyWith(color: p.ink),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              if (avatar != null) SharedSlot('avatar', child: avatar!),
+              ?trailing,
+            ],
           ),
-          ?trailing,
-        ],
-      ),
+        ),
+        const ContentTopMarker(),
+      ],
     );
   }
 }

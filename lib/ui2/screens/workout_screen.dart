@@ -103,11 +103,11 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
         // this whole tab on device). Padding the siblings is ordinary layout
         // and cannot do either.
         return ListView(
-          padding: const EdgeInsets.fromLTRB(0, S.x2, 0, S.x16),
+          padding: EdgeInsets.fromLTRB(0, kTabRootPad.top, 0, kTabRootPad.bottom),
           children: [
             for (final w in <Widget>[
               ScreenTitle(loc?.tabActivity ?? 'Activity',
-                  trailing: const ProfileAvatar(accent: C.domMove)),
+                  avatar: const ProfileAvatar(accent: C.domMove)),
               SubTabs(_tabs(loc), tab, (i) => setState(() => tab = i),
                   color: C.domMove),
               const SizedBox(height: S.x5),

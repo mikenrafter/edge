@@ -16,6 +16,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../l10n/app_localizations.dart';
 import 'grammar.dart';
+import 'shared_slot.dart';
 import 'theme.dart';
 
 /// The four primary destinations, in bar order.
@@ -161,7 +162,8 @@ class _AppShellState extends State<AppShell> {
             ],
           ),
         ),
-        bottomNavigationBar: _TabBar(current: _current, onTap: _select),
+        bottomNavigationBar:
+            SharedSlot('tabbar', child: _TabBar(current: _current, onTap: _select)),
       ),
     );
   }

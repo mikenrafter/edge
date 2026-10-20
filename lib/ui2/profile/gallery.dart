@@ -166,8 +166,6 @@ Map<String, Widget> componentCases() => {
       // leaves someone else's phone. Both are photographed rather than merely
       // swept: they are the two components a regression would be noticed in
       // last and cost the most.
-      'import_progress': const ImportProgressView(
-          ImportCopying(ImportStage.heartRate, 1200, 48000, 4, 9)),
       'rings': const RingTrio(d: _ringsMeasured),
       // The two states that decide whether the trio is honest, in one picture:
       // recovery still filling its baseline (progress, not a bad score), and a
@@ -807,6 +805,10 @@ final _metres = List<double>.generate(
     120, (i) => 180 + 240 * sin(i / 120 * pi) + (i % 7) * 3.0);
 
 Map<String, Widget> extraCases() => {
+      'import_progress': const ImportProgressView(
+          ImportCopying(ImportStage.heartRate, 1200, 48000, 4, 9)),
+      'calc_loading': const CalcLoading(status: 'Calculating today'),
+
       // The edge treatment that tells a horizontal row it continues. Swept
       // rather than photographed because the state worth seeing is the one a
       // still cannot hold: it is ABSENT when the content fits, present when it
