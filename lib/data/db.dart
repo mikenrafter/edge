@@ -12292,6 +12292,19 @@ class LocalDb {
     final src = await openDatabase(path, readOnly: true);
     final db = await instance;
     const tables = _restoreTables;
+    const bulkTables = {
+      'decoded_onehz',
+      'decoded_rr',
+      'samples',
+      'raw_archive',
+      'events',
+      'band_events',
+      'band_battery',
+      'day_result',
+      'metric_series',
+      'metric_series_version',
+      'metric_method',
+    };
     // Columns this app's schema actually has, per table — so a row from a NEWER
     // export carrying extra columns this build doesn't know about is filtered
     // down (dropped) instead of throwing "no such column". A column the source
@@ -12332,7 +12345,203 @@ class LocalDb {
     };
     var archiveSkipped = 0;
     int? archiveEdgeSec;
+    var impAttached = false;
+    var finalizedDaysSnapshot = false;
+
+    String quoteSql(String name) => '"${name.replaceAll('"', '""')}"';
+    String sourceColumn(String name) => 's.${quoteSql(name)}';
+    String numericSql(String value) =>
+        "typeof($value) IN ('integer', 'real')";
+
+    Future<bool> mergeBulkTable(String t) async {
+      if (!impAttached || !bulkTables.contains(t)) return false;
+      final exists = await db.rawQuery(
+        "SELECT 1 FROM imp.sqlite_master WHERE type = 'table' AND name = ?",
+        [t],
+      );
+      if (exists.isEmpty) return true;
+
+      if (t == 'day_result') importedDays = <String>{};
+      final destInfo = await db.rawQuery('PRAGMA main.table_info(${quoteSql(t)})');
+      if (destInfo.isEmpty) return false;
+      final sourceInfo = await db.rawQuery('PRAGMA imp.table_info(${quoteSql(t)})');
+      final destColumns = [
+        for (final column in destInfo) column['name'] as String,
+      ];
+      final sourceColumns = {
+        for (final column in sourceInfo) column['name'] as String,
+      };
+      final maxRowid = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT MAX(rowid) FROM imp.${quoteSql(t)}'),
+      );
+      if (maxRowid == null || maxRowid <= 0) {
+        counts[t] = 0;
+        return true;
+      }
+
+      const deviceKeyed = {'samples', 'decoded_onehz', 'decoded_rr'};
+      final isDeviceKeyed = deviceKeyed.contains(t);
+      final sourceTsMs = sourceColumns.contains('ts_ms')
+          ? sourceColumn('ts_ms')
+          : 'NULL';
+      final sourceDeviceId = sourceColumns.contains('device_id')
+          ? sourceColumn('device_id')
+          : "'$kPrimaryDeviceId'";
+      final sourceRecTs = sourceColumns.contains('rec_ts')
+          ? sourceColumn('rec_ts')
+          : 'NULL';
+      final sourceRrTsMs = sourceColumns.contains('rr_ts_ms')
+          ? sourceColumn('rr_ts_ms')
+          : 'NULL';
+      final recoveredRecTs = t == 'decoded_rr'
+          ? 'CASE WHEN $sourceRecTs IS NULL THEN '
+              'CASE WHEN ${numericSql(sourceRrTsMs)} '
+              'THEN CAST($sourceRrTsMs AS INTEGER) / 1000 ELSE NULL END '
+              'ELSE $sourceRecTs END'
+          : sourceRecTs;
+      final keyTime = t == 'samples'
+          ? (sourceColumns.contains('ts') ? sourceColumn('ts') : 'NULL')
+          : t == 'decoded_rr'
+              ? recoveredRecTs
+              : sourceRecTs;
+      final derivedTsMs =
+          'CASE WHEN $sourceTsMs IS NULL THEN CAST($keyTime AS INTEGER) * 1000 '
+          'ELSE $sourceTsMs END';
+      final derivedDeviceId =
+          'CASE WHEN $sourceTsMs IS NULL THEN COALESCE($sourceDeviceId, '
+          "'$kPrimaryDeviceId') ELSE $sourceDeviceId END";
+
+      final expressions = <String, String>{};
+      for (final column in destColumns) {
+        if (sourceColumns.contains(column)) {
+          expressions[column] = sourceColumn(column);
+        }
+      }
+      if (t == 'decoded_onehz') {
+        if (destColumns.contains('on_wrist')) expressions['on_wrist'] = 'NULL';
+        if (destColumns.contains('hr_valid')) expressions['hr_valid'] = 'NULL';
+        if (destColumns.contains('skin_temp_c') &&
+            sourceColumns.contains('skin_temp_c')) {
+          final skinTemp = sourceColumn('skin_temp_c');
+          expressions['skin_temp_c'] =
+              'CASE WHEN ${numericSql(skinTemp)} AND $skinTemp <= -49.995 '
+              'THEN NULL ELSE $skinTemp END';
+        }
+      }
+      if (t == 'decoded_rr' && destColumns.contains('rec_ts')) {
+        expressions['rec_ts'] = recoveredRecTs;
+      }
+      if (isDeviceKeyed && destColumns.contains('device_id')) {
+        expressions['device_id'] = derivedDeviceId;
+      }
+      if (isDeviceKeyed && destColumns.contains('ts_ms')) {
+        expressions['ts_ms'] = derivedTsMs;
+      }
+      final columns = [
+        for (final column in destColumns)
+          if (expressions.containsKey(column)) column,
+      ];
+      if (columns.isEmpty) return false;
+
+      final filters = <String>['s.rowid > ?', 's.rowid <= ?'];
+      if (isDeviceKeyed) {
+        filters.add('NOT ($sourceTsMs IS NULL AND NOT (${numericSql(keyTime)}))');
+      }
+      if (t == 'day_result') {
+        filters.add('NOT EXISTS (SELECT 1 FROM temp._restore_protected_day_results p '
+            'WHERE p.day_id = ${sourceColumn('day_id')} AND '
+            'p.algo_version = ${sourceColumn('algo_version')})');
+      }
+      if (t == 'metric_series' ||
+          t == 'metric_series_version' ||
+          t == 'metric_method') {
+        filters.add('NOT EXISTS (SELECT 1 FROM temp._restore_finalized_days p '
+            'WHERE p.day_id = ${sourceColumn('date')})');
+      }
+      final where = filters.join(' AND ');
+      final selectSql = 'SELECT ${[
+        for (final column in columns)
+          '${expressions[column]} AS ${quoteSql(column)}',
+      ].join(', ')} FROM imp.${quoteSql(t)} s WHERE $where';
+      final insertSql = 'INSERT OR REPLACE INTO main.${quoteSql(t)} '
+          '(${columns.map(quoteSql).join(', ')}) $selectSql';
+
+      var protectedDayResults = false;
+      var copied = 0;
+      try {
+        if (t == 'day_result') {
+          await db.execute('CREATE TEMP TABLE _restore_protected_day_results AS '
+              'SELECT day_id, algo_version FROM main.day_result WHERE finalized = 1');
+          protectedDayResults = true;
+        }
+        var lower = 0;
+        const chunkRows = 100000;
+        while (lower < maxRowid) {
+          final upper = lower + chunkRows > maxRowid ? maxRowid : lower + chunkRows;
+          await db.transaction((txn) async {
+            if (t == 'day_result') {
+              final days = await txn.rawQuery(
+                'SELECT DISTINCT ${sourceColumn('day_id')} AS day_id '
+                'FROM imp.${quoteSql(t)} s WHERE $where',
+                [lower, upper],
+              );
+              importedDays?.addAll(
+                days.map((row) => '${row['day_id']}'),
+              );
+            }
+            await txn.execute(insertSql, [lower, upper]);
+            copied += Sqflite.firstIntValue(
+                  await txn.rawQuery('SELECT changes()'),
+                ) ??
+                0;
+            if (t == 'decoded_rr') {
+              // Materialised and driven from the chunk's seconds, so the
+              // delete walks decoded_rr's (device_id, ts_ms, beat_index) key
+              // once per carried second. A correlated EXISTS over the CTE
+              // scanned every local beat against every carried second.
+              await txn.execute('DROP TABLE IF EXISTS temp._restore_rr_carried');
+              await txn.execute('''CREATE TEMP TABLE _restore_rr_carried AS
+                SELECT $derivedDeviceId AS d, $derivedTsMs AS k,
+                    MAX(${sourceColumn('beat_index')}) AS m
+                FROM imp.${quoteSql(t)} s
+                WHERE $where AND ${numericSql(sourceColumn('beat_index'))}
+                GROUP BY d, k''', [lower, upper]);
+              await txn.execute('''DELETE FROM main.decoded_rr WHERE rowid IN (
+                SELECT r.rowid FROM temp._restore_rr_carried c
+                JOIN main.decoded_rr r
+                  ON r.device_id = c.d AND r.ts_ms = c.k AND r.beat_index > c.m)''');
+              await txn.execute('DROP TABLE temp._restore_rr_carried');
+            }
+          });
+          _mergePagesCommitted++;
+          lower = upper;
+        }
+      } finally {
+        if (protectedDayResults) {
+          await db.execute('DROP TABLE temp._restore_protected_day_results');
+        }
+      }
+      counts[t] = copied;
+      return true;
+    }
+
     try {
+      if (!debugRowByRowMerge) {
+        try {
+          // The copy stays in SQLite because row pages crossing the platform
+          // channel cost minutes and held the database between band-sync
+          // commits, which must land before the ACK.
+          await db.execute('ATTACH DATABASE ? AS imp', [path]);
+          impAttached = true;
+        } on DatabaseException {
+          impAttached = false;
+        }
+        if (impAttached) {
+          await db.execute('CREATE TEMP TABLE _restore_finalized_days AS '
+              'SELECT day_id FROM main.day_result WHERE finalized = 1');
+          finalizedDaysSnapshot = true;
+        }
+      }
       if ((only ?? tables).contains(SubstrateArchive.table)) {
         try {
           await SubstrateArchive.adoptPolicy(src, db);
@@ -12359,6 +12568,7 @@ class LocalDb {
       }
       for (final t in (only ?? tables)) {
         try {
+          if (await mergeBulkTable(t)) continue;
           // PAGED SOURCE READ — never `SELECT *` a whole table.
           //
           // This used to be a single `src.query(t)`. sqflite serialises an entire
@@ -12797,7 +13007,17 @@ class LocalDb {
         }
       }
     } finally {
-      await src.close();
+      try {
+        if (finalizedDaysSnapshot) {
+          await db.execute('DROP TABLE temp._restore_finalized_days');
+        }
+      } finally {
+        try {
+          if (impAttached) await db.execute('DETACH DATABASE imp');
+        } finally {
+          await src.close();
+        }
+      }
     }
     if (counts.values.any((count) => count > 0)) {
       await ActivityStore.suppressImportedAlerts(db);
@@ -12852,7 +13072,8 @@ class LocalDb {
     }
     // Last, so it can never be mistaken for a table row count by anything that
     // walks this map in order.
-    if (importedDays != null) counts['_days'] = importedDays.length;
+    final days = importedDays;
+    if (days != null) counts['_days'] = days.length;
     // Archive buckets that could not be merged (a codec this build does not
     // know) — kept out of the row counts, never silently.
     if (archiveSkipped > 0) counts['_substrate_archive_skipped'] = archiveSkipped;
