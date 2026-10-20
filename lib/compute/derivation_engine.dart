@@ -90,6 +90,7 @@ import 'day_checkpoint_policy.dart';
 import 'day_resume_state.dart';
 import 'cardio_rows_blob.dart';
 import 'sleep_staging_worker.dart';
+import 'staged_sleep_cache.dart';
 import 'day_tail_fold.dart';
 import 'minute_bills.dart';
 import 'step_cadence.dart';
@@ -3341,9 +3342,16 @@ class DerivationEngine {
   /// part in its window.
   final List<CardioRowsChunk> _cardioRowChunks = [];
 
-  // RED-PHASE SEAMS for the staged-sleep reuse (test/staged_sleep_reuse_test.dart).
-  // They describe today's behaviour (no cache); the green phase implements the
-  // bounded in-memory cache behind them.
+  /// Staged sleep candidates reused across passes (RAM only). OWNER: this
+  /// engine instance, on the UI isolate; it never crosses an isolate. Keyed by
+  /// day, algo version and a digest of the exact staging input
+  /// ([stagingInputDigest]), so a rescan over unchanged inputs skips the
+  /// staging while any moved input re-stages. Bounded by
+  /// [kStagedSleepCacheMaxDays], least recently used out first. The engine has
+  /// no dispose or data-reset path of its own: a wiped database changes the
+  /// digest (a miss), and a failed or cancelled staging throws before anything
+  /// is stored.
+  final StagedSleepCache _stagedSleep = StagedSleepCache();
 
   /// True: every staging runs from scratch and nothing is stored (the oracle
   /// the reuse law compares against).
@@ -3355,16 +3363,17 @@ class DerivationEngine {
 
   /// Days held by the staged-sleep cache.
   @visibleForTesting
-  int get debugStagedSleepCacheSize => 0;
+  int get debugStagedSleepCacheSize => _stagedSleep.size;
 
-  /// Most days the cache holds (the green phase's fixed bound).
+  /// Most days the cache holds.
   @visibleForTesting
   int debugStagedSleepCacheMaxDays = kStagedSleepCacheMaxDays;
 
   /// Re-keys every cached entry to [algoVersion], as if it had been filled
   /// under that algo version.
   @visibleForTesting
-  void debugStagedSleepCacheRekey(int algoVersion) {}
+  void debugStagedSleepCacheRekey(int algoVersion) =>
+      _stagedSleep.rekey(algoVersion);
 
   @visibleForTesting
   int get debugCeilingHits => _ceilingHits;
@@ -5001,32 +5010,81 @@ class DerivationEngine {
       nowSec: DateTime.now().millisecondsSinceEpoch ~/ 1000,
     );
     final inputs = _workerInputs();
-    final SleepStagingResult staged;
-    try {
-      staged = await _runIsolateCancellable(
-        () => stageSleepCandidateHeavy(inputs, input),
-        _perDayTimeout,
-        label: 'sleep-staging $dayId',
-      );
-    } finally {
+    // Reuse the staged night when this exact input was staged at this algo
+    // version already (a rescan after a heavy pass). The key is built here from
+    // the very objects handed to the worker.
+    final useCache = !debugDisableStagedSleepCache;
+    (int, int)? digest;
+    StagedSleepEntry? hit;
+    if (useCache) {
+      final keyStartedAt = DateTime.now().microsecondsSinceEpoch;
+      // A key that cannot be computed only costs the reuse: stage as before,
+      // and the Sleep stages status still ends on the staging path (4.3).
+      try {
+        digest = stagingInputDigest(inputs, input, zoneKey: _zoneKey());
+        hit = _stagedSleep.lookup(dayId, kAlgoVersion, digest,
+            mayFold: mayFold);
+      } catch (e) {
+        digest = null;
+        hit = null;
+        _log('[derive] staged-sleep key failed for $dayId: $e');
+      }
+      perf.addStage('stage_candidate_key',
+          (DateTime.now().microsecondsSinceEpoch - keyStartedAt) ~/ 1000);
+    }
+    final String candidateJson;
+    final String? observationJson;
+    if (hit != null) {
+      candidateJson = hit.candidateJson;
+      // A caller that must not fold gets none, as a fresh staging gives.
+      observationJson = mayFold ? hit.observationJson : null;
+      perf.addCount('staged_sleep_reuse', 1);
       CalcStatus.instance.end(stagesStep);
       perf.addStage('stage_candidate',
           DateTime.now().millisecondsSinceEpoch - stagingStartedAt);
+    } else {
+      final SleepStagingResult staged;
+      try {
+        staged = await _runIsolateCancellable(
+          () => stageSleepCandidateHeavy(inputs, input),
+          _perDayTimeout,
+          label: 'sleep-staging $dayId',
+        );
+      } finally {
+        CalcStatus.instance.end(stagesStep);
+        perf.addStage('stage_candidate',
+            DateTime.now().millisecondsSinceEpoch - stagingStartedAt);
+      }
+      candidateJson = staged.candidateJson;
+      observationJson = staged.observationJson;
+      // Only a staging that returned is kept; a throw (timeout, cancel, a bad
+      // night) left here before this line.
+      if (digest != null) {
+        _stagedSleep.store(
+            dayId,
+            StagedSleepEntry(
+              algoVersion: kAlgoVersion,
+              digestA: digest.$1,
+              digestB: digest.$2,
+              stagedWithFold: mayFold,
+              candidateJson: candidateJson,
+              observationJson: observationJson,
+            ),
+            debugStagedSleepCacheMaxDays);
+      }
+      // The returned chunk holds everything the sent ones did (less what aged
+      // out), so it replaces them; only plain ints are compared here.
+      _cardioRowChunks.removeWhere(sentChunks.contains);
+      final rowsOut = staged.rowsJson;
+      if (rowsOut != null) {
+        _cardioRowChunks
+            .add(CardioRowsChunk(rowsOut, staged.rowsLoSec, staged.rowsHiSec));
+      }
+      final keepFrom = input.nowSec - kCardioRowsKeepSec;
+      _cardioRowChunks.removeWhere((c) => c.hiSec < keepFrom);
+      perf.addCount('cardio_rows_hit', staged.rowHits);
+      perf.addCount('cardio_rows_miss', staged.rowMisses);
     }
-    final candidateJson = staged.candidateJson;
-    final observationJson = staged.observationJson;
-    // The returned chunk holds everything the sent ones did (less what aged
-    // out), so it replaces them; only plain ints are compared here.
-    _cardioRowChunks.removeWhere(sentChunks.contains);
-    final rowsOut = staged.rowsJson;
-    if (rowsOut != null) {
-      _cardioRowChunks
-          .add(CardioRowsChunk(rowsOut, staged.rowsLoSec, staged.rowsHiSec));
-    }
-    final keepFrom = input.nowSec - kCardioRowsKeepSec;
-    _cardioRowChunks.removeWhere((c) => c.hiSec < keepFrom);
-    perf.addCount('cardio_rows_hit', staged.rowHits);
-    perf.addCount('cardio_rows_miss', staged.rowMisses);
     final candidate = SleepSessionCandidate.fromJson(
         (jsonDecode(candidateJson) as Map).cast<String, dynamic>());
     for (final f in candidate.flags) {
