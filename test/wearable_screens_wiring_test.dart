@@ -44,6 +44,12 @@ class _Repo extends LocalRepository {
         'status': {'today_day': _today},
       };
   @override
+  Future<Map<String, dynamic>> getTodayStored() async => getToday();
+  @override
+  Future<Map<String, dynamic>> getChart(String metric,
+          {int? from, int? to, Set<String> signals = const {}}) async =>
+      const {};
+  @override
   Future<Map<String, dynamic>> getInsights() async => const {};
   @override
   Future<Map<String, dynamic>> getProfile() async => const {'name': 'Alex'};

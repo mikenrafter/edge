@@ -27,7 +27,7 @@ import '../../state/capabilities_scope.dart';
 import '../../state/recalc_state.dart';
 import '../profile/profile.dart' show ProfileAvatar;
 import '../profile/wearable_numbers.dart'
-    show WearableCells, kHealthWearableRows;
+    show WearableCells, kHealthWearableRows, wearableName;
 import '../ui2.dart';
 import 'advanced.dart';
 import 'ecg.dart' show EcgEntryCard;
@@ -108,6 +108,11 @@ class HealthData {
   final String? chartsNewestDay;
   final DateTime? chartsComputedAt;
 
+  /// The active wearable's cells for today, read with the overview so its card
+  /// starts in its final place instead of landing after the first paint.
+  /// Null: no active wearable, no cells, or the read failed (nothing drawn).
+  final WearableDay? wearable;
+
   const HealthData({
     this.today = const {},
     this.insights = const {},
@@ -124,6 +129,7 @@ class HealthData {
     this.baselines,
     this.chartsNewestDay,
     this.chartsComputedAt,
+    this.wearable,
   });
 
   /// The stored points for [key].
@@ -243,8 +249,15 @@ class HealthData {
     final napDay = days.isEmpty ? todayLabel() : days.first;
     final naps = await _soft(() => repo.getDayNaps(napDay));
     final heart = await _soft(() => repo.getDayHeart(todayLabel()));
+    WearableDay? wearable;
+    try {
+      wearable = await repo.wearableDay(todayLabel());
+    } catch (_) {
+      wearable = null; // a failed read draws no card, as before
+    }
 
     return HealthData(
+      wearable: wearable,
       today: today,
       insights: cd,
       profile: profile,
@@ -962,7 +975,11 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // The active wearable's heart rows, each with its class, source line
       // and reason. Nothing on a WHOOP-only install, nor when handed data.
       if (widget.data == null)
-        const WearableCells(kHealthWearableRows, key: ValueKey('card:wearables')),
+        WearableCells.seeded(kHealthWearableRows,
+            key: const ValueKey('card:wearables'),
+            initialDevice:
+                d.wearable == null ? null : wearableName(d.wearable!.adapterId),
+            initialCells: d.wearable?.cells ?? const {}),
 
       // OBSERVATIONS — the illness watch, wrapped, plus a door to the other
       // three detectors.
