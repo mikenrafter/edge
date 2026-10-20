@@ -290,6 +290,11 @@ String syncStatusLine(SyncPresentationState s, DateTime now) {
   }
 }
 
+/// The live calculation line for a screen whose data waits on derivation.
+// Phase 1 stub so the red tests compile; phase 2 implements it.
+String? calcProgressLine(SyncPresentationState s) =>
+    throw UnimplementedError('calcProgressLine');
+
 /// The first clause of [syncStatusLine]: "Downloading…", "Calculating", "Sync
 /// failed". The header says it without the backlog or the day count, which the
 /// details sheet carries.

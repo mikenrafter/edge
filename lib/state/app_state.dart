@@ -72,6 +72,7 @@ import '../compute/inputs/measurement_inputs.dart'
         profileWithoutStaleWeighing;
 import '../compute/profile.dart';
 import '../data/day_label.dart';
+import '../data/import_progress.dart';
 import '../data/med_store.dart' show MedDb, MedDef;
 import '../data/auto_backup.dart'
     show BackupCadence, BackupOutcome, BackupFolder, AndroidBackupStorage, runBackup;
@@ -265,6 +266,9 @@ abstract interface class ImportRollupProbe {
 
 class AppState extends ChangeNotifier {
   late final BleEngine engine;
+
+  /// The running import's progress; the importer sets it, null when no import runs.
+  final ValueNotifier<ImportProgress?> importProgress = ValueNotifier(null);
 
   /// The real constructor's [_init] future, so [checkPendingSiriRoute] can
   /// gate itself on it regardless of which call site reaches it first — a
