@@ -52,8 +52,14 @@ void main() {
   // Today's night, scored (so the ring shows today's overnight), with NO
   // readiness of its own; the crossday rollup says today is settled.
   Future<void> seed({required bool nullRow}) async {
-    final wakeSec =
-        DateTime.now().millisecondsSinceEpoch ~/ 1000 - 13 * 3600;
+    // 13 h back, moved earlier while it would fall before the earliest hour a
+    // wake can pin at (`pinnableNight`): at some times of day "13 h ago" is
+    // just past midnight, which is correctly never pinned.
+    var wakeSec = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 13 * 3600;
+    while (DateTime.fromMillisecondsSinceEpoch(wakeSec * 1000).hour <
+        kMinPinWakeHour) {
+      wakeSec -= 3600;
+    }
     final db = await LocalDb.instance;
     await db.delete('day_result');
     await db.delete('metric_series');
