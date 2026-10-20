@@ -3341,6 +3341,31 @@ class DerivationEngine {
   /// part in its window.
   final List<CardioRowsChunk> _cardioRowChunks = [];
 
+  // RED-PHASE SEAMS for the staged-sleep reuse (test/staged_sleep_reuse_test.dart).
+  // They describe today's behaviour (no cache); the green phase implements the
+  // bounded in-memory cache behind them.
+
+  /// True: every staging runs from scratch and nothing is stored (the oracle
+  /// the reuse law compares against).
+  @visibleForTesting
+  bool debugDisableStagedSleepCache = false;
+
+  /// Most days of staged sleep the engine keeps in RAM for reuse.
+  static const int kStagedSleepCacheMaxDays = 14;
+
+  /// Days held by the staged-sleep cache.
+  @visibleForTesting
+  int get debugStagedSleepCacheSize => 0;
+
+  /// Most days the cache holds (the green phase's fixed bound).
+  @visibleForTesting
+  int debugStagedSleepCacheMaxDays = kStagedSleepCacheMaxDays;
+
+  /// Re-keys every cached entry to [algoVersion], as if it had been filled
+  /// under that algo version.
+  @visibleForTesting
+  void debugStagedSleepCacheRekey(int algoVersion) {}
+
   @visibleForTesting
   int get debugCeilingHits => _ceilingHits;
 
