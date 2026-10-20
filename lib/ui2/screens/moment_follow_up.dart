@@ -688,12 +688,9 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.momentFollowUpTitle ?? 'Marked moments',
+          NavBar(l?.momentFollowUpTitle ?? 'Marked moments',
                 sub: l?.momentFollowUpSub ?? 'FOLLOW UP',
                 onBack: () => Navigator.of(c).maybePop()),
-          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x6),

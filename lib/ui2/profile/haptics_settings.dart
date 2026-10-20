@@ -271,12 +271,9 @@ class _HapticsSettingsState extends State<HapticsSettings> {
       return Scaffold(
         backgroundColor: P.of(c).bg,
         body: const SafeArea(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: S.x4),
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: NavBar('Haptics'),
-            ),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: NavBar('Haptics'),
           ),
         ),
       );
@@ -468,10 +465,7 @@ class HapticsSettingsView extends StatelessWidget {
           initial: initialTab,
           builder: (c, tab, select) => Column(
             children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: S.x4),
-                child: NavBar('Haptics'),
-              ),
+              NavBar('Haptics'),
               _createRow(c),
               Padding(
                 padding: const EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, 0),

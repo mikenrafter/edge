@@ -1080,10 +1080,7 @@ class WearableDayView extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l.wearableDayTitle, sub: device),
-          ),
+          NavBar(l.wearableDayTitle, sub: device),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),

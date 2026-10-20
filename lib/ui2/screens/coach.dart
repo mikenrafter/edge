@@ -427,9 +427,7 @@ class _CoachScreenState extends State<CoachScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: NavBar(
+            NavBar(
                 l?.coachNavTitle ?? 'Coach',
                 sub: cfg.configured ? cfg.model : (l?.coachNotSetUp ?? 'Not set up'),
                 trailing: Pressable(
@@ -438,7 +436,6 @@ class _CoachScreenState extends State<CoachScreen> {
                   child: Icon(LucideIcons.ellipsis, size: 22, color: p.ink),
                 ),
               ),
-            ),
             Expanded(child: _body(c, p, cfg)),
             if (_status != null)
               Padding(
@@ -994,11 +991,8 @@ class _CoachSetupState extends State<CoachSetup> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: NavBar(l?.coachSetupNavTitle ?? 'AI settings',
+            NavBar(l?.coachSetupNavTitle ?? 'AI settings',
                   sub: l?.coachSetupNavSub ?? 'Bring your own model'),
-            ),
             Expanded(
               child: ListView(
                 padding: pad,

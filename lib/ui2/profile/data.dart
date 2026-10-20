@@ -458,10 +458,7 @@ class DataScreenView extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.dataNavTitle ?? 'Your data'),
-          ),
+          NavBar(l?.dataNavTitle ?? 'Your data'),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),

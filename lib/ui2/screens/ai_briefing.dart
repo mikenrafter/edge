@@ -83,15 +83,12 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: NavBar(
+            NavBar(
                 uiText(c, widget.period.title),
                 sub: b == null
                     ? ''
                     : (l?.aiBriefingForDay(b.day) ?? 'FOR ${b.day}'),
               ),
-            ),
             Expanded(
               child: ListView(
                 padding: pad,

@@ -3760,33 +3760,51 @@ class NavBar extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return ConstrainedBox(
+    // The horizontal inset lives here, once, so no caller can pad it
+    // differently; the back control and title are `shared:` slots so the
+    // layout consistency rule checks them across every pushed screen.
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: S.x4),
+      child: ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 52),
       child: Row(
         children: [
-          Pressable(
-            onTap: onBack ?? () => Navigator.maybePop(c),
-            semanticLabel: AppLocalizations.of(c)?.supplementNavBack ?? 'Back',
-            child: Icon(LucideIcons.chevronLeft, size: 24, color: p.ink),
+          SharedSlot(
+            'navbar-back',
+            child: Pressable(
+              onTap: onBack ?? () => Navigator.maybePop(c),
+              semanticLabel:
+                  AppLocalizations.of(c)?.supplementNavBack ?? 'Back',
+              child: Icon(LucideIcons.chevronLeft, size: 24, color: p.ink),
+            ),
           ),
+          // The slot is the whole title block at the bar's height, not the
+          // text: the text's own box moves with its length and with whether a
+          // sub line is present, the block does not.
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title,
-                  style: F.head.copyWith(color: p.ink),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+            child: SharedSlot(
+              'navbar-title',
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 52),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      title,
+                      style: F.head.copyWith(color: p.ink),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (sub.isNotEmpty)
+                      Text(
+                        sub,
+                        style: F.over.copyWith(color: p.ink3),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
-                if (sub.isNotEmpty)
-                  Text(
-                    sub,
-                    style: F.over.copyWith(color: p.ink3),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
+              ),
             ),
           ),
           SizedBox(
@@ -3795,6 +3813,7 @@ class NavBar extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }

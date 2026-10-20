@@ -272,10 +272,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.wellnessTitle ?? 'Wellness'),
-          ),
+          NavBar(l?.wellnessTitle ?? 'Wellness'),
           Expanded(child: ListView(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, S.x16),
       children: [

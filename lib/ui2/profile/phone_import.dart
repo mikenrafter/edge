@@ -199,10 +199,7 @@ class _PhoneImportState extends State<PhoneImport> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: NavBar(l?.phoneImportNavTitle ?? 'From your phone'),
-            ),
+            NavBar(l?.phoneImportNavTitle ?? 'From your phone'),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),

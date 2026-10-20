@@ -389,11 +389,8 @@ class BandNotificationsView extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.bandNotifNavTitle ?? 'App notifications on the band',
+          NavBar(l?.bandNotifNavTitle ?? 'App notifications on the band',
                 sub: l?.bandNotifNavSub ?? 'WHAT MAKES THE BAND BUZZ'),
-          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),

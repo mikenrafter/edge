@@ -395,10 +395,7 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.devicesWhichSourceWins ?? 'Which source wins'),
-          ),
+          NavBar(l?.devicesWhichSourceWins ?? 'Which source wins'),
           if (_loading)
             Expanded(
               child: ListView(
@@ -1491,10 +1488,7 @@ class MyDevicesView extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.devicesMySources ?? 'My sources'),
-          ),
+          NavBar(l?.devicesMySources ?? 'My sources'),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
@@ -2360,10 +2354,7 @@ class DeviceDetailView extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(''),
-          ),
+          NavBar(''),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),

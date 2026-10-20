@@ -279,10 +279,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
       backgroundColor: P.of(c).bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.nutritionTitle ?? 'Nutrition', trailing: logFood),
-          ),
+          NavBar(l?.nutritionTitle ?? 'Nutrition', trailing: logFood),
           Expanded(child: list),
         ]),
       ),

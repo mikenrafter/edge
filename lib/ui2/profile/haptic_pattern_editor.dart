@@ -427,9 +427,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: NavBar(
+            NavBar(
                 widget.name ?? 'New pattern',
                 trailingWidth: 72,
                 trailing: Pressable(
@@ -445,7 +443,6 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                   ),
                 ),
               ),
-            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: S.x4),
               child: Row(

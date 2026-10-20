@@ -72,10 +72,7 @@ class _GestureFailuresViewState extends State<GestureFailuresView> {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar('Gesture failures'),
-          ),
+          NavBar('Gesture failures'),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),

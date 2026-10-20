@@ -386,13 +386,10 @@ class _LogWorkoutState extends State<LogWorkout> {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(title,
+          NavBar(title,
                 sub: retime
                     ? (l?.logWorkoutWindowRescoredSub ?? 'RESCORED WITH NEW TIMES')
                     : (l?.logWorkoutYourOwnTimesSub ?? 'START AND END TIMES')),
-          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),

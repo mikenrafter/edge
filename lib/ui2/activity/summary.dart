@@ -1036,9 +1036,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: NavBar(
+            NavBar(
                 a.displayName(c),
                 sub: '${displayDate(c, r.start)} · ${formatClockOf(r.start)}'
                     .toUpperCase(),
@@ -1072,7 +1070,6 @@ class _ActivitySummaryState extends State<ActivitySummary> {
                   ],
                 ),
               ),
-            ),
           if (widget.asOf case final at?)
             Padding(
               padding: const EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, 0),

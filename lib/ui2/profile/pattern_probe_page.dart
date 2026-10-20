@@ -443,9 +443,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
         body: SafeArea(
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: S.x4),
-                child: NavBar(
+              NavBar(
                   'Pattern probe',
                   trailingWidth: 72 + S.tap + S.x1,
                   trailing: Row(
@@ -476,7 +474,6 @@ class _PatternProbePageState extends State<PatternProbePage> {
                     ],
                   ),
                 ),
-              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: S.x4),
                 child: _Header(
@@ -693,10 +690,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
         body: SafeArea(
           child: Column(
             children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: S.x4),
-                child: NavBar('Pattern probe'),
-              ),
+              NavBar('Pattern probe'),
               Expanded(
                 child: ListView(
                   key: const ValueKey('pattern-end'),

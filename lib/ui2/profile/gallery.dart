@@ -2670,14 +2670,11 @@ class _FlowScreen extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(a.name,
+          NavBar(a.name,
                 sub: a.met == null
                     ? archLabel(r.arch).toUpperCase()
                     : '${archLabel(r.arch).toUpperCase()} · '
                         '${a.met!.toStringAsFixed(1)} MET'),
-          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
@@ -2763,16 +2760,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            // The title is the label on the Settings row that opens it. A
-            // screen whose name changes with its tab is a screen nobody can
-            // be told to go to.
-            child: NavBar('Component gallery',
-                sub: flows
-                    ? '${flowActivities.length} ACTIVITY FLOWS'
-                    : '${cases.length} COMPONENTS'),
-          ),
+          // The title is the label on the Settings row that opens it. A
+          // screen whose name changes with its tab is a screen nobody can
+          // be told to go to.
+          NavBar('Component gallery',
+              sub: flows
+                  ? '${flowActivities.length} ACTIVITY FLOWS'
+                  : '${cases.length} COMPONENTS'),
           Padding(
             padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x3),
             child: Column(children: [

@@ -134,10 +134,7 @@ class _DetectedActivitiesScreenState extends State<DetectedActivitiesScreen>
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: NavBar(l?.activityReviewTitle ?? 'Detected activities'),
-            ),
+            NavBar(l?.activityReviewTitle ?? 'Detected activities'),
             Expanded(
               child: ListView(
                 padding: pad,
@@ -436,10 +433,12 @@ class _NapProposalEditorState extends State<NapProposalEditor> {
     return Scaffold(
       backgroundColor: P.of(c).bg,
       body: SafeArea(
-        child: ListView(
+        child: Column(children: [
+          NavBar(l?.activityEditNap ?? 'Edit nap'),
+          Expanded(
+            child: ListView(
           padding: pad,
           children: [
-            NavBar(l?.activityEditNap ?? 'Edit nap'),
             ActionCard(
               l?.activityStart ?? 'Start',
               label(_start),
@@ -476,6 +475,8 @@ class _NapProposalEditorState extends State<NapProposalEditor> {
             ),
           ],
         ),
+          ),
+        ]),
       ),
     );
   }

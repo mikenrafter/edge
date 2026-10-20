@@ -392,11 +392,8 @@ class PairSensorView extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.pairSensorAddASensor ?? 'Add a sensor',
+          NavBar(l?.pairSensorAddASensor ?? 'Add a sensor',
                 sub: entryLabel),
-          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),

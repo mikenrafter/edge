@@ -716,10 +716,7 @@ class MoreSettingsView extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.settingsNavTitle ?? 'Settings'),
-          ),
+          NavBar(l?.settingsNavTitle ?? 'Settings'),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
@@ -1356,12 +1353,9 @@ class NotificationSettingsView extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.settingsNotificationsNavTitle ?? 'Notifications',
+          NavBar(l?.settingsNotificationsNavTitle ?? 'Notifications',
                 sub: l?.settingsNotificationsNavSub ??
                     'ALERT TYPES'),
-          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
@@ -1972,9 +1966,7 @@ class _EditProfileViewState extends State<EditProfileView> {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.settingsEditProfileNavTitle ?? 'Edit profile',
+          NavBar(l?.settingsEditProfileNavTitle ?? 'Edit profile',
                 trailing: Pressable(
                   semanticLabel: l?.actionSave ?? 'Save',
                   onTap: _save,
@@ -1982,7 +1974,6 @@ class _EditProfileViewState extends State<EditProfileView> {
                       style: F.body.copyWith(
                           color: p.on(C.green), fontWeight: FontWeight.w600)),
                 )),
-          ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
@@ -2280,10 +2271,7 @@ class AutomationSettingsView extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.settingsAutomationNavTitle ?? 'Automation'),
-          ),
+          NavBar(l?.settingsAutomationNavTitle ?? 'Automation'),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),

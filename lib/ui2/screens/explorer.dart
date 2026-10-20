@@ -179,10 +179,7 @@ class ExplorerScreen extends StatelessWidget {
         backgroundColor: P.of(c).bg,
         body: SafeArea(
           child: Column(children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: S.x4),
-              child: NavBar('Data Explorer'),
-            ),
+            NavBar('Data Explorer'),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),

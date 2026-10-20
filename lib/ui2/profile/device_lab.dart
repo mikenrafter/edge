@@ -384,10 +384,7 @@ class DeviceLabView extends StatelessWidget {
           tabs: tabs,
           initial: initialTab,
           builder: (c, tab, select) => Column(children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: S.x4),
-              child: NavBar('Device lab'),
-            ),
+            NavBar('Device lab'),
             // One tab left (the logs) needs no row to choose between.
             if (tabs.length > 1)
               Padding(

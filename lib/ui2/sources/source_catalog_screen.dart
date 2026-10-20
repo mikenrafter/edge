@@ -71,10 +71,7 @@ class _LoadedState<T> extends State<_Loaded<T>> {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(widget.title),
-          ),
+          NavBar(widget.title),
           Expanded(
             child: _failed
                 ? Center(

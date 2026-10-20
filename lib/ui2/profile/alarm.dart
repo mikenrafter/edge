@@ -688,15 +688,12 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
             body: SafeArea(
               child: Column(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: S.x4),
-                    child: NavBar(
+                  NavBar(
                       l?.alarmNavTitle ?? 'Alarm',
                       sub:
                           l?.alarmNavSub ??
                           'Wakes you on the band, not the phone',
                     ),
-                  ),
                   _header(c, p),
                   Expanded(
                     child: ListView(

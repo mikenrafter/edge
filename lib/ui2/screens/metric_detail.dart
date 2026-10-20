@@ -2306,13 +2306,10 @@ Widget detailScaffold(BuildContext c, String title, List<Widget> body,
     backgroundColor: p.bg,
     body: SafeArea(
       child: Column(children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: S.x4),
-          child: NavBar(title,
+        NavBar(title,
               sub: sub,
               trailing: trailing,
               onBack: () => Navigator.of(c).maybePop()),
-        ),
         Expanded(
           child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x12),
