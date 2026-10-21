@@ -611,7 +611,10 @@ dependencies:
       # and CardioStagerResult.epochEvidence (additive; batch outputs
       # unchanged). Edge stores the per-stage ranges as sleep.stage_ranges,
       # part of the kAlgoVersion 114 bump (D27 revised).
-      ref: d9eda83f69391e9d8f6913db9e9aa3dfc5cbb171
+      # REPIN @ b18b681 (same branch): the analytics group registry
+      # (kAnalyticsGroupRegistry, design 06 1b). Additive: a new file and one
+      # export, no algorithm touched, so no kAlgoVersion bump.
+      ref: b18b6819fa0a4086b51e859aae5ec3a8fab62001
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
