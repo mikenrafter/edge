@@ -616,10 +616,11 @@ Future<Set<String>> _ldbForeignFamilyDates({required Iterable<String> ignore}) a
 /// Merges the SQL tables of the plain database at [file], then puts back what
 /// rides beside them (settings, recordings) and leaves the summary. Both the
 /// real import and the row-by-row oracle end here, so they stay identical.
-Future<Map<String, int>> _ldbImportPlain(String file, Future<Map<String, int>> Function(String file) merge) async {
+Future<Map<String, int>> _ldbImportPlain(String file, void Function(ImportProgress p)? onProgress) async {
     // Before anything merges: "fresh" means this install held no data.
     final fresh = await isFreshInstall();
-    final counts = await merge(file); // takes the SampleLock itself
+    final counts = await SampleLock.run(
+        () => LocalDb._mergeFromDbFile(file, onProgress: onProgress));
     final extras = await restoreBackupExtras(file, freshInstall: fresh);
     await recordImportSummary(file,
         archiveBucketsSkipped: counts['_substrate_archive_skipped'] ?? 0,

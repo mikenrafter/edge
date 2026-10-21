@@ -5541,10 +5541,7 @@ class LocalDb {
 
   static Future<Map<String, int>> _importPlain(
           String file, void Function(ImportProgress p)? onProgress) =>
-      _ldbImportPlain(
-          file,
-          (f) => SampleLock.run(
-              () => _mergeFromDbFile(f, onProgress: onProgress)));
+      _ldbImportPlain(file, onProgress);
 
   /// The import screen's stage for each restore table (ImportCopyPlan).
   static ImportStage _importStageOf(String table) => _ldbPrivImportStageOf(table);
