@@ -7,12 +7,19 @@ import 'package:openstrap_edge/compute/groups/group_types.dart';
 GroupDecl g(
   String id, {
   List<String> deps = const [],
-  List<String> members = const ['fn'],
+  List<String>? members,
+  List<String> api = const [],
   int counter = 1,
   GroupKind kind = GroupKind.algorithm,
 }) =>
     GroupDecl(
-        id: id, kind: kind, counter: counter, members: members, deps: deps);
+        id: id,
+        kind: kind,
+        counter: counter,
+        // One function belongs to one group, so the default member is unique.
+        members: members ?? ['$id.fn'],
+        api: api,
+        deps: deps);
 
 GroupRegistry reg(List<GroupDecl> gs) => GroupRegistry(1, gs);
 
@@ -22,6 +29,14 @@ final analyticsDouble = <GroupDecl>[
   g('found.calibration', kind: GroupKind.foundation), // day.checkpoint (an edge entry) reads it
   g('night.rhythm', deps: ['found.rr_correction']),
   g('readiness', deps: ['night.rhythm', 'found.rr_correction']),
+  // edge.assembly depends on every group that writes into series / clinical /
+  // scalars, so the double declares those ids too.
+  g('sleep.stage', deps: ['found.rr_correction']),
+  g('hrv.freq', deps: ['found.rr_correction']),
+  g('day.blocks', deps: ['sleep.stage']),
+  g('readiness.stress_illness', deps: ['night.rhythm', 'hrv.freq']),
+  g('activity.load'),
+  g('body.spo2_temp_coverage'),
 ];
 
 void main() {
@@ -94,5 +109,61 @@ void main() {
         kind: GroupKind.edgeTransform, deps: ['readiness']);
     expect(validateRegistry(reg([...analyticsDouble, edge])), isEmpty);
     expect(validateRegistry(reg([edge])), isNotEmpty);
+  });
+
+  group('a function has exactly one owner', () {
+    test('rejects one name as a member of two groups', () {
+      final p = validateRegistry(
+          reg([g('a', members: ['f']), g('b', members: ['f'])]));
+      expect(p.join('\n'), allOf(contains('f'), contains('a'), contains('b')));
+    });
+
+    test('rejects a name that is one group\'s member and another\'s api', () {
+      final p = validateRegistry(
+          reg([g('a', members: ['f']), g('b', api: ['f'])]));
+      expect(p, isNotEmpty);
+    });
+
+    test('rejects the same name in two groups\' api', () {
+      final p = validateRegistry(reg([g('a', api: ['f']), g('b', api: ['f'])]));
+      expect(p, isNotEmpty);
+    });
+
+    test('rejects a name in one group\'s members and api', () {
+      final p = validateRegistry(reg([g('a', members: ['f'], api: ['f'])]));
+      expect(p.join('\n'), contains('f'));
+    });
+
+    test('rejects a name listed twice in one list', () {
+      expect(validateRegistry(reg([g('a', members: ['f', 'f'])])), isNotEmpty);
+      expect(validateRegistry(reg([g('a', api: ['f', 'f'])])), isNotEmpty);
+    });
+
+    test('rejects an edge entry that re-claims an analytics function', () {
+      final analytics = [g('night.rhythm', members: ['rsaRespRate'])];
+      final edge = GroupDecl(
+          id: 'edge.x',
+          kind: GroupKind.edgeTransform,
+          counter: 1,
+          members: ['rsaRespRate']);
+      final p = validateRegistry(reg([...analytics, edge]));
+      expect(p.join('\n'), allOf(contains('rsaRespRate'), contains('edge.x')));
+    });
+
+    test('accepts distinct members and api across groups', () {
+      expect(
+          validateRegistry(reg([
+            g('a', members: ['f'], api: ['f2']),
+            g('b', members: ['h'], api: ['h2']),
+          ])),
+          isEmpty);
+    });
+
+    test('the real merged registry has no duplicate owners', () {
+      expect(
+          validateRegistry(kMergedRegistry)
+              .where((e) => e.contains('owned by')),
+          isEmpty);
+    });
   });
 }

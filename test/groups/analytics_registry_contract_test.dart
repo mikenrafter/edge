@@ -78,51 +78,127 @@ String _strip(String s) => s
     .replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '')
     .replaceAll(RegExp(r'^\s*//.*$', multiLine: true), '');
 
-Set<String> _analyticsFunctions() {
+final RegExp _classDecl = RegExp(
+    r'^(?:(?:abstract|final|base|sealed|interface|mixin)\s+)*(?:class|mixin)\s+(\w+)[^{;]*\{',
+    multiLine: true);
+final RegExp _recordType = RegExp(r'(?<=\s)\(\{[^{}]*\}\)');
+final RegExp _staticDecl = RegExp(
+    r'\bstatic\s+(?!const\b|final\b|late\b|var\b)(?:[\w<>,?\[\].\s]|\([^()]*\))*?(\w+)\s*(?:<[^>(]*>)?\(');
+
+/// `Type.method` for every public static method of every public class in
+/// [src] (comments already stripped or not: they are stripped here). Only the
+/// class's own body counts, matched by braces, so an instance method or a
+/// static of a private class never enters the inventory.
+Set<String> staticMethodNames(String src) {
+  // A named-record return type (`({int a})?`) is braces the class-level
+  // filter below would mistake for a body.
+  final text = _strip(src).replaceAll(_recordType, 'Rec');
   final out = <String>{};
-  for (final f in Directory('${_analyticsRoot()}/lib/src')
-      .listSync(recursive: true)
-      .whereType<File>()
-      .where((f) => f.path.endsWith('.dart'))) {
-    for (final m in _fnDecl.allMatches(_strip(f.readAsStringSync()))) {
+  for (final c in _classDecl.allMatches(text)) {
+    final type = c.group(1)!;
+    if (type.startsWith('_')) continue;
+    var depth = 1;
+    var i = c.end;
+    while (i < text.length && depth > 0) {
+      final ch = text[i++];
+      if (ch == '{') depth++;
+      if (ch == '}') depth--;
+    }
+    final body = text.substring(c.end, i);
+    // Static members sit at the class's own nesting level (depth 0 of body).
+    var d = 0;
+    final top = StringBuffer();
+    for (final ch in body.split('')) {
+      if (ch == '{') d++;
+      if (d == 0) top.write(ch);
+      if (ch == '}') d--;
+    }
+    for (final m in _staticDecl.allMatches(top.toString())) {
       final n = m.group(1)!;
-      if (!n.startsWith('_')) out.add(n);
+      if (!n.startsWith('_')) out.add('$type.$n');
     }
   }
   return out;
 }
 
-/// function name -> edge files (repo-relative) calling it.
+/// Analytics' public names: top-level functions and `Type.method` statics.
+({Set<String> fns, Set<String> statics}) _analyticsNames() {
+  final fns = <String>{}, statics = <String>{};
+  for (final f in Directory('${_analyticsRoot()}/lib/src')
+      .listSync(recursive: true)
+      .whereType<File>()
+      .where((f) => f.path.endsWith('.dart'))) {
+    final src = f.readAsStringSync();
+    for (final m in _fnDecl.allMatches(_strip(src))) {
+      final n = m.group(1)!;
+      if (!n.startsWith('_')) fns.add(n);
+    }
+    statics.addAll(staticMethodNames(src));
+  }
+  return (fns: fns, statics: statics);
+}
+
+final RegExp _importRe = RegExp(
+    r"""import\s+['"]package:openstrap_analytics/onehz\.dart['"]\s*(as\s+(\w+))?([^;]*);""");
+
+/// Analytics names that edge source [src] calls: top-level functions as `name`,
+/// static methods as `Type.method`. With `as ana`, a call is `ana.name(` or
+/// `ana.Type.method(`; with an unprefixed import it is `name(` /
+/// `Type.method(` (narrowed by `show`, and skipped when the file declares the
+/// name itself).
+Set<String> callsIn(String src, Set<String> fns, Set<String> statics) {
+  final text = _strip(src);
+  final im = _importRe.firstMatch(text);
+  if (im == null) return <String>{};
+  final prefix = im.group(2);
+  final own = {for (final m in _fnDecl.allMatches(text)) m.group(1)!};
+  final ownTypes = {
+    for (final m in RegExp(r'^\s*(?:abstract\s+|final\s+|base\s+|sealed\s+)*(?:class|mixin|enum|extension type)\s+(\w+)', multiLine: true).allMatches(text))
+      m.group(1)!
+  };
+  final show = RegExp(r'show\s+([\w\s,]+)').firstMatch(im.group(3)!)?.group(1);
+  final only = show?.split(',').map((e) => e.trim()).toSet();
+  final out = <String>{};
+  final generics = r'\s*(?:<[^>(]*>)?\s*\(';
+  if (prefix != null) {
+    for (final m in RegExp('\\b$prefix\\.(\\w+)$generics').allMatches(text)) {
+      if (fns.contains(m.group(1))) out.add(m.group(1)!);
+    }
+    for (final m
+        in RegExp('\\b$prefix\\.(\\w+)\\s*\\.\\s*(\\w+)$generics').allMatches(text)) {
+      final n = '${m.group(1)}.${m.group(2)}';
+      if (statics.contains(n)) out.add(n);
+    }
+  } else {
+    for (final m in RegExp('(?<![\\w.])(\\w+)$generics').allMatches(text)) {
+      final n = m.group(1)!;
+      if (!fns.contains(n) || own.contains(n)) continue;
+      if (only != null && !only.contains(n)) continue;
+      out.add(n);
+    }
+    for (final m
+        in RegExp('(?<![\\w.])(\\w+)\\s*\\.\\s*(\\w+)$generics').allMatches(text)) {
+      final t = m.group(1)!;
+      final n = '$t.${m.group(2)}';
+      if (!statics.contains(n) || ownTypes.contains(t)) continue;
+      if (only != null && !only.contains(t)) continue;
+      out.add(n);
+    }
+  }
+  return out;
+}
+
+/// canonical name (`fn` or `Type.method`) -> edge files (repo-relative) calling it.
 Map<String, Set<String>> _callInventory() {
-  final fns = _analyticsFunctions();
+  final names = _analyticsNames();
   final calls = <String, Set<String>>{};
-  final importRe = RegExp(
-      r'''import\s+'package:openstrap_analytics/onehz\.dart'\s*(as\s+(\w+))?([^;]*);''');
   for (final f in Directory('lib/compute')
       .listSync(recursive: true)
       .whereType<File>()
       .where((f) => f.path.endsWith('.dart'))) {
-    final src = _strip(f.readAsStringSync());
-    final im = importRe.firstMatch(src);
-    if (im == null) continue;
-    final prefix = im.group(2);
-    final own = {for (final m in _fnDecl.allMatches(src)) m.group(1)!};
     final path = f.path.replaceAll('\\', '/');
-    if (prefix != null) {
-      for (final m in RegExp('\\b$prefix\\.(\\w+)\\s*(?:<[^>(]*>)?\\(').allMatches(src)) {
-        if (fns.contains(m.group(1))) {
-          (calls[m.group(1)!] ??= <String>{}).add(path);
-        }
-      }
-    } else {
-      final show = RegExp(r'show\s+([\w\s,]+)').firstMatch(im.group(3)!)?.group(1);
-      final only = show?.split(',').map((e) => e.trim()).toSet();
-      for (final m in RegExp(r'(?<![\w.])(\w+)\s*(?:<[^>(]*>)?\(').allMatches(src)) {
-        final n = m.group(1)!;
-        if (!fns.contains(n) || own.contains(n)) continue;
-        if (only != null && !only.contains(n)) continue;
-        (calls[n] ??= <String>{}).add(path);
-      }
+    for (final n in callsIn(f.readAsStringSync(), names.fns, names.statics)) {
+      (calls[n] ??= <String>{}).add(path);
     }
   }
   return calls;
@@ -171,6 +247,62 @@ void main() {
     }
     expect(problems, isEmpty,
         reason: '${problems.length} problems, first: ${problems.take(15).join('; ')}');
+  });
+
+  group('call scanner (regression)', () {
+    const fns = {'hrvFreq', 'median'};
+    const statics = {'Calories.minuteEnergy', 'Baselines.deviation'};
+    const head = "import 'package:openstrap_analytics/onehz.dart' as ana;\n";
+    test('prefixed static call', () {
+      expect(callsIn("${head}final x = ana.Calories.minuteEnergy(a);", fns, statics),
+          {'Calories.minuteEnergy'});
+    });
+    test('prefixed static call across lines and with generics', () {
+      expect(callsIn("${head}ana.Calories\n  .minuteEnergy<int>(a);", fns, statics),
+          {'Calories.minuteEnergy'});
+    });
+    test('prefixed top-level call still found', () {
+      expect(callsIn("${head}ana.hrvFreq(x);", fns, statics), {'hrvFreq'});
+    });
+    test('unprefixed static call, honouring show', () {
+      const imp = "import 'package:openstrap_analytics/onehz.dart' show Baselines;\n";
+      expect(callsIn("${imp}Baselines.deviation(a); Calories.minuteEnergy(b);", fns, statics),
+          {'Baselines.deviation'});
+    });
+    test('unprefixed static skipped when the file declares the type', () {
+      const imp = "import 'package:openstrap_analytics/onehz.dart';\n";
+      expect(callsIn("${imp}class Calories { static int minuteEnergy() => 1; }\nvoid f() { Calories.minuteEnergy(); }", fns, statics),
+          isEmpty);
+    });
+    test('instance call, comment and unknown static are not calls', () {
+      expect(callsIn("$head// ana.Calories.minuteEnergy(a)\nana.Calories.other(a); calories.minuteEnergy(a);", fns, statics),
+          isEmpty);
+    });
+    test('static inventory: public statics of public classes only', () {
+      const src = """
+class Calories {
+  static double? minuteEnergy(int a) { return null; }
+  static const kFoo = 1;
+  static final Map<String, int> table = {};
+  static List<int> bouts<T>(T x) => [];
+  double inst() => 1;
+  static double _hidden() => 1;
+  static int get g => 1;
+  static ({double kcal, bool used})
+      estimateBout(List<int> a, {required int p}) => throw 0;
+  static (int, int)? pair(int a) => null;
+}
+class _Priv { static int nope() => 1; }
+abstract class Baselines {
+  static Baselines foldHistory(List<int> h) => throw 0;
+}
+""";
+      expect(staticMethodNames(src),
+          {
+            'Calories.minuteEnergy', 'Calories.bouts', 'Calories.estimateBout',
+            'Calories.pair', 'Baselines.foldHistory'
+          });
+    });
   });
 
   test('allow-listed utilities carry a reason and are really called', () {

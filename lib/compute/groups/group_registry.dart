@@ -16,7 +16,10 @@ final GroupRegistry kMergedRegistry = GroupRegistry(
 );
 
 /// Every rule the registry must hold, as human-readable problems. Empty means
-/// valid: unique ids, resolving deps, acyclic, at most 3 members, counter >= 1.
+/// valid: unique ids, resolving deps, acyclic, at most 3 members, counter >= 1,
+/// and every function owned once (a name in two groups' members/api, or in one
+/// group's members and api, is a problem: a change to it would have two
+/// owners to version).
 List<String> validateRegistry(GroupRegistry registry) {
   final problems = <String>[];
   final byId = <String, GroupDecl>{};
@@ -32,6 +35,17 @@ List<String> validateRegistry(GroupRegistry registry) {
     }
     if (g.counter < 1) {
       problems.add('${g.id}: counter ${g.counter} is below 1');
+    }
+  }
+  final owners = <String, List<String>>{};
+  for (final g in registry.groups) {
+    for (final fn in [...g.members, ...g.api]) {
+      (owners[fn] ??= <String>[]).add(g.id);
+    }
+  }
+  for (final e in owners.entries) {
+    if (e.value.length > 1) {
+      problems.add('${e.key}: owned by ${e.value.join(', ')} (exactly one)');
     }
   }
   for (final g in registry.groups) {

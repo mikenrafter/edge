@@ -12,6 +12,7 @@
 // condition these fixtures don't meet go in kConditionalKeys, with a reason.
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/colmi_link.dart';
@@ -40,11 +41,21 @@ final DateTime _now = DateTime(2026, 10, 4, 22, 30);
 
 final Set<String> _bundleKeys = {};
 final Set<String> _seriesKeys = {};
+final Set<String> _nestedKeys = {};
+
+void _collectNested(Map bundle) {
+  for (final b in kMixedBlocks) {
+    final v = bundle[b];
+    if (v is Map) _nestedKeys.addAll(v.keys.map((k) => '$b.$k'));
+  }
+}
 
 void main() {
   setUpAll(() async {
     // 1. Pure derive on the band-shaped incremental day.
-    _bundleKeys.addAll(deriveDayBundle(incrementalDay()).keys);
+    final pure = deriveDayBundle(incrementalDay());
+    _bundleKeys.addAll(pure.keys);
+    _collectNested(pure);
 
     // 2. Real engine derive into a database.
     sqfliteFfiInit();
@@ -66,8 +77,9 @@ void main() {
     await DerivationEngine().runDays(_profile, {_dayId}, force: true);
 
     final row = (await LocalDb.dayResult(_dayId))!;
-    _bundleKeys.addAll(
-        (jsonDecode(row['payload_json'] as String) as Map).keys.cast());
+    final stored = jsonDecode(row['payload_json'] as String) as Map;
+    _bundleKeys.addAll(stored.keys.cast());
+    _collectNested(stored);
     final db = await LocalDb.instance;
     for (final r in await db.query('metric_series', columns: ['key'])) {
       _seriesKeys.add(r['key'] as String);
@@ -104,7 +116,11 @@ void main() {
 
   test('every owner names a declared group', () {
     final bad = {
-      for (final e in {...kBundleKeyOwner, ...kSeriesKeyOwner}.entries)
+      for (final e in {
+        ...kBundleKeyOwner,
+        ...kSeriesKeyOwner,
+        ...kNestedKeyOwner
+      }.entries)
         if (!groupIds.contains(e.value)) '${e.key} -> ${e.value}'
     };
     expect(bad, isEmpty);
@@ -127,5 +143,104 @@ void main() {
 
   test('the merged edge + analytics registry validates', () {
     expect(validateRegistry(kMergedRegistry), isEmpty);
+  });
+
+  group('mixed blocks (series / clinical / scalars)', () {
+    test('every nested key a derive wrote has its own owner', () {
+      final orphans = _nestedKeys.difference(kNestedKeyOwner.keys.toSet());
+      expect(orphans, isEmpty,
+          reason: 'unowned nested keys: ${orphans.toList()..sort()}');
+    });
+
+    test('the nested owners name no key a derive could not produce', () {
+      final allowed = {..._nestedKeys, ...kConditionalKeys.keys};
+      final phantom = kNestedKeyOwner.keys.toSet().difference(allowed);
+      expect(phantom, isEmpty, reason: 'phantom nested keys: $phantom');
+    });
+
+    test('each mixed block is assembled by edge.assembly, which depends on '
+        'every group that writes into it', () {
+      for (final b in kMixedBlocks) {
+        expect(kBundleKeyOwner[b], 'edge.assembly', reason: b);
+      }
+      final upstream = {
+        'edge.assembly',
+        ...transitiveDeps(kMergedRegistry, 'edge.assembly')
+      };
+      final missing = {
+        for (final e in kNestedKeyOwner.entries)
+          if (!upstream.contains(e.value)) '${e.key} -> ${e.value}'
+      };
+      expect(missing, isEmpty);
+    });
+
+    test('a nested scalar has the same owner as its metric_series row', () {
+      final split = <String>[
+        for (final e in kNestedKeyOwner.entries)
+          if (e.key.startsWith('scalars.') &&
+              kSeriesKeyOwner[e.key.substring(8)] != null &&
+              kSeriesKeyOwner[e.key.substring(8)] != e.value)
+            '${e.key}: ${e.value} vs ${kSeriesKeyOwner[e.key.substring(8)]}'
+      ];
+      expect(split, isEmpty);
+    });
+  });
+
+  group('producers', () {
+    // function name -> owning group id, over the merged registry.
+    final byFn = <String, String>{
+      for (final g in kMergedRegistry.groups)
+        for (final f in [...g.members, ...g.api]) f: g.id
+    };
+    String ownerOf(String key) =>
+        kNestedKeyOwner[key] ?? kBundleKeyOwner[key] ?? '?';
+    final keys = {...kNestedKeyOwner.keys, 'wrist_orientation'};
+
+    test('every owned nested key, and wrist_orientation, lists producers', () {
+      expect(kKeyProducers.keys.toSet(), keys);
+      for (final e in kKeyProducers.entries) {
+        expect(e.value, isNotEmpty, reason: e.key);
+      }
+    });
+
+    test('each producer is registered and sits in the owner or its deps', () {
+      final bad = <String>[];
+      for (final e in kKeyProducers.entries) {
+        final owner = ownerOf(e.key);
+        final allowed = {owner, ...transitiveDeps(kMergedRegistry, owner)};
+        for (final fn in e.value) {
+          final g = byFn[fn];
+          if (g == null) {
+            bad.add('${e.key}: $fn is in no group');
+          } else if (!allowed.contains(g)) {
+            bad.add('${e.key} (owner $owner): $fn is in $g, not a dependency');
+          }
+        }
+      }
+      expect(bad, isEmpty, reason: bad.join('\n'));
+    });
+
+    test('each producer has a call site under lib/compute', () {
+      final src = StringBuffer();
+      for (final f in Directory('lib/compute')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))) {
+        src.writeln(f
+            .readAsStringSync()
+            .replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '')
+            .replaceAll(RegExp(r'^\s*//.*$', multiLine: true), ''));
+      }
+      final text = src.toString();
+      final missing = <String>{
+        for (final fn in kKeyProducers.values.expand((v) => v))
+          if (!RegExp(fn.contains('.')
+                  ? '\\b${fn.split('.').first}\\s*\\.\\s*${fn.split('.').last}\\s*[(<]'
+                  : '(?<![\\w\$])$fn\\s*[(<]')
+              .hasMatch(text))
+            fn
+      };
+      expect(missing, isEmpty, reason: 'no call site: $missing');
+    });
   });
 }
