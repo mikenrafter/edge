@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "lists": {
+    "background_legacy_inline_dispatches": {
+      "entries": 1
+    },
+    "copy_jargon_allowed_keys": {
+      "entries": 1
+    },
+    "copy_jargon_allowed_prefixes": {
+      "entries": 3
+    },
+    "ecg_gesture_consumer_allow": {
+      "entries": 10
+    },
+    "file_size_exceptions": {
+      "entries": 2,
+      "size:lib/compute/derivation_engine.dart": 7401,
+      "size:lib/data/db.dart": 11020
+    },
+    "heavy_calc_baseline": {
+      "entries": 1986,
+      "occurrences": 2190
+    },
+    "heavy_migration_methods": {
+      "entries": 0
+    },
+    "observation_isolation_allowed": {
+      "entries": 1
+    },
+    "one_band_event_switch_allowlist": {
+      "entries": 1
+    },
+    "p21_allowed_writers": {
+      "entries": 2,
+      "leaves": 12
+    },
+    "p21_pinned_dynamic_writers": {
+      "entries": 50
+    },
+    "p21_pinned_table_lists": {
+      "entries": 13
+    },
+    "p22_legacy_callers": {
+      "entries": 6
+    },
+    "p23_direct_callers": {
+      "entries": 6
+    },
+    "p24_from_json_callers": {
+      "entries": 2,
+      "sum": 9
+    },
+    "sample_guard_slice_entry": {
+      "entries": 2
+    },
+    "scan_lock_entry_points_allowlist": {
+      "entries": 3
+    },
+    "ui2_spinner_status_allowed": {
+      "entries": 6
+    },
+    "worker_unresolved_ok": {
+      "entries": 33
+    }
+  }
+}
