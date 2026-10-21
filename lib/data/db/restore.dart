@@ -415,7 +415,7 @@ Future<void> _ldbClearDerivedDays(Set<String> dayIds, {int? computedSince}) asyn
             'DELETE FROM $table WHERE $column IN '
             '(${List.filled(chunk.length, '?').join(',')})'
             '${computedSince != null ? ' AND computed_at >= ?' : ''}',
-            [...chunk, if (computedSince != null) computedSince],
+            [...chunk, ?computedSince],
           );
         }
       }
