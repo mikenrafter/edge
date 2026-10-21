@@ -21,6 +21,7 @@
 
 import '../data/activity_store.dart';
 import '../data/db/input_read_tracker.dart';
+import '../data/db/input_revision_store.dart' show observeInputZone;
 import 'accepted_naps.dart' show composeAcceptedNaps;
 import '../models/activity_suggestion.dart';
 import 'dart:async';
@@ -3158,9 +3159,16 @@ class DerivationEngine {
     void Function(List<String> days)? onScopeDays,
   }) async {
     if (days.isEmpty) return 0;
+    // The zone the day labels are cut in (interim for design 01): a change
+    // since the last derive bumps the `zone` input. Best effort, and outside
+    // the _running latch so a failure cannot wedge it.
+    try {
+      await observeInputZone();
+    } catch (_) {}
     if (_running) return 0;
     // The profile is passed in, not read from a store: note it here.
     InputReads.note('profile', '');
+    InputReads.note('zone', '');
     _running = true;
     beginWearableDayIndexPass();
     _calcStage('Reading recordings');

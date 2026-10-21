@@ -16,6 +16,7 @@ import '../../ble/adapters/_registry.dart'
     show DeviceCategory, categoryOf, kBleHrs, kCoros, kPolarPmd;
 import '../../data/day_label.dart';
 import '../../data/db.dart';
+import '../../data/db/input_read_tracker.dart';
 import '../derivation_engine.dart' show DerivationEngine, kAlgoVersion;
 import '../substrate.dart';
 import '../vendor_sleep.dart';
@@ -121,9 +122,11 @@ const String kNoActiveWearable = 'none';
 /// Whether [adapterId]'s flag is on (rule R6; default off). A Coros watch
 /// feeds no number and has no toggle, so a flag left on from before reads
 /// off: it would otherwise rank the watch in a signal priority.
-Future<bool> wearableEnabled(String adapterId) async =>
-    adapterId != kCoros.id &&
-    await LocalDb.getCursor(wearableEnabledCursor(adapterId)) == '1';
+Future<bool> wearableEnabled(String adapterId) async {
+  InputReads.note('wearable_source', '');
+  return adapterId != kCoros.id &&
+      await LocalDb.getCursor(wearableEnabledCursor(adapterId)) == '1';
+}
 
 /// A paired device that can be the day's wearable: a non-primary
 /// [DeviceCategory.wearable] (the primary band's days are its own already).
@@ -136,6 +139,7 @@ bool isWearableRow(Map<String, Object?> row) =>
 /// chose one gets the most recently synced wearable, written back so the
 /// choice then stays put.
 Future<String?> activeWearableId() async {
+  InputReads.note('wearable_source', '');
   final id = await LocalDb.getCursor(kActiveWearableCursor);
   if (id == kNoActiveWearable) return null;
   // A forgotten device leaves its id behind; the next wearable takes over.

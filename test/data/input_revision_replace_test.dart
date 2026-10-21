@@ -163,6 +163,27 @@ void main() {
     });
   });
 
+  test('a v77 database with the old trigger bodies is healed on open',
+      () async {
+    await LocalDb.close();
+    final raw = await databaseFactory.openDatabase(await _path(name));
+    await raw.execute('DROP TRIGGER ir_sessions_sessions_ai');
+    await raw.execute('DROP TRIGGER ir_sessions_sessions_bi');
+    await raw.execute('CREATE TRIGGER ir_sessions_sessions_ai AFTER INSERT ON '
+        'sessions BEGIN INSERT OR IGNORE INTO input_revision(source, scope, '
+        "rev) VALUES('sessions', '', 0); END");
+    await raw.close();
+    await LocalDb.instance;
+    final db = await LocalDb.instance;
+    final sql = (await db.rawQuery("SELECT name, sql FROM sqlite_master "
+            "WHERE name IN ('ir_sessions_sessions_ai', "
+            "'ir_sessions_sessions_bi')"))
+        .map((r) => '${r['sql']}')
+        .join('\n');
+    expect(sql, isNot(contains('OR IGNORE')));
+    expect(sql, contains('BEFORE INSERT'), reason: 'the missing one is back');
+  });
+
   group('finding 2: a REPLACE that moves a row bumps the day it left', () {
     test('putSession of the same id on another day bumps both days',
         () async {

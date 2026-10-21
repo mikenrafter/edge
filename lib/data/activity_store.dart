@@ -8,6 +8,7 @@ import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../compute/nap_edits.dart';
 import '../models/activity_suggestion.dart';
 import 'day_label.dart';
+import 'db/input_read_tracker.dart';
 
 /// The single persistence seam for proposals and review decisions. Computing a
 /// proposal never writes a session or credits sleep. All actions are atomic.
@@ -532,7 +533,9 @@ class ActivityStore {
   static Future<List<NapEdit>> napEdits(
     DatabaseExecutor tx,
     String day,
-  ) async => [
+  ) async {
+    InputReads.note('sleep_nap', day);
+    return [
     for (final row in await tx.query(
       'sleep_nap',
       where: 'day_id = ?',
@@ -550,5 +553,6 @@ class ActivityStore {
               )
             : null,
       ),
-  ];
+    ];
+  }
 }

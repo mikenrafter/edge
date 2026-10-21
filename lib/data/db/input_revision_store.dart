@@ -15,6 +15,7 @@
 // Nothing here backfills, so it is cheap under iOS's CPU watchdog (invariant
 // 11); a missing row reads as revision 0.
 
+import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:sqflite/sqflite.dart';
 
 import '../../compute/groups/input_catalogue.dart';
@@ -25,16 +26,25 @@ typedef InputRevSnapshot = Map<String, Map<String, int>>;
 
 String _q(String s) => "'${s.replaceAll("'", "''")}'";
 
-/// The two statements that bump ([source], [scopeSql]).
-String _bumpSql(String source, String scopeSql) =>
-    'INSERT OR IGNORE INTO input_revision(source, scope, rev) '
-    'VALUES(${_q(source)}, $scopeSql, 0); '
-    'UPDATE input_revision SET rev = rev + 1 '
-    'WHERE source = ${_q(source)} AND scope = $scopeSql;';
+// Why not `INSERT OR IGNORE` + UPDATE: SQLite applies the OUTER statement's
+// conflict policy to statements run by a trigger, so under the writers'
+// `INSERT OR REPLACE` that OR IGNORE becomes a REPLACE and resets the counter
+// to 0 before the UPDATE adds 1 (Sol r1, finding 1). A plain INSERT guarded by
+// NOT EXISTS has no conflict for any outer policy to act on.
+//
+// [scopesSql] is a SELECT of the scopes to bump (a column named S).
+String _bumpScopesSql(String source, String scopesSql) =>
+    'INSERT INTO input_revision(source, scope, rev) '
+    'SELECT ${_q(source)}, S, 0 FROM ($scopesSql) WHERE S IS NOT NULL '
+    'AND NOT EXISTS (SELECT 1 FROM input_revision '
+    'WHERE source = ${_q(source)} AND scope = S); '
+    'UPDATE input_revision SET rev = rev + 1 WHERE source = ${_q(source)} '
+    'AND scope IN (SELECT S FROM ($scopesSql));';
 
-/// Creates `input_revision` and the AFTER INSERT/UPDATE/DELETE triggers for
-/// every catalogued table. Idempotent (CREATE ... IF NOT EXISTS); a table that
-/// does not exist yet is skipped and picked up by the next open's repair pass.
+/// Creates `input_revision` and the triggers for every catalogued table.
+/// Idempotent: a trigger whose text changed is dropped and recreated, one that
+/// exists unchanged is left; a table that does not exist yet is skipped and
+/// picked up by the next open's repair pass.
 ///
 /// The statements run inside `_ldbPrivCreateInputRev` (schema.dart), the one
 /// pinned DDL member for input-revision triggers (p21 write-seam guard).
@@ -47,10 +57,24 @@ const String kCreateInputRevisionTable =
     'source TEXT NOT NULL, scope TEXT NOT NULL, rev INTEGER NOT NULL, '
     'PRIMARY KEY(source, scope))';
 
-/// The CREATE TRIGGER statements still missing, given the tables and triggers
-/// that exist now. Pure: it decides, the caller runs them.
+const String _createPrefix = 'CREATE TRIGGER IF NOT EXISTS ';
+
+/// The wrist and charging toggles, as event-id pairs (a transition holds
+/// until the next of its own pair).
+List<List<int>> get _toggleKinds => [
+      [proto.EventId.wristOn, proto.EventId.wristOff],
+      [proto.EventId.chargingOn, proto.EventId.chargingOff],
+    ];
+
+/// The CREATE (and preceding DROP) statements still needed, given the tables
+/// that exist now, each existing trigger's stored SQL by name, and each
+/// table's unique-key column sets (primary key and unique indexes: what a
+/// REPLACE would delete). Pure: it decides, the caller runs them.
 List<String> inputRevisionTriggerSql(
-    Set<String> tables, Set<String> triggers) {
+  Set<String> tables,
+  Map<String, String> triggers, {
+  Map<String, List<List<String>>> keys = const {},
+}) {
   final out = <String>[];
   for (final spec in kInputCatalogue) {
     if (spec.kind != InputKind.table) continue;
@@ -60,23 +84,98 @@ List<String> inputRevisionTriggerSql(
       String scope(String row) => global
           ? "''"
           : "COALESCE(${t.dayExpr!.replaceAll('{r}', row)}, '')";
+      String cond(String row) =>
+          t.when == null ? '1' : '(${t.when!.replaceAll('{r}', row)})';
       final base = 'ir_${spec.id}_${t.name}';
       final of = t.updateOf.isEmpty ? '' : ' OF ${t.updateOf.join(', ')}';
-      void make(String suffix, String event, String body,
-          {String when = '', String cols = ''}) {
-        if (triggers.contains('${base}_$suffix')) return;
-        out.add('CREATE TRIGGER IF NOT EXISTS ${base}_$suffix '
-            'AFTER $event$cols ON ${t.name} $when BEGIN $body END');
+
+      // The scopes a change to row [row] reaches. [match] is a WHERE over an
+      // alias `o` of the table when [row] is that alias (the row a REPLACE is
+      // about to displace); null for NEW / OLD.
+      String scopes(String row, {String? match}) {
+        final from = match == null ? '' : ' FROM ${t.name} o WHERE $match';
+        if (global) return "SELECT '' AS S";
+        if (!t.spans) return 'SELECT ${scope(row)} AS S$from';
+        // A transition holds until the next of its kind, so its change moves
+        // every derived day from its own through that one (design 06 1c,
+        // Sol r1 finding 4). No later transition: through the last derived
+        // day. Only days with a day_result can hold a stamp.
+        final ids = [for (final k in _toggleKinds) ...k].join(', ');
+        final same = [
+          for (final k in _toggleKinds)
+            '($row.event_id IN (${k.join(', ')}) '
+                'AND n.event_id IN (${k.join(', ')}))'
+        ].join(' OR ');
+        String dayOf(String r) => t.dayExpr!.replaceAll('{r}', r);
+        final d0 = dayOf(row);
+        final next = '(SELECT MIN(n.ts) FROM ${t.name} n '
+            'WHERE n.device_id = $row.device_id AND n.ts > $row.ts '
+            'AND ($same))';
+        final d1 = 'CASE WHEN $row.event_id IN ($ids) THEN COALESCE('
+            "strftime('%Y-%m-%d', $next, 'unixepoch', 'localtime'), "
+            "'9999-12-31') ELSE $d0 END";
+        return "SELECT COALESCE($d0, '') AS S$from UNION "
+            'SELECT dr.day_id AS S FROM day_result dr'
+            '${match == null ? '' : ', ${t.name} o'} WHERE '
+            '${match == null ? '' : '($match) AND '}'
+            'dr.day_id > $d0 AND dr.day_id <= $d1';
       }
 
-      make('ai', 'INSERT', _bumpSql(spec.id, scope('NEW')));
-      make('au', 'UPDATE', _bumpSql(spec.id, scope('NEW')), cols: of);
-      if (!global) {
-        // A row that moved days changes both days.
-        make('au_old', 'UPDATE', _bumpSql(spec.id, scope('OLD')),
-            when: 'WHEN ${scope('OLD')} IS NOT ${scope('NEW')}', cols: of);
+      void make(String suffix, String event, String when, String body,
+          {String cols = ''}) {
+        final name = '${base}_$suffix';
+        final create = '$_createPrefix$name '
+            '$event$cols ON ${t.name} FOR EACH ROW '
+            '${when.isEmpty ? '' : 'WHEN $when '}BEGIN $body END';
+        final have = triggers[name];
+        if (have != null) {
+          if (have == 'CREATE TRIGGER ${create.substring(_createPrefix.length)}') {
+            return;
+          }
+          out.add('DROP TRIGGER IF EXISTS $name');
+        }
+        out.add(create);
       }
-      make('ad', 'DELETE', _bumpSql(spec.id, scope('OLD')));
+
+      String bump(String row) => _bumpScopesSql(spec.id, scopes(row));
+
+      make('ai', 'AFTER INSERT', cond('NEW'), bump('NEW'));
+      make('au', 'AFTER UPDATE', '${cond('NEW')} OR ${cond('OLD')}', bump('NEW'),
+          cols: of);
+      if (!global) {
+        // A row that moved days changes both days; a span row's old extent
+        // changes whenever it changes at all.
+        make(
+            'au_old',
+            'AFTER UPDATE',
+            '${cond('OLD')} AND '
+                '${t.spans ? '1' : '${scope('OLD')} IS NOT ${scope('NEW')}'}',
+            bump('OLD'),
+            cols: of);
+      }
+      make('ad', 'AFTER DELETE', cond('OLD'), bump('OLD'));
+      final ks = keys[t.name] ?? const <List<String>>[];
+      if (!global && ks.isNotEmpty) {
+        // REPLACE deletes the row it displaces without firing a DELETE
+        // trigger (recursive_triggers is off), so the day it leaves is bumped
+        // here, before the insert, while the old row still exists (Sol r1,
+        // finding 2). Skipped where the old row is on the same day: the AFTER
+        // INSERT bump already covers it.
+        final match = ks
+            .map((k) => '(${k.map((c) => 'o.$c = NEW.$c').join(' AND ')})')
+            .join(' OR ');
+        final old = scopes('o', match: match);
+        make(
+            'bi',
+            'BEFORE INSERT',
+            cond('NEW'),
+            _bumpScopesSql(
+                spec.id,
+                t.spans
+                    ? old
+                    : 'SELECT S FROM ($old) '
+                        'WHERE S IS NOT ${scope('NEW')}'));
+      }
     }
   }
   return out;
@@ -87,9 +186,12 @@ List<String> inputRevisionTriggerSql(
 Future<void> bumpInputRev(String source, String scope,
     {DatabaseExecutor? db}) async {
   final ex = db ?? await LocalDb.instance;
+  // Same non-conflicting insert as the triggers (see _bumpScopesSql).
   await ex.execute(
-    'INSERT OR IGNORE INTO input_revision(source, scope, rev) VALUES(?, ?, 0)',
-    [source, scope],
+    'INSERT INTO input_revision(source, scope, rev) SELECT ?, ?, 0 '
+    'WHERE NOT EXISTS (SELECT 1 FROM input_revision '
+    'WHERE source = ? AND scope = ?)',
+    [source, scope, source, scope],
   );
   await ex.execute(
     'UPDATE input_revision SET rev = rev + 1 WHERE source = ? AND scope = ?',
@@ -150,6 +252,34 @@ Future<InputRevSnapshot> inputRevSnapshot(
 /// Records the zone the app is running in ([zoneKey] = name|offset minutes,
 /// default the process's now) and bumps the global `zone` input when it differs
 /// from the last one seen. Returns whether it bumped. The first observation
-/// only records.
-Future<bool> observeInputZone({String? zoneKey, DatabaseExecutor? db}) =>
-    throw UnimplementedError('Sol r1 finding 5');
+/// only records: there is nothing earlier to have been stamped under.
+///
+/// INTERIM for design 01 (see the `zone` entry in input_catalogue.dart): day
+/// labels come from the phone's current zone, so a zone change moves labels
+/// the stored stamps were taken under. DST is a change of offset, so it counts.
+Future<bool> observeInputZone({String? zoneKey, DatabaseExecutor? db}) async {
+  final now = DateTime.now();
+  final key = zoneKey ?? '${now.timeZoneName}|${now.timeZoneOffset.inMinutes}';
+  final ex = db ?? await LocalDb.instance;
+  final seen = await ex.query('sync_cursor',
+      columns: ['value'],
+      where: 'name = ?',
+      whereArgs: [kObservedZoneCursor]);
+  final last = seen.isEmpty ? null : seen.first['value'] as String?;
+  if (last == key) return false;
+  await ex.insert(
+    'sync_cursor',
+    {
+      'name': kObservedZoneCursor,
+      'value': key,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    },
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+  if (last == null) return false;
+  await bumpInputRev('zone', '', db: ex);
+  return true;
+}
+
+/// The `sync_cursor` row holding the last zone [observeInputZone] saw.
+const String kObservedZoneCursor = 'observed_zone';

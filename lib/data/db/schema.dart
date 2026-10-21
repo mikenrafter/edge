@@ -1221,13 +1221,47 @@ Future<void> _ldbPrivCreateInputRev(DatabaseExecutor db) async {
     // exist yet are skipped; the end of _repairOpenSchema calls this again.
     await db.execute(kCreateInputRevisionTable);
     final master = await db.rawQuery(
-      "SELECT type, name FROM sqlite_master WHERE type IN ('table', 'trigger')",
+      "SELECT type, name, sql FROM sqlite_master "
+      "WHERE type IN ('table', 'trigger')",
     );
-    final have = <String, Set<String>>{'table': {}, 'trigger': {}};
+    final tables = <String>{};
+    final triggers = <String, String>{};
     for (final r in master) {
-      have[r['type'] as String]?.add(r['name'] as String);
+      final name = r['name'] as String;
+      if (r['type'] == 'table') {
+        tables.add(name);
+      } else {
+        triggers[name] = (r['sql'] as String?) ?? '';
+      }
     }
-    for (final sql in inputRevisionTriggerSql(have['table']!, have['trigger']!)) {
+    // What a REPLACE into each catalogued table would delete: its primary key
+    // and unique indexes (the BEFORE INSERT trigger reads the displaced row).
+    final keys = <String, List<List<String>>>{};
+    for (final spec in kInputCatalogue) {
+      for (final t in spec.tables) {
+        if (spec.kind != InputKind.table || !tables.contains(t.name)) continue;
+        final info = await db.rawQuery('PRAGMA table_info(${t.name})');
+        final pk = [
+          for (final c in info)
+            if (((c['pk'] as num?) ?? 0) > 0) c
+        ]..sort((a, b) => (a['pk'] as num).compareTo(b['pk'] as num));
+        final sets = <List<String>>[
+          if (pk.isNotEmpty) [for (final c in pk) c['name'] as String],
+        ];
+        for (final ix in await db.rawQuery('PRAGMA index_list(${t.name})')) {
+          if (((ix['unique'] as num?) ?? 0) != 1) continue;
+          final cols = [
+            for (final c
+                in await db.rawQuery('PRAGMA index_info(${ix['name']})'))
+              c['name'] as String?
+          ];
+          if (cols.isEmpty || cols.contains(null)) continue;
+          sets.add(cols.cast<String>());
+        }
+        keys[t.name] = sets;
+      }
+    }
+    for (final sql in inputRevisionTriggerSql(tables, triggers, keys: keys)) {
       await db.execute(sql);
     }
   }

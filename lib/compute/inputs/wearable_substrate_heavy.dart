@@ -30,6 +30,7 @@ import 'package:openstrap_protocol/openstrap_protocol.dart';
 
 import '../../ble/adapters/colmi.dart' show kColmiHistoryDays;
 import '../../data/db.dart';
+import '../../data/db/input_read_tracker.dart';
 import '../../util/heavy.dart';
 import '../../util/worker_audit.dart';
 import '../../util/worker_entries.dart';
@@ -199,6 +200,7 @@ Future<List<Map<String, Object?>>> _hrRows(
 
 Future<List<Map<String, Object?>>> _colmiTempRows(
     String deviceId, int from, int to) async {
+  InputReads.note('wearable_records', '');
   final db = await LocalDb.instance;
   // A reply is banked on or after the day it describes and at most the
   // ring's history (kColmiHistoryDays) later: scan only those captures.
@@ -217,6 +219,7 @@ Future<List<Map<String, Object?>>> _colmiTempRows(
 
 Future<List<Map<String, Object?>>> _ultrahumanRecordRows(
     String deviceId, int from, int to) async {
+  InputReads.note('wearable_records', '');
   final db = await LocalDb.instance;
   return db.rawQuery(
     "SELECT hex FROM raw_archive WHERE device_id = ? "
