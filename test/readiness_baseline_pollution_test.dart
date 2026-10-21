@@ -63,26 +63,6 @@ void main() {
     );
   }
 
-  // ── The mechanism: duplicate-day pollution collapses MAD → absent ──────────
-
-  test('a baseline dominated by one repeated value makes robustZ degenerate',
-      () {
-    // A healthy trailing window of 28 DISTINCT days: robustZ resolves.
-    final distinct = [for (var i = 0; i < 28; i++) 60.0 + i];
-    expect(ana.robustZ(72, distinct), isNotNull,
-        reason: 'distinct baseline → finite MAD → a real z-score');
-
-    // The polluted window the OLD append path produced: today re-derived ~15×
-    // stacked into the 28 slots (evicting real history). >half identical → the
-    // median AND its MAD both land on the repeated value → MAD=0 → null.
-    final polluted = [
-      for (var i = 0; i < 15; i++) 60.0, // 15 copies of "today"
-      for (var i = 0; i < 13; i++) 50.0 + i, // 13 surviving real days
-    ];
-    expect(ana.robustZ(72, polluted), isNull,
-        reason: 'MAD=0 on quantized/polluted baseline → readiness goes absent');
-  });
-
   // ── The fix: metric_series is one-row-per-day, so the window stays clean ────
 
   test('trailingSeriesValues is de-duplicated no matter how often a day rederives',

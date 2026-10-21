@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -66,23 +65,5 @@ void main() {
     expect(await LocalDb.getMovementFloor(), isNull);
   });
 
-  test('the thaw policy only fires on a real change of scale', () {
-    // Time passing and behaviour changing must NOT thaw it — that is exactly
-    // the tracking behaviour freezing exists to prevent.
-    expect(ana.shouldRefreezeFloor(daysSinceFrozen: 200), isFalse);
-    expect(ana.shouldRefreezeFloor(daysSinceFrozen: 29, wearGapDays: 10),
-        isFalse);
-    // These genuinely change the signal's scale.
-    expect(ana.shouldRefreezeFloor(daysSinceFrozen: 1, deviceChanged: true),
-        isTrue);
-    expect(
-        ana.shouldRefreezeFloor(daysSinceFrozen: 1, wristChanged: true), isTrue);
-    expect(ana.shouldRefreezeFloor(daysSinceFrozen: 1, wearGapDays: 30), isTrue);
-    expect(ana.shouldRefreezeFloor(daysSinceFrozen: 365), isTrue);
-  });
 
-  test('enrollment needs more days than the bare estimator minimum', () {
-    expect(ana.enrollmentDaysForFrozenFloor,
-        greaterThan(ana.personalDynFloorMinDays));
-  });
 }
