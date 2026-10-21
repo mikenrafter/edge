@@ -21,7 +21,7 @@
 
 import '../data/activity_store.dart';
 import '../data/db/input_read_tracker.dart';
-import '../data/db/input_revision_store.dart' show observeInputZone;
+import '../data/db/input_revision_store.dart' show observeInputZone, inputRevSnapshot;
 import 'accepted_naps.dart' show composeAcceptedNaps;
 import '../models/activity_suggestion.dart';
 import 'dart:async';
@@ -2761,9 +2761,11 @@ class DerivationEngine {
         return 0;
       }
       // A forced pass is the user's own re-derive: settled days reopen for it.
-      final finalized = force
-          ? await LocalDb.finalizedDayIds(kAlgoVersion)
-          : await _finalizedOrSettled();
+      final settled = force ? const <String>{} : await _settledDays();
+      final finalized = {
+        ...await LocalDb.finalizedDayIds(kAlgoVersion),
+        ...settled,
+      };
       // A user sleep override (manual / confirmed) must take effect even on a
       // FINALIZED (locked) day — it's the user's word. Force those back into the
       // todo set. (No-raw days are guarded in the per-day loop so we never
@@ -2777,7 +2779,12 @@ class DerivationEngine {
           ? (blankOnly.toList()..sort())
           : [
               for (final day in scope.targetDays)
-                if (!finalized.contains(day) || overrideDays.contains(day)) day,
+                // An edit forces its day back in, unless the day settled with
+                // that very edit state: only a CHANGED edit (which makes the
+                // record stale) reopens it.
+                if (!finalized.contains(day) ||
+                    (overrideDays.contains(day) && !settled.contains(day)))
+                  day,
             ];
       // What each candidate day's input looks like right now. Taken BEFORE the
       // derive reads anything, so rows that land mid-derive make the recorded
@@ -2788,6 +2795,7 @@ class DerivationEngine {
           : await LocalDb.decodedDayFingerprints({
               for (final d in todoDays) ...[d, _adjacentDayIds(d).first],
             });
+      final edits = await _editSigs(todoDays);
       final dayFp = <String, String?>{
         for (final d in todoDays)
           d: deriveFingerprint(
@@ -2915,7 +2923,9 @@ class DerivationEngine {
               if (committed != DayDerive.refused) {
                 await _recordDerivedFingerprint(dayId, dayFp[dayId]);
               }
-              if (committed == DayDerive.declined) await _settleDay(dayId, fps);
+              if (committed == DayDerive.declined) {
+                await _settleDay(dayId, fps, edits);
+              }
               reportDone = false;
             } else if (committed == DayDerive.committed) {
               done++;
@@ -2925,7 +2935,7 @@ class DerivationEngine {
               // Handled, not derived: no `done` (that would run baselines and
               // cross-day for nothing), but settled so it is not picked again.
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
-              await _settleDay(dayId, fps);
+              await _settleDay(dayId, fps, edits);
             } else {
               reportDone = false;
             }
@@ -4084,6 +4094,7 @@ class DerivationEngine {
       final fps = await LocalDb.decodedDayFingerprints({
         for (final d in todoDays) ...[d, _adjacentDayIds(d).first],
       });
+      final edits = await _editSigs(todoDays);
       final dayFp = <String, String?>{
         for (final d in todoDays)
           d: deriveFingerprint(
@@ -4113,7 +4124,7 @@ class DerivationEngine {
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
             } else if (committed == DayDerive.declined) {
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
-              await _settleDay(dayId, fps);
+              await _settleDay(dayId, fps, edits);
             } else {
               reportDone = false;
             }

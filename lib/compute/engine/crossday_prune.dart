@@ -40,6 +40,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
       final fps = await LocalDb.decodedDayFingerprints({
         for (final d in owed) ...[d, DerivationEngine._adjacentDayIds(d).first],
       });
+      final edits = await _editSigs(owed);
       final prunedBeforeSec = await LocalDb.getCursorInt(DerivationEngine._prunedBeforeCursor);
       final withRaw = {
         for (final d in rawDays ?? (await LocalDb.decodedRecTsMaxByDay()).keys)
@@ -48,7 +49,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
       for (final d in owed.difference(withRaw)) {
         // Retired for truncation: the abstention is final, so the day is
         // settled, not left pending for every later pass to pick again.
-        await _settleDay(d, fps);
+        await _settleDay(d, fps, edits);
         await LocalDb.deleteComputeFreshness('${DerivationEngine.kQuietRepassKeyPrefix}$d');
       }
       await DerivationEngine.debugQuietRepassHook?.call(null);
@@ -72,7 +73,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
             } else if (r == DayDerive.declined) {
               // Kept its existing result: final for this raw, so retire the
               // marker and settle rather than retry forever.
-              await _settleDay(dayId, fps);
+              await _settleDay(dayId, fps, edits);
               await LocalDb.deleteComputeFreshness(
                   '${DerivationEngine.kQuietRepassKeyPrefix}$dayId');
             }
@@ -379,7 +380,12 @@ extension _EngineCrossDayPrune on DerivationEngine {
       // Finalized AND complete: a finalized partial row (an import can be
       // both) is still not derived, so its raw is held (invariant 9). The
       // merge took upstream's finalized rule; ours held on completeness.
-      finalizedDayIds: (await _finalizedOrSettled())
+      // FINALIZED only, never settled (AGENTS 3.9): a settled day is one
+      // that kept an older result because this raw could not improve it, but
+      // its raw is not "fully derived" at this version. A later algo version
+      // (which invalidates the settling) or a re-derive may still want it, and
+      // the retention floor already bounds how long it is held.
+      finalizedDayIds: (await LocalDb.finalizedDayIds(kAlgoVersion))
           .difference(await LocalDb.partialDayIds(kAlgoVersion)),
     );
     if (cutoffSec == null) return;

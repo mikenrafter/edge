@@ -3065,5 +3065,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "supplementStrainWasNotScoredForThisDay": "未对这一天的消耗评分：之前的天数不足，无法确定你的静息水平。"
 }

@@ -724,9 +724,6 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<Str
     }
   }
 
-/// Lower than any SQLite rowid (the smallest is -2^63).
-const int _kBelowAnyRowid = -9223372036854775808;
-
 Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) async {
     // One place that reports a preparing step (opening, checking, counting).
     void prep(ImportPrepStep step, [int? done, int? total]) =>
@@ -762,6 +759,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       return {for (final c in info) (c['name'] as String)};
     }
 
+    // The cursor as it stood: the file's sync_cursor may REPLACE it later.
+    final cursorBeforeImport =
+        await LocalDb.getCursorInt(LocalDb.kDecodedPrunedBeforeCursor);
     final counts = <String, int>{};
     // DISTINCT DAYS ACTUALLY WRITTEN — the number the caller reports as
     // "N days imported".
@@ -1224,7 +1224,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           // has that value as its rowid, and `rowid > 0` never reads row 0.
           // The journal's 0 means "not started in this table".
           final resumeRowid = run?.startRowid(index, order) ?? 0;
-          var lastRowid = resumeRowid == 0 ? _kBelowAnyRowid : resumeRowid;
+          var lastRowid = resumeRowid == 0 ? LocalDb._kBelowAnyRowid : resumeRowid;
           final projection = isArchive
               ? SubstrateArchive.metaColumns.join(', ')
               : '*';
@@ -1687,7 +1687,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // otherwise reinstate itself over an earlier lowering. The cursor may not
     // sit above the oldest decoded second actually present.
     if (order.contains('decoded_onehz') || order.contains('sync_cursor')) {
-      await LocalDb._lowerPrunedCursorToOldestDecoded();
+      await LocalDb._reconcilePrunedCursor(cursorBeforeImport);
     }
     if (resumed || counts.values.any((count) => count > 0)) {
       await ActivityStore.suppressImportedAlerts(db);

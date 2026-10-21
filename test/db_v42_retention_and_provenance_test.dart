@@ -403,10 +403,30 @@ void main() {
 
   test('prune cursor only moves forward', () async {
     await _useFreshDb('v42_prune_cursor_test.db');
+    // The cursor means "decoded rows below here are gone", so a prune raises it
+    // only when it cut something: seed a second below each cutoff. (It used to
+    // be raised by a prune that found nothing, which left a fresh install with
+    // a cursor above every row an import later brought in.)
+    Future<void> second(int ts) async => (await LocalDb.instance).insert(
+        'decoded_onehz', {
+          'device_id': '', 'ts_ms': ts * 1000, 'rec_ts': ts,
+          'counter': ts, 'hr': 60, 'device_family': 'gen4',
+        });
+    await second(1500);
     await LocalDb.pruneDecodedBeforeRecTs(2000, cursorName: 'pc');
     expect(await LocalDb.getCursorInt('pc'), 2000);
+    await second(900);
     await LocalDb.pruneDecodedBeforeRecTs(1000, cursorName: 'pc');
-    expect(await LocalDb.getCursorInt('pc'), 2000);
+    expect(await LocalDb.getCursorInt('pc'), 2000,
+        reason: 'a prune that cuts at a LOWER cutoff never moves it back');
+    // Only an import that proves the days below it whole may lower it
+    // (LocalDb._reconcilePrunedCursor; test/prune_cursor_holes_test.dart).
+  });
+
+  test('a prune that deletes nothing leaves the cursor alone', () async {
+    await _useFreshDb('v42_prune_cursor_noop_test.db');
+    await LocalDb.pruneDecodedBeforeRecTs(2000, cursorName: 'pc');
+    expect(await LocalDb.getCursorInt('pc'), isNull);
   });
 
   test('band_backlog records a connect and never guesses a device', () async {

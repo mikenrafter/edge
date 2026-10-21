@@ -3172,5 +3172,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "supplementStrainWasNotScoredForThisDay": "Strain wurde für diesen Tag nicht bewertet: Es gab nicht genug frühere Tage, um dein Ruheniveau festzulegen."
 }

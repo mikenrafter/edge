@@ -3065,5 +3065,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "supplementStrainWasNotScoredForThisDay": "L’effort n’a pas été évalué pour ce jour : il n’y avait pas assez de jours précédents pour établir ton niveau de repos."
 }

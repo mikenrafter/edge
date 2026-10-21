@@ -5573,6 +5573,9 @@ class LocalDb {
   /// Tables where a row this device already has wins over the backup's: a
   /// moment is answered once, a fired alert stays fired (a union of keys), and
   /// the weekly alarm and logged entries are the device's own choice.
+  /// Lower than any SQLite rowid (the smallest is -2^63).
+  static const int _kBelowAnyRowid = -9223372036854775808;
+
   /// `wake_meta` keys that describe a run in flight on the OLD phone.
   static const Set<String> _wakeMetaTransientKeys = {
     'run_state',
@@ -6181,16 +6184,16 @@ class LocalDb {
   }
 
   /// `settled:<day>` rows: days whose derive DECLINED to write (kept the
-  /// existing result, edge#305), recorded as `{v: algoVersion, own, prev}`:
+  /// existing result, edge#305), recorded as `{v: algoVersion, own, prev, edit}`:
   /// the raw fingerprints of the day and of the day before it (null when that
-  /// one had none). Owner of the state: the derive engine writes it (see
+  /// one had none), and the revision of the wearer's sleep/nap edits for it. Owner of the state: the derive engine writes it (see
   /// engine/settled.dart); this is only its storage.
   static const String _settledPrefix = 'settled:';
 
   /// `{day -> (own, prev)}` of the days settled at [algoVersion]. A row from
   /// another version is not returned, so a version bump reopens every day.
-  static Future<Map<String, ({String own, String? prev})>> settledFingerprints(
-          int algoVersion) =>
+  static Future<Map<String, ({String own, String? prev, String edit})>>
+      settledFingerprints(int algoVersion) =>
       _ldbSettledFingerprints(algoVersion);
 
   static Future<void> putSettledDay(
@@ -6198,9 +6201,10 @@ class LocalDb {
     int algoVersion, {
     required String own,
     required String? prev,
+    String edit = '',
   }) => putComputeFreshness(
     '$_settledPrefix$day',
-    jsonEncode({'v': algoVersion, 'own': own, 'prev': prev}),
+    jsonEncode({'v': algoVersion, 'own': own, 'prev': prev, 'edit': edit}),
   );
 
   /// Whether no later night can change [day]'s result at [algoVersion]: it is
@@ -7486,27 +7490,66 @@ class LocalDb {
   /// The prune cursor: decoded rows below this rec_ts have been deleted.
   static const String kDecodedPrunedBeforeCursor = 'decoded_pruned_before';
 
-  /// Lower `decoded_pruned_before` to the local midnight of the oldest decoded
-  /// second present; never raises it and never creates it.
+  /// Bring `decoded_pruned_before` back in line with the rows an import left,
+  /// given [before], the cursor as it stood before the import (null: none).
   ///
-  /// Why: the cursor says "decoded rows below here are gone". An import that
-  /// merges complete seconds beneath it (or restores a stale cursor from the
-  /// file) makes that false, and `windowTruncatedByPrune` then keeps calling
-  /// whole days cut. Midnight, not the second: the cursor is compared against
-  /// local day windows, and [localDayStartSec] is DST-safe where
-  /// `- n * 86400` is not.
-  static Future<void> _lowerPrunedCursorToOldestDecoded() async {
+  /// The cursor says "decoded rows below here are gone". Two things an import
+  /// does can make that false, and one can make it too weak:
+  ///  * The file's own `sync_cursor` REPLACEs ours. A restore must never erase
+  ///    a local prune claim, so the cursor is first put back to at least
+  ///    [before].
+  ///  * Merged seconds can make days below the cursor whole again, and
+  ///    `windowTruncatedByPrune` keeps calling them cut. So it is lowered, but
+  ///    only across the UNBROKEN run of local days that have decoded rows,
+  ///    walking down from the day just below the cursor. A day with no rows
+  ///    stops the walk: it may be a prune hole, and lowering past it would make
+  ///    the partly pruned days above it look whole (edge#305 could then let a
+  ///    truncated night overwrite a good result). A non-wear day only keeps the
+  ///    cursor higher, the safe side.
+  ///
+  /// A cursor taken from the file when we had none is first clamped to the day
+  /// after the newest row (a stale one claims days that hold nothing here).
+  ///
+  /// Never raises past [before] and never creates a cursor. Day steps use the
+  /// local day-label helpers, so a 23 or 25 hour day is one step.
+  static Future<void> _reconcilePrunedCursor(int? before) async {
     final db = await instance;
-    final min = Sqflite.firstIntValue(await db.rawQuery(
-        'SELECT MIN(rec_ts) FROM decoded_onehz WHERE rec_ts > 0'));
-    if (min == null) return;
-    final midnight = localDayStartSec(
-        dayLabelOf(DateTime.fromMillisecondsSinceEpoch(min * 1000)));
-    if (midnight == null) return;
+    final newest = Sqflite.firstIntValue(await db.rawQuery(
+        'SELECT MAX(rec_ts) FROM decoded_onehz'));
     await db.transaction((txn) async {
-      final current = await _cursorIntVia(txn, kDecodedPrunedBeforeCursor);
-      if (current != null && midnight < current) {
-        await setCursor(kDecodedPrunedBeforeCursor, '$midnight', txn: txn);
+      var cursor = await _cursorIntVia(txn, kDecodedPrunedBeforeCursor);
+      // A local claim wins over the file's cursor, whether the file's is lower
+      // (it would forget our holes) or higher (it describes the file's).
+      if (before != null && cursor != before) {
+        await setCursor(kDecodedPrunedBeforeCursor, '$before', txn: txn);
+        cursor = before;
+      }
+      if (cursor == null || newest == null) return;
+      // Only a cursor that came from the FILE (we had none) is clamped to the
+      // newest row: it claims days that hold nothing here, with nothing to
+      // protect there. A local cursor is walked strictly from where it stands.
+      final start = before == null && cursor > newest ? newest + 1 : cursor;
+      // The day holding the second just below `start`: the previous day when
+      // `start` is a local midnight.
+      String? day = dayLabelOf(
+          DateTime.fromMillisecondsSinceEpoch((start - 1) * 1000));
+      int? lowest;
+      // Bounded: a year of unbroken days is already far more than a retention
+      // window; the rest lowers on the next import if it matters.
+      for (var i = 0; i < 400 && day != null; i++) {
+        final lo = localDayStartSec(day);
+        final hi = localDayEndSec(day);
+        if (lo == null || hi == null) break;
+        final has = await txn.rawQuery(
+            'SELECT 1 FROM decoded_onehz WHERE rec_ts >= ? AND rec_ts < ? '
+            'LIMIT 1',
+            [lo, hi < start ? hi : start]);
+        if (has.isEmpty) break;
+        lowest = lo;
+        day = dayLabelBefore(day, 1);
+      }
+      if (lowest != null && lowest < cursor) {
+        await setCursor(kDecodedPrunedBeforeCursor, '$lowest', txn: txn);
       }
     });
   }
