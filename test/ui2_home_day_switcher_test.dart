@@ -146,6 +146,11 @@ void main() {
     final row = find.text('Breakdown of your day');
     await t.scrollUntilVisible(row, 300,
         scrollable: find.byType(Scrollable).first);
+    // The rings card now reserves more height, so the row can be BUILT (in
+    // the list's cache extent) yet still below the 600 pt viewport, where a
+    // tap would miss: bring it on screen before tapping.
+    await t.ensureVisible(row);
+    await _settle(t);
     await t.tap(row);
     await _settle(t);
     expect(t.widget<DayTimelineScreen>(find.byType(DayTimelineScreen)).day,
@@ -223,6 +228,10 @@ void main() {
     await _settle(t);
 
     expect(find.textContaining('Today could not be read'), findsOneWidget);
+    // The tile is below the fold of the 600 pt test viewport (the rings card
+    // reserves more height than it did): scroll to it, then assert it is there.
+    await t.scrollUntilVisible(find.text('Set an alarm'), 300,
+        scrollable: find.byType(Scrollable).first);
     expect(find.text('Set an alarm'), findsOneWidget,
         reason: 'the alarm tile in At a glance');
   });
