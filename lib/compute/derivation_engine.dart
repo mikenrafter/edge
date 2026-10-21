@@ -3310,18 +3310,6 @@ class DerivationEngine {
   /// the same hours again. Only the load is serialised, never the staging.
   Future<void> _unionTurn = Future.value();
 
-  Future<T> _inUnionTurn<T>(Future<T> Function() body) async {
-    final previous = _unionTurn;
-    final done = Completer<void>();
-    _unionTurn = done.future;
-    try {
-      await previous;
-      return await body();
-    } finally {
-      // Whatever happened, the next day gets its turn (4.3).
-      done.complete();
-    }
-  }
 
   /// The zone [_retained] was loaded under ([_zoneKey]).
   String? _retainedZone;
@@ -5531,7 +5519,11 @@ class DerivationEngine {
   Future<RetainedLoad?> _loadUnion(String dayId, int from, int to,
       {_PrepareStats? stats}) async {
     if (to < from) return null;
-    return _inUnionTurn(() async {
+    final previous = _unionTurn;
+    final turnDone = Completer<void>();
+    _unionTurn = turnDone.future;
+    try {
+      await previous;
       final startedAt = DateTime.now().millisecondsSinceEpoch;
       final (resolved, _) = await _resolveOwnership(from, to);
       final ownership = {
@@ -5565,7 +5557,7 @@ class DerivationEngine {
             stats: stats,
             label: 'load_day',
             ownership: ownership,
-            onRun: got.add);
+            runOut: got);
         return got.isEmpty ? null : got.single;
       }
 
@@ -5611,7 +5603,10 @@ class DerivationEngine {
       perf.addStage(
           'union_load', DateTime.now().millisecondsSinceEpoch - startedAt);
       return union;
-    });
+    } finally {
+      // Whatever happened, the next day gets its turn (4.3).
+      turnDone.complete();
+    }
   }
 
   /// The window [a, b] of [union] as the load `label` would have returned
@@ -5674,8 +5669,8 @@ class DerivationEngine {
     bool retain = false,
     // Hand the load over as a [RetainedLoad] too (not kept in [_retained]):
     // the cross-day union reads its gaps this way and joins them to the parts
-    // it already holds. Called once, when the load finishes with rows' facts.
-    void Function(RetainedLoad run)? onRun,
+    // it already holds. Added once, when the load finishes with rows' facts.
+    List<RetainedLoad>? runOut,
   }) async {
     if (toRecTs < fromRecTs) return Substrate.empty;
     final loadStartedAt = DateTime.now().millisecondsSinceEpoch;
@@ -5689,7 +5684,7 @@ class DerivationEngine {
     Map<int, int>? revsNow;
     var multiOwner = false;
     final generation = LocalDb.storeGeneration;
-    if (retainKey != null || onRun != null) {
+    if (retainKey != null || runOut != null) {
       // A move to another zone moves every day boundary: nothing kept for the
       // days of the old zone is a window of the new one.
       if (retainKey != null) {
@@ -5857,7 +5852,7 @@ class DerivationEngine {
       worker.send({
         'type': 'config',
         'mode': 'substrate',
-        if (retainKey != null || onRun != null) 'retain': true,
+        if (retainKey != null || runOut != null) 'retain': true,
       });
       if (prior != null && cut != null) {
         worker.send(prior.seedMessage(cut, rrFromRecTs, keepBeats));
@@ -6022,7 +6017,7 @@ class DerivationEngine {
       final newCut = lastRowRecTs != null
           ? (lastRowRecTs ~/ kRevBucketSec) * kRevBucketSec
           : priorCut;
-      if ((retainKey != null || onRun != null) && extras != null) {
+      if ((retainKey != null || runOut != null) && extras != null) {
         // A range with no row at all still proves it had none (as of [revsNow]);
         // that is only worth keeping for a union part, never as a warm load.
         final cutAt = newCut ?? (fromRecTs ~/ kRevBucketSec) * kRevBucketSec;
@@ -6050,7 +6045,7 @@ class DerivationEngine {
           _retained[retainKey] = run;
           _boundRetained();
         }
-        onRun?.call(run);
+        runOut?.add(run);
       }
       _noteHeldRows(loaded.length);
       return loaded;
@@ -8219,10 +8214,6 @@ class DerivationEngine {
   /// checkpoint, its family has no quiet cut, the curves were folded under
   /// another one, or the tail does not continue the state. The caller then
   /// reads the day's whole beats.
-  static DayTailResult? Function() _dayTailJob(
-          WorkerInputs inputs, DayTailInput input) =>
-      () => foldDayTailHeavy(inputs, input);
-
   Future<DayTailResult?> _streamDayTail(PreparedDerivationDay day) async {
     final probe = day.rrResume!;
     final sub = day.daySub;
@@ -8254,16 +8245,17 @@ class DerivationEngine {
         zoneId: 'UTC',
         localeTag: 'en',
       );
-      // Built in a static so the job's closure context holds only its two
-      // inputs: a closure made here would share this method's context, which
-      // holds the engine, and the engine is not sendable (its Futures).
-      final job = _dayTailJob(inputs, input);
+      // Locals, not fields, inside the closures: the worker closure shares
+      // their context, and a context holding `this` would send the engine
+      // (not sendable: its Futures) to the isolate.
+      final timeout = _perDayTimeout;
+      final label = 'day-stream ${day.date}';
       return await perf.stage(
         'day_stream',
         () => _runIsolateCancellable<DayTailResult?>(
-          job,
-          _perDayTimeout,
-          label: 'day-stream ${day.date}',
+          () => foldDayTailHeavy(inputs, input),
+          timeout,
+          label: label,
         ),
       );
     } catch (e) {
