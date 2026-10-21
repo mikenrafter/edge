@@ -70,15 +70,7 @@ Future<void> _ldbApplyImportRederive() async {
   final days = ImportJournal.splitList(meta['rederive']);
   final since = await ImportJournal.latestStartedAt();
   if (days.isNotEmpty) {
-    final db = await LocalDb.instance;
-    await db.transaction((txn) async {
-      for (final chunk in LocalDb._sqlVarChunks(days)) {
-        await txn.rawDelete(
-            'DELETE FROM day_result WHERE computed_at >= ? AND day_id IN '
-            '(${List.filled(chunk.length, '?').join(',')})',
-            [since, ...chunk]);
-      }
-    });
+    await LocalDb.clearDerivedDays(days.toSet(), computedSince: since);
     LocalDb._markStoreReplaced();
   }
   await ImportJournal.putMeta({'rederiveApplied': '1'});

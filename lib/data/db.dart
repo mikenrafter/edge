@@ -5203,7 +5203,8 @@ class LocalDb {
   /// Drops what a derive wrote for [dayIds] and nothing the user or a device
   /// wrote: for a day whose only source was just switched off, so a re-derive
   /// that finds nothing leaves nothing behind.
-  static Future<void> clearDerivedDays(Set<String> dayIds) => _ldbClearDerivedDays(dayIds);
+  static Future<void> clearDerivedDays(Set<String> dayIds, {int? computedSince}) =>
+      _ldbClearDerivedDays(dayIds, computedSince: computedSince);
   static Future<Map<String, int>> runJournaledImport(ImportRun run, void Function(ImportProgress p)? onProgress) => _ldbRunJournaledImport(run, onProgress);
   static Future<void> applyImportRederive() => _ldbApplyImportRederive();
 

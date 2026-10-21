@@ -391,24 +391,31 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
     return dest;
   }
 
-Future<void> _ldbClearDerivedDays(Set<String> dayIds) async {
+Future<void> _ldbClearDerivedDays(Set<String> dayIds, {int? computedSince}) async {
     final sorted = dayIds.toList()..sort();
     if (sorted.isEmpty) return;
     final db = await LocalDb.instance;
     await db.transaction((txn) async {
-      for (final (table, column) in const [
-        ('day_result', 'day_id'),
-        ('metric_series', 'date'),
-        ('metric_series_version', 'date'),
-        ('metric_method', 'date'),
-        ('sleep_session_candidates', 'day_id'),
-        ('wake_day_features', 'day_id'),
-      ]) {
+      // [computedSince]: only the day_result rows this build computed at or
+      // after that instant (an import's partial-range derives); rows an import
+      // carried in keep their source computed_at, and the other derived tables
+      // are left alone.
+      for (final (table, column) in computedSince != null
+          ? const [('day_result', 'day_id')]
+          : const [
+              ('day_result', 'day_id'),
+              ('metric_series', 'date'),
+              ('metric_series_version', 'date'),
+              ('metric_method', 'date'),
+              ('sleep_session_candidates', 'day_id'),
+              ('wake_day_features', 'day_id'),
+            ]) {
         for (final chunk in LocalDb._sqlVarChunks(sorted)) {
           await txn.rawDelete(
             'DELETE FROM $table WHERE $column IN '
-            '(${List.filled(chunk.length, '?').join(',')})',
-            chunk,
+            '(${List.filled(chunk.length, '?').join(',')})'
+            '${computedSince != null ? ' AND computed_at >= ?' : ''}',
+            [...chunk, if (computedSince != null) computedSince],
           );
         }
       }
