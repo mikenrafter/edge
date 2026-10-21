@@ -146,7 +146,7 @@ void main() {
       // bump atop upstream 113 (D27 revised): 114. Nothing in this artifact
       // bumped it.
       expect(kAlgoVersion, 114);
-      expect(kAnalyticsPin, 'd9eda83f69391e9d8f6913db9e9aa3dfc5cbb171');
+      expect(kAnalyticsPin, '83fc308545c886ef2757b3df396accea78849aa5');
       expect(kProtocolPin, '89080bcfac7767b3a871fd3a7d9307f5f30dad26');
     });
 
