@@ -19,6 +19,7 @@ GroupRegistry reg(List<GroupDecl> gs) => GroupRegistry(1, gs);
 // Stand-in for analytics' registry (arrives in 1b).
 final analyticsDouble = <GroupDecl>[
   g('found.rr_correction', kind: GroupKind.foundation),
+  g('found.calibration', kind: GroupKind.foundation), // day.checkpoint (an edge entry) reads it
   g('night.rhythm', deps: ['found.rr_correction']),
   g('readiness', deps: ['night.rhythm', 'found.rr_correction']),
 ];
@@ -79,7 +80,7 @@ void main() {
   });
 
   test('analytics double merged with the edge entries validates', () {
-    // The double stands in for analytics' registry, which in 1b replaces the
+    // The double stands in for analytics' registry, which since 1b replaces the
     // placeholders (they reuse its ids), so the placeholders are not merged.
     final merged = reg([
       ...analyticsDouble,

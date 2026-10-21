@@ -1,9 +1,19 @@
 // group_registry.dart — validation and graph queries over a [GroupRegistry]
 // (design 06 phase 1a). Pure; nothing at runtime calls it yet.
 
+import 'package:openstrap_analytics/onehz.dart' show kAnalyticsGroupRegistry;
+
+import 'edge_groups.dart';
 import 'group_types.dart';
 
 const int _kMaxMembers = 3;
+
+/// The registry edge runs against: the groups analytics declares plus edge's
+/// own transforms. Version follows analytics' registry version.
+final GroupRegistry kMergedRegistry = GroupRegistry(
+  kAnalyticsGroupRegistry.registryVersion,
+  <GroupDecl>[...kAnalyticsGroupRegistry.groups, ...kEdgeGroups],
+);
 
 /// Every rule the registry must hold, as human-readable problems. Empty means
 /// valid: unique ids, resolving deps, acyclic, at most 3 members, counter >= 1.

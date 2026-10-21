@@ -4,8 +4,8 @@
 // `kAnalyticsGroupRegistry` with `kEdgeGroups`. The checks:
 //  - the merged registry validates (and every bundle/series key owner names a
 //    declared group);
-//  - every analytics function edge's compute layer calls is a member of
-//    exactly one group, or sits in [kUnregisteredAnalyticsCalls] (trivial
+//  - every analytics function edge's compute layer calls is a member or api
+//    entry of exactly one group, or sits in [kUnregisteredAnalyticsCalls] (trivial
 //    utilities, each with a reason; a shrink-only ratchet);
 //  - edge entries depend only on declared ids;
 //  - edge no longer declares analytics placeholder groups.
@@ -44,6 +44,7 @@ GroupRegistry _merged() {
         kind: GroupKind.values.byName((d.kind as Enum).name),
         counter: d.counter as int,
         members: List<String>.from(d.members as List),
+        api: List<String>.from(d.api as List),
         deps: List<String>.from(d.deps as List),
         inputs: [
           for (final dynamic i in d.inputs as List)
@@ -147,13 +148,13 @@ void main() {
     expect(dangling, isEmpty);
   });
 
-  test('every analytics function edge/compute calls is in exactly one group', () {
+  test('every analytics function edge/compute calls is a member or api entry of exactly one group', () {
     final calls = _callInventory();
     // Inventory sanity: a scanner regression must not read as "all covered".
     expect(calls.length, greaterThan(40), reason: 'call-site scan found too little');
     final owners = <String, List<String>>{};
     for (final g in _merged().groups) {
-      for (final m in g.members) {
+      for (final m in [...g.members, ...g.api]) {
         (owners[m] ??= <String>[]).add(g.id);
       }
     }

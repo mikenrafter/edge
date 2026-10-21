@@ -1,5 +1,6 @@
 // edge_groups.dart — edge's registry entries and the key-ownership maps
-// (design 06 phase 1a). Nothing at runtime reads this yet.
+// (design 06 phase 1a; the analytics groups come from
+// `kAnalyticsGroupRegistry` since 1b). Nothing at runtime reads this yet.
 //
 // The ownership maps are checked against real derives by
 // test/groups/group_key_ownership_test.dart: a key a derive writes with no
@@ -30,48 +31,6 @@ const List<GroupDecl> kEdgeGroups = <GroupDecl>[
     members: ['blankNightInBundle'],
     files: ['lib/compute/sleep_blank.dart'],
   ),
-];
-
-/// PLACEHOLDER (until 1b): stand-ins for the groups analytics will declare,
-/// from the proposal in design 06 phase-1 plan section 4. Replaced by
-/// `kAnalyticsGroupRegistry` in 1b; the ids may change then. Members are real
-/// function names the derive calls today.
-const List<GroupDecl> kAnalyticsPlaceholderGroups = <GroupDecl>[
-  GroupDecl(
-    id: 'sleep.stage',
-    kind: GroupKind.algorithm,
-    counter: 1,
-    members: ['cardioStager', 'stageMinuteRanges'],
-    deps: ['found.rr_correction', 'found.staging_helpers'],
-    files: [
-      'lib/compute/sleep_staging_worker.dart',
-      'lib/compute/sleep_profile_policy.dart',
-    ],
-  ),
-  GroupDecl(
-    id: 'hrv.freq',
-    kind: GroupKind.algorithm,
-    counter: 1,
-    members: ['hrvFreq'],
-    deps: ['found.rr_correction'],
-    files: [],
-  ),
-  GroupDecl(
-    id: 'night.rhythm',
-    kind: GroupKind.algorithm,
-    counter: 1,
-    members: ['rsaRespRate', 'cvhrApneaScreen', 'decelerationCapacity'],
-    deps: ['found.rr_correction'],
-    files: ['lib/compute/night_prsa.dart', 'lib/compute/night_resp_bins.dart'],
-  ),
-  GroupDecl(
-    id: 'day.blocks',
-    kind: GroupKind.algorithm,
-    counter: 1,
-    members: ['detectNaps', 'autoDetectWorkouts', 'positionSeries'],
-    deps: ['sleep.stage', 'found.calibration'],
-    files: ['lib/compute/accepted_naps.dart'],
-  ),
   GroupDecl(
     id: 'day.checkpoint',
     kind: GroupKind.edgeTransform,
@@ -79,75 +38,6 @@ const List<GroupDecl> kAnalyticsPlaceholderGroups = <GroupDecl>[
     members: ['foldDayCheckpoint'],
     deps: ['found.calibration'],
     files: ['lib/compute/day_checkpoint_fold.dart'],
-  ),
-  GroupDecl(
-    id: 'readiness.stress_illness',
-    kind: GroupKind.algorithm,
-    counter: 1,
-    members: ['readinessComposite', 'baevskyStressIndex', 'illnessCusum'],
-    deps: [
-      'night.rhythm',
-      'hrv.freq',
-      'found.rr_correction',
-      'found.baseline_ewma',
-    ],
-    files: ['lib/compute/onehz_pipeline.dart'],
-  ),
-  GroupDecl(
-    id: 'activity.load',
-    kind: GroupKind.algorithm,
-    counter: 1,
-    members: ['banisterTrimp', 'wakeDayEnergy', 'dailyActiveMinutes'],
-    deps: ['found.energy', 'found.calibration', 'found.baseline_ewma'],
-    files: ['lib/compute/onehz_pipeline.dart', 'lib/compute/kcal_minutes.dart'],
-  ),
-  GroupDecl(
-    id: 'body.spo2_temp_coverage',
-    kind: GroupKind.algorithm,
-    counter: 1,
-    members: ['hrDip', 'skinTempAmbientR'],
-    deps: ['found.baseline_ewma'],
-    files: ['lib/compute/onehz_pipeline.dart'],
-  ),
-  GroupDecl(
-    id: 'found.rr_correction',
-    kind: GroupKind.foundation,
-    counter: 1,
-    members: ['correctRr'],
-    deps: [],
-    files: ['lib/compute/day_rr_state.dart'],
-  ),
-  GroupDecl(
-    id: 'found.baseline_ewma',
-    kind: GroupKind.foundation,
-    counter: 1,
-    members: ['Baselines.foldHistory', 'Baselines.deviation'],
-    deps: [],
-    files: [],
-  ),
-  GroupDecl(
-    id: 'found.calibration',
-    kind: GroupKind.foundation,
-    counter: 1,
-    members: ['calibrationFor'],
-    deps: [],
-    files: [],
-  ),
-  GroupDecl(
-    id: 'found.energy',
-    kind: GroupKind.foundation,
-    counter: 1,
-    members: ['dailyEnergy'],
-    deps: [],
-    files: ['lib/compute/kcal_minutes.dart'],
-  ),
-  GroupDecl(
-    id: 'found.staging_helpers',
-    kind: GroupKind.foundation,
-    counter: 1,
-    members: ['lombScargle'],
-    deps: [],
-    files: [],
   ),
 ];
 

@@ -18,7 +18,6 @@ import 'package:openstrap_edge/ble/colmi_link.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/groups/edge_groups.dart';
 import 'package:openstrap_edge/compute/groups/group_registry.dart';
-import 'package:openstrap_edge/compute/groups/group_types.dart';
 import 'package:openstrap_edge/compute/inputs/canonical.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
@@ -83,7 +82,7 @@ void main() {
   });
 
   final groupIds = {
-    for (final g in [...kEdgeGroups, ...kAnalyticsPlaceholderGroups]) g.id
+    for (final g in kMergedRegistry.groups) g.id
   };
 
   test('the real derives produced keys (the fixture is not vacuous)', () {
@@ -126,12 +125,7 @@ void main() {
     }
   });
 
-  test('the merged edge + placeholder registry validates', () {
-    expect(
-        validateRegistry(GroupRegistry(1, [
-          ...kEdgeGroups,
-          ...kAnalyticsPlaceholderGroups,
-        ])),
-        isEmpty);
+  test('the merged edge + analytics registry validates', () {
+    expect(validateRegistry(kMergedRegistry), isEmpty);
   });
 }
