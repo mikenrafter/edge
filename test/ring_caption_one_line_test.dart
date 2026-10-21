@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/models/metric.dart';
+import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/control_operations.dart'
     show ExpectedSleepSchedule;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
@@ -64,6 +65,10 @@ Future<void> _pump(WidgetTester t, double width, HomeData d,
   t.view.devicePixelRatio = 1;
   t.view.physicalSize = Size(width, 900);
   addTearDown(t.view.reset);
+  // hm() reads the presentation locale, not MaterialApp.locale: bind it too,
+  // so durations are measured in the fixture's own format.
+  final lc = LocaleController.seed(locale.languageCode)..useForPresentation();
+  addTearDown(lc.dispose);
   await t.pumpWidget(MaterialApp(
     locale: locale,
     theme: buildTheme(Brightness.light),
@@ -215,4 +220,22 @@ void main() {
     expect(cap, contains('default'));
     expect(cap, startsWith('on track'));
   });
+
+  // 320 pt at x1.3 is where the shortest wordings need the most room (and the
+  // ru numeral wraps to three lines): what the rings reserve must not depend
+  // on the day's data.
+  for (final lang in ['es', 'de', 'ru']) {
+    testWidgets('$lang x1.3 320 pt: rings are as tall loaded as empty',
+        (t) async {
+      await _pump(t, 320, const HomeData(),
+          locale: Locale(lang), scale: 1.3);
+      final empty = _trioHeight(t);
+      expect(_rows(t), isFalse);
+      for (final e in _loaded.entries) {
+        await _pump(t, 320, e.value, locale: Locale(lang), scale: 1.3);
+        expect(_rows(t), isFalse);
+        expect(_trioHeight(t), empty, reason: '$lang ${e.key}: loaded vs empty');
+      }
+    });
+  }
 }

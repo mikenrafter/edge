@@ -1574,7 +1574,8 @@ double _twoLines(BuildContext c) => _measuredHeight(c, F.cap, 'x\nx\nx');
 
 /// Height of [text] in [base] under the ambient default style, scale and bold
 /// setting. Measured, not multiplied: the paragraph rounds each line.
-double _measuredHeight(BuildContext c, TextStyle base, String text) {
+double _measuredHeight(BuildContext c, TextStyle base, String text,
+    {double maxWidth = double.infinity}) {
   var st = DefaultTextStyle.of(c).style.merge(base);
   if (MediaQuery.boldTextOf(c)) {
     st = st.merge(const TextStyle(fontWeight: FontWeight.bold));
@@ -1583,7 +1584,8 @@ double _measuredHeight(BuildContext c, TextStyle base, String text) {
     text: TextSpan(text: text, style: st),
     textDirection: Directionality.of(c),
     textScaler: MediaQuery.textScalerOf(c),
-  )..layout();
+    locale: Localizations.maybeLocaleOf(c),
+  )..layout(maxWidth: maxWidth);
   final h = tp.height;
   tp.dispose();
   return h;
@@ -1661,19 +1663,35 @@ class _CaptionSpec {
       overflow: TextOverflow.clip);
 }
 
-/// Whether the longest sleep numeral ("10h 30m") needs two lines in [width].
-bool _numeralWraps(BuildContext c, double width) {
-  final tp = TextPainter(
-    text: TextSpan(
-        text: presentationText(AppLocalizations.of(c),
-            _compactHm(630, AppLocalizations.of(c))),
-        style: DefaultTextStyle.of(c).style.merge(F.n24)),
-    textDirection: Directionality.of(c),
-    textScaler: MediaQuery.textScalerOf(c),
-  )..layout();
-  final wraps = tp.width > width;
-  tp.dispose();
-  return wraps;
+/// The numeral slot's reserved height in a column [width] wide: the longest
+/// realistic sleep numeral ("10h 30m" in the locale's own format) laid out at
+/// that width with the numeral's real style. A fixed sample, so it is the same
+/// empty and loaded.
+double _numeralReserve(BuildContext c, double width) => _measuredHeight(
+    c,
+    F.n24,
+    presentationText(
+        AppLocalizations.of(c), _compactHm(630, AppLocalizations.of(c))),
+    maxWidth: width);
+
+/// The sleep caption's reserved height in a column [width] wide: three lines,
+/// or more where the shortest wordings (the ones shown whole when nothing fits
+/// three lines) need it. Fixed localized samples, never today's data.
+double _sleepCaptionReserve(BuildContext c, double width) {
+  final l = AppLocalizations.of(c);
+  final dur = _compactHm(630, l);
+  final samples = [
+    l?.homeSleepEstimateDefaultMin(10) ?? '~10 cycles · default goal',
+    l?.homeSleepEstimateBare(10) ?? '~10 cycles',
+    l?.homeSleepPctDefaultTight(100, dur) ?? '100% of default $dur',
+    l?.homeSleepPctCompact(100, dur) ?? '100% of $dur',
+  ];
+  var h = _twoLines(c);
+  for (final t in samples) {
+    h = math.max(
+        h, _measuredHeight(c, F.cap, presentationText(l, t), maxWidth: width));
+  }
+  return h;
 }
 
 class _RingText extends StatelessWidget {
@@ -1701,14 +1719,13 @@ class _RingText extends StatelessWidget {
         // the help strip under the rings. Words that are not an absence
         // ("Sleeping…", "Learning your usual") keep the sentence weight.
         ConstrainedBox(
-          // The sleep numeral ("7h 22m") can wrap to two lines in a narrow
-          // column at larger text; reserve both lines whenever the longest
-          // sample would wrap, so the slot never depends on the day's data.
+          // The sleep numeral ("7h 22m") can wrap in a narrow column at larger
+          // text; reserve what the longest sample needs, so the slot never
+          // depends on the day's data.
           constraints: BoxConstraints(
               minHeight: align == TextAlign.center &&
-                      r.kind == HomeRingKind.sleep &&
-                      _numeralWraps(c, colWidth)
-                  ? _measuredHeight(c, F.n24, '1\n1')
+                      r.kind == HomeRingKind.sleep
+                  ? _numeralReserve(c, colWidth)
                   : 0),
           child: Text(
           r.dash ? '—' : presentationText(AppLocalizations.of(c), r.value),
@@ -1724,6 +1741,9 @@ class _RingText extends StatelessWidget {
         const SizedBox(height: 2),
         LayoutBuilder(builder: (c, outer) {
           var reserve = _twoLines(c);
+          if (align == TextAlign.center && r.kind == HomeRingKind.sleep) {
+            reserve = _sleepCaptionReserve(c, outer.maxWidth);
+          }
           if (align != TextAlign.center && r.kind == HomeRingKind.sleep) {
             final l = AppLocalizations.of(c);
             final dur = _compactHm(630, l);

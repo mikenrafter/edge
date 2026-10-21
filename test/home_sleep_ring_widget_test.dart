@@ -47,14 +47,7 @@ void _caption(String full, List<String> compact) {
           (w) =>
               w is Text &&
               (w.data == full ||
-                  compact.contains(w.data) ||
-                  // Last tier: the duration is dropped (the numeral above
-                  // already shows it), the estimate marker and the default
-                  // goal stay.
-                  RegExp(full.contains('default')
-                          ? r'^~\d+ cycles? · default (target|goal)$'
-                          : r'^~\d+ cycles?$')
-                      .hasMatch(w.data ?? ''))),
+                  compact.contains(w.data))),
       findsOneWidget,
       reason: 'visible caption is neither "$full" nor one of $compact; texts: ${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).toList()}');
 }
@@ -443,7 +436,7 @@ void main() {
       addTearDown(app.dispose);
       app.sleepOperations.schedule = _schedule;
       await pumpHome(t, app);
-      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal', '~5 cycles · default goal']);
     });
 
     testWidgets('an armed alarm beats the schedule wake', (t) async {
@@ -453,7 +446,7 @@ void main() {
       app.device.alarmEpoch =
           DateTime(2026, 10, 9, 6, 30).millisecondsSinceEpoch ~/ 1000;
       await pumpHome(t, app);
-      _caption('on track for 5 cycles, 7h 30m$_dflt', ['~5 cycles · 7h 30m · default target', '~5 cycles · 7h 30m · default goal']);
+      _caption('on track for 5 cycles, 7h 30m$_dflt', ['~5 cycles · 7h 30m · default target', '~5 cycles · 7h 30m · default goal', '~5 cycles · default goal']);
     });
 
     testWidgets('an alarm already past is ignored', (t) async {
@@ -463,7 +456,7 @@ void main() {
       app.device.alarmEpoch =
           DateTime(2026, 10, 8, 21, 0).millisecondsSinceEpoch ~/ 1000;
       await pumpHome(t, app);
-      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal', '~5 cycles · default goal']);
     });
 
     testWidgets('with nothing saved and nothing armed there is no estimate',
@@ -504,7 +497,7 @@ void main() {
       app.sleepOperations.schedule = _schedule;
       await pumpBare(t, app);
       expect(find.textContaining('No nights scored yet'), findsNothing);
-      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal', '~5 cycles · default goal']);
     });
 
     testWidgets('nothing to estimate from: the status card, as before',
@@ -606,7 +599,7 @@ void main() {
         'yym"', (t) async {
       await _pump(t, _unslept(schedule: _schedule));
       expect(find.text('8h 00m'), findsNWidgets(1));
-      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal', '~5 cycles · default goal']);
     });
 
     testWidgets('one cycle is singular', (t) async {
@@ -615,13 +608,13 @@ void main() {
         _unslept(schedule: _schedule),
         now: DateTime(2026, 10, 9, 5, 20),
       );
-      _caption('on track for 1 cycle, 1h 40m$_dflt', ['~1 cycle · 1h 40m · default target', '~1 cycle · 1h 40m · default goal']);
+      _caption('on track for 1 cycle, 1h 40m$_dflt', ['~1 cycle · 1h 40m · default target', '~1 cycle · 1h 40m · default goal', '~1 cycle · default goal']);
     });
 
     testWidgets('a LEARNED need is the denominator: no "(default)" tail',
         (t) async {
       await _pump(t, _unslept(schedule: _schedule, need: _min(540)));
-      _caption('on track for 5 cycles, 8h 00m', ['~5 cycles · 8h']);
+      _caption('on track for 5 cycles, 8h 00m', ['~5 cycles · 8h', '~5 cycles']);
       expect(find.textContaining('default'), findsNothing);
     });
 
@@ -629,7 +622,7 @@ void main() {
         'sub-line too', (t) async {
       await _pump(t, _unslept(schedule: _schedule));
       expect(find.textContaining('default'), findsOneWidget);
-      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal', '~5 cycles · default goal']);
     });
 
     testWidgets('an estimate has no percentage and no "(default)" label '
@@ -646,7 +639,7 @@ void main() {
           alarm: DateTime(2026, 10, 9, 6, 30),
         ),
       );
-      _caption('on track for 5 cycles, 7h 30m$_dflt', ['~5 cycles · 7h 30m · default target', '~5 cycles · 7h 30m · default goal']);
+      _caption('on track for 5 cycles, 7h 30m$_dflt', ['~5 cycles · 7h 30m · default target', '~5 cycles · 7h 30m · default goal', '~5 cycles · default goal']);
     });
 
     testWidgets('coach bedtime beats the schedule onset', (t) async {
@@ -658,7 +651,7 @@ void main() {
               value: 22 * 60 + 30, confidence: .7, tier: MetricTier.estimate),
         ),
       );
-      _caption('on track for 5 cycles, 8h 30m$_dflt', ['~5 cycles · 8h 30m · default target', '~5 cycles · 8h 30m · default goal']);
+      _caption('on track for 5 cycles, 8h 30m$_dflt', ['~5 cycles · 8h 30m · default target', '~5 cycles · 8h 30m · default goal', '~5 cycles · default goal']);
     });
 
     testWidgets('schedule onset beats learned onset; learned alone still '
@@ -667,12 +660,12 @@ void main() {
         t,
         _unslept(schedule: _schedule, learnedOnset: 23 * 60 + 30),
       );
-      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal', '~5 cycles · default goal']);
       await _pump(
         t,
         _unslept(learnedOnset: 23 * 60 + 30, learnedWake: 7 * 60 + 30),
       );
-      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal', '~5 cycles · default goal']);
     });
 
     testWidgets('a user cycle length (hook) changes the cycle count',
@@ -682,14 +675,14 @@ void main() {
         cycleLenMin: 100,
       );
       await _pump(t, d);
-      _caption('on track for 4 cycles, 8h 00m$_dflt', ['~4 cycles · 8h · default target', '~4 cycles · 8h · default goal']);
+      _caption('on track for 4 cycles, 8h 00m$_dflt', ['~4 cycles · 8h · default target', '~4 cycles · 8h · default goal', '~4 cycles · default goal']);
     });
 
     testWidgets('the estimate depends only on the injected now — time passing '
         'in the test changes nothing', (t) async {
       await _pump(t, _unslept(schedule: _schedule));
       await t.pump(const Duration(hours: 3));
-      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal', '~5 cycles · default goal']);
     });
 
     testWidgets('spoken text carries the estimate sentence', (t) async {

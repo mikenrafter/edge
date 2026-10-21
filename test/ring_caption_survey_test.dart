@@ -16,6 +16,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/models/metric.dart';
+import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/control_operations.dart'
     show ExpectedSleepSchedule;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
@@ -58,6 +59,8 @@ Future<GlobalKey> _pump(WidgetTester t, double w, HomeData d, String lang,
   t.view.devicePixelRatio = dpr;
   t.view.physicalSize = Size(w * dpr, 900 * dpr);
   addTearDown(t.view.reset);
+  final lc = LocaleController.seed(lang)..useForPresentation();
+  addTearDown(lc.dispose);
   final key = GlobalKey();
   await t.pumpWidget(MaterialApp(
     debugShowCheckedModeBanner: false,

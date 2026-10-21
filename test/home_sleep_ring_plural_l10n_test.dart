@@ -17,6 +17,8 @@ void main() {
           l.homeSleepEstimateDefaultCompact(n, 'X'),
       'homeSleepEstimateDefaultTight': (n) =>
           l.homeSleepEstimateDefaultTight(n, 'X'),
+      'homeSleepEstimateDefaultMin': (n) => l.homeSleepEstimateDefaultMin(n),
+      'homeSleepEstimateBare': (n) => l.homeSleepEstimateBare(n),
     };
     forms.forEach((name, f) {
       for (final n in [0, 1, 2, 5]) {
