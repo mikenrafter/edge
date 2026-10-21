@@ -2937,5 +2937,53 @@
   "homeHelpFirstWeek": "你的第一周：戴着它入睡。恢复从第 {recoveryNight} 晚开始，消耗从第 {strainDay} 天开始。",
   "homeHelpFirstWeekCounting": "你的第一周：戴着它入睡。{recoveryStarts}，消耗从第 {strainDay} 天开始。",
   "homeGlanceFillsNight": "有一晚被评分后显示",
-  "homeGlanceFillsMove": "随着你的活动显示"
+  "homeGlanceFillsMove": "随着你的活动显示",
+  "homeSleepPctCompact": "{target} 的 {pct}%",
+  "@homeSleepPctCompact": {
+    "description": "Short sleep caption against a learned target.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepPctDefaultCompact": "{target} 的 {pct}%（默认）",
+  "@homeSleepPctDefaultCompact": {
+    "description": "Short sleep caption that keeps the default-target qualifier.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateCompact": "{cycles} 个周期 · {duration}",
+  "@homeSleepEstimateCompact": {
+    "description": "Short sleep estimate retaining cycle count and duration.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateDefaultCompact": "{cycles} 个周期 · {duration} · 默认",
+  "@homeSleepEstimateDefaultCompact": {
+    "description": "Short sleep estimate retaining cycle count, duration, and the default-target qualifier.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  }
 }

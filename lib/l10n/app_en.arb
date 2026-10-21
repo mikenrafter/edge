@@ -17163,5 +17163,53 @@
   "homeGlanceFillsMove": "Fills as you move",
   "@homeGlanceFillsMove": {
     "description": "Caption on an empty At a glance tile that fills from movement (steps, active energy)."
+  },
+  "homeSleepPctCompact": "{pct}% of {target}",
+  "@homeSleepPctCompact": {
+    "description": "Short sleep caption against a learned target.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepPctDefaultCompact": "{pct}% of {target} (default)",
+  "@homeSleepPctDefaultCompact": {
+    "description": "Short sleep caption that keeps the default-target qualifier.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateCompact": "{cycles, plural, =1{1 cycle} other{{cycles} cycles}} · {duration}",
+  "@homeSleepEstimateCompact": {
+    "description": "Short sleep estimate retaining cycle count and duration.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateDefaultCompact": "{cycles, plural, =1{1 cycle} other{{cycles} cycles}} · {duration} · default",
+  "@homeSleepEstimateDefaultCompact": {
+    "description": "Short sleep estimate retaining cycle count, duration, and the default-target qualifier.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
   }
 }

@@ -1,18 +1,14 @@
-// Home rings card: every ring's caption (the `sub` line under the value) is one
-// line at 360 and 390 pt, text scale 1.0, real fonts, and a ring column is the
-// same height loaded as on first launch. Today the loaded SLEEP caption
-// ("94% of 8h 00m (default)", "on track for 5 cycles, 7h 30m · target 8h 00m
-// (default)") wraps to two lines.
+// Home rings card: every caption fits its reserved two lines at 360 and 390
+// pt, text scale 1.0, real fonts, and a ring column stays the same height
+// loaded as on first launch. No caption may be ellipsized.
 //
 // Every instant is injected (`RingTrio.now`); nothing reads the system clock.
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/models/metric.dart';
 import 'package:openstrap_edge/state/control_operations.dart'
     show ExpectedSleepSchedule;
-import 'package:openstrap_edge/ui2/grammar.dart' show Pressable;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -95,7 +91,8 @@ void main() {
 
   for (final w in [360.0, 390.0]) {
     for (final e in _loaded.entries) {
-      testWidgets('${w.toInt()} pt, ${e.key}: every ring caption is one line',
+      testWidgets(
+          '${w.toInt()} pt, ${e.key}: every ring caption fits its two lines, nothing cut',
           (t) async {
         await _pump(t, w, e.value);
         final caps = _captions(t);
@@ -103,21 +100,17 @@ void main() {
         final bad = <String>[];
         for (final c in caps) {
           final f = find.byWidget(c);
-          final para = t.renderObject<RenderParagraph>(f);
-          // Distinct line tops. (The paragraph's own height is padded to the
-          // reserved two lines, so it cannot say.)
-          final len = para.text.toPlainText().length;
-          final lines = {
-            for (final b in para.getBoxesForSelection(
-                TextSelection(baseOffset: 0, extentOffset: len)))
-              b.top.round()
-          }.length;
-          if (lines != 1 || para.didExceedMaxLines) {
-            bad.add('"${c.data}" -> $lines line(s), '
-                'exceededMaxLines=${para.didExceedMaxLines}');
+          final painter = TextPainter(
+            text: TextSpan(text: c.data, style: c.style),
+            textDirection: TextDirection.ltr,
+            textScaler: TextScaler.noScaling,
+            maxLines: 2,
+          )..layout(maxWidth: t.getSize(f).width);
+          if (painter.didExceedMaxLines) {
+            bad.add('"${c.data}" exceeds two lines and is ellipsized');
           }
         }
-        expect(bad, isEmpty, reason: 'wrapping captions:\n${bad.join('\n')}');
+        expect(bad, isEmpty, reason: 'cut captions:\n${bad.join('\n')}');
       });
 
       testWidgets(

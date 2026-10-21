@@ -722,6 +722,14 @@ String hm(num? minutes) {
         );
 }
 
+String _compactHm(num? minutes, AppLocalizations? l) {
+  if (minutes == null) return '';
+  final value = minutes.round();
+  return value % 60 == 0
+      ? l?.supplementHoursValue('${value ~/ 60}') ?? '${value ~/ 60}h'
+      : hm(value);
+}
+
 String thousands(num? v) => v == null
     ? ''
     : NumberFormat.decimalPattern(
@@ -1113,6 +1121,7 @@ enum HomeRingKind { recovery, strain, sleep }
 class _RingState {
   final HomeRingKind kind;
   final String label, value, sub;
+  final String? shortSub;
   final IconData icon;
   final Color color;
 
@@ -1146,6 +1155,7 @@ class _RingState {
     this.color, {
     required this.value,
     this.sub = '',
+    this.shortSub,
     this.frac,
     this.calibrating = false,
     this.have,
@@ -1268,6 +1278,10 @@ _RingState _ringOf(
                       '${m.pct}% of $target (default)')
                   : (l?.homeSleepPctOf(m.pct!, target) ??
                       '${m.pct}% of $target'),
+              shortSub: m.targetIsDefault
+                  ? l?.homeSleepPctDefaultCompact(
+                      m.pct!, _compactHm(m.targetMin, l))
+                  : l?.homeSleepPctCompact(m.pct!, _compactHm(m.targetMin, l)),
               frac: m.sweep,
               arcs: m.arcs);
         case SleepRingPhase.estimate:
@@ -1285,6 +1299,13 @@ _RingState _ringOf(
                   : (l?.homeSleepOnTrack(m.cycles!, est) ??
                       'on track for ${m.cycles} '
                           '${m.cycles == 1 ? 'cycle' : 'cycles'}, $est'),
+              shortSub: m.targetIsDefault
+                  ? (l?.homeSleepEstimateDefaultCompact(
+                          m.cycles!, _compactHm(m.estimateMin, l)) ??
+                      '${m.cycles} cycles · ${_compactHm(m.estimateMin, l)} · default target')
+                  : (l?.homeSleepEstimateCompact(
+                          m.cycles!, _compactHm(m.estimateMin, l)) ??
+                      '${m.cycles} cycles · ${_compactHm(m.estimateMin, l)}'),
               frac: m.sweep,
               estimated: true);
         case SleepRingPhase.none:
@@ -1560,18 +1581,27 @@ class _RingText extends StatelessWidget {
               minHeight: align == TextAlign.center ? _twoLines(c) : 0),
           child: r.sub.isEmpty
               ? null
-              : Text(
-                  presentationText(AppLocalizations.of(c), r.sub),
-                  style: F.cap.copyWith(color: p.ink3),
-                  textAlign: align,
-                  // Bounded to the two reserved lines: a longer caption is cut
-                  // (the whole sentence is in the ring's spoken label) rather
-                  // than growing the card.
-                  maxLines: align == TextAlign.center ? 2 : null,
-                  overflow: align == TextAlign.center
-                      ? TextOverflow.ellipsis
-                      : null,
-                ),
+              : LayoutBuilder(builder: (c, box) {
+                  final l = AppLocalizations.of(c);
+                  final full = presentationText(l, r.sub);
+                  final short = r.shortSub == null
+                      ? full
+                      : presentationText(l, r.shortSub!);
+                  final style = F.cap.copyWith(color: p.ink3);
+                  final painter = TextPainter(
+                    text: TextSpan(text: full, style: style),
+                    textDirection: Directionality.of(c),
+                    textScaler: MediaQuery.textScalerOf(c),
+                    maxLines: 2,
+                  )..layout(maxWidth: box.maxWidth);
+                  return Text(
+                    painter.didExceedMaxLines ? short : full,
+                    style: style,
+                    textAlign: align,
+                    maxLines: 2,
+                    overflow: TextOverflow.clip,
+                  );
+                }),
         ),
       ],
     );
@@ -2382,7 +2412,7 @@ class _HomeScreenState extends State<HomeScreen>
     Widget card(String name, Widget child) =>
         KeyedSubtree(key: ValueKey('card:$name'), child: child);
 
-    return _refreshable(ListView(padding: pad, children: [
+    return _refreshable(tabRootContent(ListView(padding: pad, children: [
       // ── greeting ──
       //
       // The same header every tab has: the greeting is the title, the profile
@@ -2545,7 +2575,7 @@ class _HomeScreenState extends State<HomeScreen>
                   : wearableName(d.wearable!.adapterId),
               initialCells: d.wearable?.cells ?? const {}),
         ),
-    ]));
+    ])));
   }
 
   /// "As of <time>" under the rings while a pass is recalculating their day:

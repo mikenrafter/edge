@@ -2897,6 +2897,14 @@ class _SubTabsState extends State<SubTabs> {
 /// runs edge to edge and each of its other children pads itself by 16.
 const kTabRootPad = EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x16 + S.x8);
 
+/// Keeps tab content in a readable column while leaving phone geometry intact.
+Widget tabRootContent(Widget child) => Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 600),
+        child: child,
+      ),
+    );
+
 /// The header every tab root shares: a one-line title and, at its end, either
 /// the profile [avatar] or another [trailing] control.
 ///

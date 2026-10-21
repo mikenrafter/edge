@@ -3044,5 +3044,53 @@
   "homeHelpFirstWeek": "Deine erste Woche: trag das Band im Schlaf. Erholung ab Nacht {recoveryNight}, Strain ab Tag {strainDay}.",
   "homeHelpFirstWeekCounting": "Deine erste Woche: trag das Band im Schlaf. {recoveryStarts}, Strain ab Tag {strainDay}.",
   "homeGlanceFillsNight": "Füllt sich nach einer gewerteten Nacht",
-  "homeGlanceFillsMove": "Füllt sich mit deiner Bewegung"
+  "homeGlanceFillsMove": "Füllt sich mit deiner Bewegung",
+  "homeSleepPctCompact": "{pct} % von {target}",
+  "@homeSleepPctCompact": {
+    "description": "Short sleep caption against a learned target.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepPctDefaultCompact": "{pct} % von {target} (Standard)",
+  "@homeSleepPctDefaultCompact": {
+    "description": "Short sleep caption that keeps the default-target qualifier.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateCompact": "{cycles, plural, =1{1 Zyklus} other{{cycles} Zyklen}} · {duration}",
+  "@homeSleepEstimateCompact": {
+    "description": "Short sleep estimate retaining cycle count and duration.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateDefaultCompact": "{cycles, plural, =1{1 Zyklus} other{{cycles} Zyklen}} · {duration} · Standard",
+  "@homeSleepEstimateDefaultCompact": {
+    "description": "Short sleep estimate retaining cycle count, duration, and the default-target qualifier.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  }
 }

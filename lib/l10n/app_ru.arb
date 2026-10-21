@@ -8323,5 +8323,53 @@
     }
   },
   "homeGlanceFillsNight": "Заполнится после оценённой ночи",
-  "homeGlanceFillsMove": "Заполнится по мере движения"
+  "homeGlanceFillsMove": "Заполнится по мере движения",
+  "homeSleepPctCompact": "{pct}% от {target}",
+  "@homeSleepPctCompact": {
+    "description": "Short sleep caption against a learned target.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepPctDefaultCompact": "{pct}% от {target} (по умолчанию)",
+  "@homeSleepPctDefaultCompact": {
+    "description": "Short sleep caption that keeps the default-target qualifier.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateCompact": "{cycles, plural, =1{1 цикл} one{{cycles} цикл} few{{cycles} цикла} many{{cycles} циклов} other{{cycles} цикла}} · {duration}",
+  "@homeSleepEstimateCompact": {
+    "description": "Short sleep estimate retaining cycle count and duration.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateDefaultCompact": "{cycles, plural, =1{1 цикл} one{{cycles} цикл} few{{cycles} цикла} many{{cycles} циклов} other{{cycles} цикла}} · {duration} · стандарт",
+  "@homeSleepEstimateDefaultCompact": {
+    "description": "Short sleep estimate retaining cycle count, duration, and the default-target qualifier.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  }
 }

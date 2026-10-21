@@ -2937,5 +2937,53 @@
   "homeHelpFirstWeek": "आपका पहला सप्ताह: इसे पहनकर सोएँ। रिकवरी रात {recoveryNight} से, स्ट्रेन दिन {strainDay} से।",
   "homeHelpFirstWeekCounting": "आपका पहला सप्ताह: इसे पहनकर सोएँ। {recoveryStarts}, स्ट्रेन दिन {strainDay} से।",
   "homeGlanceFillsNight": "एक स्कोर की गई रात के बाद भरेगा",
-  "homeGlanceFillsMove": "आपके चलने-फिरने से भरेगा"
+  "homeGlanceFillsMove": "आपके चलने-फिरने से भरेगा",
+  "homeSleepPctCompact": "{target} का {pct}%",
+  "@homeSleepPctCompact": {
+    "description": "Short sleep caption against a learned target.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepPctDefaultCompact": "{target} का {pct}% (डिफ़ॉल्ट)",
+  "@homeSleepPctDefaultCompact": {
+    "description": "Short sleep caption that keeps the default-target qualifier.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateCompact": "{cycles, plural, =1{1 चक्र} other{{cycles} चक्र}} · {duration}",
+  "@homeSleepEstimateCompact": {
+    "description": "Short sleep estimate retaining cycle count and duration.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateDefaultCompact": "{cycles, plural, =1{1 चक्र} other{{cycles} चक्र}} · {duration} · डिफ़ॉल्ट",
+  "@homeSleepEstimateDefaultCompact": {
+    "description": "Short sleep estimate retaining cycle count, duration, and the default-target qualifier.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  }
 }

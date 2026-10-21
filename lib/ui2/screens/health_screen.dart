@@ -687,7 +687,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   Widget build(BuildContext c) {
     final d = _d ?? const HealthData();
     final l = AppLocalizations.of(c);
-    return ListView(padding: kTabRootPad, children: [
+    return tabRootContent(ListView(padding: kTabRootPad, children: [
       ScreenTitle(l?.healthTitle ?? 'Health',
           statusLine: true,
           avatar: const ProfileAvatar(accent: C.domHealth)),
@@ -709,7 +709,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
           3 => _vitals(c, d),
           _ => _labs(c),
         },
-    ]);
+    ]));
   }
 
   /// "As of <time>" at the top of a sub-tab while the day its rows are read
