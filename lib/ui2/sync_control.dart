@@ -235,12 +235,50 @@ List<Widget> syncStepRows(SyncPresentationState s, DateTime now) =>
 ({String text, bool failed})? syncProblem(SyncPresentationState s, [AppLocalizations? l]) {
   if (s.busy) return null;
   if (s.phase == 'failed') {
-    return (text: s.failureReason ?? (l?.syncStatusFailed ?? 'Sync failed'), failed: true);
+    return (
+      text: syncFailureText(s, l) ?? (l?.syncStatusFailed ?? 'Sync failed'),
+      failed: true
+    );
   }
   if (s.phase == 'completed' && s.partial) {
     return (text: l?.syncStatusNeedsPass ?? 'Needs another pass', failed: false);
   }
   return null;
+}
+
+/// Why the sync failed, in the reader's language when this app produced the
+/// reason (it carries a [SyncFailure] code); free text from a platform or a
+/// derivation is shown as it came. Null when there is no reason at all.
+String? syncFailureText(SyncPresentationState s, [AppLocalizations? l]) {
+  final code = s.failureCode;
+  if (code != null && l != null) {
+    return switch (code) {
+      SyncFailure.pairBand => l.syncFailPairBand,
+      SyncFailure.couldNotConnect => l.syncFailCouldNotConnect,
+      SyncFailure.disconnected => l.syncFailDisconnected,
+      SyncFailure.downloadStopped => l.syncFailDownloadStopped,
+      SyncFailure.calculationBusy => l.syncFailCalculationBusy,
+      SyncFailure.timedOut => l.syncFailTimedOut,
+    };
+  }
+  return s.failureReason;
+}
+
+/// A step's note in the reader's language when the coordinator wrote it (it
+/// carries a [SyncNote] code); otherwise the note as it came.
+String? _noteText(SyncStep step, AppLocalizations? l) {
+  final code = step.noteCode;
+  if (code != null && l != null) {
+    return switch (code) {
+      SyncNote.alreadyConnected => l.syncNoteAlreadyConnected,
+      SyncNote.notNeeded => l.syncNoteNotNeeded,
+      SyncNote.notReached => l.syncNoteNotReached,
+      SyncNote.moreRemains => l.syncNoteMoreRemains,
+      SyncNote.donePartial => l.syncNoteDonePartial,
+      SyncNote.nothingNew => l.syncNoteNothingNew,
+    };
+  }
+  return step.note;
 }
 
 /// The mark in front of the sentence when no sync is running.
@@ -290,7 +328,7 @@ String syncStatusLine(SyncPresentationState s, DateTime now, [AppLocalizations? 
       }
       return _lastSynced(s, now, offline: false, l: l);
     case 'failed':
-      final why = s.failureReason?.trim();
+      final why = syncFailureText(s, l)?.trim();
       return '${l?.syncStatusFailed ?? 'Sync failed'}: ${why == null || why.isEmpty ? l?.syncStatusPleaseRetry ?? 'Please retry' : why}';
     case 'offline':
       return _lastSynced(s, now, offline: true, l: l);
@@ -388,7 +426,7 @@ String? _downloadLine(SyncPresentationState s, [AppLocalizations? l]) {
     return l?.syncDownloadGapLine(_gap(backlog, l)) ?? '${_gap(backlog, l)} of band time still to fetch';
   }
   if (d.syncedThrough case final through?) {
-    return '${l?.syncLineDownloaded ?? 'Downloaded'} · ${l?.syncLineSyncedThrough(formatDayTime(through.toLocal())) ?? 'synced through ${formatDayTime(through.toLocal())}'}';
+    return '${l?.syncLineDownloaded ?? 'Downloaded'} · ${l?.syncLineSyncedThrough(formatDayTime(through.toLocal(), l)) ?? 'synced through ${formatDayTime(through.toLocal())}'}';
   }
   return l?.syncLineDownloaded ?? 'Downloaded';
 }
@@ -398,7 +436,7 @@ String? _downloadLine(SyncPresentationState s, [AppLocalizations? l]) {
 String _lastSynced(SyncPresentationState s, DateTime now,
     {required bool offline, AppLocalizations? l}) {
   final last = s.lastSuccess;
-  final synced = last == null ? (l?.syncStatusNotYet ?? 'not synced yet')
+  final synced = last == null ? (l?.syncStatusNotYetLower ?? 'not synced yet')
       : '${l?.syncStatusSyncedLower ?? 'synced'} ${_ago(now.difference(last), l)}';
   if (offline) return '${l?.syncStatusOffline ?? 'Band not connected'} · $synced';
   return last == null ? (l?.syncStatusNotYet ?? 'Not synced yet') : '${l?.syncStatusSynced ?? 'Synced'} ${_ago(now.difference(last), l)}';
@@ -435,7 +473,7 @@ class _StepRow extends StatelessWidget {
       case SyncStepStatus.waiting:
         return [l?.syncLineWaiting ?? 'Waiting'];
       case SyncStepStatus.skipped:
-        return [note ?? (l?.syncLineSkipped ?? 'Skipped')];
+        return [_noteText(step, l) ?? (l?.syncLineSkipped ?? 'Skipped')];
       case SyncStepStatus.failed:
         // What it did bank before it stopped is still true and still useful.
         final d = step.download;
@@ -459,11 +497,11 @@ class _StepRow extends StatelessWidget {
               ? (running ? (l?.syncLineNoRecords ?? 'No records yet') : (l?.syncStatusNothingNew ?? 'Nothing new on the band'))
               : _banked(d, l),
           if (d.syncedThrough case final through?)
-            l?.homeSyncedThrough(formatDayTime(through.toLocal())) ?? 'Synced through ${formatDayTime(through.toLocal())}',
+            l?.homeSyncedThrough(formatDayTime(through.toLocal(), l)) ?? 'Synced through ${formatDayTime(through.toLocal())}',
           if (running && backlog != null)
             l?.syncLineGap(_gap(backlog, l)) ?? 'Band time still to fetch: ${_gap(backlog, l)}',
           // A download that stopped early says so, and what to do about it.
-          if (!running && note != null) note,
+          if (!running && note != null) _noteText(step, l)!,
         ];
       case SyncStepId.calculate:
         final d = step.calculate;
@@ -478,7 +516,7 @@ class _StepRow extends StatelessWidget {
         }
         return [running ? (l?.syncLineWorking ?? 'Working it out…') : (l?.syncLineFinished ?? 'Finished')];
       case SyncStepId.done:
-        return [note ?? (l?.syncLineFinished ?? 'Finished')];
+        return [_noteText(step, l) ?? (l?.syncLineFinished ?? 'Finished')];
     }
   }
 
@@ -647,11 +685,12 @@ class HomeSyncStatus extends StatefulWidget {
   /// text's own height. The status line passes its slot height.
   final double? slot;
 
-  /// The actions get their own reserved line under row 1 (see
-  /// [syncActionsNeedOwnLine]); decided by width and text scale alone, so it is
-  /// the same in every state. At large scales the localized compact labels are
-  /// used; the text itself is never scaled down.
-  final bool actionLine;
+  /// How many reserved lines the actions get under row 1 (see
+  /// [syncActionLines]): 0 inline, 1 all actions on one line, 2 one action per
+  /// line. Decided by width, text scale and locale alone, so it is the same in
+  /// every state. At large scales the localized compact labels are used; the
+  /// text itself is never scaled down.
+  final int actionLines;
 
   /// Test-facing: how many times any sync row has built.
   @visibleForTesting
@@ -664,7 +703,7 @@ class HomeSyncStatus extends StatefulWidget {
     this.end,
     this.inset = 0,
     this.slot,
-    this.actionLine = false,
+    this.actionLines = 0,
   });
 
   @override
@@ -760,7 +799,7 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       // label and the short one before anything has to wrap or clip.
       // Pressables are at least S.tap wide.
       final maxRight = box.maxWidth * .6;
-      final two = widget.actionLine;
+      final two = widget.actionLines > 0;
       // With their own line the actions take no room on this one.
       final details = hasStatus && !two
           ? _width(c, _detailsLabel(c, l), link) + S.x1
@@ -853,23 +892,32 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       ]);
       if (!two) return line;
       final own = actions(c);
+      // One line holds the whole cluster; when even that is too wide for this
+      // width, scale and locale, each action gets a line of its own. The count
+      // is fixed by [syncActionLines], never by the state, so every state
+      // reserves the same height (an unused line is just empty).
       return Column(mainAxisSize: MainAxisSize.min, children: [
         SizedBox(height: rowH, child: line),
-        SizedBox(
-          height: S.tap,
-          child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            for (var i = 0; i < own.length; i++) ...[
-              if (i > 0) const SizedBox(width: 2),
-              own[i],
-            ],
-          ]),
-        ),
+        if (widget.actionLines == 1)
+          SizedBox(
+            height: S.tap,
+            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: own),
+          )
+        else
+          for (var i = 0; i < 2; i++)
+            SizedBox(
+              height: S.tap,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [if (i < own.length) own[i]],
+              ),
+            ),
       ]);
     });
 
-    final total = rowH + (widget.actionLine ? S.tap : 0);
+    final total = rowH + widget.actionLines * S.tap;
     return HitOverhang(
-      visual: widget.actionLine ? total : widget.slot ?? visual,
+      visual: widget.actionLines > 0 ? total : widget.slot ?? visual,
       child: SizedBox(
         height: total,
         child: end == null
@@ -918,11 +966,14 @@ String _retryLabel(BuildContext c, AppLocalizations? l) => _scaleAwareLabel(
       compact: l?.syncActionRetryCompact ?? 'Retry',
     );
 
-/// Whether the sync actions need their own reserved line at [width]: the
-/// widest combination of actions any state renders do not fit the right 60 %
-/// of row 1. A function of width and text scale only, never of state, so row 1
-/// and the block are the same height in idle, syncing, failed and importing.
-bool syncActionsNeedOwnLine(BuildContext c, double width, [AppLocalizations? l]) {
+/// How many reserved action lines [width] needs: 0 when the widest cluster any
+/// state renders fits the right 60 % of row 1; 1 when it does not but the
+/// whole cluster fits one full-width line; 2 when even that is too wide (a
+/// long localized pair at a large text scale), so each action gets a line.
+/// A function of width, text scale and locale ONLY, never of the state, so row
+/// 1 and the block are the same height in idle, syncing, failed and importing.
+/// The labels are never scaled to fit.
+int syncActionLines(BuildContext c, double width, [AppLocalizations? l]) {
   l ??= AppLocalizations.of(c);
   final link = F.cap.copyWith(
       color: P.of(c).on(C.blue), fontWeight: FontWeight.w600);
@@ -933,16 +984,23 @@ bool syncActionsNeedOwnLine(BuildContext c, double width, [AppLocalizations? l])
   // alone (syncing), Show details + Retry (failed) and Show details + Sync now
   // (a finished sync with more to do). Padding, gaps and the 44 pt minimum
   // width are in each term; the widest decides.
-  final worst = [
-    act(_syncNowLabel(c, l)),
-    details,
+  final pair = math.max(
     details + S.x1 + act(_retryLabel(c, l)),
     details + S.x1 + act(_syncNowLabel(c, l)),
-  ].reduce(math.max);
+  );
+  final worst = [act(_syncNowLabel(c, l)), details, pair].reduce(math.max);
   // Leave room for the row's trailing control and spacing, which are outside
   // the width measured by HeaderRows' parent constraint.
-  return worst > math.max(0, width - S.tap - HomeSyncStatus.endGap) * .6;
+  if (worst <= math.max(0, width - S.tap - HomeSyncStatus.endGap) * .6) {
+    return 0;
+  }
+  return pair <= width ? 1 : 2;
 }
+
+/// Whether the sync actions leave row 1 at all (see [syncActionLines]).
+bool syncActionsNeedOwnLine(BuildContext c, double width,
+        [AppLocalizations? l]) =>
+    syncActionLines(c, width, l) > 0;
 
 /// The four steps and the running time, in a bottom sheet. It reads [app] live,
 /// so a sync that finishes while the sheet is open updates it in place. Opened

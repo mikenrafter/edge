@@ -44,10 +44,10 @@ class StatusLine extends StatelessWidget {
   final String? idleLabel;
   final double? slotHeight;
 
-  /// The actions' own reserved line (see [syncActionsNeedOwnLine]); the same
-  /// extra height in every state, text-only states included.
-  final bool actionLine;
-  const StatusLine({super.key, this.todayId, this.now, this.syncActions = false, this.idleLabel, this.slotHeight, this.actionLine = false});
+  /// The actions' own reserved lines (see [syncActionLines]); the same extra
+  /// height in every state, text-only states included.
+  final int actionLines;
+  const StatusLine({super.key, this.todayId, this.now, this.syncActions = false, this.idleLabel, this.slotHeight, this.actionLines = 0});
 
   double _height(BuildContext c) => slotHeight ?? heightFor(c);
 
@@ -94,7 +94,7 @@ class StatusLine extends StatelessWidget {
             through: idleLabel ?? syncedThroughLabel(null, id),
             throughShort: idleLabel ?? syncedThroughShortLabel(null, id),
             inset: S.x1,
-            actionLine: actionLine,
+            actionLines: actionLines,
           ),
         ),
       );
@@ -145,7 +145,7 @@ class StatusLine extends StatelessWidget {
         throughShort: idleLabel ?? syncedThroughShortLabel(sync.$3, id, l),
         inset: S.x1,
         slot: _height(c),
-        actionLine: actionLine,
+        actionLines: actionLines,
       );
     }
     final line = SizedBox(
@@ -168,10 +168,10 @@ class StatusLine extends StatelessWidget {
     );
     // Importing / recalculating still reserve the actions' line, so the block
     // is the same height as when the actions are shown.
-    return actionLine && syncActions
+    return actionLines > 0 && syncActions
         ? Column(mainAxisSize: MainAxisSize.min, children: [
             line,
-            const SizedBox(height: S.tap),
+            SizedBox(height: actionLines * S.tap),
           ])
         : line;
   }
@@ -195,11 +195,11 @@ class HeaderRows extends StatelessWidget {
         // The width decides whether the actions need their own line; it is the
         // same for every state at this width and text scale.
         builder: (c, _) => LayoutBuilder(
-          builder: (c, box) => _block(c, syncActionsNeedOwnLine(c, box.maxWidth, AppLocalizations.of(c))),
+          builder: (c, box) => _block(c, syncActionLines(c, box.maxWidth, AppLocalizations.of(c))),
         ),
       );
 
-  Widget _block(BuildContext c, bool actionLine) {
+  Widget _block(BuildContext c, int actionLines) {
     HeaderRows.debugBuilds++;
     final l = AppLocalizations.of(c);
     DateTime? edge;
@@ -223,7 +223,7 @@ class HeaderRows extends StatelessWidget {
             syncActions: true,
             idleLabel: dateText,
             slotHeight: statusHeight,
-            actionLine: actionLine,
+            actionLines: actionLines,
           ),
           SizedBox(
             height: StatusLine.heightFor(c),

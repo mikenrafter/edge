@@ -96,6 +96,7 @@ SyncPresentationState headerSyncing() {
 SyncPresentationState headerFailed() => SyncPresentationState(
       phase: 'failed',
       failureReason: 'Pair a band before syncing',
+      failureCode: SyncFailure.pairBand,
       lastSuccess: headerNow.subtract(const Duration(minutes: 61)),
       startedAt: headerNow.subtract(const Duration(seconds: 50)),
       finishedAt: headerNow.subtract(const Duration(seconds: 9)),

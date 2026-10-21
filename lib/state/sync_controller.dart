@@ -1268,10 +1268,10 @@ class SyncController {
     final wasConnected = engine.isConnected;
     if (!wasConnected) {
       progress('connecting');
-      if (paired == null) throw StateError('Pair a band before syncing');
+      if (paired == null) throw SyncFailureError(SyncFailure.pairBand);
       await openSession();
       cancel.throwIfCancelled();
-      if (!engine.isConnected) throw StateError('Could not connect to the band');
+      if (!engine.isConnected) throw SyncFailureError(SyncFailure.couldNotConnect);
     }
     // This sync is the one deriving what its download stores, so the debounced
     // light derive those commits arm stands down for the duration. Handed back
@@ -1304,7 +1304,7 @@ class SyncController {
         final report = await download;
         cancel.throwIfCancelled();
         if (!engine.isConnected) {
-          throw StateError('Band disconnected during sync');
+          throw SyncFailureError(SyncFailure.disconnected);
         }
         final verdict = classifyDownload(
           connected: true,
@@ -1315,7 +1315,7 @@ class SyncController {
         );
         switch (verdict) {
           case DownloadVerdict.failed:
-            throw StateError('Download stopped before completion. Retry sync.');
+            throw SyncFailureError(SyncFailure.downloadStopped);
           case DownloadVerdict.partial:
             // Stopped at the time cap with data banked: not an error. What
             // arrived is calculated below and the rest is the next sync's.
@@ -1353,7 +1353,7 @@ class SyncController {
       // The engine refuses a pass while another holds its lock; saying "done"
       // over a calculation that never ran would be false.
       if (scoped == null) {
-        throw StateError('Another calculation was running. Retry sync.');
+        throw SyncFailureError(SyncFailure.calculationBusy);
       }
       derived = true;
     } finally {

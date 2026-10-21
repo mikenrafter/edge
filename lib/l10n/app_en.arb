@@ -17300,7 +17300,7 @@
   "syncStepDownload": "Download",
   "syncStepCalculate": "Calculate",
   "syncStepDone": "Done",
-  "syncLineWaiting": "Waiting for another calculation…",
+  "syncLineWaiting": "Waiting",
   "syncLineSkipped": "Skipped",
   "syncLineFailed": "Failed",
   "syncLineConnected": "Connected",
@@ -17343,14 +17343,16 @@
   "@syncCountRecords": {
     "placeholders": {
       "n": {
-        "type": "num"
+        "type": "num",
+        "format": "decimalPattern"
       }
     }
   },
   "@syncCountChunks": {
     "placeholders": {
       "n": {
-        "type": "num"
+        "type": "num",
+        "format": "decimalPattern"
       }
     }
   },
@@ -17528,5 +17530,18 @@
   },
   "syncActionSyncCompact": "Sync now",
   "syncActionDetailsCompact": "Show details",
-  "syncActionRetryCompact": "Retry"
+  "syncActionRetryCompact": "Retry",
+  "syncNoteAlreadyConnected": "Already connected",
+  "syncNoteNotNeeded": "Not needed",
+  "syncNoteNotReached": "Not reached",
+  "syncNoteMoreRemains": "More remains on the band — sync again to continue",
+  "syncNoteDonePartial": "Done (partial)",
+  "syncNoteNothingNew": "Skipped — nothing new",
+  "syncFailPairBand": "Pair a band before syncing",
+  "syncFailCouldNotConnect": "Could not connect to the band",
+  "syncFailDisconnected": "Band disconnected during sync",
+  "syncFailDownloadStopped": "Download stopped before completion. Retry sync.",
+  "syncFailCalculationBusy": "Another calculation was running. Retry sync.",
+  "syncFailTimedOut": "It took too long and was stopped.",
+  "syncStatusNotYetLower": "not synced yet"
 }

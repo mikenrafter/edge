@@ -3178,7 +3178,7 @@
   "syncStepDownload": "Herunterladen",
   "syncStepCalculate": "Berechnen",
   "syncStepDone": "Fertig",
-  "syncLineWaiting": "Warten auf eine weitere Berechnung…",
+  "syncLineWaiting": "Wartet",
   "syncLineSkipped": "Übersprungen",
   "syncLineFailed": "Fehlgeschlagen",
   "syncLineConnected": "Verbunden",
@@ -3406,5 +3406,34 @@
   },
   "syncActionSyncCompact": "Synchronisieren",
   "syncActionDetailsCompact": "Details",
-  "syncActionRetryCompact": "Nochmal"
+  "syncActionRetryCompact": "Nochmal",
+  "syncNoteAlreadyConnected": "Bereits verbunden",
+  "syncNoteNotNeeded": "Nicht nötig",
+  "syncNoteNotReached": "Nicht erreicht",
+  "syncNoteMoreRemains": "Auf dem Band ist noch mehr — erneut synchronisieren, um fortzufahren",
+  "syncNoteDonePartial": "Fertig (teilweise)",
+  "syncNoteNothingNew": "Übersprungen — nichts Neues",
+  "syncFailPairBand": "Bitte zuerst ein Band koppeln, dann synchronisieren",
+  "syncFailCouldNotConnect": "Verbindung zum Band nicht möglich",
+  "syncFailDisconnected": "Band während der Synchronisierung getrennt",
+  "syncFailDownloadStopped": "Der Abruf wurde vor dem Ende gestoppt. Bitte erneut synchronisieren.",
+  "syncFailCalculationBusy": "Eine andere Berechnung lief noch. Bitte erneut synchronisieren.",
+  "syncFailTimedOut": "Es hat zu lange gedauert und wurde gestoppt.",
+  "syncStatusNotYetLower": "noch nicht synchronisiert",
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }

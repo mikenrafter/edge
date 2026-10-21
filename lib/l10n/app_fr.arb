@@ -3071,7 +3071,7 @@
   "syncStepDownload": "Téléchargement",
   "syncStepCalculate": "Calcul",
   "syncStepDone": "Terminé",
-  "syncLineWaiting": "En attente d’un autre calcul…",
+  "syncLineWaiting": "En attente",
   "syncLineSkipped": "Ignoré",
   "syncLineFailed": "Échec",
   "syncLineConnected": "Connecté",
@@ -3266,7 +3266,7 @@
       }
     }
   },
-  "syncDownloadGapLine": "Encore {gap} à récupérer",
+  "syncDownloadGapLine": "Encore {gap} de données du bracelet à récupérer",
   "@syncDownloadGapLine": {
     "placeholders": {
       "gap": {
@@ -3299,5 +3299,35 @@
   },
   "syncActionSyncCompact": "Synchroniser",
   "syncActionDetailsCompact": "Détails",
-  "syncActionRetryCompact": "Réessayer"
+  "syncActionRetryCompact": "Réessayer",
+  "syncNoteAlreadyConnected": "Déjà connecté",
+  "syncNoteNotNeeded": "Pas nécessaire",
+  "syncNoteNotReached": "Non atteint",
+  "syncNoteMoreRemains": "Il reste des données sur le bracelet — synchronisez à nouveau pour continuer",
+  "syncNoteDonePartial": "Terminé (partiel)",
+  "syncNoteNothingNew": "Ignoré — rien de nouveau",
+  "syncFailPairBand": "Associez un bracelet avant de synchroniser",
+  "syncFailCouldNotConnect": "Impossible de se connecter au bracelet",
+  "syncFailDisconnected": "Bracelet déconnecté pendant la synchronisation",
+  "syncFailDownloadStopped": "Le téléchargement s’est arrêté avant la fin. Relancez la synchronisation.",
+  "syncFailCalculationBusy": "Un autre calcul était en cours. Relancez la synchronisation.",
+  "syncFailTimedOut": "L’opération a pris trop de temps et a été arrêtée.",
+  "syncStatusNotYetLower": "pas encore synchronisé",
+  "homeSyncedThrough": "Synchronisé jusqu’au {when}",
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }

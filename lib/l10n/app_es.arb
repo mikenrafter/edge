@@ -3089,7 +3089,7 @@
   "syncStepDownload": "Descargar",
   "syncStepCalculate": "Calcular",
   "syncStepDone": "Hecho",
-  "syncLineWaiting": "Esperando otro cálculo…",
+  "syncLineWaiting": "En espera",
   "syncLineSkipped": "Omitido",
   "syncLineFailed": "Error",
   "syncLineConnected": "Conectado",
@@ -3284,7 +3284,7 @@
       }
     }
   },
-  "syncDownloadGapLine": "Quedan {gap} por descargar",
+  "syncDownloadGapLine": "Quedan {gap} de datos de la banda por descargar",
   "@syncDownloadGapLine": {
     "placeholders": {
       "gap": {
@@ -3317,5 +3317,35 @@
   },
   "syncActionSyncCompact": "Sincronizar",
   "syncActionDetailsCompact": "Detalles",
-  "syncActionRetryCompact": "Reintentar"
+  "syncActionRetryCompact": "Reintentar",
+  "syncNoteAlreadyConnected": "Ya conectado",
+  "syncNoteNotNeeded": "No es necesario",
+  "syncNoteNotReached": "No se llegó a este paso",
+  "syncNoteMoreRemains": "Aún queda más en la banda: sincroniza de nuevo para continuar",
+  "syncNoteDonePartial": "Hecho (parcial)",
+  "syncNoteNothingNew": "Omitido: nada nuevo",
+  "syncFailPairBand": "Empareja una banda antes de sincronizar",
+  "syncFailCouldNotConnect": "No se pudo conectar con la banda",
+  "syncFailDisconnected": "La banda se desconectó durante la sincronización",
+  "syncFailDownloadStopped": "La descarga se detuvo antes de terminar. Vuelve a sincronizar.",
+  "syncFailCalculationBusy": "Había otro cálculo en curso. Vuelve a sincronizar.",
+  "syncFailTimedOut": "Tardó demasiado y se detuvo.",
+  "syncStatusNotYetLower": "aún no sincronizado",
+  "homeSyncedThrough": "Sincronizado hasta {when}",
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }

@@ -3071,7 +3071,7 @@
   "syncStepDownload": "下载",
   "syncStepCalculate": "计算",
   "syncStepDone": "完成",
-  "syncLineWaiting": "等待其他计算…",
+  "syncLineWaiting": "等待中",
   "syncLineSkipped": "已跳过",
   "syncLineFailed": "失败",
   "syncLineConnected": "已连接",
@@ -3094,7 +3094,7 @@
   "syncSheetTitle": "同步",
   "syncElapsedSemantics": "已用时 {time}",
   "syncAgoJustNow": "刚刚",
-  "syncGapMinutes": "{n} 分钟",
+  "syncGapMinutes": "{n, plural, =0{不足 1 分钟} other{{n} 分钟}}",
   "syncCountRecords": "{n, plural, other{{n} 条记录}}",
   "syncCountChunks": "{n, plural, other{{n} 个数据块}}",
   "@syncElapsedSemantics": {
@@ -3266,7 +3266,7 @@
       }
     }
   },
-  "syncDownloadGapLine": "还有 {gap} 待下载",
+  "syncDownloadGapLine": "还有 {gap} 的手环数据待下载",
   "@syncDownloadGapLine": {
     "placeholders": {
       "gap": {
@@ -3299,5 +3299,35 @@
   },
   "syncActionSyncCompact": "同步",
   "syncActionDetailsCompact": "详情",
-  "syncActionRetryCompact": "重试"
+  "syncActionRetryCompact": "重试",
+  "syncNoteAlreadyConnected": "已连接",
+  "syncNoteNotNeeded": "无需执行",
+  "syncNoteNotReached": "未执行到此步",
+  "syncNoteMoreRemains": "手环上还有更多数据——请再次同步以继续",
+  "syncNoteDonePartial": "完成（部分）",
+  "syncNoteNothingNew": "已跳过——没有新内容",
+  "syncFailPairBand": "同步前请先配对手环",
+  "syncFailCouldNotConnect": "无法连接到手环",
+  "syncFailDisconnected": "同步期间手环已断开",
+  "syncFailDownloadStopped": "下载在完成前中断。请重试同步。",
+  "syncFailCalculationBusy": "另一项计算正在进行。请重试同步。",
+  "syncFailTimedOut": "耗时过长，已停止。",
+  "syncStatusNotYetLower": "尚未同步",
+  "homeSyncedThrough": "已同步至 {when}",
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }

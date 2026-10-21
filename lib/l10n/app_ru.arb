@@ -8457,7 +8457,7 @@
   "syncStepDownload": "Загрузка",
   "syncStepCalculate": "Расчёт",
   "syncStepDone": "Готово",
-  "syncLineWaiting": "Ожидание другого вычисления…",
+  "syncLineWaiting": "Ожидание",
   "syncLineSkipped": "Пропущено",
   "syncLineFailed": "Ошибка",
   "syncLineConnected": "Подключено",
@@ -8515,7 +8515,7 @@
   "syncStatusSyncedLower": "синхронизировано",
   "syncLineDownloaded": "Загружено",
   "syncLineCalcDay": "Расчёт · день {i} из {total}",
-  "syncLineGap": "Осталось загрузить: {gap}",
+  "syncLineGap": "Осталось загрузить данных браслета: {gap}",
   "syncLineDay": "День {i} из {total}{suffix}",
   "@syncLineCalcDay": {
     "placeholders": {
@@ -8652,7 +8652,7 @@
       }
     }
   },
-  "syncDownloadGapLine": "Осталось загрузить за {gap}",
+  "syncDownloadGapLine": "Осталось загрузить {gap} данных браслета",
   "@syncDownloadGapLine": {
     "placeholders": {
       "gap": {
@@ -8685,5 +8685,34 @@
   },
   "syncActionSyncCompact": "Синхронизировать",
   "syncActionDetailsCompact": "Подробности",
-  "syncActionRetryCompact": "Повторить"
+  "syncActionRetryCompact": "Повторить",
+  "syncNoteAlreadyConnected": "Уже подключено",
+  "syncNoteNotNeeded": "Не требуется",
+  "syncNoteNotReached": "До этого шага не дошло",
+  "syncNoteMoreRemains": "На браслете остались данные — синхронизируйте снова, чтобы продолжить",
+  "syncNoteDonePartial": "Готово (частично)",
+  "syncNoteNothingNew": "Пропущено — ничего нового",
+  "syncFailPairBand": "Перед синхронизацией подключите браслет",
+  "syncFailCouldNotConnect": "Не удалось подключиться к браслету",
+  "syncFailDisconnected": "Браслет отключился во время синхронизации",
+  "syncFailDownloadStopped": "Загрузка остановилась до завершения. Повторите синхронизацию.",
+  "syncFailCalculationBusy": "Выполнялось другое вычисление. Повторите синхронизацию.",
+  "syncFailTimedOut": "Операция заняла слишком много времени и была остановлена.",
+  "syncStatusNotYetLower": "ещё не синхронизировано",
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }

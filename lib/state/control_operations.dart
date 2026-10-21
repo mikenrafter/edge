@@ -11,6 +11,43 @@ enum SyncStepStatus { waiting, running, done, failed, skipped }
 /// Calculate's note when the derivation found nothing that changed.
 const String kCalculateSkippedNote = 'Skipped — nothing new';
 
+/// The notes the coordinator itself writes on a step. A stable identifier
+/// travels with the English text so the screen localizes by code, never by
+/// matching words. Free text (a platform message) has no code and is shown as
+/// it came.
+enum SyncNote {
+  alreadyConnected('Already connected'),
+  notNeeded('Not needed'),
+  notReached('Not reached'),
+  moreRemains('More remains on the band — sync again to continue'),
+  donePartial('Done (partial)'),
+  nothingNew(kCalculateSkippedNote);
+
+  final String english;
+  const SyncNote(this.english);
+}
+
+/// The failure reasons this app produces itself, by identifier. Anything else
+/// (a platform error, a derivation's last_error) is free text with no code.
+enum SyncFailure {
+  pairBand('Pair a band before syncing'),
+  couldNotConnect('Could not connect to the band'),
+  disconnected('Band disconnected during sync'),
+  downloadStopped('Download stopped before completion. Retry sync.'),
+  calculationBusy('Another calculation was running. Retry sync.'),
+  timedOut('It took too long and was stopped.');
+
+  final String english;
+  const SyncFailure(this.english);
+}
+
+/// A [StateError] that carries its [SyncFailure] code; the message stays the
+/// English sentence for logs and older callers.
+class SyncFailureError extends StateError {
+  final SyncFailure code;
+  SyncFailureError(this.code) : super(code.english);
+}
+
 /// What the download has banked. Counts are for THIS sync only; the engine's
 /// own report accumulates across the whole connection and cannot say that.
 class SyncDownloadDetail {
@@ -111,7 +148,12 @@ class SyncStep {
   final DateTime? startedAt, endedAt;
 
   /// Plain words for a step that did not run ("Already connected").
-  final String? note;
+  String? get note => noteCode?.english ?? _note;
+  final String? _note;
+
+  /// [note] by identifier when the coordinator wrote it; the screen localizes
+  /// this and falls back to [note] only when it is null.
+  final SyncNote? noteCode;
   final SyncDownloadDetail? download;
   final SyncCalculateDetail? calculate;
   const SyncStep({
@@ -119,10 +161,11 @@ class SyncStep {
     this.status = SyncStepStatus.waiting,
     this.startedAt,
     this.endedAt,
-    this.note,
+    this.noteCode,
+    String? note,
     this.download,
     this.calculate,
-  });
+  }) : _note = note;
 
   /// How long the step took, or has taken so far when it is still running and
   /// [now] is given. Null for a step that never started.
@@ -138,6 +181,7 @@ class SyncStep {
     DateTime? startedAt,
     DateTime? endedAt,
     String? note,
+    SyncNote? noteCode,
     SyncDownloadDetail? download,
     SyncCalculateDetail? calculate,
   }) => SyncStep(
@@ -145,7 +189,8 @@ class SyncStep {
     status: status ?? this.status,
     startedAt: startedAt ?? this.startedAt,
     endedAt: endedAt ?? this.endedAt,
-    note: note ?? this.note,
+    noteCode: noteCode ?? (note == null ? this.noteCode : null),
+    note: note ?? _note,
     download: download ?? this.download,
     calculate: calculate ?? this.calculate,
   );
@@ -170,6 +215,10 @@ class SyncPresentationState {
   /// text for existing callers.
   final String? failureReason;
 
+  /// [failureReason] by identifier when this app produced it; null for free
+  /// text, which is shown as it came.
+  final SyncFailure? failureCode;
+
   /// The sync finished, but the band was not fully drained: more remains and
   /// another sync continues it. Not a failure.
   final bool partial;
@@ -183,6 +232,7 @@ class SyncPresentationState {
     this.startedAt,
     this.finishedAt,
     this.failureReason,
+    this.failureCode,
     this.partial = false,
   });
 
@@ -209,6 +259,7 @@ class SyncPresentationState {
         startedAt: startedAt,
         finishedAt: finishedAt,
         failureReason: failureReason,
+        failureCode: failureCode,
         partial: partial,
       );
 
@@ -223,6 +274,7 @@ class SyncPresentationState {
         startedAt: startedAt,
         finishedAt: finishedAt,
         failureReason: failureReason,
+        failureCode: failureCode,
         partial: partial,
       );
 
@@ -237,8 +289,16 @@ class SyncPresentationState {
         startedAt: startedAt,
         finishedAt: finishedAt,
         failureReason: failureReason,
+        failureCode: failureCode,
         partial: partial,
       );
+}
+
+/// The identifier of a failure this app produced, or null for free text.
+SyncFailure? syncFailureCode(Object e) {
+  if (e is SyncFailureError) return e.code;
+  if (e is TimeoutException && e.message == null) return SyncFailure.timedOut;
+  return null;
 }
 
 /// A failure as a sentence, not a stack-trace label.
@@ -355,6 +415,7 @@ class SyncCoordinator extends ChangeNotifier {
     DateTime? startedAt,
     DateTime? finishedAt,
     String? failureReason,
+    SyncFailure? failureCode,
     bool partial = false,
   }) {
     if (_disposed) return;
@@ -368,6 +429,7 @@ class SyncCoordinator extends ChangeNotifier {
       startedAt: startedAt,
       finishedAt: finishedAt,
       failureReason: failureReason,
+      failureCode: failureCode,
       partial: partial,
     );
     _emit(immediate: true);
@@ -390,7 +452,9 @@ class SyncCoordinator extends ChangeNotifier {
       else if (s.id.index < to.index && s.status == SyncStepStatus.waiting)
         s.copyWith(
           status: SyncStepStatus.skipped,
-          note: s.id == SyncStepId.connect ? 'Already connected' : 'Not needed',
+          noteCode: s.id == SyncStepId.connect
+              ? SyncNote.alreadyConnected
+              : SyncNote.notNeeded,
         )
       else if (s.id == to)
         s.copyWith(
@@ -465,7 +529,7 @@ class SyncCoordinator extends ChangeNotifier {
     _patch(
       SyncStepId.download,
       (s) => s.copyWith(
-        note: 'More remains on the band — sync again to continue',
+        noteCode: SyncNote.moreRemains,
       ),
       immediate: true,
     );
@@ -482,7 +546,7 @@ class SyncCoordinator extends ChangeNotifier {
         SyncStepId.calculate,
         (s) => s.copyWith(
           status: SyncStepStatus.skipped,
-          note: kCalculateSkippedNote,
+          noteCode: SyncNote.nothingNew,
           endedAt: now,
         ),
         immediate: true,
@@ -642,6 +706,7 @@ class SyncCoordinator extends ChangeNotifier {
             startedAt: presentation.startedAt,
             finishedAt: now,
             failureReason: syncFailureReason(e),
+            failureCode: syncFailureCode(e),
           );
         }
         result = SyncOperationResult(false, '$e');
@@ -672,12 +737,12 @@ class SyncCoordinator extends ChangeNotifier {
           status: SyncStepStatus.done,
           startedAt: now,
           endedAt: now,
-          note: _partial ? 'Done (partial)' : null,
+          noteCode: _partial ? SyncNote.donePartial : null,
         )
       else if (s.status == SyncStepStatus.running)
         s.copyWith(status: SyncStepStatus.done, endedAt: now)
       else if (s.status == SyncStepStatus.waiting)
-        s.copyWith(status: SyncStepStatus.skipped, note: 'Not needed')
+        s.copyWith(status: SyncStepStatus.skipped, noteCode: SyncNote.notNeeded)
       else
         s,
   ];
@@ -687,7 +752,7 @@ class SyncCoordinator extends ChangeNotifier {
       if (s.status == SyncStepStatus.running)
         s.copyWith(status: SyncStepStatus.failed, endedAt: now)
       else if (s.status == SyncStepStatus.waiting)
-        s.copyWith(status: SyncStepStatus.skipped, note: 'Not reached')
+        s.copyWith(status: SyncStepStatus.skipped, noteCode: SyncNote.notReached)
       else
         s,
   ];
@@ -736,6 +801,7 @@ class SyncCoordinator extends ChangeNotifier {
         contacted: false,
         error: '$e',
         failureReason: syncFailureReason(e),
+        failureCode: syncFailureCode(e),
       );
       return SyncOperationResult(false, '$e');
     }

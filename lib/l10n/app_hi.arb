@@ -3071,7 +3071,7 @@
   "syncStepDownload": "डाउनलोड करें",
   "syncStepCalculate": "गणना करें",
   "syncStepDone": "हो गया",
-  "syncLineWaiting": "एक और गणना की प्रतीक्षा…",
+  "syncLineWaiting": "प्रतीक्षा में",
   "syncLineSkipped": "छोड़ा गया",
   "syncLineFailed": "विफल",
   "syncLineConnected": "कनेक्ट हो गया",
@@ -3169,7 +3169,7 @@
       }
     }
   },
-  "syncAgoHours": "{n, plural, one{{n} घंटे पहले} other{{n} घंटे पहले}}",
+  "syncAgoHours": "{n, plural, =0{0 घंटे पहले} =1{1 घंटा पहले} other{{n} घंटे पहले}}",
   "@syncAgoHours": {
     "placeholders": {
       "n": {
@@ -3205,7 +3205,7 @@
     }
   },
   "syncStatusDownloadingLine": "डाउनलोड हो रहा है",
-  "syncGapHours": "{h} घंटे {m} मिनट",
+  "syncGapHours": "{h, plural, =0{0 घंटे} =1{1 घंटा} other{{h} घंटे}} {m} मिनट",
   "@syncGapHours": {
     "placeholders": {
       "h": {
@@ -3216,7 +3216,7 @@
       }
     }
   },
-  "syncGapDays": "{d} दिन {h} घंटे",
+  "syncGapDays": "{d} दिन {h, plural, =0{0 घंटे} =1{1 घंटा} other{{h} घंटे}}",
   "@syncGapDays": {
     "placeholders": {
       "d": {
@@ -3247,7 +3247,7 @@
       }
     }
   },
-  "syncDurationHours": "{h} घंटे {m} मिनट",
+  "syncDurationHours": "{h, plural, =0{0 घंटे} =1{1 घंटा} other{{h} घंटे}} {m} मिनट",
   "@syncDurationHours": {
     "placeholders": {
       "h": {
@@ -3266,7 +3266,7 @@
       }
     }
   },
-  "syncDownloadGapLine": "डाउनलोड के लिए {gap} बाकी",
+  "syncDownloadGapLine": "बैंड का {gap} डेटा डाउनलोड होना बाकी",
   "@syncDownloadGapLine": {
     "placeholders": {
       "gap": {
@@ -3299,5 +3299,35 @@
   },
   "syncActionSyncCompact": "सिंक",
   "syncActionDetailsCompact": "विवरण",
-  "syncActionRetryCompact": "फिर कोशिश"
+  "syncActionRetryCompact": "फिर कोशिश",
+  "syncNoteAlreadyConnected": "पहले से जुड़ा है",
+  "syncNoteNotNeeded": "ज़रूरी नहीं",
+  "syncNoteNotReached": "यहाँ तक नहीं पहुँचा",
+  "syncNoteMoreRemains": "बैंड पर अभी और डेटा है — जारी रखने के लिए फिर से सिंक करें",
+  "syncNoteDonePartial": "पूरा (आंशिक)",
+  "syncNoteNothingNew": "छोड़ा गया — कुछ नया नहीं",
+  "syncFailPairBand": "सिंक करने से पहले एक बैंड जोड़ें",
+  "syncFailCouldNotConnect": "बैंड से कनेक्ट नहीं हो सका",
+  "syncFailDisconnected": "सिंक के दौरान बैंड डिस्कनेक्ट हो गया",
+  "syncFailDownloadStopped": "डाउनलोड पूरा होने से पहले रुक गया। फिर से सिंक करें।",
+  "syncFailCalculationBusy": "एक और गणना चल रही थी। फिर से सिंक करें।",
+  "syncFailTimedOut": "इसमें बहुत समय लगा और इसे रोक दिया गया।",
+  "syncStatusNotYetLower": "अभी तक सिंक नहीं हुआ",
+  "homeSyncedThrough": "{when} तक सिंक हुआ",
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num",
+        "format": "decimalPattern"
+      }
+    }
+  }
 }
