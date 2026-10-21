@@ -8452,5 +8452,238 @@
       }
     }
   },
-  "supplementStrainWasNotScoredForThisDay": "Нагрузка за этот день не оценена: было недостаточно предыдущих дней, чтобы определить ваш уровень покоя."
+  "supplementStrainWasNotScoredForThisDay": "Нагрузка за этот день не оценена: было недостаточно предыдущих дней, чтобы определить ваш уровень покоя.",
+  "syncStepConnect": "Подключение",
+  "syncStepDownload": "Загрузка",
+  "syncStepCalculate": "Расчёт",
+  "syncStepDone": "Готово",
+  "syncLineWaiting": "Ожидание другого вычисления…",
+  "syncLineSkipped": "Пропущено",
+  "syncLineFailed": "Ошибка",
+  "syncLineConnected": "Подключено",
+  "syncLineFinished": "Завершено",
+  "syncLineWorking": "Вычисление…",
+  "syncLineNoRecords": "Записей пока нет",
+  "syncStatusConnecting": "Подключение к браслету…",
+  "syncStatusDownloading": "Загрузка…",
+  "syncStatusNothingNew": "На браслете нет новых данных",
+  "syncStatusCalculating": "Вычисление…",
+  "syncStatusFailed": "Ошибка синхронизации",
+  "syncStatusPleaseRetry": "Повторите попытку",
+  "syncStatusNeedsPass": "Нужен ещё один проход",
+  "syncStatusPartial": "Синхронизировано, но некоторые дни требуют ещё одного прохода",
+  "syncStatusJustNow": "Только что синхронизировано",
+  "syncStatusNotYet": "Ещё не синхронизировано",
+  "syncStatusOffline": "Браслет не подключён",
+  "syncActionShowDetails": "Показать подробности",
+  "syncActionRetry": "Повторить",
+  "syncSheetTitle": "Синхронизация",
+  "syncElapsedSemantics": "Прошло {time}",
+  "syncAgoJustNow": "только что",
+  "syncGapMinutes": "{n, plural, =0{менее 1 мин} one{{n} мин} few{{n} мин} many{{n} мин} other{{n} мин}}",
+  "syncCountRecords": "{n, plural, one{{n} запись} few{{n} записи} many{{n} записей} other{{n} записи}}",
+  "syncCountChunks": "{n, plural, one{{n} блок} few{{n} блока} many{{n} блоков} other{{n} блока}}",
+  "@syncElapsedSemantics": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncGapMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusSynced": "Синхронизировано",
+  "syncStatusSyncedLower": "синхронизировано",
+  "syncLineDownloaded": "Загружено",
+  "syncLineCalcDay": "Расчёт · день {i} из {total}",
+  "syncLineGap": "Осталось загрузить: {gap}",
+  "syncLineDay": "День {i} из {total}{suffix}",
+  "@syncLineCalcDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineGap": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "suffix": {
+        "type": "String"
+      }
+    }
+  },
+  "syncAgoMinutes": "{n, plural, =0{только что} one{{n} мин назад} few{{n} мин назад} many{{n} мин назад} other{{n} мин назад}}",
+  "@syncAgoMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoHours": "{n, plural, one{{n} ч назад} few{{n} ч назад} many{{n} ч назад} other{{n} ч назад}}",
+  "@syncAgoHours": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoDays": "{n, plural, one{{n} д назад} few{{n} д назад} many{{n} д назад} other{{n} д назад}}",
+  "@syncAgoDays": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenSeconds": "{n, plural, one{{n} секунда} few{{n} секунды} many{{n} секунд} other{{n} секунды}}",
+  "@syncSpokenSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenMinutes": "{m, plural, one{{m} минута} few{{m} минуты} many{{m} минут} other{{m} минуты}} {s, plural, one{{s} секунда} few{{s} секунды} many{{s} секунд} other{{s} секунды}}",
+  "@syncSpokenMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusDownloadingLine": "Загрузка",
+  "syncGapHours": "{h} ч {m} мин",
+  "@syncGapHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncGapDays": "{d} д {h} ч",
+  "@syncGapDays": {
+    "placeholders": {
+      "d": {
+        "type": "num"
+      },
+      "h": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationUnderSecond": "<1 с",
+  "syncDurationSeconds": "{n} с",
+  "@syncDurationSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationMinutes": "{m} мин {s} с",
+  "@syncDurationMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationHours": "{h} ч {m} мин",
+  "@syncDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusGapLine": "Осталось данных браслета на {gap}",
+  "@syncStatusGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncDownloadGapLine": "Осталось загрузить за {gap}",
+  "@syncDownloadGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncStatusWaitingCalculation": "Ожидание другого вычисления…",
+  "syncStepWaitingCalculation": "Ожидание завершения другого вычисления",
+  "syncDurationMinutesOnly": "{m} мин",
+  "@syncDurationMinutesOnly": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSemWaiting": "ожидание",
+  "syncSemSkipped": "пропущено",
+  "syncSemFailed": "ошибка",
+  "syncSemRunning": "выполняется",
+  "syncSemDone": "готово",
+  "syncLineSyncedThrough": "синхронизировано до {when}",
+  "@syncLineSyncedThrough": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "syncActionSyncCompact": "Синхронизировать",
+  "syncActionDetailsCompact": "Подробности",
+  "syncActionRetryCompact": "Повторить"
 }

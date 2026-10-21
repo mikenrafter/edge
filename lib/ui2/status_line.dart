@@ -117,7 +117,7 @@ class StatusLine extends StatelessWidget {
     final at = now ?? pc.clock.now();
     final sync = c.select<AppState, (bool, String, DateTime?)>((a) {
       final s = a.syncPresentation;
-      return (s.busy, s.busy ? syncStatusHeadline(s, at) : '', a.lastRecordAt);
+      return (s.busy, s.busy ? syncStatusHeadline(s, at, l) : '', a.lastRecordAt);
     });
     final String text;
     // A finished or failed import is terminal, not work in progress: the
@@ -195,7 +195,7 @@ class HeaderRows extends StatelessWidget {
         // The width decides whether the actions need their own line; it is the
         // same for every state at this width and text scale.
         builder: (c, _) => LayoutBuilder(
-          builder: (c, box) => _block(c, syncActionsNeedOwnLine(c, box.maxWidth)),
+          builder: (c, box) => _block(c, syncActionsNeedOwnLine(c, box.maxWidth, AppLocalizations.of(c))),
         ),
       );
 

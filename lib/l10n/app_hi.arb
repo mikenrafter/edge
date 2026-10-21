@@ -3066,5 +3066,238 @@
       }
     }
   },
-  "supplementStrainWasNotScoredForThisDay": "इस दिन का स्ट्रेन स्कोर नहीं किया गया: आपका शांत स्तर तय करने के लिए पर्याप्त पिछले दिन नहीं थे।"
+  "supplementStrainWasNotScoredForThisDay": "इस दिन का स्ट्रेन स्कोर नहीं किया गया: आपका शांत स्तर तय करने के लिए पर्याप्त पिछले दिन नहीं थे।",
+  "syncStepConnect": "कनेक्ट करें",
+  "syncStepDownload": "डाउनलोड करें",
+  "syncStepCalculate": "गणना करें",
+  "syncStepDone": "हो गया",
+  "syncLineWaiting": "एक और गणना की प्रतीक्षा…",
+  "syncLineSkipped": "छोड़ा गया",
+  "syncLineFailed": "विफल",
+  "syncLineConnected": "कनेक्ट हो गया",
+  "syncLineFinished": "पूरा हुआ",
+  "syncLineWorking": "गणना जारी…",
+  "syncLineNoRecords": "अभी कोई रिकॉर्ड नहीं",
+  "syncStatusConnecting": "बैंड से कनेक्ट हो रहा है…",
+  "syncStatusDownloading": "डाउनलोड हो रहा है…",
+  "syncStatusNothingNew": "बैंड पर कुछ नया नहीं",
+  "syncStatusCalculating": "गणना हो रही है…",
+  "syncStatusFailed": "सिंक विफल",
+  "syncStatusPleaseRetry": "फिर कोशिश करें",
+  "syncStatusNeedsPass": "एक और प्रयास चाहिए",
+  "syncStatusPartial": "सिंक हुआ, लेकिन कुछ दिनों के लिए एक और प्रयास चाहिए",
+  "syncStatusJustNow": "अभी सिंक हुआ",
+  "syncStatusNotYet": "अभी तक सिंक नहीं हुआ",
+  "syncStatusOffline": "बैंड कनेक्ट नहीं है",
+  "syncActionShowDetails": "विवरण दिखाएँ",
+  "syncActionRetry": "फिर कोशिश करें",
+  "syncSheetTitle": "सिंक",
+  "syncElapsedSemantics": "बीता समय {time}",
+  "syncAgoJustNow": "अभी-अभी",
+  "syncGapMinutes": "{n, plural, =0{1 मिनट से कम} one{{n} मिनट} other{{n} मिनट}}",
+  "syncCountRecords": "{n, plural, one{{n} रिकॉर्ड} other{{n} रिकॉर्ड}}",
+  "syncCountChunks": "{n, plural, one{{n} खंड} other{{n} खंड}}",
+  "@syncElapsedSemantics": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncGapMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusSynced": "सिंक हुआ",
+  "syncStatusSyncedLower": "सिंक हुआ",
+  "syncLineDownloaded": "डाउनलोड हुआ",
+  "syncLineCalcDay": "गणना · दिन {i} / {total}",
+  "syncLineGap": "बैंड का शेष समय: {gap}",
+  "syncLineDay": "दिन {i} / {total}{suffix}",
+  "@syncLineCalcDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineGap": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "suffix": {
+        "type": "String"
+      }
+    }
+  },
+  "syncAgoMinutes": "{n, plural, =0{अभी-अभी} one{{n} मिनट पहले} other{{n} मिनट पहले}}",
+  "@syncAgoMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoHours": "{n, plural, one{{n} घंटे पहले} other{{n} घंटे पहले}}",
+  "@syncAgoHours": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoDays": "{n, plural, one{{n} दिन पहले} other{{n} दिन पहले}}",
+  "@syncAgoDays": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenSeconds": "{n} सेकंड",
+  "@syncSpokenSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenMinutes": "{m} मिनट {s} सेकंड",
+  "@syncSpokenMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusDownloadingLine": "डाउनलोड हो रहा है",
+  "syncGapHours": "{h} घंटे {m} मिनट",
+  "@syncGapHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncGapDays": "{d} दिन {h} घंटे",
+  "@syncGapDays": {
+    "placeholders": {
+      "d": {
+        "type": "num"
+      },
+      "h": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationUnderSecond": "<1 सेकंड",
+  "syncDurationSeconds": "{n} सेकंड",
+  "@syncDurationSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationMinutes": "{m} मिनट {s} सेकंड",
+  "@syncDurationMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationHours": "{h} घंटे {m} मिनट",
+  "@syncDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusGapLine": "बैंड का {gap} समय बाकी",
+  "@syncStatusGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncDownloadGapLine": "डाउनलोड के लिए {gap} बाकी",
+  "@syncDownloadGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncStatusWaitingCalculation": "एक और गणना की प्रतीक्षा…",
+  "syncStepWaitingCalculation": "दूसरी गणना पूरी होने की प्रतीक्षा",
+  "syncDurationMinutesOnly": "{m} मिनट",
+  "@syncDurationMinutesOnly": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSemWaiting": "प्रतीक्षा में",
+  "syncSemSkipped": "छोड़ा गया",
+  "syncSemFailed": "विफल",
+  "syncSemRunning": "जारी",
+  "syncSemDone": "हो गया",
+  "syncLineSyncedThrough": "{when} तक सिंक हुआ",
+  "@syncLineSyncedThrough": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "syncActionSyncCompact": "सिंक",
+  "syncActionDetailsCompact": "विवरण",
+  "syncActionRetryCompact": "फिर कोशिश"
 }

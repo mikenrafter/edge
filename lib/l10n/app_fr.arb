@@ -3066,5 +3066,238 @@
       }
     }
   },
-  "supplementStrainWasNotScoredForThisDay": "L’effort n’a pas été évalué pour ce jour : il n’y avait pas assez de jours précédents pour établir ton niveau de repos."
+  "supplementStrainWasNotScoredForThisDay": "L’effort n’a pas été évalué pour ce jour : il n’y avait pas assez de jours précédents pour établir ton niveau de repos.",
+  "syncStepConnect": "Connexion",
+  "syncStepDownload": "Téléchargement",
+  "syncStepCalculate": "Calcul",
+  "syncStepDone": "Terminé",
+  "syncLineWaiting": "En attente d’un autre calcul…",
+  "syncLineSkipped": "Ignoré",
+  "syncLineFailed": "Échec",
+  "syncLineConnected": "Connecté",
+  "syncLineFinished": "Terminé",
+  "syncLineWorking": "Calcul en cours…",
+  "syncLineNoRecords": "Aucun enregistrement pour le moment",
+  "syncStatusConnecting": "Connexion au bracelet…",
+  "syncStatusDownloading": "Téléchargement…",
+  "syncStatusNothingNew": "Aucune nouvelle donnée sur le bracelet",
+  "syncStatusCalculating": "Calcul en cours…",
+  "syncStatusFailed": "Échec de la synchronisation",
+  "syncStatusPleaseRetry": "Veuillez réessayer",
+  "syncStatusNeedsPass": "Une autre passe est nécessaire",
+  "syncStatusPartial": "Synchronisé, mais certains jours nécessitent une autre passe",
+  "syncStatusJustNow": "Synchronisé à l’instant",
+  "syncStatusNotYet": "Pas encore synchronisé",
+  "syncStatusOffline": "Bracelet non connecté",
+  "syncActionShowDetails": "Afficher les détails",
+  "syncActionRetry": "Réessayer",
+  "syncSheetTitle": "Synchronisation",
+  "syncElapsedSemantics": "Temps écoulé : {time}",
+  "syncAgoJustNow": "à l’instant",
+  "syncGapMinutes": "{n, plural, =0{moins d’1 min} one{{n} min} other{{n} min}}",
+  "syncCountRecords": "{n, plural, one{{n} enregistrement} other{{n} enregistrements}}",
+  "syncCountChunks": "{n, plural, one{{n} bloc} other{{n} blocs}}",
+  "@syncElapsedSemantics": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncGapMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusSynced": "Synchronisé",
+  "syncStatusSyncedLower": "synchronisé",
+  "syncLineDownloaded": "Téléchargé",
+  "syncLineCalcDay": "Calcul · jour {i} sur {total}",
+  "syncLineGap": "Temps du bracelet restant : {gap}",
+  "syncLineDay": "Jour {i} sur {total}{suffix}",
+  "@syncLineCalcDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineGap": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "suffix": {
+        "type": "String"
+      }
+    }
+  },
+  "syncAgoMinutes": "{n, plural, =0{à l’instant} one{il y a {n} min} other{il y a {n} min}}",
+  "@syncAgoMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoHours": "{n, plural, one{il y a {n} h} other{il y a {n} h}}",
+  "@syncAgoHours": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoDays": "{n, plural, one{il y a {n} j} other{il y a {n} j}}",
+  "@syncAgoDays": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenSeconds": "{n, plural, one{{n} seconde} other{{n} secondes}}",
+  "@syncSpokenSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenMinutes": "{m, plural, one{{m} minute} other{{m} minutes}} {s, plural, one{{s} seconde} other{{s} secondes}}",
+  "@syncSpokenMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusDownloadingLine": "Téléchargement",
+  "syncGapHours": "{h} h {m} min",
+  "@syncGapHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncGapDays": "{d} j {h} h",
+  "@syncGapDays": {
+    "placeholders": {
+      "d": {
+        "type": "num"
+      },
+      "h": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationUnderSecond": "<1 s",
+  "syncDurationSeconds": "{n} s",
+  "@syncDurationSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationMinutes": "{m} min {s} s",
+  "@syncDurationMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationHours": "{h} h {m} min",
+  "@syncDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusGapLine": "Il reste {gap} de données du bracelet",
+  "@syncStatusGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncDownloadGapLine": "Encore {gap} à récupérer",
+  "@syncDownloadGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncStatusWaitingCalculation": "En attente d’un autre calcul…",
+  "syncStepWaitingCalculation": "En attente de la fin de l’autre calcul",
+  "syncDurationMinutesOnly": "{m} min",
+  "@syncDurationMinutesOnly": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSemWaiting": "en attente",
+  "syncSemSkipped": "ignoré",
+  "syncSemFailed": "échec",
+  "syncSemRunning": "en cours",
+  "syncSemDone": "terminé",
+  "syncLineSyncedThrough": "synchronisé jusqu’au {when}",
+  "@syncLineSyncedThrough": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "syncActionSyncCompact": "Synchroniser",
+  "syncActionDetailsCompact": "Détails",
+  "syncActionRetryCompact": "Réessayer"
 }

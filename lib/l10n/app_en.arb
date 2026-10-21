@@ -17295,5 +17295,238 @@
         "type": "String"
       }
     }
-  }
+  },
+  "syncStepConnect": "Connect",
+  "syncStepDownload": "Download",
+  "syncStepCalculate": "Calculate",
+  "syncStepDone": "Done",
+  "syncLineWaiting": "Waiting for another calculation…",
+  "syncLineSkipped": "Skipped",
+  "syncLineFailed": "Failed",
+  "syncLineConnected": "Connected",
+  "syncLineFinished": "Finished",
+  "syncLineWorking": "Working it out…",
+  "syncLineNoRecords": "No records yet",
+  "syncStatusConnecting": "Connecting to the band…",
+  "syncStatusDownloading": "Downloading…",
+  "syncStatusNothingNew": "Nothing new on the band",
+  "syncStatusCalculating": "Calculating…",
+  "syncStatusFailed": "Sync failed",
+  "syncStatusPleaseRetry": "Please retry",
+  "syncStatusNeedsPass": "Needs another pass",
+  "syncStatusPartial": "Synced, but some days need another pass",
+  "syncStatusJustNow": "Synced just now",
+  "syncStatusNotYet": "Not synced yet",
+  "syncStatusOffline": "Band not connected",
+  "syncActionShowDetails": "Show details",
+  "syncActionRetry": "Retry",
+  "syncSheetTitle": "Sync",
+  "syncElapsedSemantics": "Elapsed {time}",
+  "syncAgoJustNow": "just now",
+  "syncGapMinutes": "{n, plural, =0{under 1 min} one{{n} min} other{{n} min}}",
+  "syncCountRecords": "{n, plural, one{{n} record} other{{n} records}}",
+  "syncCountChunks": "{n, plural, one{{n} chunk} other{{n} chunks}}",
+  "@syncElapsedSemantics": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncGapMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusSynced": "Synced",
+  "syncStatusSyncedLower": "synced",
+  "syncLineDownloaded": "Downloaded",
+  "syncLineCalcDay": "Calculating · day {i} of {total}",
+  "syncLineGap": "Band time still to fetch: {gap}",
+  "syncLineDay": "Day {i} of {total}{suffix}",
+  "@syncLineCalcDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineGap": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "suffix": {
+        "type": "String"
+      }
+    }
+  },
+  "syncAgoMinutes": "{n, plural, =0{just now} one{{n} min ago} other{{n} min ago}}",
+  "@syncAgoMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoHours": "{n, plural, one{{n} h ago} other{{n} h ago}}",
+  "@syncAgoHours": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoDays": "{n, plural, one{{n} d ago} other{{n} d ago}}",
+  "@syncAgoDays": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenSeconds": "{n, plural, one{{n} second} other{{n} seconds}}",
+  "@syncSpokenSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenMinutes": "{m, plural, one{{m} minute} other{{m} minutes}} {s, plural, one{{s} second} other{{s} seconds}}",
+  "@syncSpokenMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusDownloadingLine": "Downloading",
+  "syncGapHours": "{h, plural, one{{h} h} other{{h} h}} {m, plural, one{{m} min} other{{m} min}}",
+  "@syncGapHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncGapDays": "{d, plural, one{{d} d} other{{d} d}} {h, plural, one{{h} h} other{{h} h}}",
+  "@syncGapDays": {
+    "placeholders": {
+      "d": {
+        "type": "num"
+      },
+      "h": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationUnderSecond": "<1 s",
+  "syncDurationSeconds": "{n} s",
+  "@syncDurationSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationMinutes": "{m} min {s} s",
+  "@syncDurationMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationHours": "{h} h {m} min",
+  "@syncDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusGapLine": "{gap} of band time to go",
+  "@syncStatusGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncDownloadGapLine": "{gap} of band time still to fetch",
+  "@syncDownloadGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncStatusWaitingCalculation": "Waiting for another calculation…",
+  "syncStepWaitingCalculation": "Waiting for another calculation to finish",
+  "syncDurationMinutesOnly": "{m} min",
+  "@syncDurationMinutesOnly": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSemWaiting": "waiting",
+  "syncSemSkipped": "skipped",
+  "syncSemFailed": "failed",
+  "syncSemRunning": "running",
+  "syncSemDone": "done",
+  "syncLineSyncedThrough": "synced through {when}",
+  "@syncLineSyncedThrough": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "syncActionSyncCompact": "Sync now",
+  "syncActionDetailsCompact": "Show details",
+  "syncActionRetryCompact": "Retry"
 }

@@ -3173,5 +3173,238 @@
       }
     }
   },
-  "supplementStrainWasNotScoredForThisDay": "Strain wurde für diesen Tag nicht bewertet: Es gab nicht genug frühere Tage, um dein Ruheniveau festzulegen."
+  "supplementStrainWasNotScoredForThisDay": "Strain wurde für diesen Tag nicht bewertet: Es gab nicht genug frühere Tage, um dein Ruheniveau festzulegen.",
+  "syncStepConnect": "Verbinden",
+  "syncStepDownload": "Herunterladen",
+  "syncStepCalculate": "Berechnen",
+  "syncStepDone": "Fertig",
+  "syncLineWaiting": "Warten auf eine weitere Berechnung…",
+  "syncLineSkipped": "Übersprungen",
+  "syncLineFailed": "Fehlgeschlagen",
+  "syncLineConnected": "Verbunden",
+  "syncLineFinished": "Abgeschlossen",
+  "syncLineWorking": "Wird berechnet…",
+  "syncLineNoRecords": "Noch keine Datensätze",
+  "syncStatusConnecting": "Verbindung zum Band wird hergestellt…",
+  "syncStatusDownloading": "Wird heruntergeladen…",
+  "syncStatusNothingNew": "Keine neuen Daten auf dem Band",
+  "syncStatusCalculating": "Wird berechnet…",
+  "syncStatusFailed": "Synchronisierung fehlgeschlagen",
+  "syncStatusPleaseRetry": "Bitte erneut versuchen",
+  "syncStatusNeedsPass": "Noch ein Durchlauf nötig",
+  "syncStatusPartial": "Synchronisiert, aber für einige Tage ist ein weiterer Durchlauf nötig",
+  "syncStatusJustNow": "Gerade synchronisiert",
+  "syncStatusNotYet": "Noch nicht synchronisiert",
+  "syncStatusOffline": "Band nicht verbunden",
+  "syncActionShowDetails": "Details anzeigen",
+  "syncActionRetry": "Erneut versuchen",
+  "syncSheetTitle": "Synchronisierung",
+  "syncElapsedSemantics": "Vergangen {time}",
+  "syncAgoJustNow": "gerade eben",
+  "syncGapMinutes": "{n, plural, =0{unter 1 Min.} one{{n} Min.} other{{n} Min.}}",
+  "syncCountRecords": "{n, plural, one{{n} Datensatz} other{{n} Datensätze}}",
+  "syncCountChunks": "{n, plural, one{{n} Abschnitt} other{{n} Abschnitte}}",
+  "@syncElapsedSemantics": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncGapMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusSynced": "Synchronisiert",
+  "syncStatusSyncedLower": "synchronisiert",
+  "syncLineDownloaded": "Heruntergeladen",
+  "syncLineCalcDay": "Berechnung · Tag {i} von {total}",
+  "syncLineGap": "Noch abzurufende Bandzeit: {gap}",
+  "syncLineDay": "Tag {i} von {total}{suffix}",
+  "@syncLineCalcDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineGap": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "suffix": {
+        "type": "String"
+      }
+    }
+  },
+  "syncAgoMinutes": "{n, plural, =0{gerade eben} one{{n} Min. zuvor} other{{n} Min. zuvor}}",
+  "@syncAgoMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoHours": "{n, plural, one{{n} Std. zuvor} other{{n} Std. zuvor}}",
+  "@syncAgoHours": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoDays": "{n, plural, one{{n} Tg. zuvor} other{{n} Tg. zuvor}}",
+  "@syncAgoDays": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenSeconds": "{n, plural, one{{n} Sekunde} other{{n} Sekunden}}",
+  "@syncSpokenSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenMinutes": "{m, plural, one{{m} Minute} other{{m} Minuten}} {s, plural, one{{s} Sekunde} other{{s} Sekunden}}",
+  "@syncSpokenMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusDownloadingLine": "Herunterladen",
+  "syncGapHours": "{h} Std. {m} Min.",
+  "@syncGapHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncGapDays": "{d} Tg. {h} Std.",
+  "@syncGapDays": {
+    "placeholders": {
+      "d": {
+        "type": "num"
+      },
+      "h": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationUnderSecond": "<1 s",
+  "syncDurationSeconds": "{n} s",
+  "@syncDurationSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationMinutes": "{m} Min. {s} s",
+  "@syncDurationMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationHours": "{h} Std. {m} Min.",
+  "@syncDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusGapLine": "Noch {gap} Bandzeit",
+  "@syncStatusGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncDownloadGapLine": "Noch {gap} Bandzeit zum Abruf",
+  "@syncDownloadGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncStatusWaitingCalculation": "Warten auf eine weitere Berechnung…",
+  "syncStepWaitingCalculation": "Warten, bis die andere Berechnung abgeschlossen ist",
+  "syncDurationMinutesOnly": "{m} Min.",
+  "@syncDurationMinutesOnly": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSemWaiting": "wartend",
+  "syncSemSkipped": "übersprungen",
+  "syncSemFailed": "fehlgeschlagen",
+  "syncSemRunning": "läuft",
+  "syncSemDone": "fertig",
+  "syncLineSyncedThrough": "synchronisiert bis {when}",
+  "@syncLineSyncedThrough": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "syncActionSyncCompact": "Synchronisieren",
+  "syncActionDetailsCompact": "Details",
+  "syncActionRetryCompact": "Nochmal"
 }

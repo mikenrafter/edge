@@ -137,7 +137,7 @@ class _SyncControlState extends State<SyncControl> {
       const SizedBox(width: S.x3),
       if (elapsed != null) ...[
         Semantics(
-          label: 'Elapsed ${_spoken(elapsed)}',
+          label: AppLocalizations.of(c)?.syncElapsedSemantics(_spoken(elapsed, AppLocalizations.of(c))) ?? 'Elapsed ${_spoken(elapsed, AppLocalizations.of(c))}',
           child: ExcludeSemantics(
             child: Text(_clock(elapsed), style: F.n17.copyWith(color: p.ink2)),
           ),
@@ -146,7 +146,7 @@ class _SyncControlState extends State<SyncControl> {
       ],
       Expanded(
         child: Text(
-          syncStatusLine(s, now),
+          syncStatusLine(s, now, AppLocalizations.of(c)),
           style: F.body.copyWith(color: failed ? p.on(C.red) : p.ink),
         ),
       ),
@@ -174,7 +174,7 @@ class _SyncControlState extends State<SyncControl> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: S.x2),
                     child: Text(
-                      failed ? 'Retry' : 'Sync now',
+                      failed ? _retryLabel(c, AppLocalizations.of(c)) : _syncNowLabel(c, AppLocalizations.of(c)),
                       style: F.body.copyWith(
                           color: p.on(C.blue), fontWeight: FontWeight.w600),
                     ),
@@ -232,13 +232,13 @@ List<Widget> syncStepRows(SyncPresentationState s, DateTime now) =>
 /// The short problem a settled sync left behind, or null when there is none.
 /// A sync that is running has no problem yet, and "offline" is the band being
 /// away, which the connection line already says.
-({String text, bool failed})? syncProblem(SyncPresentationState s) {
+({String text, bool failed})? syncProblem(SyncPresentationState s, [AppLocalizations? l]) {
   if (s.busy) return null;
   if (s.phase == 'failed') {
-    return (text: s.failureReason ?? 'Sync failed', failed: true);
+    return (text: s.failureReason ?? (l?.syncStatusFailed ?? 'Sync failed'), failed: true);
   }
   if (s.phase == 'completed' && s.partial) {
-    return (text: 'Needs another pass', failed: false);
+    return (text: l?.syncStatusNeedsPass ?? 'Needs another pass', failed: false);
   }
   return null;
 }
@@ -256,46 +256,46 @@ List<Widget> syncStepRows(SyncPresentationState s, DateTime now) =>
 /// The one sentence for [s] at [now]. Pure, so every phase is pinned by a test
 /// without a widget. A count or a span appears only when the band or the
 /// derivation reported it; everything else says what is happening and no more.
-String syncStatusLine(SyncPresentationState s, DateTime now) {
+String syncStatusLine(SyncPresentationState s, DateTime now, [AppLocalizations? l]) {
   switch (s.phase) {
     case 'connecting':
-      return 'Connecting to the band…';
+      return l?.syncStatusConnecting ?? 'Connecting to the band…';
     case 'downloading':
       final step = s.step(SyncStepId.download);
       final d = step.download;
       if (d != null && d.records == 0 && step.status == SyncStepStatus.done) {
-        return 'Nothing new on the band';
+        return l?.syncStatusNothingNew ?? 'Nothing new on the band';
       }
       final backlog = d?.backlog;
       return backlog == null
-          ? 'Downloading…'
-          : 'Downloading · ${_gap(backlog)} of band time to go';
+          ? l?.syncStatusDownloading ?? 'Downloading…'
+          : '${l?.syncStatusDownloadingLine ?? 'Downloading'} · ${l?.syncStatusGapLine(_gap(backlog, l)) ?? '${_gap(backlog, l)} of band time to go'}';
     case 'deriving':
       final calc = s.calculate;
       if (calc != null && calc.waiting) {
         // Another calculation holds the lock. The most useful true thing to say
         // is what the download did; only with no download detail is "waiting"
         // the whole story.
-        return _downloadLine(s) ?? 'Waiting for another calculation…';
+        return _downloadLine(s, l) ?? (l?.syncStatusWaitingCalculation ?? 'Waiting for another calculation…');
       }
       final i = calc?.dayIndex, total = calc?.dayTotal;
       return i != null && total != null && i > 0
-          ? 'Calculating · day $i of $total'
-          : 'Calculating…';
+          ? (l?.syncLineCalcDay('$i', '$total') ?? 'Calculating · day $i of $total')
+          : l?.syncStatusCalculating ?? 'Calculating…';
     case 'completed':
-      if (s.partial) return 'Synced, but some days need another pass';
+      if (s.partial) return l?.syncStatusPartial ?? 'Synced, but some days need another pass';
       final done = s.finishedAt;
       if (done != null && now.difference(done).inSeconds < 60) {
-        return 'Synced just now';
+        return l?.syncStatusJustNow ?? 'Synced just now';
       }
-      return _lastSynced(s, now, offline: false);
+      return _lastSynced(s, now, offline: false, l: l);
     case 'failed':
       final why = s.failureReason?.trim();
-      return 'Sync failed: ${why == null || why.isEmpty ? 'Please retry' : why}';
+      return '${l?.syncStatusFailed ?? 'Sync failed'}: ${why == null || why.isEmpty ? l?.syncStatusPleaseRetry ?? 'Please retry' : why}';
     case 'offline':
-      return _lastSynced(s, now, offline: true);
+      return _lastSynced(s, now, offline: true, l: l);
     default: // 'idle'
-      return _lastSynced(s, now, offline: false);
+      return _lastSynced(s, now, offline: false, l: l);
   }
 }
 
@@ -372,47 +372,46 @@ Widget syncBusyMark(Color color) => SizedBox(
 /// The first clause of [syncStatusLine]: "Downloading…", "Calculating", "Sync
 /// failed". The header says it without the backlog or the day count, which the
 /// details sheet carries.
-String syncStatusHeadline(SyncPresentationState s, DateTime now) {
-  final line = syncStatusLine(s, now);
+String syncStatusHeadline(SyncPresentationState s, DateTime now, [AppLocalizations? l]) {
+  final line = syncStatusLine(s, now, l);
   final i = line.indexOf(' · ');
   return i < 0 ? line : line.substring(0, i);
 }
 
 /// What the download did, for the line shown while the calculation waits its
 /// turn. Null when the download left no detail.
-String? _downloadLine(SyncPresentationState s) {
+String? _downloadLine(SyncPresentationState s, [AppLocalizations? l]) {
   final d = s.download;
   if (d == null) return null;
-  if (d.records == 0) return 'Nothing new on the band';
+  if (d.records == 0) return l?.syncStatusNothingNew ?? 'Nothing new on the band';
   if (d.backlog case final backlog?) {
-    return '${_gap(backlog)} of band time still to fetch';
+    return l?.syncDownloadGapLine(_gap(backlog, l)) ?? '${_gap(backlog, l)} of band time still to fetch';
   }
   if (d.syncedThrough case final through?) {
-    return 'Downloaded · synced through ${formatDayTime(through.toLocal())}';
+    return '${l?.syncLineDownloaded ?? 'Downloaded'} · ${l?.syncLineSyncedThrough(formatDayTime(through.toLocal())) ?? 'synced through ${formatDayTime(through.toLocal())}'}';
   }
-  return 'Downloaded';
+  return l?.syncLineDownloaded ?? 'Downloaded';
 }
 
 /// "Synced 12 min ago", "Not synced yet", and when the band is away "Band not
 /// connected · synced 3 h ago".
 String _lastSynced(SyncPresentationState s, DateTime now,
-    {required bool offline}) {
+    {required bool offline, AppLocalizations? l}) {
   final last = s.lastSuccess;
-  final synced = last == null
-      ? 'not synced yet'
-      : 'synced ${_ago(now.difference(last))}';
-  if (offline) return 'Band not connected · $synced';
-  return last == null ? 'Not synced yet' : 'Synced ${_ago(now.difference(last))}';
+  final synced = last == null ? (l?.syncStatusNotYet ?? 'not synced yet')
+      : '${l?.syncStatusSyncedLower ?? 'synced'} ${_ago(now.difference(last), l)}';
+  if (offline) return '${l?.syncStatusOffline ?? 'Band not connected'} · $synced';
+  return last == null ? (l?.syncStatusNotYet ?? 'Not synced yet') : '${l?.syncStatusSynced ?? 'Synced'} ${_ago(now.difference(last), l)}';
 }
 
 /// `just now`, `12 min ago`, `3 h ago`, `2 d ago`. A time in the future (a
 /// clock moved) reads as just now rather than a negative span.
-String _ago(Duration d) {
+String _ago(Duration d, [AppLocalizations? l]) {
   final min = d.inMinutes;
-  if (min < 1) return 'just now';
-  if (min < 60) return '$min min ago';
-  if (min < 1440) return '${min ~/ 60} h ago';
-  return '${min ~/ 1440} d ago';
+  if (min < 1) return l?.syncAgoJustNow ?? 'just now';
+  if (min < 60) return l?.syncAgoMinutes(min) ?? '$min min ago';
+  if (min < 1440) return l?.syncAgoHours(min ~/ 60) ?? '${min ~/ 60} h ago';
+  return l?.syncAgoDays(min ~/ 1440) ?? '${min ~/ 1440} d ago';
 }
 
 class _StepRow extends StatelessWidget {
@@ -420,28 +419,29 @@ class _StepRow extends StatelessWidget {
   final DateTime now;
   const _StepRow({required this.step, required this.now});
 
-  static String _label(SyncStepId id) => switch (id) {
-    SyncStepId.connect => 'Connect',
-    SyncStepId.download => 'Download',
-    SyncStepId.calculate => 'Calculate',
-    SyncStepId.done => 'Done',
+  static String _label(SyncStepId id, AppLocalizations? l) => switch (id) {
+    SyncStepId.connect => l?.syncStepConnect ?? 'Connect',
+    SyncStepId.download => l?.syncStepDownload ?? 'Download',
+    SyncStepId.calculate => l?.syncStepCalculate ?? 'Calculate',
+    SyncStepId.done => l?.syncStepDone ?? 'Done',
   };
 
   /// One or two lines that say what this step is doing or did. Counts are the
   /// ones the engine and derivation reported; nothing is estimated.
   List<String> _lines(BuildContext c) {
     final note = step.note;
+    final l = AppLocalizations.of(c);
     switch (step.status) {
       case SyncStepStatus.waiting:
-        return const ['Waiting'];
+        return [l?.syncLineWaiting ?? 'Waiting'];
       case SyncStepStatus.skipped:
-        return [note ?? 'Skipped'];
+        return [note ?? (l?.syncLineSkipped ?? 'Skipped')];
       case SyncStepStatus.failed:
         // What it did bank before it stopped is still true and still useful.
         final d = step.download;
         return [
-          'Failed',
-          if (d != null && d.records > 0) _banked(d),
+          l?.syncLineFailed ?? 'Failed',
+          if (d != null && d.records > 0) _banked(d, l),
         ];
       case SyncStepStatus.running || SyncStepStatus.done:
         break;
@@ -449,42 +449,43 @@ class _StepRow extends StatelessWidget {
     final running = step.status == SyncStepStatus.running;
     switch (step.id) {
       case SyncStepId.connect:
-        return [running ? 'Connecting to the band…' : 'Connected'];
+        return [running ? (l?.syncStatusConnecting ?? 'Connecting to the band…') : (l?.syncLineConnected ?? 'Connected')];
       case SyncStepId.download:
         final d = step.download;
-        if (d == null) return [running ? 'Downloading…' : 'Downloaded'];
+        if (d == null) return [running ? (l?.syncStatusDownloading ?? 'Downloading…') : (l?.syncLineDownloaded ?? 'Downloaded')];
         final backlog = d.backlog;
         return [
           d.records == 0
-              ? (running ? 'No records yet' : 'Nothing new on the band')
-              : _banked(d),
+              ? (running ? (l?.syncLineNoRecords ?? 'No records yet') : (l?.syncStatusNothingNew ?? 'Nothing new on the band'))
+              : _banked(d, l),
           if (d.syncedThrough case final through?)
-            'Synced through ${formatDayTime(through.toLocal())}',
+            l?.homeSyncedThrough(formatDayTime(through.toLocal())) ?? 'Synced through ${formatDayTime(through.toLocal())}',
           if (running && backlog != null)
-            'Band time still to fetch: ${_gap(backlog)}',
+            l?.syncLineGap(_gap(backlog, l)) ?? 'Band time still to fetch: ${_gap(backlog, l)}',
           // A download that stopped early says so, and what to do about it.
           if (!running && note != null) note,
         ];
       case SyncStepId.calculate:
         final d = step.calculate;
         if (d != null && d.waiting) {
-          return const ['Waiting for another calculation to finish'];
+          return [l?.syncStepWaitingCalculation ?? 'Waiting for another calculation to finish'];
         }
         if (d?.dayIndex case final i? when d?.dayTotal != null) {
           final day = d!.day;
           return [
-            'Day $i of ${d.dayTotal}${day == null ? '' : ' · $day'}',
+            l?.syncLineDay('$i', '${d.dayTotal}', day == null ? '' : ' · $day') ?? 'Day $i of ${d.dayTotal}${day == null ? '' : ' · $day'}',
           ];
         }
-        return [running ? 'Working it out…' : 'Finished'];
+        return [running ? (l?.syncLineWorking ?? 'Working it out…') : (l?.syncLineFinished ?? 'Finished')];
       case SyncStepId.done:
-        return [note ?? 'Finished'];
+        return [note ?? (l?.syncLineFinished ?? 'Finished')];
     }
   }
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    final l = AppLocalizations.of(c);
     final (icon, color) = switch (step.status) {
       SyncStepStatus.done => (LucideIcons.circleCheck, p.on(C.green)),
       SyncStepStatus.running => (LucideIcons.loader, p.on(C.blue)),
@@ -496,10 +497,10 @@ class _StepRow extends StatelessWidget {
         ? null
         : step.duration(now);
     final lines = _lines(c);
-    final label = _label(step.id);
+    final label = _label(step.id, l);
     return Semantics(
       container: true,
-      label: '$label, ${step.status.name}. ${lines.join('. ')}',
+      label: '$label, ${_localizedStepStatus(step.status, l)}. ${lines.join('. ')}',
       child: ExcludeSemantics(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: S.x1),
@@ -529,7 +530,7 @@ class _StepRow extends StatelessWidget {
                         ),
                         if (took != null)
                           Text(
-                            _took(took),
+                            _took(took, l),
                             style: F.cap.copyWith(color: p.ink3),
                           ),
                       ],
@@ -548,9 +549,9 @@ class _StepRow extends StatelessWidget {
 }
 
 /// `12,400 records · 31 chunks`.
-String _banked(SyncDownloadDetail d) =>
-    '${_count(d.records)} ${d.records == 1 ? 'record' : 'records'}'
-    ' · ${_count(d.chunks)} ${d.chunks == 1 ? 'chunk' : 'chunks'}';
+String _banked(SyncDownloadDetail d, [AppLocalizations? l]) =>
+    '${l?.syncCountRecords(d.records) ?? '${_count(d.records)} ${d.records == 1 ? 'record' : 'records'}'}'
+    ' · ${l?.syncCountChunks(d.chunks) ?? '${_count(d.chunks)} ${d.chunks == 1 ? 'chunk' : 'chunks'}'}';
 
 /// `1:05`, `12:09`, `1:02:03` — the running total.
 String _clock(Duration d) {
@@ -560,31 +561,39 @@ String _clock(Duration d) {
   return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$ss' : '$m:$ss';
 }
 
-String _spoken(Duration d) {
+String _spoken(Duration d, [AppLocalizations? l]) {
   final s = d.inSeconds < 0 ? 0 : d.inSeconds;
   final m = s ~/ 60;
-  return m == 0 ? '$s seconds' : '$m minutes ${s % 60} seconds';
+  return m == 0 ? (l?.syncSpokenSeconds(s) ?? '$s seconds') : (l?.syncSpokenMinutes(m, s % 60) ?? '$m minutes ${s % 60} seconds');
 }
 
+String _localizedStepStatus(SyncStepStatus status, AppLocalizations? l) => switch (status) {
+  SyncStepStatus.waiting => l?.syncSemWaiting ?? 'waiting',
+  SyncStepStatus.skipped => l?.syncSemSkipped ?? 'skipped',
+  SyncStepStatus.failed => l?.syncSemFailed ?? 'failed',
+  SyncStepStatus.running => l?.syncSemRunning ?? 'running',
+  SyncStepStatus.done => l?.syncSemDone ?? 'done',
+};
+
 /// How long a step took: `2 s`, `1 min 13 s`, `1 h 4 min`.
-String _took(Duration d) {
+String _took(Duration d, [AppLocalizations? l]) {
   final s = d.inSeconds;
-  if (d.inMilliseconds < 1000) return '<1 s';
-  if (s < 60) return '$s s';
+  if (d.inMilliseconds < 1000) return l?.syncDurationUnderSecond ?? '<1 s';
+  if (s < 60) return l?.syncDurationSeconds(s) ?? '$s s';
   if (s < 3600) {
-    final r = s % 60;
-    return r == 0 ? '${s ~/ 60} min' : '${s ~/ 60} min $r s';
+    final m = s ~/ 60, r = s % 60;
+    return r == 0 ? (l?.syncDurationMinutesOnly(m) ?? '$m min') : (l?.syncDurationMinutes(m, r) ?? '$m min $r s');
   }
-  return '${s ~/ 3600} h ${(s % 3600) ~/ 60} min';
+  return l?.syncDurationHours(s ~/ 3600, (s % 3600) ~/ 60) ?? '${s ~/ 3600} h ${(s % 3600) ~/ 60} min';
 }
 
 /// A span of band time: `45 min`, `2 h 10 min`, `2 d 3 h`.
-String _gap(Duration d) {
+String _gap(Duration d, [AppLocalizations? l]) {
   final min = d.inMinutes;
-  if (min < 1) return 'under 1 min';
-  if (min < 60) return '$min min';
-  if (min < 1440) return '${min ~/ 60} h ${min % 60} min';
-  return '${min ~/ 1440} d ${(min % 1440) ~/ 60} h';
+  if (min < 1) return l?.syncGapMinutes(0) ?? 'under 1 min';
+  if (min < 60) return l?.syncGapMinutes(min) ?? '$min min';
+  if (min < 1440) return l?.syncGapHours(min ~/ 60, min % 60) ?? '${min ~/ 60} h ${min % 60} min';
+  return l?.syncGapDays(min ~/ 1440, (min % 1440) ~/ 60) ?? '${min ~/ 1440} d ${(min % 1440) ~/ 60} h';
 }
 
 /// 12400 → `12,400`.
@@ -640,7 +649,8 @@ class HomeSyncStatus extends StatefulWidget {
 
   /// The actions get their own reserved line under row 1 (see
   /// [syncActionsNeedOwnLine]); decided by width and text scale alone, so it is
-  /// the same in every state.
+  /// the same in every state. At large scales the localized compact labels are
+  /// used; the text itself is never scaled down.
   final bool actionLine;
 
   /// Test-facing: how many times any sync row has built.
@@ -731,13 +741,14 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       },
     );
     final elapsed = s.busy ? s.elapsed(now) : null;
-    final problem = syncProblem(s);
+    final problem = syncProblem(s, AppLocalizations.of(c));
     final last = s.lastSuccess;
-    final ago = s.busy || last == null ? null : _ago(now.difference(last));
+    final ago = s.busy || last == null ? null : _ago(now.difference(last), AppLocalizations.of(c));
     final failed = s.phase == 'failed';
-    final action = failed ? 'Retry' : 'Sync now';
+    final l = AppLocalizations.of(c);
+    final action = failed ? _retryLabel(c, l) : _syncNowLabel(c, l);
     final timerText = elapsed == null ? null : _clock(elapsed);
-    final status = s.busy ? syncStatusHeadline(s, now) : null;
+    final status = s.busy ? syncStatusHeadline(s, now, AppLocalizations.of(c)) : null;
     final link = F.cap.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w600);
     final hasStatus = status != null || problem != null;
 
@@ -752,7 +763,7 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       final two = widget.actionLine;
       // With their own line the actions take no room on this one.
       final details = hasStatus && !two
-          ? _width(c, 'Show details', link) + S.x1
+          ? _width(c, _detailsLabel(c, l), link) + S.x1
           : 0.0;
       final timerW = timerText == null ? 0.0 : _width(c, '$timerText ·', base);
       // The cluster's gap sits between the timer and Show details too.
@@ -798,25 +809,19 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
             if (hasStatus)
               Pressable(
                 onTap: () => showSyncDetails(c, c.read<AppState>()),
-                child: Padding(
-                  padding: const EdgeInsets.only(right: S.x1),
-                  child: Text('Show details', style: link),
-                ),
+                child: Text(_detailsLabel(c, AppLocalizations.of(c)), style: link),
               ),
             if (!s.busy)
               Pressable(
                 onTap: () => c.read<AppState>().syncNow(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: S.x1),
-                  child: Text(action, style: link),
-                ),
+                child: Text(action, style: link),
               ),
           ];
       final trail = <Widget>[
         if (showAgo) Text(ago, style: base),
         if (showTimer)
           Semantics(
-            label: 'Elapsed ${_spoken(elapsed!)}',
+            label: AppLocalizations.of(c)?.syncElapsedSemantics(_spoken(elapsed!, AppLocalizations.of(c))) ?? 'Elapsed ${_spoken(elapsed!, AppLocalizations.of(c))}',
             child: ExcludeSemantics(
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Text(timerText, style: base),
@@ -854,7 +859,7 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
           height: S.tap,
           child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
             for (var i = 0; i < own.length; i++) ...[
-              if (i > 0) const SizedBox(width: S.x1),
+              if (i > 0) const SizedBox(width: 2),
               own[i],
             ],
           ]),
@@ -879,28 +884,64 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
   }
 }
 
+String _scaleAwareLabel(
+  BuildContext c,
+  AppLocalizations? l, {
+  required String full,
+  required String compact,
+}) {
+  if (l == null) return full;
+  final fontSize = F.cap.fontSize!;
+  final scale = MediaQuery.textScalerOf(c).scale(fontSize) / fontSize;
+  if (scale >= 1.5) return compact;
+  return full;
+}
+
+String _syncNowLabel(BuildContext c, AppLocalizations? l) => _scaleAwareLabel(
+      c,
+      l,
+      full: l?.devicesSyncNow ?? 'Sync now',
+      compact: l?.syncActionSyncCompact ?? 'Sync',
+    );
+
+String _detailsLabel(BuildContext c, AppLocalizations? l) => _scaleAwareLabel(
+      c,
+      l,
+      full: l?.syncActionShowDetails ?? 'Show details',
+      compact: l?.syncActionDetailsCompact ?? 'Details',
+    );
+
+String _retryLabel(BuildContext c, AppLocalizations? l) => _scaleAwareLabel(
+      c,
+      l,
+      full: l?.syncActionRetry ?? 'Retry',
+      compact: l?.syncActionRetryCompact ?? 'Retry',
+    );
+
 /// Whether the sync actions need their own reserved line at [width]: the
-/// widest combination of actions any state renders do not fit
-/// the right 60 % of row 1. A function of width and text scale ONLY, never of
-/// the state, so row 1 and the block are the same height in idle, syncing,
-/// failed and importing. The labels are never scaled to fit.
-bool syncActionsNeedOwnLine(BuildContext c, double width) {
+/// widest combination of actions any state renders do not fit the right 60 %
+/// of row 1. A function of width and text scale only, never of state, so row 1
+/// and the block are the same height in idle, syncing, failed and importing.
+bool syncActionsNeedOwnLine(BuildContext c, double width, [AppLocalizations? l]) {
+  l ??= AppLocalizations.of(c);
   final link = F.cap.copyWith(
       color: P.of(c).on(C.blue), fontWeight: FontWeight.w600);
   double w(String t) => _HomeSyncStatusState._width(c, t, link);
   double act(String t) => math.max(w(t) + 2 * S.x1, S.tap);
-  final details = w('Show details') + S.x1;
+  final details = w(_detailsLabel(c, l)) + S.x1;
   // Every combination a state can render: Sync now alone (idle), Show details
   // alone (syncing), Show details + Retry (failed) and Show details + Sync now
   // (a finished sync with more to do). Padding, gaps and the 44 pt minimum
   // width are in each term; the widest decides.
   final worst = [
-    act('Sync now'),
+    act(_syncNowLabel(c, l)),
     details,
-    details + S.x1 + act('Retry'),
-    details + S.x1 + act('Sync now'),
+    details + S.x1 + act(_retryLabel(c, l)),
+    details + S.x1 + act(_syncNowLabel(c, l)),
   ].reduce(math.max);
-  return worst > width * .6;
+  // Leave room for the row's trailing control and spacing, which are outside
+  // the width measured by HeaderRows' parent constraint.
+  return worst > math.max(0, width - S.tap - HomeSyncStatus.endGap) * .6;
 }
 
 /// The four steps and the running time, in a bottom sheet. It reads [app] live,
@@ -958,11 +999,11 @@ class _SyncDetailsSheetState extends State<_SyncDetailsSheet> {
               children: [
                 Row(children: [
                   Expanded(
-                    child: Text('Sync', style: F.head.copyWith(color: p.ink)),
+                    child: Text(AppLocalizations.of(c)?.syncSheetTitle ?? 'Sync', style: F.head.copyWith(color: p.ink)),
                   ),
                   if (elapsed != null)
                     Semantics(
-                      label: 'Elapsed ${_spoken(elapsed)}',
+                      label: AppLocalizations.of(c)?.syncElapsedSemantics(_spoken(elapsed, AppLocalizations.of(c))) ?? 'Elapsed ${_spoken(elapsed, AppLocalizations.of(c))}',
                       child: ExcludeSemantics(
                         child: Text(_clock(elapsed),
                             style: F.n17.copyWith(color: p.ink2)),
@@ -971,7 +1012,7 @@ class _SyncDetailsSheetState extends State<_SyncDetailsSheet> {
                 ]),
                 const SizedBox(height: S.x1),
                 Text(
-                  syncStatusLine(s, now),
+                  syncStatusLine(s, now, AppLocalizations.of(c)),
                   style: F.body.copyWith(
                       color: s.phase == 'failed' ? p.on(C.red) : p.ink),
                 ),

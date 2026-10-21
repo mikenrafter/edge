@@ -3084,5 +3084,238 @@
       }
     }
   },
-  "supplementStrainWasNotScoredForThisDay": "No se calculó el esfuerzo de este día: no había suficientes días anteriores para fijar tu nivel de reposo."
+  "supplementStrainWasNotScoredForThisDay": "No se calculó el esfuerzo de este día: no había suficientes días anteriores para fijar tu nivel de reposo.",
+  "syncStepConnect": "Conectar",
+  "syncStepDownload": "Descargar",
+  "syncStepCalculate": "Calcular",
+  "syncStepDone": "Hecho",
+  "syncLineWaiting": "Esperando otro cálculo…",
+  "syncLineSkipped": "Omitido",
+  "syncLineFailed": "Error",
+  "syncLineConnected": "Conectado",
+  "syncLineFinished": "Terminado",
+  "syncLineWorking": "Calculando…",
+  "syncLineNoRecords": "Aún no hay registros",
+  "syncStatusConnecting": "Conectando con la banda…",
+  "syncStatusDownloading": "Descargando…",
+  "syncStatusNothingNew": "No hay novedades en la banda",
+  "syncStatusCalculating": "Calculando…",
+  "syncStatusFailed": "Error de sincronización",
+  "syncStatusPleaseRetry": "Inténtalo de nuevo",
+  "syncStatusNeedsPass": "Se necesita otro intento",
+  "syncStatusPartial": "Sincronizado, pero algunos días necesitan otro intento",
+  "syncStatusJustNow": "Sincronizado ahora",
+  "syncStatusNotYet": "Aún no sincronizado",
+  "syncStatusOffline": "Banda desconectada",
+  "syncActionShowDetails": "Mostrar detalles",
+  "syncActionRetry": "Reintentar",
+  "syncSheetTitle": "Sincronización",
+  "syncElapsedSemantics": "Transcurrido {time}",
+  "syncAgoJustNow": "justo ahora",
+  "syncGapMinutes": "{n, plural, =0{menos de 1 min} one{{n} min} other{{n} min}}",
+  "syncCountRecords": "{n, plural, one{{n} registro} other{{n} registros}}",
+  "syncCountChunks": "{n, plural, one{{n} bloque} other{{n} bloques}}",
+  "@syncElapsedSemantics": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncGapMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusSynced": "Sincronizado",
+  "syncStatusSyncedLower": "sincronizado",
+  "syncLineDownloaded": "Descargado",
+  "syncLineCalcDay": "Calculando · día {i} de {total}",
+  "syncLineGap": "Tiempo de banda pendiente: {gap}",
+  "syncLineDay": "Día {i} de {total}{suffix}",
+  "@syncLineCalcDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineGap": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "suffix": {
+        "type": "String"
+      }
+    }
+  },
+  "syncAgoMinutes": "{n, plural, =0{ahora mismo} one{hace {n} min} other{hace {n} min}}",
+  "@syncAgoMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoHours": "{n, plural, one{hace {n} h} other{hace {n} h}}",
+  "@syncAgoHours": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoDays": "{n, plural, one{hace {n} d} other{hace {n} d}}",
+  "@syncAgoDays": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenSeconds": "{n, plural, one{{n} segundo} other{{n} segundos}}",
+  "@syncSpokenSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenMinutes": "{m, plural, one{{m} minuto} other{{m} minutos}} {s, plural, one{{s} segundo} other{{s} segundos}}",
+  "@syncSpokenMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusDownloadingLine": "Descargando",
+  "syncGapHours": "{h} h {m} min",
+  "@syncGapHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncGapDays": "{d} d {h} h",
+  "@syncGapDays": {
+    "placeholders": {
+      "d": {
+        "type": "num"
+      },
+      "h": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationUnderSecond": "<1 s",
+  "syncDurationSeconds": "{n} s",
+  "@syncDurationSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationMinutes": "{m} min {s} s",
+  "@syncDurationMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationHours": "{h} h {m} min",
+  "@syncDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusGapLine": "Queda {gap} de datos de la banda",
+  "@syncStatusGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncDownloadGapLine": "Quedan {gap} por descargar",
+  "@syncDownloadGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncStatusWaitingCalculation": "Esperando otro cálculo…",
+  "syncStepWaitingCalculation": "Esperando a que termine el otro cálculo",
+  "syncDurationMinutesOnly": "{m} min",
+  "@syncDurationMinutesOnly": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSemWaiting": "en espera",
+  "syncSemSkipped": "omitido",
+  "syncSemFailed": "fallido",
+  "syncSemRunning": "en curso",
+  "syncSemDone": "hecho",
+  "syncLineSyncedThrough": "sincronizado hasta {when}",
+  "@syncLineSyncedThrough": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "syncActionSyncCompact": "Sincronizar",
+  "syncActionDetailsCompact": "Detalles",
+  "syncActionRetryCompact": "Reintentar"
 }

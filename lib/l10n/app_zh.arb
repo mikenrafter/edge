@@ -3066,5 +3066,238 @@
       }
     }
   },
-  "supplementStrainWasNotScoredForThisDay": "未对这一天的消耗评分：之前的天数不足，无法确定你的静息水平。"
+  "supplementStrainWasNotScoredForThisDay": "未对这一天的消耗评分：之前的天数不足，无法确定你的静息水平。",
+  "syncStepConnect": "连接",
+  "syncStepDownload": "下载",
+  "syncStepCalculate": "计算",
+  "syncStepDone": "完成",
+  "syncLineWaiting": "等待其他计算…",
+  "syncLineSkipped": "已跳过",
+  "syncLineFailed": "失败",
+  "syncLineConnected": "已连接",
+  "syncLineFinished": "已完成",
+  "syncLineWorking": "正在计算…",
+  "syncLineNoRecords": "暂无记录",
+  "syncStatusConnecting": "正在连接手环…",
+  "syncStatusDownloading": "正在下载…",
+  "syncStatusNothingNew": "手环上没有新数据",
+  "syncStatusCalculating": "正在计算…",
+  "syncStatusFailed": "同步失败",
+  "syncStatusPleaseRetry": "请重试",
+  "syncStatusNeedsPass": "需要再次同步",
+  "syncStatusPartial": "已同步，但部分日期需要再次同步",
+  "syncStatusJustNow": "刚刚同步",
+  "syncStatusNotYet": "尚未同步",
+  "syncStatusOffline": "手环未连接",
+  "syncActionShowDetails": "显示详情",
+  "syncActionRetry": "重试",
+  "syncSheetTitle": "同步",
+  "syncElapsedSemantics": "已用时 {time}",
+  "syncAgoJustNow": "刚刚",
+  "syncGapMinutes": "{n} 分钟",
+  "syncCountRecords": "{n, plural, other{{n} 条记录}}",
+  "syncCountChunks": "{n, plural, other{{n} 个数据块}}",
+  "@syncElapsedSemantics": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncGapMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountRecords": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "@syncCountChunks": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusSynced": "已同步",
+  "syncStatusSyncedLower": "已同步",
+  "syncLineDownloaded": "已下载",
+  "syncLineCalcDay": "正在计算 · 第 {i}/{total} 天",
+  "syncLineGap": "手环剩余时间：{gap}",
+  "syncLineDay": "第 {i}/{total} 天{suffix}",
+  "@syncLineCalcDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineGap": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "@syncLineDay": {
+    "placeholders": {
+      "i": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "suffix": {
+        "type": "String"
+      }
+    }
+  },
+  "syncAgoMinutes": "{n} 分钟前",
+  "@syncAgoMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoHours": "{n} 小时前",
+  "@syncAgoHours": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncAgoDays": "{n} 天前",
+  "@syncAgoDays": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenSeconds": "{n} 秒",
+  "@syncSpokenSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSpokenMinutes": "{m} 分钟 {s} 秒",
+  "@syncSpokenMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusDownloadingLine": "正在下载",
+  "syncGapHours": "{h} 小时 {m} 分钟",
+  "@syncGapHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncGapDays": "{d} 天 {h} 小时",
+  "@syncGapDays": {
+    "placeholders": {
+      "d": {
+        "type": "num"
+      },
+      "h": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationUnderSecond": "不足 1 秒",
+  "syncDurationSeconds": "{n} 秒",
+  "@syncDurationSeconds": {
+    "placeholders": {
+      "n": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationMinutes": "{m} 分钟 {s} 秒",
+  "@syncDurationMinutes": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      },
+      "s": {
+        "type": "num"
+      }
+    }
+  },
+  "syncDurationHours": "{h} 小时 {m} 分钟",
+  "@syncDurationHours": {
+    "placeholders": {
+      "h": {
+        "type": "num"
+      },
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncStatusGapLine": "手环还剩 {gap}",
+  "@syncStatusGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncDownloadGapLine": "还有 {gap} 待下载",
+  "@syncDownloadGapLine": {
+    "placeholders": {
+      "gap": {
+        "type": "String"
+      }
+    }
+  },
+  "syncStatusWaitingCalculation": "等待其他计算…",
+  "syncStepWaitingCalculation": "等待其他计算完成",
+  "syncDurationMinutesOnly": "{m} 分钟",
+  "@syncDurationMinutesOnly": {
+    "placeholders": {
+      "m": {
+        "type": "num"
+      }
+    }
+  },
+  "syncSemWaiting": "等待中",
+  "syncSemSkipped": "已跳过",
+  "syncSemFailed": "失败",
+  "syncSemRunning": "进行中",
+  "syncSemDone": "完成",
+  "syncLineSyncedThrough": "已同步至 {when}",
+  "@syncLineSyncedThrough": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "syncActionSyncCompact": "同步",
+  "syncActionDetailsCompact": "详情",
+  "syncActionRetryCompact": "重试"
 }
