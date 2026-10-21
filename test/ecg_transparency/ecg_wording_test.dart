@@ -371,7 +371,9 @@ void main() {
       // findingDetail with the app's strings.
       expect(f.contains('findingTitle(l, findings.first)'), isTrue);
       expect(f.contains('findingDetail(l, findings.first)'), isTrue);
-      final eng = codeOf('lib/compute/derivation_engine.dart');
+      // _runNotificationsUntimed lives in a part of the engine library.
+      final eng = codeOf('lib/compute/derivation_engine.dart') +
+          codeOf('lib/compute/engine/crossday_prune.dart');
       expect(eng.contains('findings.first.title'), isFalse);
       expect(eng.contains('notice.title(strings'), isTrue);
       expect(eng.contains('notice.body(strings'), isTrue);

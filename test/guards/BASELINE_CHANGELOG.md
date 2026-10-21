@@ -238,3 +238,13 @@ the rows unread to the registered `Dispatcher.run` entry `sessionWindowsHeavy`
 (audited as 'session windows'). Removed: rawReaderUnregistered x1
 (`LocalDb._sessionWindows`) and unresolvedInvocation x1 (`LocalDb.sessionHrStats`).
 No key added, no count raised.
+
+## step 0b: derivation_engine.dart split into parts — keys moved, no new occurrences
+
+`lib/compute/derivation_engine.dart` was split into `part` files under
+`lib/compute/engine/` (top-level helpers, and private DerivationEngine methods
+as `extension _Engine* on DerivationEngine`). Baseline keys of the moved code
+changed file and symbol only; entries 1986 -> 1984 and occurrences 2190 -> 2188
+(two unrelated `_HomeScreenState._glance` keys were already gone from the tree).
+The three `kUnresolvedOk` fingerprints for `_derivePreparedDay` follow the move.
+No rule changed and no rule version was raised.

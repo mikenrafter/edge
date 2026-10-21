@@ -14,13 +14,12 @@
       "entries": 10
     },
     "file_size_exceptions": {
-      "entries": 2,
-      "size:lib/compute/derivation_engine.dart": 7401,
+      "entries": 1,
       "size:lib/data/db.dart": 11020
     },
     "heavy_calc_baseline": {
-      "entries": 1986,
-      "occurrences": 2190
+      "entries": 1984,
+      "occurrences": 2188
     },
     "heavy_migration_methods": {
       "entries": 0

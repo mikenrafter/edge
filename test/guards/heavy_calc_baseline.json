@@ -25,50 +25,8 @@
     {
       "rule": "captureNotSendable",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "full",
-      "count": 1
-    },
-    {
-      "rule": "captureNotSendable",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "imported",
-      "count": 1
-    },
-    {
-      "rule": "captureNotSendable",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "kept",
-      "count": 1
-    },
-    {
-      "rule": "captureNotSendable",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "meta",
-      "count": 1
-    },
-    {
-      "rule": "captureNotSendable",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._runAuditBatch",
       "element": "input",
-      "count": 1
-    },
-    {
-      "rule": "captureNotSendable",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._runCrossDayUntimed",
-      "element": "days",
-      "count": 1
-    },
-    {
-      "rule": "captureNotSendable",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._runCrossDayUntimed",
-      "element": "profileMap",
       "count": 1
     },
     {
@@ -104,6 +62,48 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine.rebuildCrossDayAsOf",
       "element": "this",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._refreshCrossDayInputArtifact",
+      "element": "full",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._refreshCrossDayInputArtifact",
+      "element": "imported",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._refreshCrossDayInputArtifact",
+      "element": "kept",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._refreshCrossDayInputArtifact",
+      "element": "meta",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._runCrossDayUntimed",
+      "element": "days",
+      "count": 1
+    },
+    {
+      "rule": "captureNotSendable",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._runCrossDayUntimed",
+      "element": "profileMap",
       "count": 1
     },
     {
@@ -146,48 +146,6 @@
       "file": "wake/natural_wake.dart",
       "symbol": "IsolateNaturalStageObserver.observe",
       "element": "request",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "DerivationEngine.crossDayInputRecord",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "assembleCrossDayInput",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "num.toInt",
-      "count": 2
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._runCrossDayUntimed",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._runCrossDayUntimed",
-      "element": "sanitizeForJson",
       "count": 1
     },
     {
@@ -241,7 +199,49 @@
     },
     {
       "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._refreshCrossDayInputArtifact",
+      "element": "DerivationEngine.crossDayInputRecord",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._refreshCrossDayInputArtifact",
+      "element": "assembleCrossDayInput",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._refreshCrossDayInputArtifact",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._refreshCrossDayInputArtifact",
+      "element": "num.toInt",
+      "count": 2
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._runCrossDayUntimed",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._runCrossDayUntimed",
+      "element": "sanitizeForJson",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "compute/engine/top_level.dart",
       "symbol": "runCancellableIsolate",
       "element": "compute",
       "count": 1
@@ -767,27 +767,6 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._foldObservationIntoProfile",
-      "element": "SleepUserProfile.fold",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._foldObservationIntoProfile",
-      "element": "SleepUserProfile.fromJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._foldObservationIntoProfile",
-      "element": "SleepUserProfile.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._forgetBlankedNightsInSleepProfile",
       "element": "SleepUserProfile.fold",
       "count": 1
@@ -811,34 +790,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._motionMinutes",
       "element": "enmoSeries",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCheckpoint",
-      "element": "Substrate.ax",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCheckpoint",
-      "element": "Substrate.ay",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCheckpoint",
-      "element": "Substrate.az",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCheckpoint",
-      "element": "Substrate.hr",
       "count": 1
     },
     {
@@ -979,6 +930,55 @@
       "file": "compute/derive_prepare.dart",
       "symbol": "prepareSleepSessionCandidate",
       "element": "SleepSegmentation.toJson",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/engine/day_compute.dart",
+      "symbol": "_EngineDayCompute._refreshCheckpoint",
+      "element": "Substrate.ax",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/engine/day_compute.dart",
+      "symbol": "_EngineDayCompute._refreshCheckpoint",
+      "element": "Substrate.ay",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/engine/day_compute.dart",
+      "symbol": "_EngineDayCompute._refreshCheckpoint",
+      "element": "Substrate.az",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/engine/day_compute.dart",
+      "symbol": "_EngineDayCompute._refreshCheckpoint",
+      "element": "Substrate.hr",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/engine/prepare.dart",
+      "symbol": "_EnginePrepare._foldObservationIntoProfile",
+      "element": "SleepUserProfile.fold",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/engine/prepare.dart",
+      "symbol": "_EnginePrepare._foldObservationIntoProfile",
+      "element": "SleepUserProfile.fromJson",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/engine/prepare.dart",
+      "symbol": "_EnginePrepare._foldObservationIntoProfile",
+      "element": "SleepUserProfile.toJson",
       "count": 1
     },
     {
@@ -1796,41 +1796,6 @@
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._derivePreparedDay",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._derivePreparedDay",
-      "element": "jsonEncode",
-      "count": 2
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._sleepCandidateForDay",
-      "element": "jsonDecode",
-      "count": 3
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._timezoneTravelSuspected",
       "element": "jsonDecode",
       "count": 1
@@ -1848,6 +1813,41 @@
       "symbol": "DerivationEngine.run",
       "element": "jsonEncode",
       "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._refreshCrossDayInputArtifact",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._refreshCrossDayInputArtifact",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/engine/day_compute.dart",
+      "symbol": "_EngineDayCompute._derivePreparedDay",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/engine/day_compute.dart",
+      "symbol": "_EngineDayCompute._derivePreparedDay",
+      "element": "jsonEncode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/engine/prepare.dart",
+      "symbol": "_EnginePrepare._sleepCandidateForDay",
+      "element": "jsonDecode",
+      "count": 3
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
@@ -4358,13 +4358,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._derivePreparedDay",
-      "element": "debugAfterDayBlocks?.call(day.date)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._log",
       "element": "debugPrint('[derive] $m')",
       "count": 1
@@ -4386,20 +4379,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._quietLevelRepass",
-      "element": "debugQuietRepassHook?.call(dayId)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._quietLevelRepass",
-      "element": "debugQuietRepassHook?.call(null)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._quietLevelUnreachable",
       "element": "debugQuietBetweenReads?.call()",
       "count": 1
@@ -4416,20 +4395,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._resolveMovementFloor",
       "element": "debugPrint('[derive] movement floor FROZEN at ' '${floor.toStringAsFixed(4)} g from ${hist.length} days ($dayId)')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._runCrossDayUntimed",
-      "element": "debugPrint('[derive] crossday BUNDLE DROPPED — the stored artifact is ' 'now stale and every cross-day metric will read absent: $e\\n$st')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._runCrossDayUntimed",
-      "element": "debugPrint('[derive] crossday: ${dropped.length} field(s) were not ' 'JSON-encodable and were stored as absent: ${dropped.join(\", \")}')",
       "count": 1
     },
     {
@@ -4577,20 +4542,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine.run",
       "element": "onScopeDays?.call(todoDays.reversed.toList())",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "_AsyncLock.run",
-      "element": "action()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "runWithConcurrency",
-      "element": "worker(items[myIndex])",
       "count": 1
     },
     {
@@ -4886,6 +4837,55 @@
       "symbol": "DeriveScheduler.setWorkoutActive",
       "element": "onChanged()",
       "count": 3
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._quietLevelRepass",
+      "element": "DerivationEngine.debugQuietRepassHook?.call(dayId)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._quietLevelRepass",
+      "element": "DerivationEngine.debugQuietRepassHook?.call(null)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._runCrossDayUntimed",
+      "element": "debugPrint('[derive] crossday BUNDLE DROPPED — the stored artifact is ' 'now stale and every cross-day metric will read absent: $e\\n$st')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/engine/crossday_prune.dart",
+      "symbol": "_EngineCrossDayPrune._runCrossDayUntimed",
+      "element": "debugPrint('[derive] crossday: ${dropped.length} field(s) were not ' 'JSON-encodable and were stored as absent: ${dropped.join(\", \")}')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/engine/day_compute.dart",
+      "symbol": "_EngineDayCompute._derivePreparedDay",
+      "element": "debugAfterDayBlocks?.call(day.date)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/engine/top_level.dart",
+      "symbol": "_AsyncLock.run",
+      "element": "action()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "compute/engine/top_level.dart",
+      "symbol": "runWithConcurrency",
+      "element": "worker(items[myIndex])",
+      "count": 1
     },
     {
       "rule": "unresolvedInvocation",
@@ -13250,20 +13250,6 @@
       "file": "ui2/screens/home_screen.dart",
       "symbol": "RingTrio._open",
       "element": "f(k)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/screens/home_screen.dart",
-      "symbol": "_HomeScreenState._glance",
-      "element": "card()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/screens/home_screen.dart",
-      "symbol": "_HomeScreenState._glance",
-      "element": "gap()",
       "count": 1
     },
     {

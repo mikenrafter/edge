@@ -65,7 +65,7 @@ String _rel(File f) => f.path.substring('lib/'.length);
 /// completer call. (Located in the raw text, read from the stripped text: the
 /// stripper keeps every offset.)
 ({String raw, String code}) _workerBranch() {
-  const path = 'lib/compute/derivation_engine.dart';
+  const path = 'lib/compute/engine/prepare.dart';
   final raw = _raw(path), code = _code(path);
   final at = raw.indexOf("kind == 'substrate'");
   expect(at, greaterThanOrEqualTo(0),
@@ -86,7 +86,11 @@ void main() {
     });
 
     test('derivation_engine.dart has no Substrate.fromJson left', () {
-      final code = _code('lib/compute/derivation_engine.dart');
+      final code = _code('lib/compute/derivation_engine.dart') +
+          _code('lib/compute/engine/prepare.dart') +
+          _code('lib/compute/engine/day_compute.dart') +
+          _code('lib/compute/engine/crossday_prune.dart') +
+          _code('lib/compute/engine/top_level.dart');
 
       expect(RegExp(r'Substrate\.fromJson\b').hasMatch(code), isFalse,
           reason: 'every prepare-worker substrate is rebuilt in the one '
@@ -141,7 +145,7 @@ void main() {
       // wearable_substrate_heavy.dart adopts its own worker's result
       // (wearableSubstrateHeavy), a toJson map that never left memory.
       expect(callers, {
-        'compute/derivation_engine.dart',
+        'compute/engine/prepare.dart',
         'compute/inputs/wearable_substrate_heavy.dart',
       },
           reason: 'a persisted or user-supplied map needs the validating '

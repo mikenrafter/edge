@@ -192,8 +192,11 @@ void main() {
     late List<String> lines;
 
     setUpAll(() {
+      // Call sites are in the main file; the declaration moved to a part.
       lines = codeLines(
-        File('lib/compute/derivation_engine.dart').readAsStringSync(),
+        File('lib/compute/derivation_engine.dart').readAsStringSync() +
+            '\n' +
+            File('lib/compute/engine/crossday_prune.dart').readAsStringSync(),
       );
     });
 

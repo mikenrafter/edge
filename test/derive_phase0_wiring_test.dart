@@ -30,8 +30,12 @@ void main() {
       File('lib/compute/derivation_engine.dart').readAsStringSync());
   final prepare = stripCommentsAndStrings(
       File('lib/compute/derive_prepare.dart').readAsStringSync());
-  final engineRaw =
-      File('lib/compute/derivation_engine.dart').readAsStringSync();
+  // The engine library: the main file plus its `part` files (step 0b split).
+  final engineRaw = [
+    'lib/compute/derivation_engine.dart',
+    for (final f in Directory('lib/compute/engine').listSync().whereType<File>())
+      if (f.path.endsWith('.dart')) f.path,
+  ].map((p) => File(p).readAsStringSync()).join('\n');
 
   group('results move out of the worker, they are not copied back', () {
     test('the cancellable isolate entry exits with the result', () {

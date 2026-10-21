@@ -131,7 +131,7 @@ void main() {
 
   group('the archive is written BEFORE the raw prune (RED)', () {
     final engine = stripCommentsAndStrings(
-        File('lib/compute/derivation_engine.dart').readAsStringSync());
+        File('lib/compute/engine/crossday_prune.dart').readAsStringSync());
     String bodyOf() => _body(engine, 'Future<void> _pruneOldDecoded');
 
     test('_pruneOldDecoded calls SampleArchiver.archiveBefore with the same '
@@ -175,8 +175,10 @@ void main() {
 
     test('the only compute-layer reference is that call', () {
       final f = File('lib/compute/derivation_engine.dart').readAsStringSync();
+      final p = File('lib/compute/engine/crossday_prune.dart').readAsStringSync();
       expect(sampleReads(f), isEmpty);
-      expect(f, contains('SampleArchiver.archiveBefore'));
+      expect(sampleReads(p), isEmpty);
+      expect(f + p, contains('SampleArchiver.archiveBefore'));
     });
   });
 }
