@@ -216,39 +216,52 @@ void main() {
   });
 
   group('mayFold observation', () {
-    // INTENDED DIFFERENCE from the old walk: the previous night is no longer
-    // staged under the target's id, so its observation can no longer win the
-    // fold (largest by epochs). The fold sees the target's own night only.
-    // The previous night here is deliberately LONGER than the target's so the
-    // old walk folds it.
-    test('the folded observation is the target night, not the previous one',
-        () {
-      final s = _sub(-36, 30, asleep: [(-26, -17), (-1, 5)]);
-      SleepStagingResult run() => stageSleepCandidateHeavy(
-            _inputs,
-            SleepStagingInput(
-              dayId: _day,
-              searchSub: s,
-              override: null,
-              priorSleep: const [],
-              confirmedWakeSec: null,
-              profileJson: null,
-              mayFold: true,
-              rowChunks: const [],
-              rowsLoSec: _h(-40),
-              rowsHiSec: _h(32),
-              nowSec: _h(40),
-            ),
-          );
-      final res = run();
+    // The previous night is deliberately LONGER than the target's.
+    final s = _sub(-36, 30, asleep: [(-26, -17), (-1, 5)]);
+    SleepStagingResult run({required bool mayFold}) => stageSleepCandidateHeavy(
+          _inputs,
+          SleepStagingInput(
+            dayId: _day,
+            searchSub: s,
+            override: null,
+            priorSleep: const [],
+            confirmedWakeSec: null,
+            profileJson: null,
+            mayFold: mayFold,
+            rowChunks: const [],
+            rowsLoSec: _h(-40),
+            rowsHiSec: _h(32),
+            nowSec: _h(40),
+          ),
+        );
+
+    test('with mayFold the staging equals the old full walk byte for byte', () {
+      debugStageEveryWalkedDay = true;
+      debugSegmentedDayCount = 0;
+      final old = run(mayFold: true);
+      final oldBodies = debugSegmentedDayCount;
+      debugStageEveryWalkedDay = false;
+      debugSegmentedDayCount = 0;
+      final now = run(mayFold: true);
+      expect(debugSegmentedDayCount, oldBodies,
+          reason: 'folding keeps the full walk');
+      expect(now.candidateJson, old.candidateJson);
+      expect(now.observationJson, old.observationJson);
+    });
+
+    test('KNOWN MISATTRIBUTION (kept as is): the fold stores the previous '
+        "night's observation under the target's id", () {
+      // edge.research merge-decisions-log D36: fixing this changes the
+      // personal profile (an output change needing a kAlgoVersion bump), so
+      // the owner decides. Until then this documents today's behaviour.
+      final res = run(mayFold: true);
       final cand = jsonDecode(res.candidateJson) as Map<String, dynamic>;
       final win = (cand['sleep_json'] as Map)['window'] as Map;
       final targetEpochs = (win['spt_sec'] as int) ~/ 30;
-      expect(targetEpochs, greaterThan(120), reason: 'the target staged a night');
+      expect(targetEpochs, greaterThan(120));
       final obs = jsonDecode(res.observationJson!) as Map<String, dynamic>;
-      expect(obs['epochs'] as int, closeTo(targetEpochs, 30),
-          reason: 'a 9 h previous night (~1070 epochs) must not win the fold '
-              'under the target night (~$targetEpochs epochs)');
+      expect(obs['epochs'] as int, greaterThan(targetEpochs + 300),
+          reason: 'the 9 h previous night (~1068 epochs) wins the fold');
     });
   });
 }

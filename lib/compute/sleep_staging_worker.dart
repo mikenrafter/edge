@@ -149,6 +149,9 @@ SleepStagingResult stageSleepCandidateHeavy(
     confirmedWakeSec: input.confirmedWakeSec,
     rowCache: rowCache,
     vendorNights: input.vendorNights,
+    // The fold below takes the largest night of the whole walk, so a folding
+    // staging keeps every day (changing that is an output change: D36).
+    skipUnusedDays: !input.mayFold,
   );
   // A user's own window carries per-stage minute ranges (D27 revised): from
   // the stager's evidence where the band recorded, as wide as the window

@@ -534,6 +534,7 @@ PreparedDerivationPayload prepareDerivationPayload(
   List<({int startSec, int endSec, String dayKey})> priorSleep = const [],
   List<VendorNight> vendorNights = const [],
   ana.CardioRowCache? rowCache,
+  bool skipUnusedDays = false,
 }) {
   if (sub.isEmpty || sub.lastTs == null) {
     return const PreparedDerivationPayload(dataNowSec: 0, days: []);
@@ -545,6 +546,8 @@ PreparedDerivationPayload prepareDerivationPayload(
     priorSleep: priorSleep,
     vendorNights: vendorNights,
     rowCache: rowCache,
+    targetDay: targetDay,
+    skipUnusedDays: skipUnusedDays,
   )) {
     if (targetDay != null && day.date != targetDay) continue;
     final daySub = sub.slice(day.startSec, day.endSec);
@@ -608,6 +611,9 @@ SleepSessionCandidate prepareSleepSessionCandidate(
   // cannot move the night, and going back to bed is never bridged into it.
   int? confirmedWakeSec,
   ana.CardioRowCache? rowCache,
+  // See [calendarDays]: earlier days that cannot change the target's night are
+  // not segmented. Off for a folding caller (the fold reads the whole walk).
+  bool skipUnusedDays = true,
 }) {
   // An UNCLAIMED device night (our rows saw under half of it) ending today IS
   // the night: above our detection, below the user's word. It never reaches
@@ -660,7 +666,8 @@ SleepSessionCandidate prepareSleepSessionCandidate(
       override: override,
       priorSleep: priorSleep,
       vendorNights: claimed,
-      rowCache: rowCache);
+      rowCache: rowCache,
+      skipUnusedDays: skipUnusedDays);
   if (payload.days.isEmpty) return SleepSessionCandidate.absent(targetDay);
   final day = payload.days.first;
   return SleepSessionCandidate(

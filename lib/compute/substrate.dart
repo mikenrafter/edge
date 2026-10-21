@@ -1284,13 +1284,12 @@ bool userReplacesNight(String source) =>
 String localDateLabel(int epochSec) =>
     dayLabelOf(DateTime.fromMillisecondsSinceEpoch(epochSec * 1000));
 
-/// Test seam (RED stub, no behaviour yet): force [calendarDays] to segment and
-/// stage every walked day, the pre-optimisation behaviour.
+/// Test seam: force [calendarDays] to segment and stage every walked day, the
+/// pre-optimisation behaviour.
 @visibleForTesting
 bool debugStageEveryWalkedDay = false;
 
-/// Test seam (RED stub, never incremented yet): days whose segmentation body
-/// ran in [calendarDays].
+/// Test seam: days whose body ran in [calendarDays] (skipped days do not count).
 @visibleForTesting
 int debugSegmentedDayCount = 0;
 
@@ -1323,6 +1322,16 @@ int debugSegmentedDayCount = 0;
 /// always fell back to the fixed 03:30 cold-start anchor, and a night-shift
 /// sleeper's 4 h main block lost the alignment bonus to a shorter block nearer
 /// 03:30. Days found in THIS call still win (a full restage sees them all).
+///
+/// [targetDay] + [skipUnusedDays]: the caller keeps only that day's result.
+/// Days after it are never walked. Days before it only feed `sleepHistory`,
+/// whose sole reader is `habitualMidsleepSecFromHistory` (null below 14
+/// distinct day keys), so when distinct stored keys + earlier walked days is
+/// still under 14 the prior is provably null for the target and those days are
+/// skipped whole. The caller must not need the skipped days' side effects (the
+/// profile-observation fold takes the largest night of the whole walk, so a
+/// folding caller passes false). Not a rows-cache concern: the cache only
+/// gains rows, a skipped day just adds none.
 List<PhysioDay> calendarDays(
   Substrate sub, {
   SleepWindowOverride? override,
@@ -1330,6 +1339,8 @@ List<PhysioDay> calendarDays(
   List<({int startSec, int endSec, String dayKey})> priorSleep = const [],
   List<VendorNight> vendorNights = const [],
   ana.CardioRowCache? rowCache,
+  String? targetDay,
+  bool skipUnusedDays = false,
 }) {
   final tzOffset = tzOffsetAt ?? tzOffsetSecondsAt;
   if (sub.isEmpty) return const [];
@@ -1347,6 +1358,22 @@ List<PhysioDay> calendarDays(
   var dayStart = assertedStart == null ? _localMidnight(dataStart)
     : math.min(_localMidnight(dataStart), assertedStart);
   final walkEnd = assertedStart == null ? dataEnd : math.max(dataEnd, _nextLocalMidnight(assertedStart));
+  // An override on an earlier day adds history; only skip when it cannot.
+  final prunable = targetDay != null &&
+      skipUnusedDays &&
+      !debugStageEveryWalkedDay &&
+      (override == null || override.dayId == targetDay);
+  var skipBefore = false;
+  if (prunable) {
+    var earlier = 0;
+    for (var d = dayStart, g = 0;
+        d < walkEnd && g++ < 400 && localDateLabel(d).compareTo(targetDay) < 0;
+        d = _nextLocalMidnight(d)) {
+      earlier++;
+    }
+    final distinct = {for (final h in sleepHistory) h.dayKey}.length;
+    skipBefore = distinct + earlier < 14;
+  }
   var guard = 0;
   while (dayStart < walkEnd && guard++ < 400) {
     final dayEnd = _nextLocalMidnight(dayStart);
@@ -1365,6 +1392,15 @@ List<PhysioDay> calendarDays(
     // like there was only one candidate sleep. The richer selector needs the
     // full set of sessions that can legitimately end today.
     final dayLabel = localDateLabel(dayStart);
+    if (prunable) {
+      final c = dayLabel.compareTo(targetDay);
+      if (c > 0) break;
+      if (c < 0 && skipBefore) {
+        dayStart = dayEnd;
+        continue;
+      }
+    }
+    debugSegmentedDayCount++;
     final ov = (override != null && override.dayId == dayLabel) ? override : null;
     final searchStart = math.max(dataStart, ov == null
       ? dayStart - kNocturnalSearchLookbackSec
