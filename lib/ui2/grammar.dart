@@ -2916,8 +2916,18 @@ class ScreenTitle extends StatelessWidget {
   /// Adds the app-wide [StatusLine] directly under the title (after the
   /// content-top marker, so that marker stays where it is on every tab).
   final bool statusLine;
+
+  /// Set, [title] never ends in an ellipsis: when it does not fit on its one
+  /// line it is set smaller (22 pt on the same 34 pt line), and if it still
+  /// does not fit this shows instead (Home's greeting without the name at
+  /// 320 pt). The slot keeps its height in every case.
+  final String? shortTitle;
   const ScreenTitle(this.title,
-      {super.key, this.trailing, this.avatar, this.statusLine = false});
+      {super.key,
+      this.trailing,
+      this.avatar,
+      this.statusLine = false,
+      this.shortTitle});
 
   @override
   Widget build(BuildContext c) {
@@ -2932,12 +2942,44 @@ class ScreenTitle extends StatelessWidget {
               Expanded(
                 child: SharedSlot(
                   'title',
-                  child: Text(
-                    title,
-                    style: F.t1.copyWith(color: p.ink),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  child: LayoutBuilder(builder: (c, box) {
+                    var style = F.t1.copyWith(color: p.ink);
+                    var text = title;
+                    bool fits(String s, TextStyle st) {
+                      final tp = TextPainter(
+                        text: TextSpan(
+                            text: s,
+                            style: DefaultTextStyle.of(c).style.merge(st)),
+                        textDirection: Directionality.of(c),
+                        textScaler: MediaQuery.textScalerOf(c),
+                        maxLines: 1,
+                      )..layout(maxWidth: box.maxWidth);
+                      final ok = !tp.didExceedMaxLines;
+                      tp.dispose();
+                      return ok;
+                    }
+
+                    if (shortTitle != null && !fits(title, style)) {
+                      // The next type step down, on t1's line height, so
+                      // the slot stays put.
+                      final smaller = F.t2.copyWith(
+                          color: p.ink,
+                          height: F.t1.fontSize! *
+                              F.t1.height! /
+                              F.t2.fontSize!);
+                      if (fits(title, smaller)) {
+                        style = smaller;
+                      } else {
+                        text = shortTitle!;
+                      }
+                    }
+                    return Text(
+                      text,
+                      style: style,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    );
+                  }),
                 ),
               ),
               if (avatar != null) SharedSlot('avatar', child: avatar!),

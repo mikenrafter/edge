@@ -2398,6 +2398,7 @@ class _HomeScreenState extends State<HomeScreen>
         Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ScreenTitle(
             d.name == null || d.name!.isEmpty ? g.word : '${g.word}, ${d.name}',
+            shortTitle: g.word,
             avatar: _homeAvatar(c, l),
           ),
           // Not ScreenTitle(statusLine:): inside the title's own box the row's
