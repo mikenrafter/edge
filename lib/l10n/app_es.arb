@@ -2907,6 +2907,7 @@
   "importPrepInflating": "Descomprimiendo la copia",
   "importPrepOpening": "Abriendo la copia",
   "importPrepChecking": "Comprobando la copia",
+  "importPrepCounting": "Contando el contenido de la copia",
   "importCopying": "Copiando {stage}",
   "importStep": "Paso {index} de {count} · {done} de {total} filas",
   "importRecalculatingStarting": "Recalculando tus días",

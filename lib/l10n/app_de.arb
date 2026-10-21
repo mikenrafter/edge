@@ -2996,6 +2996,7 @@
   "importPrepInflating": "Sicherung wird entpackt",
   "importPrepOpening": "Sicherung wird geöffnet",
   "importPrepChecking": "Sicherung wird geprüft",
+  "importPrepCounting": "Inhalt der Sicherung wird gezählt",
   "importCopying": "Kopiere {stage}",
   "importStep": "Schritt {index} von {count} · {done} von {total} Zeilen",
   "importRecalculatingStarting": "Deine Tage werden neu berechnet",

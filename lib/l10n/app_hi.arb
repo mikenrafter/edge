@@ -2889,6 +2889,7 @@
   "importPrepInflating": "बैकअप अनपैक किया जा रहा है",
   "importPrepOpening": "बैकअप खोला जा रहा है",
   "importPrepChecking": "बैकअप जाँचा जा रहा है",
+  "importPrepCounting": "बैकअप में मौजूद डेटा गिना जा रहा है",
   "importCopying": "{stage} कॉपी हो रहा है",
   "importStep": "चरण {index}/{count} · {done}/{total} पंक्तियाँ",
   "importRecalculatingStarting": "आपके दिनों की दोबारा गणना",

@@ -2889,6 +2889,7 @@
   "importPrepInflating": "Décompression de la sauvegarde",
   "importPrepOpening": "Ouverture de la sauvegarde",
   "importPrepChecking": "Vérification de la sauvegarde",
+  "importPrepCounting": "Comptage du contenu de la sauvegarde",
   "importCopying": "Copie : {stage}",
   "importStep": "Étape {index} sur {count} · {done} sur {total} lignes",
   "importRecalculatingStarting": "Recalcul de vos jours",
