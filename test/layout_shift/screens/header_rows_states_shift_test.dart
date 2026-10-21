@@ -19,8 +19,8 @@ import 'package:openstrap_edge/ui2/grammar.dart' show Pressable;
 import '../../support/bundled_fonts.dart';
 import '../../support/header_rows_fakes.dart';
 
-const _widths = [320.0, 360.0, 390.0];
-const _scales = [1.0, 1.3, 2.0];
+const _widths = [320.0, 340.0, 360.0, 375.0, 390.0];
+const _scales = [1.0, 1.15, 1.3, 1.5, 2.0];
 
 SyncPresentationState _failedLong() => SyncPresentationState(
       phase: 'failed',
@@ -43,6 +43,16 @@ SyncPresentationState _longRunning() {
   );
 }
 
+/// A finished sync that left more to do: "Needs another pass" with BOTH
+/// Show details and Sync now (wider than Show details + Retry).
+SyncPresentationState _partial() => SyncPresentationState(
+      phase: 'completed',
+      partial: true,
+      lastSuccess: headerNow.subtract(const Duration(minutes: 5)),
+      startedAt: headerNow.subtract(const Duration(minutes: 3)),
+      finishedAt: headerNow.subtract(const Duration(minutes: 1)),
+    );
+
 typedef _Setup = void Function(HeaderApp app);
 
 final _states = <String, _Setup>{
@@ -50,6 +60,7 @@ final _states = <String, _Setup>{
   'syncing': (a) => a.pres = headerSyncing(),
   'syncing 1 h 14 m': (a) => a.pres = _longRunning(),
   'failed': (a) => a.pres = headerFailed(),
+  'completed, partial': (a) => a.pres = _partial(),
   'failed, long reason': (a) => a.pres = _failedLong(),
   'importing': (a) => a.importProgress.value = const ImportCopying(
       ImportStage.journal, 10, 100, 4, 9),
@@ -114,6 +125,7 @@ void main() {
     'idle': ['Sync now'],
     'syncing': ['Show details'],
     'failed': ['Show details', 'Retry'],
+    'completed, partial': ['Show details', 'Sync now'],
   };
   for (final w in _widths) {
     for (final scale in _scales) {
@@ -129,7 +141,11 @@ void main() {
             t.view.physicalSize = Size(w, 900);
             await t.pumpWidget(titleOnly(app, 'Sleep', scale: scale));
             await t.pump();
-            for (final label in e.value) {
+            // Show details opens a sheet whose barrier eats later taps.
+            for (final label in [
+              ...e.value.where((l) => l != 'Show details'),
+              ...e.value.where((l) => l == 'Show details'),
+            ]) {
               final f = find.text(label);
               expect(f, findsOneWidget, reason: '${e.key}: $label');
               final why = '${e.key} $label at $w x $scale';
@@ -151,7 +167,24 @@ void main() {
                   find.ancestor(of: f, matching: find.byType(Pressable)).first);
               expect(hit.width, greaterThanOrEqualTo(44), reason: 'width: $why');
               expect(hit.height, greaterThanOrEqualTo(44), reason: 'height: $why');
-              expect(Rect.fromLTWH(0, 0, w, 900).contains(hit.center), isTrue);
+              // The whole target is inside the block, and a tap at its far
+              // corner lands (nothing pushed out of its parent's bounds).
+              final block =
+                  t.getRect(find.byKey(const ValueKey('shared:header-rows')));
+              expect(hit.left, greaterThanOrEqualTo(block.left - 0.01),
+                  reason: 'left outside the block: $why');
+              expect(hit.right, lessThanOrEqualTo(block.right + 0.01),
+                  reason: 'right outside the block: $why');
+              expect(hit.bottom, lessThanOrEqualTo(block.bottom + 0.01),
+                  reason: 'bottom outside the block: $why');
+              await t.tapAt(hit.bottomRight - const Offset(1, 1));
+              await t.pump();
+              if (label == 'Show details') {
+                expect(find.byType(BottomSheet), findsOneWidget,
+                    reason: 'far-corner tap missed: $why');
+              } else {
+                expect(app.syncs, 1, reason: 'far-corner tap missed: $why');
+              }
             }
             await t.pumpWidget(const SizedBox());
           }

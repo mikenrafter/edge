@@ -757,6 +757,7 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       final timerW = timerText == null ? 0.0 : _width(c, '$timerText ·', base);
       // The cluster's gap sits between the timer and Show details too.
       final showTimer = timerText != null &&
+          !two &&
           timerW + (details > 0 ? S.x1 : 0) + details <= maxRight;
       final act = s.busy || two
           ? 0.0
@@ -764,11 +765,13 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       final fixed = [if (showTimer) timerW, details, act].where((w) => w > 0).toList();
       double sum(List<double> ws) =>
           ws.fold(0.0, (a, w) => a + w) + math.max(0, ws.length - 1) * S.x1;
-      // "N h ago" is the first thing to go when even the clickables crowd the
+      // With the actions on their own line the age and timer are dropped too
+      // (they go first). "N h ago" is the first thing to go when even the
+      // clickables crowd the
       // row, in every state (a problem included): the status and the
       // clickables matter more.
       final agoW = ago == null ? 0.0 : _width(c, ago, base);
-      final showAgo = ago != null && sum([agoW, ...fixed]) <= maxRight;
+      final showAgo = ago != null && !two && sum([agoW, ...fixed]) <= maxRight;
       final right = sum([if (showAgo) agoW, ...fixed]);
       final room = box.maxWidth - right - S.x2;
       // A few px of slack: a measured width can differ from the laid-out one
@@ -877,7 +880,7 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
 }
 
 /// Whether the sync actions need their own reserved line at [width]: the
-/// widest state's actions ("Show details" + "Retry", or "Sync now") do not fit
+/// widest combination of actions any state renders do not fit
 /// the right 60 % of row 1. A function of width and text scale ONLY, never of
 /// the state, so row 1 and the block are the same height in idle, syncing,
 /// failed and importing. The labels are never scaled to fit.
@@ -887,7 +890,16 @@ bool syncActionsNeedOwnLine(BuildContext c, double width) {
   double w(String t) => _HomeSyncStatusState._width(c, t, link);
   double act(String t) => math.max(w(t) + 2 * S.x1, S.tap);
   final details = w('Show details') + S.x1;
-  final worst = math.max(act('Sync now'), details + S.x1 + act('Retry'));
+  // Every combination a state can render: Sync now alone (idle), Show details
+  // alone (syncing), Show details + Retry (failed) and Show details + Sync now
+  // (a finished sync with more to do). Padding, gaps and the 44 pt minimum
+  // width are in each term; the widest decides.
+  final worst = [
+    act('Sync now'),
+    details,
+    details + S.x1 + act('Retry'),
+    details + S.x1 + act('Sync now'),
+  ].reduce(math.max);
   return worst > width * .6;
 }
 

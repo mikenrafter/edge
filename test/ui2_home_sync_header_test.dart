@@ -740,8 +740,8 @@ void main() {
   });
 
   group('narrow', () {
-    _tw('the status ellipsizes first; the right cluster stays whole',
-        (t) async {
+    _tw('too narrow for the actions on row 1: the age and timer go, the '
+        'actions get their own line, unscaled', (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app, width: 300, scale: 1.3);
@@ -750,10 +750,12 @@ void main() {
       expect(status.overflow, TextOverflow.ellipsis);
       expect(status.maxLines, 1);
       expect(find.text('Show details'), findsOneWidget);
-      expect(_text(_clockRe), findsOneWidget);
-      expect(t.getTopRight(find.text('Show details')).dx, lessThanOrEqualTo(300 - 16));
-      expect(t.getTopRight(_status).dx,
-          lessThan(t.getTopLeft(_text(_clockRe)).dx));
+      expect(_text(_clockRe), findsNothing, reason: 'the timer goes first');
+      expect(t.getTopRight(find.text('Show details')).dx,
+          lessThanOrEqualTo(300 - 16));
+      expect(t.getTopLeft(find.text('Show details')).dy,
+          greaterThan(t.getBottomLeft(_status).dy),
+          reason: 'the actions are on their own line under the status');
       await _end(t);
     });
   });
