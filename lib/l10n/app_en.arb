@@ -17543,5 +17543,6 @@
   "syncFailDownloadStopped": "Download stopped before completion. Retry sync.",
   "syncFailCalculationBusy": "Another calculation was running. Retry sync.",
   "syncFailTimedOut": "It took too long and was stopped.",
-  "syncStatusNotYetLower": "not synced yet"
+  "syncStatusNotYetLower": "not synced yet",
+  "syncFailCalculationStuck": "Another calculation did not finish"
 }

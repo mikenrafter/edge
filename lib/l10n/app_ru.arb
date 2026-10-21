@@ -8714,5 +8714,6 @@
         "format": "decimalPattern"
       }
     }
-  }
+  },
+  "syncFailCalculationStuck": "Другое вычисление не завершилось"
 }

@@ -35,6 +35,7 @@ enum SyncFailure {
   disconnected('Band disconnected during sync'),
   downloadStopped('Download stopped before completion. Retry sync.'),
   calculationBusy('Another calculation was running. Retry sync.'),
+  calculationStuck('Another calculation did not finish'),
   timedOut('It took too long and was stopped.');
 
   final String english;

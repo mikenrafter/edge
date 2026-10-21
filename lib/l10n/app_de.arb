@@ -3435,5 +3435,6 @@
         "format": "decimalPattern"
       }
     }
-  }
+  },
+  "syncFailCalculationStuck": "Eine andere Berechnung wurde nicht fertig"
 }

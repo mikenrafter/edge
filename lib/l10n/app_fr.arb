@@ -3329,5 +3329,6 @@
         "format": "decimalPattern"
       }
     }
-  }
+  },
+  "syncFailCalculationStuck": "Un autre calcul ne s’est pas terminé"
 }

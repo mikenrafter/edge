@@ -3,6 +3,8 @@
 // non-English locale no English literal may appear in the header block or the
 // sync details sheet, and the own-line decision must measure the LOCALIZED
 // labels. Time is pinned with package:clock; no real clock.
+import 'dart:io';
+
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -214,6 +216,16 @@ final _states = <String, _Setup>{
 };
 
 void main() {
+  // The ten-minute "Another calculation did not finish" wait is app-worded and
+  // reaches the header, the sheet and semantics: it needs a code, not a bare
+  // TimeoutException carrying English.
+  test('the derivation wait failure has a stable code', () {
+    expect(SyncFailure.values.map((f) => f.name), contains('calculationStuck'));
+    final src = File('lib/state/app_state.dart').readAsStringSync();
+    expect(src, isNot(contains("TimeoutException('Another calculation did not finish')")));
+    expect(src, contains('SyncFailure.calculationStuck'));
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(loadFonts);
   setUp(() {
@@ -271,7 +283,7 @@ void main() {
       });
     });
 
-    for (final state in ['syncing', 'failed', 'partial', 'notes', 'not needed', 'failed pairBand', 'failed couldNotConnect', 'failed disconnected', 'failed downloadStopped', 'failed calculationBusy', 'failed timedOut']) {
+    for (final state in ['syncing', 'failed', 'partial', 'notes', 'not needed', for (final f in SyncFailure.values) 'failed ${f.name}']) {
       testWidgets(
           'details sheet has no English literal: $state $code', (t) async {
         final sem = t.ensureSemantics();

@@ -124,6 +124,14 @@ class _SyncControlState extends State<SyncControl> {
     // With no steps (a fresh launch, a refresh that never touched the band)
     // there is nothing to open, so the sentence is not a control.
     final canOpen = s.steps.isNotEmpty;
+    final l = AppLocalizations.of(c);
+    // The sentence keeps two lines at most (ellipsis after that) and the row
+    // reserves two, so the card is the same height in every state whatever the
+    // sentence says; the full text is in the steps and the sheet.
+    final body = F.body;
+    final lineH = MediaQuery.textScalerOf(c).scale(body.fontSize!) *
+        (body.height ?? 1.2);
+    final rowMin = math.max(S.tap, (2 * lineH).ceilToDouble());
     final status = Row(children: [
       if (s.busy)
         SizedBox(
@@ -137,7 +145,8 @@ class _SyncControlState extends State<SyncControl> {
       const SizedBox(width: S.x3),
       if (elapsed != null) ...[
         Semantics(
-          label: AppLocalizations.of(c)?.syncElapsedSemantics(_spoken(elapsed, AppLocalizations.of(c))) ?? 'Elapsed ${_spoken(elapsed, AppLocalizations.of(c))}',
+          label: l?.syncElapsedSemantics(_spoken(elapsed, l)) ??
+              'Elapsed ${_spoken(elapsed, l)}',
           child: ExcludeSemantics(
             child: Text(_clock(elapsed), style: F.n17.copyWith(color: p.ink2)),
           ),
@@ -146,50 +155,83 @@ class _SyncControlState extends State<SyncControl> {
       ],
       Expanded(
         child: Text(
-          syncStatusLine(s, now, AppLocalizations.of(c)),
+          syncStatusLine(s, now, l),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: F.body.copyWith(color: failed ? p.on(C.red) : p.ink),
         ),
       ),
     ]);
+    final actionStyle =
+        F.body.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w600);
+    final actionLabel = failed ? _retryLabel(c, l) : _syncNowLabel(c, l);
+    Widget actionButton() => Pressable(
+          onTap: onSync,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: S.tap, minWidth: S.tap),
+            child: Center(
+              widthFactor: 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: S.x2),
+                // May wrap to a second line when even the line below is
+                // narrower than the label (a long word at 2.0 on 320 pt); the
+                // text is never scaled down.
+                child: Text(actionLabel,
+                    style: actionStyle,
+                    maxLines: 2,
+                    textAlign: TextAlign.center),
+              ),
+            ),
+          ),
+        );
     return Surface(
       pad: const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: S.tap),
-            child: Row(children: [
-              Expanded(
-                child: canOpen
-                    ? Semantics(
-                        expanded: _open,
-                        child: Pressable(onTap: _toggle, child: status),
-                      )
-                    : status,
-              ),
-              if (!s.busy && onSync != null) ...[
-                const SizedBox(width: S.x2),
-                Pressable(
-                  onTap: onSync,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: S.x2),
-                    child: Text(
-                      failed ? _retryLabel(c, AppLocalizations.of(c)) : _syncNowLabel(c, AppLocalizations.of(c)),
-                      style: F.body.copyWith(
-                          color: p.on(C.blue), fontWeight: FontWeight.w600),
-                    ),
-                  ),
+      child: LayoutBuilder(builder: (c, box) {
+        // Beside the sentence, or below it when the action would take more
+        // than half the card. Decided from width, text scale and locale (the
+        // widest label either action can show), never from the state, so the
+        // reserved height is the same in every state. Never scaled to fit.
+        double w(String t) => _HomeSyncStatusState._width(c, t, actionStyle);
+        final widest = math.max(
+            w(_retryLabel(c, l)), w(_syncNowLabel(c, l))) + 2 * S.x2;
+        final below = onSync != null && widest > box.maxWidth * .5;
+        final statusRow = SizedBox(
+          height: rowMin,
+          child: Row(children: [
+            Expanded(
+              child: canOpen
+                  ? Semantics(
+                      expanded: _open,
+                      child: Pressable(onTap: _toggle, child: status),
+                    )
+                  : status,
+            ),
+            if (!below && !s.busy && onSync != null) ...[
+              const SizedBox(width: S.x2),
+              actionButton(),
+            ],
+          ]),
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            statusRow,
+            if (below)
+              SizedBox(
+                height: rowMin,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [if (!s.busy) Flexible(child: actionButton())],
                 ),
-              ],
-            ]),
-          ),
-          if (_open && canOpen) ...[
-            const SizedBox(height: S.x2),
-            ...syncStepRows(s, now),
-            const SizedBox(height: S.x1),
+              ),
+            if (_open && canOpen) ...[
+              const SizedBox(height: S.x2),
+              ...syncStepRows(s, now),
+              const SizedBox(height: S.x1),
+            ],
           ],
-        ],
-      ),
+        );
+      }),
     );
   }
 }
@@ -258,6 +300,7 @@ String? syncFailureText(SyncPresentationState s, [AppLocalizations? l]) {
       SyncFailure.disconnected => l.syncFailDisconnected,
       SyncFailure.downloadStopped => l.syncFailDownloadStopped,
       SyncFailure.calculationBusy => l.syncFailCalculationBusy,
+      SyncFailure.calculationStuck => l.syncFailCalculationStuck,
       SyncFailure.timedOut => l.syncFailTimedOut,
     };
   }

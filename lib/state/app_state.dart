@@ -3766,7 +3766,7 @@ class AppState extends ChangeNotifier {
   Future<void> _waitForDerivation() async {
     final deadline = DateTime.now().add(const Duration(minutes: 10));
     while (_derive.running || reanalyzing) {
-      if (DateTime.now().isAfter(deadline)) throw TimeoutException('Another calculation did not finish');
+      if (DateTime.now().isAfter(deadline)) throw SyncFailureError(SyncFailure.calculationStuck);
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
   }

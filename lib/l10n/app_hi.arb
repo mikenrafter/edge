@@ -3329,5 +3329,6 @@
         "format": "decimalPattern"
       }
     }
-  }
+  },
+  "syncFailCalculationStuck": "एक और गणना पूरी नहीं हुई"
 }
