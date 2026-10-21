@@ -58,8 +58,7 @@ void main() {
     await _put('2025-03-04',
         104, _day(window: {'onset_ms': 1000 * 1000, 'offset_ms': 5000 * 1000}));
 
-    final logs = <String>[];
-    final cleaned = await cleanNextNightNapsOnce(log: logs.add);
+    final cleaned = await cleanNextNightNapsOnce();
 
     expect(cleaned, 1);
     expect(await LocalDb.computeFreshness(kNapNextNightCleanupKey), isNotNull,
@@ -67,7 +66,10 @@ void main() {
     final row = await LocalDb.dayResult('2025-03-03');
     final payload = jsonDecode(row!['payload_json'] as String) as Map;
     expect((payload['naps'] as Map)['value'], isEmpty);
-    expect(logs.any((l) => l.contains('2025-03-01')), isTrue,
-        reason: 'the skip is logged with its reason');
+    final marker = jsonDecode(
+        (await LocalDb.computeFreshness(kNapNextNightCleanupKey))!['payload_json']
+            as String) as Map;
+    expect((marker['skipped'] as Map)['2025-03-01'], 'no_next_night_window',
+        reason: 'the skip is recorded with its reason');
   });
 }

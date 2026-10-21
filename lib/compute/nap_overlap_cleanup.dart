@@ -46,6 +46,9 @@ Future<int> cleanNextNightNapsOnce() async {
   final versions = await LocalDb.dayResultVersions();
   final days = versions.keys.toList()..sort();
   var cleaned = 0;
+  // Days left alone, with why — kept in the marker so a skip is inspectable
+  // and the (otherwise permanent) retry never starts.
+  final skipped = <String, String>{};
   for (final day in days) {
     if (versions[day]! >= kNapNextNightFixedIn) continue;
     // Calendar arithmetic on the label (noon avoids any DST edge).
@@ -54,12 +57,18 @@ Future<int> cleanNextNightNapsOnce() async {
     if (!versions.containsKey(nextDay)) continue;
     final row = await LocalDb.dayResult(day);
     final payload = _decode(row?['payload_json']);
-    final naps = (payload?['naps'] as Map?)?['value'];
+    // Absent figures are stored as an envelope whose `value` is a string
+    // ("—"), so every level is type-tested, never cast.
+    final naps = _at(payload, ['naps', 'value']);
     if (payload == null || naps is! List || naps.isEmpty) continue;
-    final win = (((_decode((await LocalDb.dayResult(nextDay))?['payload_json'])
-                ?['sleep'] as Map?)?['window'] as Map?)?['value']) as Map?;
-    final on = win?['onset_ms'], off = win?['offset_ms'];
-    if (on is! num || off is! num) continue;
+    final win = _at(_decode((await LocalDb.dayResult(nextDay))?['payload_json']),
+        ['sleep', 'window', 'value']);
+    final on = win is Map ? win['onset_ms'] : null;
+    final off = win is Map ? win['offset_ms'] : null;
+    if (on is! num || off is! num) {
+      skipped[day] = 'no_next_night_window';
+      continue;
+    }
     final kept = napsWithoutNextNight(
       [for (final n in naps) if (n is Map) n.cast<String, dynamic>()],
       on ~/ 1000,
@@ -111,8 +120,17 @@ Future<int> cleanNextNightNapsOnce() async {
     }
   }
   await LocalDb.putComputeFreshness(
-      kNapNextNightCleanupKey, jsonEncode({'cleaned': cleaned}));
+      kNapNextNightCleanupKey, jsonEncode({'cleaned': cleaned, 'skipped': skipped}));
   return cleaned;
+}
+
+Object? _at(Object? root, List<String> path) {
+  var cur = root;
+  for (final k in path) {
+    if (cur is! Map) return null;
+    cur = cur[k];
+  }
+  return cur;
 }
 
 Map<String, dynamic>? _decode(Object? json) {
