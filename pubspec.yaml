@@ -614,7 +614,9 @@ dependencies:
       # REPIN @ b18b681 (same branch): the analytics group registry
       # (kAnalyticsGroupRegistry, design 06 1b). Additive: a new file and one
       # export, no algorithm touched, so no kAlgoVersion bump.
-      ref: b18b6819fa0a4086b51e859aae5ec3a8fab62001
+      # REPIN @ 83fc308 (same branch): registry review fixes (static-method
+      # api names, conditional directives, unique ownership). Registry only.
+      ref: 83fc308545c886ef2757b3df396accea78849aa5
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
