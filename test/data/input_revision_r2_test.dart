@@ -188,28 +188,24 @@ void main() {
   });
 
   group('finding 3: zone identity', () {
-    Duration denver(DateTime u) =>
-        Duration(hours: u.month >= 4 && u.month <= 10 ? -6 : -7);
-    Duration phoenix(DateTime u) => const Duration(hours: -7);
+    // Offsets (minutes) now, then 15 Jan / 15 Jul of last year and this.
+    final denver = inputZoneKeyOf('MST', -420, [-420, -360, -420, -360]);
+    final phoenix = inputZoneKeyOf('MST', -420, [-420, -420, -420, -420]);
 
     test('equal winter offset, different summer offset: different keys', () {
-      final now = DateTime.utc(2026, 1, 15);
-      expect(inputZoneKey('MST', denver, now: now),
-          isNot(inputZoneKey('MST', phoenix, now: now)));
+      expect(denver, isNot(phoenix));
     });
 
-    test('the same zone gives the same key whenever it is asked', () {
-      expect(inputZoneKey('MST', phoenix, now: DateTime.utc(2026, 1, 15)),
-          inputZoneKey('MST', phoenix, now: DateTime.utc(2026, 8, 2)));
+    test('the key is read off the process zone, deterministically', () {
+      final now = DateTime.utc(2026, 1, 15);
+      expect(inputZoneKey('X', now: now), inputZoneKey('X', now: now));
+      expect(inputZoneKey('X', now: now), startsWith('X|'));
     });
 
     test('travel Denver to Phoenix in winter bumps the zone input', () async {
-      final now = DateTime.utc(2026, 1, 15);
-      final a = inputZoneKey('MST', denver, now: now);
-      final b = inputZoneKey('MST', phoenix, now: now);
-      await observeInputZone(zoneKey: a);
+      await observeInputZone(zoneKey: denver);
       final before = await _rev('zone', '');
-      expect(await observeInputZone(zoneKey: b), isTrue);
+      expect(await observeInputZone(zoneKey: phoenix), isTrue);
       expect(await _rev('zone', ''), before + 1);
     });
   });
@@ -225,12 +221,13 @@ void main() {
               where: 'name = ?',
               whereArgs: [kObservedZoneCursor]))
           .single['value'] as String?;
-      expect(
-        () => observeInputZone(
-            zoneKey: 'B|60',
-            debugAfterCursorWrite: () async => throw StateError('boom')),
-        throwsStateError,
-      );
+      // The bump is the statement after the cursor write: make it fail.
+      await db.execute('CREATE TRIGGER _fail_bump BEFORE UPDATE ON '
+          "input_revision WHEN NEW.source = 'zone' "
+          "BEGIN SELECT RAISE(ABORT, 'boom'); END");
+      await expectLater(
+          observeInputZone(zoneKey: 'B|60'), throwsA(isA<DatabaseException>()));
+      await db.execute('DROP TRIGGER _fail_bump');
       expect(await cursor(), 'A|0');
       expect(await _rev('zone', ''), revBefore);
       expect(await observeInputZone(zoneKey: 'B|60'), isTrue);

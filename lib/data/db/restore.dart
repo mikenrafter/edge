@@ -1014,11 +1014,25 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                 days.map((row) => '${row['day_id']}'),
               );
             }
+            // Transitions are bumped once per chunk (the union of the days
+            // they reach), not once per row (Sol r2 finding 2). The earliest
+            // ts covers a displaced row too: its key is the hex, which names
+            // the same event time.
+            final spanTable = t == 'events' || t == 'band_events';
+            int? spanFrom;
+            if (spanTable && sourceColumns.contains('ts')) {
+              spanFrom = Sqflite.firstIntValue(await txn.rawQuery(
+                  'SELECT MIN(CAST(s.ts AS INTEGER)) FROM imp.${quoteSql(t)} s '
+                  'WHERE $where',
+                  [lower, upper]));
+            }
+            if (spanTable) await beginBulkSpans(txn);
             await txn.execute(insertSql, [lower, upper]);
             final chunkCopied = Sqflite.firstIntValue(
                   await txn.rawQuery('SELECT changes()'),
                 ) ??
                 0;
+            if (spanTable) await endBulkSpans(txn, spanFrom);
             copied += chunkCopied;
             lastChunkCopied = chunkCopied;
             if (t == 'decoded_rr') {

@@ -1182,6 +1182,9 @@ Future<void> _ldbPrivScrubImportedSkinTempZ(Database db) async {
   }
 
 Future<void> _ldbPrivCreateInputRev(DatabaseExecutor db) async {
+    // Empty except inside a bulk transition restore (beginBulkSpans).
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS input_rev_bulk (flag INTEGER NOT NULL)');
     await db.execute(
       'CREATE TABLE IF NOT EXISTS input_rev ('
       'bucket INTEGER PRIMARY KEY, rev INTEGER NOT NULL)',
@@ -1234,33 +1237,12 @@ Future<void> _ldbPrivCreateInputRev(DatabaseExecutor db) async {
         triggers[name] = (r['sql'] as String?) ?? '';
       }
     }
-    // What a REPLACE into each catalogued table would delete: its primary key
-    // and unique indexes (the BEFORE INSERT trigger reads the displaced row).
-    final keys = <String, List<List<String>>>{};
-    for (final spec in kInputCatalogue) {
-      for (final t in spec.tables) {
-        if (spec.kind != InputKind.table || !tables.contains(t.name)) continue;
-        final info = await db.rawQuery('PRAGMA table_info(${t.name})');
-        final pk = [
-          for (final c in info)
-            if (((c['pk'] as num?) ?? 0) > 0) c
-        ]..sort((a, b) => (a['pk'] as num).compareTo(b['pk'] as num));
-        final sets = <List<String>>[
-          if (pk.isNotEmpty) [for (final c in pk) c['name'] as String],
-        ];
-        for (final ix in await db.rawQuery('PRAGMA index_list(${t.name})')) {
-          if (((ix['unique'] as num?) ?? 0) != 1) continue;
-          final cols = [
-            for (final c
-                in await db.rawQuery('PRAGMA index_info(${ix['name']})'))
-              c['name'] as String?
-          ];
-          if (cols.isEmpty || cols.contains(null)) continue;
-          sets.add(cols.cast<String>());
-        }
-        keys[t.name] = sets;
-      }
-    }
+    // What a REPLACE into each catalogued table would delete.
+    final keys = await inputRevisionKeys(db, [
+      for (final spec in kInputCatalogue)
+        for (final t in spec.tables)
+          if (spec.kind == InputKind.table && tables.contains(t.name)) t.name,
+    ]);
     for (final sql in inputRevisionTriggerSql(tables, triggers, keys: keys)) {
       await db.execute(sql);
     }

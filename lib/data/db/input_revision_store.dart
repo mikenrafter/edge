@@ -95,7 +95,21 @@ List<String> inputRevisionTriggerSql(
       String scopes(String row, {String? match}) {
         final from = match == null ? '' : ' FROM ${t.name} o WHERE $match';
         if (global) return "SELECT '' AS S";
-        if (!t.spans) return 'SELECT ${scope(row)} AS S$from';
+        if (!t.spans) {
+          // A row anchored in time that also describes earlier days (Colmi
+          // temperature slots): those days too, for the rows that do.
+          final lb = t.lookbackExpr;
+          final back = lb == null
+              ? ''
+              : [
+                  for (var k = 1; k <= t.lookbackDays; k++)
+                    ' UNION SELECT ${lb.replaceAll('{r}', row).replaceAll('{k}', '$k')} '
+                        'AS S$from'
+                        '${match == null ? ' WHERE' : ' AND'} '
+                        '${t.lookbackWhen!.replaceAll('{r}', row)}'
+                ].join();
+          return 'SELECT ${scope(row)} AS S$from$back';
+        }
         // A transition holds until the next of its kind, so its change moves
         // every derived day from its own through that one (design 06 1c,
         // Sol r1 finding 4). No later transition: through the last derived
@@ -114,10 +128,13 @@ List<String> inputRevisionTriggerSql(
         final d1 = 'CASE WHEN $row.event_id IN ($ids) THEN COALESCE('
             "strftime('%Y-%m-%d', $next, 'unixepoch', 'localtime'), "
             "'9999-12-31') ELSE $d0 END";
+        // Not during a bulk restore: it bumps the union of the spans once
+        // (endBulkSpans), instead of every row re-bumping all later days.
         return "SELECT COALESCE($d0, '') AS S$from UNION "
             'SELECT dr.day_id AS S FROM day_result dr'
             '${match == null ? '' : ', ${t.name} o'} WHERE '
             '${match == null ? '' : '($match) AND '}'
+            'NOT EXISTS (SELECT 1 FROM input_rev_bulk) AND '
             'dr.day_id > $d0 AND dr.day_id <= $d1';
       }
 
@@ -149,7 +166,7 @@ List<String> inputRevisionTriggerSql(
             'au_old',
             'AFTER UPDATE',
             '${cond('OLD')} AND '
-                '${t.spans ? '1' : '${scope('OLD')} IS NOT ${scope('NEW')}'}',
+                '${t.spans || t.lookbackExpr != null ? '1' : '${scope('OLD')} IS NOT ${scope('NEW')}'}',
             bump('OLD'),
             cols: of);
       }
@@ -171,14 +188,81 @@ List<String> inputRevisionTriggerSql(
             cond('NEW'),
             _bumpScopesSql(
                 spec.id,
+                // DISTINCT: several rows can be displaced (one per unique key).
                 t.spans
-                    ? old
-                    : 'SELECT S FROM ($old) '
+                    ? 'SELECT DISTINCT S FROM ($old)'
+                    : 'SELECT DISTINCT S FROM ($old) '
                         'WHERE S IS NOT ${scope('NEW')}'));
       }
     }
   }
   return out;
+}
+
+/// What a REPLACE into each of [tables] would delete: the primary key and
+/// every unique index, as column lists (the BEFORE INSERT trigger reads the
+/// displaced row through them). A unique EXPRESSION index cannot be matched
+/// column by column, so a catalogued table that has one is refused (asserts;
+/// no catalogued table has one today) rather than silently skipped.
+Future<Map<String, List<List<String>>>> inputRevisionKeys(
+    DatabaseExecutor db, Iterable<String> tables) async {
+  final keys = <String, List<List<String>>>{};
+  for (final t in tables) {
+    final info = await db.rawQuery('PRAGMA table_info($t)');
+    final pk = [
+      for (final c in info)
+        if (((c['pk'] as num?) ?? 0) > 0) c
+    ]..sort((a, b) => (a['pk'] as num).compareTo(b['pk'] as num));
+    final sets = <List<String>>[
+      if (pk.isNotEmpty) [for (final c in pk) c['name'] as String],
+    ];
+    for (final ix in await db.rawQuery('PRAGMA index_list($t)')) {
+      if (((ix['unique'] as num?) ?? 0) != 1) continue;
+      final cols = [
+        for (final c in await db.rawQuery('PRAGMA index_info(${ix['name']})'))
+          c['name'] as String?
+      ];
+      assert(cols.isNotEmpty && !cols.contains(null),
+          'input revision: $t has a unique expression index (${ix['name']}); '
+          'the displaced-row trigger cannot match it');
+      if (cols.isEmpty || cols.contains(null)) continue;
+      // A non-integer PRIMARY KEY also shows up as an autoindex: once.
+      final set = cols.cast<String>();
+      if (!sets.any((k) => k.join(',') == set.join(','))) sets.add(set);
+    }
+    keys[t] = sets;
+  }
+  return keys;
+}
+
+/// Starts a bulk write of wrist/charging transitions inside [txn]: until
+/// [endBulkSpans], the per-row triggers leave the later-day invalidation to it
+/// (Sol r2 finding 2: per-row, a chronological restore into a target with
+/// derived history bumps every later day once per transition). The flag row
+/// lives in the transaction, so a rollback or a crash clears it.
+Future<void> beginBulkSpans(DatabaseExecutor txn) =>
+    txn.execute('INSERT INTO input_rev_bulk(flag) VALUES (1)');
+
+/// Ends [beginBulkSpans] and bumps `events` once for every derived day after
+/// the local day of [fromTs], the earliest transition written or displaced.
+/// Conservative: transitions can reach as far as the last derived day, and
+/// finding where each one stops is the cost this avoids. Null = nothing
+/// written.
+Future<void> endBulkSpans(DatabaseExecutor txn, int? fromTs) async {
+  await txn.execute('DELETE FROM input_rev_bulk');
+  if (fromTs == null) return;
+  await txn.execute(
+      "INSERT INTO input_revision(source, scope, rev) "
+      "SELECT 'events', S, 0 FROM (SELECT DISTINCT day_id AS S FROM day_result "
+      "WHERE day_id > strftime('%Y-%m-%d', ?, 'unixepoch', 'localtime')) "
+      "WHERE NOT EXISTS (SELECT 1 FROM input_revision "
+      "WHERE source = 'events' AND scope = S)",
+      [fromTs]);
+  await txn.execute(
+      "UPDATE input_revision SET rev = rev + 1 WHERE source = 'events' "
+      "AND scope IN (SELECT day_id FROM day_result WHERE day_id > "
+      "strftime('%Y-%m-%d', ?, 'unixepoch', 'localtime'))",
+      [fromTs]);
 }
 
 /// Adds 1 to the revision of ([source], [scope]); [scope] is a day label or ''.
@@ -249,51 +333,67 @@ Future<InputRevSnapshot> inputRevSnapshot(
   return out;
 }
 
-/// Records the zone the app is running in ([zoneKey] = name|offset minutes,
-/// default the process's now) and bumps the global `zone` input when it differs
-/// from the last one seen. Returns whether it bumped. The first observation
-/// only records: there is nothing earlier to have been stamped under.
+/// The zone as the stamps see it: its name, its offset now, and its offsets at
+/// four fixed instants (15 Jan and 15 Jul, last year and this). The name and
+/// current offset alone cannot tell Denver from Phoenix in winter (both MST,
+/// -420), yet July 1 06:30 UTC is a different local date in each. No IANA id
+/// is available in-process on every isolate, so the zone's own rules are
+/// sampled instead. [offsetAt] defaults to the process's local zone.
+String inputZoneKey(String name, {DateTime? now}) {
+  final t = (now ?? DateTime.now()).toUtc();
+  return inputZoneKeyOf(name, t.toLocal().timeZoneOffset.inMinutes, [
+    for (final y in [t.year - 1, t.year])
+      for (final m in [1, 7])
+        DateTime.utc(y, m, 15, 12).toLocal().timeZoneOffset.inMinutes,
+  ]);
+}
+
+/// The key from a zone's [name], its offset now and its sampled offsets
+/// (minutes). Pure: [inputZoneKey] reads them off the process's zone.
+String inputZoneKeyOf(String name, int nowMinutes, List<int> sampleMinutes) =>
+    '$name|$nowMinutes|${sampleMinutes.join(',')}';
+
+/// Records the zone the app is running in ([zoneKey], default
+/// [inputZoneKey] of the process's zone) and bumps the global `zone` input
+/// when it differs from the last one seen. Returns whether it bumped. The
+/// first observation only records: there is nothing earlier to have been
+/// stamped under.
+///
+/// The cursor read, its write and the bump are one transaction (Sol r2
+/// finding 4): a failure leaves both unchanged, so the next observation sees
+/// the old cursor and retries. Throws on failure; the caller logs it.
 ///
 /// INTERIM for design 01 (see the `zone` entry in input_catalogue.dart): day
 /// labels come from the phone's current zone, so a zone change moves labels
-/// the stored stamps were taken under. DST is a change of offset, so it counts.
+/// the stored stamps were taken under. DST is a change of name and offset, so
+/// it counts.
 Future<bool> observeInputZone(
-    {String? zoneKey,
-    DatabaseExecutor? db,
-    Future<void> Function()? debugAfterCursorWrite}) async {
-  final now = DateTime.now();
-  final key = zoneKey ?? '${now.timeZoneName}|${now.timeZoneOffset.inMinutes}';
+    {String? zoneKey, DatabaseExecutor? db}) async {
+  final key = zoneKey ?? inputZoneKey(DateTime.now().timeZoneName);
   final ex = db ?? await LocalDb.instance;
-  final seen = await ex.query('sync_cursor',
-      columns: ['value'],
-      where: 'name = ?',
-      whereArgs: [kObservedZoneCursor]);
-  final last = seen.isEmpty ? null : seen.first['value'] as String?;
-  if (last == key) return false;
-  await ex.insert(
-    'sync_cursor',
-    {
-      'name': kObservedZoneCursor,
-      'value': key,
-      'updated_at': DateTime.now().millisecondsSinceEpoch,
-    },
-    conflictAlgorithm: ConflictAlgorithm.replace,
-  );
-  if (last == null) return false;
-  await bumpInputRev('zone', '', db: ex);
-  return true;
+  Future<bool> body(DatabaseExecutor x) async {
+    final seen = await x.query('sync_cursor',
+        columns: ['value'],
+        where: 'name = ?',
+        whereArgs: [kObservedZoneCursor]);
+    final last = seen.isEmpty ? null : seen.first['value'] as String?;
+    if (last == key) return false;
+    await x.insert(
+      'sync_cursor',
+      {
+        'name': kObservedZoneCursor,
+        'value': key,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    if (last == null) return false;
+    await bumpInputRev('zone', '', db: x);
+    return true;
+  }
+
+  return ex is Database ? ex.transaction(body) : body(ex);
 }
 
 /// The `sync_cursor` row holding the last zone [observeInputZone] saw.
 const String kObservedZoneCursor = 'observed_zone';
-
-/// STUB (red): the zone key from a zone's name and its offsets at sample
-/// instants.
-String inputZoneKey(String name, Duration Function(DateTime utc) offsetAt,
-        {DateTime? now}) =>
-    '$name|${offsetAt((now ?? DateTime.now()).toUtc()).inMinutes}';
-
-/// STUB (red): unique-key column sets of [tables].
-Future<Map<String, List<List<String>>>> inputRevisionKeys(
-        DatabaseExecutor db, Iterable<String> tables) async =>
-    const {};

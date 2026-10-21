@@ -3164,7 +3164,11 @@ class DerivationEngine {
     // the _running latch so a failure cannot wedge it.
     try {
       await observeInputZone();
-    } catch (_) {}
+    } catch (e) {
+      // Rolled back whole (cursor and bump together), so the next derive sees
+      // the old zone and retries; this derive runs on the old stamps.
+      _diag['zone_observe_error'] = '$e';
+    }
     if (_running) return 0;
     // The profile is passed in, not read from a store: note it here.
     InputReads.note('profile', '');
