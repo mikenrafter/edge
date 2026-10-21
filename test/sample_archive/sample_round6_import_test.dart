@@ -247,7 +247,7 @@ void main() {
       final db = stripCommentsAndStrings(
           readDbSource());
       expect(RegExp(r'SampleLock\s*\.\s*run').hasMatch(arch), isTrue);
-      expect(RegExp(r'SampleLock\s*\.\s*run\s*\(\s*\(\s*\)\s*=>\s*_mergeFromDbFile')
+      expect(RegExp(r'SampleLock\s*\.\s*run\s*\(\s*\(\s*\)\s*=>\s*(LocalDb\s*\.\s*)?_mergeFromDbFile')
               .hasMatch(db),
           isTrue,
           reason: 'taken before the merge opens its transaction');
