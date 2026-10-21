@@ -1,0 +1,157 @@
+// input_catalogue.dart — every input a calculation group may read (design 06
+// phase 1c): its id, where it is stored or set, and how a change is scoped.
+//
+// One owner: this file. `GroupDecl.inputs` reference these ids; the revision
+// triggers (lib/data/db/input_revision_store.dart) are generated from the
+// `tables` below; `InputReads.note` (input_read_tracker.dart) takes these ids.
+// Rows follow the inventory in edge.research/design/06-phase1-plan.md section 3.
+//
+// Analytics' groups (openstrap_analytics at the current pin) declare no
+// `inputs` yet, and 1c does not touch the pin. [kGroupInputs] is therefore the
+// edge-side declaration of every group's inputs, merged with whatever a group
+// carries itself by [declaredInputs].
+
+import 'group_types.dart';
+
+// Deliberately NOT inputs (checked against the derive's reads at 1c):
+//  * `import_journal` (D38): import bookkeeping. It records that a restore ran
+//    and how far it got; no calculation group reads it.
+//  * The user tables restored by D37 (`alarm_schedule`, `symptom_entry`,
+//    `moment_label`, `assumed_water`, `notif_fired`): the derive does not read
+//    them (alarms and fired-keys are device/notification state; moment labels,
+//    symptom entries and assumed water feed screens and the coach, not a
+//    group). If a group starts reading one, add it here with its setter.
+
+/// How a change to an input is scoped in `input_revision`.
+enum InputGranularity {
+  /// One revision per local day label (`scope` = the day).
+  day,
+
+  /// One revision for the whole input (`scope` = '').
+  global,
+}
+
+enum InputKind {
+  /// Bumped by triggers on [InputSpec.tables].
+  table,
+
+  /// Bumped by an explicit `bumpInputRev` call at the setter.
+  setter,
+
+  /// The existing `input_rev` 15-minute buckets, exposed as one source.
+  decoded,
+}
+
+/// A table that carries an input, and the SQL for the affected day.
+class InputTable {
+  const InputTable(this.name, {this.dayExpr});
+
+  final String name;
+
+  /// SQL expression for the affected day label of a changed row, with `{r}` for
+  /// the row alias (`NEW` or `OLD`). Null for a global input.
+  final String? dayExpr;
+}
+
+class InputSpec {
+  const InputSpec(
+    this.id,
+    this.kind,
+    this.granularity, {
+    this.tables = const <InputTable>[],
+    this.setterFiles = const <String>[],
+    this.inventoryRow,
+  });
+
+  /// Stable; also the `input_revision.source`. Never reused.
+  final String id;
+  final InputKind kind;
+  final InputGranularity granularity;
+  final List<InputTable> tables;
+
+  /// For [InputKind.setter]: repo files that must call `bumpInputRev(id, ...)`.
+  final List<String> setterFiles;
+
+  /// The section 3 inventory row this input belongs to.
+  final String? inventoryRow;
+}
+
+
+String _dayOf(String col) =>
+    "strftime('%Y-%m-%d', {r}.$col, 'unixepoch', 'localtime')";
+
+final List<InputSpec> kInputCatalogue = <InputSpec>[
+  const InputSpec('decoded', InputKind.decoded, InputGranularity.day,
+      tables: [InputTable('decoded_onehz'), InputTable('decoded_rr')],
+      inventoryRow: 'decoded 1 Hz and RR'),
+  InputSpec('step_coverage', InputKind.table, InputGranularity.day,
+      tables: const [InputTable('live_coverage', dayExpr: '{r}.day')],
+      inventoryRow: 'phone step coverage'),
+  const InputSpec('wearing', InputKind.table, InputGranularity.global,
+      tables: [InputTable('device')], inventoryRow: 'wearing location'),
+  const InputSpec('step_calibration', InputKind.table, InputGranularity.global,
+      tables: [InputTable('step_calibration')],
+      inventoryRow: 'step calibration'),
+  InputSpec('step_calibration_day', InputKind.table, InputGranularity.day,
+      tables: const [
+        InputTable('step_calibration_day', dayExpr: '{r}.day'),
+      ],
+      inventoryRow: 'step calibration'),
+  const InputSpec('device_coverage', InputKind.table, InputGranularity.global,
+      tables: [InputTable('device_coverage')],
+      inventoryRow: 'device priority and coverage'),
+  InputSpec('events', InputKind.table, InputGranularity.day,
+      tables: [InputTable('events', dayExpr: _dayOf('ts'))],
+      inventoryRow: 'wrist-off and charging events'),
+  InputSpec('sleep_override', InputKind.table, InputGranularity.day,
+      tables: const [InputTable('sleep_override', dayExpr: '{r}.day_id')],
+      inventoryRow: 'sleep overrides and wake confirmations'),
+  InputSpec('wake_confirmation', InputKind.table, InputGranularity.day,
+      tables: const [InputTable('wake_confirmation', dayExpr: '{r}.day_id')],
+      inventoryRow: 'sleep overrides and wake confirmations'),
+  InputSpec('vendor_sleep_epoch', InputKind.table, InputGranularity.day,
+      tables: [InputTable('vendor_sleep_epoch', dayExpr: _dayOf('night_onset_ts'))],
+      inventoryRow: 'vendor and wearable sleep nights'),
+  InputSpec('sessions', InputKind.table, InputGranularity.day,
+      tables: [InputTable('sessions', dayExpr: _dayOf('start_ts'))],
+      inventoryRow: 'sessions and nap edits'),
+  InputSpec('session_score_mask', InputKind.table, InputGranularity.day,
+      tables: [
+        InputTable('session_score_mask',
+            dayExpr: "(SELECT strftime('%Y-%m-%d', start_ts, 'unixepoch', "
+                "'localtime') FROM sessions WHERE id = {r}.session_id)"),
+      ],
+      inventoryRow: 'sessions and nap edits'),
+  InputSpec('sleep_nap', InputKind.table, InputGranularity.day,
+      tables: const [InputTable('sleep_nap', dayExpr: '{r}.day_id')],
+      inventoryRow: 'sessions and nap edits'),
+  const InputSpec('baselines', InputKind.table, InputGranularity.global,
+      tables: [InputTable('baselines')],
+      inventoryRow: 'baselines and history'),
+  InputSpec('metric_series', InputKind.table, InputGranularity.day,
+      tables: const [InputTable('metric_series', dayExpr: '{r}.date')],
+      inventoryRow: 'baselines and history'),
+  InputSpec('cycle_log', InputKind.table, InputGranularity.day,
+      tables: const [InputTable('cycle_log', dayExpr: '{r}.date')],
+      inventoryRow: 'cycle log and journal'),
+  InputSpec('journal', InputKind.table, InputGranularity.day,
+      tables: const [InputTable('journal', dayExpr: '{r}.date')],
+      inventoryRow: 'cycle log and journal'),
+  InputSpec('cycle_symptom', InputKind.table, InputGranularity.day,
+      tables: const [InputTable('cycle_symptom', dayExpr: '{r}.date')],
+      inventoryRow: 'cycle log and journal'),
+  const InputSpec('profile', InputKind.setter, InputGranularity.global,
+      setterFiles: ['lib/state/app_state.dart'], inventoryRow: 'profile'),
+  const InputSpec('policy', InputKind.setter, InputGranularity.global,
+      setterFiles: ['lib/state/prefs.dart'],
+      inventoryRow: 'calc policies and settings'),
+];
+
+/// Group id -> the inputs it reads. Empty until 1c is green; every group that
+/// reads an input lists it here (analytics groups cannot carry `inputs` at the
+/// current pin).
+const Map<String, List<InputDecl>> kGroupInputs = <String, List<InputDecl>>{};
+
+/// What [g] declares it reads: its own `inputs` plus [kGroupInputs].
+List<InputDecl> declaredInputs(GroupDecl g) =>
+    <InputDecl>[...g.inputs, ...?kGroupInputs[g.id]];

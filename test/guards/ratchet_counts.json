@@ -32,6 +32,9 @@
     "heavy_migration_methods": {
       "entries": 0
     },
+    "input_reads_conditional": {
+      "entries": 7
+    },
     "observation_isolation_allowed": {
       "entries": 1
     },
