@@ -79,10 +79,11 @@ void main() {
   });
 
   test('analytics double merged with the edge entries validates', () {
+    // The double stands in for analytics' registry, which in 1b replaces the
+    // placeholders (they reuse its ids), so the placeholders are not merged.
     final merged = reg([
       ...analyticsDouble,
       ...kEdgeGroups,
-      ...kAnalyticsPlaceholderGroups,
     ]);
     expect(validateRegistry(merged), isEmpty);
   });
