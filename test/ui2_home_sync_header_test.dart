@@ -1,8 +1,7 @@
 // Oct 4: Home's sync UI lives in the greeting header, not in a card above it.
 //
 //   Good afternoon
-//   Sunday, 4 October             1 h ago [Sync now] (gear)   <- row 1
-//   Synced through 15:33
+//   Synced through 15:33          1 h ago [Sync now] (gear)   <- row 1
 //   59% · Connected
 //
 // (Revised with the shared tab header: the greeting is now the ScreenTitle and
@@ -16,7 +15,8 @@
 // of the button. While syncing, row 1 LEADS with the status sentence
 // ("Downloading…") in place of the date. The spinner replaces the settings
 // button's gear icon (same button, same tap); Sync now is hidden meanwhile. A
-// problem sentence takes the status slot. "Synced through" is always row 2.
+// problem sentence takes the status slot. There is no second "Synced through"
+// row: row 1 IS the app-wide status line (shared:status-line).
 // "Show details" opens a bottom sheet with the four steps. No percentages, no
 // estimates: absent means nothing.
 //
@@ -159,13 +159,14 @@ Finder _text(Pattern p) => find.byWidgetPredicate(
           (p is RegExp ? p.hasMatch(w.data!) : w.data == p)),
 );
 
-/// Row 2, the data edge.
-Finder get _through => find.text('Synced through 15:33');
-
-/// Row 1 when idle.
-// Inside the sync row: the day switcher under it prints the same date.
-Finder get _date => find.descendant(
-    of: find.byType(HomeSyncStatus), matching: find.text('Sunday, 4 October'));
+/// Row 1 when idle: the status line's "Synced through". It used to be the
+/// date on row 1 and "Synced through" on a second row; Home now has ONE status
+/// line (the app-wide StatusLine), so the data edge IS row 1.
+Finder get _through => find.descendant(
+    of: find.byType(HomeSyncStatus),
+    // The short form when the row is narrow (360 pt at 1.3x).
+    matching: _text(RegExp(r'^(Synced through|Through) 15:33$')));
+Finder get _date => _through;
 
 /// The settings button is the profile avatar (no name set: the user glyph).
 Finder get _gear => find.byIcon(LucideIcons.user);
@@ -256,9 +257,7 @@ void main() {
       expect(t.getTopLeft(_date).dx, lessThan(40));
       expect(t.getTopLeft(find.text('1 h ago')).dx, greaterThan(180));
 
-      // "Synced through" is row 2, under the date; the battery line is last.
-      expect(_y(t, _through), greaterThan(_y(t, _date)));
-      expect(t.getTopLeft(_through).dx, lessThan(40));
+      // "Synced through" is the one status line; the battery line is last.
       expect(_y(t, find.text('59% · Connected')), greaterThan(_y(t, _through)));
       expect(_y(t, find.textContaining('Good afternoon')), lessThan(_y(t, _date)));
       await _end(t);
@@ -297,12 +296,10 @@ void main() {
       addTearDown(app.dispose);
       await _pump(t, app);
       final row1 = _date;
-      final row2 = _through;
       final battery = find.text('59% · Connected');
       final line = t.getSize(row1).height;
-      // Row 1, row 2, 2 pt, battery. Row 1's 44 pt hit targets must not add
-      // their own height.
-      expect(t.getTopLeft(row2).dy - t.getBottomLeft(row1).dy, lessThan(2));
+      // Row 1, 2 pt, battery. Row 1's 44 pt hit targets must not add their
+      // own height.
       expect(
         t.getTopLeft(battery).dy - t.getBottomLeft(row1).dy,
         lessThanOrEqualTo(line + 2 + 1),
@@ -417,14 +414,13 @@ void main() {
 
       // The status takes the date's row.
       expect(_date, findsNothing);
-      expect(_y(t, _through), greaterThan(_y(t, _status)));
       // No percentage, no estimate on the line.
       expect(find.textContaining('%'), findsOneWidget,
           reason: 'only the battery level');
       expect(find.textContaining('to go'), findsNothing);
 
-      // "Synced through" stays on row 2 while a status shows.
-      expect(_through, findsOneWidget);
+      // The status replaces "Synced through" in the one status line.
+      expect(_through, findsNothing);
 
       // Sync now and the old trailing spinner are gone; the connection line
       // is unchanged.
@@ -493,7 +489,6 @@ void main() {
       addTearDown(idle.dispose);
       await _pump(t, idle);
       final idleY = _y(t, _date);
-      final idleThroughY = _y(t, _through);
       final idleButtonY = t.getCenter(_disc).dy;
       await _end(t);
 
@@ -501,7 +496,6 @@ void main() {
       addTearDown(app.dispose);
       await _pump(t, app);
       expect(_y(t, _status), closeTo(idleY, 1));
-      expect(_y(t, _through), closeTo(idleThroughY, 1));
       expect(t.getCenter(_disc).dy, closeTo(idleButtonY, 1));
       await _end(t);
     });
@@ -518,7 +512,7 @@ void main() {
       addTearDown(app.dispose);
       await _pump(t, app);
       final gap = t.getTopLeft(find.text('59% · Connected')).dy -
-          t.getBottomLeft(_through).dy;
+          t.getBottomLeft(_status).dy;
       expect(gap, closeTo(idleGap, 2));
       await _end(t);
     });
@@ -584,10 +578,8 @@ void main() {
       addTearDown(app.dispose);
       await _pump(t, app);
       expect(find.text('Sync failed'), findsOneWidget);
-      // The problem is the status: the date gives way to it; "Synced through"
-      // stays on row 2.
+      // The problem is the status: "Synced through" gives way to it.
       expect(_date, findsNothing);
-      expect(_y(t, _through), greaterThan(_y(t, find.text('Sync failed'))));
       expect(find.text('Show details'), findsOneWidget);
       expect(_x(t, find.text('Sync failed')),
           lessThan(_x(t, find.text('Show details'))));
@@ -656,7 +648,6 @@ void main() {
       expect(find.text('Not connected'), findsOneWidget);
       expect(find.textContaining('Connected'), findsNothing);
       expect(_through, findsOneWidget);
-      expect(_date, findsOneWidget);
       expect(find.text('1 h ago'), findsOneWidget);
       expect(find.text('Sync now'), findsOneWidget);
       expect(find.text('Show details'), findsNothing);
@@ -676,17 +667,14 @@ void main() {
         addTearDown(app.dispose);
         await _pump(t, app, width: 360, scale: 1.3);
         expect(t.takeException(), isNull);
-        // Row 1 is the date, or the status that displaces it; row 2 is still
-        // "Synced through".
+        // Row 1 is "Synced through", or the status that displaces it.
         final row1 = switch (name) {
           'idle' => _date,
           'syncing' => _status,
           _ => find.text('Sync failed'),
         };
-        expect(_date, name == 'idle' ? findsOneWidget : findsNothing);
+        expect(_through, name == 'idle' ? findsOneWidget : findsNothing);
         _expectLevel(t, row1);
-        expect(_through, findsOneWidget);
-        expect(_y(t, _through), greaterThan(_y(t, row1)));
         // Everything on the sync row is inside the screen.
         for (final f in [
           find.text('Sync now'),

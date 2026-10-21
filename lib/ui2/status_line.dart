@@ -17,7 +17,7 @@ import '../state/app_state.dart';
 import '../state/derive_progress.dart';
 import 'grammar.dart';
 import 'profile/import_progress_view.dart';
-import 'screens/home_screen.dart' show syncedThroughLabel;
+import 'screens/home_screen.dart' show syncedThroughLabel, syncedThroughShortLabel;
 import 'shared_slot.dart';
 import 'sync_control.dart';
 import 'theme.dart';
@@ -29,7 +29,12 @@ class StatusLine extends StatelessWidget {
 
   /// The "now" for the sync sentence; null is the wall clock.
   final DateTime? now;
-  const StatusLine({super.key, this.todayId, this.now});
+
+  /// Home: while no import or recalculation is reported, the line is the sync
+  /// row ([HomeSyncStatus]) with its "Sync now" / "Show details" actions, in
+  /// the same fixed-height slot. The other tabs carry the text alone.
+  final bool syncActions;
+  const StatusLine({super.key, this.todayId, this.now, this.syncActions = false});
 
   static const _pad = EdgeInsets.symmetric(horizontal: S.x1, vertical: S.x1);
 
@@ -58,12 +63,26 @@ class StatusLine extends StatelessWidget {
     } on ProviderNotFoundException {
       app = null;
     }
-    final box = SizedBox(height: heightFor(c), child: _line(c, app));
-    return SharedSlot('status-line', child: box);
+    return SharedSlot('status-line', child: _line(c, app));
   }
 
   Widget _line(BuildContext c, AppState? app) {
-    if (app == null) return const SizedBox.shrink();
+    if (app == null) {
+      // A golden: Home still says where the data ends ("No band data yet").
+      if (!syncActions) return SizedBox(height: heightFor(c));
+      final id = todayId ?? todayLabel();
+      return SizedBox(
+        height: heightFor(c),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: HomeSyncStatus(
+            through: syncedThroughLabel(null, id),
+            throughShort: syncedThroughShortLabel(null, id),
+            inset: S.x1,
+          ),
+        ),
+      );
+    }
     return ValueListenableBuilder<ImportProgress?>(
       valueListenable: app.importProgress,
       builder: (c, imp, _) => ValueListenableBuilder<DeriveProgress?>(
@@ -94,17 +113,35 @@ class StatusLine extends StatelessWidget {
     } else {
       text = syncedThroughLabel(sync.$3, todayId ?? todayLabel(), l);
     }
-    return Pressable(
-      onTap: () => showSyncDetails(c, app),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Padding(
-          padding: _pad,
-          child: Text(text,
-              style: F.cap.copyWith(color: p.ink3),
-              strutStyle: StrutStyle.fromTextStyle(F.cap, forceStrutHeight: true),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
+    if (syncActions &&
+        (imp == null || imp is ImportDone) &&
+        deriveProgressLine(der, l) == null) {
+      // No wrapper box: the row's HitOverhang must be the render child of the
+      // header Column so its 44 pt targets overhang the lines around it. It
+      // reports [heightFor] itself (slot), the same as the text-only line.
+      final id = todayId ?? todayLabel();
+      return HomeSyncStatus(
+        through: syncedThroughLabel(sync.$3, id, l),
+        throughShort: syncedThroughShortLabel(sync.$3, id, l),
+        inset: S.x1,
+        slot: heightFor(c),
+      );
+    }
+    return SizedBox(
+      height: heightFor(c),
+      child: Pressable(
+        onTap: () => showSyncDetails(c, app),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: _pad,
+            child: Text(text,
+                style: F.cap.copyWith(color: p.ink3),
+                strutStyle:
+                    StrutStyle.fromTextStyle(F.cap, forceStrutHeight: true),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+          ),
         ),
       ),
     );

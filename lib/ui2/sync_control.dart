@@ -626,11 +626,20 @@ class HomeSyncStatus extends StatefulWidget {
   /// The space between the right-aligned cluster and [end].
   static const endGap = S.x1;
 
+  /// Space before the left text, to line up with the status line's padding.
+  final double inset;
+
+  /// The height the row reports (its targets still overhang it); null is the
+  /// text's own height. The status line passes its slot height.
+  final double? slot;
+
   const HomeSyncStatus({
     super.key,
     required this.through,
     required this.throughShort,
     this.end,
+    this.inset = 0,
+    this.slot,
   });
 
   @override
@@ -671,8 +680,10 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
     try {
       s = c.watch<AppState>().syncPresentation;
     } on ProviderNotFoundException {
-      final text = Text(widget.through, style: base,
-          maxLines: 1, overflow: TextOverflow.ellipsis);
+      final text = Padding(
+          padding: EdgeInsets.only(left: widget.inset),
+          child: Text(widget.through, style: base,
+              maxLines: 1, overflow: TextOverflow.ellipsis));
       if (end == null) return text;
       return HitOverhang(
         visual: visual,
@@ -773,7 +784,9 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       ];
 
       return Row(children: [
-        Expanded(child: left),
+        Expanded(
+            child: Padding(
+                padding: EdgeInsets.only(left: widget.inset), child: left)),
         if (trail.isNotEmpty) ...[
           const SizedBox(width: S.x2),
           ConstrainedBox(
@@ -790,7 +803,7 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
     });
 
     return HitOverhang(
-      visual: visual,
+      visual: widget.slot ?? visual,
       child: end == null
           ? row
           : Row(children: [

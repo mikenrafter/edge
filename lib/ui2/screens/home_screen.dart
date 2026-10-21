@@ -353,46 +353,10 @@ Widget? connectionLine(BuildContext c, [AppLocalizations? l]) {
   ]);
 }
 
-/// The status line as Home renders it, so the loading / failed / bare paths
-/// show it too. It answers "how far are we?", and the moment that question is
-/// loudest is the one where there is no day to show.
-Widget syncedThroughLine(BuildContext c, String? todayId,
-    [AppLocalizations? l]) {
-  final at = lastDataAtOf(c);
-  return HomeSyncStatus(
-    through: syncedThroughLabel(at, todayId, l),
-    throughShort: syncedThroughShortLabel(at, todayId, l),
-  );
-}
-
-/// The rows under the greeting title: the sync row ([HomeSyncStatus]; the date
-/// when idle, replaced by the progress status or the problem while one shows),
-/// then "Synced through 15:33" (plain text), then the connection line. The
-/// avatar is in the title row above, not here. [date] null is the no-day path
-/// (loading, failed, first run): just the dated "synced through" line.
-List<Widget> homeHeaderRows(
-  BuildContext c, {
-  required String? todayId,
-  required String? date,
-  AppLocalizations? l,
-}) {
+/// The rows under the sync row (the app-wide [StatusLine] with Home's sync
+/// actions): just the connection line. The avatar is in the title row.
+List<Widget> homeHeaderRows(BuildContext c, {AppLocalizations? l}) {
   return [
-    if (date == null)
-      syncedThroughLine(c, null, l)
-    else ...[
-      HomeSyncStatus(through: date, throughShort: date),
-      // Stops short of the right edge so the sync row's 44 pt targets, which
-      // overhang this row, still receive taps there.
-      Padding(
-        padding: const EdgeInsets.only(right: S.tap + HomeSyncStatus.endGap),
-        child: _HeldSyncedThrough(
-          at: lastDataAtOf(c),
-          busy: syncBusyOf(c),
-          todayId: todayId,
-          l: l,
-        ),
-      ),
-    ],
     // The connection and battery live on AppState.device, independent of
     // HomeData — a load failure or first run must not hide them too. A
     // start-aligned Column, so the line keeps its identity when the day lands.
@@ -423,34 +387,6 @@ Widget _homeAvatar(BuildContext c, AppLocalizations? l) {
           ),
         )
       : const ProfileAvatar(accent: C.domHome);
-}
-
-/// "Synced through …" that holds its last value while a sync runs: records
-/// land in batches mid-sync, and the line only moves once the sync is done.
-class _HeldSyncedThrough extends StatefulWidget {
-  const _HeldSyncedThrough(
-      {required this.at, required this.busy, required this.todayId, this.l});
-
-  final DateTime? at;
-  final bool busy;
-  final String? todayId;
-  final AppLocalizations? l;
-
-  @override
-  State<_HeldSyncedThrough> createState() => _HeldSyncedThroughState();
-}
-
-class _HeldSyncedThroughState extends State<_HeldSyncedThrough> {
-  late DateTime? _shown = widget.at;
-
-  @override
-  Widget build(BuildContext c) {
-    if (!widget.busy) _shown = widget.at;
-    return Text(syncedThroughLabel(_shown, widget.todayId, widget.l),
-        style: F.cap.copyWith(color: P.of(c).ink3),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis);
-  }
 }
 
 /// Whether a sync is running, from the same presentation state the sync line
@@ -1061,6 +997,15 @@ class RingTrio extends StatelessWidget {
     final whyText = d.readiness.value != null && d.drivers.isNotEmpty
         ? '${l?.homeWhyLabel ?? 'Why?'} ${d.drivers.take(3).map((e) => driverLabel(e['label'], l)).join(' · ')}'
         : null;
+    // A ring has a value but there are no drivers to name: the link still
+    // belongs there (the strip would be an empty box), just without a list. No
+    // drivers are invented. Only when nothing else would fill the strip.
+    final bareWhy = whyText == null &&
+            recoveryUpdatedLine(d.readinessUpdate, l) == null &&
+            gaps.isEmpty &&
+            rings.any((r) => r.why == null)
+        ? (l?.homeWhyLabel ?? 'Why?')
+        : null;
     // The strip's lines: the recovery update, the "Why?" drivers, then each
     // empty ring's reason. Whatever is there, in one box.
     final note = recoveryUpdatedLine(d.readinessUpdate, l);
@@ -1069,12 +1014,13 @@ class RingTrio extends StatelessWidget {
             [
               ?note,
               ?whyText,
+              ?bareWhy,
               for (final r in gaps)
                 '${r.label} · ${presentationText(l, r.why ?? '')}',
             ].join('\n'),
             onTap: gaps.isNotEmpty
                 ? _open(gaps.first.kind)
-                : whyText != null
+                : whyText != null || bareWhy != null
                     ? _open(HomeRingKind.recovery)
                     : null);
     // THERE IS NO "THESE TWO ARE FROM SATURDAY" LINE ANY MORE, and there is
@@ -2440,9 +2386,9 @@ class _HomeScreenState extends State<HomeScreen>
       // ── greeting ──
       //
       // The same header every tab has: the greeting is the title, the profile
-      // button is the avatar. Below it, the sync row, then "Synced through",
-      // then the connection. The sync row is the first content, as on every
-      // other tab; its end is no longer shared with the button.
+      // button is the avatar. Below it, the sync row (the status line every tab
+      // has, plus Sync now / Show details), then the connection. Its end is no
+      // longer shared with the button.
       //
       // ONE list child: the sync row's 44 pt targets overhang the lines around
       // it (see [HitOverhang]), and a list item only hit-tests inside its own
@@ -2454,10 +2400,10 @@ class _HomeScreenState extends State<HomeScreen>
             d.name == null || d.name!.isEmpty ? g.word : '${g.word}, ${d.name}',
             avatar: _homeAvatar(c, l),
           ),
-          ...homeHeaderRows(c,
-              todayId: d.dayId,
-              date: prettyDay(d.dayId ?? todayLabel(widget.now), l),
-              l: l),
+          // Not ScreenTitle(statusLine:): inside the title's own box the row's
+          // targets could not overhang the connection line below.
+          StatusLine(todayId: d.dayId, syncActions: true),
+          ...homeHeaderRows(c, l: l),
         ]),
       ),
       const SizedBox(height: S.x5),

@@ -17,7 +17,12 @@ import '../../support/as_of_recalc_fakes.dart';
 import '../../support/shift_run.dart';
 import '../../support/tabs_consistency_fakes.dart';
 
-const _ids = ['shared:title', 'shared:avatar', 'shared:content-top'];
+const _ids = [
+  'shared:title',
+  'shared:avatar',
+  'shared:content-top',
+  'shared:status-line',
+];
 bool _shared(String id) => id.startsWith('shared:');
 
 void main() {
@@ -84,22 +89,28 @@ void main() {
     expect(bad.toString(), isEmpty);
   });
 
-  // Home's own sync row becomes this line later; until then it is compared
-  // among the tabs that carry the StatusLine.
-  testWidgets('status line sits in the same place on Sleep, Activity, Health',
-      (t) async {
+  // Home's sync row IS this line, in the same slot as the other tabs.
+  testWidgets('status line sits in the same place on all four tabs', (t) async {
     final tabs = await settledTabs(t);
-    const among = [ShellDomain.sleep, ShellDomain.activity, ShellDomain.health];
+    final among = tabs.keys.toList();
+    expect(among, contains(ShellDomain.today));
     for (final d in among) {
       expect(tabs[d]!.elements.any((e) => e.id == 'shared:status-line'), isTrue,
           reason: '${d.label} lacks shared:status-line');
     }
     const p = ShiftPolicy.standard;
+    final home = tabs[ShellDomain.today]!;
+    final rect = StringBuffer();
+    for (final d in among) {
+      final e = tabs[d]!.elements.firstWhere((e) => e.id == 'shared:status-line');
+      rect.writeln('${d.label}: ${e.rect}');
+    }
+    printOnFailure(rect.toString());
     for (final d in among.skip(1)) {
-      final r = compareLayouts(tabs[among.first]!, tabs[d]!, p,
+      final r = compareLayouts(home, tabs[d]!, p,
           viewport: shiftViewport, only: (id) => id == 'shared:status-line');
       expect(r.findings.any((f) => f.score >= p.warnAt), isFalse,
-          reason: worst('Sleep vs ${d.label}', r, p));
+          reason: worst('Home vs ${d.label}', r, p));
     }
   });
 }
