@@ -13,7 +13,8 @@ part of '../derivation_engine.dart';
 // row, so it never gets a finalized row at this version and every heavy pass
 // selected it again. Settling it records "this raw, at this algo version,
 // yields no better answer". New raw changes the fingerprint and reopens it; a
-// kAlgoVersion bump invalidates it; a user-triggered re-derive ignores it.
+// kAlgoVersion bump invalidates it; a user-triggered re-derive ignores it; a
+// written row (LocalDb.putDayResult) or a sleep/nap edit clears or reopens it.
 //
 // The fingerprint carries no profile on purpose: a decline depends on the
 // stored night and the prune cursor, never on profile fields. It is kept as
@@ -35,17 +36,17 @@ enum DayDerive {
 
 extension _EngineSettled on DerivationEngine {
   /// Record [day] as settled at this version. [fps] are raw fingerprints taken
-  /// before the derive read anything (so rows landing mid-derive leave it
-  /// stale, never falsely current); read now when not given. A day with no raw
-  /// to fingerprint is not settled: unknown is never "unchanged".
-  Future<void> _settleDay(String day, [Map<String, String>? fps]) async {
+  /// BEFORE the day was prepared, so rows landing mid-derive leave the record
+  /// stale (the day reopens), never falsely current. Required, with no read
+  /// of the current rows as a fallback: that would settle a day on rows it
+  /// never read. A day with no raw to fingerprint is not settled: unknown is
+  /// never "unchanged".
+  Future<void> _settleDay(String day, Map<String, String> fps) async {
     try {
-      final prevDay = DerivationEngine._adjacentDayIds(day).first;
-      final known = fps ?? await LocalDb.decodedDayFingerprints({day, prevDay});
-      final own = known[day];
+      final own = fps[day];
       if (own == null) return;
       await LocalDb.putSettledDay(day, kAlgoVersion,
-          own: own, prev: known[prevDay]);
+          own: own, prev: fps[DerivationEngine._adjacentDayIds(day).first]);
     } catch (e) {
       _log('derive $day: could not record settled: $e');
     }
@@ -58,6 +59,13 @@ extension _EngineSettled on DerivationEngine {
   Future<Set<String>> _settledDays() async {
     final settled = await LocalDb.settledFingerprints(kAlgoVersion);
     if (settled.isEmpty) return const {};
+    // A decline also depends on what the wearer said about the night: a typed
+    // sleep window or a nap edit changes what a derive would write without
+    // touching one raw row, so it reopens the day.
+    final edited = {
+      ...await LocalDb.sleepOverrideDays(),
+      ...await LocalDb.napEditDays(),
+    };
     final fps = await LocalDb.decodedDayFingerprints({
       for (final d in settled.keys) ...[
         d,
@@ -66,7 +74,8 @@ extension _EngineSettled on DerivationEngine {
     });
     return {
       for (final e in settled.entries)
-        if (fps[e.key] == e.value.own &&
+        if (!edited.contains(e.key) &&
+            fps[e.key] == e.value.own &&
             (fps[DerivationEngine._adjacentDayIds(e.key).first] == null ||
                 fps[DerivationEngine._adjacentDayIds(e.key).first] ==
                     e.value.prev))

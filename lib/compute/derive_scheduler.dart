@@ -214,14 +214,18 @@ class DeriveScheduler {
     unawaited(_enqueue(type: 'derive_light', reason: 'stored_data'));
   }
 
-  void requestHeavy({String reason = 'capture_settled'}) {
+  /// [storedData]: the caller just stored data (a wearable's sync, a banked
+  /// workout tail, an import, a drain). It counts as new data for the dedupe
+  /// below whichever path stored it, without queueing the light job that
+  /// [markStoredData] adds.
+  void requestHeavy({String reason = 'capture_settled', bool storedData = false}) {
+    if (storedData) _storedSeq++;
     // A heavy pass reads everything stored when it began. Queuing another while
     // it runs, with nothing stored since, only re-reads the same data (and the
     // follow-up's own reconnect asks again: the loop). Data stored after the
     // start still gets its follow-up.
     final started = _heavyStartSeq;
-    // An import lands through its own path, not markStoredData: never drop it.
-    if (_running && started != null && started == _storedSeq && reason != 'import') {
+    if (_running && started != null && started == _storedSeq) {
       return;
     }
     unawaited(_enqueue(type: 'derive_heavy', reason: reason));

@@ -392,6 +392,13 @@ class LocalDb {
     'moment_label',
     'assumed_water',
     'notif_fired',
+    'notif_slots',
+    // The wearer's confirmed nights and wake settings, and the per-night
+    // candidate a finalized day re-stages from once its raw is gone.
+    'wake_confirmation',
+    'wake_meta',
+    'wake_evidence',
+    'sleep_session_candidates',
     // A ring's own hypnogram. Nothing here can re-derive it.
     'vendor_sleep_epoch',
     'workout_suggestions',
@@ -447,6 +454,8 @@ class LocalDb {
     'events',
     'band_events',
     'band_battery',
+    'band_backlog',
+    'sync_ledger',
     // Pruned decoded substrate: the only copy of every day older than the
     // retention window — and the biggest table, merged bucket by bucket, so
     // dead last: nothing above waits on it.
@@ -5457,6 +5466,7 @@ class LocalDb {
       'moment_label',
       'assumed_water',
       'notif_fired',
+      'notif_slots',
       // Vendor-computed, typed-in and imported scalars. In the hand-entered
       // block because a third of it IS hand-entered and nothing regenerates
       // any of it — a `reports` band trims its own history, and the app whose
@@ -5470,6 +5480,16 @@ class LocalDb {
       // and lose every one they logged.
       'sleep_override',
       'sleep_nap',
+      // A night the wearer confirmed awake (it makes that night final), the
+      // wake settings (snooze, the Smart Wake upgrade acknowledgement) and
+      // the wake events noted for a sleep block. The orchestrator's run state
+      // and an in-flight snooze are NOT carried (see _wakeMetaTransientKeys).
+      'wake_confirmation',
+      'wake_meta',
+      'wake_evidence',
+      // The durable per-night candidate: once a night's raw is pruned this is
+      // the only thing a finalized day re-stages from.
+      'sleep_session_candidates',
       // A ring's own hypnogram. Nothing here can re-derive it.
       'vendor_sleep_epoch',
       'workout_suggestions',
@@ -5509,6 +5529,10 @@ class LocalDb {
       'raw_archive',
       'band_events',
       'band_battery',
+      // The band's flash-fill history, and the ledger of which history chunks
+      // were ACKed: both are record of what already happened to this band.
+      'band_backlog',
+      'sync_ledger',
       'day_result',
       'metric_series',
       'metric_series_version',
@@ -5549,12 +5573,26 @@ class LocalDb {
   /// Tables where a row this device already has wins over the backup's: a
   /// moment is answered once, a fired alert stays fired (a union of keys), and
   /// the weekly alarm and logged entries are the device's own choice.
+  /// `wake_meta` keys that describe a run in flight on the OLD phone.
+  static const Set<String> _wakeMetaTransientKeys = {
+    'run_state',
+    'snooze_state',
+    'snooze_window',
+  };
+
   static const Set<String> _keepLocalOnImport = {
     'alarm_schedule',
     'symptom_entry',
     'moment_label',
     'assumed_water',
     'notif_fired',
+    // Local wins: a new phone's own settings, confirmations, ledger rows and
+    // notification slots are not replaced by a backup's.
+    'wake_confirmation',
+    'wake_meta',
+    'sleep_session_candidates',
+    'sync_ledger',
+    'notif_slots',
   };
 
   static Future<Map<String, int>> _importPlain(
@@ -7448,23 +7486,27 @@ class LocalDb {
   /// The prune cursor: decoded rows below this rec_ts have been deleted.
   static const String kDecodedPrunedBeforeCursor = 'decoded_pruned_before';
 
-  /// Lower cursor [name] to the local midnight of [recTsSec] when that is below
-  /// it; never raises it and never creates it.
+  /// Lower `decoded_pruned_before` to the local midnight of the oldest decoded
+  /// second present; never raises it and never creates it.
   ///
-  /// Why: `decoded_pruned_before` says "decoded rows below here are gone". An
-  /// import that merges complete seconds beneath it makes that false, and
-  /// `windowTruncatedByPrune` then keeps calling whole days cut. Midnight, not
-  /// the second: the cursor is compared against local day windows, and
-  /// [localDayStartSec] is DST-safe where `- n * 86400` is not.
-  static Future<void> _lowerCursorToLocalDay(String name, int recTsSec) async {
-    final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(recTsSec * 1000));
-    final midnight = localDayStartSec(day);
-    if (midnight == null) return;
+  /// Why: the cursor says "decoded rows below here are gone". An import that
+  /// merges complete seconds beneath it (or restores a stale cursor from the
+  /// file) makes that false, and `windowTruncatedByPrune` then keeps calling
+  /// whole days cut. Midnight, not the second: the cursor is compared against
+  /// local day windows, and [localDayStartSec] is DST-safe where
+  /// `- n * 86400` is not.
+  static Future<void> _lowerPrunedCursorToOldestDecoded() async {
     final db = await instance;
+    final min = Sqflite.firstIntValue(await db.rawQuery(
+        'SELECT MIN(rec_ts) FROM decoded_onehz WHERE rec_ts > 0'));
+    if (min == null) return;
+    final midnight = localDayStartSec(
+        dayLabelOf(DateTime.fromMillisecondsSinceEpoch(min * 1000)));
+    if (midnight == null) return;
     await db.transaction((txn) async {
-      final current = await _cursorIntVia(txn, name);
+      final current = await _cursorIntVia(txn, kDecodedPrunedBeforeCursor);
       if (current != null && midnight < current) {
-        await setCursor(name, '$midnight', txn: txn);
+        await setCursor(kDecodedPrunedBeforeCursor, '$midnight', txn: txn);
       }
     });
   }

@@ -3937,6 +3937,15 @@ class DerivationEngine {
     return valid + pending < ana.quietHrrMinDays;
   }
 
+  /// Test seam onto [_quietLevelRepass].
+  @visibleForTesting
+  Future<int> debugQuietLevelRepass(Profile profile, int dataNowSec) =>
+      _quietLevelRepass(profile, dataNowSec);
+
+  /// Test seam onto [_settledDays].
+  @visibleForTesting
+  Future<Set<String>> debugSettledDays() => _settledDays();
+
   /// Test seam onto [_quietLevelUnreachable].
   @visibleForTesting
   Future<bool> debugQuietLevelUnreachable(String date) =>

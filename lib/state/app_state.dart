@@ -639,7 +639,7 @@ class AppState extends ChangeNotifier {
       if (from == _pmdTraceId) return kPolarPmd.id;
       return null;
     },
-    requestHeavyDerive: () => _deriveScheduler.requestHeavy(),
+    requestHeavyDerive: () => _deriveScheduler.requestHeavy(storedData: true),
   );
 
   /// The guided-breathing seam: the session, its quiet windows,
@@ -1569,7 +1569,7 @@ class AppState extends ChangeNotifier {
 
   /// The post-import derive, requested only once the journal says done.
   Future<bool> _deriveImportWhenDone() => ImportJournal.requestDeriveWhenDone(
-      () => _deriveCoordinator.scheduler.requestHeavy(reason: 'import'));
+      () => _deriveCoordinator.scheduler.requestHeavy(reason: 'import', storedData: true));
 
   /// D38: finish an import the process died in (app start, import screen).
   /// The derive is requested only once the journal says done.
@@ -4096,7 +4096,8 @@ class AppState extends ChangeNotifier {
     await refreshSessionSensorSources();
     onWearableDaysChanged = rederiveDays;
     // A wearable's sync queues the derive of every pending day it banked.
-    BandHost.onWearableStored = _deriveScheduler.requestHeavy;
+    BandHost.onWearableStored = () => _deriveScheduler
+        .requestHeavy(reason: 'wearable_sync', storedData: true);
     // A scale's newest weighing becomes the profile's weight: after each
     // session, and now for one a background pass took.
     SessionLink.onSessionDone = adoptWeighing;

@@ -34,6 +34,12 @@ extension _EngineCrossDayPrune on DerivationEngine {
         _log('quiet repass: possible timezone change — held');
         return 0;
       }
+      // Raw fingerprints taken BEFORE the hook, the retire loop and every
+      // prepare: a day that declines is settled on what it was prepared from,
+      // so rows landing meanwhile leave it reopened rather than "handled".
+      final fps = await LocalDb.decodedDayFingerprints({
+        for (final d in owed) ...[d, DerivationEngine._adjacentDayIds(d).first],
+      });
       final prunedBeforeSec = await LocalDb.getCursorInt(DerivationEngine._prunedBeforeCursor);
       final withRaw = {
         for (final d in rawDays ?? (await LocalDb.decodedRecTsMaxByDay()).keys)
@@ -42,7 +48,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
       for (final d in owed.difference(withRaw)) {
         // Retired for truncation: the abstention is final, so the day is
         // settled, not left pending for every later pass to pick again.
-        await _settleDay(d);
+        await _settleDay(d, fps);
         await LocalDb.deleteComputeFreshness('${DerivationEngine.kQuietRepassKeyPrefix}$d');
       }
       await DerivationEngine.debugQuietRepassHook?.call(null);
@@ -66,7 +72,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
             } else if (r == DayDerive.declined) {
               // Kept its existing result: final for this raw, so retire the
               // marker and settle rather than retry forever.
-              await _settleDay(dayId);
+              await _settleDay(dayId, fps);
               await LocalDb.deleteComputeFreshness(
                   '${DerivationEngine.kQuietRepassKeyPrefix}$dayId');
             }

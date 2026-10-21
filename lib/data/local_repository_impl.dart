@@ -444,6 +444,22 @@ class LocalRepositoryImpl extends LocalRepository {
     return note is String ? note : null;
   }
 
+  /// The one place a past, final day stops promising more nights. A cold-start
+  /// `need_baseline:` note says more nights will fix the absence; on a past
+  /// day that is final (finalized at this version, or settled by a declined
+  /// derive) no later night revises it, so the promise is false and the note
+  /// becomes the final reason. Any other note, and any day that can still
+  /// change (today, an older-version row), passes through unchanged.
+  Future<String?> _finalAbsenceNote(String day, String? note) async {
+    if (note == null ||
+        !note.startsWith('need_baseline:') ||
+        _isTodayLabel(day) ||
+        !await LocalDb.dayIsFinal(day, kAlgoVersion)) {
+      return note;
+    }
+    return needInputNote('quiet_level_final');
+  }
+
   /// WHY the bare-valued figure [key] is absent on this bundle, from the
   /// pipeline's `absent_notes` block (onehz_pipeline.dart / the engine's
   /// `_applyWakeDayFeatures`). Null when that figure is present.
@@ -1952,17 +1968,12 @@ class LocalRepositoryImpl extends LocalRepository {
     final zoneMin = <String, int?>{
       for (var i = 1; i <= 5; i++) 'z$i': (zones?['z$i'] as num?)?.toInt(),
     };
-    // WHY strain is absent. A cold-start `need_baseline:` note promises that
-    // more nights will fix it; on a past day that is final (finalized or
-    // settled at this version) no later night revises it, so the promise is
-    // false and the note says the final reason instead.
-    var strainNote = strain == null ? _absentNote(b, 'strain') : null;
-    if (strainNote != null &&
-        strainNote.startsWith('need_baseline:') &&
-        !_isTodayLabel(date) &&
-        await LocalDb.dayIsFinal(date, kAlgoVersion)) {
-      strainNote = needInputNote('quiet_level_final');
-    }
+    // `b` may be the latest settled bundle standing in for today: judge the
+    // day the figures are FROM, not the one asked for.
+    final strainNote = strain == null
+        ? await _finalAbsenceNote(
+            (b['date'] as String?) ?? date, _absentNote(b, 'strain'))
+        : null;
     return {
       // Headline 0–21 strain (the detail screen clamps to 0..21). Raw Banister
       // TRIMP is kept as the secondary "training load" figure.

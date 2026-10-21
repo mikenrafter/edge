@@ -268,6 +268,11 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
       }
+      // A written row ends a decline: the day was computable after all, so a
+      // stale `settled:` marker must not keep a partial or unfinalized row
+      // out of every later pass. Same transaction as the write.
+      await txn.delete('compute_freshness',
+          where: 'key = ?', whereArgs: ['${LocalDb._settledPrefix}$dayId']);
       return true;
     });
   }

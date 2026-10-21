@@ -724,6 +724,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<Str
     }
   }
 
+/// Lower than any SQLite rowid (the smallest is -2^63).
+const int _kBelowAnyRowid = -9223372036854775808;
+
 Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) async {
     // One place that reports a preparing step (opening, checking, counting).
     void prep(ImportPrepStep step, [int? done, int? total]) =>
@@ -757,22 +760,6 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     Future<Set<String>> destCols(String t) async {
       final info = await db.rawQuery('PRAGMA table_info($t)');
       return {for (final c in info) (c['name'] as String)};
-    }
-
-    // Lower the prune cursor BEFORE the substrate lands: a cursor too low is
-    // harmless, one too high after the merge is the lie (and a cut-short
-    // import must not leave it). Idempotent, so a resume repeats it safely.
-    for (final t in const ['decoded_onehz', 'decoded_rr']) {
-      if (!order.contains(t)) continue;
-      try {
-        final min = Sqflite.firstIntValue(await src.rawQuery(
-            'SELECT MIN(rec_ts) FROM $t WHERE rec_ts > 0'));
-        if (min != null) {
-          await LocalDb._lowerCursorToLocalDay(LocalDb.kDecodedPrunedBeforeCursor, min);
-        }
-      } on DatabaseException {
-        /* the export lacks the table or the column */
-      }
     }
 
     final counts = <String, int>{};
@@ -1232,7 +1219,12 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           final isArchive = t == SubstrateArchive.table;
           final pageSize = isArchive ? 8 : 2000;
           const rowidKey = '_rowid';
-          var lastRowid = run?.startRowid(index, order) ?? 0;
+          // Start BELOW any possible rowid, not at 0: a table keyed by an
+          // INTEGER PRIMARY KEY of its own (alarm_schedule.weekday, 0 = Monday)
+          // has that value as its rowid, and `rowid > 0` never reads row 0.
+          // The journal's 0 means "not started in this table".
+          final resumeRowid = run?.startRowid(index, order) ?? 0;
+          var lastRowid = resumeRowid == 0 ? _kBelowAnyRowid : resumeRowid;
           final projection = isArchive
               ? SubstrateArchive.metaColumns.join(', ')
               : '*';
@@ -1588,6 +1580,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
               // beats, never the other band's for the same second.
               final highestBeat = <(Object?, Object?), int>{};
               for (final row in rows) {
+                if (t == 'wake_meta' &&
+                    LocalDb._wakeMetaTransientKeys.contains(row['key'])) {
+                  continue;
+                }
                 if (t == 'spectral_archive') {
                   // Never REPLACE: part numbers are local allocation order, so
                   // a matching key says nothing about matching bytes. Reconcile
@@ -1685,6 +1681,13 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         if (impAttached) await db.execute('DETACH DATABASE imp');
       } catch (_) {}
       await src.close();
+    }
+    // AFTER every table, sync_cursor included: that table is a plain REPLACE
+    // from the source, so a stale `decoded_pruned_before` in the file would
+    // otherwise reinstate itself over an earlier lowering. The cursor may not
+    // sit above the oldest decoded second actually present.
+    if (order.contains('decoded_onehz') || order.contains('sync_cursor')) {
+      await LocalDb._lowerPrunedCursorToOldestDecoded();
     }
     if (resumed || counts.values.any((count) => count > 0)) {
       await ActivityStore.suppressImportedAlerts(db);
