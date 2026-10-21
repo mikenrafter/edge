@@ -7500,12 +7500,22 @@ class LocalDb {
   ///    [before].
   ///  * Merged seconds can make days below the cursor whole again, and
   ///    `windowTruncatedByPrune` keeps calling them cut. So it is lowered, but
-  ///    only across the UNBROKEN run of local days that have decoded rows,
-  ///    walking down from the day just below the cursor. A day with no rows
-  ///    stops the walk: it may be a prune hole, and lowering past it would make
-  ///    the partly pruned days above it look whole (edge#305 could then let a
-  ///    truncated night overwrite a good result). A non-wear day only keeps the
-  ///    cursor higher, the safe side.
+  ///    only across rows that are CONTINUOUS going down from the cursor. A row
+  ///    somewhere in a day is not proof the day is back: a backup that restores
+  ///    10-09's morning leaves its evening missing, and lowering to 10-09 would
+  ///    make a truncated night on 10-10 look whole (edge#305 could then let it
+  ///    overwrite a good result).
+  ///
+  ///    The walk slides a 2 h window down in 1 h steps and stops at the first
+  ///    window with no decoded second. Why 2 h: the prune cuts whole blocks
+  ///    (`windowTruncatedByPrune` protects the previous noon to day end, hours
+  ///    of a night), while a link dropout is minutes, so a hole under 2 h is
+  ///    wear noise and never stops the walk, and one of 3 h or more always
+  ///    does (it contains an empty window at any alignment). A non-wear day
+  ///    just stops it early: that day stays declined and settled, the safe
+  ///    side. The new cursor is the first local midnight at or after the end
+  ///    of the empty window. Each probe is one range lookup on the `rec_ts`
+  ///    key, so nothing is loaded into memory.
   ///
   /// A cursor taken from the file when we had none is first clamped to the day
   /// after the newest row (a stale one claims days that hold nothing here).
@@ -7529,26 +7539,34 @@ class LocalDb {
       // newest row: it claims days that hold nothing here, with nothing to
       // protect there. A local cursor is walked strictly from where it stands.
       final start = before == null && cursor > newest ? newest + 1 : cursor;
-      // The day holding the second just below `start`: the previous day when
-      // `start` is a local midnight.
-      String? day = dayLabelOf(
-          DateTime.fromMillisecondsSinceEpoch((start - 1) * 1000));
-      int? lowest;
-      // Bounded: a year of unbroken days is already far more than a retention
-      // window; the rest lowers on the next import if it matters.
-      for (var i = 0; i < 400 && day != null; i++) {
-        final lo = localDayStartSec(day);
-        final hi = localDayEndSec(day);
-        if (lo == null || hi == null) break;
+      const windowSec = 2 * 3600, stepSec = 3600;
+      // Bounded: ~a year of hourly steps is far more than a retention window;
+      // the rest lowers on the next import if it matters.
+      // Where the unbroken rows end: the end of the first empty window, or the
+      // last window's start when the bound ended the walk.
+      var holeEnd = start;
+      for (var i = 0; i < 400 * 24; i++) {
+        final from = start - windowSec - i * stepSec;
         final has = await txn.rawQuery(
             'SELECT 1 FROM decoded_onehz WHERE rec_ts >= ? AND rec_ts < ? '
             'LIMIT 1',
-            [lo, hi < start ? hi : start]);
-        if (has.isEmpty) break;
-        lowest = lo;
-        day = dayLabelBefore(day, 1);
+            [from, from + windowSec]);
+        if (has.isEmpty) {
+          holeEnd = from + windowSec;
+          break;
+        }
+        holeEnd = from;
       }
-      if (lowest != null && lowest < cursor) {
+      // The first local midnight at or after the hole's end: a day that
+      // starts inside the hole is not whole.
+      final holeDay = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(holeEnd * 1000));
+      final dayStart = localDayStartSec(holeDay);
+      final lowest = dayStart == null
+          ? start
+          : dayStart >= holeEnd
+              ? dayStart
+              : (localDayEndSec(holeDay) ?? start);
+      if (lowest < cursor) {
         await setCursor(kDecodedPrunedBeforeCursor, '$lowest', txn: txn);
       }
     });

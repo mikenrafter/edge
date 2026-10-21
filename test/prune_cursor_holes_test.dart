@@ -51,12 +51,15 @@ void main() {
       hr INTEGER)''');
     await src.execute('''CREATE TABLE sync_cursor (
       name TEXT PRIMARY KEY, value TEXT, updated_at INTEGER NOT NULL)''');
+    // A second every 30 minutes over each WHOLE day: the cursor only drops
+    // across continuous rows (test/prune_cursor_continuity_test.dart).
     for (final d in days) {
-      final ts = _localSec(10, d, 9);
-      await src.insert('decoded_onehz', {
-        'device_id': '', 'ts_ms': ts * 1000, 'rec_ts': ts,
-        'counter': ts, 'hr': 60,
-      });
+      for (var ts = _localSec(10, d); ts < _localSec(10, d + 1); ts += 1800) {
+        await src.insert('decoded_onehz', {
+          'device_id': '', 'ts_ms': ts * 1000, 'rec_ts': ts,
+          'counter': ts, 'hr': 60,
+        });
+      }
     }
     if (cursor != null) {
       await src.insert('sync_cursor',

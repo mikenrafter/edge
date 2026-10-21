@@ -759,9 +759,22 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       return {for (final c in info) (c['name'] as String)};
     }
 
-    // The cursor as it stood: the file's sync_cursor may REPLACE it later.
-    final cursorBeforeImport =
-        await LocalDb.getCursorInt(LocalDb.kDecodedPrunedBeforeCursor);
+    // The cursor as it stood BEFORE the import: the file's sync_cursor may
+    // REPLACE it later. A journaled import records it before any table copies
+    // and a resume uses the recorded value; reading the live one then would
+    // see the file's cursor and forget the local prune holes.
+    int? cursorBeforeImport;
+    final recorded = run?.cursorBefore;
+    if (recorded != null) {
+      cursorBeforeImport = recorded == 'none' ? null : int.tryParse(recorded);
+    } else {
+      cursorBeforeImport =
+          await LocalDb.getCursorInt(LocalDb.kDecodedPrunedBeforeCursor);
+      if (run != null) {
+        run.cursorBefore = cursorBeforeImport?.toString() ?? 'none';
+        await ImportJournal.putMeta({'cursorBefore': run.cursorBefore});
+      }
+    }
     final counts = <String, int>{};
     // DISTINCT DAYS ACTUALLY WRITTEN — the number the caller reports as
     // "N days imported".
@@ -1191,6 +1204,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         }
         try {
           plan?.start(t);
+          await ImportHooks.table?.beforeTable(t);
           if (await mergeBulkTable(t, index)) continue;
           // PAGED SOURCE READ — never `SELECT *` a whole table.
           //

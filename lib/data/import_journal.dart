@@ -60,15 +60,26 @@ class ImportChunk {
 
 /// Test seams. [chunk] runs INSIDE the chunk's transaction, after the chunk and
 /// the journal row were written, so a throw rolls both back together.
+/// See [ImportHooks.table].
+abstract interface class ImportTableProbe {
+  Future<void> beforeTable(String table);
+}
+
 class ImportHooks {
   static Future<void> Function(Transaction txn, ImportChunk c)? chunk;
 
   /// Rows per chunk; null = the production 25,000.
   static int? chunkRows;
 
+  /// Told as the merge reaches each table, before it copies. Tests only:
+  /// throw from it to kill an import between tables. An interface, not a
+  /// function field, so the heavy-calc guard resolves the call.
+  static ImportTableProbe? table;
+
   static void reset() {
     chunk = null;
     chunkRows = null;
+    table = null;
   }
 }
 
@@ -115,6 +126,7 @@ class ImportRun {
     this.fresh = false,
     this.archiveSkipped = 0,
     this.preFinal,
+    this.cursorBefore,
   });
   final int id, startedAt;
   final String sourcePath;
@@ -130,6 +142,13 @@ class ImportRun {
   /// `day|version` of every finalized day_result BEFORE the import. A resume
   /// must protect these, not the finalized rows the import itself has landed.
   List<String>? preFinal;
+
+  /// The local `decoded_pruned_before` BEFORE the import: an integer, or
+  /// `none`; null until recorded. Written before any table copies and used on
+  /// a resume, because the file's own `sync_cursor` may already have replaced
+  /// the live value by then (reconciling against that would forget the local
+  /// prune holes).
+  String? cursorBefore;
 
   /// Index into [tables] of the table to start at.
   int startIndex(List<String> tables) {
@@ -489,6 +508,7 @@ class ImportJournal {
       'rederive': (mark.toList()..sort()).join(','),
       'rederiveApplied': '0',
       'preFinal': null,
+      'cursorBefore': null,
     });
     await db.update(
         'import_journal',
@@ -636,6 +656,7 @@ class ImportJournal {
       fresh: meta['fresh'] == '1',
       archiveSkipped: int.tryParse(meta['archiveSkipped'] ?? '') ?? 0,
       preFinal: await loadPreFinal(),
+      cursorBefore: meta['cursorBefore'],
     );
     await db.update('import_journal',
         {'state': run.state.name, 'error': null, 'resumes': run.resumes},
