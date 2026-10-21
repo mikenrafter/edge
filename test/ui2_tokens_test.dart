@@ -234,6 +234,9 @@ const _notComponents = {
   // Reads AppState from Provider; `SyncControl` is its pure half and is in
   // the gallery.
   'HomeSyncStatus',
+  // Composes the tab title's status line with the data-edge and device rows;
+  // it is rendered by the tab roots rather than as a standalone component.
+  'HeaderRows',
   // WHOOP MG ECG routes: the Heart Screener entry reads the database and
   // pushes; the capture screen owns a live BLE reading (a gallery case would
   // start one); the detail screen reads and deletes a reading and routes to

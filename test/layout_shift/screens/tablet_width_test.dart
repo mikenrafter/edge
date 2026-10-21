@@ -76,7 +76,7 @@ void main() {
       if (col.width > _maxW + 0.5) {
         bad.writeln('${e.key.label}: column is ${col.width} wide, not capped');
       }
-      for (final id in ['shared:title', 'shared:avatar', 'shared:status-line']) {
+      for (final id in ['shared:title', 'shared:avatar', 'shared:status-line', 'shared:header-rows']) {
         final r = rectOf(e.value, id, e.key.label);
         if (r.left < col.left - 0.5 || r.left + r.width > col.left + col.width + 0.5) {
           bad.writeln('${e.key.label}: $id spans ${r.left}..${r.left + r.width}, '

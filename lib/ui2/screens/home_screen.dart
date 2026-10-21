@@ -2615,10 +2615,9 @@ class _HomeScreenState extends State<HomeScreen>
             shortTitle: g.word,
             avatar: _homeAvatar(c, l),
           ),
-          // Not ScreenTitle(statusLine:): inside the title's own box the row's
-          // targets could not overhang the connection line below.
-          StatusLine(todayId: d.dayId, syncActions: true),
-          ...homeHeaderRows(c, l: l),
+          // Keep the row control in the same spanning Column as the device
+          // rows so its full tap target remains reachable.
+          HeaderRows(todayId: d.dayId),
         ]),
       ),
       const SizedBox(height: S.x5),

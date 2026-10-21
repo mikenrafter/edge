@@ -1,22 +1,9 @@
-// Oct 4: Home's sync UI lives in the greeting header, not in a card above it.
-//
-//   Good afternoon
-//   Synced through 15:33          1 h ago [Sync now] (gear)   <- row 1
-//   59% · Connected
-//
-// (Revised with the shared tab header: the greeting is now the ScreenTitle and
-// the settings button its avatar, in the title row ABOVE row 1. Row 1 is the
-// first content under it and its right-aligned cluster ends at the list's right
-// edge, not against the button.)
-//
-// Row 1 is the first row under the greeting and its centre is level with the
-// settings button's centre. The date stays left; the timer and the clickable
-// (Show details while syncing, Sync now when idle) are right-aligned, just left
-// of the button. While syncing, row 1 LEADS with the status sentence
-// ("Downloading…") in place of the date. The spinner replaces the settings
-// button's gear icon (same button, same tap); Sync now is hidden meanwhile. A
-// problem sentence takes the status slot. There is no second "Synced through"
-// row: row 1 IS the app-wide status line (shared:status-line).
+// The shared tab header keeps the date/status, data edge, and device state in
+// three stable rows under the title. Sync actions share row 1 with the date;
+// progress or a problem sentence takes that date's place. Row 2 keeps its last
+// data edge during sync. The battery appears only when the band reported it.
+// The profile button remains in the title row, and the three-row block is the
+// same size in idle and sync states.
 // "Show details" opens a bottom sheet with the four steps. No percentages, no
 // estimates: absent means nothing.
 //
@@ -159,14 +146,13 @@ Finder _text(Pattern p) => find.byWidgetPredicate(
           (p is RegExp ? p.hasMatch(w.data!) : w.data == p)),
 );
 
-/// Row 1 when idle: the status line's "Synced through". It used to be the
-/// date on row 1 and "Synced through" on a second row; Home now has ONE status
-/// line (the app-wide StatusLine), so the data edge IS row 1.
+/// Row 1 is the date/status line; row 2 always carries the data edge.
 Finder get _through => find.descendant(
-    of: find.byType(HomeSyncStatus),
-    // The short form when the row is narrow (360 pt at 1.3x).
-    matching: _text(RegExp(r'^(Synced through|Through) 15:33$')));
-Finder get _date => _through;
+    of: find.byKey(const ValueKey('shared:header-rows')),
+    matching: _text(RegExp(r'^Synced through 15:33$')));
+Finder get _date => find.descendant(
+    of: find.byKey(const ValueKey('shared:header-rows')),
+    matching: _text('Sunday, 4 October'));
 
 /// The settings button is the profile avatar (no name set: the user glyph).
 Finder get _gear => find.byIcon(LucideIcons.user);
@@ -257,7 +243,7 @@ void main() {
       expect(t.getTopLeft(_date).dx, lessThan(40));
       expect(t.getTopLeft(find.text('1 h ago')).dx, greaterThan(180));
 
-      // "Synced through" is the one status line; the battery line is last.
+      // The data edge and battery occupy their own rows below row 1.
       expect(_y(t, find.text('59% · Connected')), greaterThan(_y(t, _through)));
       expect(_y(t, find.textContaining('Good afternoon')), lessThan(_y(t, _date)));
       await _end(t);
@@ -300,16 +286,18 @@ void main() {
       final line = t.getSize(row1).height;
       // Row 1, 2 pt, battery. Row 1's 44 pt hit targets must not add their
       // own height.
+      expect(_through, findsOneWidget);
+      expect(t.getTopLeft(_through).dy, greaterThan(t.getBottomLeft(row1).dy));
       expect(
-        t.getTopLeft(battery).dy - t.getBottomLeft(row1).dy,
-        lessThanOrEqualTo(line + 2 + 1),
-        reason: 'row 1 bottom to battery top is one text line and a 2 pt gap',
+        t.getTopLeft(battery).dy - t.getBottomLeft(_through).dy,
+        closeTo(9, 1),
+        reason: 'the data edge has its own fixed row before the device row',
       );
       expect(
-        t.getTopLeft(row1).dy -
+        t.getTopLeft(find.byKey(const ValueKey('shared:header-rows'))).dy -
             t.getBottomLeft(find.textContaining('Good afternoon')).dy,
         lessThan(line + 8),
-        reason: 'row 1 follows the greeting with no extra padding',
+        reason: 'the fixed row slot follows the greeting with no extra padding',
       );
       await _end(t);
     });
@@ -419,8 +407,8 @@ void main() {
           reason: 'only the battery level');
       expect(find.textContaining('to go'), findsNothing);
 
-      // The status replaces "Synced through" in the one status line.
-      expect(_through, findsNothing);
+      // Row 2 remains visible while row 1 carries the running sentence.
+      expect(_through, findsOneWidget);
 
       // Sync now and the old trailing spinner are gone; the connection line
       // is unchanged.
@@ -512,7 +500,7 @@ void main() {
       addTearDown(app.dispose);
       await _pump(t, app);
       final gap = t.getTopLeft(find.text('59% · Connected')).dy -
-          t.getBottomLeft(_status).dy;
+          t.getBottomLeft(_through).dy;
       expect(gap, closeTo(idleGap, 2));
       await _end(t);
     });
@@ -577,26 +565,27 @@ void main() {
       final app = _App(pres: _failed(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
-      expect(find.text('Sync failed'), findsOneWidget);
+      const problem = 'Pair a band before syncing';
+      expect(find.text(problem), findsOneWidget);
       // The problem is the status: "Synced through" gives way to it.
       expect(_date, findsNothing);
       expect(find.text('Show details'), findsOneWidget);
-      expect(_x(t, find.text('Sync failed')),
+      expect(_x(t, find.text(problem)),
           lessThan(_x(t, find.text('Show details'))));
       expect(_x(t, find.text('Show details')),
           lessThan(_x(t, find.text('Retry'))));
-      expect((_y(t, find.text('Sync failed')) - _y(t, find.text('Show details'))).abs(),
+      expect((_y(t, find.text(problem)) - _y(t, find.text('Show details'))).abs(),
           lessThan(2));
       // All on row 1, level with the button; Retry is last, against it.
-      expect((_y(t, find.text('Retry')) - _y(t, find.text('Sync failed'))).abs(),
+      expect((_y(t, find.text('Retry')) - _y(t, find.text(problem))).abs(),
           lessThan(2));
-      _expectLevel(t, find.text('Sync failed'));
+      _expectLevel(t, find.text(problem));
       _expectButtonGap(t, find.text('Retry'));
       expect(find.text('Retry'), findsOneWidget);
       expect(find.text('Sync now'), findsNothing);
       expect(find.text('1 h ago'), findsOneWidget);
-      // The reason is the sheet's, not the line's.
-      expect(find.textContaining('Pair a band before syncing'), findsNothing);
+      // The failure reason remains visible in row 1.
+      expect(_through, findsOneWidget);
       await _end(t);
     });
 
@@ -671,9 +660,9 @@ void main() {
         final row1 = switch (name) {
           'idle' => _date,
           'syncing' => _status,
-          _ => find.text('Sync failed'),
+          _ => find.text('Pair a band before syncing'),
         };
-        expect(_through, name == 'idle' ? findsOneWidget : findsNothing);
+        expect(_through, findsOneWidget);
         _expectLevel(t, row1);
         // Everything on the sync row is inside the screen.
         for (final f in [
@@ -698,12 +687,13 @@ void main() {
       await _pump(t, app, width: 360, scale: 1.3);
       expect(t.takeException(), isNull);
       expect(find.textContaining(' ago'), findsNothing);
-      expect(find.text('Sync failed'), findsOneWidget);
+      const problem = 'Pair a band before syncing';
+      expect(find.text(problem), findsOneWidget);
       expect(find.text('Show details'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
-      expect(t.widget<Text>(find.text('Sync failed')).overflow,
+      expect(t.widget<Text>(find.text(problem)).overflow,
           TextOverflow.ellipsis);
-      expect(t.getSize(find.text('Sync failed')).width,
+      expect(t.getSize(find.text(problem)).width,
           greaterThan(60), reason: 'the problem is not squeezed to nothing');
       await _end(t);
     });

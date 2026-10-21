@@ -19,6 +19,17 @@ class ShiftRect {
   final double height;
   const ShiftRect(this.left, this.top, this.width, this.height);
 
+  @override
+  String toString() => 'ShiftRect($left, $top, $width, $height)';
+
+  @override
+  bool operator ==(Object other) =>
+      other is ShiftRect && other.left == left && other.top == top &&
+      other.width == width && other.height == height;
+
+  @override
+  int get hashCode => Object.hash(left, top, width, height);
+
   double get area => width * height;
   ShiftPoint get center => ShiftPoint(left + width / 2, top + height / 2);
 

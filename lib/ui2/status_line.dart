@@ -7,17 +7,24 @@
 // running > "Synced through ...". Counts appear only where the source reported
 // them. Tap opens the sync details, as Home's sync row does. With no AppState
 // above (fixtures) the row keeps its height and shows nothing.
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:clock/clock.dart' as pc;
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../data/day_label.dart' show todayLabel;
 import '../data/import_progress.dart';
 import '../l10n/app_localizations.dart';
+import '../l10n/date_text.dart' show localizedDate;
 import '../state/app_state.dart';
 import '../state/derive_progress.dart';
+import '../state/locale_controller.dart';
 import 'grammar.dart';
 import 'profile/import_progress_view.dart';
-import 'screens/home_screen.dart' show syncedThroughLabel, syncedThroughShortLabel;
+import 'screens/home_screen.dart'
+    show connectionLine, syncedThroughLabel, syncedThroughShortLabel;
 import 'shared_slot.dart';
 import 'sync_control.dart';
 import 'theme.dart';
@@ -34,7 +41,11 @@ class StatusLine extends StatelessWidget {
   /// row ([HomeSyncStatus]) with its "Sync now" / "Show details" actions, in
   /// the same fixed-height slot. The other tabs carry the text alone.
   final bool syncActions;
-  const StatusLine({super.key, this.todayId, this.now, this.syncActions = false});
+  final String? idleLabel;
+  final double? slotHeight;
+  const StatusLine({super.key, this.todayId, this.now, this.syncActions = false, this.idleLabel, this.slotHeight});
+
+  double _height(BuildContext c) => slotHeight ?? heightFor(c);
 
   static const _pad = EdgeInsets.symmetric(horizontal: S.x1, vertical: S.x1);
 
@@ -69,15 +80,15 @@ class StatusLine extends StatelessWidget {
   Widget _line(BuildContext c, AppState? app) {
     if (app == null) {
       // A golden: Home still says where the data ends ("No band data yet").
-      if (!syncActions) return SizedBox(height: heightFor(c));
+      if (!syncActions) return SizedBox(height: _height(c));
       final id = todayId ?? todayLabel();
       return SizedBox(
-        height: heightFor(c),
+        height: _height(c),
         child: Align(
           alignment: Alignment.centerLeft,
           child: HomeSyncStatus(
-            through: syncedThroughLabel(null, id),
-            throughShort: syncedThroughShortLabel(null, id),
+            through: idleLabel ?? syncedThroughLabel(null, id),
+            throughShort: idleLabel ?? syncedThroughShortLabel(null, id),
             inset: S.x1,
           ),
         ),
@@ -98,7 +109,7 @@ class StatusLine extends StatelessWidget {
     final p = P.of(c);
     // Only the fields this line needs, so AppState's heartbeat does not
     // rebuild it. A record compares by value.
-    final at = now ?? DateTime.now();
+    final at = now ?? pc.clock.now();
     final sync = c.select<AppState, (bool, String, DateTime?)>((a) {
       final s = a.syncPresentation;
       return (s.busy, s.busy ? syncStatusHeadline(s, at) : '', a.lastRecordAt);
@@ -115,24 +126,24 @@ class StatusLine extends StatelessWidget {
     } else if (sync.$1) {
       text = sync.$2;
     } else {
-      text = syncedThroughLabel(sync.$3, todayId ?? todayLabel(), l);
+      text = idleLabel ?? syncedThroughLabel(sync.$3, todayId ?? todayLabel(), l);
     }
     if (syncActions &&
         !importing &&
         deriveProgressLine(der, l) == null) {
       // No wrapper box: the row's HitOverhang must be the render child of the
       // header Column so its 44 pt targets overhang the lines around it. It
-      // reports [heightFor] itself (slot), the same as the text-only line.
+      // reports this row's fixed slot, the same as the text-only line.
       final id = todayId ?? todayLabel();
       return HomeSyncStatus(
-        through: syncedThroughLabel(sync.$3, id, l),
-        throughShort: syncedThroughShortLabel(sync.$3, id, l),
+        through: idleLabel ?? syncedThroughLabel(sync.$3, id, l),
+        throughShort: idleLabel ?? syncedThroughShortLabel(sync.$3, id, l),
         inset: S.x1,
-        slot: heightFor(c),
+        slot: _height(c),
       );
     }
     return SizedBox(
-      height: heightFor(c),
+      height: _height(c),
       child: Pressable(
         onTap: () => showSyncDetails(c, app),
         child: Align(
@@ -147,6 +158,85 @@ class StatusLine extends StatelessWidget {
                 overflow: TextOverflow.ellipsis),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// One shared three-row header under each tab title. Row 1 keeps StatusLine's
+/// import > derive > sync > idle priority; the data edge and device stay below.
+class HeaderRows extends StatefulWidget {
+  const HeaderRows({super.key, required this.todayId});
+  final String? todayId;
+
+  @override
+  State<HeaderRows> createState() => _HeaderRowsState();
+}
+
+class _HeaderRowsState extends State<HeaderRows> {
+  DateTime? _held;
+  bool _initialized = false;
+
+  @override
+  Widget build(BuildContext c) {
+    final l = AppLocalizations.of(c);
+    DateTime? edge;
+    var busy = false;
+    try {
+      (edge, busy) = c.select<AppState, (DateTime?, bool)>((app) =>
+          (app.lastRecordAt, app.syncPresentation.busy));
+    } on ProviderNotFoundException {
+      // Goldens without AppState keep the same empty, fixed-height header.
+    }
+    if (!_initialized || !busy) {
+      _held = edge;
+      _initialized = true;
+    }
+    final date = widget.todayId == null
+        ? pc.clock.now()
+        : DateTime.tryParse(widget.todayId!) ?? pc.clock.now();
+    final todayId = widget.todayId ?? DateFormat('yyyy-MM-dd').format(date);
+    final dateText = localizedDate(date,
+        l?.localeName ?? LocaleController.displayLanguageCode, weekday: true);
+    final statusHeight = math.max(S.tap, StatusLine.heightFor(c));
+    return SharedSlot(
+      'header-rows',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          StatusLine(
+            todayId: todayId,
+            syncActions: true,
+            idleLabel: dateText,
+            slotHeight: statusHeight,
+          ),
+          SizedBox(
+            height: StatusLine.heightFor(c),
+            child: Padding(
+              padding: const EdgeInsets.only(
+                  left: S.x1, right: S.tap + HomeSyncStatus.endGap),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  syncedThroughLabel(_held, todayId, l),
+                  style: F.cap.copyWith(color: P.of(c).ink3),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            height: StatusLine.heightFor(c) + 2,
+            child: Padding(
+              padding: const EdgeInsets.only(left: S.x1),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: connectionLine(c, l) ?? const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

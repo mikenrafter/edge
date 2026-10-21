@@ -2931,7 +2931,7 @@ class ScreenTitle extends StatelessWidget {
   /// The profile button (or its syncing stand-in): marked `shared:avatar`.
   final Widget? avatar;
 
-  /// Adds the app-wide [StatusLine] directly under the title (after the
+  /// Adds the app-wide [HeaderRows] directly under the title (after the
   /// content-top marker, so that marker stays where it is on every tab).
   final bool statusLine;
 
@@ -3006,7 +3006,7 @@ class ScreenTitle extends StatelessWidget {
           ),
         ),
         const ContentTopMarker(),
-        if (statusLine) const StatusLine(),
+        if (statusLine) HeaderRows(todayId: null),
       ],
     );
   }

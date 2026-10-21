@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -75,6 +76,8 @@ class _SyncControlState extends State<SyncControl> {
     },
   );
 
+  DateTime _now() => pc.Clock(widget.clock ?? pc.clock.now).now();
+
   Future<void> _restore() async {
     bool? stored;
     try {
@@ -113,7 +116,7 @@ class _SyncControlState extends State<SyncControl> {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final s = widget.state;
-    final now = (widget.clock ?? DateTime.now)();
+    final now = _now();
     final failed = s.phase == 'failed';
     final elapsed = s.busy ? s.elapsed(now) : null;
     final (icon, tint) = _mark(s, p);
@@ -231,7 +234,9 @@ List<Widget> syncStepRows(SyncPresentationState s, DateTime now) =>
 /// away, which the connection line already says.
 ({String text, bool failed})? syncProblem(SyncPresentationState s) {
   if (s.busy) return null;
-  if (s.phase == 'failed') return (text: 'Sync failed', failed: true);
+  if (s.phase == 'failed') {
+    return (text: s.failureReason ?? 'Sync failed', failed: true);
+  }
   if (s.phase == 'completed' && s.partial) {
     return (text: 'Needs another pass', failed: false);
   }
@@ -694,7 +699,7 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
         ]),
       );
     }
-    final now = DateTime.now();
+    final now = pc.clock.now();
     _ticker.update(
       busy: s.busy,
       needsClock: s.busy || s.lastSuccess != null,
@@ -717,15 +722,16 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       // The right-hand end first, so the left can decide between the full
       // label and the short one before anything has to wrap or clip.
       // Pressables are at least S.tap wide.
+      final maxRight = box.maxWidth * .6;
       final details = hasStatus ? _width(c, 'Show details', link) + S.x1 : 0.0;
+      final timerW = timerText == null ? 0.0 : _width(c, '$timerText ·', base);
+      final showTimer = timerText != null && timerW + details <= maxRight;
       final act = s.busy
           ? 0.0
           : math.max(_width(c, action, link) + 2 * S.x1, S.tap);
-      final timerW = timerText == null ? 0.0 : _width(c, '$timerText ·', base);
-      final fixed = [timerW, details, act].where((w) => w > 0).toList();
+      final fixed = [if (showTimer) timerW, details, act].where((w) => w > 0).toList();
       double sum(List<double> ws) =>
           ws.fold(0.0, (a, w) => a + w) + math.max(0, ws.length - 1) * S.x1;
-      final maxRight = box.maxWidth * .6;
       // "N h ago" is the first thing to go when even the clickables crowd the
       // row, in every state (a problem included): the status and the
       // clickables matter more.
@@ -755,7 +761,7 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       // what this header replaced.
       final trail = <Widget>[
         if (showAgo) Text(ago, style: base),
-        if (timerText != null)
+        if (showTimer)
           Semantics(
             label: 'Elapsed ${_spoken(elapsed!)}',
             child: ExcludeSemantics(

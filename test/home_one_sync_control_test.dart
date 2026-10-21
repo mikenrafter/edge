@@ -108,7 +108,7 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
     expect(find.text('Sync now'), findsNothing);
     expect(find.text('Sync the band'), findsNothing);
-    expect(find.text('Sync failed'), findsOneWidget);
+    expect(find.text('Pair a band before syncing'), findsOneWidget);
     await t.tap(find.text('Show details'));
     await t.pump();
     await t.pump(const Duration(milliseconds: 400));

@@ -22,6 +22,7 @@ const _ids = [
   'shared:avatar',
   'shared:content-top',
   'shared:status-line',
+  'shared:header-rows',
 ];
 bool _shared(String id) => id.startsWith('shared:');
 

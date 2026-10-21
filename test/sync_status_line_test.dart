@@ -599,8 +599,7 @@ void main() {
           reason: 'no last sync, so no time since it');
     });
 
-    testWidgets('Home: a failed sync is the line with Retry; the reason is in '
-        'the sheet',
+    testWidgets('Home: a failed sync shows its reason on the line with Retry',
         (t) async {
       final app = AppState.forTesting();
       addTearDown(app.dispose);
@@ -610,8 +609,8 @@ void main() {
       await t.pump();
       expect(find.text('Retry'), findsOneWidget);
       expect(find.text('Sync now'), findsNothing);
-      expect(find.text('Sync failed'), findsOneWidget);
-      expect(find.textContaining('Pair a band before syncing'), findsNothing);
+      expect(find.text('Pair a band before syncing'), findsOneWidget);
+      expect(find.textContaining('Pair a band before syncing'), findsOneWidget);
       await t.tap(find.text('Show details'));
       await t.pump();
       await t.pump(const Duration(milliseconds: 400));
