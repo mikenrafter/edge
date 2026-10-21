@@ -36,6 +36,16 @@ Finder _in(Finder f) =>
     find.descendant(of: find.byKey(_rows), matching: f);
 Finder _text(String s) => _in(find.text(s));
 
+/// The bundle's day ids come from the real clock in the shared fixtures; pin
+/// them to the fixed day so Home's "today" is [headerNow]'s.
+Map<String, dynamic> _fixedDay(Map<String, dynamic> b) {
+  final st = Map<String, dynamic>.from(b['status'] as Map);
+  for (final k in ['today_day', 'activity_day', 'overnight_day']) {
+    st[k] = '2026-10-04';
+  }
+  return {...b, 'status': st};
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() {
@@ -233,27 +243,24 @@ void main() {
       ShellDomain.health,
     ]) {
       testWidgets('${d.label}: carries the three rows', (t) async {
-        phoneSurface(t);
-        final app = HeaderApp(pres: headerIdle(), through: headerEdge)
-          ..repo = TabsRepo(homeBundle(
-              readiness: 70,
-              overnightAt: todayAtMs(8, 42),
-              activityAt: todayAtMs(8, 42)));
-        addTearDown(app.dispose);
-        await t.pumpWidget(shellApp(app));
-        await settleShell(t);
-        if (d != ShellDomain.today) await goTab(t, d);
-        expect(find.byKey(_rows), findsOneWidget,
-            reason: '${d.label} lacks shared:header-rows');
-        expect(_text('Synced through 15:33'), findsOneWidget);
-        expect(_text('59% · Connected'), findsOneWidget);
-        expect(_text('Sync now'), findsOneWidget);
-        // The date row: a localized "Weekday, D Month" (shape only; the
-        // fixed-clock value is asserted in the title-only tests above).
-        expect(
-            _in(find.textContaining(RegExp(r'^[A-Z][a-z]+, \d{1,2} [A-Z][a-z]+$'))),
-            findsOneWidget);
-        await t.pumpWidget(const SizedBox());
+        await withClock(Clock.fixed(headerNow), () async {
+          phoneSurface(t);
+          final at = headerNow.millisecondsSinceEpoch;
+          final app = HeaderApp(pres: headerIdle(), through: headerEdge)
+            ..repo = TabsRepo(_fixedDay(
+                homeBundle(readiness: 70, overnightAt: at, activityAt: at)));
+          addTearDown(app.dispose);
+          await t.pumpWidget(shellApp(app));
+          await settleShell(t);
+          if (d != ShellDomain.today) await goTab(t, d);
+          expect(find.byKey(_rows), findsOneWidget,
+              reason: '${d.label} lacks shared:header-rows');
+          expect(_text('Synced through 15:33'), findsOneWidget);
+          expect(_text('59% · Connected'), findsOneWidget);
+          expect(_text('Sync now'), findsOneWidget);
+          expect(_text(headerDate), findsOneWidget);
+          await t.pumpWidget(const SizedBox());
+        });
       });
     }
   });
