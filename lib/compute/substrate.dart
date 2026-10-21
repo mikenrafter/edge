@@ -11,6 +11,7 @@
 // returns wake-to-wake `PhysioDay`s anchored on each detected WAKE (sleep
 // offset), with a noon-to-noon fallback so a day always exists when there's data.
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:collection/collection.dart' show lowerBound;
@@ -1282,6 +1283,16 @@ bool userReplacesNight(String source) =>
 /// Local YYYY-MM-DD label for an epoch-second instant.
 String localDateLabel(int epochSec) =>
     dayLabelOf(DateTime.fromMillisecondsSinceEpoch(epochSec * 1000));
+
+/// Test seam (RED stub, no behaviour yet): force [calendarDays] to segment and
+/// stage every walked day, the pre-optimisation behaviour.
+@visibleForTesting
+bool debugStageEveryWalkedDay = false;
+
+/// Test seam (RED stub, never incremented yet): days whose segmentation body
+/// ran in [calendarDays].
+@visibleForTesting
+int debugSegmentedDayCount = 0;
 
 /// Split the substrate into CALENDAR days (local midnight → next local midnight).
 ///
