@@ -332,10 +332,12 @@ class _DataScreenState extends State<DataScreen> {
 
   Widget _view(BuildContext c, AppState app, AppLocalizations? l,
       ImportProgress? importProgress) {
+    final importing = importProgress != null &&
+        importProgress is! ImportDone && importProgress is! ImportFailed;
     return DataScreenView(
       importProgress: importProgress,
       rebuiltCard: dbRebuiltCard(app.dbRebuild),
-      busy: _busy,
+      busy: _busy || importing,
       busyStatus: _busyStatus,
       note: _note,
       noteFailed: _noteFailed,
@@ -447,6 +449,10 @@ class DataScreenView extends StatelessWidget {
     final l = AppLocalizations.of(c);
     final last = lastBackup;
     final folder = backupFolder;
+    final importingProgress = importProgress != null &&
+        importProgress is! ImportDone && importProgress is! ImportFailed;
+    final importing = importingProgress;
+    final failedProgress = importProgress;
     final folderLabel = folder == null
         ? (l?.dataBackupFolderDefault ?? 'App folder (default)')
         : folder.name.isEmpty
@@ -555,7 +561,10 @@ class DataScreenView extends StatelessWidget {
                       l?.dataImportFile ?? 'Import a file',
                       sub: l?.dataImportFileSub ??
                           'A backup, a journal CSV or another app’s export. Days your band already measured are kept.',
-                      onTap: busy ? null : onImport),
+                      onTap: busy ? null : onImport,
+                      replacement: importingProgress
+                          ? ImportProgressView(importProgress!, compact: true)
+                          : null),
                   // Progressive disclosure: two health-store reads, each with
                   // its own consent and its own ceiling, behind one row rather
                   // than two more rows on this screen.
@@ -587,17 +596,19 @@ class DataScreenView extends StatelessWidget {
                       chevron: false,
                       onTap: busy ? null : onReset),
                 ]),
-                if (busy) ...[
+                if (failedProgress is ImportFailed) ...[
+                  const SizedBox(height: S.x5),
+                  ImportProgressView(failedProgress),
+                ] else if (busy && !importing) ...[
                   const SizedBox(height: S.x6),
-                  if (importProgress != null)
-                    ImportProgressView(importProgress!)
-                  else
-                    InlineLoading(
-                      status: busyStatus ??
-                          l?.loadingDataBusy ??
-                          'Working on your data'),
+                  InlineLoading(
+                    status: busyStatus ??
+                        l?.loadingDataBusy ??
+                        'Working on your data'),
                 ],
-                if (note != null && note!.isNotEmpty) ...[
+                if (note != null &&
+                    note!.isNotEmpty &&
+                    importProgress is! ImportFailed) ...[
                   const SizedBox(height: S.x5),
                   StatusCard(
                       noteFailed

@@ -9,21 +9,24 @@ import '../../data/import_progress.dart';
 import '../../l10n/app_localizations.dart';
 import '../activity/summary.dart' show grouped;
 import '../grammar.dart';
+import '../status_line.dart';
 import '../theme.dart';
 
 class ImportProgressView extends StatelessWidget {
   final ImportProgress progress;
-  const ImportProgressView(this.progress, {super.key});
+  final bool compact;
+  const ImportProgressView(this.progress,
+      {super.key, this.compact = false});
 
   /// Built from its parts, so a nonlinear text scaler (Android 14+) cannot
   /// grow the text without growing the box: fixed parts (padding, spinner,
   /// gaps, bar) plus each text line at its scaled font size. Room for the
-  /// widest stage: a two-line status and a one-line detail.
+  /// header status, its stage label, and a one-line detail.
   static double heightFor(BuildContext c) {
     // Laid-out lines round up to whole pixels, so the box must too.
     final line = (MediaQuery.textScalerOf(c).scale(F.cap.fontSize!) * F.cap.height!)
         .ceilToDouble();
-    return 2 * S.x4 + 22 + S.x2 + line * (2 + 1) + S.x2 + 4;
+    return 2 * S.x4 + 22 + S.x2 + line * (2 + 1 + 1) + S.x2 + 4;
   }
 
   @override
@@ -33,7 +36,8 @@ class ImportProgressView extends StatelessWidget {
     final s = progress;
     if (s is ImportDone) return const SizedBox.shrink();
 
-    final status = statusOf(l, s);
+    final status = StatusLine.importLine(l, s);
+    final stageStatus = statusOf(l, s);
     String? detail;
     double? bar;
     var counted = false;
@@ -58,9 +62,10 @@ class ImportProgressView extends StatelessWidget {
 
     // Fixed at a given text size so stage changes never resize it.
     return SizedBox(
-      height: heightFor(context),
+      height: compact ? double.infinity : heightFor(context),
       child: Surface(
-        pad: const EdgeInsets.symmetric(vertical: S.x4, horizontal: S.x4),
+        pad: EdgeInsets.symmetric(
+            vertical: compact ? S.x1 : S.x4, horizontal: S.x4),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -71,19 +76,25 @@ class ImportProgressView extends StatelessWidget {
                   height: 22,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-              const SizedBox(height: S.x2),
+              SizedBox(height: compact ? S.x1 : S.x2),
               Text(status,
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: F.cap.copyWith(color: p.ink2)),
+                  style: (compact ? F.over : F.cap).copyWith(color: p.ink2)),
+              if (stageStatus != status)
+                Text(stageStatus,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: (compact ? F.over : F.cap).copyWith(color: p.ink3)),
               if (detail != null)
                 Text(detail,
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: F.cap.copyWith(color: p.ink3)),
-              if (counted) ...[
+                    style: (compact ? F.over : F.cap).copyWith(color: p.ink3)),
+              if (!compact && counted) ...[
                 const SizedBox(height: S.x2),
                 LinearProgressIndicator(value: bar, minHeight: 4),
               ],

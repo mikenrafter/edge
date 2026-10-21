@@ -5,7 +5,7 @@
 //     -> Copying(stage, rowsDone non-decreasing, rowsTotal)
 //     -> Rebuilding(daysDone, daysTotal, day)
 //     -> Done -> null
-//   a thrown import: ... -> Failed(error) -> null
+//   a thrown import: ... -> Failed(error), retained until the next import
 
 import 'dart:io';
 
@@ -166,19 +166,23 @@ void main() {
     expect(seen.whereType<ImportProgress>().last, isA<ImportDone>());
   });
 
-  test('a thrown import reports Failed, then null', () async {
+  test('a thrown import retains Failed until another import starts', () async {
     final bad = File(p.join(tmp.path, 'not_a_db.db'))
       ..writeAsStringSync('this is not a database ' * 200);
 
     await expectLater(app.importEdgeBackup(bad.path), throwsA(anything));
-    await cleared();
-
     final steps = seen.whereType<ImportProgress>().toList();
     expect(steps, isNotEmpty, reason: 'the import reported nothing');
     expect(steps.last, isA<ImportFailed>());
     expect((steps.last as ImportFailed).error, isNotEmpty);
     expect(steps.whereType<ImportDone>(), isEmpty);
-    expect(seen.last, isNull);
+    expect(app.importProgress.value, isA<ImportFailed>());
+
+    // A later import dismisses the prior failure as it takes ownership of the
+    // progress line, then clears its own successful Done state.
+    await app.importEdgeBackup(await _backup(tmp.path));
+    await cleared();
+    expect(seen, contains(isNull));
   });
 
   test('the import queues one durable heavy recalculation instead of running it',

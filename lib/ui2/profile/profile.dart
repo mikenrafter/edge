@@ -38,6 +38,8 @@ class SetRow extends StatelessWidget {
 
   /// Replaces the value and chevron (e.g. a [Switch]).
   final Widget? trailing;
+  /// Keeps this row's measured slot while showing transient content in it.
+  final Widget? replacement;
 
   /// A brand mark in place of [icon] — Lucide has no GitHub/Discord/Reddit
   /// logo, and a generic glyph standing in for one of those is worse than
@@ -51,6 +53,7 @@ class SetRow extends StatelessWidget {
       this.danger = false,
       this.chevron = true,
       this.trailing,
+      this.replacement,
       this.enabled = true,
       this.onTap})
       : glyph = null;
@@ -64,7 +67,8 @@ class SetRow extends StatelessWidget {
       this.enabled = true,
       this.onTap})
       : icon = null,
-        trailing = null;
+        trailing = null,
+        replacement = null;
 
   @override
   Widget build(BuildContext c) {
@@ -90,7 +94,7 @@ class SetRow extends StatelessWidget {
           Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title,
+              Text(replacement == null ? title : '',
                   style: F.body.copyWith(color: danger ? p.on(C.red) : p.ink)),
               if (value.isNotEmpty && bigText(c))
                 Text(value,
@@ -121,7 +125,18 @@ class SetRow extends StatelessWidget {
         ]),
       ),
     );
-    return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
+    final visibleRow = enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
+    if (replacement == null) return visibleRow;
+    return Stack(children: [
+      Visibility(
+        visible: false,
+        maintainSize: true,
+        maintainAnimation: true,
+        maintainState: true,
+        child: visibleRow,
+      ),
+      Positioned.fill(child: replacement!),
+    ]);
   }
 }
 

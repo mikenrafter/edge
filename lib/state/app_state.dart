@@ -1457,12 +1457,15 @@ class AppState extends ChangeNotifier {
   ImportRollupProbe? debugFinalizeImport;
 
   Future<int> importEdgeBackup(String path) async {
+    // Starting a new import dismisses the previous result and establishes the
+    // progress owner before any asynchronous work begins.
+    importProgress.value = null;
     importRollupError = null;
     lastImportArchiveSkipped = 0;
     lastImportArchiveRestored = 0;
     // The restore copies the data, then queues one recalculation; the screen
-    // shows which stage it is in. Cleared on every exit (4.3): a throw reports
-    // Failed first, and the finally leaves null.
+    // shows which stage it is in. Failure stays visible until the next import
+    // starts; success clears its transient Done state in finally.
     try {
       // Gzipped auto-backups (`.db.gz`) are inflated INSIDE importFromDbFile —
       // do not add it back here. Its inflate checks the gzip trailer, so a
@@ -1518,7 +1521,9 @@ class AppState extends ChangeNotifier {
       importProgress.value = ImportFailed('$e');
       rethrow;
     } finally {
-      importProgress.value = null;
+      if (importProgress.value is! ImportFailed) {
+        importProgress.value = null;
+      }
     }
   }
 

@@ -315,13 +315,17 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     );
   }
 
-  Widget _view(ImportProgress? prog) => WelcomeView(
+  Widget _view(ImportProgress? prog) {
+    final importing = prog != null &&
+        prog is! ImportDone && prog is! ImportFailed;
+    return WelcomeView(
         importProgress: prog,
-        busy: _busy,
+        busy: _busy || importing,
         outcome: _outcome,
         onNew: () => context.read<AppState>().chooseNewUser(),
         onImport: _import,
       );
+  }
 }
 
 /// Route [paths] to the importer that understands them and normalise the
@@ -631,7 +635,7 @@ class WelcomeView extends StatelessWidget {
                   'A sensor export, an OpenStrap backup or a vendor CSV.',
               style: F.cap.copyWith(color: p.ink3),
             ),
-            if (busy) ...[
+            if (busy || importProgress is ImportFailed) ...[
               const SizedBox(height: S.x6),
               if (importProgress != null)
                 ImportProgressView(importProgress!)
