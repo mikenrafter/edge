@@ -1,6 +1,9 @@
 {
   "version": 1,
   "lists": {
+    "analytics_unregistered_calls": {
+      "entries": 0
+    },
     "background_legacy_inline_dispatches": {
       "entries": 1
     },
@@ -16,10 +19,10 @@
     "file_size_exceptions": {
       "entries": 0
     },
-    "group_unknown_cost_members": {
+    "group_unknown_cost_groups": {
       "entries": 3
     },
-    "group_unknown_cost_groups": {
+    "group_unknown_cost_members": {
       "entries": 3
     },
     "heavy_calc_baseline": {

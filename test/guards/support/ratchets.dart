@@ -162,6 +162,12 @@ const List<RatchetList> kRatchets = <RatchetList>[
   RatchetList('group_unknown_cost_groups',
       'lib/compute/groups/edge_groups.dart', RatchetKind.dartLiteral,
       symbol: 'kGroupUnknownCostGroups'),
+  // Analytics functions edge calls that are in no registry group (trivial
+  // utilities, each with a reason; design 06 1b; it may only shrink).
+  RatchetList('analytics_unregistered_calls',
+      'test/groups/analytics_registry_contract_test.dart',
+      RatchetKind.dartLiteral,
+      symbol: 'kUnregisteredAnalyticsCalls'),
 ];
 
 /// Reads a repo-relative file; null when it does not exist.
