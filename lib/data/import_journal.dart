@@ -331,14 +331,21 @@ class ImportJournal {
   /// Copies [src] into app storage and opens the journal row, replacing any
   /// earlier one (only the latest import is tracked).
   static Future<ImportRun> begin(String src, {required bool fresh}) async {
-    final dest = p.join((await _dir()).path, 'source.db');
+    // One file per import, never a fixed name: the directory is shared by every
+    // database in this databases dir, and a fixed name let one import's cleanup
+    // (or its replacing the copy) delete the copy another still needs.
+    final dest = p.join((await _dir()).path,
+        'source-${DateTime.now().microsecondsSinceEpoch}-$pid.db');
     final f = File(dest);
-    if (f.existsSync()) await f.delete();
     await File(src).copy(dest);
     final stat = await f.stat();
     final sha = await _shaPrefix(f);
     final now = DateTime.now().millisecondsSinceEpoch;
     final db = await LocalDb.instance;
+    final earlier = [
+      for (final r in await db.query('import_journal', columns: ['source_path']))
+        r['source_path'],
+    ];
     final id = await db.transaction((txn) async {
       await txn.delete('import_journal');
       return txn.insert('import_journal', {
@@ -350,6 +357,10 @@ class ImportJournal {
         'state': ImportJournalState.copying.name,
       });
     });
+    // Only the latest import is tracked: the replaced row's copy goes with it.
+    for (final e in earlier) {
+      await _removeSource(e);
+    }
     await LocalDb.putComputeFreshness(
         _metaKey, 'fresh=${fresh ? 1 : 0}');
     notify();
@@ -407,7 +418,7 @@ class ImportJournal {
           r['state'] == ImportJournalState.copying.name;
       if (untouched) {
         await db.delete('import_journal', where: 'id = ?', whereArgs: [run.id]);
-        await _removeSource();
+        await _removeSource(run.sourcePath);
         await LocalDb.deleteComputeFreshness(_metaKey);
       } else {
         await db.update(
@@ -421,10 +432,36 @@ class ImportJournal {
     notify();
   }
 
-  static Future<void> _removeSource() async {
+  /// Deletes the saved copy at [path] (this journal's own, by its row) and
+  /// nothing else in the directory.
+  static Future<void> _removeSource(Object? path) async {
     try {
-      final d = await _dir();
-      if (d.existsSync()) await d.delete(recursive: true);
+      if (path is! String) return;
+      final f = File(path);
+      if (p.equals(p.dirname(path), (await _dir()).path) && f.existsSync()) {
+        await f.delete();
+      }
+    } catch (_) {}
+  }
+
+  /// A copy no journal row names, left by a wiped journal or a killed process.
+  /// Old ones only: a younger file may belong to another database's import
+  /// that is running right now.
+  static Future<void> _sweepOrphans() async {
+    try {
+      final db = await LocalDb.instance;
+      final named = {
+        for (final r in await db.query('import_journal', columns: ['source_path']))
+          r['source_path'],
+      };
+      final cutoff = DateTime.now().subtract(const Duration(days: 1));
+      await for (final e in (await _dir()).list()) {
+        if (e is File &&
+            !named.contains(e.path) &&
+            e.statSync().modified.isBefore(cutoff)) {
+          await e.delete();
+        }
+      }
     } catch (_) {}
   }
 
@@ -458,7 +495,7 @@ class ImportJournal {
         {'state': ImportJournalState.done.name, 'error': null},
         where: 'id = ?', whereArgs: [run.id]);
     run.state = ImportJournalState.done;
-    await _removeSource();
+    await _removeSource(run.sourcePath);
     notify();
   }
 
@@ -556,7 +593,7 @@ class ImportJournal {
     final rows = await db.query('import_journal', orderBy: 'id DESC', limit: 1);
     final r = rows.firstOrNull;
     if (r == null || r['state'] == ImportJournalState.done.name) {
-      if (r == null) await _removeSource(); // an orphan copy of a wiped journal
+      if (r == null) await _sweepOrphans(); // a copy of a wiped journal
       return const ImportResumeResult();
     }
     final failed = r['state'] == ImportJournalState.failed.name;
