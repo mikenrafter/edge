@@ -40,6 +40,9 @@ extension _EngineCrossDayPrune on DerivationEngine {
           if (!DerivationEngine.windowTruncatedByPrune(d, prunedBeforeSec)) d,
       };
       for (final d in owed.difference(withRaw)) {
+        // Retired for truncation: the abstention is final, so the day is
+        // settled, not left pending for every later pass to pick again.
+        await _settleDay(d);
         await LocalDb.deleteComputeFreshness('${DerivationEngine.kQuietRepassKeyPrefix}$d');
       }
       await DerivationEngine.debugQuietRepassHook?.call(null);
@@ -57,8 +60,16 @@ extension _EngineCrossDayPrune on DerivationEngine {
           await DerivationEngine.debugQuietRepassHook?.call(dayId);
           final prepared = await _prepareTargetDay(dayId);
           if (prepared != null && !prepared.daySub.isEmpty) {
-            await _derivePreparedDay(prepared, profile, dataNowSec, after);
-            done++;
+            final r = await _derivePreparedDay(prepared, profile, dataNowSec, after);
+            if (r == DayDerive.committed) {
+              done++;
+            } else if (r == DayDerive.declined) {
+              // Kept its existing result: final for this raw, so retire the
+              // marker and settle rather than retry forever.
+              await _settleDay(dayId);
+              await LocalDb.deleteComputeFreshness(
+                  '${DerivationEngine.kQuietRepassKeyPrefix}$dayId');
+            }
           }
         } catch (e) {
           _log('quiet repass day $dayId FAILED (kept owed, raw held): $e');
@@ -362,7 +373,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
       // Finalized AND complete: a finalized partial row (an import can be
       // both) is still not derived, so its raw is held (invariant 9). The
       // merge took upstream's finalized rule; ours held on completeness.
-      finalizedDayIds: (await LocalDb.finalizedDayIds(kAlgoVersion))
+      finalizedDayIds: (await _finalizedOrSettled())
           .difference(await LocalDb.partialDayIds(kAlgoVersion)),
     );
     if (cutoffSec == null) return;

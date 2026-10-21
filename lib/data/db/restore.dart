@@ -759,6 +759,22 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       return {for (final c in info) (c['name'] as String)};
     }
 
+    // Lower the prune cursor BEFORE the substrate lands: a cursor too low is
+    // harmless, one too high after the merge is the lie (and a cut-short
+    // import must not leave it). Idempotent, so a resume repeats it safely.
+    for (final t in const ['decoded_onehz', 'decoded_rr']) {
+      if (!order.contains(t)) continue;
+      try {
+        final min = Sqflite.firstIntValue(await src.rawQuery(
+            'SELECT MIN(rec_ts) FROM $t WHERE rec_ts > 0'));
+        if (min != null) {
+          await LocalDb._lowerCursorToLocalDay(LocalDb.kDecodedPrunedBeforeCursor, min);
+        }
+      } on DatabaseException {
+        /* the export lacks the table or the column */
+      }
+    }
+
     final counts = <String, int>{};
     // DISTINCT DAYS ACTUALLY WRITTEN — the number the caller reports as
     // "N days imported".

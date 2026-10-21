@@ -206,6 +206,11 @@ const _inputWhy = {
   'imported_day':
       'This day came from an import that only covers the night, so there is '
           'nothing recorded for the waking day.',
+  // A past day whose strain stayed unscored for want of a quiet level and can
+  // no longer change: no later night revises it, so it must not promise one.
+  'quiet_level_final':
+      "Strain wasn't scored for this day: there weren't enough earlier days "
+      'to set your quiet level.',
   'today_activity':
       'No activity data has reached the app for today yet.',
   'tst_min': 'That night has no total sleep time recorded.',

@@ -1246,7 +1246,8 @@ extension _EnginePrepare on DerivationEngine {
       );
     }
 
-    final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
+    // A settled day (declined, raw unchanged) is done for selection.
+    final finalized = await _finalizedOrSettled();
     var pending = [
       for (final day in rawDays)
         if (!finalized.contains(day)) day,

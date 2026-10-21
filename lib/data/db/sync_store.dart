@@ -1932,8 +1932,9 @@ Future<int> _ldbPruneDecodedBeforeRecTs(int cutoffSec, {required String? cursorN
       return -1;
     }
     var expectedAfterArchive = expectedRevSum;
+    var archivedAny = false;
     if (policy.enabled) {
-      deleted += await SubstrateArchive.archiveAndDeleteBefore(
+      final archived = await SubstrateArchive.archiveAndDeleteBefore(
         db,
         cutoffSec,
         hardFloorSec: hardFloorSec,
@@ -1944,6 +1945,8 @@ Future<int> _ldbPruneDecodedBeforeRecTs(int cutoffSec, {required String? cursorN
             ? null
             : (txn, beforeSec) => LocalDb._raiseCursorVia(txn, cursorName, beforeSec),
       );
+      deleted += archived;
+      archivedAny = archived > 0;
       // The archive's own deletes move the revision (the triggers fire on
       // DELETE). Re-read it so the check below catches a record landing after
       // the archive, not the archive itself. A record that landed during it
@@ -1964,9 +1967,6 @@ Future<int> _ldbPruneDecodedBeforeRecTs(int cutoffSec, {required String? cursorN
         skipped = true;
         return;
       }
-      if (cursorName != null) {
-        await LocalDb._raiseCursorVia(txn, cursorName, cutoffSec);
-      }
       // A beat lives on its parent's second (decoded_rr's key extends the
       // parent's `(device_id, ts_ms)`, and both carry the same `rec_ts`), so a
       // plain rec_ts range delete covers every beat in the window — no counter
@@ -1976,11 +1976,19 @@ Future<int> _ldbPruneDecodedBeforeRecTs(int cutoffSec, {required String? cursorN
         where: decodedWhere,
         whereArgs: decodedArgs,
       );
-      deleted += await txn.delete(
+      final onehzDeleted = await txn.delete(
         'decoded_onehz',
         where: decodedWhere,
         whereArgs: decodedArgs,
       );
+      deleted += onehzDeleted;
+      // Raise the cursor only if this prune cut something. The cursor means
+      // "decoded rows below here are gone"; a prune that found nothing below
+      // the cutoff (a fresh install's first pass) would otherwise claim "today"
+      // and every later import would land under a stale cursor.
+      if (cursorName != null && (archivedAny || onehzDeleted > 0)) {
+        await LocalDb._raiseCursorVia(txn, cursorName, cutoffSec);
+      }
       deleted += await txn.delete(
         'samples',
         where: 'ts < ?',

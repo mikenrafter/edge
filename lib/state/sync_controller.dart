@@ -941,7 +941,9 @@ class SyncController {
           await _refreshHighFreqWakeWindow();
           // The whole backlog landed → heavy foreground finalize (full sleep
           // staging + 24-h spectra over every stale day).
-          _deriveScheduler.requestHeavy();
+          // A drain that stored nothing leaves nothing for a heavy pass to read;
+          // a flappy link would otherwise run one per reconnect.
+          if (report.records > 0) _deriveScheduler.requestHeavy();
           _notify();
         }).catchError((Object e) {
           _log('Background sync burst failed: $e');
@@ -1098,15 +1100,17 @@ class SyncController {
               // one per 30 min while backgrounded — the interim reconnects
               // still get a light pass, and the foreground return finalizes
               // with a real heavy anyway.
-              final now = DateTime.now();
-              final lastHeavy = _lastBackgroundHeavyAt;
-              if (background &&
-                  lastHeavy != null &&
-                  now.difference(lastHeavy) < const Duration(minutes: 30)) {
-                _deriveScheduler.markStoredData();
-              } else {
-                if (background) _lastBackgroundHeavyAt = now;
-                _deriveScheduler.requestHeavy();
+              if (report.records > 0) {
+                final now = DateTime.now();
+                final lastHeavy = _lastBackgroundHeavyAt;
+                if (background &&
+                    lastHeavy != null &&
+                    now.difference(lastHeavy) < const Duration(minutes: 30)) {
+                  _deriveScheduler.markStoredData();
+                } else {
+                  if (background) _lastBackgroundHeavyAt = now;
+                  _deriveScheduler.requestHeavy();
+                }
               }
               _notify();
             }).catchError((Object e) {

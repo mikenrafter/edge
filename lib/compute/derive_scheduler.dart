@@ -123,6 +123,11 @@ class DeriveScheduler {
   int _storedSeq = 0;
   bool get _manualHeld => _manualHolds.isNotEmpty;
   bool _running = false;
+
+  /// [_storedSeq] when the heavy pass now running began; null when none runs.
+  /// Owner: this scheduler. [requestHeavy] reads it to tell "asked again about
+  /// data this pass already reads" from "data landed after it started".
+  int? _heavyStartSeq;
   bool _pendingLight = false;
   bool _pendingHeavy = false;
   Timer? _timer;
@@ -210,6 +215,15 @@ class DeriveScheduler {
   }
 
   void requestHeavy({String reason = 'capture_settled'}) {
+    // A heavy pass reads everything stored when it began. Queuing another while
+    // it runs, with nothing stored since, only re-reads the same data (and the
+    // follow-up's own reconnect asks again: the loop). Data stored after the
+    // start still gets its follow-up.
+    final started = _heavyStartSeq;
+    // An import lands through its own path, not markStoredData: never drop it.
+    if (_running && started != null && started == _storedSeq && reason != 'import') {
+      return;
+    }
     unawaited(_enqueue(type: 'derive_heavy', reason: reason));
   }
 
@@ -377,6 +391,7 @@ class DeriveScheduler {
     }
     final kind = _parseKind(job['type']?.toString());
     _running = true;
+    _heavyStartSeq = kind == DeriveJobKind.heavy ? _storedSeq : null;
     await _refreshSnapshot();
     log('[derive-scheduler] running ${kind == DeriveJobKind.heavy ? "heavy" : "light"} pass');
     try {
@@ -395,6 +410,7 @@ class DeriveScheduler {
       }
     } finally {
       _running = false;
+      _heavyStartSeq = null;
       await _refreshSnapshot();
       if (_pendingHeavy || _pendingLight) _arm();
       onChanged();

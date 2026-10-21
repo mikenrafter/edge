@@ -387,6 +387,8 @@ String localizedText(AppLocalizations? l, String text) {
       l.supplementThereIsNoScoredNight5d353d,
     "These recordings are not stamped with which strap made them, and this number has to be calibrated per strap, so it is withheld rather than guessed." =>
       l.supplementTheseRecordingsAreNotStamped66b52f,
+    "Strain wasn't scored for this day: there weren't enough earlier days to set your quiet level." =>
+      l.supplementStrainWasNotScoredForThisDay,
     "This day came from an import that only covers the night, so there is nothing recorded for the waking day." =>
       l.supplementThisDayCameFromAn2dc4b2,
     "This phone" => l.settingsGroupThisPhone,

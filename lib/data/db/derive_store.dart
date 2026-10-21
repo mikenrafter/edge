@@ -967,6 +967,39 @@ Future<Map<String, String>> _ldbDerivedFingerprints(int algoVersion) async {
     return out;
   }
 
+Future<Map<String, ({String own, String? prev})>> _ldbSettledFingerprints(int algoVersion) async {
+    final db = await LocalDb.instance;
+    // json_extract in SQL: three scalars of a bookkeeping row, no payload decode.
+    final rows = await db.rawQuery(
+      "SELECT key, json_extract(payload_json, '\$.own') AS own, "
+      "json_extract(payload_json, '\$.prev') AS prev "
+      'FROM compute_freshness WHERE substr(key, 1, ?) = ? '
+      "AND json_extract(payload_json, '\$.v') = ?",
+      [LocalDb._settledPrefix.length, LocalDb._settledPrefix, algoVersion],
+    );
+    return {
+      for (final r in rows)
+        if (r['own'] is String)
+          (r['key'] as String).substring(LocalDb._settledPrefix.length): (
+            own: r['own'] as String,
+            prev: r['prev'] as String?,
+          ),
+    };
+  }
+
+Future<bool> _ldbDayIsFinal(String day, int algoVersion) async {
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery(
+      'SELECT 1 FROM day_result WHERE day_id = ? AND algo_version = ? '
+      'AND finalized = 1 '
+      "AND payload_json NOT LIKE '%\"imported\":true%' "
+      'UNION ALL SELECT 1 FROM compute_freshness WHERE key = ? '
+      "AND json_extract(payload_json, '\$.v') = ? LIMIT 1",
+      [day, algoVersion, '${LocalDb._settledPrefix}$day', algoVersion],
+    );
+    return rows.isNotEmpty;
+  }
+
 Future<int> _ldbReencodeLegacyDayResults({required int limit}) async {
     final db = await LocalDb.instance;
 

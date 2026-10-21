@@ -110,6 +110,7 @@ part 'engine/top_level.dart';
 part 'engine/prepare.dart';
 part 'engine/day_compute.dart';
 part 'engine/crossday_prune.dart';
+part 'engine/settled.dart';
 
 /// Analytics/bundle version — bump to force a recompute of non-finalized days.
 /// v3: Walch 2019 stager + 4-class stages (light/deep/rem), robust nocturnal HRV,
@@ -2540,7 +2541,7 @@ class DerivationEngine {
 
   /// [_derivePreparedDay] with its wall time reported to [perf]: persist as
   /// measured around `putDayResult`, compute as the rest.
-  Future<bool> _derivePreparedDayTimed(
+  Future<DayDerive> _derivePreparedDayTimed(
     PreparedDerivationDay day,
     Profile profile,
     int dataNowSec,
@@ -2759,7 +2760,10 @@ class DerivationEngine {
         onScopeDays?.call(const []);
         return 0;
       }
-      final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
+      // A forced pass is the user's own re-derive: settled days reopen for it.
+      final finalized = force
+          ? await LocalDb.finalizedDayIds(kAlgoVersion)
+          : await _finalizedOrSettled();
       // A user sleep override (manual / confirmed) must take effect even on a
       // FINALIZED (locked) day — it's the user's word. Force those back into the
       // todo set. (No-raw days are guarded in the per-day loop so we never
@@ -2908,12 +2912,20 @@ class DerivationEngine {
                 onStaleTonight: repass ? null : staleTonight.add);
             if (repass) {
               // Counted and reported by its first derive.
-              if (committed) await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              if (committed != DayDerive.refused) {
+                await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              }
+              if (committed == DayDerive.declined) await _settleDay(dayId, fps);
               reportDone = false;
-            } else if (committed) {
+            } else if (committed == DayDerive.committed) {
               done++;
               _diag['done_days'] = done;
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+            } else if (committed == DayDerive.declined) {
+              // Handled, not derived: no `done` (that would run baselines and
+              // cross-day for nothing), but settled so it is not picked again.
+              await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              await _settleDay(dayId, fps);
             } else {
               reportDone = false;
             }
@@ -3275,9 +3287,11 @@ class DerivationEngine {
                 onStaleTonight: repass ? null : staleTonight.add);
             if (repass) {
               // Counted and reported by its first derive.
-              if (committed) await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              if (committed == DayDerive.committed) {
+                await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              }
               reportDone = false;
-            } else if (committed) {
+            } else if (committed == DayDerive.committed) {
               done++;
               _diag['done_days'] = done;
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
@@ -3880,7 +3894,7 @@ class DerivationEngine {
   /// a cheap check per run — never a number.
   Future<bool> _quietRepassOwed(String date, Map<String, dynamic> bundle) async {
     if (!quietBlocked(bundle)) return false;
-    final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
+    final finalized = await _finalizedOrSettled();
     final rawDays = (await LocalDb.decodedRecTsMaxByDay()).keys;
     if (rawDays.any((d) => d.compareTo(date) < 0 && !finalized.contains(d))) {
       return true;
@@ -3904,7 +3918,11 @@ class DerivationEngine {
   /// its row) visible to the second. Partial rows are not "derived" — they
   /// never wrote their series — so they count as pending too.
   Future<bool> _quietLevelUnreachable(String date) async {
-    final derived = await LocalDb.dayResultIds(kAlgoVersion);
+    // A settled day is done: it will never give a level, nor is it waiting to.
+    final derived = {
+      ...await LocalDb.dayResultIds(kAlgoVersion),
+      ...await _settledDays(),
+    };
     await debugQuietBetweenReads?.call();
     final prior = await LocalDb.trailingSeriesValues(
         'quiet_hrr', ana.quietHrrWindowDays, before: date);
@@ -4025,7 +4043,7 @@ class DerivationEngine {
       // A day finalized at this version is frozen (see LocalDb.putDayResult):
       // the rescan used to rewrite it to refresh its baseline-dependent
       // scalars, and that is exactly what the freeze ends.
-      final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
+      final finalized = await _finalizedOrSettled();
       final candidates = rescanDayIds(
         rawDayIds: rawByDay.keys,
         dataNowSec: dataNowSec,
@@ -4081,9 +4099,12 @@ class DerivationEngine {
           if (prepared != null) {
             final committed = await _derivePreparedDayTimed(
                 prepared, profile, dataNowSec, history);
-            if (committed) {
+            if (committed == DayDerive.committed) {
               done++;
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+            } else if (committed == DayDerive.declined) {
+              await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              await _settleDay(dayId, fps);
             } else {
               reportDone = false;
             }
@@ -4375,7 +4396,7 @@ class DerivationEngine {
       dayEndSec: _localNextDayLabelToSec(day.date),
       sleepOffsetSec: offsetSec,
     );
-    return _derivePreparedDay(
+    return (await _derivePreparedDay(
       PreparedDerivationDay(
         date: day.date,
         endSec: day.endSec,
@@ -4397,7 +4418,7 @@ class DerivationEngine {
       forceFinalize: forceFinalize,
       suppliedSubstrate: true,
       reason: reason,
-    );
+    )) != DayDerive.refused;
   }
 
 
@@ -5693,7 +5714,7 @@ class DerivationEngine {
   static const int _maxRawHoldDays = 14;
 
   /// Cursor holding the highest `rec_ts` cutoff the raw prune has applied.
-  static const String _prunedBeforeCursor = 'decoded_pruned_before';
+  static const String _prunedBeforeCursor = LocalDb.kDecodedPrunedBeforeCursor;
   /// Days whose raw is held back by the prune only because they lack a
   /// COMPLETE result: they start before the retention cutoff and are not in
   /// [derivedDayIds]. PURE. A manual sync that skips unchanged days must still

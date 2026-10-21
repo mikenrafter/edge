@@ -1952,6 +1952,17 @@ class LocalRepositoryImpl extends LocalRepository {
     final zoneMin = <String, int?>{
       for (var i = 1; i <= 5; i++) 'z$i': (zones?['z$i'] as num?)?.toInt(),
     };
+    // WHY strain is absent. A cold-start `need_baseline:` note promises that
+    // more nights will fix it; on a past day that is final (finalized or
+    // settled at this version) no later night revises it, so the promise is
+    // false and the note says the final reason instead.
+    var strainNote = strain == null ? _absentNote(b, 'strain') : null;
+    if (strainNote != null &&
+        strainNote.startsWith('need_baseline:') &&
+        !_isTodayLabel(date) &&
+        await LocalDb.dayIsFinal(date, kAlgoVersion)) {
+      strainNote = needInputNote('quiet_level_final');
+    }
     return {
       // Headline 0–21 strain (the detail screen clamps to 0..21). Raw Banister
       // TRIMP is kept as the secondary "training load" figure.
@@ -1992,7 +2003,7 @@ class LocalRepositoryImpl extends LocalRepository {
       // The HEADLINE absence's reason, promoted to the top level because the
       // screen's primary content when there is no strain is a single card
       // explaining why. Same string as `absent.strain`.
-      'note': strain == null ? _absentNote(b, 'strain') : null,
+      'note': strainNote,
       // WHY each absent figure above is absent, keyed by that figure's OWN
       // name — never by a sibling's. Every entry is an absent Metric envelope
       // ({value:'—', confidence:0, tier, note}), so a screen can
@@ -2019,7 +2030,10 @@ class LocalRepositoryImpl extends LocalRepository {
           'max_hr_used': (maxHrUsed == null, 'max_hr_used'),
         }.entries)
           if (e.value.$1)
-            e.key: ?_absentMetric(_absentNote(b, e.value.$2), 'ESTIMATE'),
+            e.key: ?_absentMetric(
+              e.key == 'strain' ? strainNote : _absentNote(b, e.value.$2),
+              'ESTIMATE',
+            ),
       },
       'flags': const {},
     };

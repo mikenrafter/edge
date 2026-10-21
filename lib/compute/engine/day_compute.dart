@@ -1,11 +1,12 @@
 part of '../derivation_engine.dart';
 
 extension _EngineDayCompute on DerivationEngine {
-  /// False only when a frozen (finalized) row refused the write: nothing was
-  /// stored, so the caller must not count, fingerprint or publish the day.
-  /// True for every other end, including a day that deliberately kept its
-  /// existing result.
-  Future<bool> _derivePreparedDay(
+  /// [DayDerive.refused] when a frozen (finalized) row refused the write:
+  /// nothing was stored, so the caller must not count, fingerprint or publish
+  /// the day. [DayDerive.declined] when the day deliberately kept its existing
+  /// result: not a derive, so the caller must not count it as done, and settles
+  /// it instead (see engine/settled.dart).
+  Future<DayDerive> _derivePreparedDay(
     PreparedDerivationDay day,
     Profile profile,
     int dataNowSec,
@@ -291,10 +292,10 @@ extension _EngineDayCompute on DerivationEngine {
         };
       }
       if (producedNothing) {
-        if (batchReference) return true;
+        if (batchReference) return DayDerive.committed;
         final committed = await _blankStoredNight(day, bundle, blankSource, reason);
         if (committed) await _dropFrozenHeadline(day.date);
-        return committed;
+        return committed ? DayDerive.committed : DayDerive.refused;
       }
     }
     if (producedNothing && blankSource == null) {
@@ -302,7 +303,7 @@ extension _EngineDayCompute on DerivationEngine {
       if (DerivationEngine._isRealDayResult(existing)) {
         _log('derive ${day.date}: no substrate (raw pruned) — kept the '
             'existing result rather than blanking it');
-        return true;
+        return DayDerive.declined;
       }
     }
 
@@ -373,7 +374,7 @@ extension _EngineDayCompute on DerivationEngine {
             "under a day that already had real night scalars — kept the "
             'existing result rather than overwriting the readiness baseline '
             '(edge#305)');
-        return true;
+        return DayDerive.declined;
       }
     }
 
@@ -819,7 +820,7 @@ extension _EngineDayCompute on DerivationEngine {
     if (batchReference) {
       // A reference only counts when the whole computation completed.
       if (secondHalfOk) _batchBundles[day.date] = bundle;
-      return true;
+      return DayDerive.committed;
     }
     bundle = debugAccumulatorTamper?.call(day.date, bundle) ?? bundle;
     // OWED A STRAIN SCORE ([kQuietRepassKeyPrefix]). Marked conservatively
@@ -1039,7 +1040,7 @@ extension _EngineDayCompute on DerivationEngine {
     );
     if (!committed) {
       _log('derive ${day.date}: frozen result refused the write');
-      return false;
+      return DayDerive.refused;
     }
     _persistMs[day.date] = persistWatch.elapsedMilliseconds;
     if (blankSource != null) await _dropFrozenHeadline(day.date);
@@ -1083,7 +1084,7 @@ extension _EngineDayCompute on DerivationEngine {
       // into the next worker) with the retained state.
       candidateState.exportedNightJson = null;
     }
-    return true;
+    return DayDerive.committed;
   }
 
   /// After a day's result committed: advances its checkpoint to the newest

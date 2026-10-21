@@ -13202,6 +13202,10 @@
   "@supplementTheseRecordingsAreNotStamped66b52f": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
+  "supplementStrainWasNotScoredForThisDay": "Strain wasn't scored for this day: there weren't enough earlier days to set your quiet level.",
+  "@supplementStrainWasNotScoredForThisDay": {
+    "description": "Presentation-only text for existing interface, exports or notifications."
+  },
   "supplementThisDayCameFromAn2dc4b2": "This day came from an import that only covers the night, so there is nothing recorded for the waking day.",
   "@supplementThisDayCameFromAn2dc4b2": {
     "description": "Presentation-only text for existing interface, exports or notifications."

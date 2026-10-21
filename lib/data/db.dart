@@ -6142,6 +6142,37 @@ class LocalDb {
     }
   }
 
+  /// `settled:<day>` rows: days whose derive DECLINED to write (kept the
+  /// existing result, edge#305), recorded as `{v: algoVersion, own, prev}`:
+  /// the raw fingerprints of the day and of the day before it (null when that
+  /// one had none). Owner of the state: the derive engine writes it (see
+  /// engine/settled.dart); this is only its storage.
+  static const String _settledPrefix = 'settled:';
+
+  /// `{day -> (own, prev)}` of the days settled at [algoVersion]. A row from
+  /// another version is not returned, so a version bump reopens every day.
+  static Future<Map<String, ({String own, String? prev})>> settledFingerprints(
+          int algoVersion) =>
+      _ldbSettledFingerprints(algoVersion);
+
+  static Future<void> putSettledDay(
+    String day,
+    int algoVersion, {
+    required String own,
+    required String? prev,
+  }) => putComputeFreshness(
+    '$_settledPrefix$day',
+    jsonEncode({'v': algoVersion, 'own': own, 'prev': prev}),
+  );
+
+  /// Whether no later night can change [day]'s result at [algoVersion]: it is
+  /// finalized there, or settled (a declined derive, see [putSettledDay]). A
+  /// read seam asks this to stop promising "N more nights" for a final day.
+  /// The settled record is taken as written: new raw reopens the day at the
+  /// next derive, which rewrites what the seam serves.
+  static Future<bool> dayIsFinal(String day, int algoVersion) =>
+      _ldbDayIsFinal(day, algoVersion);
+
   static Future<void> putDerivedFingerprint(
     String day,
     int algoVersion,
@@ -7412,6 +7443,30 @@ class LocalDb {
     if (previous == null || sec > previous) {
       await setCursor(name, '$sec', txn: txn);
     }
+  }
+
+  /// The prune cursor: decoded rows below this rec_ts have been deleted.
+  static const String kDecodedPrunedBeforeCursor = 'decoded_pruned_before';
+
+  /// Lower cursor [name] to the local midnight of [recTsSec] when that is below
+  /// it; never raises it and never creates it.
+  ///
+  /// Why: `decoded_pruned_before` says "decoded rows below here are gone". An
+  /// import that merges complete seconds beneath it makes that false, and
+  /// `windowTruncatedByPrune` then keeps calling whole days cut. Midnight, not
+  /// the second: the cursor is compared against local day windows, and
+  /// [localDayStartSec] is DST-safe where `- n * 86400` is not.
+  static Future<void> _lowerCursorToLocalDay(String name, int recTsSec) async {
+    final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(recTsSec * 1000));
+    final midnight = localDayStartSec(day);
+    if (midnight == null) return;
+    final db = await instance;
+    await db.transaction((txn) async {
+      final current = await _cursorIntVia(txn, name);
+      if (current != null && midnight < current) {
+        await setCursor(name, '$midnight', txn: txn);
+      }
+    });
   }
 
   /// Bytes SQLite is holding in the free page list — deleted, reusable, and
