@@ -3033,6 +3033,7 @@
   "hapticsPhoneFallback": "बैंड कनेक्ट न होने पर फ़ोन पर कंपन चलेगा",
   "hapticsProbeTitle": "हैप्टिक शब्दावली जांच",
   "hapticsProbePrompt": "इस बैंड की शब्दावली जांच चलाएं",
+  "hapticsProbeUnavailable": "इस बैंड पर उपलब्ध नहीं है",
   "hapticsExamplePlay": "उदाहरण क्रम चलाएं",
   "hapticsExampleStop": "रोकें",
   "hapticsExampleLimitNote": "उदाहरण बैंड की कंपन सीमा को अनदेखा करते हैं।",

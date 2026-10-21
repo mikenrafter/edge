@@ -233,24 +233,33 @@ void main() {
   group('built-in rows in the hub are previewable', () {
     final start = _mgSeq('N2mf R2 N2mf');
 
-    testWidgets('a built-in cue is listed as an assignable preset',
-        (t) async {
+    testWidgets('a built-in cue\'s actions open from its row, and Preview '
+        'plays it', (t) async {
       final h = _Hub();
       await pumpTall(
           t, _hub(h, [_builtIn('sys-start', 'gesture.start', start)], profile: _mg));
       await openHapticsTab(t, 'cues');
       expect(find.byKey(const ValueKey('haptic-preset:sys-start')), findsOneWidget);
-      expect(h.played, isEmpty);
+      await t.tap(find.byKey(const ValueKey('haptic-preset-actions:sys-start')));
+      await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('haptic-action-preview')), findsOneWidget);
+      await t.tap(find.byKey(const ValueKey('haptic-action-preview')));
+      await t.pumpAndSettle();
+      expect(h.played, hasLength(1));
+      expect(h.played.single.notes, 'N2mf R2 N2mf');
     });
 
-    testWidgets('the same on a band with no profile', (t) async {
+    testWidgets('the same on a band with no profile (taps)', (t) async {
       final h = _Hub();
       final taps = BuzzSequence([0, 300]);
       await pumpTall(
           t, _hub(h, [_builtIn('sys-water', 'alert.water', taps)]));
       await openHapticsTab(t, 'alerts');
-      expect(find.byKey(const ValueKey('haptic-preset:sys-water')), findsOneWidget);
-      expect(h.played, isEmpty);
+      await t.tap(find.byKey(const ValueKey('haptic-preset-actions:sys-water')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('haptic-action-preview')));
+      await t.pumpAndSettle();
+      expect(h.played.single.offsetsMs, [0, 300]);
     });
   });
 }

@@ -3033,6 +3033,7 @@
   "hapticsPhoneFallback": "Le téléphone prend le relais si le bracelet n’est pas connecté",
   "hapticsProbeTitle": "Test du vocabulaire haptique",
   "hapticsProbePrompt": "Lancer le test du vocabulaire de ce bracelet",
+  "hapticsProbeUnavailable": "Indisponible sur ce bracelet",
   "hapticsExamplePlay": "Lire la séquence d’exemple",
   "hapticsExampleStop": "Arrêter",
   "hapticsExampleLimitNote": "Les exemples ignorent la limite de vibrations du bracelet.",

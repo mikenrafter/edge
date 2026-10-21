@@ -24,6 +24,7 @@ import '../gestures/strap_event.dart';
 import '../notify/buzz_sequence.dart';
 import 'band_queue.dart';
 import 'haptic_compiler.dart' show maxRuntimeFor;
+import 'example_playback.dart';
 import 'haptic_player.dart';
 import 'haptic_profile.dart';
 
@@ -127,6 +128,25 @@ class HapticsService {
   /// Run an explicitly requested example through the queue without waiting
   /// for the courtesy command window. The queue still counts each write.
   T asLimitExempt<T>(T Function() work) => _queue.asLimitExempt(work);
+
+  /// Delivers one cue of an explicitly requested example: it passes the
+  /// courtesy command window (every write is still counted), and it belongs to
+  /// [cancel]: once that is cancelled, a cue still waiting in the queue is
+  /// dropped and one playing writes no further command. Never the way an alert
+  /// is delivered.
+  Future<BuzzDelivery> deliverExample(
+    BuzzSequence s, {
+    HapticCancel? cancel,
+    void Function(HapticPlayStart)? onStart,
+  }) {
+    if (cancel?.cancelled == true) {
+      return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
+    }
+    return _queue.asLimitExempt(
+      () => deliver(s, onStart: onStart),
+      stopWhen: cancel == null ? null : () => cancel.cancelled,
+    );
+  }
 
   /// Run [work] so its band jobs are dropped when [wanted] turns false before
   /// they start. See [BandHapticQueue.asWanted].

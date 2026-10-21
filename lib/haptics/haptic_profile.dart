@@ -233,6 +233,11 @@ class HapticDeviceProfile {
   /// measured, and the caller keeps its existing way of buzzing.
   static HapticDeviceProfile? forGeneration(String? generation) =>
       generation == 'gen5' ? whoopMg : null;
+
+  /// Whether a band of [generation] has a haptic vocabulary at all (an MG
+  /// does; a 4.0 has none to measure and no probe to run). Distinct from
+  /// [forGeneration] being null: a supported band may still have none measured.
+  static bool supportsVocabulary(String? generation) => generation == 'gen5';
 }
 
 /// Every measured device profile, by id.

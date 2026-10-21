@@ -3051,6 +3051,7 @@
   "hapticsPhoneFallback": "El teléfono se usa cuando la banda no está conectada",
   "hapticsProbeTitle": "Prueba del vocabulario háptico",
   "hapticsProbePrompt": "Ejecutar la prueba de vocabulario de esta banda",
+  "hapticsProbeUnavailable": "No disponible en esta pulsera",
   "hapticsExamplePlay": "Reproducir secuencia de ejemplo",
   "hapticsExampleStop": "Detener",
   "hapticsExampleLimitNote": "Los ejemplos ignoran el límite de vibraciones.",

@@ -82,6 +82,15 @@ enum LabTab {
   final String label;
 }
 
+/// The text "Save lab log file" saves, for the lab and for the vocabulary probe
+/// opened on its own.
+String deviceLabLogTextFor(AppState app) => labLogText(
+      entries: app.deviceLab.entries,
+      steps: app.deviceLab.steps,
+      sessions: app.deviceLab.sessionSummaries,
+      packets: app.deviceLab.packets,
+    );
+
 class DeviceLab extends StatelessWidget {
   const DeviceLab({super.key});
 
@@ -98,12 +107,7 @@ class DeviceLab extends StatelessWidget {
     final g = app.gestureSettings;
     // The text "Save lab log file" saves, read when asked: the lab's own button
     // and the pattern probe's end screen share it.
-    String logText() => labLogText(
-      entries: app.deviceLab.entries,
-      steps: app.deviceLab.steps,
-      sessions: app.deviceLab.sessionSummaries,
-      packets: app.deviceLab.packets,
-    );
+    String logText() => deviceLabLogTextFor(app);
     return ListenableBuilder(
       listenable: Listenable.merge([g, app.deviceLab]),
       builder: (c, _) => DeviceLabView(

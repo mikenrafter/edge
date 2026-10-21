@@ -353,6 +353,11 @@ class Capabilities {
   HapticDeviceProfile? get hapticProfile =>
       HapticDeviceProfile.forGeneration(inputs.generation);
 
+  /// The paired band can have a haptic vocabulary (and so the probe that
+  /// measures it). False on a 4.0: nothing to prompt for.
+  bool get hapticVocabularySupported =>
+      HapticDeviceProfile.supportsVocabulary(inputs.generation);
+
   /// Where an alert may be delivered for the paired band's family. The
   /// registry owns which families have a band transport.
   Set<String> get bandAlertTargets =>

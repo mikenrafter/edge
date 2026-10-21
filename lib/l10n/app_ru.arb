@@ -8419,6 +8419,7 @@
   "hapticsPhoneFallback": "Если браслет не подключён, вибрация будет на телефоне",
   "hapticsProbeTitle": "Проверка словаря вибраций",
   "hapticsProbePrompt": "Запустить проверку словаря этого браслета",
+  "hapticsProbeUnavailable": "Недоступно для этого браслета",
   "hapticsExamplePlay": "Воспроизвести пример последовательности",
   "hapticsExampleStop": "Стоп",
   "hapticsExampleLimitNote": "Примеры не учитывают лимит вибраций браслета.",

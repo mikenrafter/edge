@@ -3140,6 +3140,7 @@
   "hapticsPhoneFallback": "Das Telefon übernimmt, wenn das Band nicht verbunden ist",
   "hapticsProbeTitle": "Haptik-Vokabeltest",
   "hapticsProbePrompt": "Vokabeltest für dieses Band starten",
+  "hapticsProbeUnavailable": "Auf diesem Band nicht verfügbar",
   "hapticsExamplePlay": "Beispielsequenz abspielen",
   "hapticsExampleStop": "Stopp",
   "hapticsExampleLimitNote": "Beispiele ignorieren das Vibrationslimit des Bands.",

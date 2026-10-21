@@ -42,6 +42,7 @@ class ReorgCalls extends HubCalls {
   final phone = <String?>[]; // patternId of each phone vibration
   final phoneToggles = <bool>[];
   int probeOpened = 0;
+  final reset = <String>[];
 }
 
 /// A fake example player and gap clock: nothing finishes until the test says
@@ -106,6 +107,9 @@ Widget reorgView(
   bool phoneAlso = false,
   int commandsLeft = 30,
   HapticsTab? initialTab,
+  bool? vocabularySupported,
+  Future<bool> Function(BuzzSequence)? examplePlayer,
+  Future<void> Function(BuzzSequence)? phoneVibrate,
 }) {
   final named = <Symbol, dynamic>{
     #patterns: patterns,
@@ -136,11 +140,15 @@ Widget reorgView(
     // The new seams.
     #phoneAlso: phoneAlso,
     #onPhoneAlso: (bool v) => c.phoneToggles.add(v),
-    #phoneVibrate: (BuzzSequence s) async {
-      c.phone.add(s.patternId);
-    },
+    #phoneVibrate: phoneVibrate ??
+        (BuzzSequence s) async {
+          c.phone.add(s.patternId);
+        },
     #onOpenProbe: () => c.probeOpened++,
-    if (clock != null) #examplePlayer: clock.play,
+    #onReset: (String id) => c.reset.add(id),
+    if (vocabularySupported != null) #vocabularySupported: vocabularySupported,
+    if (examplePlayer != null) #examplePlayer: examplePlayer,
+    if (clock != null && examplePlayer == null) #examplePlayer: clock.play,
     if (clock != null) #sequenceWait: clock.wait,
   };
   try {
@@ -163,6 +171,9 @@ Future<void> pumpReorg(
   bool phoneAlso = false,
   int commandsLeft = 30,
   HapticsTab? initialTab,
+  bool? vocabularySupported,
+  Future<bool> Function(BuzzSequence)? examplePlayer,
+  Future<void> Function(BuzzSequence)? phoneVibrate,
 }) =>
     pumpTall(
       t,
@@ -174,7 +185,10 @@ Future<void> pumpReorg(
           bandConnected: bandConnected,
           phoneAlso: phoneAlso,
           commandsLeft: commandsLeft,
-          initialTab: initialTab),
+          initialTab: initialTab,
+          vocabularySupported: vocabularySupported,
+          examplePlayer: examplePlayer,
+          phoneVibrate: phoneVibrate),
     );
 
 /// Select the LAST tab (Settings, formerly Band) by its own key, whatever id it

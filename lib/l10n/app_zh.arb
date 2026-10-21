@@ -3033,6 +3033,7 @@
   "hapticsPhoneFallback": "手环未连接时改由手机振动",
   "hapticsProbeTitle": "触觉词汇测试",
   "hapticsProbePrompt": "运行此手环的词汇测试",
+  "hapticsProbeUnavailable": "此手环不可用",
   "hapticsExamplePlay": "播放示例序列",
   "hapticsExampleStop": "停止",
   "hapticsExampleLimitNote": "示例会忽略手环振动次数限制。",

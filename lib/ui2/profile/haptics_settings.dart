@@ -27,7 +27,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -38,8 +37,9 @@ import '../../haptics/band_queue.dart'
         kBandCommandLimitMin;
 import '../../haptics/builtin_patterns.dart' show isPresetKey, kPresets;
 import '../../haptics/haptic_compiler.dart' show maxRuntimeFor;
+import '../../haptics/example_playback.dart';
 import '../../haptics/haptic_player.dart'
-    show bandSequenceCommands, hapticWaitForMs, scoreDurationMs;
+    show bandSequenceCommands, scoreDurationMs;
 import '../../haptics/haptic_profile.dart';
 import '../../haptics/haptic_slots.dart';
 import '../../haptics/pattern_similarity.dart';
@@ -55,7 +55,8 @@ import '../screens/calm_breathing.dart' show CalmBreathing;
 import '../screens/ecg.dart' show EcgHomeScreen;
 import '../ui2.dart';
 import 'buzz_pattern.dart';
-import 'device_lab.dart' show DeviceLab;
+import 'device_lab.dart' show DeviceLab, deviceLabLogTextFor;
+import 'pattern_probe_page.dart' show PatternProbeLauncher;
 import 'alarm.dart' show AlarmScreen;
 import 'band_notifications.dart' show BandNotifications;
 import 'gestures.dart' show BandGestures;
@@ -79,16 +80,16 @@ _ExampleSequenceState? _activeHapticExample;
 T _invokeCallback<T, A>(T Function(A) callback, A argument) =>
     Function.apply(callback, [argument]) as T;
 
-Future<void> _vibratePhone(BuzzSequence sequence) async {
-  var elapsed = 0;
-  for (var i = 0; i < sequence.length; i++) {
-    final wait = sequence.offsetsMs[i] - elapsed;
-    if (wait > 0) {
-      await Future<void>.delayed(hapticWaitForMs(wait));
-    }
-    await HapticFeedback.vibrate();
-    elapsed = sequence.offsetsMs[i] + sequence.durationsMs[i];
-  }
+// The phone's side of a preview: timed against the pattern's own clock, and
+// asked before every pulse whether the example it belongs to was stopped or
+// the pref was switched off meanwhile.
+Future<void> _vibratePhone(BuzzSequence sequence) {
+  final cancel = HapticCancel.current;
+  return playPhonePulses(
+    sequence,
+    stop: () => cancel?.cancelled ?? false,
+    enabled: () => Prefs.playHapticsOnPhone,
+  );
 }
 
 /// The screen's sub-tabs, in order. [id] is what is remembered and what a
@@ -353,7 +354,8 @@ class _HapticsSettingsState extends State<HapticsSettings> {
       phoneAlso: _phoneAlso,
       onPhoneAlso: (v) => unawaited(_setPhoneAlso(v)),
       phoneVibrate: _vibratePhone,
-      onOpenProbe: () => goto(c, const DeviceLab()),
+      vocabularySupported: caps.hapticVocabularySupported,
+      onOpenProbe: () => goto(c, PatternProbeLauncher(runner: app.hardwareProbes, logText: () => deviceLabLogTextFor(app))),
       // The device page's Tools row: one dispatcher delivery in the band queue.
       onBuzz: app.buzzBand,
       onAllowLong: (v) {
@@ -424,6 +426,7 @@ class HapticsSettingsView extends StatelessWidget {
     this.examplePlayer,
     this.sequenceWait,
     this.onOpenProbe,
+    this.vocabularySupported = true,
   });
 
   /// The tab to open on; null opens the one used last (else Patterns).
@@ -434,6 +437,14 @@ class HapticsSettingsView extends StatelessWidget {
   final Future<bool> Function(BuzzSequence)? examplePlayer;
   final Future<void> Function(Duration)? sequenceWait;
   final VoidCallback? onOpenProbe;
+
+  /// The paired band can have a haptic vocabulary (an MG). False on a 4.0:
+  /// there is nothing to measure, so no prompt and no probe to open.
+  final bool vocabularySupported;
+
+  // One rule for every preview entry point: the band is there, or the wearer
+  // asked for the phone to play too (and there is a phone seam to play on).
+  bool get _canPreview => bandConnected || (phoneAlso && phoneVibrate != null);
 
   /// The stored patterns, in the order to show them.
   final List<SavedHapticPattern> patterns;
@@ -588,12 +599,17 @@ class HapticsSettingsView extends StatelessWidget {
           onPhoneAlso,
           sub: _l(c)?.hapticsPhoneFallback ?? 'This falls back to the phone when the band isn’t connected',
         )),
-      if (bandConnected && profile == null)
+      if (bandConnected && profile == null && vocabularySupported)
         SetRow(LucideIcons.flaskConical, C.purple,
           _l(c)?.hapticsProbePrompt ?? 'Run the vocabulary probe for this band',
           key: const ValueKey('haptics-probe-prompt'), onTap: onOpenProbe),
       SetRow(LucideIcons.flaskConical, C.purple, _l(c)?.hapticsProbeTitle ?? 'Haptic vocabulary probe',
-        key: const ValueKey('haptics-probe'), onTap: onOpenProbe),
+        key: const ValueKey('haptics-probe'),
+        enabled: vocabularySupported,
+        sub: vocabularySupported
+            ? ''
+            : _l(c)?.hapticsProbeUnavailable ?? 'Not available on this band',
+        onTap: vocabularySupported ? onOpenProbe : null),
       SettingsAccordion(_l(c)?.hapticsSafety ?? 'Safety',
           id: 'haptics_safety', children: _safetyRows(c, p)),
       SettingsAccordion(_l(c)?.hapticsTest ?? 'Test',
@@ -730,19 +746,31 @@ class HapticsSettingsView extends StatelessWidget {
       _presetRow(c, p, s),
   ];
 
+  // Tap the row to put the built-in on its slot (after a confirmation); the
+  // button opens its other actions (preview, use on another slot, edit,
+  // re-record, reset), which the reorganisation moved here, not removed.
   Widget _presetRow(BuildContext c, P p, SavedHapticPattern s) {
     final slot = s.systemKey!;
-    return Pressable(
-      key: ValueKey('haptic-preset:${s.id}'),
-      onTap: () => _confirmPreset(c, slot, s),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: S.x2),
-        child: Row(children: [
-          Expanded(child: Text(s.name, style: F.body.copyWith(color: p.ink))),
-          const Icon(LucideIcons.chevronRight, size: 17),
-        ]),
+    return Row(children: [
+      Expanded(
+        child: Pressable(
+          key: ValueKey('haptic-preset:${s.id}'),
+          onTap: () => _confirmPreset(c, slot, s),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: S.x2),
+            child: Text(s.name, style: F.body.copyWith(color: p.ink)),
+          ),
+        ),
       ),
-    );
+      IconButton(
+        key: ValueKey('haptic-preset-actions:${s.id}'),
+        constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+        padding: EdgeInsets.zero,
+        tooltip: s.name,
+        icon: Icon(LucideIcons.ellipsis, size: 17, color: p.ink3),
+        onPressed: () => _openSheet(c, s),
+      ),
+    ]);
   }
 
   Future<void> _confirmPreset(BuildContext c, String slot, SavedHapticPattern s) async {
@@ -863,18 +891,22 @@ class HapticsSettingsView extends StatelessWidget {
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [Text(slot.label, style: F.body.copyWith(color: p.ink)),
                       Text(name == null ? 'Default' : _invokeCallback<String, String>(name, slot.key),
-                        style: F.over.copyWith(color: P.of(c).ink3))])),
-                  if (seq case final seq?)
-                    Padding(key: ValueKey('haptic-slot-staff:${slot.key}'),
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: SizedBox(width: 46,
-                        child: HapticScore(seq, profile: profile, allowLong: allowLong))),
+                        style: F.over.copyWith(color: P.of(c).ink3)),
+                      // The staff takes the text column's width, under the
+                      // name: its "~x.xs" label and its notes need room, and
+                      // beside the name at a large text size it ran into the
+                      // preview button.
+                      if (seq case final seq?)
+                        Padding(key: ValueKey('haptic-slot-staff:${slot.key}'),
+                          padding: const EdgeInsets.only(top: S.x1),
+                          child: HapticScore(seq, profile: profile, allowLong: allowLong)),
+                    ])),
                   IconButton(key: ValueKey('haptic-slot-preview:${slot.key}'),
                     constraints: const BoxConstraints.tightFor(width: 44, height: 44),
                     padding: EdgeInsets.zero,
                     tooltip: AppLocalizations.of(c)?.hapticsSlotPreview(slot.label) ??
                         'Preview ${slot.label}', icon: const Icon(LucideIcons.play, size: 17),
-                    onPressed: seq == null || (!bandConnected && !phoneAlso) ? null : () {
+                    onPressed: seq == null || !_canPreview ? null : () {
                       unawaited(_play(c, seq));
                     }),
                 ])),
@@ -1157,7 +1189,7 @@ class HapticsSettingsView extends StatelessWidget {
       c,
       patterns: patterns,
       profile: profile,
-      bandConnected: bandConnected,
+      bandConnected: _canPreview,
       allowLong: allowLong,
       onPlay: (sequence) => _play(c, sequence),
       onDefault: () => onResetSlot?.call(slot.key),
@@ -1167,7 +1199,8 @@ class HapticsSettingsView extends StatelessWidget {
           if (s.id == seq.patternId) chosen = s;
         }
         if (chosen != null) {
-          if (chosen.system && isPresetKey(chosen.systemKey ?? '')) {
+          // Every built-in is a section preset: one confirmation policy.
+          if (chosen.system) {
             _confirmPreset(c, slot.key, chosen);
           } else {
             _assign(c, slot.key, chosen);
@@ -1221,7 +1254,7 @@ class HapticsSettingsView extends StatelessWidget {
                       chevron: false,
                       onTap: () {
                         Navigator.of(sheet).pop();
-                        if (isPresetKey(s.systemKey ?? '')) {
+                        if (s.system) {
                           _confirmPreset(c, slot.key, s);
                         } else {
                           _assign(c, slot.key, s);
@@ -1269,8 +1302,8 @@ class HapticsSettingsView extends StatelessWidget {
                   C.blue,
                   'Preview',
                   key: const ValueKey('haptic-action-preview'),
-                  enabled: bandConnected,
-                  sub: bandConnected ? '' : 'Connect to the band first',
+                  enabled: _canPreview,
+                  sub: _canPreview ? '' : 'Connect to the band first',
                   chevron: false,
                   onTap: () {
                     Navigator.of(sheet).pop();
@@ -1395,7 +1428,7 @@ class HapticsSettingsView extends StatelessWidget {
     showBuzzPatternSheet(
       c,
       initial: s.sequence,
-      bandConnected: bandConnected,
+      bandConnected: _canPreview,
       onPlay: (sequence) => _play(c, sequence),
       profile: profile,
       allowLong: allowLong,
@@ -1464,7 +1497,7 @@ class HapticsSettingsView extends StatelessWidget {
   void _newFromTaps(BuildContext c) {
     showBuzzPatternSheet(
       c,
-      bandConnected: bandConnected,
+      bandConnected: _canPreview,
       onPlay: (sequence) => _play(c, sequence),
       profile: profile,
       allowLong: allowLong,
@@ -1537,80 +1570,91 @@ class _ExampleSequence extends StatefulWidget {
 
 class _ExampleSequenceState extends State<_ExampleSequence> {
   bool _running = false;
-  int _run = 0;
+
+  // The one cancellation owner of the example in progress (null: none). Stop,
+  // a newer example elsewhere, and dispose cancel it; the band queue and the
+  // phone pulses both ask it before every write (see example_playback.dart).
+  HapticCancel? _cancel;
+
   SavedHapticPattern? _pattern(String slot) {
     for (final p in widget.patterns) {
       if (p.systemKey == slot) return p;
     }
     return null;
   }
+
+  BuzzSequence? _sequenceOf(String key) =>
+      (widget.sequenceOf == null
+          ? null
+          : _invokeCallback<BuzzSequence?, String>(widget.sequenceOf!, key)) ??
+      _pattern(key)?.sequence;
+
+  // One cue, on the band and (when asked for) the phone at once; true when
+  // either played it.
+  Future<bool> _step(String key, BuzzSequence seq) async {
+    final phone = widget.onPhone == null
+        ? Future<bool>.value(false)
+        : _invokeCallback<Future<void>, BuzzSequence>(widget.onPhone!, seq)
+            .then<bool>((_) => true, onError: (Object _) => false);
+    final band = widget.bandConnected
+        ? _invokeCallback<Future<bool>, BuzzSequence>(widget.onPlay, seq)
+            .catchError((Object _) => false)
+        : Future<bool>.value(false);
+    final done = await Future.wait<bool>([band, phone]);
+    return done.any((played) => played);
+  }
+
   Future<void> _play() async {
     _activeHapticExample?._cancelFromAnother();
     _activeHapticExample = this;
-    final run = ++_run;
+    final cancel = _cancel = HapticCancel();
     setState(() => _running = true);
-    List<List<String>> paths = switch (widget.sectionId) {
-      'gestures' => [['gesture.start','gesture.followUp','gesture.confirm'],
-        ['gesture.start','gesture.followUp','gesture.failed']],
-      'ecg' => [['ecg.started','ecg.complete'],
-        ['ecg.started','ecg.inconclusive','ecg.inconclusiveRetry']],
-      'breathing' => [['breath.inhale','breath.hold','breath.exhale','breath.hold']],
-      _ => [for (final s in kHapticSlotSections.firstWhere((s) => s.id == widget.sectionId).slots) [s.key]],
-    };
     try {
-      for (final path in paths) {
-        for (final key in path) {
-          if (!mounted || run != _run) return;
-          _playingHapticSlot.value = key;
-          final resolved = (widget.sequenceOf == null
-                  ? null
-                  : _invokeCallback<BuzzSequence?, String>(widget.sequenceOf!, key)) ??
-              _pattern(key)?.sequence;
-          if (resolved == null) continue;
-          final seq = resolved.copyWith(patternId: key);
-          final phone = widget.onPhone == null
-              ? Future<void>.value()
-              : _invokeCallback<Future<void>, BuzzSequence>(widget.onPhone!, seq)
-                  .catchError((Object _) {});
-          final delivered = widget.bandConnected
-              ? await _invokeCallback<Future<bool>, BuzzSequence>(
-                  widget.onPlay, seq)
-              : false;
-          await phone;
-          if (!delivered && widget.onPhone == null) return;
-          if (!mounted || run != _run) return;
-          await _invokeCallback<Future<void>, Duration>(
-              widget.wait, hapticWaitForMs(seq.playTime.inMilliseconds));
-        }
-      }
+      await cancel.run(() => runHapticExample(
+            sectionId: widget.sectionId,
+            sequenceOf: _sequenceOf,
+            play: _step,
+            wait: (d) => _invokeCallback<Future<void>, Duration>(widget.wait, d),
+            cancel: cancel,
+            onPlaying: (key) {
+              if (identical(_cancel, cancel)) _playingHapticSlot.value = key;
+            },
+          ));
     } catch (_) {
-      // Preview failure ends the example and still releases its highlight.
+      // A failed preview ends the example and still releases its highlight.
     } finally {
-      if (mounted && run == _run) {
-        if (identical(_activeHapticExample, this)) _activeHapticExample = null;
-        _playingHapticSlot.value = null;
-        setState(() => _running = false);
-      }
+      cancel.cancel();
+      if (identical(_cancel, cancel)) _release();
     }
   }
-  void _cancelFromAnother() {
-    ++_run;
+
+  // Ends the example this state owns: token cancelled (done before calling),
+  // highlight gone, button back.
+  void _release() {
+    _cancel = null;
     if (identical(_activeHapticExample, this)) _activeHapticExample = null;
     _playingHapticSlot.value = null;
     if (mounted && _running) setState(() => _running = false);
   }
-  void _stop() {
-    _cancelFromAnother();
+
+  void _cancelFromAnother() {
+    _cancel?.cancel();
+    _release();
   }
+
+  void _stop() => _cancelFromAnother();
+
   @override
   void dispose() {
+    _cancel?.cancel();
     if (identical(_activeHapticExample, this)) {
-      ++_run;
       _activeHapticExample = null;
       _playingHapticSlot.value = null;
     }
+    _cancel = null;
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start,
     children: [

@@ -17259,6 +17259,7 @@
   "hapticsPhoneFallback": "Falls back to the phone when the band isn’t connected",
   "hapticsProbeTitle": "Haptic vocabulary probe",
   "hapticsProbePrompt": "Run the vocabulary probe for this band",
+  "hapticsProbeUnavailable": "Not available on this band",
   "hapticsExamplePlay": "Play example sequence",
   "hapticsExampleStop": "Stop",
   "hapticsExampleLimitNote": "Examples ignore the band buzz limit.",

@@ -331,7 +331,7 @@ const _notComponents = {
   // gallery case would start hardware. hardware_probe_panel_test.dart pumps it
   // over a runner with fake effects. The pattern probe's page is a
   // pushed route over the same runner, pumped by pattern_probe_page_test.dart.
-  'HardwareProbePanel', 'PatternProbePage',
+  'HardwareProbePanel', 'PatternProbePage', 'PatternProbeLauncher',
   // The Device lab's Motion tab: it drives the IMU recorder (which asks the
   // band for a high-rate stream) and a file store, so a gallery case would
   // start both. device_lab_motion_test.dart pumps it over a real recorder fed

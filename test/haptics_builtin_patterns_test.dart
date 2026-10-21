@@ -551,7 +551,9 @@ void main() {
       }
     });
 
-    testWidgets('a slot preset is offered from its own cue section', (t) async {
+    testWidgets('a built-in\'s actions (from its row in the cue section): '
+        'Preview, Edit notes, Re-record and Reset to default; no Rename, no '
+        'Delete', (t) async {
       final (built, _) = await mixed(t);
       final p = _byKey(built, 'gesture.followUp');
       final played = <BuzzSequence>[];
@@ -559,15 +561,43 @@ void main() {
       await openHapticsTab(t, 'cues');
       expect(find.byKey(ValueKey('haptic-preset:${p.id}')), findsOneWidget);
       expect(find.byKey(ValueKey('haptic-pattern:${p.id}')), findsNothing);
-      expect(played, isEmpty);
+      await t.tap(find.byKey(ValueKey('haptic-preset-actions:${p.id}')));
+      await t.pumpAndSettle();
+      final sheet = find.byKey(const ValueKey('haptic-pattern-sheet'));
+      expect(sheet, findsOneWidget);
+      for (final k in [
+        'haptic-action-preview',
+        'haptic-action-edit',
+        'haptic-action-rerecord',
+        'haptic-action-reset',
+      ]) {
+        expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+      }
+      expect(find.descendant(of: sheet, matching: find.text('Reset to default')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('haptic-action-rename')), findsNothing);
+      expect(find.byKey(const ValueKey('haptic-action-delete')), findsNothing);
+      expect(find.descendant(of: sheet, matching: find.text('Rename')),
+          findsNothing);
+      expect(find.descendant(of: sheet, matching: find.text('Delete')),
+          findsNothing);
+      await t.tap(find.byKey(const ValueKey('haptic-action-preview')));
+      await t.pumpAndSettle();
+      expect(played, [p.sequence]);
     });
 
-    testWidgets('without a profile slot presets remain on their cue section', (t) async {
+    testWidgets('without a profile the built-in\'s actions have no Edit notes '
+        'but still have Re-record and Reset to default', (t) async {
       final (built, _) = await mixed(t);
       final p = _byKey(built, 'gesture.start');
       await pumpTall(t, hub(built));
       await openHapticsTab(t, 'cues');
-      expect(find.byKey(ValueKey('haptic-preset:${p.id}')), findsOneWidget);
+      await t.tap(find.byKey(ValueKey('haptic-preset-actions:${p.id}')));
+      await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('haptic-action-edit')), findsNothing);
+      expect(find.byKey(const ValueKey('haptic-action-rerecord')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('haptic-action-reset')), findsOneWidget);
     });
 
     testWidgets('a user pattern\'s sheet keeps Rename and Delete and has no '

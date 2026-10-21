@@ -1184,3 +1184,72 @@ class _LimitDisplay extends StatelessWidget {
     );
   }
 }
+
+/// Opens the pattern probe (the haptic vocabulary probe) directly, without the
+/// Device lab around it. Marks the lab open while it is on screen, as the lab
+/// does, so real alerts wait for the band; shows why when the probe cannot be
+/// opened (not connected, not an MG).
+class PatternProbeLauncher extends StatefulWidget {
+  const PatternProbeLauncher(
+      {super.key, required this.runner, required this.logText, this.saveLog});
+  final HardwareProbeRunner runner;
+  final String Function() logText;
+  final LogFileSaver? saveLog;
+
+  @override
+  State<PatternProbeLauncher> createState() => _PatternProbeLauncherState();
+}
+
+class _PatternProbeLauncherState extends State<PatternProbeLauncher> {
+  // Kept so dispose does not need the widget.
+  late final HardwareProbeRunner _runner = widget.runner;
+
+  @override
+  void initState() {
+    super.initState();
+    _runner.openLab();
+    _runner.addListener(_changed);
+    // Opening the probe notifies the runner's listeners: not during build.
+    scheduleMicrotask(() async {
+      if (!mounted) return;
+      await _runner.openPattern();
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _runner.removeListener(_changed);
+    _runner.closeLab();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    if (_runner.pattern != null) {
+      return PatternProbePage(
+        runner: _runner,
+        logText: widget.logText,
+        saveLog: widget.saveLog,
+      );
+    }
+    final p = P.of(c);
+    return Scaffold(
+      backgroundColor: p.bg,
+      body: SafeArea(
+        child: Column(children: [
+          const NavBar('Haptic vocabulary probe'),
+          Padding(
+            padding: const EdgeInsets.all(S.x4),
+            child: Text(_runner.note ?? 'Opening the probe…',
+                style: F.body.copyWith(color: p.ink2)),
+          ),
+        ]),
+      ),
+    );
+  }
+}

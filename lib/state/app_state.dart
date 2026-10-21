@@ -166,6 +166,7 @@ import '../gestures/tap_ack.dart';
 import '../haptics/band_queue.dart';
 import '../haptics/ble_haptics_port.dart';
 import '../haptics/gesture_cues.dart';
+import '../haptics/example_playback.dart' show HapticCancel;
 import '../haptics/haptics_service.dart';
 import '../haptics/wake_haptics.dart';
 import '../haptics/haptic_player.dart' show HapticPlayStart;
@@ -924,14 +925,21 @@ class AppState extends ChangeNotifier {
 
   /// Plays an example through the same dispatcher and safe band queue. The
   /// example skips only the courtesy cap; its writes remain in the ledger.
+  ///
+  /// Runs under the example's [HapticCancel] (found in the zone): Stop, a newer
+  /// example or leaving the page drops what is still queued and stops further
+  /// writes.
   Future<bool> previewBuzzSequenceExample(BuzzSequence s) =>
-      _previewBuzzSequence(s, ignoreCommandLimit: true);
+      _previewBuzzSequence(s,
+          ignoreCommandLimit: true, cancel: HapticCancel.current);
 
   Future<bool> _previewBuzzSequence(
     BuzzSequence s, {
     void Function(HapticPlayStart)? onStart,
     bool ignoreCommandLimit = false,
+    HapticCancel? cancel,
   }) async {
+    if (cancel?.cancelled == true) return false;
     final now = DateTime.now();
     final r = await alertDispatcher.dispatch(
       _buzzPreviewRule,
@@ -940,7 +948,7 @@ class AppState extends ChangeNotifier {
       historical: false,
       bandTimeout: haptics.sequenceTimeout(s),
       bandDelivery: () => ignoreCommandLimit
-          ? haptics.asLimitExempt(() => haptics.deliver(s, onStart: onStart))
+          ? haptics.deliverExample(s, cancel: cancel, onStart: onStart)
           : haptics.deliver(s, onStart: onStart),
     );
     return r.targets.contains('band');
