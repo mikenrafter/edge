@@ -1723,10 +1723,10 @@ class _RingText extends StatelessWidget {
           // text; reserve what the longest sample needs, so the slot never
           // depends on the day's data.
           constraints: BoxConstraints(
-              minHeight: align == TextAlign.center &&
-                      r.kind == HomeRingKind.sleep
-                  ? _numeralReserve(c, colWidth)
-                  : 0),
+              // Both layouts, each at its own text width (the column's, or the
+              // row's beside the ring).
+              minHeight:
+                  r.kind == HomeRingKind.sleep ? _numeralReserve(c, colWidth) : 0),
           child: Text(
           r.dash ? '—' : presentationText(AppLocalizations.of(c), r.value),
           style: r.dash

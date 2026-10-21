@@ -238,4 +238,23 @@ void main() {
       }
     });
   }
+
+  // The big-text row layout (left-aligned, no line cap): a scored numeral can
+  // wrap where the empty dash does not, so the slot is reserved there too.
+  for (final lang in ['ru', 'en']) {
+    for (final scale in [1.4, 2.0, 3.0]) {
+      testWidgets('$lang x$scale 320 pt: row layout, rings as tall loaded as empty',
+          (t) async {
+        await _pump(t, 320, const HomeData(), locale: Locale(lang), scale: scale);
+        expect(_rows(t), isTrue);
+        final empty = _trioHeight(t);
+        for (final e in _loaded.entries) {
+          await _pump(t, 320, e.value, locale: Locale(lang), scale: scale);
+          expect(_rows(t), isTrue);
+          expect(_trioHeight(t), empty,
+              reason: '$lang x$scale ${e.key}: loaded vs empty');
+        }
+      });
+    }
+  }
 }
