@@ -60,6 +60,46 @@ HapticsService _svc(_Port p) =>
 BuzzSequence _slotSeq(String key, {int ms = 500}) =>
     BuzzSequence(const [0], durationsMs: [ms], patternId: key);
 
+class _Listener implements PlaybackListener {
+  _Listener(this.fn);
+  final void Function() fn;
+  @override
+  void playbackStarted() => fn();
+}
+
+class _Stage implements ExampleStage {
+  _Stage({
+    this.seq,
+    required this.onPlay,
+    required this.onWait,
+    this.onPlaying,
+  });
+  final BuzzSequence? Function(String)? seq;
+  final Future<bool> Function(String, BuzzSequence) onPlay;
+  final Future<void> Function(Duration) onWait;
+  final void Function(String?)? onPlaying;
+  @override
+  BuzzSequence? sequenceOf(String k) => seq == null ? _slotSeq(k) : seq!(k);
+  @override
+  Future<bool> play(String k, BuzzSequence s) => onPlay(k, s);
+  @override
+  Future<void> wait(Duration d) => onWait(d);
+  @override
+  void playing(String? k) => onPlaying?.call(k);
+}
+
+class _Pulses implements PulseDriver {
+  _Pulses(this.onVibrate, this.onWait, {this.stopWhen});
+  final Future<void> Function(Duration) onVibrate, onWait;
+  final bool Function()? stopWhen;
+  @override
+  Future<void> vibrate(Duration hold) => onVibrate(hold);
+  @override
+  Future<void> wait(Duration d) => onWait(d);
+  @override
+  bool get halted => stopWhen?.call() ?? false;
+}
+
 void main() {
   group('1. one cancellation owner, through the real band queue', () {
     test('Stop while the example waits in a quiet window: dismissing the '
@@ -144,7 +184,7 @@ void main() {
         async.flushMicrotasks();
         final cancel = HapticCancel();
         Duration? startedAt, deliveredAt, overAt;
-        final pb = HapticPlayback(onStart: () => startedAt = async.elapsed);
+        final pb = HapticPlayback(_Listener(() => startedAt = async.elapsed));
         svc.deliverExample(_one(7), cancel: cancel, playback: pb).then((_) {
           deliveredAt = async.elapsed;
           pb.over?.then((_) => overAt = async.elapsed);
@@ -171,7 +211,7 @@ void main() {
         async.flushMicrotasks();
         final cancel = HapticCancel();
         var started = false;
-        final pb = HapticPlayback(onStart: () => started = true);
+        final pb = HapticPlayback(_Listener(() => started = true));
         svc.deliverExample(_one(7), cancel: cancel, playback: pb);
         cancel.cancel();
         async.elapse(const Duration(seconds: 60));
@@ -188,20 +228,21 @@ void main() {
       var plays = 0;
       final f = runHapticExample(
           sectionId: 'breathing',
-          sequenceOf: (k) => _slotSeq(k),
-          play: (k, s) async {
-            if (plays++ > 0) return true; // only the first cue is observed
-            pb = HapticPlayback.current!..expectStart();
-            pb!.endWhen(overGate.future);
-            order.add('delivered');
-            return true;
-          },
-          wait: (d) async => order.add('gap'),
-          cancel: HapticCancel(),
-          onPlaying: (k) {
-            seen.add(k);
-            order.add('hl:$k');
-          });
+          stage: _Stage(
+            onPlay: (k, s) async {
+              if (plays++ > 0) return true; // only the first cue is observed
+              pb = HapticPlayback.current!..expectStart();
+              pb!.endWhen(overGate.future);
+              order.add('delivered');
+              return true;
+            },
+            onWait: (d) async => order.add('gap'),
+            onPlaying: (k) {
+              seen.add(k);
+              order.add('hl:$k');
+            },
+          ),
+          cancel: HapticCancel());
       await Future<void>.delayed(Duration.zero);
       expect(seen, isEmpty, reason: 'delivered is not started');
       pb!.started();
@@ -220,29 +261,30 @@ void main() {
     late List<int> at;
     Future<void> wait(Duration d) async => now += d.inMilliseconds;
     final holds = <Duration>[];
-    Future<void> vib(Duration h) async {
-      at.add(now);
-      holds.add(h);
-    }
     setUp(() {
       now = 0;
       at = [];
       holds.clear();
     });
 
+    _Pulses drv({bool Function()? stopWhen, void Function(Duration)? onV}) =>
+        _Pulses((h) async {
+          at.add(now);
+          holds.add(h);
+          onV?.call(h);
+        }, wait, stopWhen: stopWhen);
+
     test('a hold does not pull the next pulse closer', () async {
       await playPhonePulses(
           BuzzSequence(const [0, 1000], durationsMs: const [800, 0]),
-          vibrate: vib,
-          wait: wait);
+          driver: drv());
       expect(at, [0, 1000]);
     });
 
     test('the pattern ends when its last hold ends', () async {
       await playPhonePulses(
           BuzzSequence(const [0, 1000], durationsMs: const [800, 300]),
-          vibrate: vib,
-          wait: wait);
+          driver: drv());
       expect(at, [0, 1000]);
       expect(now, 1300);
     });
@@ -250,8 +292,7 @@ void main() {
     test('each pulse vibrates for its own hold', () async {
       await playPhonePulses(
           BuzzSequence(const [0, 1000, 2500], durationsMs: const [800, 120, 0]),
-          vibrate: vib,
-          wait: wait);
+          driver: drv());
       expect(holds, [
         const Duration(milliseconds: 800),
         const Duration(milliseconds: 120),
@@ -259,29 +300,12 @@ void main() {
       ]);
     });
 
-    test('stop is checked before every pulse', () async {
-      var stop = false;
+    test('stop or the pref being off is checked before every pulse',
+        () async {
+      var halted = false;
       await playPhonePulses(
           BuzzSequence(const [0, 500, 1000], durationsMs: const [10, 10, 10]),
-          vibrate: (h) async {
-            at.add(now);
-            stop = true;
-          },
-          wait: wait,
-          stop: () => stop);
-      expect(at, [0]);
-    });
-
-    test('the pref is checked before every pulse', () async {
-      var on = true;
-      await playPhonePulses(
-          BuzzSequence(const [0, 500, 1000], durationsMs: const [10, 10, 10]),
-          vibrate: (h) async {
-            at.add(now);
-            on = false;
-          },
-          wait: wait,
-          enabled: () => on);
+          driver: drv(stopWhen: () => halted, onV: (_) => halted = true));
       expect(at, [0]);
     });
   });
@@ -290,7 +314,6 @@ void main() {
     late List<String> events;
     late List<Duration> waits;
     late Completer<void> gate;
-    BuzzSequence? seqOf(String k) => _slotSeq(k);
     Future<bool> play(String k, BuzzSequence s) async {
       events.add('play:$k');
       return true;
@@ -308,16 +331,11 @@ void main() {
     });
 
     Future<void> run(String section,
-        {BuzzSequence? Function(String)? sequenceOf,
-        void Function(String?)? onPlaying,
-        HapticCancel? cancel}) =>
+        {BuzzSequence? Function(String)? sequenceOf, HapticCancel? cancel}) =>
         runHapticExample(
             sectionId: section,
-            sequenceOf: sequenceOf ?? seqOf,
-            play: play,
-            wait: wait,
-            cancel: cancel ?? HapticCancel(),
-            onPlaying: onPlaying);
+            stage: _Stage(seq: sequenceOf, onPlay: play, onWait: wait),
+            cancel: cancel ?? HapticCancel());
 
     test('only the four sequence sections have an example', () {
       for (final s in kHapticSlotSections) {
@@ -388,11 +406,8 @@ void main() {
 
       final f = runHapticExample(
           sectionId: 'breathing',
-          sequenceOf: seqOf,
-          play: slowPlay,
-          wait: wait,
-          cancel: HapticCancel(),
-          onPlaying: seen.add);
+          stage: _Stage(onPlay: slowPlay, onWait: wait, onPlaying: seen.add),
+          cancel: HapticCancel());
       await Future<void>.delayed(Duration.zero);
       expect(seen, ['breath.inhale']);
       gate.complete();
@@ -409,11 +424,8 @@ void main() {
       var done = false;
       final f = runHapticExample(
           sectionId: 'breathing',
-          sequenceOf: seqOf,
-          play: play,
-          wait: (d) => never.future,
-          cancel: cancel,
-          onPlaying: (_) {}).then((_) => done = true);
+          stage: _Stage(onPlay: play, onWait: (d) => never.future),
+          cancel: cancel).then((_) => done = true);
       await Future<void>.delayed(Duration.zero);
       expect(done, isFalse);
       cancel.cancel();

@@ -52,6 +52,7 @@ _Active? _active;
 /// Forgets the running vibration and the cached capability. Tests only.
 void resetPhoneVibrationForTest() {
   _active = null;
+  _turn = null;
   _capability = null;
   _capabilityOf = null;
 }
@@ -69,16 +70,37 @@ Future<bool> _supportsDuration() {
   return _capability!;
 }
 
+// Requests are served one at a time, in order (a takeover awaits the platform,
+// and a request that arrived meanwhile must not slip in between), and a request
+// that a newer one has overtaken never starts: only the newest plays.
+Future<void>? _turn;
+int _newest = 0;
+
 /// Vibrates the phone for [hold]. Where the device cannot vibrate for a given
 /// length (iOS without CoreHaptics, no vibrator, a plugin error) it falls back
 /// to the platform's fixed-length buzz. With [cancel]: nothing starts once it
 /// is cancelled (also while the capability is being asked), and cancelling
 /// while this vibration runs stops it.
 Future<void> vibratePhoneFor(Duration hold, {HapticCancel? cancel}) async {
+  final mine = ++_newest;
+  final before = _turn;
+  final done = Completer<void>();
+  _turn = done.future;
+  try {
+    if (before != null) await before;
+    if (mine != _newest) return;
+    await _vibrate(hold, cancel, mine);
+  } finally {
+    done.complete();
+  }
+}
+
+Future<void> _vibrate(Duration hold, HapticCancel? cancel, int mine) async {
   final vibrator = phoneVibrator;
+  bool overtaken() => mine != _newest || cancel?.cancelled == true;
   try {
     if (hold > Duration.zero && await _supportsDuration()) {
-      if (cancel?.cancelled == true) return;
+      if (overtaken()) return;
       // The latest vibration wins, literally: a platform may start a second
       // player without stopping the first, so the one still running is
       // stopped before its ownership is dropped. A hold that has run out is
@@ -89,13 +111,14 @@ Future<void> vibratePhoneFor(Duration hold, {HapticCancel? cancel}) async {
         try {
           await vibrator.cancel();
         } catch (_) {}
-        if (cancel?.cancelled == true) return;
+        if (overtaken()) return;
       }
-      final mine = _Active(cancel, clock.now().add(hold));
-      _active = mine;
+      final active = _Active(cancel, clock.now().add(hold));
+      _active = active;
       if (cancel != null) {
         unawaited(cancel.whenCancelled.then((_) {
-          if (identical(_active, mine) && clock.now().isBefore(mine.endsAt)) {
+          if (identical(_active, active) &&
+              clock.now().isBefore(active.endsAt)) {
             _active = null;
             return vibrator.cancel().catchError((Object _) {});
           }
@@ -107,6 +130,6 @@ Future<void> vibratePhoneFor(Duration hold, {HapticCancel? cancel}) async {
   } catch (_) {
     // Fall through to the fixed buzz.
   }
-  if (cancel?.cancelled == true) return;
+  if (overtaken()) return;
   await vibrator.fixedBuzz();
 }

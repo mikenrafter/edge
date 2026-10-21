@@ -52,7 +52,6 @@ import 'dart:async';
 import 'package:clock/clock.dart';
 
 import '../notify/buzz_sequence.dart';
-import 'callback_apply.dart';
 
 /// How long a queued gesture or lab job may wait to START (a plain job waits as
 /// long as it must). The alert dispatcher adds this to a band delivery's
@@ -285,12 +284,12 @@ class BandEndedSignal {
 /// nothing, so a job that was told to stop cannot play the rest of its rhythm
 /// over the next one.
 class BandJobToken {
-  BandJobToken._(this._reservation, this._onWrite, [this._stopWhen]);
+  BandJobToken._(this._reservation, this._onWrite, [this._stop]);
   final BandReservation _reservation;
   final void Function()? _onWrite;
 
-  /// Asked before every write: true refuses it (the job's owner stopped).
-  final bool Function()? _stopWhen;
+  /// Asked before every write: refuses it once the job's owner stopped.
+  final BandStop? _stop;
   bool _cancelled = false;
   int _writes = 0;
   final Set<Future<void>> _inflight = <Future<void>>{};
@@ -304,10 +303,7 @@ class BandJobToken {
   /// Send one band command with [send]. False, with nothing sent, when the job
   /// is cancelled or has used its whole reservation; else what [send] says.
   Future<bool> write(Future<bool> Function() send) async {
-    final stop = _stopWhen;
-    if (_cancelled || (stop != null && applyCallback<bool>(stop, []))) {
-      return false;
-    }
+    if (_cancelled || (_stop?.stopRequested ?? false)) return false;
     if (!_reservation.take(clock.now())) return false;
     _writes++;
     _onWrite?.call();
@@ -357,7 +353,12 @@ const Symbol kBandGestureStartedKey = #openstrapBandGestureStarted;
 const Symbol kBandAlarmKey = #openstrapBandAlarm;
 const Symbol kBandLimitExemptKey = #openstrapBandLimitExempt;
 
-/// Zone key carrying a `bool Function()` "stop now" for an example's jobs:
+/// Whether an example that owns band jobs has been told to stop.
+abstract class BandStop {
+  bool get stopRequested;
+}
+
+/// Zone key carrying the [BandStop] for an example's jobs:
 /// asked by the queue before a waiting job starts (as "wanted", inverted) and
 /// by the job's token before every band write.
 const Symbol kBandStopKey = #openstrapBandStop;
@@ -385,7 +386,7 @@ class _Job {
       this.exempt = false,
       this.alarm = false,
       this.limitExempt = false,
-      this.stopWhen,
+      this.stop,
       this.immediate = false});
   final Future<BuzzDelivery> Function(BandJobToken job) run;
   final int commands;
@@ -415,7 +416,7 @@ class _Job {
   final bool limitExempt;
 
   /// An example's "stop now": the token refuses every write once it is true.
-  final bool Function()? stopWhen;
+  final BandStop? stop;
 
   /// Must start now or be rejected (a phase cue): never deferred either.
   final bool immediate;
@@ -710,17 +711,16 @@ class BandHapticQueue {
       );
 
   /// Run an explicitly requested example: its jobs pass the courtesy cap (every
-  /// write still counted). With [stopWhen] the example is also cancellable:
-  /// once it answers true, a job of this work that has not started is dropped
-  /// and one that has started writes nothing more.
-  T asLimitExempt<T>(T Function() work, {bool Function()? stopWhen}) {
-    final stop = stopWhen;
+  /// write still counted). With [stop] the example is also cancellable: once
+  /// it says so, a job of this work that has not started is dropped and one
+  /// that has started writes nothing more.
+  T asLimitExempt<T>(T Function() work, {BandStop? stop}) {
     return runZoned(
       work,
       zoneValues: <Object?, Object?>{
         kBandLimitExemptKey: true,
         kBandStopKey: ?stop,
-        if (stop != null) kBandWantedKey: () => !applyCallback<bool>(stop, []),
+        if (stop != null) kBandWantedKey: () => !stop.stopRequested,
       },
     );
   }
@@ -856,8 +856,8 @@ class BandHapticQueue {
         gesture: gesture,
         alarm: alarm,
         limitExempt: limitExempt,
-        stopWhen: Zone.current[kBandStopKey] is bool Function()
-            ? Zone.current[kBandStopKey] as bool Function()
+        stop: Zone.current[kBandStopKey] is BandStop
+            ? Zone.current[kBandStopKey] as BandStop
             : null,
         immediate: immediate,
         exempt: gesture != null && Zone.current[kBandGestureStartedKey] == true);
@@ -1008,7 +1008,7 @@ class BandHapticQueue {
   }
 
   Future<void> _start(_Job j, BandReservation room) async {
-    final token = BandJobToken._(room, onWrite, j.stopWhen);
+    final token = BandJobToken._(room, onWrite, j.stop);
     BuzzDelivery? result;
     try {
       try {

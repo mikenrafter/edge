@@ -27,6 +27,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/haptics/example_playback.dart';
 import 'package:openstrap_edge/haptics/haptic_profile.dart';
 import 'package:openstrap_edge/haptics/haptic_slots.dart';
 import 'package:openstrap_edge/haptics/pattern_store.dart';
@@ -47,7 +48,7 @@ class ReorgCalls extends HubCalls {
 
 /// A fake example player and gap clock: nothing finishes until the test says
 /// so, so there is no real time and every step can be observed.
-class FakeExampleClock {
+class FakeExampleClock implements ExamplePlayer {
   /// 'play:<slot>' and 'wait' in the order they were requested.
   final log = <String>[];
   final waits = <Duration>[];
@@ -60,6 +61,7 @@ class FakeExampleClock {
 
   int get pending => _pending.length;
 
+  @override
   Future<bool> play(BuzzSequence s) async {
     log.add('play:${s.patternId}');
     final c = Completer<void>();
@@ -68,6 +70,7 @@ class FakeExampleClock {
     return true;
   }
 
+  @override
   Future<void> wait(Duration d) async {
     log.add('wait');
     waits.add(d);
@@ -91,6 +94,25 @@ class FakeExampleClock {
       await next(t);
     }
   }
+}
+
+class _ClosureExamplePlayer implements ExamplePlayer {
+  _ClosureExamplePlayer(this.fn);
+  final Future<bool> Function(BuzzSequence) fn;
+  @override
+  Future<bool> play(BuzzSequence s) => fn(s);
+  @override
+  Future<void> wait(Duration d) async {}
+}
+
+class _ClosurePhone implements PhoneHaptics {
+  _ClosurePhone(this.fn, this.toggled);
+  final Future<void> Function(BuzzSequence) fn;
+  final void Function(bool) toggled;
+  @override
+  Future<void> vibrate(BuzzSequence s) => fn(s);
+  @override
+  void setAlso(bool on) => toggled(on);
 }
 
 /// A sequence whose patternId is the slot key, so a played sequence names its
@@ -139,17 +161,18 @@ Widget reorgView(
     #initialTab: initialTab,
     // The new seams.
     #phoneAlso: phoneAlso,
-    #onPhoneAlso: (bool v) => c.phoneToggles.add(v),
-    #phoneVibrate: phoneVibrate ??
-        (BuzzSequence s) async {
-          c.phone.add(s.patternId);
-        },
+    #phoneVibrate: _ClosurePhone(
+        phoneVibrate ??
+            (BuzzSequence s) async {
+              c.phone.add(s.patternId);
+            },
+        c.phoneToggles.add),
     #onOpenProbe: () => c.probeOpened++,
     #onReset: (String id) => c.reset.add(id),
     if (vocabularySupported != null) #vocabularySupported: vocabularySupported,
-    if (examplePlayer != null) #examplePlayer: examplePlayer,
-    if (clock != null && examplePlayer == null) #examplePlayer: clock.play,
-    if (clock != null) #sequenceWait: clock.wait,
+    if (examplePlayer != null)
+      #examplePlayer: _ClosureExamplePlayer(examplePlayer),
+    if (clock != null && examplePlayer == null) #examplePlayer: clock,
   };
   try {
     return Function.apply(HapticsSettingsView.new, const [], named) as Widget;

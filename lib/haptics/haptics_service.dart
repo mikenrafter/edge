@@ -161,7 +161,7 @@ class HapticsService {
         overs.add,
         () => deliver(s, onStart: onStart, onFirstWrite: playback?.started),
       ),
-      stopWhen: cancel == null ? null : () => cancel.cancelled,
+      stop: cancel,
     );
     // A delivery with no compiled commands (per-tap buzzes) never reports its
     // first write: accepted is as close to a start as it gets.

@@ -14,13 +14,17 @@ class _Fake implements PhoneVibrator {
   bool supports = true;
   final vibrated = <int>[];
   int cancels = 0, buzzes = 0;
+  Completer<void>? cancelGate;
   @override
   Future<bool> supportsDuration() =>
       supportGate?.future ?? Future<bool>.value(supports);
   @override
   Future<void> vibrate(int ms) async => vibrated.add(ms);
   @override
-  Future<void> cancel() async => cancels++;
+  Future<void> cancel() async {
+    cancels++;
+    await cancelGate?.future;
+  }
   @override
   Future<void> fixedBuzz() async => buzzes++;
 }
@@ -115,6 +119,34 @@ void main() {
       vibratePhoneFor(const Duration(seconds: 1), cancel: HapticCancel());
       async.flushMicrotasks();
       expect(f.cancels, 1);
+    });
+  });
+
+  test('a request that arrives while a takeover is cancelling the old hold '
+      'supersedes the one in between: only the newest plays', () {
+    fakeAsync((async) {
+      final a = HapticCancel(), b = HapticCancel(), c = HapticCancel();
+      vibratePhoneFor(const Duration(seconds: 5), cancel: a);
+      async.elapse(const Duration(milliseconds: 100));
+      expect(f.vibrated, [5000]);
+      f.cancelGate = Completer<void>(); // cancelling A hangs
+      vibratePhoneFor(const Duration(seconds: 4), cancel: b);
+      async.elapse(const Duration(milliseconds: 100));
+      expect(f.cancels, 1, reason: 'B stops A');
+      vibratePhoneFor(const Duration(seconds: 3), cancel: c);
+      async.elapse(const Duration(milliseconds: 100));
+      f.cancelGate!.complete();
+      f.cancelGate = null;
+      async.elapse(const Duration(milliseconds: 100));
+      expect(f.vibrated, [5000, 3000], reason: 'B was overtaken, it never plays');
+      expect(f.cancels, 1, reason: 'A was cancelled once, nothing else ran');
+      a.cancel();
+      b.cancel();
+      async.flushMicrotasks();
+      expect(f.cancels, 1);
+      c.cancel();
+      async.flushMicrotasks();
+      expect(f.cancels, 2, reason: 'Stop cancels the active one');
     });
   });
 
