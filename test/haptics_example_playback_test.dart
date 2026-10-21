@@ -29,8 +29,10 @@ class _Port implements BandHapticsPort {
   String? get generation => 'gen5';
   @override
   Future<bool> buzzBand({int holdMs = 0}) async => true;
+  final at = <Duration>[];
   @override
   Future<bool> buzzMaverickPattern(List<int> effects, int loop) async {
+    at.add(async.elapsed);
     patterns.add('$effects x$loop');
     onPattern?.call(patterns.length - 1);
     return true;
@@ -132,15 +134,100 @@ void main() {
     });
   });
 
+  group('highlight and gaps follow the band, through the real queue', () {
+    test('a cue queued behind another is not started until the band takes it, '
+        'and it is over after it was delivered', () {
+      fakeAsync((async) {
+        final port = _Port(async);
+        final svc = _svc(port);
+        svc.deliver(_two()); // the band is busy
+        async.flushMicrotasks();
+        final cancel = HapticCancel();
+        Duration? startedAt, deliveredAt, overAt;
+        final pb = HapticPlayback(onStart: () => startedAt = async.elapsed);
+        svc.deliverExample(_one(7), cancel: cancel, playback: pb).then((_) {
+          deliveredAt = async.elapsed;
+          pb.over?.then((_) => overAt = async.elapsed);
+        });
+        async.elapse(const Duration(milliseconds: 100));
+        expect(startedAt, isNull, reason: 'highlighted while still queued');
+        async.elapse(const Duration(seconds: 60));
+        expect(startedAt, isNotNull);
+        expect(port.patterns.last, '[7] x1');
+        expect(port.at.last, startedAt, reason: 'start = the first write');
+        expect(deliveredAt, isNotNull);
+        expect(pb.over, isNotNull, reason: 'no playback-end signal');
+        expect(overAt, isNotNull);
+        expect(overAt!, greaterThan(deliveredAt!),
+            reason: 'the cue is still playing when delivery returns');
+      });
+    });
+
+    test('a cue dropped by Stop never reports a start', () {
+      fakeAsync((async) {
+        final port = _Port(async);
+        final svc = _svc(port);
+        svc.deliver(_two());
+        async.flushMicrotasks();
+        final cancel = HapticCancel();
+        var started = false;
+        final pb = HapticPlayback(onStart: () => started = true);
+        svc.deliverExample(_one(7), cancel: cancel, playback: pb);
+        cancel.cancel();
+        async.elapse(const Duration(seconds: 60));
+        expect(started, isFalse);
+      });
+    });
+
+    test('the example waits for the band: highlight on at the start, off at '
+        'the end, and the next gap only after', () async {
+      final seen = <String?>[];
+      final order = <String>[];
+      final overGate = Completer<void>();
+      HapticPlayback? pb;
+      var plays = 0;
+      final f = runHapticExample(
+          sectionId: 'breathing',
+          sequenceOf: (k) => _slotSeq(k),
+          play: (k, s) async {
+            if (plays++ > 0) return true; // only the first cue is observed
+            pb = HapticPlayback.current!..expectStart();
+            pb!.endWhen(overGate.future);
+            order.add('delivered');
+            return true;
+          },
+          wait: (d) async => order.add('gap'),
+          cancel: HapticCancel(),
+          onPlaying: (k) {
+            seen.add(k);
+            order.add('hl:$k');
+          });
+      await Future<void>.delayed(Duration.zero);
+      expect(seen, isEmpty, reason: 'delivered is not started');
+      pb!.started();
+      await Future<void>.delayed(Duration.zero);
+      expect(seen, ['breath.inhale']);
+      expect(order, ['delivered', 'hl:breath.inhale']);
+      overGate.complete();
+      await f;
+      expect(order.take(4), ['delivered', 'hl:breath.inhale', 'hl:null', 'gap']);
+    });
+  });
+
   group('2. phone pulses follow elapsed time', () {
     // A fake clock: wait advances virtual time; vibrate stamps it.
     late int now;
     late List<int> at;
     Future<void> wait(Duration d) async => now += d.inMilliseconds;
-    Future<void> vib() async => at.add(now);
+    final holds = <Duration>[];
+    Future<void> vib(Duration h) async {
+      at.add(now);
+      holds.add(h);
+    }
     setUp(() {
       now = 0;
       at = [];
+      holds.clear();
     });
 
     test('a hold does not pull the next pulse closer', () async {
@@ -160,11 +247,23 @@ void main() {
       expect(now, 1300);
     });
 
+    test('each pulse vibrates for its own hold', () async {
+      await playPhonePulses(
+          BuzzSequence(const [0, 1000, 2500], durationsMs: const [800, 120, 0]),
+          vibrate: vib,
+          wait: wait);
+      expect(holds, [
+        const Duration(milliseconds: 800),
+        const Duration(milliseconds: 120),
+        Duration.zero,
+      ]);
+    });
+
     test('stop is checked before every pulse', () async {
       var stop = false;
       await playPhonePulses(
           BuzzSequence(const [0, 500, 1000], durationsMs: const [10, 10, 10]),
-          vibrate: () async {
+          vibrate: (h) async {
             at.add(now);
             stop = true;
           },
@@ -177,7 +276,7 @@ void main() {
       var on = true;
       await playPhonePulses(
           BuzzSequence(const [0, 500, 1000], durationsMs: const [10, 10, 10]),
-          vibrate: () async {
+          vibrate: (h) async {
             at.add(now);
             on = false;
           },

@@ -166,7 +166,7 @@ import '../gestures/tap_ack.dart';
 import '../haptics/band_queue.dart';
 import '../haptics/ble_haptics_port.dart';
 import '../haptics/gesture_cues.dart';
-import '../haptics/example_playback.dart' show HapticCancel;
+import '../haptics/example_playback.dart' show HapticCancel, HapticPlayback;
 import '../haptics/haptics_service.dart';
 import '../haptics/wake_haptics.dart';
 import '../haptics/haptic_player.dart' show HapticPlayStart;
@@ -931,13 +931,18 @@ class AppState extends ChangeNotifier {
   /// writes.
   Future<bool> previewBuzzSequenceExample(BuzzSequence s) =>
       _previewBuzzSequence(s,
-          ignoreCommandLimit: true, cancel: HapticCancel.current);
+          ignoreCommandLimit: true,
+          cancel: HapticCancel.current,
+          // The example listens to the band: it says when the cue starts and
+          // when the band is free of it.
+          playback: HapticPlayback.current?..expectStart());
 
   Future<bool> _previewBuzzSequence(
     BuzzSequence s, {
     void Function(HapticPlayStart)? onStart,
     bool ignoreCommandLimit = false,
     HapticCancel? cancel,
+    HapticPlayback? playback,
   }) async {
     if (cancel?.cancelled == true) return false;
     final now = DateTime.now();
@@ -948,7 +953,8 @@ class AppState extends ChangeNotifier {
       historical: false,
       bandTimeout: haptics.sequenceTimeout(s),
       bandDelivery: () => ignoreCommandLimit
-          ? haptics.deliverExample(s, cancel: cancel, onStart: onStart)
+          ? haptics.deliverExample(s,
+              cancel: cancel, playback: playback, onStart: onStart)
           : haptics.deliver(s, onStart: onStart),
     );
     return r.targets.contains('band');

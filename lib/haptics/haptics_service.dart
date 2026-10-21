@@ -137,15 +137,39 @@ class HapticsService {
   Future<BuzzDelivery> deliverExample(
     BuzzSequence s, {
     HapticCancel? cancel,
+    HapticPlayback? playback,
     void Function(HapticPlayStart)? onStart,
   }) {
     if (cancel?.cancelled == true) {
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
     }
-    return _queue.asLimitExempt(
-      () => deliver(s, onStart: onStart),
+    return _deliverExample(s, cancel, playback, onStart);
+  }
+
+  Future<BuzzDelivery> _deliverExample(
+    BuzzSequence s,
+    HapticCancel? cancel,
+    HapticPlayback? playback,
+    void Function(HapticPlayStart)? onStart,
+  ) async {
+    // The band is free of the cue when every job it queued is over (its
+    // playback ended or it was dropped): that, not the delivery returning, is
+    // when an example may move on.
+    final overs = <Future<void>>[];
+    final r = await _queue.asLimitExempt(
+      () => asObserved(
+        overs.add,
+        () => deliver(s, onStart: onStart, onFirstWrite: playback?.started),
+      ),
       stopWhen: cancel == null ? null : () => cancel.cancelled,
     );
+    // A delivery with no compiled commands (per-tap buzzes) never reports its
+    // first write: accepted is as close to a start as it gets.
+    if (r != BuzzDelivery.rejected && cancel?.cancelled != true) {
+      playback?.started();
+    }
+    playback?.endWhen(Future.wait(overs).then<void>((_) {}));
+    return r;
   }
 
   /// Run [work] so its band jobs are dropped when [wanted] turns false before

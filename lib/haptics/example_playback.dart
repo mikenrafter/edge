@@ -8,10 +8,10 @@
 
 import 'dart:async';
 
-import 'package:flutter/services.dart';
 
 import '../notify/buzz_sequence.dart';
 import 'callback_apply.dart';
+import 'phone_vibration.dart';
 import 'haptic_slots.dart' show kHapticSlotSections;
 
 /// One cancellation owner per example. Work started inside [run] can find it
@@ -47,6 +47,41 @@ class HapticCancel {
 /// One cue of an example: its slot, and the pause before it plays (after the
 /// previous cue has finished playing). The pause is the length of the phase
 /// the cue announces, not of any pattern.
+/// One cue's playback, as the band reports it. The runner creates one per cue
+/// and runs the player under it; the band path says when the wearer starts to
+/// feel the cue ([started]) and when the band is free of it ([endWhen]).
+class HapticPlayback {
+  HapticPlayback({required void Function() onStart}) : _onStart = onStart;
+  static const Symbol _zoneKey = #openstrapHapticPlayback;
+  final void Function() _onStart;
+  bool _expects = false, _started = false;
+  Future<void>? _over;
+
+  /// The player will call [started]: the runner must not guess.
+  void expectStart() => _expects = true;
+  bool get expectsStart => _expects;
+  bool get hasStarted => _started;
+
+  /// Idempotent.
+  void started() {
+    if (_started) return;
+    _started = true;
+    applyCallback<void>(_onStart, []);
+  }
+
+  /// The band is free of this cue when [over] completes.
+  void endWhen(Future<void> over) => _over = over;
+  Future<void>? get over => _over;
+
+  static HapticPlayback? get current {
+    final v = Zone.current[_zoneKey];
+    return v is HapticPlayback ? v : null;
+  }
+
+  T run<T>(T Function() work) =>
+      runZoned(work, zoneValues: <Object?, Object?>{_zoneKey: this});
+}
+
 class ExampleStep {
   const ExampleStep(this.slotKey, this.gapBeforeMs);
   final String slotKey;
@@ -141,18 +176,31 @@ Future<void> runHapticExample({
       }
       final seq = applyCallback<BuzzSequence?>(sequenceOf, [step.slotKey]);
       if (seq == null) continue;
-      if (onPlaying != null) applyCallback<void>(onPlaying, [step.slotKey]);
-      bool ok;
+      // The highlight follows the band: from the moment it takes the cue until
+      // it is free of it (a cue is delivered before it has finished playing),
+      // and the next pause starts only then. A player that does not report the
+      // band (a phone-only cue, a test) is highlighted for as long as its own
+      // future runs.
+      final playback = HapticPlayback(onStart: () {
+        if (!cancel.cancelled && onPlaying != null) {
+          applyCallback<void>(onPlaying, [step.slotKey]);
+        }
+      });
       try {
-        ok = await Future.any<bool>([
-          applyCallback<Future<bool>>(
-              play, [step.slotKey, seq.copyWith(patternId: step.slotKey)]),
-          cancel.whenCancelled.then((_) => false),
-        ]);
+        final delivered = playback.run(() => applyCallback<Future<bool>>(
+            play, [step.slotKey, seq.copyWith(patternId: step.slotKey)]));
+        if (!playback.expectsStart) playback.started();
+        final ok = await Future.any<bool>(
+            [delivered, cancel.whenCancelled.then((_) => false)]);
+        if (cancel.cancelled || !ok) return;
+        final over = playback.over;
+        if (over != null) {
+          await Future.any<void>([over, cancel.whenCancelled]);
+        }
       } finally {
         if (onPlaying != null) applyCallback<void>(onPlaying, [null]);
       }
-      if (cancel.cancelled || !ok) return;
+      if (cancel.cancelled) return;
     }
   }
 }
@@ -160,16 +208,15 @@ Future<void> runHapticExample({
 /// Plays [sequence] on the phone: one buzz at each tap's start offset, timed
 /// against the pattern's own clock (a hold does not move the next tap closer),
 /// and the call ends when the last hold would. [stop] and [enabled] are asked
-/// before every pulse. A phone buzz has a fixed length; the hold is kept as
-/// time, not as vibration length.
+/// before every pulse. Each pulse vibrates for its own hold ([vibrate] gets it).
 Future<void> playPhonePulses(
   BuzzSequence sequence, {
-  Future<void> Function()? vibrate,
+  Future<void> Function(Duration hold)? vibrate,
   Future<void> Function(Duration)? wait,
   bool Function()? stop,
   bool Function()? enabled,
 }) async {
-  final buzz = vibrate ?? HapticFeedback.vibrate;
+  final buzz = vibrate ?? vibratePhoneFor;
   final pause = wait ?? Future<void>.delayed;
   bool halted() =>
       (stop != null && applyCallback<bool>(stop, [])) ||
@@ -186,7 +233,8 @@ Future<void> playPhonePulses(
       at = start;
       if (halted()) return;
     }
-    await applyCallback<Future<void>>(buzz, []);
+    await applyCallback<Future<void>>(
+        buzz, [Duration(milliseconds: sequence.durationsMs[i])]);
   }
   if (end > at && !halted()) await applyCallback<Future<void>>(pause, [Duration(milliseconds: end - at)]);
 }

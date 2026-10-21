@@ -359,6 +359,14 @@ void main() {
       await t.pump(const Duration(milliseconds: 300));
       expect(find.byType(PatternProbePage), findsOneWidget);
       expect(r.pattern, isNotNull);
+      // Finishing closes the probe on the runner; the page must stay, as its
+      // end screen, with the summary and the way to save the log.
+      await t.tap(find.byKey(const ValueKey('pattern-finish')));
+      await t.pump(const Duration(milliseconds: 300));
+      await t.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('pattern-end')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pattern-copy')), findsOneWidget);
+      expect(find.text('Opening the probe…'), findsNothing);
       await t.pumpWidget(const SizedBox());
       await t.pump();
     });

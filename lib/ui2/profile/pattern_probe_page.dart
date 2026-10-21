@@ -1204,6 +1204,11 @@ class _PatternProbeLauncherState extends State<PatternProbeLauncher> {
   // Kept so dispose does not need the widget.
   late final HardwareProbeRunner _runner = widget.runner;
 
+  // Once the probe has opened the page stays: finishing closes the probe on
+  // the runner (pattern becomes null) but the page then shows its end screen
+  // with the summary and the way to save the log.
+  bool _opened = false;
+
   @override
   void initState() {
     super.initState();
@@ -1230,7 +1235,8 @@ class _PatternProbeLauncherState extends State<PatternProbeLauncher> {
 
   @override
   Widget build(BuildContext c) {
-    if (_runner.pattern != null) {
+    if (_runner.pattern != null) _opened = true;
+    if (_opened) {
       return PatternProbePage(
         runner: _runner,
         logText: widget.logText,
