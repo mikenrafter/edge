@@ -3009,5 +3009,23 @@
         "type": "String"
       }
     }
+  },
+  "homeSleepEstimateDefaultMin": "~{cycles, plural, =0{{cycles} चक्र} one{{cycles} चक्र} other{{cycles} चक्र}} · डिफ़ॉल्ट लक्ष्य",
+  "@homeSleepEstimateDefaultMin": {
+    "description": "Smallest default-target estimate caption: drops the duration, keeps the estimate marker, cycles and the default goal.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSleepEstimateBare": "~{cycles, plural, =0{{cycles} चक्र} one{{cycles} चक्र} other{{cycles} चक्र}}",
+  "@homeSleepEstimateBare": {
+    "description": "Smallest estimate caption: the estimate marker and the cycle count.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      }
+    }
   }
 }

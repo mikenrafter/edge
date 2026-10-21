@@ -3009,5 +3009,23 @@
         "type": "String"
       }
     }
+  },
+  "homeSleepEstimateDefaultMin": "~{cycles} 个周期 · 默认目标",
+  "@homeSleepEstimateDefaultMin": {
+    "description": "Smallest default-target estimate caption: drops the duration, keeps the estimate marker, cycles and the default goal.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSleepEstimateBare": "~{cycles} 个周期",
+  "@homeSleepEstimateBare": {
+    "description": "Smallest estimate caption: the estimate marker and the cycle count.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      }
+    }
   }
 }

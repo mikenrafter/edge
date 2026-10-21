@@ -116,6 +116,12 @@ void main() {
   final combos = <(String, double, List<double>)>[
     ('en', 1, [360, 390]),
     ('en', 1.3, [360, 390]),
+    ('en', 1.15, [360, 390]),
+    ('es', 1.15, [360, 390]),
+    ('fr', 1.15, [360, 390]),
+    ('de', 1, [360, 390]),
+    ('ru', 1, [360, 390]),
+    ('hi', 1, [360, 390]),
     ('es', 1, [360, 390]),
     ('fr', 1, [360, 390]),
     // The centred three-column layout is only chosen where the worst-case
@@ -142,8 +148,8 @@ void main() {
             expect(box.didExceedMaxLines, isFalse,
                 reason: '"$text" is ellipsized/cut');
             if (!rows) {
-              expect(box.size.height, lessThanOrEqualTo(2 * lineH + 1),
-                  reason: '"$text" needs more than two lines');
+              expect(box.size.height, lessThanOrEqualTo(3 * lineH + 1),
+                  reason: '"$text" needs more than three lines');
             }
           }
           // The sleep ring is the last column; its wording keeps its
@@ -151,14 +157,22 @@ void main() {
           final sleep = t.widget<Text>(caps.last).data!;
           final isDefault = e.key.contains('default');
           final isEstimate = e.key.startsWith('estimate');
-          final dflt = {'en': 'default', 'es': 'predet|por defecto', 'fr': 'défaut', 'zh': '默认'}[lang]!;
+          final dflt = {
+            'en': 'default',
+            'es': 'predet|por defecto',
+            'fr': 'défaut',
+            'zh': '默认',
+            'de': 'Standard',
+            'ru': 'умолч',
+            'hi': 'डिफ़ॉल्ट'
+          }[lang]!;
           final wantDefault = RegExp(dflt, caseSensitive: false);
           expect(wantDefault.hasMatch(sleep), isDefault,
               reason: '"$sleep" default qualifier');
           if (isEstimate && isDefault) {
             // The default qualifier names the TARGET (or goal), in every form.
             expect(
-                RegExp('target|goal|objetivo|meta|objectif|cible|目标',
+                RegExp('target|goal|objetivo|meta|objectif|cible|目标|Ziel|цель|लक्ष्य',
                         caseSensitive: false)
                     .hasMatch(sleep),
                 isTrue,
@@ -188,13 +202,13 @@ void main() {
   }
   }
 
-  testWidgets('en x1.3 360 pt: the stacked row layout, empty and loaded, equal height',
+  testWidgets('en x1.4 360 pt: the stacked row layout, empty and loaded, equal height',
       (t) async {
-    await _pump(t, 360, const HomeData(), scale: 1.3);
-    expect(_rows(t), isTrue, reason: 'worst-case caption does not fit columns');
+    await _pump(t, 360, const HomeData(), scale: 1.4);
+    expect(_rows(t), isTrue, reason: 'bigText uses rows');
     final empty = _trioHeight(t);
     await _pump(t, 360, _loaded['estimate, schedule, default target']!,
-        scale: 1.3);
+        scale: 1.4);
     expect(_rows(t), isTrue);
     expect(_trioHeight(t), empty);
     final cap = t.widget<Text>(_captions(t).last).data!;

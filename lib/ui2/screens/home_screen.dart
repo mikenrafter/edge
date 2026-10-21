@@ -1046,7 +1046,7 @@ class RingTrio extends StatelessWidget {
       child: LayoutBuilder(builder: (c, box) => Column(children: [
         // Rows replace columns by locale, text scale and width only, never by
         // the day's data: an empty card and a loaded one are the same layout.
-        if (bigText(c) || !_columnsHoldWorstCase(c, l, (box.maxWidth - 2 * S.x3) / 3))
+        if (bigText(c))
           // Past ~1.3× a 100 pt column cannot hold the word "Recovery" on one
           // line and there is nowhere for it to wrap to. The ring keeps its
           // size and the type gets the width instead.
@@ -1324,11 +1324,16 @@ _RingState _ringOf(
                       l?.homeSleepEstimateDefaultTight(
                               m.cycles!, _compactHm(m.estimateMin, l)) ??
                           '~${m.cycles} cycles · ${_compactHm(m.estimateMin, l)} · default goal',
+                      // When even the tight wording needs more than three
+                      // lines: drop the duration, never the qualifiers.
+                      l?.homeSleepEstimateDefaultMin(m.cycles!) ??
+                          '~${m.cycles} cycles · default goal',
                     ]
                   : [
                       l?.homeSleepEstimateCompact(
                               m.cycles!, _compactHm(m.estimateMin, l)) ??
                           '~${m.cycles} cycles · ${_compactHm(m.estimateMin, l)}',
+                      l?.homeSleepEstimateBare(m.cycles!) ?? '~${m.cycles} cycles',
                     ],
               frac: m.sweep,
               estimated: true);
@@ -1563,9 +1568,26 @@ class _RingRow extends StatelessWidget {
       );
 }
 
-/// Two lines of caption text at the current text scale.
-double _twoLines(BuildContext c) =>
-    MediaQuery.textScalerOf(c).scale((F.cap.fontSize ?? 12) * (F.cap.height ?? 1.3)) * 2;
+/// Three lines of caption text at the current text scale (prototype C: the
+/// columns reserve three, so the tightest wording has room in the worst case).
+double _twoLines(BuildContext c) => _measuredHeight(c, F.cap, 'x\nx\nx');
+
+/// Height of [text] in [base] under the ambient default style, scale and bold
+/// setting. Measured, not multiplied: the paragraph rounds each line.
+double _measuredHeight(BuildContext c, TextStyle base, String text) {
+  var st = DefaultTextStyle.of(c).style.merge(base);
+  if (MediaQuery.boldTextOf(c)) {
+    st = st.merge(const TextStyle(fontWeight: FontWeight.bold));
+  }
+  final tp = TextPainter(
+    text: TextSpan(text: text, style: st),
+    textDirection: Directionality.of(c),
+    textScaler: MediaQuery.textScalerOf(c),
+  )..layout();
+  final h = tp.height;
+  tp.dispose();
+  return h;
+}
 
 /// The caption's render settings, resolved once from the context so the text
 /// that is MEASURED and the Text that is BUILT can not disagree: the same
@@ -1639,19 +1661,19 @@ class _CaptionSpec {
       overflow: TextOverflow.clip);
 }
 
-/// Whether a ring column [width] wide holds the WORST-CASE tight sleep caption
-/// in two lines at the current scale and locale: a default-target estimate with
-/// a two-digit cycle count and a "10h 30m" duration, and a three-digit
-/// percentage against such a target. A fixed sample, so the layout answer is
-/// the same for an empty card and a loaded one.
-bool _columnsHoldWorstCase(BuildContext c, AppLocalizations? l, double width) {
-  final spec = _CaptionSpec.of(c, P.of(c).ink3, TextAlign.center, 2);
-  final dur = _compactHm(630, l);
-  return [
-    l?.homeSleepEstimateDefaultTight(10, dur) ??
-        '~10 cycles · $dur · default goal',
-    l?.homeSleepPctDefaultTight(113, dur) ?? '113% of default $dur',
-  ].every((t) => spec.fits(presentationText(l, t), width));
+/// Whether the longest sleep numeral ("10h 30m") needs two lines in [width].
+bool _numeralWraps(BuildContext c, double width) {
+  final tp = TextPainter(
+    text: TextSpan(
+        text: presentationText(AppLocalizations.of(c),
+            _compactHm(630, AppLocalizations.of(c))),
+        style: DefaultTextStyle.of(c).style.merge(F.n24)),
+    textDirection: Directionality.of(c),
+    textScaler: MediaQuery.textScalerOf(c),
+  )..layout();
+  final wraps = tp.width > width;
+  tp.dispose();
+  return wraps;
 }
 
 class _RingText extends StatelessWidget {
@@ -1661,7 +1683,10 @@ class _RingText extends StatelessWidget {
   const _RingText(this.r, {required this.align});
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => LayoutBuilder(
+      builder: (c, box) => _build(c, box.maxWidth));
+
+  Widget _build(BuildContext c, double colWidth) {
     final p = P.of(c);
     final cross = align == TextAlign.center
         ? CrossAxisAlignment.center
@@ -1675,7 +1700,17 @@ class _RingText extends StatelessWidget {
         // card is the same card first launch and loaded, and the reason is in
         // the help strip under the rings. Words that are not an absence
         // ("Sleeping…", "Learning your usual") keep the sentence weight.
-        Text(
+        ConstrainedBox(
+          // The sleep numeral ("7h 22m") can wrap to two lines in a narrow
+          // column at larger text; reserve both lines whenever the longest
+          // sample would wrap, so the slot never depends on the day's data.
+          constraints: BoxConstraints(
+              minHeight: align == TextAlign.center &&
+                      r.kind == HomeRingKind.sleep &&
+                      _numeralWraps(c, colWidth)
+                  ? _measuredHeight(c, F.n24, '1\n1')
+                  : 0),
+          child: Text(
           r.dash ? '—' : presentationText(AppLocalizations.of(c), r.value),
           style: r.dash
               ? F.n24.copyWith(color: p.ink3)
@@ -1683,7 +1718,7 @@ class _RingText extends StatelessWidget {
                   ? F.n24.copyWith(color: r.provisional ? p.ink3 : p.ink)
                   : F.body.copyWith(color: p.ink2),
           textAlign: align,
-        ),
+        )),
         // The caption line is reserved (two lines at the column's width), so
         // it does not move the card when a reading lands.
         const SizedBox(height: 2),
@@ -1713,20 +1748,22 @@ class _RingText extends StatelessWidget {
                   // The two-line bound is the centred column's; the big-text
                   // row has the width it needs and wraps without a limit.
                   final spec = _CaptionSpec.of(c, p.ink3, align,
-                      align == TextAlign.center ? 2 : null);
+                      align == TextAlign.center ? 3 : null);
                   final forms = [
                     presentationText(l, r.sub),
                     for (final a in r.alts) presentationText(l, a),
                   ];
                   // Measure every wording, widest first. The columns are only
                   // used when the worst-case tight wording fits them
-                  // ([_columnsHoldWorstCase]), so the last one always does.
+                  // (the tightest wording is expected to fit three lines).
                   for (final f in forms) {
                     if (spec.maxLines == null || spec.fits(f, box.maxWidth)) {
                       return spec.build(f);
                     }
                   }
-                  return spec.build(forms.last);
+                  // Past even the tightest wording (320 pt at 1.3x in es, de,
+                  // ru): show it whole on extra lines — never cut a qualifier.
+                  return spec.build(forms.last, bounded: false);
                 }),
         );
         }),

@@ -8395,5 +8395,23 @@
         "type": "String"
       }
     }
+  },
+  "homeSleepEstimateDefaultMin": "~{cycles, plural, =1{1 цикл} one{{cycles} цикл} few{{cycles} цикла} many{{cycles} циклов} other{{cycles} цикла}} · цель по умолч.",
+  "@homeSleepEstimateDefaultMin": {
+    "description": "Smallest default-target estimate caption: drops the duration, keeps the estimate marker, cycles and the default goal.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSleepEstimateBare": "~{cycles, plural, =1{1 цикл} one{{cycles} цикл} few{{cycles} цикла} many{{cycles} циклов} other{{cycles} цикла}}",
+  "@homeSleepEstimateBare": {
+    "description": "Smallest estimate caption: the estimate marker and the cycle count.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      }
+    }
   }
 }

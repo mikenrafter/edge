@@ -3027,5 +3027,23 @@
         "type": "String"
       }
     }
+  },
+  "homeSleepEstimateDefaultMin": "~{cycles, plural, =1{1 ciclo} other{{cycles} ciclos}} · meta por defecto",
+  "@homeSleepEstimateDefaultMin": {
+    "description": "Smallest default-target estimate caption: drops the duration, keeps the estimate marker, cycles and the default goal.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSleepEstimateBare": "~{cycles, plural, =1{1 ciclo} other{{cycles} ciclos}}",
+  "@homeSleepEstimateBare": {
+    "description": "Smallest estimate caption: the estimate marker and the cycle count.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      }
+    }
   }
 }

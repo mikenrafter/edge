@@ -44,9 +44,19 @@ void _caption(String full, List<String> compact) {
   expect(_spokenCaption(full), findsOneWidget);
   expect(
       find.byWidgetPredicate(
-          (w) => w is Text && (w.data == full || compact.contains(w.data))),
+          (w) =>
+              w is Text &&
+              (w.data == full ||
+                  compact.contains(w.data) ||
+                  // Last tier: the duration is dropped (the numeral above
+                  // already shows it), the estimate marker and the default
+                  // goal stay.
+                  RegExp(full.contains('default')
+                          ? r'^~\d+ cycles? · default (target|goal)$'
+                          : r'^~\d+ cycles?$')
+                      .hasMatch(w.data ?? ''))),
       findsOneWidget,
-      reason: 'visible caption is neither "$full" nor one of $compact');
+      reason: 'visible caption is neither "$full" nor one of $compact; texts: ${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).toList()}');
 }
 
 const _stages = SleepStageMin(deep: 70, rem: 95, light: 277, awake: 30);
