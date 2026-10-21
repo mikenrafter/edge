@@ -49,6 +49,9 @@ void main() {
       addTearDown(rig.dispose);
       rig.feed(r21LiveInner()); // ax 4096, ay 2048, az 0 LSB
       expect(rig.values('accel_x'), hasLength(100));
+      expect(rig.values('accel_x'), everyElement(closeTo(1.0, 1e-6)));
+      expect(rig.values('accel_y'), everyElement(closeTo(0.5, 1e-6)));
+      expect(rig.values('accel_z'), everyElement(closeTo(0.0, 1e-6)));
     });
 
     test('R21 gyroscope axes become gyro_x/y/z in deg/s', () async {
@@ -56,6 +59,9 @@ void main() {
       addTearDown(rig.dispose);
       rig.feed(r21LiveInner()); // gx 16384, gy -8192 LSB
       expect(rig.values('gyro_x'), hasLength(100));
+      expect(rig.values('gyro_x'), everyElement(closeTo(1000.0, 1e-6)));
+      expect(rig.values('gyro_y'), everyElement(closeTo(-500.0, 1e-6)));
+      expect(rig.values('gyro_z'), everyElement(closeTo(0.0, 1e-6)));
     });
 
     test('a realtime HR frame gives hr (bpm) and rr (ms)', () async {
@@ -71,7 +77,7 @@ void main() {
       final rig = G6Rig();
       addTearDown(rig.dispose);
       rig.feed(hr28V2Inner(hr: 70, location: 3));
-      expect(rig.values('hr'), hasLength(1));
+      expect(rig.values('hr'), [70.0]);
       expect(rig.app.liveStreams.streamKeys(kBandId), contains('location'));
       expect(rig.values('location'), [3.0]);
       expect(liveStreamLabel('location'), 'location',
@@ -109,6 +115,8 @@ void main() {
       addTearDown(rig.dispose);
       rig.feed(imu33Inner()); // ax 4096 LSB
       expect(rig.values('accel_x'), hasLength(10));
+      expect(rig.values('accel_x'), everyElement(closeTo(1.0, 1e-6)));
+      expect(rig.values('accel_y'), everyElement(closeTo(0.0, 1e-6)));
     });
 
     test('a live R10 gives hr, rr, accel (g) and gyro (deg/s)', () async {
@@ -117,8 +125,10 @@ void main() {
       rig.feed(r10LiveInner(hr: 64, rr: [900], ax: 4096, gx: 16384));
       expect(rig.values('hr'), [64.0]);
       expect(rig.values('rr'), [900.0]);
+      expect(rig.values('accel_x'), everyElement(closeTo(1.0, 1e-6)));
       // 16384 LSB * 0.06103515625 deg/s
       expect(rig.values('gyro_x'), hasLength(100));
+      expect(rig.values('gyro_x'), everyElement(closeTo(1000.0, 1e-6)));
     });
   });
 

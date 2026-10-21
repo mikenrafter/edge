@@ -224,6 +224,270 @@ void main() {
   });
 
   group('zoneMinutesFor', () {
+    test('bands on the supplied display HRmax', () {
+      // maxHr 190 → Z3 is 70–80% = 133–152 bpm. 120 s at 140 bpm = 2.0 min Z3.
+      final z = zoneMinutesFor(List<int>.filled(120, 140), 190);
+      expect(z.length, 5);
+      expect(z[2], 2.0);
+      expect(z[0], 0.0);
+      expect(z[4], 0.0);
+    });
+
+    test('below Z1 counts nowhere', () {
+      // 50 bpm at maxHr 190 is under the 50% floor.
+      expect(zoneMinutesFor(List<int>.filled(60, 50), 190).every((v) => v == 0),
+          isTrue);
+    });
+
+    test('empty HR or a degenerate HRmax yields no bands', () {
+      expect(zoneMinutesFor(const [], 190), isEmpty);
+      expect(zoneMinutesFor(const [140], 0), isEmpty);
+    });
+  });
+
+  group('computeManualSessionStats — honesty contract', () {
+    test('no HR in the window → every scored field is null', () {
+      final s = computeManualSessionStats(
+        hrTs: const [],
+        hrBpm: const [],
+        profile: _profile,
+        hrMax: _hrMax,
+        restingHr: 55,
+        quietHrr: 0.20,
+      );
+      expect(s.isUnscored, isTrue);
+      expect(s.hrSampleCount, 0);
+      expect(s.strain, isNull);
+      expect(s.calories, isNull);
+      expect(s.avgHr, isNull);
+      expect(s.maxHr, isNull);
+      expect(s.zoneMinutes, isEmpty);
+    });
+
+    test('no resting HR → neither strain nor calories', () {
+      final w = _flat(0, 30, 150);
+      final s = computeManualSessionStats(
+        hrTs: w.ts,
+        hrBpm: w.bpm,
+        profile: _profile,
+        hrMax: _hrMax,
+        restingHr: null,
+        quietHrr: 0.20,
+      );
+      // Banister carries RHR as a term in the formula — absent it, abstain.
+      expect(s.strain, isNull);
+      // Keytel's own kJ/min formula takes no RHR, so it is tempting to score
+      // calories anyway. But `estimateBoutCalories` uses RHR to place the
+      // active/resting threshold that decides which seconds burn at the active
+      // rate, and reports `usedDefaultAnchors` when it had to invent one. We
+      // honour that flag rather than banking a figure built on a 60 bpm guess.
+      expect(s.calories, isNull);
+      // Raw HR observations are real regardless, and still reported.
+      expect(s.avgHr, 150);
+      expect(s.hrSampleCount, 30 * 60);
+    });
+
+    test('no ceiling → no HRmax anchor → neither strain nor calories', () {
+      // No age OR an uncalibrated/unstamped strap: both make `estimatedMaxHr`
+      // null, and the caller passes that null straight through (TS-03a).
+      final w = _flat(0, 30, 150);
+      final s = computeManualSessionStats(
+        hrTs: w.ts,
+        hrBpm: w.bpm,
+        profile: const Profile(weightKg: 75, heightCm: 180, sex: 'm'),
+        hrMax: null,
+        restingHr: 55,
+        quietHrr: 0.20,
+      );
+      expect(s.strain, isNull);
+      expect(s.calories, isNull);
+      // Raw HR observations are still real and still reported.
+      expect(s.avgHr, 150);
+      expect(s.maxHr, 150);
+      expect(s.hrSampleCount, 30 * 60);
+    });
+
+    test('no weight → no Keytel calories, strain unaffected', () {
+      final w = _flat(0, 30, 150);
+      final s = computeManualSessionStats(
+        hrTs: w.ts,
+        hrBpm: w.bpm,
+        profile: const Profile(ageYears: 30, heightCm: 180, sex: 'm'),
+        hrMax: _hrMax,
+        restingHr: 55,
+        quietHrr: 0.20,
+      );
+      expect(s.calories, isNull);
+      expect(s.strain, isNotNull);
+    });
+
+    test('a full profile over real HR scores both', () {
+      final w = _flat(0, 45, 150);
+      final s = computeManualSessionStats(
+        hrTs: w.ts,
+        hrBpm: w.bpm,
+        profile: _profile,
+        hrMax: _hrMax,
+        restingHr: 55,
+        quietHrr: 0.20,
+      );
+      expect(s.isUnscored, isFalse);
+      expect(s.avgHr, 150);
+      expect(s.maxHr, 150);
+      expect(s.strain, isNotNull);
+      // 0–21 headline scale.
+      expect(s.strain, inInclusiveRange(0.0, 21.0));
+      expect(s.calories, greaterThan(0));
+      expect(s.zoneMinutes.length, 5);
+    });
+
+    test('a longer window at the same intensity scores higher strain', () {
+      ManualSessionStats run(int minutes) => computeManualSessionStats(
+            hrTs: _flat(0, minutes, 150).ts,
+            hrBpm: _flat(0, minutes, 150).bpm,
+            profile: _profile,
+            hrMax: _hrMax,
+            restingHr: 55,
+            quietHrr: 0.20,
+          );
+      // THE WHOLE POINT of the feature: correcting 25 min → 60 min must
+      // actually move the number the athlete came here to fix.
+      expect(run(60).strain!, greaterThan(run(25).strain!));
+      expect(run(60).calories!, greaterThan(run(25).calories!));
+    });
+
+    test('off-skin zero samples never drag the average down', () {
+      // hrSamplesInRange filters hr>0, but the policy must not depend on that.
+      final ts = [for (var i = 0; i < 120; i++) i];
+      final bpm = [for (var i = 0; i < 120; i++) i < 60 ? 0 : 150];
+      final s = computeManualSessionStats(
+        hrTs: ts,
+        hrBpm: bpm,
+        profile: _profile,
+        hrMax: _hrMax,
+        restingHr: 55,
+        quietHrr: 0.20,
+      );
+      expect(s.avgHr, 150);
+      expect(s.hrSampleCount, 60);
+
+      // ...and neither may they dilute kcal. The estimator bills every sample
+      // below the active threshold at the RESTING rate, so a forwarded zero
+      // silently bought a second of basal burn that avgHr, strain and the zone
+      // bands had all correctly discarded. An identical window containing only
+      // the worn minute must score the same.
+      final wornOnly = computeManualSessionStats(
+        hrTs: [for (var i = 60; i < 120; i++) i],
+        hrBpm: List<int>.filled(60, 150),
+        profile: _profile,
+        hrMax: _hrMax,
+        restingHr: 55,
+        quietHrr: 0.20,
+      );
+      expect(s.calories, wornOnly.calories);
+      expect(s.strain, wornOnly.strain);
+      expect(s.zoneMinutes, wornOnly.zoneMinutes);
+    });
+  });
+
+  // ONE strain method across the app. Before this, three things put a number
+  // on the same 0–21 dial and disagreed: daily strain used Banister -> log
+  // squash, a live session accrued `%HRR * 0.01` per second (uncited,
+  // uncapped, 2.18x higher, past 21 after ~50 min at 150 bpm), and an
+  // auto-detected session wrote no strain at all.
+  group('strainFromPerMinuteHr — the single strain method', () {
+    test('a hard hour scores on-scale, nowhere near the old accrual', () {
+      final perMin = List<double>.filled(60, 150);
+      final s = strainFromPerMinuteHr(perMin,
+          profile: _profile, restingHr: 55, hrMax: _hrMax, quietHrr: 0.20)!;
+
+      // The canonical figure for this effort.
+      expect(s, closeTo(11.62, 0.05));
+      expect(s, lessThanOrEqualTo(21.0));
+
+      // What the retired live accrual produced for the identical hour, so the
+      // gap is on the record rather than in a commit message.
+      final hrrLive = (150 - 55) / (220 - 30 - 55);
+      final legacy = hrrLive * 0.01 * 60 * 60;
+      expect(legacy, greaterThan(21.0),
+          reason: 'the old live formula left its own scale');
+      expect(legacy / s, greaterThan(2.0));
+    });
+
+    test('never exceeds 21, even for an absurdly long maximal effort', () {
+      // 12 h pinned at 190 bpm — the old accrual would read into the hundreds.
+      final s = strainFromPerMinuteHr(List<double>.filled(720, 190),
+          profile: _profile, restingHr: 55, hrMax: _hrMax, quietHrr: 0.20)!;
+      expect(s, lessThanOrEqualTo(21.0));
+    });
+
+    test('monotonic in both duration and intensity', () {
+      double at(int minutes, double bpm) => strainFromPerMinuteHr(
+          List<double>.filled(minutes, bpm),
+          profile: _profile,
+          restingHr: 55,
+          hrMax: _hrMax, quietHrr: 0.20)!;
+      expect(at(60, 150), greaterThan(at(30, 150)));
+      expect(at(60, 165), greaterThan(at(60, 150)));
+    });
+
+    test('abstains rather than inventing an anchor', () {
+      final perMin = List<double>.filled(60, 150);
+      // No resting HR.
+      expect(
+          strainFromPerMinuteHr(perMin,
+              profile: _profile, restingHr: null, hrMax: _hrMax, quietHrr: 0.20),
+          isNull);
+      // No ceiling — no age, OR a strap with no calibrated HRmax (TS-03a: an
+      // unknown/unstamped device family REFUSES rather than borrowing gen4's).
+      expect(
+          strainFromPerMinuteHr(perMin,
+              profile: _profile, restingHr: 55, hrMax: null, quietHrr: 0.20),
+          isNull);
+      // No sex → no Banister weighting constant.
+      expect(
+          strainFromPerMinuteHr(perMin,
+              profile: const Profile(ageYears: 30), restingHr: 55,
+              hrMax: _hrMax, quietHrr: 0.20),
+          isNull);
+      // No HR at all.
+      expect(
+          strainFromPerMinuteHr(const [],
+              profile: _profile, restingHr: 55, hrMax: _hrMax, quietHrr: 0.20),
+          isNull);
+    });
+
+    test('abstains without this user\'s quiet-waking level', () {
+      // The 0.20 population reference used to stand in here. A session is
+      // priced on the quiet level of the day it sits in, or not at all.
+      final w = _flat(0, 45, 150);
+      final none = computeManualSessionStats(
+        hrTs: w.ts,
+        hrBpm: w.bpm,
+        profile: _profile,
+        hrMax: _hrMax,
+        restingHr: 55,
+        quietHrr: null,
+      );
+      expect(none.strain, isNull);
+      // Everything else about the session is still scored.
+      expect(none.avgHr, 150);
+      expect(none.calories, isNotNull);
+      final priced = computeManualSessionStats(
+        hrTs: w.ts,
+        hrBpm: w.bpm,
+        profile: _profile,
+        hrMax: _hrMax,
+        restingHr: 55,
+        quietHrr: 0.20,
+      );
+      expect(priced.strain, isNotNull);
+      expect(
+          strainFromPerMinuteHr(List<double>.filled(60, 150),
+              profile: _profile, restingHr: 55, hrMax: _hrMax, quietHrr: null),
+          isNull);
+    });
+
     test('is exactly what computeManualSessionStats reports', () {
       // The session scorer must not fork its own copy of the method.
       final w = _flat(0, 45, 150);

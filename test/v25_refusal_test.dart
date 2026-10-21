@@ -18,6 +18,7 @@
 // `raw_archive` (reason `undecodable_rec_v25`).
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -41,6 +42,23 @@ void main() {
 
   tearDown(() async {
     await LocalDb.close();
+  });
+
+  test('protocol hands us no vector at all now — and we still drop the record',
+      () {
+    // This used to assert the opposite: protocol handed over a "gravity"
+    // vector from inner[69/71/73] and edge dropped the record anyway. Those
+    // offsets were refuted on real data and protocol 60676cf stopped emitting
+    // them, so `accelG` is empty — absent, not (0,0,0), the same idiom gen5's
+    // `gravityG` uses. Asserted so that if the decoder changes again, whoever
+    // changes it learns edge is deliberately dropping the record either way.
+    final r = proto.FirmwareAwareR24Decoder().decode(proto.hexToBytes(_v25a));
+    expect(r, isNotNull);
+    expect(r!.histVersion, 25);
+    expect(r.hr, 0, reason: 'v25 carries no heart rate');
+    expect(r.accelG, isEmpty, reason: 'absent, never a still wrist');
+    final s = proto.FirmwareAwareR24Decoder().decode(proto.hexToBytes(_v25b))!;
+    expect(s.accelG, isEmpty);
   });
 
   test('decodeSubstrate drops v25 rather than banking a still wrist', () {

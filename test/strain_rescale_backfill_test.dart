@@ -86,6 +86,80 @@ void main() {
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
   });
 
+  group('rescaledStrain — pure recompute from stored scalars', () {
+    test('rebuilds the headline from TRIMP and the wake window', () {
+      // Real bundle 2026-07-09: TRIMP 177.8 over a 611-minute wake window.
+      // Old scale put this at 12.79; the rescale reads ~9.0. Unchanged by the
+      // wake-window fix — 611 is the same number, now read instead of guessed.
+      final s = rescaledStrain(
+        trimp: 177.80394321843846,
+        wakeMinutes: 611,
+        female: false,
+        quietHrr: 0.20,
+      );
+      expect(s, isNotNull);
+      expect(s!, closeTo(9.03, 0.05));
+    });
+
+    test('a short-wear inactive day rescales to zero', () {
+      // Real bundle 2026-07-10: 23 steps, 135 wake minutes.
+      expect(
+        rescaledStrain(trimp: 23.416868457643158, wakeMinutes: 135,
+            female: false, quietHrr: 0.20),
+        0.0,
+      );
+    });
+
+    test('the wake window it is given is the window it prices', () {
+      // The measured error of the old `worn_min − tst_min` reconstruction ran
+      // −15..+22 min. It is small but it is not nothing: 22 minutes of extra
+      // quiet-waking allowance is a real slice of a light day's headline.
+      final measured = rescaledStrain(
+          trimp: 177.80394321843846, wakeMinutes: 611, female: false, quietHrr: 0.20)!;
+      final guessed = rescaledStrain(
+          trimp: 177.80394321843846, wakeMinutes: 633, female: false, quietHrr: 0.20)!;
+      expect(guessed, lessThan(measured));
+    });
+
+    test('abstains rather than guessing when an input is missing', () {
+      // No TRIMP → nothing to rescale from. Must leave the day alone, not zero it.
+      expect(
+        rescaledStrain(trimp: null, wakeMinutes: 611, female: false, quietHrr: 0.20),
+        isNull,
+      );
+      // No curve in the bundle → no window to price the baseline over. The old
+      // code reached for `worn_min − tst_min` here; abstaining is the fix.
+      expect(
+        rescaledStrain(trimp: 177.8, wakeMinutes: null, female: false, quietHrr: 0.20),
+        isNull,
+      );
+      expect(
+        rescaledStrain(trimp: 177.8, wakeMinutes: 0, female: false, quietHrr: 0.20),
+        isNull,
+      );
+    });
+
+    test('abstains without this user\'s quiet-waking level', () {
+      // The 0.20 population reference used to be passed here. No level, no
+      // rescale — the day keeps its old value rather than a stand-in one.
+      expect(
+        rescaledStrain(
+            trimp: 177.8, wakeMinutes: 611, female: false, quietHrr: null),
+        isNull,
+      );
+    });
+
+    test('sex changes the baseline, matching how the TRIMP was scored', () {
+      final male = rescaledStrain(
+          trimp: 300, wakeMinutes: 900, female: false, quietHrr: 0.20)!;
+      final female = rescaledStrain(
+          trimp: 300, wakeMinutes: 900, female: true, quietHrr: 0.20)!;
+      // The female quiet-waking allowance is larger (0.86·e^0.334 vs
+      // 0.64·e^0.384), so the same TRIMP nets less strain.
+      expect(female, lessThan(male));
+    });
+  });
+
   group('backfillStrainScale — the stored history', () {
     test('waits, UNMARKED, until a quiet-waking level exists', () async {
       await seedDay('2026-07-09',

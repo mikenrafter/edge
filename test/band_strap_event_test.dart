@@ -265,6 +265,7 @@ void main() {
       const hex = '30b707003c8c7b6acc6c0000';
       final info = proto.parseEvent(proto.hexToBytes(hex))!;
       final e = StrapEvent.tryParseHex(hex, receivedAt: _t0, deviceId: 'd')!;
+      expect(e.eventId, 7);
       expect(e.tsEpoch, info.tsEpoch);
       expect(e.tsSubsec, info.tsSubsec);
     });

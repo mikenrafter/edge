@@ -41,8 +41,24 @@ import '../support/incremental_day_fixture.dart';
 
 String _j(Object? o) => jsonEncode(o);
 
+List<double> _d(Object? l) => [for (final v in l as List) (v as num).toDouble()];
+
 Map<String, dynamic> _clinical(Map<String, dynamic> bundle) =>
     (bundle['clinical'] as Map).cast<String, dynamic>();
+
+/// The sleep screen exactly as `deriveDayBundle` computes it, plus the
+/// corrector's own counts: the oracle the stored diagnostics must equal.
+ana.IrregularScreenResult _refSleep(Map<String, dynamic> input) {
+  final rr = _d(input['sleep_rr_ms']), ts = _d(input['sleep_rr_ts_ms']);
+  final c = ana.correctRr(rr, rrTsMs: ts);
+  return ana.irregularBeatScreenDetailed(
+    c.nn,
+    nnTimesMs: c.nnTimesMs,
+    artifactFraction: (1.0 - c.cleanFraction).clamp(0.0, 1.0),
+    cleaning: ana.RrCleaningCounts(
+        raw: rr.length, corrected: c.correctedCount, dropped: c.droppedCount),
+  );
+}
 
 ana.IrregularScreenResult _refDay(List<double> rr, List<double> ts) {
   final c = ana.correctRr(rr, rrTsMs: ts.isEmpty ? null : ts);
@@ -87,15 +103,26 @@ void main() {
       }
 
       // Then the values: the analytics oracle over the same beats.
+      final refSleep = _refSleep(input);
+      expect(refSleep.metric.present, isTrue, reason: 'fixture: a present screen');
+      expect(refSleep.diagnostics.corrected, greaterThan(0),
+          reason: 'fixture: the corrector really corrected');
+      expect(_j(sleep['diagnostics']), _j(refSleep.diagnostics.toJson()));
+      expect(sleep['n_beats'], refSleep.metric.value!.nBeats);
+      expect(sleep['pnn_pct'], closeTo(refSleep.metric.value!.pnnPct, 0.06));
+      expect(sleep['sd1_sd2'], closeTo(refSleep.metric.value!.sd1sd2, 0.06));
       expect((sleep['diagnostics'] as Map)['beats']['nn_kept'],
           sleep['n_beats'],
           reason: 'one beat count, shown twice');
 
+      final ref24 = _refDay(_d(input['day_rr_ms']), _d(input['day_rr_ts_ms']));
+      expect(_j(env24['diagnostics']), _j(ref24.diagnostics.toJson()));
       // Every pre-existing key of the envelope is where it was.
       for (final k in ['value', 'confidence', 'tier', 'inputs_used', 'note']) {
         expect(env24.containsKey(k), isTrue, reason: 'envelope keeps $k');
       }
-      expect(env24['value'], isA<Map>());
+      expect(_j(env24['value']),
+          _j(ref24.metric.toJson((v) => v.toJson())['value']));
     });
 
     test('a night too thin to screen: the abstention carries its counts, and '
@@ -108,11 +135,12 @@ void main() {
       expect(diag, isA<Map>(), reason: 'an abstained screen still explains why');
       final d = (diag as Map).cast<String, dynamic>();
       expect(d['abstain'], 'too_few_beats');
-      expect((d['beats'] as Map)['nn_kept'], isA<num>());
-      expect((d['thresholds'] as Map)['min_beats'], isA<num>());
+      expect((d['beats'] as Map)['nn_kept'], lessThan(500));
+      expect((d['thresholds'] as Map)['min_beats'], 500);
       expect(sleep['sd1'], isNull);
       expect(sleep['pnn_pct'], isNull, reason: 'absent is null, never 0');
       expect(sleep['n_beats'], isNull, reason: 'absent is null, never 0');
+      expect(_j(d), _j(_refSleep(input).diagnostics.toJson()));
       final env24 = (clin['irregular_24h'] as Map).cast<String, dynamic>();
       expect(env24['value'], '—');
       expect((env24['diagnostics'] as Map)['abstain'], 'too_few_beats');
@@ -131,9 +159,10 @@ void main() {
           reason: 'no night: the screen abstains and says so');
       final d = (sleep['diagnostics'] as Map).cast<String, dynamic>();
       expect(d['abstain'], 'too_few_beats');
-      expect((d['beats'] as Map)['nn_in'], isA<num>());
-      expect((d['beats'] as Map)['nn_kept'], isA<num>());
-      expect((d['beats'] as Map)['rr_raw'], isA<num>());
+      expect((d['beats'] as Map)['nn_in'], 0);
+      expect((d['beats'] as Map)['nn_kept'], 0);
+      expect((d['beats'] as Map)['rr_raw'], 0,
+          reason: 'the corrector ran over zero beats: a measured 0');
     });
 
     test('a blanked night does not keep the stored night\'s diagnostics', () {

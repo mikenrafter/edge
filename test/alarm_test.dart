@@ -92,15 +92,68 @@ void main() {
     final when = DateTime.fromMillisecondsSinceEpoch(16909060 * 1000 + 500,
         isUtc: true);
 
+    test('subsecOf uses the 1/32768 s formula', () {
+      expect(AlarmPayloads.subsecOf(when), 16384);
+      // 0 ms → 0 subsec; 999 ms → the top of the range.
+      expect(
+          AlarmPayloads.subsecOf(
+              DateTime.fromMillisecondsSinceEpoch(1000, isUtc: true)),
+          0);
+      expect(
+          AlarmPayloads.subsecOf(
+              DateTime.fromMillisecondsSinceEpoch(1999, isUtc: true)),
+          (999 * 32768) ~/ 1000);
+    });
+
+    test('rich (20B, gen4 reference only — execution is fw-dependent) layout', () {
+      final p = AlarmPayloads.rich(when);
+      expect(p.length, 20);
+      expect(p, <int>[
+        0x04, // rich-form marker
+        0x00, // index
+        0x04, 0x03, 0x02, 0x01, // sec LE
+        0x00, 0x40, // subsec LE (16384)
+        47, 152, 0, 0, 0, 0, 0, 0, // 8 waveform effects
+        0, 0, // loop control u16 LE
+        7, // overall loop
+        30, // duration seconds
+      ]);
+    });
+
+    test('rich honours a custom index + custom 12-byte haptics', () {
+      final custom = List<int>.generate(12, (i) => i + 1);
+      final p = AlarmPayloads.rich(when, index: 3, haptics: custom);
+      expect(p[0], 0x04);
+      expect(p[1], 3);
+      expect(p.sublist(8), custom);
+    });
+
+    test('simple (7B) = rev1 minus the haptic-mode u16 (same frame once padded)', () {
+      final p = AlarmPayloads.simple(when);
+      expect(p.length, 7);
+      expect(p, <int>[0x01, 0x04, 0x03, 0x02, 0x01, 0x00, 0x40]);
+    });
+
     test('setPayloadForBand: gen4 rev1 (9B), gen5 index1 rich (21B)', () {
       final g4 = AlarmPayloads.setPayloadForBand(when, isGen5: false);
       // gen4 = the rev-1 form, byte-identical to AlarmPayloads.rev1 — the
       // official app's wire form (see AlarmPayloads for the firmware
       // evidence).
       expect(g4, AlarmPayloads.rev1(when));
-      // Keep slot selection here; the protocol test owns the body layout.
-      final gen5 = AlarmPayloads.setPayloadForBand(when, isGen5: true);
-      expect(gen5[1], 1);
+      expect(g4.length, 9);
+      expect(g4[0], 0x01);
+      // gen5: the full composed 21-byte body, exact bytes in field order.
+      expect(AlarmPayloads.setPayloadForBand(when, isGen5: true), <int>[
+        0x04, // rich-form marker
+        0x01, // slot 1 (index 0 is rejected on gen5)
+        0x04, 0x03, 0x02, 0x01, // sec LE
+        0x00, 0x40, // subsec LE (16384)
+        47, 152, 0, 0, 0, 0, 0, 0, // 8 waveform effects
+        0, 0, // loop control u16 LE
+        7, // overall loop
+        30, // duration seconds
+        0, // crescendo flag, off by default
+      ]);
       expect(
         AlarmPayloads.setPayloadForBand(when, isGen5: true, crescendo: 1).last,
         1,
@@ -113,12 +166,24 @@ void main() {
     });
 
     test('gen5 Maverick buzz is a short Find-band-style pulse', () {
-      expect(AlarmPayloads.gen5MaverickBuzz(), isNot(AlarmPayloads.defaultHaptics));
+      expect(AlarmPayloads.gen5MaverickBuzz(),
+          <int>[0x01, 47, 152, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
       expect(AlarmPayloads.gen5MaverickBuzz(overallLoop: 7).last, 7);
+    });
+
+    test('RUN_ALARM + DISABLE_ALARM bodies are both [0x01]', () {
+      expect(AlarmPayloads.runNow, <int>[0x01]);
+      expect(AlarmPayloads.disable, <int>[0x01]);
+    });
+
+    test('default haptics match the stock wake-buzz pattern', () {
+      expect(AlarmPayloads.defaultHaptics,
+          <int>[47, 152, 0, 0, 0, 0, 0, 0, 0, 0, 7, 30]);
     });
   });
 
   group('AlarmPayloads.toStrapFrame (RTC-frame arming)', () {
+    // Wall-clock target with a non-zero sub-second so we can assert it survives.
     final wall = DateTime.fromMillisecondsSinceEpoch(1750000000 * 1000 + 250,
         isUtc: true);
 

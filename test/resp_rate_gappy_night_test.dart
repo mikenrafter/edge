@@ -64,8 +64,16 @@ void main() {
     final rsa = _m(_m(b, 'respiration'), 'rsa');
     final scalars = _m(b, 'scalars');
     expect(scalars['resp_rate'], isNotNull, reason: '${rsa['note']}');
+    expect(scalars['resp_rate'] as num, closeTo(15, 1.0));
     expect(rsa['note'] as String, isNot(contains('beat rate')));
   });
 
-
+  test('a genuinely low heart rate is still withheld, and the note says so',
+      () {
+    final b = _night(hrBpm: 45);
+    final rsa = _m(_m(b, 'respiration'), 'rsa');
+    expect(_m(b, 'scalars')['resp_rate'], isNull);
+    expect(rsa['note'] as String, contains('alias'));
+    expect(rsa['note'] as String, contains('45'));
+  });
 }
