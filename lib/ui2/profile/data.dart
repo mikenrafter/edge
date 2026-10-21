@@ -68,13 +68,18 @@ class _DataScreenState extends State<DataScreen> {
   /// Whether [_note] is a failure. Every outcome used to render as "Done" with
   /// a green check — a thrown FileSystemException from the export included.
   bool _noteFailed = false;
+
+  /// [_note] came from the import, whose failure the retained
+  /// AppState.importProgress already shows.
+  bool _noteIsImport = false;
   ImportOutcome? _outcome;
 
-  void _say(String s, {bool failed = false}) {
+  void _say(String s, {bool failed = false, bool isImport = false}) {
     if (mounted) {
       setState(() {
         _note = s;
         _noteFailed = failed;
+        _noteIsImport = isImport;
       });
     }
   }
@@ -83,7 +88,8 @@ class _DataScreenState extends State<DataScreen> {
   ///
   /// Every action on this screen is slow, destructive-adjacent or both, and a
   /// second tap while one is running would race the first over the same files.
-  Future<void> _run(String status, Future<_Note> Function() job) async {
+  Future<void> _run(String status, Future<_Note> Function() job,
+      {bool isImport = false}) async {
     if (_busy) return;
     setState(() {
       _busy = true;
@@ -94,13 +100,13 @@ class _DataScreenState extends State<DataScreen> {
     final l = AppLocalizations.of(context);
     try {
       final (text, failed) = await job();
-      _say(text, failed: failed);
+      _say(text, failed: failed, isImport: isImport);
     } on PassphraseCancelled {
       // Closing the passphrase prompt is a decision. "Failed:" over it would
       // report the user's own choice back to them as a fault.
     } catch (e) {
       _say(l?.dataFailed(e.toString()) ?? 'Failed: $e',
-          failed: true);
+          failed: true, isImport: isImport);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -341,6 +347,7 @@ class _DataScreenState extends State<DataScreen> {
       busyStatus: _busyStatus,
       note: _note,
       noteFailed: _noteFailed,
+      noteIsImport: _noteIsImport,
       outcome: _outcome,
       cadence: app.backupCadence,
       lastBackup: app.lastBackupAt,
@@ -369,7 +376,8 @@ class _DataScreenState extends State<DataScreen> {
       onBackupNow: () => _run(l?.loadingBackupNow ?? 'Writing the backup',
           () => _backupNow(app)),
       onImport: () => _run(l?.loadingImportHistory ?? 'Importing your history',
-          () => _import(app)),
+          () => _import(app),
+          isImport: true),
       onPhoneImport: () => goto(c, const PhoneImport()),
       onReanalyze: () => _run(l?.loadingReanalyze ?? 'Recalculating every day',
           () => _reanalyze(app)),
@@ -389,6 +397,7 @@ class DataScreenView extends StatelessWidget {
     this.importProgress,
     this.note,
     this.noteFailed = false,
+    this.noteIsImport = false,
     this.outcome,
     this.cadence = BackupCadence.off,
     this.lastBackup,
@@ -419,6 +428,10 @@ class DataScreenView extends StatelessWidget {
   /// A running import's stage; replaces the busy spinner while non-null.
   final ImportProgress? importProgress;
   final bool busy, noteFailed, reanalyzing;
+
+  /// [note] reports the import whose failure the retained [importProgress]
+  /// already shows; it is then not drawn a second time.
+  final bool noteIsImport;
   final String? note, importRollupError;
   final String reanalyzeProgress;
   final ImportOutcome? outcome;
@@ -596,10 +609,13 @@ class DataScreenView extends StatelessWidget {
                       chevron: false,
                       onTap: busy ? null : onReset),
                 ]),
+                // The retained import failure and the current action are
+                // independent: each shows its own state.
                 if (failedProgress is ImportFailed) ...[
                   const SizedBox(height: S.x5),
                   ImportProgressView(failedProgress),
-                ] else if (busy && !importing) ...[
+                ],
+                if (busy && !importing) ...[
                   const SizedBox(height: S.x6),
                   InlineLoading(
                     status: busyStatus ??
@@ -608,7 +624,7 @@ class DataScreenView extends StatelessWidget {
                 ],
                 if (note != null &&
                     note!.isNotEmpty &&
-                    importProgress is! ImportFailed) ...[
+                    !(noteIsImport && importProgress is ImportFailed)) ...[
                   const SizedBox(height: S.x5),
                   StatusCard(
                       noteFailed

@@ -60,12 +60,53 @@ class ImportProgressView extends StatelessWidget {
         return const SizedBox.shrink();
     }
 
+    if (compact) {
+      // In a settings row (about 60 pt): the spinner beside the text lines,
+      // left-aligned and one line each, with no bar and no vertical gaps. The
+      // full view below carries the bar and the roomier layout.
+      final small = F.over;
+      return Surface(
+        pad: const EdgeInsets.symmetric(vertical: S.x1, horizontal: S.x3),
+        child: Row(children: [
+          if (s is! ImportFailed) ...[
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: S.x2),
+          ],
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(status,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: small.copyWith(color: p.ink2)),
+                if (stageStatus != status)
+                  Text(stageStatus,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: small.copyWith(color: p.ink3)),
+                if (detail != null)
+                  Text(detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: small.copyWith(color: p.ink3)),
+              ],
+            ),
+          ),
+        ]),
+      );
+    }
+
     // Fixed at a given text size so stage changes never resize it.
     return SizedBox(
-      height: compact ? double.infinity : heightFor(context),
+      height: heightFor(context),
       child: Surface(
-        pad: EdgeInsets.symmetric(
-            vertical: compact ? S.x1 : S.x4, horizontal: S.x4),
+        pad: const EdgeInsets.symmetric(vertical: S.x4, horizontal: S.x4),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -76,25 +117,25 @@ class ImportProgressView extends StatelessWidget {
                   height: 22,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-              SizedBox(height: compact ? S.x1 : S.x2),
+              const SizedBox(height: S.x2),
               Text(status,
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: (compact ? F.over : F.cap).copyWith(color: p.ink2)),
+                  style: F.cap.copyWith(color: p.ink2)),
               if (stageStatus != status)
                 Text(stageStatus,
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: (compact ? F.over : F.cap).copyWith(color: p.ink3)),
+                    style: F.cap.copyWith(color: p.ink3)),
               if (detail != null)
                 Text(detail,
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: (compact ? F.over : F.cap).copyWith(color: p.ink3)),
-              if (!compact && counted) ...[
+                    style: F.cap.copyWith(color: p.ink3)),
+              if (counted) ...[
                 const SizedBox(height: S.x2),
                 LinearProgressIndicator(value: bar, minHeight: 4),
               ],

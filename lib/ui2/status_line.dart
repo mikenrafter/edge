@@ -104,7 +104,11 @@ class StatusLine extends StatelessWidget {
       return (s.busy, s.busy ? syncStatusHeadline(s, at) : '', a.lastRecordAt);
     });
     final String text;
-    if (imp != null && imp is! ImportDone) {
+    // A finished or failed import is terminal, not work in progress: the
+    // failure is retained for the import screens, and this line goes on to say
+    // what the app is doing now.
+    final importing = imp != null && imp is! ImportDone && imp is! ImportFailed;
+    if (importing) {
       text = importLine(l, imp);
     } else if (deriveProgressLine(der, l) case final d?) {
       text = d;
@@ -114,7 +118,7 @@ class StatusLine extends StatelessWidget {
       text = syncedThroughLabel(sync.$3, todayId ?? todayLabel(), l);
     }
     if (syncActions &&
-        (imp == null || imp is ImportDone) &&
+        !importing &&
         deriveProgressLine(der, l) == null) {
       // No wrapper box: the row's HitOverhang must be the render child of the
       // header Column so its 44 pt targets overhang the lines around it. It

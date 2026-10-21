@@ -70,6 +70,19 @@ class SetRow extends StatelessWidget {
         trailing = null,
         replacement = null;
 
+  /// The real title, so the row measures its true height at any text scale or
+  /// translation. While [replacement] covers the row the title is only
+  /// measured: a RichText lays out the same as Text but is not a second
+  /// readable "title" for finders and tests.
+  Widget _title(BuildContext c, P p) {
+    final style = F.body.copyWith(color: danger ? p.on(C.red) : p.ink);
+    if (replacement == null) return Text(title, style: style);
+    return RichText(
+        text: TextSpan(
+            text: title, style: DefaultTextStyle.of(c).style.merge(style)),
+        textScaler: MediaQuery.textScalerOf(c));
+  }
+
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
@@ -94,8 +107,7 @@ class SetRow extends StatelessWidget {
           Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(replacement == null ? title : '',
-                  style: F.body.copyWith(color: danger ? p.on(C.red) : p.ink)),
+              _title(c, p),
               if (value.isNotEmpty && bigText(c))
                 Text(value,
                     style: F.cap.copyWith(
