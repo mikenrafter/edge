@@ -2,9 +2,15 @@
 // into the app-wide StatusLine or hide the next action's progress/result, the
 // replaced Import row keeps its real height at large text and long
 // translations, and the compact spinner fits its row in every state.
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+// ignore: depend_on_referenced_packages
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:provider/provider.dart';
 
 import 'package:openstrap_edge/data/auto_backup.dart';
@@ -15,7 +21,6 @@ import 'package:openstrap_edge/ui2/profile/data.dart';
 import 'package:openstrap_edge/ui2/status_line.dart';
 import 'package:openstrap_edge/ui2/ui2.dart' show buildTheme;
 
-import 'dart:async';
 
 class _App extends AppState {
   _App() : super.forTesting();
@@ -61,6 +66,53 @@ Widget _app(Widget home,
 }
 
 const _failed = ImportFailed('disk full');
+
+class _Picker extends FilePicker with MockPlatformInterfaceMixin {
+  _Picker({this.error, this.path});
+  final Object? error;
+  final String? path;
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = true,
+    int compressionQuality = 30,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async {
+    if (error != null) throw error!;
+    return FilePickerResult([PlatformFile(name: 'x.csv', size: 0, path: path)]);
+  }
+}
+
+/// Retained backup failure, then a second import attempt whose error does not
+/// come from importEdgeBackup: the NEW error must show.
+Future<void> _retryAfterFailed(WidgetTester t, FilePicker picker) async {
+  _size(t, 800);
+  FilePicker.platform = picker;
+  final app = _App();
+  addTearDown(app.importProgress.dispose);
+  app.importProgress.value = _failed;
+  await t.pumpWidget(_app(const DataScreen(), app: app));
+  await _settle(t);
+  await t.tap(find.text('Import a file'));
+  await t.pump();
+  await t.pump(const Duration(milliseconds: 300));
+  for (var i = 0; i < 50; i++) {
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await t.pump();
+    if (find.text('Importing your history').evaluate().isEmpty) break;
+  }
+  await _settle(t);
+  expect(find.textContaining('disk full'), findsOneWidget,
+      reason: 'the retained backup failure stays');
+}
 
 void main() {
   group('1: a retained failure is not "busy" for the StatusLine', () {
@@ -112,6 +164,22 @@ void main() {
           noteIsImport: true)));
       await _settle(t);
       expect(find.textContaining('disk full'), findsOneWidget);
+    });
+  });
+
+  group('2b: a new import error is not hidden by the retained failure', () {
+    testWidgets('picker error', (t) async {
+      await _retryAfterFailed(t, _Picker(error: 'no picker here'));
+      expect(find.textContaining('no picker here'), findsOneWidget);
+    });
+
+    testWidgets('non-backup (CSV) import error', (t) async {
+      final f = File('${Directory.systemTemp.path}/os_bad_${t.hashCode}.csv');
+      await t.runAsync(() => f.writeAsString('not,a,known\nexport,at,all\n'));
+      addTearDown(() => f.existsSync() ? f.deleteSync() : null);
+      await _retryAfterFailed(t, _Picker(path: f.path));
+      expect(find.text('That did not work'), findsOneWidget);
+      expect(find.textContaining('None of those files'), findsOneWidget);
     });
   });
 

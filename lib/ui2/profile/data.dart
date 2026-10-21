@@ -89,7 +89,7 @@ class _DataScreenState extends State<DataScreen> {
   /// Every action on this screen is slow, destructive-adjacent or both, and a
   /// second tap while one is running would race the first over the same files.
   Future<void> _run(String status, Future<_Note> Function() job,
-      {bool isImport = false}) async {
+      {AppState? importApp}) async {
     if (_busy) return;
     setState(() {
       _busy = true;
@@ -98,15 +98,25 @@ class _DataScreenState extends State<DataScreen> {
       _outcome = null;
     });
     final l = AppLocalizations.of(context);
+    // The retained failure at the start of this attempt. A note is a duplicate
+    // of the failure card only if the import published a NEW ImportFailed
+    // (AppState makes a fresh instance per failure); a picker or CSV error
+    // never reaches AppState, so the old card stays and the new note shows.
+    final before = importApp?.importProgress.value;
+    bool isImport() {
+      final now = importApp?.importProgress.value;
+      return now is ImportFailed && !identical(now, before);
+    }
+
     try {
       final (text, failed) = await job();
-      _say(text, failed: failed, isImport: isImport);
+      _say(text, failed: failed, isImport: isImport());
     } on PassphraseCancelled {
       // Closing the passphrase prompt is a decision. "Failed:" over it would
       // report the user's own choice back to them as a fault.
     } catch (e) {
       _say(l?.dataFailed(e.toString()) ?? 'Failed: $e',
-          failed: true, isImport: isImport);
+          failed: true, isImport: isImport());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -377,7 +387,7 @@ class _DataScreenState extends State<DataScreen> {
           () => _backupNow(app)),
       onImport: () => _run(l?.loadingImportHistory ?? 'Importing your history',
           () => _import(app),
-          isImport: true),
+          importApp: app),
       onPhoneImport: () => goto(c, const PhoneImport()),
       onReanalyze: () => _run(l?.loadingReanalyze ?? 'Recalculating every day',
           () => _reanalyze(app)),
