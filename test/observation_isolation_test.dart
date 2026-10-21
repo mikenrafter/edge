@@ -36,6 +36,7 @@ import 'package:openstrap_edge/data/observation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'guards/support/db_source.dart' show canonDbPath;
 
 /// `exportCopy` writes a real file, so the backup round trip needs somewhere
 /// to put it.
@@ -146,7 +147,8 @@ void main() {
     final offenders = <String>[];
     for (final e in Directory('lib').listSync(recursive: true)) {
       if (e is! File || !e.path.endsWith('.dart')) continue;
-      final rel = p.relative(e.path).replaceAll(r'\', '/');
+      // A LocalDb part file (lib/data/db/) is lib/data/db.dart's own code.
+      final rel = canonDbPath(p.relative(e.path).replaceAll(r'\', '/'));
       if (_allowedToNameTheTable.contains(rel)) continue;
       final lines = e.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {

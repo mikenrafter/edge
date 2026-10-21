@@ -26,6 +26,7 @@ import 'package:openstrap_edge/data/sample_lock.dart';
 
 import '../support/dart_source.dart';
 import '../support/sample_v1_blobs.dart';
+import '../guards/support/db_source.dart';
 
 const _day = '2026-10-03';
 const _now = 1791000000;
@@ -244,7 +245,7 @@ void main() {
       final arch = stripCommentsAndStrings(
           File('lib/data/sample_archive.dart').readAsStringSync());
       final db = stripCommentsAndStrings(
-          File('lib/data/db.dart').readAsStringSync());
+          readDbSource());
       expect(RegExp(r'SampleLock\s*\.\s*run').hasMatch(arch), isTrue);
       expect(RegExp(r'SampleLock\s*\.\s*run\s*\(\s*\(\s*\)\s*=>\s*_mergeFromDbFile')
               .hasMatch(db),

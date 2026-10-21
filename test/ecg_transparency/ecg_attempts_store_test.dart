@@ -27,6 +27,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/cardio_fixtures.dart';
+import '../guards/support/db_source.dart';
 
 Future<String?> _save(EcgReading r, {int packets = 0}) => LocalDb.saveEcgResult(
   r.toRow(),
@@ -369,7 +370,7 @@ void main() {
   group('source guard', () {
     test('the delete-on-replace path is gone: saveEcgResult joins via '
         'ecgJoinTargetId and deletes nothing', () {
-      final src = File('lib/data/db.dart').readAsStringSync();
+      final src = readDbSource();
       expect(src.contains('ecgReplaceTargetId('), isFalse);
       expect(src.contains('ecgJoinTargetId('), isTrue);
     });

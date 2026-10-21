@@ -14,8 +14,7 @@
       "entries": 10
     },
     "file_size_exceptions": {
-      "entries": 1,
-      "size:lib/data/db.dart": 11020
+      "entries": 0
     },
     "heavy_calc_baseline": {
       "entries": 1984,

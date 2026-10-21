@@ -248,3 +248,16 @@ changed file and symbol only; entries 1986 -> 1984 and occurrences 2190 -> 2188
 (two unrelated `_HomeScreenState._glance` keys were already gone from the tree).
 The three `kUnresolvedOk` fingerprints for `_derivePreparedDay` follow the move.
 No rule changed and no rule version was raised.
+
+## step 0b: db.dart split into parts — keys moved, no new occurrences
+
+`lib/data/db.dart` keeps every `LocalDb` static as a declaration; the large
+bodies moved verbatim into top-level `_ldb*` functions in `part` files under
+`lib/data/db/` (schema, sync_store, derive_store, restore, feature_store). The
+heavy guard reads such a function as the `LocalDb` method it stands for (same
+`LocalDb.<name>` symbol, raw-reader class, forwarder return type), so baseline
+keys of the moved code changed file only, plus the source text of calls that
+now read `LocalDb.nowMs()` / `LocalDb.debug...` where the body used to rely on
+class scope. Entries 1984 -> 1984 and occurrences 2188 -> 2188. Five
+`kUnresolvedOk` fingerprints follow the move. No rule changed and no rule
+version was raised.

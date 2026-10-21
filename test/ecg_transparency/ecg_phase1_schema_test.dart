@@ -25,6 +25,7 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import '../guards/support/db_source.dart';
 
 Future<String> _path(String name) async =>
     p.join(await databaseFactory.getDatabasesPath(), name);
@@ -276,7 +277,7 @@ void main() {
   });
 
   group('source guard (invariant 11)', () {
-    final src = File('lib/data/db.dart').readAsStringSync();
+    final src = readDbSource();
 
     test('one creator, called from the rung and from _repairOpenSchema', () {
       final calls = RegExp(r'_ensureEcgPhase1Columns\(').allMatches(src).length;

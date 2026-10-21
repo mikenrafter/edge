@@ -119,6 +119,10 @@ class _Decl {
   final String symbol;
   final String container;
   final Element? element; // null for variable initializers
+  /// For a body moved out of `LocalDb` into a `data/db/` part file (step 0b):
+  /// the `LocalDb` method that now only forwards to it. The moved body is
+  /// still LocalDb code, so the raw-reader rules read it through this element.
+  Element? forwarder;
   final AstNode node;
   final String content;
   bool isHeavy = false;
@@ -794,6 +798,28 @@ Future<HeavyGuardResult> analyze(HeavyGuardConfig config) async {
     }
   }
 
+  // Moved LocalDb bodies stand in for their forwarders (see
+  // [_movedLocalDbName]): link the two and drop the one-line forwarder so a
+  // moved method is analysed once, under its LocalDb symbol.
+  {
+    final byKey = {
+      for (final d in decls)
+        if (d.container == 'LocalDb' && d.element is MethodElement)
+          d.symbol: d,
+    };
+    final drop = <_Decl>{};
+    for (final d in decls) {
+      if (d.element is TopLevelFunctionElement && d.container == 'LocalDb') {
+        final f = byKey[d.symbol];
+        if (f != null) {
+          d.forwarder = f.element;
+          drop.add(f);
+        }
+      }
+    }
+    decls.removeWhere(drop.contains);
+  }
+
   // --- registry ---
   for (final e in registryVars['kWorkerEntries'] ?? const []) {
     final init = e.$2.initializer;
@@ -1241,7 +1267,10 @@ void _collectUnit(
     if (node is FunctionDeclaration) {
       final el = node.declaredFragment?.element;
       if (el == null) return;
-      scan(_Decl(rel, _symbol(el), '', el, node, content),
+      final moved = _movedLocalDbName(el);
+      scan(
+          _Decl(rel, moved == null ? _symbol(el) : 'LocalDb.$moved',
+              moved == null ? '' : 'LocalDb', el, node, content),
           node.functionExpression.body);
     } else if (node is MethodDeclaration) {
       final el = node.declaredFragment?.element;
@@ -1281,6 +1310,20 @@ void _collectUnit(
 }
 
 String _symbol(ExecutableElement el) => _label(el);
+
+/// `lib/data/db.dart` keeps every `LocalDb` static as a one-line forward and
+/// parks the large bodies in `data/db/*.dart` parts as top-level `_ldbFoo`
+/// (public `foo`) / `_ldbPrivFoo` (private `_foo`). Returns the LocalDb member
+/// name such a function stands for, else null.
+String? _movedLocalDbName(ExecutableElement el) {
+  if (el is! TopLevelFunctionElement) return null;
+  if (!_uri(el).endsWith('data/db.dart')) return null;
+  final m = RegExp(r'^_ldb(Priv)?([A-Z].*)$').firstMatch(el.name ?? '');
+  if (m == null) return null;
+  final rest = m.group(2)!;
+  final lower = rest[0].toLowerCase() + rest.substring(1);
+  return m.group(1) != null ? '_$lower' : lower;
+}
 
 class _DeclCollector extends RecursiveAstVisitor<void> {
   final void Function(AstNode) onDecl;
@@ -1559,7 +1602,9 @@ void _rawReaders(
   final regSet = registered.toSet();
   final methods = [
     for (final d in decls)
-      if (d.container == config.rawReaderClass && d.element is MethodElement) d,
+      if (d.container == config.rawReaderClass &&
+          (d.forwarder ?? d.element) is MethodElement)
+        d,
   ];
   final bySymbol = {for (final m in methods) m.symbol: m};
   for (final r in registered) {
@@ -1637,7 +1682,7 @@ void _rawReaders(
   final listed = {for (final m in config.migrationMethods) m.symbol};
   bool needsExemption(_Decl m) =>
       (table(m) != null || callsRegistered(m)) &&
-      exposesRows(m.element as MethodElement);
+      exposesRows((m.forwarder ?? m.element) as MethodElement);
 
   // A listed migration method must still need its exemption.
   for (final m in methods) {
@@ -1683,7 +1728,7 @@ void _rawReaders(
           'reads raw rows but is not in kRawReaders');
     }
     if (isReg) {
-      var rt = (m.element as MethodElement).returnType;
+      var rt = ((m.forwarder ?? m.element) as MethodElement).returnType;
       if (rt is InterfaceType &&
           (rt.isDartAsyncFuture || rt.isDartAsyncFutureOr) &&
           rt.typeArguments.isNotEmpty) {

@@ -20,6 +20,7 @@ import 'package:openstrap_edge/data/db.dart';
 
 import '../support/dart_source.dart';
 import 'support/p23_support.dart';
+import '../guards/support/db_source.dart';
 
 const _name = 'p23_freshness_reads.db';
 
@@ -261,7 +262,7 @@ void main() {
   group('the decode left LocalDb.refreshComputeFreshness', () {
     test('its body no longer calls SeriesCodec or reads payload rows', () {
       final body = p23RefreshBody(
-        stripCommentsAndStrings(File('lib/data/db.dart').readAsStringSync()),
+        stripCommentsAndStrings(readDbSource()),
       );
 
       expect(body, isNot(contains('SeriesCodec')));

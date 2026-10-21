@@ -131,8 +131,8 @@ void main() {
   group('no moved reader parses or encodes a payload in its own body', () {
     final cases = <String, ({String file, Pattern signature})>{
       'LocalDb.recentDayDiagnostics': (
-        file: 'lib/data/db.dart',
-        signature: RegExp(r'recentDayDiagnostics\('),
+        file: 'lib/data/db/derive_store.dart',
+        signature: RegExp(r'_ldbRecentDayDiagnostics\('),
       ),
       'LocalRepositoryImpl.sleepWindows': (
         file: 'lib/data/local_repository_impl.dart',

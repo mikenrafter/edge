@@ -36,6 +36,7 @@ import 'package:openstrap_edge/data/models.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'guards/support/db_source.dart' show canonDbPath;
 
 class _FakePathProvider extends PathProviderPlatform {
   _FakePathProvider(this.root);
@@ -154,7 +155,8 @@ void main() {
     final offenders = <String>[];
     for (final f in Directory('lib').listSync(recursive: true)) {
       if (f is! File || !f.path.endsWith('.dart')) continue;
-      final rel = p.relative(f.path);
+      // A LocalDb part file (lib/data/db/) is lib/data/db.dart's own code.
+      final rel = canonDbPath(p.relative(f.path));
       if (_mayWriteThePredicate.contains(rel)) continue;
       final lines = f.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {

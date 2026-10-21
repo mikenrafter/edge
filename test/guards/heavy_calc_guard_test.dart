@@ -164,7 +164,7 @@ void main() {
         found,
         containsAll(<String>[
           // SeriesCodec.encodePayloadJson and the payload_json column.
-          'data/db.dart :: LocalDb.putDayResult',
+          'data/db/derive_store.dart :: LocalDb.putDayResult',
         ]),
         reason: found.join('\n'),
       );

@@ -18,6 +18,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/dart_source.dart';
+import 'guards/support/db_source.dart';
 
 /// A bundle-decode seam: the file, the helper, and why it counts.
 class Seam {
@@ -157,7 +158,7 @@ void main() {
     // cloud_import, whoop_import) go through it, which is the only reason
     // producers can keep building plain [{t,v}] lists in memory.
     final code = stripCommentsAndStrings(
-      File('lib/data/db.dart').readAsStringSync(),
+      readDbSource(),
     );
     final body = helperBody(code, 'putDayResult');
     expect(body, isNotNull);
@@ -175,7 +176,7 @@ void main() {
     // nothing and the AI Coach loses every intra-day curve — sqflite cannot
     // register a SQL decompress function to get it back.
     final code = stripCommentsAndStrings(
-      File('lib/data/db.dart').readAsStringSync(),
+      readDbSource(),
     );
     expect(code, isNot(contains('payload_json BLOB')));
   });
@@ -183,7 +184,7 @@ void main() {
   test('v_series reads all three shapes', () {
     // Old rows keep the legacy shape forever — there is no rewriting migration
     // — so dropping the legacy branch would blank every un-backfilled day.
-    final src = File('lib/data/db.dart').readAsStringSync();
+    final src = readDbSource();
     final view = src.substring(
       src.indexOf('CREATE VIEW v_series'),
       src.indexOf('CREATE VIEW v_hypnogram'),

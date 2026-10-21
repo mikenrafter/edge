@@ -110,7 +110,8 @@ void main() {
       for (final f in _dartFiles('lib')) {
         if (f.path.endsWith('lib/data/sample_archive.dart') ||
             f.path.endsWith('lib/data/sample_import.dart') ||
-            f.path.endsWith('lib/data/db.dart')) {
+            f.path.endsWith('lib/data/db.dart') ||
+            f.path.contains('lib/data/db/')) {
           continue;
         }
         if (f.readAsStringSync().contains('spectral_archive')) {

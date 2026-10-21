@@ -30,6 +30,7 @@ import 'package:openstrap_edge/data/db.dart';
 
 import 'support/p21_support.dart';
 import 'support/write_seam_scan.dart';
+import '../guards/support/db_source.dart';
 
 const _name = 'p21_store_generation.db';
 const _day = '2026-03-10';
@@ -44,7 +45,7 @@ Future<void> _seed(Database db) async {
   await LocalDb.putBaseline('k', '{}');
 }
 
-String _dbSource() => File('lib/data/db.dart').readAsStringSync();
+String _dbSource() => readDbSource();
 
 /// The text of `LocalDb`'s member named [name] (signature through closing
 /// brace), from comment-blanked source. Empty when there is none.

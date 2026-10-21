@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/write_seam_scan.dart';
+import '../guards/support/db_source.dart';
 
 /// The only places allowed to write each table: `Class.member` to the verbs it
 /// may use. The migration ladder's one-time `derived_day` copy runs inside
@@ -229,7 +230,7 @@ Map<String, List<WriteSite>> _scanLib() {
   for (final f in Directory('lib').listSync(recursive: true)) {
     if (f is! File || !f.path.endsWith('.dart')) continue;
     final sites = scanWriters(f.readAsStringSync());
-    if (sites.isNotEmpty) out[f.path] = sites;
+    if (sites.isNotEmpty) (out[canonDbPath(f.path)] ??= []).addAll(sites);
   }
   return out;
 }
@@ -634,7 +635,7 @@ class Queue {
       for (final f in Directory('lib').listSync(recursive: true)) {
         if (f is! File || !f.path.endsWith('.dart')) continue;
         for (final w in scanDynamicWriters(f.readAsStringSync())) {
-          found.add('${f.path} ${w.member}');
+          found.add('${canonDbPath(f.path)} ${w.member}');
         }
       }
       expect(
@@ -652,7 +653,7 @@ class Queue {
 
     test('the two that DO reach the tables are fed only by the pinned lists',
         () {
-      final db = File(_dbFile).readAsStringSync();
+      final db = readDbSource();
       final code = blankComments(db);
       // wipeAll enumerates sqlite_master, so it covers every table by design.
       final wipe = _body(code, 'wipeAll');
@@ -661,7 +662,7 @@ class Queue {
       // The merge walks the restore list, and both pinned lists name the two.
       final merge = _body(code, '_mergeFromDbFileBody');
       expect(merge, contains('only ?? tables'));
-      expect(RegExp(r'const\s+tables\s*=\s*_restoreTables').hasMatch(merge),
+      expect(RegExp(r'const\s+tables\s*=\s*(?:LocalDb\.)?_restoreTables').hasMatch(merge),
           isTrue);
       for (final list in const ['_restoreTables', '_salvageTables']) {
         final items = _listItems(code, list);
@@ -674,7 +675,7 @@ class Queue {
       for (final f in Directory('lib').listSync(recursive: true)) {
         if (f is! File || !f.path.endsWith('.dart')) continue;
         for (final l in scanTableLists(f.readAsStringSync())) {
-          named.add('${f.path} ${l.member}');
+          named.add('${canonDbPath(f.path)} ${l.member}');
         }
       }
       expect(named, _pinnedTableLists.keys.toSet(),

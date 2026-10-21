@@ -1333,7 +1333,7 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
-      "file": "data/db.dart",
+      "file": "data/db/derive_store.dart",
       "symbol": "LocalDb.putDayResult",
       "element": "SeriesCodec.encodePayloadJson",
       "count": 1
@@ -1579,49 +1579,7 @@
     {
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
-      "symbol": "LocalDb.dataHistoryDays",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.decodedOneHzBatchByRecTsRange",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.decodedRrByRecTsRange",
-      "element": "decoded_rr",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.decodedRrSecondsByRecTsRange",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.hrSamplesInRange",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
       "symbol": "LocalDb.onehzForStager",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.onehzHrAccelBetween",
       "element": "decoded_onehz",
       "count": 1
     },
@@ -1634,15 +1592,57 @@
     },
     {
       "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.samplesInRange",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.skinTempAmbientMinutes",
       "element": "decoded_onehz",
       "count": 1
     },
     {
       "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.skinTempAmbientMinutes",
+      "file": "data/db/restore.dart",
+      "symbol": "LocalDb.dataHistoryDays",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawReaderUnregistered",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.decodedOneHzBatchByRecTsRange",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawReaderUnregistered",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.decodedRrByRecTsRange",
+      "element": "decoded_rr",
+      "count": 1
+    },
+    {
+      "rule": "rawReaderUnregistered",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.decodedRrSecondsByRecTsRange",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawReaderUnregistered",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.hrSamplesInRange",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawReaderUnregistered",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.onehzHrAccelBetween",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawReaderUnregistered",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.samplesInRange",
       "element": "decoded_onehz",
       "count": 1
     },
@@ -1908,92 +1908,8 @@
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
       "file": "data/db.dart",
-      "symbol": "LocalDb._ensureSyncLedgerSchema",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._ensureSyncQuarantineSchema",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._mergeFromDbFileBody",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._updateFreshnessJson",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._updateFreshnessJson",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._writeCaptureFreshness",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._writeCaptureFreshness",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.applyPendingActivityReviews",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.applyPendingActivityReviews",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
       "symbol": "LocalDb.crossDayStats",
       "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.deleteDays",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.deleteNapEdit",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.deleteNapEdit",
-      "element": "jsonEncode",
       "count": 1
     },
     {
@@ -2006,111 +1922,195 @@
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
       "file": "data/db.dart",
-      "symbol": "LocalDb.derivedFingerprints",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.getMovementFloor",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.insertEvent",
-      "element": "jsonEncode",
-      "count": 2
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
       "symbol": "LocalDb.isMeasuredDayRow",
       "element": "SeriesCodec.decodePayloadJson",
       "count": 1
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb._updateFreshnessJson",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb._updateFreshnessJson",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.derivedFingerprints",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.getMovementFloor",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/derive_store.dart",
       "symbol": "LocalDb.putDayResult",
       "element": "SeriesCodec.encodePayloadJson",
       "count": 1
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
+      "file": "data/db/derive_store.dart",
       "symbol": "LocalDb.putDayResult",
       "element": "jsonDecode",
       "count": 2
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
+      "file": "data/db/derive_store.dart",
       "symbol": "LocalDb.putDayResult",
       "element": "jsonEncode",
       "count": 1
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.putNapEdit",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
+      "file": "data/db/derive_store.dart",
       "symbol": "LocalDb.readinessAbsentDiag",
       "element": "jsonDecode",
       "count": 1
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.redriveArchiveOnce",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.redriveArchiveOnce",
-      "element": "jsonEncode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
+      "file": "data/db/derive_store.dart",
       "symbol": "LocalDb.reencodeLegacyDayResults",
       "element": "jsonDecode",
       "count": 1
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
+      "file": "data/db/derive_store.dart",
       "symbol": "LocalDb.reencodeLegacyDayResults",
       "element": "jsonEncode",
       "count": 2
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
+      "file": "data/db/derive_store.dart",
       "symbol": "LocalDb.syncLedgerSummary",
       "element": "jsonDecode",
       "count": 1
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
+      "file": "data/db/feature_store.dart",
+      "symbol": "LocalDb.applyPendingActivityReviews",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/feature_store.dart",
+      "symbol": "LocalDb.applyPendingActivityReviews",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/feature_store.dart",
+      "symbol": "LocalDb.deleteNapEdit",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/feature_store.dart",
+      "symbol": "LocalDb.deleteNapEdit",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/feature_store.dart",
+      "symbol": "LocalDb.putNapEdit",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/restore.dart",
+      "symbol": "LocalDb._mergeFromDbFileBody",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/restore.dart",
+      "symbol": "LocalDb.deleteDays",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/schema.dart",
+      "symbol": "LocalDb._ensureSyncLedgerSchema",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/schema.dart",
+      "symbol": "LocalDb._ensureSyncQuarantineSchema",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb._writeCaptureFreshness",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb._writeCaptureFreshness",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.insertEvent",
+      "element": "jsonEncode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.redriveArchiveOnce",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.redriveArchiveOnce",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db/sync_store.dart",
       "symbol": "LocalDb.upsertSyncLedgerEntry",
       "element": "jsonDecode",
       "count": 1
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
+      "file": "data/db/sync_store.dart",
       "symbol": "LocalDb.upsertSyncLedgerEntry",
       "element": "jsonEncode",
       "count": 1
@@ -5051,64 +5051,8 @@
     {
       "rule": "unresolvedInvocation",
       "file": "data/db.dart",
-      "symbol": "LocalDb._commitSyncBatchLocked",
-      "element": "onCheckpoint?.call(msg)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._guardedWrite",
-      "element": "op(handle)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._migrateLegacyTable",
-      "element": "copy( txn, await txn.query(legacy), DateTime.now().millisecondsSinceEpoch, )",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._migrateLegacyTable",
-      "element": "create(txn)",
-      "count": 2
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._migrateLegacyTable",
-      "element": "isCurrent(await columnsOf(table))",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._updateFreshnessJson",
-      "element": "update(m)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
       "symbol": "LocalDb._withCommitGate",
       "element": "body()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.batteryHealth",
-      "element": "read(r[column])",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.enqueueDeriveJob",
-      "element": "nowMs()",
       "count": 1
     },
     {
@@ -5121,43 +5065,8 @@
     {
       "rule": "unresolvedInvocation",
       "file": "data/db.dart",
-      "symbol": "LocalDb.frozenHeadline",
-      "element": "debugBeforeOrphanPinClear?.call()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.insertEvent",
-      "element": "() { try { return proto.parseEvent(proto.hexToBytes(hex), profile: profile); } catch (_) { return null; } }()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.putDayResult",
-      "element": "nowMs()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.putDayResult",
-      "element": "seriesMethod(key)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
       "symbol": "LocalDb.putReviewedBaseline",
       "element": "nowMs()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.reencodeLegacyDayResults",
-      "element": "afterPrepare()",
       "count": 1
     },
     {
@@ -5170,43 +5079,134 @@
     {
       "rule": "unresolvedInvocation",
       "file": "data/db.dart",
-      "symbol": "LocalDb.retryComputeJob",
-      "element": "nowMs()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.symptomEntries",
-      "element": "id(e)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.takeNextComputeJob",
-      "element": "nowMs()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
       "symbol": "LocalDb.touchBaseline",
       "element": "nowMs()",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.updateBaseline",
-      "element": "nowMs()",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb._updateFreshnessJson",
+      "element": "update(m)",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "data/db.dart",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.enqueueDeriveJob",
+      "element": "LocalDb.nowMs()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.frozenHeadline",
+      "element": "LocalDb.debugBeforeOrphanPinClear?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.putDayResult",
+      "element": "LocalDb.nowMs()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.putDayResult",
+      "element": "seriesMethod(key)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.reencodeLegacyDayResults",
+      "element": "afterPrepare()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.retryComputeJob",
+      "element": "LocalDb.nowMs()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.takeNextComputeJob",
+      "element": "LocalDb.nowMs()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/derive_store.dart",
+      "symbol": "LocalDb.updateBaseline",
+      "element": "LocalDb.nowMs()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/derive_store.dart",
       "symbol": "LocalDb.updateBaseline",
       "element": "transform(current)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/feature_store.dart",
+      "symbol": "LocalDb.symptomEntries",
+      "element": "id(e)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/schema.dart",
+      "symbol": "LocalDb._guardedWrite",
+      "element": "op(handle)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/schema.dart",
+      "symbol": "LocalDb._migrateLegacyTable",
+      "element": "copy( txn, await txn.query(legacy), DateTime.now().millisecondsSinceEpoch, )",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/schema.dart",
+      "symbol": "LocalDb._migrateLegacyTable",
+      "element": "create(txn)",
+      "count": 2
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/schema.dart",
+      "symbol": "LocalDb._migrateLegacyTable",
+      "element": "isCurrent(await columnsOf(table))",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb._commitSyncBatchLocked",
+      "element": "onCheckpoint?.call(msg)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.batteryHealth",
+      "element": "read(r[column])",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/db/sync_store.dart",
+      "symbol": "LocalDb.insertEvent",
+      "element": "() { try { return proto.parseEvent(proto.hexToBytes(hex), profile: profile); } catch (_) { return null; } }()",
       "count": 1
     },
     {

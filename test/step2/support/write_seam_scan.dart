@@ -232,7 +232,10 @@ List<WriteSite> scanWriters(String src) {
 /// brace frames, each with the header text that preceded its `{`. Braces inside
 /// parentheses at declaration level are parameter lists (`({required int a})`)
 /// and default values, not bodies, so they open no frame.
-String _memberAt(String code, int offset) {
+String _memberAt(String code, int offset) =>
+    canonLocalDbMember(_memberAtRaw(code, offset));
+
+String _memberAtRaw(String code, int offset) {
   final headers = <String>[];
   var headerStart = 0;
   var parens = 0;
@@ -406,7 +409,10 @@ bool _isPlainString(Expression e) => switch (e) {
   _ => false,
 };
 
-String _enclosingMember(AstNode node) {
+String _enclosingMember(AstNode node) =>
+    canonLocalDbMember(_enclosingMemberRaw(node));
+
+String _enclosingMemberRaw(AstNode node) {
   AstNode? member;
   String? owner;
   for (AstNode? n = node; n != null; n = n.parent) {
@@ -519,4 +525,16 @@ List<TableListSite> scanTableLists(String src) {
     }
   }
   return out;
+}
+
+/// `lib/data/db.dart` forwards the large `LocalDb` statics to top-level
+/// `_ldbFoo` / `_ldbPrivFoo` functions in `lib/data/db/*.dart` (step 0b). A
+/// moved body is still that LocalDb member: the pins and allow-lists name it
+/// `LocalDb.foo` / `LocalDb._foo`.
+String canonLocalDbMember(String member) {
+  final m = RegExp(r'^_ldb(Priv)?([A-Z]\w*)$').firstMatch(member);
+  if (m == null) return member;
+  final rest = m[2]!;
+  final lower = rest[0].toLowerCase() + rest.substring(1);
+  return m[1] != null ? 'LocalDb._$lower' : 'LocalDb.$lower';
 }

@@ -240,21 +240,21 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
 /// Fingerprinted unresolved invocations. Shrink-only.
 const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
-    file: 'data/db.dart',
+    file: 'data/db/restore.dart',
     symbol: 'LocalDb.importFromDbFile',
     source: 'onProgress?.call(const ImportPreparing(ImportPrepStep.inflating))',
     ordinal: 0,
     reason: 'import progress callback: sets one ValueNotifier on the caller side',
   ),
   UnresolvedOk(
-    file: 'data/db.dart',
+    file: 'data/db/restore.dart',
     symbol: 'LocalDb._mergeFromDbFileBody',
     source: 'onProgress?.call(const ImportPreparing(ImportPrepStep.opening))',
     ordinal: 0,
     reason: 'import progress callback: sets one ValueNotifier on the caller side',
   ),
   UnresolvedOk(
-    file: 'data/db.dart',
+    file: 'data/db/restore.dart',
     symbol: 'LocalDb._mergeFromDbFileBody',
     source: 'onProgress?.call(const ImportPreparing(ImportPrepStep.checking))',
     ordinal: 1,
@@ -268,14 +268,14 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
     reason: 'import progress callback: sets one ValueNotifier on the caller side',
   ),
   UnresolvedOk(
-    file: 'data/db.dart',
+    file: 'data/db/schema.dart',
     symbol: 'LocalDb._openReader',
-    source: 'readerOpenerForTest?.call(path)',
+    source: 'LocalDb.readerOpenerForTest?.call(path)',
     ordinal: 0,
     reason: 'test seam replacing the read-connection open; production opens one sqflite connection, no stored-data loop',
   ),
   UnresolvedOk(
-    file: 'data/db.dart',
+    file: 'data/db/derive_store.dart',
     symbol: 'LocalDb.metricSeriesBundle',
     source: 'body(db)',
     ordinal: 0,
