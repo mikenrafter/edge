@@ -5003,7 +5003,7 @@
       "rule": "unresolvedInvocation",
       "file": "data/auto_backup.dart",
       "symbol": "_runBackup",
-      "element": "(exportSnapshot ?? () => LocalDb.exportCopy(includeSubstrateArchive: false))()",
+      "element": "(exportSnapshot ?? () => LocalDb.exportCopy(includeSubstrateArchive: false, extras: BackupExtras.prefsOnly))()",
       "count": 1
     },
     {

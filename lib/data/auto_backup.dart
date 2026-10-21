@@ -26,6 +26,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../state/prefs.dart';
 import '../sync/reset_gate.dart';
 import 'backup_storage.dart';
+import 'backup_extras.dart' show BackupExtras;
 import 'db.dart';
 
 export 'backup_storage.dart' show BackupFolder, AndroidBackupStorage;
@@ -355,7 +356,7 @@ Future<BackupOutcome> _runBackup({
     // deflated year of history is the one thing gzip cannot help with. The
     // manual "Export the database" keeps it.
     final snapshot = await (exportSnapshot ??
-        () => LocalDb.exportCopy(includeSubstrateArchive: false))();
+        () => LocalDb.exportCopy(includeSubstrateArchive: false, extras: BackupExtras.prefsOnly))();
     final tmp = File(snapshot);
     // Publish only after compression and the destination stream have closed.
     // A provider that cannot rename safely fails without running retention.

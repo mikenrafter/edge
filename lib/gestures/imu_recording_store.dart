@@ -5,7 +5,8 @@
 // (the directory is injectable for tests). It is the single exception to
 // "live high-rate data is RAM-only" (invariant 14), authorised by the owner for
 // explicit lab-file export; the file never touches raw_records, decoded_*,
-// raw_archive or any backup path of the app's database.
+// raw_archive or the app's database. A full export (plain or encrypted) copies
+// the files into the exported COPY only (data/backup_extras.dart, decision D37).
 //
 // Listing reads only each file's header line, so a list of recordings does not
 // load their packets.

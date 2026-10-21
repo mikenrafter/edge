@@ -43,6 +43,7 @@ import 'ui2/screens/wellness_screen.dart';
 import 'ui2/screens/workout_screen.dart';
 import 'ui2/ui2.dart';
 import 'data/db.dart' show LocalDb;
+import 'settings/settings_repository.dart' show settingsRestoredSignal;
 
 class OpenStrapApp extends StatefulWidget {
   const OpenStrapApp({super.key});
@@ -55,6 +56,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    settingsRestoredSignal.addListener(_onSettingsRestored);
     // Hand the BYOK provider config to AppState (briefing generation + the
     // key-aware AI notification schedule live there).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -89,9 +91,14 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
     });
   }
 
+  void _onSettingsRestored() {
+    if (mounted) unawaited(context.read<ThemeController>().reloadFromPrefs());
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    settingsRestoredSignal.removeListener(_onSettingsRestored);
     super.dispose();
   }
 

@@ -19,6 +19,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../compute/derivation_engine.dart' show kAlgoVersion;
+import '../data/backup_extras.dart' show BackupExtras;
 import '../data/db.dart';
 import '../data/recent_slice.dart';
 import '../l10n/app_localizations.dart';
@@ -331,7 +332,8 @@ Future<({File zip, Map<String, Object?> meta})> collectReport(
     if (draft.fullDatabase) {
       onStage?.call(ReportStage.database);
       // The existing export path: a VACUUM INTO snapshot, not a file copy.
-      path = await LocalDb.exportCopy(includeSubstrateArchive: false);
+      path = await LocalDb.exportCopy(
+          includeSubstrateArchive: false, extras: BackupExtras.none);
     } else {
       onStage?.call(ReportStage.slice);
       path = await exportRecentSlice(rawDays: days);

@@ -103,6 +103,8 @@ class ImportProgressView extends StatelessWidget {
             l?.importPrepInflating ?? 'Unpacking the backup',
           ImportPrepStep.checking =>
             l?.importPrepChecking ?? 'Checking the backup',
+          ImportPrepStep.counting =>
+            l?.importPrepCounting ?? 'Counting what is in the backup',
           _ => l?.importPrepOpening ?? 'Opening the backup',
         };
       case ImportCopying():

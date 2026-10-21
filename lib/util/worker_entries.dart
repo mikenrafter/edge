@@ -249,15 +249,8 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
     file: 'data/db/restore.dart',
     symbol: 'LocalDb._mergeFromDbFileBody',
-    source: 'onProgress?.call(const ImportPreparing(ImportPrepStep.opening))',
+    source: 'onProgress?.call(ImportPreparing(step, done, total))',
     ordinal: 0,
-    reason: 'import progress callback: sets one ValueNotifier on the caller side',
-  ),
-  UnresolvedOk(
-    file: 'data/db/restore.dart',
-    symbol: 'LocalDb._mergeFromDbFileBody',
-    source: 'onProgress?.call(const ImportPreparing(ImportPrepStep.checking))',
-    ordinal: 1,
     reason: 'import progress callback: sets one ValueNotifier on the caller side',
   ),
   UnresolvedOk(

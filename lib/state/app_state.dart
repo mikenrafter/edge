@@ -1468,10 +1468,17 @@ class AppState extends ChangeNotifier {
       // do not add it back here. Its inflate checks the gzip trailer, so a
       // truncated backup fails loudly; `gzip.decoder` returns partial output
       // without raising and would restore short while reporting success.
+      final restoredBefore = settingsRestoredSignal.value;
       final counts = await LocalDb.importFromDbFile(
         path,
         onProgress: (p) => importProgress.value = p,
       );
+      // The import wrote settings and the alarm table beneath live objects that
+      // cached them at startup; re-read so no restart is needed.
+      if (settingsRestoredSignal.value != restoredBefore) {
+        unawaited(gestureSettings.bootstrap());
+      }
+      await _loadAlarmSchedule();
       lastImportArchiveSkipped = counts['_substrate_archive_skipped'] ?? 0;
       lastImportArchiveRestored = counts['substrate_archive'] ?? 0;
       if (lastImportArchiveSkipped > 0) {

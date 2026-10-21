@@ -50,7 +50,8 @@ void main() {
       'payload_json': '{}', 'computed_at': 2, 'finalized': 1,
     });
     await copy.insert('substrate_archive', {
-      'device_id': '', 'utc_day': 20000, 'codec': 9999, 'from_ts': _t0,
+      'device_id': '', 'utc_day': _t0 ~/ 86400, // inside the keep window; older buckets are left out unreported
+      'codec': 9999, 'from_ts': _t0,
       'to_ts': _t0 + 10, 'onehz_rows': 10, 'rr_rows': 0, 'raw_bytes': 10,
       'fingerprint': 1, 'tz_offset_min': 0,
       'blob': Uint8List.fromList([1, 2, 3, 4]), 'created_at': 1, 'updated_at': 1,

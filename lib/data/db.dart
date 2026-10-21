@@ -63,6 +63,8 @@ import 'sample_codec.dart' show SampleCodec;
 import 'sample_import.dart' show importSamplePart;
 import 'import_copy_plan.dart';
 import 'import_progress.dart';
+import 'backup_extras.dart';
+import '../settings/settings_repository.dart' show SettingsRepository, settingsRestoredSignal;
 import 'sample_lock.dart' show SampleLock;
 import 'live_coverage_policy.dart';
 import 'step_calibration.dart';
@@ -379,6 +381,12 @@ class LocalDb {
     'cycle_symptom',
     'sleep_override',
     'sleep_nap',
+    // Typed or answered by hand; notif_fired keeps old alerts from firing again.
+    'alarm_schedule',
+    'symptom_entry',
+    'moment_label',
+    'assumed_water',
+    'notif_fired',
     // A ring's own hypnogram. Nothing here can re-derive it.
     'vendor_sleep_epoch',
     'workout_suggestions',
@@ -5145,9 +5153,16 @@ class LocalDb {
   /// rotating copies, and the archive is already deflated, so gzip cannot
   /// shrink it — a year of history would cost its full size five times over.
   /// A manual export keeps it, which is the lossless copy the user asked for.
+  ///
+  /// [extras] is what rides beside the tables in the COPY (settings,
+  /// recordings; see backup_extras.dart). The default is the full export;
+  /// anything that leaves the phone for someone else passes
+  /// [BackupExtras.none].
   static Future<String> exportCopy({
     bool includeSubstrateArchive = true,
-  }) => _ldbExportCopy(includeSubstrateArchive: includeSubstrateArchive);
+    BackupExtras extras = BackupExtras.all,
+  }) => _ldbExportCopy(
+      includeSubstrateArchive: includeSubstrateArchive, extras: extras);
 
   /// Test seam: fail [exportCopy] after the copy exists, before it is cleaned.
   @visibleForTesting
@@ -5415,6 +5430,15 @@ class LocalDb {
       'cycle_log',
       'cycle_symptom',
       'breathing_session',
+      // Typed or answered by hand, or a guard on something the user already
+      // saw. A fired alert must not fire again on the new phone (notif_fired),
+      // and the water ledger sits behind a journal total that IS restored.
+      // session_score_mask is left out: every derive rewrites it.
+      'alarm_schedule',
+      'symptom_entry',
+      'moment_label',
+      'assumed_water',
+      'notif_fired',
       // Vendor-computed, typed-in and imported scalars. In the hand-entered
       // block because a third of it IS hand-entered and nothing regenerates
       // any of it — a `reports` band trims its own history, and the app whose
@@ -5504,6 +5528,24 @@ class LocalDb {
       'substrate_archive',
   ];
 
+  /// Tables where a row this device already has wins over the backup's: a
+  /// moment is answered once, a fired alert stays fired (a union of keys), and
+  /// the weekly alarm and logged entries are the device's own choice.
+  static const Set<String> _keepLocalOnImport = {
+    'alarm_schedule',
+    'symptom_entry',
+    'moment_label',
+    'assumed_water',
+    'notif_fired',
+  };
+
+  static Future<Map<String, int>> _importPlain(
+          String file, void Function(ImportProgress p)? onProgress) =>
+      _ldbImportPlain(
+          file,
+          (f) => SampleLock.run(
+              () => _mergeFromDbFile(f, onProgress: onProgress)));
+
   /// The import screen's stage for each restore table (ImportCopyPlan).
   static ImportStage _importStageOf(String table) => _ldbPrivImportStageOf(table);
 
@@ -5523,7 +5565,7 @@ class LocalDb {
   static Future<Map<String, int>> debugMergeRowByRow(String path) async {
     debugRowByRowMerge = true;
     try {
-      return await SampleLock.run(() => _mergeFromDbFile(path));
+      return await _importPlain(path, null);
     } finally {
       debugRowByRowMerge = false;
     }

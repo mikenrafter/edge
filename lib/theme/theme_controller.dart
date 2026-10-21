@@ -90,6 +90,17 @@ class ThemeController extends ChangeNotifier {
     await prefs.setString(_kChoice, choice.name);
   }
 
+  /// A backup import wrote a theme choice under us: adopt the stored one.
+  Future<void> reloadFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final next = _parse(prefs.getString(_kChoice));
+    if (next == _choice) return;
+    _choice = next;
+    _applyActive();
+    _applySystemChrome();
+    notifyListeners();
+  }
+
   /// Called when the OS brightness changes (only matters under `system`).
   void updatePlatformBrightness(Brightness b) {
     if (_platform == b) return;

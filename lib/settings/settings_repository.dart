@@ -22,7 +22,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show ValueNotifier, debugPrint;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../haptics/pattern_store.dart';
@@ -32,6 +32,10 @@ import '../notify/notification_relay.dart';
 
 // The top-level function is shadowed by the draft's own method of that name.
 const _propagate = propagatePattern;
+
+/// Bumped after a backup import wrote settings, so a holder of a live copy that
+/// is not on [SettingsRepository.changes] (the theme) re-reads it.
+final ValueNotifier<int> settingsRestoredSignal = ValueNotifier<int>(0);
 
 enum SettingsSection { alerts, channels, patterns }
 
@@ -346,6 +350,32 @@ class SettingsRepository {
     await _write(sp, writes);
     _changes.add(change);
     return change;
+  });
+
+  /// A backup import wrote [keys] straight into the preferences. Tell every
+  /// listener the way an update would: the sections as they now read, and the
+  /// plain app prefs that were written.
+  Future<void> announceRestored(Set<String> keys) => _serialize(() async {
+    final sp = await _prefs();
+    // A foreign or old blob that does not read leaves its section out of the
+    // announcement; it must not fail an import that already landed.
+    NotificationPrefs? alerts;
+    try {
+      alerts = await NotificationPrefs.readFrom(sp);
+    } on Object {
+      alerts = null;
+    }
+    _changes.add(SettingsChange(
+      alerts: alerts,
+      channels: decodeChannels(sp.getString(channelsKey)),
+      patterns: HapticPatternStore.decodeSeeded(
+        sp.getString(HapticPatternStore.prefsKey),
+      ).list,
+      appPrefs: {
+        for (final k in keys)
+          if (sp.get(k) case final Object v when v is! List) k: v,
+      },
+    ));
   });
 
   /// The preferences, after any pending recovery journal has been replayed.

@@ -46,7 +46,7 @@ Future<void> _ldbPurgeDemoRows() async {
     });
   }
 
-Future<String> _ldbExportCopy({required bool includeSubstrateArchive}) async {
+Future<String> _ldbExportCopy({required bool includeSubstrateArchive, required BackupExtras extras}) async {
     final db = await LocalDb.instance;
     final tmp = await getTemporaryDirectory();
     final stamp = DateTime.now().millisecondsSinceEpoch;
@@ -64,6 +64,10 @@ Future<String> _ldbExportCopy({required bool includeSubstrateArchive}) async {
         await copy.close();
         copy = null;
       }
+      // After the strip (its VACUUM would drop nothing, but order keeps the
+      // extras the last thing written) and on the COPY only: the live schema
+      // never gains backup_* tables.
+      await writeBackupExtras(dest, extras: extras);
     } catch (_) {
       // The caller never learns the path of a failed copy, so nobody else
       // could ever delete it: a full copy of the database left in temp.
@@ -609,13 +613,30 @@ Future<Set<String>> _ldbForeignFamilyDates({required Iterable<String> ignore}) a
     return {for (final r in rows) r['date'] as String};
   }
 
+/// Merges the SQL tables of the plain database at [file], then puts back what
+/// rides beside them (settings, recordings) and leaves the summary. Both the
+/// real import and the row-by-row oracle end here, so they stay identical.
+Future<Map<String, int>> _ldbImportPlain(String file, Future<Map<String, int>> Function(String file) merge) async {
+    // Before anything merges: "fresh" means this install held no data.
+    final fresh = await isFreshInstall();
+    final counts = await merge(file); // takes the SampleLock itself
+    final extras = await restoreBackupExtras(file, freshInstall: fresh);
+    await recordImportSummary(file,
+        archiveBucketsSkipped: counts['_substrate_archive_skipped'] ?? 0,
+        extras: extras);
+    if (extras.keysWritten.isNotEmpty) {
+      await SettingsRepository.instance.announceRestored(extras.keysWritten);
+      settingsRestoredSignal.value++;
+    }
+    return counts;
+  }
+
 Future<Map<String, int>> _ldbImportFromDbFile(String path, {required void Function(ImportProgress p)? onProgress}) async {
     if (!await File(path).exists()) {
       throw const FileSystemException('Backup file not found');
     }
     if (await sniffFile(path) != ImportContainer.gzip) {
-      return SampleLock.run(
-          () => LocalDb._mergeFromDbFile(path, onProgress: onProgress));
+      return LocalDb._importPlain(path, onProgress);
     }
     onProgress?.call(const ImportPreparing(ImportPrepStep.inflating));
     final work = await Directory.systemTemp.createTemp('openstrap_restore_');
@@ -627,8 +648,7 @@ Future<Map<String, int>> _ldbImportFromDbFile(String path, {required void Functi
           'That file is not an OpenStrap database.',
         );
       }
-      return await SampleLock.run(
-          () => LocalDb._mergeFromDbFile(inflated, onProgress: onProgress));
+      return await LocalDb._importPlain(inflated, onProgress);
     } finally {
       // The inflated copy is a full second copy of the database, so it goes
       // whether the import worked or not.
@@ -709,7 +729,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<Str
   }
 
 Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress}) async {
-    onProgress?.call(const ImportPreparing(ImportPrepStep.opening));
+    // One place that reports a preparing step (opening, checking, counting).
+    void prep(ImportPrepStep step, [int? done, int? total]) =>
+        onProgress?.call(ImportPreparing(step, done, total));
+    prep(ImportPrepStep.opening);
     final src = await openDatabase(path, readOnly: true);
     final db = await LocalDb.instance;
     const tables = LocalDb._restoreTables;
@@ -755,7 +778,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // version stamp and this device's baselines are the same day's history and
     // get the same protection, or trends and the rolling baselines would be
     // rebuilt from the other export's numbers while day detail serves ours.
-    onProgress?.call(const ImportPreparing(ImportPrepStep.checking));
+    prep(ImportPrepStep.checking);
     final finalizedDays = {
       for (final r in await db.query(
         'day_result',
@@ -1050,7 +1073,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       // its stage; see ImportCopyPlan for why stages are runs.
       if (onProgress != null) {
         final sizes = <(String, ImportStage, int)>[];
-        for (final t in (only ?? tables)) {
+        final toCount = only ?? tables;
+        var counted = 0;
+        prep(ImportPrepStep.counting, 0, toCount.length);
+        for (final t in toCount) {
           int? max;
           try {
             max = Sqflite.firstIntValue(
@@ -1062,6 +1088,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
             if (!e.isNoSuchTableError()) rethrow;
           }
           sizes.add((t, LocalDb._importStageOf(t), max ?? 0));
+          prep(ImportPrepStep.counting, ++counted, toCount.length);
         }
         plan = ImportCopyPlan(sizes, onProgress);
       }
@@ -1456,7 +1483,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   row,
                   // A device with its own finalized history keeps its own
                   // baselines (the frozen movement floor among them).
-                  conflictAlgorithm: t == 'baselines' &&
+                  conflictAlgorithm: LocalDb._keepLocalOnImport.contains(t)
+                      ? ConflictAlgorithm.ignore
+                      : t == 'baselines' &&
                           (row['key'] == 'sleep_user_profile'
                               ? SleepProfilePolicy.foldedDays(
                                           row['payload_json'] as String?)

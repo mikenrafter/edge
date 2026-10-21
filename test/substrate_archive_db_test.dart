@@ -1282,7 +1282,8 @@ void main() {
     ]) {
       expect(
         src(auto),
-        contains('exportCopy(includeSubstrateArchive: false)'),
+        // `extras:` follows: what rides beside the tables is a separate choice.
+        contains(RegExp(r'exportCopy\(\s*includeSubstrateArchive: false')),
         reason: auto,
       );
     }

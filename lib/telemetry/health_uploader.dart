@@ -15,6 +15,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../cloud/companion_client.dart';
+import '../data/backup_extras.dart' show BackupExtras;
 import '../data/db.dart';
 
 /// Compile-time gate for the whole health-data-contribution feature (this
@@ -105,7 +106,8 @@ class HealthUploader {
       // year of already-compressed raw history read into memory and re-gzipped
       // here would be both a bigger upload than anyone consented to and a
       // memory spike on the phone.
-      final path = await LocalDb.exportCopy(includeSubstrateArchive: false);
+      final path = await LocalDb.exportCopy(
+          includeSubstrateArchive: false, extras: BackupExtras.none);
       final file = File(path);
       try {
         final bytes = await file.readAsBytes();
