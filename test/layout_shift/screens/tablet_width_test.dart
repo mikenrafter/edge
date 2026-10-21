@@ -101,4 +101,64 @@ void main() {
       expect(top.width, 358, reason: '$n content-top width');
     }
   });
+
+  // The scroll viewport is full width; only the content is capped. A drag that
+  // starts in the empty gutter still scrolls, and on Home still pulls to
+  // refresh.
+  testWidgets('820 pt: a vertical drag starting in the gutter scrolls every tab',
+      (t) async {
+    t.view.physicalSize = const Size(820, 1180);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final app = AppState.forTesting()
+      ..repo = TabsRepo(homeBundle(
+          readiness: 70, overnightAt: todayAtMs(8, 42), activityAt: todayAtMs(8, 42)));
+    addTearDown(app.dispose);
+    await t.pumpWidget(shellApp(app));
+    await settleShell(t);
+    const gutter = Offset(60, 700); // left of the 110..710 content column
+    var scrolled = 0;
+    for (final d in [
+      ShellDomain.today,
+      ShellDomain.sleep,
+      ShellDomain.activity,
+      ShellDomain.health
+    ]) {
+      await goTab(t, d);
+      final list = find.byType(ListView).hitTestable().first;
+      final sc = t.state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first);
+      // A tab whose fixture content fits the screen has nothing to scroll.
+      if (sc.position.maxScrollExtent <= 0) continue;
+      scrolled++;
+      final before = sc.position.pixels;
+      await t.dragFrom(gutter, const Offset(0, -300));
+      await t.pump(const Duration(milliseconds: 400));
+      expect(sc.position.pixels, greaterThan(before),
+          reason: '${d.label}: drag in the gutter did not scroll');
+    }
+    expect(scrolled, greaterThanOrEqualTo(2),
+        reason: 'too few tabs had scrollable content to prove the gutter');
+    await t.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('820 pt: a pull starting in the gutter refreshes Home',
+      (t) async {
+    t.view.physicalSize = const Size(820, 1180);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final app = AppState.forTesting()
+      ..repo = TabsRepo(homeBundle(
+          readiness: 70, overnightAt: todayAtMs(8, 42), activityAt: todayAtMs(8, 42)));
+    addTearDown(app.dispose);
+    await t.pumpWidget(shellApp(app));
+    await settleShell(t);
+    expect(find.byType(RefreshIndicator), findsOneWidget,
+        reason: 'Home has a pull-to-refresh');
+    await t.dragFrom(const Offset(60, 300), const Offset(0, 400));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.byType(RefreshProgressIndicator), findsOneWidget,
+        reason: 'a pull from the gutter must trigger the refresh');
+    await t.pump(const Duration(seconds: 5));
+  });
 }

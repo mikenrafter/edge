@@ -462,7 +462,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     final p = P.of(c);
     return RefreshIndicator(
       onRefresh: _load,
-      child: tabRootContent(ListView(
+      child: tabRootList(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: kTabRootPad,
         children: [
@@ -477,7 +477,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           ...body,
           ...widget.footer,
         ],
-      )),
+      ),
     );
   }
 

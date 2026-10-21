@@ -3057,9 +3057,9 @@
       }
     }
   },
-  "homeSleepPctDefaultCompact": "{pct} % von {target} (Standard)",
+  "homeSleepPctDefaultCompact": "{pct} % von {target} · Standardziel",
   "@homeSleepPctDefaultCompact": {
-    "description": "Short sleep caption that keeps the default-target qualifier.",
+    "description": "Short sleep caption that keeps an explicit default-target qualifier.",
     "placeholders": {
       "pct": {
         "type": "int"
@@ -3069,9 +3069,21 @@
       }
     }
   },
-  "homeSleepEstimateCompact": "{cycles, plural, =1{1 Zyklus} other{{cycles} Zyklen}} · {duration}",
+  "homeSleepPctDefaultTight": "{pct} % von {target} (Standard)",
+  "@homeSleepPctDefaultTight": {
+    "description": "Tightest sleep caption when the target is the default: still names the target as the default.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateCompact": "~{cycles, plural, =1{1 Zyklus} other{{cycles} Zyklen}} · {duration}",
   "@homeSleepEstimateCompact": {
-    "description": "Short sleep estimate retaining cycle count and duration.",
+    "description": "Short sleep estimate: \"~\" marks it as an estimate; keeps cycle count and duration.",
     "placeholders": {
       "cycles": {
         "type": "int"
@@ -3081,9 +3093,21 @@
       }
     }
   },
-  "homeSleepEstimateDefaultCompact": "{cycles, plural, =1{1 Zyklus} other{{cycles} Zyklen}} · {duration} · Standard",
+  "homeSleepEstimateDefaultCompact": "~{cycles, plural, =1{1 Zyklus} other{{cycles} Zyklen}} · {duration} · Standardziel",
   "@homeSleepEstimateDefaultCompact": {
-    "description": "Short sleep estimate retaining cycle count, duration, and the default-target qualifier.",
+    "description": "Short sleep estimate keeping the \"~\" estimate marker and an explicit default-target qualifier.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateDefaultTight": "~{cycles, plural, =1{1 Zyklus} other{{cycles} Zyklen}} · {duration} · Standardziel",
+  "@homeSleepEstimateDefaultTight": {
+    "description": "Tightest sleep estimate caption: keeps the estimate marker, cycles, duration and the default-target qualifier.",
     "placeholders": {
       "cycles": {
         "type": "int"

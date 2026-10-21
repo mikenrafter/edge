@@ -2528,8 +2528,8 @@
   "metricDetailJournalMarksToggle": "Repères du journal",
   "homeSleepPctOf": "{pct} % de {target}",
   "homeSleepPctOfDefault": "{pct} % de {target} (par défaut)",
-  "homeSleepOnTrack": "sur la bonne voie pour {cycles, plural, =1{1 cycle} other{{cycles} cycles}}, {duration}",
-  "homeSleepOnTrackDefault": "sur la bonne voie pour {cycles, plural, =1{1 cycle} other{{cycles} cycles}}, {duration} · objectif {target} (par défaut)",
+  "homeSleepOnTrack": "sur la bonne voie pour {cycles, plural, =0{{cycles} cycles} one{{cycles} cycle} other{{cycles} cycles}}, {duration}",
+  "homeSleepOnTrackDefault": "sur la bonne voie pour {cycles, plural, =0{{cycles} cycles} one{{cycles} cycle} other{{cycles} cycles}}, {duration} · objectif {target} (par défaut)",
   "homeSleepNoEstimate": "Pas d'estimation",
   "homeSleepNoEstimateWhy": "Aucune nuit n'est encore évaluée, et il n'y a ni alarme ni heure de réveil habituelle pour estimer.",
   "taskerTurnOnFirst": "Activez d'abord Tasker",
@@ -2950,9 +2950,9 @@
       }
     }
   },
-  "homeSleepPctDefaultCompact": "{pct} % de {target} (par défaut)",
+  "homeSleepPctDefaultCompact": "{pct} % de {target} · objectif par défaut",
   "@homeSleepPctDefaultCompact": {
-    "description": "Short sleep caption that keeps the default-target qualifier.",
+    "description": "Short sleep caption that keeps an explicit default-target qualifier.",
     "placeholders": {
       "pct": {
         "type": "int"
@@ -2962,9 +2962,21 @@
       }
     }
   },
-  "homeSleepEstimateCompact": "{cycles, plural, =1{1 cycle} other{{cycles} cycles}} · {duration}",
+  "homeSleepPctDefaultTight": "{pct} % de {target} par défaut",
+  "@homeSleepPctDefaultTight": {
+    "description": "Tightest sleep caption when the target is the default: still names the target as the default.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateCompact": "~{cycles, plural, =0{{cycles} cycles} one{{cycles} cycle} other{{cycles} cycles}} · {duration}",
   "@homeSleepEstimateCompact": {
-    "description": "Short sleep estimate retaining cycle count and duration.",
+    "description": "Short sleep estimate: \"~\" marks it as an estimate; keeps cycle count and duration.",
     "placeholders": {
       "cycles": {
         "type": "int"
@@ -2974,9 +2986,21 @@
       }
     }
   },
-  "homeSleepEstimateDefaultCompact": "{cycles, plural, =1{1 cycle} other{{cycles} cycles}} · {duration} · défaut",
+  "homeSleepEstimateDefaultCompact": "~{cycles, plural, =0{{cycles} cycles} one{{cycles} cycle} other{{cycles} cycles}} · {duration} · objectif par défaut",
   "@homeSleepEstimateDefaultCompact": {
-    "description": "Short sleep estimate retaining cycle count, duration, and the default-target qualifier.",
+    "description": "Short sleep estimate keeping the \"~\" estimate marker and an explicit default-target qualifier.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateDefaultTight": "~{cycles, plural, =0{{cycles} cycles} one{{cycles} cycle} other{{cycles} cycles}} · {duration} · par défaut",
+  "@homeSleepEstimateDefaultTight": {
+    "description": "Tightest sleep estimate caption: keeps the estimate marker, cycles, duration and the default-target qualifier.",
     "placeholders": {
       "cycles": {
         "type": "int"

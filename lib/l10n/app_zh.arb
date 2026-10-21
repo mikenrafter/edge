@@ -2950,9 +2950,9 @@
       }
     }
   },
-  "homeSleepPctDefaultCompact": "{target} 的 {pct}%（默认）",
+  "homeSleepPctDefaultCompact": "{target} 的 {pct}% · 默认目标",
   "@homeSleepPctDefaultCompact": {
-    "description": "Short sleep caption that keeps the default-target qualifier.",
+    "description": "Short sleep caption that keeps an explicit default-target qualifier.",
     "placeholders": {
       "pct": {
         "type": "int"
@@ -2962,9 +2962,21 @@
       }
     }
   },
-  "homeSleepEstimateCompact": "{cycles} 个周期 · {duration}",
+  "homeSleepPctDefaultTight": "默认 {target} 的 {pct}%",
+  "@homeSleepPctDefaultTight": {
+    "description": "Tightest sleep caption when the target is the default: still names the target as the default.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateCompact": "~{cycles} 个周期 · {duration}",
   "@homeSleepEstimateCompact": {
-    "description": "Short sleep estimate retaining cycle count and duration.",
+    "description": "Short sleep estimate: \"~\" marks it as an estimate; keeps cycle count and duration.",
     "placeholders": {
       "cycles": {
         "type": "int"
@@ -2974,9 +2986,21 @@
       }
     }
   },
-  "homeSleepEstimateDefaultCompact": "{cycles} 个周期 · {duration} · 默认",
+  "homeSleepEstimateDefaultCompact": "~{cycles} 个周期 · {duration} · 默认目标",
   "@homeSleepEstimateDefaultCompact": {
-    "description": "Short sleep estimate retaining cycle count, duration, and the default-target qualifier.",
+    "description": "Short sleep estimate keeping the \"~\" estimate marker and an explicit default-target qualifier.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "homeSleepEstimateDefaultTight": "~{cycles} 个周期 · {duration} · 默认目标",
+  "@homeSleepEstimateDefaultTight": {
+    "description": "Tightest sleep estimate caption: keeps the estimate marker, cycles, duration and the default-target qualifier.",
     "placeholders": {
       "cycles": {
         "type": "int"

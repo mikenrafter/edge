@@ -102,7 +102,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
         // (which takes an unbounded height inside a scroll view and blanked
         // this whole tab on device). Padding the siblings is ordinary layout
         // and cannot do either.
-        return tabRootContent(ListView(
+        return tabRootList(
           padding: EdgeInsets.fromLTRB(0, kTabRootPad.top, 0, kTabRootPad.bottom),
           children: [
             for (final w in <Widget>[
@@ -125,7 +125,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                     padding: const EdgeInsets.symmetric(horizontal: S.x4),
                     child: w),
           ],
-        ));
+        );
       },
     );
   }

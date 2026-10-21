@@ -29,6 +29,7 @@ import '../../l10n/date_text.dart';
 
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui show TextDirection;
 
 import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
@@ -1121,7 +1122,10 @@ enum HomeRingKind { recovery, strain, sleep }
 class _RingState {
   final HomeRingKind kind;
   final String label, value, sub;
-  final String? shortSub;
+  /// Shorter wordings of [sub], widest first, that keep its meaning (the
+  /// estimate marker, the default-target qualifier). The caption tries
+  /// [sub], then each of these, and takes the first that fits.
+  final List<String> alts;
   final IconData icon;
   final Color color;
 
@@ -1155,7 +1159,7 @@ class _RingState {
     this.color, {
     required this.value,
     this.sub = '',
-    this.shortSub,
+    this.alts = const [],
     this.frac,
     this.calibrating = false,
     this.have,
@@ -1278,10 +1282,20 @@ _RingState _ringOf(
                       '${m.pct}% of $target (default)')
                   : (l?.homeSleepPctOf(m.pct!, target) ??
                       '${m.pct}% of $target'),
-              shortSub: m.targetIsDefault
-                  ? l?.homeSleepPctDefaultCompact(
-                      m.pct!, _compactHm(m.targetMin, l))
-                  : l?.homeSleepPctCompact(m.pct!, _compactHm(m.targetMin, l)),
+              alts: m.targetIsDefault
+                  ? [
+                      l?.homeSleepPctDefaultCompact(
+                              m.pct!, _compactHm(m.targetMin, l)) ??
+                          '${m.pct}% of ${_compactHm(m.targetMin, l)} · default target',
+                      l?.homeSleepPctDefaultTight(
+                              m.pct!, _compactHm(m.targetMin, l)) ??
+                          '${m.pct}% of default ${_compactHm(m.targetMin, l)}',
+                    ]
+                  : [
+                      l?.homeSleepPctCompact(
+                              m.pct!, _compactHm(m.targetMin, l)) ??
+                          '${m.pct}% of ${_compactHm(m.targetMin, l)}',
+                    ],
               frac: m.sweep,
               arcs: m.arcs);
         case SleepRingPhase.estimate:
@@ -1299,13 +1313,21 @@ _RingState _ringOf(
                   : (l?.homeSleepOnTrack(m.cycles!, est) ??
                       'on track for ${m.cycles} '
                           '${m.cycles == 1 ? 'cycle' : 'cycles'}, $est'),
-              shortSub: m.targetIsDefault
-                  ? (l?.homeSleepEstimateDefaultCompact(
-                          m.cycles!, _compactHm(m.estimateMin, l)) ??
-                      '${m.cycles} cycles · ${_compactHm(m.estimateMin, l)} · default target')
-                  : (l?.homeSleepEstimateCompact(
-                          m.cycles!, _compactHm(m.estimateMin, l)) ??
-                      '${m.cycles} cycles · ${_compactHm(m.estimateMin, l)}'),
+              // "~" marks an estimate in every compact form.
+              alts: m.targetIsDefault
+                  ? [
+                      l?.homeSleepEstimateDefaultCompact(
+                              m.cycles!, _compactHm(m.estimateMin, l)) ??
+                          '~${m.cycles} cycles · ${_compactHm(m.estimateMin, l)} · default target',
+                      l?.homeSleepEstimateDefaultTight(
+                              m.cycles!, _compactHm(m.estimateMin, l)) ??
+                          '~${m.cycles} cycles · ${_compactHm(m.estimateMin, l)} · default goal',
+                    ]
+                  : [
+                      l?.homeSleepEstimateCompact(
+                              m.cycles!, _compactHm(m.estimateMin, l)) ??
+                          '~${m.cycles} cycles · ${_compactHm(m.estimateMin, l)}',
+                    ],
               frac: m.sweep,
               estimated: true);
         case SleepRingPhase.none:
@@ -1543,6 +1565,63 @@ class _RingRow extends StatelessWidget {
 double _twoLines(BuildContext c) =>
     MediaQuery.textScalerOf(c).scale((F.cap.fontSize ?? 12) * (F.cap.height ?? 1.3)) * 2;
 
+/// The caption's render settings, resolved once from the context so the text
+/// that is MEASURED and the Text that is BUILT can not disagree: the same
+/// DefaultTextStyle merge, bold-text setting, locale, scaler and width basis.
+class _CaptionSpec {
+  final TextStyle style;
+  final TextAlign align;
+  final int? maxLines;
+  final TextScaler scaler;
+  final Locale? locale;
+  final ui.TextDirection dir;
+  final TextWidthBasis basis;
+  final TextHeightBehavior? heightBehavior;
+
+  const _CaptionSpec._(this.style, this.align, this.maxLines, this.scaler,
+      this.locale, this.dir, this.basis, this.heightBehavior);
+
+  factory _CaptionSpec.of(BuildContext c, Color color, TextAlign align,
+      int? maxLines) {
+    final d = DefaultTextStyle.of(c);
+    var st = d.style.merge(F.cap.copyWith(color: color));
+    if (MediaQuery.boldTextOf(c)) {
+      st = st.merge(const TextStyle(fontWeight: FontWeight.bold));
+    }
+    return _CaptionSpec._(
+        st,
+        align,
+        maxLines,
+        MediaQuery.textScalerOf(c),
+        Localizations.maybeLocaleOf(c),
+        Directionality.of(c),
+        d.textWidthBasis,
+        d.textHeightBehavior);
+  }
+
+  bool fits(String text, double width) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textAlign: align,
+      textDirection: dir,
+      textScaler: scaler,
+      locale: locale,
+      maxLines: maxLines,
+      textWidthBasis: basis,
+      textHeightBehavior: heightBehavior,
+    )..layout(maxWidth: width);
+    final ok = !tp.didExceedMaxLines;
+    tp.dispose();
+    return ok;
+  }
+
+  Text build(String text, {bool bounded = true}) => Text(text,
+      style: style,
+      textAlign: align,
+      maxLines: bounded ? maxLines : null,
+      overflow: TextOverflow.clip);
+}
+
 class _RingText extends StatelessWidget {
   final _RingState r;
   final TextAlign align;
@@ -1583,24 +1662,24 @@ class _RingText extends StatelessWidget {
               ? null
               : LayoutBuilder(builder: (c, box) {
                   final l = AppLocalizations.of(c);
-                  final full = presentationText(l, r.sub);
-                  final short = r.shortSub == null
-                      ? full
-                      : presentationText(l, r.shortSub!);
-                  final style = F.cap.copyWith(color: p.ink3);
-                  final painter = TextPainter(
-                    text: TextSpan(text: full, style: style),
-                    textDirection: Directionality.of(c),
-                    textScaler: MediaQuery.textScalerOf(c),
-                    maxLines: 2,
-                  )..layout(maxWidth: box.maxWidth);
-                  return Text(
-                    painter.didExceedMaxLines ? short : full,
-                    style: style,
-                    textAlign: align,
-                    maxLines: 2,
-                    overflow: TextOverflow.clip,
-                  );
+                  // The two-line bound is the centred column's; the big-text
+                  // row has the width it needs and wraps without a limit.
+                  final spec = _CaptionSpec.of(c, p.ink3, align,
+                      align == TextAlign.center ? 2 : null);
+                  final forms = [
+                    presentationText(l, r.sub),
+                    for (final a in r.alts) presentationText(l, a),
+                  ];
+                  // Measure every wording, widest first. If none fits, the
+                  // widest compact one (the most explicit) is shown whole — it
+                  // may take a third line, but its qualifiers are never cut.
+                  for (final f in forms) {
+                    if (spec.maxLines == null || spec.fits(f, box.maxWidth)) {
+                      return spec.build(f);
+                    }
+                  }
+                  return spec.build(forms.length > 1 ? forms[1] : forms.first,
+                      bounded: false);
                 }),
         ),
       ],
@@ -2412,7 +2491,7 @@ class _HomeScreenState extends State<HomeScreen>
     Widget card(String name, Widget child) =>
         KeyedSubtree(key: ValueKey('card:$name'), child: child);
 
-    return _refreshable(tabRootContent(ListView(padding: pad, children: [
+    return _refreshable(tabRootList(padding: pad, children: [
       // ── greeting ──
       //
       // The same header every tab has: the greeting is the title, the profile
@@ -2575,7 +2654,7 @@ class _HomeScreenState extends State<HomeScreen>
                   : wearableName(d.wearable!.adapterId),
               initialCells: d.wearable?.cells ?? const {}),
         ),
-    ])));
+    ]));
   }
 
   /// "As of <time>" under the rings while a pass is recalculating their day:

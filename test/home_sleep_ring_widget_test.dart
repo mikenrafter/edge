@@ -34,9 +34,20 @@ const _schedule = ExpectedSleepSchedule(onsetMinute: 1380, wakeMinute: 420);
 /// The unslept sub-line's tail when the target is the 8 h default.
 const _dflt = ' · target 8h 00m (default)';
 
-Finder _spokenCaption(String text) => find.byWidgetPredicate(
-    (widget) => widget is Pressable &&
-        (widget.semanticLabel?.contains(text) ?? false));
+Finder _spokenCaption(String text) => find.byWidgetPredicate((widget) =>
+    widget is Pressable && (widget.semanticLabel?.contains(text) ?? false));
+
+/// The caption is BOTH spoken in full and VISIBLE: as the full text, or as one
+/// of its measured compact wordings (which keep the default / estimate
+/// qualifiers). Exactly one Text shows it.
+void _caption(String full, List<String> compact) {
+  expect(_spokenCaption(full), findsOneWidget);
+  expect(
+      find.byWidgetPredicate(
+          (w) => w is Text && (w.data == full || compact.contains(w.data))),
+      findsOneWidget,
+      reason: 'visible caption is neither "$full" nor one of $compact');
+}
 
 const _stages = SleepStageMin(deep: 70, rem: 95, light: 277, awake: 30);
 
@@ -232,13 +243,13 @@ void main() {
         'the target is the default', (t) async {
       await _pump(t, _slept());
       expect(find.text('7h 22m'), findsOneWidget);
-      expect(_spokenCaption('92% of 8h 00m (default)'), findsOneWidget);
+      _caption('92% of 8h 00m (default)', ['92% of 8h · default target', '92% of default 8h']);
     });
 
     testWidgets('a learned need is the target and is NOT labelled default',
         (t) async {
       await _pump(t, _slept(need: _min(462)));
-      expect(_spokenCaption('96% of 7h 42m'), findsOneWidget);
+      expect(find.text('96% of 7h 42m'), findsOneWidget);
       expect(find.textContaining('default'), findsNothing);
       final ring = _sleepPainter(t) as StageRing;
       expect(ring.arcs.first.fraction, closeTo(70 / 462, 1e-9));
@@ -268,14 +279,14 @@ void main() {
       final ring = _sleepPainter(t) as StageRing;
       final sweep = ring.arcs.fold<double>(0, (s, a) => s + a.fraction);
       expect(sweep, closeTo(1.0, 1e-9));
-      expect(_spokenCaption('113% of 8h 00m (default)'), findsOneWidget);
+      _caption('113% of 8h 00m (default)', ['113% of 8h · default target', '113% of default 8h']);
     });
 
     testWidgets('stages still draw at the accessibility text size',
         (t) async {
       await _pump(t, _slept(), textScale: 2);
       expect(_sleepPainter(t), isA<StageRing>());
-      expect(_spokenCaption('92% of 8h 00m (default)'), findsOneWidget);
+      _caption('92% of 8h 00m (default)', ['92% of 8h · default target', '92% of default 8h']);
     });
 
     testWidgets('spoken text carries the percentage and the default label',
@@ -298,13 +309,13 @@ void main() {
       expect(find.text('No target yet'), findsNothing);
       final ring = _sleepPainter(t) as Ring;
       expect(ring.v, greaterThan(0));
-      expect(_spokenCaption('92% of 8h 00m (default)'), findsOneWidget);
+      _caption('92% of 8h 00m (default)', ['92% of 8h · default target', '92% of default 8h']);
     });
 
     testWidgets('scored night + learned need present: the "of" target is '
         'there AND the bar is filled', (t) async {
       await _pump(t, _slept(need: _min(462), stages: null));
-      expect(_spokenCaption('96% of 7h 42m'), findsOneWidget);
+      expect(find.text('96% of 7h 42m'), findsOneWidget);
       expect((_sleepPainter(t) as Ring).v, closeTo(442 / 462, 1e-9));
     });
 
@@ -350,7 +361,7 @@ void main() {
           _Repo(night: _nightMap), '2026-10-08'));
       await _pump(t, d!);
       expect(find.text('No target yet'), findsNothing);
-      expect(_spokenCaption('92% of 8h 00m (default)'), findsOneWidget);
+      _caption('92% of 8h 00m (default)', ['92% of 8h · default target', '92% of default 8h']);
       expect(_sleepPainter(t), isA<StageRing>());
     });
   });
@@ -422,7 +433,7 @@ void main() {
       addTearDown(app.dispose);
       app.sleepOperations.schedule = _schedule;
       await pumpHome(t, app);
-      expect(_spokenCaption('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
     });
 
     testWidgets('an armed alarm beats the schedule wake', (t) async {
@@ -432,7 +443,7 @@ void main() {
       app.device.alarmEpoch =
           DateTime(2026, 10, 9, 6, 30).millisecondsSinceEpoch ~/ 1000;
       await pumpHome(t, app);
-      expect(_spokenCaption('on track for 5 cycles, 7h 30m$_dflt'), findsOneWidget);
+      _caption('on track for 5 cycles, 7h 30m$_dflt', ['~5 cycles · 7h 30m · default target', '~5 cycles · 7h 30m · default goal']);
     });
 
     testWidgets('an alarm already past is ignored', (t) async {
@@ -442,7 +453,7 @@ void main() {
       app.device.alarmEpoch =
           DateTime(2026, 10, 8, 21, 0).millisecondsSinceEpoch ~/ 1000;
       await pumpHome(t, app);
-      expect(_spokenCaption('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
     });
 
     testWidgets('with nothing saved and nothing armed there is no estimate',
@@ -483,7 +494,7 @@ void main() {
       app.sleepOperations.schedule = _schedule;
       await pumpBare(t, app);
       expect(find.textContaining('No nights scored yet'), findsNothing);
-      expect(_spokenCaption('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
     });
 
     testWidgets('nothing to estimate from: the status card, as before',
@@ -585,7 +596,7 @@ void main() {
         'yym"', (t) async {
       await _pump(t, _unslept(schedule: _schedule));
       expect(find.text('8h 00m'), findsNWidgets(1));
-      expect(_spokenCaption('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
     });
 
     testWidgets('one cycle is singular', (t) async {
@@ -594,21 +605,21 @@ void main() {
         _unslept(schedule: _schedule),
         now: DateTime(2026, 10, 9, 5, 20),
       );
-      expect(_spokenCaption('on track for 1 cycle, 1h 40m$_dflt'), findsOneWidget);
+      _caption('on track for 1 cycle, 1h 40m$_dflt', ['~1 cycle · 1h 40m · default target', '~1 cycle · 1h 40m · default goal']);
     });
 
     testWidgets('a LEARNED need is the denominator: no "(default)" tail',
         (t) async {
       await _pump(t, _unslept(schedule: _schedule, need: _min(540)));
-      expect(_spokenCaption('on track for 5 cycles, 8h 00m'), findsOneWidget);
+      _caption('on track for 5 cycles, 8h 00m', ['~5 cycles · 8h']);
       expect(find.textContaining('default'), findsNothing);
     });
 
     testWidgets('the DEFAULT denominator is visibly labelled on the unslept '
         'sub-line too', (t) async {
       await _pump(t, _unslept(schedule: _schedule));
-      expect(_spokenCaption('(default)'), findsOneWidget);
-      expect(_spokenCaption('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
+      expect(find.textContaining('default'), findsOneWidget);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
     });
 
     testWidgets('an estimate has no percentage and no "(default)" label '
@@ -625,7 +636,7 @@ void main() {
           alarm: DateTime(2026, 10, 9, 6, 30),
         ),
       );
-      expect(_spokenCaption('on track for 5 cycles, 7h 30m$_dflt'), findsOneWidget);
+      _caption('on track for 5 cycles, 7h 30m$_dflt', ['~5 cycles · 7h 30m · default target', '~5 cycles · 7h 30m · default goal']);
     });
 
     testWidgets('coach bedtime beats the schedule onset', (t) async {
@@ -637,7 +648,7 @@ void main() {
               value: 22 * 60 + 30, confidence: .7, tier: MetricTier.estimate),
         ),
       );
-      expect(_spokenCaption('on track for 5 cycles, 8h 30m$_dflt'), findsOneWidget);
+      _caption('on track for 5 cycles, 8h 30m$_dflt', ['~5 cycles · 8h 30m · default target', '~5 cycles · 8h 30m · default goal']);
     });
 
     testWidgets('schedule onset beats learned onset; learned alone still '
@@ -646,12 +657,12 @@ void main() {
         t,
         _unslept(schedule: _schedule, learnedOnset: 23 * 60 + 30),
       );
-      expect(_spokenCaption('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
       await _pump(
         t,
         _unslept(learnedOnset: 23 * 60 + 30, learnedWake: 7 * 60 + 30),
       );
-      expect(_spokenCaption('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
     });
 
     testWidgets('a user cycle length (hook) changes the cycle count',
@@ -661,14 +672,14 @@ void main() {
         cycleLenMin: 100,
       );
       await _pump(t, d);
-      expect(_spokenCaption('on track for 4 cycles, 8h 00m$_dflt'), findsOneWidget);
+      _caption('on track for 4 cycles, 8h 00m$_dflt', ['~4 cycles · 8h · default target', '~4 cycles · 8h · default goal']);
     });
 
     testWidgets('the estimate depends only on the injected now — time passing '
         'in the test changes nothing', (t) async {
       await _pump(t, _unslept(schedule: _schedule));
       await t.pump(const Duration(hours: 3));
-      expect(_spokenCaption('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
+      _caption('on track for 5 cycles, 8h 00m$_dflt', ['~5 cycles · 8h · default target', '~5 cycles · 8h · default goal']);
     });
 
     testWidgets('spoken text carries the estimate sentence', (t) async {

@@ -4,6 +4,7 @@
 //
 // Every instant is injected (`RingTrio.now`); nothing reads the system clock.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/models/metric.dart';
@@ -58,14 +59,19 @@ final Map<String, HomeData> _loaded = {
       nextAlarm: DateTime(2026, 10, 9, 6, 45)),
 };
 
-Future<void> _pump(WidgetTester t, double width, HomeData d) async {
+Future<void> _pump(WidgetTester t, double width, HomeData d,
+    {Locale locale = const Locale('en'), double scale = 1}) async {
   t.view.devicePixelRatio = 1;
   t.view.physicalSize = Size(width, 900);
   addTearDown(t.view.reset);
   await t.pumpWidget(MaterialApp(
+    locale: locale,
     theme: buildTheme(Brightness.light),
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
+    builder: (c, child) => MediaQuery(
+        data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
+        child: child!),
     home: Scaffold(
       body: SingleChildScrollView(
         child: Padding(
@@ -78,42 +84,74 @@ Future<void> _pump(WidgetTester t, double width, HomeData d) async {
   await t.pumpAndSettle();
 }
 
-/// The caption Texts: the only `maxLines: 2` Text in a ring column.
-List<Text> _captions(WidgetTester t) => [
-      for (final e in find
-          .descendant(of: find.byType(RingTrio), matching: find.byType(Text))
-          .evaluate())
-        if ((e.widget as Text).maxLines == 2) e.widget as Text
+/// The narrow ring-column Pressables (the help strip is as wide as the card).
+Iterable<Element> _columns(WidgetTester t) => find
+    .descendant(of: find.byType(RingTrio), matching: find.byType(Pressable))
+    .evaluate()
+    .where((e) => t.getSize(find.byWidget(e.widget)).width < 150);
+
+/// The caption of each ring column: the last Text in it.
+List<Finder> _captions(WidgetTester t) => [
+      for (final col in _columns(t))
+        find
+            .descendant(
+                of: find.byWidget(col.widget), matching: find.byType(Text))
+            .last
     ];
 
 void main() {
   setUpAll(loadFonts);
 
-  for (final w in [360.0, 390.0]) {
-    for (final e in _loaded.entries) {
-      testWidgets(
-          '${w.toInt()} pt, ${e.key}: every ring caption fits its two lines, nothing cut',
-          (t) async {
-        await _pump(t, w, e.value);
-        final caps = _captions(t);
-        expect(caps.length, 3, reason: 'one caption per ring');
-        final bad = <String>[];
-        for (final c in caps) {
-          final f = find.byWidget(c);
-          final painter = TextPainter(
-            text: TextSpan(text: c.data, style: c.style),
-            textDirection: TextDirection.ltr,
-            textScaler: TextScaler.noScaling,
-            maxLines: 2,
-          )..layout(maxWidth: t.getSize(f).width);
-          if (painter.didExceedMaxLines) {
-            bad.add('"${c.data}" exceeds two lines and is ellipsized');
+  // locale, text scale, widths: the contract holds in each.
+  final combos = <(String, double, List<double>)>[
+    ('en', 1, [360, 390]),
+    ('en', 1.3, [360, 390]),
+    ('es', 1, [360, 390]),
+    ('fr', 1, [360, 390]),
+  ];
+  for (final (lang, scale, widths) in combos) {
+    for (final w in widths) {
+      for (final e in _loaded.entries) {
+        testWidgets(
+            '$lang x$scale ${w.toInt()} pt, ${e.key}: sleep caption fits its two lines, whole',
+            (t) async {
+          await _pump(t, w, e.value, locale: Locale(lang), scale: scale);
+          final caps = _captions(t);
+          expect(caps.length, 3, reason: 'one caption per ring');
+          final lineH = (F.cap.fontSize ?? 12) * (F.cap.height ?? 1.3) * scale;
+          // A default-target estimate (estimate marker + cycles + duration +
+          // default target) cannot be two lines of a ~91 pt column at 1.3x;
+          // there it wraps whole onto extra lines rather than drop a part.
+          final lines = scale > 1 && e.key == 'estimate, schedule, default target'
+              ? (w < 375 ? 4 : 3)
+              : 2;
+          for (final f in caps) {
+            final text = t.widget<Text>(f).data ?? '';
+            expect(text.trim(), isNotEmpty, reason: 'empty caption');
+            final box = t.renderObject<RenderParagraph>(f);
+            expect(box.didExceedMaxLines, isFalse,
+                reason: '"$text" is ellipsized/cut');
+            expect(box.size.height, lessThanOrEqualTo(lines * lineH + 1),
+                reason: '"$text" needs more than two lines');
           }
-        }
-        expect(bad, isEmpty, reason: 'cut captions:\n${bad.join('\n')}');
-      });
+          // The sleep ring is the last column; its wording keeps its
+          // qualifiers in whatever form fit.
+          final sleep = t.widget<Text>(caps.last).data!;
+          final isDefault = e.key.contains('default');
+          final isEstimate = e.key.startsWith('estimate');
+          final dflt = {'en': 'default', 'es': 'predet|por defecto', 'fr': 'défaut'}[lang]!;
+          final wantDefault = RegExp(dflt, caseSensitive: false);
+          expect(wantDefault.hasMatch(sleep), isDefault,
+              reason: '"$sleep" default qualifier');
+          if (isEstimate && lang == 'en') {
+            expect(sleep.startsWith('on track') || sleep.startsWith('~'), isTrue,
+                reason: '"$sleep" lost the estimate marker');
+            expect(sleep, contains('cycles'));
+          }
+          if (!isEstimate) expect(sleep, matches(RegExp(r'\d+ ?%')));
+        });
 
-      testWidgets(
+        testWidgets(
           '${w.toInt()} pt, ${e.key}: ring columns are as tall as on first launch',
           (t) async {
         // The ring columns are the narrow Pressables (the help strip is as
@@ -135,5 +173,6 @@ void main() {
             reason: 'column heights loaded $loaded vs empty $empty');
       });
     }
+  }
   }
 }

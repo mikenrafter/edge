@@ -2897,13 +2897,23 @@ class _SubTabsState extends State<SubTabs> {
 /// runs edge to edge and each of its other children pads itself by 16.
 const kTabRootPad = EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x16 + S.x8);
 
-/// Keeps tab content in a readable column while leaving phone geometry intact.
-Widget tabRootContent(Widget child) => Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 600),
-        child: child,
-      ),
-    );
+/// A tab root's list: the scroll viewport stays full width (a drag or a pull
+/// in the side gutters still scrolls / refreshes) and the CONTENT is held to a
+/// 600 pt centred column by widening the horizontal padding. At or under
+/// 600 pt the gutter is 0, so phone geometry is unchanged.
+Widget tabRootList({
+  required EdgeInsets padding,
+  required List<Widget> children,
+  ScrollPhysics? physics,
+}) =>
+    LayoutBuilder(builder: (c, box) {
+      final gutter = box.maxWidth > 600 ? (box.maxWidth - 600) / 2 : 0.0;
+      return ListView(
+        physics: physics,
+        padding: padding + EdgeInsets.symmetric(horizontal: gutter),
+        children: children,
+      );
+    });
 
 /// The header every tab root shares: a one-line title and, at its end, either
 /// the profile [avatar] or another [trailing] control.
