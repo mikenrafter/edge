@@ -103,11 +103,10 @@ void main() {
   });
 
   // The scroll viewport is full width; only the content is capped. A drag that
-  // starts in the empty gutter still scrolls, and on Home still pulls to
-  // refresh.
-  testWidgets('820 pt: a vertical drag starting in the gutter scrolls every tab',
-      (t) async {
-    t.view.physicalSize = const Size(820, 1180);
+  // starts in the empty gutter still scrolls, and Home and Sleep still pull to
+  // refresh from it. 700 pt tall so every root has scroll extent.
+  Future<void> shell(WidgetTester t) async {
+    t.view.physicalSize = const Size(820, 700);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
     final app = AppState.forTesting()
@@ -116,8 +115,18 @@ void main() {
     addTearDown(app.dispose);
     await t.pumpWidget(shellApp(app));
     await settleShell(t);
-    const gutter = Offset(60, 700); // left of the 110..710 content column
-    var scrolled = 0;
+  }
+
+  ScrollableState rootScroll(WidgetTester t) {
+    final list = find.byType(ListView).hitTestable().first;
+    return t.state<ScrollableState>(
+        find.descendant(of: list, matching: find.byType(Scrollable)).first);
+  }
+
+  testWidgets('820 pt: a vertical drag starting in the gutter scrolls all 4 tabs',
+      (t) async {
+    await shell(t);
+    const gutter = Offset(60, 450); // left of the 110..710 content column
     for (final d in [
       ShellDomain.today,
       ShellDomain.sleep,
@@ -125,40 +134,30 @@ void main() {
       ShellDomain.health
     ]) {
       await goTab(t, d);
-      final list = find.byType(ListView).hitTestable().first;
-      final sc = t.state<ScrollableState>(
-          find.descendant(of: list, matching: find.byType(Scrollable)).first);
-      // A tab whose fixture content fits the screen has nothing to scroll.
-      if (sc.position.maxScrollExtent <= 0) continue;
-      scrolled++;
+      final sc = rootScroll(t);
+      expect(sc.position.maxScrollExtent, greaterThan(0),
+          reason: '${d.label}: fixture has nothing to scroll');
       final before = sc.position.pixels;
       await t.dragFrom(gutter, const Offset(0, -300));
       await t.pump(const Duration(milliseconds: 400));
       expect(sc.position.pixels, greaterThan(before),
           reason: '${d.label}: drag in the gutter did not scroll');
     }
-    expect(scrolled, greaterThanOrEqualTo(2),
-        reason: 'too few tabs had scrollable content to prove the gutter');
     await t.pump(const Duration(seconds: 5));
   });
 
-  testWidgets('820 pt: a pull starting in the gutter refreshes Home',
-      (t) async {
-    t.view.physicalSize = const Size(820, 1180);
-    t.view.devicePixelRatio = 1;
-    addTearDown(t.view.reset);
-    final app = AppState.forTesting()
-      ..repo = TabsRepo(homeBundle(
-          readiness: 70, overnightAt: todayAtMs(8, 42), activityAt: todayAtMs(8, 42)));
-    addTearDown(app.dispose);
-    await t.pumpWidget(shellApp(app));
-    await settleShell(t);
-    expect(find.byType(RefreshIndicator), findsOneWidget,
-        reason: 'Home has a pull-to-refresh');
-    await t.dragFrom(const Offset(60, 300), const Offset(0, 400));
-    await t.pump(const Duration(milliseconds: 100));
-    expect(find.byType(RefreshProgressIndicator), findsOneWidget,
-        reason: 'a pull from the gutter must trigger the refresh');
-    await t.pump(const Duration(seconds: 5));
-  });
+  for (final d in [ShellDomain.today, ShellDomain.sleep]) {
+    testWidgets('820 pt: a pull starting in the gutter refreshes ${d.label}',
+        (t) async {
+      await shell(t);
+      await goTab(t, d);
+      expect(find.byType(RefreshIndicator).hitTestable(), findsOneWidget,
+          reason: '${d.label} has a pull-to-refresh');
+      await t.dragFrom(const Offset(60, 200), const Offset(0, 400));
+      await t.pump(const Duration(milliseconds: 100));
+      expect(find.byType(RefreshProgressIndicator), findsOneWidget,
+          reason: 'a pull from the gutter must trigger the refresh');
+      await t.pump(const Duration(seconds: 5));
+    });
+  }
 }

@@ -1043,8 +1043,10 @@ class RingTrio extends StatelessWidget {
 
     return Surface(
       elevation: 2,
-      child: Column(children: [
-        if (bigText(c))
+      child: LayoutBuilder(builder: (c, box) => Column(children: [
+        // Rows replace columns by locale, text scale and width only, never by
+        // the day's data: an empty card and a loaded one are the same layout.
+        if (bigText(c) || !_columnsHoldWorstCase(c, l, (box.maxWidth - 2 * S.x3) / 3))
           // Past ~1.3× a 100 pt column cannot hold the word "Recovery" on one
           // line and there is nowhere for it to wrap to. The ring keeps its
           // size and the type gets the width instead.
@@ -1080,7 +1082,7 @@ class RingTrio extends StatelessWidget {
             if (strip.text.isNotEmpty) strip.text,
           ],
         ),
-      ]),
+      ])),
     );
   }
 
@@ -1615,11 +1617,41 @@ class _CaptionSpec {
     return ok;
   }
 
+  double height(String text, double width) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textAlign: align,
+      textDirection: dir,
+      textScaler: scaler,
+      locale: locale,
+      textWidthBasis: basis,
+      textHeightBehavior: heightBehavior,
+    )..layout(maxWidth: width);
+    final h = tp.height;
+    tp.dispose();
+    return h;
+  }
+
   Text build(String text, {bool bounded = true}) => Text(text,
       style: style,
       textAlign: align,
       maxLines: bounded ? maxLines : null,
       overflow: TextOverflow.clip);
+}
+
+/// Whether a ring column [width] wide holds the WORST-CASE tight sleep caption
+/// in two lines at the current scale and locale: a default-target estimate with
+/// a two-digit cycle count and a "10h 30m" duration, and a three-digit
+/// percentage against such a target. A fixed sample, so the layout answer is
+/// the same for an empty card and a loaded one.
+bool _columnsHoldWorstCase(BuildContext c, AppLocalizations? l, double width) {
+  final spec = _CaptionSpec.of(c, P.of(c).ink3, TextAlign.center, 2);
+  final dur = _compactHm(630, l);
+  return [
+    l?.homeSleepEstimateDefaultTight(10, dur) ??
+        '~10 cycles · $dur · default goal',
+    l?.homeSleepPctDefaultTight(113, dur) ?? '113% of default $dur',
+  ].every((t) => spec.fits(presentationText(l, t), width));
 }
 
 class _RingText extends StatelessWidget {
@@ -1655,9 +1687,25 @@ class _RingText extends StatelessWidget {
         // The caption line is reserved (two lines at the column's width), so
         // it does not move the card when a reading lands.
         const SizedBox(height: 2),
-        ConstrainedBox(
-          constraints: BoxConstraints(
-              minHeight: align == TextAlign.center ? _twoLines(c) : 0),
+        LayoutBuilder(builder: (c, outer) {
+          var reserve = _twoLines(c);
+          if (align != TextAlign.center && r.kind == HomeRingKind.sleep) {
+            final l = AppLocalizations.of(c);
+            final dur = _compactHm(630, l);
+            final sample = presentationText(
+                l,
+                l?.homeSleepOnTrackDefault(10, dur, dur) ??
+                    'on track for 10 cycles, $dur · target $dur (default)');
+            final h = _CaptionSpec.of(c, P.of(c).ink3, align, null)
+                .height(sample, outer.maxWidth);
+            if (h > reserve) reserve = h;
+          }
+          return ConstrainedBox(
+          // Both layouts reserve their caption height, so an empty card and a
+          // loaded one are the same height. Columns: two lines. Rows (no line
+          // cap): the sleep ring reserves its longest caption (a fixed sample,
+          // not today's data) at the row's own width.
+          constraints: BoxConstraints(minHeight: reserve),
           child: r.sub.isEmpty
               ? null
               : LayoutBuilder(builder: (c, box) {
@@ -1670,18 +1718,18 @@ class _RingText extends StatelessWidget {
                     presentationText(l, r.sub),
                     for (final a in r.alts) presentationText(l, a),
                   ];
-                  // Measure every wording, widest first. If none fits, the
-                  // widest compact one (the most explicit) is shown whole — it
-                  // may take a third line, but its qualifiers are never cut.
+                  // Measure every wording, widest first. The columns are only
+                  // used when the worst-case tight wording fits them
+                  // ([_columnsHoldWorstCase]), so the last one always does.
                   for (final f in forms) {
                     if (spec.maxLines == null || spec.fits(f, box.maxWidth)) {
                       return spec.build(f);
                     }
                   }
-                  return spec.build(forms.length > 1 ? forms[1] : forms.first,
-                      bounded: false);
+                  return spec.build(forms.last);
                 }),
-        ),
+        );
+        }),
       ],
     );
   }

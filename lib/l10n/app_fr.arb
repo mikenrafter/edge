@@ -2998,7 +2998,7 @@
       }
     }
   },
-  "homeSleepEstimateDefaultTight": "~{cycles, plural, =0{{cycles} cycles} one{{cycles} cycle} other{{cycles} cycles}} · {duration} · par défaut",
+  "homeSleepEstimateDefaultTight": "~{cycles, plural, =0{{cycles} cycles} one{{cycles} cycle} other{{cycles} cycles}} · {duration} · cible par défaut",
   "@homeSleepEstimateDefaultTight": {
     "description": "Tightest sleep estimate caption: keeps the estimate marker, cycles, duration and the default-target qualifier.",
     "placeholders": {

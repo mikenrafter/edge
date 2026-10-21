@@ -84,20 +84,30 @@ Future<void> _pump(WidgetTester t, double width, HomeData d,
   await t.pumpAndSettle();
 }
 
-/// The narrow ring-column Pressables (the help strip is as wide as the card).
-Iterable<Element> _columns(WidgetTester t) => find
-    .descendant(of: find.byType(RingTrio), matching: find.byType(Pressable))
-    .evaluate()
-    .where((e) => t.getSize(find.byWidget(e.widget)).width < 150);
+/// The ring columns (or rows, in the big-text layout), one per ring.
+Iterable<Element> _units(WidgetTester t) => find
+    .descendant(
+        of: find.byType(RingTrio),
+        matching: find.byWidgetPredicate((w) =>
+            w.runtimeType.toString() == '_RingColumn' ||
+            w.runtimeType.toString() == '_RingRow'))
+    .evaluate();
 
-/// The caption of each ring column: the last Text in it.
+bool _rows(WidgetTester t) =>
+    _units(t).first.widget.runtimeType.toString() == '_RingRow';
+
+/// The caption of each ring: the last Text in its column / row.
 List<Finder> _captions(WidgetTester t) => [
-      for (final col in _columns(t))
+      for (final u in _units(t))
         find
-            .descendant(
-                of: find.byWidget(col.widget), matching: find.byType(Text))
+            .descendant(of: find.byWidget(u.widget), matching: find.byType(Text))
             .last
     ];
+
+/// The rings' own height (the help strip below them is a separate slot).
+double _trioHeight(WidgetTester t) => [
+      for (final u in _units(t)) t.getSize(find.byWidget(u.widget)).height
+    ].fold(0.0, (a, b) => a + b);
 
 void main() {
   setUpAll(loadFonts);
@@ -108,6 +118,10 @@ void main() {
     ('en', 1.3, [360, 390]),
     ('es', 1, [360, 390]),
     ('fr', 1, [360, 390]),
+    // The centred three-column layout is only chosen where the worst-case
+    // caption fits it: wide viewports, and zh (short wording).
+    ('en', 1, [600]),
+    ('zh', 1, [360]),
   ];
   for (final (lang, scale, widths) in combos) {
     for (final w in widths) {
@@ -119,30 +133,37 @@ void main() {
           final caps = _captions(t);
           expect(caps.length, 3, reason: 'one caption per ring');
           final lineH = (F.cap.fontSize ?? 12) * (F.cap.height ?? 1.3) * scale;
-          // A default-target estimate (estimate marker + cycles + duration +
-          // default target) cannot be two lines of a ~91 pt column at 1.3x;
-          // there it wraps whole onto extra lines rather than drop a part.
-          final lines = scale > 1 && e.key == 'estimate, schedule, default target'
-              ? (w < 375 ? 4 : 3)
-              : 2;
+          // Columns hold two lines; the row layout has no line cap.
+          final rows = _rows(t);
           for (final f in caps) {
             final text = t.widget<Text>(f).data ?? '';
             expect(text.trim(), isNotEmpty, reason: 'empty caption');
             final box = t.renderObject<RenderParagraph>(f);
             expect(box.didExceedMaxLines, isFalse,
                 reason: '"$text" is ellipsized/cut');
-            expect(box.size.height, lessThanOrEqualTo(lines * lineH + 1),
-                reason: '"$text" needs more than two lines');
+            if (!rows) {
+              expect(box.size.height, lessThanOrEqualTo(2 * lineH + 1),
+                  reason: '"$text" needs more than two lines');
+            }
           }
           // The sleep ring is the last column; its wording keeps its
           // qualifiers in whatever form fit.
           final sleep = t.widget<Text>(caps.last).data!;
           final isDefault = e.key.contains('default');
           final isEstimate = e.key.startsWith('estimate');
-          final dflt = {'en': 'default', 'es': 'predet|por defecto', 'fr': 'défaut'}[lang]!;
+          final dflt = {'en': 'default', 'es': 'predet|por defecto', 'fr': 'défaut', 'zh': '默认'}[lang]!;
           final wantDefault = RegExp(dflt, caseSensitive: false);
           expect(wantDefault.hasMatch(sleep), isDefault,
               reason: '"$sleep" default qualifier');
+          if (isEstimate && isDefault) {
+            // The default qualifier names the TARGET (or goal), in every form.
+            expect(
+                RegExp('target|goal|objetivo|meta|objectif|cible|目标',
+                        caseSensitive: false)
+                    .hasMatch(sleep),
+                isTrue,
+                reason: '"$sleep" does not name the default target');
+          }
           if (isEstimate && lang == 'en') {
             expect(sleep.startsWith('on track') || sleep.startsWith('~'), isTrue,
                 reason: '"$sleep" lost the estimate marker');
@@ -152,27 +173,32 @@ void main() {
         });
 
         testWidgets(
-          '${w.toInt()} pt, ${e.key}: ring columns are as tall as on first launch',
-          (t) async {
-        // The ring columns are the narrow Pressables (the help strip is as
-        // wide as the card).
-        List<double> heights() => [
-              for (final e in find
-                  .descendant(
-                      of: find.byType(RingTrio), matching: find.byType(Pressable))
-                  .evaluate())
-                if (t.getSize(find.byWidget(e.widget)).width < 150)
-                  t.getSize(find.byWidget(e.widget)).height
-            ];
-        await _pump(t, w, const HomeData());
-        final empty = heights();
-        await _pump(t, w, e.value);
-        final loaded = heights();
-        expect(empty.length, 3);
-        expect(loaded, empty,
-            reason: 'column heights loaded $loaded vs empty $empty');
-      });
+            '$lang x$scale ${w.toInt()} pt, ${e.key}: same layout and height as first launch',
+            (t) async {
+          await _pump(t, w, const HomeData(),
+              locale: Locale(lang), scale: scale);
+          final emptyRows = _rows(t);
+          final empty = _trioHeight(t);
+          await _pump(t, w, e.value, locale: Locale(lang), scale: scale);
+          expect(_rows(t), emptyRows, reason: 'layout depends on the data');
+          expect(_trioHeight(t), empty,
+              reason: 'card height loaded vs empty (rows: $emptyRows)');
+        });
     }
   }
   }
+
+  testWidgets('en x1.3 360 pt: the stacked row layout, empty and loaded, equal height',
+      (t) async {
+    await _pump(t, 360, const HomeData(), scale: 1.3);
+    expect(_rows(t), isTrue, reason: 'worst-case caption does not fit columns');
+    final empty = _trioHeight(t);
+    await _pump(t, 360, _loaded['estimate, schedule, default target']!,
+        scale: 1.3);
+    expect(_rows(t), isTrue);
+    expect(_trioHeight(t), empty);
+    final cap = t.widget<Text>(_captions(t).last).data!;
+    expect(cap, contains('default'));
+    expect(cap, startsWith('on track'));
+  });
 }

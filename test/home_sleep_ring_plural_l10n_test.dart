@@ -44,7 +44,8 @@ void main() {
     expect(es.homeSleepEstimateDefaultCompact(4, '6 h'), startsWith('~4 ciclos'));
     expect(es.homeSleepEstimateDefaultCompact(4, '6 h'), contains('objetivo'));
     expect(fr.homeSleepEstimateDefaultCompact(4, '6 h'), contains('objectif par défaut'));
-    expect(fr.homeSleepEstimateDefaultTight(4, '6 h'), contains('par défaut'));
+    expect(fr.homeSleepEstimateDefaultTight(4, '6 h'), contains('cible par défaut'));
+    expect(es.homeSleepEstimateDefaultTight(4, '6 h'), contains('meta por defecto'));
     expect(fr.homeSleepPctDefaultTight(92, '8 h'), contains('par défaut'));
   });
 }
