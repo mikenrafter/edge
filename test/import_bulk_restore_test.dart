@@ -54,8 +54,9 @@ const _t0 = 1790000000; // 2026-09-21, an arbitrary fixed second
 const _wallClockColumns = {
   'compute_freshness': {'updated_at'},
   'activity_review_meta': {'activated_at', 'alert_after_ts'},
-  // The run's own bookkeeping (D38): when it started and its saved copy's mtime.
-  'import_journal': {'started_at', 'source_mtime'},
+  // The run's own bookkeeping (D38): when it started, its saved copy's mtime,
+  // and that copy's per-import path (unique by design).
+  'import_journal': {'started_at', 'source_mtime', 'source_path'},
 };
 
 void main() {
