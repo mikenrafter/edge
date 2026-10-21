@@ -3,7 +3,7 @@
 // ImportProgressView draws it.
 
 /// What the importer is doing before it copies anything.
-enum ImportPrepStep { inflating, opening, checking }
+enum ImportPrepStep { inflating, opening, checking, counting }
 
 /// The group of rows being copied.
 enum ImportStage {
@@ -25,7 +25,10 @@ sealed class ImportProgress {
 /// Unpacking, opening or checking the file; null [step] is not yet known.
 final class ImportPreparing extends ImportProgress {
   final ImportPrepStep? step;
-  const ImportPreparing([this.step]);
+
+  /// For [ImportPrepStep.counting]: tables counted so far, of all of them.
+  final int? done, total;
+  const ImportPreparing([this.step, this.done, this.total]);
 }
 
 final class ImportCopying extends ImportProgress {
