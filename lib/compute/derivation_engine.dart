@@ -3029,6 +3029,12 @@ class _BaselineHistoryCache {
 /// older days simply aren't in the substrate and are naturally excluded.
 const int _rescanWindowDays = 21;
 
+/// The union a day's prepare loaded ([DerivationEngine._loadUnion]), shared
+/// between the night search and the day / staged-night windows cut from it.
+class _UnionHolder {
+  RetainedLoad? load;
+}
+
 /// Per-day-local page/row accumulator for the prepare stage (see
 /// `_prepareTargetDay`/`_loadSubstrateRange`). Deliberately NOT shared
 /// `_diag` state — under concurrent per-day processing, multiple days
@@ -3289,6 +3295,34 @@ class DerivationEngine {
   /// end of a pass ([_pruneRetained]). Never held in the background.
   final Map<String, RetainedLoad> _retained = {};
 
+  /// The cross-day union loads of the last two days this pass prepared
+  /// (substrate_retention.dart: `window`, `join`, `usableStretches`). A day's
+  /// night search, day and staged night overlap each other and its
+  /// neighbours' by 15 to 27 hours; the next day to be prepared takes the part
+  /// of its range that one of these still holds exactly and reads only the
+  /// rest, so a cold pass reads each stored row once. Two, not one, because
+  /// the days of a pool start in order but do not all reach the load at once.
+  /// Released when the pass ends and whenever the app is backgrounded.
+  final List<RetainedLoad> _unions = [];
+
+  /// The turn at the union load. Days load it one at a time, in the order they
+  /// asked: a day that began while its neighbour was still reading would read
+  /// the same hours again. Only the load is serialised, never the staging.
+  Future<void> _unionTurn = Future.value();
+
+  Future<T> _inUnionTurn<T>(Future<T> Function() body) async {
+    final previous = _unionTurn;
+    final done = Completer<void>();
+    _unionTurn = done.future;
+    try {
+      await previous;
+      return await body();
+    } finally {
+      // Whatever happened, the next day gets its turn (4.3).
+      done.complete();
+    }
+  }
+
   /// The zone [_retained] was loaded under ([_zoneKey]).
   String? _retainedZone;
 
@@ -3474,6 +3508,7 @@ class DerivationEngine {
   void trimForBackground() {
     _cardioRowChunks.clear();
     _retained.clear();
+    _unions.clear();
     final before = _calculationStates.length;
     final labels = _calculationStates.keys.toList()..sort();
     while (labels.length > 1) {
@@ -3751,6 +3786,7 @@ class DerivationEngine {
   /// real pass on show instead of overwriting it with an empty one.
   void _finishPassPerf() {
     _pruneRetained();
+    _unions.clear();
     perf.endPass();
     final s = perf.summary();
     if (((s['days'] as int?) ?? 0) == 0) return;
@@ -4596,12 +4632,24 @@ class DerivationEngine {
     // of the day before any of its rows is read.
     final inputRevs = await LocalDb.inputRevisions(
         dayStart ~/ kRevBucketSec, (dayEnd - 1) ~/ kRevBucketSec + 1);
-    final candidate =
-        await _sleepCandidateForDay(dayId, stats: stats, banked: banked);
     // The checkpoint carries the day's RR and curve states independently of
     // the calculation state retained by this process. Probe it on warm passes
     // too, so their substrate load contains only the tail that extends it.
     final rrResume = reuse ? await _probeRrResume(dayId, inputRevs) : null;
+    // A COLD day's windows are cut from one cross-day union (one read of the
+    // hours they and the neighbouring days share). A day with a checkpoint to
+    // resume from or loads kept from the last pass is WARM: its loads already
+    // read only the rows that can have changed (substrate_retention.dart), so
+    // they stay window by window.
+    final unionHolder = !debugDisableSubstrateUnionLoad &&
+            !_lowMemory &&
+            rrResume == null &&
+            !_retained.containsKey(_retainedKey(dayId, 'load_day')) &&
+            !_retained.containsKey(_retainedKey(dayId, 'load_search'))
+        ? _UnionHolder()
+        : null;
+    final candidate = await _sleepCandidateForDay(dayId,
+        stats: stats, banked: banked, union: unionHolder);
 
     // M5: resolve ownership ONCE, over the union of every window this method
     // loads, and pass the same span lists to both the row filter and the
@@ -4631,16 +4679,33 @@ class DerivationEngine {
     // this, the live decoded path — run()/runDays()/rescanRecent(), i.e. every
     // non-import day — fell back to napSub == daySub and went on bisecting
     // naps at midnight.
-    var napSub = await _loadSubstrateRange(
-      dayStart,
-      dayEnd - 1 + napBoundaryBufferSec,
-      dayId: dayId,
-      stats: stats,
-      label: 'load_day',
-      ownership: ownership,
-      rrFromRecTs: rrResume?.skipBelowRecTs,
-      retain: true,
-    );
+    final sleepSpan = candidate.present &&
+            candidate.sleepOffsetSec > candidate.sleepOnsetSec
+        ? (candidate.sleepOnsetSec, candidate.sleepOffsetSec - 1)
+        : null;
+    if (unionHolder != null && unionHolder.load == null) {
+      // The night came from the stored candidate, so no search window was
+      // read: the day and the staged night are the union.
+      unionHolder.load = await _loadUnion(
+          dayId,
+          math.min(dayStart, sleepSpan?.$1 ?? dayStart),
+          math.max(dayEnd - 1 + napBoundaryBufferSec, sleepSpan?.$2 ?? 0),
+          stats: stats);
+    }
+    var napSub = _cutWindow(unionHolder?.load, dayId, 'load_day', dayStart,
+                dayEnd - 1 + napBoundaryBufferSec, ownership,
+                retain: true, stats: stats)
+            ?.sub ??
+        await _loadSubstrateRange(
+          dayStart,
+          dayEnd - 1 + napBoundaryBufferSec,
+          dayId: dayId,
+          stats: stats,
+          label: 'load_day',
+          ownership: ownership,
+          rrFromRecTs: rrResume?.skipBelowRecTs,
+          retain: true,
+        );
     // A day the primary band never saw is the ACTIVE WEARABLE's, when one is
     // chosen and flagged on (inputs/canonical.dart). Never mixed: a day with
     // a single primary row stays the primary's, so WHOOP days cannot move.
@@ -4662,14 +4727,18 @@ class DerivationEngine {
       sleepSub = wearable != null
           ? await wearableSubstrate(wearable, candidate.sleepOnsetSec,
               candidate.sleepOffsetSec - 1)
-          : await _loadSubstrateRange(
-              candidate.sleepOnsetSec,
-              candidate.sleepOffsetSec - 1,
-              dayId: dayId,
-              stats: stats,
-              label: 'load_sleep',
-              ownership: ownership,
-            );
+          : _cutWindow(unionHolder?.load, dayId, 'load_sleep',
+                      candidate.sleepOnsetSec, candidate.sleepOffsetSec - 1,
+                      ownership, stats: stats)
+                  ?.sub ??
+              await _loadSubstrateRange(
+                candidate.sleepOnsetSec,
+                candidate.sleepOffsetSec - 1,
+                dayId: dayId,
+                stats: stats,
+                label: 'load_sleep',
+                ownership: ownership,
+              );
     }
     _noteHeldRows(napSub.length + sleepSub.length);
     if (stats.fullReload) perf.addCount('substrate_full_reloads', 1);
@@ -4788,6 +4857,11 @@ class DerivationEngine {
   /// candidate — so the spans differ, but the rule producing them does not.
   Future<(Map<InputSignal, List<OwnedSpan>>, Map<InputSignal, List<String>>)>
       _resolveOwnership(int from, int to) async {
+    // [from, to] is a load's range, `to` INCLUDED (`_loadSubstrateRange`);
+    // spans are half-open (`spanAt`), so they are resolved up to `to + 1`.
+    // Resolved up to `to`, the load's last second had no owner and kept every
+    // device's rows, and two loads that share a second disagreed about it.
+    final end = to + 1;
     final ownership = <InputSignal, List<OwnedSpan>>{};
     // The order each signal ACTUALLY resolved under, carried on the prepared
     // day so `priority_hash` names it by construction instead of re-reading
@@ -4796,7 +4870,7 @@ class DerivationEngine {
     final priority = <InputSignal, List<String>>{};
     for (final sig in kExclusiveOwnershipSignals) {
       final rawPriority = await LocalDb.signalPriority(sig);
-      final coverage = await LocalDb.coverageIntervals(sig, from, to);
+      final coverage = await LocalDb.coverageIntervals(sig, from, end);
       // One rule for the engine, the Sources view and `signalWinners`: see
       // `effectivePriority` for the empty-order and unranked-device cases.
       var resolved =
@@ -4814,7 +4888,7 @@ class DerivationEngine {
         coverage: coverage,
         priority: resolved,
         from: from,
-        to: to,
+        to: end,
         signal: sig,
       );
     }
@@ -4864,6 +4938,10 @@ class DerivationEngine {
     String dayId, {
     _PrepareStats? stats,
     bool banked = false,
+    // Non-null: this day's windows are cut from one cross-day union; the
+    // search window's cut is the first, so the union is loaded here and left
+    // in the holder for the day and staged-night windows.
+    _UnionHolder? union,
   }) async {
     // A user sleep override is the source of truth — never serve the cached auto
     // candidate, and don't cache the override result (so a later edit / clear is
@@ -4949,15 +5027,30 @@ class DerivationEngine {
       }
       keyMs += DateTime.now().microsecondsSinceEpoch - t0;
     }
-    final searchSub = await _loadSubstrateRange(
-      range.$1,
-      range.$2,
-      dayId: dayId,
-      stats: stats,
-      label: 'load_search',
-      ownership: searchOwnership,
-      retain: true,
-    );
+    Substrate? cutSearch;
+    if (union != null) {
+      // The union holds the search window and the day's (with its nap buffer):
+      // one read for both, instead of the night's hours twice.
+      final dStart = _localDayLabelToSec(dayId);
+      final dEnd = _localNextDayLabelToSec(dayId);
+      union.load = await _loadUnion(dayId, math.min(range.$1, dStart),
+          math.max(range.$2, dEnd - 1 + napBoundaryBufferSec),
+          stats: stats);
+      cutSearch = _cutWindow(
+              union.load, dayId, 'load_search', range.$1, range.$2, searchOwnership,
+              retain: true, stats: stats)
+          ?.sub;
+    }
+    final searchSub = cutSearch ??
+        await _loadSubstrateRange(
+          range.$1,
+          range.$2,
+          dayId: dayId,
+          stats: stats,
+          label: 'load_search',
+          ownership: searchOwnership,
+          retain: true,
+        );
     // PERSONALIZED STAGER (v42): stage on a WORKER isolate, NOT the main/UI
     // thread. cardioStager reads analytics "ambient" globals — the rolling sleep
     // profile (`cardioUserProfile`) it blends in (bounded ≤0.5) and the
@@ -5429,6 +5522,135 @@ class DerivationEngine {
     return (startSec: startSec, endSec: endSec);
   }
 
+  /// [from, to] of one day as a single load: the cross-day union (see
+  /// [_unions]). What the last days of this pass already hold of it is cut out
+  /// of them; only the stretches no one holds are read from `decoded_onehz`
+  /// (booked as `load_day`), and the pieces are joined as one load would have
+  /// built them. Null when it cannot be built exactly; the caller then loads
+  /// its windows one by one.
+  Future<RetainedLoad?> _loadUnion(String dayId, int from, int to,
+      {_PrepareStats? stats}) async {
+    if (to < from) return null;
+    return _inUnionTurn(() async {
+      final startedAt = DateTime.now().millisecondsSinceEpoch;
+      final (resolved, _) = await _resolveOwnership(from, to);
+      final ownership = {
+        for (final sig in kExclusiveOwnershipSignals)
+          sig: resolved[sig] ?? const <OwnedSpan>[],
+      };
+      final multiOwner = ownersOf(ownership).length > 1;
+      final generation = LocalDb.storeGeneration;
+      // Before any row, here or in a part: a row landing during the load
+      // leaves the next check stale, never falsely current.
+      final revs = await LocalDb.inputRevisions(
+          from ~/ kRevBucketSec, to ~/ kRevBucketSec + 1);
+      final cutStartedAt = DateTime.now().millisecondsSinceEpoch;
+      final stretches = usableStretches(_unions,
+          from: from,
+          to: to,
+          revs: revs,
+          ownership: ownership,
+          multiOwner: multiOwner,
+          generation: generation);
+      final borrowed = <RetainedLoad>[
+        for (final st in stretches)
+          ?st.base.window(st.a, st.b,
+              ownership: ownership, multiOwner: multiOwner),
+      ];
+      var cutMs = DateTime.now().millisecondsSinceEpoch - cutStartedAt;
+      Future<RetainedLoad?> read(int a, int b) async {
+        final got = <RetainedLoad>[];
+        await _loadSubstrateRange(a, b,
+            dayId: dayId,
+            stats: stats,
+            label: 'load_day',
+            ownership: ownership,
+            onRun: got.add);
+        return got.isEmpty ? null : got.single;
+      }
+
+      final parts = <RetainedLoad>[];
+      var pos = from;
+      var borrowedRows = 0;
+      for (final part in borrowed) {
+        if (part.from > pos) {
+          final gap = await read(pos, part.from - 1);
+          if (gap == null) return null;
+          parts.add(gap);
+        }
+        parts.add(part);
+        borrowedRows += part.samples;
+        pos = part.to + 1;
+      }
+      if (pos <= to) {
+        final gap = await read(pos, to);
+        if (gap == null) return null;
+        parts.add(gap);
+      }
+      final joinStartedAt = DateTime.now().millisecondsSinceEpoch;
+      var union = RetainedLoad.join(parts,
+          revs: revs,
+          ownership: ownership,
+          multiOwner: multiOwner,
+          generation: generation);
+      cutMs += DateTime.now().millisecondsSinceEpoch - joinStartedAt;
+      if (union == null) {
+        // The parts do not make one load (a different skin-temperature unit in
+        // each): read the whole range, as a window load would.
+        borrowedRows = 0;
+        union = await read(from, to);
+        if (union == null) return null;
+      }
+      perf.addStage('union_cut', cutMs);
+      perf.addCount('union_borrowed_rows', borrowedRows);
+      _unions.add(union);
+      while (_unions.length > 2) {
+        _unions.removeAt(0);
+      }
+      _noteHeldRows(union.samples);
+      perf.addStage(
+          'union_load', DateTime.now().millisecondsSinceEpoch - startedAt);
+      return union;
+    });
+  }
+
+  /// The window [a, b] of [union] as the load `label` would have returned
+  /// (`load_search`, `load_day`, `load_sleep`), or null when the union cannot
+  /// stand in for it and the caller loads it from the database. [retain]
+  /// keeps it for the next pass of the day, the way the load would have.
+  RetainedLoad? _cutWindow(
+    RetainedLoad? union,
+    String dayId,
+    String label,
+    int a,
+    int b,
+    Map<InputSignal, List<OwnedSpan>> ownership, {
+    bool retain = false,
+    _PrepareStats? stats,
+  }) {
+    if (union == null || b < a) return null;
+    final startedAt = DateTime.now().millisecondsSinceEpoch;
+    final window = union.window(a, b,
+        ownership: ownership, multiOwner: ownersOf(ownership).length > 1);
+    perf.addStage(label, DateTime.now().millisecondsSinceEpoch - startedAt);
+    if (window == null) {
+      perf.addCount('union_refused_$label', 1);
+      return null;
+    }
+    perf.addCount('union_cut_rows_$label', window.samples);
+    if (retain && !_lowMemory && window.samples > 0) {
+      final zone = _zoneKey();
+      if (_retainedZone != zone) {
+        if (_retained.isNotEmpty && stats != null) stats.fullReload = true;
+        _retained.clear();
+        _retainedZone = zone;
+      }
+      _retained[_retainedKey(dayId, label)] = window;
+      _boundRetained();
+    }
+    return window;
+  }
+
   Future<Substrate> _loadSubstrateRange(
     int fromRecTs,
     int toRecTs, {
@@ -5450,6 +5672,10 @@ class DerivationEngine {
     // start from the one kept last time when nothing behind its tail has
     // changed. [label] names it. Null: always a full read, nothing kept.
     bool retain = false,
+    // Hand the load over as a [RetainedLoad] too (not kept in [_retained]):
+    // the cross-day union reads its gaps this way and joins them to the parts
+    // it already holds. Called once, when the load finishes with rows' facts.
+    void Function(RetainedLoad run)? onRun,
   }) async {
     if (toRecTs < fromRecTs) return Substrate.empty;
     final loadStartedAt = DateTime.now().millisecondsSinceEpoch;
@@ -5463,25 +5689,29 @@ class DerivationEngine {
     Map<int, int>? revsNow;
     var multiOwner = false;
     final generation = LocalDb.storeGeneration;
-    if (retainKey != null) {
+    if (retainKey != null || onRun != null) {
       // A move to another zone moves every day boundary: nothing kept for the
       // days of the old zone is a window of the new one.
-      final zone = _zoneKey();
-      if (_retainedZone != zone) {
-        if (_retained.isNotEmpty && stats != null) stats.fullReload = true;
-        _retained.clear();
-        _retainedZone = zone;
+      if (retainKey != null) {
+        final zone = _zoneKey();
+        if (_retainedZone != zone) {
+          if (_retained.isNotEmpty && stats != null) stats.fullReload = true;
+          _retained.clear();
+          _retainedZone = zone;
+        }
       }
       revsNow = await LocalDb.inputRevisions(
           fromRecTs ~/ kRevBucketSec, toRecTs ~/ kRevBucketSec + 1);
       multiOwner = ownersOf(ownership).length > 1;
+    }
+    if (retainKey != null) {
       prior = _retained.remove(retainKey);
       if (prior != null) {
         final r = prior.reuse(
           from: fromRecTs,
           to: toRecTs,
           rrFrom: rrFromRecTs,
-          revs: revsNow,
+          revs: revsNow!,
           ownership: ownership,
           multiOwner: multiOwner,
           generation: generation,
@@ -5627,7 +5857,7 @@ class DerivationEngine {
       worker.send({
         'type': 'config',
         'mode': 'substrate',
-        if (retainKey != null) 'retain': true,
+        if (retainKey != null || onRun != null) 'retain': true,
       });
       if (prior != null && cut != null) {
         worker.send(prior.seedMessage(cut, rrFromRecTs, keepBeats));
@@ -5792,8 +6022,11 @@ class DerivationEngine {
       final newCut = lastRowRecTs != null
           ? (lastRowRecTs ~/ kRevBucketSec) * kRevBucketSec
           : priorCut;
-      if (retainKey != null && extras != null && newCut != null && !_lowMemory) {
-        _retained[retainKey] = RetainedLoad(
+      if ((retainKey != null || onRun != null) && extras != null) {
+        // A range with no row at all still proves it had none (as of [revsNow]);
+        // that is only worth keeping for a union part, never as a warm load.
+        final cutAt = newCut ?? (fromRecTs ~/ kRevBucketSec) * kRevBucketSec;
+        final run = RetainedLoad(
           from: fromRecTs,
           to: toRecTs,
           rrFrom: rrFromRecTs,
@@ -5804,7 +6037,7 @@ class DerivationEngine {
           },
           multiOwner: multiOwner,
           generation: generation,
-          cut: newCut,
+          cut: cutAt,
           sub: loaded,
           rrStart: extras['rr_start'] as Int32List,
           rrTsRaw: extras['rr_ts_raw'] as Float64List,
@@ -5813,7 +6046,11 @@ class DerivationEngine {
               BucketMeta.fromWire((w as List).cast<Object?>()),
           ],
         );
-        _boundRetained();
+        if (retainKey != null && newCut != null && !_lowMemory) {
+          _retained[retainKey] = run;
+          _boundRetained();
+        }
+        onRun?.call(run);
       }
       _noteHeldRows(loaded.length);
       return loaded;
@@ -7982,6 +8219,10 @@ class DerivationEngine {
   /// checkpoint, its family has no quiet cut, the curves were folded under
   /// another one, or the tail does not continue the state. The caller then
   /// reads the day's whole beats.
+  static DayTailResult? Function() _dayTailJob(
+          WorkerInputs inputs, DayTailInput input) =>
+      () => foldDayTailHeavy(inputs, input);
+
   Future<DayTailResult?> _streamDayTail(PreparedDerivationDay day) async {
     final probe = day.rrResume!;
     final sub = day.daySub;
@@ -8013,10 +8254,14 @@ class DerivationEngine {
         zoneId: 'UTC',
         localeTag: 'en',
       );
+      // Built in a static so the job's closure context holds only its two
+      // inputs: a closure made here would share this method's context, which
+      // holds the engine, and the engine is not sendable (its Futures).
+      final job = _dayTailJob(inputs, input);
       return await perf.stage(
         'day_stream',
         () => _runIsolateCancellable<DayTailResult?>(
-          () => foldDayTailHeavy(inputs, input),
+          job,
           _perDayTimeout,
           label: 'day-stream ${day.date}',
         ),

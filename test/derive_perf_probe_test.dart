@@ -4,6 +4,7 @@
 // [perf] log lines plus wall ms per day.
 //
 //   DERIVE_PERF_PROBE=1 flutter test test/derive_perf_probe_test.dart
+//   DERIVE_UNION=0 ...   loads each day's windows one by one (no cross-day union)
 //
 // IMPORT_PERF_SRC overrides the export path.
 
@@ -68,6 +69,8 @@ void main() {
       final engine = DerivationEngine(
           log: (m) => note('LOG $m'), perf: _CapturePerf(note));
       engine.debugDayHook = (d) async => note('DAY START $d');
+      engine.debugDisableSubstrateUnionLoad =
+          Platform.environment['DERIVE_UNION'] == '0';
 
       var t = clock.elapsedMilliseconds;
       await engine.finalizeImport(profile);

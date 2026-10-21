@@ -130,14 +130,16 @@ Future<Map<InputSignal, List<OwnedSpan>>> _expectedOwnership() async {
   final unionFrom = [dayStart, range.$1, onsetSec].reduce(math.min);
   final unionTo =
       [dayEnd - 1 + napBoundaryBufferSec, range.$2, offsetSec].reduce(math.max);
+  // The union's last second is loaded too, and spans are half-open.
+  final spanEnd = unionTo + 1;
   final out = <InputSignal, List<OwnedSpan>>{};
   for (final sig in const [InputSignal.hr1Hz, InputSignal.rrIntervals]) {
     final raw = await LocalDb.signalPriority(sig);
     out[sig] = resolveOwnership(
-      coverage: await LocalDb.coverageIntervals(sig, unionFrom, unionTo),
+      coverage: await LocalDb.coverageIntervals(sig, unionFrom, spanEnd),
       priority: raw.isEmpty ? const [LocalDb.kPrimaryDeviceId] : raw,
       from: unionFrom,
-      to: unionTo,
+      to: spanEnd,
       signal: sig,
     );
   }
