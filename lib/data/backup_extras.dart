@@ -274,6 +274,7 @@ class ImportSummary {
     this.prefsRestored = 0,
     this.prefsKept = 0,
     this.filesRestored = 0,
+    this.interruptedAndResumed = 0,
   });
 
   /// Days with raw (decoded) data in the source.
@@ -290,6 +291,9 @@ class ImportSummary {
   /// kAlgoVersion.
   final int sourceDaysAboveCeiling;
   final int prefsRestored, prefsKept, filesRestored;
+
+  /// Times this import was interrupted and resumed (D38). Stub: always 0.
+  final int interruptedAndResumed;
 }
 
 /// Kept in `compute_freshness`, not in the preferences: it is a record of this

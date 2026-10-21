@@ -38,6 +38,12 @@ final class ImportCopying extends ImportProgress {
       this.stage, this.rowsDone, this.rowsTotal, this.stageIndex, this.stageCount);
 }
 
+/// A previously interrupted import is being resumed at ([stage], [rowsDone]).
+final class ImportResuming extends ImportCopying {
+  const ImportResuming(super.stage, super.rowsDone, super.rowsTotal,
+      super.stageIndex, super.stageCount);
+}
+
 /// Recalculating days from the imported data. [day] is the label of the last
 /// finished day.
 final class ImportRebuilding extends ImportProgress {
