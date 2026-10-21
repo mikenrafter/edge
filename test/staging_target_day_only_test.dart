@@ -243,25 +243,13 @@ void main() {
       debugStageEveryWalkedDay = false;
       debugSegmentedDayCount = 0;
       final now = run(mayFold: true);
-      expect(debugSegmentedDayCount, oldBodies,
-          reason: 'folding keeps the full walk');
+      expect(oldBodies, greaterThan(1));
+      expect(debugSegmentedDayCount, 1,
+          reason: 'D36: the fold reads only the target, so the skip applies');
       expect(now.candidateJson, old.candidateJson);
       expect(now.observationJson, old.observationJson);
     });
-
-    test('KNOWN MISATTRIBUTION (kept as is): the fold stores the previous '
-        "night's observation under the target's id", () {
-      // edge.research merge-decisions-log D36: fixing this changes the
-      // personal profile (an output change needing a kAlgoVersion bump), so
-      // the owner decides. Until then this documents today's behaviour.
-      final res = run(mayFold: true);
-      final cand = jsonDecode(res.candidateJson) as Map<String, dynamic>;
-      final win = (cand['sleep_json'] as Map)['window'] as Map;
-      final targetEpochs = (win['spt_sec'] as int) ~/ 30;
-      expect(targetEpochs, greaterThan(120));
-      final obs = jsonDecode(res.observationJson!) as Map<String, dynamic>;
-      expect(obs['epochs'] as int, greaterThan(targetEpochs + 300),
-          reason: 'the 9 h previous night (~1068 epochs) wins the fold');
-    });
+    // The old "KNOWN MISATTRIBUTION" pin moved to
+    // staging_fold_target_only_test.dart (D36: fold the target's own night).
   });
 }
