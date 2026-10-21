@@ -16,6 +16,9 @@
     "file_size_exceptions": {
       "entries": 0
     },
+    "group_unknown_cost_members": {
+      "entries": 3
+    },
     "heavy_calc_baseline": {
       "entries": 1984,
       "occurrences": 2188

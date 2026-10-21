@@ -153,6 +153,10 @@ const List<RatchetList> kRatchets = <RatchetList>[
   RatchetList('heavy_migration_methods',
       'test/guards/support/heavy_guard.dart', RatchetKind.dartLiteral,
       symbol: 'kMigrationMethods'),
+  // 3 (edge entries only until design 06 step 1b; it may only shrink).
+  RatchetList('group_unknown_cost_members',
+      'lib/compute/groups/edge_groups.dart', RatchetKind.dartLiteral,
+      symbol: 'kGroupUnknownCostMembers'),
 ];
 
 /// Reads a repo-relative file; null when it does not exist.
