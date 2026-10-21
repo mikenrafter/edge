@@ -31,6 +31,7 @@ void main() {
   setUp(() {
     f = _Fake();
     phoneVibrator = f;
+    resetPhoneVibrationForTest();
   });
   tearDown(() => phoneVibrator = saved);
 
@@ -73,19 +74,58 @@ void main() {
     });
   });
 
-  test('only the example that started the vibration can cancel it', () {
+  test('the latest vibration wins: owned then owned stops the first at '
+      'takeover, and Stop afterwards cancels only the active one', () {
     fakeAsync((async) {
       final a = HapticCancel(), b = HapticCancel();
       vibratePhoneFor(const Duration(seconds: 5), cancel: a);
       async.elapse(const Duration(milliseconds: 100));
       vibratePhoneFor(const Duration(seconds: 5), cancel: b);
       async.elapse(const Duration(milliseconds: 100));
+      expect(f.cancels, 1, reason: 'the first hold ran on under the second');
       a.cancel();
       async.flushMicrotasks();
-      expect(f.cancels, 0, reason: 'A killed B\'s vibration');
+      expect(f.cancels, 1, reason: 'A cut off B\'s vibration');
       b.cancel();
       async.flushMicrotasks();
+      expect(f.cancels, 2);
+    });
+  });
+
+  test('owned then unowned (a short preview): the hold is stopped at '
+      'takeover and a later Stop has nothing of the example\'s to cancel', () {
+    fakeAsync((async) {
+      final a = HapticCancel();
+      vibratePhoneFor(const Duration(seconds: 5), cancel: a);
+      async.elapse(const Duration(milliseconds: 100));
+      vibratePhoneFor(const Duration(milliseconds: 200));
+      async.elapse(const Duration(milliseconds: 50));
       expect(f.cancels, 1);
+      a.cancel();
+      async.flushMicrotasks();
+      expect(f.cancels, 1, reason: 'Stop cancelled the preview');
+    });
+  });
+
+  test('unowned then owned: the running unowned vibration is stopped at '
+      'takeover', () {
+    fakeAsync((async) {
+      vibratePhoneFor(const Duration(seconds: 5));
+      async.elapse(const Duration(milliseconds: 100));
+      vibratePhoneFor(const Duration(seconds: 1), cancel: HapticCancel());
+      async.flushMicrotasks();
+      expect(f.cancels, 1);
+    });
+  });
+
+  test('a hold that already ran out is never cancelled at takeover', () {
+    fakeAsync((async) {
+      final a = HapticCancel();
+      vibratePhoneFor(const Duration(milliseconds: 300), cancel: a);
+      async.elapse(const Duration(seconds: 1));
+      vibratePhoneFor(const Duration(seconds: 1), cancel: HapticCancel());
+      async.flushMicrotasks();
+      expect(f.cancels, 0);
     });
   });
 

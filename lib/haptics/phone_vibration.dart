@@ -43,11 +43,18 @@ PhoneVibrator phoneVibrator = _PluginVibrator();
 // vibration is over and there is nothing left to cancel.
 class _Active {
   _Active(this.owner, this.endsAt);
-  final HapticCancel owner;
+  final HapticCancel? owner; // null: a vibration no example started
   final DateTime endsAt;
 }
 
 _Active? _active;
+
+/// Forgets the running vibration and the cached capability. Tests only.
+void resetPhoneVibrationForTest() {
+  _active = null;
+  _capability = null;
+  _capabilityOf = null;
+}
 
 // Whether the phone vibrates for a chosen length: asked once per process (per
 // vibrator, so a test's fake gets its own answer).
@@ -72,10 +79,22 @@ Future<void> vibratePhoneFor(Duration hold, {HapticCancel? cancel}) async {
   try {
     if (hold > Duration.zero && await _supportsDuration()) {
       if (cancel?.cancelled == true) return;
-      final mine = cancel == null ? null : _Active(cancel, clock.now().add(hold));
+      // The latest vibration wins, literally: a platform may start a second
+      // player without stopping the first, so the one still running is
+      // stopped before its ownership is dropped. A hold that has run out is
+      // not touched (nothing of ours is left, and it may be someone else's).
+      final prior = _active;
+      if (prior != null && clock.now().isBefore(prior.endsAt)) {
+        _active = null;
+        try {
+          await vibrator.cancel();
+        } catch (_) {}
+        if (cancel?.cancelled == true) return;
+      }
+      final mine = _Active(cancel, clock.now().add(hold));
       _active = mine;
-      if (mine != null) {
-        unawaited(cancel!.whenCancelled.then((_) {
+      if (cancel != null) {
+        unawaited(cancel.whenCancelled.then((_) {
           if (identical(_active, mine) && clock.now().isBefore(mine.endsAt)) {
             _active = null;
             return vibrator.cancel().catchError((Object _) {});
