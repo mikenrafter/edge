@@ -87,6 +87,7 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   // Long-term archive: already compressed and grows for ever.
   'substrate_archive': (SliceKeep.none, null, 'compressed long-term archive of old raw data'),
   'spectral_archive': (SliceKeep.none, null, 'compressed sample archive of old 1 Hz data'),
+  'import_journal': (SliceKeep.none, null, 'where this install\'s last backup import stands'),
   // Resumable derive state: large blobs, only the recent days are useful.
   'day_checkpoint': (SliceKeep.recentDay, 'day_id', 'derive resume checkpoints'),
   // Daily scores and everything they are built from: every day.

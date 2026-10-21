@@ -63,6 +63,7 @@ import 'sample_codec.dart' show SampleCodec;
 import 'sample_import.dart' show importSamplePart;
 import 'import_copy_plan.dart';
 import 'import_progress.dart';
+import 'import_journal.dart';
 import 'backup_extras.dart';
 import '../settings/settings_repository.dart' show SettingsRepository, settingsRestoredSignal;
 import 'sample_lock.dart' show SampleLock;
@@ -87,6 +88,7 @@ part 'db/schema.dart';
 part 'db/sync_store.dart';
 part 'db/derive_store.dart';
 part 'db/restore.dart';
+part 'db/import_run.dart';
 part 'db/feature_store.dart';
 
 /// The outcome of a database rebuild: why the old file would not open, where it
@@ -635,7 +637,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 75;
+  static const int schemaVersion = 76;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -5202,6 +5204,8 @@ class LocalDb {
   /// wrote: for a day whose only source was just switched off, so a re-derive
   /// that finds nothing leaves nothing behind.
   static Future<void> clearDerivedDays(Set<String> dayIds) => _ldbClearDerivedDays(dayIds);
+  static Future<Map<String, int>> runJournaledImport(ImportRun run, void Function(ImportProgress p)? onProgress) => _ldbRunJournaledImport(run, onProgress);
+  static Future<void> applyImportRederive() => _ldbApplyImportRederive();
 
   static Future<int> deleteDays(Set<String> dayIds) => _ldbDeleteDays(dayIds);
 
@@ -5583,14 +5587,16 @@ class LocalDb {
     List<String>? only,
     bool tolerant = false,
     void Function(ImportProgress p)? onProgress,
-  }) => _ldbPrivMergeFromDbFile(path, only: only, tolerant: tolerant, onProgress: onProgress);
+    ImportRun? run,
+  }) => _ldbPrivMergeFromDbFile(path, only: only, tolerant: tolerant, onProgress: onProgress, run: run);
 
   static Future<Map<String, int>> _mergeFromDbFileBody(
     String path, {
     List<String>? only,
     bool tolerant = false,
     void Function(ImportProgress p)? onProgress,
-  }) => _ldbPrivMergeFromDbFileBody(path, only: only, tolerant: tolerant, onProgress: onProgress);
+    ImportRun? run,
+  }) => _ldbPrivMergeFromDbFileBody(path, only: only, tolerant: tolerant, onProgress: onProgress, run: run);
 
   // ── diagnostics (read-only summaries for the Diagnostics screen) ────────────
 

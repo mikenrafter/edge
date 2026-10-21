@@ -74,6 +74,7 @@ import '../compute/inputs/measurement_inputs.dart'
 import '../compute/profile.dart';
 import '../data/day_label.dart';
 import '../data/import_progress.dart';
+import '../data/import_journal.dart';
 import '../data/med_store.dart' show MedDb, MedDef;
 import '../data/auto_backup.dart'
     show BackupCadence, BackupOutcome, BackupFolder, AndroidBackupStorage, runBackup;
@@ -1506,7 +1507,7 @@ class AppState extends ChangeNotifier {
         // (whose commits must land before the ACK), retries a refused or
         // partial pass, and survives the app closing. The import ends when
         // the data is in; deriveProgress shows the recalculation.
-        _deriveCoordinator.scheduler.requestHeavy(reason: 'import');
+        await _deriveImportWhenDone();
       } catch (e) {
         importRollupError = '$e';
       }
@@ -1524,6 +1525,39 @@ class AppState extends ChangeNotifier {
       if (importProgress.value is! ImportFailed) {
         importProgress.value = null;
       }
+    }
+  }
+
+  /// The post-import derive, requested only once the journal says done.
+  Future<bool> _deriveImportWhenDone() => ImportJournal.requestDeriveWhenDone(
+      () => _deriveCoordinator.scheduler.requestHeavy(reason: 'import'));
+
+  /// D38: finish an import the process died in (app start, import screen).
+  /// The derive is requested only once the journal says done.
+  Future<void> resumeUnfinishedImport({bool force = false}) async {
+    final r = await ImportJournal.resumeIfUnfinished(
+      force: force,
+      onProgress: (p) => importProgress.value = p,
+    );
+    if (!r.resumed) return;
+    try {
+      if (r.error != null) {
+        importProgress.value = ImportFailed(r.error!);
+        return;
+      }
+      unawaited(gestureSettings.bootstrap());
+      await _loadAlarmSchedule();
+      importProgress.value = const ImportRebuilding(0, 0, null);
+      await refreshActivityReviews();
+      await _derive.finalizeImport(_profile);
+      await _deriveImportWhenDone();
+      await _deriveCoordinator.publishNow();
+      notifyListeners();
+      importProgress.value = const ImportDone();
+    } catch (e) {
+      importRollupError = '$e';
+    } finally {
+      importProgress.value = null;
     }
   }
 
@@ -4092,6 +4126,9 @@ class AppState extends ChangeNotifier {
     unawaited(_workout.reconcileOrphanedLiveWorkout());
     initialized = true;
     notifyListeners();
+    // An import the process was killed in resumes here and is never silent
+    // (D38). Off the critical path; the copy runs in SQLite, not on this isolate.
+    unawaited(resumeUnfinishedImport());
     // Companion (anonymous telemetry + health-data contribution) — best-effort,
     // OFF the critical path so it can never block/break boot. Guarded internally.
     unawaited(_initCompanion());

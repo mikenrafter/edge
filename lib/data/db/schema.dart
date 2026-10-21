@@ -220,6 +220,7 @@ Future<Database> _ldbPrivOpen() async {
         await LocalDb._createSleepOverride(db);
         await LocalDb._createSleepNap(db);
         await LocalDb._createVendorSleepEpoch(db);
+        await ImportJournal.ensureSchema(db);
         await ActivityStore.create(db);
         await LocalDb._createWorkoutRoute(db);
         await LocalDb._createNotifFired(db);
@@ -1016,6 +1017,13 @@ Future<Database> _ldbPrivOpen() async {
           // A band's own hypnogram (`vendor_staged`). New table only.
           await LocalDb._createVendorSleepEpoch(db);
         }
+        if (oldV < 76) {
+          // The import journal (D38): one small additive table, no backfill
+          // (no row means "no import ever journaled"), cheap under iOS's CPU
+          // watchdog (invariant 11). No kAlgoVersion bump: nothing derived
+          // moves. _repairOpenSchema re-runs it on every open.
+          await ImportJournal.ensureSchema(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
@@ -1094,6 +1102,7 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._createSleepOverride(db);
     await LocalDb._createSleepNap(db);
     await LocalDb._createVendorSleepEpoch(db);
+    await ImportJournal.ensureSchema(db);
     await ActivityStore.create(db);
     await LocalDb._createWorkoutRoute(db);
     await LocalDb._ensureWorkoutRouteSpeed(db);

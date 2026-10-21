@@ -613,25 +613,6 @@ Future<Set<String>> _ldbForeignFamilyDates({required Iterable<String> ignore}) a
     return {for (final r in rows) r['date'] as String};
   }
 
-/// Merges the SQL tables of the plain database at [file], then puts back what
-/// rides beside them (settings, recordings) and leaves the summary. Both the
-/// real import and the row-by-row oracle end here, so they stay identical.
-Future<Map<String, int>> _ldbImportPlain(String file, void Function(ImportProgress p)? onProgress) async {
-    // Before anything merges: "fresh" means this install held no data.
-    final fresh = await isFreshInstall();
-    final counts = await SampleLock.run(
-        () => LocalDb._mergeFromDbFile(file, onProgress: onProgress));
-    final extras = await restoreBackupExtras(file, freshInstall: fresh);
-    await recordImportSummary(file,
-        archiveBucketsSkipped: counts['_substrate_archive_skipped'] ?? 0,
-        extras: extras);
-    if (extras.keysWritten.isNotEmpty) {
-      await SettingsRepository.instance.announceRestored(extras.keysWritten);
-      settingsRestoredSignal.value++;
-    }
-    return counts;
-  }
-
 Future<Map<String, int>> _ldbImportFromDbFile(String path, {required void Function(ImportProgress p)? onProgress}) async {
     if (!await File(path).exists()) {
       throw const FileSystemException('Backup file not found');
@@ -719,17 +700,17 @@ ImportStage _ldbPrivImportStageOf(String table) => switch (table) {
         _ => ImportStage.other,
       };
 
-Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress}) async {
+Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) async {
     final committedBefore = LocalDb._mergePagesCommitted;
     try {
       return await LocalDb._mergeFromDbFileBody(path,
-          only: only, tolerant: tolerant, onProgress: onProgress);
+          only: only, tolerant: tolerant, onProgress: onProgress, run: run);
     } finally {
       if (LocalDb._mergePagesCommitted != committedBefore) LocalDb._markStoreReplaced();
     }
   }
 
-Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress}) async {
+Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) async {
     // One place that reports a preparing step (opening, checking, counting).
     void prep(ImportPrepStep step, [int? done, int? total]) =>
         onProgress?.call(ImportPreparing(step, done, total));
@@ -737,6 +718,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     final src = await openDatabase(path, readOnly: true);
     final db = await LocalDb.instance;
     const tables = LocalDb._restoreTables;
+    // D38: where a resumed import starts (table index, rowid inside it).
+    final order = only ?? tables;
+    final startIdx = run?.startIndex(order) ?? 0;
+    final resumed = run?.resumed ?? false;
     const bulkTables = {
       'decoded_onehz',
       'decoded_rr',
@@ -780,7 +765,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // get the same protection, or trends and the rolling baselines would be
     // rebuilt from the other export's numbers while day detail serves ours.
     prep(ImportPrepStep.checking);
-    final finalizedDays = {
+    var finalizedDays = {
       for (final r in await db.query(
         'day_result',
         columns: ['day_id'],
@@ -789,7 +774,21 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       ))
         '${r['day_id']}',
     };
-    var archiveSkipped = 0;
+    if (run != null) {
+      // A resume must protect the days that were final BEFORE the import, not
+      // the finalized rows this import has landed since (they would make the
+      // series scalars of every imported day look locally owned and skip them).
+      final saved = run.preFinal;
+      if (saved != null) {
+        finalizedDays = saved.toSet();
+      } else {
+        run.preFinal = finalizedDays.toList();
+        await ImportJournal.putMeta({'preFinal': run.preFinal!.join(',')});
+      }
+    }
+    var archiveSkipped = run?.archiveSkipped ?? 0;
+    final resumedHad = <String>{};
+    bool had(String t) => (counts[t] ?? 0) > 0 || resumedHad.contains(t);
     int? archiveEdgeSec;
     var impAttached = false;
     var finalizedDaysSnapshot = false;
@@ -800,7 +799,20 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     String numericSql(String value) =>
         "typeof($value) IN ('integer', 'real')";
 
-    Future<bool> mergeBulkTable(String t) async {
+    // A resumed day_result table: the days the earlier run already landed.
+    Future<void> seedImportedDays(int upToRowid) async {
+      try {
+        for (final r in await src.rawQuery(
+            'SELECT DISTINCT day_id FROM day_result WHERE rowid <= ?',
+            [upToRowid])) {
+          importedDays?.add('${r['day_id']}');
+        }
+      } on DatabaseException {
+        /* the export lacks day_result */
+      }
+    }
+
+    Future<bool> mergeBulkTable(String t, int index) async {
       if (!impAttached || !bulkTables.contains(t)) return false;
       final exists = await db.rawQuery(
         "SELECT 1 FROM imp.sqlite_master WHERE type = 'table' AND name = ?",
@@ -808,7 +820,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       );
       if (exists.isEmpty) return true;
 
-      if (t == 'day_result') importedDays = <String>{};
+      if (t == 'day_result') {
+        importedDays = <String>{};
+        await seedImportedDays(run?.startRowid(index, order) ?? 0);
+      }
       final destInfo = await db.rawQuery('PRAGMA main.table_info(${quoteSql(t)})');
       if (destInfo.isEmpty) return false;
       final sourceInfo = await db.rawQuery('PRAGMA imp.table_info(${quoteSql(t)})');
@@ -925,7 +940,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       // Small enough that a band-sync commit (which must land before the ACK)
       // never waits long behind one, and a salvage loses little to one
       // unreadable chunk.
-      const chunkRows = 25000;
+      final chunkRows = ImportHooks.chunkRows ?? 25000;
+      final startLower = run?.startRowid(index, order) ?? 0;
       var protectedDayResults = false;
       var rrSourceMax = false;
       var copied = 0;
@@ -957,10 +973,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                 [lo, lo + chunkRows]);
           }
         }
-        var lower = 0;
+        var lower = startLower;
+        var lastChunkCopied = -1;
         while (lower < maxRowid) {
           final upper = lower + chunkRows > maxRowid ? maxRowid : lower + chunkRows;
-          final first = lower == 0;
+          final first = lower == startLower;
           await db.transaction((txn) async {
             if (t == 'day_result' && first) {
               // Inside the first chunk's transaction, so a day the engine
@@ -984,10 +1001,12 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
               );
             }
             await txn.execute(insertSql, [lower, upper]);
-            copied += Sqflite.firstIntValue(
+            final chunkCopied = Sqflite.firstIntValue(
                   await txn.rawQuery('SELECT changes()'),
                 ) ??
                 0;
+            copied += chunkCopied;
+            lastChunkCopied = chunkCopied;
             if (t == 'decoded_rr') {
               // Materialised and driven from the chunk's seconds, so the
               // delete walks decoded_rr's (device_id, ts_ms, beat_index) key
@@ -1006,9 +1025,29 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   ON r.device_id = c.d AND r.ts_ms = c.k AND r.beat_index > c.m)''');
               await txn.execute('DROP TABLE temp._restore_rr_carried');
             }
+            if (run != null) {
+              // In the chunk's own transaction: journal == data, always.
+              await ImportJournal.advance(txn, run, index, t, upper, chunkCopied);
+              final hook = ImportHooks.chunk;
+              if (hook != null) {
+                await Zone.current.runBinary(
+                    hook, txn, ImportChunk(t, lower ~/ chunkRows, lower, upper));
+              }
+            }
           });
           LocalDb._mergePagesCommitted++;
+          ImportJournal.notify();
           lower = upper;
+          if (lastChunkCopied == 0 && lower < maxRowid) {
+            // A table keyed on a big integer (rec_ts as the rowid) is mostly
+            // gaps: jump to its next row instead of walking every empty chunk
+            // (each one a transaction and a journal write).
+            final next = Sqflite.firstIntValue(await db.rawQuery(
+                'SELECT MIN(rowid) FROM imp.${quoteSql(t)} WHERE rowid > ?',
+                [lower]));
+            if (next == null) break;
+            if (next - 1 > lower) lower = next - 1;
+          }
           plan?.advance(t, upper);
         }
       } finally {
@@ -1041,8 +1080,19 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         }
         if (impAttached) {
           await db.execute('DROP TABLE IF EXISTS temp._restore_finalized_days');
-          await db.execute('CREATE TEMP TABLE _restore_finalized_days AS '
-              'SELECT day_id FROM main.day_result WHERE finalized = 1');
+          if (resumed) {
+            await db.execute(
+                'CREATE TEMP TABLE _restore_finalized_days (day_id TEXT)');
+            for (final chunk in LocalDb._sqlVarChunks(finalizedDays.toList())) {
+              await db.execute(
+                  'INSERT INTO temp._restore_finalized_days (day_id) VALUES '
+                  '${List.filled(chunk.length, '(?)').join(',')}',
+                  chunk);
+            }
+          } else {
+            await db.execute('CREATE TEMP TABLE _restore_finalized_days AS '
+                'SELECT day_id FROM main.day_result WHERE finalized = 1');
+          }
           finalizedDaysSnapshot = true;
         }
       }
@@ -1093,10 +1143,24 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         }
         plan = ImportCopyPlan(sizes, onProgress);
       }
-      for (final t in (only ?? tables)) {
+      if (resumed && importedDays == null) {
+        final dr = order.indexOf('day_result');
+        if (dr >= 0 && dr < startIdx) {
+          importedDays = <String>{};
+          await seedImportedDays(1 << 62);
+        }
+      }
+      for (var index = startIdx; index < order.length; index++) {
+        final t = order[index];
+        // The previous table is complete (a `continue` below skips any
+        // end-of-body marker, so it is recorded here, at the next one).
+        if (run != null && index > startIdx) {
+          await ImportJournal.tableDone(run, index, t,
+              archiveSkipped: archiveSkipped);
+        }
         try {
           plan?.start(t);
-          if (await mergeBulkTable(t)) continue;
+          if (await mergeBulkTable(t, index)) continue;
           // PAGED SOURCE READ — never `SELECT *` a whole table.
           //
           // This used to be a single `src.query(t)`. sqflite serialises an entire
@@ -1124,7 +1188,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           final isArchive = t == SubstrateArchive.table;
           final pageSize = isArchive ? 8 : 2000;
           const rowidKey = '_rowid';
-          var lastRowid = 0;
+          var lastRowid = run?.startRowid(index, order) ?? 0;
           final projection = isArchive
               ? SubstrateArchive.metaColumns.join(', ')
               : '*';
@@ -1148,7 +1212,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
             if (e.isNoSuchTableError()) continue;
             rethrow;
           }
-          if (t == 'day_result') importedDays = <String>{};
+          if (t == 'day_result') {
+            importedDays = <String>{};
+            await seedImportedDays(lastRowid);
+          }
           if (firstPage.isEmpty) {
             counts[t] = 0;
             continue;
@@ -1247,7 +1314,12 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                 }
               }
             }
+            final pageLast = (page.last[rowidKey] as num).toInt();
             await db.transaction((txn) async {
+              if (run != null) {
+                await ImportJournal.advance(
+                    txn, run, index, t, pageLast, page.length);
+              }
               if (t == SubstrateArchive.table) {
                 final r = await SubstrateArchive.restoreRows(
                   txn,
@@ -1522,7 +1594,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
             // Advance past the last row this page actually delivered. Read the
             // cursor BEFORE dropping the page, and stop on a short page rather
             // than issuing one more query to discover the end.
-            lastRowid = (page.last[rowidKey] as num).toInt();
+            lastRowid = pageLast;
             plan?.advance(t, lastRowid);
             if (page.length < pageSize) break;
             page = await nextPage();
@@ -1538,6 +1610,26 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         }
       }
       plan?.finish();
+      if (run != null && order.isNotEmpty) {
+        await ImportJournal.tableDone(run, order.length, null,
+            archiveSkipped: archiveSkipped);
+      }
+      if (resumed) {
+        // The counts of tables the first run copied are gone with it; ask the
+        // source instead, so the follow-up steps below still run for them.
+        for (final t in const [
+          'workout_suggestions', 'sleep_nap', 'activity_suggestions',
+          'day_result', 'ecg_raw_packet', 'ecg_gesture_session',
+        ]) {
+          try {
+            if ((await src.rawQuery('SELECT 1 FROM $t LIMIT 1')).isNotEmpty) {
+              resumedHad.add(t);
+            }
+          } on DatabaseException {
+            /* the export lacks that table */
+          }
+        }
+      }
     } finally {
       // Cleanup errors are swallowed so they never mask the restore's own.
       try {
@@ -1550,14 +1642,14 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       } catch (_) {}
       await src.close();
     }
-    if (counts.values.any((count) => count > 0)) {
+    if (resumed || counts.values.any((count) => count > 0)) {
       await ActivityStore.suppressImportedAlerts(db);
     }
-    if ((counts['workout_suggestions'] ?? 0) > 0) {
+    if (had('workout_suggestions')) {
       await db.update('activity_review_meta', {'legacy_migrated': 0});
       await ActivityStore(db).migrateLegacy();
     }
-    if ((counts['sleep_nap'] ?? 0) > 0 || (counts['activity_suggestions'] ?? 0) > 0) {
+    if (had('sleep_nap') || had('activity_suggestions')) {
       // Imported day bundles may be older than a decision we kept locally.
       // Recompose accepted naps after the merge, in bounded transactions.
       String cursor = '';
@@ -1588,7 +1680,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // once it has finished those rows would never be looked at again and the
     // growth this walk exists to remove would come straight back with the
     // import. Rewind it.
-    if ((counts['day_result'] ?? 0) > 0) {
+    if (had('day_result')) {
       await LocalDb.putComputeFreshness(LocalDb.kReencodeCursorKey, jsonEncode({}));
       // Same for the raw-free nap cleanup: imported old days may carry the
       // next-night nap double count it removes, so it runs again.
@@ -1597,8 +1689,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // A restored ecg_raw_packet row from an older export has no `origin`
     // and REPLACEs any tagged local copy; re-apply every known gesture
     // interval so gesture contact is never demoted to an ECG packet.
-    if ((counts['ecg_raw_packet'] ?? 0) > 0 ||
-        (counts['ecg_gesture_session'] ?? 0) > 0) {
+    if (had('ecg_raw_packet') || had('ecg_gesture_session')) {
       await LocalDb._retagAllGesturePackets(db);
     }
     // Last, so it can never be mistaken for a table row count by anything that

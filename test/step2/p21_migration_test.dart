@@ -79,8 +79,9 @@ void main() {
   // The P2.1 rung is 71. The upstream merge (D13) appended upstream's four
   // steps as 72-75 after it, so an upgrade from 70 now ends at the top of the
   // ladder, not at 71.
-  test('schemaVersion is 75 (P2.1 rung 71, then upstream 72-75)', () {
-    expect(LocalDb.schemaVersion, 75);
+  test('schemaVersion is 76 (P2.1 rung 71, upstream 72-75, import journal 76)',
+      () {
+    expect(LocalDb.schemaVersion, 76);
   });
 
   group('oldV < 71 rung on a v70 database holding rows', () {

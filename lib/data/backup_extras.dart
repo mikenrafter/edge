@@ -42,6 +42,7 @@ const Map<String, String> kPrefsNotBackedUp = {
   'health_upload_last_ts': 'telemetry upload cursor of this install',
   'settings_recovery_journal_v1': 'transient write-ahead journal',
   'import_summary_v1': 'record of the last import on this install',
+  'import_run_v1': 'bookkeeping of the import running on this install',
 };
 
 /// Key prefixes that stay on the device, each with the reason.
@@ -292,7 +293,7 @@ class ImportSummary {
   final int sourceDaysAboveCeiling;
   final int prefsRestored, prefsKept, filesRestored;
 
-  /// Times this import was interrupted and resumed (D38). Stub: always 0.
+  /// Times this import was interrupted and resumed (D38).
   final int interruptedAndResumed;
 }
 
@@ -335,15 +336,17 @@ Future<void> recordImportSummary(
   String srcPath, {
   required int archiveBucketsSkipped,
   required BackupExtrasResult extras,
+  int interruptedAndResumed = 0,
 }) async {
   try {
     final (raw, above) = await _sourceFacts(srcPath);
     await LocalDb.putComputeFreshness(
         kImportSummaryKey,
         // Fixed order, versioned: daysWithRaw, archiveBucketsSkipped,
-        // sourceDaysAboveCeiling, prefsRestored, prefsKept, filesRestored.
+        // sourceDaysAboveCeiling, prefsRestored, prefsKept, filesRestored,
+        // interruptedAndResumed (absent in summaries written before D38).
         'v1:$raw,$archiveBucketsSkipped,$above,${extras.prefsRestored},'
-        '${extras.prefsKept},${extras.filesRestored}');
+        '${extras.prefsKept},${extras.filesRestored},$interruptedAndResumed');
   } catch (_) {}
 }
 
@@ -359,7 +362,7 @@ Future<ImportSummary?> lastImportSummary() async {
     final text = '${rows.first['payload_json']}';
     if (!text.startsWith('v1:')) return null;
     final v = [for (final x in text.substring(3).split(',')) int.parse(x)];
-    if (v.length != 6) return null;
+    if (v.length != 6 && v.length != 7) return null;
     int n(int i) => v[i];
     final derived = Sqflite.firstIntValue(await db.rawQuery(
             'SELECT COUNT(DISTINCT day_id) FROM day_result '
@@ -374,6 +377,7 @@ Future<ImportSummary?> lastImportSummary() async {
       prefsRestored: n(3),
       prefsKept: n(4),
       filesRestored: n(5),
+      interruptedAndResumed: v.length > 6 ? n(6) : 0,
     );
   } on FormatException {
     return null;
