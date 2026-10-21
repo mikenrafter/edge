@@ -8189,6 +8189,7 @@
   "importPrepInflating": "Распаковываем резервную копию",
   "importPrepOpening": "Открываем резервную копию",
   "importPrepChecking": "Проверяем резервную копию",
+  "importPrepCounting": "Подсчитываем содержимое резервной копии",
   "importCopying": "Копируем: {stage}",
   "@importCopying": {
     "placeholders": {
