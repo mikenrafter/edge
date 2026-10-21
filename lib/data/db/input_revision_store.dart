@@ -257,7 +257,10 @@ Future<InputRevSnapshot> inputRevSnapshot(
 /// INTERIM for design 01 (see the `zone` entry in input_catalogue.dart): day
 /// labels come from the phone's current zone, so a zone change moves labels
 /// the stored stamps were taken under. DST is a change of offset, so it counts.
-Future<bool> observeInputZone({String? zoneKey, DatabaseExecutor? db}) async {
+Future<bool> observeInputZone(
+    {String? zoneKey,
+    DatabaseExecutor? db,
+    Future<void> Function()? debugAfterCursorWrite}) async {
   final now = DateTime.now();
   final key = zoneKey ?? '${now.timeZoneName}|${now.timeZoneOffset.inMinutes}';
   final ex = db ?? await LocalDb.instance;
@@ -283,3 +286,14 @@ Future<bool> observeInputZone({String? zoneKey, DatabaseExecutor? db}) async {
 
 /// The `sync_cursor` row holding the last zone [observeInputZone] saw.
 const String kObservedZoneCursor = 'observed_zone';
+
+/// STUB (red): the zone key from a zone's name and its offsets at sample
+/// instants.
+String inputZoneKey(String name, Duration Function(DateTime utc) offsetAt,
+        {DateTime? now}) =>
+    '$name|${offsetAt((now ?? DateTime.now()).toUtc()).inMinutes}';
+
+/// STUB (red): unique-key column sets of [tables].
+Future<Map<String, List<List<String>>>> inputRevisionKeys(
+        DatabaseExecutor db, Iterable<String> tables) async =>
+    const {};

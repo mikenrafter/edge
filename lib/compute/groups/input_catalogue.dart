@@ -49,7 +49,10 @@ class InputTable {
       this.updateOf = const <String>[],
       this.readMarkers = const <String>[],
       this.when,
-      this.spans = false});
+      this.spans = false,
+      this.lookbackExpr,
+      this.lookbackDays = 0,
+      this.lookbackWhen});
 
   final String name;
 
@@ -69,6 +72,18 @@ class InputTable {
   /// the next row of its kind, so a change moves every derived day from its
   /// own through that next row's, not its own day alone.
   final bool spans;
+
+  /// A row whose own date is only its ANCHOR: it describes the [lookbackDays]
+  /// days before it too (a Colmi temperature reply banked on Friday carries
+  /// Tuesday's slots, each at rec_ts minus its "days ago"). For rows meeting
+  /// [lookbackWhen], those days are bumped as well. [lookbackExpr] is the day
+  /// label `{k}` days before the anchor (with `{r}`); it uses SQLite's own
+  /// local-day arithmetic, as the decoder does with DateTime(y, m, d - n).
+  /// The window is the conservative bound (the decoder's `kColmiHistoryDays`,
+  /// checked in test/data/input_revision_test.dart), not the decoded slots.
+  final String? lookbackExpr;
+  final int lookbackDays;
+  final String? lookbackWhen;
 
   /// When non-empty, the UPDATE trigger fires only for these columns (a table
   /// whose other columns churn without changing the input, like `last_seen`).
@@ -186,6 +201,11 @@ final List<InputSpec> kInputCatalogue = <InputSpec>[
         InputTable('raw_archive',
             dayExpr: "strftime('%Y-%m-%d', COALESCE({r}.rec_ts, "
                 "{r}.captured_at / 1000), 'unixepoch', 'localtime')",
+            lookbackExpr: "strftime('%Y-%m-%d', COALESCE({r}.rec_ts, "
+                "{r}.captured_at / 1000), 'unixepoch', 'localtime', "
+                "'-{k} days')",
+            lookbackDays: 7,
+            lookbackWhen: "{r}.reason = 'colmi_big_0x25'",
             when: "{r}.reason = 'ultrahuman_record' OR "
                 "{r}.reason LIKE 'colmi_big_0x%'",
             readMarkers: ['ultrahuman_record', 'colmi_big_0x']),
