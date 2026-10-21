@@ -157,6 +157,11 @@ const List<RatchetList> kRatchets = <RatchetList>[
   RatchetList('group_unknown_cost_members',
       'lib/compute/groups/edge_groups.dart', RatchetKind.dartLiteral,
       symbol: 'kGroupUnknownCostMembers'),
+  // 3 analytics placeholder groups whose cost is not measured yet (design 06 1a;
+  // the heavy cost test fills them in; it may only shrink).
+  RatchetList('group_unknown_cost_groups',
+      'lib/compute/groups/edge_groups.dart', RatchetKind.dartLiteral,
+      symbol: 'kGroupUnknownCostGroups'),
 ];
 
 /// Reads a repo-relative file; null when it does not exist.
