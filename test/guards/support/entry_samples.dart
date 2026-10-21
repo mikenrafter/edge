@@ -35,6 +35,8 @@ import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/sleep_staging_worker.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
+import 'package:openstrap_edge/compute/substrate_retention.dart';
+import 'package:openstrap_edge/compute/union_cut_heavy.dart';
 import 'package:openstrap_edge/data/bundle_store.dart';
 import 'package:openstrap_edge/data/json_payload_lane.dart';
 import 'package:openstrap_edge/data/sample_heavy.dart';
@@ -288,6 +290,36 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       await _sameInWorker(
           () => wearableSubstrateHeavy(wearableWorkerInputs, input),
           json: (WearableSubstrateResult r) => r.substrate);
+    },
+  ),
+  'unionCutHeavy': (
+    roundTrip: () async {
+      // An empty load windowed to nothing; the @SendableShape round trip of a
+      // real load is test/sendable_unionCutHeavy_test.dart.
+      final load = RetainedLoad(
+        from: 1000,
+        to: 2000,
+        rrFrom: null,
+        revs: const {},
+        ownership: const {},
+        multiOwner: false,
+        generation: (wipeEpoch: 0, openCount: 0),
+        cut: 1000,
+        sub: Substrate.empty,
+        rrStart: Int32List(0),
+        rrTsRaw: Float64List(0),
+        meta: const [],
+      );
+      final input = UnionCutInput(
+          kind: UnionCutKind.window,
+          loads: [load],
+          ownership: const {},
+          multiOwner: false,
+          a: 1000,
+          b: 1500);
+      await _sameInWorker(() => unionCutHeavy(unionCutWorkerInputs, input),
+          json: (UnionCutResult r) =>
+              [for (final l in r.loads) l == null ? null : [l.from, l.to, l.samples]]);
     },
   ),
   'sessionWindowsHeavy': (

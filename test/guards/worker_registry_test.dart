@@ -43,6 +43,8 @@ const kExpected = <String, Dispatcher>{
   'wearableSubstrateHeavy': Dispatcher.run,
   // A workout list's per-session HR windows (data/session_windows_heavy.dart).
   'sessionWindowsHeavy': Dispatcher.run,
+  // The day union's cuts and join (compute/union_cut_heavy.dart).
+  'unionCutHeavy': Dispatcher.run,
 };
 
 void main() {

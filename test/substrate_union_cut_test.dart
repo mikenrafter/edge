@@ -172,16 +172,16 @@ void main() {
     ];
     for (final w in windows) {
       test(w.$1, () {
-        final cut = big.window(w.$2, w.$3, ownership: _own, multiOwner: false);
+        final cut = big.windowHeavy(w.$2, w.$3, ownership: _own, multiOwner: false);
         expect(cut, isNotNull);
         expect(_norm(cut!), equals(_norm(world.cold(w.$2, w.$3))));
       });
     }
 
     test('a window outside the load is refused', () {
-      expect(big.window(_base - 5, _base + 100, ownership: _own, multiOwner: false),
+      expect(big.windowHeavy(_base - 5, _base + 100, ownership: _own, multiOwner: false),
           isNull);
-      expect(big.window(_base, end + 1, ownership: _own, multiOwner: false),
+      expect(big.windowHeavy(_base, end + 1, ownership: _own, multiOwner: false),
           isNull);
     });
 
@@ -190,9 +190,9 @@ void main() {
         for (final s in kExclusiveOwnershipSignals)
           s: [(start: _base, end: end + 1, deviceId: 'ring-A')],
       };
-      expect(big.window(_base + 10, _base + 900, ownership: other, multiOwner: false),
+      expect(big.windowHeavy(_base + 10, _base + 900, ownership: other, multiOwner: false),
           isNull);
-      expect(big.window(_base + 10, _base + 900, ownership: _own, multiOwner: true),
+      expect(big.windowHeavy(_base + 10, _base + 900, ownership: _own, multiOwner: true),
           isNull);
     });
   });
@@ -209,7 +209,7 @@ void main() {
     ];
     for (final m in splits) {
       test('split after $m', () {
-        final joined = RetainedLoad.join(
+        final joined = RetainedLoad.joinHeavy(
           [world.cold(_base, m), world.cold(m + 1, end)],
           revs: const {},
           ownership: _own,
@@ -225,9 +225,9 @@ void main() {
 
     test('three parts, one of them a window cut out of a bigger load', () {
       final big = world.cold(_base, end);
-      final mid = big.window(_base + 900, _base + 2500,
+      final mid = big.windowHeavy(_base + 900, _base + 2500,
           ownership: _own, multiOwner: false)!;
-      final joined = RetainedLoad.join(
+      final joined = RetainedLoad.joinHeavy(
         [world.cold(_base, _base + 899), mid, world.cold(_base + 2501, end)],
         revs: const {},
         ownership: _own,
@@ -239,7 +239,7 @@ void main() {
 
     test('parts that do not meet do not join', () {
       expect(
-        RetainedLoad.join(
+        RetainedLoad.joinHeavy(
           [world.cold(_base, _base + 99), world.cold(_base + 101, end)],
           revs: const {},
           ownership: _own,
@@ -256,11 +256,11 @@ void main() {
       final world = _World(gen5FromBucket: 2);
       final big = world.cold(_base, end);
       expect(
-          big.window(_base + kRevBucketSec, _base + 3 * kRevBucketSec,
+          big.windowHeavy(_base + kRevBucketSec, _base + 3 * kRevBucketSec,
               ownership: _own, multiOwner: false),
           isNull);
       // ...but one that stays on the first family, with a single device, is not.
-      final cut = big.window(_base + 10, _base + kRevBucketSec * 2 - 1,
+      final cut = big.windowHeavy(_base + 10, _base + kRevBucketSec * 2 - 1,
           ownership: _own, multiOwner: false);
       expect(cut, isNotNull);
       expect(_norm(cut!),
@@ -274,7 +274,7 @@ void main() {
       // count: its rows read as absent in the big load, present in a load that
       // starts there.
       expect(
-          big.window(_base + 3 * kRevBucketSec, _base + 4 * kRevBucketSec - 1,
+          big.windowHeavy(_base + 3 * kRevBucketSec, _base + 4 * kRevBucketSec - 1,
               ownership: _own, multiOwner: false),
           isNull);
     });
@@ -282,7 +282,7 @@ void main() {
     test('parts that picked different units do not join', () {
       final world = _World(mixedUnits: true);
       expect(
-          RetainedLoad.join(
+          RetainedLoad.joinHeavy(
             [
               world.cold(_base + 3 * kRevBucketSec, _base + 4 * kRevBucketSec - 1),
               world.cold(_base + 4 * kRevBucketSec, end),

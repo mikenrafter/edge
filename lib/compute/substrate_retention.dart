@@ -32,6 +32,7 @@ import 'dart:typed_data';
 
 import '../ble/adapters/signals.dart';
 import '../data/coverage_resolver.dart';
+import '../util/heavy.dart';
 import 'day_checkpoint_policy.dart' show kRevBucketSec;
 import 'substrate.dart';
 
@@ -193,7 +194,8 @@ class RetainedLoad {
   ///     the window touches. They are exact only when those buckets agree, so
   ///     a window over more than one family, device or unit is refused and the
   ///     caller loads it from the database as before.
-  RetainedLoad? window(
+  @heavy
+  RetainedLoad? windowHeavy(
     int a,
     int b, {
     required Map<InputSignal, List<OwnedSpan>> ownership,
@@ -275,7 +277,8 @@ class RetainedLoad {
   ///
   /// [revs], [ownership], [multiOwner] and [generation] are the ones the parts
   /// were validated or read under, read before any of their rows.
-  static RetainedLoad? join(
+  @heavy
+  static RetainedLoad? joinHeavy(
     List<RetainedLoad> parts, {
     required Map<int, int> revs,
     required Map<InputSignal, List<OwnedSpan>> ownership,

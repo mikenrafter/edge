@@ -97,6 +97,7 @@ import 'step_cadence.dart';
 import 'profile.dart';
 import 'substrate.dart';
 import 'substrate_retention.dart';
+import 'union_cut_heavy.dart';
 import 'vendor_sleep.dart';
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
@@ -3296,7 +3297,7 @@ class DerivationEngine {
   final Map<String, RetainedLoad> _retained = {};
 
   /// The cross-day union loads of the last two days this pass prepared
-  /// (substrate_retention.dart: `window`, `join`, `usableStretches`). A day's
+  /// (substrate_retention.dart: `windowHeavy`, `joinHeavy`, `usableStretches`). A day's
   /// night search, day and staged night overlap each other and its
   /// neighbours' by 15 to 27 hours; the next day to be prepared takes the part
   /// of its range that one of these still holds exactly and reads only the
@@ -4680,9 +4681,9 @@ class DerivationEngine {
           math.max(dayEnd - 1 + napBoundaryBufferSec, sleepSpan?.$2 ?? 0),
           stats: stats);
     }
-    var napSub = _cutWindow(unionHolder?.load, dayId, 'load_day', dayStart,
-                dayEnd - 1 + napBoundaryBufferSec, ownership,
-                retain: true, stats: stats)
+    var napSub = (await _cutWindow(unionHolder?.load, dayId, 'load_day',
+                dayStart, dayEnd - 1 + napBoundaryBufferSec, ownership,
+                retain: true, stats: stats))
             ?.sub ??
         await _loadSubstrateRange(
           dayStart,
@@ -4715,9 +4716,9 @@ class DerivationEngine {
       sleepSub = wearable != null
           ? await wearableSubstrate(wearable, candidate.sleepOnsetSec,
               candidate.sleepOffsetSec - 1)
-          : _cutWindow(unionHolder?.load, dayId, 'load_sleep',
+          : (await _cutWindow(unionHolder?.load, dayId, 'load_sleep',
                       candidate.sleepOnsetSec, candidate.sleepOffsetSec - 1,
-                      ownership, stats: stats)
+                      ownership, stats: stats))
                   ?.sub ??
               await _loadSubstrateRange(
                 candidate.sleepOnsetSec,
@@ -5024,9 +5025,9 @@ class DerivationEngine {
       union.load = await _loadUnion(dayId, math.min(range.$1, dStart),
           math.max(range.$2, dEnd - 1 + napBoundaryBufferSec),
           stats: stats);
-      cutSearch = _cutWindow(
-              union.load, dayId, 'load_search', range.$1, range.$2, searchOwnership,
-              retain: true, stats: stats)
+      cutSearch = (await _cutWindow(union.load, dayId, 'load_search',
+              range.$1, range.$2, searchOwnership,
+              retain: true, stats: stats))
           ?.sub;
     }
     final searchSub = cutSearch ??
@@ -5544,11 +5545,33 @@ class DerivationEngine {
           ownership: ownership,
           multiOwner: multiOwner,
           generation: generation);
-      final borrowed = <RetainedLoad>[
-        for (final st in stretches)
-          ?st.base.window(st.a, st.b,
-              ownership: ownership, multiOwner: multiOwner),
-      ];
+      // The cuts run in a worker (the arrays are read there); the bases are
+      // sent once, however many stretches each supplies.
+      final bases = <RetainedLoad>[];
+      for (final st in stretches) {
+        if (!bases.any((x) => identical(x, st.base))) bases.add(st.base);
+      }
+      final borrowed = <RetainedLoad>[];
+      if (stretches.isNotEmpty) {
+        final cut = (await runUnionCut(UnionCutInput(
+          kind: UnionCutKind.borrow,
+          loads: bases,
+          ownership: ownership,
+          multiOwner: multiOwner,
+          stretches: [
+            for (final st in stretches)
+              (
+                base: bases.indexWhere((x) => identical(x, st.base)),
+                a: st.a,
+                b: st.b
+              ),
+          ],
+        )))
+            .loads;
+        for (final w in cut) {
+          if (w != null) borrowed.add(w);
+        }
+      }
       var cutMs = DateTime.now().millisecondsSinceEpoch - cutStartedAt;
       Future<RetainedLoad?> read(int a, int b) async {
         final got = <RetainedLoad>[];
@@ -5580,11 +5603,16 @@ class DerivationEngine {
         parts.add(gap);
       }
       final joinStartedAt = DateTime.now().millisecondsSinceEpoch;
-      var union = RetainedLoad.join(parts,
-          revs: revs,
-          ownership: ownership,
-          multiOwner: multiOwner,
-          generation: generation);
+      var union = (await runUnionCut(UnionCutInput(
+        kind: UnionCutKind.join,
+        loads: parts,
+        ownership: ownership,
+        multiOwner: multiOwner,
+        revs: revs,
+        generation: generation,
+      )))
+          .loads
+          .single;
       cutMs += DateTime.now().millisecondsSinceEpoch - joinStartedAt;
       if (union == null) {
         // The parts do not make one load (a different skin-temperature unit in
@@ -5613,7 +5641,7 @@ class DerivationEngine {
   /// (`load_search`, `load_day`, `load_sleep`), or null when the union cannot
   /// stand in for it and the caller loads it from the database. [retain]
   /// keeps it for the next pass of the day, the way the load would have.
-  RetainedLoad? _cutWindow(
+  Future<RetainedLoad?> _cutWindow(
     RetainedLoad? union,
     String dayId,
     String label,
@@ -5622,11 +5650,19 @@ class DerivationEngine {
     Map<InputSignal, List<OwnedSpan>> ownership, {
     bool retain = false,
     _PrepareStats? stats,
-  }) {
+  }) async {
     if (union == null || b < a) return null;
     final startedAt = DateTime.now().millisecondsSinceEpoch;
-    final window = union.window(a, b,
-        ownership: ownership, multiOwner: ownersOf(ownership).length > 1);
+    final window = (await runUnionCut(UnionCutInput(
+      kind: UnionCutKind.window,
+      loads: [union],
+      ownership: ownership,
+      multiOwner: ownersOf(ownership).length > 1,
+      a: a,
+      b: b,
+    )))
+        .loads
+        .single;
     perf.addStage(label, DateTime.now().millisecondsSinceEpoch - startedAt);
     if (window == null) {
       perf.addCount('union_refused_$label', 1);

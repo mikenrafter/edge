@@ -220,6 +220,14 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
         'round-trip test)',
   ),
   WorkerEntry(
+    #unionCutHeavy,
+    dispatcher: Dispatcher.run,
+    reason: 'the cuts and the join of a day\'s cross-day union load (the '
+        'per-second arrays of RetainedLoad.windowHeavy / joinHeavy); meets the contract '
+        '(WorkerInit.ensure first, @SendableShape RetainedLoad input and '
+        'result with a round-trip test)',
+  ),
+  WorkerEntry(
     #sessionWindowsHeavy,
     dispatcher: Dispatcher.run,
     reason: 'a workout list\'s per-session HR windows with a workout sensor '
