@@ -162,7 +162,7 @@ const List<RatchetList> kRatchets = <RatchetList>[
   RatchetList('group_unknown_cost_groups',
       'lib/compute/groups/edge_groups.dart', RatchetKind.dartLiteral,
       symbol: 'kGroupUnknownCostGroups'),
-  // 7 declared inputs the fixture derive does not read, each with its
+  // 4 declared inputs the fixture derive does not read, each with its
   // condition (design 06 1c; it may only shrink).
   RatchetList('input_reads_conditional',
       'test/groups/input_read_tracking_test.dart', RatchetKind.dartLiteral,

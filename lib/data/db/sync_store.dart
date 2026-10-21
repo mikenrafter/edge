@@ -201,6 +201,7 @@ Future<int> _ldbPhoneStepsForDay(String day) async {
   }
 
 Future<ResolvedDaySteps> _ldbResolvedStepsForDay(String day) async {
+    InputReads.note('step_coverage', day);
     final db = await LocalDb.instance;
     final rows = await db.query(
       'live_coverage',
@@ -228,6 +229,7 @@ Future<ResolvedDaySteps> _ldbResolvedStepsForDay(String day) async {
   }
 
 Future<List<List<int>>> _ldbCoverageWindowsOverlapping(int loSec, int hiSec, {required String source}) async {
+    InputReads.note('step_coverage', '');
     final db = await LocalDb.instance;
     final rows = await db.query(
       'live_coverage',
@@ -251,6 +253,7 @@ Future<List<List<int>>> _ldbWristOffSpans(int loSec, int hiSec, {required String
 
 Future<List<List<int>>> _ldbPrivToggleSpans(int loSec, int hiSec, {required int onId, required int offId, required String deviceId}) async {
     if (hiSec <= loSec) return const [];
+    InputReads.note('events', '');
     final db = await LocalDb.instance;
     // One row before the window establishes the state we open in.
     final prior = await db.query(
@@ -1642,6 +1645,7 @@ Future<Map<String, int>> _ldbDecodedRecTsMaxByDay() async {
   }
 
 Future<List<Map<String, dynamic>>> _ldbDecodedOneHzBatchByRecTsRange({required int limit, required int fromRecTs, required int toRecTs, required int? afterRecTs, required int? afterCounter}) async {
+    InputReads.note('decoded', '');
     final db = await LocalDb.instance;
     if (afterRecTs == null || afterCounter == null) {
       return db.rawQuery(
@@ -1669,6 +1673,7 @@ Future<List<Map<String, dynamic>>> _ldbDecodedOneHzBatchByRecTsRange({required i
   }
 
 Future<List<Map<String, dynamic>>> _ldbDecodedRrByRecTsRange({required int fromRecTs, required int toRecTs}) async {
+    InputReads.note('decoded', '');
     final db = await LocalDb.instance;
     final lo = fromRecTs <= toRecTs ? fromRecTs : toRecTs;
     final hi = fromRecTs <= toRecTs ? toRecTs : fromRecTs;
@@ -1687,6 +1692,7 @@ Future<List<Map<String, dynamic>>> _ldbDecodedRrByRecTsRange({required int fromR
   }
 
 Future<List<Map<String, dynamic>>> _ldbDecodedRrSecondsByRecTsRange({required int fromRecTs, required int toRecTs, required bool onlyBeatOnly}) async {
+    InputReads.note('decoded', '');
     final db = await LocalDb.instance;
     final lo = fromRecTs <= toRecTs ? fromRecTs : toRecTs;
     final hi = fromRecTs <= toRecTs ? toRecTs : fromRecTs;
@@ -1707,6 +1713,7 @@ Future<List<Map<String, dynamic>>> _ldbDecodedRrSecondsByRecTsRange({required in
   }
 
 Future<List<String>> _ldbSignalPriority(InputSignal signal) async {
+    InputReads.note('device_coverage', '');
     final db = await LocalDb.instance;
     final rows = await db.query(
       'signal_priority',
@@ -1735,6 +1742,7 @@ Future<void> _ldbSetSignalPriority(InputSignal signal, List<String> order) async
   }
 
 Future<List<CoverageInterval>> _ldbCoverageIntervals(InputSignal signal, int from, int to) async {
+    InputReads.note('device_coverage', '');
     final db = await LocalDb.instance;
     final rows = await db.query(
       'device_coverage',

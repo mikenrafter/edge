@@ -25,6 +25,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../compute/substrate.dart' show beatTimesMs;
+import 'db/input_read_tracker.dart';
+import 'db/input_revision_store.dart';
 // The ONE thing this layer takes from compute/: the running build's algo
 // version, which every day_result read applies as a CEILING (see [dayResult]).
 // `show` keeps the rest of the engine out of this namespace.
@@ -637,7 +639,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 76;
+  static const int schemaVersion = 77;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -878,6 +880,10 @@ class LocalDb {
   /// (`IF NOT EXISTS`); a table that is absent is skipped, not an error.
   static Future<void> _createInputRev(Database db) => _ldbPrivCreateInputRev(db);
 
+  /// The same, for [createInputRevision] (any executor, e.g. a test handle).
+  static Future<void> createInputRevTriggers(DatabaseExecutor db) =>
+      _ldbPrivCreateInputRev(db);
+
   /// Periodic snapshot of a LIVE workout's per-second tallies (per-minute HR
   /// series, zone-seconds, the calorie bpm histogram, the spike-suppressed
   /// peak) — written every ~30s by `AppState._tickWorkout` while a session is
@@ -1106,6 +1112,7 @@ class LocalDb {
 
   /// All symptom rows (newest first): {date, symptoms_json, note}.
   static Future<List<Map<String, dynamic>>> cycleSymptoms() async {
+    InputReads.note('cycle_symptom', '');
     final db = await instance;
     return db.query('cycle_symptom', orderBy: 'date DESC');
   }
@@ -1471,6 +1478,7 @@ class LocalDb {
     int wearing, {
     int limit = 30,
   }) async {
+    InputReads.note('step_calibration_day', '');
     final db = await instance;
     return db.query(
       'step_calibration_day',
@@ -1800,6 +1808,7 @@ class LocalDb {
 
   /// The user's sleep window for [dayId], or null if none.
   static Future<Map<String, dynamic>?> getSleepOverride(String dayId) async {
+    InputReads.note('sleep_override', dayId);
     return readerRun((db) async {
     final rows = await db.query(
       'sleep_override',
@@ -1916,6 +1925,7 @@ class LocalDb {
   /// The confirmed wake of [dayId]'s night, or null when the night is not final.
   static Future<({int atSec, String basis})?> wakeConfirmation(
       String dayId) async {
+    InputReads.note('wake_confirmation', dayId);
     final db = await instance;
     final rows = await db.query(
       'wake_confirmation',
@@ -1947,6 +1957,7 @@ class LocalDb {
   /// Every day that currently has a user override — these must be force-derived
   /// even when finalized, so an edit to a locked day actually takes effect.
   static Future<Set<String>> sleepOverrideDays() async {
+    InputReads.note('sleep_override', '');
     final db = await instance;
     final rows = await db.query('sleep_override', columns: ['day_id']);
     return {for (final r in rows) r['day_id'] as String};
@@ -2107,6 +2118,7 @@ class LocalDb {
   static Future<Map<String, Object?>?> deviceRow([
     String id = kPrimaryDeviceId,
   ]) async {
+    InputReads.note('wearing', '');
     final db = await instance;
     final r = await db.query('device', where: 'id = ?', whereArgs: [id]);
     return r.isEmpty ? null : r.first;
@@ -5699,6 +5711,7 @@ class LocalDb {
 
   /// Single metric_series value for one (date, key), or null.
   static Future<double?> metricValueOn(String date, String key) async {
+    InputReads.note('metric_series', date);
     final db = await instance;
     final rows = await db.query(
       'metric_series',
@@ -5811,6 +5824,7 @@ class LocalDb {
   }) => _ldbTrailingSeriesValues(key, n, measuredOnly: measuredOnly, before: before);
 
   static Future<Map<String, dynamic>?> baseline(String key) async {
+    InputReads.note('baselines', '');
     return readerRun((db) async {
     final rows = await db.query(
       'baselines',
@@ -6063,6 +6077,7 @@ class LocalDb {
   /// rows from [sinceDay] on (all when null): what the journal correlations
   /// read. An edit moves the stamp, a delete moves the count.
   static Future<String> journalInputRev({String? sinceDay}) async {
+    InputReads.note('journal', '');
     final db = await instance;
     final where = sinceDay == null ? '' : ' WHERE date >= ?';
     final args = [?sinceDay];
@@ -6550,6 +6565,7 @@ class LocalDb {
   static Future<List<Map<String, dynamic>>> journalRows({
     String? sinceDaysEpoch,
   }) async {
+    InputReads.note('journal', '');
     final db = await instance;
     if (sinceDaysEpoch != null) {
       return db.query(
@@ -6656,6 +6672,7 @@ class LocalDb {
   /// Every day carrying a nap edit. Force-derived alongside the sleep-override
   /// days for the same reason: an edit to a finalized day has to take effect.
   static Future<Set<String>> napEditDays() async {
+    InputReads.note('sleep_nap', '');
     final db = await instance;
     final rows = await db.query('sleep_nap', columns: ['day_id']);
     return {for (final r in rows) r['day_id'] as String};
@@ -6806,6 +6823,7 @@ class LocalDb {
 
   /// All cycle markers, oldest first.
   static Future<List<Map<String, dynamic>>> cycleLogs() async {
+    InputReads.note('cycle_log', '');
     final db = await instance;
     return db.query('cycle_log', orderBy: 'date ASC');
   }
@@ -6922,6 +6940,7 @@ class LocalDb {
     int fromTs,
     int toTs,
   ) async {
+    InputReads.note('sessions', '');
     final rows = await readerRun((db) async {
     return db.query(
       'sessions',

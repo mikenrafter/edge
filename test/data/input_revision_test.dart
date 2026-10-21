@@ -172,7 +172,10 @@ Future<void> _run(Database db, List<Object?> stmt) =>
     db.execute(stmt[0] as String, (stmt[1] as List).cast<Object?>());
 
 Future<int> _rev(String source, String scope) async {
-  final snap = await inputRevSnapshot([source], fromDay: _d1, toDay: _d3);
+  // The range spans the whole month: two tests look at days outside d1..d3
+  // ('2026-03-15', '2026-03-20'), which a d1..d3 range could never return.
+  final snap =
+      await inputRevSnapshot([source], fromDay: _d1, toDay: '2026-03-31');
   return snap[source]?[scope] ?? 0;
 }
 

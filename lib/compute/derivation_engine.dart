@@ -20,6 +20,7 @@
 // metric_series each time.
 
 import '../data/activity_store.dart';
+import '../data/db/input_read_tracker.dart';
 import 'accepted_naps.dart' show composeAcceptedNaps;
 import '../models/activity_suggestion.dart';
 import 'dart:async';
@@ -3158,6 +3159,8 @@ class DerivationEngine {
   }) async {
     if (days.isEmpty) return 0;
     if (_running) return 0;
+    // The profile is passed in, not read from a store: note it here.
+    InputReads.note('profile', '');
     _running = true;
     beginWearableDayIndexPass();
     _calcStage('Reading recordings');

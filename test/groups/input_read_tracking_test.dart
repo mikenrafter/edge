@@ -32,13 +32,10 @@ import '../support/synthetic_day.dart';
 /// Declared inputs the fixture derive does not read, with the condition under
 /// which a derive does. Shrink-only ratchet `input_reads_conditional`.
 const Map<String, String> kConditionalInputReads = <String, String>{
-  'vendor_sleep_epoch': 'only when a vendor/wearable hypnogram exists for the '
-      'night; the colmi fixture stages from 1 Hz',
+  'sleep_nap': 'only read when a nap edit exists to take effect on a '
+      'finalized day; the fixture has none',
   'session_score_mask': 'only when the user masked a session from scoring',
   'step_calibration_day': 'only when a day carries a reference-step row',
-  'cycle_log': 'only when the user logs a cycle',
-  'cycle_symptom': 'only when the user logs cycle symptoms',
-  'journal': 'only when a journal day exists for the derived day',
   'policy': 'calc policies change timing only, never a derive input; kept so '
       'a policy change is stamped (design 06 1c, inventory row)',
 };

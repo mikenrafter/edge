@@ -9,10 +9,13 @@
 // If a screen is somehow built before [ensureLoaded] completes, reads fall back
 // to the provided default — never throws, never blocks.
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../compute/calc_power_policy.dart' show CalcPowerMode;
+import '../data/db/input_revision_store.dart' show bumpInputRev;
 import '../haptics/band_queue.dart'
     show
         kBandCommandLimitDefault,
@@ -190,7 +193,12 @@ class Prefs {
     return CalcPowerMode.balanced;
   }
 
-  static void setCalcPowerMode(CalcPowerMode m) => setString(calcPowerMode, m.name);
+  static void setCalcPowerMode(CalcPowerMode m) {
+    setString(calcPowerMode, m.name);
+    // The calc policy is a catalogued input (design 06 1c): stamp the change.
+    // Best-effort: no store yet (early launch, tests) must not break a pref.
+    unawaited(bumpInputRev('policy', '').catchError((Object _) {}));
+  }
 
   /// Per-metric range toggle on the shared MetricScreen (Today/Week/Month/3M).
   /// Keyed by the metric id so Sleep / Heart / Body each remember independently.

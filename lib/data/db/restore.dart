@@ -587,7 +587,10 @@ Future<int> _ldbWipeAll() async {
     final db = await LocalDb.instance;
     final rows = await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table' "
-      "AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata'",
+      "AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata' "
+      // Revisions only go up: a later write must not reuse a number a stamp
+      // may hold. The deletes below bump them through the triggers.
+      "AND name != 'input_revision'",
     );
     var deleted = 0;
     await db.transaction((txn) async {
@@ -595,6 +598,10 @@ Future<int> _ldbWipeAll() async {
         final t = r['name'];
         if (t is String) deleted += await txn.delete(t);
       }
+      // A wipe resets the profile and policies too (the caller clears their
+      // prefs); a stamp that read them must see a change, never a lower number.
+      await bumpInputRev('profile', '', db: txn);
+      await bumpInputRev('policy', '', db: txn);
     });
     LocalDb._markStoreReplaced();
     return deleted;

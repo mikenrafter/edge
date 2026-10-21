@@ -44,9 +44,13 @@ enum InputKind {
 
 /// A table that carries an input, and the SQL for the affected day.
 class InputTable {
-  const InputTable(this.name, {this.dayExpr});
+  const InputTable(this.name, {this.dayExpr, this.updateOf = const <String>[]});
 
   final String name;
+
+  /// When non-empty, the UPDATE trigger fires only for these columns (a table
+  /// whose other columns churn without changing the input, like `last_seen`).
+  final List<String> updateOf;
 
   /// SQL expression for the affected day label of a changed row, with `{r}` for
   /// the row alias (`NEW` or `OLD`). Null for a global input.
@@ -88,7 +92,10 @@ final List<InputSpec> kInputCatalogue = <InputSpec>[
       tables: const [InputTable('live_coverage', dayExpr: '{r}.day')],
       inventoryRow: 'phone step coverage'),
   const InputSpec('wearing', InputKind.table, InputGranularity.global,
-      tables: [InputTable('device')], inventoryRow: 'wearing location'),
+      tables: [
+        InputTable('device', updateOf: ['wearing', 'wearing_set_ts']),
+      ],
+      inventoryRow: 'wearing location'),
   const InputSpec('step_calibration', InputKind.table, InputGranularity.global,
       tables: [InputTable('step_calibration')],
       inventoryRow: 'step calibration'),
@@ -98,10 +105,16 @@ final List<InputSpec> kInputCatalogue = <InputSpec>[
       ],
       inventoryRow: 'step calibration'),
   const InputSpec('device_coverage', InputKind.table, InputGranularity.global,
-      tables: [InputTable('device_coverage')],
+      // `signal_priority` is the rank half of the same resolver input.
+      tables: [InputTable('device_coverage'), InputTable('signal_priority')],
       inventoryRow: 'device priority and coverage'),
   InputSpec('events', InputKind.table, InputGranularity.day,
-      tables: [InputTable('events', dayExpr: _dayOf('ts'))],
+      // `band_events` is what wristOffSpans/chargingSpans actually read (the
+      // plan names `events`); both are triggered.
+      tables: [
+        InputTable('events', dayExpr: _dayOf('ts')),
+        InputTable('band_events', dayExpr: _dayOf('ts')),
+      ],
       inventoryRow: 'wrist-off and charging events'),
   InputSpec('sleep_override', InputKind.table, InputGranularity.day,
       tables: const [InputTable('sleep_override', dayExpr: '{r}.day_id')],
@@ -147,10 +160,60 @@ final List<InputSpec> kInputCatalogue = <InputSpec>[
       inventoryRow: 'calc policies and settings'),
 ];
 
-/// Group id -> the inputs it reads. Empty until 1c is green; every group that
-/// reads an input lists it here (analytics groups cannot carry `inputs` at the
-/// current pin).
-const Map<String, List<InputDecl>> kGroupInputs = <String, List<InputDecl>>{};
+/// Group id -> the inputs it reads (analytics groups cannot carry `inputs` at
+/// the current pin). Checked against a real derive by
+/// test/groups/input_read_tracking_test.dart: every tracked read is declared
+/// here, and every declaration is read or listed as conditional.
+const Map<String, List<InputDecl>> kGroupInputs = <String, List<InputDecl>>{
+  'sleep.stage': [
+    InputDecl('decoded', InputScope.dayAndNext),
+    InputDecl('events', InputScope.dayAndNext),
+    InputDecl('sleep_override', InputScope.day),
+    InputDecl('wake_confirmation', InputScope.day),
+    InputDecl('vendor_sleep_epoch', InputScope.dayAndNext),
+    InputDecl('wearing', InputScope.global),
+    InputDecl('device_coverage', InputScope.global),
+  ],
+  'hrv.freq': [InputDecl('decoded', InputScope.dayAndNext)],
+  'night.rhythm': [InputDecl('decoded', InputScope.dayAndNext)],
+  'day.blocks': [
+    InputDecl('decoded', InputScope.day),
+    InputDecl('events', InputScope.day),
+    InputDecl('sessions', InputScope.day),
+    InputDecl('sleep_nap', InputScope.day),
+  ],
+  'readiness.stress_illness': [
+    InputDecl('decoded', InputScope.range),
+    InputDecl('baselines', InputScope.global),
+    InputDecl('metric_series', InputScope.range),
+    InputDecl('profile', InputScope.global),
+  ],
+  'activity.load': [
+    InputDecl('decoded', InputScope.day),
+    InputDecl('sessions', InputScope.day),
+    InputDecl('session_score_mask', InputScope.day),
+    InputDecl('step_coverage', InputScope.day),
+    InputDecl('step_calibration', InputScope.global),
+    InputDecl('step_calibration_day', InputScope.range),
+    InputDecl('wearing', InputScope.global),
+    InputDecl('device_coverage', InputScope.global),
+    InputDecl('profile', InputScope.global),
+  ],
+  'body.spo2_temp_coverage': [
+    InputDecl('decoded', InputScope.dayAndNext),
+    InputDecl('metric_series', InputScope.range),
+    InputDecl('device_coverage', InputScope.global),
+  ],
+  // Cross-day insights: the user's own logs against the derived series.
+  'human.insights': [
+    InputDecl('cycle_log', InputScope.range),
+    InputDecl('cycle_symptom', InputScope.range),
+    InputDecl('journal', InputScope.range),
+    InputDecl('metric_series', InputScope.range),
+  ],
+  // Calc policies change timing only; declared so a change is stamped.
+  'edge.assembly': [InputDecl('policy', InputScope.global)],
+};
 
 /// What [g] declares it reads: its own `inputs` plus [kGroupInputs].
 List<InputDecl> declaredInputs(GroupDecl g) =>

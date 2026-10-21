@@ -203,8 +203,10 @@ Future<void> p21ExpectRevsConsistent(Database db, {String? reason}) async {
 /// The triggers on `day_result` and `baselines`, as lowercase one-line SQL.
 Future<Map<String, String>> p21Triggers(Database db) async => {
   for (final r in await db.rawQuery(
+    // `ir_*` triggers are the input-revision ones (design 06 1c), also on
+    // `baselines`; this helper is about the P2.1 triggers only.
     "SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'trigger' "
-    "AND tbl_name IN ('day_result', 'baselines') ORDER BY name",
+    "AND tbl_name IN ('day_result', 'baselines') AND name NOT LIKE 'ir\\_%' ESCAPE '\\' ORDER BY name",
   ))
     '${r['tbl_name']}:${r['name']}': (r['sql'] as String)
         .toLowerCase()
@@ -217,7 +219,8 @@ Future<List<String>> p21RevObjectSql(Database db) async => [
   for (final r in await db.rawQuery(
     'SELECT type, name, tbl_name, sql FROM sqlite_master '
     "WHERE name IN ('store_rev', 'row_rev') "
-    "OR (type = 'trigger' AND tbl_name IN ('day_result', 'baselines')) "
+    "OR (type = 'trigger' AND tbl_name IN ('day_result', 'baselines') "
+    "AND name NOT LIKE 'ir\\_%' ESCAPE '\\') "
     'ORDER BY type, name',
   ))
     '${r['type']}|${r['name']}|${r['tbl_name']}|${r['sql']}',
@@ -227,7 +230,8 @@ Future<List<String>> p21RevObjectSql(Database db) async => [
 Future<void> p21DropRevTriggers(Database db) async {
   for (final r in await db.rawQuery(
     "SELECT name FROM sqlite_master WHERE type = 'trigger' "
-    "AND tbl_name IN ('day_result', 'baselines')",
+    "AND tbl_name IN ('day_result', 'baselines') "
+    "AND name NOT LIKE 'ir\\_%' ESCAPE '\\'",
   )) {
     await db.execute('DROP TRIGGER IF EXISTS "${r['name']}"');
   }

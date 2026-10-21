@@ -118,6 +118,7 @@ import '../ble/adapters/signals.dart' show InputSignal;
 import '../sources/source_catalog.dart' show SourceService;
 import '../ui2/profile/devices.dart' show HealthSource, liveSources, rankSources;
 import '../ui2/sources/source_views.dart' show SourceViews;
+import '../data/db/input_revision_store.dart' show bumpInputRev;
 import '../data/db.dart';
 import '../ecg/ble_ecg_transport.dart';
 import '../ecg/ecg_controller.dart';
@@ -1991,6 +1992,8 @@ class AppState extends ChangeNotifier {
     user = {...?user, ...fields};
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kProfile, jsonEncode(user));
+    // The profile is a catalogued input (design 06 1c): stamp the change.
+    unawaited(bumpInputRev('profile', '').catchError((Object _) {}));
     notifyListeners();
     return user!;
   }

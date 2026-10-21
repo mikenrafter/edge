@@ -273,6 +273,7 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
   }
 
 Future<List<(int, double, double)>> _ldbSkinTempAmbientMinutes(int fromSec, int toSec) async {
+    InputReads.note('decoded', '');
     final db = await LocalDb.instance;
     final rows = await db.rawQuery(
       'SELECT rec_ts / 60 AS m, AVG(skin_temp_raw) AS t, AVG(ambient_raw) AS a '
@@ -762,6 +763,7 @@ Future<({double floorG, String frozenOn, int days})?> _ldbGetMovementFloor() asy
   }
 
 Future<List<Map<String, dynamic>>> _ldbMetricSeries(String key, {required int? limit, required bool measuredOnly, required bool ownOnly}) async {
+    InputReads.note('metric_series', '');
     return LocalDb.readerRun((db) async {
     return db.query(
       'metric_series',
@@ -822,6 +824,7 @@ Future<
   }
 
 Future<List<double>> _ldbTrailingSeriesValues(String key, int n, {required bool measuredOnly, required String? before}) async {
+    InputReads.note('metric_series', '');
     return LocalDb.readerRun((db) async {
     final rows = await db.rawQuery(
       'SELECT value FROM metric_series '

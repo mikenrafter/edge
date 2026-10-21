@@ -214,6 +214,7 @@ Future<int> _ldbSetDeviceWearing(int wearing, String id) async {
   }
 
 Future<StepCalibrationProfile?> _ldbStepCalibrationProfile(String deviceFamily, int wearing) async {
+    InputReads.note('step_calibration', '');
     final db = await LocalDb.instance;
     final r = await db.query(
       'step_calibration',
@@ -440,6 +441,7 @@ Future<void> _ldbPutVendorSleepEpochs(List<VendorEpoch> epochs, {required String
   }
 
 Future<List<VendorNight>> _ldbVendorSleepNights(int fromSec, int toSec) async {
+    InputReads.note('vendor_sleep_epoch', '');
     final db = await LocalDb.instance;
     final rows = await db.rawQuery(
       'SELECT * FROM vendor_sleep_epoch '

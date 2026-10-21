@@ -1024,6 +1024,14 @@ Future<Database> _ldbPrivOpen() async {
           // moves. _repairOpenSchema re-runs it on every open.
           await ImportJournal.ensureSchema(db);
         }
+        if (oldV < 77) {
+          // Per-input revisions (design 06 1c): one small table plus triggers
+          // on the catalogued tables, no backfill (no row reads as revision
+          // 0), so it is cheap under iOS's CPU watchdog (invariant 11). No
+          // kAlgoVersion bump: nothing derived reads them yet.
+          // _repairOpenSchema re-runs it on every open.
+          await LocalDb._createInputRev(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
@@ -1152,6 +1160,8 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await LocalDb._ensureCoachViews(db);
     await LocalDb._ensureStoreRevisions(db);
+    // After every table it triggers on exists in its final shape.
+    await LocalDb._createInputRev(db);
     await LocalDb._dropRawStore(db);
   }
 
@@ -1171,7 +1181,7 @@ Future<void> _ldbPrivScrubImportedSkinTempZ(Database db) async {
     }
   }
 
-Future<void> _ldbPrivCreateInputRev(Database db) async {
+Future<void> _ldbPrivCreateInputRev(DatabaseExecutor db) async {
     await db.execute(
       'CREATE TABLE IF NOT EXISTS input_rev ('
       'bucket INTEGER PRIMARY KEY, rev INTEGER NOT NULL)',
@@ -1205,6 +1215,20 @@ Future<void> _ldbPrivCreateInputRev(Database db) async {
         'CREATE TRIGGER IF NOT EXISTS ${t}_rev_ad AFTER DELETE ON $t '
         'WHEN $gone BEGIN ${bump('OLD')} END',
       );
+    }
+    // Design 06 1c: the per-input revision table and its triggers, here so the
+    // DDL lives in the one pinned input-revision member. Tables that do not
+    // exist yet are skipped; the end of _repairOpenSchema calls this again.
+    await db.execute(kCreateInputRevisionTable);
+    final master = await db.rawQuery(
+      "SELECT type, name FROM sqlite_master WHERE type IN ('table', 'trigger')",
+    );
+    final have = <String, Set<String>>{'table': {}, 'trigger': {}};
+    for (final r in master) {
+      have[r['type'] as String]?.add(r['name'] as String);
+    }
+    for (final sql in inputRevisionTriggerSql(have['table']!, have['trigger']!)) {
+      await db.execute(sql);
     }
   }
 
