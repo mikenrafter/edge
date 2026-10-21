@@ -37,13 +37,14 @@ final _allow = <String, RegExp>{
   'clear the reading link when a reading is deleted':
       RegExp(r"txn\.update\(\s*'ecg_raw_packet'"),
   'restore: retag after merging ecg tables':
-      RegExp(r"counts\['ecg_raw_packet'\]"),
+      RegExp(r"had\('ecg_raw_packet'\)"),
   'issue-report slice: kept on a time expression that drops gesture contact':
       RegExp(r"'ecg_raw_packet':\s*\(SliceKeep\.highRate,\s*_ecgRawNot"),
   'restore: the import screen\'s stage for the table (no read)':
       RegExp(r"'ecg_reading_packet'\s*\|\|\s*'ecg_raw_packet'\s*\|\|"),
-  'ownership lists (salvage / restore) and the coach deny list':
-      RegExp(r"'ecg_reading_packet',\s*'ecg_raw_packet'"),
+  'ownership lists (salvage / restore / resume probe) and the coach deny list':
+      RegExp(r"'ecg_reading_packet',\s*'ecg_raw_packet'|"
+          r"'day_result',\s*'ecg_raw_packet',\s*'ecg_gesture_session'"),
 };
 
 final _reader = RegExp(
