@@ -588,8 +588,6 @@ Future<int> _ldbWipeAll() async {
     final rows = await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table' "
       "AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata' "
-      // Revisions only go up: a later write must not reuse a number a stamp
-      // may hold. The deletes below bump them through the triggers.
       "AND name != 'input_revision'",
     );
     var deleted = 0;
@@ -598,10 +596,12 @@ Future<int> _ldbWipeAll() async {
         final t = r['name'];
         if (t is String) deleted += await txn.delete(t);
       }
-      // A wipe resets the profile and policies too (the caller clears their
-      // prefs); a stamp that read them must see a change, never a lower number.
-      await bumpInputRev('profile', '', db: txn);
-      await bumpInputRev('policy', '', db: txn);
+      // Last: the deletes above bump it through the triggers, and its rows
+      // name every day the wearer had data, so "Delete everything" empties it
+      // too. Every stamp went with the wipe, so restarting at revision 0
+      // cannot collide; a pass still in flight is fenced by the wipe epoch
+      // ([LocalDb.storeGeneration]), not by these numbers.
+      deleted += await txn.delete('input_revision');
     });
     LocalDb._markStoreReplaced();
     return deleted;

@@ -7,9 +7,10 @@
 //    setter files call it (a source grep, since a setter is not a table);
 //  * the v76 -> v77 step creates the table and triggers, idempotently, and
 //    `_repairOpenSchema` (every open) heals a missing set;
-//  * wipe and merge never lower a revision: the rule is "bumped, never reset"
-//    (`wipeAll` deletes rows, so the delete triggers bump; the revision table
-//    itself is not emptied, or a later write would reuse an old number).
+//  * merge never lowers a revision; `wipeAll` empties the revision table with
+//    everything else ("Delete everything": its rows name every day with data,
+//    and no stamp survives the wipe; in-flight work is fenced by the wipe
+//    epoch), then a later write bumps from zero again.
 //
 // Real sqflite_ffi, the same idiom as test/db_day_checkpoint_schema_test.dart.
 
@@ -505,25 +506,20 @@ void main() {
   });
 
   group('wipe and merge', () {
-    test('wipeAll bumps and never resets a revision', () async {
+    test('wipeAll empties the revision table, and writes bump again',
+        () async {
       final db = await LocalDb.instance;
       await db.execute(
           "INSERT OR REPLACE INTO journal(date,updated_at) VALUES(?,1)",
           [_d1]);
-      final before = await _rev('journal', _d1);
-      expect(before, greaterThan(0));
+      expect(await _rev('journal', _d1), greaterThan(0));
       await LocalDb.wipeAll();
-      final wiped = await _rev('journal', _d1);
-      expect(wiped, greaterThan(before),
-          reason: 'wipe deletes the row; that delete is a change');
-      // The next write must not reuse a number a stamp may already hold.
+      expect(await db.rawQuery('SELECT * FROM input_revision'), isEmpty,
+          reason: 'the delete triggers fired during the wipe; their rows go '
+              'too, or "Delete everything" leaves a list of worn days');
       await db.execute(
           "INSERT INTO journal(date,updated_at) VALUES(?,1)", [_d1]);
-      expect(await _rev('journal', _d1), greaterThan(wiped));
-      final snap = await inputRevSnapshot(['journal', 'profile'],
-          fromDay: _d1, toDay: _d3);
-      expect(snap['profile']?[''] ?? 0, greaterThan(0),
-          reason: 'global setter revisions survive a wipe');
+      expect(await _rev('journal', _d1), greaterThan(0));
     });
 
     test('input_revision is not a restore table', () {

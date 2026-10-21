@@ -6,9 +6,10 @@
 // setter inputs (profile, policy) bump through [bumpInputRev]; `decoded` is the
 // existing `input_rev` 15-minute buckets, summed per day on read.
 //
-// Rules: a revision only ever goes up. `wipeAll` keeps this table (a later
-// write must not reuse a number a stamp may already hold), and a restore never
-// copies a foreign file's revisions (the merged rows bump ours via triggers).
+// Rules: a revision only ever goes up while the store lives. `wipeAll` empties
+// this table with everything else (no stamp survives a wipe, and the rows name
+// every day with data), and a restore never copies a foreign file's revisions
+// (the merged rows bump ours via triggers).
 //
 // The bump is UPSERT-free (INSERT OR IGNORE, then UPDATE rev = rev + 1):
 // Android 8-10 ship a SQLite without ON CONFLICT DO UPDATE (D32 hit the same).
