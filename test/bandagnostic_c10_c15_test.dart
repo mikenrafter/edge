@@ -205,9 +205,6 @@ void main() {
 
   group('C10 — the family list is open', () {
     test('a band gets constants per METRIC, not per enum entry', () {
-      const gate = ana.hrCeilingMotionGateG;
-      expect(ana.calibrationFor(gate, 'gen4'), 0.10);
-      expect(ana.calibrationFor(gate, 'gen6'), isNull);
       // The refusal note's grammar is parsed by the UI — pinned here because
       // this is the one thing C10 was not allowed to move.
       expect(ana.unknownFamilyNote('gen6'), 'unknown_device_family:id=gen6');

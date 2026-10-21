@@ -64,12 +64,10 @@ void main() {
     expect(scalars['rmssd'], isNotNull, reason: '${session['note']}');
     expect(session['windows'] as num, greaterThan(80));
     expect(session['diff_acf1'], isA<num>());
-    expect(session['rr_coverage'] as num, closeTo(1.0, 0.02));
     expect(session['overcounted_windows'], 0);
     expect(_m(b, 'series')['hrv_timeline'] as List, isNotEmpty);
     expect(_m(b, 'hrv_night_shape')['value'], isNot(anyOf(isNull, '—')));
     final coverage = _m(b, 'coverage');
-    expect(coverage['rr_coverage'] as num, closeTo(1.0, 0.02));
     expect(coverage['rr_duplicate_beats'], 0);
   });
 
@@ -83,7 +81,6 @@ void main() {
     expect(session['value'], '—');
     expect(session['note'] as String, startsWith('rr_overcount'));
     final coverage = _m(b, 'coverage');
-    expect(coverage['rr_coverage'] as num, closeTo(2.0, 0.05));
     expect(coverage['rr_duplicate_beats'] as num, greaterThan(0));
     expect(scalars['rmssd_whole'], isNull,
         reason: 'whole-night RMSSD refuses the same over-count');

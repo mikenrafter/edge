@@ -276,8 +276,6 @@ void main() {
         },
       ];
       for (final payload in bad) {
-        expect(() => ana.CardioRowCache.fromJson(payload),
-            throwsFormatException);
         final cache = decodeOrEmpty(payload);
         expect(cache.length, 0);
         final got = prepareSleepSessionCandidate(

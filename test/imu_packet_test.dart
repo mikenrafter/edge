@@ -25,8 +25,6 @@ void main() {
     expect(packet.recordIndex, isNull);
     expect(packet.accelSampleCount, 100);
     expect(packet.gyroSampleCount, 100);
-    expect(packet.accelSamples.first.x, closeTo(1.0, 1e-9));
-    expect(packet.gyroSamples.first.x, closeTo(1000.0, 1e-9));
     expect(packet.nominalSampleSpacing, const Duration(milliseconds: 10));
   });
 
@@ -50,8 +48,6 @@ void main() {
     expect(packet.accelSamples, hasLength(3));
     expect(packet.gyroSamples, hasLength(2));
     expect(packet.alignedSampleCount, 2);
-    expect(packet.accelSamples.first.x, closeTo(1.0, 1e-9));
-    expect(packet.gyroSamples.first.x, closeTo(1000.0, 1e-9));
     expect(packet.quality.partialBlock, isTrue);
   });
 

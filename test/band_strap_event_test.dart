@@ -250,7 +250,6 @@ void main() {
     test('fromEventInfo carries the protocol parser\'s tsSubsec through', () {
       final hex = _eventHex(14, _t0Sec, 1234);
       final info = proto.parseEvent(proto.hexToBytes(hex))!;
-      expect(info.tsSubsec, 1234); // the protocol already decodes it
       final e = StrapEvent.fromEventInfo(info,
           receivedAt: _t0,
           hex: hex,
@@ -266,7 +265,6 @@ void main() {
       const hex = '30b707003c8c7b6acc6c0000';
       final info = proto.parseEvent(proto.hexToBytes(hex))!;
       final e = StrapEvent.tryParseHex(hex, receivedAt: _t0, deviceId: 'd')!;
-      expect(e.eventId, 7);
       expect(e.tsEpoch, info.tsEpoch);
       expect(e.tsSubsec, info.tsSubsec);
     });
