@@ -216,7 +216,8 @@ Future<void> playPhonePulses(
   bool Function()? stop,
   bool Function()? enabled,
 }) async {
-  final buzz = vibrate ?? vibratePhoneFor;
+  final owner = HapticCancel.current;
+  final buzz = vibrate ?? (Duration h) => vibratePhoneFor(h, cancel: owner);
   final pause = wait ?? Future<void>.delayed;
   bool halted() =>
       (stop != null && applyCallback<bool>(stop, [])) ||

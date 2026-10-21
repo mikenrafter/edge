@@ -1,0 +1,131 @@
+// The phone transport and Stop (Sol round 3): a Stop during the capability
+// query starts no vibration; a Stop during a hold cancels it, once, and only
+// when this example started it. Time is fake.
+
+import 'dart:async';
+
+import 'package:fake_async/fake_async.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/haptics/example_playback.dart';
+import 'package:openstrap_edge/haptics/phone_vibration.dart';
+
+class _Fake implements PhoneVibrator {
+  Completer<bool>? supportGate;
+  bool supports = true;
+  final vibrated = <int>[];
+  int cancels = 0, buzzes = 0;
+  @override
+  Future<bool> supportsDuration() =>
+      supportGate?.future ?? Future<bool>.value(supports);
+  @override
+  Future<void> vibrate(int ms) async => vibrated.add(ms);
+  @override
+  Future<void> cancel() async => cancels++;
+  @override
+  Future<void> fixedBuzz() async => buzzes++;
+}
+
+void main() {
+  late _Fake f;
+  final saved = phoneVibrator;
+  setUp(() {
+    f = _Fake();
+    phoneVibrator = f;
+  });
+  tearDown(() => phoneVibrator = saved);
+
+  test('Stop during the capability query: nothing vibrates', () {
+    fakeAsync((async) {
+      f.supportGate = Completer<bool>();
+      final c = HapticCancel();
+      vibratePhoneFor(const Duration(seconds: 2), cancel: c);
+      async.flushMicrotasks();
+      c.cancel();
+      f.supportGate!.complete(true);
+      async.flushMicrotasks();
+      expect(f.vibrated, isEmpty);
+      expect(f.buzzes, 0, reason: 'not even the fallback buzz');
+    });
+  });
+
+  test('Stop during a hold cancels the vibration, once', () {
+    fakeAsync((async) {
+      final c = HapticCancel();
+      vibratePhoneFor(const Duration(seconds: 5), cancel: c);
+      async.elapse(const Duration(milliseconds: 100));
+      expect(f.vibrated, [5000]);
+      c.cancel();
+      c.cancel();
+      async.flushMicrotasks();
+      expect(f.cancels, 1);
+    });
+  });
+
+  test('a hold that already ended is not cancelled (it may be another\'s '
+      'vibration by now)', () {
+    fakeAsync((async) {
+      final c = HapticCancel();
+      vibratePhoneFor(const Duration(milliseconds: 300), cancel: c);
+      async.elapse(const Duration(seconds: 1));
+      c.cancel();
+      async.flushMicrotasks();
+      expect(f.cancels, 0);
+    });
+  });
+
+  test('only the example that started the vibration can cancel it', () {
+    fakeAsync((async) {
+      final a = HapticCancel(), b = HapticCancel();
+      vibratePhoneFor(const Duration(seconds: 5), cancel: a);
+      async.elapse(const Duration(milliseconds: 100));
+      vibratePhoneFor(const Duration(seconds: 5), cancel: b);
+      async.elapse(const Duration(milliseconds: 100));
+      a.cancel();
+      async.flushMicrotasks();
+      expect(f.cancels, 0, reason: 'A killed B\'s vibration');
+      b.cancel();
+      async.flushMicrotasks();
+      expect(f.cancels, 1);
+    });
+  });
+
+  test('a vibration with no owner is never cancelled by an example', () {
+    fakeAsync((async) {
+      final c = HapticCancel();
+      vibratePhoneFor(const Duration(seconds: 5));
+      async.elapse(const Duration(milliseconds: 100));
+      c.cancel();
+      async.flushMicrotasks();
+      expect(f.cancels, 0);
+    });
+  });
+
+  test('the capability is asked once per process', () {
+    fakeAsync((async) {
+      var asked = 0;
+      phoneVibrator = _Counting(f, () => asked++);
+      vibratePhoneFor(const Duration(milliseconds: 10));
+      vibratePhoneFor(const Duration(milliseconds: 10));
+      async.flushMicrotasks();
+      expect(asked, lessThanOrEqualTo(1));
+    });
+  });
+}
+
+class _Counting implements PhoneVibrator {
+  _Counting(this.inner, this.onAsk);
+  final _Fake inner;
+  final void Function() onAsk;
+  @override
+  Future<bool> supportsDuration() {
+    onAsk();
+    return inner.supportsDuration();
+  }
+
+  @override
+  Future<void> vibrate(int ms) => inner.vibrate(ms);
+  @override
+  Future<void> cancel() => inner.cancel();
+  @override
+  Future<void> fixedBuzz() => inner.fixedBuzz();
+}
