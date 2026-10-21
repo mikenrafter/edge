@@ -146,3 +146,10 @@ Future<InputRevSnapshot> inputRevSnapshot(
   }
   return out;
 }
+
+/// Records the zone the app is running in ([zoneKey] = name|offset minutes,
+/// default the process's now) and bumps the global `zone` input when it differs
+/// from the last one seen. Returns whether it bumped. The first observation
+/// only records.
+Future<bool> observeInputZone({String? zoneKey, DatabaseExecutor? db}) =>
+    throw UnimplementedError('Sol r1 finding 5');

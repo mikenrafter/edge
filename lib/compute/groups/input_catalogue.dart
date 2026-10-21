@@ -44,9 +44,19 @@ enum InputKind {
 
 /// A table that carries an input, and the SQL for the affected day.
 class InputTable {
-  const InputTable(this.name, {this.dayExpr, this.updateOf = const <String>[]});
+  const InputTable(this.name,
+      {this.dayExpr,
+      this.updateOf = const <String>[],
+      this.readMarkers = const <String>[]});
 
   final String name;
+
+  /// For a table only SOME of whose rows are the input (`raw_archive` holds
+  /// band records too; `sync_cursor` holds every cursor): substrings that a
+  /// read of those rows' SQL or arguments carries. The SQL-logging backstop
+  /// (test/groups/input_read_tracking_test.dart) counts a read of the table as
+  /// a read of the input only when one of them appears. Empty = every read.
+  final List<String> readMarkers;
 
   /// When non-empty, the UPDATE trigger fires only for these columns (a table
   /// whose other columns churn without changing the input, like `last_seen`).

@@ -159,6 +159,21 @@ final Map<String, _Fx> _fixtures = {
     (d) => _s('UPDATE journal SET note = \'n\' WHERE date = ?', [d]),
     (d) => _s('DELETE FROM journal WHERE date = ?', [d]),
   ),
+  'wearable_records': _Fx(
+    (d) => _s('INSERT INTO raw_archive(device_id,hex,packet_type,rec_ts,'
+        'captured_at,reason) VALUES(\'fx\',?,1,?,1,\'ultrahuman_record\')',
+        ['fx-$d', _noon(d)]),
+    (d) => _s('UPDATE raw_archive SET counter = 5 WHERE hex = ?', ['fx-$d']),
+    (d) => _s('DELETE FROM raw_archive WHERE hex = ?', ['fx-$d']),
+  ),
+  'wearable_source': _Fx(
+    (d) => _s('INSERT INTO sync_cursor(name,value,updated_at) '
+        'VALUES(?,\'1\',1)', ['wearable_enabled:fx-$d']),
+    (d) => _s('UPDATE sync_cursor SET value = \'0\' WHERE name = ?',
+        ['wearable_enabled:fx-$d']),
+    (d) => _s('DELETE FROM sync_cursor WHERE name = ?',
+        ['wearable_enabled:fx-$d']),
+  ),
   'cycle_symptom': _Fx(
     (d) => _s('INSERT INTO cycle_symptom(date,symptoms_json) '
         'VALUES(?,\'[]\')', [d]),
@@ -294,6 +309,64 @@ void main() {
         await expectBumpOnly('delete', fx.delete);
       });
     }
+  });
+
+  group('wearable raw records and source selection (Sol r1 finding 3)', () {
+    test('a Colmi temperature frame is scoped by its record time, falling '
+        'back to its capture time', () async {
+      final db = await LocalDb.instance;
+      final before = await _rev('wearable_records', _d2);
+      await db.insert('raw_archive', {
+        'device_id': 'fx', 'hex': 'colmi-a', 'packet_type': 188,
+        'rec_ts': _noon(_d2), 'captured_at': _noon(_d3) * 1000,
+        'reason': 'colmi_big_0x25',
+      });
+      expect(await _rev('wearable_records', _d2), greaterThan(before));
+      final before3 = await _rev('wearable_records', _d3);
+      await db.insert('raw_archive', {
+        'device_id': 'fx', 'hex': 'colmi-b', 'packet_type': 188,
+        'captured_at': _noon(_d3) * 1000, 'reason': 'colmi_big_0x25',
+      });
+      expect(await _rev('wearable_records', _d3), greaterThan(before3));
+    });
+
+    test('band archive rows fire no wearable trigger', () async {
+      final db = await LocalDb.instance;
+      final all = () async => (await db.rawQuery(
+              "SELECT COUNT(*) c, COALESCE(SUM(rev),0) r FROM input_revision "
+              "WHERE source = 'wearable_records'"))
+          .single;
+      final before = await all();
+      for (final reason in ['undecodable_rec_v20', 'colmi_cmd_0x15', 'x']) {
+        await db.insert('raw_archive', {
+          'device_id': 'fx', 'hex': 'band-$reason', 'packet_type': 47,
+          'rec_ts': _noon(_d2), 'captured_at': 1, 'reason': reason,
+        });
+      }
+      expect(await all(), before);
+      final trig = (await db.rawQuery("SELECT sql FROM sqlite_master WHERE "
+              "type = 'trigger' AND tbl_name = 'raw_archive' "
+              "AND name LIKE 'ir\\_%' ESCAPE '\\'"))
+          .map((r) => r['sql'] as String);
+      expect(trig, isNotEmpty);
+      for (final t in trig) {
+        expect(t, contains('WHEN'),
+            reason: 'a raw_archive trigger without a WHEN taxes every band row');
+      }
+    });
+
+    test('other cursors do not bump the source selection', () async {
+      final db = await LocalDb.instance;
+      final before = await _rev('wearable_source', '');
+      await db.insert('sync_cursor',
+          {'name': 'history_token', 'value': 'x', 'updated_at': 1},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      expect(await _rev('wearable_source', ''), before);
+      await db.insert('sync_cursor',
+          {'name': 'active_wearable', 'value': 'dev', 'updated_at': 1},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      expect(await _rev('wearable_source', ''), greaterThan(before));
+    });
   });
 
   group('decoded', () {

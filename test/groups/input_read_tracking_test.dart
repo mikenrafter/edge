@@ -25,6 +25,7 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/db/input_read_tracker.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqflite_common/sqflite_logger.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../support/synthetic_day.dart';
@@ -56,7 +57,53 @@ const Profile _profile =
     Profile(ageYears: 32, weightKg: 72, heightCm: 176, sex: 'm');
 final DateTime _now = DateTime(2026, 10, 4, 22, 30);
 
+/// The statements one sqflite call carries (a batch carries several), each as
+/// `<sql> <arguments>` so a statement starts with its own verb.
+Iterable<String> _statementsOf(Object? args) sync* {
+  if (args is Map) {
+    final sql = args['sql'];
+    if (sql is String) yield '$sql ${args['arguments'] ?? ''}';
+    for (final v in args.values) {
+      if (v is List || v is Map) yield* _statementsOf(v);
+    }
+  } else if (args is List) {
+    for (final v in args) {
+      yield* _statementsOf(v);
+    }
+  }
+}
+
+/// Every sqflite call (SQL and arguments, as text) made while [_logging].
+final List<String> _sqlLog = [];
+bool _logging = false;
+
+/// The SQL-logging backstop: input ids whose catalogued tables a logged READ
+/// touched, that [noted] does not hold. A read is a statement that starts with
+/// SELECT or WITH (a write's own subselects are the writer's business). For a
+/// table whose rows are only partly the input, the read must also carry one of
+/// the table's `readMarkers`.
+Set<String> unnotedCatalogueReads(Iterable<String> log, Set<String> noted) {
+  final out = <String>{};
+  for (final entry in log) {
+    final head = entry.trimLeft().toUpperCase();
+    if (!head.startsWith('SELECT') && !head.startsWith('WITH')) continue;
+    for (final spec in kInputCatalogue) {
+      if (noted.contains(spec.id)) continue;
+      for (final t in spec.tables) {
+        if (!RegExp('\\b${t.name}\\b').hasMatch(entry)) continue;
+        if (t.readMarkers.isNotEmpty &&
+            !t.readMarkers.any(entry.contains)) {
+          continue;
+        }
+        out.add(spec.id);
+      }
+    }
+  }
+  return out;
+}
+
 Set<String> _read = {};
+List<String> _derivedLog = [];
 final Set<String> _bundleKeys = {};
 final Set<String> _seriesKeys = {};
 final Set<String> _nestedKeys = {};
@@ -64,7 +111,19 @@ final Set<String> _nestedKeys = {};
 void main() {
   setUpAll(() async {
     sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    // The logger is the only public hook that sees every sqflite call.
+    // ignore: experimental_member_use
+    databaseFactory = SqfliteDatabaseFactoryLogger(
+      databaseFactoryFfi,
+      options: SqfliteLoggerOptions(
+        type: SqfliteDatabaseFactoryLoggerType.invoke,
+        log: (e) {
+          if (_logging && e is SqfliteLoggerInvokeEvent) {
+            _sqlLog.addAll(_statementsOf(e.arguments));
+          }
+        },
+      ),
+    );
     await LocalDb.close();
     LocalDb.dbName = 'input_read_tracking_test.db';
     final dir = await databaseFactory.getDatabasesPath();
@@ -80,9 +139,16 @@ void main() {
     await LocalDb.setCursor(kActiveWearableCursor, _id);
     await LocalDb.setCursor(wearableEnabledCursor('colmi'), '1');
 
-    _read = await _recorded(() async {
-      await DerivationEngine().runDays(_profile, {_dayId}, force: true);
-    });
+    _sqlLog.clear();
+    _logging = true;
+    try {
+      _read = await _recorded(() async {
+        await DerivationEngine().runDays(_profile, {_dayId}, force: true);
+      });
+    } finally {
+      _logging = false;
+    }
+    _derivedLog = List<String>.of(_sqlLog);
 
     final row = (await LocalDb.dayResult(_dayId))!;
     final stored = jsonDecode(row['payload_json'] as String) as Map;
@@ -141,6 +207,58 @@ void main() {
       });
       expect(inner, {'events'});
       expect(outer, {'sessions'});
+    });
+  });
+
+  group('the SQL-logging backstop', () {
+    test('the log saw the derive', () {
+      expect(_derivedLog.length, greaterThan(20));
+      expect(_derivedLog.any((e) => e.contains('decoded_onehz')), isTrue);
+    });
+
+    test('every catalogued table the derive read was read through a noted '
+        'accessor', () {
+      final missing = unnotedCatalogueReads(_derivedLog, _read);
+      expect(missing, isEmpty,
+          reason: 'read by SQL but never InputReads.note\'d (a change to it '
+              'would not recompute): ${missing.toList()..sort()}');
+    });
+
+    test('the derive read the wearable rows and the source selection', () {
+      // The colmi fixture selects a wearable through the cursors and reads its
+      // temperature frames from raw_archive.
+      expect(_read, containsAll(['wearable_source', 'wearable_records']));
+    });
+
+    test('NEGATIVE: an unannotated raw read of a catalogued table is caught',
+        () async {
+      final db = await LocalDb.instance;
+      _sqlLog.clear();
+      _logging = true;
+      Set<String> noted;
+      try {
+        noted = await _recorded(() async {
+          // A new accessor that forgot its InputReads.note.
+          await db.rawQuery('SELECT * FROM journal');
+          await db.rawQuery('SELECT hex FROM raw_archive WHERE reason = ?',
+              ['ultrahuman_record']);
+        });
+      } finally {
+        _logging = false;
+      }
+      expect(noted, isEmpty);
+      expect(unnotedCatalogueReads(List.of(_sqlLog), noted),
+          containsAll(['journal', 'wearable_records']));
+      // And noting it makes the same read pass.
+      expect(unnotedCatalogueReads(List.of(_sqlLog), {'journal', 'wearable_records'}),
+          isEmpty);
+    });
+
+    test('a band raw_archive read is not a wearable read', () {
+      expect(
+          unnotedCatalogueReads(
+              ["{sql: SELECT hex FROM raw_archive WHERE reason = 'x'}"], {}),
+          isEmpty);
     });
   });
 

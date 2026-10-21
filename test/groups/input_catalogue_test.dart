@@ -33,6 +33,9 @@ const Map<String, List<String>> kInventory = {
   'profile': ['profile'],
   'cycle log and journal': ['cycle_log', 'journal', 'cycle_symptom'],
   'calc policies and settings': ['policy'],
+  'wearable raw records': ['wearable_records'],
+  'wearable source selection': ['wearable_source'],
+  'time zone': ['zone'],
 };
 
 void main() {
@@ -99,6 +102,29 @@ void main() {
             '${g.id} -> ${i.id}'
     };
     expect(bad, isEmpty);
+  });
+
+  test('whatever reads the decoded substrate also reads the wearable that '
+      'feeds it, and every day-scoped group reads the zone it is labelled in',
+      () {
+    for (final e in declared.entries) {
+      if (e.value.contains('decoded')) {
+        expect(e.value, containsAll(['wearable_records', 'wearable_source']),
+            reason: e.key);
+      }
+    }
+    final dayScoped = {
+      for (final g in kMergedRegistry.groups)
+        if (declared[g.id]!.any((i) =>
+            idSet.contains(i) &&
+            kInputCatalogue.firstWhere((s) => s.id == i).granularity ==
+                InputGranularity.day))
+          g.id
+    };
+    expect(dayScoped, isNotEmpty);
+    for (final g in dayScoped) {
+      expect(declared[g], contains('zone'), reason: g);
+    }
   });
 
   test('every section 3 inventory row is in the catalogue', () {
