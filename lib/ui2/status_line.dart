@@ -43,7 +43,11 @@ class StatusLine extends StatelessWidget {
   final bool syncActions;
   final String? idleLabel;
   final double? slotHeight;
-  const StatusLine({super.key, this.todayId, this.now, this.syncActions = false, this.idleLabel, this.slotHeight});
+
+  /// The actions' own reserved line (see [syncActionsNeedOwnLine]); the same
+  /// extra height in every state, text-only states included.
+  final bool actionLine;
+  const StatusLine({super.key, this.todayId, this.now, this.syncActions = false, this.idleLabel, this.slotHeight, this.actionLine = false});
 
   double _height(BuildContext c) => slotHeight ?? heightFor(c);
 
@@ -90,6 +94,7 @@ class StatusLine extends StatelessWidget {
             through: idleLabel ?? syncedThroughLabel(null, id),
             throughShort: idleLabel ?? syncedThroughShortLabel(null, id),
             inset: S.x1,
+            actionLine: actionLine,
           ),
         ),
       );
@@ -140,9 +145,10 @@ class StatusLine extends StatelessWidget {
         throughShort: idleLabel ?? syncedThroughShortLabel(sync.$3, id, l),
         inset: S.x1,
         slot: _height(c),
+        actionLine: actionLine,
       );
     }
-    return SizedBox(
+    final line = SizedBox(
       height: _height(c),
       child: Pressable(
         onTap: () => showSyncDetails(c, app),
@@ -160,6 +166,14 @@ class StatusLine extends StatelessWidget {
         ),
       ),
     );
+    // Importing / recalculating still reserve the actions' line, so the block
+    // is the same height as when the actions are shown.
+    return actionLine && syncActions
+        ? Column(mainAxisSize: MainAxisSize.min, children: [
+            line,
+            const SizedBox(height: S.tap),
+          ])
+        : line;
   }
 }
 
@@ -178,10 +192,14 @@ class HeaderRows extends StatelessWidget {
   @override
   Widget build(BuildContext c) => ListenableBuilder(
         listenable: CalendarDay.instance,
-        builder: (c, _) => _block(c),
+        // The width decides whether the actions need their own line; it is the
+        // same for every state at this width and text scale.
+        builder: (c, _) => LayoutBuilder(
+          builder: (c, box) => _block(c, syncActionsNeedOwnLine(c, box.maxWidth)),
+        ),
       );
 
-  Widget _block(BuildContext c) {
+  Widget _block(BuildContext c, bool actionLine) {
     HeaderRows.debugBuilds++;
     final l = AppLocalizations.of(c);
     DateTime? edge;
@@ -205,6 +223,7 @@ class HeaderRows extends StatelessWidget {
             syncActions: true,
             idleLabel: dateText,
             slotHeight: statusHeight,
+            actionLine: actionLine,
           ),
           SizedBox(
             height: StatusLine.heightFor(c),

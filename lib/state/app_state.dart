@@ -2909,6 +2909,7 @@ class AppState extends ChangeNotifier {
   @override
   void notifyListeners() {
     if (_disposed) return;
+    _trackHeldEdge();
     super.notifyListeners();
   }
 
@@ -7896,28 +7897,33 @@ class AppState extends ChangeNotifier {
 
   // The "Synced through" edge every header shows. Records land in batches
   // mid-sync, and the line should only move once the sync is done. The held
-  // value lives HERE, once, not per header: a header built mid-sync (a tab
-  // visited for the first time, a list item rebuilt) must show the same edge
-  // Home is holding. Idle reads refresh it (every notification runs the
-  // headers' selector); a read mid-sync returns what idle last saw. Owner:
-  // this field; nothing else writes it.
+  // value lives HERE, once, not per header, and is captured when the shared
+  // sync state ENTERS busy (see [notifyListeners]) and cleared when it ends,
+  // so it never depends on whether a header happened to be mounted or to read
+  // it. Owner: these two fields; the getter below only reads them.
   DateTime? _heldEdge;
-  bool _heldEdgeKnown = false;
+  bool _heldEdgeKnown = false, _heldWasBusy = false;
+
+  void _trackHeldEdge() {
+    final busy = syncPresentation.busy;
+    if (busy && !_heldWasBusy) {
+      // An explicit null is a capture too: "no data yet" is held, not replaced
+      // by the first record that lands mid-sync.
+      _heldEdge = lastRecordAt;
+      _heldEdgeKnown = true;
+    } else if (!busy) {
+      _heldEdge = null;
+      _heldEdgeKnown = false;
+    }
+    _heldWasBusy = busy;
+  }
 
   /// The data edge for the header's "Synced through" row: live while idle,
-  /// held at its pre-sync value while a sync runs. Null with no record (or
-  /// none before this sync began): never a substituted time.
-  DateTime? get headerSyncedThrough {
-    final edge = lastRecordAt;
-    if (!syncPresentation.busy || !_heldEdgeKnown) {
-      if (!syncPresentation.busy) {
-        _heldEdge = edge;
-        _heldEdgeKnown = true;
-      }
-      return edge;
-    }
-    return _heldEdge;
-  }
+  /// the edge from when the running sync began while one runs. Null with no
+  /// record then: never a substituted time. A sync already running before the
+  /// first notification (nothing captured) reads live.
+  DateTime? get headerSyncedThrough =>
+      syncPresentation.busy && _heldEdgeKnown ? _heldEdge : lastRecordAt;
 
   Future<bool> bluetoothReady() async {
     if (!await FlutterBluePlus.isSupported) return false;

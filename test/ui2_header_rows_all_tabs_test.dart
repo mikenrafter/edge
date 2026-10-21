@@ -47,8 +47,8 @@ Map<String, dynamic> _fixedDay(Map<String, dynamic> b) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() {
-    loadFonts();
+  setUpAll(() async {
+    await loadFonts();
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   });

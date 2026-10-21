@@ -72,8 +72,8 @@ Widget _home(AppState app, {required String dayId}) => MultiProvider(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   pinProcessTimeZone('America/New_York');
-  setUpAll(() {
-    loadFonts();
+  setUpAll(() async {
+    await loadFonts();
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   });
@@ -231,6 +231,55 @@ void main() {
         expect(_text('Synced through 15:38'), findsOneWidget,
             reason: 'advances when the sync ends');
         await t.pumpWidget(const SizedBox());
+      });
+    });
+
+    testWidgets('no header mounted when the sync starts: one mounted mid-sync '
+        'shows the start edge and does not advance', (t) async {
+      await withClock(Clock.fixed(headerNow), () async {
+        final app = HeaderApp(pres: headerIdle(), through: headerEdge);
+        addTearDown(app.dispose);
+        t.view.physicalSize = const Size(390, 900);
+        t.view.devicePixelRatio = 1;
+        addTearDown(t.view.reset);
+        await t.pumpWidget(const SizedBox()); // no header anywhere
+        app.setPres(headerSyncing());
+        app.setThrough(DateTime(2026, 10, 4, 15, 38)); // lands mid-sync
+        await t.pumpWidget(titleOnly(app, 'Sleep'));
+        await t.pump();
+        expect(_text('Synced through 15:33'), findsOneWidget,
+            reason: 'the edge when the sync began');
+        app.setThrough(DateTime(2026, 10, 4, 15, 39));
+        await t.pump();
+        expect(_text('Synced through 15:33'), findsOneWidget,
+            reason: 'does not advance mid-sync');
+        app.setPres(headerIdle());
+        await t.pump();
+        expect(_text('Synced through 15:39'), findsOneWidget);
+        await end(t);
+      });
+    });
+
+    testWidgets('headers gone, sync 1 completes, sync 2 starts with no reads: '
+        'a recreated header shows sync 2\'s start edge', (t) async {
+      await withClock(Clock.fixed(headerNow), () async {
+        final app = HeaderApp(pres: headerIdle(), through: headerEdge);
+        addTearDown(app.dispose);
+        await bare(t, titleOnly(app, 'Sleep'));
+        await t.pumpWidget(const SizedBox()); // every header disposed
+        app.setPres(headerSyncing()); // sync 1 starts
+        app.setThrough(DateTime(2026, 10, 4, 15, 36));
+        app.setPres(headerIdle()); // sync 1 completes
+        app.setThrough(DateTime(2026, 10, 4, 15, 38));
+        app.setPres(headerSyncing()); // sync 2 starts, nobody reads
+        app.setThrough(DateTime(2026, 10, 4, 15, 44)); // lands mid-sync
+        await t.pumpWidget(titleOnly(app, 'Sleep'));
+        await t.pump();
+        expect(_text('Synced through 15:38'), findsOneWidget,
+            reason: 'sync 2 began at 15:38');
+        expect(_text('Synced through 15:33'), findsNothing,
+            reason: 'not the earlier snapshot');
+        await end(t);
       });
     });
 

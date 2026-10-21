@@ -638,6 +638,11 @@ class HomeSyncStatus extends StatefulWidget {
   /// text's own height. The status line passes its slot height.
   final double? slot;
 
+  /// The actions get their own reserved line under row 1 (see
+  /// [syncActionsNeedOwnLine]); decided by width and text scale alone, so it is
+  /// the same in every state.
+  final bool actionLine;
+
   /// Test-facing: how many times any sync row has built.
   @visibleForTesting
   static int debugBuilds = 0;
@@ -649,6 +654,7 @@ class HomeSyncStatus extends StatefulWidget {
     this.end,
     this.inset = 0,
     this.slot,
+    this.actionLine = false,
   });
 
   @override
@@ -735,17 +741,24 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
     final link = F.cap.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w600);
     final hasStatus = status != null || problem != null;
 
+    // The row's height is a policy of text scale alone, never of the state:
+    // the hit targets overhang it, the content cannot grow it.
+    final rowH = math.max(S.tap, widget.slot ?? visual);
     final row = LayoutBuilder(builder: (c, box) {
       // The right-hand end first, so the left can decide between the full
       // label and the short one before anything has to wrap or clip.
       // Pressables are at least S.tap wide.
       final maxRight = box.maxWidth * .6;
-      final details = hasStatus ? _width(c, 'Show details', link) + S.x1 : 0.0;
+      final two = widget.actionLine;
+      // With their own line the actions take no room on this one.
+      final details = hasStatus && !two
+          ? _width(c, 'Show details', link) + S.x1
+          : 0.0;
       final timerW = timerText == null ? 0.0 : _width(c, '$timerText ·', base);
       // The cluster's gap sits between the timer and Show details too.
       final showTimer = timerText != null &&
           timerW + (details > 0 ? S.x1 : 0) + details <= maxRight;
-      final act = s.busy
+      final act = s.busy || two
           ? 0.0
           : math.max(_width(c, action, link) + 2 * S.x1, S.tap);
       final fixed = [if (showTimer) timerW, details, act].where((w) => w > 0).toList();
@@ -778,6 +791,24 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       // Nothing while syncing but the timer and Show details: the spinner is in
       // the settings button, and a second Sync now beside a running sync is
       // what this header replaced.
+      List<Widget> actions(BuildContext c) => [
+            if (hasStatus)
+              Pressable(
+                onTap: () => showSyncDetails(c, c.read<AppState>()),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: S.x1),
+                  child: Text('Show details', style: link),
+                ),
+              ),
+            if (!s.busy)
+              Pressable(
+                onTap: () => c.read<AppState>().syncNow(),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: S.x1),
+                  child: Text(action, style: link),
+                ),
+              ),
+          ];
       final trail = <Widget>[
         if (showAgo) Text(ago, style: base),
         if (showTimer)
@@ -790,25 +821,10 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
               ]),
             ),
           ),
-        if (hasStatus)
-          Pressable(
-            onTap: () => showSyncDetails(c, c.read<AppState>()),
-            child: Padding(
-              padding: const EdgeInsets.only(right: S.x1),
-              child: Text('Show details', style: link),
-            ),
-          ),
-        if (!s.busy)
-          Pressable(
-            onTap: () => c.read<AppState>().syncNow(),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x1),
-              child: Text(action, style: link),
-            ),
-          ),
+        if (!two) ...actions(c),
       ];
 
-      return Row(children: [
+      final line = Row(children: [
         Expanded(
             child: Padding(
                 padding: EdgeInsets.only(left: widget.inset), child: left)),
@@ -816,41 +832,63 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
           const SizedBox(width: S.x2),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxRight),
-            // One line, never wrapped: a wrapped cluster made row 1 taller in
-            // exactly the states that carry the most actions. When even the
-            // fit above leaves it too wide, it scales down instead.
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                for (var i = 0; i < trail.length; i++) ...[
-                  if (i > 0) const SizedBox(width: S.x1),
-                  trail[i],
-                ],
-              ]),
-            ),
+            // Unscaled and never wrapped: the fit above has already dropped
+            // the age and timer, and what still does not fit has its own line.
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              for (var i = 0; i < trail.length; i++) ...[
+                if (i > 0) const SizedBox(width: S.x1),
+                trail[i],
+              ],
+            ]),
           ),
         ],
       ]);
+      if (!two) return line;
+      final own = actions(c);
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(height: rowH, child: line),
+        SizedBox(
+          height: S.tap,
+          child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            for (var i = 0; i < own.length; i++) ...[
+              if (i > 0) const SizedBox(width: S.x1),
+              own[i],
+            ],
+          ]),
+        ),
+      ]);
     });
 
-    // The row's height is a policy of text scale alone, never of the state:
-    // the hit targets overhang it, the content cannot grow it.
-    final rowH = math.max(S.tap, widget.slot ?? visual);
+    final total = rowH + (widget.actionLine ? S.tap : 0);
     return HitOverhang(
-      visual: widget.slot ?? visual,
+      visual: widget.actionLine ? total : widget.slot ?? visual,
       child: SizedBox(
-        height: rowH,
+        height: total,
         child: end == null
-          ? row
-          : Row(children: [
-              Expanded(child: row),
-              const SizedBox(width: HomeSyncStatus.endGap),
-              end,
-            ]),
+            ? row
+            : Row(children: [
+                Expanded(child: row),
+                const SizedBox(width: HomeSyncStatus.endGap),
+                end,
+              ]),
       ),
     );
   }
+}
+
+/// Whether the sync actions need their own reserved line at [width]: the
+/// widest state's actions ("Show details" + "Retry", or "Sync now") do not fit
+/// the right 60 % of row 1. A function of width and text scale ONLY, never of
+/// the state, so row 1 and the block are the same height in idle, syncing,
+/// failed and importing. The labels are never scaled to fit.
+bool syncActionsNeedOwnLine(BuildContext c, double width) {
+  final link = F.cap.copyWith(
+      color: P.of(c).on(C.blue), fontWeight: FontWeight.w600);
+  double w(String t) => _HomeSyncStatusState._width(c, t, link);
+  double act(String t) => math.max(w(t) + 2 * S.x1, S.tap);
+  final details = w('Show details') + S.x1;
+  final worst = math.max(act('Sync now'), details + S.x1 + act('Retry'));
+  return worst > width * .6;
 }
 
 /// The four steps and the running time, in a bottom sheet. It reads [app] live,

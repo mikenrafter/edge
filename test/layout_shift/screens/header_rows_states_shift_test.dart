@@ -4,6 +4,7 @@
 // the idle ones. (A wrapped action cluster used to grow row 1 at 360 pt x 2.0.)
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,6 +13,8 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/state/derive_progress.dart';
 import 'package:openstrap_edge/state/control_operations.dart';
+
+import 'package:openstrap_edge/ui2/grammar.dart' show Pressable;
 
 import '../../support/bundled_fonts.dart';
 import '../../support/header_rows_fakes.dart';
@@ -101,6 +104,59 @@ void main() {
           });
         });
       }
+    }
+  }
+
+  // Actions are never scaled and always have a 44 x 44 target, whatever the
+  // width and text scale; when they do not fit on row 1 they get their own
+  // reserved line (checked above: every state keeps the same block).
+  const actionsByState = {
+    'idle': ['Sync now'],
+    'syncing': ['Show details'],
+    'failed': ['Show details', 'Retry'],
+  };
+  for (final w in _widths) {
+    for (final scale in _scales) {
+      testWidgets('actions are unscaled with 44 pt targets: '
+          '${w.toInt()} pt x $scale', (t) async {
+        addTearDown(t.view.reset);
+        await withClock(Clock.fixed(headerNow), () async {
+          for (final e in actionsByState.entries) {
+            final app = HeaderApp(pres: headerIdle(), through: headerEdge);
+            _states[e.key]!(app);
+            addTearDown(app.dispose);
+            t.view.devicePixelRatio = 1;
+            t.view.physicalSize = Size(w, 900);
+            await t.pumpWidget(titleOnly(app, 'Sleep', scale: scale));
+            await t.pump();
+            for (final label in e.value) {
+              final f = find.text(label);
+              expect(f, findsOneWidget, reason: '${e.key}: $label');
+              final why = '${e.key} $label at $w x $scale';
+              expect(find.descendant(
+                      of: find.byKey(const ValueKey('shared:header-rows')),
+                      matching: find.ancestor(of: f, matching: find.byType(FittedBox))),
+                  findsNothing, reason: 'scaled by a FittedBox: $why');
+              expect(find.descendant(
+                      of: find.byKey(const ValueKey('shared:header-rows')),
+                      // (Pressable's own press feedback is a Transform at rest.)
+                      matching: find.ancestor(
+                          of: find.ancestor(
+                              of: f, matching: find.byType(Pressable)),
+                          matching: find.byType(Transform))),
+                  findsNothing, reason: 'transformed: $why');
+              expect(t.renderObject<RenderParagraph>(f).textScaler.scale(10),
+                  closeTo(10 * scale, 0.01), reason: 'text scale: $why');
+              final hit = t.getRect(
+                  find.ancestor(of: f, matching: find.byType(Pressable)).first);
+              expect(hit.width, greaterThanOrEqualTo(44), reason: 'width: $why');
+              expect(hit.height, greaterThanOrEqualTo(44), reason: 'height: $why');
+              expect(Rect.fromLTWH(0, 0, w, 900).contains(hit.center), isTrue);
+            }
+            await t.pumpWidget(const SizedBox());
+          }
+        });
+      });
     }
   }
 }
