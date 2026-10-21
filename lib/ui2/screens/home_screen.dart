@@ -2617,7 +2617,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           // Keep the row control in the same spanning Column as the device
           // rows so its full tap target remains reachable.
-          HeaderRows(todayId: d.dayId),
+          const HeaderRows(),
         ]),
       ),
       const SizedBox(height: S.x5),

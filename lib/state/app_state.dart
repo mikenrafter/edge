@@ -7894,6 +7894,31 @@ class AppState extends ChangeNotifier {
   /// record exists.
   DateTime? get lastRecordAt => _sync.lastRecordAt;
 
+  // The "Synced through" edge every header shows. Records land in batches
+  // mid-sync, and the line should only move once the sync is done. The held
+  // value lives HERE, once, not per header: a header built mid-sync (a tab
+  // visited for the first time, a list item rebuilt) must show the same edge
+  // Home is holding. Idle reads refresh it (every notification runs the
+  // headers' selector); a read mid-sync returns what idle last saw. Owner:
+  // this field; nothing else writes it.
+  DateTime? _heldEdge;
+  bool _heldEdgeKnown = false;
+
+  /// The data edge for the header's "Synced through" row: live while idle,
+  /// held at its pre-sync value while a sync runs. Null with no record (or
+  /// none before this sync began): never a substituted time.
+  DateTime? get headerSyncedThrough {
+    final edge = lastRecordAt;
+    if (!syncPresentation.busy || !_heldEdgeKnown) {
+      if (!syncPresentation.busy) {
+        _heldEdge = edge;
+        _heldEdgeKnown = true;
+      }
+      return edge;
+    }
+    return _heldEdge;
+  }
+
   Future<bool> bluetoothReady() async {
     if (!await FlutterBluePlus.isSupported) return false;
     // CoreBluetooth boots in `unknown` before settling — `.first` loses that

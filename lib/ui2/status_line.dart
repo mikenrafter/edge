@@ -11,11 +11,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:clock/clock.dart' as pc;
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../data/day_label.dart' show todayLabel;
 import '../data/import_progress.dart';
+import 'calendar_day.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/date_text.dart' show localizedDate;
 import '../state/app_state.dart';
@@ -165,38 +165,34 @@ class StatusLine extends StatelessWidget {
 
 /// One shared three-row header under each tab title. Row 1 keeps StatusLine's
 /// import > derive > sync > idle priority; the data edge and device stay below.
-class HeaderRows extends StatefulWidget {
-  const HeaderRows({super.key, required this.todayId});
-  final String? todayId;
+/// Row 1 is today's date (never the day a screen is showing), refreshed at
+/// local midnight by [CalendarDay]; row 2 reads the shared held edge
+/// ([AppState.headerSyncedThrough]).
+class HeaderRows extends StatelessWidget {
+  const HeaderRows({super.key});
+
+  /// Test-facing: how many times any header block has built.
+  @visibleForTesting
+  static int debugBuilds = 0;
 
   @override
-  State<HeaderRows> createState() => _HeaderRowsState();
-}
+  Widget build(BuildContext c) => ListenableBuilder(
+        listenable: CalendarDay.instance,
+        builder: (c, _) => _block(c),
+      );
 
-class _HeaderRowsState extends State<HeaderRows> {
-  DateTime? _held;
-  bool _initialized = false;
-
-  @override
-  Widget build(BuildContext c) {
+  Widget _block(BuildContext c) {
+    HeaderRows.debugBuilds++;
     final l = AppLocalizations.of(c);
     DateTime? edge;
-    var busy = false;
     try {
-      (edge, busy) = c.select<AppState, (DateTime?, bool)>((app) =>
-          (app.lastRecordAt, app.syncPresentation.busy));
+      edge = c.select<AppState, DateTime?>((app) => app.headerSyncedThrough);
     } on ProviderNotFoundException {
       // Goldens without AppState keep the same empty, fixed-height header.
     }
-    if (!_initialized || !busy) {
-      _held = edge;
-      _initialized = true;
-    }
-    final date = widget.todayId == null
-        ? pc.clock.now()
-        : DateTime.tryParse(widget.todayId!) ?? pc.clock.now();
-    final todayId = widget.todayId ?? DateFormat('yyyy-MM-dd').format(date);
-    final dateText = localizedDate(date,
+    final now = pc.clock.now();
+    final todayId = todayLabel(now);
+    final dateText = localizedDate(now,
         l?.localeName ?? LocaleController.displayLanguageCode, weekday: true);
     final statusHeight = math.max(S.tap, StatusLine.heightFor(c));
     return SharedSlot(
@@ -218,7 +214,7 @@ class _HeaderRowsState extends State<HeaderRows> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  syncedThroughLabel(_held, todayId, l),
+                  syncedThroughLabel(edge, todayId, l),
                   style: F.cap.copyWith(color: P.of(c).ink3),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

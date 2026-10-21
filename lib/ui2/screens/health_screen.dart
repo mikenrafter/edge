@@ -690,7 +690,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     return tabRootList(padding: kTabRootPad, children: [
       ScreenTitle(l?.healthTitle ?? 'Health',
           avatar: const ProfileAvatar(accent: C.domHealth)),
-      const HeaderRows(todayId: null),
+      const HeaderRows(),
       SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
       const SizedBox(height: S.x5),
       if (_loading && _d == null)

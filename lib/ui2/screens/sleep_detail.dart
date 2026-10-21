@@ -468,7 +468,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
         children: [
           ScreenTitle(title,
               avatar: const ProfileAvatar(accent: C.domSleep)),
-          const HeaderRows(todayId: null),
+          const HeaderRows(),
           if (sub.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(left: S.x1, bottom: S.x2),

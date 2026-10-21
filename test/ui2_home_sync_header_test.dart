@@ -10,6 +10,7 @@
 // The four lines keep the tight rhythm they had before the sync UI moved in:
 // row 1's 44 pt hit targets overhang their neighbours, they do not grow the
 // layout.
+import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -27,6 +28,7 @@ import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/bundled_fonts.dart';
+import 'support/tabs_consistency_fakes.dart' show captureFrame;
 
 class _App extends AppState {
   _App({
@@ -61,13 +63,13 @@ SyncStep _step(SyncStepId id, SyncStepStatus s, {DateTime? at}) =>
 
 /// 42 s into a sync, steps part-way.
 SyncPresentationState _syncing() {
-  final start = DateTime.now().subtract(const Duration(seconds: 42));
+  final start = pc.clock.now().subtract(const Duration(seconds: 42));
   return SyncPresentationState(
     phase: 'downloading',
     busy: true,
     contactedBand: true,
     startedAt: start,
-    lastSuccess: DateTime.now().subtract(const Duration(minutes: 61)),
+    lastSuccess: pc.clock.now().subtract(const Duration(minutes: 61)),
     steps: [
       _step(SyncStepId.connect, SyncStepStatus.done, at: start),
       _step(SyncStepId.download, SyncStepStatus.running, at: start),
@@ -79,15 +81,15 @@ SyncPresentationState _syncing() {
 
 SyncPresentationState _idle() => SyncPresentationState(
   phase: 'idle',
-  lastSuccess: DateTime.now().subtract(const Duration(minutes: 61)),
+  lastSuccess: pc.clock.now().subtract(const Duration(minutes: 61)),
 );
 
 SyncPresentationState _failed() => SyncPresentationState(
   phase: 'failed',
   failureReason: 'Pair a band before syncing',
-  lastSuccess: DateTime.now().subtract(const Duration(minutes: 61)),
-  startedAt: DateTime.now().subtract(const Duration(seconds: 50)),
-  finishedAt: DateTime.now().subtract(const Duration(seconds: 9)),
+  lastSuccess: pc.clock.now().subtract(const Duration(minutes: 61)),
+  startedAt: pc.clock.now().subtract(const Duration(seconds: 50)),
+  finishedAt: pc.clock.now().subtract(const Duration(seconds: 9)),
   steps: [
     _step(SyncStepId.connect, SyncStepStatus.failed),
     _step(SyncStepId.download, SyncStepStatus.skipped),
@@ -201,6 +203,11 @@ void _expectButtonGap(WidgetTester t, Finder lastRight) {
   expect(gap, inInclusiveRange(0, 12), reason: 'cluster to list edge');
 }
 
+/// The header date is TODAY's (never the shown day), so every test runs on a
+/// fixed clock on the day the data edge is on: Sunday 4 October, 15:40.
+void _tw(String name, Future<void> Function(WidgetTester t) body) =>
+    testWidgets(name, (t) => pc.withClock(pc.Clock.fixed(DateTime(2026, 10, 4, 15, 40)), () => body(t)));
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   // The real type: the test font is a full em wide per glyph, which would force
@@ -214,7 +221,7 @@ void main() {
   tearDown(ClockFormatController.debugReset);
 
   group('idle', () {
-    testWidgets('row 1: the date, then time since sync and Sync now '
+    _tw('row 1: the date, then time since sync and Sync now '
         'right-aligned against the list edge, under the gear', (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
@@ -249,7 +256,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the battery line keeps the connection, under the sync rows',
+    _tw('the battery line keeps the connection, under the sync rows',
         (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
@@ -263,7 +270,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('idle: the settings button shows the gear, no spinner anywhere',
+    _tw('idle: the settings button shows the gear, no spinner anywhere',
         (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
@@ -277,7 +284,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the four lines keep the tight pre-sync-UI rhythm', (t) async {
+    _tw('the four lines keep the tight pre-sync-UI rhythm', (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
@@ -302,7 +309,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the settings button is in the title row, above row 1',
+    _tw('the settings button is in the title row, above row 1',
         (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
@@ -313,7 +320,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the 44 pt hit target is kept: a tap 20 pt off the text lands',
+    _tw('the 44 pt hit target is kept: a tap 20 pt off the text lands',
         (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
@@ -329,7 +336,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('Sync now starts one sync', (t) async {
+    _tw('Sync now starts one sync', (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
@@ -339,7 +346,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the old card is gone: no SyncControl, no "Synced 1 h ago"',
+    _tw('the old card is gone: no SyncControl, no "Synced 1 h ago"',
         (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
@@ -357,7 +364,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('never synced and no data: honest absence, nothing invented',
+    _tw('never synced and no data: honest absence, nothing invented',
         (t) async {
       final app = _App(battery: null);
       addTearDown(app.dispose);
@@ -373,7 +380,7 @@ void main() {
   });
 
   group('syncing', () {
-    testWidgets('the status sentence leads on the left; the timer and Show '
+    _tw('the status sentence leads on the left; the timer and Show '
         'details are right-aligned against the button', (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
@@ -419,7 +426,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the spinner lives in the settings button, in its on-colour',
+    _tw('the spinner lives in the settings button, in its on-colour',
         (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
@@ -457,7 +464,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the settings button still opens Settings while syncing',
+    _tw('the settings button still opens Settings while syncing',
         (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
@@ -471,7 +478,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the status takes the date\'s place: same row, same height',
+    _tw('the status takes the date\'s place: same row, same height',
         (t) async {
       final idle = _App(pres: _idle(), through: _edge);
       addTearDown(idle.dispose);
@@ -488,24 +495,37 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the sync row is not taller while syncing', (t) async {
+    _tw('the block and the content below do not move while syncing '
+        'or after a failure', (t) async {
+      Future<(Rect, Rect, double)> geo(AppState app) async {
+        await _pump(t, app);
+        final block = t.getRect(find.byKey(const ValueKey('shared:header-rows')));
+        final row1 = t.getRect(find.byKey(const ValueKey('shared:status-line')));
+        // The first content element under the block: the nearest card below it.
+        final below = captureFrame(t)
+            .elements
+            .where((e) => e.id.startsWith('card:') && e.rect.top >= block.bottom - 1)
+            .map((e) => e.rect.top)
+            .fold<double?>(null, (m, v) => m == null || v < m ? v : m);
+        expect(below, isNotNull, reason: 'no content card under the block');
+        await _end(t);
+        return (block, row1, below!);
+      }
+
       final idle = _App(pres: _idle(), through: _edge);
       addTearDown(idle.dispose);
-      await _pump(t, idle);
-      final idleGap = t.getTopLeft(find.text('59% · Connected')).dy -
-          t.getBottomLeft(_through).dy;
-      await _end(t);
-
-      final app = _App(pres: _syncing(), through: _edge);
-      addTearDown(app.dispose);
-      await _pump(t, app);
-      final gap = t.getTopLeft(find.text('59% · Connected')).dy -
-          t.getBottomLeft(_through).dy;
-      expect(gap, closeTo(idleGap, 2));
-      await _end(t);
+      final base = await geo(idle);
+      for (final pres in [_syncing(), _failed()]) {
+        final app = _App(pres: pres, through: _edge);
+        addTearDown(app.dispose);
+        final g = await geo(app);
+        expect(g.$1, base.$1, reason: 'block rect');
+        expect(g.$2, base.$2, reason: 'row 1 rect');
+        expect(g.$3, base.$3, reason: 'content anchor below');
+      }
     });
 
-    testWidgets('Show details opens a bottom sheet with the four steps',
+    _tw('Show details opens a bottom sheet with the four steps',
         (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
@@ -534,7 +554,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('Show details keeps its 44 pt target: a tap 20 pt below lands',
+    _tw('Show details keeps its 44 pt target: a tap 20 pt below lands',
         (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
@@ -546,7 +566,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('tapping the status text does not expand anything inline',
+    _tw('tapping the status text does not expand anything inline',
         (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
@@ -560,7 +580,7 @@ void main() {
   });
 
   group('a problem', () {
-    testWidgets('a failed sync leads row 1; Show details and Retry are '
+    _tw('a failed sync leads row 1; Show details and Retry are '
         'right-aligned against the button', (t) async {
       final app = _App(pres: _failed(), through: _edge);
       addTearDown(app.dispose);
@@ -589,7 +609,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('it still opens the sheet, which says why', (t) async {
+    _tw('it still opens the sheet, which says why', (t) async {
       final app = _App(pres: _failed(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
@@ -602,13 +622,13 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('a sync that left days for another pass is a problem too',
+    _tw('a sync that left days for another pass is a problem too',
         (t) async {
       final app = _App(
         pres: SyncPresentationState(
           phase: 'completed',
           partial: true,
-          lastSuccess: DateTime.now().subtract(const Duration(minutes: 61)),
+          lastSuccess: pc.clock.now().subtract(const Duration(minutes: 61)),
           steps: [_step(SyncStepId.connect, SyncStepStatus.done)],
         ),
         through: _edge,
@@ -622,12 +642,12 @@ void main() {
   });
 
   group('not connected', () {
-    testWidgets('the battery line says so; the sync row is unchanged',
+    _tw('the battery line says so; the sync row is unchanged',
         (t) async {
       final app = _App(
         pres: SyncPresentationState(
           phase: 'offline',
-          lastSuccess: DateTime.now().subtract(const Duration(minutes: 61)),
+          lastSuccess: pc.clock.now().subtract(const Duration(minutes: 61)),
         ),
         connection: 'disconnected',
         through: _edge,
@@ -650,7 +670,7 @@ void main() {
       ('syncing', _syncing),
       ('failed', _failed),
     ]) {
-      testWidgets('$name: nothing overflows, row 1 is under the button',
+      _tw('$name: nothing overflows, row 1 is under the button',
           (t) async {
         final app = _App(pres: make(), through: _edge);
         addTearDown(app.dispose);
@@ -680,7 +700,7 @@ void main() {
       });
     }
 
-    testWidgets('a problem omits "N h ago" when the row is cramped; the problem, '
+    _tw('a problem omits "N h ago" when the row is cramped; the problem, '
         'Show details and Retry stay', (t) async {
       final app = _App(pres: _failed(), through: _edge);
       addTearDown(app.dispose);
@@ -698,7 +718,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('and keeps it where there is room (390 pt, 1x)', (t) async {
+    _tw('and keeps it where there is room (390 pt, 1x)', (t) async {
       final app = _App(pres: _failed(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
@@ -706,7 +726,7 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the sheet fits too', (t) async {
+    _tw('the sheet fits too', (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app, width: 360, scale: 1.3);
@@ -720,7 +740,7 @@ void main() {
   });
 
   group('narrow', () {
-    testWidgets('the status ellipsizes first; the right cluster stays whole',
+    _tw('the status ellipsizes first; the right cluster stays whole',
         (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
@@ -738,7 +758,7 @@ void main() {
     });
   });
 
-  testWidgets('with no AppState (a golden) the line is just the data edge',
+  _tw('with no AppState (a golden) the line is just the data edge',
       (t) async {
     t.view.devicePixelRatio = 1;
     t.view.physicalSize = const Size(390, 900);

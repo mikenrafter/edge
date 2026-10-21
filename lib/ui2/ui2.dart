@@ -23,6 +23,7 @@ export 'paint_activity.dart';
 export 'research_refs.dart';
 export 'revision.dart';
 export 'scroll_hint.dart';
+export 'calendar_day.dart';
 export 'shared_slot.dart';
 export 'sleep_ring_model.dart';
 export 'status_line.dart';

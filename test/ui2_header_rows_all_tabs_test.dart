@@ -17,7 +17,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/import_progress.dart';
-import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
 import 'package:openstrap_edge/ui2/grammar.dart' show NavBar;

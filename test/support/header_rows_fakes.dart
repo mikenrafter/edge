@@ -2,12 +2,15 @@
 // "Synced through", then battery · connection) under every tab title.
 // Every instant here is a fixed DateTime; the code under test must read time
 // from package:clock, so tests pin it with `withClock(Clock.fixed(...))`.
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'package:openstrap_edge/data/models.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
+import 'package:openstrap_edge/state/derive_progress.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/ui2/grammar.dart' show ScreenTitle;
 import 'package:openstrap_edge/ui2/theme.dart';
@@ -43,8 +46,20 @@ class HeaderApp extends AppState {
   DeviceState get device => _device;
   @override
   DateTime? get lastRecordAt => through;
+  final derive = ValueNotifier<DeriveProgress?>(null);
+  @override
+  ValueListenable<DeriveProgress?> get deriveProgress => derive;
   @override
   Future<void> syncNow() async => syncs++;
+
+  /// A new data edge, announced the way a landing record is.
+  void setThrough(DateTime? at) {
+    through = at;
+    notifyListeners();
+  }
+
+  /// A notification that has nothing to do with sync (live HR, a pref...).
+  void poke() => notifyListeners();
 
   /// Changes the presentation and rebuilds listeners.
   void setPres(SyncPresentationState p) {
@@ -92,18 +107,34 @@ SyncPresentationState headerFailed() => SyncPresentationState(
       ],
     );
 
-/// A bare tab root: just the shared title block, nothing else.
-Widget titleOnly(AppState app, String title, {double width = 390}) =>
+/// Key of the 10 pt marker [titleOnly] puts right under the title block: the
+/// "content anchor" whose position must not move.
+const headerAnchorKey = ValueKey('header-anchor');
+
+/// A bare tab root: just the shared title block and an anchor under it.
+/// [locale] null is English; [scale] is the text scale.
+Widget titleOnly(AppState app, String title,
+        {double scale = 1, Locale? locale}) =>
     MultiProvider(
       providers: [
         ChangeNotifierProvider<AppState>.value(value: app),
         ChangeNotifierProvider<LocaleController>.value(
-            value: LocaleController.seed(null)),
+            value: LocaleController.seed(locale?.languageCode)),
       ],
       child: MaterialApp(
         theme: buildTheme(Brightness.light),
+        locale: locale,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        builder: (c, child) => MediaQuery(
+          data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!,
+        ),
         home: Scaffold(
-          body: Column(children: [ScreenTitle(title, statusLine: true)]),
+          body: Column(children: [
+            ScreenTitle(title, statusLine: true),
+            const SizedBox(key: headerAnchorKey, height: 10),
+          ]),
         ),
       ),
     );

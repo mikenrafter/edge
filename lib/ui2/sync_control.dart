@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, visibleForTesting;
 import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -638,6 +638,10 @@ class HomeSyncStatus extends StatefulWidget {
   /// text's own height. The status line passes its slot height.
   final double? slot;
 
+  /// Test-facing: how many times any sync row has built.
+  @visibleForTesting
+  static int debugBuilds = 0;
+
   const HomeSyncStatus({
     super.key,
     required this.through,
@@ -677,13 +681,22 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
 
   @override
   Widget build(BuildContext c) {
+    HomeSyncStatus.debugBuilds++;
     final p = P.of(c);
     final base = F.cap.copyWith(color: p.ink3);
     final end = widget.end;
     final visual = _measure(c, 'Ag', base).height;
     final SyncPresentationState s;
     try {
-      s = c.watch<AppState>().syncPresentation;
+      // Only the fields this row draws, so an unrelated notification (live
+      // HR, a pref) does not rebuild it and re-measure its text. The idle
+      // view is a fresh object every read, hence fields, not the object.
+      c.select<AppState, Object>((a) {
+        final v = a.syncPresentation;
+        return (v.busy, v.phase, v.lastSuccess, v.startedAt, v.finishedAt,
+            v.failureReason, v.partial, v.steps);
+      });
+      s = c.read<AppState>().syncPresentation;
     } on ProviderNotFoundException {
       final text = Padding(
           padding: EdgeInsets.only(left: widget.inset),
@@ -700,9 +713,13 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       );
     }
     final now = pc.clock.now();
+    // A parked tab (TickerMode off) keeps no visual timer; showing it again
+    // rebuilds this row (TickerMode is an inherited dependency), which
+    // re-reads the clock and restarts the timer.
+    final visible = TickerMode.valuesOf(c).enabled;
     _ticker.update(
       busy: s.busy,
-      needsClock: s.busy || s.lastSuccess != null,
+      needsClock: visible && (s.busy || s.lastSuccess != null),
       onTick: () {
         if (mounted) setState(() {});
       },
@@ -725,7 +742,9 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
       final maxRight = box.maxWidth * .6;
       final details = hasStatus ? _width(c, 'Show details', link) + S.x1 : 0.0;
       final timerW = timerText == null ? 0.0 : _width(c, '$timerText ·', base);
-      final showTimer = timerText != null && timerW + details <= maxRight;
+      // The cluster's gap sits between the timer and Show details too.
+      final showTimer = timerText != null &&
+          timerW + (details > 0 ? S.x1 : 0) + details <= maxRight;
       final act = s.busy
           ? 0.0
           : math.max(_width(c, action, link) + 2 * S.x1, S.tap);
@@ -797,26 +816,39 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
           const SizedBox(width: S.x2),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxRight),
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: S.x1,
-              children: trail,
+            // One line, never wrapped: a wrapped cluster made row 1 taller in
+            // exactly the states that carry the most actions. When even the
+            // fit above leaves it too wide, it scales down instead.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                for (var i = 0; i < trail.length; i++) ...[
+                  if (i > 0) const SizedBox(width: S.x1),
+                  trail[i],
+                ],
+              ]),
             ),
           ),
         ],
       ]);
     });
 
+    // The row's height is a policy of text scale alone, never of the state:
+    // the hit targets overhang it, the content cannot grow it.
+    final rowH = math.max(S.tap, widget.slot ?? visual);
     return HitOverhang(
       visual: widget.slot ?? visual,
-      child: end == null
+      child: SizedBox(
+        height: rowH,
+        child: end == null
           ? row
           : Row(children: [
               Expanded(child: row),
               const SizedBox(width: HomeSyncStatus.endGap),
               end,
             ]),
+      ),
     );
   }
 }
@@ -859,7 +891,7 @@ class _SyncDetailsSheetState extends State<_SyncDetailsSheet> {
       listenable: widget.app,
       builder: (c, _) {
         final s = widget.app.syncPresentation;
-        final now = DateTime.now();
+        final now = pc.clock.now();
         _ticker.update(
           busy: s.busy,
           needsClock: s.busy,

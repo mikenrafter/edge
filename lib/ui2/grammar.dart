@@ -3006,7 +3006,7 @@ class ScreenTitle extends StatelessWidget {
           ),
         ),
         const ContentTopMarker(),
-        if (statusLine) HeaderRows(todayId: null),
+        if (statusLine) const HeaderRows(),
       ],
     );
   }
