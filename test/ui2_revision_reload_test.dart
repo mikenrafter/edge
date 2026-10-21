@@ -207,12 +207,12 @@ void main() {
       'Future<int> importNoopCsv(',
       'Future<int> importWhoopCsvs(',
       'Future<int> importEdgeBackup(',
+      'Future<void> resumeUnfinishedImport(',
     ]) {
       final at = src.indexOf(m);
       expect(at, greaterThan(0), reason: '$m has moved or been renamed');
-      // The method body, to its `return` — long enough to hold the whole of
-      // any of the three, short enough not to reach the next one.
-      final body = src.substring(at, at + 2600);
+      // The method body: to the first closing brace at member indent.
+      final body = src.substring(at, src.indexOf('\n  }\n', at));
       // `publishNow()` is the gate's refresh + bump: it raises the same signal
       // after rewriting the freshness Home reads (P2.3).
       expect(body, anyOf(contains('bumpInsights()'), contains('publishNow()')),
