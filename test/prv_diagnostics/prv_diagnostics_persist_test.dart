@@ -341,7 +341,8 @@ void main() {
       // upstream catch-up (merge log D4) the diagnostics entry is the fork's
       // v103 history line. The current version is our single bump atop
       // upstream 113 (D27 revised), named in the entry that closes the block.
-      expect(v, 114);
+      // 115 (D36) follows it.
+      expect(v, 115);
       expect(block.join('\n'), contains('single bump atop upstream 113'),
           reason: 'the 114 entry names what it sits on');
       final from =

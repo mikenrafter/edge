@@ -143,9 +143,9 @@ void main() {
         'the analytics pin moved on to its aggregator descendant with no '
         'output change', () {
       // Upstream's numbering since the catch-up (merge log D4), plus our one
-      // bump atop upstream 113 (D27 revised): 114. Nothing in this artifact
-      // bumped it.
-      expect(kAlgoVersion, 114);
+      // bump atop upstream 113 (D27 revised): 114, then 115 (D36, the fold
+      // fix). Nothing in this artifact bumped it.
+      expect(kAlgoVersion, 115);
       expect(kAnalyticsPin, '83fc308545c886ef2757b3df396accea78849aa5');
       expect(kProtocolPin, '89080bcfac7767b3a871fd3a7d9307f5f30dad26');
     });

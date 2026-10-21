@@ -149,9 +149,11 @@ SleepStagingResult stageSleepCandidateHeavy(
     confirmedWakeSec: input.confirmedWakeSec,
     rowCache: rowCache,
     vendorNights: input.vendorNights,
-    // The fold below takes the largest night of the whole walk, so a folding
-    // staging keeps every day (changing that is an output change: D36).
-    skipUnusedDays: !input.mayFold,
+    // The fold below reads only the target night's own observation (D36), so
+    // earlier days that cannot change the target are skipped either way.
+    skipUnusedDays: true,
+    // Only the target night records an observation (D36).
+    recordTargetOnly: true,
   );
   // A user's own window carries per-stage minute ranges (D27 revised): from
   // the stager's evidence where the band recorded, as wide as the window
@@ -188,9 +190,12 @@ SleepStagingResult stageSleepCandidateHeavy(
   // effect of that corrupt profile on the same nights: wake 4.3% -> 36.4%, deep
   // 1.9% -> 0.0%. One fold per day_id, ever.
   if (input.mayFold) {
-    final obs = ana.takeCardioObservations();
+    // ONLY the target day's own observation (D36): the shared buffer holds
+    // every walked night, and the longest of those used to be folded under
+    // the target's id. No staged night on the target ⇒ nothing to fold.
+    final obs = ana.takeCardioObservations()
+      ..sort((a, b) => b.epochs.compareTo(a.epochs));
     if (obs.isNotEmpty) {
-      obs.sort((a, b) => b.epochs.compareTo(a.epochs));
       final main = obs.first;
       if (main.epochs >= 120) {
         // require ≥60 min — not a nap.

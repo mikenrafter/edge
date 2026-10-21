@@ -1946,7 +1946,15 @@ part 'engine/crossday_prune.dart';
 // 'confirmed') stores `sleep.stage_ranges` ({wake, light, deep, rem} ->
 // {lo, hi} minutes, analytics `stageMinuteRanges`, pin ddb61f7), widened by
 // every 30 s of the window the band did not record. 'rejected' still blanks.
-const int kAlgoVersion = 114;
+// 115: D36 (owner: "fix + bump"). The personal stager profile was being trained
+// on the longest night in the staging window, labelled as the target day's own:
+// a long previous night was folded under a shorter target's id. Only the
+// target's own staged night is folded now (none when it has no night). Staging
+// also skips earlier days that cannot change the target (under 14 distinct
+// nights of history), which is exact and moves no output by itself. Outputs
+// that move: the profile, so later nights staged from it; this bump recomputes
+// stored days once. No sibling re-pin is involved.
+const int kAlgoVersion = 115;
 class DerivationEngine {
   DerivationEngine({
     this.log,

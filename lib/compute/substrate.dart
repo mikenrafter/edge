@@ -1329,8 +1329,7 @@ int debugSegmentedDayCount = 0;
 /// distinct day keys), so when distinct stored keys + earlier walked days is
 /// still under 14 the prior is provably null for the target and those days are
 /// skipped whole. The caller must not need the skipped days' side effects (the
-/// profile-observation fold takes the largest night of the whole walk, so a
-/// folding caller passes false). Not a rows-cache concern: the cache only
+/// profile-observation fold uses [recordTargetOnly]). Not a rows-cache concern: the cache only
 /// gains rows, a skipped day just adds none.
 List<PhysioDay> calendarDays(
   Substrate sub, {
@@ -1341,6 +1340,11 @@ List<PhysioDay> calendarDays(
   ana.CardioRowCache? rowCache,
   String? targetDay,
   bool skipUnusedDays = false,
+  // With [targetDay]: stager night observations (the personal-profile fold's
+  // input) are recorded for the TARGET day only, never for the other walked
+  // days (D36: the longest night of the walk used to be folded under the
+  // target's id). The recording flag is restored on every exit.
+  bool recordTargetOnly = false,
 }) {
   final tzOffset = tzOffsetAt ?? tzOffsetSecondsAt;
   if (sub.isEmpty) return const [];
@@ -1374,6 +1378,10 @@ List<PhysioDay> calendarDays(
     final distinct = {for (final h in sleepHistory) h.dayKey}.length;
     skipBefore = distinct + earlier < 14;
   }
+  final recording = ana.cardioRecordObservations;
+  final onlyTarget = recordTargetOnly && targetDay != null;
+  if (onlyTarget) ana.cardioRecordObservations = false;
+  try {
   var guard = 0;
   while (dayStart < walkEnd && guard++ < 400) {
     final dayEnd = _nextLocalMidnight(dayStart);
@@ -1401,6 +1409,7 @@ List<PhysioDay> calendarDays(
       }
     }
     debugSegmentedDayCount++;
+    if (onlyTarget) ana.cardioRecordObservations = recording && dayLabel == targetDay;
     final ov = (override != null && override.dayId == dayLabel) ? override : null;
     final searchStart = math.max(dataStart, ov == null
       ? dayStart - kNocturnalSearchLookbackSec
@@ -1624,6 +1633,9 @@ List<PhysioDay> calendarDays(
       ],
     ));
     dayStart = dayEnd;
+  }
+  } finally {
+    ana.cardioRecordObservations = recording;
   }
   return days;
 }

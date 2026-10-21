@@ -190,7 +190,10 @@ void main() {
       debugSegmentedDayCount = 0;
       final now = _run(both(), mayFold: true, prior: prior);
       expect(oldBodies, greaterThan(1));
-      expect(debugSegmentedDayCount, oldBodies);
+      // The old walk also segments the day AFTER the target (the data runs to
+      // 06:00 the next morning); no pass ever does that any more, so the
+      // earlier days are all kept and only that later day is dropped.
+      expect(debugSegmentedDayCount, oldBodies - 1);
       expect(now.candidateJson, old.candidateJson);
       final obs = jsonDecode(now.observationJson!) as Map<String, dynamic>;
       expect(

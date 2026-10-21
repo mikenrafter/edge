@@ -43,7 +43,7 @@ void main() {
     // A derive that ran on the partial data left a row for an imported day.
     final db = await LocalDb.instance;
     await db.insert('day_result', {
-      'day_id': '2026-09-21', 'algo_version': 114, 'payload_json': '{}',
+      'day_id': '2026-09-21', 'algo_version': 115, 'payload_json': '{}',
       'computed_at': 2, 'finalized': 0,
     });
 

@@ -192,8 +192,8 @@ void main() {
       expect(vs, contains(104), reason: '$day: the fork row is a sibling, kept');
       expect(vs, contains(kAlgoVersion),
           reason: '$day: derived at the current version, got $vs');
-      expect(vs, contains(114), reason: '$day: derived at our bump, got $vs');
-      expect((await LocalDb.dayResult(day))!['algo_version'], 114,
+      expect(vs, contains(115), reason: '$day: derived at our bump, got $vs');
+      expect((await LocalDb.dayResult(day))!['algo_version'], 115,
           reason: '$day serves the current version');
     }
 
