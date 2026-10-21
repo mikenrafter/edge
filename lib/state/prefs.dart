@@ -129,6 +129,10 @@ class Prefs {
   static const String hapticsAllowLong = 'haptics_allow_long_sequences';
   static bool get allowLongHaptics => getBool(hapticsAllowLong, false);
 
+  /// Also deliver haptic previews through the phone when enabled.
+  static const String hapticsPlayOnPhone = 'haptics_play_on_phone';
+  static bool get playHapticsOnPhone => getBool(hapticsPlayOnPhone, false);
+
   /// Developer setting: how many band haptic commands may be sent in any 2
   /// minutes, 10..60, default 30. Read on every use (the ledger asks each
   /// time); a stored value out of range is clamped on read.

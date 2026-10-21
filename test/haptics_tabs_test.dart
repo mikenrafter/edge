@@ -32,7 +32,7 @@ import 'support/settings_sections.dart';
 final _mine = userPattern('a', 'Morning nudge');
 final _preset = presetPattern('sys.p1', 'One pulse', 'preset.one_pulse');
 
-const _labels = ['Patterns', 'Alerts', 'Activity', 'Cues', 'Band'];
+const _labels = ['Patterns', 'Alerts', 'Activity', 'Cues', 'Settings'];
 const _ids = ['patterns', 'alerts', 'activity', 'cues', 'band'];
 
 /// Which slot sections each tab lists.

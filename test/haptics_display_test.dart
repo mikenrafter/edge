@@ -5,10 +5,9 @@
 //      and the chevron stay on the right and the padding is a little tighter.
 //      The row's semantics still say the name, the length and the command
 //      count (the text is gone from the screen, not from a screen reader).
-//   2. The Presets are grouped in accordions by slot section, the order the
-//      other tabs use: General (the ten presets), Alerts, Apps, Tasker,
-//      Activity, Gestures, Breathing, Alarm, ECG. A group with nothing in it is
-//      not shown. "Your patterns" stays first. A built-in's section is decided
+//   2. General presets stay under Your patterns on Patterns. Slot presets
+//      move into their section on Alerts, Activity or Cues. A group with
+//      nothing in it is not shown. A built-in's section is decided
 //      by `builtInSectionId` (haptics/haptic_slots.dart) from its systemKey, the
 //      one place that knows which slot section a key belongs to.
 //   3. "New from taps" / "New from notes" are ONE row of two buttons pinned under
@@ -19,9 +18,8 @@
 //
 // New API pinned:
 //   builtInSectionId(String systemKey) -> String          (haptic_slots.dart)
-//   accordion ids of the Patterns tab: `haptics_presets_<sectionId>`
-//     (`haptics_presets_general` for General); titles are the slot sections'
-//     own ('Apps and automation', 'Alarm snooze'), 'General' for the ten.
+//   accordion ids: Patterns keeps `haptics_presets_general`; slot sections use
+//     their existing `haptics_slots_<sectionId>` ids.
 //   `haptics-create-row`: the one row holding `haptics-new-taps` and
 //     `haptics-new-notes`, a direct child of the screen's column, between the
 //     NavBar and the SubTabs.
@@ -38,6 +36,8 @@ import 'package:openstrap_edge/haptics/haptic_slots.dart';
 import 'package:openstrap_edge/haptics/pattern_store.dart';
 import 'package:openstrap_edge/haptics/tap_notes.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
+import 'package:openstrap_edge/notify/notification_prefs.dart';
+import 'package:openstrap_edge/notify/notification_relay.dart';
 import 'package:openstrap_edge/ui2/profile/buzz_pattern.dart';
 import 'package:openstrap_edge/ui2/profile/haptic_pattern_editor.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -347,6 +347,22 @@ void main() {
   });
 
   group('builtInSectionId: the one place a key finds its section', () {
+    test('slot previews resolve configured and default sequences', () {
+      final alerts = const NotificationPrefs();
+      final cue = slotPatternSequence('gesture.start',
+          patterns: [], alerts: alerts, channels: const {}, cueAssignments: const {});
+      final alert = slotPatternSequence('alert.health',
+          patterns: [], alerts: alerts, channels: const {}, cueAssignments: const {});
+      final relay = slotPatternSequence('alert.relay',
+          patterns: [],
+          alerts: alerts,
+          channels: {'apps': ChannelConfig.forChannel('apps')},
+          cueAssignments: const {});
+      expect(cue, isNotNull);
+      expect(alert, isNotNull);
+      expect(relay, isNotNull);
+    });
+
     test('the ten presets are General', () {
       for (final p in kPresets) {
         expect(builtInSectionId(p.$1), 'general', reason: p.$1);
@@ -414,7 +430,7 @@ void main() {
     });
   });
 
-  group('the Patterns tab: presets in accordions by section', () {
+  group('the slot tabs: presets in their slot sections', () {
     // One of each section, plus a second gesture and the SOS preset, in an
     // order that is not the screen's.
     final all = [
@@ -431,23 +447,9 @@ void main() {
       _builtIn('preset.one_pulse'),
       _mine('a', 'Morning'),
     ];
-    const titles = [
-      'Your patterns',
-      'General',
-      'Alerts',
-      'Apps and automation',
-      'Tasker',
-      'Activity',
-      'Gestures',
-      'Breathing',
-      'Alarm snooze',
-      'ECG',
-    ];
-
-    testWidgets('Your patterns first, then General, then the sections in the '
-        'order of the other tabs', (t) async {
+    testWidgets('Patterns keeps only Your patterns and General presets', (t) async {
       await pumpHub(t, HubCalls(), patterns: all, profile: kMg);
-      expect(sectionTitles(t), titles);
+      expect(sectionTitles(t), ['Your patterns', 'General']);
     });
 
     testWidgets('there is no single "Presets" accordion any more', (t) async {
@@ -473,10 +475,23 @@ void main() {
         'a': 'Your patterns',
       };
       for (final e in home.entries) {
-        for (final title in titles) {
-          expect(_in(title, _row(e.key)),
-              title == e.value ? findsOneWidget : findsNothing,
-              reason: '${e.key} in "$title"');
+        final key = all.firstWhere((p) => p.id == e.key).systemKey ?? '';
+        final tab = switch (builtInSectionId(key)) {
+          'alerts' || 'apps' || 'tasker' => 'alerts',
+          'activity' => 'activity',
+          'gestures' || 'breathing' || 'alarm' || 'ecg' => 'cues',
+          _ => 'patterns',
+        };
+        await openHapticsTab(t, tab);
+        final sectionId = builtInSectionId(key);
+        final row = sectionId == 'general'
+            ? _row(e.key)
+            : find.byKey(ValueKey('haptic-preset:${e.key}'));
+        if (tab == 'activity') {
+          expect(row, findsOneWidget, reason: e.key);
+        } else {
+          expect(_in(e.value, row), findsOneWidget,
+              reason: '${e.key} in "${e.value}"');
         }
       }
     });
@@ -486,14 +501,6 @@ void main() {
       expect([for (final a in accordions(t)) a.id], [
         'haptics_your_patterns',
         'haptics_presets_general',
-        'haptics_presets_alerts',
-        'haptics_presets_apps',
-        'haptics_presets_tasker',
-        'haptics_presets_activity',
-        'haptics_presets_gestures',
-        'haptics_presets_breathing',
-        'haptics_presets_alarm',
-        'haptics_presets_ecg',
       ]);
     });
 
@@ -502,7 +509,9 @@ void main() {
           patterns: [_builtIn('preset.one_pulse'), _builtIn('gesture.start'),
               _mine('a', 'Morning')],
           profile: kMg);
-      expect(sectionTitles(t), ['Your patterns', 'General', 'Gestures']);
+      expect(sectionTitles(t), ['Your patterns', 'General']);
+      await openHapticsTab(t, 'cues');
+      expect(sectionTitles(t), ['Gestures', 'Breathing', 'Alarm snooze', 'ECG']);
     });
 
     testWidgets('no built-ins: only Your patterns, nothing empty', (t) async {
@@ -537,15 +546,16 @@ void main() {
       }
     });
 
-    testWidgets('a section lists its slots in the order the other tabs do',
+    testWidgets('a section lists its presets in slot order',
         (t) async {
       await pumpHub(t, HubCalls(),
           patterns: [_builtIn('gesture.failed'), _builtIn('gesture.confirm'),
               _builtIn('gesture.start'), _builtIn('gesture.followUp')],
           profile: kMg);
+      await openHapticsTab(t, 'cues');
       final order = [
         for (final k in ['start', 'followUp', 'confirm', 'failed'])
-          t.getTopLeft(_row('sys.gesture.$k')).dy,
+          t.getTopLeft(find.byKey(ValueKey('haptic-preset:sys.gesture.$k'))).dy,
       ];
       expect(order, [...order]..sort());
     });
@@ -554,22 +564,28 @@ void main() {
       final real = [for (final k in builtInKeys()) _builtIn(k)];
       await pumpHub(t, HubCalls(), patterns: real, profile: kMg);
       for (final p in real) {
-        expect(_row(p.id), findsOneWidget, reason: p.systemKey);
+        final id = builtInSectionId(p.systemKey!);
+        await openHapticsTab(t, switch (id) {
+          'alerts' || 'apps' || 'tasker' => 'alerts',
+          'activity' => 'activity',
+          'gestures' || 'breathing' || 'alarm' || 'ecg' => 'cues',
+          _ => 'patterns',
+        });
+        final row = id == 'general'
+            ? _row(p.id)
+            : find.byKey(ValueKey('haptic-preset:${p.id}'));
+        expect(row, findsOneWidget, reason: p.systemKey);
         final home = kHapticSlotSections
             .where((s) => s.id == builtInSectionId(p.systemKey!))
             .map((s) => s.title)
             .followedBy(['General']).first;
-        expect(_in(home, _row(p.id)), findsOneWidget, reason: p.systemKey);
+        if (id != 'general') {
+          expect(_in(home, row), findsOneWidget,
+              reason: '${p.systemKey} in "$home"');
+        }
       }
-      expect(sectionTitles(t), [
-        'Your patterns',
-        'General',
-        'Tasker',
-        'Gestures',
-        'Breathing',
-        'Alarm snooze',
-        'ECG',
-      ]);
+      await openHapticsTab(t, 'patterns');
+      expect(sectionTitles(t), ['Your patterns', 'General']);
     });
 
     testWidgets('an unknown system key is listed under General', (t) async {

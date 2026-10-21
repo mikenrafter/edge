@@ -3135,5 +3135,41 @@
         "type": "int"
       }
     }
+  },
+  "hapticsPhoneAlso": "Vibrationen auch auf dem Telefon abspielen",
+  "hapticsPhoneFallback": "Das Telefon übernimmt, wenn das Band nicht verbunden ist",
+  "hapticsProbeTitle": "Haptik-Vokabeltest",
+  "hapticsProbePrompt": "Vokabeltest für dieses Band starten",
+  "hapticsExamplePlay": "Beispielsequenz abspielen",
+  "hapticsExampleStop": "Stopp",
+  "hapticsExampleLimitNote": "Beispiele ignorieren das Vibrationslimit des Bands.",
+  "hapticsPresetConfirmTitle": "{name} zuweisen?",
+  "@hapticsPresetConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetConfirmBody": "{name} für {slot} verwenden?",
+  "@hapticsPresetConfirmBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "slot": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetCancel": "Abbrechen",
+  "hapticsPresetAssign": "Zuweisen",
+  "hapticsSlotPreview": "Vorschau für {slot}",
+  "@hapticsSlotPreview": {
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      }
+    }
   }
 }

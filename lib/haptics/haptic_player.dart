@@ -19,6 +19,10 @@ import 'haptic_compiler.dart';
 import 'haptic_profile.dart';
 import 'tap_notes.dart';
 
+/// Converts a haptic timeline span into the wait used by its preview player.
+Duration hapticWaitForMs(int milliseconds) =>
+    Duration(milliseconds: milliseconds);
+
 /// When one command of a compiled delivery started playing on the band: its
 /// index in the plan (0 based) and the time the wearer feels it start. When
 /// [measured] the time is the band's own live "fired" event (60); otherwise it

@@ -3028,5 +3028,41 @@
         "type": "int"
       }
     }
+  },
+  "hapticsPhoneAlso": "Jouer aussi les vibrations sur le téléphone",
+  "hapticsPhoneFallback": "Le téléphone prend le relais si le bracelet n’est pas connecté",
+  "hapticsProbeTitle": "Test du vocabulaire haptique",
+  "hapticsProbePrompt": "Lancer le test du vocabulaire de ce bracelet",
+  "hapticsExamplePlay": "Lire la séquence d’exemple",
+  "hapticsExampleStop": "Arrêter",
+  "hapticsExampleLimitNote": "Les exemples ignorent la limite de vibrations du bracelet.",
+  "hapticsPresetConfirmTitle": "Attribuer {name} ?",
+  "@hapticsPresetConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetConfirmBody": "Utiliser {name} pour {slot} ?",
+  "@hapticsPresetConfirmBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "slot": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetCancel": "Annuler",
+  "hapticsPresetAssign": "Attribuer",
+  "hapticsSlotPreview": "Aperçu de {slot}",
+  "@hapticsSlotPreview": {
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      }
+    }
   }
 }

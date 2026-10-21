@@ -124,6 +124,10 @@ class HapticsService {
   /// [BandHapticQueue.asAlarm].
   T asAlarm<T>(T Function() work) => _queue.asAlarm(work);
 
+  /// Run an explicitly requested example through the queue without waiting
+  /// for the courtesy command window. The queue still counts each write.
+  T asLimitExempt<T>(T Function() work) => _queue.asLimitExempt(work);
+
   /// Run [work] so its band jobs are dropped when [wanted] turns false before
   /// they start. See [BandHapticQueue.asWanted].
   T asWanted<T>(bool Function() wanted, T Function() work) =>

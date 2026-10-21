@@ -26,11 +26,14 @@
 //      leave the window on the normal schedule (2 minutes after each write).
 //   6. The limit is configurable, 10..60 (default 30), clamped, read at every
 //      use by the ledger and the queue.
+//   7. An explicit example sequence passes the cap, but every write is still
+//      counted and an ordinary job still waits for room.
 // (Rule 4, no action without its haptic, is pinned at the gesture dispatcher.)
 //
 // New API pinned: `BandHapticQueue.asGesture<T>(String gestureId, T Function()
 // work)`, `BandCommandLedger({int Function()? limit})` (read on every use,
-// clamped to kBandCommandLimitMin..kBandCommandLimitMax, null = 30).
+// clamped to kBandCommandLimitMin..kBandCommandLimitMax, null = 30), and
+// `BandHapticQueue.asLimitExempt<T>(T Function() work)` for explicit examples.
 //
 // Times are fake (fake_async): the queue reads `clock`, never DateTime.now.
 // Where a test needs a ledger entry that expires soon, it records the writes
@@ -125,6 +128,47 @@ class _Rig {
 }
 
 void main() {
+  test('an explicit example passes the cap but counts its writes', () {
+    fakeAsync((async) {
+      final r = _Rig(async);
+      r.ledger.record(29, clock.now());
+      Future<BuzzDelivery> example(BandJobToken token) async {
+        await token.write(() async {
+          r.wrote.add('example');
+          return true;
+        });
+        await Future<void>.delayed(const Duration(seconds: 30));
+        await token.write(() async {
+          r.wrote.add('example');
+          return true;
+        });
+        return BuzzDelivery.complete;
+      }
+      unawaited(r.queue.asLimitExempt(() => r.queue.run(
+        example,
+        commands: 2,
+        timeout: const Duration(seconds: 60),
+      )).then((v) => r.results['example'] = v));
+      async.flushMicrotasks();
+      expect(r.wrote, ['example']);
+      async.elapse(const Duration(seconds: 30));
+      async.flushMicrotasks();
+      expect(r.results['example'], BuzzDelivery.complete);
+      expect(r.wrote, ['example', 'example']);
+      expect(r.leftAt(const Duration(seconds: 30)), 0);
+
+      r.plain('ordinary');
+      async.flushMicrotasks();
+      expect(r.started.containsKey('ordinary'), isFalse,
+          reason: 'example writes still consume the normal rolling budget');
+
+      async.elapse(const Duration(seconds: 91));
+      expect(r.results['ordinary'], BuzzDelivery.complete);
+      expect(r.leftAt(const Duration(seconds: 121)), 28,
+          reason: 'the second example write and resumed ordinary job remain');
+    });
+  });
+
   group('rule 1: once a gesture has started, all of it plays', () {
     test('the window runs out partway: every later haptic still plays', () {
       fakeAsync((async) {

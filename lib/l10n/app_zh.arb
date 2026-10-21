@@ -3028,5 +3028,41 @@
         "type": "int"
       }
     }
+  },
+  "hapticsPhoneAlso": "同时在手机上振动",
+  "hapticsPhoneFallback": "手环未连接时改由手机振动",
+  "hapticsProbeTitle": "触觉词汇测试",
+  "hapticsProbePrompt": "运行此手环的词汇测试",
+  "hapticsExamplePlay": "播放示例序列",
+  "hapticsExampleStop": "停止",
+  "hapticsExampleLimitNote": "示例会忽略手环振动次数限制。",
+  "hapticsPresetConfirmTitle": "分配{name}？",
+  "@hapticsPresetConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetConfirmBody": "为{slot}使用{name}？",
+  "@hapticsPresetConfirmBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "slot": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetCancel": "取消",
+  "hapticsPresetAssign": "分配",
+  "hapticsSlotPreview": "预览{slot}",
+  "@hapticsSlotPreview": {
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      }
+    }
   }
 }

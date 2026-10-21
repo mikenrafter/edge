@@ -922,6 +922,30 @@ class AppState extends ChangeNotifier {
     return r.targets.contains('band');
   }
 
+  /// Plays an example through the same dispatcher and safe band queue. The
+  /// example skips only the courtesy cap; its writes remain in the ledger.
+  Future<bool> previewBuzzSequenceExample(BuzzSequence s) =>
+      _previewBuzzSequence(s, ignoreCommandLimit: true);
+
+  Future<bool> _previewBuzzSequence(
+    BuzzSequence s, {
+    void Function(HapticPlayStart)? onStart,
+    bool ignoreCommandLimit = false,
+  }) async {
+    final now = DateTime.now();
+    final r = await alertDispatcher.dispatch(
+      _buzzPreviewRule,
+      eventId: 'preview:${now.microsecondsSinceEpoch}',
+      sourceTime: now,
+      historical: false,
+      bandTimeout: haptics.sequenceTimeout(s),
+      bandDelivery: () => ignoreCommandLimit
+          ? haptics.asLimitExempt(() => haptics.deliver(s, onStart: onStart))
+          : haptics.deliver(s, onStart: onStart),
+    );
+    return r.targets.contains('band');
+  }
+
   static const _buzzPreviewRule = AlertRule(
     id: 'buzz_preview',
     kind: 'buzzPreview',

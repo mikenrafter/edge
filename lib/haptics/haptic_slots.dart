@@ -270,6 +270,48 @@ String sequenceLabel(
   return p == null ? 'Custom' : patternLabel(p);
 }
 
+/// The sequence a slot plays now, resolving its assignment and default in one
+/// place for previews and other slot-level UI.
+BuzzSequence? slotPatternSequence(
+  String slotKey, {
+  required List<SavedHapticPattern> patterns,
+  required NotificationPrefs alerts,
+  required Map<String, ChannelConfig> channels,
+  required Map<String, String> cueAssignments,
+}) {
+  SavedHapticPattern? byId(String? id) {
+    if (id == null) return null;
+    return _byId(patterns, id);
+  }
+
+  SavedHapticPattern? own(String? key) {
+    if (key == null) return null;
+    for (final pattern in patterns) {
+      if (pattern.systemKey == key) return pattern;
+    }
+    return null;
+  }
+
+  if (isCueSlot(slotKey)) {
+    return (byId(cueAssignments[slotKey]) ?? own(slotKey))?.sequence ??
+        builtInDefault(slotKey)?.sequence;
+  }
+  if (slotKey == kRelaySlotKey) {
+    return channels[kRelaySlotChannel]?.effectiveSequence;
+  }
+  if (!slotKey.startsWith('alert.')) {
+    return own(slotKey)?.sequence ?? builtInDefault(slotKey)?.sequence;
+  }
+  final ruleId = slotKey.substring('alert.'.length);
+  final configured = alerts.alertRule(ruleId).buzzSequence;
+  if (configured != null) return configured;
+  final presetKey = alertPresetKey(slotKey);
+  return own(presetKey)?.sequence ??
+      (presetKey == null ? null : builtInDefault(presetKey)?.sequence) ??
+      own(slotKey)?.sequence ??
+      builtInDefault(slotKey)?.sequence;
+}
+
 /// What [slotKey] plays now, by name: never a count of buzzes.
 String slotPatternLabel(
   String slotKey, {

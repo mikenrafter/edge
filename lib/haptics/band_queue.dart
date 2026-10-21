@@ -348,6 +348,7 @@ const Symbol kBandGestureStartedKey = #openstrapBandGestureStarted;
 /// Zone key marking work whose band jobs are alarm jobs (see
 /// [BandHapticQueue.asAlarm]).
 const Symbol kBandAlarmKey = #openstrapBandAlarm;
+const Symbol kBandLimitExemptKey = #openstrapBandLimitExempt;
 
 /// Zone key carrying a `bool Function()` "this job is still wanted", asked every
 /// time the queue considers starting the job (see [BandHapticQueue.asWanted]).
@@ -371,6 +372,7 @@ class _Job {
       this.gesture,
       this.exempt = false,
       this.alarm = false,
+      this.limitExempt = false,
       this.immediate = false});
   final Future<BuzzDelivery> Function(BandJobToken job) run;
   final int commands;
@@ -395,6 +397,9 @@ class _Job {
 
   /// A job of waking the wearer: never held for the command limit.
   final bool alarm;
+
+  /// An explicitly requested example: bypass the cap but count every write.
+  final bool limitExempt;
 
   /// Must start now or be rejected (a phase cue): never deferred either.
   final bool immediate;
@@ -688,6 +693,11 @@ class BandHapticQueue {
         zoneValues: <Object?, Object?>{kBandAlarmKey: true},
       );
 
+  T asLimitExempt<T>(T Function() work) => runZoned(
+        work,
+        zoneValues: <Object?, Object?>{kBandLimitExemptKey: true},
+      );
+
   /// Run [work] so every job it queues is dropped (rejected, never written)
   /// when [wanted] says false by the time the queue would start it. The queue
   /// asks whenever it looks at its waiting jobs (a job ahead finished, the lab
@@ -783,7 +793,8 @@ class BandHapticQueue {
   }) {
     final limit = ledger.limitNow;
     final alarm = Zone.current[kBandAlarmKey] == true && !lab;
-    if (!alarm && commands > limit) {
+    final limitExempt = Zone.current[kBandLimitExemptKey] == true && !lab;
+    if (!alarm && !limitExempt && commands > limit) {
       log?.call('Band queue: dropped a job of $commands commands '
           '(the limit is $limit)');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
@@ -800,10 +811,11 @@ class BandHapticQueue {
             labOpen ||
             (quietOpen && !alarm && gesture == null) ||
             (!alarm &&
+                !limitExempt &&
                 gesture == null &&
                 timeout != null &&
                 _crosses(timeout, settle)) ||
-            ledger.commandsLeft(clock.now()) < commands)) {
+            (!limitExempt && ledger.commandsLeft(clock.now()) < commands))) {
       log?.call('Band queue: rejected a job that could not start immediately');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
     }
@@ -816,6 +828,7 @@ class BandHapticQueue {
         wanted: wanted is bool Function() ? wanted : null,
         gesture: gesture,
         alarm: alarm,
+        limitExempt: limitExempt,
         immediate: immediate,
         exempt: gesture != null && Zone.current[kBandGestureStartedKey] == true);
     final observe = Zone.current[kBandObserveKey];
@@ -900,14 +913,14 @@ class BandHapticQueue {
         continue;
       }
       final now = clock.now();
-      if (!j.alarm && j.commands > ledger.limitNow) {
+      if (!j.alarm && !j.limitExempt && j.commands > ledger.limitNow) {
         // The limit was lowered under a waiting job: it can never fit.
         _drop(j, why: 'no longer fits the limit');
         continue;
       }
       BandReservation? room;
-      if (j.alarm) {
-        // Never held for room: written regardless, every write counted.
+      if (j.alarm || j.limitExempt) {
+        // Alarm and explicit example jobs pass the cap; every write counts.
         room = ledger.reserveUpTo(j.commands, now, countAll: true);
       } else if (j.gesture != null) {
         // Never late: a gesture's first haptic needs room now, else it is
@@ -920,7 +933,7 @@ class BandHapticQueue {
         room = ledger.reserveUpTo(j.commands, now);
       } else {
         // A plain job queues behind a plain job that is waiting for room.
-        if (blockedPlain && !j.lab) {
+        if (blockedPlain && !j.lab && !j.limitExempt) {
           j.waitedBudget = true; // it waits for room too, in line
           i++;
           continue;

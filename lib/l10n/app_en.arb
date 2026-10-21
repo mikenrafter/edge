@@ -17254,5 +17254,41 @@
         "type": "int"
       }
     }
+  },
+  "hapticsPhoneAlso": "Also play vibrations on the phone",
+  "hapticsPhoneFallback": "Falls back to the phone when the band isn’t connected",
+  "hapticsProbeTitle": "Haptic vocabulary probe",
+  "hapticsProbePrompt": "Run the vocabulary probe for this band",
+  "hapticsExamplePlay": "Play example sequence",
+  "hapticsExampleStop": "Stop",
+  "hapticsExampleLimitNote": "Examples ignore the band buzz limit.",
+  "hapticsPresetConfirmTitle": "Assign {name}?",
+  "@hapticsPresetConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetConfirmBody": "Use {name} for {slot}?",
+  "@hapticsPresetConfirmBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "slot": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetCancel": "Cancel",
+  "hapticsPresetAssign": "Assign",
+  "hapticsSlotPreview": "Preview {slot}",
+  "@hapticsSlotPreview": {
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      }
+    }
   }
 }

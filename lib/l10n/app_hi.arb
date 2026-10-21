@@ -3028,5 +3028,41 @@
         "type": "int"
       }
     }
+  },
+  "hapticsPhoneAlso": "फ़ोन पर भी कंपन चलाएं",
+  "hapticsPhoneFallback": "बैंड कनेक्ट न होने पर फ़ोन पर कंपन चलेगा",
+  "hapticsProbeTitle": "हैप्टिक शब्दावली जांच",
+  "hapticsProbePrompt": "इस बैंड की शब्दावली जांच चलाएं",
+  "hapticsExamplePlay": "उदाहरण क्रम चलाएं",
+  "hapticsExampleStop": "रोकें",
+  "hapticsExampleLimitNote": "उदाहरण बैंड की कंपन सीमा को अनदेखा करते हैं।",
+  "hapticsPresetConfirmTitle": "{name} असाइन करें?",
+  "@hapticsPresetConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetConfirmBody": "{slot} के लिए {name} इस्तेमाल करें?",
+  "@hapticsPresetConfirmBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "slot": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetCancel": "रद्द करें",
+  "hapticsPresetAssign": "असाइन करें",
+  "hapticsSlotPreview": "{slot} का पूर्वावलोकन",
+  "@hapticsSlotPreview": {
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      }
+    }
   }
 }

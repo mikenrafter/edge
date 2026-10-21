@@ -49,6 +49,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
 import 'package:openstrap_edge/haptics/builtin_patterns.dart' show builtInDefault;
 import 'package:openstrap_edge/haptics/haptic_profile.dart';
+import 'package:openstrap_edge/haptics/haptic_slots.dart' show builtInSectionId;
 import 'package:openstrap_edge/haptics/pattern_store.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
@@ -59,6 +60,7 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/settings_sections.dart';
+import 'support/haptics_screen_support.dart' show openHapticsTab;
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
 
@@ -490,8 +492,8 @@ void main() {
 
     double top(WidgetTester t, Finder f) => t.getTopLeft(f.first).dy;
 
-    testWidgets('the Your patterns accordion and its rows sit above the '
-        'built-ins\' accordions (General first)', (t) async {
+    testWidgets('Your patterns and General stay on Patterns; section presets '
+        'are on their own tabs', (t) async {
       final (built, mine) = await mixed(t);
       // The view is handed one list, the user's patterns and the built-ins
       // interleaved, and splits it itself.
@@ -505,9 +507,9 @@ void main() {
         expect(y, greaterThan(yours), reason: p.name);
         expect(y, lessThan(presets), reason: p.name);
       }
-      for (final p in built) {
-        final y = top(t, find.byKey(ValueKey('haptic-pattern:${p.id}')));
-        expect(y, greaterThan(presets), reason: '${_key(p)}');
+      for (final p in built.where((p) => builtInSectionId(_key(p)!) != 'general')) {
+        expect(find.byKey(ValueKey('haptic-pattern:${p.id}')), findsNothing,
+            reason: '${_key(p)} belongs with its slot section');
       }
     });
 
@@ -520,70 +522,52 @@ void main() {
           lessThan(top(t, section('General'))));
     });
 
-    testWidgets('a built-in row says so (a lock or "Built in") and a user '
-        'row does not', (t) async {
+    testWidgets('slot presets use assignable preset rows; user patterns stay '
+        'in Your patterns', (t) async {
       final (built, mine) = await mixed(t);
       await pumpTall(t, hub([...mine, ...built], profile: _mg));
-      Finder tagIn(SavedHapticPattern p) {
-        final row = find.byKey(ValueKey('haptic-pattern:${p.id}'));
-        return find.descendant(
-          of: row,
-          matching: find.byWidgetPredicate((w) =>
-              (w is Icon && w.icon == LucideIcons.lock) ||
-              (w is Text && w.data == 'Built in')),
-        );
+      Finder rowFor(SavedHapticPattern p) {
+        final key = builtInSectionId(_key(p) ?? '') == 'general'
+            ? 'haptic-pattern'
+            : 'haptic-preset';
+        return find.byKey(ValueKey('$key:${p.id}'));
       }
 
       for (final p in built) {
-        expect(tagIn(p), findsWidgets, reason: '${_key(p)}');
+        final id = builtInSectionId(_key(p)!);
+        await openHapticsTab(t, switch (id) {
+          'alerts' || 'apps' || 'tasker' => 'alerts',
+          'activity' => 'activity',
+          'gestures' || 'breathing' || 'alarm' || 'ecg' => 'cues',
+          _ => 'patterns',
+        });
+        expect(rowFor(p), findsOneWidget, reason: '${_key(p)}');
       }
       for (final p in mine) {
-        expect(tagIn(p), findsNothing, reason: p.name);
+        expect(find.descendant(
+          of: find.byKey(ValueKey('haptic-pattern:${p.id}')),
+          matching: find.byIcon(LucideIcons.lock),
+        ), findsNothing, reason: p.name);
       }
     });
 
-    testWidgets('a built-in\'s sheet: Preview, Edit notes, Re-record and '
-        'Reset to default; no Rename, no Delete', (t) async {
+    testWidgets('a slot preset is offered from its own cue section', (t) async {
       final (built, _) = await mixed(t);
       final p = _byKey(built, 'gesture.followUp');
       final played = <BuzzSequence>[];
       await pumpTall(t, hub([...built], profile: _mg, played: played));
-      await t.tap(find.byKey(ValueKey('haptic-pattern:${p.id}')));
-      await t.pumpAndSettle();
-      final sheet = find.byKey(const ValueKey('haptic-pattern-sheet'));
-      expect(sheet, findsOneWidget);
-      for (final k in [
-        'haptic-action-preview',
-        'haptic-action-edit',
-        'haptic-action-rerecord',
-        'haptic-action-reset',
-      ]) {
-        expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
-      }
-      expect(find.descendant(of: sheet, matching: find.text('Reset to default')),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey('haptic-action-rename')), findsNothing);
-      expect(find.byKey(const ValueKey('haptic-action-delete')), findsNothing);
-      expect(find.descendant(of: sheet, matching: find.text('Rename')),
-          findsNothing);
-      expect(find.descendant(of: sheet, matching: find.text('Delete')),
-          findsNothing);
-      await t.tap(find.byKey(const ValueKey('haptic-action-preview')));
-      await t.pumpAndSettle();
-      expect(played, [p.sequence]);
+      await openHapticsTab(t, 'cues');
+      expect(find.byKey(ValueKey('haptic-preset:${p.id}')), findsOneWidget);
+      expect(find.byKey(ValueKey('haptic-pattern:${p.id}')), findsNothing);
+      expect(played, isEmpty);
     });
 
-    testWidgets('without a profile the built-in sheet has no Edit notes but '
-        'still has Reset to default', (t) async {
+    testWidgets('without a profile slot presets remain on their cue section', (t) async {
       final (built, _) = await mixed(t);
       final p = _byKey(built, 'gesture.start');
       await pumpTall(t, hub(built));
-      await t.tap(find.byKey(ValueKey('haptic-pattern:${p.id}')));
-      await t.pumpAndSettle();
-      expect(find.byKey(const ValueKey('haptic-action-edit')), findsNothing);
-      expect(find.byKey(const ValueKey('haptic-action-rerecord')),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey('haptic-action-reset')), findsOneWidget);
+      await openHapticsTab(t, 'cues');
+      expect(find.byKey(ValueKey('haptic-preset:${p.id}')), findsOneWidget);
     });
 
     testWidgets('a user pattern\'s sheet keeps Rename and Delete and has no '

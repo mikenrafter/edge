@@ -3046,5 +3046,41 @@
         "type": "int"
       }
     }
+  },
+  "hapticsPhoneAlso": "Reproducir vibraciones también en el teléfono",
+  "hapticsPhoneFallback": "El teléfono se usa cuando la banda no está conectada",
+  "hapticsProbeTitle": "Prueba del vocabulario háptico",
+  "hapticsProbePrompt": "Ejecutar la prueba de vocabulario de esta banda",
+  "hapticsExamplePlay": "Reproducir secuencia de ejemplo",
+  "hapticsExampleStop": "Detener",
+  "hapticsExampleLimitNote": "Los ejemplos ignoran el límite de vibraciones.",
+  "hapticsPresetConfirmTitle": "¿Asignar {name}?",
+  "@hapticsPresetConfirmTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetConfirmBody": "¿Usar {name} para {slot}?",
+  "@hapticsPresetConfirmBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "slot": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsPresetCancel": "Cancelar",
+  "hapticsPresetAssign": "Asignar",
+  "hapticsSlotPreview": "Vista previa de {slot}",
+  "@hapticsSlotPreview": {
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      }
+    }
   }
 }

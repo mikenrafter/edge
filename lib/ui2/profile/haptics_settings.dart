@@ -27,6 +27,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -38,7 +39,7 @@ import '../../haptics/band_queue.dart'
 import '../../haptics/builtin_patterns.dart' show isPresetKey, kPresets;
 import '../../haptics/haptic_compiler.dart' show maxRuntimeFor;
 import '../../haptics/haptic_player.dart'
-    show bandSequenceCommands, scoreDurationMs;
+    show bandSequenceCommands, hapticWaitForMs, scoreDurationMs;
 import '../../haptics/haptic_profile.dart';
 import '../../haptics/haptic_slots.dart';
 import '../../haptics/pattern_similarity.dart';
@@ -68,6 +69,27 @@ import 'settings.dart' show AutomationSettings, NotificationSettings;
 const String kHapticsTabPref = 'ui.haptics_tab';
 
 const String _riskCaption = 'May cause harm to your device. Use at your own risk.';
+final ValueNotifier<String?> _playingHapticSlot = ValueNotifier(null);
+// A single owner keeps overlapping examples and route disposal from leaving a
+// stale playing-row highlight behind.
+_ExampleSequenceState? _activeHapticExample;
+
+// The UI worker guard cannot resolve indirect function-expression invocations;
+// keep their typed boundaries here and apply the argument in one place.
+T _invokeCallback<T, A>(T Function(A) callback, A argument) =>
+    Function.apply(callback, [argument]) as T;
+
+Future<void> _vibratePhone(BuzzSequence sequence) async {
+  var elapsed = 0;
+  for (var i = 0; i < sequence.length; i++) {
+    final wait = sequence.offsetsMs[i] - elapsed;
+    if (wait > 0) {
+      await Future<void>.delayed(hapticWaitForMs(wait));
+    }
+    await HapticFeedback.vibrate();
+    elapsed = sequence.offsetsMs[i] + sequence.durationsMs[i];
+  }
+}
 
 /// The screen's sub-tabs, in order. [id] is what is remembered and what a
 /// caller passes to open one; never the label.
@@ -76,7 +98,7 @@ enum HapticsTab {
   alerts('alerts', 'Alerts'),
   activity('activity', 'Activity'),
   cues('cues', 'Cues'),
-  band('band', 'Band');
+  band('band', 'Settings');
 
   const HapticsTab(this.id, this.label);
   final String id;
@@ -98,6 +120,7 @@ class HapticsSettings extends StatefulWidget {
 class _HapticsSettingsState extends State<HapticsSettings> {
   SettingsSnapshot? _snap;
   bool _allowLong = Prefs.allowLongHaptics;
+  bool _phoneAlso = Prefs.playHapticsOnPhone;
 
   // The command limit being written (null when none is) and whether the last
   // write was refused. [_limitTry] numbers the writes: only the newest one
@@ -250,6 +273,25 @@ class _HapticsSettingsState extends State<HapticsSettings> {
     }
   }
 
+  Future<void> _setPhoneAlso(bool value) async {
+    final before = _phoneAlso;
+    setState(() => _phoneAlso = value);
+    try {
+      await SettingsRepository.instance.update(
+        (d) => d.setBool(Prefs.hapticsPlayOnPhone, value),
+        sections: const {},
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _phoneAlso = before);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context)
+                ?.settingsTaskerMomentExportSaveFailed ??
+            'Could not save that change. The switch shows what is stored.'),
+      ));
+    }
+  }
+
   // The screen where a section's slots are set.
   void _openSlotScreen(BuildContext c, String sectionId) => goto(
         c,
@@ -284,26 +326,13 @@ class _HapticsSettingsState extends State<HapticsSettings> {
     final caps = c.caps;
     final cueAssignments =
         decodeCueAssignments(Prefs.getString(Prefs.hapticsCueAssign, ''));
-    // What a slot plays, for the similarity warnings. Only slots in a
-    // confusable set matter (cues, and the alarm slots by key): the pattern
-    // put on it, else its own built-in.
-    BuzzSequence? slotSequence(String key) {
-      SavedHapticPattern? byId(String? id) {
-        for (final p in snap.patterns) {
-          if (p.id == id) return p;
-        }
-        return null;
-      }
-
-      SavedHapticPattern? own() {
-        for (final p in snap.patterns) {
-          if (p.systemKey == key) return p;
-        }
-        return null;
-      }
-
-      return (byId(cueAssignments[key]) ?? own())?.sequence;
-    }
+    BuzzSequence? slotSequence(String key) => slotPatternSequence(
+          key,
+          patterns: snap.patterns,
+          alerts: snap.alerts,
+          channels: snap.channels,
+          cueAssignments: cueAssignments,
+        );
 
     return HapticsSettingsView(
       initialTab: widget.tab,
@@ -320,6 +349,11 @@ class _HapticsSettingsState extends State<HapticsSettings> {
       queued: app.haptics.pending,
       bandConnected: caps.has(Feature.bandBuzz),
       onPlay: app.previewBuzzSequence,
+      examplePlayer: app.previewBuzzSequenceExample,
+      phoneAlso: _phoneAlso,
+      onPhoneAlso: (v) => unawaited(_setPhoneAlso(v)),
+      phoneVibrate: _vibratePhone,
+      onOpenProbe: () => goto(c, const DeviceLab()),
       // The device page's Tools row: one dispatcher delivery in the band queue.
       onBuzz: app.buzzBand,
       onAllowLong: (v) {
@@ -384,10 +418,22 @@ class HapticsSettingsView extends StatelessWidget {
     this.onAssignToSlot,
     this.onResetSlot,
     this.initialTab,
+    this.phoneAlso = false,
+    this.onPhoneAlso,
+    this.phoneVibrate,
+    this.examplePlayer,
+    this.sequenceWait,
+    this.onOpenProbe,
   });
 
   /// The tab to open on; null opens the one used last (else Patterns).
   final HapticsTab? initialTab;
+  final bool phoneAlso;
+  final ValueChanged<bool>? onPhoneAlso;
+  final Future<void> Function(BuzzSequence)? phoneVibrate;
+  final Future<bool> Function(BuzzSequence)? examplePlayer;
+  final Future<void> Function(Duration)? sequenceWait;
+  final VoidCallback? onOpenProbe;
 
   /// The stored patterns, in the order to show them.
   final List<SavedHapticPattern> patterns;
@@ -436,9 +482,7 @@ class HapticsSettingsView extends StatelessWidget {
   final String Function(String slotKey)? slotPatternName;
 
   /// The rhythm the slot with this key plays now (null: unknown). The view
-  /// runs these through `similarityWarnings` (haptics/pattern_similarity.dart)
-  /// and writes "Feels like ..." on each flagged slot. A warning never blocks
-  /// an assignment. Null: no warnings.
+  /// draws its score, previews it, and checks it for similarity warnings.
   final BuzzSequence? Function(String slotKey)? slotSequence;
 
   /// Opens the screen where a section's slots are set; null hides the links.
@@ -470,7 +514,12 @@ class HapticsSettingsView extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, 0),
                 child: SubTabs(
-                  [for (final t in HapticsTab.values) t.label],
+                  [
+                    for (final t in HapticsTab.values)
+                      t == HapticsTab.band
+                          ? _l(c)?.settingsNavTitle ?? t.label
+                          : t.label,
+                  ],
                   tab.index,
                   (i) => select(HapticsTab.values[i]),
                   color: C.blue,
@@ -481,7 +530,7 @@ class HapticsSettingsView extends StatelessWidget {
                   ],
                   semanticLabels: [
                     for (final t in HapticsTab.values)
-                      '${t.label}, Haptics settings',
+                      '${t == HapticsTab.band ? _l(c)?.settingsNavTitle ?? t.label : t.label}, Haptics settings',
                   ],
                 ),
               ),
@@ -504,32 +553,47 @@ class HapticsSettingsView extends StatelessWidget {
     HapticsTab.patterns => [
       SettingsAccordion(_l(c)?.hapticsYourPatterns ?? 'Your patterns',
           id: 'haptics_your_patterns', children: _yourRows(c, p)),
-      ..._presetGroups(c, p),
+      ..._presetGroups(c, p, sectionIds: const {kGeneralSectionId}),
     ],
     HapticsTab.alerts => [
-      _slotGroup(c, 'alerts'),
-      _slotGroup(c, 'apps'),
-      _slotGroup(c, 'tasker'),
+      _slotGroup(c, 'alerts', includePresets: true),
+      _slotGroup(c, 'apps', includePresets: true),
+      _slotGroup(c, 'tasker', includePresets: true),
       _sectionLink(c, p, 'alerts'),
       _sectionLink(c, p, 'apps'),
       _sectionLink(c, p, 'tasker'),
     ],
     // One group: no accordion to fold, just the card.
     HapticsTab.activity => [
-      _slotCard(p, _slotRowsOf(c, 'activity')),
+      _slotCard(p, [..._slotRowsOf(c, 'activity'), ..._presetRows(c, p, 'activity')]),
       _sectionLink(c, p, 'activity'),
     ],
     HapticsTab.cues => [
-      _slotGroup(c, 'gestures'),
-      _slotGroup(c, 'breathing'),
-      _slotGroup(c, 'alarm'),
-      _slotGroup(c, 'ecg'),
+      _slotGroup(c, 'gestures', includePresets: true, example: true),
+      _slotGroup(c, 'breathing', includePresets: true, example: true),
+      _slotGroup(c, 'alarm', includePresets: true, example: true),
+      _slotGroup(c, 'ecg', includePresets: true, example: true),
       _sectionLink(c, p, 'gestures'),
       _sectionLink(c, p, 'breathing'),
       _sectionLink(c, p, 'alarm'),
       _sectionLink(c, p, 'ecg'),
     ],
     HapticsTab.band => [
+      Pressable(key: const ValueKey('haptics-phone-also'),
+        semanticLabel: _l(c)?.hapticsPhoneAlso ?? 'Also play vibrations on the phone',
+        onTap: onPhoneAlso == null
+            ? null
+            : () => _invokeCallback<void, bool>(onPhoneAlso!, !phoneAlso),
+        child: SwitchRow(_l(c)?.hapticsPhoneAlso ?? 'Also play vibrations on the phone', phoneAlso,
+          onPhoneAlso,
+          sub: _l(c)?.hapticsPhoneFallback ?? 'This falls back to the phone when the band isn’t connected',
+        )),
+      if (bandConnected && profile == null)
+        SetRow(LucideIcons.flaskConical, C.purple,
+          _l(c)?.hapticsProbePrompt ?? 'Run the vocabulary probe for this band',
+          key: const ValueKey('haptics-probe-prompt'), onTap: onOpenProbe),
+      SetRow(LucideIcons.flaskConical, C.purple, _l(c)?.hapticsProbeTitle ?? 'Haptic vocabulary probe',
+        key: const ValueKey('haptics-probe'), onTap: onOpenProbe),
       SettingsAccordion(_l(c)?.hapticsSafety ?? 'Safety',
           id: 'haptics_safety', children: _safetyRows(c, p)),
       SettingsAccordion(_l(c)?.hapticsTest ?? 'Test',
@@ -627,7 +691,7 @@ class HapticsSettingsView extends StatelessWidget {
   // them (General, the ten presets, first). Which group a built-in is in is
   // builtInSectionId's call. A group with nothing in it is left out. Inside
   // a group: the presets in their own order, the slots in their section's.
-  List<Widget> _presetGroups(BuildContext c, P p) {
+  List<Widget> _presetGroups(BuildContext c, P p, {Set<String>? sectionIds}) {
     final builtIn = [
       for (final s in patterns)
         if (s.system) s,
@@ -638,6 +702,7 @@ class HapticsSettingsView extends StatelessWidget {
         : [for (final slot in _sectionOf(sectionId).slots) slot.key];
     return [
       for (final id in kPresetSectionOrder)
+        if (sectionIds == null || sectionIds.contains(id))
         if (builtIn.any((s) => builtInSectionId(s.systemKey!) == id))
           SettingsAccordion(
             id == kGeneralSectionId
@@ -655,6 +720,55 @@ class HapticsSettingsView extends StatelessWidget {
             ],
           ),
     ];
+  }
+
+  List<Widget> _presetRows(BuildContext c, P p, String sectionId) => [
+    for (final s in _inOrder([
+      for (final s in patterns)
+        if (s.system && builtInSectionId(s.systemKey!) == sectionId) s,
+    ], [for (final slot in _sectionOf(sectionId).slots) slot.key]))
+      _presetRow(c, p, s),
+  ];
+
+  Widget _presetRow(BuildContext c, P p, SavedHapticPattern s) {
+    final slot = s.systemKey!;
+    return Pressable(
+      key: ValueKey('haptic-preset:${s.id}'),
+      onTap: () => _confirmPreset(c, slot, s),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: S.x2),
+        child: Row(children: [
+          Expanded(child: Text(s.name, style: F.body.copyWith(color: p.ink))),
+          const Icon(LucideIcons.chevronRight, size: 17),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _confirmPreset(BuildContext c, String slot, SavedHapticPattern s) async {
+    final ok = await showDialog<bool>(context: c, builder: (d) => AlertDialog(
+      key: const ValueKey('haptic-preset-confirm'),
+      title: Text(_l(c)?.hapticsPresetConfirmTitle(s.name) ?? 'Assign ${s.name}?'),
+      content: Text(_l(c)?.hapticsPresetConfirmBody(s.name, _slotLabel(slot)) ??
+          'Use ${s.name} for ${_slotLabel(slot)}?'),
+      actions: [TextButton(onPressed: () => Navigator.pop(d, false),
+          child: Text(_l(c)?.hapticsPresetCancel ?? 'Cancel')),
+        TextButton(key: const ValueKey('haptic-preset-confirm-ok'),
+          onPressed: () => Navigator.pop(d, true),
+          child: Text(_l(c)?.hapticsPresetAssign ?? 'Assign'))],
+    ));
+    if (ok == true && c.mounted && onAssignToSlot != null) {
+      await _assign(c, slot, s);
+    }
+  }
+
+  String _slotLabel(String key) {
+    for (final section in kHapticSlotSections) {
+      for (final slot in section.slots) {
+        if (slot.key == key) return slot.label;
+      }
+    }
+    return key;
   }
 
   // [group] by where each key sits in [order], keys not in it last (the sort
@@ -725,35 +839,62 @@ class HapticsSettingsView extends StatelessWidget {
     final warn = _warnings(c);
     return [
       for (final slot in _sectionOf(sectionId).slots)
-        Column(
+        _slotRow(c, p, slot, name, warn[slot.key]),
+    ];
+  }
+
+  Widget _slotRow(BuildContext c, P p, HapticSlot slot,
+      String Function(String)? name, List<String>? warning) {
+    final seq = slotSequence == null
+        ? null
+        : _invokeCallback<BuzzSequence?, String>(slotSequence!, slot.key);
+    return
+        ValueListenableBuilder<String?>(valueListenable: _playingHapticSlot,
+          builder: (context, playing, _) => Column(
+          key: playing == slot.key ? ValueKey('haptic-slot-playing:${slot.key}') : null,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SetRow(
-              LucideIcons.waves,
-              C.purple,
-              slot.label,
+            Pressable(
               key: ValueKey('haptic-slot:${slot.key}'),
-              value: name == null ? 'Default' : name(slot.key),
-              chevron: false,
               onTap: onAssignToSlot == null ? null : () => _pickForSlot(c, slot),
+              semanticLabel: '${slot.label}, ${name == null ? 'Default' : _invokeCallback<String, String>(name, slot.key)}',
+              child: Padding(padding: const EdgeInsets.symmetric(vertical: S.x2),
+                child: Row(children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [Text(slot.label, style: F.body.copyWith(color: p.ink)),
+                      Text(name == null ? 'Default' : _invokeCallback<String, String>(name, slot.key),
+                        style: F.over.copyWith(color: P.of(c).ink3))])),
+                  if (seq case final seq?)
+                    Padding(key: ValueKey('haptic-slot-staff:${slot.key}'),
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: SizedBox(width: 46,
+                        child: HapticScore(seq, profile: profile, allowLong: allowLong))),
+                  IconButton(key: ValueKey('haptic-slot-preview:${slot.key}'),
+                    constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+                    padding: EdgeInsets.zero,
+                    tooltip: AppLocalizations.of(c)?.hapticsSlotPreview(slot.label) ??
+                        'Preview ${slot.label}', icon: const Icon(LucideIcons.play, size: 17),
+                    onPressed: seq == null || (!bandConnected && !phoneAlso) ? null : () {
+                      unawaited(_play(c, seq));
+                    }),
+                ])),
             ),
-            if (warn[slot.key] != null)
+            if (warning != null)
               Padding(
                 key: ValueKey('haptic-slot-warning:${slot.key}'),
                 padding: const EdgeInsets.only(
                     left: 32 + S.x3, bottom: S.x3),
                 child: Text(
-                  warn[slot.key]!.join('\n'),
+                  warning.join('\n'),
                   style: F.over.copyWith(color: p.on(C.orange)),
                 ),
               ),
           ],
-        ),
-    ];
+        ));
   }
 
   // A tab with two or more groups folds each one under its section's title.
-  Widget _slotGroup(BuildContext c, String sectionId) => SettingsAccordion(
+  Widget _slotGroup(BuildContext c, String sectionId, {bool includePresets = false, bool example = false}) => SettingsAccordion(
     _titleOf(c, sectionId),
     id: 'haptics_slots_$sectionId',
     children: [
@@ -768,7 +909,12 @@ class HapticsSettingsView extends StatelessWidget {
             style: F.over.copyWith(color: P.of(c).ink3),
           ),
         ),
+      if (example) _ExampleSequence(sectionId: sectionId, patterns: patterns,
+        onPlay: examplePlayer ?? onPlay, wait: sequenceWait ?? Future<void>.delayed,
+        onPhone: phoneAlso ? phoneVibrate : null, sequenceOf: slotSequence,
+        bandConnected: bandConnected),
       ..._slotRowsOf(c, sectionId),
+      if (includePresets) ..._presetRows(c, P.of(c), sectionId),
     ],
   );
 
@@ -991,11 +1137,17 @@ class HapticsSettingsView extends StatelessWidget {
   }
 
   Future<bool> _play(BuildContext c, BuzzSequence s) async {
-    try {
-      return await onPlay(s);
-    } catch (_) {
-      return false;
-    }
+    if (!c.mounted) return false;
+    final phone = phoneAlso && phoneVibrate != null
+        ? _invokeCallback<Future<void>, BuzzSequence>(phoneVibrate!, s)
+            .then<bool>((_) => true, onError: (Object _) => false)
+        : Future<bool>.value(false);
+    final band = bandConnected
+        ? _invokeCallback<Future<bool>, BuzzSequence>(onPlay, s)
+            .catchError((Object _) => false)
+        : Future<bool>.value(false);
+    final results = await Future.wait<bool>([band, phone]);
+    return results.any((played) => played);
   }
 
   // The picker for one slot: any stored pattern or preset goes onto it, or its
@@ -1007,14 +1159,20 @@ class HapticsSettingsView extends StatelessWidget {
       profile: profile,
       bandConnected: bandConnected,
       allowLong: allowLong,
-      onPlay: onPlay,
+      onPlay: (sequence) => _play(c, sequence),
       onDefault: () => onResetSlot?.call(slot.key),
       onChoose: (seq) {
         SavedHapticPattern? chosen;
         for (final s in patterns) {
           if (s.id == seq.patternId) chosen = s;
         }
-        if (chosen != null) _assign(c, slot.key, chosen);
+        if (chosen != null) {
+          if (chosen.system && isPresetKey(chosen.systemKey ?? '')) {
+            _confirmPreset(c, slot.key, chosen);
+          } else {
+            _assign(c, slot.key, chosen);
+          }
+        }
       },
     );
   }
@@ -1063,7 +1221,11 @@ class HapticsSettingsView extends StatelessWidget {
                       chevron: false,
                       onTap: () {
                         Navigator.of(sheet).pop();
-                        _assign(c, slot.key, s);
+                        if (isPresetKey(s.systemKey ?? '')) {
+                          _confirmPreset(c, slot.key, s);
+                        } else {
+                          _assign(c, slot.key, s);
+                        }
                       },
                     ),
                 ],
@@ -1216,7 +1378,7 @@ class HapticsSettingsView extends StatelessWidget {
           initial: s.sequence,
           name: s.name,
           profile: prof,
-          onPlay: onPlay,
+          onPlay: (sequence) => _play(c, sequence),
           allowLong: allowLong,
           existingNames: _names,
           onSave: (name, seq) async {
@@ -1234,7 +1396,7 @@ class HapticsSettingsView extends StatelessWidget {
       c,
       initial: s.sequence,
       bandConnected: bandConnected,
-      onPlay: onPlay,
+      onPlay: (sequence) => _play(c, sequence),
       profile: profile,
       allowLong: allowLong,
       // Edit as notes: saved in the editor, which does not ask a name.
@@ -1303,7 +1465,7 @@ class HapticsSettingsView extends StatelessWidget {
     showBuzzPatternSheet(
       c,
       bandConnected: bandConnected,
-      onPlay: onPlay,
+      onPlay: (sequence) => _play(c, sequence),
       profile: profile,
       allowLong: allowLong,
       // Edit as notes: the editor asks the name and stores the pattern.
@@ -1345,7 +1507,7 @@ class HapticsSettingsView extends StatelessWidget {
       MaterialPageRoute<void>(
         builder: (_) => HapticPatternEditorPage(
           profile: prof,
-          onPlay: onPlay,
+          onPlay: (sequence) => _play(c, sequence),
           allowLong: allowLong,
           existingNames: _names,
           onSave: (name, seq) async {
@@ -1356,6 +1518,113 @@ class HapticsSettingsView extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ExampleSequence extends StatefulWidget {
+  const _ExampleSequence({required this.sectionId, required this.patterns,
+    required this.onPlay, required this.wait, required this.sequenceOf,
+    required this.bandConnected, this.onPhone});
+  final String sectionId;
+  final List<SavedHapticPattern> patterns;
+  final Future<bool> Function(BuzzSequence) onPlay;
+  final Future<void> Function(Duration) wait;
+  final BuzzSequence? Function(String)? sequenceOf;
+  final bool bandConnected;
+  final Future<void> Function(BuzzSequence)? onPhone;
+  @override
+  State<_ExampleSequence> createState() => _ExampleSequenceState();
+}
+
+class _ExampleSequenceState extends State<_ExampleSequence> {
+  bool _running = false;
+  int _run = 0;
+  SavedHapticPattern? _pattern(String slot) {
+    for (final p in widget.patterns) {
+      if (p.systemKey == slot) return p;
+    }
+    return null;
+  }
+  Future<void> _play() async {
+    _activeHapticExample?._cancelFromAnother();
+    _activeHapticExample = this;
+    final run = ++_run;
+    setState(() => _running = true);
+    List<List<String>> paths = switch (widget.sectionId) {
+      'gestures' => [['gesture.start','gesture.followUp','gesture.confirm'],
+        ['gesture.start','gesture.followUp','gesture.failed']],
+      'ecg' => [['ecg.started','ecg.complete'],
+        ['ecg.started','ecg.inconclusive','ecg.inconclusiveRetry']],
+      'breathing' => [['breath.inhale','breath.hold','breath.exhale','breath.hold']],
+      _ => [for (final s in kHapticSlotSections.firstWhere((s) => s.id == widget.sectionId).slots) [s.key]],
+    };
+    try {
+      for (final path in paths) {
+        for (final key in path) {
+          if (!mounted || run != _run) return;
+          _playingHapticSlot.value = key;
+          final resolved = (widget.sequenceOf == null
+                  ? null
+                  : _invokeCallback<BuzzSequence?, String>(widget.sequenceOf!, key)) ??
+              _pattern(key)?.sequence;
+          if (resolved == null) continue;
+          final seq = resolved.copyWith(patternId: key);
+          final phone = widget.onPhone == null
+              ? Future<void>.value()
+              : _invokeCallback<Future<void>, BuzzSequence>(widget.onPhone!, seq)
+                  .catchError((Object _) {});
+          final delivered = widget.bandConnected
+              ? await _invokeCallback<Future<bool>, BuzzSequence>(
+                  widget.onPlay, seq)
+              : false;
+          await phone;
+          if (!delivered && widget.onPhone == null) return;
+          if (!mounted || run != _run) return;
+          await _invokeCallback<Future<void>, Duration>(
+              widget.wait, hapticWaitForMs(seq.playTime.inMilliseconds));
+        }
+      }
+    } catch (_) {
+      // Preview failure ends the example and still releases its highlight.
+    } finally {
+      if (mounted && run == _run) {
+        if (identical(_activeHapticExample, this)) _activeHapticExample = null;
+        _playingHapticSlot.value = null;
+        setState(() => _running = false);
+      }
+    }
+  }
+  void _cancelFromAnother() {
+    ++_run;
+    if (identical(_activeHapticExample, this)) _activeHapticExample = null;
+    _playingHapticSlot.value = null;
+    if (mounted && _running) setState(() => _running = false);
+  }
+  void _stop() {
+    _cancelFromAnother();
+  }
+  @override
+  void dispose() {
+    if (identical(_activeHapticExample, this)) {
+      ++_run;
+      _activeHapticExample = null;
+      _playingHapticSlot.value = null;
+    }
+    super.dispose();
+  }
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      if (_running)
+        TextButton(key: ValueKey('haptic-example-stop:${widget.sectionId}'), onPressed: _stop,
+          child: Text(AppLocalizations.of(context)?.hapticsExampleStop ?? 'Stop'))
+      else
+        TextButton.icon(key: ValueKey('haptic-example-play:${widget.sectionId}'),
+          onPressed: _play, icon: const Icon(LucideIcons.play),
+          label: Text(AppLocalizations.of(context)?.hapticsExamplePlay ?? 'Play example sequence')),
+      Padding(key: ValueKey('haptic-example-note:${widget.sectionId}'),
+        padding: const EdgeInsets.only(bottom: S.x2),
+        child: Text(AppLocalizations.of(context)?.hapticsExampleLimitNote ?? 'Examples ignore the band buzz limit.')),
+    ]);
 }
 
 /// Holds the selected tab: the one asked for, else the one used last (kept in

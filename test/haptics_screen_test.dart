@@ -286,6 +286,7 @@ void main() {
       await openHapticsTab(t, 'cues');
       await _tapKey(t, 'haptic-slot:gesture.confirm');
       await _tapKey(t, 'pattern-picker-row:sys.p2');
+      await _tapKey(t, 'haptic-preset-confirm-ok');
       expect(c.assigned, [('gesture.confirm', 'sys.p2')]);
       expect(c.storeUntouched, isTrue);
     });
@@ -323,6 +324,7 @@ void main() {
       expect(find.byKey(const ValueKey('haptic-action-delete')), findsNothing);
       await _tapKey(t, 'haptic-action-assign');
       await _tapKey(t, 'haptic-assign-slot:alert.water');
+      await _tapKey(t, 'haptic-preset-confirm-ok');
       expect(c.assigned, [('alert.water', 'sys.p1')]);
       expect(c.storeUntouched, isTrue);
     });
