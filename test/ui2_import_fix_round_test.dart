@@ -107,7 +107,10 @@ Future<void> _retryAfterFailed(WidgetTester t, FilePicker picker) async {
   for (var i = 0; i < 50; i++) {
     await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
     await t.pump();
-    if (find.text('Importing your history').evaluate().isEmpty) break;
+    // A CSV import now publishes its own progress too: wait for that as well.
+    final v = app.importProgress.value;
+    final active = v != null && v is! ImportFailed && v is! ImportDone;
+    if (!active && find.text('Importing your history').evaluate().isEmpty) break;
   }
   await _settle(t);
   expect(find.textContaining('disk full'), findsOneWidget,

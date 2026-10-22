@@ -1452,6 +1452,9 @@ class AppState extends ChangeNotifier {
     void Function(int days)? onProgress,
   }) async {
     final progressOwner = _deriveCoordinator.beginPublishedProgress();
+    // A backup's failure stays on the import screens until the next BACKUP
+    // starts; a CSV import in between borrows the notifier and hands it back.
+    final retained = importProgress.value is ImportFailed ? importProgress.value : null;
     try {
       importProgress.value = const ImportPreparing(ImportPrepStep.opening);
       final res = await NoopImporter.importFile(
@@ -1478,7 +1481,7 @@ class AppState extends ChangeNotifier {
       return res.days;
     } finally {
       try {
-        importProgress.value = null;
+        importProgress.value = retained;
       } finally {
         _deriveCoordinator.clearPublishedProgress(progressOwner);
       }
@@ -1502,6 +1505,7 @@ class AppState extends ChangeNotifier {
     List<String> paths, {
     void Function(int days)? onProgress,
   }) async {
+    final retained = importProgress.value is ImportFailed ? importProgress.value : null;
     try {
       importProgress.value = const ImportPreparing(ImportPrepStep.opening);
       // A WHOOP export holds the vendor's own daily figures; storing them
@@ -1523,7 +1527,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return res.days;
     } finally {
-      importProgress.value = null;
+      importProgress.value = retained;
     }
   }
 
