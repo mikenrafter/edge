@@ -3291,6 +3291,7 @@
   },
   "syncStatusWaitingImport": "Esperando a que termine la importación",
   "syncStatusCalculatingWaiting": "Calculando · esperando a otro cálculo",
+  "syncStatusFinishing": "Terminando…",
   "syncStatusWaitingCalculation": "Esperando otro cálculo…",
   "syncStepWaitingCalculation": "Esperando a que termine el otro cálculo",
   "syncDurationMinutesOnly": "{m} min",

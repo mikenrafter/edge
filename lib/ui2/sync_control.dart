@@ -281,10 +281,13 @@ List<Widget> syncStepRows(SyncPresentationState s, DateTime now) =>
 ({String text, bool failed})? syncProblem(SyncPresentationState s, [AppLocalizations? l]) {
   final source = syncStatusSource(s);
   if (source.phase == 'waiting_import') {
-    final importReason = const SyncRefused(ImportBlock.importRunning).message;
-    return (text: s.failureReason == importReason
-        ? s.failureReason!
-        : l?.syncStatusWaitingImport ?? 'Waiting for the import to finish', failed: false);
+    // Always the localized sentence: after syncNow() was refused, failureReason
+    // holds ImportGate's English wording, the same sentence in one language.
+    return (
+      text: l?.syncStatusWaitingImport ??
+          const SyncRefused(ImportBlock.importRunning).message,
+      failed: false
+    );
   }
   if (s.busy) return null;
   if (s.phase == 'failed') {
@@ -419,7 +422,9 @@ String _activeStepLine(SyncStep step, AppLocalizations? l) {
         (l?.syncStatusDownloading ?? 'Downloading…'),
     SyncStepId.calculate => _calcLine(l, waiting: false,
         i: step.calculate?.dayIndex, total: step.calculate?.dayTotal),
-    SyncStepId.done => l?.syncLineFinished ?? 'Finished',
+    // Done has not completed (the coordinator is still busy), so the headline
+    // cannot say the sync finished; it agrees with the Done row.
+    SyncStepId.done => l?.syncStatusFinishing ?? 'Finishing up…',
   };
 }
 
@@ -619,7 +624,7 @@ class _StepRow extends StatelessWidget {
         }
         return [running ? (l?.syncLineWorking ?? 'Working it out…') : (l?.syncLineFinished ?? 'Finished')];
       case SyncStepId.done:
-        return [_noteText(step, l) ?? (l?.syncLineFinished ?? 'Finished')];
+        return [_noteText(step, l) ?? (running ? (l?.syncStatusFinishing ?? 'Finishing up…') : (l?.syncLineFinished ?? 'Finished'))];
     }
   }
 

@@ -270,17 +270,6 @@ abstract interface class ImportRollupProbe {
   Future<void> finalize(Profile profile);
 }
 
-void Function(int) _importDayProgressPublisher({
-  required DeriveCoordinator coordinator,
-  required int owner,
-}) =>
-    (days) {
-      if (days > 0) {
-        coordinator.publishProgress(
-            owner, DeriveProgress(dayIndex: days, dayTotal: days));
-      }
-    };
-
 class AppState extends ChangeNotifier {
   late final BleEngine engine;
 
@@ -1469,9 +1458,17 @@ class AppState extends ChangeNotifier {
         path,
         _profile,
         _derive,
-        onProgress: _importDayProgressPublisher(
-            coordinator: _deriveCoordinator,
-            owner: progressOwner),
+        onProgress: (days) {
+          onProgress?.call(days);
+          if (days <= 0) return;
+          // The file is open and days are being derived: the line says so.
+          // The importer streams, so how many days there will be is unknown;
+          // only the count done is published, never a total (the line then
+          // reads "Calculating…", not "day i of N").
+          if (importProgress.value is ImportPreparing) importProgress.value = null;
+          _deriveCoordinator.publishProgress(
+              progressOwner, DeriveProgress(dayIndex: days));
+        },
       );
       lastNoopImport = res;
       // The rows are durable — publish: freshness first (Home's getToday reads
@@ -1506,27 +1503,37 @@ class AppState extends ChangeNotifier {
     List<String> paths, {
     void Function(int days)? onProgress,
   }) async {
-    final progressOwner = _deriveCoordinator.beginPublishedProgress();
     try {
       importProgress.value = const ImportPreparing(ImportPrepStep.opening);
+      // A WHOOP export holds the vendor's own daily figures; storing them
+      // recalculates nothing, so only the import line moves, with the number of
+      // days measured once every file has been read.
+      var total = 0;
       final res = await WhoopImporter.importFiles(
         paths,
         engine: _derive,
         profile: _profile,
-        onProgress: _importDayProgressPublisher(
-            coordinator: _deriveCoordinator,
-            owner: progressOwner),
+        onScope: (n) {
+          total = n;
+          if (n > 0) {
+            importProgress.value =
+                ImportCopying(ImportStage.results, 0, n, 1, 1);
+          }
+        },
+        onProgress: (done) {
+          onProgress?.call(done);
+          if (total > 0 && done <= total) {
+            importProgress.value =
+                ImportCopying(ImportStage.results, done, total, 1, 1);
+          }
+        },
       );
       lastWhoopImport = res;
       await _deriveCoordinator.publishNow(); // see importNoopCsv
       notifyListeners();
       return res.days;
     } finally {
-      try {
-        importProgress.value = null;
-      } finally {
-        _deriveCoordinator.clearPublishedProgress(progressOwner);
-      }
+      importProgress.value = null;
     }
   }
 

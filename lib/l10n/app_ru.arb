@@ -8659,6 +8659,7 @@
   },
   "syncStatusWaitingImport": "Ожидание завершения импорта",
   "syncStatusCalculatingWaiting": "Расчёт · ожидание другого расчёта",
+  "syncStatusFinishing": "Завершение…",
   "syncStatusWaitingCalculation": "Ожидание другого вычисления…",
   "syncStepWaitingCalculation": "Ожидание завершения другого вычисления",
   "syncDurationMinutesOnly": "{m} мин",

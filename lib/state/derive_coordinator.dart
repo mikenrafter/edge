@@ -230,22 +230,31 @@ class DeriveCoordinator {
   int _recalcSeq = 0;
   int _recalcOwner = 0;
 
-  /// Where the running pass is; null when none runs. Owned like [_recalc]: a
-  /// pass clears only what it set, so a refused pass cannot wipe a running one.
+  /// Where the running work is; null when none runs. This coordinator is the
+  /// ONE owner of the notifier. A coordinator pass and a direct import each hold
+  /// a claim (keyed by the owner token they began with); the notifier shows the
+  /// most recently published claim, a release falls back to the newest claim
+  /// still live, and only an empty set is null. So a release never wipes work
+  /// that is still running, and a refused pass (which never published) clears
+  /// nothing.
   final ValueNotifier<DeriveProgress?> deriveProgress =
       ValueNotifier<DeriveProgress?>(null);
-  int _progressOwner = 0;
+  final Map<int, DeriveProgress> _progressClaims = <int, DeriveProgress>{};
 
   void _setProgress(int owner, DeriveProgress p) {
     if (_disposed) return;
-    _progressOwner = owner;
+    // Re-insert so iteration order is publication order.
+    _progressClaims.remove(owner);
+    _progressClaims[owner] = p;
     deriveProgress.value = p;
   }
 
   void _clearProgress(int owner) {
-    if (_progressOwner != owner) return;
-    _progressOwner = 0;
-    if (!_disposed) deriveProgress.value = null;
+    if (_progressClaims.remove(owner) == null) return;
+    if (!_disposed) {
+      deriveProgress.value =
+          _progressClaims.isEmpty ? null : _progressClaims.values.last;
+    }
   }
 
   /// A directly imported day uses the same progress surface as coordinator
