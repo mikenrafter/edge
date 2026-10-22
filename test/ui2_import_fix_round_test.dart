@@ -98,7 +98,12 @@ Future<void> _retryAfterFailed(WidgetTester t, FilePicker picker) async {
   FilePicker.platform = picker;
   final app = _App();
   addTearDown(app.importProgress.dispose);
-  app.importProgress.value = _failed;
+  // A real retained backup failure (AppState keeps it apart from the notifier,
+  // so a CSV import can hand it back).
+  await t.runAsync(() => app
+      .importEdgeBackup('${Directory.systemTemp.path}/os_no_such_backup.db')
+      .then<void>((_) {}, onError: (_) {}));
+  expect(app.importProgress.value, isA<ImportFailed>());
   await t.pumpWidget(_app(const DataScreen(), app: app));
   await _settle(t);
   await t.tap(find.text('Import a file'));
@@ -113,7 +118,7 @@ Future<void> _retryAfterFailed(WidgetTester t, FilePicker picker) async {
     if (!active && find.text('Importing your history').evaluate().isEmpty) break;
   }
   await _settle(t);
-  expect(find.textContaining('disk full'), findsOneWidget,
+  expect(find.textContaining('Backup file not found'), findsOneWidget,
       reason: 'the retained backup failure stays');
 }
 
