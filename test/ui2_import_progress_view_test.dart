@@ -32,11 +32,13 @@ void main() {
   });
 
   group('copying', () {
-    testWidgets('stage, step count, row count and a determinate bar',
+    // The 500 / 2,000 are MAX(rowid) from the copy plan, not row counts, so
+    // only the step count is printed; they still drive the bar.
+    testWidgets('stage, step count and a determinate bar',
         (t) async {
       await _pump(t, const ImportCopying(ImportStage.heartRate, 500, 2000, 2, 9));
       expect(find.text('Copying heart rate'), findsOneWidget);
-      expect(find.text('Step 2 of 9 · 500 of 2,000 rows'), findsOneWidget);
+      expect(find.text('Step 2 of 9'), findsOneWidget);
       expect(_barValue(t), closeTo(0.25, 1e-9));
     });
 
