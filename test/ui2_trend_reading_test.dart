@@ -157,8 +157,8 @@ void main() {
     MetricData hrv({Map<String, dynamic>? baselines}) => MetricData(
           daysAvailable: 30,
           series: [
-            for (var i = 20; i >= 1; i--) (t: _noon(i), v: 55.0),
-            (t: _noon(0), v: 48.0),
+            for (var i = 20; i >= 1; i--) ChartPoint(t: _noon(i), v: 55.0),
+            ChartPoint(t: _noon(0), v: 48.0),
           ],
           baselines: baselines,
         );

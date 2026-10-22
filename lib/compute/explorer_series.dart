@@ -16,6 +16,7 @@
 import 'dart:math' as math;
 
 import '../data/day_label.dart';
+import '../models/chart_point.dart';
 
 /// Metrics that can be laid over each other at once.
 const int kExploreMaxMetrics = 4;
@@ -50,9 +51,9 @@ extension ExploreRangeDays on ExploreRange {
       };
 }
 
-/// A stored reading: [t] epoch SECONDS, [v] the real value. Structurally the
-/// same record as the screens' `ChartPoint`.
-typedef ExplorePoint = ({int t, double v});
+/// A stored reading: [t] epoch SECONDS, [v] the real value. The screens'
+/// `ChartPoint`, so a reading's older-calculation flag travels with it.
+typedef ExplorePoint = ChartPoint;
 
 /// A drawn point: [at] 0..1 across the axis, [y] 0..1 up the plot.
 typedef ExploreXY = ({double at, double y});
@@ -175,11 +176,16 @@ class ExploreLine {
   // Daily: the reading of each grid slot. Intraday: every point in time order.
   final int _slots;
   final Map<int, double> _bySlot;
+
+  /// The older-calculation flag of the reading behind each daily slot: the SAME
+  /// reading [valueAt] returns for it, so a value and its flag cannot come from
+  /// different days.
+  final Map<int, ({int version, String? reason})> _olderBySlot;
   final List<({double at, double v})> _flat;
   final double _tol;
 
-  ExploreLine._(this.key, this.runs, this._slots, this._bySlot, this._flat,
-      this._tol);
+  ExploreLine._(this.key, this.runs, this._slots, this._bySlot,
+      this._olderBySlot, this._flat, this._tol);
 
   /// [pts] laid on the day grid [w] by LOCAL day. A day outside the window or
   /// with a non-finite value is dropped; two readings on one day keep the
@@ -187,6 +193,7 @@ class ExploreLine {
   factory ExploreLine.daily(
       String key, Iterable<ExplorePoint> pts, ExploreWindow w) {
     final by = <int, double>{}, newest = <int, int>{};
+    final older = <int, ({int version, String? reason})>{};
     for (final p in pts) {
       final i = p.v.isFinite ? w.slotOf(p.t) : null;
       if (i == null) continue;
@@ -194,6 +201,12 @@ class ExploreLine {
       if (seen == null || p.t >= seen) {
         newest[i] = p.t;
         by[i] = p.v;
+        final o = p.olderVersion;
+        if (o == null) {
+          older.remove(i);
+        } else {
+          older[i] = (version: o, reason: p.olderReason);
+        }
       }
     }
     final runs = <List<({double at, double v})>>[];
@@ -203,7 +216,7 @@ class ExploreLine {
       runs.last.add((at: (i + .5) / w.length, v: by[i]!));
       prev = i;
     }
-    return ExploreLine._(key, runs, w.length, by, const [], 0);
+    return ExploreLine._(key, runs, w.length, by, older, const [], 0);
   }
 
   /// [pts] on the real local day [dayStart, dayEnd) (epoch seconds). The line
@@ -228,7 +241,7 @@ class ExploreLine {
       runs.last.add(p);
       flat.add(p);
     }
-    return ExploreLine._(key, runs, 0, const {}, flat, gap / 2 / span);
+    return ExploreLine._(key, runs, 0, const {}, const {}, flat, gap / 2 / span);
   }
 
   bool get isEmpty => runs.isEmpty;
@@ -266,6 +279,13 @@ class ExploreLine {
       best = _flat[lo - 1];
     }
     return (best.at - at).abs() <= _tol ? best.v : null;
+  }
+
+  /// Where [valueAt] reads a real value at [at], the older calculation it came
+  /// from (null for a current value, a gap, or an intraday line).
+  ({int version, String? reason})? olderAt(double at) {
+    if (_slots <= 0 || valueAt(at) == null) return null;
+    return _olderBySlot[(at * _slots).floor().clamp(0, _slots - 1)];
   }
 
   /// The runs as drawn: y 0..1 over this line's own min..max (a flat line sits
@@ -369,7 +389,7 @@ List<ExplorePoint> exploreIntradayPoints(String key,
     return [
       for (final m in (calories?['minutes'] as List?) ?? const [])
         if (m is Map && m['t'] is num && m['active'] is num)
-          (t: (m['t'] as num).toInt(), v: (m['active'] as num).toDouble()),
+          ChartPoint(t: (m['t'] as num).toInt(), v: (m['active'] as num).toDouble()),
     ];
   }
   return [
@@ -379,7 +399,7 @@ List<ExplorePoint> exploreIntradayPoints(String key,
           e['t'] is num &&
           e['v'] is num &&
           (key != 'hr' || (e['v'] as num) > 0))
-        (t: (e['t'] as num).toInt(), v: (e['v'] as num).toDouble()),
+        ChartPoint(t: (e['t'] as num).toInt(), v: (e['v'] as num).toDouble()),
   ];
 }
 

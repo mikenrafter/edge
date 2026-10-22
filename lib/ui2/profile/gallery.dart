@@ -2072,7 +2072,7 @@ final DateTime _now = DateTime.now();
 List<ChartPoint> _gridPoints(double base, double spread, {int days = 60}) => [
       for (var i = days - 1; i >= 0; i--)
         if (i % 9 != 3)
-          (
+          ChartPoint(
             // `DateTime(y, m, d - i)` rather than a `Duration`: durations in
             // lib/ui2 are motion, and the token test enforces it.
             t: DateTime(_now.year, _now.month, _now.day - i)

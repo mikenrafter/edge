@@ -3375,5 +3375,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "olderVersionReasonAge": "此指标需要你的年龄，但尚未填写。",
+  "olderVersionReasonWeight": "此指标需要你的体重，但尚未填写。",
+  "olderVersionReasonHeight": "此指标需要你的身高，但尚未填写。",
+  "olderVersionReasonSex": "此指标需要你的性别，但尚未填写。"
 }

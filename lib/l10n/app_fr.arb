@@ -3375,5 +3375,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "olderVersionReasonAge": "Cette mesure a besoin de votre âge, qui n’est pas renseigné.",
+  "olderVersionReasonWeight": "Cette mesure a besoin de votre poids, qui n’est pas renseigné.",
+  "olderVersionReasonHeight": "Cette mesure a besoin de votre taille, qui n’est pas renseignée.",
+  "olderVersionReasonSex": "Cette mesure a besoin de votre sexe, qui n’est pas renseigné."
 }

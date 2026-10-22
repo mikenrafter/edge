@@ -197,16 +197,16 @@ void main() {
       // used to be drawn as three evenly spaced samples, and the line ran
       // straight through the four missing days as though they were measured.
       final dense = denseDays([
-        (t: _noon(6), v: 50.0),
-        (t: _noon(2), v: 54.0),
-        (t: _noon(0), v: 52.0),
+        ChartPoint(t: _noon(6), v: 50.0),
+        ChartPoint(t: _noon(2), v: 54.0),
+        ChartPoint(t: _noon(0), v: 52.0),
       ], 7);
       expect(dense, [50.0, null, null, null, 54.0, null, 52.0]);
       expect(dense.length, 7);
     });
 
     test('a point outside the window is dropped, not clamped into it', () {
-      expect(denseDays([(t: _noon(40), v: 50.0)], 7), List.filled(7, null));
+      expect(denseDays([ChartPoint(t: _noon(40), v: 50.0)], 7), List.filled(7, null));
     });
 
     test('the label counts REAL days, not array positions', () {
@@ -313,8 +313,8 @@ void main() {
           },
           charts: {
             'sleep': [
-              for (var i = 29; i >= 1; i--) (t: _noon(i), v: 400.0),
-              (t: _noon(0), v: 420.0),
+              for (var i = 29; i >= 1; i--) ChartPoint(t: _noon(i), v: 400.0),
+              ChartPoint(t: _noon(0), v: 420.0),
             ],
           },
           need: need,
@@ -341,8 +341,8 @@ void main() {
           HealthData(charts: {
             'sleep': [
               for (var i = 28; i >= 1; i--)
-                (t: _noon(i), v: i.isEven ? 390.0 : 410.0),
-              (t: _noon(0), v: 420.0),
+                ChartPoint(t: _noon(i), v: i.isEven ? 390.0 : 410.0),
+              ChartPoint(t: _noon(0), v: 420.0),
             ],
           }));
       expect(find.text('Above usual'), findsOneWidget);
@@ -371,7 +371,7 @@ void main() {
       await pump(
           t,
           HealthData(charts: {
-            'sleep': [(t: _noon(1), v: 400.0), (t: _noon(0), v: 420.0)],
+            'sleep': [ChartPoint(t: _noon(1), v: 400.0), ChartPoint(t: _noon(0), v: 420.0)],
           }));
       expect(
           find.text('Your usual range appears after 14 days. 2 so far.'),
@@ -779,8 +779,8 @@ void main() {
           t,
           MetricData(
             daysAvailable: 40,
-            series: [for (var i = 11; i >= 0; i--) (t: _noon(i), v: 54.0)],
-            wear: [for (var i = 11; i >= 0; i--) (t: _noon(i), v: 480.0)],
+            series: [for (var i = 11; i >= 0; i--) ChartPoint(t: _noon(i), v: 54.0)],
+            wear: [for (var i = 11; i >= 0; i--) ChartPoint(t: _noon(i), v: 480.0)],
           ));
       // The screen opens on Today; the denominator is a long-range thing.
       await t.tap(find.text('30 days'));
@@ -796,8 +796,8 @@ void main() {
           t,
           MetricData(
             daysAvailable: 40,
-            series: [for (var i = 11; i >= 0; i--) (t: _noon(i), v: 54.0)],
-            wear: [for (var i = 11; i >= 0; i--) (t: _noon(i), v: 480.0)],
+            series: [for (var i = 11; i >= 0; i--) ChartPoint(t: _noon(i), v: 54.0)],
+            wear: [for (var i = 11; i >= 0; i--) ChartPoint(t: _noon(i), v: 480.0)],
           ));
       await t.tap(find.text('7 days'));
       await t.pumpAndSettle();
@@ -826,7 +826,7 @@ void main() {
           'resting_hr',
           MetricData(
             daysAvailable: 400,
-            series: [for (var i = 200; i >= 0; i--) (t: _noon(i), v: 54.0)],
+            series: [for (var i = 200; i >= 0; i--) ChartPoint(t: _noon(i), v: 54.0)],
           ));
       expect(find.text('Today'), findsWidgets);
       // Today's headline is today's reading, not a window average.
@@ -839,7 +839,7 @@ void main() {
           'resting_hr',
           MetricData(
             daysAvailable: 400,
-            series: [for (var i = 200; i >= 0; i--) (t: _noon(i), v: 54.0)],
+            series: [for (var i = 200; i >= 0; i--) ChartPoint(t: _noon(i), v: 54.0)],
           ));
       await t.tap(find.text('30 days'));
       await t.pumpAndSettle();
@@ -898,7 +898,7 @@ void main() {
                   data: MetricData(
                     daysAvailable: 400,
                     series: [
-                      for (var i = 60; i >= 0; i--) (t: _noon(i), v: 8000.0),
+                      for (var i = 60; i >= 0; i--) ChartPoint(t: _noon(i), v: 8000.0),
                     ],
                   )))));
       await t.pumpAndSettle();
@@ -1025,7 +1025,7 @@ void main() {
         theme: buildTheme(Brightness.light),
         home: Investigate('hrv',
             data: InvestigateData(day: _day(0), rhythmPoints: [
-              for (var i = 9; i >= 0; i--) (t: _noon(i), v: i == 3 ? 1.0 : 0.0),
+              for (var i = 9; i >= 0; i--) ChartPoint(t: _noon(i), v: i == 3 ? 1.0 : 0.0),
             ])),
       ));
       await t.pumpAndSettle();

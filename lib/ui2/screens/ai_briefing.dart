@@ -125,6 +125,19 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
                                 : b.oneLiner,
                             style: F.body.copyWith(color: p.ink, height: 1.5),
                           ),
+                          if (b.olderVersions.isNotEmpty) ...[
+                            const SizedBox(height: S.x3),
+                            // Fixed text, not parsed from the model's prose: the
+                            // note is true whatever the model chose to quote.
+                            Text(
+                              l?.briefingOlderFootnote(
+                                      b.olderVersions.map((v) => 'v$v').join(', ')) ??
+                                  'Some figures in this note come from an older '
+                                      'calculation (${b.olderVersions.map((v) => 'v$v').join(', ')}).',
+                              key: const ValueKey('briefing-older-footnote'),
+                              style: F.cap.copyWith(color: p.ink3, height: 1.5),
+                            ),
+                          ],
                           if (b.breakdownMd.isNotEmpty) ...[
                             const SizedBox(height: S.x3),
                             Text(

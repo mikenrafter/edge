@@ -112,11 +112,8 @@ void main() {
         (t) async {
       await screen(t, stored([104]));
       expect(key, findsOneWidget);
-      expect(
-          find.descendant(
-              of: key,
-              matching: find.text(AppLocalizationsEn().briefingOlderFootnote('v104'))),
-          findsOneWidget);
+      expect(t.widget<Text>(key).data,
+          AppLocalizationsEn().briefingOlderFootnote('v104'));
       expect(AppLocalizationsEn().briefingOlderFootnote('v104'),
           contains('older calculation'));
     });

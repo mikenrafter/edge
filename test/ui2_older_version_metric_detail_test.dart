@@ -81,8 +81,7 @@ void main() {
       await _pump(t, 'strain', series(10, flagged: {1}, gaps: {0}),
           window: '7 days');
       expect(olderMark('latest'), findsOneWidget);
-      expect(find.descendant(of: olderNote('latest'), matching: find.textContaining(kNoteV104)),
-          findsOneWidget);
+      expect(t.widget<Text>(olderNote('latest')).data, contains(kNoteV104));
     });
 
     testWidgets('a trailing gap with a current latest reading: no flag on it '
@@ -104,8 +103,7 @@ void main() {
       await _pump(t, 'strain', series(10, flagged: {3}), window: '7 days');
       await _scrubCenter(t);
       expect(olderMark('selected'), findsOneWidget);
-      expect(find.descendant(of: olderNote('selected'), matching: find.textContaining(kNoteV104)),
-          findsOneWidget);
+      expect(t.widget<Text>(olderNote('selected')).data, contains(kNoteV104));
       final said = t.getSemantics(_slider).value;
       expect(said, matches(kSpoken));
       h.dispose();

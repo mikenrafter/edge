@@ -40,6 +40,7 @@ import '../../util/log_file.dart' show LogSaveFailed;
 import '../ui2.dart';
 import 'day_timeline.dart';
 import 'home_screen.dart';
+import '../older_version.dart';
 import 'metric_detail.dart';
 
 class InvestigateData {
@@ -92,7 +93,8 @@ class InvestigateData {
   final int? windowStart, windowEnd;
   final List<double> series;
 
-  /// RED STUB: older version per [series] value (same indices).
+  /// The older calculation behind each [series] value (same indices), or null.
+  /// Empty means none is.
   final List<int?> seriesOlder;
 
   const InvestigateData({
@@ -132,8 +134,12 @@ class InvestigateData {
     final row = await LocalDb.dayResultMeta(day);
     final block = await repo.getDayBlock(day, const ['imported', 'source', 'steps']);
     final win = lungs['sleep_window'];
-    final series =
-        spec.suppress != null ? const <double>[] : seriesOf(await repo.getChart(spec.chartKey));
+    // Points, not bare doubles: each value keeps the older-calculation flag it
+    // was stored with, so the statistics below can say when they lean on one.
+    final seriesPts = spec.suppress != null
+        ? const <ChartPoint>[]
+        : pointsOf(await repo.getChart(spec.chartKey));
+    final series = valuesOf(seriesPts);
     final hrvish = key == 'hrv';
     final dc = hrvish
         ? pointsOf(await repo.getChart('prsa_dc'))
@@ -169,6 +175,7 @@ class InvestigateData {
       windowStart: win is Map ? (win['start'] as num?)?.toInt() : null,
       windowEnd: win is Map ? (win['end'] as num?)?.toInt() : null,
       series: series,
+      seriesOlder: [for (final p in seriesPts) p.olderVersion],
     );
   }
 
@@ -1273,6 +1280,13 @@ class _InvestigateState extends State<Investigate> {
     String n(double v) => v.abs() >= 100
         ? v.round().toString()
         : v.toStringAsFixed(2);
+    // A statistic that leans on an older calculation's value is starred: the
+    // newest value by its own flag, every whole-window figure by any flag.
+    final flags = d.seriesOlder.length == s.length ? d.seriesOlder : const <int?>[];
+    final versions = <int>{for (final v in flags) ?v}.toList()..sort();
+    final anyOlder = versions.isNotEmpty;
+    final latestOlder = flags.isNotEmpty && flags.last != null;
+    String star(String v, bool on) => on ? '$v*' : v;
 
     return [
       MonoTable(l?.investigateSeries ?? 'Series', [
@@ -1280,12 +1294,13 @@ class _InvestigateState extends State<Investigate> {
         // day that derives, so "Days stored 40" under "one value per calendar
         // day" read as 40 days of continuous coverage.
         (l?.investigateDaysDerived ?? 'Days derived', '${s.length}'),
-        (l?.investigateLatest ?? 'Latest', n(s.last)),
-        (l?.investigateMean ?? 'Mean', n(mean)),
-        (l?.investigateMedian ?? 'Median', n(sorted[sorted.length ~/ 2])),
-        (l?.investigateSd ?? 'SD', n(sd)),
-        (l?.investigateMin ?? 'Min', n(sorted.first)),
-        (l?.investigateMax ?? 'Max', n(sorted.last)),
+        (l?.investigateLatest ?? 'Latest', star(n(s.last), latestOlder)),
+        (l?.investigateMean ?? 'Mean', star(n(mean), anyOlder)),
+        (l?.investigateMedian ?? 'Median',
+            star(n(sorted[sorted.length ~/ 2]), anyOlder)),
+        (l?.investigateSd ?? 'SD', star(n(sd), anyOlder)),
+        (l?.investigateMin ?? 'Min', star(n(sorted.first), anyOlder)),
+        (l?.investigateMax ?? 'Max', star(n(sorted.last), anyOlder)),
         (
           l?.investigateUnit ?? 'Unit',
           spec.unit.isEmpty
@@ -1295,6 +1310,19 @@ class _InvestigateState extends State<Investigate> {
         (l?.investigateStorage ?? 'Storage',
             l?.investigateOneValuePerDerivedDay ?? 'one value per derived day'),
       ]),
+      if (anyOlder)
+        Padding(
+          padding: const EdgeInsets.only(top: S.x2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < versions.length; i++)
+                OlderVersionNote(
+                    id: i == 0 ? 'stats' : 'stats:${versions[i]}',
+                    version: versions[i]),
+            ],
+          ),
+        ),
     ];
   }
 

@@ -64,7 +64,7 @@ List<ChartPoint> _series(double start, double step) {
   final n = DateTime.now();
   return [
     for (var i = 29; i >= 0; i--)
-      (
+      ChartPoint(
         t: DateTime(n.year, n.month, n.day - i, 12).millisecondsSinceEpoch ~/
             1000,
         v: start + (29 - i) * step,

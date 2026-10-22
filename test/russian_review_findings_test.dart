@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/models/chart_point.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
@@ -451,7 +452,7 @@ void main() {
             'resting_hr',
             key: ValueKey(n),
             data: MetricData(
-              series: [(t: now, v: 60.0)],
+              series: [ChartPoint(t: now, v: 60.0)],
               percentile: {'percentile_of_you': n},
             ),
           ),
@@ -480,7 +481,7 @@ void main() {
             MetricDetail(
               'resting_hr',
               data: MetricData(
-                series: [(t: ts, v: 60.0)],
+                series: [ChartPoint(t: ts, v: 60.0)],
                 daysAvailable: 7,
                 percentile: {
                   'percentile_of_you': 12,

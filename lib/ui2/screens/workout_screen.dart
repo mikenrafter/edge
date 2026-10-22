@@ -47,7 +47,7 @@ import '../revision.dart';
 import '../status_line.dart' show HeaderRows;
 import '../theme.dart';
 import '../../data/day_label.dart' show calendarDaysBetween, dayLabelOf;
-import 'home_screen.dart' show prettyDay;
+import 'home_screen.dart' show ChartPoint, pointsOf, prettyDay;
 import 'metric_detail.dart' show detailScaffold;
 import 'log_workout.dart';
 import 'metric_detail.dart' show MetricDetail, detailLinkRow;
@@ -430,7 +430,6 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
               series: trimp7,
               child: ChartScrub(
                 label: loc?.workoutDailyLoadTitle ?? 'Heart effort by day',
-                olderVersions: d.trimpOlder7,
                 gaps: hasChartGaps([trimp7], trailing: true),
                 time: (at) {
                   final i =
@@ -445,7 +444,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                       trimp7,
                       (i, v) =>
                           '${v.round()} ${loc?.workoutTrimpUnit ?? 'points'}',
-                      bars: true),
+                      bars: true,
+                      older: d.trimpOlder7),
                 ],
                 child: CustomPaint(
                     size: Size.infinite,
@@ -1383,14 +1383,16 @@ int? _daySlot(DateTime at, DateTime end) {
 /// The alternative — "the last seven stored points" — is what made the axis
 /// lie: `metric_series` only gains a row on a day that derives, so a sync gap
 /// slid the whole week left and stamped today's letter on a week-old bar.
-List<double?> lastSevenDays(Object? points, DateTime end) {
-  final out = List<double?>.filled(7, null);
-  if (points is! List) return out;
-  for (final e in points) {
-    if (e is! Map || e['v'] is! num || e['t'] is! num) continue;
+List<double?> lastSevenDays(Object? points, DateTime end) =>
+    [for (final p in lastSevenDayPoints(points, end)) p?.v];
+
+/// The point behind each [lastSevenDays] slot, flag included, so a bar's value
+/// and the older calculation it came from are one object.
+List<ChartPoint?> lastSevenDayPoints(Object? points, DateTime end) {
+  final out = List<ChartPoint?>.filled(7, null);
+  for (final p in pointsOf({'points': points})) {
     // `t` is noon local on the day the value belongs to.
-    final at =
-        DateTime.fromMillisecondsSinceEpoch((e['t'] as num).toInt() * 1000);
+    final at = DateTime.fromMillisecondsSinceEpoch(p.t * 1000);
     // CALENDAR days, not elapsed hours: the day after a spring-forward is 23 h
     // long, `inDays` floored that to 0, and Sunday landed in Monday's slot
     // where Monday overwrote it. UTC midnights have no DST to floor.
@@ -1399,10 +1401,14 @@ List<double?> lastSevenDays(Object? points, DateTime end) {
             .difference(DateTime.utc(at.year, at.month, at.day))
             .inDays;
     if (slot < 0 || slot > 6) continue;
-    out[slot] = (e['v'] as num).toDouble();
+    out[slot] = p;
   }
   return out;
 }
+
+/// Per-slot older version, the same slots as [lastSevenDays].
+List<int?> lastSevenDaysOlder(Object? points, DateTime end) =>
+    [for (final p in lastSevenDayPoints(points, end)) p?.olderVersion];
 
 // ── the app seam ───────────────────────────────────────────────────────────
 // Top-level, not methods: the live-session bar in `app.dart` reopens a
@@ -2074,7 +2080,8 @@ class _WorkoutData {
   /// Null is a day that derived nothing — a hole the painter draws as a hole,
   /// rather than a value that silently shifts the whole week along.
   final List<double?> trimp7;
-  final List<int?> trimpOlder7;
+  /// The older calculation behind each [trimp7] slot, or null.
+  final List<ChartOlder?> trimpOlder7;
 
   /// The day slot 6 belongs to. Carried so the x labels are read off the same
   /// anchor the buckets were built with, not off a second `DateTime.now()`.
@@ -2206,11 +2213,17 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
     final now = DateTime.now();
     final end = DateTime(now.year, now.month, now.day);
     var trimp = List<double?>.filled(7, null);
-    var trimpOlder = List<int?>.filled(7, null);
+    var trimpOlder = List<ChartOlder?>.filled(7, null);
     try {
       final rawPoints = (await repo.getChart('trimp'))['points'];
-      trimp = lastSevenDays(rawPoints, end);
-      trimpOlder = lastSevenDaysOlder(rawPoints, end);
+      final slots = lastSevenDayPoints(rawPoints, end);
+      trimp = [for (final p in slots) p?.v];
+      trimpOlder = [
+        for (final p in slots)
+          p?.olderVersion == null
+              ? null
+              : (version: p!.olderVersion!, reason: p.olderReason),
+      ];
     } catch (_) {
       trimp = List<double?>.filled(7, null);
     }
@@ -2392,16 +2405,4 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
       suggestions: await activeSuggestions(),
       importedLast: await lastImportAt(HealthImport.workouts),
     );
-}
-
-List<int?> lastSevenDaysOlder(Object? points, DateTime end) {
-  final out = List<int?>.filled(7, null);
-  if (points is! List) return out;
-  for (final e in points) {
-    if (e is! Map || e['v'] is! num || e['t'] is! num || e['from_older_version'] is! num) continue;
-    final at = DateTime.fromMillisecondsSinceEpoch((e['t'] as num).toInt() * 1000);
-    final slot = 6 - DateTime.utc(end.year, end.month, end.day).difference(DateTime.utc(at.year, at.month, at.day)).inDays;
-    if (slot >= 0 && slot < 7) out[slot] = (e['from_older_version'] as num).toInt();
-  }
-  return out;
 }

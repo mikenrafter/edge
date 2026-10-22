@@ -29,7 +29,7 @@ List<ChartPoint> _points(int n, double base, double amp) {
   final now = DateTime.now();
   return [
     for (var i = 0; i < n; i++)
-      (
+      ChartPoint(
         t:
             DateTime(
               now.year,
@@ -286,7 +286,7 @@ void main() {
     // carries is that day's; "Today sits at the 22nd percentile" was printed
     // unconditionally, two rows under a hero saying "4 days ago".
     final stale = [
-      for (final p in _points(8, 54, 6)) (t: p.t - 4 * 86400, v: p.v),
+      for (final p in _points(8, 54, 6)) ChartPoint(t: p.t - 4 * 86400, v: p.v),
     ];
     await tester.pumpWidget(
       _frame(

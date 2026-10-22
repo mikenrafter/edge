@@ -456,6 +456,25 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
                       C.teal,
                     ),
                   ]),
+                  if (_burned!.fromOlderVersion != null) ...[
+                    const SizedBox(height: S.x2),
+                    Wrap(spacing: S.x2, children: [
+                      OlderVersionMark(
+                          id: 'calories_total',
+                          version: _burned!.fromOlderVersion,
+                          reason: _burned!.olderVersionReason,
+                          showNote: false),
+                      OlderVersionMark(
+                          id: 'balance',
+                          version: _burned!.fromOlderVersion,
+                          reason: _burned!.olderVersionReason,
+                          showNote: false),
+                    ]),
+                    OlderVersionNote(
+                        id: 'calories_total',
+                        version: _burned!.fromOlderVersion,
+                        reason: _burned!.olderVersionReason),
+                  ],
                   const SizedBox(height: S.x3),
                   Text(
                     l?.nutritionEatenMeanNote(w.meanKcal.days) ??
@@ -695,6 +714,14 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
                 unit: _burned?.value == null ? '' : 'kcal',
                 sub: l?.nutritionExpenditureSub ?? 'TODAY, FROM HEART RATE AND YOUR PROFILE',
               ),
+              if (_burned?.value != null && _burned!.fromOlderVersion != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: S.x2),
+                  child: OlderVersionMark(
+                      id: 'calories_total',
+                      version: _burned!.fromOlderVersion,
+                      reason: _burned!.olderVersionReason),
+                ),
             ],
           ),
         ),

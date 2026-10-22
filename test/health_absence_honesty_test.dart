@@ -44,7 +44,7 @@ int _noon(int daysAgo) {
 
 /// [n] stored days ending today, one per calendar day.
 List<ChartPoint> _stored(int n, {double base = 50}) => [
-      for (var i = n - 1; i >= 0; i--) (t: _noon(i), v: base + (n - 1 - i)),
+      for (var i = n - 1; i >= 0; i--) ChartPoint(t: _noon(i), v: base + (n - 1 - i)),
     ];
 
 /// Bounded pumps, not pumpAndSettle: a sub-tab that is still loading shows a

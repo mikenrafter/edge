@@ -239,7 +239,7 @@ HealthData _trendsLoaded() {
   final now = todayAtMs(8, 42) ~/ 1000;
   List<ChartPoint> series(double base) => [
         for (var i = 20; i >= 0; i--)
-          (t: now - i * 86400, v: base + (i % 5).toDouble()),
+          ChartPoint(t: now - i * 86400, v: base + (i % 5).toDouble()),
       ];
   return HealthData(charts: {
     'resting_hr': series(55),

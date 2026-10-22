@@ -51,6 +51,10 @@ String sweepText(AppLocalizations? l, String text) {
   return text;
 }
 
-/// RED STUB: the finding as shown, with its localized older-calculation note.
-String sweepFindingText(AppLocalizations? l, SweepFinding f) =>
-    sweepText(l, f.text);
+/// The finding as shown: its localized sentence, then one localized note per
+/// older calculation it used (`olderVersionSweepFinding`).
+String sweepFindingText(AppLocalizations? l, SweepFinding f) => [
+      sweepText(l, f.text),
+      for (final v in f.olderVersions)
+        l?.olderVersionSweepFinding(v) ?? 'Older calculation (v$v)',
+    ].join(' · ');

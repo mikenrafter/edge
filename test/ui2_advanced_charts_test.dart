@@ -59,7 +59,7 @@ void main() {
     await t.pumpWidget(_nav(MetricDetail('hrv',
         data: MetricData(daysAvailable: 7, series: [
           for (var i = 0; i < 7; i++)
-            (
+            ChartPoint(
               t: DateTime(now.year, now.month, now.day - 6 + i, 12)
                       .millisecondsSinceEpoch ~/
                   1000,

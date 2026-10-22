@@ -38,7 +38,8 @@ class SweepSeries {
 
   final double today;
   final int? todayOlderVersion;
-  // RED STUB: older version per history value, aligned with [history].
+  /// The older calculation behind each [history] value (same indices), or
+  /// null. Empty means none is.
   final List<int?> historyOlderVersions;
 
   /// Values STRICTLY BEFORE today, oldest→newest, already truncated at any
@@ -70,7 +71,8 @@ class SweepFinding {
   /// True when today is above the middle, false below.
   final bool high;
 
-  // RED STUB: distinct older versions behind this finding, ascending.
+  /// Distinct older calculations whose values this finding used (today's, or
+  /// any day of the history its range and extremes come from), ascending.
   final List<int> olderVersions;
 
   const SweepFinding({
@@ -149,16 +151,32 @@ List<SweepFinding> sweepFindings(List<SweepSeries> series) {
     if (z.abs() < (extreme ? kSweepExtremeZ : kSweepZ)) continue;
 
     final high = z > 0;
+    // Values from an older calculation, wherever the finding leans on them:
+    // today's figure, or the history behind "usually X–Y" and the extremes.
+    final histOlder = <int>{
+      for (var i = 0; i < s.history.length; i++)
+        if (s.history[i].isFinite &&
+            i < s.historyOlderVersions.length &&
+            s.historyOlderVersions[i] != null)
+          s.historyOlderVersions[i]!,
+    };
+    final versions = <int>{
+      ?s.todayOlderVersion,
+      ...histOlder,
+    }.toList()
+      ..sort();
     final usual = 'usually ${_fmt(_percentile(sorted, .1), s)}'
-        '–${_fmt(_percentile(sorted, .9), s)}';
+        '–${_fmt(_percentile(sorted, .9), s)}${histOlder.isEmpty ? '' : '*'}';
     final where = extreme
         ? '${high ? 'the highest' : 'the lowest'} in ${h.length} days'
         : '${high ? 'above' : 'below'} your usual range';
     out.add(SweepFinding(
       key: s.key,
-      text: '${s.label} ${_fmt(s.today, s)}${s.todayOlderVersion == null ? '' : '* (older calculation (v${s.todayOlderVersion}))'} — $where ($usual)',
+      text: '${s.label} ${_fmt(s.today, s)}${s.todayOlderVersion == null ? '' : '*'}'
+          ' — $where ($usual)',
       z: z,
       high: high,
+      olderVersions: versions,
     ));
   }
   out.sort((a, b) => b.z.abs().compareTo(a.z.abs()));
@@ -189,7 +207,15 @@ Map<String, dynamic> sweepInputs(
   if (findings.isEmpty) return const {};
   final pair = sweepPairing(findings);
   return {
-    'unusual_for_you': [for (final f in findings.take(4)) f.text],
+    'unusual_for_you': [
+      for (final f in findings.take(4))
+        // The model is told which figures are older calculations, so it can
+        // neither present them as current nor drop the fact.
+        f.olderVersions.isEmpty
+            ? f.text
+            : '${f.text} — from an older calculation '
+                '(${f.olderVersions.map((v) => 'v$v').join(', ')})',
+    ],
     'unusual_together': ?pair,
     // Evidence for an action, and the only value here that is not a finding.
     // Already computed by the sleep coach and already shown on Home — the model
@@ -201,10 +227,18 @@ Map<String, dynamic> sweepInputs(
 /// The one line the OS notification carries. It is a finding, not a promise of
 /// one: the notification is armed only when this is non-null, and its body is
 /// this text, so tapping it can never lead to "nothing to report".
-String? sweepHeadline(List<SweepFinding> findings) {
+///
+/// A finding that used an older calculation's value says so: the asterisk is in
+/// its text, and the versions follow (English unless [olderNote] is given).
+String? sweepHeadline(List<SweepFinding> findings,
+    {String Function(int version)? olderNote}) {
   if (findings.isEmpty) return null;
-  final t = findings.first.text;
-  return t.isEmpty ? null : '${t[0].toUpperCase()}${t.substring(1)}';
+  final f = findings.first;
+  final t = f.text;
+  if (t.isEmpty) return null;
+  final note = olderNote ?? (int v) => 'Older calculation (v$v)';
+  return '${t[0].toUpperCase()}${t.substring(1)}'
+      '${f.olderVersions.isEmpty ? '' : ' · ${f.olderVersions.map(note).join(' · ')}'}';
 }
 
 /// What the briefing says when the sweep found nothing. Complete as it stands —

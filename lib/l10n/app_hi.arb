@@ -3375,5 +3375,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "olderVersionReasonAge": "इस मापदंड के लिए आपकी उम्र चाहिए, जो दर्ज नहीं है।",
+  "olderVersionReasonWeight": "इस मापदंड के लिए आपका वज़न चाहिए, जो दर्ज नहीं है।",
+  "olderVersionReasonHeight": "इस मापदंड के लिए आपकी ऊँचाई चाहिए, जो दर्ज नहीं है।",
+  "olderVersionReasonSex": "इस मापदंड के लिए आपका लिंग चाहिए, जो दर्ज नहीं है।"
 }

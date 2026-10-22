@@ -49,7 +49,10 @@ class Briefing {
   /// were actually present — absent metrics are never fabricated).
   final Map<String, dynamic> inputs;
 
-  /// RED STUB: older calculation versions behind any input finding.
+  /// Older calculation versions behind any input the prompt was built from,
+  /// ascending. The model's prose cannot be parsed for a marker, so the fact is
+  /// kept beside it: every place that shows this briefing shows a fixed note
+  /// naming these versions when the list is not empty.
   final List<int> olderVersions;
 
   const Briefing({
@@ -79,6 +82,7 @@ class Briefing {
         'breakdown_md': breakdownMd,
         'generated_at_ms': generatedAtMs,
         'inputs': inputs,
+        if (olderVersions.isNotEmpty) 'older_versions': olderVersions,
       };
 
   static Briefing? fromJson(dynamic j) {
@@ -97,6 +101,11 @@ class Briefing {
       inputs: j['inputs'] is Map
           ? (j['inputs'] as Map).cast<String, dynamic>()
           : const {},
+      olderVersions: [
+        if (j['older_versions'] is List)
+          for (final v in j['older_versions'] as List)
+            if (v is num) v.toInt(),
+      ],
     );
   }
 }

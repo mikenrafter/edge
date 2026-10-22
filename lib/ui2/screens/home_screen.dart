@@ -35,7 +35,10 @@ import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import '../../models/chart_point.dart';
 import '../older_version.dart';
+
+export '../../models/chart_point.dart' show ChartPoint;
 
 import '../../ai/briefing.dart'
     show Briefing, BriefingPeriod, BriefingStore, currentBriefingPeriod, resolveBriefingToShow;
@@ -549,33 +552,6 @@ Metric envMetric(Object? raw, num? scalar, {String? unit}) {
         );
 }
 
-/// One stored chart point: `t` is the epoch SECONDS `getChart` stamps on it
-/// (local noon of the day the value was derived on), `v` the value.
-typedef ChartPoint = ({int t, double v});
-
-final Map<String, int> _olderChartPointVersions = {};
-final Map<String, int> _chartPointVersionsBySlot = {};
-
-extension ChartPointOlder on ChartPoint {
-  String? get olderReason => null; // RED STUB
-  int? get olderVersion => _chartPointVersionsBySlot['$t,$v'];
-}
-
-/// RED STUB: per-slot older version, same slots as [denseDays].
-List<int?> denseOlderVersions(List<ChartPoint> pts, int days, {DateTime? end}) {
-  final out = List<int?>.filled(days, null);
-  final anchor = end ?? DateTime.now();
-  for (final p in pts) {
-    final at = DateTime.fromMillisecondsSinceEpoch(p.t * 1000);
-    final behind = DateTime.utc(anchor.year, anchor.month, anchor.day)
-        .difference(DateTime.utc(at.year, at.month, at.day)).inDays;
-    if (behind >= 0 && behind < days) {
-      out[days - 1 - behind] = _olderChartPointVersions['${p.t},${p.v}'];
-    }
-  }
-  return out;
-}
-
 /// A `[{t, v}]` point list from `getChart`, timestamps INTACT.
 ///
 /// [seriesOf] drops `t`, and everything downstream then labelled its x axis off
@@ -583,33 +559,24 @@ List<int?> denseOlderVersions(List<ChartPoint> pts, int days, {DateTime? end}) {
 /// stores one row per DERIVED day, not one per calendar day, so after a sync gap
 /// the newest stored point is days old and was still being called "Today".
 /// Anything that draws a dated axis reads this.
+///
+/// A point keeps its `from_older_version` (and `older_version_reason`, when the
+/// payload has one): the flag is read off the same map as the value.
 List<ChartPoint> pointsOf(Object? chart) {
   final pts = chart is Map ? chart['points'] : null;
   if (pts is! List) return const [];
-  final out = <ChartPoint>[
+  return [
     for (final e in pts)
       if (e is Map && e['v'] is num && e['t'] is num)
-        _point(e),
+        ChartPoint(
+          t: (e['t'] as num).round(),
+          v: (e['v'] as num).toDouble(),
+          olderVersion: e['from_older_version'] is num
+              ? (e['from_older_version'] as num).toInt()
+              : null,
+          olderReason: e['older_version_reason']?.toString(),
+        ),
   ];
-  for (final p in out) {
-    _chartPointVersionsBySlot.remove('${p.t},${p.v}');
-  }
-  for (var i = 0; i < out.length; i++) {
-    final p = out[i];
-    final version = _olderChartPointVersions['${p.t},${p.v}'];
-    if (version == null) continue;
-    final slot = i > 0 ? out[i - 1] : p;
-    _chartPointVersionsBySlot['${slot.t},${slot.v}'] = version;
-  }
-  return out;
-}
-
-ChartPoint _point(Map e) {
-  final t = (e['t'] as num).round();
-  final older = e['from_older_version'];
-  final key = '$t,${(e['v'] as num).toDouble()}';
-  if (older is num) { _olderChartPointVersions[key] = older.toInt(); } else { _olderChartPointVersions.remove(key); }
-  return (t: t, v: (e['v'] as num).toDouble());
 }
 
 /// The bare values of a point list, for statistics — a mean, a last reading,
@@ -626,15 +593,25 @@ List<double> valuesOf(List<ChartPoint> pts) => [for (final p in pts) p.v];
 /// four-day sync gap the newest point sat at the right-hand edge under the
 /// label "Today", and the line ran straight through the missing week as though
 /// it had been measured.
-List<double?> denseDays(List<ChartPoint> pts, int days) {
-  final out = List<double?>.filled(days, null);
+List<double?> denseDays(List<ChartPoint> pts, int days) =>
+    [for (final p in denseChartPoints(pts, days)) p?.v];
+
+/// The point behind each [denseDays] slot, flag included: a slot's value and
+/// its provenance are one object, so they cannot be read from different days.
+List<ChartPoint?> denseChartPoints(List<ChartPoint> pts, int days) {
+  final out = List<ChartPoint?>.filled(days, null);
   for (final p in pts) {
     final behind = daysBehind(p.t);
     if (behind == null || behind < 0 || behind >= days) continue;
-    out[days - 1 - behind] = p.v;
+    out[days - 1 - behind] = p;
   }
   return out;
 }
+
+/// Per-slot older version, the same slots as [denseDays]; null where the slot
+/// is a current value or a gap.
+List<int?> denseOlderVersions(List<ChartPoint> pts, int days) =>
+    [for (final p in denseChartPoints(pts, days)) p?.olderVersion];
 
 /// A `[{t, v}]` point list from `getChart` as a plain series.
 ///
@@ -1125,10 +1102,6 @@ class RingTrio extends StatelessWidget {
             if (strip.text.isNotEmpty) strip.text,
           ],
         ),
-        if (d.calories.value != null && d.calories.fromOlderVersion != null)
-          OlderVersionMark(id: 'calories', version: d.calories.fromOlderVersion, reason: d.calories.olderVersionReason),
-        if (d.caloriesTotal.value != null && d.caloriesTotal.fromOlderVersion != null)
-          OlderVersionMark(id: 'calories_total', version: d.caloriesTotal.fromOlderVersion, reason: d.caloriesTotal.olderVersionReason),
       ])),
     );
   }
@@ -3016,6 +2989,15 @@ class _HomeScreenState extends State<HomeScreen>
                 : (l?.homeCaloriesTotal(thousands(d.caloriesTotal.value)) ??
                     '${thousands(d.caloriesTotal.value)} total'),
             subMinLines: lines,
+            // Each figure carries its OWN provenance: the active number beside
+            // the unit, the total on the caption it is printed in.
+            olderId: 'calories',
+            olderVersion: d.calories.fromOlderVersion,
+            olderReason: d.calories.olderVersionReason,
+            olderTotalVersion: d.caloriesTotal.value == null
+                ? null
+                : d.caloriesTotal.fromOlderVersion,
+            olderTotalReason: d.caloriesTotal.olderVersionReason,
             onTap: () => go(c, const MetricDetail('calories'))));
 
     return Column(children: [
@@ -3166,7 +3148,11 @@ class _HomeScreenState extends State<HomeScreen>
       l?.homeBriefingTitle ?? 'Briefing',
       cached?.oneLiner == 'Nothing stood out tonight.'
           ? uiText(c, cached!.oneLiner)
-          : cached?.oneLiner ?? (l?.homeBriefingSubtitleEmpty ?? 'Tap to write today\'s summary'),
+          : cached == null
+              ? (l?.homeBriefingSubtitleEmpty ?? 'Tap to write today\'s summary')
+              // An asterisk when the note drew on an older calculation; the
+              // footnote on the briefing itself names the version.
+              : '${cached.oneLiner}${cached.olderVersions.isEmpty ? '' : '*'}',
       () async {
         // Resolved fresh at tap time via _resolveBriefingNow, not read from
         // the value above — see that method's doc for why.

@@ -85,10 +85,15 @@ const String kWithheldKey = 'withheld';
 /// Read-only snapshot of what the store knows for [period]. Only fields that
 /// exist end up in the map — the prompt builder and the "based on" UI both walk
 /// this map, so what the model saw and what the user sees are the same thing.
+///
+/// [olderOut], when given, receives the older calculation versions behind the
+/// findings the evening inputs were built from (empty for the morning pass,
+/// whose inputs are today's own figures).
 Future<Map<String, dynamic>> collectBriefingInputs(
   LocalRepository repo,
   BriefingPeriod period, {
   DateTime? now,
+  Set<int>? olderOut,
 }) async {
   final t = await repo.getToday();
   final daily = _map(t['daily']) ?? const {};
@@ -175,10 +180,16 @@ Future<Map<String, dynamic>> collectBriefingInputs(
     // had just looked at them. Nothing but findings goes now — see
     // nightly_sweep.dart for the bar one has to clear, and note that an empty
     // map here is the normal, correct answer on most days.
-    return sweepInputs(
-      sweepFindings(await collectSweepSeries(repo, now ?? DateTime.now())),
-      recommendedBedtime: await _recommendedBedtime(repo),
-    );
+    final findings =
+        sweepFindings(await collectSweepSeries(repo, now ?? DateTime.now()));
+    // Only the findings that are actually sent can have shaped the prose.
+    final sent = sweepInputs(findings, recommendedBedtime: await _recommendedBedtime(repo));
+    if (sent.isNotEmpty) {
+      for (final f in findings.take(4)) {
+        olderOut?.addAll(f.olderVersions);
+      }
+    }
+    return sent;
   }
   return out;
 }
@@ -237,6 +248,7 @@ Future<List<SweepSeries>> collectSweepSeries(
       double? todayValue;
       int? todayOlderVersion;
       final history = <double>[];
+      final historyOlder = <int?>[];
       for (final p in points) {
         if (p is! Map) continue;
         final t = _num(p['t'])?.toInt();
@@ -248,6 +260,9 @@ Future<List<SweepSeries>> collectSweepSeries(
           todayOlderVersion = _num(p['from_older_version'])?.toInt();
         } else if (day.compareTo(today) < 0 && t >= cutoff) {
           history.add(v);
+          // The flag of the value just added: the usual range and extremes a
+          // finding quotes are built from these.
+          historyOlder.add(_num(p['from_older_version'])?.toInt());
         }
       }
       if (todayValue == null) continue;
@@ -260,6 +275,7 @@ Future<List<SweepSeries>> collectSweepSeries(
         today: todayValue,
         todayOlderVersion: todayOlderVersion,
         history: history,
+        historyOlderVersions: historyOlder,
       ));
     } catch (_) {/* a series we cannot read is a series with no finding */}
   }
@@ -501,7 +517,9 @@ class BriefingEngine {
     final effectiveNow = now ?? DateTime.now();
     final day = todayLabel(effectiveNow);
     final tod = partOfDay(effectiveNow);
-    final inputs = await collectBriefingInputs(repo, period, now: effectiveNow);
+    final older = <int>{};
+    final inputs = await collectBriefingInputs(repo, period,
+        now: effectiveNow, olderOut: older);
     // NOTHING TO SAY IS AN ANSWER. The evening sweep hands back an empty map on
     // any day where nothing was unusual for this user, which is most days. No
     // model is called — there is no question to ask — so nothing leaves the
@@ -537,6 +555,7 @@ class BriefingEngine {
       breakdownMd: parsed.breakdownMd,
       generatedAtMs: effectiveNow.millisecondsSinceEpoch,
       inputs: inputs,
+      olderVersions: older.toList()..sort(),
     );
     BriefingStore.write(b);
     return b;

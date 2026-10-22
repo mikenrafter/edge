@@ -3481,5 +3481,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "olderVersionReasonAge": "Dafür wird dein Alter gebraucht, das nicht hinterlegt ist.",
+  "olderVersionReasonWeight": "Dafür wird dein Gewicht gebraucht, das nicht hinterlegt ist.",
+  "olderVersionReasonHeight": "Dafür wird deine Größe gebraucht, die nicht hinterlegt ist.",
+  "olderVersionReasonSex": "Dafür wird dein Geschlecht gebraucht, das nicht hinterlegt ist."
 }

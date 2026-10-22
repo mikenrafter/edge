@@ -8760,5 +8760,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "olderVersionReasonAge": "Для этого показателя нужен ваш возраст, он не указан.",
+  "olderVersionReasonWeight": "Для этого показателя нужен ваш вес, он не указан.",
+  "olderVersionReasonHeight": "Для этого показателя нужен ваш рост, он не указан.",
+  "olderVersionReasonSex": "Для этого показателя нужен ваш пол, он не указан."
 }

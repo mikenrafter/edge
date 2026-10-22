@@ -140,7 +140,7 @@ void main() {
               tab: 2,
               data: HealthData(charts: {
                 'resting_hr': [
-                  for (final p in pts) (t: p['t'] as int, v: p['v'] as double),
+                  for (final p in pts) ChartPoint(t: p['t'] as int, v: p['v'] as double),
                 ],
               }),
               explore: const ExploreData(counts: {}),

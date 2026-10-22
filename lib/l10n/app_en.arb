@@ -17636,5 +17636,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "olderVersionReasonAge": "This metric needs your age, which is not on file.",
+  "olderVersionReasonWeight": "This metric needs your weight, which is not on file.",
+  "olderVersionReasonHeight": "This metric needs your height, which is not on file.",
+  "olderVersionReasonSex": "This metric needs your sex, which is not on file."
 }

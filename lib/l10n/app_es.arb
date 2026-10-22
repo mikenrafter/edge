@@ -3393,5 +3393,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "olderVersionReasonAge": "Esta métrica necesita tu edad, que no está registrada.",
+  "olderVersionReasonWeight": "Esta métrica necesita tu peso, que no está registrado.",
+  "olderVersionReasonHeight": "Esta métrica necesita tu altura, que no está registrada.",
+  "olderVersionReasonSex": "Esta métrica necesita tu sexo, que no está registrado."
 }

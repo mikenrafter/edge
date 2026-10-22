@@ -199,7 +199,14 @@ class WidgetService {
       final readiness = ov(t.readiness);
       // The DAY's strain, not the night's — Home does not refuse it either
       // (home_screen.dart: `strain: metricOf(d('strain'))`).
-      final s = t.strain;
+      // An OLDER calculation's strain is not written as the current ring: the
+      // four native readers (WidgetKit, Watch, Siri, Android) have no field to
+      // mark it, and a bare number on a lock screen is read as today's. They
+      // show "No strain"; the app, one tap away, shows the value with its
+      // asterisk, version and reason.
+      final s = t.strain.fromOlderVersion == null
+          ? t.strain
+          : Metric(note: t.strain.note);
       final sleep = ov(t.sleepDuration);
       final need = t.sleepNeed;
       final eff = ov(t.sleepEfficiency);

@@ -259,8 +259,6 @@ class Scrubber extends StatelessWidget {
   /// One increase/decrease step. The default walks the strip in twenty moves,
   /// which is about a twenty-minute resolution on a night.
   final double step;
-  final List<int?> olderVersions;
-  final List<String?> olderReasons;
 
   final Widget child;
 
@@ -278,8 +276,6 @@ class Scrubber extends StatelessWidget {
     required this.describe,
     required this.child,
     this.step = .05,
-    this.olderVersions = const [],
-    this.olderReasons = const [],
     this.hold = false,
     this.onEnd,
   });
@@ -390,6 +386,9 @@ bool hasChartGaps(Iterable<List<double?>> series, {bool trailing = false}) {
   return false;
 }
 
+/// The older calculation a plotted value was served from (RULES B.2).
+typedef ChartOlder = ({int version, String? reason});
+
 /// One series in a chart's key: what it is called, what colour draws it, and
 /// what it reads at a position along the chart.
 @immutable
@@ -417,8 +416,17 @@ class ChartKey {
   /// was there, so it takes no part in deciding that a point is a gap.
   final bool data;
 
+  /// Where [value] is an older calculation's stored value, which one. Read at
+  /// the SAME position by the SAME slot rule as [value], so the flag and the
+  /// number are always one point. Null for a series with no such values.
+  final ChartOlder? Function(double at)? older;
+
   const ChartKey(this.label, this.color, this.value,
-      {this.latest = 1.0, this.active, this.atRest, this.data = true});
+      {this.latest = 1.0,
+      this.active,
+      this.atRest,
+      this.data = true,
+      this.older});
 
   /// A dense series — one entry per slot, `null` in the holes, the same list
   /// the painter draws. Lines read the slot nearest the finger; with [bars] the
@@ -429,6 +437,10 @@ class ChartKey {
     List<double?> d,
     String Function(int i, double v) say, {
     bool bars = false,
+
+    /// One entry per slot of [d], same indices: the older calculation behind
+    /// that slot's value, or null.
+    List<ChartOlder?>? older,
   }) {
     bool ok(double? v) => v != null && v.isFinite;
     final last = d.lastIndexWhere(ok);
@@ -441,6 +453,13 @@ class ChartKey {
         final v = d[i];
         return ok(v) ? say(i, v!) : null;
       },
+      older: older == null
+          ? null
+          : (at) {
+              if (d.isEmpty) return null;
+              final i = ChartScrub.slotAt(d.length, at, bars: bars);
+              return ok(d[i]) && i < older.length ? older[i] : null;
+            },
       latest: last < 0
           ? null
           : bars
@@ -470,8 +489,11 @@ class ChartCell {
   final String? value;
   final bool hasValue;
   final bool active;
+
+  /// The older calculation [value] came from, when it did.
+  final ChartOlder? older;
   const ChartCell(this.label, this.color,
-      {this.value, this.hasValue = true, this.active = false});
+      {this.value, this.hasValue = true, this.active = false, this.older});
 }
 
 /// What the row says at one position: the time, then a cell per series.
@@ -489,7 +511,8 @@ class ChartReadout {
   String get signature => [
         time,
         scrubbed,
-        for (final c in cells) '${c.label}|${c.value}|${c.hasValue}|${c.active}',
+        for (final c in cells)
+          '${c.label}|${c.value}|${c.hasValue}|${c.active}|${c.older?.version}|${c.older?.reason}',
       ].join('\u0001');
 }
 
@@ -501,8 +524,6 @@ class ChartScrub extends StatefulWidget {
   final Widget child;
   final ChartScrubMode mode;
   final double step;
-  final List<int?> olderVersions;
-  final List<String?> olderReasons;
 
   static const cursorKey = ValueKey('chart-scrub-cursor');
   static const noData = 'No data here';
@@ -530,13 +551,18 @@ class ChartScrub extends StatefulWidget {
     final pos = at ?? latest;
     final cells = <ChartCell>[
       for (final k in keys)
-        ChartCell(k.label, k.color,
-            value: at == null && k.atRest != null
-                ? k.atRest!()
-                : pos == null
-                    ? null
-                    : k.value(pos),
-            active: pos != null && (k.active?.call(pos) ?? false)),
+        () {
+          final atRestFixed = at == null && k.atRest != null;
+          final value =
+              atRestFixed ? k.atRest!() : (pos == null ? null : k.value(pos));
+          return ChartCell(k.label, k.color,
+              value: value,
+              active: pos != null && (k.active?.call(pos) ?? false),
+              // Only a value that is actually shown can be an older one.
+              older: value == null || atRestFixed || pos == null
+                  ? null
+                  : k.older?.call(pos));
+        }(),
     ];
     if (gaps) {
       // "Here" only while the finger is on a hole in every recorded series.
@@ -620,8 +646,6 @@ class ChartScrub extends StatefulWidget {
     this.gaps = false,
     this.mode = ChartScrubMode.line,
     this.step = .05,
-    this.olderVersions = const [],
-    this.olderReasons = const [],
   });
 
   @override
@@ -635,27 +659,17 @@ class _ChartScrubState extends State<ChartScrub> {
   ChartReadout _resolve(double? at) => ChartScrub.resolve(
       keys: widget.keys, time: widget.time, gaps: widget.gaps, at: at);
 
-  List<Widget> _olderReadout(double? position) {
-    if (widget.olderVersions.isEmpty) return const [];
-    final i = position == null
-        ? widget.olderVersions.length - 1
-        : ChartScrub.slotAt(widget.olderVersions.length, position,
-            bars: widget.mode != ChartScrubMode.line);
-    final version = widget.olderVersions[i];
-    if (version == null) return const [];
-    final reason = i < widget.olderReasons.length ? widget.olderReasons[i] : null;
-    return [
-      OlderVersionMark(id: 'readout', version: version, reason: reason),
-      OlderVersionNote(id: 'readout', version: version, reason: reason),
-    ];
-  }
-
   /// The same time-and-values the row shows, as a sentence.
   String _spoken(double at) {
     final r = _resolve(at);
+    final l = AppLocalizations.of(context);
     final vals = [
       for (final c in r.cells)
-        if (c.color != null && c.value != null) '${c.label} ${c.value}',
+        if (c.color != null && c.value != null)
+          // The older-calculation fact is part of what is heard, never only of
+          // what is drawn.
+          '${c.label} ${c.value}'
+              '${c.older == null ? '' : ' (${l?.olderVersionSemantics(c.older!.version) ?? olderVersionSemantics(c.older!.version)})'}',
     ];
     return [
       if (r.time != null && r.time != ChartKeyReadout.absent) r.time!,
@@ -696,8 +710,7 @@ class _ChartScrubState extends State<ChartScrub> {
     final p = P.of(c);
     final v = _at;
     final hub = _hub;
-    hub?.attach(this, _resolve, v, widget.olderVersions, widget.olderReasons,
-        widget.mode != ChartScrubMode.line);
+    hub?.attach(this, _resolve, v);
     final plot = Scrubber(
       value: v,
       onChanged: _place,
@@ -755,7 +768,7 @@ class _ChartScrubState extends State<ChartScrub> {
           if (box.hasBoundedHeight) Expanded(child: hitPlot) else hitPlot,
           const SizedBox(height: S.x2),
           ExcludeSemantics(child: row),
-          ..._olderReadout(v),
+          ChartOlderNotes(_resolve(v).cells),
         ],
       ),
     ));
@@ -905,19 +918,72 @@ class ChartKeyReadout extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.only(top: 2),
-          child: FittedBox(
-            key: ValueKey('chart-key-value:${cell.label}'),
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(shown,
-                maxLines: 1,
-                style: F.cap.copyWith(
-                    color: present ? p.ink : p.ink3,
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: const [FontFeature.tabularFigures()])),
+          child: Row(
+            children: [
+              Flexible(
+                child: FittedBox(
+                  key: ValueKey('chart-key-value:${cell.label}'),
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(shown,
+                      maxLines: 1,
+                      style: F.cap.copyWith(
+                          color: present ? p.ink : p.ink3,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: const [FontFeature.tabularFigures()])),
+                ),
+              ),
+              // The asterisk sits beside the value, outside the fitted text, so
+              // it is never scaled away. The note is [ChartOlderNotes].
+              if (present && cell.older != null)
+                OlderVersionMark(
+                    id: chartOlderId(cells, cell),
+                    version: cell.older!.version,
+                    reason: cell.older!.reason,
+                    showNote: false),
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The id a readout cell's older-calculation marker and note carry: `readout`
+/// for the first flagged cell, `readout:<label>` for any further one, so two
+/// flagged series on one day never share a key.
+String chartOlderId(List<ChartCell> cells, ChartCell cell) {
+  final first = cells.firstWhere((c) => c.older != null && c.value != null);
+  return identical(first, cell) ? 'readout' : 'readout:${cell.label}';
+}
+
+/// The note under a key row, one per flagged cell: "From an older calculation
+/// (v104)" and the reason when the data has one. A Column of wrapping text, so
+/// a long reason or a large text size never overflows.
+class ChartOlderNotes extends StatelessWidget {
+  final List<ChartCell> cells;
+  const ChartOlderNotes(this.cells, {super.key});
+
+  @override
+  Widget build(BuildContext c) {
+    final flagged = [
+      for (final x in cells)
+        if (x.older != null && x.value != null) x,
+    ];
+    if (flagged.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: S.x1),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final x in flagged)
+            OlderVersionNote(
+                id: chartOlderId(cells, x),
+                version: x.older!.version,
+                reason: x.older!.reason),
+        ],
+      ),
     );
   }
 }
@@ -938,28 +1004,13 @@ class _ChartHub extends ChangeNotifier {
   String? rendered;
   bool _pending = false;
   bool _dead = false;
-  List<int?> olderVersions = const [];
-  List<String?> olderReasons = const [];
-  bool olderBars = false;
-
-  (int?, String?) olderAtPosition() {
-    if (olderVersions.isEmpty) return (null, null);
-    final i = at == null
-        ? olderVersions.length - 1
-        : ChartScrub.slotAt(olderVersions.length, at!, bars: olderBars);
-    return (olderVersions[i], i < olderReasons.length ? olderReasons[i] : null);
-  }
-
   ChartReadout? read() => _resolve?.call(at);
 
   void attach(Object owner, ChartReadout Function(double? at) resolve,
-      double? position, List<int?> versions, List<String?> reasons, bool bars) {
+      double? position) {
     _owner = owner;
     _resolve = resolve;
     at = position;
-    olderVersions = versions;
-    olderReasons = reasons;
-    olderBars = bars;
     _check();
   }
 
@@ -1182,7 +1233,13 @@ class SignalCard extends StatelessWidget {
     final p = P.of(c);
     return Surface(
       onTap: onTap,
-      semanticLabel: '$label, $value ${uiText(c, unit)}'.trim(),
+      semanticLabel: [
+        '$label, $value ${uiText(c, unit)}'.trim(),
+        for (final v in [olderVersion, olderTotalVersion])
+          if (v != null)
+            AppLocalizations.of(c)?.olderVersionSemantics(v) ??
+                olderVersionSemantics(v),
+      ].join(', '),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3749,11 +3806,13 @@ class _FrameKeys extends StatelessWidget {
             } else {
               used.add(m);
               cells.add(ChartCell(label, m.color == null ? null : colour,
-                  value: m.value, hasValue: m.hasValue, active: m.active));
+                  value: m.value,
+                  hasValue: m.hasValue,
+                  active: m.active,
+                  older: m.older));
             }
           }
           cells.addAll(r.cells.where((x) => !used.contains(x)));
-          final (olderVersion, olderReason) = hub.olderAtPosition();
           final baseRow = extra == null
               ? ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed)
               : Column(
@@ -3765,18 +3824,17 @@ class _FrameKeys extends StatelessWidget {
                     extra!,
                   ],
                 );
-          return ExcludeSemantics(
-            child: Padding(
-              padding: const EdgeInsets.only(top: S.x3),
-              child: olderVersion == null ? baseRow : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [baseRow,
-                  Row(children: [
-                    OlderVersionMark(id: 'readout', version: olderVersion, reason: olderReason),
-                    OlderVersionNote(id: 'readout', version: olderVersion, reason: olderReason),
-                  ]),
-                ],
-              ),
+          return Padding(
+            padding: const EdgeInsets.only(top: S.x3),
+            // The row is spoken by the scrub (its value says so); the note is
+            // a sentence of its own and stays readable.
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ExcludeSemantics(child: baseRow),
+                ChartOlderNotes(cells),
+              ],
             ),
           );
         },

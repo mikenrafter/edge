@@ -146,6 +146,8 @@ void main() {
           find.text('From an older calculation (v103): '
               'This metric needs your weight, which is not on file.'),
           findsOneWidget);
+      await t.tap(find.text('OK'));
+      await t.pumpAndSettle();
       await t.tap(inTile('calories'));
       await t.pumpAndSettle();
       expect(find.text(kNoteV104Reason), findsOneWidget);
@@ -217,6 +219,9 @@ void main() {
     });
 
     testWidgets('stepping to the day shows the ring asterisk', (t) async {
+      t.view.physicalSize = const Size(390 * 3, 2400 * 3);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
       final app = AppState.forTesting();
       addTearDown(app.dispose);
       app.repo = _PastRepo(strain: {

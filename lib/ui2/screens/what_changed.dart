@@ -268,7 +268,7 @@ class SweepFindingRow extends StatelessWidget {
           const SizedBox(width: S.x3),
           Expanded(
             child: Text(
-              sweepText(AppLocalizations.of(c), f.text),
+              sweepFindingText(AppLocalizations.of(c), f),
               style: F.body.copyWith(color: p.ink, height: 1.45),
             ),
           ),

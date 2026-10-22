@@ -32,7 +32,7 @@ MetricData _data() => MetricData(
       daysAvailable: 40,
       series: [
         for (var i = 0; i < 30; i++)
-          (t: _noon(9, 5 + i), v: 58.0 + (i % 3)),
+          ChartPoint(t: _noon(9, 5 + i), v: 58.0 + (i % 3)),
       ],
       // 2026-09-20 is 14 days behind today: slot 15, mark half a slot left.
       algoBreaks: [_noon(9, 20)],

@@ -28,7 +28,7 @@ import 'package:flutter/material.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../ui2.dart';
-import 'home_screen.dart' show ChartPoint, denseDays, denseOlderVersions, pointsOf;
+import 'home_screen.dart' show ChartPoint, denseChartPoints, denseDays, pointsOf;
 import 'metric_detail.dart' show MetricSpec, specOf;
 
 /// Days on screen. One month, and the same window every trend card uses.
@@ -53,7 +53,7 @@ class GridRow {
     required this.have,
     required this.historyDays,
     required this.ranged,
-    this.olderVersions = const [],
+    this.older = const [],
   });
 
   final MetricSpec spec;
@@ -71,7 +71,9 @@ class GridRow {
 
   /// Whether there is a usual range to place a day against at all.
   final bool ranged;
-  final List<int?> olderVersions;
+
+  /// The older calculation behind each cell's day, or null.
+  final List<ChartOlder?> older;
 
   /// Coloured only with enough history AND a range. A long history with no
   /// value this month still has a range (its cells are outlines); a flat one
@@ -100,7 +102,12 @@ GridRow gridRow(String key, List<ChartPoint> points) {
     have: window.where((v) => v != null).length,
     historyDays: history.length,
     ranged: band != null,
-    olderVersions: denseOlderVersions(points, kGridDays),
+    older: [
+      for (final p in denseChartPoints(points, kGridDays))
+        p?.olderVersion == null
+            ? null
+            : (version: p!.olderVersion!, reason: p.olderReason),
+    ],
   );
 }
 
@@ -253,7 +260,7 @@ class MonthGrid extends StatelessWidget {
                             'value. ${r.cells.where((s) => s == Side.below).length} '
                             'below and ${r.cells.where((s) => s == Side.above).length} '
                             'above your usual range.')) +
-                        (r.olderVersions.any((v) => v != null)
+                        (r.older.any((o) => o != null)
                         ? ' ${l?.olderVersionMonthGridRow ?? 'Some days are from an older calculation'}.'
                         : ''),
                     // A grid: the finger selects the day (cell) it is over and
@@ -263,7 +270,6 @@ class MonthGrid extends StatelessWidget {
                     child: ChartScrub(
                       label: uiText(c, r.spec.title),
                       mode: ChartScrubMode.nearest,
-                      olderVersions: r.olderVersions,
                       gaps: hasChartGaps([
                         [for (final s in r.cells) s?.index.toDouble()]
                       ], trailing: true),
@@ -276,7 +282,8 @@ class MonthGrid extends StatelessWidget {
                             p.on(r.spec.color),
                             [for (final s in r.cells) s?.index.toDouble()],
                             (i, v) => usualWord(l, Side.values[v.round()]),
-                            bars: true),
+                            bars: true,
+                            older: r.older),
                       ],
                       child: SizedBox(
                         height: 22,

@@ -52,7 +52,7 @@ List<ChartPoint> _days(List<double?> v) {
     final x = v[i];
     if (x == null) continue;
     final d = DateTime(now.year, now.month, now.day - (v.length - 1 - i), 12);
-    out.add((t: d.millisecondsSinceEpoch ~/ 1000, v: x));
+    out.add(ChartPoint(t: d.millisecondsSinceEpoch ~/ 1000, v: x));
   }
   return out;
 }

@@ -54,7 +54,7 @@ void main() {
     final today = DateTime.now();
     final series = [
       for (var i = 6; i >= 0; i--)
-        (
+        ChartPoint(
           t: today.subtract(Duration(days: i)).millisecondsSinceEpoch ~/ 1000,
           v: 58.0,
         ),
@@ -76,7 +76,7 @@ void main() {
     ];
     final series = [
       for (var i = 6; i >= 0; i--)
-        (
+        ChartPoint(
           t: today.subtract(Duration(days: i)).millisecondsSinceEpoch ~/ 1000,
           v: 58.0,
         ),
@@ -109,7 +109,7 @@ void main() {
     ];
     final series = [
       for (var i = 6; i >= 0; i--)
-        (
+        ChartPoint(
           t: today.subtract(Duration(days: i)).millisecondsSinceEpoch ~/ 1000,
           v: 58.0,
         ),
@@ -139,7 +139,7 @@ void main() {
     final today = DateTime.now();
     final series = [
       for (var i = 6; i >= 0; i--)
-        (
+        ChartPoint(
           t: today.subtract(Duration(days: i)).millisecondsSinceEpoch ~/ 1000,
           v: 58.0,
         ),

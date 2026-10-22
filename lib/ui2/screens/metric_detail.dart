@@ -1505,9 +1505,23 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
     final l = AppLocalizations.of(c);
     final mean = vals.reduce((a, b) => a + b) / vals.length;
     final latest = vals.last;
-    final versions = denseOlderVersions(all, win);
-    final headlineVersion = versions.whereType<int>().firstOrNull;
-    final latestVersion = versions.isEmpty ? null : versions.last;
+    // The points behind the window's slots, flag and value as one object. The
+    // average spans every one of them, so it is marked when any is an older
+    // calculation's (citing the oldest version); "latest" is the LAST REAL
+    // point, which is not today's slot when today has no row.
+    final inWindow = [for (final q in denseChartPoints(all, win)) ?q];
+    final olderPts = [
+      for (final q in inWindow)
+        if (q.olderVersion != null) q,
+    ];
+    final headlinePt = olderPts.isEmpty
+        ? null
+        : olderPts.reduce((a, b) => a.olderVersion! <= b.olderVersion! ? a : b);
+    final headlineVersion = headlinePt?.olderVersion;
+    final headlineReason = headlinePt?.olderReason;
+    final latestPt = inWindow.isEmpty ? null : inWindow.last;
+    final latestVersion = latestPt?.olderVersion;
+    final latestReason = latestPt?.olderReason;
     // WHICH DAY the newest reading is from. `metric_series` gets a row only on
     // a day that derives, so after a sync gap the newest stored point is days
     // old — and this line is the answer to "is there a today?".
@@ -1527,7 +1541,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(_fmt(spec, mean), style: F.n48.copyWith(color: p.ink)),
-              if (headlineVersion != null) OlderVersionMark(id: 'headline', version: headlineVersion),
+              if (headlineVersion != null) OlderVersionMark(id: 'headline', version: headlineVersion, reason: headlineReason, showNote: false),
               const SizedBox(width: S.x2),
               // NOT `spec.unit`. `metricValue('min', 443)` is already "7h 23m",
               // so every min-unit metric — Time asleep, Deep, REM, Wear time —
@@ -1539,7 +1553,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             ],
           ),
           const SizedBox(height: S.x1),
-          if (headlineVersion != null) OlderVersionNote(id: 'headline', version: headlineVersion),
+          if (headlineVersion != null) OlderVersionNote(id: 'headline', version: headlineVersion, reason: headlineReason),
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
@@ -1562,9 +1576,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                             _fmt(spec, latest), unitBeside(spec.unit), asOf) ??
                         'Latest ${_fmt(spec, latest)} ${unitBeside(spec.unit)} · $asOf')
                     .replaceAll('  ', ' '),
-                style: F.cap.copyWith(color: p.ink3)), if (latestVersion != null) OlderVersionMark(id: 'latest', version: latestVersion)]),
+                style: F.cap.copyWith(color: p.ink3)), if (latestVersion != null) OlderVersionMark(id: 'latest', version: latestVersion, reason: latestReason, showNote: false)]),
           ),
-          if (win > 1 && latestVersion != null) OlderVersionNote(id: 'latest', version: latestVersion),
+          if (win > 1 && latestVersion != null) OlderVersionNote(id: 'latest', version: latestVersion, reason: latestReason),
         ],
         if (band != null) ...[
           const SizedBox(height: S.x2),
@@ -1810,7 +1824,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
               style: F.over.copyWith(color: p.ink3),
             ),
           ),
-        if (_pick != null) _picked(c, spec, series, denseOlderVersions(d.series, series.length), d),
+        if (_pick != null) _picked(c, spec, series, denseChartPoints(d.series, series.length), d),
         // L4 — the coverage denominator, under the curve it belongs to.
         //
         // Deliberately unflattering, and gated to the ranges where it changes
@@ -1916,14 +1930,16 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                   pretty, _fmt(spec, v), unitBeside(spec.unit)) ??
               '$pretty, ${_fmt(spec, v)} ${unitBeside(spec.unit)}')
           .trimRight();
-      final olderVersion = denseOlderVersions(d.series, series.length)[i];
-      if (olderVersion != null) return '$base, ${l?.olderVersionSemantics(olderVersion) ?? olderVersionSemantics(olderVersion)}';
-      if (!attribute) return base;
+      final olderVersion = denseChartPoints(d.series, series.length)[i]?.olderVersion;
+      final shown = olderVersion == null
+          ? base
+          : '$base, ${l?.olderVersionSemantics(olderVersion) ?? olderVersionSemantics(olderVersion)}';
+      if (!attribute) return shown;
       final who = _contributors(_labelsFor(day, d.coverage, d.sources));
       // A day inside a two-device window that nevertheless has one
       // contributor names that one; a day with NO attribution names none.
       // Never a single name on a day two devices fed (final-plan §4.4).
-      return who.isEmpty ? base : '$base · $who';
+      return who.isEmpty ? shown : '$shown · $who';
     }
 
     // NO VALUE. Two different facts, and only the second is the user's doing.
@@ -1954,7 +1970,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
     BuildContext c,
     MetricSpec spec,
     List<double?> series,
-    List<int?> older,
+    List<ChartPoint?> points,
     MetricData d,
   ) {
     final p = P.of(c);
@@ -2005,10 +2021,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
               Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
             ],
           ]),
-          if (v != null && older[i] != null) ...[
+          if (v != null && points[i]?.olderVersion != null) ...[
             Padding(padding: const EdgeInsets.only(top: S.x1), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              OlderVersionMark(id: 'selected', version: older[i]),
-              OlderVersionNote(id: 'selected', version: older[i]),
+              OlderVersionMark(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason, showNote: false),
+              OlderVersionNote(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason),
             ])),
           ],
           // WHICH DEVICE, second line, only under the gate. A day-level scalar

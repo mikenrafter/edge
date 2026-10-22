@@ -48,7 +48,7 @@ void main() {
     await WidgetService.push(TodayData.fromJson(today(8.4, older: 104)));
     expect(written['strain'], -1.0, reason: 'the "no data" sentinel');
     expect(written['ring_strain_value'], isNot('8.4'));
-    expect(written['ring_strain_value'], '—');
+    expect(written['ring_strain_value'], 'No strain');
     // Nothing else is dragged down with it.
     expect(written['readiness'], isNot(-1));
   });

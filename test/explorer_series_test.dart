@@ -61,6 +61,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/models/chart_point.dart';
 import 'package:openstrap_edge/compute/explorer_series.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 
@@ -70,10 +71,10 @@ int _noon(String day) {
   return DateTime(p[0], p[1], p[2], 12).millisecondsSinceEpoch ~/ 1000;
 }
 
-ExplorePoint _d(String day, double v) => (t: _noon(day), v: v);
+ExplorePoint _d(String day, double v) => ChartPoint(t: _noon(day), v: v);
 
 /// A point [m] minutes into a day that starts at second 0.
-ExplorePoint _m(num m, double v) => (t: (m * 60).round(), v: v);
+ExplorePoint _m(num m, double v) => ChartPoint(t: (m * 60).round(), v: v);
 
 const _today = '2026-10-04';
 // 28 Sep .. 4 Oct.
@@ -214,8 +215,8 @@ void main() {
       final l = ExploreLine.daily(
           'hrv',
           [
-            (t: at(2, 23, 30), v: 40.0),
-            (t: at(3, 0, 30), v: 50.0),
+            ChartPoint(t: at(2, 23, 30), v: 40.0),
+            ChartPoint(t: at(3, 0, 30), v: 50.0),
           ],
           _w7());
       expect(l.valueAt(4.5 / 7), 40, reason: '2 Oct is slot 4');
@@ -226,8 +227,8 @@ void main() {
       final l = ExploreLine.daily(
           'hrv',
           [
-            (t: _noon(_week[3]) - 3600, v: 10.0),
-            (t: _noon(_week[3]) + 3600, v: 20.0),
+            ChartPoint(t: _noon(_week[3]) - 3600, v: 10.0),
+            ChartPoint(t: _noon(_week[3]) + 3600, v: 20.0),
           ],
           _w7());
       expect(_lens(l), [1]);
@@ -453,12 +454,12 @@ void main() {
 
     test('readings outside the day, and non-finite ones, are dropped', () {
       final l = line([
-        (t: -60, v: 99.0),
+        ChartPoint(t: -60, v: 99.0),
         _m(1, 60),
         _m(2, double.nan),
         _m(3, 62),
-        (t: 86400, v: 99.0),
-        (t: 90000, v: 99.0),
+        ChartPoint(t: 86400, v: 99.0),
+        ChartPoint(t: 90000, v: 99.0),
       ]);
       expect(l.extent, (min: 60.0, max: 62.0));
     });

@@ -16,7 +16,7 @@ void main() {
     // days have passed since somebody wrote it.
     List<ChartPoint> pts(List<double> vs) => [
           for (var i = 0; i < vs.length; i++)
-            (
+            ChartPoint(
               t: DateTime.now().subtract(Duration(days: i)).millisecondsSinceEpoch ~/
                   1000,
               v: vs[i],
@@ -87,7 +87,7 @@ void main() {
   group('MonthGrid on screen', () {
     List<ChartPoint> pts(List<double> vs, {int skip = 0}) => [
           for (var i = 0; i < vs.length; i++)
-            (
+            ChartPoint(
               t: DateTime.now()
                       .subtract(Duration(days: i + skip))
                       .millisecondsSinceEpoch ~/

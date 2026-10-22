@@ -48,7 +48,7 @@ int _noon(int daysAgo) {
 }
 
 List<ChartPoint> _series(int n, double base) => [
-      for (var i = n - 1; i >= 0; i--) (t: _noon(i), v: base + (i % 5)),
+      for (var i = n - 1; i >= 0; i--) ChartPoint(t: _noon(i), v: base + (i % 5)),
     ];
 
 /// A night with every overnight row present and a nap, so "once" means once and
