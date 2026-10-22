@@ -88,7 +88,8 @@ void main() {
           unorderedEquals([kNeedsReentryCoachKey, 'other_secret']));
     });
 
-    test('an older run cannot republish after a newer run started', () async {
+    test('a later run never loses unread notes, and a late backup adds nothing '
+        'twice', () async {
       final app = _App({'a.db': _lost, 'b.db': _lost, 'c.db': const ImportSummary()});
       addTearDown(app.importProgress.dispose);
       final gate = Completer<void>();
@@ -99,11 +100,13 @@ void main() {
       }
       expect(app.importReentry.value, isNotEmpty, reason: 'guard: run 1 published');
       await runImport(app, await _backups(tmp, ['c.db']));
-      expect(app.importReentry.value, isEmpty, reason: 'run 2 cleared the list');
+      // One owner, a set: a newer import does not delete what was never read
+      // (it only clears acknowledgements), and run 1's late backup unions the
+      // same item.
+      expect(app.importReentry.value, [kNeedsReentryCoachKey]);
       gate.complete();
       await run1;
-      expect(app.importReentry.value, isEmpty,
-          reason: 'run 1 no longer owns the list');
+      expect(app.importReentry.value, [kNeedsReentryCoachKey]);
     });
   });
 
@@ -129,7 +132,8 @@ void main() {
 
       restarted.dismissImportReentry();
       await Future<void>.delayed(Duration.zero);
-      expect(await _stored() ?? '', isEmpty);
+      // The stored value is "pending;acknowledged": nothing pending any more.
+      expect((await _stored() ?? '').split(';').first, isEmpty);
       final again = AppState.forTesting();
       addTearDown(again.importProgress.dispose);
       await again.loadImportReentry();

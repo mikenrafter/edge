@@ -126,7 +126,7 @@ void main() {
       await app.resumeUnfinishedImport(force: true);
       expect(app.importReentry.value, isEmpty);
       await Future<void>.delayed(Duration.zero);
-      expect(await _stored() ?? '', isEmpty,
+      expect((await _stored() ?? '').split(';').first, isEmpty,
           reason: 'and it is not back at the next start either');
     }, timeout: const Timeout(Duration(minutes: 3)));
   });

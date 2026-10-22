@@ -96,7 +96,11 @@ void main() {
   test('a failed resume stays visible until the next import', () async {
     final path = await sourceWith(tmp, lostKey: false);
     await killMidCopy(path);
-    File(path).deleteSync(); // the saved copy is gone: the resume cannot run
+    // The journal resumes from its own saved copy; remove that.
+    final db = await LocalDb.instance;
+    final saved = (await db.query('import_journal', orderBy: 'id DESC', limit: 1))
+        .first['source_path'] as String;
+    File(saved).deleteSync();
     await app.resumeUnfinishedImport(force: true);
     expect(app.importProgress.value, isA<ImportFailed>(),
         reason: 'the failure is retained, not cleared by the finally');

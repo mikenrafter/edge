@@ -133,7 +133,10 @@ Future<List<String>> _backups(Directory dir, List<String> names) async => [
 void main() {
   group('3: the summary belongs to the import that produced it', () {
     late Directory tmp;
-    setUp(() => tmp = Directory.systemTemp.createTempSync('import_round2_'));
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('import_round2_');
+      SharedPreferences.setMockInitialValues({});
+    });
     tearDown(() => tmp.deleteSync(recursive: true));
 
     test('a multi-select keeps a warning from an EARLIER backup', () async {
@@ -190,7 +193,10 @@ void main() {
 
   group('2: the notes are not lost', () {
     late Directory tmp;
-    setUp(() => tmp = Directory.systemTemp.createTempSync('import_round2_'));
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('import_round2_');
+      SharedPreferences.setMockInitialValues({});
+    });
     tearDown(() => tmp.deleteSync(recursive: true));
 
     test('runImport keeps the re-entry list on the app until dismissed',

@@ -32,6 +32,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../compute/derivation_engine.dart' show kAlgoVersion;
 import 'db.dart' show LocalDb;
+import 'import_reentry_store.dart';
 
 const String kBackupPrefsTable = 'backup_prefs';
 const String kBackupFilesTable = 'backup_files';
@@ -461,44 +462,6 @@ Future<(int, int)> _sourceFacts(String srcPath) async {
   }
 }
 
-/// The preference that keeps the items still to enter again until the user
-/// acknowledges them (comma-joined ids). Device-only: see [kPrefsNotBackedUp].
-const String kImportReentryPrefKey = 'import_reentry_pending';
-
-/// The kept list, empty when none.
-Future<List<String>> readPendingReentry() async {
-  final raw = (await SharedPreferences.getInstance())
-          .getString(kImportReentryPrefKey) ??
-      '';
-  return [for (final x in raw.split(',')) if (x.isNotEmpty) x];
-}
-
-/// Replaces the kept list. True only when the platform accepted the write.
-Future<bool> writePendingReentry(List<String> ids) async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    return ids.isEmpty
-        ? await prefs.remove(kImportReentryPrefKey)
-        : await prefs.setString(kImportReentryPrefKey, ids.join(','));
-  } catch (_) {
-    return false;
-  }
-}
-
-/// Adds [ids] to the kept list (never replaces what is there). One retry.
-Future<bool> _addPendingReentry(List<String> ids) async {
-  for (var attempt = 0; attempt < 2; attempt++) {
-    try {
-      final merged = [...await readPendingReentry()];
-      for (final id in ids) {
-        if (!merged.contains(id)) merged.add(id);
-      }
-      if (await writePendingReentry(merged)) return true;
-    } catch (_) {}
-  }
-  return false;
-}
-
 /// Persists the summary of the import just finished. The items to enter again
 /// are saved FIRST, before the journal is marked done, and a save that fails
 /// throws: the import then stays unfinished and the next start retries, rather
@@ -510,11 +473,9 @@ Future<void> recordImportSummary(
   required BackupExtrasResult extras,
   int interruptedAndResumed = 0,
 }) async {
-  if (extras.needsReentry.isNotEmpty &&
-      !await _addPendingReentry(extras.needsReentry)) {
-    throw StateError('Could not save the note about what to enter again. '
-        'The import will be retried at the next start.');
-  }
+  // Before the journal is marked done, through the one owner. A refused write
+  // throws: the import stays unfinished and the next start retries.
+  await ImportReentryStore.current.add(extras.needsReentry);
   try {
     final (raw, above) = await _sourceFacts(srcPath);
     await LocalDb.putComputeFreshness(

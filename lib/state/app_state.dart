@@ -74,12 +74,8 @@ import '../compute/inputs/measurement_inputs.dart'
         profileWithoutStaleWeighing;
 import '../compute/profile.dart';
 import '../data/day_label.dart';
-import '../data/backup_extras.dart'
-    show
-        ImportSummary,
-        lastImportSummary,
-        readPendingReentry,
-        writePendingReentry;
+import '../data/backup_extras.dart' show ImportSummary, lastImportSummary;
+import '../data/import_reentry_store.dart';
 import '../data/import_progress.dart';
 import '../data/import_journal.dart';
 import '../data/med_store.dart' show MedDb, MedDef;
@@ -1564,62 +1560,20 @@ class AppState extends ChangeNotifier {
   /// summary could not be recorded (then nothing is claimed).
   ImportSummary? lastBackupSummary;
 
-  /// Items to enter again after the last successful import, kept here (not in
-  /// a page) so leaving Your data, or Welcome moving on, cannot lose them, and
-  /// in the preferences so a restart cannot either. Cleared by
-  /// [dismissImportReentry] or when the next import run begins.
-  final ValueNotifier<List<String>> importReentry = ValueNotifier(const []);
+  /// What the user still has to enter again after an import. The store is the
+  /// owner (lib/data/import_reentry_store.dart); this is its mirror for screens.
+  final ImportReentryStore _reentry =
+      ImportReentryStore.current = ImportReentryStore();
+  ValueNotifier<List<String>> get importReentry => _reentry.pending;
+  Future<void> dismissImportReentry() => _reentry.dismiss();
+  Future<void> loadImportReentry() => _reentry.load();
 
-  int _importRunId = 0;
+  /// A user-started import begins; earlier acknowledgements stop applying.
+  Future<void> beginFreshImport() => _reentry.beginFreshImport();
 
-  /// Items the user already acknowledged during the current run; a later
-  /// backup of the same run must not bring them back.
-  final Set<String> _ackedReentry = {};
-
-  /// Starts an import run and returns its id. A new run supersedes the last
-  /// one: its list is cleared and its late publishes are ignored.
-  int beginImportRun() {
-    _importRunId++;
-    _ackedReentry.clear();
-    _setReentry(const []);
-    return _importRunId;
-  }
-
-  /// Adds [ids] to the pending list if [run] still owns it, skipping what the
-  /// user already acknowledged. Merges; never overwrites.
-  void publishImportReentry(int run, Iterable<String> ids) {
-    if (run != _importRunId) return;
-    final merged = [...importReentry.value];
-    for (final id in ids) {
-      if (!_ackedReentry.contains(id) && !merged.contains(id)) merged.add(id);
-    }
-    _setReentry(merged);
-  }
-
-  void dismissImportReentry() {
-    _ackedReentry.addAll(importReentry.value);
-    _setReentry(const []);
-  }
-
-  void _setReentry(List<String> v) {
-    importReentry.value = List.unmodifiable(v);
-    unawaited(_persistReentry(v));
-  }
-
-  Future<void> _persistReentry(List<String> v) async {
-    // A dismissal that does not persist only brings the note back at the next
-    // start, which is the safe direction; the import's own save is checked in
-    // recordImportSummary.
-    await writePendingReentry(v);
-  }
-
-  /// Reads the kept list back at startup, before an interrupted import resumes.
-  Future<void> loadImportReentry() async {
-    try {
-      final ids = await readPendingReentry();
-      if (ids.isNotEmpty) importReentry.value = List.unmodifiable(ids);
-    } catch (_) {}
-  }
+  /// Adds items a finished backup says need entering again (acknowledged ones
+  /// are skipped by the store).
+  Future<void> addImportReentry(Iterable<String> ids) => _reentry.add(ids);
 
   /// Days of stored raw history (substrate archive buckets) the last backup
   /// import could NOT merge, because they are in a format this build does
@@ -1745,19 +1699,21 @@ class AppState extends ChangeNotifier {
   /// D38: finish an import the process died in (app start, import screen).
   /// The derive is requested only once the journal says done.
   Future<void> resumeUnfinishedImport({bool force = false}) async {
-    // Ownership is captured before any await: a resume merges into the list as
-    // it stands (restored warnings, acknowledgements) and never resets it.
-    final run = _importRunId;
     final r = await ImportJournal.resumeIfUnfinished(
       force: force,
       onProgress: (p) => importProgress.value = p,
     );
+    // A resume that could not run (its saved copy is gone) or failed again
+    // reports an error with resumed == false or true; both are retained, like
+    // a backup failure, until the next import.
+    if (r.error != null) {
+      final failure = ImportFailed(r.error!);
+      _backupFailure = failure;
+      importProgress.value = failure;
+      return;
+    }
     if (!r.resumed) return;
     try {
-      if (r.error != null) {
-        importProgress.value = ImportFailed(r.error!);
-        return;
-      }
       unawaited(gestureSettings.bootstrap());
       await _loadAlarmSchedule();
       await _reloadProfile();
@@ -1769,21 +1725,17 @@ class AppState extends ChangeNotifier {
       await _finalizeImport();
       await _deriveImportWhenDone();
       await _deriveCoordinator.publishNow();
-      // The resumed import's own notes: a kill before they were read must not
-      // lose them. Its summary was recorded by the resumed run.
+      // The resumed import's notes were saved by its record step; the mirror
+      // only needs to follow the store. A resume never clears anything.
       try {
-        publishImportReentry(
-            run, (await lastImportSummary())?.needsReentry ?? const []);
-        // The record step added this import's items to the stored list before
-        // the user could act; the in-memory list is the truth.
-        await _persistReentry(importReentry.value);
+        await _reentry.load();
       } catch (_) {}
       notifyListeners();
       importProgress.value = const ImportDone();
     } catch (e) {
       importRollupError = '$e';
     } finally {
-      importProgress.value = null;
+      if (importProgress.value is! ImportFailed) importProgress.value = null;
     }
   }
 
