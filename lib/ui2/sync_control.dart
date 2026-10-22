@@ -11,6 +11,7 @@ import '../l10n/app_localizations.dart';
 import '../settings/settings_repository.dart';
 import '../state/app_state.dart';
 import '../state/derive_progress.dart';
+import '../sync/import_gate.dart';
 import 'grammar.dart';
 import 'inline_loading.dart';
 import 'profile/devices.dart' show formatDayTime;
@@ -278,6 +279,13 @@ List<Widget> syncStepRows(SyncPresentationState s, DateTime now) =>
 /// A sync that is running has no problem yet, and "offline" is the band being
 /// away, which the connection line already says.
 ({String text, bool failed})? syncProblem(SyncPresentationState s, [AppLocalizations? l]) {
+  final source = syncStatusSource(s);
+  if (source.phase == 'waiting_import') {
+    final importReason = const SyncRefused(ImportBlock.importRunning).message;
+    return (text: s.failureReason == importReason
+        ? s.failureReason!
+        : l?.syncStatusWaitingImport ?? 'Waiting for the import to finish', failed: false);
+  }
   if (s.busy) return null;
   if (s.phase == 'failed') {
     return (
@@ -289,6 +297,17 @@ List<Widget> syncStepRows(SyncPresentationState s, DateTime now) =>
     return (text: l?.syncStatusNeedsPass ?? 'Needs another pass', failed: false);
   }
   return null;
+}
+
+/// The one source for the current sync status: the first active step, or the
+/// settled phase when no step is running or waiting.
+({SyncStep? step, String phase}) syncStatusSource(SyncPresentationState s) {
+  for (final step in s.steps) {
+    if (step.status == SyncStepStatus.running || step.status == SyncStepStatus.waiting) {
+      return (step: step, phase: '');
+    }
+  }
+  return (step: null, phase: s.phase);
 }
 
 /// Why the sync failed, in the reader's language when this app produced the
@@ -329,7 +348,8 @@ String? _noteText(SyncStep step, AppLocalizations? l) {
 
 /// The mark in front of the sentence when no sync is running.
 (IconData, Color) _mark(SyncPresentationState s, P p) =>
-    switch (s.phase) {
+    switch (syncStatusSource(s).phase) {
+      'waiting_import' => (LucideIcons.refreshCw, p.ink3),
       'failed' => (LucideIcons.circleX, p.on(C.red)),
       'offline' => (LucideIcons.unplug, p.ink3),
       'completed' when s.partial => (LucideIcons.circleAlert, p.on(C.orange)),
@@ -341,7 +361,12 @@ String? _noteText(SyncStep step, AppLocalizations? l) {
 /// without a widget. A count or a span appears only when the band or the
 /// derivation reported it; everything else says what is happening and no more.
 String syncStatusLine(SyncPresentationState s, DateTime now, [AppLocalizations? l]) {
-  switch (s.phase) {
+  final source = syncStatusSource(s);
+  final active = source.step;
+  if (active != null) return _activeStepLine(active, l);
+  switch (source.phase) {
+    case 'waiting_import':
+      return syncProblem(s, l)!.text;
     case 'connecting':
       return l?.syncStatusConnecting ?? 'Connecting to the band…';
     case 'downloading':
@@ -357,10 +382,8 @@ String syncStatusLine(SyncPresentationState s, DateTime now, [AppLocalizations? 
     case 'deriving':
       final calc = s.calculate;
       if (calc != null && calc.waiting) {
-        // Another calculation holds the lock. The most useful true thing to say
-        // is what the download did; only with no download detail is "waiting"
-        // the whole story.
-        return _downloadLine(s, l) ?? (l?.syncStatusWaitingCalculation ?? 'Waiting for another calculation…');
+        return _downloadLine(s, l) ??
+            (l?.syncStatusWaitingCalculation ?? 'Waiting for another calculation…');
       }
       final i = calc?.dayIndex, total = calc?.dayTotal;
       return i != null && total != null && i > 0
@@ -381,6 +404,35 @@ String syncStatusLine(SyncPresentationState s, DateTime now, [AppLocalizations? 
     default: // 'idle'
       return _lastSynced(s, now, offline: false, l: l);
   }
+}
+
+String _calcWaitingHeadline(AppLocalizations? l) =>
+    l?.syncStatusCalculatingWaiting ?? 'Calculating · waiting for another calculation';
+
+String _activeStepLine(SyncStep step, AppLocalizations? l) {
+  if (step.id == SyncStepId.calculate && step.calculate?.waiting == true) {
+    return _calcWaitingHeadline(l);
+  }
+  return switch (step.id) {
+    SyncStepId.connect => l?.syncStatusConnecting ?? 'Connecting to the band…',
+    SyncStepId.download => _downloadLineForStep(step, l) ??
+        (l?.syncStatusDownloading ?? 'Downloading…'),
+    SyncStepId.calculate => _calcLine(l, waiting: false,
+        i: step.calculate?.dayIndex, total: step.calculate?.dayTotal),
+    SyncStepId.done => l?.syncLineFinished ?? 'Finished',
+  };
+}
+
+String? _downloadLineForStep(SyncStep step, AppLocalizations? l) {
+  final d = step.download;
+  if (d == null) return null;
+  if (d.records == 0 && step.status == SyncStepStatus.done) {
+    return l?.syncStatusNothingNew ?? 'Nothing new on the band';
+  }
+  if (d.backlog case final backlog?) {
+    return '${l?.syncStatusDownloadingLine ?? 'Downloading'} · ${l?.syncStatusGapLine(_gap(backlog, l)) ?? '${_gap(backlog, l)} of band time to go'}';
+  }
+  return l?.syncStatusDownloading ?? 'Downloading…';
 }
 
 /// The live calculation line for a screen whose data waits on derivation.
@@ -458,6 +510,11 @@ Widget syncBusyMark(Color color) => SizedBox(
 /// details sheet carries.
 String syncStatusHeadline(SyncPresentationState s, DateTime now, [AppLocalizations? l]) {
   final line = syncStatusLine(s, now, l);
+  final source = syncStatusSource(s);
+  if (source.step?.id == SyncStepId.calculate &&
+      source.step?.calculate?.waiting == true) {
+    return line;
+  }
   final i = line.indexOf(' · ');
   return i < 0 ? line : line.substring(0, i);
 }
@@ -833,7 +890,9 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
     final l = AppLocalizations.of(c);
     final action = failed ? _retryLabel(c, l) : _syncNowLabel(c, l);
     final timerText = elapsed == null ? null : _clock(elapsed);
-    final status = s.busy ? syncStatusHeadline(s, now, AppLocalizations.of(c)) : null;
+    final status = s.busy || syncStatusSource(s).phase == 'waiting_import'
+        ? syncStatusHeadline(s, now, AppLocalizations.of(c))
+        : null;
     final link = F.cap.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w600);
     final hasStatus = status != null || problem != null;
 

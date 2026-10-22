@@ -3378,6 +3378,8 @@
       }
     }
   },
+  "syncStatusWaitingImport": "Warten, bis der Import abgeschlossen ist",
+  "syncStatusCalculatingWaiting": "Berechnung · Warten auf eine andere Berechnung",
   "syncStatusWaitingCalculation": "Warten auf eine weitere Berechnung…",
   "syncStepWaitingCalculation": "Warten, bis die andere Berechnung abgeschlossen ist",
   "syncDurationMinutesOnly": "{m} Min.",

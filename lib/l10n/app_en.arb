@@ -17549,6 +17549,8 @@
       }
     }
   },
+  "syncStatusWaitingImport": "Waiting for the import to finish",
+  "syncStatusCalculatingWaiting": "Calculating · waiting for another calculation",
   "syncStatusWaitingCalculation": "Waiting for another calculation…",
   "syncStepWaitingCalculation": "Waiting for another calculation to finish",
   "syncDurationMinutesOnly": "{m} min",

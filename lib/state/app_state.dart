@@ -270,6 +270,17 @@ abstract interface class ImportRollupProbe {
   Future<void> finalize(Profile profile);
 }
 
+void Function(int) _importDayProgressPublisher({
+  required DeriveCoordinator coordinator,
+  required int owner,
+}) =>
+    (days) {
+      if (days > 0) {
+        coordinator.publishProgress(
+            owner, DeriveProgress(dayIndex: days, dayTotal: days));
+      }
+    };
+
 class AppState extends ChangeNotifier {
   late final BleEngine engine;
 
@@ -1451,19 +1462,31 @@ class AppState extends ChangeNotifier {
     String path, {
     void Function(int days)? onProgress,
   }) async {
-    final res = await NoopImporter.importFile(
-      path,
-      _profile,
-      _derive,
-      onProgress: onProgress,
-    );
-    lastNoopImport = res;
-    // The rows are durable — publish: freshness first (Home's getToday reads
-    // it), then the revision bump that tells the screens to re-read. A bare
-    // bump left Home's stamped "missing" row in place until a restart.
-    await _deriveCoordinator.publishNow();
-    notifyListeners();
-    return res.days;
+    final progressOwner = _deriveCoordinator.beginPublishedProgress();
+    try {
+      importProgress.value = const ImportPreparing(ImportPrepStep.opening);
+      final res = await NoopImporter.importFile(
+        path,
+        _profile,
+        _derive,
+        onProgress: _importDayProgressPublisher(
+            coordinator: _deriveCoordinator,
+            owner: progressOwner),
+      );
+      lastNoopImport = res;
+      // The rows are durable — publish: freshness first (Home's getToday reads
+      // it), then the revision bump that tells the screens to re-read. A bare
+      // bump left Home's stamped "missing" row in place until a restart.
+      await _deriveCoordinator.publishNow();
+      notifyListeners();
+      return res.days;
+    } finally {
+      try {
+        importProgress.value = null;
+      } finally {
+        _deriveCoordinator.clearPublishedProgress(progressOwner);
+      }
+    }
   }
 
   /// The most recent NOOP import, so the import screen can report what the
@@ -1483,16 +1506,28 @@ class AppState extends ChangeNotifier {
     List<String> paths, {
     void Function(int days)? onProgress,
   }) async {
-    final res = await WhoopImporter.importFiles(
-      paths,
-      engine: _derive,
-      profile: _profile,
-      onProgress: onProgress,
-    );
-    lastWhoopImport = res;
-    await _deriveCoordinator.publishNow(); // see importNoopCsv
-    notifyListeners();
-    return res.days;
+    final progressOwner = _deriveCoordinator.beginPublishedProgress();
+    try {
+      importProgress.value = const ImportPreparing(ImportPrepStep.opening);
+      final res = await WhoopImporter.importFiles(
+        paths,
+        engine: _derive,
+        profile: _profile,
+        onProgress: _importDayProgressPublisher(
+            coordinator: _deriveCoordinator,
+            owner: progressOwner),
+      );
+      lastWhoopImport = res;
+      await _deriveCoordinator.publishNow(); // see importNoopCsv
+      notifyListeners();
+      return res.days;
+    } finally {
+      try {
+        importProgress.value = null;
+      } finally {
+        _deriveCoordinator.clearPublishedProgress(progressOwner);
+      }
+    }
   }
 
   /// Another device's exported OpenStrap DB (.db) → merge into the local store.

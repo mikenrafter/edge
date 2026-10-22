@@ -248,6 +248,15 @@ class DeriveCoordinator {
     if (!_disposed) deriveProgress.value = null;
   }
 
+  /// A directly imported day uses the same progress surface as coordinator
+  /// passes. The owner token keeps its finally block from clearing newer work.
+  int beginPublishedProgress() => ++_recalcSeq;
+
+  void publishProgress(int owner, DeriveProgress progress) =>
+      _setProgress(owner, progress);
+
+  void clearPublishedProgress(int owner) => _clearProgress(owner);
+
   void _setRecalc(RecalcState s) {
     if (_disposed) return;
     _recalc.value = s;

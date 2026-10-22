@@ -117,7 +117,8 @@ class StatusLine extends StatelessWidget {
     final at = now ?? pc.clock.now();
     final sync = c.select<AppState, (bool, String, DateTime?)>((a) {
       final s = a.syncPresentation;
-      return (s.busy, s.busy ? syncStatusHeadline(s, at, l) : '', a.lastRecordAt);
+      final visible = s.busy || syncStatusSource(s).phase == 'waiting_import';
+      return (visible, visible ? syncStatusHeadline(s, at, l) : '', a.lastRecordAt);
     });
     final String text;
     // A finished or failed import is terminal, not work in progress: the

@@ -3271,6 +3271,8 @@
       }
     }
   },
+  "syncStatusWaitingImport": "等待导入完成",
+  "syncStatusCalculatingWaiting": "正在计算 · 等待其他计算",
   "syncStatusWaitingCalculation": "等待其他计算…",
   "syncStepWaitingCalculation": "等待其他计算完成",
   "syncDurationMinutesOnly": "{m} 分钟",

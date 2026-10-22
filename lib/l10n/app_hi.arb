@@ -3271,6 +3271,8 @@
       }
     }
   },
+  "syncStatusWaitingImport": "आयात पूरा होने की प्रतीक्षा",
+  "syncStatusCalculatingWaiting": "गणना · दूसरी गणना की प्रतीक्षा",
   "syncStatusWaitingCalculation": "एक और गणना की प्रतीक्षा…",
   "syncStepWaitingCalculation": "दूसरी गणना पूरी होने की प्रतीक्षा",
   "syncDurationMinutesOnly": "{m} मिनट",

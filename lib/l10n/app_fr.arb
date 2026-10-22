@@ -3271,6 +3271,8 @@
       }
     }
   },
+  "syncStatusWaitingImport": "En attente de la fin de l’importation",
+  "syncStatusCalculatingWaiting": "Calcul · en attente d’un autre calcul",
   "syncStatusWaitingCalculation": "En attente d’un autre calcul…",
   "syncStepWaitingCalculation": "En attente de la fin de l’autre calcul",
   "syncDurationMinutesOnly": "{m} min",
