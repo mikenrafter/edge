@@ -38,6 +38,7 @@
 //    the drawn envelope is pixel-identical to the full series and every spike
 //    survives. Naive stride decimation would drop them.
 
+import 'spiral_ring.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/decimal_text.dart';
 import '../state/locale_controller.dart';
@@ -614,6 +615,9 @@ class Ring extends CustomPainter {
   Ring(this.v, this.color, this.track,
       {this.stroke = 10, this.t = 1, this.solid = false});
 
+  /// RED STUB: the spiral pieces this ring draws, in paint order.
+  List<SpiralPiece> get pieces => const [];
+
   @override
   void paint(Canvas cv, Size s) {
     final c = Offset(s.width / 2, s.height / 2);
@@ -679,6 +683,9 @@ class StageRing extends CustomPainter {
   final double stroke, t;
 
   StageRing(this.arcs, this.track, {this.stroke = 10, this.t = 1});
+
+  /// RED STUB: the spiral pieces this ring draws, in paint order.
+  List<SpiralPiece> get pieces => const [];
 
   @override
   void paint(Canvas cv, Size s) {
