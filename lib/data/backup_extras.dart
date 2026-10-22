@@ -44,7 +44,7 @@ const Map<String, String> kPrefsNotBackedUp = {
   'consent_health_data': 'consent is asked again on each install',
   'consent_chosen': 'says the consent question was answered; it is asked '
       'again on each install, so a restore must not mark it answered',
-  kImportReentryPrefKey: 'secrets the last import could not restore and '
+  'import_reentry_pending': 'secrets the last import could not restore and '
       'the user has not acknowledged; a fact about THIS install, so a restore '
       'must not carry it to another one',
   'coach_api_key_present': 'marks a key in this phone\'s keychain; the key '
