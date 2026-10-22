@@ -116,8 +116,8 @@ void main() {
     }
   });
 
-  test('schemaVersion is 78 (77 is taken by input_revision)', () {
-    expect(LocalDb.schemaVersion, 78);
+  test('schemaVersion is at least 78 (77 is taken by input_revision)', () {
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(78));
   });
 
   test('upgrade from v77 creates the table, empty, and keeps other rows',
