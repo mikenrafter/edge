@@ -158,3 +158,46 @@ int _valueEnd(String s, int i) {
     throw StateError('comma or brace expected');
   }
 }
+
+/// The inverse of [sliceBundleJson]: the bundle TEXT from the raw group
+/// payloads (`{"path":raw,...}` as `group_row` stores them) and the bundle's
+/// path order. Every value stays its exact substring, so the result is the
+/// stored `payload_json` byte for byte. Same completeness rules as
+/// [assembleBundle]: a missing, extra or repeated path throws StateError.
+String assembleBundleJson(Iterable<String> groupPayloads, List<String> keyOrder) {
+  final byPath = <String, String>{};
+  for (final payload in groupPayloads) {
+    final (members, _) = _members(payload, 0);
+    for (final m in members) {
+      if (byPath.containsKey(m.key)) {
+        throw StateError('path "${m.key}" is in two slices');
+      }
+      byPath[m.key] = payload.substring(m.start, m.end);
+    }
+  }
+  if (keyOrder.toSet().length != keyOrder.length) {
+    throw StateError('keyOrder repeats a path');
+  }
+  final missing = keyOrder.where((p) => !byPath.containsKey(p));
+  if (missing.isNotEmpty) throw StateError('slices miss ${missing.join(', ')}');
+  if (byPath.length != keyOrder.length) {
+    throw StateError('keyOrder misses a slice path');
+  }
+  // First-appearance order of top-level keys; a mixed block's members gather
+  // under their block.
+  final top = <String, Object>{}; // key -> String raw | List<String> members
+  for (final path in keyOrder) {
+    final dot = path.indexOf('.');
+    final block = dot < 0 ? null : path.substring(0, dot);
+    if (block != null && kMixedBlocks.contains(block)) {
+      ((top[block] ??= <String>[]) as List<String>)
+          .add('"${path.substring(dot + 1)}":${byPath[path]}');
+    } else {
+      top[path] = byPath[path]!;
+    }
+  }
+  return '{${[
+    for (final e in top.entries)
+      '"${e.key}":${e.value is List<String> ? '{${(e.value as List<String>).join(',')}}' : e.value}',
+  ].join(',')}}';
+}

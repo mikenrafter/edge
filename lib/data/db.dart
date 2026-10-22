@@ -28,6 +28,7 @@ import '../compute/substrate.dart' show beatTimesMs;
 import '../compute/groups/input_catalogue.dart' show InputKind, kInputCatalogue;
 import 'db/input_read_tracker.dart';
 import 'db/group_row_store.dart';
+import 'db/manifest_store.dart';
 import 'db/input_revision_store.dart';
 // The ONE thing this layer takes from compute/: the running build's algo
 // version, which every day_result read applies as a CEILING (see [dayResult]).
@@ -667,7 +668,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 78;
+  static const int schemaVersion = 79;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`

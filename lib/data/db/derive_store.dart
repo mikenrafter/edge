@@ -153,6 +153,7 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
     // merging and patching plain [{t,v}] lists in memory. Lossless or no-op:
     // SeriesCodec leaves anything it cannot encode exactly as it found it.
     String? storedPayload;
+    var storedSeries = const <String, double?>{};
     final accepted = await db.transaction((txn) async {
       if (reason != DayResultWrite.userOverride) {
         final cur = await txn.query(
@@ -189,6 +190,7 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
       }
       final encodedPayload = SeriesCodec.encodePayloadJson(reviewedPayload);
       storedPayload = encodedPayload;
+      storedSeries = reviewedSeries;
       await txn.insert('day_result', {
         'day_id': dayId,
         'algo_version': algoVersion,
@@ -284,7 +286,7 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
     // leaves the day with no or stale group rows; they are re-sliced from the
     // stored payload (1e/1f reconcile). Failures are counted, never thrown.
     if (accepted) {
-      await writeGroupRowsAfterCommit(dayId: dayId, algoVersion: algoVersion, finalized: finalized, partial: partial, skipped: skipped, userOverride: reason == DayResultWrite.userOverride, expectedPayload: storedPayload!, expectedComputedAt: now, stamp: inputStamp);
+      await writeGroupRowsAfterCommit(dayId: dayId, algoVersion: algoVersion, finalized: finalized, partial: partial, skipped: skipped, userOverride: reason == DayResultWrite.userOverride, expectedPayload: storedPayload!, expectedComputedAt: now, stamp: inputStamp, series: storedSeries);
     }
     return accepted;
   }

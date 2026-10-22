@@ -91,6 +91,7 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   // Resumable derive state: large blobs, only the recent days are useful.
   'day_checkpoint': (SliceKeep.recentDay, 'day_id', 'derive resume checkpoints'),
   'group_row': (SliceKeep.recentDay, 'day_id', 'per-group derive rows (payload blobs)'),
+  'day_manifest': (SliceKeep.recentDay, 'day_id', 'which group revisions each day published'),
   // Daily scores and everything they are built from: every day.
   'day_result': (SliceKeep.all, null, 'daily scores, every day'),
   'derived_day': (SliceKeep.all, null, 'older daily scores'),

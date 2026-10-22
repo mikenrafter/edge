@@ -13,6 +13,7 @@ const Map<String, String> kTablesNotRestored = {
   'wake_day_features': 'interim per-day features; rebuilt from raw by the derive',
   'day_checkpoint': 'resume scratch keyed to this install\'s calculation state',
   'group_row': 'derive cache keyed to this install\'s counters',
+  'day_manifest': 'publication record of this install\'s group rows',
   'derived_day': 'legacy derived-day cache superseded by day_result',
   'session_score_mask': 'rewritten from sessions on every derive',
   'live_workout_tally': 'scratch of a workout in progress on this phone',

@@ -41,9 +41,12 @@ import '../../compute/groups/group_registry.dart';
 import '../../compute/groups/group_types.dart';
 import '../../compute/groups/input_catalogue.dart';
 import '../../compute/groups/input_stamp.dart';
+import '../../compute/groups/manifest_codec.dart';
+import '../../compute/groups/publication.dart';
 import '../../compute/groups/slice_bundle.dart';
 import '../db.dart' show LocalDb;
 import 'input_revision_store.dart';
+import 'manifest_store.dart';
 
 export '../../compute/groups/input_stamp.dart';
 
@@ -115,15 +118,43 @@ bool _inScope(String source, InputScope s, String scope, String day) {
   }
 }
 
+/// [snap] narrowed to what [inputs] read for [dayId]: per declared input, only
+/// the scopes in its window. Shared by the writer (what a row stores) and the
+/// closure check (what the row would store now), so the two compare as text.
+InputStamp stampWindow(InputStamp snap, List<InputDecl> inputs, String dayId) {
+  final stamp = <String, Map<String, int>>{};
+  for (final i in inputs) {
+    final scopes = snap[i.id];
+    if (scopes == null) continue;
+    final keep = {
+      for (final s in scopes.entries)
+        if (_inScope(i.id, i.scope, s.key, dayId)) s.key: s.value,
+    };
+    if (keep.isEmpty) continue;
+    (stamp[i.id] ??= <String, int>{}).addAll(keep);
+  }
+  return stamp;
+}
+
+/// The inputs a group's row is stamped with: its own and its transitive
+/// ancestors' (foundations own no row).
+List<InputDecl> closureInputs(GroupRegistry reg, String id) {
+  final byId = {for (final g in reg.groups) g.id: g};
+  return [
+    for (final gid in [id, ...transitiveDeps(reg, id)])
+      if (byId[gid] != null) ...declaredInputs(byId[gid]!),
+  ];
+}
+
 /// Canonical JSON of `{key: int}` (keys sorted: equal content, equal text).
 /// Keys are group, input and scope ids (no characters needing escapes).
-String _canon(Map<String, int> m) =>
+String canonCounters(Map<String, int> m) =>
     '{${[for (final k in (m.keys.toList()..sort())) '"$k":${m[k]}'].join(',')}}';
 
-String _canon2(Map<String, Map<String, int>> m, {bool unpinned = false}) =>
+String canonStamp(Map<String, Map<String, int>> m, {bool unpinned = false}) =>
     '{${[
       if (unpinned) '"_unpinned":true',
-      for (final k in (m.keys.toList()..sort())) '"$k":${_canon(m[k]!)}',
+      for (final k in (m.keys.toList()..sort())) '"$k":${canonCounters(m[k]!)}',
     ].join(',')}}';
 
 /// The stamp window's `input_revision` rows. Names no source (the read
@@ -135,7 +166,7 @@ const String kStampQuerySql = 'SELECT source, scope, rev FROM input_revision '
 /// The latest revision's metadata per group of a day: no payload BLOBs.
 const String kLatestRevisionSql =
     'SELECT g.group_id, g.revision, g.counter, g.ancestors_json, '
-    'g.input_stamp_json, g.finalized FROM group_row g '
+    'g.input_stamp_json, g.finalized, g.published FROM group_row g '
     'JOIN (SELECT group_id, MAX(revision) AS r FROM group_row '
     'WHERE day_id = ? GROUP BY group_id) m '
     'ON g.group_id = m.group_id AND g.revision = m.r WHERE g.day_id = ?';
@@ -233,6 +264,7 @@ Future<void> writeGroupRowsAfterCommit({
   required String expectedPayload,
   required int expectedComputedAt,
   InputStamp? stamp,
+  Map<String, double?> series = const {},
 }) async {
   if (skipped) return;
   try {
@@ -255,16 +287,54 @@ Future<void> writeGroupRowsAfterCommit({
             name: 'group_row');
         return;
       }
-      await writeGroupRows(txn,
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final written = await writeGroupRows(txn,
           dayId: dayId,
           encodedPayload: expectedPayload,
           finalized: finalized,
           partial: partial,
           skipped: false,
           userOverride: userOverride,
-          nowMs: DateTime.now().millisecondsSinceEpoch,
+          nowMs: nowMs,
           stamp: stamp);
+      // Unpinned (no stamp): its revisions are never reusable, so it
+      // publishes nothing. Pinned: the manifest goes in THIS transaction, so
+      // the rows and the manifest that names them commit or roll back as one.
+      if (written == null || stamp == null) return;
+      final PublishResult r;
+      try {
+        r = await publishInTxn(txn,
+            dayId: dayId,
+            expectedPriorSeq: await latestManifestSeq(txn, dayId),
+            selected: written.selected,
+            keyOrder: written.keyOrder,
+            bundleSha: sha256Hex(expectedPayload),
+            seriesSha: seriesSha(partial ? const {} : series),
+            freshness: {
+              'algo_version': algoVersion,
+              'finalized': finalized,
+              'partial': partial,
+              'computed_at': expectedComputedAt,
+            },
+            nowMs: nowMs);
+      } catch (e) {
+        throw _ManifestFailure(e);
+      }
+      switch (r) {
+        case Published():
+          manifestDiagnostics.published++;
+        case PublishRefused(:final reason, :final problems):
+          manifestDiagnostics.refused++;
+          manifestDiagnostics.lastProblem =
+              '$dayId ${reason.name}: ${problems.map((p) => '${p.group} ${p.reason.name}').join(', ')}';
+        case PublishFailed(:final error):
+          throw _ManifestFailure(error);
+      }
     });
+  } on _ManifestFailure catch (e) {
+    manifestDiagnostics.failed++;
+    manifestDiagnostics.lastProblem = '${e.cause}';
+    dev.log('$dayId manifest failed: ${e.cause}', name: 'group_row');
   } catch (e) {
     groupRowDiagnostics.unsliceable++;
     groupRowDiagnostics.lastProblem = '$e';
@@ -272,9 +342,22 @@ Future<void> writeGroupRowsAfterCommit({
   }
 }
 
+/// A manifest publication that threw inside the shadow transaction; unwinds
+/// the transaction (rows and manifest travel together) and is counted apart
+/// from a row failure.
+class _ManifestFailure implements Exception {
+  _ManifestFailure(this.cause);
+  final Object cause;
+}
+
 /// The rows themselves. An unsliceable bundle returns quietly; database errors
 /// propagate to the caller's transaction.
-Future<void> writeGroupRows(
+///
+/// Returns the latest revision of every group it wrote and the bundle's path
+/// order (what a manifest names), or null when it wrote nothing, or when a
+/// sliced key has an owner this registry does not know (the set would be
+/// incomplete, so it is not publishable).
+Future<({Map<String, int> selected, List<String> keyOrder})?> writeGroupRows(
   DatabaseExecutor txn, {
   required String dayId,
   required String encodedPayload,
@@ -285,7 +368,7 @@ Future<void> writeGroupRows(
   required int nowMs,
   InputStamp? stamp,
 }) async {
-  if (skipped) return;
+  if (skipped) return null;
   final ({Map<String, List<(String, String)>> slices, List<String> keyOrder})
       sliced;
   try {
@@ -294,7 +377,7 @@ Future<void> writeGroupRows(
     groupRowDiagnostics.unsliceable++;
     groupRowDiagnostics.lastProblem = e.message;
     dev.log('$dayId not sliced: ${e.message}', name: 'group_row');
-    return;
+    return null;
   }
   final reg = groupRegistryForTest ?? kMergedRegistry;
   final byId = {for (final g in reg.groups) g.id: g};
@@ -314,7 +397,8 @@ Future<void> writeGroupRows(
     ];
     sources.addAll(inputs[id]!.map((i) => i.id));
   }
-  if (decls.isEmpty) return;
+  if (decls.isEmpty) return null;
+  final selected = <String, int>{};
 
   // Pinned: the capture from before the inputs were read. Unpinned: now.
   final stampIsNull = stamp == null;
@@ -332,19 +416,9 @@ Future<void> writeGroupRows(
       for (final a in anc[id]!)
         if (byId[a] != null) a: byId[a]!.counter,
     };
-    final stamp = <String, Map<String, int>>{};
-    for (final i in inputs[id]!) {
-      final scopes = snap[i.id];
-      if (scopes == null) continue;
-      final keep = {
-        for (final s in scopes.entries)
-          if (_inScope(i.id, i.scope, s.key, dayId)) s.key: s.value,
-      };
-      if (keep.isEmpty) continue;
-      (stamp[i.id] ??= <String, int>{}).addAll(keep);
-    }
-    final ancestorsJson = _canon(ancestors);
-    final stampJson = _canon2(stamp, unpinned: stampIsNull);
+    final stamp = stampWindow(snap, inputs[id]!, dayId);
+    final ancestorsJson = canonCounters(ancestors);
+    final stampJson = canonStamp(stamp, unpinned: stampIsNull);
     final values = <String, Object?>{
       'counter': g.counter,
       'ancestors_json': ancestorsJson,
@@ -359,11 +433,17 @@ Future<void> writeGroupRows(
     if (cur == null) {
       await txn.insert('group_row',
           {'day_id': dayId, 'group_id': id, 'revision': 1, ...values});
+      selected[id] = 1;
       continue;
     }
     final rev = (cur['revision'] as num).toInt();
+    selected[id] = rev;
     final isFinished = (cur['finalized'] as num?)?.toInt() == 1;
-    if (!isFinished || userOverride) {
+    // A revision a manifest names is what its bundle_sha vouches for: never
+    // rewritten in place, provisional or not. A new revision takes over when
+    // (and only when) a publication moves the manifest to it.
+    final isPublished = (cur['published'] as num?)?.toInt() == 1;
+    if (!isPublished && (!isFinished || userOverride)) {
       await txn.update('group_row', values,
           where: 'day_id = ? AND group_id = ? AND revision = ?',
           whereArgs: [dayId, id, rev]);
@@ -372,9 +452,12 @@ Future<void> writeGroupRows(
     final moved = (cur['counter'] as num?)?.toInt() != g.counter ||
         cur['ancestors_json'] != ancestorsJson ||
         cur['input_stamp_json'] != stampJson;
-    if (moved) {
+    if (moved || (isPublished && (!isFinished || userOverride))) {
       await txn.insert('group_row',
           {'day_id': dayId, 'group_id': id, 'revision': rev + 1, ...values});
+      selected[id] = rev + 1;
     }
   }
+  if (decls.length != sliced.slices.length) return null;
+  return (selected: selected, keyOrder: sliced.keyOrder);
 }
