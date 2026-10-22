@@ -290,6 +290,23 @@ abstract final class DerivedFingerprint {
     final max = int.tryParse(own.split(':').first);
     return max == null || max <= 0 ? null : max;
   }
+
+  /// COUNT out of one `MAX(rec_ts):COUNT:REVSUM` part; null for `-`/unparsed.
+  static int? rowCount(String? part) => part == null || part == '-'
+      ? null
+      : int.tryParse(part.split(':').elementAtOrNull(1) ?? '');
+
+  /// The decoded-row COUNTs a stamp recorded: the day's own and the previous
+  /// day's (null when the stamp had no previous day). Null when it does not
+  /// parse. Read apart, never summed: extra rows on one day must not hide a
+  /// loss on the other.
+  static ({int own, int? prev})? counts(String fingerprint) {
+    final parts = fingerprint.split('|');
+    if (parts.length < 3) return null;
+    final own = rowCount(parts[parts.length - 2]);
+    if (own == null) return null;
+    return (own: own, prev: rowCount(parts.last));
+  }
 }
 
 /// Test seam, an interface and not a function field so the heavy-calc guard
@@ -6214,6 +6231,46 @@ class LocalDb {
   /// next derive, which rewrites what the seam serves.
   static Future<bool> dayIsFinal(String day, int algoVersion) =>
       _ldbDayIsFinal(day, algoVersion);
+
+  /// The coverage (decoded-row counts) the stored result of [day] was derived
+  /// FROM, whatever algo version wrote it: after a bump the old derivation's
+  /// coverage still counts. A separate `derived_cov:<day>` row, written only
+  /// when a row is actually written (or seeded from the fingerprint when a
+  /// decline first needs it), because `derived_fp` is also recorded for a
+  /// DECLINED day and would otherwise ratchet the baseline down to the loss.
+  /// Falls back to the newest-version fingerprint; null when neither exists.
+  static Future<({int own, int? prev})?> derivedCoverage(String day) async {
+    final db = await instance;
+    final cov = await db.rawQuery(
+      "SELECT json_extract(payload_json, '\$.own') AS own, "
+      "json_extract(payload_json, '\$.prev') AS prev "
+      'FROM compute_freshness WHERE key = ?',
+      ['$_derivedCovPrefix$day'],
+    );
+    if (cov.isNotEmpty && cov.first['own'] is num) {
+      return (
+        own: (cov.first['own'] as num).toInt(),
+        prev: (cov.first['prev'] as num?)?.toInt(),
+      );
+    }
+    final fp = await db.rawQuery(
+      "SELECT json_extract(payload_json, '\$.fp') AS fp "
+      'FROM compute_freshness WHERE key = ?',
+      ['$_derivedFpPrefix$day'],
+    );
+    final s = fp.isEmpty ? null : fp.first['fp'];
+    return s is String ? DerivedFingerprint.counts(s) : null;
+  }
+
+  static const String _derivedCovPrefix = 'derived_cov:';
+
+  static Future<void> putDerivedCoverage(
+    String day,
+    ({int own, int? prev}) coverage,
+  ) => putComputeFreshness(
+    '$_derivedCovPrefix$day',
+    jsonEncode({'own': coverage.own, 'prev': coverage.prev}),
+  );
 
   static Future<void> putDerivedFingerprint(
     String day,

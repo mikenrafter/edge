@@ -1,6 +1,25 @@
 part of '../derivation_engine.dart';
 
 extension _EngineDayCompute on DerivationEngine {
+  /// The coverage verdict for [dayId]: null when no coverage was recorded for
+  /// its stored result (the cursor rule applies); otherwise the recorded
+  /// baseline and a description of what is now missing (null: nothing).
+  Future<({({int own, int? prev}) baseline, String? loss})?> _coverageLoss(
+      String dayId) async {
+    final baseline = await LocalDb.derivedCoverage(dayId);
+    if (baseline == null) return null;
+    final prevId = DerivationEngine._adjacentDayIds(dayId).first;
+    final fps = await LocalDb.decodedDayFingerprints({dayId, prevId});
+    final own = DerivedFingerprint.rowCount(fps[dayId]) ?? 0;
+    final prev = DerivedFingerprint.rowCount(fps[prevId]) ?? 0;
+    final lost = <String>[
+      if (own < baseline.own) '$dayId has $own rows, was derived from ${baseline.own}',
+      if (baseline.prev != null && prev < baseline.prev!)
+        '$prevId has $prev rows, was derived from ${baseline.prev}',
+    ];
+    return (baseline: baseline, loss: lost.isEmpty ? null : lost.join('; '));
+  }
+
   /// [DayDerive.refused] when a frozen (finalized) row refused the write:
   /// nothing was stored, so the caller must not count, fingerprint or publish
   /// the day. [DayDerive.declined] when the day deliberately kept its existing
@@ -341,6 +360,19 @@ extension _EngineDayCompute on DerivationEngine {
     // partial night. Every path (algo bump, force, override, rescan) lands here.
     // (Not for the audit's reference pass: it is a pure computation, judged
     // against the stored row by the comparison, not declined by it.)
+    //
+    // Whether the prune cut this night is decided by COVERAGE, not by the
+    // global cursor (which cannot describe holes or a partial restore): the
+    // decoded rows now hold fewer rows, on this day or on the one before,
+    // than the stored result was derived from. Equal or more proceeds whatever
+    // the cursor says. A row with no recorded coverage (imported, legacy)
+    // keeps the cursor rule.
+    final judgeNight = !producedNothing &&
+        blankSource == null &&
+        !batchReference &&
+        !suppliedSubstrate &&
+        day.sleepSource != 'rejected';
+    final coverage = judgeNight ? await _coverageLoss(day.date) : null;
     if (!producedNothing &&
         blankSource == null &&
         !batchReference &&
@@ -354,21 +386,34 @@ extension _EngineDayCompute on DerivationEngine {
             ) ||
             // An import brings its own substrate, the prune can't have cut it.
             // A rejected night has nothing to protect either.
-            (!suppliedSubstrate &&
-                day.sleepSource != 'rejected' &&
-                DerivationEngine.windowTruncatedByPrune(
+            (judgeNight &&
+                (coverage != null
+                    ? coverage.loss != null
+                    : DerivationEngine.windowTruncatedByPrune(
                   day.date,
                   await LocalDb.getCursorInt(DerivationEngine._prunedBeforeCursor),
                   forcedOnsetSec: day.sleepSource == 'manual' ||
                           day.sleepSource == 'confirmed'
                       ? day.sleepOnsetSec
                       : null,
-                )))) {
+                    ))))) {
       final existingNight = await LocalDb.dayResult(day.date);
       final existingHadNight = existingNight != null &&
           (existingNight['rhr'] != null ||
               existingNight['rmssd'] != null ||
               existingNight['readiness'] != null);
+      if (existingHadNight && coverage?.loss != null) {
+        _log('derive ${day.date}: decoded-row coverage fell below what the '
+            'stored result was derived from (${coverage!.loss}) — kept the '
+            'existing result rather than overwrite it from an incomplete '
+            'night (edge#305)');
+        final declined = _diag['declined_days'] as List<String>;
+        if (!declined.contains(day.date)) declined.add(day.date);
+        // The baseline a later derive is judged by must outlive the
+        // fingerprint a declined day records over it.
+        await LocalDb.putDerivedCoverage(day.date, coverage.baseline);
+        return DayDerive.declined;
+      }
       if (existingHadNight) {
         _log('derive ${day.date}: sleep-window substrate pruned out from '
             "under a day that already had real night scalars — kept the "

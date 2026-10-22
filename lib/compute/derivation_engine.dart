@@ -2051,6 +2051,9 @@ class DerivationEngine {
     'todo_days': 0,
     'done_days': 0,
     'skipped_days': 0,
+    // Days the last pass left alone because the decoded rows now cover less
+    // than their stored result was derived from (see engine/day_compute.dart).
+    'declined_days': <String>[],
     // List, not a single day — several days can be in flight concurrently
     // (see run()'s bounded worker pool).
     'active_days': <String>[],
@@ -2656,6 +2659,7 @@ class DerivationEngine {
       ..['todo_days'] = 0
       ..['done_days'] = 0
       ..['skipped_days'] = 0
+      ..['declined_days'] = <String>[]
       ..['unchanged_days'] = 0
       ..['active_days'] = <String>[]
       ..['concurrency'] = _deriveConcurrency
@@ -2921,7 +2925,8 @@ class DerivationEngine {
             if (repass) {
               // Counted and reported by its first derive.
               if (committed != DayDerive.refused) {
-                await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+                await _recordDerivedFingerprint(dayId, dayFp[dayId],
+                    committed: committed == DayDerive.committed);
               }
               if (committed == DayDerive.declined) {
                 await _settleDay(dayId, fps, edits);
@@ -2930,7 +2935,7 @@ class DerivationEngine {
             } else if (committed == DayDerive.committed) {
               done++;
               _diag['done_days'] = done;
-              await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              await _recordDerivedFingerprint(dayId, dayFp[dayId], committed: true);
             } else if (committed == DayDerive.declined) {
               // Handled, not derived: no `done` (that would run baselines and
               // cross-day for nothing), but settled so it is not picked again.
@@ -3163,9 +3168,16 @@ class DerivationEngine {
   /// Remember what a day's input looked like when it was derived, so a later
   /// manual sync can prove nothing changed. Best-effort: a failed write only
   /// costs one redundant derive.
-  Future<void> _recordDerivedFingerprint(String dayId, String? fingerprint) async {
+  ///
+  /// [committed]: a row was actually written from this input, so its coverage
+  /// becomes the baseline the next derive is judged against (a declined day
+  /// records the fingerprint only, never lowering that baseline).
+  Future<void> _recordDerivedFingerprint(String dayId, String? fingerprint,
+      {bool committed = false}) async {
     if (fingerprint == null) return;
     try {
+      final cov = DerivedFingerprint.counts(fingerprint);
+      if (committed && cov != null) await LocalDb.putDerivedCoverage(dayId, cov);
       await LocalDb.putDerivedFingerprint(dayId, kAlgoVersion, fingerprint);
     } catch (e) {
       _log('derive $dayId: could not record fingerprint: $e');
@@ -3218,6 +3230,7 @@ class DerivationEngine {
       ..['todo_days'] = 0
       ..['done_days'] = 0
       ..['skipped_days'] = 0
+      ..['declined_days'] = <String>[]
       ..['active_days'] = <String>[]
       ..['concurrency'] = _deriveConcurrency
       ..['last_error'] = null;
@@ -3298,13 +3311,13 @@ class DerivationEngine {
             if (repass) {
               // Counted and reported by its first derive.
               if (committed == DayDerive.committed) {
-                await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+                await _recordDerivedFingerprint(dayId, dayFp[dayId], committed: true);
               }
               reportDone = false;
             } else if (committed == DayDerive.committed) {
               done++;
               _diag['done_days'] = done;
-              await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              await _recordDerivedFingerprint(dayId, dayFp[dayId], committed: true);
               onDayDerived?.call(dayId);
             } else {
               reportDone = false;
@@ -4121,7 +4134,7 @@ class DerivationEngine {
                 prepared, profile, dataNowSec, history);
             if (committed == DayDerive.committed) {
               done++;
-              await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              await _recordDerivedFingerprint(dayId, dayFp[dayId], committed: true);
             } else if (committed == DayDerive.declined) {
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
               await _settleDay(dayId, fps, edits);
