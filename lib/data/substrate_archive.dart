@@ -847,8 +847,10 @@ abstract final class SubstrateArchive {
   /// would make every later export or delete that touches its day fail on it.
   /// A newer build can import it again. A bucket older than this database
   /// keeps ([dataEdgeSec] − keepDays) is left out and not counted: the next
-  /// housekeeping would evict it anyway. Blobs are read from [src] in chunks
-  /// ([readBlob]); [rows] carry only [metaColumns]. A known
+  /// housekeeping would evict it anyway. Blobs arrive pre-read in [blobs]
+  /// ([readBlob] per row, BEFORE the transaction: a second connection to the
+  /// backup file cannot read while this one holds RESERVED on it, which is
+  /// SQLITE_BUSY on Android); [rows] carry only [metaColumns]. A known
   /// codec is decoded and its fingerprint checked BEFORE it is inserted, so a
   /// damaged blob never enters the table either. Every other failure THROWS —
   /// a user's restore must not report success over history it dropped —
@@ -857,7 +859,7 @@ abstract final class SubstrateArchive {
   /// is restored into a database whose policy is Off.
   static Future<({int copied, int skipped})> restoreRows(
     Transaction txn,
-    DatabaseExecutor src,
+    Map<(String, int), Uint8List?> blobs,
     List<Map<String, Object?>> rows, {
     bool tolerant = false,
     int? dataEdgeSec,
@@ -890,7 +892,7 @@ abstract final class SubstrateArchive {
         skipped++;
         continue;
       }
-      final blob = await readBlob(src, deviceId, day);
+      final blob = blobs[(deviceId, day)];
       final local = await txn.query(
         table,
         columns: ['codec', 'fingerprint'],

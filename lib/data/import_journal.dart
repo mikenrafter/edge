@@ -17,6 +17,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../sync/edge_tracking.dart';
+import '../sync/import_gate.dart';
 import 'db.dart';
 import 'import_progress.dart';
 
@@ -574,10 +575,20 @@ class ImportJournal {
     _resuming = resuming;
     notify();
     final svc = ImportForegroundService.instance;
+    var entered = false;
     try {
+      // Raises the sync gate and waits out a drain that is mid-chunk: an
+      // import never starts under one (commit-before-ACK).
+      final admission = await ImportGate.beginImport();
+      if (admission is ImportDeferred) throw StateError(admission.message);
+      entered = true;
       await svc.request(stage);
       return await Zone.current.run(job);
     } finally {
+      if (entered) ImportGate.leave();
+      // A run that failed or was killed stays journaled; sync stays shut until
+      // the resume finishes it.
+      await ImportGate.probe();
       _running = false;
       _resuming = false;
       try {

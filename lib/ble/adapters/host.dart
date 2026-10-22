@@ -34,6 +34,7 @@ import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 
 import '../../data/db.dart';
 import '../../data/models.dart';
+import '../../sync/import_gate.dart';
 import '_registry.dart' show DeviceCategory, TimeAnchor;
 import 'adapter.dart';
 
@@ -234,6 +235,11 @@ class BandHost {
   /// Start driving [adapter] over [link]. Completes when the adapter's stream
   /// ends or [stop] is called.
   Future<void> run(BandLink link) async {
+    // A wearable's sync writes decoded rows too: not while an import merges
+    // them. Returns as a finished session; the next scheduled sync retries.
+    if (ImportGate.check('wearable.run') is SyncRefused) {
+      return;
+    }
     final done = _runDone = Completer<void>();
     void finish() {
       if (!done.isCompleted) done.complete();
@@ -518,6 +524,9 @@ class BandHost {
   ///
   /// NEVER call directly — go through [_commit], which serializes.
   Future<bool> _commitLocked({bool all = false}) async {
+    // Nothing is taken out of the buffer and "not durable" is reported, so the
+    // adapter's cursor does not advance and the rows are delivered again.
+    if (ImportGate.check('wearable.commit') is SyncRefused) return false;
     final archive = List<ArchiveRecord>.from(_pendingArchive);
     final extra = _extraCursors?.call();
     if (_pending.isEmpty && archive.isEmpty) {

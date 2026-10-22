@@ -28,6 +28,7 @@ import '../compute/substrate.dart' show beatTimesMs;
 import '../compute/groups/input_catalogue.dart' show InputKind, kInputCatalogue;
 import 'db/input_read_tracker.dart';
 import 'db/group_row_store.dart';
+import 'import_source_guard.dart';
 import 'db/manifest_store.dart';
 import 'db/input_revision_store.dart';
 // The ONE thing this layer takes from compute/: the running build's algo

@@ -47,6 +47,7 @@ import '../data/db.dart';
 import '../data/models.dart';
 import '../gestures/strap_event.dart';
 import '../platform/tasker_bridge.dart';
+import '../sync/import_gate.dart';
 import '../sync/paired_device.dart' show cleanDeviceLabel;
 import '../sync/sync_policy.dart';
 import 'adapters/_registry.dart';
@@ -3294,7 +3295,12 @@ class BleEngine implements AlarmBandWriter {
     // client on this band is running; INIT then sends only its non-drain
     // packets, exactly like the clock deferral.
     final foreignLive = _foreignHistoryLive;
-    final drainOnInit = !_deferForClock && !foreignLive;
+    final importBlocks = ImportGate.check('ble.init_drain') is SyncRefused;
+    final drainOnInit = !_deferForClock && !foreignLive && !importBlocks;
+    if (importBlocks) {
+      _log('[SYNC] INIT drain DEFERRED — an import is running; the next '
+          'trigger after it drains the band.');
+    }
     if (_deferForClock) {
       _clockPausedOffloads++;
       _log(
@@ -4376,6 +4382,13 @@ class BleEngine implements AlarmBandWriter {
     if (session.historyHeld) {
       _log('[SYNC] refresh($reason) refused — history is held on this link '
           'until it closes (configuration writes in progress).');
+      return false;
+    }
+    // An import is merging the tables a drain would commit into and then ACK.
+    // A refused request costs nothing: the band keeps its flash until the next
+    // trigger after the import (ImportGate).
+    if (ImportGate.check('ble.refresh') case final SyncRefused r) {
+      _log('[SYNC] refresh($reason) refused — ${r.message}.');
       return false;
     }
     if (_ecgLeaseHeldFor(session)) {
@@ -9436,6 +9449,8 @@ class BleEngine implements AlarmBandWriter {
   void _setOffloadActive(bool active) {
     if (_offloadActive == active) return;
     _offloadActive = active;
+    // Same choke point, same reason: an import waits for a drain mid-chunk.
+    ImportGate.drainChanged(this, active);
     // Hold synchronous=FULL for the whole offload instead of toggling it per
     // chunk. This is the one choke point for the flag, so every release in the
     // table above (COMPLETE, watchdogs, rollbacks, abort terminals, link

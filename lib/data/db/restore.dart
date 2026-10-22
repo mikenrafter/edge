@@ -732,7 +732,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     void prep(ImportPrepStep step, [int? done, int? total]) =>
         onProgress?.call(ImportPreparing(step, done, total));
     prep(ImportPrepStep.opening);
-    final src = await openDatabase(path, readOnly: true);
+    final src = ImportSourceGuard(await openDatabase(path, readOnly: true));
     final db = await LocalDb.instance;
     const tables = LocalDb._restoreTables;
     // D38: where a resumed import starts (table index, rowid inside it).
@@ -1011,7 +1011,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         while (lower < maxRowid) {
           final upper = lower + chunkRows > maxRowid ? maxRowid : lower + chunkRows;
           final first = lower == startLower;
-          await db.transaction((txn) async {
+          await src.mainTransaction(db, (txn) async {
             if (t == 'day_result' && first) {
               // Inside the first chunk's transaction, so a day the engine
               // finalizes while the restore runs is still protected.
@@ -1368,7 +1368,20 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
               }
             }
             final pageLast = (page.last[rowidKey] as num).toInt();
-            await db.transaction((txn) async {
+            // Archive blobs are read HERE, before the transaction opens (see
+            // ImportSourceGuard): a second connection's read inside it is
+            // SQLITE_BUSY on Android. Per row, so the progress moves.
+            final archiveBlobs = <(String, int), Uint8List?>{};
+            if (t == SubstrateArchive.table) {
+              for (final r in page) {
+                final d = r['device_id'], day = r['utc_day'];
+                if (d is String && day is int) {
+                  archiveBlobs[(d, day)] = await SubstrateArchive.readBlob(src, d, day);
+                }
+                plan?.advance(t, (r[rowidKey] as num).toInt());
+              }
+            }
+            await src.mainTransaction(db, (txn) async {
               if (run != null) {
                 await ImportJournal.advance(
                     txn, run, index, t, pageLast, page.length);
@@ -1376,7 +1389,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
               if (t == SubstrateArchive.table) {
                 final r = await SubstrateArchive.restoreRows(
                   txn,
-                  src,
+                  archiveBlobs,
                   [
                     for (final r in page)
                       {

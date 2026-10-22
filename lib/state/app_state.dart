@@ -186,6 +186,7 @@ import '../data/assumed_water.dart';
 import 'units_controller.dart' show UnitsController;
 import '../sync/background_sync.dart' show checkSyncStaleness;
 import '../sync/band_ownership.dart';
+import '../sync/import_gate.dart';
 import '../sync/high_freq_wake_window.dart';
 import '../sync/ios_bg_task.dart';
 import '../sync/reset_gate.dart';
@@ -4167,6 +4168,9 @@ class AppState extends ChangeNotifier {
     // Rehydrate/finalize any workout left `status='live'` by a killed previous
     // run (issue: "can't stop workout, only delete"). Best-effort, non-blocking.
     unawaited(_workout.reconcileOrphanedLiveWorkout());
+    // An import the process died in keeps sync shut until its resume finishes
+    // (below). Read BEFORE any session opens, so the first connect cannot drain.
+    await ImportGate.probe();
     initialized = true;
     notifyListeners();
     // An import the process was killed in resumes here and is never silent

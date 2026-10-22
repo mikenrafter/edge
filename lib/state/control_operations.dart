@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
+import '../sync/import_gate.dart';
+
 /// The four things a manual sync does, in order.
 enum SyncStepId { connect, download, calculate, done }
 
@@ -288,9 +290,15 @@ class SyncCoordinator extends ChangeNotifier {
   /// is happening, which is 'idle'. Derived at read time so a connect or a
   /// disconnect needs no publish of its own.
   SyncPresentationState get view =>
-      presentation.phase == 'offline' && isConnected()
-          ? presentation.withPhase('idle')
-          : presentation;
+      presentation.busy
+          ? presentation
+          : ImportGate.state.value is SyncRefused
+              // An import is running: nothing syncs, and the screen says so
+              // instead of showing an idle or offline that looks like a fault.
+              ? presentation.withPhase('waiting_import')
+              : presentation.phase == 'offline' && isConnected()
+                  ? presentation.withPhase('idle')
+                  : presentation;
   Future<SyncOperationResult>? _active;
   int _generation = 0;
   SyncCancelToken _token = SyncCancelToken();
@@ -311,7 +319,9 @@ class SyncCoordinator extends ChangeNotifier {
     this.progressInterval = const Duration(milliseconds: 250),
     this.retireGrace = const Duration(seconds: 30),
   }) : _clock = clock ?? DateTime.now,
-       _log = log;
+       _log = log {
+    ImportGate.state.addListener(notifyListeners);
+  }
 
   /// Notify now, or hold the notification back so listeners hear at most one
   /// per [progressInterval] (plus one trailing, so the last update is never
@@ -559,6 +569,12 @@ class SyncCoordinator extends ChangeNotifier {
 
   Future<SyncOperationResult> syncNow() {
     if (_active case final active?) return active;
+    // Refused up front and said out loud: the phase is 'waiting_import', the
+    // reason is a sentence, and no connect or download step ever starts.
+    if (ImportGate.check('coordinator.syncNow') case final SyncRefused r) {
+      _publish('waiting_import', contacted: false, failureReason: r.message);
+      return Future.value(SyncOperationResult(false, r.message));
+    }
     final completer = Completer<SyncOperationResult>();
     _active = completer.future;
     final token = ++_generation;
@@ -728,6 +744,7 @@ class SyncCoordinator extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    ImportGate.state.removeListener(notifyListeners);
     _heldBack?.cancel();
     _heldBack = null;
     ++_generation;

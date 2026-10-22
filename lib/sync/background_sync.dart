@@ -37,6 +37,7 @@ import '../compute/calc_power_policy.dart';
 import '../compute/profile.dart';
 import '../data/day_label.dart' show dayLabelOf;
 import '../data/db.dart';
+import 'import_gate.dart';
 import '../ecg/ecg_guard_store.dart';
 import '../ecg/ecg_recovery.dart';
 import '../ecg/ecg_transport.dart';
@@ -502,6 +503,14 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     // a drain already in flight.
     if (ResetGate.active) {
       _bgLog('[bgsync] a data reset is running — not starting a drain.');
+      return true;
+    }
+    // An import is running, or one was killed and waits for its resume: the
+    // drain would ACK into tables the import is still merging. Skipped, not
+    // queued; the band keeps its flash (see [ImportGate]).
+    await ImportGate.probe();
+    if (ImportGate.check('headless.sync') case final SyncRefused r) {
+      _bgLog('[bgsync] ${r.message} — not starting a drain.');
       return true;
     }
     final paired = await PairedDevice.load();

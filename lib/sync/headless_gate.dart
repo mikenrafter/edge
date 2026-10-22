@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'band_ownership.dart';
+import 'import_gate.dart';
 
 class HeadlessSyncGate {
   HeadlessSyncGate._();
@@ -92,6 +93,11 @@ class HeadlessSyncGate {
     Future<T> Function() body, {
     Duration? ceiling,
   }) async {
+    // Skipped, not queued, and not counted against the owner's streak: an
+    // import is not another wake source holding the gate.
+    if (ImportGate.check('headless.gate') is SyncRefused) {
+      return null;
+    }
     if (_running != null) {
       final n = (_consecutiveSkipsByOwner[owner] ?? 0) + 1;
       _consecutiveSkipsByOwner[owner] = n;

@@ -34,6 +34,7 @@ import '../compute/derive_scheduler.dart';
 import '../data/db.dart';
 import '../data/models.dart';
 import '../sync/band_ownership.dart';
+import '../sync/import_gate.dart';
 import '../sync/edge_tracking.dart';
 import '../sync/paired_device.dart';
 import '../sync/shortcut_sync_task.dart';
@@ -729,6 +730,9 @@ class SyncController {
   /// returns the burst's report, or an empty one once the task stops.
   Future<SyncReport> syncForShortcut(ShortcutSyncTask task) async {
     if (ResetGate.active) throw StateError('data reset in progress');
+    if (ImportGate.check('shortcut.sync') case final SyncRefused r) {
+      throw StateError(r.message);
+    }
     if (!_initialized()) task.update('starting');
     while (!_initialized() &&
         _initError() == null &&
