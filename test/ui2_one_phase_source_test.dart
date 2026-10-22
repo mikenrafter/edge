@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/derive_progress.dart';
 import 'package:openstrap_edge/state/control_operations.dart';
@@ -249,6 +250,96 @@ void main() {
           reason: 'texts: ${_texts(t).toList()}');
       expect(_texts(t).where((s) => s.startsWith('Downloaded')), isEmpty);
       await t.pumpWidget(const SizedBox());
+    });
+  });
+
+  group('review round: Done and the refusal', () {
+    /// reportScope(0): the derivation had nothing to calculate, Calculate is
+    /// skipped, and Done has not started. The coordinator is still busy.
+    SyncPresentationState calcSkipped({
+      SyncStepStatus done = SyncStepStatus.waiting,
+    }) =>
+        SyncPresentationState(
+          phase: 'deriving',
+          busy: true,
+          contactedBand: true,
+          startedAt: _t0,
+          steps: [
+            _s(SyncStepId.connect, SyncStepStatus.done, start: 0, end: 2),
+            _s(SyncStepId.download, SyncStepStatus.done,
+                start: 2, end: 60, download: const SyncDownloadDetail()),
+            SyncStep(
+                id: SyncStepId.calculate,
+                status: SyncStepStatus.skipped,
+                noteCode: SyncNote.nothingNew,
+                startedAt: _t0.add(const Duration(seconds: 60)),
+                endedAt: _t0.add(const Duration(seconds: 60))),
+            _s(SyncStepId.done, done, start: done == SyncStepStatus.running ? 61 : null),
+          ],
+        );
+
+    for (final done in [SyncStepStatus.waiting, SyncStepStatus.running]) {
+      test('Calculate skipped, Done $done: the headline is not "Finished"', () {
+        final line = syncStatusLine(calcSkipped(done: done), _now);
+        expect(line, isNot(contains('Finished')),
+            reason: 'the coordinator has not completed the sync');
+        expect(line.toLowerCase(), isNot(contains('synced')));
+        expect(line, 'Finishing up…',
+            reason: 'new ARB key syncStatusFinishing; the Done row agrees');
+        expect(syncStatusHeadline(calcSkipped(done: done), _now), line);
+      });
+    }
+
+    testWidgets('sheet: headline and the Done row do not contradict', (t) async {
+      final app = _App(calcSkipped());
+      addTearDown(app.dispose);
+      await t.pumpWidget(_host(
+          Builder(
+              builder: (c) => TextButton(
+                  onPressed: () => showSyncDetails(c, app),
+                  child: const Text('open'))),
+          app: app));
+      await t.tap(find.text('open'));
+      await t.pump(const Duration(milliseconds: 400));
+      expect(find.text('Finished'), findsNothing,
+          reason: 'neither the headline nor any row claims it finished');
+      expect(find.text('Waiting'), findsOneWidget, reason: 'the Done row');
+      expect(find.text('Finishing up…'), findsOneWidget, reason: 'headline');
+      await t.pumpWidget(const SizedBox());
+    });
+
+    Widget localized(Widget body, Locale locale) => MaterialApp(
+          locale: locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: buildTheme(Brightness.light),
+          home: Scaffold(body: SingleChildScrollView(child: body)),
+        );
+
+    for (final reason in <String?>[null, _waiting]) {
+      testWidgets(
+          'German reader, ${reason == null ? "passive view" : "after syncNow was refused"}: '
+          'the localized sentence, not ImportGate\'s English',
+          (t) async {
+        await t.pumpWidget(localized(
+            SyncControl(
+                state: _waitingImport(reason: reason),
+                onSync: () {},
+                clock: () => _now),
+            const Locale('de')));
+        final de = lookupAppLocalizations(const Locale('de'));
+        expect(de.syncStatusWaitingImport, isNot(_waiting),
+            reason: 'guard: the translation differs from the English');
+        expect(find.text(de.syncStatusWaitingImport), findsOneWidget);
+        expect(find.text(_waiting), findsNothing);
+      });
+    }
+
+    test('pure: the refusal reason is not shown verbatim', () {
+      final de = lookupAppLocalizations(const Locale('de'));
+      final s = _waitingImport(reason: _waiting);
+      expect(syncStatusLine(s, _now, de), de.syncStatusWaitingImport);
+      expect(syncProblem(s, de)!.text, de.syncStatusWaitingImport);
     });
   });
 }

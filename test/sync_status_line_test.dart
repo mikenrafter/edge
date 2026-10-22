@@ -270,7 +270,13 @@ void main() {
 
     _tw('downloading, the band has nothing new', (t) async {
       await t.pumpWidget(_control(_nothingNew()));
-      _expectLine(t, 'Nothing new on the band', spinner: true);
+      // The headline follows the ACTIVE step (Calculate); the download's
+      // result stays on its own row.
+      _expectLine(t, 'Calculating…', spinner: true);
+      await t.tap(find.text('Calculating…'));
+      await _settle(t);
+      expect(find.text('Nothing new on the band'), findsOneWidget,
+          reason: 'the Download row keeps what the download did');
     });
 
     _tw('deriving, day known', (t) async {
@@ -291,8 +297,8 @@ void main() {
       expect(find.text('Sync now'), findsNothing);
     });
 
-    _tw('waiting on another calculation, with download detail: that line',
-        (t) async {
+    _tw('waiting on another calculation, with download detail: calculation '
+        'headline, download kept in its row', (t) async {
       await t.pumpWidget(_control(_deriving(
         const SyncCalculateDetail(waiting: true),
         download: SyncDownloadDetail(
@@ -300,27 +306,28 @@ void main() {
             chunks: 104,
             syncedThrough: DateTime(2026, 9, 30, 14, 32)),
       )));
-      expect(
-          find.byWidgetPredicate((w) =>
-              w is Text &&
-              RegExp(r'^Downloaded · synced through .*14:32$')
-                  .hasMatch(w.data ?? '')),
-          findsOneWidget);
-      expect(find.text('Waiting for another calculation…'), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
+      expect(find.textContaining('Downloaded'), findsNothing);
+      await t.tap(find.text('Calculating · waiting for another calculation'));
+      await _settle(t);
+      expect(find.textContaining('14:32'), findsOneWidget,
+          reason: 'the Download row says where the data goes through');
     });
 
-    _tw('waiting, the band had nothing new: says so', (t) async {
+    _tw('waiting, the band had nothing new: still the calculation headline',
+        (t) async {
       await t.pumpWidget(_control(_deriving(
         const SyncCalculateDetail(waiting: true),
         download: const SyncDownloadDetail(),
       )));
-      _expectLine(t, 'Nothing new on the band', spinner: true);
-      expect(find.text('Waiting for another calculation…'), findsNothing);
+      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
+      await t.tap(find.text('Calculating · waiting for another calculation'));
+      await _settle(t);
+      expect(find.text('Nothing new on the band'), findsOneWidget);
     });
 
-    _tw('waiting, a backlog is known: one download line, not the fallback',
-        (t) async {
+    _tw('waiting, a backlog is known: the headline is the calculation, not '
+        'the download', (t) async {
       await t.pumpWidget(_control(_deriving(
         const SyncCalculateDetail(waiting: true),
         download: SyncDownloadDetail(
@@ -329,20 +336,14 @@ void main() {
             syncedThrough: DateTime(2026, 9, 30, 7, 0),
             bandNewest: DateTime(2026, 9, 30, 9, 10)),
       )));
-      expect(find.text('Waiting for another calculation…'), findsNothing);
-      final backlog = find.text('2 h 10 min of band time still to fetch');
-      final through = find.byWidgetPredicate((w) =>
-          w is Text && (w.data ?? '').startsWith('Downloaded · synced through'));
-      expect(
-          backlog.evaluate().length + through.evaluate().length, 1,
-          reason: 'exactly one most-useful download line');
+      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
+      expect(find.textContaining('still to fetch'), findsNothing);
     });
 
-    _tw('waiting with no download detail at all: the honest fallback',
-        (t) async {
+    _tw('waiting with no download detail at all: the same headline', (t) async {
       await t.pumpWidget(_control(
           _deriving(const SyncCalculateDetail(waiting: true))));
-      _expectLine(t, 'Waiting for another calculation…', spinner: true);
+      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
     });
 
     _tw('completed: "Synced just now"', (t) async {
