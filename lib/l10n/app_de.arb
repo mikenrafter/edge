@@ -2152,6 +2152,8 @@
   "settingsGroupDeveloper": "Entwickler",
   "settingsComponentGalleryRowTitle": "Komponentengalerie",
   "settingsComponentGalleryRowSub": "Alle Komponenten, in jeder Textgröße, in hellem und dunklem Design",
+  "settingsLogsRowTitle": "Protokolle",
+  "devLogsShareLabel": "Entwicklerprotokoll teilen (ZIP)",
   "settingsDeveloperModeRowTitle": "Entwicklermodus",
   "settingsResetAllDataRowTitle": "Alle Daten zurücksetzen",
   "settingsNotificationsNavTitle": "Benachrichtigungen",

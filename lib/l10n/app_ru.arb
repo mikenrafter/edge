@@ -5594,6 +5594,8 @@
   "settingsGroupDeveloper": "Для разработчика",
   "settingsComponentGalleryRowTitle": "Галерея компонентов",
   "settingsComponentGalleryRowSub": "Все компоненты с разным масштабом текста и в обеих темах",
+  "settingsLogsRowTitle": "Журналы",
+  "devLogsShareLabel": "Поделиться журналом разработчика (ZIP)",
   "settingsDeveloperModeRowTitle": "Режим разработчика",
   "settingsResetAllDataRowTitle": "Сбросить все данные",
   "settingsNotificationsNavTitle": "Уведомления",

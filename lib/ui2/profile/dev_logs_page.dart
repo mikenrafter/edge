@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../activity/share.dart' show shareOrigin;
 import '../ui2.dart';
 
@@ -115,7 +116,9 @@ class DevLogsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: P.of(context).bg,
-        appBar: AppBar(title: const Text('Logs')),
+        appBar: AppBar(
+            title: Text(
+                AppLocalizations.of(context)?.settingsLogsRowTitle ?? 'Logs')),
         body: SafeArea(
           child: ListView(
             padding: const EdgeInsets.all(S.x4),
@@ -131,7 +134,8 @@ class DevLogsPage extends StatelessWidget {
               DevLogActions(
                 export: export,
                 clear: clear,
-                shareLabel: 'Share dev log (ZIP)',
+                shareLabel: AppLocalizations.of(context)?.devLogsShareLabel ??
+                    'Share dev log (ZIP)',
                 shareKey: const ValueKey('dev-logs-share'),
                 clearKey: const ValueKey('dev-logs-clear'),
               ),

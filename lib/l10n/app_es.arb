@@ -2099,6 +2099,8 @@
   "settingsGroupDeveloper": "Desarrollador",
   "settingsComponentGalleryRowTitle": "Galería de componentes",
   "settingsComponentGalleryRowSub": "Todos los componentes, en cualquier escala de texto, en cualquiera de los dos temas",
+  "settingsLogsRowTitle": "Registros",
+  "devLogsShareLabel": "Compartir registro de desarrollo (ZIP)",
   "settingsDeveloperModeRowTitle": "Modo desarrollador",
   "settingsResetAllDataRowTitle": "Restablecer todos los datos",
   "settingsNotificationsNavTitle": "Notificaciones",

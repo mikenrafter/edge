@@ -1015,7 +1015,8 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.flaskConical, C.purple, 'Device lab',
                         sub: 'Try gestures the band does not report on its own',
                         onTap: onDeviceLab),
-                    SetRow(LucideIcons.scrollText, C.blue, 'Logs',
+                    SetRow(LucideIcons.scrollText, C.blue,
+                        l?.settingsLogsRowTitle ?? 'Logs',
                         onTap: onLogs),
                     // Not a Health tab yet: up to four metrics on one time axis.
                     SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',

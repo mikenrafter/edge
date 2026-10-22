@@ -2092,6 +2092,8 @@
   "settingsGroupDeveloper": "डेवलपर",
   "settingsComponentGalleryRowTitle": "कंपोनेंट गैलरी",
   "settingsComponentGalleryRowSub": "किसी भी टेक्स्ट स्केल पर, किसी भी थीम में हर कंपोनेंट",
+  "settingsLogsRowTitle": "लॉग",
+  "devLogsShareLabel": "डेवलपर लॉग साझा करें (ZIP)",
   "settingsDeveloperModeRowTitle": "डेवलपर मोड",
   "settingsResetAllDataRowTitle": "सारा डेटा रीसेट करें",
   "settingsNotificationsNavTitle": "सूचनाएं",

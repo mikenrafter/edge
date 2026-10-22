@@ -2092,6 +2092,8 @@
   "settingsGroupDeveloper": "Développeur",
   "settingsComponentGalleryRowTitle": "Galerie de composants",
   "settingsComponentGalleryRowSub": "Chaque composant, à n’importe quelle échelle de texte, dans les deux thèmes",
+  "settingsLogsRowTitle": "Journaux",
+  "devLogsShareLabel": "Partager le journal développeur (ZIP)",
   "settingsDeveloperModeRowTitle": "Mode développeur",
   "settingsResetAllDataRowTitle": "Réinitialiser toutes les données",
   "settingsNotificationsNavTitle": "Notifications",

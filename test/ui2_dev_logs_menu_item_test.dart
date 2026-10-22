@@ -12,6 +12,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/ui2/profile/dev_logs_page.dart';
@@ -144,6 +146,45 @@ void main() {
       await t.tap(find.text('Clear').last);
       await t.pumpAndSettle();
       expect(calls.where((m) => m.startsWith('Clipboard.')), isEmpty);
+    });
+  });
+
+  group('localized', () {
+    Future<void> pumpDe(WidgetTester t, Widget w) async {
+      t.view.physicalSize = const Size(1170, 30000);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(ChangeNotifierProvider<LocaleController>.value(
+        value: LocaleController.seed(null),
+        child: MaterialApp(
+          locale: const Locale('de'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: buildTheme(Brightness.light),
+          home: w,
+        ),
+      ));
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('the Developer row is not English under German', (t) async {
+      await pumpDe(t, MoreSettingsView(devMode: true, onLogs: () {}));
+      expect(find.text('Logs'), findsNothing);
+      expect(find.text('Protokolle'), findsOneWidget);
+    });
+
+    testWidgets('the page title and Share label are German', (t) async {
+      await pumpDe(
+          t, DevLogsPage(export: (_) async => true, clear: () async {}));
+      expect(find.text('Logs'), findsNothing);
+      expect(find.text('Protokolle'), findsOneWidget);
+      expect(find.text('Share dev log (ZIP)'), findsNothing);
+      expect(find.text('Entwicklerprotokoll teilen (ZIP)'), findsOneWidget);
     });
   });
 }

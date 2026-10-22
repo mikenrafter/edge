@@ -2092,6 +2092,8 @@
   "settingsGroupDeveloper": "开发者",
   "settingsComponentGalleryRowTitle": "组件库",
   "settingsComponentGalleryRowSub": "所有组件，在任意文字大小、任意主题下的展示",
+  "settingsLogsRowTitle": "日志",
+  "devLogsShareLabel": "分享开发者日志（ZIP）",
   "settingsDeveloperModeRowTitle": "开发者模式",
   "settingsResetAllDataRowTitle": "重置所有数据",
   "settingsNotificationsNavTitle": "通知",

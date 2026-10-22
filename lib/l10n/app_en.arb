@@ -10872,6 +10872,14 @@
   "@settingsComponentGalleryRowSub": {
     "description": "Developer settings row subtitle for the component gallery"
   },
+  "settingsLogsRowTitle": "Logs",
+  "@settingsLogsRowTitle": {
+    "description": "Developer settings row title, and the title of the page it opens, for the dev log with Share and Clear"
+  },
+  "devLogsShareLabel": "Share dev log (ZIP)",
+  "@devLogsShareLabel": {
+    "description": "Button on the Developer Logs page that shares the dev log as one ZIP through the share sheet"
+  },
   "settingsDeveloperModeRowTitle": "Developer mode",
   "@settingsDeveloperModeRowTitle": {
     "description": "Developer settings row title to leave developer mode"
