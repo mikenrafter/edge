@@ -27,6 +27,11 @@ import 'support/app_state_derive_harness.dart';
 const _prefKey = 'import_reentry_pending';
 const _name = 'import_round4.db';
 
+class NoRollup implements ImportRollupProbe {
+  @override
+  Future<void> finalize(Profile profile) async {}
+}
+
 class _Probe implements ImportRollupProbe {
   _Probe({this.during, this.throwing});
   final void Function()? during;
@@ -39,7 +44,7 @@ class _Probe implements ImportRollupProbe {
 }
 
 /// A source export; [lostKey] adds the marker that says a coach key was set.
-Future<String> _source(Directory dir, {required bool lostKey}) async {
+Future<String> sourceWith(Directory dir, {required bool lostKey}) async {
   final path = await buildSource(dir);
   if (lostKey) {
     final s = await databaseFactoryFfi.openDatabase(path);
@@ -52,7 +57,7 @@ Future<String> _source(Directory dir, {required bool lostKey}) async {
   return path;
 }
 
-Future<void> _killMidCopy(String path) async {
+Future<void> killMidCopy(String path) async {
   crashAt('decoded_onehz', 2);
   await expectLater(
       LocalDb.importFromDbFile(path), throwsA(isA<StateError>()));
@@ -107,7 +112,7 @@ void main() {
       SharedPreferences.setMockInitialValues({_prefKey: kNeedsReentryCoachKey});
       await app.loadImportReentry();
       expect(app.importReentry.value, [kNeedsReentryCoachKey], reason: 'guard');
-      await _killMidCopy(await _source(tmp, lostKey: false));
+      await killMidCopy(await sourceWith(tmp, lostKey: false));
       await app.resumeUnfinishedImport(force: true);
       expect(app.importReentry.value, [kNeedsReentryCoachKey]);
       expect(await _stored(), contains(kNeedsReentryCoachKey));
@@ -117,7 +122,7 @@ void main() {
       SharedPreferences.setMockInitialValues({_prefKey: kNeedsReentryCoachKey});
       await app.loadImportReentry();
       app.debugFinalizeImport = _Probe(during: app.dismissImportReentry);
-      await _killMidCopy(await _source(tmp, lostKey: true));
+      await killMidCopy(await sourceWith(tmp, lostKey: true));
       await app.resumeUnfinishedImport(force: true);
       expect(app.importReentry.value, isEmpty);
       await Future<void>.delayed(Duration.zero);
@@ -130,7 +135,7 @@ void main() {
     test('a rebuild that throws after the copy still leaves the warning for '
         'the next start', () async {
       app.debugFinalizeImport = _Probe(throwing: StateError('rebuild failed'));
-      await _killMidCopy(await _source(tmp, lostKey: true));
+      await killMidCopy(await sourceWith(tmp, lostKey: true));
       await app.resumeUnfinishedImport(force: true);
       final restarted = AppState.forTesting();
       addTearDown(restarted.importProgress.dispose);
@@ -140,7 +145,7 @@ void main() {
 
     test('a refused write is reported: the import fails and stays unfinished',
         () async {
-      final path = await _source(tmp, lostKey: true);
+      final path = await sourceWith(tmp, lostKey: true);
       SharedPreferencesStorePlatform.instance = _RefusingStore();
       SharedPreferences.resetStatic();
       addTearDown(SharedPreferences.resetStatic);
