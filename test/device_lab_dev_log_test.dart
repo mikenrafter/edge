@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/ui2/profile/dev_logs_page.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -12,6 +13,16 @@ Future<void> _pump(WidgetTester t, Widget w) async {
   addTearDown(t.view.reset);
   await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.light), home: w));
   await t.pumpAndSettle();
+}
+
+class _Fake implements DevLogActionsPort {
+  _Fake({this.exportAs, this.clearAs});
+  final Future<bool> Function(Rect origin)? exportAs;
+  final Future<void> Function()? clearAs;
+  @override
+  Future<bool> export(Rect origin) => (exportAs ?? (_) async => true)(origin);
+  @override
+  Future<void> clear() => (clearAs ?? () async {})();
 }
 
 final _export = find.text('Export dev log (ZIP)');
@@ -34,8 +45,7 @@ void main() {
           initialTab: LabTab.logs,
           ecgSupported: false,
           tapTools: true,
-          exportDevLog: (_) async => true,
-          clearDevLog: () async {},
+          devLog: _Fake(),
         ));
     expect(_export, findsOneWidget);
     expect(_clear, findsOneWidget);
@@ -53,11 +63,10 @@ void main() {
         DeviceLabView(
           initialTab: LabTab.logs,
           ecgSupported: false,
-          exportDevLog: (o) async {
+          devLog: _Fake(exportAs: (o) async {
             origins.add(o);
             return ok;
-          },
-          clearDevLog: () async {},
+          }),
         ));
     await t.tap(_export);
     await t.pumpAndSettle();
@@ -77,7 +86,7 @@ void main() {
         DeviceLabView(
           initialTab: LabTab.logs,
           ecgSupported: false,
-          exportDevLog: (_) async => throw StateError('boom'),
+          devLog: _Fake(exportAs: (_) async => throw StateError('boom')),
         ));
     await t.tap(_export);
     await t.pumpAndSettle();
@@ -91,7 +100,7 @@ void main() {
         DeviceLabView(
           initialTab: LabTab.logs,
           ecgSupported: false,
-          clearDevLog: () async => cleared++,
+          devLog: _Fake(clearAs: () async => cleared++),
         ));
     await t.tap(_clear);
     await t.pumpAndSettle();
@@ -110,7 +119,7 @@ void main() {
         DeviceLabView(
           initialTab: LabTab.logs,
           ecgSupported: false,
-          clearDevLog: () async => cleared++,
+          devLog: _Fake(clearAs: () async => cleared++),
         ));
     await t.tap(_clear);
     await t.pumpAndSettle();
@@ -126,7 +135,7 @@ void main() {
         DeviceLabView(
           initialTab: LabTab.logs,
           ecgSupported: false,
-          clearDevLog: () async => throw StateError('locked'),
+          devLog: _Fake(clearAs: () async => throw StateError('locked')),
         ));
     await t.tap(_clear);
     await t.pumpAndSettle();

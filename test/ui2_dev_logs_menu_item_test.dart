@@ -4,8 +4,8 @@
 //
 // Contract pinned here:
 //   * MoreSettingsView gets `VoidCallback? onLogs`; the row's title is "Logs".
-//   * `DevLogsPage({export, clear})` in lib/ui2/profile/dev_logs_page.dart takes
-//     the same injectable seams as the Device lab's dev-log section, with
+//   * `DevLogsPage({port})` in lib/ui2/profile/dev_logs_page.dart takes a
+//     DevLogActionsPort (the Device lab section shares it), with
 //     buttons keyed `dev-logs-share` and `dev-logs-clear`.
 //   * Copy reuses the lab's: 'Could not export the dev log.', 'Clear the dev
 //     log?' with 'Keep it' / 'Clear', and 'Dev log cleared'.
@@ -30,6 +30,16 @@ Future<void> _pump(WidgetTester t, Widget w) async {
     child: MaterialApp(theme: buildTheme(Brightness.light), home: w),
   ));
   await t.pumpAndSettle();
+}
+
+class _Fake implements DevLogActionsPort {
+  _Fake({this.exportAs, this.clearAs});
+  final Future<bool> Function(Rect origin)? exportAs;
+  final Future<void> Function()? clearAs;
+  @override
+  Future<bool> export(Rect origin) => (exportAs ?? (_) async => true)(origin);
+  @override
+  Future<void> clear() => (clearAs ?? () async {})();
 }
 
 final _share = find.byKey(const ValueKey('dev-logs-share'));
@@ -63,7 +73,7 @@ void main() {
   group('the Logs page', () {
     testWidgets('has Share and Clear, and no Copy', (t) async {
       await _pump(
-          t, DevLogsPage(export: (_) async => true, clear: () async {}));
+          t, DevLogsPage(port: _Fake(exportAs: (_) async => true, clearAs: () async {})));
       expect(_share, findsOneWidget);
       expect(_clear, findsOneWidget);
       expect(find.textContaining('Copy'), findsNothing);
@@ -72,13 +82,13 @@ void main() {
     testWidgets('Share calls the export once with an origin; a failure says so',
         (t) async {
       final origins = <Rect>[];
-      await _pump(t, DevLogsPage(
-        export: (o) async {
+      await _pump(t, DevLogsPage(port: _Fake(
+        exportAs: (o) async {
           origins.add(o);
           return false;
         },
-        clear: () async {},
-      ));
+        clearAs: () async {},
+      )));
       await t.tap(_share);
       await t.pumpAndSettle();
       expect(origins, hasLength(1));
@@ -87,13 +97,13 @@ void main() {
 
     testWidgets('a successful Share shows no failure message', (t) async {
       var n = 0;
-      await _pump(t, DevLogsPage(
-        export: (_) async {
+      await _pump(t, DevLogsPage(port: _Fake(
+        exportAs: (_) async {
           n++;
           return true;
         },
-        clear: () async {},
-      ));
+        clearAs: () async {},
+      )));
       await t.tap(_share);
       await t.pumpAndSettle();
       expect(n, 1);
@@ -102,8 +112,8 @@ void main() {
 
     testWidgets('Clear asks first; Keep it clears nothing', (t) async {
       var cleared = 0;
-      await _pump(t, DevLogsPage(
-          export: (_) async => true, clear: () async => cleared++));
+      await _pump(t, DevLogsPage(port: _Fake(
+          exportAs: (_) async => true, clearAs: () async => cleared++)));
       await t.tap(_clear);
       await t.pumpAndSettle();
       expect(find.text('Clear the dev log?'), findsOneWidget);
@@ -116,8 +126,8 @@ void main() {
 
     testWidgets('confirming clears once and says so', (t) async {
       var cleared = 0;
-      await _pump(t, DevLogsPage(
-          export: (_) async => true, clear: () async => cleared++));
+      await _pump(t, DevLogsPage(port: _Fake(
+          exportAs: (_) async => true, clearAs: () async => cleared++)));
       await t.tap(_clear);
       await t.pumpAndSettle();
       await t.tap(find.text('Clear').last);
@@ -135,8 +145,8 @@ void main() {
       });
       addTearDown(() => t.binding.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, null));
-      await _pump(t, DevLogsPage(
-          export: (_) async => true, clear: () async {}));
+      await _pump(t, DevLogsPage(port: _Fake(
+          exportAs: (_) async => true, clearAs: () async {})));
       // Without the page's buttons there is nothing exercised: require them.
       expect(_share, findsOneWidget);
       await t.tap(_share);
@@ -180,11 +190,44 @@ void main() {
 
     testWidgets('the page title and Share label are German', (t) async {
       await pumpDe(
-          t, DevLogsPage(export: (_) async => true, clear: () async {}));
+          t, DevLogsPage(port: _Fake(exportAs: (_) async => true, clearAs: () async {})));
       expect(find.text('Logs'), findsNothing);
       expect(find.text('Protokolle'), findsOneWidget);
       expect(find.text('Share dev log (ZIP)'), findsNothing);
       expect(find.text('Entwicklerprotokoll teilen (ZIP)'), findsOneWidget);
+    });
+
+    testWidgets('the rest of the page and its messages are German',
+        (t) async {
+      var ok = false;
+      var failClear = false;
+      await pumpDe(
+          t,
+          DevLogsPage(port: _Fake(
+            exportAs: (_) async => ok,
+            clearAs: () async => failClear ? throw StateError('x') : null,
+          )));
+      expect(find.textContaining('Auf dem Telefon gespeichert'),
+          findsOneWidget);
+      expect(find.text('Entwicklerprotokoll löschen'), findsOneWidget);
+      await t.tap(_share);
+      await t.pumpAndSettle();
+      expect(find.text('Entwicklerprotokoll konnte nicht exportiert werden.'),
+          findsOneWidget);
+      await t.tap(_clear);
+      await t.pumpAndSettle();
+      expect(find.text('Entwicklerprotokoll löschen?'), findsOneWidget);
+      expect(find.text('Behalten'), findsOneWidget);
+      await t.tap(find.text('Löschen'));
+      await t.pumpAndSettle();
+      expect(find.text('Entwicklerprotokoll gelöscht'), findsOneWidget);
+      failClear = true;
+      await t.tap(_clear);
+      await t.pumpAndSettle();
+      await t.tap(find.text('Löschen'));
+      await t.pumpAndSettle();
+      expect(find.text('Entwicklerprotokoll konnte nicht gelöscht werden.'),
+          findsOneWidget);
     });
   });
 }

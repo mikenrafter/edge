@@ -44,7 +44,6 @@ import '../../state/acked_bool.dart';
 import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
 import '../../sync/dev_log.dart';
-import '../../sync/dev_log_export.dart' show shareDevLog;
 import '../../telemetry/health_uploader.dart';
 import '../../theme/theme_controller.dart';
 import '../activity/zones.dart' show ZonesDetail;
@@ -260,10 +259,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       onDeviceLab: () => goto(c, const DeviceLab()),
       onLogs: () => goto(
         c,
-        DevLogsPage(
-          export: (origin) => shareDevLog(DevLog.instance, origin: origin),
-          clear: DevLog.instance.clear,
-        ),
+        const DevLogsPage(),
       ),
       onDataExplorer: () => goto(c, const ExplorerScreen()),
       onCoach: () => goto(c, const CoachSetup()),

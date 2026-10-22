@@ -12400,20 +12400,6 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "ui2/profile/dev_logs_page.dart",
-      "symbol": "_DevLogActionsState._clear",
-      "element": "widget.clear!()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ui2/profile/dev_logs_page.dart",
-      "symbol": "_DevLogActionsState._export",
-      "element": "widget.export!(origin)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "ui2/profile/device_lab.dart",
       "symbol": "DeviceLabView._save",
       "element": "logText?.call()",

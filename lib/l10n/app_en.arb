@@ -10880,6 +10880,42 @@
   "@devLogsShareLabel": {
     "description": "Button on the Developer Logs page that shares the dev log as one ZIP through the share sheet"
   },
+  "devLogsDescription": "Kept on the phone, one file a day for the last 7 days, in the app's files folder under dev_log, so it survives an update. Alarm, wake and sync lines are always kept; the rest only while developer mode is on. The export is one ZIP with those files and the recent wake trace.",
+  "@devLogsDescription": {
+    "description": "Explanatory text above the dev log's Share and Clear buttons"
+  },
+  "devLogsClearLabel": "Clear dev log",
+  "@devLogsClearLabel": {
+    "description": "Button that deletes the saved dev log"
+  },
+  "devLogsClearConfirmTitle": "Clear the dev log?",
+  "@devLogsClearConfirmTitle": {
+    "description": "Title of the confirmation before the dev log is deleted"
+  },
+  "devLogsClearConfirmBody": "Every saved day of the dev log, and the old sync log if it is still there, is deleted from this phone. Anything you exported stays where you sent it. There is no undo.",
+  "@devLogsClearConfirmBody": {
+    "description": "Body of the confirmation before the dev log is deleted"
+  },
+  "devLogsClearAction": "Clear",
+  "@devLogsClearAction": {
+    "description": "Confirm button that deletes the dev log"
+  },
+  "devLogsKeepAction": "Keep it",
+  "@devLogsKeepAction": {
+    "description": "Cancel button that keeps the dev log"
+  },
+  "devLogsExportFailed": "Could not export the dev log.",
+  "@devLogsExportFailed": {
+    "description": "Message when sharing the dev log fails"
+  },
+  "devLogsCleared": "Dev log cleared",
+  "@devLogsCleared": {
+    "description": "Message after the dev log is deleted"
+  },
+  "devLogsClearFailed": "Could not clear the dev log.",
+  "@devLogsClearFailed": {
+    "description": "Message when deleting the dev log fails"
+  },
   "settingsDeveloperModeRowTitle": "Developer mode",
   "@settingsDeveloperModeRowTitle": {
     "description": "Developer settings row title to leave developer mode"

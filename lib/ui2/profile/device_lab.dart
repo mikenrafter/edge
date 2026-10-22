@@ -37,12 +37,11 @@ import '../../gestures/hardware_probe_runner.dart';
 import '../../gestures/hardware_probes.dart';
 import '../../gestures/imu_recording_store.dart';
 import '../../gestures/lab_log.dart';
+import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../state/prefs.dart';
-import '../../sync/dev_log.dart';
-import '../../sync/dev_log_export.dart';
 import '../../util/log_file.dart';
 import '../activity/share.dart' show shareOrigin;
 import '../ui2.dart';
@@ -52,7 +51,8 @@ import 'live_devices.dart' show LiveDevices;
 import 'motion_lab.dart';
 import 'pattern_probe_page.dart';
 import 'profile.dart';
-import 'dev_logs_page.dart' show DevLogActions;
+import 'dev_logs_page.dart'
+    show DevLogActions, DevLogActionsPort, DeviceDevLogPort, devLogsDescriptionEn;
 
 export '../../gestures/lab_log.dart' show DeviceLabEntry, labClock;
 
@@ -153,9 +153,7 @@ class DeviceLab extends StatelessWidget {
             ? MotionLabPanel(recorder: app.imuLab, store: _motionStore)
             : null,
         live: const LiveDevices(embedded: true),
-        exportDevLog: (origin) =>
-            shareDevLog(DevLog.instance, origin: origin),
-        clearDevLog: DevLog.instance.clear,
+        devLog: const DeviceDevLogPort(),
       ),
     );
   }
@@ -268,8 +266,7 @@ class DeviceLabView extends StatelessWidget {
     this.live,
     this.motion,
     this.initialTab,
-    this.exportDevLog,
-    this.clearDevLog,
+    this.devLog,
   });
 
   final bool ecgSupported;
@@ -333,13 +330,9 @@ class DeviceLabView extends StatelessWidget {
   /// Opens this tab over the remembered one, when it is offered.
   final LabTab? initialTab;
 
-  /// The persistent dev log's ZIP export, given the share sheet's anchor;
-  /// true when the share ran. The Logs tab shows the section only when this or
-  /// [clearDevLog] is given.
-  final Future<bool> Function(Rect origin)? exportDevLog;
-
-  /// Deletes the persistent dev log, after a confirm.
-  final Future<void> Function()? clearDevLog;
+  /// The persistent dev log's export and clear (after a confirm). The Logs
+  /// tab shows the section only when this is given.
+  final DevLogActionsPort? devLog;
 
   /// The tabs this lab offers: one with nothing to show is left out.
   List<LabTab> get _tabs => [
@@ -503,8 +496,7 @@ class DeviceLabView extends StatelessWidget {
       Padding(padding: const EdgeInsets.only(top: S.x3), child: live!),
     ],
     LabTab.logs => [
-      if (exportDevLog != null || clearDevLog != null)
-        _DevLogSection(export: exportDevLog, clear: clearDevLog),
+      if (devLog != null) _DevLogSection(port: devLog),
       if (sessions.isNotEmpty)
         SettingsAccordion('Sessions',
             id: 'device_lab_sessions',
@@ -556,11 +548,9 @@ class DeviceLabView extends StatelessWidget {
 
 /// The persistent dev log: export it as one ZIP, or clear it.
 class _DevLogSection extends StatelessWidget {
-  const _DevLogSection({this.export, this.clear});
-  final Future<bool> Function(Rect origin)? export;
-  final Future<void> Function()? clear;
+  const _DevLogSection({this.port});
+  final DevLogActionsPort? port;
 
-  @override
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
@@ -570,17 +560,13 @@ class _DevLogSection extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: S.x3),
             child: Text(
-              'Kept on the phone, one file a day for the last 7 days, in the '
-              "app's files folder under dev_log, so it survives an update. "
-              'Alarm, wake and sync lines are always kept; the rest only '
-              'while developer mode is on. The export is one ZIP with those '
-              'files and the recent wake trace.',
+              AppLocalizations.of(c)?.devLogsDescription ??
+                  devLogsDescriptionEn,
               style: F.cap.copyWith(color: p.ink2, height: 1.4),
             ),
           ),
           DevLogActions(
-            export: export,
-            clear: clear,
+            port: port,
             shareLabel: 'Export dev log (ZIP)',
           ),
         ]);
