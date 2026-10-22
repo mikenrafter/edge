@@ -92,6 +92,9 @@ class InvestigateData {
   final int? windowStart, windowEnd;
   final List<double> series;
 
+  /// RED STUB: older version per [series] value (same indices).
+  final List<int?> seriesOlder;
+
   const InvestigateData({
     this.day,
     this.days = const [],
@@ -110,6 +113,7 @@ class InvestigateData {
     this.windowStart,
     this.windowEnd,
     this.series = const [],
+    this.seriesOlder = const [],
   });
 
   static Future<InvestigateData> load(LocalRepository repo, String key,

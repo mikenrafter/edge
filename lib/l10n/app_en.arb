@@ -17628,5 +17628,13 @@
         "type": "int"
       }
     }
+  },
+  "briefingOlderFootnote": "Some figures in this note come from an older calculation ({versions}).",
+  "@briefingOlderFootnote": {
+    "placeholders": {
+      "versions": {
+        "type": "String"
+      }
+    }
   }
 }

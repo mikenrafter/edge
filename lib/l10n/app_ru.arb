@@ -8752,5 +8752,13 @@
         "type": "int"
       }
     }
+  },
+  "briefingOlderFootnote": "Некоторые цифры в этой заметке получены по более старому расчёту ({versions}).",
+  "@briefingOlderFootnote": {
+    "placeholders": {
+      "versions": {
+        "type": "String"
+      }
+    }
   }
 }

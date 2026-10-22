@@ -1,3 +1,4 @@
+import '../ai/nightly_sweep.dart' show SweepFinding;
 import 'app_localizations.dart';
 import 'display_text.dart';
 import 'presentation_text.dart';
@@ -49,3 +50,7 @@ String sweepText(AppLocalizations? l, String text) {
   }
   return text;
 }
+
+/// RED STUB: the finding as shown, with its localized older-calculation note.
+String sweepFindingText(AppLocalizations? l, SweepFinding f) =>
+    sweepText(l, f.text);

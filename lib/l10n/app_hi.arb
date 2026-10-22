@@ -3367,5 +3367,13 @@
         "type": "int"
       }
     }
+  },
+  "briefingOlderFootnote": "इस नोट के कुछ आँकड़े पुरानी गणना ({versions}) से आए हैं।",
+  "@briefingOlderFootnote": {
+    "placeholders": {
+      "versions": {
+        "type": "String"
+      }
+    }
   }
 }

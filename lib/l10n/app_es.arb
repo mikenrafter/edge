@@ -3385,5 +3385,13 @@
         "type": "int"
       }
     }
+  },
+  "briefingOlderFootnote": "Algunas cifras de esta nota provienen de un cálculo anterior ({versions}).",
+  "@briefingOlderFootnote": {
+    "placeholders": {
+      "versions": {
+        "type": "String"
+      }
+    }
   }
 }

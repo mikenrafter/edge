@@ -75,6 +75,24 @@ void main() {
       expect(olderMark('headline'), findsOneWidget);
     });
 
+    testWidgets('a trailing gap: "latest" is the last real reading and takes '
+        'its flag from THAT day', (t) async {
+      // Today has no row; yesterday (older) is the latest reading.
+      await _pump(t, 'strain', series(10, flagged: {1}, gaps: {0}),
+          window: '7 days');
+      expect(olderMark('latest'), findsOneWidget);
+      expect(find.descendant(of: olderNote('latest'), matching: find.textContaining(kNoteV104)),
+          findsOneWidget);
+    });
+
+    testWidgets('a trailing gap with a current latest reading: no flag on it '
+        'even when today would be flagged elsewhere', (t) async {
+      await _pump(t, 'strain', series(10, flagged: {5}, gaps: {0}),
+          window: '7 days');
+      expect(olderMark('latest'), findsNothing);
+      expect(olderMark('headline'), findsOneWidget, reason: 'the average spans it');
+    });
+
     testWidgets('a window with no flagged day has no marker', (t) async {
       await _pump(t, 'strain', series(10, flagged: {9}), window: '7 days');
       expect(anyOlderMarker(), findsNothing);

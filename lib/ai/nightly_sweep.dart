@@ -38,6 +38,8 @@ class SweepSeries {
 
   final double today;
   final int? todayOlderVersion;
+  // RED STUB: older version per history value, aligned with [history].
+  final List<int?> historyOlderVersions;
 
   /// Values STRICTLY BEFORE today, oldest→newest, already truncated at any
   /// algo-version break (values across one are not comparable — see
@@ -50,6 +52,7 @@ class SweepSeries {
     required this.today,
     required this.history,
     this.todayOlderVersion,
+    this.historyOlderVersions = const [],
     this.unit = '',
     this.decimals = 0,
   });
@@ -67,11 +70,15 @@ class SweepFinding {
   /// True when today is above the middle, false below.
   final bool high;
 
+  // RED STUB: distinct older versions behind this finding, ascending.
+  final List<int> olderVersions;
+
   const SweepFinding({
     required this.key,
     required this.text,
     required this.z,
     required this.high,
+    this.olderVersions = const [],
   });
 }
 

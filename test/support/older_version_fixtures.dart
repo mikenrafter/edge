@@ -80,6 +80,9 @@ class OlderRepo extends LocalRepository {
   Future<Map<String, dynamic>> getInsights() async => const {};
 
   @override
+  Future<Map<String, dynamic>> getToday() async => const {};
+
+  @override
   Future<Map<String, dynamic>> getDayStrain(String date) async =>
       dayStrain[date] ?? dayStrain['*'] ?? const {};
 

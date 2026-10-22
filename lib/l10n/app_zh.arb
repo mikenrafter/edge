@@ -3367,5 +3367,13 @@
         "type": "int"
       }
     }
+  },
+  "briefingOlderFootnote": "此说明中的部分数字来自较早的计算（{versions}）。",
+  "@briefingOlderFootnote": {
+    "placeholders": {
+      "versions": {
+        "type": "String"
+      }
+    }
   }
 }

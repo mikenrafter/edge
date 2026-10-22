@@ -3473,5 +3473,13 @@
         "type": "int"
       }
     }
+  },
+  "briefingOlderFootnote": "Einige Angaben in dieser Notiz stammen aus einer älteren Berechnung ({versions}).",
+  "@briefingOlderFootnote": {
+    "placeholders": {
+      "versions": {
+        "type": "String"
+      }
+    }
   }
 }

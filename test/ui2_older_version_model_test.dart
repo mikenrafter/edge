@@ -17,10 +17,40 @@ void main() {
       final pts = pointsOf({
         'points': series(5, flagged: {1, 2})
       });
+      // series() is oldest first: back 4..0, so back 2 and back 1 sit at 2, 3.
       expect([for (final p in pts) p.olderVersion],
-          [null, 104, 104, null, null]);
+          [null, null, 104, 104, null]);
       // The value and time are untouched.
       expect(pts.length, 5);
+    });
+
+    test('the flag travels with the point: parsing another chart cannot '
+        'change it', () {
+      final a = pointsOf({
+        'points': [cp(1, 5, older: 104), cp(0, 6)]
+      });
+      // The same (t, v) pairs on a CURRENT chart of another metric.
+      final b = pointsOf({
+        'points': [cp(1, 5), cp(0, 6)]
+      });
+      expect([for (final p in a) p.olderVersion], [104, null]);
+      expect([for (final p in b) p.olderVersion], [null, null]);
+      // And the other way round: parsing the flagged one again later.
+      pointsOf({
+        'points': [cp(1, 5, older: 103)]
+      });
+      expect([for (final p in a) p.olderVersion], [104, null]);
+    });
+
+    test('the reason rides on the point when the payload has one', () {
+      final pts = pointsOf({
+        'points': [
+          {...cp(1, 5, older: 104), 'older_version_reason': kReasonRaw},
+          cp(0, 6, older: 104),
+          cp(2, 7),
+        ]
+      });
+      expect([for (final p in pts) p.olderReason], [kReasonRaw, null, null]);
     });
 
     test('a point with no flag, or a non-numeric flag, is current', () {

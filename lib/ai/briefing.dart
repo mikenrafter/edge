@@ -49,6 +49,9 @@ class Briefing {
   /// were actually present — absent metrics are never fabricated).
   final Map<String, dynamic> inputs;
 
+  /// RED STUB: older calculation versions behind any input finding.
+  final List<int> olderVersions;
+
   const Briefing({
     required this.day,
     required this.period,
@@ -56,6 +59,7 @@ class Briefing {
     required this.breakdownMd,
     required this.generatedAtMs,
     required this.inputs,
+    this.olderVersions = const [],
   });
 
   /// Whether producing this note involved a model at all.

@@ -90,13 +90,24 @@ void main() {
     });
   });
 
+  // The tile is the card that prints the two calorie numbers. Markers anywhere
+  // else on Home (the ring card prints neither) do not count.
+  Finder tile() => find.widgetWithText(SignalCard, 'Active energy');
+  Finder inTile(String id) =>
+      find.descendant(of: tile(), matching: olderMark(id));
+  Finder inRings(String id) =>
+      find.descendant(of: find.byType(RingTrio), matching: olderMark(id));
+
   group('active-energy tile: active and total flagged independently', () {
     testWidgets('only the active value older', (t) async {
       await _home(t,
           const HomeData(dayId: '2026-10-04', calories: _oldKcal, caloriesTotal: _curKcal));
-      expect(find.text('420'), findsOneWidget);
-      expect(olderMark('calories'), findsOneWidget);
-      expect(olderMark('calories_total'), findsNothing);
+      expect(find.descendant(of: tile(), matching: find.text('420')),
+          findsOneWidget);
+      expect(inTile('calories'), findsOneWidget);
+      expect(inTile('calories_total'), findsNothing);
+      expect(inRings('calories'), findsNothing);
+      expect(inRings('calories_total'), findsNothing);
     });
 
     testWidgets('only the total older', (t) async {
@@ -112,12 +123,13 @@ void main() {
               dayId: '2026-10-04',
               calories: Metric(value: 420, confidence: .8, tier: MetricTier.estimate),
               caloriesTotal: total));
-      expect(olderMark('calories'), findsNothing);
-      expect(olderMark('calories_total'), findsOneWidget);
+      expect(inTile('calories'), findsNothing);
+      expect(inTile('calories_total'), findsOneWidget);
+      expect(inRings('calories_total'), findsNothing);
     });
 
-    testWidgets('both older: two marks; tapping each reveals its note',
-        (t) async {
+    testWidgets('both older: two marks in the tile; tapping each reveals its '
+        'own note', (t) async {
       const total = Metric(
           value: 2100,
           confidence: .8,
@@ -126,14 +138,17 @@ void main() {
           olderVersionReason: 'need_input:name=weight_kg');
       await _home(t,
           const HomeData(dayId: '2026-10-04', calories: _oldKcal, caloriesTotal: total));
-      expect(olderMark('calories'), findsOneWidget);
-      expect(olderMark('calories_total'), findsOneWidget);
-      await t.tap(olderMark('calories_total'));
+      expect(inTile('calories'), findsOneWidget);
+      expect(inTile('calories_total'), findsOneWidget);
+      await t.tap(inTile('calories_total'));
       await t.pumpAndSettle();
       expect(
           find.text('From an older calculation (v103): '
               'This metric needs your weight, which is not on file.'),
           findsOneWidget);
+      await t.tap(inTile('calories'));
+      await t.pumpAndSettle();
+      expect(find.text(kNoteV104Reason), findsOneWidget);
     });
 
     testWidgets('both current: no marker; absent: dash, no marker', (t) async {
@@ -142,6 +157,16 @@ void main() {
       expect(anyOlderMarker(), findsNothing);
       await _home(t, const HomeData(dayId: '2026-10-04'));
       expect(anyOlderMarker(), findsNothing);
+    });
+
+    testWidgets('the tile is spoken as older', (t) async {
+      final h = t.ensureSemantics();
+      await _home(t,
+          const HomeData(dayId: '2026-10-04', calories: _oldKcal, caloriesTotal: _curKcal));
+      expect(
+          find.descendant(of: tile(), matching: find.bySemanticsLabel(kSpoken)),
+          findsWidgets);
+      h.dispose();
     });
   });
 
@@ -217,8 +242,8 @@ void main() {
       }
       expect(find.text('8.4'), findsOneWidget);
       expect(olderMark('strain'), findsOneWidget);
-      expect(olderMark('calories'), findsOneWidget);
-      expect(olderMark('calories_total'), findsNothing);
+      expect(inTile('calories'), findsOneWidget);
+      expect(inTile('calories_total'), findsNothing);
     });
   });
 }

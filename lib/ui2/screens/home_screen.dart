@@ -557,6 +557,7 @@ final Map<String, int> _olderChartPointVersions = {};
 final Map<String, int> _chartPointVersionsBySlot = {};
 
 extension ChartPointOlder on ChartPoint {
+  String? get olderReason => null; // RED STUB
   int? get olderVersion => _chartPointVersionsBySlot['$t,$v'];
 }
 
