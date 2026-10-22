@@ -44,7 +44,7 @@ const Map<String, String> kPrefsNotBackedUp = {
   'consent_health_data': 'consent is asked again on each install',
   'consent_chosen': 'says the consent question was answered; it is asked '
       'again on each install, so a restore must not mark it answered',
-  'import_reentry_pending': 'secrets the last import could not restore and '
+  kImportReentryPrefKey: 'secrets the last import could not restore and '
       'the user has not acknowledged; a fact about THIS install, so a restore '
       'must not carry it to another one',
   'coach_api_key_present': 'marks a key in this phone\'s keychain; the key '
@@ -461,14 +461,60 @@ Future<(int, int)> _sourceFacts(String srcPath) async {
   }
 }
 
-/// Persists the summary of the import just finished. Best effort: a failure
-/// here drops the previous summary and never fails the import.
+/// The preference that keeps the items still to enter again until the user
+/// acknowledges them (comma-joined ids). Device-only: see [kPrefsNotBackedUp].
+const String kImportReentryPrefKey = 'import_reentry_pending';
+
+/// The kept list, empty when none.
+Future<List<String>> readPendingReentry() async {
+  final raw = (await SharedPreferences.getInstance())
+          .getString(kImportReentryPrefKey) ??
+      '';
+  return [for (final x in raw.split(',')) if (x.isNotEmpty) x];
+}
+
+/// Replaces the kept list. True only when the platform accepted the write.
+Future<bool> writePendingReentry(List<String> ids) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return ids.isEmpty
+        ? await prefs.remove(kImportReentryPrefKey)
+        : await prefs.setString(kImportReentryPrefKey, ids.join(','));
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Adds [ids] to the kept list (never replaces what is there). One retry.
+Future<bool> _addPendingReentry(List<String> ids) async {
+  for (var attempt = 0; attempt < 2; attempt++) {
+    try {
+      final merged = [...await readPendingReentry()];
+      for (final id in ids) {
+        if (!merged.contains(id)) merged.add(id);
+      }
+      if (await writePendingReentry(merged)) return true;
+    } catch (_) {}
+  }
+  return false;
+}
+
+/// Persists the summary of the import just finished. The items to enter again
+/// are saved FIRST, before the journal is marked done, and a save that fails
+/// throws: the import then stays unfinished and the next start retries, rather
+/// than a warning being lost. The summary row itself is best effort: a failure
+/// there drops the previous summary and never fails the import.
 Future<void> recordImportSummary(
   String srcPath, {
   required int archiveBucketsSkipped,
   required BackupExtrasResult extras,
   int interruptedAndResumed = 0,
 }) async {
+  if (extras.needsReentry.isNotEmpty &&
+      !await _addPendingReentry(extras.needsReentry)) {
+    throw StateError('Could not save the note about what to enter again. '
+        'The import will be retried at the next start.');
+  }
   try {
     final (raw, above) = await _sourceFacts(srcPath);
     await LocalDb.putComputeFreshness(

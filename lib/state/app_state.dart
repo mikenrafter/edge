@@ -74,7 +74,12 @@ import '../compute/inputs/measurement_inputs.dart'
         profileWithoutStaleWeighing;
 import '../compute/profile.dart';
 import '../data/day_label.dart';
-import '../data/backup_extras.dart' show ImportSummary, lastImportSummary;
+import '../data/backup_extras.dart'
+    show
+        ImportSummary,
+        lastImportSummary,
+        readPendingReentry,
+        writePendingReentry;
 import '../data/import_progress.dart';
 import '../data/import_journal.dart';
 import '../data/med_store.dart' show MedDb, MedDef;
@@ -1565,9 +1570,6 @@ class AppState extends ChangeNotifier {
   /// [dismissImportReentry] or when the next import run begins.
   final ValueNotifier<List<String>> importReentry = ValueNotifier(const []);
 
-  /// Device-local state about this install (kPrefsNotBackedUp): comma-joined ids.
-  static const String _kImportReentry = 'import_reentry_pending';
-
   int _importRunId = 0;
 
   /// Items the user already acknowledged during the current run; a later
@@ -1605,22 +1607,16 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _persistReentry(List<String> v) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (v.isEmpty) {
-        await prefs.remove(_kImportReentry);
-      } else {
-        await prefs.setString(_kImportReentry, v.join(','));
-      }
-    } catch (_) {/* the in-memory list still serves this session */}
+    // A dismissal that does not persist only brings the note back at the next
+    // start, which is the safe direction; the import's own save is checked in
+    // recordImportSummary.
+    await writePendingReentry(v);
   }
 
   /// Reads the kept list back at startup, before an interrupted import resumes.
   Future<void> loadImportReentry() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_kImportReentry) ?? '';
-      final ids = [for (final x in raw.split(',')) if (x.isNotEmpty) x];
+      final ids = await readPendingReentry();
       if (ids.isNotEmpty) importReentry.value = List.unmodifiable(ids);
     } catch (_) {}
   }
@@ -1749,6 +1745,9 @@ class AppState extends ChangeNotifier {
   /// D38: finish an import the process died in (app start, import screen).
   /// The derive is requested only once the journal says done.
   Future<void> resumeUnfinishedImport({bool force = false}) async {
+    // Ownership is captured before any await: a resume merges into the list as
+    // it stands (restored warnings, acknowledgements) and never resets it.
+    final run = _importRunId;
     final r = await ImportJournal.resumeIfUnfinished(
       force: force,
       onProgress: (p) => importProgress.value = p,
@@ -1773,9 +1772,11 @@ class AppState extends ChangeNotifier {
       // The resumed import's own notes: a kill before they were read must not
       // lose them. Its summary was recorded by the resumed run.
       try {
-        final run = beginImportRun();
         publishImportReentry(
             run, (await lastImportSummary())?.needsReentry ?? const []);
+        // The record step added this import's items to the stored list before
+        // the user could act; the in-memory list is the truth.
+        await _persistReentry(importReentry.value);
       } catch (_) {}
       notifyListeners();
       importProgress.value = const ImportDone();
