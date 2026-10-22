@@ -17075,19 +17075,13 @@
       }
     }
   },
-  "importStep": "Step {index} of {count} · {done} of {total} rows",
+  "importStep": "Step {index} of {count}",
   "@importStep": {
     "placeholders": {
       "index": {
         "type": "String"
       },
       "count": {
-        "type": "String"
-      },
-      "done": {
-        "type": "String"
-      },
-      "total": {
         "type": "String"
       }
     }
@@ -17666,5 +17660,7 @@
   "consentPromptTitle": "Your privacy choices",
   "consentPromptBody": "Choose whether to share anonymous diagnostics or contribute health data. Both are off unless you choose otherwise.",
   "consentConfirm": "Continue",
-  "consentDecline": "No thanks"
+  "consentDecline": "No thanks",
+  "postImportDismiss": "Got it",
+  "welcomeImportContinue": "Continue"
 }

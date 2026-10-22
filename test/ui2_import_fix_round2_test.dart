@@ -15,7 +15,6 @@
 // RED STUBS in lib/: ImportOutcome.summary, AppState.lastBackupSummary /
 // importReentry / dismissImportReentry(), AppState.loadConsent(),
 // DataScreenView.pendingReentry / onDismissNotes.
-import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';

@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 
 import '../../data/import_progress.dart';
 import '../../l10n/app_localizations.dart';
-import '../activity/summary.dart' show grouped;
 import '../grammar.dart';
 import '../status_line.dart';
 import '../theme.dart';
@@ -53,10 +52,11 @@ class ImportProgressView extends StatelessWidget {
       case ImportCalculating():
         break;
       case ImportCopying():
-        detail = l?.importStep('${s.stageIndex}', '${s.stageCount}', grouped(s.rowsDone),
-                grouped(s.rowsTotal)) ??
-            'Step ${s.stageIndex} of ${s.stageCount} · '
-                '${grouped(s.rowsDone)} of ${grouped(s.rowsTotal)} rows';
+        // Step N of M is measured. rowsDone / rowsTotal are MAX(rowid) from
+        // the copy plan, not row counts (a pruned table has gaps), so they are
+        // never printed; they only drive the bar, which is monotonic.
+        detail = l?.importStep('${s.stageIndex}', '${s.stageCount}') ??
+            'Step ${s.stageIndex} of ${s.stageCount}';
         counted = true;
         bar = s.rowsTotal > 0 ? s.rowsDone / s.rowsTotal : null;
       case ImportRebuilding():

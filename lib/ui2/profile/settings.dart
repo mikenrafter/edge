@@ -43,7 +43,6 @@ import '../../state/locale_controller.dart';
 import '../../state/acked_bool.dart';
 import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
-import '../../sync/dev_log.dart';
 import '../../telemetry/health_uploader.dart';
 import '../../theme/theme_controller.dart';
 import '../activity/zones.dart' show ZonesDetail;

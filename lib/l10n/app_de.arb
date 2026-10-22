@@ -3009,7 +3009,7 @@
   "importPrepChecking": "Sicherung wird geprüft",
   "importPrepCounting": "Inhalt der Sicherung wird gezählt",
   "importCopying": "Kopiere {stage}",
-  "importStep": "Schritt {index} von {count} · {done} von {total} Zeilen",
+  "importStep": "Schritt {index} von {count}",
   "importRecalculatingStarting": "Deine Tage werden neu berechnet",
   "importRecalculating": "Neuberechnung · Tag {done} von {total}",
   "importRecalculatingDay": "Neuberechnung · Tag {done} von {total} · {day}",
@@ -3511,5 +3511,7 @@
   "consentPromptTitle": "Deine Datenschutzauswahl",
   "consentPromptBody": "Wähle, ob du anonyme Diagnosedaten teilen oder Gesundheitsdaten beitragen möchtest. Beides ist standardmäßig ausgeschaltet.",
   "consentConfirm": "Weiter",
-  "consentDecline": "Nein danke"
+  "consentDecline": "Nein danke",
+  "postImportDismiss": "Verstanden",
+  "welcomeImportContinue": "Weiter"
 }

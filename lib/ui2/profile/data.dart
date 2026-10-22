@@ -23,7 +23,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/auto_backup.dart';
-import '../../data/backup_extras.dart' show ImportSummary, lastImportSummary;
+import '../../data/backup_extras.dart' show ImportSummary;
 import '../../data/csv_export.dart';
 import '../../data/day_label.dart' show dayLabelOf;
 import '../../data/db.dart';
@@ -37,6 +37,7 @@ import '../onboarding/welcome.dart'
     show
         ImportOutcome,
         ImportReport,
+        PostImportNotes,
         PassphraseCancelled,
         askBackupPassphrase,
         runImport;
@@ -74,7 +75,6 @@ class _DataScreenState extends State<DataScreen> {
   /// AppState.importProgress already shows.
   bool _noteIsImport = false;
   ImportOutcome? _outcome;
-  ImportSummary? _importSummary;
 
   void _say(String s, {bool failed = false, bool isImport = false}) {
     if (mounted) {
@@ -338,11 +338,7 @@ class _DataScreenState extends State<DataScreen> {
             ? askBackupPassphrase(context)
             : null);
     if (!mounted) return ('', false);
-    final summary = outcome.nothingLanded ||
-            !outcome.source.toLowerCase().contains('backup')
-        ? null
-        : await lastImportSummary();
-    if (mounted) setState(() { _outcome = outcome; _importSummary = summary; });
+    setState(() => _outcome = outcome);
     return ('', false);
   }
 
@@ -352,7 +348,10 @@ class _DataScreenState extends State<DataScreen> {
     final l = AppLocalizations.of(c);
     return ValueListenableBuilder<ImportProgress?>(
       valueListenable: app.importProgress,
-      builder: (c, importProgress, _) => _view(c, app, l, importProgress),
+      builder: (c, importProgress, _) => ValueListenableBuilder<List<String>>(
+        valueListenable: app.importReentry,
+        builder: (c, _, _) => _view(c, app, l, importProgress),
+      ),
     );
   }
 
@@ -370,7 +369,8 @@ class _DataScreenState extends State<DataScreen> {
       noteFailed: _noteFailed,
       noteIsImport: _noteIsImport,
       outcome: _outcome,
-      importSummary: _importSummary,
+      pendingReentry: app.importReentry.value,
+      onDismissNotes: app.dismissImportReentry,
       cadence: app.backupCadence,
       lastBackup: app.lastBackupAt,
       backupFolder: app.backupFolder,
@@ -461,10 +461,11 @@ class DataScreenView extends StatelessWidget {
   final String reanalyzeProgress;
   final ImportOutcome? outcome;
 
-  /// RED STUB: not passed on to ImportReport yet.
+  /// Overrides the outcome's own summary in the report (tests, previews).
   final ImportSummary? importSummary;
 
-  /// RED STUB: notes kept on the app after the page was left; not drawn yet.
+  /// Items to enter again, kept on the app after the import; drawn when this
+  /// page has no report of its own (it was left and come back to).
   final List<String> pendingReentry;
   final VoidCallback? onDismissNotes;
   final BackupCadence cadence;
@@ -690,6 +691,9 @@ class DataScreenView extends StatelessWidget {
                 if (o != null) ...[
                   const SizedBox(height: S.x5),
                   ImportReport(o, summary: importSummary),
+                ] else if (pendingReentry.isNotEmpty) ...[
+                  const SizedBox(height: S.x5),
+                  PostImportNotes(pendingReentry, onDismiss: onDismissNotes),
                 ],
               ],
             ),

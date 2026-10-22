@@ -74,7 +74,7 @@ import '../compute/inputs/measurement_inputs.dart'
         profileWithoutStaleWeighing;
 import '../compute/profile.dart';
 import '../data/day_label.dart';
-import '../data/backup_extras.dart' show ImportSummary;
+import '../data/backup_extras.dart' show ImportSummary, lastImportSummary;
 import '../data/import_progress.dart';
 import '../data/import_journal.dart';
 import '../data/med_store.dart' show MedDb, MedDef;
@@ -1554,13 +1554,16 @@ class AppState extends ChangeNotifier {
   /// reporting only the row count would claim a success the user does not have.
   String? importRollupError;
 
-  /// RED STUB: the summary of the backup importEdgeBackup just finished; unset.
+  /// What the backup [importEdgeBackup] just finished says is left to do, read
+  /// right after that import; null while it runs, after a failure, or when the
+  /// summary could not be recorded (then nothing is claimed).
   ImportSummary? lastBackupSummary;
 
-  /// RED STUB: items still to re-enter after the last successful import, kept
-  /// until dismissed; never written yet.
+  /// Items to enter again after the last successful import, kept here (not in
+  /// a page) so leaving Your data, or Welcome moving on, cannot lose them.
+  /// Set by runImport, cleared by [dismissImportReentry] or the next import.
   final ValueNotifier<List<String>> importReentry = ValueNotifier(const []);
-  void dismissImportReentry() {}
+  void dismissImportReentry() => importReentry.value = const [];
 
   /// Days of stored raw history (substrate archive buckets) the last backup
   /// import could NOT merge, because they are in a format this build does
@@ -1595,6 +1598,7 @@ class AppState extends ChangeNotifier {
     // progress owner before any asynchronous work begins.
     _backupStarts++;
     _backupFailure = null;
+    lastBackupSummary = null;
     importProgress.value = null;
     importRollupError = null;
     lastImportArchiveSkipped = 0;
@@ -1626,6 +1630,11 @@ class AppState extends ChangeNotifier {
       }
       lastImportArchiveSkipped = counts['_substrate_archive_skipped'] ?? 0;
       lastImportArchiveRestored = counts['substrate_archive'] ?? 0;
+      try {
+        lastBackupSummary = await lastImportSummary();
+      } catch (_) {
+        lastBackupSummary = null;
+      }
       if (lastImportArchiveSkipped > 0) {
         _log(
           'import: $lastImportArchiveSkipped raw-history archive buckets are in '
@@ -1996,9 +2005,17 @@ class AppState extends ChangeNotifier {
 
   bool consentLoaded = false;
 
-  /// RED STUB: reads the consent preferences and sets [consentLoaded]; the
-  /// body of what _initCompanion does for consent. Does nothing yet.
-  Future<void> loadConsent() async {}
+  /// Reads the stored consent answers and marks them loaded. The prompt waits
+  /// for [consentLoaded], so a slow read never flashes it at someone who
+  /// already answered.
+  Future<void> loadConsent() async {
+    final prefs = await SharedPreferences.getInstance();
+    telemetryConsent = prefs.getBool(_kTelemetryConsent) ?? false;
+    healthShareConsent = prefs.getBool(_kHealthShareConsent) ?? false;
+    consentChosen = prefs.getBool(_kConsentChosen) ?? false;
+    consentLoaded = true;
+    notifyListeners();
+  }
 
   bool get consentPromptDue => consentLoaded && !consentChosen;
   int termsVersion = 1; // current Terms version (refreshed from /app/status)
@@ -2015,10 +2032,7 @@ class AppState extends ChangeNotifier {
         deviceId = const Uuid().v4();
         await prefs.setString(_kDeviceId, deviceId);
       }
-      telemetryConsent = prefs.getBool(_kTelemetryConsent) ?? false;
-      healthShareConsent = prefs.getBool(_kHealthShareConsent) ?? false;
-      consentChosen = prefs.getBool(_kConsentChosen) ?? false;
-      consentLoaded = true;
+      await loadConsent();
       CompanionClient.overrideUrl = prefs.getString(_kCompanionUrl);
 
       final t = TelemetryService.instance;

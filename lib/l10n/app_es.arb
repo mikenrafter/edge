@@ -2920,7 +2920,7 @@
   "importPrepChecking": "Comprobando la copia",
   "importPrepCounting": "Contando el contenido de la copia",
   "importCopying": "Copiando {stage}",
-  "importStep": "Paso {index} de {count} · {done} de {total} filas",
+  "importStep": "Paso {index} de {count}",
   "importRecalculatingStarting": "Recalculando tus días",
   "importRecalculating": "Recalculando · día {done} de {total}",
   "importRecalculatingDay": "Recalculando · día {done} de {total} · {day}",
@@ -3423,5 +3423,7 @@
   "consentPromptTitle": "Tus opciones de privacidad",
   "consentPromptBody": "Elige si quieres compartir diagnósticos anónimos o contribuir datos de salud. Ambas opciones están desactivadas de forma predeterminada.",
   "consentConfirm": "Continuar",
-  "consentDecline": "No, gracias"
+  "consentDecline": "No, gracias",
+  "postImportDismiss": "Entendido",
+  "welcomeImportContinue": "Continuar"
 }

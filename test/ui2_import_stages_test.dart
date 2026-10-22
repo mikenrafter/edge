@@ -32,15 +32,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/import_progress.dart';
 import 'package:openstrap_edge/state/app_state.dart';
-import 'package:openstrap_edge/ui2/profile/data.dart';
 import 'package:openstrap_edge/ui2/profile/import_progress_view.dart';
 import 'package:openstrap_edge/ui2/status_line.dart';
 import 'package:openstrap_edge/ui2/ui2.dart' show buildTheme;
 
-import 'step2/support/p23_support.dart';
 import 'support/app_state_derive_harness.dart';
 
 const _counting = ImportPreparing(ImportPrepStep.counting, 3, 12);

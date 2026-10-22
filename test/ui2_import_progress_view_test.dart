@@ -21,7 +21,7 @@ void main() {
       (ImportPrepStep.inflating, 'Unpacking the backup'),
       (ImportPrepStep.opening, 'Opening the backup'),
       (ImportPrepStep.checking, 'Checking the backup'),
-      (null, 'Opening the backup'),
+      (null, 'Getting the backup ready'),
     ]) {
       testWidgets('$step => $text and a spinner', (t) async {
         await _pump(t, ImportPreparing(step));

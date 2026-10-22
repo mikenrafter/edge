@@ -459,7 +459,7 @@ Future<(int, int)> _sourceFacts(String srcPath) async {
 }
 
 /// Persists the summary of the import just finished. Best effort: a failure
-/// here leaves the previous summary and never fails the import.
+/// here drops the previous summary and never fails the import.
 Future<void> recordImportSummary(
   String srcPath, {
   required int archiveBucketsSkipped,
@@ -477,7 +477,13 @@ Future<void> recordImportSummary(
         'v1:$raw,$archiveBucketsSkipped,$above,${extras.prefsRestored},'
         '${extras.prefsKept},${extras.filesRestored},$interruptedAndResumed,'
         '${extras.needsReentry.contains(kNeedsReentryCoachKey) ? 1 : 0}');
-  } catch (_) {}
+  } catch (_) {
+    // The previous row describes an EARLIER import. Keeping it would hand its
+    // re-entry warnings to this one, so an unknown summary is no summary.
+    try {
+      await LocalDb.deleteComputeFreshness(kImportSummaryKey);
+    } catch (_) {}
+  }
 }
 
 /// The summary of the last import on this install, or null.

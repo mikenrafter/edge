@@ -61,6 +61,7 @@ Future<String> _backup(String dir, {int seconds = 5000}) async {
 int _phase(ImportProgress v) => switch (v) {
       ImportPreparing() => 0,
       ImportCopying() => 1,
+      ImportResuming() => 1,
       ImportRebuilding() => 2,
       ImportDone() => 3,
       ImportFailed() => 3,

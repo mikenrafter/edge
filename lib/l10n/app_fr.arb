@@ -2902,7 +2902,7 @@
   "importPrepChecking": "Vérification de la sauvegarde",
   "importPrepCounting": "Comptage du contenu de la sauvegarde",
   "importCopying": "Copie : {stage}",
-  "importStep": "Étape {index} sur {count} · {done} sur {total} lignes",
+  "importStep": "Étape {index} sur {count}",
   "importRecalculatingStarting": "Recalcul de vos jours",
   "importRecalculating": "Recalcul · jour {done} sur {total}",
   "importRecalculatingDay": "Recalcul · jour {done} sur {total} · {day}",
@@ -3405,5 +3405,7 @@
   "consentPromptTitle": "Vos choix de confidentialité",
   "consentPromptBody": "Choisissez de partager des diagnostics anonymes ou de contribuer aux données de santé. Les deux options sont désactivées par défaut.",
   "consentConfirm": "Continuer",
-  "consentDecline": "Non merci"
+  "consentDecline": "Non merci",
+  "postImportDismiss": "Compris",
+  "welcomeImportContinue": "Continuer"
 }

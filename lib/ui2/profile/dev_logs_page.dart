@@ -84,8 +84,10 @@ class _DevLogActionsState extends State<DevLogActions> {
       ok = await port.export(origin);
     } catch (_) {}
     if (mounted) setState(() => _busy = false);
-    if (!ok && mounted) _say(messenger,
+    if (!ok && mounted) {
+      _say(messenger,
           l?.devLogsExportFailed ?? 'Could not export the dev log.');
+    }
   }
 
   Future<void> _clear(BuildContext context) async {

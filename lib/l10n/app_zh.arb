@@ -2902,7 +2902,7 @@
   "importPrepChecking": "正在检查备份",
   "importPrepCounting": "正在统计备份中的内容",
   "importCopying": "正在复制{stage}",
-  "importStep": "第 {index}/{count} 步 · {done}/{total} 行",
+  "importStep": "第 {index}/{count} 步",
   "importRecalculatingStarting": "正在重新计算你的每一天",
   "importRecalculating": "正在重新计算 · 第 {done}/{total} 天",
   "importRecalculatingDay": "正在重新计算 · 第 {done}/{total} 天 · {day}",
@@ -3405,5 +3405,7 @@
   "consentPromptTitle": "隐私选项",
   "consentPromptBody": "选择是否分享匿名诊断信息或贡献健康数据。两项默认关闭。",
   "consentConfirm": "继续",
-  "consentDecline": "不了，谢谢"
+  "consentDecline": "不了，谢谢",
+  "postImportDismiss": "知道了",
+  "welcomeImportContinue": "继续"
 }

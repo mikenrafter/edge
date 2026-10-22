@@ -22,7 +22,7 @@ import '../../import/backup_crypto.dart';
 import '../../import/import_container.dart';
 import '../../import/journal_csv_import.dart';
 import '../../import/lab_csv_import.dart';
-import '../../data/backup_extras.dart' show ImportSummary, lastImportSummary;
+import '../../data/backup_extras.dart' show ImportSummary, kNeedsReentryCoachKey;
 import '../../l10n/app_localizations.dart';
 import '../../data/import_progress.dart';
 import '../../state/app_state.dart';
@@ -111,7 +111,8 @@ class ImportOutcome {
     this.summary,
   });
 
-  /// RED STUB: what this run's backups say still needs doing; unset.
+  /// What this run's backups say still needs doing, aggregated over every
+  /// backup in the selection. Null when no backup ran or none could say.
   final ImportSummary? summary;
 
   bool get lostSomething =>
@@ -260,7 +261,11 @@ class WelcomeScreen extends StatefulWidget {
 class _WelcomeScreenState extends State<WelcomeScreen> {
   bool _busy = false;
   ImportOutcome? _outcome;
-  ImportSummary? _summary;
+
+  /// A good import left something to enter again: the report stays until the
+  /// user taps Continue, because completing onboarding moves the route on and
+  /// takes this screen with it.
+  bool _holding = false;
 
   Future<void> _import() async {
     final app = context.read<AppState>();
@@ -285,6 +290,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     setState(() {
       _busy = true;
       _outcome = null;
+      _holding = false;
     });
     try {
       final outcome = await runImport(app, paths,
@@ -292,16 +298,17 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               ? askBackupPassphrase(context)
               : null);
       if (!mounted) return;
-      final summary = outcome.nothingLanded ||
-              !outcome.source.toLowerCase().contains('backup')
-          ? null
-          : await lastImportSummary();
-      if (!mounted) return;
-      setState(() { _outcome = outcome; _summary = summary; });
+      setState(() => _outcome = outcome);
       // Anything that landed counts as bringing history in — a workouts-only
       // vendor export writes sessions and no days, and the gate used to sit
       // there as though the import had not happened.
-      if (!outcome.nothingLanded) await app.completeImportOnboard();
+      if (!outcome.nothingLanded) {
+        if ((outcome.summary?.needsReentry ?? const []).isNotEmpty) {
+          setState(() => _holding = true);
+        } else {
+          await app.completeImportOnboard();
+        }
+      }
     } on PassphraseCancelled {
       // Closing the prompt is a decision, not a failure. Say nothing.
     } catch (e) {
@@ -329,6 +336,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     );
   }
 
+  Future<void> _continue() async {
+    final app = context.read<AppState>();
+    setState(() => _holding = false);
+    await app.completeImportOnboard();
+  }
+
   Widget _view(ImportProgress? prog) {
     final importing = prog != null &&
         (prog is ImportCalculating || prog is! ImportDone && prog is! ImportFailed);
@@ -336,7 +349,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         importProgress: prog,
         busy: _busy || importing,
         outcome: _outcome,
-        importSummary: _summary,
+        onContinue: _holding ? _continue : null,
         onNew: () => context.read<AppState>().chooseNewUser(),
         onImport: _import,
       );
@@ -366,6 +379,12 @@ Future<ImportOutcome> runImport(
   final rejected = <String>[];
   String? rollupError;
   String? cryptoError;
+  // Re-entry items from every backup in this run (a multi-select must not keep
+  // only the last one), and whether any backup could say. Kept on the app as
+  // each backup lands so no page has to still be there to hold them.
+  final reenter = <String>[];
+  var summarised = false;
+  app.dismissImportReentry();
 
   final plain = <String>[];
   for (final p in paths) {
@@ -429,6 +448,14 @@ Future<ImportOutcome> runImport(
       rollupError ??= app.importRollupError;
       archiveSkipped += app.lastImportArchiveSkipped;
       archiveRestored += app.lastImportArchiveRestored;
+      final said = app.lastBackupSummary;
+      if (said != null) {
+        summarised = true;
+        for (final id in said.needsReentry) {
+          if (!reenter.contains(id)) reenter.add(id);
+        }
+        app.importReentry.value = List.unmodifiable(reenter);
+      }
     }
   } finally {
     // The decrypted copy is the whole health record in plaintext. It exists
@@ -539,6 +566,7 @@ Future<ImportOutcome> runImport(
     // A file that would not decrypt is reported the same way a file that would
     // not parse is: named, alongside whatever else did land.
     readError: readError ?? cryptoError,
+    summary: summarised ? ImportSummary(needsReentry: reenter) : null,
   );
 }
 
@@ -595,7 +623,8 @@ bool _isDbBackup(String path) {
 class WelcomeView extends StatelessWidget {
   final bool busy;
   final ImportOutcome? outcome;
-  final ImportSummary? importSummary;
+  /// Set while the report is held for reading; tapping it moves on.
+  final VoidCallback? onContinue;
 
   /// A running import's stage; replaces the busy spinner while non-null.
   final ImportProgress? importProgress;
@@ -608,7 +637,7 @@ class WelcomeView extends StatelessWidget {
     required this.onImport,
     this.busy = false,
     this.outcome,
-    this.importSummary,
+    this.onContinue,
     this.importProgress,
   });
 
@@ -663,7 +692,15 @@ class WelcomeView extends StatelessWidget {
             ],
             if (o != null) ...[
               const SizedBox(height: S.x6),
-              ImportReport(o, summary: importSummary),
+              ImportReport(o),
+              if (onContinue != null) ...[
+                const SizedBox(height: S.x4),
+                FilledButton(
+                  key: const ValueKey('welcome-import-continue'),
+                  onPressed: busy ? null : onContinue,
+                  child: Text(l?.welcomeImportContinue ?? 'Continue'),
+                ),
+              ],
             ],
           ],
         ),
@@ -678,7 +715,7 @@ class WelcomeView extends StatelessWidget {
 class ImportReport extends StatelessWidget {
   final ImportOutcome o;
 
-  /// RED STUB: the post-import notes read this; nothing does yet.
+  /// Overrides [ImportOutcome.summary]; null reads the outcome's own.
   final ImportSummary? summary;
   const ImportReport(this.o, {this.summary, super.key});
 
@@ -851,27 +888,9 @@ class ImportReport extends StatelessWidget {
           icon: LucideIcons.fileWarning,
         ),
       ],
-      if (summary != null) ...[
-        for (final id in summary!.needsReentry)
-          Padding(
-            padding: const EdgeInsets.only(top: S.x3),
-            child: Text(
-              id == 'coach_api_key'
-                  ? (l?.postImportReentryCoachKey ??
-                      'Your AI coach key was not restored. Enter it again in AI settings.')
-                  : id,
-              key: ValueKey('post-import-reentry-$id'),
-            ),
-          ),
-      ],
-      Padding(
-        padding: const EdgeInsets.only(top: S.x3),
-        child: Text(
-          l?.postImportDeviceOnly ??
-              'band pairing, the Tasker token and consent must be set up again on this device.',
-          key: const ValueKey('post-import-device-only'),
-        ),
-      ),
+      PostImportNotes(
+          (summary ?? o.summary)?.needsReentry ?? const [],
+          padTop: S.x3),
     ]);
   }
 }
@@ -892,4 +911,50 @@ String _rejects(ImportOutcome o) {
   final shown = o.rejectedRows.take(6).join('; ');
   final more = o.rejectedRows.length - 6;
   return more > 0 ? '$shown; and $more more.' : '$shown.';
+}
+
+/// What an import could not bring back or never carries: one line per secret
+/// that needs entering again, then the fixed device-only line. Only ever built
+/// from a successful import's own result (never from a stored global).
+class PostImportNotes extends StatelessWidget {
+  const PostImportNotes(this.needsReentry,
+      {super.key, this.onDismiss, this.padTop = 0});
+  final List<String> needsReentry;
+  final VoidCallback? onDismiss;
+  final double padTop;
+
+  @override
+  Widget build(BuildContext c) {
+    final l = AppLocalizations.of(c);
+    return Padding(
+      padding: EdgeInsets.only(top: padTop),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (final id in needsReentry)
+          Padding(
+            padding: const EdgeInsets.only(bottom: S.x3),
+            child: Text(
+              id == kNeedsReentryCoachKey
+                  ? (l?.postImportReentryCoachKey ??
+                      'Your AI coach key was not restored. Enter it again in AI settings.')
+                  : id,
+              key: ValueKey('post-import-reentry-$id'),
+            ),
+          ),
+        Text(
+          l?.postImportDeviceOnly ??
+              'band pairing, the Tasker token and consent must be set up again on this device.',
+          key: const ValueKey('post-import-device-only'),
+        ),
+        if (onDismiss != null)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              key: const ValueKey('post-import-dismiss'),
+              onPressed: onDismiss,
+              child: Text(l?.postImportDismiss ?? 'Got it'),
+            ),
+          ),
+      ]),
+    );
+  }
 }

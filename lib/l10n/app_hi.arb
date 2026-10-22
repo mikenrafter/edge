@@ -2902,7 +2902,7 @@
   "importPrepChecking": "बैकअप जाँचा जा रहा है",
   "importPrepCounting": "बैकअप में मौजूद डेटा गिना जा रहा है",
   "importCopying": "{stage} कॉपी हो रहा है",
-  "importStep": "चरण {index}/{count} · {done}/{total} पंक्तियाँ",
+  "importStep": "चरण {index}/{count}",
   "importRecalculatingStarting": "आपके दिनों की दोबारा गणना",
   "importRecalculating": "दोबारा गणना · दिन {done}/{total}",
   "importRecalculatingDay": "दोबारा गणना · दिन {done}/{total} · {day}",
@@ -3405,5 +3405,7 @@
   "consentPromptTitle": "आपकी गोपनीयता पसंद",
   "consentPromptBody": "चुनें कि आप गुमनाम निदान साझा करना चाहते हैं या स्वास्थ्य डेटा देना चाहते हैं। दोनों विकल्प डिफ़ॉल्ट रूप से बंद हैं।",
   "consentConfirm": "जारी रखें",
-  "consentDecline": "नहीं धन्यवाद"
+  "consentDecline": "नहीं धन्यवाद",
+  "postImportDismiss": "समझ गया",
+  "welcomeImportContinue": "जारी रखें"
 }

@@ -8209,19 +8209,13 @@
       }
     }
   },
-  "importStep": "Шаг {index} из {count} · {done} из {total} строк",
+  "importStep": "Шаг {index} из {count}",
   "@importStep": {
     "placeholders": {
       "index": {
         "type": "String"
       },
       "count": {
-        "type": "String"
-      },
-      "done": {
-        "type": "String"
-      },
-      "total": {
         "type": "String"
       }
     }
@@ -8790,5 +8784,7 @@
   "consentPromptTitle": "Настройки конфиденциальности",
   "consentPromptBody": "Выберите, делиться ли анонимной диагностикой или передавать данные о здоровье. По умолчанию оба варианта выключены.",
   "consentConfirm": "Продолжить",
-  "consentDecline": "Нет, спасибо"
+  "consentDecline": "Нет, спасибо",
+  "postImportDismiss": "Понятно",
+  "welcomeImportContinue": "Продолжить"
 }
