@@ -23,6 +23,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/auto_backup.dart';
+import '../../data/backup_extras.dart' show ImportSummary;
 import '../../data/csv_export.dart';
 import '../../data/day_label.dart' show dayLabelOf;
 import '../../data/db.dart';
@@ -409,6 +410,7 @@ class DataScreenView extends StatelessWidget {
     this.noteFailed = false,
     this.noteIsImport = false,
     this.outcome,
+    this.importSummary,
     this.cadence = BackupCadence.off,
     this.lastBackup,
     this.backupFolder,
@@ -445,6 +447,9 @@ class DataScreenView extends StatelessWidget {
   final String? note, importRollupError;
   final String reanalyzeProgress;
   final ImportOutcome? outcome;
+
+  /// RED STUB: not passed on to ImportReport yet.
+  final ImportSummary? importSummary;
   final BackupCadence cadence;
   final DateTime? lastBackup;
 

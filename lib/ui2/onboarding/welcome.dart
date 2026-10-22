@@ -22,6 +22,7 @@ import '../../import/backup_crypto.dart';
 import '../../import/import_container.dart';
 import '../../import/journal_csv_import.dart';
 import '../../import/lab_csv_import.dart';
+import '../../data/backup_extras.dart' show ImportSummary;
 import '../../l10n/app_localizations.dart';
 import '../../data/import_progress.dart';
 import '../../state/app_state.dart';
@@ -660,7 +661,10 @@ class WelcomeView extends StatelessWidget {
 /// of omission.
 class ImportReport extends StatelessWidget {
   final ImportOutcome o;
-  const ImportReport(this.o, {super.key});
+
+  /// RED STUB: the post-import notes read this; nothing does yet.
+  final ImportSummary? summary;
+  const ImportReport(this.o, {this.summary, super.key});
 
   @override
   Widget build(BuildContext c) {

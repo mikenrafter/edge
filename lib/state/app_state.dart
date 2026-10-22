@@ -1984,6 +1984,12 @@ class AppState extends ChangeNotifier {
   /// the toggles default ON there; an install that never saw the screen keeps the
   /// safe OFF default (we do NOT silently enable for someone who never chose).
   bool consentChosen = false;
+
+  /// RED STUB: true once [consentChosen] has been read from the preferences.
+  bool consentLoaded = false;
+
+  /// RED STUB: whether the first-run consent prompt is due. Always false.
+  bool get consentPromptDue => false;
   int termsVersion = 1; // current Terms version (refreshed from /app/status)
 
   /// One-time wiring of the companion layer: install id, consent flags, the band
