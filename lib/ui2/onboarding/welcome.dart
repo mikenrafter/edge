@@ -384,7 +384,7 @@ Future<ImportOutcome> runImport(
   // each backup lands so no page has to still be there to hold them.
   final reenter = <String>[];
   var summarised = false;
-  app.dismissImportReentry();
+  final run = app.beginImportRun();
 
   final plain = <String>[];
   for (final p in paths) {
@@ -454,7 +454,7 @@ Future<ImportOutcome> runImport(
         for (final id in said.needsReentry) {
           if (!reenter.contains(id)) reenter.add(id);
         }
-        app.importReentry.value = List.unmodifiable(reenter);
+        app.publishImportReentry(run, said.needsReentry);
       }
     }
   } finally {

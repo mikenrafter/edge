@@ -1560,13 +1560,70 @@ class AppState extends ChangeNotifier {
   ImportSummary? lastBackupSummary;
 
   /// Items to enter again after the last successful import, kept here (not in
-  /// a page) so leaving Your data, or Welcome moving on, cannot lose them.
-  /// Set by runImport, cleared by [dismissImportReentry] or the next import.
+  /// a page) so leaving Your data, or Welcome moving on, cannot lose them, and
+  /// in the preferences so a restart cannot either. Cleared by
+  /// [dismissImportReentry] or when the next import run begins.
   final ValueNotifier<List<String>> importReentry = ValueNotifier(const []);
-  void dismissImportReentry() => importReentry.value = const [];
 
-  /// RED STUB: reads the kept list back at startup; does nothing yet.
-  Future<void> loadImportReentry() async {}
+  /// Device-local state about this install (kPrefsNotBackedUp): comma-joined ids.
+  static const String _kImportReentry = 'import_reentry_pending';
+
+  int _importRunId = 0;
+
+  /// Items the user already acknowledged during the current run; a later
+  /// backup of the same run must not bring them back.
+  final Set<String> _ackedReentry = {};
+
+  /// Starts an import run and returns its id. A new run supersedes the last
+  /// one: its list is cleared and its late publishes are ignored.
+  int beginImportRun() {
+    _importRunId++;
+    _ackedReentry.clear();
+    _setReentry(const []);
+    return _importRunId;
+  }
+
+  /// Adds [ids] to the pending list if [run] still owns it, skipping what the
+  /// user already acknowledged. Merges; never overwrites.
+  void publishImportReentry(int run, Iterable<String> ids) {
+    if (run != _importRunId) return;
+    final merged = [...importReentry.value];
+    for (final id in ids) {
+      if (!_ackedReentry.contains(id) && !merged.contains(id)) merged.add(id);
+    }
+    _setReentry(merged);
+  }
+
+  void dismissImportReentry() {
+    _ackedReentry.addAll(importReentry.value);
+    _setReentry(const []);
+  }
+
+  void _setReentry(List<String> v) {
+    importReentry.value = List.unmodifiable(v);
+    unawaited(_persistReentry(v));
+  }
+
+  Future<void> _persistReentry(List<String> v) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (v.isEmpty) {
+        await prefs.remove(_kImportReentry);
+      } else {
+        await prefs.setString(_kImportReentry, v.join(','));
+      }
+    } catch (_) {/* the in-memory list still serves this session */}
+  }
+
+  /// Reads the kept list back at startup, before an interrupted import resumes.
+  Future<void> loadImportReentry() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kImportReentry) ?? '';
+      final ids = [for (final x in raw.split(',')) if (x.isNotEmpty) x];
+      if (ids.isNotEmpty) importReentry.value = List.unmodifiable(ids);
+    } catch (_) {}
+  }
 
   /// Days of stored raw history (substrate archive buckets) the last backup
   /// import could NOT merge, because they are in a format this build does
@@ -1713,6 +1770,13 @@ class AppState extends ChangeNotifier {
       await _finalizeImport();
       await _deriveImportWhenDone();
       await _deriveCoordinator.publishNow();
+      // The resumed import's own notes: a kill before they were read must not
+      // lose them. Its summary was recorded by the resumed run.
+      try {
+        final run = beginImportRun();
+        publishImportReentry(
+            run, (await lastImportSummary())?.needsReentry ?? const []);
+      } catch (_) {}
       notifyListeners();
       importProgress.value = const ImportDone();
     } catch (e) {
@@ -4325,6 +4389,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     // An import the process was killed in resumes here and is never silent
     // (D38). Off the critical path; the copy runs in SQLite, not on this isolate.
+    await loadImportReentry();
     unawaited(resumeUnfinishedImport());
     // Companion (anonymous telemetry + health-data contribution) — best-effort,
     // OFF the critical path so it can never block/break boot. Guarded internally.
