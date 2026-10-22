@@ -31,12 +31,18 @@ class ImportReentryStore {
   /// A mirror of the stored pending set, for screens. Only this class writes it.
   final ValueNotifier<List<String>> pending = ValueNotifier(const []);
 
-  Future<void> _tail = Future.value();
+  // Null until the first operation: a future built in the constructor would
+  // belong to whatever zone built the store.
+  Future<void>? _tail;
 
-  Future<T> _queued<T>(Future<T> Function() op) {
-    final done = _tail.then((_) => op());
-    _tail = done.then<void>((_) {}, onError: (_) {});
-    return done;
+  /// Waits for every earlier operation, then returns the lock to release (in a
+  /// finally) with complete(). One at a time, in call order.
+  Future<Completer<void>> _acquire() async {
+    final prev = _tail;
+    final mine = Completer<void>();
+    _tail = mine.future;
+    if (prev != null) await prev;
+    return mine;
   }
 
   static const String _key = 'import_reentry_pending';
@@ -66,42 +72,60 @@ class ImportReentryStore {
   }
 
   /// Reads the stored sets into the mirror.
-  Future<void> load() => _queued(() async {
-        pending.value = List.unmodifiable((await _read()).$1);
-      });
+  Future<void> load() async {
+    final lock = await _acquire();
+    try {
+      pending.value = List.unmodifiable((await _read()).$1);
+    } finally {
+      lock.complete();
+    }
+  }
 
   /// pending ∪= ids − acknowledged. Writes only when something is new.
-  Future<void> add(Iterable<String> ids) => _queued(() async {
-        final (pend, acked) = await _read();
-        final fresh = [
-          for (final id in ids)
-            if (!acked.contains(id) && !pend.contains(id)) id
-        ];
-        if (fresh.isEmpty) {
-          pending.value = List.unmodifiable(pend);
-          return;
-        }
-        await _write([...pend, ...fresh], acked);
-      });
+  Future<void> add(Iterable<String> ids) async {
+    final lock = await _acquire();
+    try {
+      final (pend, acked) = await _read();
+      final fresh = [
+        for (final id in ids)
+          if (!acked.contains(id) && !pend.contains(id)) id
+      ];
+      if (fresh.isEmpty) {
+        pending.value = List.unmodifiable(pend);
+        return;
+      }
+      await _write([...pend, ...fresh], acked);
+    } finally {
+      lock.complete();
+    }
+  }
 
   /// acknowledged ∪= ids; pending −= ids. No ids means everything pending now.
   /// The mirror drops them at once; the write follows in order.
-  Future<void> dismiss([Iterable<String>? ids]) {
+  Future<void> dismiss([Iterable<String>? ids]) async {
     final which = [...(ids ?? pending.value)];
     pending.value = List.unmodifiable(
         [for (final x in pending.value) if (!which.contains(x)) x]);
-    return _queued(() async {
+    final lock = await _acquire();
+    try {
       final (pend, acked) = await _read();
       await _write([for (final x in pend) if (!which.contains(x)) x],
           {...acked, ...which}.toList());
-    });
+    } finally {
+      lock.complete();
+    }
   }
 
   /// A user-started import begins: earlier acknowledgements no longer apply.
   /// Never called for a resume.
-  Future<void> beginFreshImport() => _queued(() async {
-        final (pend, acked) = await _read();
-        if (acked.isEmpty) return;
-        await _write(pend, const []);
-      });
+  Future<void> beginFreshImport() async {
+    final lock = await _acquire();
+    try {
+      final (pend, acked) = await _read();
+      if (acked.isEmpty) return;
+      await _write(pend, const []);
+    } finally {
+      lock.complete();
+    }
+  }
 }
