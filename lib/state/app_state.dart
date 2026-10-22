@@ -272,12 +272,17 @@ abstract interface class ImportRollupProbe {
 
 /// Publishes a WHOOP import's measured copy count on [AppState.importProgress].
 class _WhoopCopyProgress implements WhoopImportProgressSink {
-  _WhoopCopyProgress(this._notifier);
-  final ValueNotifier<ImportProgress?> _notifier;
+  _WhoopCopyProgress(this._app, this._backupsAtStart);
+  final AppState _app;
+  final int _backupsAtStart;
   @override
   void copied(int done, int total) {
+    // A backup that started after this import owns the notifier; publish
+    // nothing more, or its failure would be replaced by a stale "importing".
+    if (_app._backupStarts != _backupsAtStart) return;
     if (total > 0 && done <= total) {
-      _notifier.value = ImportCopying(ImportStage.results, done, total, 1, 1);
+      _app.importProgress.value =
+          ImportCopying(ImportStage.results, done, total, 1, 1);
     }
   }
 }
@@ -1477,7 +1482,10 @@ class AppState extends ChangeNotifier {
           // The importer streams, so how many days there will be is unknown;
           // only the count done is published, never a total (the line then
           // reads "Calculating…", not "day i of N").
-          if (importProgress.value is ImportPreparing) importProgress.value = null;
+          if (_backupStarts == backupsAtStart &&
+              importProgress.value is ImportPreparing) {
+            importProgress.value = null;
+          }
           _deriveCoordinator.publishProgress(
               progressOwner, DeriveProgress(dayIndex: days));
         },
@@ -1517,6 +1525,7 @@ class AppState extends ChangeNotifier {
   }) async {
     final backupsAtStart = _backupStarts;
     try {
+      // ownership: see [_releaseCsvProgress]
       importProgress.value = const ImportPreparing(ImportPrepStep.opening);
       // A WHOOP export holds the vendor's own daily figures; storing them
       // recalculates nothing, so only the import line moves, with the number of
@@ -1525,7 +1534,7 @@ class AppState extends ChangeNotifier {
         paths,
         engine: _derive,
         profile: _profile,
-        progress: _WhoopCopyProgress(importProgress),
+        progress: _WhoopCopyProgress(this, backupsAtStart),
       );
       lastWhoopImport = res;
       await _deriveCoordinator.publishNow(); // see importNoopCsv

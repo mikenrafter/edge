@@ -230,6 +230,8 @@ void main() {
         // The newer backup starts while the CSV is mid-run (after its first
         // derived day / first copied day). Starting it retires the failure.
         Future<void>? newer;
+        // Everything published after the newer backup started.
+        final after = <ImportProgress?>[];
         void startNewer() {
           if (newer != null) return;
           final live = kind == 'NOOP'
@@ -239,6 +241,10 @@ void main() {
           newer = app
               .importEdgeBackup(p.join(tmp.path, 'missing-2.db'))
               .then<void>((_) {}, onError: (_) {});
+          // The newer backup fails (here at once, in the field a moment later);
+          // later CSV callbacks must leave that failure alone.
+          app.importProgress.value = const ImportFailed('newer backup failed');
+          app.importProgress.addListener(() => after.add(app.importProgress.value));
         }
 
         app.deriveProgress.addListener(startNewer);
@@ -250,8 +256,14 @@ void main() {
         }
         expect(newer, isNotNull, reason: 'guard: the overlap happened');
         await newer;
+        expect(after.where((v) => v is ImportCopying || v is ImportPreparing),
+            isEmpty,
+            reason: 'the CSV kept publishing after a newer backup took over');
       });
       expect(r.error, isNull);
+      expect(r.last.$1, isA<ImportFailed>(),
+          reason: 'the newer backup\'s failure survives the CSV completing');
+      expect(running(r.last.$1), isFalse, reason: 'stuck on "importing"');
       expect(identical(r.last.$1, first), isFalse,
           reason: 'the CSV cleanup restored a failure a newer backup retired');
     });
