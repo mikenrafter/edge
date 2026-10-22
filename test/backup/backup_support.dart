@@ -2,6 +2,7 @@
 // path_provider dirs, and helpers to read what an export carries.
 import 'dart:io';
 
+import 'package:openstrap_edge/sync/dev_log.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -57,6 +58,9 @@ class BackupEnv {
   Future<void> dispose() async {
     await LocalDb.close();
     await databaseFactory.deleteDatabase(p.join(dbDir, LocalDb.dbName));
+    // Import logging writes in the background; drain it before deleting the
+    // tree it writes into, or teardown races its lock file.
+    await DevLog.instance.flush();
     if (await root.exists()) await root.delete(recursive: true);
   }
 
