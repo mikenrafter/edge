@@ -166,7 +166,7 @@ String? exploreZUnavailable(String key, Iterable<double> history,
 }
 
 /// One metric on the grid.
-class ExploreLine {
+class ExploreLine implements OlderAt {
   final String key;
 
   /// Unbroken stretches of real readings, oldest first: [at] is 0..1 across
@@ -283,7 +283,8 @@ class ExploreLine {
 
   /// Where [valueAt] reads a real value at [at], the older calculation it came
   /// from (null for a current value, a gap, or an intraday line).
-  ({int version, String? reason})? olderAt(double at) {
+  @override
+  ChartOlder? olderAt(double at) {
     if (_slots <= 0 || valueAt(at) == null) return null;
     return _olderBySlot[(at * _slots).floor().clamp(0, _slots - 1)];
   }

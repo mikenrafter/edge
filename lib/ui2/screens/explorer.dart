@@ -831,7 +831,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
                 },
                     // Flag and value are read off the same slot of the same
                     // line, for every picked metric, not just the first.
-                    older: (at) => m.line?.olderAt(at),
+                    older: m.line,
                     latest: m.hasData ? m.line!.runs.last.last.at : null),
               if (asleep.isNotEmpty) shade(asleepLabel, C.blue, asleep),
             ],

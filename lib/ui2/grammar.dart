@@ -32,6 +32,8 @@
 import '../l10n/display_text.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/presentation_text.dart';
+import '../models/chart_point.dart' show ChartOlder, OlderAt;
+export '../models/chart_point.dart' show ChartOlder;
 import 'older_version.dart';
 import 'dart:math' as math;
 
@@ -386,9 +388,6 @@ bool hasChartGaps(Iterable<List<double?>> series, {bool trailing = false}) {
   return false;
 }
 
-/// The older calculation a plotted value was served from (RULES B.2).
-typedef ChartOlder = ({int version, String? reason});
-
 /// One series in a chart's key: what it is called, what colour draws it, and
 /// what it reads at a position along the chart.
 @immutable
@@ -419,7 +418,7 @@ class ChartKey {
   /// Where [value] is an older calculation's stored value, which one. Read at
   /// the SAME position by the SAME slot rule as [value], so the flag and the
   /// number are always one point. Null for a series with no such values.
-  final ChartOlder? Function(double at)? older;
+  final OlderAt? older;
 
   const ChartKey(this.label, this.color, this.value,
       {this.latest = 1.0,
@@ -453,13 +452,7 @@ class ChartKey {
         final v = d[i];
         return ok(v) ? say(i, v!) : null;
       },
-      older: older == null
-          ? null
-          : (at) {
-              if (d.isEmpty) return null;
-              final i = ChartScrub.slotAt(d.length, at, bars: bars);
-              return ok(d[i]) && i < older.length ? older[i] : null;
-            },
+      older: older == null ? null : _SlotOlder(d, older, bars),
       latest: last < 0
           ? null
           : bars
@@ -476,6 +469,23 @@ class ChartKey {
           {bool Function(double at)? active}) =>
       ChartKey(label, color, (_) => value,
           latest: null, active: active, atRest: () => value);
+}
+
+/// [ChartKey.slots]'s flag source: the slot [ChartScrub.slotAt] picks for the
+/// value, and its flag only when that slot holds a real value.
+class _SlotOlder implements OlderAt {
+  final List<double?> values;
+  final List<ChartOlder?> older;
+  final bool bars;
+  const _SlotOlder(this.values, this.older, this.bars);
+
+  @override
+  ChartOlder? olderAt(double at) {
+    if (values.isEmpty) return null;
+    final i = ChartScrub.slotAt(values.length, at, bars: bars);
+    final v = values[i];
+    return v != null && v.isFinite && i < older.length ? older[i] : null;
+  }
 }
 
 /// One cell of the key row. A null [color] is the "Not recorded" entry.
@@ -551,19 +561,20 @@ class ChartScrub extends StatefulWidget {
     final pos = at ?? latest;
     final cells = <ChartCell>[
       for (final k in keys)
-        () {
-          final atRestFixed = at == null && k.atRest != null;
-          final value =
-              atRestFixed ? k.atRest!() : (pos == null ? null : k.value(pos));
-          return ChartCell(k.label, k.color,
-              value: value,
-              active: pos != null && (k.active?.call(pos) ?? false),
-              // Only a value that is actually shown can be an older one.
-              older: value == null || atRestFixed || pos == null
-                  ? null
-                  : k.older?.call(pos));
-        }(),
+        ChartCell(k.label, k.color,
+            value: at == null && k.atRest != null
+                ? k.atRest!()
+                : pos == null
+                    ? null
+                    : k.value(pos),
+            active: pos != null && (k.active?.call(pos) ?? false),
+            // Only a value that is actually drawn at [pos] has a flag: the
+            // source answers by the same slot rule that picked the value.
+            older: pos == null || (at == null && k.atRest != null)
+                ? null
+                : k.older?.olderAt(pos)),
     ];
+
     if (gaps) {
       // "Here" only while the finger is on a hole in every recorded series.
       final onGap = at != null &&

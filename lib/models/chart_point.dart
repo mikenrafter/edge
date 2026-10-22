@@ -37,3 +37,14 @@ class ChartPoint {
   String toString() =>
       'ChartPoint(t: $t, v: $v${olderVersion == null ? '' : ', olderVersion: $olderVersion'})';
 }
+
+/// The older calculation a plotted value was served from (RULES B.2).
+typedef ChartOlder = ({int version, String? reason});
+
+/// Answers, for a position 0..1 along a chart, which older calculation the
+/// value drawn THERE came from. Implemented next to the code that picks the
+/// value (same slot rule), so the two cannot disagree; null for a current
+/// value or a gap.
+abstract interface class OlderAt {
+  ChartOlder? olderAt(double at);
+}
