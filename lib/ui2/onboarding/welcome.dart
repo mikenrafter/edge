@@ -108,7 +108,11 @@ class ImportOutcome {
     this.error,
     this.rollupError,
     this.readError,
+    this.summary,
   });
+
+  /// RED STUB: what this run's backups say still needs doing; unset.
+  final ImportSummary? summary;
 
   bool get lostSomething =>
       lateRows > 0 ||

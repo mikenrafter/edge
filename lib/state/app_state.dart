@@ -74,6 +74,7 @@ import '../compute/inputs/measurement_inputs.dart'
         profileWithoutStaleWeighing;
 import '../compute/profile.dart';
 import '../data/day_label.dart';
+import '../data/backup_extras.dart' show ImportSummary;
 import '../data/import_progress.dart';
 import '../data/import_journal.dart';
 import '../data/med_store.dart' show MedDb, MedDef;
@@ -1553,6 +1554,14 @@ class AppState extends ChangeNotifier {
   /// reporting only the row count would claim a success the user does not have.
   String? importRollupError;
 
+  /// RED STUB: the summary of the backup importEdgeBackup just finished; unset.
+  ImportSummary? lastBackupSummary;
+
+  /// RED STUB: items still to re-enter after the last successful import, kept
+  /// until dismissed; never written yet.
+  final ValueNotifier<List<String>> importReentry = ValueNotifier(const []);
+  void dismissImportReentry() {}
+
   /// Days of stored raw history (substrate archive buckets) the last backup
   /// import could NOT merge, because they are in a format this build does
   /// not read. Reported in the import report, never dropped silently.
@@ -1986,6 +1995,10 @@ class AppState extends ChangeNotifier {
   bool consentChosen = false;
 
   bool consentLoaded = false;
+
+  /// RED STUB: reads the consent preferences and sets [consentLoaded]; the
+  /// body of what _initCompanion does for consent. Does nothing yet.
+  Future<void> loadConsent() async {}
 
   bool get consentPromptDue => consentLoaded && !consentChosen;
   int termsVersion = 1; // current Terms version (refreshed from /app/status)

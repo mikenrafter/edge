@@ -422,6 +422,8 @@ class DataScreenView extends StatelessWidget {
     this.noteIsImport = false,
     this.outcome,
     this.importSummary,
+    this.pendingReentry = const [],
+    this.onDismissNotes,
     this.cadence = BackupCadence.off,
     this.lastBackup,
     this.backupFolder,
@@ -461,6 +463,10 @@ class DataScreenView extends StatelessWidget {
 
   /// RED STUB: not passed on to ImportReport yet.
   final ImportSummary? importSummary;
+
+  /// RED STUB: notes kept on the app after the page was left; not drawn yet.
+  final List<String> pendingReentry;
+  final VoidCallback? onDismissNotes;
   final BackupCadence cadence;
   final DateTime? lastBackup;
 
