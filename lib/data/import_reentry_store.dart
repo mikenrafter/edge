@@ -18,6 +18,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'import_journal.dart';
+
 class ImportReentryStore {
   ImportReentryStore();
 
@@ -48,7 +50,11 @@ class ImportReentryStore {
   static const String _key = 'import_reentry_pending';
 
   Future<(List<String>, List<String>)> _read() async {
-    final raw = (await SharedPreferences.getInstance()).getString(_key) ?? '';
+    final prefs = await SharedPreferences.getInstance();
+    // The plugin updates its cache BEFORE the platform confirms a write, so a
+    // refused write leaves the cache ahead of the disk. Disk is the truth.
+    await prefs.reload();
+    final raw = prefs.getString(_key) ?? '';
     final parts = raw.split(';');
     List<String> ids(String s) => [for (final x in s.split(',')) if (x.isNotEmpty) x];
     return (ids(parts[0]), parts.length > 1 ? ids(parts[1]) : <String>[]);
@@ -66,6 +72,11 @@ class ImportReentryStore {
           pending.value = List.unmodifiable(pend);
           return;
         }
+      } catch (_) {}
+      // Refused: drop the cache's optimistic value before trying again or
+      // giving up, so no later decision is made on a write that never landed.
+      try {
+        await (await SharedPreferences.getInstance()).reload();
       } catch (_) {}
     }
     throw StateError('Could not save the note about what to enter again.');
@@ -118,16 +129,32 @@ class ImportReentryStore {
     }
   }
 
-  /// A user-started import begins: earlier acknowledgements no longer apply.
-  /// Never called for a resume.
+  /// A user-started import begins: earlier acknowledgements no longer apply,
+  /// so a new import that loses the same item shows it again (the destination
+  /// has no such item, or it would not have been lost). Never called for a
+  /// resume. Skipped while an OLDER import is still unfinished: when that one
+  /// resumes it will record the same item, and the dismissal still stands for
+  /// it. (Limit: a journal nobody finishes keeps its acknowledgements.)
   Future<void> beginFreshImport() async {
     final lock = await _acquire();
     try {
       final (pend, acked) = await _read();
       if (acked.isEmpty) return;
+      if (await _olderImportUnfinished()) return;
       await _write(pend, const []);
     } finally {
       lock.complete();
+    }
+  }
+
+  /// True when the latest journaled import has not finished, or when that
+  /// cannot be told (then the acknowledgements are kept, not dropped).
+  Future<bool> _olderImportUnfinished() async {
+    try {
+      final st = await ImportJournal.current();
+      return st != null && st.state != ImportJournalState.done;
+    } catch (_) {
+      return true;
     }
   }
 }

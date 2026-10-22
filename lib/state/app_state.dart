@@ -1712,7 +1712,22 @@ class AppState extends ChangeNotifier {
       importProgress.value = failure;
       return;
     }
-    if (!r.resumed) return;
+    if (!r.resumed) {
+      // Automatic retries are used up (or the saved copy is gone): nothing ran,
+      // but the journal still holds why. Show it at launch and keep it until
+      // the next import, instead of leaving an unfinished import silent.
+      try {
+        final st = await ImportJournal.current();
+        if (st != null &&
+            st.state == ImportJournalState.failed &&
+            st.error != null) {
+          final failure = ImportFailed(st.error!);
+          _backupFailure = failure;
+          importProgress.value = failure;
+        }
+      } catch (_) {}
+      return;
+    }
     try {
       unawaited(gestureSettings.bootstrap());
       await _loadAlarmSchedule();
