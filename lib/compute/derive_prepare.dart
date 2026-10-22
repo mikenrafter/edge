@@ -7,6 +7,7 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 import '../ble/adapters/signals.dart';
 import '../data/coverage_resolver.dart';
 import '../data/day_checkpoint.dart';
+import 'groups/input_stamp.dart';
 import 'day_checkpoint_policy.dart' show kRevBucketSec;
 import 'substrate.dart';
 import 'substrate_retention.dart';
@@ -97,6 +98,12 @@ class PreparedDerivationDay {
   /// validated against and written with. Null on the import path.
   final Map<int, int>? inputRevs;
 
+  /// Every input's revision as it stood BEFORE this day's inputs were read
+  /// (design 06 1d). The group rows are stamped with it, so a result computed
+  /// from older inputs is never labelled with newer ones. Null on the import
+  /// path: stored as unpinned.
+  final InputStamp? inputStamp;
+
   /// Non-null when [daySub] / [napSub] carry only the beats after the
   /// checkpoint (see [DayRrResume]). Null: every beat of the day is present.
   final DayRrResume? rrResume;
@@ -124,6 +131,7 @@ class PreparedDerivationDay {
     this.priority = const {},
     this.inputFp,
     this.inputRevs,
+    this.inputStamp,
     this.rrResume,
     this.isWearable = false,
   }) : napSub = napSub ?? daySub;
@@ -150,6 +158,7 @@ class PreparedDerivationDay {
     priority: priority,
     inputFp: inputFp,
     inputRevs: inputRevs,
+    inputStamp: inputStamp,
     isWearable: isWearable,
   );
 
@@ -340,6 +349,7 @@ class SleepSessionCandidate {
     Map<InputSignal, List<String>> priority = const {},
     String? inputFp,
     Map<int, int>? inputRevs,
+    InputStamp? inputStamp,
     DayRrResume? rrResume,
     bool isWearable = false,
   }) => PreparedDerivationDay(
@@ -370,6 +380,7 @@ class SleepSessionCandidate {
     priority: priority,
     inputFp: inputFp,
     inputRevs: inputRevs,
+    inputStamp: inputStamp,
     rrResume: rrResume,
     isWearable: isWearable,
   );

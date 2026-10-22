@@ -144,7 +144,7 @@ Future<Map<String, int>?> _ldbNoteHeadlineShown(String day, int value) async =>
         : {'from': (cur['value'] as num).round(), 'to': value, 'at': now};
   });
 
-Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, required String payloadJson, required String windowJson, required bool finalized, required bool skipped, required bool partial, required double? rhr, required double? rmssd, required double? readiness, required Map<String, double?> series, required String? source, required ({String method, String family, String cls}) Function(String key)? seriesMethod, required String? deviceFamily, required String? coverageDevices, required String? priorityHash, required Set<String> blankKeys, required DayResultWrite reason}) async {
+Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, required String payloadJson, required String windowJson, required bool finalized, required bool skipped, required bool partial, required double? rhr, required double? rmssd, required double? readiness, required Map<String, double?> series, required String? source, required ({String method, String family, String cls}) Function(String key)? seriesMethod, required String? deviceFamily, required String? coverageDevices, required String? priorityHash, required Set<String> blankKeys, required DayResultWrite reason, InputStamp? inputStamp}) async {
     final db = await LocalDb.instance;
     final now = LocalDb.nowMs();
     // THE write seam for the compact curve format. All four callers
@@ -152,7 +152,7 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
     // no producer needs to know the wire format exists — upstream code keeps
     // merging and patching plain [{t,v}] lists in memory. Lossless or no-op:
     // SeriesCodec leaves anything it cannot encode exactly as it found it.
-    return db.transaction((txn) async {
+    final accepted = await db.transaction((txn) async {
       if (reason != DayResultWrite.userOverride) {
         final cur = await txn.query(
           'day_result',
@@ -200,7 +200,6 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
         'rmssd': rmssd,
         'readiness': readiness,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-      await writeGroupRowsShadow(txn, dayId: dayId, encodedPayload: encodedPayload, finalized: finalized, partial: partial, skipped: skipped, userOverride: reason == DayResultWrite.userOverride, nowMs: now);
       // A `partial` row already doesn't count as "derived" for the raw-pruning
       // guard (see above) — extend the same caution to the rolling baselines:
       // don't let a day whose second-half compute failed/timed out overwrite
@@ -276,6 +275,16 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
           where: 'key = ?', whereArgs: ['${LocalDb._settledPrefix}$dayId']);
       return true;
     });
+    // Shadow group rows: AFTER the commit, in their own small transaction.
+    // Inside this one, SQLITE_FULL on the extra payload rolls back the whole
+    // transaction and takes the day_result with it, and a savepoint rollback
+    // confuses sqflite's transaction bookkeeping. A crash between the two
+    // leaves the day with no or stale group rows; they are re-sliced from the
+    // stored payload (1e/1f reconcile). Failures are counted, never thrown.
+    if (accepted) {
+      await writeGroupRowsAfterCommit(dayId: dayId, algoVersion: algoVersion, finalized: finalized, partial: partial, skipped: skipped, userOverride: reason == DayResultWrite.userOverride, stamp: inputStamp);
+    }
+    return accepted;
   }
 
 Future<List<(int, double, double)>> _ldbSkinTempAmbientMinutes(int fromSec, int toSec) async {

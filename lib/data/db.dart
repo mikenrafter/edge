@@ -4786,7 +4786,10 @@ class LocalDb {
     // produces keeps its OLD row forever.
     Set<String> blankKeys = const {},
     DayResultWrite reason = DayResultWrite.derive,
-  }) => _ldbPutDayResult(dayId: dayId, algoVersion: algoVersion, payloadJson: payloadJson, windowJson: windowJson, finalized: finalized, skipped: skipped, partial: partial, rhr: rhr, rmssd: rmssd, readiness: readiness, series: series, source: source, seriesMethod: seriesMethod, deviceFamily: deviceFamily, coverageDevices: coverageDevices, priorityHash: priorityHash, blankKeys: blankKeys, reason: reason);
+    // The input revisions captured BEFORE the inputs were read (design 06 1d);
+    // null for writers that did not (imports, backfills): stored as unpinned.
+    InputStamp? inputStamp,
+  }) => _ldbPutDayResult(dayId: dayId, algoVersion: algoVersion, payloadJson: payloadJson, windowJson: windowJson, finalized: finalized, skipped: skipped, partial: partial, rhr: rhr, rmssd: rmssd, readiness: readiness, series: series, source: source, seriesMethod: seriesMethod, deviceFamily: deviceFamily, coverageDevices: coverageDevices, priorityHash: priorityHash, blankKeys: blankKeys, reason: reason, inputStamp: inputStamp);
 
   /// True when a stored or incoming payload is an import snapshot. An
   /// unreadable payload is not one: it is refused like any real row.

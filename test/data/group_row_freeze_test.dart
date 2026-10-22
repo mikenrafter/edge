@@ -35,7 +35,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/compute/groups/assemble_bundle.dart';
-import 'package:openstrap_edge/compute/groups/edge_groups.dart';
 import 'package:openstrap_edge/compute/groups/group_registry.dart';
 import 'package:openstrap_edge/compute/groups/group_types.dart';
 import 'package:openstrap_edge/compute/groups/input_catalogue.dart';

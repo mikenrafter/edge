@@ -1,4 +1,4 @@
-// Group rows are shadow: a failure writing them must never fail or roll back
+// Group rows are shadow (written after the day_result commit): a failure must never fail or roll back
 // the day_result write, and must leave no half-written set.
 
 import 'dart:convert';

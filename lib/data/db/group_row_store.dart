@@ -40,8 +40,12 @@ import 'package:sqflite/sqflite.dart';
 import '../../compute/groups/group_registry.dart';
 import '../../compute/groups/group_types.dart';
 import '../../compute/groups/input_catalogue.dart';
+import '../../compute/groups/input_stamp.dart';
 import '../../compute/groups/slice_bundle.dart';
+import '../db.dart' show LocalDb;
 import 'input_revision_store.dart';
+
+export '../../compute/groups/input_stamp.dart';
 
 /// Test seam: the registry the writer reads counters and ancestors from.
 /// null means [kMergedRegistry].
@@ -57,13 +61,22 @@ final GroupRowDiagnostics groupRowDiagnostics = GroupRowDiagnostics();
 
 /// `CREATE TABLE IF NOT EXISTS group_row`. A literal at the call, not a
 /// constant: the p21 write-seam guard reads the SQL text.
-Future<void> createGroupRow(DatabaseExecutor db) =>
-    db.execute('CREATE TABLE IF NOT EXISTS group_row ('
+Future<void> createGroupRow(DatabaseExecutor db) async {
+  // Serves kStampQuerySql's scope predicate (the primary key leads with
+  // source). Covering: the query reads nothing else.
+  // A speed-up only, so best effort: an upgrade must never brick over it, and
+  // the next open's repair pass retries (the table exists in every real v77).
+  try {
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_input_revision_scope '
+        'ON input_revision(scope, source, rev)');
+  } catch (_) {}
+  await db.execute('CREATE TABLE IF NOT EXISTS group_row ('
         'day_id TEXT NOT NULL, group_id TEXT NOT NULL, '
         'revision INTEGER NOT NULL, counter INTEGER, ancestors_json TEXT, '
         'input_stamp_json TEXT, payload BLOB, computed_at INTEGER, '
         'finalized INTEGER, partial INTEGER, published INTEGER DEFAULT 0, '
         'PRIMARY KEY (day_id, group_id, revision))');
+}
 
 const int _rangeDays = 28;
 
@@ -100,60 +113,89 @@ bool _inScope(String source, InputScope s, String scope, String day) {
 String _canon(Map<String, int> m) =>
     '{${[for (final k in (m.keys.toList()..sort())) '"$k":${m[k]}'].join(',')}}';
 
-String _canon2(Map<String, Map<String, int>> m) =>
-    '{${[for (final k in (m.keys.toList()..sort())) '"$k":${_canon(m[k]!)}'].join(',')}}';
+String _canon2(Map<String, Map<String, int>> m, {bool unpinned = false}) =>
+    '{${[
+      if (unpinned) '"_unpinned":true',
+      for (final k in (m.keys.toList()..sort())) '"$k":${_canon(m[k]!)}',
+    ].join(',')}}';
 
-/// Writes the group rows of one accepted day_result write. [encodedPayload] is
-/// exactly the string stored in `day_result.payload_json`. NEVER throws and
-/// never disturbs the surrounding transaction: any failure rolls back only the
-/// group rows (savepoint), is counted in [groupRowDiagnostics] and logged.
-Future<void> writeGroupRowsShadow(
-  DatabaseExecutor txn, {
+/// The stamp window's `input_revision` rows. Names no source (the read
+/// tracker's SQL log would count each as a derive read) and is served by
+/// idx_input_revision_scope.
+const String kStampQuerySql = 'SELECT source, scope, rev FROM input_revision '
+    "WHERE scope = '' OR (scope >= ? AND scope <= ?)";
+
+/// The latest revision's metadata per group of a day: no payload BLOBs.
+const String kLatestRevisionSql =
+    'SELECT g.group_id, g.revision, g.counter, g.ancestors_json, '
+    'g.input_stamp_json, g.finalized FROM group_row g '
+    'JOIN (SELECT group_id, MAX(revision) AS r FROM group_row '
+    'WHERE day_id = ? GROUP BY group_id) m '
+    'ON g.group_id = m.group_id AND g.revision = m.r WHERE g.day_id = ?';
+
+/// The input revisions of [dayId]'s stamp window right now. The engine calls
+/// this BEFORE it reads any input, so the stamp names what the result was
+/// computed from even if the inputs move while it computes.
+Future<InputStamp> captureInputStamp(String dayId,
+    {DatabaseExecutor? db}) async {
+  final ex = db ?? await LocalDb.instance;
+  final from = _addDays(dayId, -_rangeDays), to = _addDays(dayId, 1);
+  final out = <String, Map<String, int>>{};
+  for (final r in await ex.rawQuery(kStampQuerySql, [from, to])) {
+    (out[r['source'] as String] ??= <String, int>{})[r['scope'] as String] =
+        (r['rev'] as num).toInt();
+  }
+  // `decoded` is not in input_revision; it comes from its 15-minute buckets.
+  out.addAll(await inputRevSnapshot(const ['decoded'],
+      fromDay: from, toDay: to, db: ex));
+  return out;
+}
+
+/// Writes the group rows of a day_result write that was just ACCEPTED and
+/// committed, in a small transaction of their own, from the stored payload
+/// (idempotent: a rerun re-slices the same string). NEVER throws; a failure is
+/// counted in [groupRowDiagnostics] and logged, and leaves no half set.
+///
+/// [stamp] is the capture from before the inputs were read; null (imports,
+/// backfills) stores the persist-time revisions marked `"_unpinned":true`,
+/// which a reuse decision must refuse.
+Future<void> writeGroupRowsAfterCommit({
   required String dayId,
-  required String encodedPayload,
+  required int algoVersion,
   required bool finalized,
   required bool partial,
   required bool skipped,
   required bool userOverride,
-  required int nowMs,
+  InputStamp? stamp,
 }) async {
-  // Shadow only: nothing here may fail or roll back the day_result write. A
-  // savepoint confines a part-way failure to the group rows (no half set).
+  if (skipped) return;
   try {
-    await txn.execute('SAVEPOINT group_row_sp');
-  } catch (e) {
-    _shadowFailed(dayId, e);
-    return;
-  }
-  try {
-    await writeGroupRows(txn,
+    final db = await LocalDb.instance;
+    final rows = await db.query('day_result',
+        columns: ['payload_json'],
+        where: 'day_id = ? AND algo_version = ?',
+        whereArgs: [dayId, algoVersion],
+        limit: 1);
+    if (rows.isEmpty) return;
+    final payload = rows.single['payload_json'] as String;
+    await db.transaction((txn) => writeGroupRows(txn,
         dayId: dayId,
-        encodedPayload: encodedPayload,
+        encodedPayload: payload,
         finalized: finalized,
         partial: partial,
-        skipped: skipped,
+        skipped: false,
         userOverride: userOverride,
-        nowMs: nowMs);
-    await txn.execute('RELEASE group_row_sp');
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+        stamp: stamp));
   } catch (e) {
-    _shadowFailed(dayId, e);
-    try {
-      await txn.execute('ROLLBACK TO group_row_sp');
-      await txn.execute('RELEASE group_row_sp');
-    } catch (e2) {
-      dev.log('$dayId savepoint rollback failed: $e2', name: 'group_row');
-    }
+    groupRowDiagnostics.unsliceable++;
+    groupRowDiagnostics.lastProblem = '$e';
+    dev.log('$dayId group rows failed: $e', name: 'group_row');
   }
 }
 
-void _shadowFailed(String dayId, Object e) {
-  groupRowDiagnostics.unsliceable++;
-  groupRowDiagnostics.lastProblem = '$e';
-  dev.log('$dayId group rows failed: $e', name: 'group_row');
-}
-
-/// The rows themselves; use [writeGroupRowsShadow] from the write seam. An
-/// unsliceable bundle returns quietly; database errors propagate.
+/// The rows themselves. An unsliceable bundle returns quietly; database errors
+/// propagate to the caller's transaction.
 Future<void> writeGroupRows(
   DatabaseExecutor txn, {
   required String dayId,
@@ -163,6 +205,7 @@ Future<void> writeGroupRows(
   required bool skipped,
   required bool userOverride,
   required int nowMs,
+  InputStamp? stamp,
 }) async {
   if (skipped) return;
   final ({Map<String, List<(String, String)>> slices, List<String> keyOrder})
@@ -195,32 +238,14 @@ Future<void> writeGroupRows(
   }
   if (decls.isEmpty) return;
 
-  // Every source's rows in the window, filtered in Dart: naming the sources in
-  // the SQL (or its arguments) would make the read-tracking SQL log count this
-  // stamp as a derive read of each of them. `decoded` is not in
-  // input_revision; it comes from its 15-minute buckets.
-  final from = _addDays(dayId, -_rangeDays), to = _addDays(dayId, 1);
-  final snap = <String, Map<String, int>>{};
-  for (final r in await txn.rawQuery(
-      'SELECT source, scope, rev FROM input_revision '
-      "WHERE scope = '' OR (scope >= ? AND scope <= ?)",
-      [from, to])) {
-    final src = r['source'] as String;
-    if (sources.contains(src)) {
-      (snap[src] ??= <String, int>{})[r['scope'] as String] =
-          (r['rev'] as num).toInt();
-    }
-  }
-  if (sources.contains('decoded')) {
-    snap.addAll(await inputRevSnapshot(const ['decoded'],
-        fromDay: from, toDay: to, db: txn));
-  }
+  // Pinned: the capture from before the inputs were read. Unpinned: now.
+  final stampIsNull = stamp == null;
+  final snap = stamp ?? await captureInputStamp(dayId, db: txn);
 
-  final latest = <String, Map<String, Object?>>{};
-  for (final r in await txn.query('group_row',
-      where: 'day_id = ?', whereArgs: [dayId], orderBy: 'revision')) {
-    latest[r['group_id'] as String] = r; // ascending: the last one wins
-  }
+  final latest = <String, Map<String, Object?>>{
+    for (final r in await txn.rawQuery(kLatestRevisionSql, [dayId, dayId]))
+      r['group_id'] as String: r,
+  };
 
   for (final e in decls.entries) {
     final id = e.key;
@@ -241,7 +266,7 @@ Future<void> writeGroupRows(
       (stamp[i.id] ??= <String, int>{}).addAll(keep);
     }
     final ancestorsJson = _canon(ancestors);
-    final stampJson = _canon2(stamp);
+    final stampJson = _canon2(stamp, unpinned: stampIsNull);
     final values = <String, Object?>{
       'counter': g.counter,
       'ancestors_json': ancestorsJson,

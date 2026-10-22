@@ -579,6 +579,8 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       // leave a readable reconstruction behind.
       await deleteByIn(txn, 'spectral_archive', 'day_id', sorted);
       await deleteByIn(txn, 'spectral_archive_status', 'day_id', sorted);
+      // Shadow group payloads of the deleted day (a reimport starts at revision 1).
+      await deleteByIn(txn, 'group_row', 'day_id', sorted);
     });
     return deleted;
   }

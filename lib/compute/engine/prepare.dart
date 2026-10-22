@@ -16,6 +16,10 @@ extension _EnginePrepare on DerivationEngine {
     final stats = _PrepareStats();
     // The day's raw as it stands BEFORE anything below reads it: the input
     // signature of the calorie artifact this derive stores.
+    // Every input's revision, for the group rows' stamp: first, so anything
+    // that moves while this day computes leaves the stamp stale, not falsely
+    // current.
+    final inputStamp = await captureInputStamp(dayId);
     final inputFp = (await perf.stage(
         'fingerprints', () => LocalDb.decodedDayFingerprints([dayId])))[dayId];
     final dayStart = DerivationEngine._localDayLabelToSec(dayId);
@@ -164,6 +168,7 @@ extension _EnginePrepare on DerivationEngine {
       priority: priority,
       inputFp: inputFp,
       inputRevs: inputRevs,
+      inputStamp: inputStamp,
       // A wearable's day is read whole from its own store: the checkpoint's
       // beat skip applies to the band's rows only, and the full-beat reload
       // after a stream refusal ([_withFullRr]) reads the band's table, which
