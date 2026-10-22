@@ -26,6 +26,7 @@ import 'ui2/onboarding/pairing.dart' show OnboardingBypass;
 import 'ui2/onboarding/profile_setup.dart';
 import 'ui2/pairing/device_picker.dart';
 import 'ui2/onboarding/splash.dart';
+import 'ui2/onboarding/consent_prompt.dart';
 import 'ui2/onboarding/welcome.dart';
 import 'ui2/profile/alarm.dart';
 import 'ui2/profile/settings.dart' show MoreSettings;
@@ -337,7 +338,7 @@ class _Gate extends StatelessWidget {
               onSkip: () => OnboardingBypass.mark(OnboardingBypass.kPairing)),
           AppRoute.profile => ProfileSetupScreen(
               onDone: () => OnboardingBypass.mark(OnboardingBypass.kProfile)),
-          AppRoute.shell => const _Shell(),
+          AppRoute.shell => const ConsentPromptHost(child: _Shell()),
         };
         // Demo mode's persistent reminder — pinned below EVERY route this
         // switch can produce (onboarding steps included), so there is no

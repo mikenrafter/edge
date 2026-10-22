@@ -39,9 +39,9 @@ final class ImportCopying extends ImportProgress {
 }
 
 /// A previously interrupted import is being resumed at ([stage], [rowsDone]).
-final class ImportResuming extends ImportCopying {
-  const ImportResuming(super.stage, super.rowsDone, super.rowsTotal,
-      super.stageIndex, super.stageCount);
+final class ImportResuming extends ImportProgress {
+  final ImportStage stage;
+  const ImportResuming(this.stage, int _, int _, int _, int _);
 }
 
 /// Recalculating days from the imported data. [day] is the label of the last
@@ -52,8 +52,13 @@ final class ImportRebuilding extends ImportProgress {
   const ImportRebuilding(this.daysDone, this.daysTotal, this.day);
 }
 
-final class ImportDone extends ImportProgress {
+base class ImportDone extends ImportProgress {
   const ImportDone();
+}
+
+/// CSV derivation still belongs to the import, with no fabricated total.
+final class ImportCalculating extends ImportDone {
+  const ImportCalculating();
 }
 
 final class ImportFailed extends ImportProgress {

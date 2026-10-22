@@ -3397,5 +3397,31 @@
   "olderVersionReasonAge": "Esta métrica necesita tu edad, que no está registrada.",
   "olderVersionReasonWeight": "Esta métrica necesita tu peso, que no está registrado.",
   "olderVersionReasonHeight": "Esta métrica necesita tu altura, que no está registrada.",
-  "olderVersionReasonSex": "Esta métrica necesita tu sexo, que no está registrado."
+  "olderVersionReasonSex": "Esta métrica necesita tu sexo, que no está registrado.",
+  "importPrepCountingTables": "{done} de {total}",
+  "@importPrepCountingTables": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importPrepStarting": "Preparando la copia de seguridad",
+  "importResuming": "Reanudando {stage}",
+  "@importResuming": {
+    "placeholders": {
+      "stage": {
+        "type": "String"
+      }
+    }
+  },
+  "postImportReentryCoachKey": "La clave de tu asistente de IA no se restauró. Vuelve a introducirla en los ajustes de IA.",
+  "postImportDeviceOnly": "El emparejamiento de la banda, el token de Tasker y el consentimiento deben configurarse de nuevo en este dispositivo.",
+  "consentPromptTitle": "Tus opciones de privacidad",
+  "consentPromptBody": "Elige si quieres compartir diagnósticos anónimos o contribuir datos de salud. Ambas opciones están desactivadas de forma predeterminada.",
+  "consentConfirm": "Continuar",
+  "consentDecline": "No, gracias"
 }

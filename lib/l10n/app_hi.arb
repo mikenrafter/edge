@@ -3379,5 +3379,31 @@
   "olderVersionReasonAge": "इस मापदंड के लिए आपकी उम्र चाहिए, जो दर्ज नहीं है।",
   "olderVersionReasonWeight": "इस मापदंड के लिए आपका वज़न चाहिए, जो दर्ज नहीं है।",
   "olderVersionReasonHeight": "इस मापदंड के लिए आपकी ऊँचाई चाहिए, जो दर्ज नहीं है।",
-  "olderVersionReasonSex": "इस मापदंड के लिए आपका लिंग चाहिए, जो दर्ज नहीं है।"
+  "olderVersionReasonSex": "इस मापदंड के लिए आपका लिंग चाहिए, जो दर्ज नहीं है।",
+  "importPrepCountingTables": "{total} में से {done}",
+  "@importPrepCountingTables": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importPrepStarting": "बैकअप तैयार किया जा रहा है",
+  "importResuming": "{stage} फिर शुरू हो रहा है",
+  "@importResuming": {
+    "placeholders": {
+      "stage": {
+        "type": "String"
+      }
+    }
+  },
+  "postImportReentryCoachKey": "आपकी AI कोच कुंजी पुनर्स्थापित नहीं हुई। इसे AI सेटिंग में फिर से दर्ज करें।",
+  "postImportDeviceOnly": "बैंड पेयरिंग, Tasker टोकन और सहमति इस डिवाइस पर फिर से सेट करनी होगी।",
+  "consentPromptTitle": "आपकी गोपनीयता पसंद",
+  "consentPromptBody": "चुनें कि आप गुमनाम निदान साझा करना चाहते हैं या स्वास्थ्य डेटा देना चाहते हैं। दोनों विकल्प डिफ़ॉल्ट रूप से बंद हैं।",
+  "consentConfirm": "जारी रखें",
+  "consentDecline": "नहीं धन्यवाद"
 }

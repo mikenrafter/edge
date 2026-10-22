@@ -17640,5 +17640,31 @@
   "olderVersionReasonAge": "This metric needs your age, which is not on file.",
   "olderVersionReasonWeight": "This metric needs your weight, which is not on file.",
   "olderVersionReasonHeight": "This metric needs your height, which is not on file.",
-  "olderVersionReasonSex": "This metric needs your sex, which is not on file."
+  "olderVersionReasonSex": "This metric needs your sex, which is not on file.",
+  "importPrepCountingTables": "{done} of {total}",
+  "@importPrepCountingTables": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importPrepStarting": "Getting the backup ready",
+  "importResuming": "Resuming {stage}",
+  "@importResuming": {
+    "placeholders": {
+      "stage": {
+        "type": "String"
+      }
+    }
+  },
+  "postImportReentryCoachKey": "Your AI coach key was not restored. Enter it again in AI settings.",
+  "postImportDeviceOnly": "band pairing, the Tasker token and consent must be set up again on this device.",
+  "consentPromptTitle": "Your privacy choices",
+  "consentPromptBody": "Choose whether to share anonymous diagnostics or contribute health data. Both are off unless you choose otherwise.",
+  "consentConfirm": "Continue",
+  "consentDecline": "No thanks"
 }

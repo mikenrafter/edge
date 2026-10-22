@@ -3485,5 +3485,31 @@
   "olderVersionReasonAge": "Dafür wird dein Alter gebraucht, das nicht hinterlegt ist.",
   "olderVersionReasonWeight": "Dafür wird dein Gewicht gebraucht, das nicht hinterlegt ist.",
   "olderVersionReasonHeight": "Dafür wird deine Größe gebraucht, die nicht hinterlegt ist.",
-  "olderVersionReasonSex": "Dafür wird dein Geschlecht gebraucht, das nicht hinterlegt ist."
+  "olderVersionReasonSex": "Dafür wird dein Geschlecht gebraucht, das nicht hinterlegt ist.",
+  "importPrepCountingTables": "{done} von {total}",
+  "@importPrepCountingTables": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importPrepStarting": "Backup wird vorbereitet",
+  "importResuming": "{stage} wird fortgesetzt",
+  "@importResuming": {
+    "placeholders": {
+      "stage": {
+        "type": "String"
+      }
+    }
+  },
+  "postImportReentryCoachKey": "Dein KI-Coach-Schlüssel wurde nicht wiederhergestellt. Gib ihn erneut in den KI-Einstellungen ein.",
+  "postImportDeviceOnly": "Bandkopplung, Tasker-Token und Einwilligung müssen auf diesem Gerät erneut eingerichtet werden.",
+  "consentPromptTitle": "Deine Datenschutzauswahl",
+  "consentPromptBody": "Wähle, ob du anonyme Diagnosedaten teilen oder Gesundheitsdaten beitragen möchtest. Beides ist standardmäßig ausgeschaltet.",
+  "consentConfirm": "Weiter",
+  "consentDecline": "Nein danke"
 }

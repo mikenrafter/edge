@@ -8764,5 +8764,31 @@
   "olderVersionReasonAge": "Для этого показателя нужен ваш возраст, он не указан.",
   "olderVersionReasonWeight": "Для этого показателя нужен ваш вес, он не указан.",
   "olderVersionReasonHeight": "Для этого показателя нужен ваш рост, он не указан.",
-  "olderVersionReasonSex": "Для этого показателя нужен ваш пол, он не указан."
+  "olderVersionReasonSex": "Для этого показателя нужен ваш пол, он не указан.",
+  "importPrepCountingTables": "{done} из {total}",
+  "@importPrepCountingTables": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importPrepStarting": "Подготовка резервной копии",
+  "importResuming": "Продолжение: {stage}",
+  "@importResuming": {
+    "placeholders": {
+      "stage": {
+        "type": "String"
+      }
+    }
+  },
+  "postImportReentryCoachKey": "Ключ ИИ-коуча не восстановлен. Введите его снова в настройках ИИ.",
+  "postImportDeviceOnly": "Сопряжение браслета, токен Tasker и согласие нужно настроить заново на этом устройстве.",
+  "consentPromptTitle": "Настройки конфиденциальности",
+  "consentPromptBody": "Выберите, делиться ли анонимной диагностикой или передавать данные о здоровье. По умолчанию оба варианта выключены.",
+  "consentConfirm": "Продолжить",
+  "consentDecline": "Нет, спасибо"
 }

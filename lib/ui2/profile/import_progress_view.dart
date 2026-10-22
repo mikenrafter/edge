@@ -34,7 +34,7 @@ class ImportProgressView extends StatelessWidget {
     final p = P.of(context);
     final l = AppLocalizations.of(context);
     final s = progress;
-    if (s is ImportDone) return const SizedBox.shrink();
+    if (s is ImportDone && s is! ImportCalculating) return const SizedBox.shrink();
 
     final status = StatusLine.importLine(l, s);
     final stageStatus = statusOf(l, s);
@@ -43,6 +43,14 @@ class ImportProgressView extends StatelessWidget {
     var counted = false;
     switch (s) {
       case ImportPreparing():
+        if (s.step == ImportPrepStep.counting && s.done != null &&
+            s.total != null && s.total! > 0) {
+          counted = true;
+          bar = (s.done! / s.total!).clamp(0.0, 1.0);
+        }
+      case ImportResuming():
+        break;
+      case ImportCalculating():
         break;
       case ImportCopying():
         detail = l?.importStep('${s.stageIndex}', '${s.stageCount}', grouped(s.rowsDone),
@@ -82,6 +90,7 @@ class ImportProgressView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(status,
+                    key: s is ImportResuming ? const ValueKey('import-resuming') : null,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: small.copyWith(color: p.ink2)),
@@ -90,6 +99,10 @@ class ImportProgressView extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: small.copyWith(color: p.ink3)),
+                if (s is ImportPreparing && counted)
+                  Text(l?.importPrepCountingTables('${s.done}', '${s.total}') ??
+                      '${s.done} of ${s.total}', key: const ValueKey('import-prep-count'),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: small.copyWith(color: p.ink3)),
                 if (detail != null)
                   Text(detail,
                       maxLines: 1,
@@ -119,6 +132,7 @@ class ImportProgressView extends StatelessWidget {
                 ),
               const SizedBox(height: S.x2),
               Text(status,
+                  key: s is ImportResuming ? const ValueKey('import-resuming') : null,
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -129,7 +143,12 @@ class ImportProgressView extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: F.cap.copyWith(color: p.ink3)),
-              if (detail != null)
+              if (s is ImportPreparing && counted)
+                Text(l?.importPrepCountingTables('${s.done}', '${s.total}') ??
+                    '${s.done} of ${s.total}', key: const ValueKey('import-prep-count'),
+                    textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: F.cap.copyWith(color: p.ink3)),
+              if (detail != null && s is! ImportResuming)
                 Text(detail,
                     textAlign: TextAlign.center,
                     maxLines: 1,
@@ -157,8 +176,12 @@ class ImportProgressView extends StatelessWidget {
             l?.importPrepChecking ?? 'Checking the backup',
           ImportPrepStep.counting =>
             l?.importPrepCounting ?? 'Counting what is in the backup',
-          _ => l?.importPrepOpening ?? 'Opening the backup',
+          ImportPrepStep.opening => l?.importPrepOpening ?? 'Opening the backup',
+          null => l?.importPrepStarting ?? 'Getting the backup ready',
         };
+      case ImportResuming(:final stage):
+        final name = _stageName(l, stage);
+        return l?.importResuming(name) ?? 'Resuming $name';
       case ImportCopying():
         final name = _stageName(l, s.stage);
         return l?.importCopying(name) ?? 'Copying $name';
@@ -175,6 +198,8 @@ class ImportProgressView extends StatelessWidget {
                 'Recalculating · day ${s.daysDone} of ${s.daysTotal} · $day');
       case ImportFailed(:final error):
         return l?.dataFailed(error) ?? 'Failed: $error';
+      case ImportCalculating():
+        return l?.deriveProgressCalculating ?? 'Calculating…';
       case ImportDone():
         return '';
     }

@@ -23,7 +23,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/auto_backup.dart';
-import '../../data/backup_extras.dart' show ImportSummary;
+import '../../data/backup_extras.dart' show ImportSummary, lastImportSummary;
 import '../../data/csv_export.dart';
 import '../../data/day_label.dart' show dayLabelOf;
 import '../../data/db.dart';
@@ -74,6 +74,7 @@ class _DataScreenState extends State<DataScreen> {
   /// AppState.importProgress already shows.
   bool _noteIsImport = false;
   ImportOutcome? _outcome;
+  ImportSummary? _importSummary;
 
   void _say(String s, {bool failed = false, bool isImport = false}) {
     if (mounted) {
@@ -331,9 +332,17 @@ class _DataScreenState extends State<DataScreen> {
         .toList();
     // cancelled — not a failure, say nothing
     if (paths.isEmpty) return ('', false);
+    if (!mounted) return ('', false);
     final outcome = await runImport(app, paths,
-        askPassphrase: () => askBackupPassphrase(context));
-    if (mounted) setState(() => _outcome = outcome);
+        askPassphrase: () async => mounted
+            ? askBackupPassphrase(context)
+            : null);
+    if (!mounted) return ('', false);
+    final summary = outcome.nothingLanded ||
+            !outcome.source.toLowerCase().contains('backup')
+        ? null
+        : await lastImportSummary();
+    if (mounted) setState(() { _outcome = outcome; _importSummary = summary; });
     return ('', false);
   }
 
@@ -350,7 +359,8 @@ class _DataScreenState extends State<DataScreen> {
   Widget _view(BuildContext c, AppState app, AppLocalizations? l,
       ImportProgress? importProgress) {
     final importing = importProgress != null &&
-        importProgress is! ImportDone && importProgress is! ImportFailed;
+        (importProgress is ImportCalculating ||
+            importProgress is! ImportDone && importProgress is! ImportFailed);
     return DataScreenView(
       importProgress: importProgress,
       rebuiltCard: dbRebuiltCard(app.dbRebuild),
@@ -360,6 +370,7 @@ class _DataScreenState extends State<DataScreen> {
       noteFailed: _noteFailed,
       noteIsImport: _noteIsImport,
       outcome: _outcome,
+      importSummary: _importSummary,
       cadence: app.backupCadence,
       lastBackup: app.lastBackupAt,
       backupFolder: app.backupFolder,
@@ -478,7 +489,8 @@ class DataScreenView extends StatelessWidget {
     final last = lastBackup;
     final folder = backupFolder;
     final importingProgress = importProgress != null &&
-        importProgress is! ImportDone && importProgress is! ImportFailed;
+        (importProgress is ImportCalculating ||
+            importProgress is! ImportDone && importProgress is! ImportFailed);
     final importing = importingProgress;
     final failedProgress = importProgress;
     final folderLabel = folder == null
@@ -671,7 +683,7 @@ class DataScreenView extends StatelessWidget {
                 // loss counts in one run-on sentence.
                 if (o != null) ...[
                   const SizedBox(height: S.x5),
-                  ImportReport(o),
+                  ImportReport(o, summary: importSummary),
                 ],
               ],
             ),

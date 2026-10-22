@@ -61,6 +61,16 @@ class StatusLine extends StatelessWidget {
   /// The import's line: "Importing · Copying heart rate · step 4 of 9".
   static String importLine(AppLocalizations? l, ImportProgress s) {
     final status = ImportProgressView.statusOf(l, s);
+    if (s is ImportPreparing && s.step == ImportPrepStep.counting &&
+        s.done != null && s.total != null && s.total! > 0) {
+      final count = l?.importPrepCountingTables('${s.done}', '${s.total}') ??
+          '${s.done} of ${s.total}';
+      return l?.statusLineImporting('$status · $count') ??
+          'Importing · $status · $count';
+    }
+    if (s is ImportResuming) {
+      return l?.statusLineImporting(status) ?? 'Importing · $status';
+    }
     if (s is ImportCopying) {
       return l?.statusLineImportingStep(
               status, '${s.stageIndex}', '${s.stageCount}') ??
@@ -124,9 +134,12 @@ class StatusLine extends StatelessWidget {
     // A finished or failed import is terminal, not work in progress: the
     // failure is retained for the import screens, and this line goes on to say
     // what the app is doing now.
-    final importing = imp != null && imp is! ImportDone && imp is! ImportFailed;
+    final importing = imp != null &&
+        (imp is ImportCalculating || imp is! ImportDone && imp is! ImportFailed);
     if (importing) {
-      text = importLine(l, imp);
+      text = imp is ImportCalculating
+          ? (deriveProgressLine(der, l) ?? importLine(l, imp))
+          : importLine(l, imp);
     } else if (deriveProgressLine(der, l) case final d?) {
       text = d;
     } else if (sync.$1) {

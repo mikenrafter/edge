@@ -3379,5 +3379,31 @@
   "olderVersionReasonAge": "Cette mesure a besoin de votre âge, qui n’est pas renseigné.",
   "olderVersionReasonWeight": "Cette mesure a besoin de votre poids, qui n’est pas renseigné.",
   "olderVersionReasonHeight": "Cette mesure a besoin de votre taille, qui n’est pas renseignée.",
-  "olderVersionReasonSex": "Cette mesure a besoin de votre sexe, qui n’est pas renseigné."
+  "olderVersionReasonSex": "Cette mesure a besoin de votre sexe, qui n’est pas renseigné.",
+  "importPrepCountingTables": "{done} sur {total}",
+  "@importPrepCountingTables": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importPrepStarting": "Préparation de la sauvegarde",
+  "importResuming": "Reprise de {stage}",
+  "@importResuming": {
+    "placeholders": {
+      "stage": {
+        "type": "String"
+      }
+    }
+  },
+  "postImportReentryCoachKey": "La clé de votre coach IA n’a pas été restaurée. Saisissez-la de nouveau dans les réglages IA.",
+  "postImportDeviceOnly": "Le jumelage du bracelet, le jeton Tasker et le consentement doivent être configurés à nouveau sur cet appareil.",
+  "consentPromptTitle": "Vos choix de confidentialité",
+  "consentPromptBody": "Choisissez de partager des diagnostics anonymes ou de contribuer aux données de santé. Les deux options sont désactivées par défaut.",
+  "consentConfirm": "Continuer",
+  "consentDecline": "Non merci"
 }

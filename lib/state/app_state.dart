@@ -1485,7 +1485,7 @@ class AppState extends ChangeNotifier {
           // reads "Calculating…", not "day i of N").
           if (_backupStarts == backupsAtStart &&
               importProgress.value is ImportPreparing) {
-            importProgress.value = null;
+            importProgress.value = const ImportCalculating();
           }
           _deriveCoordinator.publishProgress(
               progressOwner, DeriveProgress(dayIndex: days));
@@ -1985,11 +1985,9 @@ class AppState extends ChangeNotifier {
   /// safe OFF default (we do NOT silently enable for someone who never chose).
   bool consentChosen = false;
 
-  /// RED STUB: true once [consentChosen] has been read from the preferences.
   bool consentLoaded = false;
 
-  /// RED STUB: whether the first-run consent prompt is due. Always false.
-  bool get consentPromptDue => false;
+  bool get consentPromptDue => consentLoaded && !consentChosen;
   int termsVersion = 1; // current Terms version (refreshed from /app/status)
 
   /// One-time wiring of the companion layer: install id, consent flags, the band
@@ -2007,6 +2005,7 @@ class AppState extends ChangeNotifier {
       telemetryConsent = prefs.getBool(_kTelemetryConsent) ?? false;
       healthShareConsent = prefs.getBool(_kHealthShareConsent) ?? false;
       consentChosen = prefs.getBool(_kConsentChosen) ?? false;
+      consentLoaded = true;
       CompanionClient.overrideUrl = prefs.getString(_kCompanionUrl);
 
       final t = TelemetryService.instance;

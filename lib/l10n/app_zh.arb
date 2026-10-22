@@ -3379,5 +3379,31 @@
   "olderVersionReasonAge": "此指标需要你的年龄，但尚未填写。",
   "olderVersionReasonWeight": "此指标需要你的体重，但尚未填写。",
   "olderVersionReasonHeight": "此指标需要你的身高，但尚未填写。",
-  "olderVersionReasonSex": "此指标需要你的性别，但尚未填写。"
+  "olderVersionReasonSex": "此指标需要你的性别，但尚未填写。",
+  "importPrepCountingTables": "{done} / {total}",
+  "@importPrepCountingTables": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "importPrepStarting": "正在准备备份",
+  "importResuming": "正在恢复{stage}",
+  "@importResuming": {
+    "placeholders": {
+      "stage": {
+        "type": "String"
+      }
+    }
+  },
+  "postImportReentryCoachKey": "AI 教练密钥未能恢复。请在 AI 设置中重新输入。",
+  "postImportDeviceOnly": "此设备需要重新设置手环配对、Tasker 令牌和同意选项。",
+  "consentPromptTitle": "隐私选项",
+  "consentPromptBody": "选择是否分享匿名诊断信息或贡献健康数据。两项默认关闭。",
+  "consentConfirm": "继续",
+  "consentDecline": "不了，谢谢"
 }

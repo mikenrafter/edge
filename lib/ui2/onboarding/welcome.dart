@@ -22,7 +22,7 @@ import '../../import/backup_crypto.dart';
 import '../../import/import_container.dart';
 import '../../import/journal_csv_import.dart';
 import '../../import/lab_csv_import.dart';
-import '../../data/backup_extras.dart' show ImportSummary;
+import '../../data/backup_extras.dart' show ImportSummary, lastImportSummary;
 import '../../l10n/app_localizations.dart';
 import '../../data/import_progress.dart';
 import '../../state/app_state.dart';
@@ -256,6 +256,7 @@ class WelcomeScreen extends StatefulWidget {
 class _WelcomeScreenState extends State<WelcomeScreen> {
   bool _busy = false;
   ImportOutcome? _outcome;
+  ImportSummary? _summary;
 
   Future<void> _import() async {
     final app = context.read<AppState>();
@@ -275,6 +276,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         .whereType<String>()
         .toList();
     if (paths.isEmpty) return; // cancelled — not a failure, say nothing
+    if (!mounted) return;
 
     setState(() {
       _busy = true;
@@ -282,9 +284,16 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     });
     try {
       final outcome = await runImport(app, paths,
-          askPassphrase: () => askBackupPassphrase(context));
+          askPassphrase: () async => mounted
+              ? askBackupPassphrase(context)
+              : null);
       if (!mounted) return;
-      setState(() => _outcome = outcome);
+      final summary = outcome.nothingLanded ||
+              !outcome.source.toLowerCase().contains('backup')
+          ? null
+          : await lastImportSummary();
+      if (!mounted) return;
+      setState(() { _outcome = outcome; _summary = summary; });
       // Anything that landed counts as bringing history in — a workouts-only
       // vendor export writes sessions and no days, and the gate used to sit
       // there as though the import had not happened.
@@ -318,11 +327,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   Widget _view(ImportProgress? prog) {
     final importing = prog != null &&
-        prog is! ImportDone && prog is! ImportFailed;
+        (prog is ImportCalculating || prog is! ImportDone && prog is! ImportFailed);
     return WelcomeView(
         importProgress: prog,
         busy: _busy || importing,
         outcome: _outcome,
+        importSummary: _summary,
         onNew: () => context.read<AppState>().chooseNewUser(),
         onImport: _import,
       );
@@ -581,6 +591,7 @@ bool _isDbBackup(String path) {
 class WelcomeView extends StatelessWidget {
   final bool busy;
   final ImportOutcome? outcome;
+  final ImportSummary? importSummary;
 
   /// A running import's stage; replaces the busy spinner while non-null.
   final ImportProgress? importProgress;
@@ -593,6 +604,7 @@ class WelcomeView extends StatelessWidget {
     required this.onImport,
     this.busy = false,
     this.outcome,
+    this.importSummary,
     this.importProgress,
   });
 
@@ -647,7 +659,7 @@ class WelcomeView extends StatelessWidget {
             ],
             if (o != null) ...[
               const SizedBox(height: S.x6),
-              ImportReport(o),
+              ImportReport(o, summary: importSummary),
             ],
           ],
         ),
@@ -835,6 +847,27 @@ class ImportReport extends StatelessWidget {
           icon: LucideIcons.fileWarning,
         ),
       ],
+      if (summary != null) ...[
+        for (final id in summary!.needsReentry)
+          Padding(
+            padding: const EdgeInsets.only(top: S.x3),
+            child: Text(
+              id == 'coach_api_key'
+                  ? (l?.postImportReentryCoachKey ??
+                      'Your AI coach key was not restored. Enter it again in AI settings.')
+                  : id,
+              key: ValueKey('post-import-reentry-$id'),
+            ),
+          ),
+      ],
+      Padding(
+        padding: const EdgeInsets.only(top: S.x3),
+        child: Text(
+          l?.postImportDeviceOnly ??
+              'band pairing, the Tasker token and consent must be set up again on this device.',
+          key: const ValueKey('post-import-device-only'),
+        ),
+      ),
     ]);
   }
 }
