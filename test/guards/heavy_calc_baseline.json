@@ -8419,7 +8419,7 @@
       "rule": "unresolvedInvocation",
       "file": "import/whoop_import.dart",
       "symbol": "WhoopImporter._importResolvedCsvs",
-      "element": "onProgress?.call(days)",
+      "element": "onProgress?.call(days, pendingDays.length)",
       "count": 1
     },
     {

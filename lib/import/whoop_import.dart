@@ -75,8 +75,7 @@ class WhoopImporter {
     List<String> paths, {
     DerivationEngine? engine,
     Profile? profile,
-    void Function(int done)? onProgress,
-    void Function(int total)? onScope,
+    void Function(int done, int total)? onProgress,
   }) async {
     var days = 0, workouts = 0, skipped = 0;
     // Day labels that still have raw 1 Hz substrate on device. An imported
@@ -101,7 +100,6 @@ class WhoopImporter {
         engine: engine,
         profile: profile,
         onProgress: onProgress,
-        onScope: onScope,
         days: days,
         workouts: workouts,
         skipped: skipped,
@@ -117,8 +115,7 @@ class WhoopImporter {
     required Set<String> rawDays,
     DerivationEngine? engine,
     Profile? profile,
-    void Function(int done)? onProgress,
-    void Function(int total)? onScope,
+    void Function(int done, int total)? onProgress,
     required int days,
     required int workouts,
     required int skipped,
@@ -173,13 +170,12 @@ class WhoopImporter {
         }
       }
     }
-    // Every file is read: how many days will be written is now known.
-    onScope?.call(pendingDays.length);
     for (final entry in pendingDays.entries) {
       switch (await _buildAndWriteDay(entry.key, entry.value, rawDays)) {
         case _DayWrite.written:
           days++;
-          onProgress?.call(days);
+          // [onProgress] reports days written so far of the days found in the files.
+          onProgress?.call(days, pendingDays.length);
         case _DayWrite.keptExisting:
           skipped++;
         case _DayWrite.unusable:

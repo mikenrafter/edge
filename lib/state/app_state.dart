@@ -1459,7 +1459,6 @@ class AppState extends ChangeNotifier {
         _profile,
         _derive,
         onProgress: (days) {
-          onProgress?.call(days);
           if (days <= 0) return;
           // The file is open and days are being derived: the line says so.
           // The importer streams, so how many days there will be is unknown;
@@ -1507,21 +1506,12 @@ class AppState extends ChangeNotifier {
       importProgress.value = const ImportPreparing(ImportPrepStep.opening);
       // A WHOOP export holds the vendor's own daily figures; storing them
       // recalculates nothing, so only the import line moves, with the number of
-      // days measured once every file has been read.
-      var total = 0;
+      // days the files held (measured once every file has been read).
       final res = await WhoopImporter.importFiles(
         paths,
         engine: _derive,
         profile: _profile,
-        onScope: (n) {
-          total = n;
-          if (n > 0) {
-            importProgress.value =
-                ImportCopying(ImportStage.results, 0, n, 1, 1);
-          }
-        },
-        onProgress: (done) {
-          onProgress?.call(done);
+        onProgress: (done, total) {
           if (total > 0 && done <= total) {
             importProgress.value =
                 ImportCopying(ImportStage.results, done, total, 1, 1);
