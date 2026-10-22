@@ -17,6 +17,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart';
 
@@ -71,6 +72,8 @@ void main() {
 
   late Directory tmp;
   setUp(() async {
+    // runImport starts a fresh import through the re-entry store (preferences).
+    SharedPreferences.setMockInitialValues({});
     tmp = await Directory.systemTemp.createTemp('import_routing_test_');
   });
   tearDown(() async {
