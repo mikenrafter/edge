@@ -47,7 +47,8 @@ void main() {
 
   test('the Haptics screen\'s ECG group opens the ECG home', () {
     expect(hapticsUi, contains("'ecg' => const EcgHomeScreen()"));
-    expect(hapticsUi, contains("_slotGroup(c, 'ecg')"));
+    expect(hapticsUi, contains("_sectionLink(c, p, 'ecg')"));
+    expect(hapticsUi, contains("ValueKey('haptic-slot-section-link:\$sectionId')"));
   });
 
   test('no user-facing ECG label uses AFib / atrial fibrillation wording', () {
