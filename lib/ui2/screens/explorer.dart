@@ -808,6 +808,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
               reach: _annReach);
     }
 
+    final olderFlags = _day || picked.isEmpty ? const <int?>[] : denseOlderVersions(_hist[picked.first.key] ?? const [], w!.length, end: DateTime.parse(w.to));
     return Surface(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ChartFrame(
@@ -823,6 +824,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
           child: ChartScrub(
             label: title,
             time: timeAt,
+            olderVersions: olderFlags,
             keys: [
               for (final m in picked)
                 ChartKey(m.label, p.on(m.color), (at) {

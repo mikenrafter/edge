@@ -3330,5 +3330,42 @@
       }
     }
   },
-  "syncFailCalculationStuck": "एक और गणना पूरी नहीं हुई"
+  "syncFailCalculationStuck": "एक और गणना पूरी नहीं हुई",
+  "olderVersionNote": "पुरानी गणना (v{version}) से: {reason}",
+  "@olderVersionNote": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "olderVersionNoteNoReason": "पुरानी गणना (v{version}) से",
+  "@olderVersionNoteNoReason": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionSemantics": "पुरानी गणना (v{version}) से",
+  "@olderVersionSemantics": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionMonthGridRow": "कुछ दिन पुरानी गणना से हैं",
+  "@olderVersionMonthGridRow": {},
+  "olderVersionSweepFinding": "पुरानी गणना (v{version})",
+  "@olderVersionSweepFinding": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  }
 }

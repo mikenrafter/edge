@@ -8715,5 +8715,42 @@
       }
     }
   },
-  "syncFailCalculationStuck": "Другое вычисление не завершилось"
+  "syncFailCalculationStuck": "Другое вычисление не завершилось",
+  "olderVersionNote": "Из более старого расчёта (v{version}): {reason}",
+  "@olderVersionNote": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "olderVersionNoteNoReason": "Из более старого расчёта (v{version})",
+  "@olderVersionNoteNoReason": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionSemantics": "Из более старого расчёта (v{version})",
+  "@olderVersionSemantics": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionMonthGridRow": "Некоторые дни взяты из более старого расчёта",
+  "@olderVersionMonthGridRow": {},
+  "olderVersionSweepFinding": "Старый расчёт (v{version})",
+  "@olderVersionSweepFinding": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  }
 }

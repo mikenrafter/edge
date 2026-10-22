@@ -32,6 +32,7 @@
 import '../l10n/display_text.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/presentation_text.dart';
+import 'older_version.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -258,6 +259,8 @@ class Scrubber extends StatelessWidget {
   /// One increase/decrease step. The default walks the strip in twenty moves,
   /// which is about a twenty-minute resolution on a night.
   final double step;
+  final List<int?> olderVersions;
+  final List<String?> olderReasons;
 
   final Widget child;
 
@@ -275,6 +278,8 @@ class Scrubber extends StatelessWidget {
     required this.describe,
     required this.child,
     this.step = .05,
+    this.olderVersions = const [],
+    this.olderReasons = const [],
     this.hold = false,
     this.onEnd,
   });
@@ -496,6 +501,8 @@ class ChartScrub extends StatefulWidget {
   final Widget child;
   final ChartScrubMode mode;
   final double step;
+  final List<int?> olderVersions;
+  final List<String?> olderReasons;
 
   static const cursorKey = ValueKey('chart-scrub-cursor');
   static const noData = 'No data here';
@@ -613,6 +620,8 @@ class ChartScrub extends StatefulWidget {
     this.gaps = false,
     this.mode = ChartScrubMode.line,
     this.step = .05,
+    this.olderVersions = const [],
+    this.olderReasons = const [],
   });
 
   @override
@@ -625,6 +634,21 @@ class _ChartScrubState extends State<ChartScrub> {
 
   ChartReadout _resolve(double? at) => ChartScrub.resolve(
       keys: widget.keys, time: widget.time, gaps: widget.gaps, at: at);
+
+  List<Widget> _olderReadout(double? position) {
+    if (widget.olderVersions.isEmpty) return const [];
+    final i = position == null
+        ? widget.olderVersions.length - 1
+        : ChartScrub.slotAt(widget.olderVersions.length, position,
+            bars: widget.mode != ChartScrubMode.line);
+    final version = widget.olderVersions[i];
+    if (version == null) return const [];
+    final reason = i < widget.olderReasons.length ? widget.olderReasons[i] : null;
+    return [
+      OlderVersionMark(id: 'readout', version: version, reason: reason),
+      OlderVersionNote(id: 'readout', version: version, reason: reason),
+    ];
+  }
 
   /// The same time-and-values the row shows, as a sentence.
   String _spoken(double at) {
@@ -644,13 +668,20 @@ class _ChartScrubState extends State<ChartScrub> {
     super.didChangeDependencies();
     final h = _ChartHubScope.maybeOf(context);
     if (!identical(h, _hub)) {
+      _hub?.removeListener(_hubChanged);
       _hub?.detach(this);
       _hub = h;
+      _hub?.addListener(_hubChanged);
     }
+  }
+
+  void _hubChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _hub?.removeListener(_hubChanged);
     _hub?.detach(this);
     super.dispose();
   }
@@ -665,7 +696,8 @@ class _ChartScrubState extends State<ChartScrub> {
     final p = P.of(c);
     final v = _at;
     final hub = _hub;
-    hub?.attach(this, _resolve, v);
+    hub?.attach(this, _resolve, v, widget.olderVersions, widget.olderReasons,
+        widget.mode != ChartScrubMode.line);
     final plot = Scrubber(
       value: v,
       onChanged: _place,
@@ -694,22 +726,39 @@ class _ChartScrubState extends State<ChartScrub> {
           ),
       ]),
     );
+    final hitPlot = LayoutBuilder(builder: (_, box) => Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (e) {
+        if (box.maxWidth > 0) _place((e.localPosition.dx / box.maxWidth).clamp(0.0, 1.0));
+      },
+      onPointerMove: (e) {
+        if (box.maxWidth > 0) _place((e.localPosition.dx / box.maxWidth).clamp(0.0, 1.0));
+      },
+      child: plot,
+    ));
+    Widget capturePosition(Widget child) => LayoutBuilder(builder: (_, box) => Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (e) { if (box.maxWidth > 0) _place((e.localPosition.dx / box.maxWidth).clamp(0.0, 1.0)); },
+      onPointerMove: (e) { if (box.maxWidth > 0) _place((e.localPosition.dx / box.maxWidth).clamp(0.0, 1.0)); },
+      child: child,
+    ));
     // In a frame the frame draws the row, under its own x labels. Bare, the row
     // goes directly under the chart.
-    if (hub != null) return plot;
+    if (hub != null) return capturePosition(hitPlot);
     final row = ChartKeyReadout.of(_resolve(v));
-    return LayoutBuilder(
+    return capturePosition(LayoutBuilder(
       builder: (_, box) => Column(
         mainAxisSize:
             box.hasBoundedHeight ? MainAxisSize.max : MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (box.hasBoundedHeight) Expanded(child: plot) else plot,
+          if (box.hasBoundedHeight) Expanded(child: hitPlot) else hitPlot,
           const SizedBox(height: S.x2),
           ExcludeSemantics(child: row),
+          ..._olderReadout(v),
         ],
       ),
-    );
+    ));
   }
 }
 
@@ -889,14 +938,28 @@ class _ChartHub extends ChangeNotifier {
   String? rendered;
   bool _pending = false;
   bool _dead = false;
+  List<int?> olderVersions = const [];
+  List<String?> olderReasons = const [];
+  bool olderBars = false;
+
+  (int?, String?) olderAtPosition() {
+    if (olderVersions.isEmpty) return (null, null);
+    final i = at == null
+        ? olderVersions.length - 1
+        : ChartScrub.slotAt(olderVersions.length, at!, bars: olderBars);
+    return (olderVersions[i], i < olderReasons.length ? olderReasons[i] : null);
+  }
 
   ChartReadout? read() => _resolve?.call(at);
 
   void attach(Object owner, ChartReadout Function(double? at) resolve,
-      double? position) {
+      double? position, List<int?> versions, List<String?> reasons, bool bars) {
     _owner = owner;
     _resolve = resolve;
     at = position;
+    olderVersions = versions;
+    olderReasons = reasons;
+    olderBars = bars;
     _check();
   }
 
@@ -1090,6 +1153,11 @@ class SignalCard extends StatelessWidget {
   /// Reserves this many lines for [sub] (its text may be shorter or empty), so
   /// a tile that is empty first and filled later is the same height both ways.
   final int subMinLines;
+  final int? olderVersion;
+  final String? olderReason;
+  final int? olderTotalVersion;
+  final String? olderTotalReason;
+  final String? olderId;
 
   const SignalCard(
     this.icon,
@@ -1102,6 +1170,11 @@ class SignalCard extends StatelessWidget {
     this.onTap,
     this.trailing,
     this.subMinLines = 0,
+    this.olderVersion,
+    this.olderReason,
+    this.olderTotalVersion,
+    this.olderTotalReason,
+    this.olderId,
   });
 
   @override
@@ -1141,6 +1214,7 @@ class SignalCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (olderVersion != null) OlderVersionMark(id: olderId ?? 'strain', version: olderVersion, reason: olderReason),
               if (unit.isNotEmpty) ...[
                 const SizedBox(width: S.x1),
                 Text(uiText(c, unit), style: F.cap.copyWith(color: p.ink3)),
@@ -1156,12 +1230,12 @@ class SignalCard extends StatelessWidget {
                       subMinLines),
               child: sub.isEmpty
                   ? null
-                  : Text(
+                  : Wrap(children: [Text(
                       sub,
                       style: F.over.copyWith(color: p.ink3),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                    ),
+                    ), if (olderTotalVersion != null) OlderVersionMark(id: 'calories_total', version: olderTotalVersion, reason: olderTotalReason)]),
             ),
           ],
         ],
@@ -3679,22 +3753,30 @@ class _FrameKeys extends StatelessWidget {
             }
           }
           cells.addAll(r.cells.where((x) => !used.contains(x)));
+          final (olderVersion, olderReason) = hub.olderAtPosition();
+          final baseRow = extra == null
+              ? ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed),
+                    const SizedBox(height: S.x1),
+                    extra!,
+                  ],
+                );
           return ExcludeSemantics(
             child: Padding(
               padding: const EdgeInsets.only(top: S.x3),
-              child: extra == null
-                  ? ChartKeyReadout(
-                      cells: cells, time: r.time, scrubbed: r.scrubbed)
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ChartKeyReadout(
-                            cells: cells, time: r.time, scrubbed: r.scrubbed),
-                        const SizedBox(height: S.x1),
-                        extra!,
-                      ],
-                    ),
+              child: olderVersion == null ? baseRow : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [baseRow,
+                  Row(children: [
+                    OlderVersionMark(id: 'readout', version: olderVersion, reason: olderReason),
+                    OlderVersionNote(id: 'readout', version: olderVersion, reason: olderReason),
+                  ]),
+                ],
+              ),
             ),
           );
         },

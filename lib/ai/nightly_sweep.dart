@@ -37,6 +37,7 @@ class SweepSeries {
   final int decimals;
 
   final double today;
+  final int? todayOlderVersion;
 
   /// Values STRICTLY BEFORE today, oldest→newest, already truncated at any
   /// algo-version break (values across one are not comparable — see
@@ -48,6 +49,7 @@ class SweepSeries {
     required this.label,
     required this.today,
     required this.history,
+    this.todayOlderVersion,
     this.unit = '',
     this.decimals = 0,
   });
@@ -147,7 +149,7 @@ List<SweepFinding> sweepFindings(List<SweepSeries> series) {
         : '${high ? 'above' : 'below'} your usual range';
     out.add(SweepFinding(
       key: s.key,
-      text: '${s.label} ${_fmt(s.today, s)} — $where ($usual)',
+      text: '${s.label} ${_fmt(s.today, s)}${s.todayOlderVersion == null ? '' : '* (older calculation (v${s.todayOlderVersion}))'} — $where ($usual)',
       z: z,
       high: high,
     ));

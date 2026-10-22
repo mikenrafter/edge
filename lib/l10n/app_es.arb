@@ -3348,5 +3348,42 @@
       }
     }
   },
-  "syncFailCalculationStuck": "Otro cálculo no terminó"
+  "syncFailCalculationStuck": "Otro cálculo no terminó",
+  "olderVersionNote": "De un cálculo anterior (v{version}): {reason}",
+  "@olderVersionNote": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "olderVersionNoteNoReason": "De un cálculo anterior (v{version})",
+  "@olderVersionNoteNoReason": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionSemantics": "De un cálculo anterior (v{version})",
+  "@olderVersionSemantics": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionMonthGridRow": "Algunos días son de un cálculo anterior",
+  "@olderVersionMonthGridRow": {},
+  "olderVersionSweepFinding": "Cálculo anterior (v{version})",
+  "@olderVersionSweepFinding": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  }
 }

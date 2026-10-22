@@ -17591,5 +17591,42 @@
   "syncFailCalculationBusy": "Another calculation was running. Retry sync.",
   "syncFailTimedOut": "It took too long and was stopped.",
   "syncStatusNotYetLower": "not synced yet",
-  "syncFailCalculationStuck": "Another calculation did not finish"
+  "syncFailCalculationStuck": "Another calculation did not finish",
+  "olderVersionNote": "From an older calculation (v{version}): {reason}",
+  "@olderVersionNote": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "olderVersionNoteNoReason": "From an older calculation (v{version})",
+  "@olderVersionNoteNoReason": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionSemantics": "From an older calculation (v{version})",
+  "@olderVersionSemantics": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionMonthGridRow": "Some days are from an older calculation",
+  "@olderVersionMonthGridRow": {},
+  "olderVersionSweepFinding": "Older calculation (v{version})",
+  "@olderVersionSweepFinding": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  }
 }

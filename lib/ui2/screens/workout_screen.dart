@@ -430,6 +430,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
               series: trimp7,
               child: ChartScrub(
                 label: loc?.workoutDailyLoadTitle ?? 'Heart effort by day',
+                olderVersions: d.trimpOlder7,
                 gaps: hasChartGaps([trimp7], trailing: true),
                 time: (at) {
                   final i =
@@ -2073,6 +2074,7 @@ class _WorkoutData {
   /// Null is a day that derived nothing — a hole the painter draws as a hole,
   /// rather than a value that silently shifts the whole week along.
   final List<double?> trimp7;
+  final List<int?> trimpOlder7;
 
   /// The day slot 6 belongs to. Carried so the x labels are read off the same
   /// anchor the buckets were built with, not off a second `DateTime.now()`.
@@ -2130,6 +2132,7 @@ class _WorkoutData {
     this.load,
     this.loadNote,
     this.trimp7 = const [],
+    this.trimpOlder7 = const [],
     this.trimpEnd,
     this.tonnage7 = const [],
     this.tonnagePartial = false,
@@ -2203,8 +2206,11 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
     final now = DateTime.now();
     final end = DateTime(now.year, now.month, now.day);
     var trimp = List<double?>.filled(7, null);
+    var trimpOlder = List<int?>.filled(7, null);
     try {
-      trimp = lastSevenDays((await repo.getChart('trimp'))['points'], end);
+      final rawPoints = (await repo.getChart('trimp'))['points'];
+      trimp = lastSevenDays(rawPoints, end);
+      trimpOlder = lastSevenDaysOlder(rawPoints, end);
     } catch (_) {
       trimp = List<double?>.filled(7, null);
     }
@@ -2366,6 +2372,7 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
       load: load,
       loadNote: note,
       trimp7: trimp,
+      trimpOlder7: trimpOlder,
       trimpEnd: end,
       tonnage7: tonnage7,
       tonnagePartial: tonnagePartial,
@@ -2387,6 +2394,14 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
     );
 }
 
-/// RED STUB: per-slot older version, same slots as [lastSevenDays].
-List<int?> lastSevenDaysOlder(Object? points, DateTime end) =>
-    List<int?>.filled(7, null);
+List<int?> lastSevenDaysOlder(Object? points, DateTime end) {
+  final out = List<int?>.filled(7, null);
+  if (points is! List) return out;
+  for (final e in points) {
+    if (e is! Map || e['v'] is! num || e['t'] is! num || e['from_older_version'] is! num) continue;
+    final at = DateTime.fromMillisecondsSinceEpoch((e['t'] as num).toInt() * 1000);
+    final slot = 6 - DateTime.utc(end.year, end.month, end.day).difference(DateTime.utc(at.year, at.month, at.day)).inDays;
+    if (slot >= 0 && slot < 7) out[slot] = (e['from_older_version'] as num).toInt();
+  }
+  return out;
+}

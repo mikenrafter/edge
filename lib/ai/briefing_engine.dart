@@ -235,6 +235,7 @@ Future<List<SweepSeries>> collectSweepSeries(
         }
       }
       double? todayValue;
+      int? todayOlderVersion;
       final history = <double>[];
       for (final p in points) {
         if (p is! Map) continue;
@@ -244,6 +245,7 @@ Future<List<SweepSeries>> collectSweepSeries(
         final day = todayLabel(DateTime.fromMillisecondsSinceEpoch(t * 1000));
         if (day == today) {
           todayValue = v;
+          todayOlderVersion = _num(p['from_older_version'])?.toInt();
         } else if (day.compareTo(today) < 0 && t >= cutoff) {
           history.add(v);
         }
@@ -256,6 +258,7 @@ Future<List<SweepSeries>> collectSweepSeries(
         unit: m.unit,
         decimals: m.dp,
         today: todayValue,
+        todayOlderVersion: todayOlderVersion,
         history: history,
       ));
     } catch (_) {/* a series we cannot read is a series with no finding */}

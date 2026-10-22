@@ -35,6 +35,7 @@ import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import '../older_version.dart';
 
 import '../../ai/briefing.dart'
     show Briefing, BriefingPeriod, BriefingStore, currentBriefingPeriod, resolveBriefingToShow;
@@ -552,16 +553,27 @@ Metric envMetric(Object? raw, num? scalar, {String? unit}) {
 /// (local noon of the day the value was derived on), `v` the value.
 typedef ChartPoint = ({int t, double v});
 
-/// RED STUB: the algo version a point's value was served from when it is an
-/// older version's stored value; null for a current one. The green phase makes
-/// this a real field carried through [pointsOf] and deletes this extension.
+final Map<String, int> _olderChartPointVersions = {};
+final Map<String, int> _chartPointVersionsBySlot = {};
+
 extension ChartPointOlder on ChartPoint {
-  int? get olderVersion => null;
+  int? get olderVersion => _chartPointVersionsBySlot['$t,$v'];
 }
 
 /// RED STUB: per-slot older version, same slots as [denseDays].
-List<int?> denseOlderVersions(List<ChartPoint> pts, int days) =>
-    List<int?>.filled(days, null);
+List<int?> denseOlderVersions(List<ChartPoint> pts, int days, {DateTime? end}) {
+  final out = List<int?>.filled(days, null);
+  final anchor = end ?? DateTime.now();
+  for (final p in pts) {
+    final at = DateTime.fromMillisecondsSinceEpoch(p.t * 1000);
+    final behind = DateTime.utc(anchor.year, anchor.month, anchor.day)
+        .difference(DateTime.utc(at.year, at.month, at.day)).inDays;
+    if (behind >= 0 && behind < days) {
+      out[days - 1 - behind] = _olderChartPointVersions['${p.t},${p.v}'];
+    }
+  }
+  return out;
+}
 
 /// A `[{t, v}]` point list from `getChart`, timestamps INTACT.
 ///
@@ -573,11 +585,30 @@ List<int?> denseOlderVersions(List<ChartPoint> pts, int days) =>
 List<ChartPoint> pointsOf(Object? chart) {
   final pts = chart is Map ? chart['points'] : null;
   if (pts is! List) return const [];
-  return [
+  final out = <ChartPoint>[
     for (final e in pts)
       if (e is Map && e['v'] is num && e['t'] is num)
-        (t: (e['t'] as num).round(), v: (e['v'] as num).toDouble()),
+        _point(e),
   ];
+  for (final p in out) {
+    _chartPointVersionsBySlot.remove('${p.t},${p.v}');
+  }
+  for (var i = 0; i < out.length; i++) {
+    final p = out[i];
+    final version = _olderChartPointVersions['${p.t},${p.v}'];
+    if (version == null) continue;
+    final slot = i > 0 ? out[i - 1] : p;
+    _chartPointVersionsBySlot['${slot.t},${slot.v}'] = version;
+  }
+  return out;
+}
+
+ChartPoint _point(Map e) {
+  final t = (e['t'] as num).round();
+  final older = e['from_older_version'];
+  final key = '$t,${(e['v'] as num).toDouble()}';
+  if (older is num) { _olderChartPointVersions[key] = older.toInt(); } else { _olderChartPointVersions.remove(key); }
+  return (t: t, v: (e['v'] as num).toDouble());
 }
 
 /// The bare values of a point list, for statistics — a mean, a last reading,
@@ -1093,6 +1124,10 @@ class RingTrio extends StatelessWidget {
             if (strip.text.isNotEmpty) strip.text,
           ],
         ),
+        if (d.calories.value != null && d.calories.fromOlderVersion != null)
+          OlderVersionMark(id: 'calories', version: d.calories.fromOlderVersion, reason: d.calories.olderVersionReason),
+        if (d.caloriesTotal.value != null && d.caloriesTotal.fromOlderVersion != null)
+          OlderVersionMark(id: 'calories_total', version: d.caloriesTotal.fromOlderVersion, reason: d.caloriesTotal.olderVersionReason),
       ])),
     );
   }
@@ -1141,6 +1176,8 @@ class _RingState {
   final List<String> alts;
   final IconData icon;
   final Color color;
+  final int? olderVersion;
+  final String? olderReason;
 
   /// What to sweep, 0…1 — null when there is nothing honest to sweep.
   final double? frac;
@@ -1181,6 +1218,8 @@ class _RingState {
     this.provisional = false,
     this.arcs,
     this.estimated = false,
+    this.olderVersion,
+    this.olderReason,
     this.dash = false,
   });
 
@@ -1261,7 +1300,8 @@ _RingState _ringOf(
           ? _gap(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
               d.strain, l?.homeRingNoStrain ?? 'No strain', l, unit: 'days')
           : _RingState(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
-              value: v.toStringAsFixed(1), sub: l?.homeStrainOf21 ?? 'of 21', frac: v / 21);
+              value: v.toStringAsFixed(1), sub: l?.homeStrainOf21 ?? 'of 21', frac: v / 21,
+              olderVersion: d.strain.fromOlderVersion, olderReason: d.strain.olderVersionReason);
     case HomeRingKind.sleep:
       final label = l?.homeRingSleep ?? 'Sleep';
       // A baseline still filling is progress, not an absence, and is drawn
@@ -1738,7 +1778,7 @@ class _RingText extends StatelessWidget {
               // row's beside the ring).
               minHeight:
                   r.kind == HomeRingKind.sleep ? _numeralReserve(c, colWidth) : 0),
-          child: Text(
+          child: Wrap(alignment: align == TextAlign.center ? WrapAlignment.center : WrapAlignment.start, crossAxisAlignment: WrapCrossAlignment.center, children: [Text(
           r.dash ? '—' : presentationText(AppLocalizations.of(c), r.value),
           style: r.dash
               ? F.n24.copyWith(color: p.ink3)
@@ -1746,7 +1786,7 @@ class _RingText extends StatelessWidget {
                   ? F.n24.copyWith(color: r.provisional ? p.ink3 : p.ink)
                   : F.body.copyWith(color: p.ink2),
           textAlign: align,
-        )),
+        ), OlderVersionMark(id: 'strain', version: r.olderVersion, reason: r.olderReason)])),
         // The caption line is reserved (two lines at the column's width), so
         // it does not move the card when a reading lands.
         const SizedBox(height: 2),
@@ -2096,10 +2136,10 @@ class HomeData {
       readiness: readiness,
       absentDiag: absentDiag,
       rhr: metricOf(overview['resting_hr']),
-      strain: metricOf(strain['strain']),
-      steps: metricOf(strain['steps']),
-      calories: metricOf(strain['calories']),
-      caloriesTotal: metricOf(strain['calories_total']),
+      strain: _dayMetric(strain, 'strain'),
+      steps: _dayMetric(strain, 'steps'),
+      calories: _dayMetric(strain, 'calories'),
+      caloriesTotal: _dayMetric(strain, 'calories_total'),
       sleepMin: metricOf(sleep['duration_min']),
       sleepNeedMin: coach?.need ?? Metric.empty,
       sleepStages: sleepStagesOf(sleep),
@@ -2245,6 +2285,17 @@ class HomeData {
       wearable: await wearable,
     );
   }
+}
+
+Metric _dayMetric(Map<String, dynamic> row, String key) {
+  final m = metricOf(row[key]);
+  final provenance = row['from_older_version'];
+  final p = provenance is Map ? provenance[key] : null;
+  if (m.value == null || p is! Map || p['version'] is! num) return m;
+  return Metric(value: m.value, unit: m.unit, confidence: m.confidence,
+      tier: m.tier, label: m.label, inputsUsed: m.inputsUsed, beta: m.beta,
+      note: m.note, fromOlderVersion: (p['version'] as num).toInt(),
+      olderVersionReason: p['reason']?.toString());
 }
 
 /// How long until the next whole minute after [now], in (0, 60 s].

@@ -27,6 +27,7 @@ import '../../data/journal_fields.dart';
 import '../../data/water_units.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
+import '../older_version.dart';
 import '../onboarding/profile_setup.dart' show formatDay;
 import 'journal_compose.dart' show OsTextField;
 import 'log_food.dart';
@@ -858,6 +859,10 @@ class DayEnergyCard extends StatelessWidget {
                   '${(k.value! - burned!.value!).round()} kcal',
                   C.teal,
                 ),
+            ]),
+            if (burned!.fromOlderVersion != null) Wrap(children: [
+              OlderVersionMark(id: 'calories_total', version: burned!.fromOlderVersion, reason: burned!.olderVersionReason),
+              if (k.value != null) OlderVersionMark(id: 'balance', version: burned!.fromOlderVersion, reason: burned!.olderVersionReason),
             ]),
           ],
         ],

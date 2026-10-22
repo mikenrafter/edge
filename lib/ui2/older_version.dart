@@ -1,36 +1,66 @@
-// RED STUB. The one shared marker and note for a value served from an older
-// calculation (owner decision 2026-10-22, RULES B.2). Bodies are empty on
-// purpose; the green phase replaces them. Keys and texts are pinned by
-// test/ui2_older_version_*_test.dart.
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
+import '../models/metric.dart';
 
-/// "From an older calculation (v104): <reason sentence>"; without a reason,
-/// "From an older calculation (v104)".
-String olderVersionNoteText(int version, String? reason) => '';
+String olderVersionNoteText(int version, String? reason) {
+    final why = whyFromNote(reason);
+  return 'From an older calculation (v$version)${why == null ? '' : ': $why'}';
+}
 
-/// Spoken form, always containing "from an older calculation".
-String olderVersionSemantics(int version) => '';
+String olderVersionSemantics(int version) => 'From an older calculation (v$version)';
 
-/// The asterisk beside a number. Key: ValueKey('older-version-mark:$id').
-/// Renders nothing when [version] is null. Tapping it reveals the note text.
-class OlderVersionMark extends StatelessWidget {
+class OlderVersionMark extends StatefulWidget {
   final String id;
   final int? version;
   final String? reason;
-  const OlderVersionMark(
-      {super.key, required this.id, required this.version, this.reason});
+  const OlderVersionMark({super.key, required this.id, required this.version, this.reason});
   @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
+  State<OlderVersionMark> createState() => _OlderVersionMarkState();
 }
 
-/// The visible note. Key: ValueKey('older-version-note:$id').
-/// Renders nothing when [version] is null.
+class _OlderVersionMarkState extends State<OlderVersionMark> {
+  bool open = false;
+  @override
+  Widget build(BuildContext context) {
+    final v = widget.version;
+    if (v == null) return const SizedBox.shrink();
+    final l = AppLocalizations.of(context);
+    return Semantics(
+      label: l?.olderVersionSemantics(v) ?? olderVersionSemantics(v),
+      child: GestureDetector(
+        key: ValueKey('older-version-mark:${widget.id}'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => open = !open),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('*'),
+          if (open) OlderVersionNote(id: widget.id, version: v, reason: widget.reason),
+        ]),
+      ),
+    );
+  }
+}
+
 class OlderVersionNote extends StatelessWidget {
   final String id;
   final int? version;
   final String? reason;
-  const OlderVersionNote(
-      {super.key, required this.id, required this.version, this.reason});
+  const OlderVersionNote({super.key, required this.id, required this.version, this.reason});
   @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
+  Widget build(BuildContext context) => version == null
+      ? const SizedBox.shrink()
+      : _localizedNote(context);
+
+  Widget _localizedNote(BuildContext context) {
+    final v = version!;
+    final l = AppLocalizations.of(context);
+    final why = whyFromNote(reason);
+    final note = why == null
+        ? (l?.olderVersionNoteNoReason(v) ?? olderVersionNoteText(v, null))
+        : (l?.olderVersionNote(v, why) ?? olderVersionNoteText(v, reason));
+    return Semantics(
+          key: ValueKey('older-version-note:$id'),
+          label: l?.olderVersionSemantics(v) ?? olderVersionSemantics(v),
+          child: Text(note),
+        );
+  }
 }

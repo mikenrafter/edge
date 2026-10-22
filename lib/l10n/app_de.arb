@@ -3436,5 +3436,42 @@
       }
     }
   },
-  "syncFailCalculationStuck": "Eine andere Berechnung wurde nicht fertig"
+  "syncFailCalculationStuck": "Eine andere Berechnung wurde nicht fertig",
+  "olderVersionNote": "Aus einer älteren Berechnung (v{version}): {reason}",
+  "@olderVersionNote": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "olderVersionNoteNoReason": "Aus einer älteren Berechnung (v{version})",
+  "@olderVersionNoteNoReason": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionSemantics": "Aus einer älteren Berechnung (v{version})",
+  "@olderVersionSemantics": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionMonthGridRow": "Einige Tage stammen aus einer älteren Berechnung",
+  "@olderVersionMonthGridRow": {},
+  "olderVersionSweepFinding": "Ältere Berechnung (v{version})",
+  "@olderVersionSweepFinding": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  }
 }

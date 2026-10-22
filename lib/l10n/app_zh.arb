@@ -3330,5 +3330,42 @@
       }
     }
   },
-  "syncFailCalculationStuck": "另一项计算未能完成"
+  "syncFailCalculationStuck": "另一项计算未能完成",
+  "olderVersionNote": "来自较早的计算（v{version}）：{reason}",
+  "@olderVersionNote": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "olderVersionNoteNoReason": "来自较早的计算（v{version}）",
+  "@olderVersionNoteNoReason": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionSemantics": "来自较早的计算（v{version}）",
+  "@olderVersionSemantics": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "olderVersionMonthGridRow": "部分日期来自较早的计算",
+  "@olderVersionMonthGridRow": {},
+  "olderVersionSweepFinding": "较早的计算（v{version}）",
+  "@olderVersionSweepFinding": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  }
 }

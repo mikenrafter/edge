@@ -28,7 +28,7 @@ import 'package:flutter/material.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../ui2.dart';
-import 'home_screen.dart' show ChartPoint, denseDays, pointsOf;
+import 'home_screen.dart' show ChartPoint, denseDays, denseOlderVersions, pointsOf;
 import 'metric_detail.dart' show MetricSpec, specOf;
 
 /// Days on screen. One month, and the same window every trend card uses.
@@ -53,6 +53,7 @@ class GridRow {
     required this.have,
     required this.historyDays,
     required this.ranged,
+    this.olderVersions = const [],
   });
 
   final MetricSpec spec;
@@ -70,6 +71,7 @@ class GridRow {
 
   /// Whether there is a usual range to place a day against at all.
   final bool ranged;
+  final List<int?> olderVersions;
 
   /// Coloured only with enough history AND a range. A long history with no
   /// value this month still has a range (its cells are outlines); a flat one
@@ -98,6 +100,7 @@ GridRow gridRow(String key, List<ChartPoint> points) {
     have: window.where((v) => v != null).length,
     historyDays: history.length,
     ranged: band != null,
+    olderVersions: denseOlderVersions(points, kGridDays),
   );
 }
 
@@ -239,17 +242,20 @@ class MonthGrid extends StatelessWidget {
                           ),
                   ),
                   Semantics(
-                    label: l?.monthGridRowSemantics(
+                    label: (l?.monthGridRowSemantics(
                           uiText(c, r.spec.title),
                           r.have,
                           kGridDays,
                           r.cells.where((s) => s == Side.below).length,
                           r.cells.where((s) => s == Side.above).length,
                         ) ??
-                        '${r.spec.title}: ${r.have} of $kGridDays days have a '
+                        ('${r.spec.title}: ${r.have} of $kGridDays days have a '
                             'value. ${r.cells.where((s) => s == Side.below).length} '
                             'below and ${r.cells.where((s) => s == Side.above).length} '
-                            'above your usual range.',
+                            'above your usual range.')) +
+                        (r.olderVersions.any((v) => v != null)
+                        ? ' ${l?.olderVersionMonthGridRow ?? 'Some days are from an older calculation'}.'
+                        : ''),
                     // A grid: the finger selects the day (cell) it is over and
                     // the key row says where that day sat against the usual
                     // range. An outlined cell is "—". The row under the strip
@@ -257,6 +263,7 @@ class MonthGrid extends StatelessWidget {
                     child: ChartScrub(
                       label: uiText(c, r.spec.title),
                       mode: ChartScrubMode.nearest,
+                      olderVersions: r.olderVersions,
                       gaps: hasChartGaps([
                         [for (final s in r.cells) s?.index.toDouble()]
                       ], trailing: true),

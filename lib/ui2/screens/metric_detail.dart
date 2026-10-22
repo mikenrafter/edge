@@ -28,6 +28,7 @@ import 'advanced.dart';
 import 'explorer_annotations.dart' show AnnotationLoader, loadAnnotations;
 import 'day_steps.dart';
 import 'home_screen.dart';
+import '../older_version.dart';
 import 'investigate.dart';
 import 'journal_compose.dart' show OsTextField;
 import '../profile/devices.dart'
@@ -638,6 +639,7 @@ class MetricData {
     }
     final coverage = _coverageOf(chart['coverage_devices']);
     final recording = _coverageOf(chart['coverage_recording']);
+    final wearPoints = pointsOf({'points': chart['wear']});
     final points = pointsOf(chart);
     return MetricData(
       computedAt: computedAtOf(chart['computed_at']),
@@ -646,7 +648,7 @@ class MetricData {
           : dayLabelOf(
               DateTime.fromMillisecondsSinceEpoch(points.last.t * 1000)),
       series: points,
-      wear: pointsOf({'points': chart['wear']}),
+      wear: wearPoints,
       percentile: pct,
       movers: movers,
       daysAvailable: days.length,
@@ -1503,6 +1505,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
     final l = AppLocalizations.of(c);
     final mean = vals.reduce((a, b) => a + b) / vals.length;
     final latest = vals.last;
+    final versions = denseOlderVersions(all, win);
+    final headlineVersion = versions.whereType<int>().firstOrNull;
+    final latestVersion = versions.isEmpty ? null : versions.last;
     // WHICH DAY the newest reading is from. `metric_series` gets a row only on
     // a day that derives, so after a sync gap the newest stored point is days
     // old — and this line is the answer to "is there a today?".
@@ -1522,6 +1527,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(_fmt(spec, mean), style: F.n48.copyWith(color: p.ink)),
+              if (headlineVersion != null) OlderVersionMark(id: 'headline', version: headlineVersion),
               const SizedBox(width: S.x2),
               // NOT `spec.unit`. `metricValue('min', 443)` is already "7h 23m",
               // so every min-unit metric — Time asleep, Deep, REM, Wear time —
@@ -1533,6 +1539,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             ],
           ),
           const SizedBox(height: S.x1),
+          if (headlineVersion != null) OlderVersionNote(id: 'headline', version: headlineVersion),
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
@@ -1550,13 +1557,14 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
           const SizedBox(height: S.x2),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text(
+            child: Wrap(children: [Text(
                 (l?.metricDetailLatestReading(
                             _fmt(spec, latest), unitBeside(spec.unit), asOf) ??
                         'Latest ${_fmt(spec, latest)} ${unitBeside(spec.unit)} · $asOf')
                     .replaceAll('  ', ' '),
-                style: F.cap.copyWith(color: p.ink3)),
+                style: F.cap.copyWith(color: p.ink3)), if (latestVersion != null) OlderVersionMark(id: 'latest', version: latestVersion)]),
           ),
+          if (win > 1 && latestVersion != null) OlderVersionNote(id: 'latest', version: latestVersion),
         ],
         if (band != null) ...[
           const SizedBox(height: S.x2),
@@ -1802,7 +1810,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
               style: F.over.copyWith(color: p.ink3),
             ),
           ),
-        if (_pick != null) _picked(c, spec, series, d),
+        if (_pick != null) _picked(c, spec, series, denseOlderVersions(d.series, series.length), d),
         // L4 — the coverage denominator, under the curve it belongs to.
         //
         // Deliberately unflattering, and gated to the ranges where it changes
@@ -1908,6 +1916,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                   pretty, _fmt(spec, v), unitBeside(spec.unit)) ??
               '$pretty, ${_fmt(spec, v)} ${unitBeside(spec.unit)}')
           .trimRight();
+      final olderVersion = denseOlderVersions(d.series, series.length)[i];
+      if (olderVersion != null) return '$base, ${l?.olderVersionSemantics(olderVersion) ?? olderVersionSemantics(olderVersion)}';
       if (!attribute) return base;
       final who = _contributors(_labelsFor(day, d.coverage, d.sources));
       // A day inside a two-device window that nevertheless has one
@@ -1944,6 +1954,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
     BuildContext c,
     MetricSpec spec,
     List<double?> series,
+    List<int?> older,
     MetricData d,
   ) {
     final p = P.of(c);
@@ -1994,6 +2005,12 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
               Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
             ],
           ]),
+          if (v != null && older[i] != null) ...[
+            Padding(padding: const EdgeInsets.only(top: S.x1), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              OlderVersionMark(id: 'selected', version: older[i]),
+              OlderVersionNote(id: 'selected', version: older[i]),
+            ])),
+          ],
           // WHICH DEVICE, second line, only under the gate. A day-level scalar
           // from a merged substrate has no single producer, so this names the
           // SET (final-plan §4.4) and never picks one of two.

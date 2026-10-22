@@ -29,6 +29,7 @@ import '../../models/metric.dart' show whyFromNote;
 import '../screens/home_screen.dart' show repoOf;
 import '../screens/metric_detail.dart' show detailScaffold;
 import '../ui2.dart';
+import '../older_version.dart';
 import 'catalogue.dart' show zonesWhy;
 import 'zones.dart' show ZonesDetail;
 
@@ -51,6 +52,8 @@ class DayStrainData {
   final List<double?> curve;
 
   final double? strain;
+  final int? olderVersion;
+  final String? olderReason;
 
   /// Five zone minutes, or null when the day banked no split.
   final List<int>? zoneMin;
@@ -80,6 +83,8 @@ class DayStrainData {
     this.day,
     this.curve = const [],
     this.strain,
+    this.olderVersion,
+    this.olderReason,
     this.zoneMin,
     this.maxHrUsed,
     this.zoneSource,
@@ -145,6 +150,8 @@ class DayStrainData {
       day: day,
       curve: grid,
       strain: (s['strain'] as num?)?.toDouble(),
+      olderVersion: s['strain'] is num && s['from_older_version'] is Map && (s['from_older_version'] as Map)['strain'] is Map ? (((s['from_older_version'] as Map)['strain'] as Map)['version'] as num?)?.toInt() : null,
+      olderReason: s['from_older_version'] is Map && (s['from_older_version'] as Map)['strain'] is Map ? (((s['from_older_version'] as Map)['strain'] as Map)['reason']?.toString()) : null,
       zoneMin: zoneMin,
       maxHrUsed: s['max_hr_used'] as num?,
       zoneSource: s['zone_source'] as String?,
@@ -274,6 +281,10 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
               : '',
           icon: LucideIcons.trendingUp,
         ),
+        if (s != null && d.olderVersion != null) ...[
+          OlderVersionMark(id: 'strain', version: d.olderVersion, reason: d.olderReason),
+          OlderVersionNote(id: 'strain', version: d.olderVersion, reason: d.olderReason),
+        ],
       ];
     }
     // The whole 0–21 scale the header names, so the ticks and the header
@@ -320,6 +331,10 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
               if (d.wornMin != null)
                 (l?.dayStrainWorn ?? 'Worn', '${d.wornMin} min', C.teal),
             ]),
+            if (d.olderVersion != null) ...[
+              OlderVersionMark(id: 'strain', version: d.olderVersion, reason: d.olderReason),
+              OlderVersionNote(id: 'strain', version: d.olderVersion, reason: d.olderReason),
+            ],
           ],
         ]),
       ),
