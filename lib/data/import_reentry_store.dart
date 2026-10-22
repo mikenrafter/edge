@@ -83,6 +83,8 @@ class ImportReentryStore {
 
   /// pending ∪= ids − acknowledged. Writes only when something is new.
   Future<void> add(Iterable<String> ids) async {
+    // Nothing to add touches nothing (no preferences read, no lock).
+    if (ids.isEmpty) return;
     final lock = await _acquire();
     try {
       final (pend, acked) = await _read();
