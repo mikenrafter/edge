@@ -2581,13 +2581,17 @@ class LocalRepositoryImpl extends LocalRepository {
     ];
     if (missing.isEmpty) return (rows, const <String, int>{});
     final imported = await LocalDb.importedDates();
+    final notes = await LocalDb.servedAbsentNotes(key);
     final older = <String, int>{};
     final merged = [...rows];
     for (final d in missing) {
       if (imported.contains(d)) continue;
       final (version, value) = olderAll[d]!;
       older[d] = version;
-      merged.add({'date': d, 'key': key, 'value': value});
+      // Why the current version has no value, carried on the point so a
+      // chart readout can say it (unknown_cause when the row names none).
+      merged.add({'date': d, 'key': key, 'value': value,
+          'older_reason': notes[d] ?? 'unknown_cause'});
     }
     merged.sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
     return (merged, older);
@@ -2611,6 +2615,10 @@ class LocalRepositoryImpl extends LocalRepository {
     // write it as null). The ring and the push show the pin; the chart, and
     // the Observations log built from it, must have the same number to show.
     final stored = {for (final r in rows) r['date'] as String: r['value']};
+    final olderReasons = {
+      for (final r in rows)
+        if (r['older_reason'] is String) r['date'] as String: r['older_reason'] as String,
+    };
     final dates = [
       ...stored.keys,
       if (pin != null && !stored.containsKey(pin.day)) pin.day,
@@ -2641,6 +2649,7 @@ class LocalRepositoryImpl extends LocalRepository {
                   : stored[d],
               // The point is an older algo version's stored value.
               'from_older_version': ?older[d],
+              'older_version_reason': ?(older.containsKey(d) ? olderReasons[d] : null),
             },
       ],
       // L4 — THE DENOMINATOR. Worn minutes for the same days, so a long trend

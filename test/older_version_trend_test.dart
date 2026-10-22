@@ -55,6 +55,10 @@ void main() {
         [6.0, 7.0, 8.0, 14.0, 15.0, 16.0, 17.0]);
     expect([for (final e in pts) e['from_older_version']],
         [null, null, null, 104, 104, 104, 104]);
+    // Each older point says why the current version has no value; current
+    // points carry no reason.
+    expect([for (final e in pts) e['older_version_reason'] != null],
+        [false, false, false, true, true, true, true]);
   });
 
   test('no older value: the hole stays a hole', () async {

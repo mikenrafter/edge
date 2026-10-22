@@ -4970,6 +4970,24 @@ class LocalDb {
     });
   }
 
+  /// For each served day, why scalar [key] is absent from the current version
+  /// (`$.absent_notes.<key>`), as `{date: note}`. Pairs with [olderScalarByDay]
+  /// so an older-version chart point can say why it is not current.
+  static Future<Map<String, String>> servedAbsentNotes(String key) async {
+    return readerRun((db) async {
+      final rows = await db.rawQuery(
+        'SELECT r.day_id AS d, json_extract(r.payload_json, ?) AS n '
+        'FROM day_result r $_servedDayJoin '
+        'WHERE json_extract(r.payload_json, ?) IS NOT NULL',
+        ['\$.absent_notes.$key', '\$.absent_notes.$key'],
+      );
+      return {
+        for (final r in rows)
+          if (r['n'] is String) r['d'] as String: r['n'] as String,
+      };
+    });
+  }
+
   /// Payload-free recent served-day rows, newest first, for BundleStore readers.
   static Future<List<Map<String, dynamic>>> recentDayResultMetas(int limit) async {
     return readerRun((db) async {
