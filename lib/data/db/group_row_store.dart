@@ -54,6 +54,13 @@ GroupRegistry? groupRegistryForTest;
 /// Shadow-write diagnostics: bundles that could not be sliced.
 class GroupRowDiagnostics {
   int unsliceable = 0;
+
+  /// Shadow writes abandoned because day_result moved on (replaced or deleted)
+  /// between the accepted commit and the shadow transaction.
+  int superseded = 0;
+
+  /// Stamp reads that failed; the day stored an unpinned stamp instead.
+  int stampReadFailures = 0;
   String? lastProblem;
 }
 
@@ -151,6 +158,63 @@ Future<InputStamp> captureInputStamp(String dayId,
   return out;
 }
 
+/// Test seam: make every stamp read fail (a damaged input_revision).
+bool stampReadFaultForTest = false;
+
+/// [captureInputStamp] that never throws: on any error the day gets a null
+/// stamp (stored unpinned), counted and logged. The real derive must not die
+/// on a shadow read.
+Future<InputStamp?> captureInputStampBestEffort(String dayId) async {
+  try {
+    if (stampReadFaultForTest) throw StateError('stamp read fault (test)');
+    return await captureInputStamp(dayId);
+  } catch (e) {
+    groupRowDiagnostics.stampReadFailures++;
+    dev.log('$dayId stamp read failed: $e', name: 'group_row');
+    return null;
+  }
+}
+
+/// Every `metric_series` revision right now (scope -> rev), or null when the
+/// read fails. Taken BEFORE the shared baseline history is loaded and carried
+/// with it: the history is frozen at that moment, whatever the rows do later.
+Future<Map<String, int>?> captureMetricSeriesRevs() async {
+  try {
+    if (stampReadFaultForTest) throw StateError('stamp read fault (test)');
+    final db = await LocalDb.instance;
+    return {
+      for (final r in await db.rawQuery(
+          'SELECT scope, rev FROM input_revision WHERE source = ?',
+          ['metric_series']))
+        r['scope'] as String: (r['rev'] as num).toInt(),
+    };
+  } catch (e) {
+    groupRowDiagnostics.stampReadFailures++;
+    dev.log('metric_series revisions read failed: $e', name: 'group_row');
+    return null;
+  }
+}
+
+/// [day]'s stamp with each metric_series scope held to the revision the shared
+/// history was loaded at, when that is EARLIER (revisions only go up, so the
+/// earlier one is what the frozen history actually held; a scope the history
+/// predates is dropped = revision 0). A null [day] or null [history] (its
+/// capture failed) cannot be certified: null, stored unpinned.
+InputStamp? stampNotLaterThan(InputStamp? day, Map<String, int>? history) {
+  if (day == null || history == null) return null;
+  final ms = day['metric_series'];
+  if (ms == null) return day;
+  final out = <String, Map<String, int>>{...day};
+  final merged = <String, int>{};
+  for (final e in ms.entries) {
+    final h = history[e.key] ?? 0;
+    final rev = h < e.value ? h : e.value;
+    if (rev > 0) merged[e.key] = rev;
+  }
+  out['metric_series'] = merged;
+  return out;
+}
+
 /// Writes the group rows of a day_result write that was just ACCEPTED and
 /// committed, in a small transaction of their own, from the stored payload
 /// (idempotent: a rerun re-slices the same string). NEVER throws; a failure is
@@ -166,27 +230,41 @@ Future<void> writeGroupRowsAfterCommit({
   required bool partial,
   required bool skipped,
   required bool userOverride,
+  required String expectedPayload,
+  required int expectedComputedAt,
   InputStamp? stamp,
 }) async {
   if (skipped) return;
   try {
     final db = await LocalDb.instance;
-    final rows = await db.query('day_result',
-        columns: ['payload_json'],
-        where: 'day_id = ? AND algo_version = ?',
-        whereArgs: [dayId, algoVersion],
-        limit: 1);
-    if (rows.isEmpty) return;
-    final payload = rows.single['payload_json'] as String;
-    await db.transaction((txn) => writeGroupRows(txn,
-        dayId: dayId,
-        encodedPayload: payload,
-        finalized: finalized,
-        partial: partial,
-        skipped: false,
-        userOverride: userOverride,
-        nowMs: DateTime.now().millisecondsSinceEpoch,
-        stamp: stamp));
+    await db.transaction((txn) async {
+      // The accepted write's identity, checked inside this transaction: if
+      // another write replaced the day (or it was deleted) since, this
+      // write's stamp and flags no longer describe what is stored.
+      final rows = await txn.query('day_result',
+          columns: ['payload_json', 'computed_at'],
+          where: 'day_id = ? AND algo_version = ?',
+          whereArgs: [dayId, algoVersion],
+          limit: 1);
+      if (rows.isEmpty ||
+          (rows.single['computed_at'] as num?)?.toInt() !=
+              expectedComputedAt ||
+          rows.single['payload_json'] != expectedPayload) {
+        groupRowDiagnostics.superseded++;
+        dev.log('$dayId shadow write abandoned: day_result moved on',
+            name: 'group_row');
+        return;
+      }
+      await writeGroupRows(txn,
+          dayId: dayId,
+          encodedPayload: expectedPayload,
+          finalized: finalized,
+          partial: partial,
+          skipped: false,
+          userOverride: userOverride,
+          nowMs: DateTime.now().millisecondsSinceEpoch,
+          stamp: stamp);
+    });
   } catch (e) {
     groupRowDiagnostics.unsliceable++;
     groupRowDiagnostics.lastProblem = '$e';

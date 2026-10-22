@@ -934,7 +934,8 @@ extension _EngineDayCompute on DerivationEngine {
     final committed = await LocalDb.putDayResult(
       dayId: day.date,
       algoVersion: kAlgoVersion,
-      inputStamp: day.inputStamp,
+      // Held to the revisions the shared baseline history was loaded at.
+      inputStamp: stampNotLaterThan(day.inputStamp, history.metricSeriesRevs),
       // The data edge this row was derived against. The cross-day settled
       // test compares the row's wake with THIS edge, not a fresher one read
       // later: ingest keeps committing during a pass, and a newer edge would

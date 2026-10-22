@@ -901,6 +901,8 @@ class _BaselineHistoryCache {
   /// stays in the window. Empty for a user who has never changed generation,
   /// which is why it moves no number today.
   static Future<_BaselineHistoryCache> load() async {
+    // Before anything is read: see [metricSeriesRevs].
+    final metricRevs = await captureMetricSeriesRevs();
     final imported = await LocalDb.importedDates();
     final foreignFamily =
         await LocalDb.foreignFamilyDates(ignore: kWearableFamilies);
@@ -943,8 +945,15 @@ class _BaselineHistoryCache {
     }
     return _BaselineHistoryCache({
       for (var i = 0; i < keys.length; i++) keys[i]: loaded[i],
-    }, families);
+    }, families)
+      ..metricSeriesRevs = metricRevs;
   }
+
+  /// `metric_series` revisions (scope -> rev) as they stood BEFORE this
+  /// history was read; null when that read failed. A day's input stamp holds
+  /// its metric_series scopes to these (the history is frozen for the pass,
+  /// the rows are not).
+  Map<String, int>? metricSeriesRevs;
 
   /// The trailing [_baselineWindowDays] values for [key], oldest→newest.
   ///

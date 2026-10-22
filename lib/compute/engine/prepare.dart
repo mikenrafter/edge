@@ -19,7 +19,7 @@ extension _EnginePrepare on DerivationEngine {
     // Every input's revision, for the group rows' stamp: first, so anything
     // that moves while this day computes leaves the stamp stale, not falsely
     // current.
-    final inputStamp = await captureInputStamp(dayId);
+    final inputStamp = await captureInputStampBestEffort(dayId);
     final inputFp = (await perf.stage(
         'fingerprints', () => LocalDb.decodedDayFingerprints([dayId])))[dayId];
     final dayStart = DerivationEngine._localDayLabelToSec(dayId);

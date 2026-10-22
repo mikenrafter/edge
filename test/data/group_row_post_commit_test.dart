@@ -124,4 +124,95 @@ void main() {
       expect(kLatestRevisionSql, contains('MAX(revision)'));
     });
   });
+
+  group('Sol r2', () {
+    Future<Map<String, Object?>> stored() async =>
+        (await db.query('day_result')).single;
+
+    Future<void> after(Map<String, Object?> row, {InputStamp? stamp}) =>
+        writeGroupRowsAfterCommit(
+            dayId: _day,
+            algoVersion: 500,
+            finalized: false,
+            partial: false,
+            skipped: false,
+            userOverride: false,
+            expectedPayload: row['payload_json'] as String,
+            expectedComputedAt: (row['computed_at'] as num).toInt(),
+            stamp: stamp);
+
+    test('history stamp: a metric_series bump after the history load does '
+        'not reach the stored stamp', () async {
+      await bumpInputRev('metric_series', '2026-03-01');
+      final history = await captureMetricSeriesRevs(); // before history load
+      await bumpInputRev('metric_series', '2026-03-01'); // after, pre-prepare
+      await bumpInputRev('metric_series', '2026-03-02'); // a new scope too
+      final dayStamp = await captureInputStamp(_day);
+      expect(dayStamp['metric_series'], {'2026-03-01': 2, '2026-03-02': 1});
+      final held = stampNotLaterThan(dayStamp, history)!;
+      expect(held['metric_series'], {'2026-03-01': 1});
+      expect(await _put(stamp: held), isTrue);
+      final s = await _stamp(db, 'edge.assembly');
+      expect(s['metric_series'], {'2026-03-01': 1});
+      expect(s.containsKey('_unpinned'), isFalse);
+    });
+
+    test('a history capture that failed leaves the day unpinned', () {
+      expect(stampNotLaterThan({'zone': {'': 1}}, null), isNull);
+      expect(stampNotLaterThan(null, {'a': 1}), isNull);
+    });
+
+    test('write B replaced the day between A commit and A shadow write: '
+        'A writes nothing, B rows stay B', () async {
+      expect(await _put(), isTrue);
+      final a = await stored();
+      await db.delete('group_row');
+      // B: a different payload at the same (day, version).
+      await LocalDb.putDayResult(
+          dayId: _day,
+          algoVersion: 500,
+          payloadJson: jsonEncode({
+            'date': _day,
+            'sleep': {'a': 2},
+            'scalars': <String, Object?>{'rhr': 51.0},
+          }),
+          windowJson: '{}',
+          series: const {'rhr': 51.0});
+      final bRows = await db.query('group_row', orderBy: 'group_id');
+      final before = groupRowDiagnostics.superseded;
+      await after(a);
+      expect(groupRowDiagnostics.superseded, before + 1);
+      expect(await db.query('group_row', orderBy: 'group_id'), bRows);
+    });
+
+    test('the day deleted in the gap: no rows are recreated', () async {
+      expect(await _put(), isTrue);
+      final a = await stored();
+      await LocalDb.deleteDays({_day});
+      final before = groupRowDiagnostics.superseded;
+      await after(a);
+      expect(await db.query('group_row'), isEmpty);
+      expect(groupRowDiagnostics.superseded, before + 1);
+    });
+
+    test('an unchanged day still takes its shadow write', () async {
+      expect(await _put(), isTrue);
+      final a = await stored();
+      await db.delete('group_row');
+      await after(a);
+      expect(await db.query('group_row'), isNotEmpty);
+    });
+
+    test('a broken stamp read does not stop the derive write', () async {
+      stampReadFaultForTest = true;
+      addTearDown(() => stampReadFaultForTest = false);
+      final before = groupRowDiagnostics.stampReadFailures;
+      final stamp = await captureInputStampBestEffort(_day);
+      expect(stamp, isNull);
+      expect(groupRowDiagnostics.stampReadFailures, before + 1);
+      expect(await _put(stamp: stamp), isTrue);
+      expect(await db.query('day_result'), hasLength(1));
+      expect((await _stamp(db, 'sleep.stage'))['_unpinned'], isTrue);
+    });
+  });
 }

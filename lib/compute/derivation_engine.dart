@@ -20,7 +20,7 @@
 // metric_series each time.
 
 import '../data/activity_store.dart';
-import '../data/db/group_row_store.dart' show captureInputStamp;
+import '../data/db/group_row_store.dart' show captureInputStampBestEffort, captureMetricSeriesRevs, stampNotLaterThan;
 import '../data/db/input_read_tracker.dart';
 import '../data/db/input_revision_store.dart' show observeInputZone, inputRevSnapshot;
 import 'accepted_naps.dart' show composeAcceptedNaps;
