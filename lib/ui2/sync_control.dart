@@ -121,13 +121,13 @@ class _SyncControlState extends State<SyncControl> {
     final elapsed = s.busy ? s.elapsed(now) : null;
     final (icon, tint) = _mark(s, p);
     final onSync = widget.onSync;
-    // With no steps (a fresh launch, a refresh that never touched the band)
-    // there is nothing to open, so the sentence is not a control.
-    final canOpen = s.steps.isNotEmpty;
+    // The sentence is always a control: opening it shows the COMPLETE text (a
+    // long localized reason or platform error is cut to two lines while the
+    // card is closed) and, when there are any, the steps.
     final l = AppLocalizations.of(c);
     // The sentence keeps two lines at most (ellipsis after that) and the row
     // reserves two, so the card is the same height in every state whatever the
-    // sentence says; the full text is in the steps and the sheet.
+    // sentence says; opening the card shows the whole sentence.
     final body = F.body;
     final lineH = MediaQuery.textScalerOf(c).scale(body.fontSize!) *
         (body.height ?? 1.2);
@@ -156,8 +156,8 @@ class _SyncControlState extends State<SyncControl> {
       Expanded(
         child: Text(
           syncStatusLine(s, now, l),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+          maxLines: _open ? null : 2,
+          overflow: _open ? TextOverflow.visible : TextOverflow.ellipsis,
           style: F.body.copyWith(color: failed ? p.on(C.red) : p.ink),
         ),
       ),
@@ -195,23 +195,26 @@ class _SyncControlState extends State<SyncControl> {
         final widest = math.max(
             w(_retryLabel(c, l)), w(_syncNowLabel(c, l))) + 2 * S.x2;
         final below = onSync != null && widest > box.maxWidth * .5;
-        final statusRow = SizedBox(
-          height: rowMin,
-          child: Row(children: [
+        // Closed: a fixed height, so the card is the same in every state.
+        // Open (the person asked): it grows to hold the whole sentence.
+        final rowChildren = <Widget>[
             Expanded(
-              child: canOpen
-                  ? Semantics(
-                      expanded: _open,
-                      child: Pressable(onTap: _toggle, child: status),
-                    )
-                  : status,
+              child: Semantics(
+                expanded: _open,
+                child: Pressable(onTap: _toggle, child: status),
+              ),
             ),
             if (!below && !s.busy && onSync != null) ...[
               const SizedBox(width: S.x2),
               actionButton(),
             ],
-          ]),
-        );
+          ];
+        final statusRow = _open
+            ? ConstrainedBox(
+                constraints: BoxConstraints(minHeight: rowMin),
+                child: Row(children: rowChildren),
+              )
+            : SizedBox(height: rowMin, child: Row(children: rowChildren));
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -224,7 +227,7 @@ class _SyncControlState extends State<SyncControl> {
                   children: [if (!s.busy) Flexible(child: actionButton())],
                 ),
               ),
-            if (_open && canOpen) ...[
+            if (_open && s.steps.isNotEmpty) ...[
               const SizedBox(height: S.x2),
               ...syncStepRows(s, now),
               const SizedBox(height: S.x1),

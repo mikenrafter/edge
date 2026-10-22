@@ -3111,20 +3111,6 @@
       }
     }
   },
-  "@syncCountRecords": {
-    "placeholders": {
-      "n": {
-        "type": "num"
-      }
-    }
-  },
-  "@syncCountChunks": {
-    "placeholders": {
-      "n": {
-        "type": "num"
-      }
-    }
-  },
   "syncStatusSynced": "सिंक हुआ",
   "syncStatusSyncedLower": "सिंक हुआ",
   "syncLineDownloaded": "डाउनलोड हुआ",

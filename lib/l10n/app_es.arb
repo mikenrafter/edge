@@ -3129,20 +3129,6 @@
       }
     }
   },
-  "@syncCountRecords": {
-    "placeholders": {
-      "n": {
-        "type": "num"
-      }
-    }
-  },
-  "@syncCountChunks": {
-    "placeholders": {
-      "n": {
-        "type": "num"
-      }
-    }
-  },
   "syncStatusSynced": "Sincronizado",
   "syncStatusSyncedLower": "sincronizado",
   "syncLineDownloaded": "Descargado",

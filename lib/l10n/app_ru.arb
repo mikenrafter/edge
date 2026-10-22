@@ -8497,20 +8497,6 @@
       }
     }
   },
-  "@syncCountRecords": {
-    "placeholders": {
-      "n": {
-        "type": "num"
-      }
-    }
-  },
-  "@syncCountChunks": {
-    "placeholders": {
-      "n": {
-        "type": "num"
-      }
-    }
-  },
   "syncStatusSynced": "Синхронизировано",
   "syncStatusSyncedLower": "синхронизировано",
   "syncLineDownloaded": "Загружено",

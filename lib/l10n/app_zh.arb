@@ -3111,20 +3111,6 @@
       }
     }
   },
-  "@syncCountRecords": {
-    "placeholders": {
-      "n": {
-        "type": "num"
-      }
-    }
-  },
-  "@syncCountChunks": {
-    "placeholders": {
-      "n": {
-        "type": "num"
-      }
-    }
-  },
   "syncStatusSynced": "已同步",
   "syncStatusSyncedLower": "已同步",
   "syncLineDownloaded": "已下载",

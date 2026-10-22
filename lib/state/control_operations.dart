@@ -40,6 +40,16 @@ enum SyncFailure {
 
   final String english;
   const SyncFailure(this.english);
+
+  /// The code whose English sentence is exactly [reason], or null for free
+  /// text. The coordinator's one conversion from an error to a reason is
+  /// [syncFailureReason], whose text for a coded error is `code.english`.
+  static SyncFailure? ofReason(String? reason) {
+    for (final f in values) {
+      if (f.english == reason) return f;
+    }
+    return null;
+  }
 }
 
 /// A [StateError] that carries its [SyncFailure] code; the message stays the
@@ -430,7 +440,7 @@ class SyncCoordinator extends ChangeNotifier {
       startedAt: startedAt,
       finishedAt: finishedAt,
       failureReason: failureReason,
-      failureCode: failureCode,
+      failureCode: failureCode ?? SyncFailure.ofReason(failureReason),
       partial: partial,
     );
     _emit(immediate: true);
@@ -707,7 +717,6 @@ class SyncCoordinator extends ChangeNotifier {
             startedAt: presentation.startedAt,
             finishedAt: now,
             failureReason: syncFailureReason(e),
-            failureCode: syncFailureCode(e),
           );
         }
         result = SyncOperationResult(false, '$e');

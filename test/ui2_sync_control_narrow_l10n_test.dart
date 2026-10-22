@@ -4,6 +4,7 @@
 // fit, decided from width, scale and locale only: same card rect in every
 // state, a target of at least 44 x 44 inside the card, no scaling, no overflow.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,6 +32,14 @@ final _states = <String, SyncPresentationState>{
     phase: 'failed',
     failureReason: SyncFailure.pairBand.english,
     failureCode: SyncFailure.pairBand,
+    lastSuccess: _t0.subtract(const Duration(minutes: 61)),
+  ),
+  // A long platform error (free text, no code) and no steps at all.
+  'failed long': SyncPresentationState(
+    phase: 'failed',
+    failureReason: 'The band stopped answering while downloading the night '
+        'before last; move closer to it, keep Bluetooth on and try again '
+        '(error 0x1F, attempt 3 of 3)',
     lastSuccess: _t0.subtract(const Duration(minutes: 61)),
   ),
   'partial': SyncPresentationState(
@@ -105,10 +114,10 @@ void main() {
             final l = await AppLocalizations.delegate.load(locale);
             final hasAction = e.key != 'downloading';
             if (hasAction) {
-              final label = e.key == 'failed'
+              final label = e.key.startsWith('failed')
                   ? l.syncActionRetry
                   : l.devicesSyncNow;
-              final compact = e.key == 'failed'
+              final compact = e.key.startsWith('failed')
                   ? l.syncActionRetryCompact
                   : l.syncActionSyncCompact;
               final f = find.byWidgetPredicate((x) =>
@@ -125,5 +134,48 @@ void main() {
         });
       }
     }
+  }
+
+  // A truncated failure is never the only place its reason lives: tapping the
+  // sentence opens the card with the COMPLETE text, steps or no steps.
+  for (final (locale, failure) in [
+    (const Locale('ru'), SyncFailure.downloadStopped),
+    (const Locale('de'), SyncFailure.calculationBusy),
+    (const Locale('ru'), null), // long platform error, no code
+  ]) {
+    testWidgets(
+        'tapping a truncated failure shows all of it: '
+        '${locale.languageCode} ${failure?.name ?? 'platform error'}',
+        (t) async {
+      addTearDown(t.view.reset);
+      t.view.devicePixelRatio = 1;
+      t.view.physicalSize = const Size(320, 1600);
+      final base = failure == null
+          ? _states['failed long']!
+          : SyncPresentationState(
+              phase: 'failed',
+              failureReason: failure.english,
+              failureCode: failure,
+              lastSuccess: _t0.subtract(const Duration(minutes: 61)),
+            );
+      await t.pumpWidget(_host(base, locale, 2.0));
+      await t.pump();
+      final l = await AppLocalizations.delegate.load(locale);
+      final sentence = find.byWidgetPredicate((w) =>
+          w is Text && (w.data ?? '').startsWith(l.syncStatusFailed));
+      expect(sentence, findsOneWidget);
+      RenderParagraph para() => t.renderObject<RenderParagraph>(sentence);
+      expect(para().didExceedMaxLines, isTrue,
+          reason: 'fixture: collapsed, the sentence is truncated');
+      final collapsed = t.getRect(find.byType(SyncControl));
+      await t.tap(sentence);
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 300));
+      expect(t.takeException(), isNull);
+      expect(para().didExceedMaxLines, isFalse,
+          reason: 'expanded: the whole reason is shown');
+      expect(t.getRect(find.byType(SyncControl)).height,
+          greaterThan(collapsed.height));
+    });
   }
 }

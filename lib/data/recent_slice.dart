@@ -81,8 +81,6 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'wake_evidence': (SliceKeep.recent, 'at_sec', 'noted wake events per sleep block'),
   'input_rev': (SliceKeep.highRate, '(bucket * 900)',
       'revision per 15-minute bucket of raw input, kept with the raw it counts'),
-  'input_revision': (SliceKeep.all, null,
-      'small per-input revision counters used to invalidate derived work'),
   // Per-night working data: up to ~200 KB a night.
   'sleep_session_candidates': (SliceKeep.recentDay, 'day_id', 'per-night sleep candidates (large)'),
   'wake_day_features': (SliceKeep.recentDay, 'day_id', 'per-day intermediate features'),

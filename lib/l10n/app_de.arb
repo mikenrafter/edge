@@ -3218,20 +3218,6 @@
       }
     }
   },
-  "@syncCountRecords": {
-    "placeholders": {
-      "n": {
-        "type": "num"
-      }
-    }
-  },
-  "@syncCountChunks": {
-    "placeholders": {
-      "n": {
-        "type": "num"
-      }
-    }
-  },
   "syncStatusSynced": "Synchronisiert",
   "syncStatusSyncedLower": "synchronisiert",
   "syncLineDownloaded": "Heruntergeladen",
