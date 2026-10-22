@@ -18,12 +18,14 @@ const _age = 'need_input:name=age';
 
 Future<void> _put(String day, int version,
         {Map<String, dynamic> scalars = const {},
-        Map<String, dynamic> notes = const {}}) =>
+        Map<String, dynamic> notes = const {},
+        bool imported = false}) =>
     LocalDb.putDayResult(
       dayId: day,
       algoVersion: version,
       payloadJson: jsonEncode({
         'date': day,
+        if (imported) 'imported': true,
         'scalars': scalars,
         if (notes.isNotEmpty) 'absent_notes': notes,
       }),
@@ -112,6 +114,44 @@ void main() {
     expect(m.value, 9.5);
     expect(m.fromOlderVersion, 104);
     expect(m.olderVersionReason, _age);
+  });
+
+  test('an older IMPORTED (vendor) row is never served through the fallback',
+      () async {
+    const day = '2020-06-05';
+    await _put(day, 104, scalars: {'strain': 20.0}, imported: true);
+    await _put(day, kAlgoVersion,
+        scalars: {'steps': 100.0}, notes: {'strain': _age});
+    final s = await repo.getDayStrain(day);
+    expect(s['strain'], isNull);
+    expect(s['from_older_version'] ?? const {}, isEmpty);
+  });
+
+  test('getToday: calories_total carries the provenance too', () async {
+    final day = todayLabel();
+    // The strain test above froze today's rows.
+    await (await LocalDb.instance)
+        .delete('day_result', where: 'day_id = ?', whereArgs: [day]);
+    await _put(day, 104, scalars: {'calories_total': 2400.0, 'calories': 500.0});
+    await _put(day, kAlgoVersion, scalars: {'steps': 100.0}, notes: {
+      'calories': _age,
+      'calories_total': _age,
+    });
+    final daily = (await repo.getToday())['daily'] as Map;
+    final m = Metric.parse(daily['calories_total']);
+    expect(m.value, 2400);
+    expect(m.fromOlderVersion, 104);
+  });
+
+  test('the only value is in the 7th-oldest version: still served', () async {
+    const day = '2020-06-06';
+    for (var v = 100; v <= 106; v++) {
+      await _put(day, v, scalars: {if (v == 100) 'strain': 7.5});
+    }
+    await _put(day, kAlgoVersion, notes: {'strain': _age});
+    final s = await repo.getDayStrain(day);
+    expect(s['strain'], 7.5);
+    expect(((s['from_older_version'] as Map)['strain'] as Map)['version'], 100);
   });
 
   test('Metric.parse carries the provenance', () {

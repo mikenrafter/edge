@@ -483,6 +483,11 @@ void main() {
     // past the 3-day raw retention, so the full-history pass archives the old day
     // (SampleArchiver.archiveBefore, called from the engine's raw prune) before
     // its rows go.
+    // With a full profile: a day abstaining for a missing age/sex/height/
+    // weight is held open (and its raw kept) for up to 14 days.
+    await (await SharedPreferences.getInstance()).setString(
+        'local_profile_json',
+        '{"age":35,"sex":"m","weight_kg":75,"height_cm":178}');
     await _seedLaterDay(start, seconds);
     await _saveMode(CalcPowerMode.balanced);
     expect(await IosBgTask.runForTest(syncOnly: false), isTrue);

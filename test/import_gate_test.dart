@@ -226,6 +226,39 @@ void main() {
       expect(ImportGate.check('t'), isA<SyncAllowed>());
     });
 
+    test('three failed resumes: the gate opens (no automatic retry is left)',
+        () async {
+      crashAt('decoded_onehz', 2);
+      await expectLater(
+          LocalDb.importFromDbFile(src), throwsA(isA<StateError>()));
+      await LocalDb.close();
+      ImportGate.resetForTest();
+      for (var i = 0; i < ImportJournal.kMaxAutoResumes; i++) {
+        crashAt('decoded_onehz', 2);
+        final r = await ImportJournal.resumeIfUnfinished();
+        expect(r.error, isNotNull, reason: 'resume $i fails again');
+      }
+      expect(ImportGate.check('t'), isA<SyncAllowed>(),
+          reason: 'sync must not stay refused for a run nobody will retry');
+    });
+
+    test('a missing source: the gate opens', () async {
+      crashAt('decoded_onehz', 2);
+      await expectLater(
+          LocalDb.importFromDbFile(src), throwsA(isA<StateError>()));
+      ImportHooks.chunk = null;
+      final path = (await (await LocalDb.instance).query('import_journal'))
+          .first['source_path'] as String;
+      File(path).deleteSync();
+      await LocalDb.close();
+      ImportGate.resetForTest();
+      await ImportGate.probe();
+      expect(ImportGate.check('t'), isA<SyncRefused>());
+      final r = await ImportJournal.resumeIfUnfinished();
+      expect(r.error, isNotNull);
+      expect(ImportGate.check('t'), isA<SyncAllowed>());
+    });
+
     test('a running import is registered by the journal itself', () async {
       final seen = <SyncPermit>[];
       ImportHooks.chunkRows = kChunk;

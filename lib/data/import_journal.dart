@@ -622,7 +622,22 @@ class ImportJournal {
         .whenComplete(() => _resumeFlight = null);
   }
 
+  /// [_resumeBody] then a gate re-probe on EVERY exit (success, failure,
+  /// give-up, missing source): the probe inside [runExclusive] runs before
+  /// the failure is journaled, so without this a run nobody will retry kept
+  /// sync refused (sticky latch, AGENTS 4.3).
   static Future<ImportResumeResult> _resume(
+      void Function(ImportProgress p)? onProgress,
+      void Function()? requestDerive,
+      bool force) async {
+    try {
+      return await _resumeBody(onProgress, requestDerive, force);
+    } finally {
+      await ImportGate.probe();
+    }
+  }
+
+  static Future<ImportResumeResult> _resumeBody(
       void Function(ImportProgress p)? onProgress,
       void Function()? requestDerive,
       bool force) async {

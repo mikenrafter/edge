@@ -4909,20 +4909,42 @@ class LocalDb {
     });
   }
 
-  /// The rows of [dayId] OLDER than the one served, newest first, at most
-  /// [limit]: `algo_version` and the stored payload text. For the read seam's
-  /// labelled older-version fallback only.
-  static Future<List<Map<String, dynamic>>> olderDayPayloads(
-    String dayId, {
-    int limit = 6,
-  }) async {
-    return readerRun((db) async => db.rawQuery(
-          'SELECT algo_version, payload_json FROM day_result '
-          'WHERE day_id = ? AND algo_version < (SELECT MAX(algo_version) '
-          'FROM day_result WHERE day_id = ? AND algo_version <= $_servedAlgoCeiling) '
-          'ORDER BY algo_version DESC LIMIT ?',
-          [dayId, dayId, limit],
-        ));
+  /// An older row the fallback may serve from: not another vendor's. The
+  /// CANDIDATE row is judged (payload `imported`, or a payload `source` other
+  /// than `band`), never the served one.
+  static const String _olderCandidateSql =
+      "AND r.payload_json NOT LIKE '%\"imported\":true%' "
+      "AND COALESCE(json_extract(r.payload_json, '\$.source'), 'band') = 'band' ";
+
+  /// [dayId]'s newest OLDER-version stored value for each of [keys]
+  /// (`$.scalars.<key>`), `{key: (algo_version, value)}`; a key nothing older
+  /// holds is absent. Same lookup as [olderScalarByDay], so a detail screen
+  /// and the chart agree.
+  static Future<Map<String, (int, double)>> olderScalarsOfDay(
+    String dayId,
+    Iterable<String> keys,
+  ) async {
+    return readerRun((db) async {
+      final out = <String, (int, double)>{};
+      for (final key in keys) {
+        final rows = await db.rawQuery(
+          'SELECT r.algo_version AS v, json_extract(r.payload_json, ?) AS x '
+          'FROM day_result r WHERE r.day_id = ? AND r.algo_version < '
+          '(SELECT MAX(m.algo_version) FROM day_result m WHERE m.day_id = ? '
+          'AND m.algo_version <= $_servedAlgoCeiling) '
+          'AND json_extract(r.payload_json, ?) IS NOT NULL '
+          '$_olderCandidateSql ORDER BY r.algo_version DESC LIMIT 1',
+          ['\$.scalars.$key', dayId, dayId, '\$.scalars.$key'],
+        );
+        if (rows.isNotEmpty && rows.first['x'] is num) {
+          out[key] = (
+            (rows.first['v'] as num).toInt(),
+            (rows.first['x'] as num).toDouble(),
+          );
+        }
+      }
+      return out;
+    });
   }
 
   /// For each day, the newest OLDER-version stored value of scalar [key]
@@ -4936,7 +4958,7 @@ class LocalDb {
         'WHERE r.algo_version < (SELECT MAX(m.algo_version) FROM day_result m '
         'WHERE m.day_id = r.day_id AND m.algo_version <= $_servedAlgoCeiling) '
         'AND json_extract(r.payload_json, ?) IS NOT NULL '
-        'ORDER BY r.algo_version ASC',
+        '$_olderCandidateSql ORDER BY r.algo_version ASC',
         ['\$.scalars.$key', '\$.scalars.$key'],
       );
       // Ascending, so the newest older version overwrites.

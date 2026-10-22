@@ -371,25 +371,13 @@ class LocalRepositoryImpl extends LocalRepository {
         if (scalars is! Map || scalars[k] is! num) k,
     ];
     if (missing.isEmpty) return b;
-    final found = <String, ({int version, num value})>{};
-    for (final row in await LocalDb.olderDayPayloads(day)) {
-      if (found.length == missing.length) break;
-      final older = await BundleStore.shared.decodeStoredPayload(row['payload_json']);
-      final olderScalars = older?['scalars'];
-      if (olderScalars is! Map) continue;
-      for (final k in missing) {
-        final v = olderScalars[k];
-        if (v is num && !found.containsKey(k)) {
-          found[k] = (version: (row['algo_version'] as num).toInt(), value: v);
-        }
-      }
-    }
+    final found = await LocalDb.olderScalarsOfDay(day, missing);
     if (found.isEmpty) return b;
-    b['scalars'] = {if (scalars is Map) ...scalars.cast<String, dynamic>(), for (final e in found.entries) e.key: e.value.value};
+    b['scalars'] = {if (scalars is Map) ...scalars.cast<String, dynamic>(), for (final e in found.entries) e.key: e.value.$2};
     b['from_older_version'] = {
       for (final e in found.entries)
         e.key: {
-          'version': e.value.version,
+          'version': e.value.$1,
           'reason': _absentNote(b, e.key) ?? kUnknownAbsenceNote,
         },
     };
@@ -871,6 +859,7 @@ class LocalRepositoryImpl extends LocalRepository {
         'ESTIMATE',
         unit: 'kcal',
         note: activityNote('calories_total'),
+        fromOlder: _olderOf(activityBundle, 'calories_total'),
       ),
       // STEPS — real 100 Hz count (streamed time) + 1 Hz walking estimate for the
       // rest; the derivation combines them and avoids double-counting.
@@ -2035,6 +2024,12 @@ class LocalRepositoryImpl extends LocalRepository {
     };
     // `b` may be the latest settled bundle standing in for today: judge the
     // day the figures are FROM, not the one asked for.
+    final olderFrom = _olderProvenance(b, const {
+      'strain': 'strain',
+      'trimp': 'training_load',
+      'calories': 'calories',
+      'calories_total': 'calories_total',
+    });
     final strainNote = strain == null
         ? await _finalAbsenceNote(
             (b['date'] as String?) ?? date, _absentNote(b, 'strain'))
@@ -2114,12 +2109,7 @@ class LocalRepositoryImpl extends LocalRepository {
       'flags': const {},
       // Fields whose value is an OLDER algo version's stored one (the current
       // row has none), keyed by this payload's own names. Empty otherwise.
-      'from_older_version': _olderProvenance(b, const {
-        'strain': 'strain',
-        'trimp': 'training_load',
-        'calories': 'calories',
-        'calories_total': 'calories_total',
-      }),
+      if (olderFrom.isNotEmpty) 'from_older_version': olderFrom,
     };
   });
 

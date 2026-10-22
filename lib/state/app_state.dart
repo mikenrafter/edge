@@ -1340,8 +1340,13 @@ class AppState extends ChangeNotifier {
   /// reset, so the derive that follows must not read the stale (empty) copy:
   /// it priced every day without age or sex.
   Future<void> _reloadProfile([SharedPreferences? p]) async {
-    final prefs = p ?? await SharedPreferences.getInstance();
-    await prefs.reload();
+    final SharedPreferences prefs;
+    try {
+      prefs = p ?? await SharedPreferences.getInstance();
+      await prefs.reload();
+    } on Object {
+      return; // no preference store (a bare test host): keep what is loaded
+    }
     final raw = prefs.getString(_kProfile);
     if (raw != null) {
       try {

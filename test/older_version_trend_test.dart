@@ -10,11 +10,14 @@ import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-Future<void> _put(String day, int version, double? strain) => LocalDb.putDayResult(
+Future<void> _put(String day, int version, double? strain,
+        {bool imported = false}) =>
+    LocalDb.putDayResult(
       dayId: day,
       algoVersion: version,
       payloadJson: jsonEncode({
         'date': day,
+        if (imported) 'imported': true,
         'scalars': {'strain': strain},
       }),
       windowJson: '{}',
@@ -61,5 +64,27 @@ void main() {
     final pts = ((await repo.getChart('strain'))['points'] as List).cast<Map>();
     expect(pts.any((e) => e['t'] == DateTime.parse('$day 12:00:00').millisecondsSinceEpoch ~/ 1000),
         isFalse);
+  });
+
+  test('an older imported vendor row never reaches the trend', () async {
+    const day = '2020-07-11';
+    await _put(day, 104, 19.0, imported: true);
+    await _put(day, kAlgoVersion, null);
+    final pts = ((await repo.getChart('strain'))['points'] as List).cast<Map>();
+    expect(pts.where((e) => e['v'] == 19.0), isEmpty);
+  });
+
+  test('the only value in the 7th-oldest version still reaches the trend',
+      () async {
+    const day = '2020-07-12';
+    for (var v = 100; v <= 106; v++) {
+      await _put(day, v, v == 100 ? 6.5 : null);
+    }
+    await _put(day, kAlgoVersion, null);
+    final pts = ((await repo.getChart('strain'))['points'] as List).cast<Map>();
+    final t = DateTime.parse('$day 12:00:00').millisecondsSinceEpoch ~/ 1000;
+    final pt = pts.singleWhere((e) => e['t'] == t);
+    expect(pt['v'], 6.5);
+    expect(pt['from_older_version'], 100);
   });
 }
