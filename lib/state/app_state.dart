@@ -1565,6 +1565,9 @@ class AppState extends ChangeNotifier {
   final ValueNotifier<List<String>> importReentry = ValueNotifier(const []);
   void dismissImportReentry() => importReentry.value = const [];
 
+  /// RED STUB: reads the kept list back at startup; does nothing yet.
+  Future<void> loadImportReentry() async {}
+
   /// Days of stored raw history (substrate archive buckets) the last backup
   /// import could NOT merge, because they are in a format this build does
   /// not read. Reported in the import report, never dropped silently.
