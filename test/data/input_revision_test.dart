@@ -245,8 +245,8 @@ void main() {
   test('schema version is 77 and the table exists after a plain open',
       () async {
     final db = await LocalDb.instance;
-    expect(LocalDb.schemaVersion, 77);
-    expect(await _userVersion(db), 77);
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(77));
+    expect(await _userVersion(db), LocalDb.schemaVersion);
     expect(await _hasTable(db), isTrue);
     final cols = {
       for (final c in await db.rawQuery('PRAGMA table_info(input_revision)'))
@@ -454,7 +454,7 @@ void main() {
         () async {
       await toV76();
       final db = await _open(name);
-      expect(await _userVersion(db), 77,
+      expect(await _userVersion(db), LocalDb.schemaVersion,
           reason: 'the ladder step did not run (schemaVersion is '
               '${LocalDb.schemaVersion})');
       expect(await _hasTable(db), isTrue);
@@ -477,7 +477,7 @@ void main() {
       expect(once, isNotEmpty);
       final db2 = await _open(name); // _repairOpenSchema runs again
       expect(await _triggers(db2), once);
-      expect(await _userVersion(db2), 77);
+      expect(await _userVersion(db2), LocalDb.schemaVersion);
     });
 
     test('a missing trigger set is healed by the open-time repair', () async {

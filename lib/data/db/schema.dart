@@ -1032,6 +1032,10 @@ Future<Database> _ldbPrivOpen() async {
           // _repairOpenSchema re-runs it on every open.
           await LocalDb._createInputRev(db);
         }
+        if (oldV < 78) {
+          // group_row (design 06 1d): one empty table, no backfill.
+          await createGroupRow(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
@@ -1149,6 +1153,7 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._createLastResult(db);
     await LocalDb._addColumnIfMissing(db, 'last_result', 'input_sig', 'TEXT');
     await LocalDb._createDayCheckpoint(db);
+    await createGroupRow(db);
     await LocalDb._createWakeConfirmation(db);
     await LocalDb._createWakeEvidence(db);
     await LocalDb._createMomentLabel(db);

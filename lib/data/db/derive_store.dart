@@ -200,6 +200,7 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
         'rmssd': rmssd,
         'readiness': readiness,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await writeGroupRowsShadow(txn, dayId: dayId, encodedPayload: encodedPayload, finalized: finalized, partial: partial, skipped: skipped, userOverride: reason == DayResultWrite.userOverride, nowMs: now);
       // A `partial` row already doesn't count as "derived" for the raw-pruning
       // guard (see above) — extend the same caution to the rolling baselines:
       // don't let a day whose second-half compute failed/timed out overwrite

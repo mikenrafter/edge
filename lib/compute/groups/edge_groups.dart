@@ -120,6 +120,9 @@ const Map<String, String> kBundleKeyOwner = <String, String>{
   'absent_notes': 'edge.assembly',
   'scalars': 'edge.assembly', // mixed block, see [kNestedKeyOwner]
   'date': 'edge.assembly',
+  // Import snapshots (cloud_import, whoop_import) stamp their provenance.
+  'imported': 'edge.assembly',
+  'source': 'edge.assembly',
   'data_edge_sec': 'edge.assembly',
   'device_family': 'edge.assembly',
   'day_confidence': 'edge.assembly',
@@ -178,6 +181,10 @@ const Map<String, String> kSeriesKeyOwner = <String, String>{
 /// Bundle keys a derive writes only under a condition the test fixtures may
 /// not meet, with that condition (keeps the "no phantom key" check honest).
 const Map<String, String> kConditionalKeys = <String, String>{
+  'imported':
+      'import snapshots only (cloud_import, whoop_import); never on a band derive',
+  'source':
+      'import snapshots only (cloud_import, whoop_import); never on a band derive',
   'calories_total':
       'wake-day energy block: needs the full wakeDayEnergy inputs (basal + active + profile); the test fixtures do not meet them',
   'movement':

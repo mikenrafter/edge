@@ -271,7 +271,7 @@ void main() {
   group('ownership is total: an unowned key is a failure', () {
     Map<String, Object?> base() => {
           'date': '2026-03-10',
-          'scalars': {'rhr': 50.0},
+          'scalars': <String, Object?>{'rhr': 50.0},
         };
 
     test('an unowned top-level key throws and names the key', () {
