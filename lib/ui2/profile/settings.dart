@@ -43,6 +43,8 @@ import '../../state/locale_controller.dart';
 import '../../state/acked_bool.dart';
 import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
+import '../../sync/dev_log.dart';
+import '../../sync/dev_log_export.dart' show shareDevLog;
 import '../../telemetry/health_uploader.dart';
 import '../../theme/theme_controller.dart';
 import '../activity/zones.dart' show ZonesDetail;
@@ -55,6 +57,7 @@ import 'band_notifications.dart';
 import 'buzz_pattern.dart';
 import 'data.dart';
 import 'device_lab.dart' show DeviceLab;
+import 'dev_logs_page.dart' show DevLogsPage;
 import 'devices.dart' show MyDevices;
 import 'gallery.dart';
 import 'gesture_failures.dart';
@@ -255,6 +258,13 @@ class _MoreSettingsState extends State<MoreSettings> {
       onDevices: () => goto(c, const MyDevices()),
       onLiveDevices: () => goto(c, const LiveDevices()),
       onDeviceLab: () => goto(c, const DeviceLab()),
+      onLogs: () => goto(
+        c,
+        DevLogsPage(
+          export: (origin) => shareDevLog(DevLog.instance, origin: origin),
+          clear: DevLog.instance.clear,
+        ),
+      ),
       onDataExplorer: () => goto(c, const ExplorerScreen()),
       onCoach: () => goto(c, const CoachSetup()),
       relaySupported: caps.has(Feature.relayEntry),
@@ -1005,6 +1015,8 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.flaskConical, C.purple, 'Device lab',
                         sub: 'Try gestures the band does not report on its own',
                         onTap: onDeviceLab),
+                    SetRow(LucideIcons.scrollText, C.blue, 'Logs',
+                        onTap: onLogs),
                     // Not a Health tab yet: up to four metrics on one time axis.
                     SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
                         sub: 'Compare up to four metrics on one time axis',

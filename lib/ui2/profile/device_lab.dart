@@ -52,6 +52,7 @@ import 'live_devices.dart' show LiveDevices;
 import 'motion_lab.dart';
 import 'pattern_probe_page.dart';
 import 'profile.dart';
+import 'dev_logs_page.dart' show DevLogActions;
 
 export '../../gestures/lab_log.dart' show DeviceLabEntry, labClock;
 
@@ -554,67 +555,12 @@ class DeviceLabView extends StatelessWidget {
 }
 
 /// The persistent dev log: export it as one ZIP, or clear it.
-class _DevLogSection extends StatefulWidget {
+class _DevLogSection extends StatelessWidget {
   const _DevLogSection({this.export, this.clear});
   final Future<bool> Function(Rect origin)? export;
   final Future<void> Function()? clear;
 
   @override
-  State<_DevLogSection> createState() => _DevLogSectionState();
-}
-
-class _DevLogSectionState extends State<_DevLogSection> {
-  bool _busy = false;
-
-  void _say(ScaffoldMessengerState m, String text) {
-    // Lifted clear of the pinned button; a retry replaces the last message.
-    m.removeCurrentSnackBar();
-    m.showSnackBar(SnackBar(
-      behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, 88),
-      content: Text(text),
-    ));
-  }
-
-  Future<void> _export(BuildContext c) async {
-    if (_busy) return;
-    // Both read the tree, so both are read before the await.
-    final messenger = ScaffoldMessenger.of(c);
-    final origin = shareOrigin(c);
-    setState(() => _busy = true);
-    var ok = false;
-    try {
-      ok = await widget.export!(origin);
-    } catch (_) {}
-    if (mounted) setState(() => _busy = false);
-    if (!ok && mounted) _say(messenger, 'Could not export the dev log.');
-  }
-
-  Future<void> _clear(BuildContext c) async {
-    if (_busy) return;
-    final messenger = ScaffoldMessenger.of(c);
-    final yes = await confirmRemove(
-      c,
-      title: 'Clear the dev log?',
-      body: 'Every saved day of the dev log, and the old sync log if it is '
-          'still there, is deleted from this phone. Anything you exported '
-          'stays where you sent it. There is no undo.',
-      remove: 'Clear',
-    );
-    if (!yes || !mounted) return;
-    setState(() => _busy = true);
-    var ok = true;
-    try {
-      await widget.clear!();
-    } catch (_) {
-      ok = false;
-    }
-    if (mounted) setState(() => _busy = false);
-    if (mounted) {
-      _say(messenger, ok ? 'Dev log cleared' : 'Could not clear the dev log.');
-    }
-  }
-
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
@@ -632,30 +578,11 @@ class _DevLogSectionState extends State<_DevLogSection> {
               style: F.cap.copyWith(color: p.ink2, height: 1.4),
             ),
           ),
-          if (widget.export != null)
-            Padding(
-              padding: const EdgeInsets.only(top: S.x3),
-              child: BigButton(
-                'Export dev log (ZIP)',
-                key: const ValueKey('dev-log-export'),
-                icon: LucideIcons.download,
-                soft: true,
-                color: C.blue,
-                onTap: () => _export(c),
-              ),
-            ),
-          if (widget.clear != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: S.x3),
-              child: BigButton(
-                'Clear dev log',
-                key: const ValueKey('dev-log-clear'),
-                icon: LucideIcons.trash2,
-                soft: true,
-                color: C.red,
-                onTap: () => _clear(c),
-              ),
-            ),
+          DevLogActions(
+            export: export,
+            clear: clear,
+            shareLabel: 'Export dev log (ZIP)',
+          ),
         ]);
   }
 }
