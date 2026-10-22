@@ -56,6 +56,13 @@ class _Row {
   }
 }
 
+/// Where a WHOOP import reports progress. A typed sink, not a callback, so the
+/// call resolves to a method (the heavy-work guard cannot see through callbacks).
+abstract interface class WhoopImportProgressSink {
+  /// [done] days written so far, of [total] days found in the files.
+  void copied(int done, int total);
+}
+
 class WhoopImporter {
   /// Column aliases for the energy field. The unit is read from whichever of
   /// these actually matched — never inferred from the value (see [_kcal]).
@@ -75,7 +82,7 @@ class WhoopImporter {
     List<String> paths, {
     DerivationEngine? engine,
     Profile? profile,
-    void Function(int done, int total)? onProgress,
+    WhoopImportProgressSink? progress,
   }) async {
     var days = 0, workouts = 0, skipped = 0;
     // Day labels that still have raw 1 Hz substrate on device. An imported
@@ -99,7 +106,7 @@ class WhoopImporter {
         rawDays: rawDays,
         engine: engine,
         profile: profile,
-        onProgress: onProgress,
+        progress: progress,
         days: days,
         workouts: workouts,
         skipped: skipped,
@@ -115,7 +122,7 @@ class WhoopImporter {
     required Set<String> rawDays,
     DerivationEngine? engine,
     Profile? profile,
-    void Function(int done, int total)? onProgress,
+    WhoopImportProgressSink? progress,
     required int days,
     required int workouts,
     required int skipped,
@@ -174,8 +181,7 @@ class WhoopImporter {
       switch (await _buildAndWriteDay(entry.key, entry.value, rawDays)) {
         case _DayWrite.written:
           days++;
-          // [onProgress] reports days written so far of the days found in the files.
-          onProgress?.call(days, pendingDays.length);
+          progress?.copied(days, pendingDays.length);
         case _DayWrite.keptExisting:
           skipped++;
         case _DayWrite.unusable:

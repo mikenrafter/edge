@@ -213,4 +213,47 @@ void main() {
     expect(running(r.last.$1), isFalse, reason: 'stuck "Importing"');
     expect(r.last.$2, isNull);
   });
+
+  // A backup's failure stays until the NEXT BACKUP starts (or it is dismissed).
+  // A CSV import that began while it was retained must not bring it back after
+  // a newer backup retired it.
+  for (final kind in ['NOOP', 'WHOOP']) {
+    testWidgets('$kind CSV finishing after a newer backup started does not '
+        'resurrect the retired failure', (t) async {
+      ImportFailed? first;
+      final r = await run(t, (app, tmp) async {
+        await expectLater(
+            app.importEdgeBackup(p.join(tmp.path, 'missing-1.db')), throwsA(anything));
+        first = app.importProgress.value as ImportFailed;
+        expect(first, isNotNull, reason: 'guard: the failure is retained');
+
+        // The newer backup starts while the CSV is mid-run (after its first
+        // derived day / first copied day). Starting it retires the failure.
+        Future<void>? newer;
+        void startNewer() {
+          if (newer != null) return;
+          final live = kind == 'NOOP'
+              ? app.deriveProgress.value != null
+              : app.importProgress.value is ImportCopying;
+          if (!live) return;
+          newer = app
+              .importEdgeBackup(p.join(tmp.path, 'missing-2.db'))
+              .then<void>((_) {}, onError: (_) {});
+        }
+
+        app.deriveProgress.addListener(startNewer);
+        app.importProgress.addListener(startNewer);
+        if (kind == 'NOOP') {
+          await app.importNoopCsv(_noop(tmp).path);
+        } else {
+          await app.importWhoopCsvs([_whoop(tmp).path]);
+        }
+        expect(newer, isNotNull, reason: 'guard: the overlap happened');
+        await newer;
+      });
+      expect(r.error, isNull);
+      expect(identical(r.last.$1, first), isFalse,
+          reason: 'the CSV cleanup restored a failure a newer backup retired');
+    });
+  }
 }

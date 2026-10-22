@@ -8417,13 +8417,6 @@
     },
     {
       "rule": "unresolvedInvocation",
-      "file": "import/whoop_import.dart",
-      "symbol": "WhoopImporter._importResolvedCsvs",
-      "element": "onProgress?.call(days, pendingDays.length)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
       "file": "main.dart",
       "symbol": "_safeInit",
       "element": "debugPrint('[main] $label init TIMED OUT after ' '${_kStartupInitTimeout.inSeconds}s — continuing without it')",

@@ -270,6 +270,18 @@ abstract interface class ImportRollupProbe {
   Future<void> finalize(Profile profile);
 }
 
+/// Publishes a WHOOP import's measured copy count on [AppState.importProgress].
+class _WhoopCopyProgress implements WhoopImportProgressSink {
+  _WhoopCopyProgress(this._notifier);
+  final ValueNotifier<ImportProgress?> _notifier;
+  @override
+  void copied(int done, int total) {
+    if (total > 0 && done <= total) {
+      _notifier.value = ImportCopying(ImportStage.results, done, total, 1, 1);
+    }
+  }
+}
+
 class AppState extends ChangeNotifier {
   late final BleEngine engine;
 
@@ -1452,9 +1464,7 @@ class AppState extends ChangeNotifier {
     void Function(int days)? onProgress,
   }) async {
     final progressOwner = _deriveCoordinator.beginPublishedProgress();
-    // A backup's failure stays on the import screens until the next BACKUP
-    // starts; a CSV import in between borrows the notifier and hands it back.
-    final retained = importProgress.value is ImportFailed ? importProgress.value : null;
+    final backupsAtStart = _backupStarts;
     try {
       importProgress.value = const ImportPreparing(ImportPrepStep.opening);
       final res = await NoopImporter.importFile(
@@ -1481,7 +1491,7 @@ class AppState extends ChangeNotifier {
       return res.days;
     } finally {
       try {
-        importProgress.value = retained;
+        _releaseCsvProgress(backupsAtStart);
       } finally {
         _deriveCoordinator.clearPublishedProgress(progressOwner);
       }
@@ -1505,7 +1515,7 @@ class AppState extends ChangeNotifier {
     List<String> paths, {
     void Function(int days)? onProgress,
   }) async {
-    final retained = importProgress.value is ImportFailed ? importProgress.value : null;
+    final backupsAtStart = _backupStarts;
     try {
       importProgress.value = const ImportPreparing(ImportPrepStep.opening);
       // A WHOOP export holds the vendor's own daily figures; storing them
@@ -1515,19 +1525,14 @@ class AppState extends ChangeNotifier {
         paths,
         engine: _derive,
         profile: _profile,
-        onProgress: (done, total) {
-          if (total > 0 && done <= total) {
-            importProgress.value =
-                ImportCopying(ImportStage.results, done, total, 1, 1);
-          }
-        },
+        progress: _WhoopCopyProgress(importProgress),
       );
       lastWhoopImport = res;
       await _deriveCoordinator.publishNow(); // see importNoopCsv
       notifyListeners();
       return res.days;
     } finally {
-      importProgress.value = retained;
+      _releaseCsvProgress(backupsAtStart);
     }
   }
 
@@ -1549,9 +1554,28 @@ class AppState extends ChangeNotifier {
   @visibleForTesting
   ImportRollupProbe? debugFinalizeImport;
 
+  /// How many backup imports have started. A CSV import compares it with its
+  /// own start so it never undoes what a newer backup did.
+  int _backupStarts = 0;
+
+  /// The last backup import's failure. It stays until the next backup starts
+  /// (or is dismissed); a CSV import that borrowed [importProgress] meanwhile
+  /// hands it back when it ends.
+  ImportFailed? _backupFailure;
+
+  /// A CSV import ends: release its progress. The retained backup failure is
+  /// shown again only if no backup started since the CSV began; a newer backup
+  /// owns the notifier and has already retired or replaced that failure.
+  void _releaseCsvProgress(int backupsAtStart) {
+    if (_backupStarts != backupsAtStart) return;
+    importProgress.value = _backupFailure;
+  }
+
   Future<int> importEdgeBackup(String path) async {
     // Starting a new import dismisses the previous result and establishes the
     // progress owner before any asynchronous work begins.
+    _backupStarts++;
+    _backupFailure = null;
     importProgress.value = null;
     importRollupError = null;
     lastImportArchiveSkipped = 0;
@@ -1612,7 +1636,9 @@ class AppState extends ChangeNotifier {
       // file; the caller reports "N days imported" and a row total is not that.
       return counts['_days'] ?? 0;
     } catch (e) {
-      importProgress.value = ImportFailed('$e');
+      final failure = ImportFailed('$e');
+      _backupFailure = failure;
+      importProgress.value = failure;
       rethrow;
     } finally {
       if (importProgress.value is! ImportFailed) {
