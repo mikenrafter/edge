@@ -2386,3 +2386,7 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
       importedLast: await lastImportAt(HealthImport.workouts),
     );
 }
+
+/// RED STUB: per-slot older version, same slots as [lastSevenDays].
+List<int?> lastSevenDaysOlder(Object? points, DateTime end) =>
+    List<int?>.filled(7, null);

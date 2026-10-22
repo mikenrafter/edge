@@ -1,0 +1,88 @@
+// Shared fixtures for the older-calculation marker tests (RULES B.2).
+// Not a test itself.
+//
+// PINNED CONTRACT the green phase must satisfy (keys are ValueKey<String>):
+//   older-version-mark:<id>   the asterisk beside a number (text '*'); tapping
+//                             it reveals the note text.
+//   older-version-note:<id>   the visible note.
+// ids: strain / calories / calories_total (Home ring + tile, Day strain),
+//      headline / latest / selected (Metric detail), readout (any chart
+//      scrub readout: Explorer, month grid, workout bars).
+// Note text: 'From an older calculation (v104): <reason sentence>'; with no
+// reason, 'From an older calculation (v104)'. Reason sentence is whyFromNote().
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/local_repository.dart';
+
+const kReasonRaw = 'need_input:name=age';
+const kReasonSentence = 'This metric needs your age, which is not on file.';
+const kNoteV104 = 'From an older calculation (v104)';
+const kNoteV104Reason = '$kNoteV104: $kReasonSentence';
+final kSpoken = RegExp('from an older calculation', caseSensitive: false);
+
+Map<String, dynamic> older({int v = 104, String reason = kReasonRaw}) =>
+    {'version': v, 'reason': reason};
+
+/// Every widget keyed older-version-*.
+Finder anyOlderMarker() => find.byWidgetPredicate((w) {
+      final k = w.key;
+      return k is ValueKey<String> && k.value.startsWith('older-version-');
+    });
+
+Finder olderMark(String id) => find.byKey(ValueKey('older-version-mark:$id'));
+Finder olderNote(String id) => find.byKey(ValueKey('older-version-note:$id'));
+
+/// A stored getChart point `back` days ago, local noon, as the seam stamps it.
+Map<String, dynamic> cp(int back, num v, {int? older}) {
+  final n = DateTime.now();
+  return {
+    't': DateTime(n.year, n.month, n.day - back, 12).millisecondsSinceEpoch ~/
+        1000,
+    'v': v,
+    'from_older_version': ?older,
+  };
+}
+
+/// [n] days ending today; days in [flagged] (days back) carry v104; days in
+/// [gaps] are missing.
+List<Map<String, dynamic>> series(int n,
+        {Set<int> flagged = const {}, Set<int> gaps = const {}, num base = 8}) =>
+    [
+      for (var back = n - 1; back >= 0; back--)
+        if (!gaps.contains(back))
+          cp(back, base + (back % 3),
+              older: flagged.contains(back) ? 104 : null),
+    ];
+
+/// A repository that serves canned charts and day payloads; anything else
+/// throws, like the base class.
+class OlderRepo extends LocalRepository {
+  final Map<String, List<Map<String, dynamic>>> charts;
+  final Map<String, Map<String, dynamic>> dayStrain;
+  OlderRepo({this.charts = const {}, this.dayStrain = const {}});
+
+  @override
+  Future<Map<String, dynamic>> getChart(String metric,
+          {int? from, int? to, Set<String> signals = const {}}) async =>
+      {'points': charts[metric] ?? const []};
+
+  @override
+  Future<List<String>> availableDays() async => [
+        for (var i = 0; i < 60; i++)
+          dayLabelOf(DateTime.now().subtract(Duration(days: i))),
+      ];
+
+  @override
+  Future<Map<String, dynamic>> getProfile() async => const {'name': 'Alex'};
+
+  @override
+  Future<Map<String, dynamic>> getInsights() async => const {};
+
+  @override
+  Future<Map<String, dynamic>> getDayStrain(String date) async =>
+      dayStrain[date] ?? dayStrain['*'] ?? const {};
+
+  @override
+  Future<Map<String, dynamic>> getDayWear(String date) async => const {};
+}

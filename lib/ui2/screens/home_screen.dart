@@ -552,6 +552,17 @@ Metric envMetric(Object? raw, num? scalar, {String? unit}) {
 /// (local noon of the day the value was derived on), `v` the value.
 typedef ChartPoint = ({int t, double v});
 
+/// RED STUB: the algo version a point's value was served from when it is an
+/// older version's stored value; null for a current one. The green phase makes
+/// this a real field carried through [pointsOf] and deletes this extension.
+extension ChartPointOlder on ChartPoint {
+  int? get olderVersion => null;
+}
+
+/// RED STUB: per-slot older version, same slots as [denseDays].
+List<int?> denseOlderVersions(List<ChartPoint> pts, int days) =>
+    List<int?>.filled(days, null);
+
 /// A `[{t, v}]` point list from `getChart`, timestamps INTACT.
 ///
 /// [seriesOf] drops `t`, and everything downstream then labelled its x axis off
