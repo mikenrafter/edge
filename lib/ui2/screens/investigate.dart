@@ -97,7 +97,8 @@ class InvestigateData {
   /// Empty means none is.
   final List<int?> seriesOlder;
 
-  /// RED STUB: the reason behind each [seriesOlder] entry (same indices).
+  /// Why the current calculation had no value, for each [seriesOlder] entry
+  /// (same indices), when the payload says.
   final List<String?> seriesOlderReasons;
 
   const InvestigateData({
@@ -180,6 +181,7 @@ class InvestigateData {
       windowEnd: win is Map ? (win['end'] as num?)?.toInt() : null,
       series: series,
       seriesOlder: [for (final p in seriesPts) p.olderVersion],
+      seriesOlderReasons: [for (final p in seriesPts) p.olderReason],
     );
   }
 
@@ -1288,6 +1290,18 @@ class _InvestigateState extends State<Investigate> {
     // newest value by its own flag, every whole-window figure by any flag.
     final flags = d.seriesOlder.length == s.length ? d.seriesOlder : const <int?>[];
     final versions = <int>{for (final v in flags) ?v}.toList()..sort();
+    // One note per version, with the reason of the NEWEST value of that version
+    // that has one (so Latest's own reason wins when it is that version).
+    String? reasonOf(int version) {
+      for (var i = flags.length - 1; i >= 0; i--) {
+        if (flags[i] == version &&
+            i < d.seriesOlderReasons.length &&
+            d.seriesOlderReasons[i] != null) {
+          return d.seriesOlderReasons[i];
+        }
+      }
+      return null;
+    }
     final anyOlder = versions.isNotEmpty;
     final latestOlder = flags.isNotEmpty && flags.last != null;
     String star(String v, bool on) => on ? '$v*' : v;
@@ -1323,7 +1337,8 @@ class _InvestigateState extends State<Investigate> {
               for (var i = 0; i < versions.length; i++)
                 OlderVersionNote(
                     id: i == 0 ? 'stats' : 'stats:${versions[i]}',
-                    version: versions[i]),
+                    version: versions[i],
+                    reason: reasonOf(versions[i])),
             ],
           ),
         ),

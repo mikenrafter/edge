@@ -114,6 +114,7 @@ import 'package:flutter/foundation.dart' show ValueListenable, defaultTargetPlat
 import 'capabilities.dart';
 import 'feature_flags.dart';
 import 'power_source.dart';
+import 'locale_controller.dart';
 import 'prefs.dart';
 import '../ble/adapters/signals.dart' show InputSignal;
 import '../sources/source_catalog.dart' show SourceService;
@@ -4555,8 +4556,13 @@ class AppState extends ChangeNotifier {
     }
     _lastSweepScanMs = at.millisecondsSinceEpoch;
     try {
-      _sweepHeadline =
-          sweepHeadline(sweepFindings(await collectSweepSeries(r, at)));
+      // Composed without a BuildContext, so the older-calculation note takes
+      // its language the way every such notification does: the wearer's
+      // override, else the OS, else English.
+      final strings = await LocaleController.currentStrings();
+      _sweepHeadline = sweepHeadline(
+          sweepFindings(await collectSweepSeries(r, at)),
+          olderNote: strings.olderVersionSweepFinding);
     } catch (e) {
       _log('[ai] sweep scan skipped: $e');
     }
