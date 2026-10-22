@@ -4564,6 +4564,10 @@ class AppState extends ChangeNotifier {
   }
 
   @visibleForTesting
+  Future<String?> debugSweepHeadlineNow({DateTime? now}) =>
+      _sweepHeadlineNow(now: now);
+
+  @visibleForTesting
   void debugLog(String line) => _log(line);
 
   void _log(String line) {

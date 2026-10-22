@@ -12,7 +12,8 @@ import 'support/older_version_fixtures.dart';
 // Oldest -> newest: 8, 9, 10, 8, 9 (mean 8.80, latest 9.00).
 const _vals = [8.0, 9.0, 10.0, 8.0, 9.0];
 
-Future<void> _show(WidgetTester t, List<int?> older) async {
+Future<void> _show(WidgetTester t, List<int?> older,
+    [List<String?> reasons = const []]) async {
   t.view.physicalSize = const Size(390 * 3, 2400 * 3);
   t.view.devicePixelRatio = 3;
   addTearDown(t.view.reset);
@@ -24,7 +25,8 @@ Future<void> _show(WidgetTester t, List<int?> older) async {
                 day: '2026-10-04',
                 days: const ['2026-10-04'],
                 series: _vals,
-                seriesOlder: older))),
+                seriesOlder: older,
+                seriesOlderReasons: reasons))),
   ));
   await t.pumpAndSettle();
 }
@@ -53,5 +55,31 @@ void main() {
     await _show(t, const []);
     expect(find.textContaining('*'), findsNothing);
     expect(anyOlderMarker(), findsNothing);
+  });
+
+  testWidgets('the note keeps the reason, newest value first', (t) async {
+    // The newest value (Latest) is older and says why; an earlier one has no
+    // reason of its own, same version.
+    await _show(t, [null, 104, null, null, 104],
+        [null, null, null, null, kReasonRaw]);
+    expect(t.widget<Text>(olderNote('stats')).data, kNoteV104Reason);
+  });
+
+  testWidgets('versions are noted separately, each with its own reason',
+      (t) async {
+    await _show(t, [null, 103, null, null, 104],
+        [null, 'need_input:name=weight_kg', null, null, kReasonRaw]);
+    final texts = [
+      for (final w in t.widgetList<Text>(find.byWidgetPredicate((w) =>
+          w is Text &&
+          w.key is ValueKey<String> &&
+          (w.key as ValueKey<String>).value.startsWith('older-version-note:'))))
+        w.data
+    ];
+    expect(texts, containsAll([
+      'From an older calculation (v103): '
+          'This metric needs your weight, which is not on file.',
+      kNoteV104Reason,
+    ]));
   });
 }

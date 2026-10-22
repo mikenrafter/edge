@@ -97,6 +97,9 @@ class InvestigateData {
   /// Empty means none is.
   final List<int?> seriesOlder;
 
+  /// RED STUB: the reason behind each [seriesOlder] entry (same indices).
+  final List<String?> seriesOlderReasons;
+
   const InvestigateData({
     this.day,
     this.days = const [],
@@ -116,6 +119,7 @@ class InvestigateData {
     this.windowEnd,
     this.series = const [],
     this.seriesOlder = const [],
+    this.seriesOlderReasons = const [],
   });
 
   static Future<InvestigateData> load(LocalRepository repo, String key,
