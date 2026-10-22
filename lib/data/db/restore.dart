@@ -728,6 +728,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFile(String path, {required List<Str
   }
 
 Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List<String>? only, required bool tolerant, required void Function(ImportProgress p)? onProgress, ImportRun? run}) async {
+    final perfId = run == null ? 'salvage' : '${run.startedAt}-${run.id}';
+    final prepWatch = Stopwatch()..start();
     // One place that reports a preparing step (opening, checking, counting).
     void prep(ImportPrepStep step, [int? done, int? total]) =>
         onProgress?.call(ImportPreparing(step, done, total));
@@ -845,6 +847,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       }
     }
 
+    final perfPages = <String, int>{};
+    final perfSerialized = <String, int>{};
     Future<bool> mergeBulkTable(String t, int index) async {
       if (!impAttached || !bulkTables.contains(t)) return false;
       final exists = await db.rawQuery(
@@ -980,6 +984,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       var copied = 0;
       try {
         if (t == 'decoded_rr') {
+          final rrWatch = Stopwatch()..start();
+          var rrPages = 0;
           // The highest beat per second over the WHOLE source, not one chunk:
           // REPLACE renumbers rowids, so one second's beats can straddle
           // chunks out of order, and a per-chunk max would clear beats an
@@ -991,6 +997,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           // Paged like the copy below, so a band-sync commit can land between
           // pages instead of waiting out a scan of the whole source.
           for (var lo = 0; lo < maxRowid; lo += chunkRows) {
+            rrPages++;
+            final rrPageWatch = Stopwatch()..start();
             // REPLACE with a LEFT JOIN rather than an UPSERT: Android 8-10
             // ship a system SQLite older than ON CONFLICT DO UPDATE.
             await db.execute('''INSERT OR REPLACE INTO temp._restore_rr_src_max
@@ -1004,14 +1012,23 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     GROUP BY d, k) c
               LEFT JOIN temp._restore_rr_src_max x ON x.d = c.d AND x.k = c.k''',
                 [lo, lo + chunkRows]);
+            if (rrPageWatch.elapsedMilliseconds > 2000) {
+              ImportPerf.write(perfId, 'chunk', 'table=decoded_rr path=bulk phase=rr_prepare page=$rrPages lo=$lo hi=${lo + chunkRows} ms=${rrPageWatch.elapsedMilliseconds}');
+            }
           }
+          ImportPerf.write(perfId, 'rr_prepare', 'table=decoded_rr pages=$rrPages ms=${rrWatch.elapsedMilliseconds}');
         }
         var lower = startLower;
         var lastChunkCopied = -1;
         while (lower < maxRowid) {
+          final chunkWatch = Stopwatch()..start();
+          final chunkLower = lower;
           final upper = lower + chunkRows > maxRowid ? maxRowid : lower + chunkRows;
           final first = lower == startLower;
+          final txnWatch = Stopwatch()..start();
+          var writeMs = 0, cleanupMs = 0, journalMs = 0, bodyMs = 0;
           await src.mainTransaction(db, (txn) async {
+            final bodyWatch = Stopwatch()..start();
             if (t == 'day_result' && first) {
               // Inside the first chunk's transaction, so a day the engine
               // finalizes while the restore runs is still protected.
@@ -1046,11 +1063,14 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   [lower, upper]));
             }
             if (spanTable) await beginBulkSpans(txn);
+            final writeWatch = Stopwatch()..start();
             await txn.execute(insertSql, [lower, upper]);
+            writeMs = writeWatch.elapsedMilliseconds;
             final chunkCopied = Sqflite.firstIntValue(
                   await txn.rawQuery('SELECT changes()'),
                 ) ??
                 0;
+            final cleanupWatch = Stopwatch()..start();
             if (spanTable) await endBulkSpans(txn, spanFrom);
             copied += chunkCopied;
             lastChunkCopied = chunkCopied;
@@ -1072,6 +1092,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   ON r.device_id = c.d AND r.ts_ms = c.k AND r.beat_index > c.m)''');
               await txn.execute('DROP TABLE temp._restore_rr_carried');
             }
+            cleanupMs = cleanupWatch.elapsedMilliseconds;
+            final journalWatch = Stopwatch()..start();
             if (run != null) {
               // In the chunk's own transaction: journal == data, always.
               await ImportJournal.advance(txn, run, index, t, upper, chunkCopied);
@@ -1081,7 +1103,12 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     hook, txn, ImportChunk(t, lower ~/ chunkRows, lower, upper));
               }
             }
+            journalMs = journalWatch.elapsedMilliseconds;
+            bodyMs = bodyWatch.elapsedMilliseconds;
           });
+          txnWatch.stop();
+          perfPages[t] = (perfPages[t] ?? 0) + 1;
+          ImportPerf.page(perfId);
           LocalDb._mergePagesCommitted++;
           ImportJournal.notify();
           lower = upper;
@@ -1094,6 +1121,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                 [lower]));
             if (next == null) break;
             if (next - 1 > lower) lower = next - 1;
+          }
+          if (chunkWatch.elapsedMilliseconds > 2000) {
+            ImportPerf.write(perfId, 'chunk', 'table=$t path=bulk lo=$chunkLower hi=$upper page=${perfPages[t]} rows=$lastChunkCopied ms=${chunkWatch.elapsedMilliseconds} write_ms=$writeMs cleanup_ms=$cleanupMs journal_ms=$journalMs txn_ms=${txnWatch.elapsedMilliseconds} body_ms=$bodyMs');
           }
           plan?.advance(t, upper);
         }
@@ -1115,6 +1145,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     }
 
     try {
+      ImportPerf.phase('open_policy', prepWatch, run: perfId);
+      final attachWatch = Stopwatch()..start();
+      var attachError = 'none';
       if (!LocalDb.debugRowByRowMerge) {
         try {
           // The copy stays in SQLite because row pages crossing the platform
@@ -1122,9 +1155,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           // commits, which must land before the ACK.
           await db.execute('ATTACH DATABASE ? AS imp', [path]);
           impAttached = true;
-        } on DatabaseException {
+        } on DatabaseException catch (e) {
+          attachError = '${e.getResultCode()}';
           impAttached = false;
         }
+        ImportPerf.write(perfId, 'attach', 'ok=$impAttached ms=${attachWatch.elapsedMilliseconds} error_code=$attachError');
         if (impAttached) {
           await db.execute('DROP TABLE IF EXISTS temp._restore_finalized_days');
           if (resumed) {
@@ -1143,6 +1178,16 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           finalizedDaysSnapshot = true;
         }
       }
+      if (LocalDb.debugRowByRowMerge) {
+        ImportPerf.write(perfId, 'attach', 'ok=false ms=0 error_code=forced_paged');
+      }
+      final config = <String>[];
+      for (final pragma in ['journal_mode', 'synchronous', 'page_size', 'cache_size', 'wal_autocheckpoint', 'temp_store']) {
+        final value = (await db.rawQuery('PRAGMA $pragma')).first.values.first;
+        config.add('$pragma=$value');
+      }
+      final sqlite = (await db.rawQuery('SELECT sqlite_version()')).first.values.first;
+      ImportPerf.write(perfId, 'config', 'sqlite=$sqlite ${config.join(' ')}');
       if ((only ?? tables).contains(SubstrateArchive.table)) {
         try {
           await SubstrateArchive.adoptPolicy(src, db);
@@ -1197,8 +1242,19 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           await seedImportedDays(1 << 62);
         }
       }
+      ImportPerf.phase('policy_and_sizing', prepWatch, run: perfId);
       for (var index = startIdx; index < order.length; index++) {
         final t = order[index];
+        final tableWatch = Stopwatch()..start();
+        var perfPath = impAttached && bulkTables.contains(t) ? 'bulk' : (t == SubstrateArchive.table ? 'archive' : 'paged');
+        int? sourceMax;
+        try {
+          sourceMax = Sqflite.firstIntValue(await src.rawQuery('SELECT MAX(rowid) FROM ${quoteSql(t)}'));
+        } on DatabaseException {
+          // The normal copy path below decides how a missing/damaged table is handled.
+        }
+        final chunkSize = perfPath == 'bulk' ? (ImportHooks.chunkRows ?? 25000) : (perfPath == 'archive' ? 8 : 2000);
+        ImportPerf.write(perfId, 'table_begin', 'table=$t path=$perfPath source_max_rowid=${sourceMax ?? 0} resume_rowid=${run?.startRowid(index, order) ?? 0} chunk_size=$chunkSize wal_bytes=${await ImportPerf.walBytes(db.path)}');
         // The previous table is complete (a `continue` below skips any
         // end-of-body marker, so it is recorded here, at the next one).
         if (run != null && index > startIdx) {
@@ -1209,6 +1265,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           plan?.start(t);
           await ImportHooks.table?.beforeTable(t);
           if (await mergeBulkTable(t, index)) continue;
+          perfPath = t == SubstrateArchive.table ? 'archive' : 'paged';
           // PAGED SOURCE READ — never `SELECT *` a whole table.
           //
           // This used to be a single `src.query(t)`. sqflite serialises an entire
@@ -1245,11 +1302,17 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           final projection = isArchive
               ? SubstrateArchive.metaColumns.join(', ')
               : '*';
-          Future<List<Map<String, Object?>>> nextPage() => src.rawQuery(
-            'SELECT rowid AS $rowidKey, $projection FROM $t '
-            'WHERE rowid > ? ORDER BY rowid ASC LIMIT ?',
-            [lastRowid, pageSize],
-          );
+          var sourceQueryMs = 0;
+          Future<List<Map<String, Object?>>> nextPage() async {
+            final queryWatch = Stopwatch()..start();
+            final rows = await src.rawQuery(
+              'SELECT rowid AS $rowidKey, $projection FROM $t '
+              'WHERE rowid > ? ORDER BY rowid ASC LIMIT ?',
+              [lastRowid, pageSize],
+            );
+            sourceQueryMs += queryWatch.elapsedMilliseconds;
+            return rows;
+          }
 
           List<Map<String, Object?>> firstPage;
           try {
@@ -1347,6 +1410,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           // orphan guard is still queued in the SAME transaction as the row it
           // guards — the invariant that matters is per-row, not per-table.
           while (page.isNotEmpty) {
+            final pageWatch = Stopwatch()..start();
+            var writeMs = 0, journalMs = 0, bodyMs = 0;
+            perfSerialized[t] = (perfSerialized[t] ?? 0) + page.length;
             // A confirmed activity belongs to its review decision even when the
             // user moved its window. Match by that identity, not just overlap.
             // Read only the owners for this page; older backups have no ledger.
@@ -1376,17 +1442,22 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
               for (final r in page) {
                 final d = r['device_id'], day = r['utc_day'];
                 if (d is String && day is int) {
-                  archiveBlobs[(d, day)] = await SubstrateArchive.readBlob(src, d, day);
+                  archiveBlobs[(d, day)] = await SubstrateArchive.readBlob(src, d, day, perfRun: perfId);
                 }
                 plan?.advance(t, (r[rowidKey] as num).toInt());
               }
             }
+            final txnWatch = Stopwatch()..start();
             await src.mainTransaction(db, (txn) async {
+              final bodyWatch = Stopwatch()..start();
+              final journalWatch = Stopwatch()..start();
               if (run != null) {
                 await ImportJournal.advance(
                     txn, run, index, t, pageLast, page.length);
               }
+              journalMs = journalWatch.elapsedMilliseconds;
               if (t == SubstrateArchive.table) {
+                final archiveWatch = Stopwatch()..start();
                 final r = await SubstrateArchive.restoreRows(
                   txn,
                   archiveBlobs,
@@ -1399,9 +1470,12 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   ],
                   tolerant: tolerant,
                   dataEdgeSec: archiveEdgeSec,
+                  perfRun: perfId,
                 );
                 copied += r.copied;
                 archiveSkipped += r.skipped;
+                writeMs = archiveWatch.elapsedMilliseconds;
+                bodyMs = bodyWatch.elapsedMilliseconds;
                 return;
               }
               // CHUNKED, for the same reason commitSyncBatch chunks: sqflite
@@ -1412,7 +1486,9 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
               var ops = 0;
               Future<void> flush() async {
                 if (ops == 0) return;
+                final batchWatch = Stopwatch()..start();
                 await batch.commit(noResult: true);
+                writeMs += batchWatch.elapsedMilliseconds;
                 batch = txn.batch();
                 ops = 0;
               }
@@ -1659,7 +1735,15 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                 if (++ops >= chunkOps) await flush();
               }
               await flush();
+              bodyMs = bodyWatch.elapsedMilliseconds;
             });
+            txnWatch.stop();
+            perfPages[t] = (perfPages[t] ?? 0) + 1;
+            ImportPerf.page(perfId);
+            if (pageWatch.elapsedMilliseconds > 2000) {
+              ImportPerf.write(perfId, 'chunk', 'table=$t path=$perfPath lo=$lastRowid hi=$pageLast page=${perfPages[t]} rows=${page.length} ms=${pageWatch.elapsedMilliseconds} write_ms=$writeMs journal_ms=$journalMs txn_ms=${txnWatch.elapsedMilliseconds} body_ms=$bodyMs source_query_ms=$sourceQueryMs');
+            }
+            sourceQueryMs = 0;
             LocalDb._mergePagesCommitted++;
             // Advance past the last row this page actually delivered. Read the
             // cursor BEFORE dropping the page, and stop on a short page rather
@@ -1677,8 +1761,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           // file to fall back to.
           if (!tolerant) rethrow;
           counts[t] = 0;
+        } finally {
+          ImportPerf.write(perfId, 'table_end', 'table=$t path=$perfPath rows=${counts[t] ?? 0} pages=${perfPages[t] ?? 0} serialized_in_rows=${perfSerialized[t] ?? 0} wal_bytes=${await ImportPerf.walBytes(db.path)} ms=${tableWatch.elapsedMilliseconds}');
         }
       }
+      ImportPerf.phase('tables', prepWatch, run: perfId);
       plan?.finish();
       if (run != null && order.isNotEmpty) {
         await ImportJournal.tableDone(run, order.length, null,
@@ -1716,16 +1803,20 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     // from the source, so a stale `decoded_pruned_before` in the file would
     // otherwise reinstate itself over an earlier lowering. The cursor may not
     // sit above the oldest decoded second actually present.
+    final cleanupWatch = Stopwatch()..start();
     if (order.contains('decoded_onehz') || order.contains('sync_cursor')) {
       await LocalDb._reconcilePrunedCursor(cursorBeforeImport);
     }
+    ImportPerf.phase('reconcile_cursor', cleanupWatch, run: perfId);
     if (resumed || counts.values.any((count) => count > 0)) {
       await ActivityStore.suppressImportedAlerts(db);
     }
+    ImportPerf.phase('suppress_alerts', cleanupWatch, run: perfId);
     if (had('workout_suggestions')) {
       await db.update('activity_review_meta', {'legacy_migrated': 0});
       await ActivityStore(db).migrateLegacy();
     }
+    ImportPerf.phase('migrate_activities', cleanupWatch, run: perfId);
     if (had('sleep_nap') || had('activity_suggestions')) {
       // Imported day bundles may be older than a decision we kept locally.
       // Recompose accepted naps after the merge, in bounded transactions.
@@ -1742,6 +1833,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         cursor = days.last['day_id'] as String;
       }
     }
+    ImportPerf.phase('review_days', cleanupWatch, run: perfId);
     final wornOn = restoredWornOn;
     if (wornOn != null) {
       final prefs = await SharedPreferences.getInstance();
@@ -1769,6 +1861,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     if (had('ecg_raw_packet') || had('ecg_gesture_session')) {
       await LocalDb._retagAllGesturePackets(db);
     }
+    ImportPerf.phase('retag_and_rewind', cleanupWatch, run: perfId);
     // Last, so it can never be mistaken for a table row count by anything that
     // walks this map in order.
     final days = importedDays;

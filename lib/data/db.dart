@@ -4909,6 +4909,45 @@ class LocalDb {
     });
   }
 
+  /// The rows of [dayId] OLDER than the one served, newest first, at most
+  /// [limit]: `algo_version` and the stored payload text. For the read seam's
+  /// labelled older-version fallback only.
+  static Future<List<Map<String, dynamic>>> olderDayPayloads(
+    String dayId, {
+    int limit = 6,
+  }) async {
+    return readerRun((db) async => db.rawQuery(
+          'SELECT algo_version, payload_json FROM day_result '
+          'WHERE day_id = ? AND algo_version < (SELECT MAX(algo_version) '
+          'FROM day_result WHERE day_id = ? AND algo_version <= $_servedAlgoCeiling) '
+          'ORDER BY algo_version DESC LIMIT ?',
+          [dayId, dayId, limit],
+        ));
+  }
+
+  /// For each day, the newest OLDER-version stored value of scalar [key]
+  /// (`$.scalars.<key>`), as `{date: (algo_version, value)}`. ONE statement over
+  /// the whole table, scalar only (json_extract), for the trend fallback.
+  static Future<Map<String, (int, double)>> olderScalarByDay(String key) async {
+    return readerRun((db) async {
+      final rows = await db.rawQuery(
+        'SELECT r.day_id AS d, r.algo_version AS v, '
+        'json_extract(r.payload_json, ?) AS x FROM day_result r '
+        'WHERE r.algo_version < (SELECT MAX(m.algo_version) FROM day_result m '
+        'WHERE m.day_id = r.day_id AND m.algo_version <= $_servedAlgoCeiling) '
+        'AND json_extract(r.payload_json, ?) IS NOT NULL '
+        'ORDER BY r.algo_version ASC',
+        ['\$.scalars.$key', '\$.scalars.$key'],
+      );
+      // Ascending, so the newest older version overwrites.
+      return {
+        for (final r in rows)
+          if (r['x'] is num)
+            r['d'] as String: ((r['v'] as num).toInt(), (r['x'] as num).toDouble()),
+      };
+    });
+  }
+
   /// Payload-free recent served-day rows, newest first, for BundleStore readers.
   static Future<List<Map<String, dynamic>>> recentDayResultMetas(int limit) async {
     return readerRun((db) async {

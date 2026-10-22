@@ -61,6 +61,7 @@ import '../compute/derivation_engine.dart';
 import '../compute/derive_perf.dart';
 import '../compute/derive_outcome.dart';
 import '../compute/derive_scheduler.dart';
+import '../compute/quiet_level_seed.dart' show kQuietHrrSeedKey;
 import '../compute/inputs/canonical.dart'
     show flagOnOrPrimary, onWearableDaysChanged, refreshSessionSensorSources;
 import '../compute/manual_session.dart' show supersededSuggestionIds;
@@ -1334,8 +1335,13 @@ class AppState extends ChangeNotifier {
   String? _onboardChoice;
   String? get onboardChoice => _onboardChoice;
 
-  Future<void> _loadProfile() async {
-    final prefs = await SharedPreferences.getInstance();
+  /// Re-reads the stored profile into [user]. A restore writes
+  /// `local_profile_json` beneath a live object whose `user` was nulled by the
+  /// reset, so the derive that follows must not read the stale (empty) copy:
+  /// it priced every day without age or sex.
+  Future<void> _reloadProfile([SharedPreferences? p]) async {
+    final prefs = p ?? await SharedPreferences.getInstance();
+    await prefs.reload();
     final raw = prefs.getString(_kProfile);
     if (raw != null) {
       try {
@@ -1344,6 +1350,11 @@ class AppState extends ChangeNotifier {
         /* ignore corrupt blob */
       }
     }
+  }
+
+  Future<void> _loadProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _reloadProfile(prefs);
     _onboardChoice = prefs.getString(_kOnboard);
     // The companion-URL override is loaded in _initCompanion (single source of
     // truth for every network call — announcements, OTA, telemetry, import).
@@ -1523,6 +1534,12 @@ class AppState extends ChangeNotifier {
         unawaited(gestureSettings.bootstrap());
       }
       await _loadAlarmSchedule();
+      await _reloadProfile();
+      // Imported day bundles carry quiet levels the seed has not priced from;
+      // a marker left from before the import would keep it from ever running.
+      if ((counts['day_result'] ?? 0) > 0) {
+        await LocalDb.deleteComputeFreshness(kQuietHrrSeedKey);
+      }
       lastImportArchiveSkipped = counts['_substrate_archive_skipped'] ?? 0;
       lastImportArchiveRestored = counts['substrate_archive'] ?? 0;
       if (lastImportArchiveSkipped > 0) {
@@ -1536,12 +1553,7 @@ class AppState extends ChangeNotifier {
       // Imported rows include derived day_result/metric_series → refresh rollups.
       try {
         await refreshActivityReviews();
-        final probe = debugFinalizeImport;
-        if (probe != null) {
-          await probe.finalize(_profile);
-        } else {
-          await _derive.finalizeImport(_profile);
-        }
+        await _finalizeImport();
         // The imported days are recalculated by a durable heavy job on the
         // scheduler, not a pass run here: the queue waits out a band sync
         // (whose commits must land before the ACK), retries a refused or
@@ -1568,6 +1580,13 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> _finalizeImport() {
+    final probe = debugFinalizeImport;
+    return probe != null
+        ? probe.finalize(_profile)
+        : _derive.finalizeImport(_profile);
+  }
+
   /// The post-import derive, requested only once the journal says done.
   Future<bool> _deriveImportWhenDone() => ImportJournal.requestDeriveWhenDone(
       () => _deriveCoordinator.scheduler.requestHeavy(reason: 'import', storedData: true));
@@ -1587,9 +1606,13 @@ class AppState extends ChangeNotifier {
       }
       unawaited(gestureSettings.bootstrap());
       await _loadAlarmSchedule();
+      await _reloadProfile();
+      // The resume has no row counts; re-arming is harmless (the seed skips
+      // days that already hold a level).
+      await LocalDb.deleteComputeFreshness(kQuietHrrSeedKey);
       importProgress.value = const ImportRebuilding(0, 0, null);
       await refreshActivityReviews();
-      await _derive.finalizeImport(_profile);
+      await _finalizeImport();
       await _deriveImportWhenDone();
       await _deriveCoordinator.publishNow();
       notifyListeners();
@@ -2028,13 +2051,28 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> updateProfile(
     Map<String, dynamic> fields,
   ) async {
+    // After a reset `user` is null while a restore may have put the stored
+    // profile back: merge into that, never over it.
+    if (user == null) await _reloadProfile();
     user = {...?user, ...fields};
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kProfile, jsonEncode(user));
     // The profile is a catalogued input (design 06 1c): stamp the change.
     unawaited(bumpInputRev('profile', '').catchError((Object _) {}));
+    // Days held open for a missing profile field re-derive on a heavy pass.
+    unawaited(_reopenProfileOwedDays());
     notifyListeners();
     return user!;
+  }
+
+  Future<void> _reopenProfileOwedDays() async {
+    try {
+      if ((await LocalDb.computeFreshnessKeys(
+              DerivationEngine.kProfileRepassKeyPrefix))
+          .isNotEmpty) {
+        _deriveScheduler.requestHeavy(reason: 'profile', storedData: true);
+      }
+    } catch (_) {/* best effort: the next heavy pass picks the days up */}
   }
 
   // ── automatic backup ────────────────────────────────────────────────────────

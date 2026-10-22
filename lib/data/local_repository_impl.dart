@@ -204,6 +204,13 @@ class LocalRepositoryImpl extends LocalRepository {
 
   /// [_latestBundle] with the computed time of the row it picked.
   Future<_BundleAt> _latestBundleAt({String? skipDay}) async {
+    final at = await _latestBundleAtRaw(skipDay: skipDay);
+    final b = at.bundle;
+    if (b == null || b['date'] is! String) return at;
+    return _BundleAt(await _withOlderValues(b['date'] as String, b), at.computedAt);
+  }
+
+  Future<_BundleAt> _latestBundleAtRaw({String? skipDay}) async {
     final rows = [
       for (final r in await LocalDb.recentDayResultMetas(14))
         if (skipDay == null || r['date'] != skipDay) r,
@@ -328,7 +335,7 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<_BundleAt> _bundleAtForDate(String date) async {
     final exact = await BundleStore.shared.read(BundleSource.day(date));
     if (exact is BundleOk) {
-      return _BundleAt(_dayMap(exact), exact.asOfMs);
+      return _BundleAt(await _withOlderValues(date, _dayMap(exact)), exact.asOfMs);
     }
     return _isTodayLabel(date)
         ? await _latestBundleAt()
@@ -337,7 +344,56 @@ class LocalRepositoryImpl extends LocalRepository {
 
   Future<Map<String, dynamic>?> _readBundle(String date) async {
     final read = await BundleStore.shared.read(BundleSource.day(date));
-    return read is BundleOk ? _dayMap(read) : null;
+    return read is BundleOk ? await _withOlderValues(date, _dayMap(read)) : null;
+  }
+
+  /// Headline scalars the labelled older-version fallback covers. One list, so
+  /// widening it is one edit; each key is judged and flagged on its own.
+  static const List<String> _olderFallbackKeys = [
+    'strain',
+    'trimp',
+    'calories',
+    'calories_total',
+  ];
+
+  /// When the served (current-version) row has no value for one of
+  /// [_olderFallbackKeys] and an older algo_version row of the day does, put
+  /// that STORED value in its place and record where it came from under
+  /// `from_older_version.<key> = {version, reason}` (reason: why the current
+  /// row has none). Never computes, rounds or mixes: the value is the older
+  /// row's, verbatim, from the newest older row that has it; a key nothing
+  /// older holds stays absent. [b] is this read's own map (see [_dayMap]).
+  Future<Map<String, dynamic>> _withOlderValues(
+      String day, Map<String, dynamic> b) async {
+    final scalars = b['scalars'];
+    final missing = [
+      for (final k in _olderFallbackKeys)
+        if (scalars is! Map || scalars[k] is! num) k,
+    ];
+    if (missing.isEmpty) return b;
+    final found = <String, ({int version, num value})>{};
+    for (final row in await LocalDb.olderDayPayloads(day)) {
+      if (found.length == missing.length) break;
+      final older = await BundleStore.shared.decodeStoredPayload(row['payload_json']);
+      final olderScalars = older?['scalars'];
+      if (olderScalars is! Map) continue;
+      for (final k in missing) {
+        final v = olderScalars[k];
+        if (v is num && !found.containsKey(k)) {
+          found[k] = (version: (row['algo_version'] as num).toInt(), value: v);
+        }
+      }
+    }
+    if (found.isEmpty) return b;
+    b['scalars'] = {if (scalars is Map) ...scalars.cast<String, dynamic>(), for (final e in found.entries) e.key: e.value.value};
+    b['from_older_version'] = {
+      for (final e in found.entries)
+        e.key: {
+          'version': e.value.version,
+          'reason': _absentNote(b, e.key) ?? kUnknownAbsenceNote,
+        },
+    };
+    return b;
   }
 
   /// A day bundle as the native cards may show it: a wearable's estimates
@@ -426,6 +482,7 @@ class LocalRepositoryImpl extends LocalRepository {
     String tier, {
     String? unit,
     String? note,
+    Map? fromOlder,
   }) => {
     'value': v ?? '—',
     'confidence': v == null ? 0 : 0.8,
@@ -433,6 +490,12 @@ class LocalRepositoryImpl extends LocalRepository {
     'inputs_used': const [],
     'unit': ?unit,
     if (v == null) 'note': ?note,
+    // The value is an older algo version's stored one: say which, and why the
+    // current version has none (Metric.fromOlderVersion).
+    if (v != null && fromOlder != null) ...{
+      'from_older_version': fromOlder['version'],
+      'older_version_reason': fromOlder['reason'],
+    },
   };
 
   /// The `note` string of a metric envelope at [path] (e.g.
@@ -770,6 +833,7 @@ class LocalRepositoryImpl extends LocalRepository {
             : _scalar(activityBundle, 'strain'),
         'ESTIMATE',
         note: activityNote('strain'),
+        fromOlder: _olderOf(activityBundle, 'strain'),
       ),
       'wear_min': _scalarMetric(
         activityBundle == null
@@ -798,6 +862,7 @@ class LocalRepositoryImpl extends LocalRepository {
         'ESTIMATE',
         unit: 'kcal',
         note: activityNote('calories'),
+        fromOlder: _olderOf(activityBundle, 'calories'),
       ),
       'calories_total': _scalarMetric(
         activityBundle == null
@@ -2047,8 +2112,33 @@ class LocalRepositoryImpl extends LocalRepository {
             ),
       },
       'flags': const {},
+      // Fields whose value is an OLDER algo version's stored one (the current
+      // row has none), keyed by this payload's own names. Empty otherwise.
+      'from_older_version': _olderProvenance(b, const {
+        'strain': 'strain',
+        'trimp': 'training_load',
+        'calories': 'calories',
+        'calories_total': 'calories_total',
+      }),
     };
   });
+
+  Map? _olderOf(Map<String, dynamic>? b, String key) {
+    final from = b?['from_older_version'];
+    return from is Map && from[key] is Map ? from[key] as Map : null;
+  }
+
+  /// `{<payload name>: {version, reason}}` for the keys of [names] (bundle key
+  /// -> payload name) that [b] served from an older version.
+  Map<String, dynamic> _olderProvenance(
+      Map<String, dynamic> b, Map<String, String> names) {
+    final from = b['from_older_version'];
+    if (from is! Map) return const {};
+    return {
+      for (final e in names.entries)
+        if (from[e.key] case final Map m) e.value: m,
+    };
+  }
 
   @override
   Future<Map<String, dynamic>> getDayOverview(String date) => ReadPerf.reading('getDayOverview', () async {
@@ -2367,7 +2457,8 @@ class LocalRepositoryImpl extends LocalRepository {
     // A wearable's estimate is not drawn as a measured point, as on the native
     // cards (upstream 6d487f88); dropped in the same statement. The wear
     // denominator likewise, so this and [_getCharts] stay one shape.
-    final rows = await LocalDb.metricSeries(key, ownOnly: true);
+    final (rows, older) =
+        await _withOlderSeries(key, await LocalDb.metricSeries(key, ownOnly: true));
     final pin = key == 'readiness' ? await _readinessPin() : null;
     final heldDay = key == 'readiness' ? await _heldReadinessDay() : null;
     // ONE read of metric_series_version, two consumers (see _seriesChart).
@@ -2388,6 +2479,7 @@ class LocalRepositoryImpl extends LocalRepository {
         .toSet();
     return _seriesChart(
       rows: rows,
+      older: older,
       wear: wear,
       versions: versions,
       meta: meta,
@@ -2419,17 +2511,22 @@ class LocalRepositoryImpl extends LocalRepository {
       ...{...trend.values, 'worn_min'},
     ], ownOnly: true);
     final wear = all.rows['worn_min']!;
+    final merged = {
+      for (final k in trend.values.toSet())
+        k: await _withOlderSeries(k, all.rows[k]!),
+    };
     return {
       for (final e in trend.entries)
         e.key: _seriesChart(
-          rows: all.rows[e.value]!,
+          rows: merged[e.value]!.$1,
+          older: merged[e.value]!.$2,
           wear: wear,
           versions: all.versions,
           // getChart asks for the newest N day_result rows where N is THIS
           // series' day count; the shared read is the longest series' N, so
           // cut it back to this one's to give the same "As of".
           meta: all.meta
-              .take({for (final r in all.rows[e.value]!) r['date']}.length)
+              .take({for (final r in merged[e.value]!.$1) r['date']}.length)
               .toList(),
           pin: e.value == 'readiness' ? pin : null,
           readiness: e.value == 'readiness',
@@ -2479,7 +2576,35 @@ class LocalRepositoryImpl extends LocalRepository {
   /// Readiness detail drew 74 in the ring and 69 as today's point underneath it.
   /// [meta] is the newest-N day_result rows for the days drawn; "As of" is the
   /// max `computed_at` among those days (null when none has a row).
+  /// [rows] with the days the current version left empty filled from an older
+  /// version's stored value (see [_olderFallbackKeys]), plus `{date: version}`
+  /// naming those days. Current values are never replaced; imported days are
+  /// left alone. One SQL read for the whole series, no payload decode.
+  Future<(List<Map<String, dynamic>>, Map<String, int>)> _withOlderSeries(
+      String key, List<Map<String, dynamic>> rows) async {
+    if (!_olderFallbackKeys.contains(key)) return (rows, const <String, int>{});
+    final have = {for (final r in rows) r['date'] as String};
+    final olderAll = await LocalDb.olderScalarByDay(key);
+    final missing = [
+      for (final d in olderAll.keys)
+        if (!have.contains(d)) d,
+    ];
+    if (missing.isEmpty) return (rows, const <String, int>{});
+    final imported = await LocalDb.importedDates();
+    final older = <String, int>{};
+    final merged = [...rows];
+    for (final d in missing) {
+      if (imported.contains(d)) continue;
+      final (version, value) = olderAll[d]!;
+      older[d] = version;
+      merged.add({'date': d, 'key': key, 'value': value});
+    }
+    merged.sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
+    return (merged, older);
+  }
+
   Map<String, dynamic> _seriesChart({
+    Map<String, int> older = const {},
     required List<Map<String, dynamic>> rows,
     required List<Map<String, dynamic>> wear,
     required List<Map<String, dynamic>> versions,
@@ -2524,6 +2649,8 @@ class LocalRepositoryImpl extends LocalRepository {
                   ? servedReadiness(d,
                       pin: pin, stored: (stored[d] as num?)?.toDouble())
                   : stored[d],
+              // The point is an older algo version's stored value.
+              'from_older_version': ?older[d],
             },
       ],
       // L4 — THE DENOMINATOR. Worn minutes for the same days, so a long trend

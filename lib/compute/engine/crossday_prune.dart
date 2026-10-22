@@ -21,12 +21,54 @@ extension _EngineCrossDayPrune on DerivationEngine {
   /// [rawDays] defaults to every day with substrate, read only when a marker
   /// exists. Returns how many days it re-derived, so the caller's cross-day
   /// refresh runs for them.
+  /// Retires `profile_repass:` markers of days whose raw is gone (pruned, or
+  /// cut by the prune): nothing can re-derive them, so the abstention is final.
+  /// Settled like [_quietLevelRepass] settles truncated days; a day with no
+  /// rows at all has no fingerprint, so it is settled on the empty one and
+  /// reopens if raw ever returns. Days that still have raw stay owed (their
+  /// next derive finalizes them by the hold bound).
+  Future<void> _retireProfileOwed(Iterable<String>? rawDays) async {
+    try {
+      final owed = {
+        for (final k in await LocalDb.computeFreshnessKeys(
+            DerivationEngine.kProfileRepassKeyPrefix))
+          k.substring(DerivationEngine.kProfileRepassKeyPrefix.length),
+      };
+      if (owed.isEmpty) return;
+      final prunedBeforeSec =
+          await LocalDb.getCursorInt(DerivationEngine._prunedBeforeCursor);
+      final withRaw = {
+        for (final d in rawDays ?? (await LocalDb.decodedRecTsMaxByDay()).keys)
+          if (!DerivationEngine.windowTruncatedByPrune(d, prunedBeforeSec)) d,
+      };
+      final gone = owed.difference(withRaw);
+      if (gone.isEmpty) return;
+      final fps = await LocalDb.decodedDayFingerprints({
+        for (final d in gone) ...[d, DerivationEngine._adjacentDayIds(d).first],
+      });
+      final edits = await _editSigs(gone);
+      for (final d in gone) {
+        if (fps[d] == null) {
+          await LocalDb.putSettledDay(d, kAlgoVersion,
+              own: '', prev: null, edit: edits[d] ?? '');
+        } else {
+          await _settleDay(d, fps, edits);
+        }
+        await LocalDb.deleteComputeFreshness(
+            '${DerivationEngine.kProfileRepassKeyPrefix}$d');
+      }
+    } catch (e) {
+      _log('profile repass retire failed (markers kept): $e');
+    }
+  }
+
   Future<int> _quietLevelRepass(
     Profile profile,
     int dataNowSec, [
     Iterable<String>? rawDays,
   ]) async {
     var done = 0;
+    await _retireProfileOwed(rawDays);
     try {
       final owed = await DerivationEngine._quietRepassOwedDays();
       if (owed.isEmpty) return 0;

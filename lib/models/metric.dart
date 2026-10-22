@@ -42,6 +42,14 @@ class Metric {
   /// so the UI can render "Need N more nights" instead of a bare "—".
   final String? note;
 
+  /// Set when [value] is the STORED value of an older algo version, served
+  /// because the current version's row has none. [olderVersionReason] is why
+  /// the current one is missing (an absence note, e.g. `need_input:name=age`).
+  /// The value is never recomputed or adjusted. The UI marks it "From an older
+  /// calculation (vN)".
+  final int? fromOlderVersion;
+  final String? olderVersionReason;
+
   const Metric({
     this.value,
     this.unit,
@@ -51,6 +59,8 @@ class Metric {
     this.inputsUsed = const [],
     this.beta = false,
     this.note,
+    this.fromOlderVersion,
+    this.olderVersionReason,
   });
 
   /// Parsed `need_baseline:have=H,need=N` → remaining nights (need − have, ≥1),
@@ -90,6 +100,8 @@ class Metric {
         inputsUsed: _list(m['inputs_used']),
         beta: _bool(m['beta']) || _tierFrom(m['tier']) == MetricTier.estimate,
         note: m['note']?.toString(),
+        fromOlderVersion: (m['from_older_version'] as num?)?.toInt(),
+        olderVersionReason: m['older_version_reason']?.toString(),
       );
     }
     // Case B: a scalar value + a separate flags entry {c, tier, label, beta}.

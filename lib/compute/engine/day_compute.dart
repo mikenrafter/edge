@@ -896,6 +896,27 @@ extension _EngineDayCompute on DerivationEngine {
       }
     }
 
+    // OWED A PROFILE FIELD ([kProfileRepassKeyPrefix]). A metric that abstained
+    // for a missing age/sex/height/weight is not final: the user can still
+    // supply it and the day re-derives while its raw is held. Bounded by the
+    // raw-hold window (past it the prune releases the raw anyway, so the day
+    // finalizes with the abstention stated in its absent notes) so a user who
+    // never enters age does not keep every day open. Marker BEFORE the row,
+    // cleared AFTER it, like the quiet marker above.
+    final profileKey = '${DerivationEngine.kProfileRepassKeyPrefix}${day.date}';
+    final profileBlocked = DerivationEngine.profileBlockedFields(bundle);
+    final profileHeld = !forceFinalize &&
+        profileBlocked.isNotEmpty &&
+        dataNowSec - day.endSec < DerivationEngine._maxRawHoldDays * 86400;
+    if (profileHeld) {
+      await LocalDb.putComputeFreshness(
+          profileKey, (profileBlocked.toList()..sort()).join(','));
+      effectiveFinalized = false;
+    }
+    final profileSettled = !profileHeld &&
+        (forceFinalize || secondHalfOk) &&
+        await LocalDb.computeFreshness(profileKey) != null;
+
     // Tonight's sleep is the next day's stored window, read when this day was
     // prepared. A concurrent derive of the next day can write it after that
     // read (or still will: it is in this pass and not done), so the waking
@@ -1094,6 +1115,7 @@ extension _EngineDayCompute on DerivationEngine {
     if (secondHalfOk) await _storeKcalMinutes(day, profile, kcalMinutes);
     // AFTER the row: retired only once the row that proves it is durable.
     if (quietSettled) await LocalDb.deleteComputeFreshness(quietKey);
+    if (profileSettled) await LocalDb.deleteComputeFreshness(profileKey);
     // NOTE: the sweep's `history` snapshot is deliberately NOT updated here.
     // See _BaselineHistoryCache — mutating the shared snapshot mid-sweep is the
     // duplicate-day pollution bug, and each day already derives its own

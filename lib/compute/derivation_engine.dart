@@ -3868,6 +3868,28 @@ class DerivationEngine {
   /// between passes, leaves it for the next run instead of losing it.
   static const String kQuietRepassKeyPrefix = 'quiet_repass:';
 
+  /// `compute_freshness` key prefix (`<prefix><YYYY-MM-DD>`) marking a day
+  /// whose metrics abstained for a missing profile field; the payload is the
+  /// comma-joined field names. Held unfinalized, with its raw, until the field
+  /// is supplied or the raw-hold window passes.
+  static const String kProfileRepassKeyPrefix = 'profile_repass:';
+
+  /// Profile fields a bundle abstained on (`need_input:name=<field>`).
+  @visibleForTesting
+  static Set<String> profileBlockedFields(Map<String, dynamic> bundle) {
+    final notes = bundle['absent_notes'];
+    if (notes is! Map) return const {};
+    const fields = {'age', 'sex', 'height_cm', 'weight_kg'};
+    return {
+      for (final n in notes.values)
+        if (n is String && n.startsWith(_needInputPrefix))
+          if (fields.contains(n.substring(_needInputPrefix.length).split(',').first))
+            n.substring(_needInputPrefix.length).split(',').first,
+    };
+  }
+
+  static const String _needInputPrefix = 'need_input:name=';
+
   /// Test seam: awaited at the start of [_quietLevelRepass] (with null) and
   /// before each day it re-derives. A throw simulates the pass failing — or,
   /// at the start, the process dying before it ran. Null in production.

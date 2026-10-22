@@ -2,25 +2,44 @@ part of '../db.dart';
 
 Future<DayCheckpoint?> _ldbDayCheckpoint(String dayId, int algoVersion) async {
     final db = await LocalDb.instance;
-    final rows = await db.query(
-      'day_checkpoint',
-      where: 'day_id = ? AND algo_version = ?',
-      whereArgs: [dayId, algoVersion],
-      limit: 1,
+    return db.transaction((db) async {
+    // Keep each platform-channel row below Android's CursorWindow limit.
+    final rows = await db.rawQuery(
+      'SELECT day_id, algo_version, fmt, ctx_sig, cp_rec_ts, night_ref, '
+      'computed_at, length(state) AS state_len, length(rev_vec) AS rev_len '
+      'FROM day_checkpoint WHERE day_id = ? AND algo_version = ? LIMIT 1',
+      [dayId, algoVersion],
     );
     if (rows.isEmpty) return null;
     final r = rows.first;
+    Future<Uint8List> readBlob(String column, int length) async {
+      const chunk = 512 * 1024;
+      final bytes = Uint8List(length);
+      for (var offset = 0; offset < length; offset += chunk) {
+        final parts = await db.rawQuery(
+          'SELECT substr($column, ?, ?) AS part FROM day_checkpoint '
+          'WHERE day_id = ? AND algo_version = ?',
+          [offset + 1, chunk, dayId, algoVersion],
+        );
+        final part = (parts.single['part'] as List).cast<int>();
+        bytes.setRange(offset, offset + part.length, part);
+      }
+      return bytes;
+    }
+    final state = await readBlob('state', (r['state_len'] as num).toInt());
+    final revVec = await readBlob('rev_vec', (r['rev_len'] as num).toInt());
     return DayCheckpoint(
       dayId: r['day_id'] as String,
       algoVersion: (r['algo_version'] as num).toInt(),
       fmt: (r['fmt'] as num).toInt(),
       ctxSig: r['ctx_sig'] as String,
       cpRecTs: (r['cp_rec_ts'] as num).toInt(),
-      revVec: Uint8List.fromList((r['rev_vec'] as List).cast<int>()),
-      state: Uint8List.fromList((r['state'] as List).cast<int>()),
+      revVec: revVec,
+      state: state,
       nightRef: r['night_ref'] as String?,
       computedAt: (r['computed_at'] as num).toInt(),
     );
+    });
   }
 
 Future<bool> _ldbPutLastResult(String key, int computedAt, String payload, int maxRows, {required String? sig, required ({int wipeEpoch, int openCount})? unlessReplacedSince}) async {

@@ -33,6 +33,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:sqflite/sqflite.dart';
 
 import 'substrate_archive_codec.dart';
+import 'import_perf.dart';
 
 /// How long archived substrate is kept. Stored in `compute_freshness` so a
 /// headless engine reads the same policy as the foreground one.
@@ -139,8 +140,11 @@ abstract final class SubstrateArchive {
   static Future<Uint8List?> readBlob(
     DatabaseExecutor ex,
     String deviceId,
-    int day,
-  ) async {
+    int day, {
+    String? perfRun,
+  }) async {
+    final watch = Stopwatch()..start();
+    var calls = 1;
     const where = 'device_id = ? AND utc_day = ?';
     final n = (await ex.rawQuery(
       'SELECT length(blob) AS n FROM $table WHERE $where',
@@ -150,6 +154,7 @@ abstract final class SubstrateArchive {
     final len = (n.first['n'] as num).toInt();
     final out = Uint8List(len);
     for (var off = 0; off < len; off += _blobChunk) {
+      calls++;
       final part =
           (await ex.rawQuery(
                 'SELECT substr(blob, ?, ?) AS part FROM $table WHERE $where',
@@ -157,6 +162,13 @@ abstract final class SubstrateArchive {
               )).first['part']
               as Uint8List;
       out.setRange(off, off + part.length, part);
+    }
+    if (perfRun != null && watch.elapsedMilliseconds > 2000) {
+      ImportPerf.write(
+        perfRun,
+        'phase',
+        'name=archive_blob bytes=$len calls=$calls ms=${watch.elapsedMilliseconds}',
+      );
     }
     return out;
   }
@@ -863,7 +875,10 @@ abstract final class SubstrateArchive {
     List<Map<String, Object?>> rows, {
     bool tolerant = false,
     int? dataEdgeSec,
+    String? perfRun,
   }) async {
+    final watch = Stopwatch()..start();
+    var unchanged = 0;
     var copied = 0, skipped = 0;
     final policy = await readPolicy(txn);
     // Archiving is off here: an archive is exactly what this database was
@@ -940,7 +955,10 @@ abstract final class SubstrateArchive {
         skipped++;
         continue;
       }
-      if (w.fingerprint == (l['fingerprint'] as num?)?.toInt()) continue;
+      if (w.fingerprint == (l['fingerprint'] as num?)?.toInt()) {
+        unchanged++;
+        continue;
+      }
       await txn.update(
         table,
         {
@@ -958,6 +976,13 @@ abstract final class SubstrateArchive {
         whereArgs: [deviceId, day],
       );
       copied++;
+    }
+    if (perfRun != null && watch.elapsedMilliseconds > 2000) {
+      ImportPerf.write(
+        perfRun,
+        'phase',
+        'name=archive_restore rows=${rows.length} inserted_or_merged=$copied unchanged=$unchanged skipped=$skipped ms=${watch.elapsedMilliseconds}',
+      );
     }
     return (copied: copied, skipped: skipped);
   }

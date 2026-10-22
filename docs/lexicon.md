@@ -20,6 +20,8 @@ in the same change that introduces it (AGENTS.md §6).
 - **Derivation** — turning decoded rows into day results and metric series.
 - **Day result** — the versioned per-day output (`day_result`, PK day + algo version).
 - **Provisional / finalized (frozen)** — a day result that may still be replaced / one that only a new algo version, a user override or a value-identical re-encode may touch.
+- **Older-version fallback** — the read seam serving an older algo version's stored value for a day when the current version's row has none, always labelled (`from_older_version`: version + why the current one is missing; `Metric.fromOlderVersion`). The value is the stored one, never recomputed.
+- **Profile-owed day** — a day whose metric abstained for a missing profile field (`need_input:name=age|sex|height_cm|weight_kg`); held unfinalized with its raw (`profile_repass:<day>`) until the field is supplied or the raw-hold window passes.
 - **Artifact** — a persisted derived result other than a day result, keyed by kind + scope + algo version + input revision (design 02).
 - **Input revision** — a counter that changes whenever a day's inputs change.
 - **Heavy** — work whose cost grows with stored data; runs only on a worker isolate (`@heavy`).

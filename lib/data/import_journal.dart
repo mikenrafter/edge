@@ -19,6 +19,8 @@ import 'package:sqflite/sqflite.dart';
 import '../sync/edge_tracking.dart';
 import '../sync/import_gate.dart';
 import 'db.dart';
+import 'import_perf.dart';
+export 'import_perf.dart';
 import 'import_progress.dart';
 
 enum ImportJournalState { copying, extras, done, failed }
@@ -357,7 +359,9 @@ class ImportJournal {
     final dest = p.join((await _dir()).path,
         'source-${DateTime.now().microsecondsSinceEpoch}-$pid.db');
     final f = File(dest);
+    final stageWatch = Stopwatch()..start();
     await File(src).copy(dest);
+    stageWatch.stop();
     final stat = await f.stat();
     final sha = await _shaPrefix(f);
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -377,6 +381,8 @@ class ImportJournal {
         'state': ImportJournalState.copying.name,
       });
     });
+    ImportPerf.write('$now-$id', 'phase',
+        'name=stage_source bytes=${stat.size} ms=${stageWatch.elapsedMilliseconds}');
     // Only the latest import is tracked: the replaced row's copy goes with it.
     for (final e in earlier) {
       await _removeSource(e);
