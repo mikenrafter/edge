@@ -141,8 +141,10 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<NapResolution> resolveNapKeep(int startTs, int endTs) async =>
-      NapResolver.resolve(await LocalDb.instance, startTs, endTs);
+  Future<NapResolution> resolveNapKeep(int startTs, int endTs) async {
+    _focusCheck('resolveNapKeep');
+    return NapResolver.resolve(await LocalDb.instance, startTs, endTs);
+  }
 
   @override
   Future<List<Map<String, Object?>>> getDeviceNights(String date) async {

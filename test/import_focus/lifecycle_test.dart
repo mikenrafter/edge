@@ -46,6 +46,8 @@ void main() {
     ImportHooks.reset();
     ImportGate.resetForTest();
     ImportFocus.debugReset();
+    // The app's import flow declares the post-import pass before it starts.
+    ImportFocus.expectPass();
   });
   tearDown(() {
     ImportHooks.reset();
@@ -98,6 +100,14 @@ void main() {
       expect(seen, isNotEmpty);
       expect(seen.first, isTrue);
     });
+  });
+
+  test('an import nobody will recalculate after ends focus with its copy',
+      () async {
+    ImportFocus.debugReset(); // no expectPass: e.g. a restore path
+    await LocalDb.importFromDbFile(src);
+    expect(ImportFocus.active.value, isFalse,
+        reason: 'no pass is coming to end it, so reads must not stay paused');
   });
 
   group('stay: the recalculation is part of the import', () {
@@ -223,6 +233,7 @@ void main() {
       final seen = <bool>[];
       ImportHooks.chunk = (txn, c) async => seen.add(ImportFocus.active.value);
       var requested = 0;
+      ImportFocus.expectPass(); // as AppState.resumeUnfinishedImport does
       final r = await ImportJournal.resumeIfUnfinished(
           requestDerive: () => requested++);
       expect(r.resumed, isTrue);

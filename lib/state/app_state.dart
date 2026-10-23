@@ -1621,6 +1621,8 @@ class AppState extends ChangeNotifier {
       // truncated backup fails loudly; `gzip.decoder` returns partial output
       // without raising and would restore short while reporting success.
       final restoredBefore = settingsRestoredSignal.value;
+      // This flow requests the post-import pass, so focus spans it.
+      ImportFocus.expectPass();
       final counts = await LocalDb.importFromDbFile(
         path,
         onProgress: (p) => importProgress.value = p,
@@ -1653,6 +1655,7 @@ class AppState extends ChangeNotifier {
       // Visible even when nothing needs recalculating.
       importProgress.value = const ImportRebuilding(0, 0, null);
       // Imported rows include derived day_result/metric_series → refresh rollups.
+      var passRequested = false;
       try {
         await refreshActivityReviews();
         await _finalizeImport();
@@ -1661,10 +1664,12 @@ class AppState extends ChangeNotifier {
         // (whose commits must land before the ACK), retries a refused or
         // partial pass, and survives the app closing. The import ends when
         // the data is in; deriveProgress shows the recalculation.
-        await _deriveImportWhenDone();
+        passRequested = await _deriveImportWhenDone();
       } catch (e) {
         importRollupError = '$e';
       }
+      // No pass was queued, so none will end focus: end it here.
+      if (!passRequested) ImportFocus.leave();
       // The merged rows are committed whether or not the rollup rebuild threw.
       await _deriveCoordinator.publishNow(); // see importNoopCsv
       notifyListeners();
@@ -1702,6 +1707,7 @@ class AppState extends ChangeNotifier {
     // and the retained failure; this call must not write either afterwards.
     final startsAtEntry = _backupStarts;
     bool superseded() => _backupStarts != startsAtEntry;
+    ImportFocus.expectPass();
     final r = await ImportJournal.resumeIfUnfinished(
       force: force,
       onProgress: (p) => importProgress.value = p,
@@ -1710,6 +1716,7 @@ class AppState extends ChangeNotifier {
     // reports an error with resumed == false or true; both are retained, like
     // a backup failure, until the next import.
     if (r.error != null) {
+      ImportFocus.leave(); // no post-import pass follows a failed resume
       if (superseded()) return;
       final failure = ImportFailed(r.error!);
       _backupFailure = failure;
@@ -1717,6 +1724,7 @@ class AppState extends ChangeNotifier {
       return;
     }
     if (!r.resumed) {
+      ImportFocus.leave(); // nothing ran, so no pass is owed
       // Automatic retries are used up (or the saved copy is gone): nothing ran,
       // but the journal still holds why. Show it at launch and keep it until
       // the next import, instead of leaving an unfinished import silent.
@@ -1734,6 +1742,7 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
       return;
     }
+    var passRequested = false;
     try {
       unawaited(gestureSettings.bootstrap());
       await _loadAlarmSchedule();
@@ -1744,7 +1753,7 @@ class AppState extends ChangeNotifier {
       importProgress.value = const ImportRebuilding(0, 0, null);
       await refreshActivityReviews();
       await _finalizeImport();
-      await _deriveImportWhenDone();
+      passRequested = await _deriveImportWhenDone();
       await _deriveCoordinator.publishNow();
       // The resumed import's notes were saved by its record step; the mirror
       // only needs to follow the store. A resume never clears anything.
@@ -1756,6 +1765,8 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       importRollupError = '$e';
     } finally {
+      // No pass was queued, so none will end focus: end it here.
+      if (!passRequested) ImportFocus.leave();
       if (importProgress.value is! ImportFailed) importProgress.value = null;
     }
   }

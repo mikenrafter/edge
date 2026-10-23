@@ -595,7 +595,8 @@ class ImportJournal {
       entered = true;
       // The import and its recalculation have the database to themselves. A
       // clean return keeps focus until the post-import derive pass completes
-      // (DeriveScheduler); a failure ends it here.
+      // (DeriveScheduler) when the caller expects one (ImportFocus.expectPass);
+      // otherwise, and on a failure, it ends here.
       ImportFocus.enter();
       await svc.request(stage);
       final result = await Zone.current.run(job);
@@ -604,7 +605,11 @@ class ImportJournal {
     } finally {
       if (entered) {
         ImportGate.leave();
-        if (!ok) ImportFocus.leave();
+        if (ok) {
+          ImportFocus.copyDone();
+        } else {
+          ImportFocus.leave();
+        }
       }
       // A run that failed or was killed stays journaled; sync stays shut until
       // the resume finishes it.

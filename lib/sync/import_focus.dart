@@ -48,12 +48,26 @@ class ImportFocus {
   /// the profile (step goal…). Unset ⇒ a profile-less one is used.
   static LocalRepositoryImpl? repo;
 
+  /// Set by the caller that will request the post-import derive pass
+  /// (AppState's import and resume), BEFORE it starts the import. Only then does
+  /// focus outlive the copy; any other import ends focus with its copy, so no
+  /// path can leave reads paused with no pass coming to end them.
+  static bool _passExpected = false;
+
+  static void expectPass() => _passExpected = true;
+
   static void enter() {
     active.value = true;
     unawaited(LocalDb.holdReader(true));
   }
 
+  /// The copy returned normally: focus continues only if a pass is expected.
+  static void copyDone() {
+    if (!_passExpected) leave();
+  }
+
   static void leave() {
+    _passExpected = false;
     final was = active.value;
     days.value = const <String, Map<String, dynamic>>{};
     unawaited(LocalDb.holdReader(false));
@@ -84,6 +98,7 @@ class ImportFocus {
   @visibleForTesting
   static void debugReset() {
     repo = null;
+    _passExpected = false;
     active.value = false;
     days.value = const <String, Map<String, dynamic>>{};
     unawaited(LocalDb.holdReader(false));
