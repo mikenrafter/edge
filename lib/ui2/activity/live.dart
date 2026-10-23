@@ -1752,7 +1752,7 @@ class _LiveStrengthState extends State<LiveStrength> {
                 size: const Size(170, 170),
                 painter:
                     Ring(restLeft.value / restTarget, p.on(C.teal), p.track,
-                        background: p.card)),
+                        background: p.bg)),
             Column(mainAxisSize: MainAxisSize.min, children: [
               Text(clock(restLeft.value), style: F.n34.copyWith(color: p.ink)),
               if (logged.isNotEmpty)
