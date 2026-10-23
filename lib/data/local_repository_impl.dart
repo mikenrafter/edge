@@ -48,6 +48,7 @@ import 'db.dart';
 import '../health/health_export.dart';
 import 'journal_fields.dart';
 import 'local_repository.dart';
+import 'nap_resolution.dart';
 import 'series_codec.dart';
 import '../gps/route_models.dart';
 import '../gps/route_math.dart' as rmath;
@@ -104,7 +105,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<void> confirmActivity(ActivitySuggestion suggestion, {
-    int? startTs, int? endTs, String? workoutType,
+    int? startTs, int? endTs, String? workoutType, NapResolution? expected,
   }) async {
     final start = startTs ?? suggestion.startTs;
     final end = endTs ?? suggestion.endTs;
@@ -117,10 +118,15 @@ class LocalRepositoryImpl extends LocalRepository {
     } else {
       await ActivityStore(await LocalDb.instance).confirm(suggestion,
         startTs: start, endTs: end,
-        edited: start != suggestion.startTs || end != suggestion.endTs);
+        edited: start != suggestion.startTs || end != suggestion.endTs,
+        expectedNap: expected);
     }
     await onActivitiesChanged?.call();
   }
+
+  @override
+  Future<NapResolution> resolveNapKeep(int startTs, int endTs) async =>
+      (startTs: startTs, endTs: endTs, extended: const <NapBlock>[]);
 
   @override
   Future<List<Map<String, Object?>>> getDeviceNights(String date) async {

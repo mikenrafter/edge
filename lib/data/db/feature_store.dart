@@ -1091,7 +1091,7 @@ Future<Map<String, int>> _ldbApplyPendingActivityReviews() async {
     });
   }
 
-Future<void> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source}) async {
+Future<void> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, NapResolution? expected}) async {
     final db = await LocalDb.instance;
     await db.transaction((tx) async {
       String? snapshot;

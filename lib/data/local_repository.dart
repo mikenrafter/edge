@@ -16,6 +16,7 @@ import '../models/activity_suggestion.dart';
 import '../compute/manual_session.dart' show SessionSpan;
 import '../gps/route_models.dart';
 import 'journal_fields.dart';
+import 'nap_resolution.dart';
 
 /// The single source of truth for "no step goal configured yet" (8k/day is
 /// the commonly-cited optimal benefit/cost ratio for step count). Both the
@@ -86,8 +87,12 @@ abstract class LocalRepository {
   Future<List<ActivitySuggestion>> pendingActivities() =>
       throw UnimplementedError('pendingActivities');
   Future<void> confirmActivity(ActivitySuggestion suggestion, {
-    int? startTs, int? endTs, String? workoutType,
+    int? startTs, int? endTs, String? workoutType, NapResolution? expected,
   }) => throw UnimplementedError('confirmActivity');
+  /// What keeping a nap at [startTs]..[endTs] would do: the union with every
+  /// sleep block it overlaps (see nap_resolution.dart).
+  Future<NapResolution> resolveNapKeep(int startTs, int endTs) =>
+      throw UnimplementedError('resolveNapKeep');
   Future<void> discardActivity(ActivitySuggestion suggestion) =>
       throw UnimplementedError('discardActivity');
   // ── profile ────────────────────────────────────────────────────────────────

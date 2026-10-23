@@ -58,6 +58,7 @@ import '../gestures/symptom_description.dart';
 import 'assumed_water.dart';
 import 'day_label.dart';
 import 'activity_store.dart';
+import 'nap_resolution.dart';
 import '../models/activity_suggestion.dart';
 import '../compute/accepted_naps.dart';
 import '../compute/nap_edits.dart' show NapEditKind;
@@ -6882,7 +6883,8 @@ class LocalDb {
     required int startTs,
     required int endTs,
     required String source,
-  }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source);
+    NapResolution? expected,
+  }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, expected: expected);
 
   static Future<void> deleteNapEdit(String dayId, int startTs) => _ldbDeleteNapEdit(dayId, startTs);
 

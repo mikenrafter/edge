@@ -370,12 +370,18 @@ void main() {
     expect(await LocalDb.napEdits(day), hasLength(1));
   });
 
-  test('overlap or invalid times leave the suggestion pending', () async {
+  test('invalid times leave the suggestion pending', () async {
     final s = await detectNap();
     await expectLater(
       repo.confirmActivity(s, endTs: now + 3600),
       throwsA(isA<ActivityReviewException>()),
     );
+    expect(await store.pending(), hasLength(1));
+  });
+
+  test('a nap overlapping a saved nap extends it instead of being refused',
+      () async {
+    final s = await detectNap();
     await db.insert('sleep_nap', {
       'day_id': day,
       'start_ts': start + 60,
@@ -383,11 +389,12 @@ void main() {
       'source': 'manual',
       'created_at': now,
     });
-    await expectLater(
-      repo.confirmActivity(s),
-      throwsA(isA<ActivityReviewException>()),
-    );
-    expect(await store.pending(), hasLength(1));
+    await repo.confirmActivity(s);
+    expect(await store.pending(), isEmpty);
+    final rows = await LocalDb.napEdits(day);
+    expect(rows, hasLength(1));
+    expect(rows.single['start_ts'], start);
+    expect(rows.single['end_ts'], start + 1800);
   });
 
   test('a manually logged nap supersedes the pending detection', () async {
@@ -399,6 +406,8 @@ void main() {
       source: 'manual',
     );
     expect(await store.pending(), isEmpty);
+    // The superseded suggestion is still refused (its detection is gone); the
+    // overlap itself no longer is.
     await expectLater(
       repo.confirmActivity(s),
       throwsA(isA<ActivityReviewException>()),

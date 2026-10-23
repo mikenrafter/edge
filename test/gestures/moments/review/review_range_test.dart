@@ -60,15 +60,21 @@ void main() {
           reason: 'ending exactly now is fine');
     });
 
-    test('overlapping a nap already on the day is refused; touching is fine',
-        () {
+    test('overlapping a nap already on the day extends it (not refused); '
+        'touching is fine', () {
       final existing = [
         {'start': sec(2026, 10, 6, 13, 30), 'end': sec(2026, 10, 6, 14, 0)}
       ];
       expect(
           _v(MomentChoice.nap, s, DateTime(2026, 10, 6, 13, 45),
               naps: existing),
-          ManualWindowError.overlapsExisting);
+          isNull);
+      expect(
+          _v(MomentChoice.nap, DateTime(2026, 10, 6, 13, 40),
+              DateTime(2026, 10, 6, 13, 50),
+              naps: existing),
+          isNull,
+          reason: 'containment');
       expect(
           _v(MomentChoice.nap, DateTime(2026, 10, 6, 14, 0),
               DateTime(2026, 10, 6, 14, 30),

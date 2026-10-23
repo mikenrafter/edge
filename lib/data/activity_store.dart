@@ -8,6 +8,7 @@ import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../compute/nap_edits.dart';
 import '../models/activity_suggestion.dart';
 import 'day_label.dart';
+import 'nap_resolution.dart';
 import 'db/input_read_tracker.dart';
 
 /// The single persistence seam for proposals and review decisions. Computing a
@@ -401,6 +402,7 @@ class ActivityStore {
     required int endTs,
     Map<String, dynamic>? session,
     bool edited = false,
+    NapResolution? expectedNap,
   }) => db.transaction((tx) async {
     final row = await _check(tx, expected, 'confirmed');
     if (row == null) return;
