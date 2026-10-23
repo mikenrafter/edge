@@ -2012,17 +2012,54 @@ class HomeData {
       HomeData(dayId: day, readiness: metricOf(overview['readiness']),
           rhr: metricOf(overview['resting_hr']));
 
-  static HomeData fromPublishedToday(Map<String, dynamic> today) {
+  /// The overnight-owned figures of a `getToday` payload, through the ONE
+  /// mapping both a normal load and an import-time publish use: a night that
+  /// is not today's is refused ([overnightMetric]) and a provisional recovery
+  /// shows its own number ([todayHeadlineOf]).
+  static ({
+    Metric sleepMin,
+    Metric readiness,
+    Metric rhr,
+    String? recoveryState,
+    Map<String, dynamic>? update,
+  }) _overnightOf(Map<String, dynamic> today, AppLocalizations? l) {
     final daily = today['daily'];
     final sleep = today['sleep'];
-    Object? metric(Map? map, String key) => map?[key];
+    Object? d(String k) => daily is Map ? daily[k] : null;
+    final head = todayHeadlineOf(today);
+    final state = head['recovery_state'] as String?;
+    return (
+      sleepMin: overnightMetric(today, sleep is Map ? sleep['duration_min'] : null, l),
+      readiness: state == 'provisional'
+          ? metricOf(d('readiness_provisional'))
+          : overnightMetric(today, d('readiness'), l),
+      rhr: overnightMetric(today, d('resting_hr'), l),
+      recoveryState: state,
+      update: (head['recovery_update'] as Map?)?.cast<String, dynamic>(),
+    );
+  }
+
+  /// Today, from the model the engine published during an import: the same
+  /// mapping as [load] for everything the payload carries.
+  static HomeData fromPublishedToday(Map<String, dynamic> today,
+      [AppLocalizations? l]) {
+    final daily = today['daily'];
+    Object? d(String k) => daily is Map ? daily[k] : null;
+    final o = _overnightOf(today, l);
+    final status = today['status'] as Map?;
     return HomeData(
-      dayId: (today['status'] as Map?)?['today_day']?.toString(),
-      readiness: metricOf(metric(daily is Map ? daily : null, 'readiness')),
-      rhr: metricOf(metric(daily is Map ? daily : null, 'resting_hr')),
-      strain: metricOf(metric(daily is Map ? daily : null, 'strain')),
-      steps: metricOf(metric(daily is Map ? daily : null, 'steps')),
-      sleepMin: metricOf(metric(sleep is Map ? sleep : null, 'duration_min')),
+      dayId: status?['today_day']?.toString(),
+      heldOverNight: heldOverNightOf(today),
+      readiness: o.readiness,
+      recoveryState: o.recoveryState,
+      readinessUpdate: o.update,
+      rhr: o.rhr,
+      sleepMin: o.sleepMin,
+      strain: metricOf(d('strain')),
+      steps: metricOf(d('steps')),
+      calories: metricOf(d('calories')),
+      caloriesTotal: metricOf(d('calories_total')),
+      stepGoal: (today['step_goal'] as num?)?.toInt() ?? kDefaultStepGoal,
     );
   }
 
@@ -2183,9 +2220,7 @@ class HomeData {
     final profile = await repo.getProfile();
 
     final daily = today['daily'];
-    final sleep = today['sleep'];
     Object? d(String k) => daily is Map ? daily[k] : null;
-    Object? s(String k) => sleep is Map ? sleep[k] : null;
 
     final gb = cd['readiness_glassbox'];
     final gbDrivers = gb is Map ? gb['drivers'] : null;
@@ -2202,7 +2237,8 @@ class HomeData {
     final illness = today['illness'];
     final status = today['status'] as Map?;
 
-    final sleepMin = overnightMetric(today, s('duration_min'), l);
+    final over = _overnightOf(today, l);
+    final sleepMin = over.sleepMin;
 
     // Stage totals of TODAY'S OWN night only: a held-over night is refused
     // above, and its stages must not turn up under today's ring.
@@ -2232,11 +2268,8 @@ class HomeData {
     // are read straight.
     // ONE headline source (todayHeadlineOf): the state Coach and the widgets
     // read too. A provisional night shows its own number, greyed.
-    final head = todayHeadlineOf(today);
-    final recoveryState = head['recovery_state'] as String?;
-    final readiness = recoveryState == 'provisional'
-        ? metricOf(d('readiness_provisional'))
-        : overnightMetric(today, d('readiness'), l);
+    final recoveryState = over.recoveryState;
+    final readiness = over.readiness;
     final absentDiag = readiness.value != null
         ? null
         : await ReadinessData.readAbsentDiag(
@@ -2253,7 +2286,7 @@ class HomeData {
       readiness: readiness,
       absentDiag: absentDiag,
       recoveryState: recoveryState,
-      readinessUpdate: (head['recovery_update'] as Map?)?.cast<String, dynamic>(),
+      readinessUpdate: over.update,
       drivers: [
         for (final e in (gbDrivers is List ? gbDrivers : const []))
           if (e is Map) e.cast<String, dynamic>(),
@@ -2263,7 +2296,7 @@ class HomeData {
       sleepStages: stages,
       learnedOnsetMin: learned.onsetMin,
       learnedWakeMin: learned.wakeMin,
-      rhr: overnightMetric(today, d('resting_hr'), l),
+      rhr: over.rhr,
       steps: metricOf(d('steps')),
       calories: metricOf(d('calories')),
       caloriesTotal: metricOf(d('calories_total')),
@@ -2420,11 +2453,46 @@ class _HomeScreenState extends State<HomeScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// Today and yesterday, plus the older day already on screen (so the
+  /// stepper still has a place to step back from).
+  List<String> _focusDays(String? shown) {
+    final today = todayLabel();
+    return [
+      today,
+      dayLabelBefore(today, 1)!,
+      if (shown != null && shown != today && shown != dayLabelBefore(today, 1))
+        shown,
+    ];
+  }
+
+  @override
+  bool get pausedContent => _paused;
+
   @override
   void reloadPausedRead() {
-    if (!mounted) return;
+    if (!mounted || widget.data != null) return;
     setState(() { _loading = true; _paused = false; });
     _load();
+  }
+
+  /// Focus began under a loaded Home: the list shrinks and an older day's
+  /// numbers go at once; today and yesterday re-read from what is published.
+  @override
+  void focusStarted() {
+    if (widget.data != null) return;
+    _days = _focusDays(_day);
+    _load();
+  }
+
+  /// A model was published: today or yesterday on screen (or pending) refresh.
+  @override
+  void published() {
+    final today = todayLabel();
+    final shown = _day ?? today;
+    if (widget.data == null &&
+        (shown == today || shown == dayLabelBefore(today, 1))) {
+      _load();
+    }
   }
 
   /// Handed its data (golden, gallery) — the screen just renders what it has.
@@ -2437,6 +2505,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// yet" until the app was relaunched.
   @override
   void reload() {
+    if (absorbRevision()) return;
     _latency.revisionBumped();
     _refresh.reset();
     _refreshGaveUp = false;
@@ -2468,26 +2537,31 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       final day = _day;
       final l = AppLocalizations.of(context);
-      final publishedYesterday = day != null && ImportFocus.active.value
-          ? (ImportFocus.days.value[day] ?? const {})['getDayOverview']
-          : null;
-      final publishedToday = day == null || day == todayLabel()
-          ? (ImportFocus.days.value[todayLabel()] ?? const {})['getToday']
-          : null;
-      final d = ImportFocus.active.value && publishedToday is Map<String, dynamic>
-          ? HomeData.fromPublishedToday(publishedToday)
-          : day != null && publishedYesterday is Map<String, dynamic>
-          ? HomeData.fromPublishedOverview(day, publishedYesterday)
-          : day == null || day == todayLabel()
-          ? await HomeData.load(repo, l, true)
-          : await HomeData.loadForDay(repo, day, l);
-      final List<String> days = ImportFocus.active.value
-          ? (_days.isEmpty
-              ? [todayLabel(), dayLabelBefore(todayLabel(), 1)!]
-              : _days)
+      final focus = ImportFocus.active.value;
+      final today = todayLabel();
+      Object? published(String? dd, String model) {
+        if (!focus || dd == null) return null;
+        final m = ImportFocus.days.value[dd];
+        return m == null ? null : m[model];
+      }
+
+      final publishedToday =
+          day == null || day == today ? published(today, 'getToday') : null;
+      final publishedOverview = published(day, 'getDayOverview');
+      final d = publishedToday is Map<String, dynamic>
+          ? HomeData.fromPublishedToday(publishedToday, l)
+          : publishedOverview is Map<String, dynamic>
+              ? HomeData.fromPublishedOverview(day!, publishedOverview)
+              : day == null || day == today
+                  ? await HomeData.load(repo, l, true)
+                  : await HomeData.loadForDay(repo, day, l);
+      // During focus only today and yesterday are on offer, in every case.
+      final List<String> days = focus
+          ? _focusDays(day)
           : await repo.availableDays();
       if (stillNewest(#home, t)) {
-        setState(() => (_d = d, _days = days, _loading = false, _failed = false));
+        setState(() => (_d = d, _days = days, _loading = false, _failed = false,
+            _paused = false));
         _recordRender();
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
           if (!mounted) return;
@@ -2500,10 +2574,10 @@ class _HomeScreenState extends State<HomeScreen>
       }
     } on ReadPaused {
       if (stillNewest(#home, t)) {
-        final today = todayLabel();
-        final yesterday = dayLabelBefore(today, 1)!;
-        setState(() => (_loading = false, _failed = false, _paused = true,
-            _days = [today, yesterday]));
+        // A paused day shows NO numbers: whatever was on screen belonged to
+        // another day, or to before the pause.
+        setState(() => (_d = null, _loading = false, _failed = false,
+            _paused = true, _days = _focusDays(_day)));
       }
     } catch (_) {
       if (stillNewest(#home, t)) {
@@ -2630,10 +2704,11 @@ class _HomeScreenState extends State<HomeScreen>
     // their one line of status or guidance. Null leaves the ring's own default
     // (the gaps' reasons, the "Why?" footer, the recovery update).
     RingHelp? help;
-    if (loaded == null && _loading) {
+    if (_paused) {
+      // Nothing is read: a paused day is neither a spinner nor an empty day.
+      help = RingHelp(isToday ? pausedTodayText(c) : pausedOlderDaysText(c));
+    } else if (loaded == null && _loading) {
       help = RingHelp.busy(l?.loadingHomeToday ?? 'Reading today');
-    } else if (_paused && !isToday) {
-      help = RingHelp(l?.importPausedOlderDays ?? 'Older days load when the import finishes');
     } else if (loaded == null && _failed) {
       help = RingHelp(
           '${l?.homeLoadFailedTitle ?? 'Today could not be read'} · '
@@ -2743,7 +2818,7 @@ class _HomeScreenState extends State<HomeScreen>
       // so it is outside the first-launch comparison.
       if (loaded == null) ...[
         // Not while the first read is out: the card reads its own count.
-        if (!_loading) card('detected', const DetectedActivitiesCard()),
+        if (!_loading && !ImportFocus.active.value) card('detected', const DetectedActivitiesCard()),
       ] else if (bare && !building)
         if (!ImportFocus.active.value) card('detected', _detectedActivities(d)),
       // The day switcher keeps its slot (arrows dimmed) before there is a

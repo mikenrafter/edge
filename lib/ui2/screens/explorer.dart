@@ -272,7 +272,22 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
   }
 
   @override
-  void reloadPausedRead() { if (mounted) { setState(() { _paused = false; _loading = true; }); _load(refresh: true); } }
+  bool get pausedContent => _paused;
+
+  @override
+  void reloadPausedRead() {
+    if (!mounted) return;
+    setState(() { _paused = false; _loading = true; });
+    _load(refresh: true);
+    // The import-only list was asked for while paused too.
+    _loadImported();
+  }
+
+  /// Focus began under a loaded plot: read again, which pauses it.
+  @override
+  void focusStarted() {
+    if (_picks.isNotEmpty) _load(refresh: true);
+  }
 
   @override
   void dispose() { stopWatchingPausedRead(); super.dispose(); }
@@ -388,6 +403,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
         if (readTimeline) _timelines[day] = timeline ?? const {};
         if (readCal) _cals[day] = cal;
         _loading = false;
+        _paused = false;
       });
     } on ReadPaused {
       if (!stillNewest(#explore, t)) return;
@@ -427,6 +443,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
   /// re-read in place.
   @override
   void reload() {
+    if (absorbRevision()) return;
     if (_day) {
       _hist.clear();
     } else {
@@ -671,10 +688,10 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
               message: l?.exploreHint ??
                   'Pick up to 4 metrics below. They share one time axis, each on its own scale.'));
     }
-    if (_paused) {
-      return const Surface(child: PausedOlderDays());
-    }
-    if (_failed) {
+    // Paused keeps the chart's frame (title, 200 high plot, axis, legend, note)
+    // and puts the line where the plot would be: nothing below it moves.
+    final paused = _paused;
+    if (_failed && !paused) {
       return Surface(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(l?.exploreFailedTitle ?? 'Could not read these metrics',
@@ -697,21 +714,21 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
         ]),
       );
     }
-    if (_loading) {
+    if (_loading && !paused) {
       return InlineLoading(
           status: l?.loadingExplorer ?? 'Reading the metrics you picked');
     }
 
     final lines = <ExplorePlotLine>[
       for (final m in picked)
-        if (m.hasData)
+        if (!paused && m.hasData)
           ExplorePlotLine(
               m.key,
               m.color,
               m.line!.normalised(
                   z: !_day && _z.contains(m.key) ? m.baseline : null)),
     ];
-    if (lines.isEmpty) {
+    if (lines.isEmpty && !paused) {
       return _message(
           p,
           _day
@@ -735,7 +752,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
               if (b.kind == ExploreBandKind.sleep) b,
           ]
         : const <ExploreBand>[];
-    final asleep = bands;
+    final asleep = paused ? const <ExploreBand>[] : bands;
     final asleepLabel = l?.dayTimelineAsleep ?? 'Asleep';
 
     ChartKey shade(String label, Color color, List<ExploreBand> spans) =>
@@ -773,7 +790,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
 
     final notes = [
       for (final m in picked)
-        if (!m.hasData)
+        if (!paused && !m.hasData)
           Padding(
             padding: const EdgeInsets.only(top: S.x1),
             child: Text(
@@ -832,7 +849,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
           title: title,
           unit: l?.exploreUnitNormalised ?? 'Normalised',
           height: 200,
-          annotations: marks,
+          annotations: paused ? null : marks,
           xLabels: xLabels,
           legend: [
             for (final m in picked) (m.label, p.on(m.color)),
@@ -855,7 +872,9 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
             ],
             // The boundary holds the painter and not the cursor, which the
             // scrub draws above it.
-            child: RepaintBoundary(
+            child: paused
+                ? const Center(child: PausedOlderDays())
+                : RepaintBoundary(
               key: ExplorerView.plotKey,
               child: CustomPaint(
                 size: Size.infinite,

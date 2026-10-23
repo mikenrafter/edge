@@ -3427,5 +3427,7 @@
   "consentDecline": "No, gracias",
   "postImportDismiss": "Entendido",
   "welcomeImportContinue": "Continuar",
-  "importPausedOlderDays": "Los días anteriores se cargarán cuando termine la importación"
+  "importPausedOlderDays": "Los días anteriores se cargarán cuando termine la importación",
+  "importPausedTodayPending": "Hoy aparecerá en cuanto esté listo",
+  "importPausedSaving": "Guardar está en pausa hasta que termine la importación"
 }

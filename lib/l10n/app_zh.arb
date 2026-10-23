@@ -3409,5 +3409,7 @@
   "consentDecline": "不了，谢谢",
   "postImportDismiss": "知道了",
   "welcomeImportContinue": "继续",
-  "importPausedOlderDays": "导入完成后将加载更早的日期"
+  "importPausedOlderDays": "导入完成后将加载更早的日期",
+  "importPausedTodayPending": "今天的内容准备好后会立即显示",
+  "importPausedSaving": "导入完成前暂停保存"
 }

@@ -3409,5 +3409,7 @@
   "consentDecline": "नहीं धन्यवाद",
   "postImportDismiss": "समझ गया",
   "welcomeImportContinue": "जारी रखें",
-  "importPausedOlderDays": "आयात पूरा होने पर पुराने दिन लोड होंगे"
+  "importPausedOlderDays": "आयात पूरा होने पर पुराने दिन लोड होंगे",
+  "importPausedTodayPending": "आज का डेटा तैयार होते ही दिखेगा",
+  "importPausedSaving": "आयात पूरा होने तक सहेजना रुका हुआ है"
 }

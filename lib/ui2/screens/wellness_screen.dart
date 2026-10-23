@@ -24,6 +24,7 @@ import 'package:openstrap_analytics/onehz.dart' show journalFieldLagDays;
 import 'package:provider/provider.dart';
 
 import '../../data/db.dart';
+import '../../data/read_paused.dart';
 import '../../data/day_label.dart';
 import '../../data/journal_fields.dart';
 import '../../data/med_store.dart';
@@ -85,7 +86,8 @@ class WellnessScreen extends StatefulWidget {
   State<WellnessScreen> createState() => _WellnessScreenState();
 }
 
-class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
+class _WellnessScreenState extends State<WellnessScreen>
+    with RevisionReload, PausedReadReload<WellnessScreen> {
   int _tab = 0;
   static const _tabs = WellnessScreen.tabs;
 
@@ -98,6 +100,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
   /// midnight and habit ticks would land on yesterday's date.
   String get _date => todayLabel();
   bool _loading = true;
+  bool _paused = false;
 
   /// One journal write at a time. `putJournalMetrics` deletes the day and
   /// re-inserts it, so two quick taps both read the same day and the second
@@ -123,6 +126,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     _tab = widget.initialTab ?? 0;
     final t = WellnessScreen.tabRequest.value;
     if (t >= 0 && t < _tabs.length) _tab = t;
@@ -139,6 +143,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
 
   @override
   void dispose() {
+    stopWatchingPausedRead();
     WellnessScreen.tabRequest.removeListener(_onTabRequest);
     super.dispose();
   }
@@ -147,7 +152,21 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
   /// under this tab when a derive or an import runs — and it is one of the three the shell
   /// keeps alive forever, so it read them once and stopped.
   @override
-  void reload() => _load();
+  void reload() {
+    if (absorbRevision()) return;
+    _load();
+  }
+
+  @override
+  bool get pausedContent => _paused;
+
+  @override
+  void reloadPausedRead() {
+    if (mounted) _load();
+  }
+
+  @override
+  void focusStarted() => _load();
 
   /// After a medication or journal write. The dose reminders, the strap buzz
   /// and the check-in are armed ahead of time and never look at the dose or
@@ -160,6 +179,15 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
   }
 
   Future<void> _load() async {
+    try {
+      await _loadToday();
+    } on ReadPaused {
+      // An import has the database: today is not readable yet, and not wrong.
+      if (mounted) setState(() => (_loading = false, _paused = true));
+    }
+  }
+
+  Future<void> _loadToday() async {
     final t = beginRead(#wellness);
     final app = context.read<AppState>();
     final repo = app.repo;
@@ -233,6 +261,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
       _fields = specs;
       _habitHistory = history;
       _loading = false;
+      _paused = false;
     });
   }
 
@@ -240,7 +269,9 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     if (widget.sleepPlanOnly) {
-      return _loading
+      return _paused
+          ? const PausedToday()
+          : _loading
           ? InlineLoading(
               status: l?.loadingWellness ??
                   "Reading today's journal and medications")
@@ -281,7 +312,9 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               (i) => setState(() => _tab = visible[i]),
               color: C.domMind),
           const SizedBox(height: S.x5),
-          if (_loading)
+          if (_paused)
+            const PausedToday()
+          else if (_loading)
             InlineLoading(
                 status: l?.loadingWellness ??
                     "Reading today's journal and medications")

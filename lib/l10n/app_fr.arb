@@ -3409,5 +3409,7 @@
   "consentDecline": "Non merci",
   "postImportDismiss": "Compris",
   "welcomeImportContinue": "Continuer",
-  "importPausedOlderDays": "Les jours précédents seront chargés à la fin de l’importation"
+  "importPausedOlderDays": "Les jours précédents seront chargés à la fin de l’importation",
+  "importPausedTodayPending": "Aujourd’hui apparaîtra dès que ce sera prêt",
+  "importPausedSaving": "L’enregistrement est en pause jusqu’à la fin de l’importation"
 }

@@ -14,6 +14,8 @@ import 'coach_text.dart';
 
 import '../../l10n/display_text.dart';
 import 'package:flutter/material.dart';
+
+import '../../data/read_paused.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -38,6 +40,7 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
   Briefing? _b;
   bool _busy = false;
   String? _error;
+  bool _paused = false; // an import has the database: try again after it
 
   @override
   void initState() {
@@ -51,6 +54,7 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _paused = false;
     });
     try {
       final b = await BriefingEngine(
@@ -58,6 +62,8 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
         repo: repo,
       ).generate(widget.period);
       if (mounted) setState(() => _b = b);
+    } on ReadPaused {
+      if (mounted) setState(() => _paused = true);
     } catch (e) {
       if (mounted) {
         final l = AppLocalizations.of(context);
@@ -158,6 +164,10 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
                       soft: true,
                       onTap: _busy ? null : _generate,
                     ),
+                  ],
+                  if (_paused) ...[
+                    const SizedBox(height: S.x3),
+                    const PausedToday(),
                   ],
                   if (_error != null) ...[
                     const SizedBox(height: S.x3),

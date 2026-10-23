@@ -20,6 +20,7 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../data/db.dart';
+import '../../data/read_paused.dart';
 import '../../data/day_label.dart';
 import '../../data/nutrition_store.dart';
 import '../../models/metric.dart';
@@ -43,7 +44,8 @@ class NutritionScreen extends StatefulWidget {
   State<NutritionScreen> createState() => _NutritionScreenState();
 }
 
-class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
+class _NutritionScreenState extends State<NutritionScreen>
+    with RevisionReload, PausedReadReload<NutritionScreen> {
   int _tab = 0;
   static List<String> _tabs(BuildContext c) {
     final l = AppLocalizations.of(c);
@@ -68,6 +70,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   /// The part of [_waterMl] that came from "Assume I drank water".
   double _assumedMl = 0;
   bool _loading = true;
+  bool _paused = false;
 
   /// The local profile map, read once per load. Targets live here rather than
   /// in a new table: they are two numbers the user typed, the same shape as
@@ -77,8 +80,26 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     _load();
   }
+
+  @override
+  void dispose() {
+    stopWatchingPausedRead();
+    super.dispose();
+  }
+
+  @override
+  bool get pausedContent => _paused;
+
+  @override
+  void reloadPausedRead() {
+    if (mounted) _load();
+  }
+
+  @override
+  void focusStarted() => _load();
 
   /// Burned calories and water come from the derived store and the journal,
   /// both of which are written from elsewhere in the app — an import, a derive
@@ -86,6 +107,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   /// without this it showed launch-time figures all day.
   @override
   void reload() {
+    if (absorbRevision()) return;
     _refresh.reset();
     _load();
   }
@@ -93,6 +115,15 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   final _refresh = TodayRefreshLatch();
 
   Future<void> _load() async {
+    try {
+      await _loadToday();
+    } on ReadPaused {
+      // An import has the database: today is not readable yet, and not wrong.
+      if (mounted) setState(() => (_loading = false, _paused = true));
+    }
+  }
+
+  Future<void> _loadToday() async {
     final t = beginRead(#nutrition);
     final app = context.read<AppState>();
     final db = await LocalDb.instance;
@@ -122,6 +153,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
       _assumedMl = assumed;
       _profile = {...?app.user};
       _loading = false;
+      _paused = false;
     });
     if (repo != null) {
       _refresh.afterPaint(repo, pending).then((landed) {
@@ -268,7 +300,9 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
           ScreenTitle(l?.nutritionTitle ?? 'Nutrition', trailing: logFood),
         SubTabs(_tabs(c), _tab, (i) => setState(() => _tab = i), color: C.domFood),
         const SizedBox(height: S.x5),
-        if (_loading)
+        if (_paused)
+          const PausedToday()
+        else if (_loading)
           InlineLoading(
               status: l?.loadingNutrition ?? 'Reading your meals and water')
         else

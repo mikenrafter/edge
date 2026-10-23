@@ -32,6 +32,7 @@ import '../../compute/nap_edits.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart' show whyFromNote;
 import '../../state/app_state.dart';
@@ -110,6 +111,7 @@ class _NapsScreenState extends State<NapsScreen> {
   int _loadToken = 0;
   bool _busy = false;
   String? _failed;
+  bool _paused = false;
 
   @override
   void initState() {
@@ -122,8 +124,15 @@ class _NapsScreenState extends State<NapsScreen> {
     final repo = repoOf(context);
     if (repo == null) return;
     final token = ++_loadToken;
-    final d = await NapsData.load(repo, want: _day);
-    if (mounted && token == _loadToken) setState(() => _d = d);
+    try {
+      final d = await NapsData.load(repo, want: _day);
+      if (mounted && token == _loadToken) {
+        setState(() => (_d = d, _paused = false));
+      }
+    } on ReadPaused {
+      // Import in progress: nothing to read and nothing wrong.
+      if (mounted && token == _loadToken) setState(() => (_d = null, _paused = true));
+    }
   }
 
   void _goDay(String day) {
@@ -154,6 +163,8 @@ class _NapsScreenState extends State<NapsScreen> {
     try {
       await write();
       await app.reanalyzeForNapEdit();
+    } on ReadPaused {
+      failed = pausedSavingText(context);
     } catch (e) {
       failed = '$e';
     } finally {
@@ -238,6 +249,14 @@ class _NapsScreenState extends State<NapsScreen> {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final d = _d;
+    if (_paused) {
+      return detailScaffold(c, l?.napsTitle ?? 'Naps', [
+        const Padding(
+          padding: EdgeInsets.only(top: S.x4),
+          child: PausedOlderDays(),
+        ),
+      ]);
+    }
     if (d == null) {
       return detailScaffold(c, l?.napsTitle ?? 'Naps', [
         Padding(

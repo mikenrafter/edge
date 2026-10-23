@@ -21,6 +21,8 @@ import '../../coach/coach_config.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/journal_fields.dart';
+import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
 import '../../data/water_units.dart';
 import '../../gestures/symptom_description.dart';
 import '../../l10n/app_localizations.dart';
@@ -59,6 +61,8 @@ class _JournalComposeState extends State<JournalCompose> {
   List<StoredSymptom> _symptoms = const [];
   bool _loading = true;
   bool _saving = false;
+  bool _paused = false; // an import has the database: nothing to read yet
+  bool _saveBlocked = false; // a save found the database paused
 
   @override
   void initState() {
@@ -73,6 +77,14 @@ class _JournalComposeState extends State<JournalCompose> {
   }
 
   Future<void> _load() async {
+    try {
+      await _loadDay();
+    } on ReadPaused {
+      if (mounted) setState(() => (_loading = false, _paused = true));
+    }
+  }
+
+  Future<void> _loadDay() async {
     final repo = context.read<AppState>().repo;
     if (repo == null) {
       setState(() => _loading = false);
@@ -105,6 +117,7 @@ class _JournalComposeState extends State<JournalCompose> {
       _loadedTags = {..._tags};
       _note.text = (today?['note'] as String?) ?? '';
       _loading = false;
+      _paused = false;
     });
   }
 
@@ -224,11 +237,16 @@ class _JournalComposeState extends State<JournalCompose> {
   Future<void> _save() async {
     final repo = context.read<AppState>().repo;
     if (repo == null) return;
-    setState(() => _saving = true);
-    // Both writes REPLACE the day, and the strap's double-tap (a glass of
-    // water, a moment tag) writes the same day while this screen is open.
-    // Re-read and lay only this screen's own edits over it, or Save puts the
-    // snapshot from when the screen opened back and the tap is lost.
+    setState(() => (_saving = true, _saveBlocked = false));
+    try {
+      await _write(repo);
+    } on ReadPaused {
+      // The merge re-reads the day first; nothing was written.
+      if (mounted) setState(() => (_saving = false, _saveBlocked = true));
+    }
+  }
+
+  Future<void> _write(LocalRepository repo) async {
     final metrics = {...await repo.getJournalMetrics(_date)};
     for (final k in {..._loadedValues.keys, ..._values.keys}) {
       final v = _values[k];
@@ -269,7 +287,16 @@ class _JournalComposeState extends State<JournalCompose> {
             NavBar(l?.journalComposeTitle ?? 'Journal',
                 sub: _date, onBack: () => Navigator.of(c).pop()),
             Expanded(
-              child: _loading
+              child: _paused
+                  ? ListView(
+                      padding: const EdgeInsets.fromLTRB(S.x4, S.x4, S.x4, S.x8),
+                      children: [
+                        _date == todayLabel()
+                            ? const PausedToday()
+                            : const PausedOlderDays(),
+                      ],
+                    )
+                  : _loading
                   ? ListView(
                       padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x8),
                       children: [
@@ -281,6 +308,12 @@ class _JournalComposeState extends State<JournalCompose> {
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x8),
                       children: [
+                        if (_saveBlocked)
+                          Padding(
+                            padding: const EdgeInsets.only(top: S.x3),
+                            child: Text(pausedSavingText(c),
+                                style: F.cap.copyWith(color: p.ink3)),
+                          ),
                         MoodPicker(
                           value: _values['mood']?.value.round(),
                           onChanged: (v) => _set('mood', v?.toDouble()),

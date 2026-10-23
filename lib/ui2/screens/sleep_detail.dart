@@ -353,9 +353,14 @@ class SleepData {
     if (ImportFocus.active.value && (want == null || want == todayLabel())) {
       final published = ImportFocus.days.value[todayLabel()]?['getToday'];
       final sleep = published is Map ? published['sleep'] : null;
-      if (sleep is Map) {
+      // A night that is not today's is never shown as today's (the same
+      // refusal as Home's overnightMetric).
+      if (sleep is Map &&
+          published is Map<String, dynamic> &&
+          heldOverNightOf(published) == null) {
         final duration = sleep['duration_min'];
-        return SleepData(day: todayLabel(), days: [todayLabel()],
+        return SleepData(day: todayLabel(),
+            days: [todayLabel(), dayLabelBefore(todayLabel(), 1)!],
             night: <String, Object?>{'duration_min': duration is Map ? duration['value'] : duration});
       }
     }
@@ -526,7 +531,27 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   }
 
   @override
-  void reloadPausedRead() { if (mounted) { setState(() { _paused = false; _loading = true; }); _load(); } }
+  bool get pausedContent => _paused;
+
+  @override
+  void reloadPausedRead() {
+    if (mounted && widget.data == null) {
+      setState(() { _paused = false; _loading = true; });
+      _load();
+    }
+  }
+
+  /// Focus began under a loaded night: re-read it now (a published model, or
+  /// the paused line; never the night of another day).
+  @override
+  void focusStarted() {
+    if (widget.data == null) _load();
+  }
+
+  @override
+  void published() {
+    if (widget.data == null && (_day == null || _day == todayLabel())) _load();
+  }
 
   @override
   void dispose() { stopWatchingPausedRead(); super.dispose(); }
@@ -541,6 +566,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
   @override
   void reload() {
+    if (absorbRevision()) return;
     _refresh.reset();
     _load();
   }
@@ -567,18 +593,32 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       // stronger half of the reason.
       final rough = d.day == todayLabel() &&
               Prefs.getString(kRoughNightDismissed, '') != d.day
-          ? await loadRoughNight(repo, d.day!, c: mounted ? context : null)
+          ? await _roughOrNull(repo, d.day!)
           : null;
       if (mounted && gen == _loadGen) {
-        setState(() => (_d = d, _rough = rough, _loading = false));
+        setState(() => (_d = d, _rough = rough, _loading = false, _paused = false));
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
           if (landed && mounted) _load();
         });
       }
     } on ReadPaused {
-      if (mounted && gen == _loadGen) setState(() { _loading = false; _paused = true; });
+      if (mounted && gen == _loadGen) {
+        setState(() { _d = null; _rough = null; _loading = false; _paused = true; });
+      }
     } catch (_) {
       if (mounted && gen == _loadGen) setState(() => _loading = false);
+    }
+  }
+
+  /// The rough-night card is an extra: if it cannot be read (an import has the
+  /// database, or the read failed) it is not offered, and the night itself,
+  /// which was read already, is still shown.
+  Future<RoughNight?> _roughOrNull(LocalRepository repo, String day) async {
+    if (ImportFocus.active.value) return null;
+    try {
+      return await loadRoughNight(repo, day, c: mounted ? context : null);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -618,20 +658,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final l = AppLocalizations.of(c);
     final title = l?.sleepDetailNavTitle ?? 'Sleep';
 
-    final publishedToday = ImportFocus.active.value &&
-            (widget.day == null || widget.day == todayLabel())
-        ? (ImportFocus.days.value[todayLabel()] ?? const {})['getToday']
-        : null;
-    final publishedSleep = publishedToday is Map ? publishedToday['sleep'] : null;
-    if (publishedSleep is Map) {
-      final duration = publishedSleep['duration_min'];
-      final model = SleepData(day: todayLabel(),
-          night: <String, Object?>{'duration_min': duration is Map ? duration['value'] : duration});
-      return _frame(c, title, [_answer(c, P.of(c), model, model.night)]);
-    }
-
     if (_paused) {
-      return _frame(c, title, [const SizedBox(height: S.x4), const PausedOlderDays()]);
+      final today = _day == null || _day == todayLabel();
+      return _frame(c, title, [
+        const SizedBox(height: S.x4),
+        today ? const PausedToday() : const PausedOlderDays(),
+      ]);
     }
     if (_loading && _d == null) {
       return _frame(c, title, [

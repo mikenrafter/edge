@@ -204,18 +204,26 @@ void main() {
       final loaded = _PausedExplorerRepo();
       await ex.pumpExplorer(t, loaded);
       expect(find.byKey(ExplorerView.plotKey), findsOneWidget);
-      final below = ex.pick('hrv');
-      final loadedTop = t.getTopLeft(below);
-      final rangeTop = t.getTopLeft(find.byKey(const ValueKey('explore-range:d30')));
+      // The rows ABOVE the chart (the baseline caption) exist only once a
+      // series has been read, so the slot is measured from the chart's own
+      // header down to the first thing under it.
+      double slot() =>
+          t.getTopLeft(ex.pick('hrv')).dy -
+          t.getTopLeft(find.text('Normalised')).dy;
+      final loadedSlot = slot();
+      final loadedNote = t.getTopLeft(find.byKey(const ValueKey('explore-normalised-note'))).dy -
+          t.getTopLeft(find.text('Normalised')).dy;
 
       await t.pumpWidget(const SizedBox());
       startFocus();
       await ex.pumpExplorer(t, _PausedExplorerRepo());
       expect(find.text(kPausedLine), findsOneWidget);
-      expect(t.getTopLeft(find.byKey(const ValueKey('explore-range:d30'))),
-          rangeTop);
-      expect(t.getTopLeft(ex.pick('hrv')), loadedTop,
+      expect(slot(), loadedSlot,
           reason: 'the line sits in a slot as tall as the chart');
+      expect(
+          t.getTopLeft(find.byKey(const ValueKey('explore-normalised-note'))).dy -
+              t.getTopLeft(find.text('Normalised')).dy,
+          loadedNote);
     });
   });
 

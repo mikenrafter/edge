@@ -20,7 +20,6 @@ import '../../data/day_label.dart';
 import '../../data/db.dart' show LocalDb;
 import '../../data/local_repository.dart';
 import '../../data/read_paused.dart';
-import '../../sync/import_focus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/display_text.dart';
 import '../../state/app_state.dart';
@@ -939,7 +938,21 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
   }
 
   @override
-  void reloadPausedRead() { if (mounted) { setState(() { _paused = false; _loading = true; }); _load(); } }
+  bool get pausedContent => _paused;
+
+  @override
+  void reloadPausedRead() {
+    if (mounted && widget.data == null) {
+      setState(() { _paused = false; _loading = true; });
+      _load();
+    }
+  }
+
+  /// Focus began under a loaded chart: read again, which pauses it.
+  @override
+  void focusStarted() {
+    if (widget.data == null) _load();
+  }
 
   @override
   void dispose() {
@@ -956,6 +969,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
 
   @override
   void reload() {
+    if (absorbRevision()) return;
     // Whatever is in flight was asked before this revision: it must neither
     // hold back the next read of its window nor commit when it lands.
     _journalGen++;
@@ -1133,6 +1147,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
         _recompose();
         _winners = winners;
         _loading = false;
+        _paused = false;
         _openOnDay(d);
       });
       if (slow == null) return;

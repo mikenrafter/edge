@@ -165,6 +165,7 @@ Map<String, Widget> galleryCases() => {...componentCases(), ...extraCases()};
 /// painters, so the gallery screen can show them as their own scroll.
 Map<String, Widget> componentCases() => {
       'paused_older_days': const PausedOlderDays(),
+      'paused_today': const PausedToday(),
       // The one number the whole app is judged by, and the picture the app
       // leaves someone else's phone. Both are photographed rather than merely
       // swept: they are the two components a regression would be noticed in

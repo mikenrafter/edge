@@ -3515,5 +3515,7 @@
   "consentDecline": "Nein danke",
   "postImportDismiss": "Verstanden",
   "welcomeImportContinue": "Weiter",
-  "importPausedOlderDays": "Ältere Tage werden geladen, sobald der Import abgeschlossen ist"
+  "importPausedOlderDays": "Ältere Tage werden geladen, sobald der Import abgeschlossen ist",
+  "importPausedTodayPending": "Heute erscheint, sobald es fertig ist",
+  "importPausedSaving": "Speichern ist pausiert, bis der Import abgeschlossen ist"
 }

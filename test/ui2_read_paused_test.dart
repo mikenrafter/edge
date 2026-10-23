@@ -13,6 +13,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:openstrap_edge/state/prefs.dart';
 
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/import_focus.dart';
@@ -61,7 +64,13 @@ void _quiet() {
 }
 
 void main() {
-  setUp(resetFocus);
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() async {
+    resetFocus();
+    SharedPreferences.setMockInitialValues({});
+    await Prefs.ensureLoaded();
+  });
   tearDown(resetFocus);
 
   test('the line is an l10n string with the agreed words', () {

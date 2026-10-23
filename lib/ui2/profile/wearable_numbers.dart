@@ -25,6 +25,7 @@ import '../../data/db.dart' show LocalDb;
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart' show AppState;
 import '../../state/prefs.dart';
+import '../../sync/import_focus.dart';
 import '../ui2.dart';
 import 'profile.dart';
 
@@ -687,12 +688,16 @@ class _WearableCellsState extends State<WearableCells> with RevisionReload {
     // A developer toggle can switch or turn off the wearable without a
     // derive (none of its days are its own), so a toggle re-reads too.
     WearableDisplay.instance.addListener(reload);
+    // Import focus pauses this read (nothing about it is published): the card
+    // goes when focus starts and is read once when it ends.
+    ImportFocus.active.addListener(_onFocus);
     if (!widget.seeded) reload();
   }
 
   @override
   void dispose() {
     WearableDisplay.instance.removeListener(reload);
+    ImportFocus.active.removeListener(_onFocus);
     super.dispose();
   }
 
@@ -711,9 +716,18 @@ class _WearableCellsState extends State<WearableCells> with RevisionReload {
     }
   }
 
+  void _onFocus() {
+    if (mounted && !widget.seeded) reload();
+  }
+
   @override
   Future<void> reload() async {
     final t = beginRead(#cells);
+    if (ImportFocus.active.value) {
+      // Paused: draw nothing extra and read nothing.
+      if (mounted) setState(() => (_device = null, _cells = const {}));
+      return;
+    }
     try {
       final repo = context.read<AppState>().repo;
       final w = await repo?.wearableDay(widget.date ?? todayLabel());

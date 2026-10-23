@@ -126,7 +126,22 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> with PausedReadRe
   }
 
   @override
-  void reloadPausedRead() { if (mounted) { setState(() { _paused = false; _loading = true; }); _load(); } }
+  bool get pausedContent => _paused;
+
+  @override
+  void reloadPausedRead() {
+    if (mounted && widget.data == null) {
+      setState(() { _paused = false; _loading = true; });
+      _load();
+    }
+  }
+
+  /// Focus began under a loaded screen: its history and month grid were read
+  /// before the pause, so read again, which pauses them.
+  @override
+  void focusStarted() {
+    if (widget.data == null) _load();
+  }
 
   @override
   void dispose() { stopWatchingPausedRead(); super.dispose(); }
@@ -141,10 +156,10 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> with PausedReadRe
     try {
       final d = await WhatChangedData.load(repo, want: _day);
       if (mounted && token == _loadToken) {
-        setState(() => (_d = d, _loading = false));
+        setState(() => (_d = d, _loading = false, _paused = false));
       }
     } on ReadPaused {
-      if (mounted && token == _loadToken) setState(() { _loading = false; _paused = true; });
+      if (mounted && token == _loadToken) setState(() { _d = null; _loading = false; _paused = true; });
     } catch (_) {
       if (mounted && token == _loadToken) setState(() => _loading = false);
     }
