@@ -1,6 +1,8 @@
 // Import focus, UI side, round 3: the Explorer readout and annotation lane,
 // a delayed trailing publish, latched paused flags, an atomic journal save,
 // and two screens that waited forever (Body clock, Beats).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -81,6 +83,34 @@ class _ExRepo extends ex.ExplorerRepo {
   @override
   Future<Map<String, dynamic>> getChart(String metric,
       {int? from, int? to, Set<String> signals = const {}}) async {
+    if (ImportFocus.active.value) {
+      chartCalls.add(metric);
+      throw const ReadPaused('import');
+    }
+    return super.getChart(metric, from: from, to: to, signals: signals);
+  }
+}
+
+/// A chart read that can be held, then paused by focus when it resumes.
+class _GatedExRepo extends ex.ExplorerRepo {
+  _GatedExRepo(Map<String, int> counts)
+      : super(charts: {
+          specOf('resting_hr').chartKey: [
+            for (final d in ex.kWeek) ex.pt(d, 55),
+          ],
+        }, counts: counts);
+
+  @override
+  Future<Map<String, int>> getSeriesCounts(List<String> keys) async {
+    if (ImportFocus.active.value) throw const ReadPaused('import');
+    return super.getSeriesCounts(keys);
+  }
+
+  @override
+  Future<Map<String, dynamic>> getChart(String metric,
+      {int? from, int? to, Set<String> signals = const {}}) async {
+    final g = gate;
+    if (g != null) await g.future;
     if (ImportFocus.active.value) {
       chartCalls.add(metric);
       throw const ReadPaused('import');
@@ -225,6 +255,37 @@ void main() {
       expect(lane, findsOneWidget, reason: 'the lane is kept');
       expect(t.getRect(lane), loaded,
           reason: 'with its reserved height and position');
+    });
+
+    testWidgets('a revision read in flight across a whole focus cycle still '
+        'ends with the FULL reload (imported-only metrics appear)', (t) async {
+      await ex.initPrefs();
+      Prefs.setString(kExploreMetricsPref, 'resting_hr');
+      addTearDown(ex.clearPrefs);
+      final counts = <String, int>{'spo2': 0};
+      final repo = _GatedExRepo(counts);
+      final app = await _pump(
+          t,
+          repo,
+          ExplorerView(
+              today: ex.kToday, annotationLoader: (_, _) async => const []));
+      expect(ex.pick('spo2'), findsNothing, reason: 'sanity: no history yet');
+
+      repo.gate = Completer<void>();
+      app.bumpInsights(); // a revision-triggered read starts, and waits
+      await _settle(t, n: 5);
+      startFocus();
+      await _settle(t, n: 5);
+      counts['spo2'] = 12; // the import wrote history for it
+      endFocus();
+      await _settle(t, n: 5);
+      repo.gate!.complete();
+      repo.gate = null;
+      await _settle(t, n: 40);
+
+      expect(ex.pick('spo2'), findsOneWidget,
+          reason: 'the trailing reload is the screen\'s full reload, which '
+              'also asks again which imported-only metrics exist');
     });
 
     testWidgets('idle revisions reload once each', (t) async {
