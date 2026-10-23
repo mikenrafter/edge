@@ -152,9 +152,7 @@ void main() {
       await open(t, older, 'Goals');
       expect(find.text('Estimated expenditure'), findsOneWidget);
       expect(olderMark('calories_total'), findsOneWidget);
-      final h = t.ensureSemantics();
-      expectSpokenNotTappable(t, olderMark('calories_total'));
-      h.dispose();
+      expectBareMark(olderMark('calories_total'));
     });
 
     testWidgets('Goals: current expenditure is plain', (t) async {

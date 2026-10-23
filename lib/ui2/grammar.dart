@@ -950,8 +950,7 @@ class ChartKeyReadout extends StatelessWidget {
                 OlderVersionMark(
                     id: chartOlderId(cells, cell),
                     version: cell.older!.version,
-                    reason: cell.older!.reason,
-                    showNote: false),
+                    reason: cell.older!.reason),
             ],
           ),
         ),

@@ -139,9 +139,11 @@ void main() {
           const HomeData(dayId: '2026-10-04', calories: _oldKcal, caloriesTotal: total));
       expect(inTile('calories'), findsOneWidget);
       expect(inTile('calories_total'), findsOneWidget);
-      expectSpokenNotTappable(t, inTile('calories_total'),
-          label: contains('v103'));
-      expectSpokenNotTappable(t, inTile('calories'), label: contains('v104'));
+      expectBareMark(inTile('calories_total'));
+      expectBareMark(inTile('calories'));
+      final spoken = t.getSemantics(tile()).getSemanticsData().label;
+      expect(spoken, contains('v103'));
+      expect(spoken, contains('v104'));
       h.dispose();
     });
 

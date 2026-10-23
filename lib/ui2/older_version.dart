@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/presentation_text.dart';
 import '../models/metric.dart';
-import 'grammar.dart' show Pressable;
 
 /// English form of the note, for the callers with no localizations in scope.
 String olderVersionNoteText(int version, String? reason) {
@@ -60,20 +59,16 @@ String olderVersionNoteLocalized(
 }
 
 /// The asterisk beside a number. Key: `older-version-mark:<id>`. Renders
-/// nothing without a [version]. Tapping it opens the note in a dialog (unless
-/// the surface prints the note itself: [showNote] false), so a compact tile or
-/// ring never has to make room for a sentence.
+/// nothing without a [version]. Plain text, spoken as "from an older
+/// calculation": it is never tappable and takes no room beyond the glyph, so it
+/// sits tight against the number on every surface. The note is
+/// [OlderVersionNote], printed by the surfaces that have room for it.
 class OlderVersionMark extends StatelessWidget {
   final String id;
   final int? version;
   final String? reason;
-  final bool showNote;
   const OlderVersionMark(
-      {super.key,
-      required this.id,
-      required this.version,
-      this.reason,
-      this.showNote = true});
+      {super.key, required this.id, required this.version, this.reason});
 
   @override
   Widget build(BuildContext context) {
@@ -82,24 +77,11 @@ class OlderVersionMark extends StatelessWidget {
     final l = AppLocalizations.of(context);
     return Semantics(
       label: l?.olderVersionSemantics(v) ?? olderVersionSemantics(v),
-      button: showNote,
-      child: Pressable(
-        key: ValueKey('older-version-mark:$id'),
-        onTap: showNote
-            ? () => showDialog<void>(
-                  context: context,
-                  builder: (c) => AlertDialog(
-                    content: OlderVersionNote(id: id, version: v, reason: reason),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.of(c).pop(),
-                          child: Text(MaterialLocalizations.of(c).okButtonLabel)),
-                    ],
-                  ),
-                )
-            : null,
-        child: const Text('*'),
-      ),
+      // Line height 1: the glyph keeps its size but never makes its line
+      // taller than the number or caption it sits beside.
+      child: Text('*',
+          key: ValueKey('older-version-mark:$id'),
+          style: DefaultTextStyle.of(context).style.copyWith(height: 1)),
     );
   }
 }

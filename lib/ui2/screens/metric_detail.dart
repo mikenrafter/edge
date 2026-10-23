@@ -1541,7 +1541,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(_fmt(spec, mean), style: F.n48.copyWith(color: p.ink)),
-              if (headlineVersion != null) OlderVersionMark(id: 'headline', version: headlineVersion, reason: headlineReason, showNote: false),
+              if (headlineVersion != null) OlderVersionMark(id: 'headline', version: headlineVersion, reason: headlineReason),
               const SizedBox(width: S.x2),
               // NOT `spec.unit`. `metricValue('min', 443)` is already "7h 23m",
               // so every min-unit metric — Time asleep, Deep, REM, Wear time —
@@ -1576,7 +1576,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                             _fmt(spec, latest), unitBeside(spec.unit), asOf) ??
                         'Latest ${_fmt(spec, latest)} ${unitBeside(spec.unit)} · $asOf')
                     .replaceAll('  ', ' '),
-                style: F.cap.copyWith(color: p.ink3)), if (latestVersion != null) OlderVersionMark(id: 'latest', version: latestVersion, reason: latestReason, showNote: false)]),
+                style: F.cap.copyWith(color: p.ink3)), if (latestVersion != null) OlderVersionMark(id: 'latest', version: latestVersion, reason: latestReason)]),
           ),
           if (win > 1 && latestVersion != null) OlderVersionNote(id: 'latest', version: latestVersion, reason: latestReason),
         ],
@@ -2023,7 +2023,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
           ]),
           if (v != null && points[i]?.olderVersion != null) ...[
             Padding(padding: const EdgeInsets.only(top: S.x1), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              OlderVersionMark(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason, showNote: false),
+              OlderVersionMark(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason),
               OlderVersionNote(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason),
             ])),
           ],

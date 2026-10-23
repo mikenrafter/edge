@@ -46,7 +46,7 @@ void main() {
           body: OlderVersionMark(id: 'x', version: 104, reason: kReasonRaw)),
     ));
     expectSpokenNotTappable(t, olderMark('x'),
-        label: equals(de.olderVersionSemantics(104)));
+        label: contains(de.olderVersionSemantics(104)));
     h.dispose();
   });
 

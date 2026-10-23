@@ -91,6 +91,18 @@ class OlderRepo extends LocalRepository {
   Future<Map<String, dynamic>> getDayWear(String date) async => const {};
 }
 
+/// For a mark inside a tappable card (the card's own node is a button): the
+/// mark itself is bare text with no gesture inside it.
+void expectBareMark(Finder mark) {
+  expect(mark, findsOneWidget);
+  expect(
+      find.descendant(
+          of: mark,
+          matching: find.byWidgetPredicate((w) =>
+              w is GestureDetector || w is Listener)),
+      findsNothing);
+}
+
 /// The mark is spoken ([label], by default the English form) and is NOT tappable:
 /// its semantics carry no button flag and no tap action.
 void expectSpokenNotTappable(WidgetTester t, Finder mark, {Matcher? label}) {

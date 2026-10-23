@@ -122,8 +122,7 @@ void main() {
       await host(t,
           const OlderVersionMark(id: 'x', version: 104, reason: kReasonRaw));
       expect(olderMark('x'), findsOneWidget);
-      expect(find.descendant(of: olderMark('x'), matching: find.text('*')),
-          findsOneWidget);
+      expect(t.widget<Text>(olderMark('x')).data, '*');
       expect(find.bySemanticsLabel(kSpoken), findsWidgets);
       expect(find.text(kNoteV104Reason), findsNothing);
       expectSpokenNotTappable(t, olderMark('x'));
