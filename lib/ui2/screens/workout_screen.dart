@@ -403,6 +403,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
             final end = d.trimpEnd ?? DateTime.now();
             final axis = AxisSpec.of([for (final v in trimp7) ?v], floor: 0);
             final days = trimp7.where((v) => v != null).length;
+            final olderRuns7 = olderRuns(d.trimpOlder7);
             return ChartFrame(
               title: loc?.workoutDailyLoadTitle ?? 'Heart effort by day',
               unit: loc?.workoutTrimpUnit ?? 'points',
@@ -416,23 +417,25 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
               ],
               // One range per run of older days; a bar is the interval
               // [i, i + 1). The label shows only while the finger is on a run.
-              annotations: olderRuns(d.trimpOlder7).isEmpty
+              annotations: olderRuns7.isEmpty
                   ? null
                   : AnnotationSet(
                       items: olderRangeAnnotations(
-                        slots: d.trimpOlder7,
-                        idPrefix: 'older',
-                        label: (r) => olderRangeLabel(
-                            loc,
-                            olderRunText(
-                                Localizations.localeOf(c).toString(),
-                                DateTime(end.year, end.month,
-                                    end.day - (6 - r.from)),
-                                DateTime(end.year, end.month,
-                                    end.day - (6 - r.to)),
-                                weekdays: true),
-                            r.older.version,
-                            r.older.reason),
+                        runs: olderRuns7,
+                        labels: [
+                          for (final r in olderRuns7)
+                            olderRangeLabel(
+                                loc,
+                                olderRunText(
+                                    Localizations.localeOf(c).toString(),
+                                    DateTime(end.year, end.month,
+                                        end.day - (6 - r.from)),
+                                    DateTime(end.year, end.month,
+                                        end.day - (6 - r.to)),
+                                    weekdays: true),
+                                r.older.version,
+                                r.older.reason),
+                        ],
                       ),
                       domainStart: 0,
                       domainEnd: 7,

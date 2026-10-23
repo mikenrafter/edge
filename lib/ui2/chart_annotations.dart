@@ -543,24 +543,24 @@ List<OlderRun> olderRuns(List<ChartOlder?> slots) {
 }
 
 /// One algoVersion RANGE per run of older days: shaded area, dashed ends, one
-/// icon, its label in the lane's one fixed place. A run over slots a..b spans
+/// icon, its label (one per run, in order) in the lane's one fixed place. A run over slots a..b spans
 /// `a + lead` to `b + trail` in the chart's domain: (0, 1) when a slot is the
 /// interval [i, i+1), (-.5, .5) when it is the point i.
 List<ChartAnnotation> olderRangeAnnotations({
-  required List<ChartOlder?> slots,
-  required String Function(OlderRun run) label,
+  required List<OlderRun> runs,
+  required List<String> labels,
   String idPrefix = 'older',
   double lead = 0,
   double trail = 1,
 }) =>
     [
-      for (final r in olderRuns(slots))
+      for (var i = 0; i < runs.length && i < labels.length; i++)
         ChartAnnotation(
-          id: '$idPrefix:${r.from}',
+          id: '$idPrefix:${runs[i].from}',
           kind: AnnotationKind.algoVersion,
-          at: r.from + lead,
-          until: r.to + trail,
-          label: label(r),
+          at: runs[i].from + lead,
+          until: runs[i].to + trail,
+          label: labels[i],
         ),
     ];
 

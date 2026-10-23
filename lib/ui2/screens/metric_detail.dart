@@ -1703,16 +1703,20 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
           ];
           final locale = Localizations.localeOf(context).toString();
           DateTime dayOf(int i) => DateTime.parse(_dayOfSlot(i, series.length));
+          final runs = olderRuns(olderSlots);
           final older = olderRangeAnnotations(
-            slots: olderSlots,
+            runs: runs,
             lead: -.5,
             trail: .5,
-            label: (r) => olderRangeLabel(
-                l,
-                olderRunText(locale, dayOf(r.from), dayOf(r.to),
-                    weekdays: series.length <= 7),
-                r.older.version,
-                r.older.reason),
+            labels: [
+              for (final r in runs)
+                olderRangeLabel(
+                    l,
+                    olderRunText(locale, dayOf(r.from), dayOf(r.to),
+                        weekdays: series.length <= 7),
+                    r.older.version,
+                    r.older.reason),
+            ],
           );
           final shown = [...marks, ...journal, ...older];
           final dim = _dimMask(d, series.length);

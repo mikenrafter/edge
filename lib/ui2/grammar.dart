@@ -667,6 +667,9 @@ class _ChartScrubState extends State<ChartScrub> {
   double? _at;
   _ChartHub? _hub;
 
+  /// What the row says with nothing scrubbed.
+  ChartReadout resolveRest() => _resolve(null);
+
   ChartReadout _resolve(double? at) => ChartScrub.resolve(
       keys: widget.keys, time: widget.time, gaps: widget.gaps, at: at);
 
@@ -989,7 +992,7 @@ List<({int? version, String? reason})> chartRestOlder(List<ChartCell> cells) => 
 /// or changes under a still frame is caught by comparing what the row last drew
 /// with what it would draw now.
 class _ChartHub extends ChangeNotifier {
-  Object? _owner;
+  _ChartScrubState? _owner;
   ChartReadout Function(double? at)? _resolve;
   double? at;
   String? rendered;
@@ -998,9 +1001,9 @@ class _ChartHub extends ChangeNotifier {
   ChartReadout? read() => _resolve?.call(at);
 
   /// The at-rest readout, whatever the finger is doing.
-  ChartReadout? readRest() => _resolve?.call(null);
+  ChartReadout? readRest() => _owner?.resolveRest();
 
-  void attach(Object owner, ChartReadout Function(double? at) resolve,
+  void attach(_ChartScrubState owner, ChartReadout Function(double? at) resolve,
       double? position) {
     _owner = owner;
     _resolve = resolve;

@@ -173,26 +173,27 @@ class OlderVersionStrip extends StatelessWidget {
 /// itself. [locale] is the ambient locale's name.
 String olderRunText(String locale, DateTime first, DateTime last,
     {bool weekdays = false}) {
-  DateFormat f(DateFormat Function(String) make) {
-    try {
-      return make(locale);
-    } catch (_) {
-      return make('en');
-    }
-  }
-
   final same = first.year == last.year &&
       first.month == last.month &&
       first.day == last.day;
   if (weekdays) {
-    final e = f((l) => DateFormat.E(l));
+    final e = _dateFormat('E', locale);
     return same ? e.format(first) : '${e.format(first)}–${e.format(last)}';
   }
-  final md = f((l) => DateFormat.MMMd(l));
+  final md = _dateFormat('MMMd', locale);
   if (same) return md.format(first);
   final sameMonth = first.year == last.year && first.month == last.month;
   return '${md.format(first)}–'
-      '${sameMonth ? f((l) => DateFormat.d(l)).format(last) : md.format(last)}';
+      '${sameMonth ? _dateFormat('d', locale).format(last) : md.format(last)}';
+}
+
+/// [pattern] in [locale], or in English where the locale has no date data.
+DateFormat _dateFormat(String pattern, String locale) {
+  try {
+    return DateFormat(pattern, locale);
+  } catch (_) {
+    return DateFormat(pattern, 'en');
+  }
 }
 
 /// The label of a run of older days: "<days>: older calculation (v104),

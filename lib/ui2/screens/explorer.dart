@@ -871,15 +871,22 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
     final l = AppLocalizations.of(c);
     final locale = Localizations.localeOf(c).toString();
     final n = w.days.length;
-    return [
-      for (final m in picked)
-        if (m.line != null)
-          ...olderRangeAnnotations(
-            slots: [for (var i = 0; i < n; i++) m.line!.olderAt((i + .5) / n)],
-            idPrefix: 'older:${m.key}',
-            label: (r) => '${m.label}: ${olderRangeLabel(l, olderRunText(locale, DateTime.parse(w.days[r.from]), DateTime.parse(w.days[r.to]), weekdays: n <= 7), r.older.version, r.older.reason)}',
-          ),
-    ];
+    final out = <ChartAnnotation>[];
+    for (final m in picked) {
+      final line = m.line;
+      if (line == null) continue;
+      final runs = olderRuns(
+          [for (var i = 0; i < n; i++) line.olderAt((i + .5) / n)]);
+      out.addAll(olderRangeAnnotations(
+        runs: runs,
+        idPrefix: 'older:${m.key}',
+        labels: [
+          for (final r in runs)
+            '${m.label}: ${olderRangeLabel(l, olderRunText(locale, DateTime.parse(w.days[r.from]), DateTime.parse(w.days[r.to]), weekdays: n <= 7), r.older.version, r.older.reason)}',
+        ],
+      ));
+    }
+    return out;
   }
 
   Widget _picker(BuildContext c, P p, AppLocalizations? l) {
