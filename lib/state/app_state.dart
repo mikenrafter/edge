@@ -1568,7 +1568,16 @@ class AppState extends ChangeNotifier {
       ImportReentryStore.current = ImportReentryStore();
   ValueNotifier<List<String>> get importReentry => _reentry.pending;
   Future<void> dismissImportReentry() => _reentry.dismiss();
-  Future<void> loadImportReentry() => _reentry.load();
+  /// Reloads the notes mirror. UI bookkeeping: a preferences failure is logged
+  /// and swallowed, never allowed to fail an import (or boot) that already
+  /// landed its rows.
+  Future<void> loadImportReentry() async {
+    try {
+      await _reentry.load();
+    } catch (e) {
+      _log('import: re-entry notes reload failed: $e');
+    }
+  }
 
   /// Runs a multi-select import as one batch: its backups share one re-entry
   /// run identity, so a dismissal between two of them holds for the rest.
