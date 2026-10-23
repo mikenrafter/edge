@@ -111,4 +111,25 @@ void main() {
     await _pump(t, _d());
     expect([for (var i = 0; i < 3; i++) t.getRect(_dials.at(i))], before);
   });
+
+  testWidgets('an update note does not hide the gap reason of an absent ring', (t) async {
+    HomeData d({required bool update}) => HomeData(
+          dayId: '2026-10-08',
+          recoveryState: 'final',
+          readiness: _m(58),
+          sleepMin: _m(450),
+          sleepNeedMin: _m(480),
+          // strain absent: a dash, and the reason must still be written.
+          readinessUpdate: update ? {'from': 62, 'to': 58, 'at': _at} : null,
+        );
+    await _pump(t, d(update: false));
+    final reason = find.textContaining('Strain ·');
+    expect(reason, findsOneWidget, reason: 'baseline: the gap reason shows');
+    final before = [for (var i = 0; i < 3; i++) t.getRect(_dials.at(i))];
+    await _pump(t, d(update: true));
+    expect(_row, findsOneWidget);
+    expect(reason, findsOneWidget, reason: 'the row sits alongside the reason');
+    expect(t.getTopLeft(_row).dy, lessThan(t.getTopLeft(reason).dy), reason: 'row, then the reason');
+    expect([for (var i = 0; i < 3; i++) t.getRect(_dials.at(i))], before);
+  });
 }
