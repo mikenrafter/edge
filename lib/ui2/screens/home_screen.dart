@@ -1033,6 +1033,9 @@ class RingTrio extends StatelessWidget {
     final gaps = rings.where((r) => r.why != null).toList();
     final pressing = pressingRings(d, now: at);
     final older = d.strain.fromOlderVersion;
+    // The shared "Updated 8:12 · 62 → 58" line (Readiness detail and Health print
+    // it too): a changed number is explained, as a neutral row.
+    final note = recoveryUpdatedLine(d.readinessUpdate, l);
     // THERE IS NO "THESE TWO ARE FROM SATURDAY" LINE ANY MORE, and there is
     // nothing left for one to explain. Recovery and sleep used to be served
     // from the last scored night whenever today's had not settled, and this
@@ -1072,14 +1075,18 @@ class RingTrio extends StatelessWidget {
         // THE HELP STRIP: one fixed-height slot under the rings, the same box
         // first launch and loaded. Empty, it says what arrives when (or why a
         // ring is empty); loaded, it is the card's "Why?" footer.
-        if (pressing.isNotEmpty || older != null) ...[
+        if (pressing.isNotEmpty || older != null || note != null) ...[
           const SizedBox(height: S.x3),
+          // Order: the whys (max 2), the update note, the older row.
           for (var i = 0; i < pressing.length; i++) ...[
             if (i > 0) const SizedBox(height: S.x2),
             _HomeWhyPanel(kind: pressing[i], data: d, onTap: _open(pressing[i])),
           ],
+          if (note != null)
+            Padding(padding: EdgeInsets.only(top: pressing.isEmpty ? 0 : S.x2),
+                child: _HomeUpdateNote(line: note, onTap: _open(HomeRingKind.recovery))),
           if (older != null)
-            Padding(padding: EdgeInsets.only(top: pressing.isEmpty ? 0 : S.x2), child: _HomeOlderPanel(version: older, reason: d.strain.olderVersionReason,
+            Padding(padding: EdgeInsets.only(top: pressing.isEmpty && note == null ? 0 : S.x2), child: _HomeOlderPanel(version: older, reason: d.strain.olderVersionReason,
                 onTap: _open(HomeRingKind.strain)),
             ),
         ] else if (help != null && help!.text.isNotEmpty) ...[
@@ -1262,6 +1269,27 @@ String _sleepWhy(HomeData d, AppLocalizations? l) {
   String hm(num m) => '${m ~/ 60}h ${m.round() % 60}m';
   return l?.homeWhySleepDetail(hm(asleep), hm(gap), hm(need)) ??
       '${hm(asleep)} asleep, ${hm(gap)} under your ${hm(need)} need.';
+}
+
+/// The recovery update note as a neutral row in the pressing style.
+class _HomeUpdateNote extends StatelessWidget {
+  final String line;
+  final VoidCallback? onTap;
+  const _HomeUpdateNote({required this.line, this.onTap});
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return _HomeInsetRow(key: const ValueKey('home-update-note'), onTap: onTap,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Container(key: const ValueKey('home-update-note-icon'), width: 32, height: 32,
+          decoration: BoxDecoration(color: p.ink3.withValues(alpha: .16), shape: BoxShape.circle),
+          child: Icon(LucideIcons.refreshCw, size: 17, color: p.ink2)),
+        const SizedBox(width: S.x2),
+        Expanded(child: Text(line, style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
+            maxLines: 2, overflow: TextOverflow.ellipsis)),
+        Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
+      ]));
+  }
 }
 
 class _HomeOlderPanel extends StatelessWidget {
