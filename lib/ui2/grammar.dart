@@ -2444,34 +2444,78 @@ class InlineMetrics extends StatelessWidget {
   final List<(String, String, Color)> items;
   const InlineMetrics(this.items, {super.key});
 
+  /// The least space two neighbouring readouts keep between them.
+  static const double _gap = 8;
+
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return LayoutBuilder(builder: (context, constraints) {
-      final gap = 8.0;
-      final cellWidth = (constraints.maxWidth - gap * (items.length - 1)) / items.length;
-      return Wrap(
-      spacing: gap,
-      runSpacing: S.x2,
-      children: [
-        for (final e in items)
-          SizedBox(
-            width: cellWidth,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(e.$1, style: F.over.copyWith(color: p.ink3)),
-                const SizedBox(height: S.x1),
-                Text(
-                  e.$2,
-                  style: F.n17.copyWith(color: p.on(e.$3)),
-                  softWrap: true,
-                ),
-              ],
+    final scaler = MediaQuery.textScalerOf(c);
+    final dir = Directionality.of(c);
+
+    Widget cell(String label, String value, Color color) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: F.over.copyWith(color: p.ink3)),
+            const SizedBox(height: S.x1),
+            // scaleDown, NOT ellipsis. These are measurements sharing
+            // one row, so the slot is a third of a card and a two-digit
+            // fixture fits where a real one does not: at 2x text the
+            // journey summary printed '+642…' and '−618…' where the
+            // numbers are +642 m and −618 m. A shrunk measurement is
+            // still the measurement; a truncated one is a different
+            // number.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(
+                value,
+                style: F.n17.copyWith(color: p.on(color)),
+                maxLines: 1,
+              ),
             ),
-          ),
-      ],
-    );
+          ],
+        );
+
+    return LayoutBuilder(builder: (context, box) {
+      double natural(String t, TextStyle st) {
+        final tp = TextPainter(
+          text: TextSpan(text: t, style: st),
+          textDirection: dir,
+          textScaler: scaler,
+          maxLines: 1,
+        )..layout();
+        final w = tp.width;
+        tp.dispose();
+        return w;
+      }
+
+      // One row of equal cells, as always, while every value fits its cell
+      // with a gap to spare. Only when one does not (a long value at a large
+      // text size) do the readouts flow onto further rows at their own width,
+      // so two values can never run into each other.
+      final cellW = items.isEmpty || !box.maxWidth.isFinite
+          ? double.infinity
+          : box.maxWidth / items.length;
+      final fits = items.every((e) => natural(e.$2, F.n17) <= cellW - 4);
+      if (fits) {
+        return Row(
+          children: [
+            for (final e in items) Expanded(child: cell(e.$1, e.$2, e.$3)),
+          ],
+        );
+      }
+      return Wrap(
+        spacing: _gap,
+        runSpacing: S.x3,
+        children: [
+          for (final e in items)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: box.maxWidth),
+              child: IntrinsicWidth(child: cell(e.$1, e.$2, e.$3)),
+            ),
+        ],
+      );
     });
   }
 }
@@ -3502,14 +3546,36 @@ class ChartFrame extends StatelessWidget {
       style: F.over.copyWith(color: p.ink3),
     );
     if (!stacked) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Flexible(child: name),
-          const SizedBox(width: S.x1),
-          Flexible(child: measure),
-        ],
-      );
+      // Title left, unit right, one line: as it always was. It only stacks
+      // when the unit leaves no room for even the title's longest word (the
+      // four-unit "bpm · ms · br/min · rel" at 1.3x on a phone), which
+      // otherwise overflows the row.
+      final scaler = MediaQuery.textScalerOf(c);
+      final dir = Directionality.of(c);
+      return LayoutBuilder(builder: (context, box) {
+        if (box.maxWidth.isFinite) {
+          final unitW = _measure(uiText(c, unit), F.over, scaler, dir).width;
+          final style = F.cap.copyWith(fontWeight: FontWeight.w600);
+          var word = 0.0;
+          for (final w in title.split(RegExp(r'\s+'))) {
+            word = math.max(word, _measure(w, style, scaler, dir).width);
+          }
+          if (unitW + S.x2 + word > box.maxWidth) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [name, measure],
+            );
+          }
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: name),
+            const SizedBox(width: S.x2),
+            measure,
+          ],
+        );
+      });
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3600,7 +3666,7 @@ class ChartFrame extends StatelessWidget {
           // Title and unit share a line until the text scale makes that a
           // choice between truncating the title and dropping the unit — at
           // which point the unit moves under it. Neither is ever dropped.
-          ExcludeSemantics(child: _header(c, p, scaler.scale(1) >= 1.3)),
+          ExcludeSemantics(child: _header(c, p, scaler.scale(1) > 1.3)),
           const SizedBox(height: S.x3),
 
           // ── plot, or the honest absence of one ──
