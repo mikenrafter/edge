@@ -643,6 +643,10 @@
   "@devicesLive": {
     "description": "Section header."
   },
+  "liveHrWaitingSemantics": "Live heart rate chart, waiting for live data",
+  "@liveHrWaitingSemantics": {
+    "description": "Screen-reader label of the empty placeholder where the live heart rate chart will appear."
+  },
   "devicesQualityLadder": "THE QUALITY LADDER",
   "@devicesQualityLadder": {
     "description": "Section header."
