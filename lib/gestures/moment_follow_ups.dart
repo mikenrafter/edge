@@ -184,20 +184,17 @@ class MomentFollowUps {
   final List<AssumedGlass> assumed;
 
   /// Assumed glasses still waiting for keep / remove at [now]: state
-  /// `assumed`, not before the setting was enabled, within [windowDays] local
-  /// calendar days, oldest first. Empty when the setting is off. Pure.
+  /// `assumed`, within [windowDays] local calendar days, oldest first. Not
+  /// gated on the follow-up setting (owner 2026-10-22): a glass adds to water
+  /// drunk whether or not moments are followed up, so it is always reviewable.
+  /// Pure.
   List<AssumedGlass> pendingAssumed(DateTime now) {
-    final since = enabledSince?.toLocal();
-    if (since == null) return const [];
-    final from = DateTime(since.year, since.month, since.day, since.hour, since.minute);
     final n = now.toLocal();
     final cutoff =
         DateTime(n.year, n.month, n.day - windowDays, n.hour, n.minute);
     final out = [
       for (final g in assumed)
-        if (g.state == AssumedState.assumed &&
-            !g.local.isBefore(from) &&
-            !g.local.isBefore(cutoff))
+        if (g.state == AssumedState.assumed && !g.local.isBefore(cutoff))
           g,
     ]..sort((a, b) => a.local.compareTo(b.local));
     return out;
@@ -210,7 +207,7 @@ class MomentFollowUps {
 
   /// What the Home card counts: pending marks and glasses plus the started
   /// ranges of [queue] with no pending mark left (an owed announcement would
-  /// otherwise be invisible). 0 while the setting is off.
+  /// otherwise be invisible). With the setting off, only the glasses.
   int reviewCount(DateTime now, MomentReviewQueue queue) {
     final c = reviewCounts(now, queue);
     return c.moments + c.assumedWater;
@@ -219,10 +216,13 @@ class MomentFollowUps {
   /// [reviewCount] split the way the Home card shows it: `moments` is the
   /// pending marks plus the started ranges that only owe their announcement,
   /// `assumedWater` the glasses waiting for keep / remove. They always add up
-  /// to [reviewCount]; both are 0 while the setting is off. Pure.
+  /// to [reviewCount]. With the setting off `moments` is 0; glasses still
+  /// count. Pure.
   ({int moments, int assumedWater}) reviewCounts(
       DateTime now, MomentReviewQueue queue) {
-    if (enabledSince == null) return (moments: 0, assumedWater: 0);
+    if (enabledSince == null) {
+      return (moments: 0, assumedWater: pendingAssumed(now).length);
+    }
     final marks = pending(now);
     final keys = {for (final m in marks) m.key};
     return (
@@ -292,9 +292,16 @@ class MomentFollowUps {
   }
 
   /// Reads the journal and the labels from the database.
+  /// With the setting off only the assumed glasses of the review window are
+  /// read (they are reviewable regardless); [now] defaults to the clock.
   static Future<MomentFollowUps> load(
       {required DateTime? enabledSince, DateTime? now}) async {
-    if (enabledSince == null) return const MomentFollowUps(enabledSince: null);
+    if (enabledSince == null) {
+      final n = (now ?? DateTime.now()).toLocal();
+      final glasses = await LocalDb.assumedWater(
+          sinceDate: dayLabelOf(DateTime(n.year, n.month, n.day - windowDays)));
+      return MomentFollowUps(enabledSince: null, assumed: glasses);
+    }
     final from = dayLabelOf(enabledSince);
     final rows = await LocalDb.journalRows(sinceDaysEpoch: from);
     final labels = await LocalDb.momentLabels(sinceDate: from);
