@@ -4,8 +4,14 @@ import 'package:flutter/material.dart';
 
 const double kSpiralSeparator = 1.5;
 
-/// RED STUB.
-double spiralSeparatorWidth(double stroke) => kSpiralSeparator;
+/// Width of the lap separator: a LINE centred on the upper lap's outer edge,
+/// 1.5 px at stroke 20 and up, scaled down with the stroke, and none below
+/// 0.5 px. A tiny ring has no room to spend on a separator: the laps overlap
+/// by a quarter stroke and an erased gap would leave empty rings.
+double spiralSeparatorWidth(double stroke) {
+  final w = kSpiralSeparator * min(1.0, stroke / 20);
+  return w < .5 ? 0 : w;
+}
 
 class SpiralPiece {
   final int seg, lap;
@@ -185,25 +191,26 @@ void paintSpiral(Canvas canvas, Size size,
       (lateDiscs[p.lap + 1] ??= []).add(p);
     }
   }
-  void disc(SpiralPiece p, double s) => canvas.drawCircle(
-      pt(s, geometry.radiusAt(s, r0)), half, Paint()..color = colourAt(p, s));
+  final bandPaths = <SpiralPiece, Path>{};
+  // Translucent colours must be composited ONCE: a cap is only its part that
+  // the band has not already painted, in the colour at its own end (which also
+  // keeps the endpoint colour where a cap crosses the gradient's seam).
+  void disc(SpiralPiece p, double s) {
+    final c = pt(s, geometry.radiusAt(s, r0));
+    if (solid) {
+      canvas.drawCircle(c, half, Paint()..color = colourAt(p, s));
+      return;
+    }
+    final cap = Path()..addOval(Rect.fromCircle(center: c, radius: half));
+    final own = bandPaths[p];
+    canvas.drawPath(own == null ? cap : Path.combine(PathOperation.difference, cap, own),
+        Paint()..color = colourAt(p, s));
+  }
 
   for (final lap in laps.keys.toList()..sort()) {
     final group = laps[lap]!; // already last segment first
-    // The separator is laid ONCE per lap, before any of its segments, so
-    // stage joins stay contiguous.
-    if (lap >= 1) {
-      final to = group.map((p) => p.to).reduce(max);
-      final from = max(group.map((p) => p.from).reduce(min),
-          geometry.separatorFrom(lap)!);
-      final fill = Paint()..color = sepColour;
-      if (from < to) canvas.drawPath(band(from, to, kSpiralSeparator), fill);
-      final last = group.firstWhere((p) => p.to == to);
-      if (last.capEnd && to > from) {
-        canvas.drawCircle(pt(to, geometry.radiusAt(to, r0)),
-            half + kSpiralSeparator, fill);
-      }
-    }
+    final bandsFrom = group.map((p) => p.from).reduce(min);
+    final bandsTo = group.map((p) => p.to).reduce(max);
     for (final p in group) {
       // A lap cut overlaps the next lap's start slightly: no hairline seam.
       final to = p.capEnd ? p.to : p.to + .003;
@@ -222,7 +229,31 @@ void paintSpiral(Canvas canvas, Size size,
             transform: const GradientRotation(-pi / 2),
           ).createShader(Rect.fromCircle(center: center, radius: r0));
       }
-      canvas.drawPath(band(p.from, to, 0), paint);
+      final bandPath = band(p.from, to, 0);
+      bandPaths[p] = bandPath;
+      canvas.drawPath(bandPath, paint);
+    }
+    // One thin line along the upper lap's outer edge, laid after the lap's own
+    // bands (so stage joins stay contiguous) and before its caps. It starts
+    // where the lap leaves the one below.
+    final sepW = spiralSeparatorWidth(stroke);
+    if (lap >= 1 && sepW > 0) {
+      final from = max(bandsFrom, geometry.separatorFrom(lap)!);
+      if (from < bandsTo) {
+        final n = max(2, ((bandsTo - from) * 360).ceil());
+        final line = Path();
+        for (var i = 0; i <= n; i++) {
+          final s = from + (bandsTo - from) * i / n;
+          final o = pt(s, geometry.radiusAt(s, r0) + half);
+          i == 0 ? line.moveTo(o.dx, o.dy) : line.lineTo(o.dx, o.dy);
+        }
+        canvas.drawPath(
+            line,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = sepW
+              ..color = sepColour);
+      }
     }
     // Caps after every band of the lap, so each segment's round end sits over
     // its clockwise neighbour (and the last one over the first at the seam).

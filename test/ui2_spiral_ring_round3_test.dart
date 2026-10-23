@@ -48,7 +48,7 @@ void main() {
           }
         }
         expect(inner, isNotNull, reason: 'u=$u');
-        for (var r = inner! + .5; r < 9.3; r += .25) {
+        for (var r = inner! + .5; r < 8.8; r += .25) {
           final c = _at(d, 20, u, r);
           expect(c[3], greaterThan(200), reason: 'gap at u=$u r=$r $c');
           expect(_magenta(c), isFalse, reason: 'separator at u=$u r=$r');
@@ -66,13 +66,14 @@ void main() {
           200);
       for (final u in [.15, .2, .25]) {
         final edge = 90 - g.inset(1 + u) + 10;
-        var n = 0;
+        // Width = sum of the magenta share (the red channel; the ring is
+        // green) along the ray, so antialiased edge pixels count fractionally.
+        var w = 0.0;
         for (var r = edge - 4; r < edge + 4; r += .1) {
-          if (_magenta(_at(d, 200, u, r))) n++;
+          w += _at(d, 200, u, r)[0] / 255 * .1;
         }
-        final w = n * .1;
-        expect(w, greaterThan(.3), reason: 'u=$u: no separator');
-        expect(w, lessThanOrEqualTo(1.6), reason: 'u=$u width $w');
+        expect(w, greaterThan(.6), reason: 'u=$u: no separator');
+        expect(w, lessThanOrEqualTo(1.8), reason: 'u=$u width $w');
       }
     });
   });

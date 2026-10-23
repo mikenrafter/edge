@@ -471,10 +471,12 @@ void main() {
         final d = await raster(Ring(1.3, green, const Color(0xFFFFFF00),
             stroke: w, solid: true, background: magenta));
         // Just outside lap 1's outer edge, on top of lap 0's band.
+        // A thin LINE centred on the upper lap's outer edge.
         double rim(double s) => r0 - g.inset(s) + w / 2 + .75;
+        double edge(double s) => r0 - g.inset(s) + w / 2;
         for (final u in [.15, .2, .25]) {
-          final c = at(d, u, rim(1 + u));
-          expect(isMagenta(c), isTrue, reason: 'u=$u px=$c');
+          final c = at(d, u, edge(1 + u));
+          expect(c[0] > 100 && c[2] > 100, isTrue, reason: 'u=$u px=$c');
         }
         // Past the value: no separator, lap 0 colour is intact.
         for (final u in [.4, .5]) {
