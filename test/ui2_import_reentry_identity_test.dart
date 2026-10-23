@@ -11,6 +11,8 @@
 //
 // Compile stubs (production, pre-fix behaviour): `add(ids, {runId})` ignores
 // the run, and `reentryRunIdOf` returns a constant (lib/data/import_reentry_store.dart).
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // ignore: depend_on_referenced_packages
@@ -172,5 +174,26 @@ void main() {
     await s.dismiss();
     await s.add([_x], runId: 'A');
     expect(s.pending.value, isEmpty);
+  });
+
+  test('overlapping imports do not share a run: B\'s own warning shows after A '
+      'dismissed the same item', () async {
+    await _arm();
+    final s = ImportReentryStore();
+    final aDismissed = Completer<void>();
+    final release = Completer<void>();
+    final a = s.batch(() async {
+      await s.add([_x], runId: 'A1');
+      await s.dismiss();
+      aDismissed.complete();
+      await release.future; // A is still open
+    });
+    await aDismissed.future;
+    await s.batch(() async {
+      await s.add([_x], runId: 'B1'); // a separate import, same missing key
+    });
+    expect(s.pending.value, [_x], reason: 'A\'s dismissal is not B\'s');
+    release.complete();
+    await a;
   });
 }
