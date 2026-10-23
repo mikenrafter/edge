@@ -3489,5 +3489,7 @@
       }
     }
   },
-  "liveHrWaitingSemantics": "लाइव हृदय गति चार्ट, लाइव डेटा की प्रतीक्षा में"
+  "liveHrWaitingSemantics": "लाइव हृदय गति चार्ट, लाइव डेटा की प्रतीक्षा में",
+  "liveHrWaitingSemantics": "लाइव हृदय गति चार्ट, लाइव डेटा की प्रतीक्षा में",
+  "liveHrStreamNotSaved": "लाइव स्ट्रीम सहेजी नहीं जाती।"
 }

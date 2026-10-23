@@ -3489,5 +3489,7 @@
       }
     }
   },
-  "liveHrWaitingSemantics": "Graphique de fréquence cardiaque en direct, en attente de données"
+  "liveHrWaitingSemantics": "Graphique de fréquence cardiaque en direct, en attente de données",
+  "liveHrWaitingSemantics": "Graphique de fréquence cardiaque en direct, en attente de données",
+  "liveHrStreamNotSaved": "Le flux en direct n’est pas enregistré."
 }

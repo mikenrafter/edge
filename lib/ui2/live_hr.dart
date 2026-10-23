@@ -77,42 +77,74 @@ class LiveHrCard extends StatelessWidget {
   final List<int>? _trace;
   final bool _preview;
 
+  static const _fixUnpaired = 'Pair one from Profile to read live beats.';
+  static const _fixDisconnected =
+      'The app connects when you open it with the band in range. '
+      'Live beats need that connection.';
+
+  static String _caption(String? saved, int n, int lo, int hi) =>
+      'The last $n readings, $lo to $hi bpm. ${saved ?? _notSavedEn}';
+  static const _notSavedEn = 'The live stream is not saved.';
+
+  /// ONE LAYOUT FOR EVERY STATE. The header slot, the 56 pt plot slot with its
+  /// key row, and the caption slot are built the same way whether the card has
+  /// no band, no beat, one beat or a chart; only what is drawn in them differs.
+  /// The card's height therefore comes from the layout, at any text scale and
+  /// in any language, and cannot differ between states.
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final hr = _preview ? _hr : c.select<AppState, int?>((a) => a.liveHr);
-    if (hr == null) {
-      if (_preview) return _absent(paired: true, connected: true, c: c);
-      // SELECTED, not read: with no reading the only thing this widget watched
-      // was `liveHr`, which stays null through both pairing and connecting — so
-      // the card went on saying "No band is paired" after the band was paired
-      // and connected. These are what change in that state.
-      return _absent(
-        c: c,
-        paired: c.select<AppState, bool>((a) => a.isPaired),
-        connected: c.select<AppState, bool>((a) => a.isConnected),
-      );
+    // SELECTED, not read: with no reading the only thing this widget watched
+    // was `liveHr`, which stays null through both pairing and connecting — so
+    // the card went on saying "No band is paired" after the band was paired
+    // and connected. These are what change in that state.
+    final bool paired, connected;
+    if (_preview || hr != null) {
+      paired = connected = true;
+    } else {
+      paired = c.select<AppState, bool>((a) => a.isPaired);
+      connected = c.select<AppState, bool>((a) => a.isConnected);
     }
 
     // A REVISION, not the length. Length is pinned at the cap once the buffer
     // is full, so watching it drew the first 90 readings and then froze.
-    final List<int> trace;
-    if (_preview) {
-      trace = _trace ?? const [];
-    } else {
-      c.select<AppState, int>((a) => a.liveHrTraceRev);
-      trace = c.read<AppState>().liveHrTrace();
+    List<int> trace = const [];
+    if (hr != null) {
+      if (_preview) {
+        trace = _trace ?? const [];
+      } else {
+        c.select<AppState, int>((a) => a.liveHrTraceRev);
+        trace = c.read<AppState>().liveHrTrace();
+      }
+    }
+    final hasChart = trace.length > 2;
+    final live = [for (final v in trace) v.toDouble()];
+    final saved = l?.liveHrStreamNotSaved;
+    final notSaved = saved ?? _notSavedEn;
+    final why = _absenceMessage(paired: paired, connected: connected);
+    final waiting = hr != null || (paired && connected);
+    final caption = hasChart
+        ? _caption(saved, trace.length, trace.reduce(math.min), trace.reduce(math.max))
+        : hr != null || waiting
+            ? notSaved
+            : !paired
+                ? _fixUnpaired
+                : _fixDisconnected;
+    final waitingLabel =
+        l?.liveHrWaitingSemantics ?? 'Live heart rate chart, waiting for live data';
+    // Same cells as the chart's own key row, with no value in them.
+    final keys = [
+      ChartKey.slots('Heart rate (bpm)', C.red, live, (i, v) => '${v.round()} bpm'),
+    ];
+    String? ago(double at) {
+      final n = live.length - 1 - ChartScrub.slotAt(live.length, at);
+      return n == 0 ? 'Now' : '$n readings ago';
     }
 
-    final hasChart = trace.length > 2;
-    final unavailable = !_preview && hr == null;
-    final absentMessage = _absenceMessage(
-      paired: _preview ? true : c.read<AppState>().isPaired,
-      connected: _preview ? true : c.read<AppState>().isConnected,
-    );
     return Surface(
-      child: SizedBox(height: 222, child: Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // At 3.1x text an n48 number plus a pill does not fit a phone width, so
@@ -125,32 +157,46 @@ class LiveHrCard extends StatelessWidget {
               Icon(LucideIcons.heart, size: 26, color: p.on(C.red)),
               const SizedBox(width: S.x3),
               Expanded(
-                child: FittedBox(
+                flex: 2,
+                // A FIXED slot height: FittedBox shrinks its child to fit the
+                // width, and a wider number shrinks further, which would make
+                // the header (and the card) a different height for "61" than
+                // for no number at all. The slot is one number line tall at
+                // this text scale, whatever is in it.
+                child: SizedBox(
+                  height: _numberLine(c),
+                  child: FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
-                      if (hr != null)
-                        Text('$hr', style: F.n48.copyWith(color: p.ink))
-                      else
-                        const SizedBox(height: 48),
+                      // No number yet: a zero-width glyph in the same style, so
+                      // the slot has the number's height and shows nothing.
+                      Text(hr == null ? '\u200B' : '$hr',
+                          style: F.n48.copyWith(color: p.ink)),
                       const SizedBox(width: S.x2),
                       Text(
-                        AppLocalizations.of(c)?.activityLiveBpmUnit ?? 'bpm',
+                        hr == null
+                            ? '\u200B'
+                            : (l?.activityLiveBpmUnit ?? 'bpm'),
                         style: F.body.copyWith(color: p.ink3),
                       ),
                     ],
                   ),
+                ),
                 ),
               ),
               const SizedBox(width: S.x2),
               // WHOSE PULSE THIS IS, only when two devices are streaming. Below
               // that the row is byte-identical to today's: same Pill, same
               // position, no Pressable in the tree at all.
-              if (!_preview && c.select<AppState, bool>((a) => a.liveHrMultiDevice))
-                Builder(
+              // Flexible: a long label (Russian, 3.1x) shrinks the pill's text
+              // instead of overflowing the row.
+              Flexible(
+                child: (!_preview && c.select<AppState, bool>((a) => a.liveHrMultiDevice))
+                ? Builder(
                   builder: (c) {
                     final app = c.read<AppState>();
                     final ranked = rankSources(liveSources(app));
@@ -159,7 +205,7 @@ class LiveHrCard extends StatelessWidget {
                         : ranked.firstWhereOrNull((s) => deviceIdOf(s) == id);
                     final label = source?.displayName(c) ?? (l?.devicesLive ?? 'LIVE');
                     return Pressable(
-                onTap: () => app.showLiveHrFrom(_nextDevice(app, ranked, id)),
+                      onTap: () => app.showLiveHrFrom(_nextDevice(app, ranked, id)),
                       semanticLabel:
                           l?.liveHrShowingDeviceSemantics(label) ??
                           'Showing $label. Tap to switch device.',
@@ -167,28 +213,20 @@ class LiveHrCard extends StatelessWidget {
                     );
                   },
                 )
-              else
-                Pill(l?.devicesLive ?? 'LIVE', C.red, icon: LucideIcons.radio),
+              : Pill(l?.devicesLive ?? 'LIVE', C.red, icon: LucideIcons.radio),
+              ),
             ],
           ),
-        if (hasChart) ...[
           const SizedBox(height: S.x3),
-          // Bare scrub: no frame, so it draws its own key row under the trace.
-          // The 56 pt belongs to the trace alone, not to the row beneath it.
-          Builder(builder: (_) {
-            final live = [for (final v in trace) v.toDouble()];
-            return ChartScrub(
+          if (hasChart)
+            // Bare scrub: no frame, so it draws its own key row under the trace.
+            // The 56 pt belongs to the trace alone, not to the row beneath it.
+            ChartScrub(
               label: 'Live heart rate',
               // The stream carries no timestamps, so the position is "how many
               // readings ago", counted from the newest.
-              time: (at) {
-                final ago = live.length - 1 - ChartScrub.slotAt(live.length, at);
-                return ago == 0 ? 'Now' : '$ago readings ago';
-              },
-              keys: [
-                ChartKey.slots('Heart rate (bpm)', C.red, live,
-                    (i, v) => '${v.round()} bpm'),
-              ],
+              time: ago,
+              keys: keys,
               child: SizedBox(
                 height: 56,
                 child: CustomPaint(
@@ -196,76 +234,106 @@ class LiveHrCard extends StatelessWidget {
                   size: Size.infinite,
                 ),
               ),
-            );
-          }),
-          const SizedBox(height: S.x2),
-          Text(
-            'The last ${trace.length} readings, ${trace.reduce(math.min)}'
-            ' to ${trace.reduce(math.max)} bpm. The live stream is not saved.',
-            style: F.over.copyWith(color: p.ink3),
-          ),
-        ] else ...[
-          const SizedBox(height: S.x3),
-          Semantics(
-            container: true,
-            label: l?.liveHrWaitingSemantics ?? 'Live heart rate chart, waiting for live data',
-            child: CustomPaint(
-              painter: _LiveHrSkeleton(p.line, p.track),
-              child: SizedBox(
-                height: 56,
-                width: double.infinity,
-                child: unavailable
-                    ? Center(child: Text(absentMessage, style: F.body.copyWith(color: p.ink2), textAlign: TextAlign.center))
-                    : null,
+            )
+          else
+            // The same plot slot and key row, nothing scrubbable in them.
+            Semantics(
+              container: true,
+              explicitChildNodes: true,
+              label: waiting ? waitingLabel : why,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    height: 56,
+                    child: CustomPaint(
+                      painter: _LiveHrSkeleton(p.line, p.track),
+                      size: Size.infinite,
+                      // With no beat, the reason is stated in the frame.
+                      child: hr == null
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: S.x2),
+                                child: Text(why,
+                                    textAlign: TextAlign.center,
+                                    style: F.body.copyWith(color: p.ink2)),
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: S.x2),
+                  ExcludeSemantics(
+                    child: ChartKeyReadout.of(
+                        ChartScrub.resolve(keys: keys, time: (_) => null)),
+                  ),
+                ],
               ),
             ),
-          ),
-          // The real scrub chart owns a compact readout row below its plot.
-          // Keep that slot and the caption slot in place while the feed fills.
-          const SizedBox(height: S.x2 + 18),
-          Text(
-            hasChart
-                ? 'The last ${trace.length} readings, ${trace.reduce(math.min)} to ${trace.reduce(math.max)} bpm. The live stream is not saved.'
-                : 'The live stream is not saved.',
+          const SizedBox(height: S.x2),
+          _CaptionSlot(
+            text: caption,
             style: F.over.copyWith(color: p.ink3),
+            // The tallest text this slot can hold, so no state is taller.
+            reserve: [
+              _caption(saved, 90, 100, 200),
+              notSaved,
+              _fixUnpaired,
+              _fixDisconnected,
+            ],
           ),
         ],
-      ])),
+      ),
     );
   }
 
-  /// No live reading. Three different facts, and only the one the app can
-  /// actually see is stated.
-  String _absenceMessage({required bool paired, required bool connected}) => !paired
-        ? 'No band is paired.'
-        : !connected
-            ? 'Your band is not connected.'
-            : 'No beat in the last ${AppState.liveHrMaxAge.inSeconds} seconds.';
-
-  Widget _absent({required BuildContext c, required bool paired, required bool connected}) {
-    final waiting = paired && connected;
-    final why = _absenceMessage(paired: paired, connected: connected);
-    final fix = waiting
-        ? 'The live stream is not saved.'
-        : !paired
-        ? 'Pair one from Profile to read live beats.'
-        : !connected
-            ? 'The app connects when you open it with the band in range. Live beats need that connection.'
-            : 'The band streams while it is on your wrist and the app is open.';
-    return Surface(child: SizedBox(height: 222, child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(children: [Icon(LucideIcons.heart, size: 26, color: P.of(c).on(C.red)), const SizedBox(width: S.x3), const Expanded(child: SizedBox(height: 58)), Pill(AppLocalizations.of(c)?.devicesLive ?? 'LIVE', C.red, icon: LucideIcons.radio)]),
-        const SizedBox(height: S.x3),
-        if (waiting)
-          Semantics(container: true, label: AppLocalizations.of(c)?.liveHrWaitingSemantics ?? 'Live heart rate chart, waiting for live data', child: CustomPaint(painter: _LiveHrSkeleton(P.of(c).line, P.of(c).track), child: const SizedBox(height: 56, width: double.infinity)))
-        else
-          CustomPaint(painter: _LiveHrSkeleton(P.of(c).line, P.of(c).track), child: SizedBox(height: 56, width: double.infinity, child: Center(child: Text(why, textAlign: TextAlign.center, style: F.body.copyWith(color: P.of(c).ink2))))),
-        const SizedBox(height: S.x2 + 18),
-        Text(fix, style: F.over.copyWith(color: P.of(c).ink3)),
-      ],
-    )));
+  /// One line of the big number, at the current text scale.
+  static double _numberLine(BuildContext c) {
+    final tp = TextPainter(
+        text: TextSpan(text: '0', style: F.n48),
+        textDirection: Directionality.of(c),
+        textScaler: MediaQuery.textScalerOf(c))
+      ..layout();
+    final h = tp.height;
+    tp.dispose();
+    return h;
   }
+
+  String _absenceMessage({required bool paired, required bool connected}) =>
+      !paired
+          ? 'No band is paired.'
+          : !connected
+              ? 'Your band is not connected.'
+              : 'No beat in the last ${AppState.liveHrMaxAge.inSeconds} seconds.';
+}
+
+/// A caption whose height is the tallest of [reserve] at this width and text
+/// scale, so changing the words (or the numbers in them) moves nothing.
+class _CaptionSlot extends StatelessWidget {
+  const _CaptionSlot({required this.text, required this.style, required this.reserve});
+  final String text;
+  final TextStyle style;
+  final List<String> reserve;
+
+  @override
+  Widget build(BuildContext c) => LayoutBuilder(builder: (c, box) {
+        final scaler = MediaQuery.textScalerOf(c);
+        final dir = Directionality.of(c);
+        var h = 0.0;
+        for (final s in reserve) {
+          final tp = TextPainter(
+              text: TextSpan(text: s, style: style),
+              textDirection: dir,
+              textScaler: scaler)
+            ..layout(maxWidth: box.maxWidth);
+          h = math.max(h, tp.height);
+          tp.dispose();
+        }
+        return ConstrainedBox(
+          constraints: BoxConstraints(minHeight: h),
+          child: Text(text, style: style),
+        );
+      });
 }
 
 class _LiveHrSkeleton extends CustomPainter {

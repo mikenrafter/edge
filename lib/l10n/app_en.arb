@@ -647,6 +647,10 @@
   "@liveHrWaitingSemantics": {
     "description": "Screen-reader label of the empty placeholder where the live heart rate chart will appear."
   },
+  "liveHrStreamNotSaved": "The live stream is not saved.",
+  "@liveHrStreamNotSaved": {
+    "description": "Caption under the live heart rate chart: live readings are kept in memory only."
+  },
   "devicesQualityLadder": "THE QUALITY LADDER",
   "@devicesQualityLadder": {
     "description": "Section header."
