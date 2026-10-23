@@ -718,8 +718,13 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
                   child: OlderVersionMark(
                       id: 'calories_total',
                       version: _burned!.fromOlderVersion,
-                      reason: _burned!.olderVersionReason),
+                      reason: _burned!.olderVersionReason,
+                      speak: false),
                 ),
+              if (_burned?.value != null)
+                OlderVersionStrip(id: 'calories_total', items: [
+                  (version: _burned!.fromOlderVersion, reason: _burned!.olderVersionReason)
+                ]),
             ],
           ),
         ),
@@ -886,9 +891,10 @@ class DayEnergyCard extends StatelessWidget {
                 ),
             ]),
             if (burned!.fromOlderVersion != null) Wrap(children: [
-              OlderVersionMark(id: 'calories_total', version: burned!.fromOlderVersion, reason: burned!.olderVersionReason),
-              if (k.value != null) OlderVersionMark(id: 'balance', version: burned!.fromOlderVersion, reason: burned!.olderVersionReason),
+              OlderVersionMark(id: 'calories_total', version: burned!.fromOlderVersion, reason: burned!.olderVersionReason, speak: false),
+              if (k.value != null) OlderVersionMark(id: 'balance', version: burned!.fromOlderVersion, reason: burned!.olderVersionReason, speak: false),
             ]),
+            OlderVersionStrip(id: 'calories_total', items: [(version: burned!.fromOlderVersion, reason: burned!.olderVersionReason)]),
           ],
         ],
       ),

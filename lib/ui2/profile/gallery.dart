@@ -1100,6 +1100,13 @@ Map<String, Widget> extraCases() => {
       'older_version_note': const Surface(
         child: OlderVersionNote(id: 'gallery', version: 104, reason: 'height'),
       ),
+      'older_version_strip': const Surface(
+        child: OlderVersionStrip(id: 'gallery', items: [
+          (version: 104, reason: 'height'),
+          (version: 104, reason: 'height'),
+          (version: 103, reason: null),
+        ]),
+      ),
       'chart_older_notes': const Surface(
         child: ChartOlderNotes([
           ChartCell('Heart rate (bpm)', null,

@@ -2023,7 +2023,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
           ]),
           if (v != null && points[i]?.olderVersion != null) ...[
             Padding(padding: const EdgeInsets.only(top: S.x1), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              OlderVersionMark(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason),
+              OlderVersionMark(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason, speak: false),
               OlderVersionNote(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason),
             ])),
           ],

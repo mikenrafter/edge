@@ -1281,7 +1281,7 @@ class SignalCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (olderVersion != null) OlderVersionMark(id: olderId ?? 'strain', version: olderVersion, reason: olderReason),
+              if (olderVersion != null) OlderVersionMark(id: olderId ?? 'strain', version: olderVersion, reason: olderReason, speak: false),
               if (unit.isNotEmpty) ...[
                 const SizedBox(width: S.x1),
                 Text(uiText(c, unit), style: F.cap.copyWith(color: p.ink3)),
@@ -1302,7 +1302,7 @@ class SignalCard extends StatelessWidget {
                       style: F.over.copyWith(color: p.ink3),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                    ), if (olderTotalVersion != null) OlderVersionMark(id: 'calories_total', version: olderTotalVersion, reason: olderTotalReason)]),
+                    ), if (olderTotalVersion != null) OlderVersionMark(id: 'calories_total', version: olderTotalVersion, reason: olderTotalReason, speak: false)]),
             ),
           ],
         ],

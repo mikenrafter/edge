@@ -56,7 +56,8 @@ void main() {
     expect(olderMark('calories_total'), findsOneWidget);
     expect(olderMark('balance'), findsOneWidget);
     expect(find.bySemanticsLabel(kSpoken), findsWidgets);
-    expectSpokenNotTappable(t, olderMark('calories_total'));
+    // Silent mark: the strip's note is the one announcement.
+    expectBareMark(olderMark('calories_total'));
     h.dispose();
   });
 

@@ -3,10 +3,12 @@
 // note "From an older calculation (v104): <reason>". Every surface that prints
 // such a value uses these two widgets; nothing formats its own.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../l10n/app_localizations.dart';
 import '../l10n/presentation_text.dart';
 import '../models/metric.dart';
+import 'theme.dart';
 
 /// English form of the note, for the callers with no localizations in scope.
 String olderVersionNoteText(int version, String? reason) {
@@ -67,21 +69,31 @@ class OlderVersionMark extends StatelessWidget {
   final String id;
   final int? version;
   final String? reason;
+
+  /// False where the parent already speaks the version (a card's merged label)
+  /// or a note beside it does: the status is then announced from one place.
+  final bool speak;
   const OlderVersionMark(
-      {super.key, required this.id, required this.version, this.reason});
+      {super.key,
+      required this.id,
+      required this.version,
+      this.reason,
+      this.speak = true});
 
   @override
   Widget build(BuildContext context) {
     final v = version;
     if (v == null) return const SizedBox.shrink();
     final l = AppLocalizations.of(context);
+    // Line height 1: the glyph keeps its size but never makes its line
+    // taller than the number or caption it sits beside.
+    final star = Text('*',
+        key: ValueKey('older-version-mark:$id'),
+        style: DefaultTextStyle.of(context).style.copyWith(height: 1));
+    if (!speak) return ExcludeSemantics(child: star);
     return Semantics(
       label: l?.olderVersionSemantics(v) ?? olderVersionSemantics(v),
-      // Line height 1: the glyph keeps its size but never makes its line
-      // taller than the number or caption it sits beside.
-      child: Text('*',
-          key: ValueKey('older-version-mark:$id'),
-          style: DefaultTextStyle.of(context).style.copyWith(height: 1)),
+      child: star,
     );
   }
 }
@@ -103,5 +115,54 @@ class OlderVersionNote extends StatelessWidget {
     // The text IS the spoken form: "From an older calculation (v104): …".
     return Text(olderVersionNoteLocalized(l, v, reason),
         key: ValueKey('older-version-note:$id'));
+  }
+}
+
+/// The reason, anchored at the foot of a card and there from the first frame: a
+/// thin divider, the history icon, then the note. One strip per card however
+/// many of its values are older; each distinct version and reason is listed
+/// once. Takes no room when nothing is older. Note key: `older-version-note:<id>`
+/// (suffixed `:<n>` after the first when a card has several distinct reasons).
+class OlderVersionStrip extends StatelessWidget {
+  final String id;
+  final List<({int? version, String? reason})> items;
+  const OlderVersionStrip({super.key, required this.id, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final seen = <({int version, String? reason})>[
+      for (final i in items)
+        if (i.version != null) (version: i.version!, reason: i.reason),
+    ].toSet().toList();
+    if (seen.isEmpty) return const SizedBox.shrink();
+    final p = P.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: S.x3),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(height: .5, color: p.line),
+        const SizedBox(height: S.x3),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(LucideIcons.history, size: 16, color: p.ink3),
+          ),
+          const SizedBox(width: S.x2),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var k = 0; k < seen.length; k++)
+                    DefaultTextStyle.merge(
+                      style: F.cap.copyWith(color: p.ink3, height: 1.4),
+                      child: OlderVersionNote(
+                          id: k == 0 ? id : '$id:$k',
+                          version: seen[k].version,
+                          reason: seen[k].reason),
+                    ),
+                ]),
+          ),
+        ]),
+      ]),
+    );
   }
 }
