@@ -2261,7 +2261,8 @@ class _StepGoalGaugeState extends State<_StepGoalGauge> {
             CustomPaint(
               size: Size.infinite,
               painter:
-                  Ring(frac ?? 0, widget.color, p.track, stroke: 7, solid: true),
+                  Ring(frac ?? 0, widget.color, p.track,
+                      stroke: 7, solid: true, background: p.card),
             ),
             // No steps recorded yet is absent, not zero — the track alone
             // says that; a percentage here would fabricate a reading.

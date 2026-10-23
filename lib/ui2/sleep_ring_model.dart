@@ -77,7 +77,7 @@ class SleepRingModel {
     this.wakeSource,
   });
 
-  /// Total sweep of the ring, 0…1.
+  /// Total sweep of the ring in laps: 1.0 is a full circle, above 1 a spiral.
   double get sweep => arcs.fold(0.0, (a, e) => a + e.fraction);
 }
 
@@ -197,8 +197,10 @@ SleepRingModel _slept(num durationMin, SleepStageMin? stages, int target,
   final arcs = <SleepArc>[];
   if (split > 0 && asleep > 0) {
     // Rescale to the night's duration so rounding in the stage totals cannot
-    // move the sweep, then to the circle if the night outgrew the target.
-    final k = asleepFrac / split * (asleepFrac > 1 ? 1 / asleepFrac : 1);
+    // move the sweep. Fractions are minutes / NEED and stay unscaled past a
+    // full circle: 12 h against an 8 h need is 150%, a second lap, as the
+    // label says.
+    final k = asleepFrac / split;
     arcs.addAll([
       SleepArc(SleepArcKind.deep, d! * k),
       SleepArc(SleepArcKind.rem, r! * k),
@@ -211,7 +213,7 @@ SleepRingModel _slept(num durationMin, SleepStageMin? stages, int target,
       if (f > 1e-12) arcs.add(SleepArc(SleepArcKind.awake, f));
     }
   } else {
-    arcs.add(SleepArc(SleepArcKind.solid, math.min(1.0, asleepFrac)));
+    arcs.add(SleepArc(SleepArcKind.solid, asleepFrac));
   }
   return SleepRingModel(
     phase: SleepRingPhase.slept,

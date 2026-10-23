@@ -25,7 +25,12 @@ class SpiralGeometry {
     return insetPerStroke * stroke * ((lap - 1) + (1 - cos(pi * x)) / 2);
   }
 
-  double radiusAt(double s, double r0) => r0 - inset(s);
+  /// Centre-line radius at [s]. Floored at 1.5 x stroke so a small ring at a
+  /// high ratio (a 20 px ring at 500%) keeps its laps on the dial instead of
+  /// running through the centre; beyond that laps overlap at the innermost
+  /// radius and the value label carries the number.
+  double radiusAt(double s, double r0) =>
+      max(r0 - inset(s), min(r0, 1.5 * stroke));
   static int lapsFor(double fraction) =>
       !fraction.isFinite || fraction <= 0 ? 0 : fraction.ceil();
 
@@ -75,37 +80,113 @@ class SpiralGeometry {
 }
 
 /// Shared rendering path for score and stage rings.
-void paintSpiral(Canvas canvas, Size size, {required double stroke, required Color track,
-  required List<Color> colors, required List<double> fractions, required double t,
-  bool solid = true}) {
+///
+/// Every piece is a FILLED band whose radius follows [SpiralGeometry.radiusAt]
+/// along its whole sweep, so the eased inset is drawn, not sampled once per
+/// piece. Caps are separate discs: ends and starts are decided independently
+/// by [SpiralPiece.capEnd] / [SpiralPiece.capStart]. [background] is the
+/// surface under the ring (the lap separator); it falls back to [track].
+void paintSpiral(Canvas canvas, Size size,
+    {required double stroke,
+    required Color track,
+    required List<Color> colors,
+    required List<double> fractions,
+    required double t,
+    bool solid = true,
+    Color? background}) {
   final center = Offset(size.width / 2, size.height / 2);
   final r0 = min(size.width, size.height) / 2 - stroke / 2;
   if (r0 <= 0) return;
-  canvas.drawCircle(center, r0, Paint()..style = PaintingStyle.stroke..strokeWidth = stroke..color = track);
+  final half = stroke / 2;
+  canvas.drawCircle(
+      center,
+      r0,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..color = track);
   final progress = t.clamp(0.0, 1.0);
-  final scaled = fractions.map((f) => f.isFinite && f > 0 ? f * progress : 0.0).toList();
-  final geometry = SpiralGeometry(stroke), total = scaled.fold<double>(0, (a, b) => a + b);
+  final scaled = [
+    for (final f in fractions) f.isFinite && f > 0 ? f * progress : 0.0
+  ];
+  final geometry = SpiralGeometry(stroke);
+  final total = scaled.fold<double>(0, (a, b) => a + b);
   final pieces = geometry.pieces(scaled);
-  for (var lap = 1; lap < SpiralGeometry.lapsFor(total); lap++) {
-    final from = geometry.separatorFrom(lap)!;
-    canvas.drawArc(Rect.fromCircle(center: center, radius: geometry.radiusAt(from, r0)),
-      -pi / 2 + 2 * pi * from, 2 * pi * (lap + 1 - from), false,
-      Paint()..style = PaintingStyle.stroke..strokeWidth = kSpiralSeparator..color = track);
+  if (pieces.isEmpty) return;
+
+  Offset pt(double s, double radius) {
+    final a = -pi / 2 + 2 * pi * s;
+    return center + Offset(cos(a), sin(a)) * radius;
   }
+
+  // A closed band from lap position [a] to [b], [grow] px wider each side.
+  Path band(double a, double b, double grow) {
+    final n = max(2, ((b - a) * 360).ceil());
+    final path = Path();
+    for (var i = 0; i <= n; i++) {
+      final s = a + (b - a) * i / n;
+      final o = pt(s, geometry.radiusAt(s, r0) + half + grow);
+      i == 0 ? path.moveTo(o.dx, o.dy) : path.lineTo(o.dx, o.dy);
+    }
+    for (var i = n; i >= 0; i--) {
+      final s = a + (b - a) * i / n;
+      final o = pt(s, geometry.radiusAt(s, r0) - half - grow);
+      path.lineTo(o.dx, o.dy);
+    }
+    return path..close();
+  }
+
+  Color colourAt(SpiralPiece p, double s) {
+    final c = colors[p.seg];
+    return solid
+        ? c
+        : Color.lerp(c.withValues(alpha: .55), c, gradientAt(s, total))!;
+  }
+
+  final sepColour = background ?? track;
+  canvas.save();
+  // The outer edge never leaves the lap-0 circle.
+  canvas.clipPath(
+      Path()..addOval(Rect.fromCircle(center: center, radius: r0 + half)));
   for (final p in pieces) {
-    final radius = geometry.radiusAt((p.from + p.to) / 2, r0);
-    final rect = Rect.fromCircle(center: center, radius: radius);
-    final color = colors[p.seg];
-    final shader = solid ? null : SweepGradient(
-      startAngle: -pi / 2, endAngle: 3 * pi / 2,
-      colors: [color.withValues(alpha: .55), color],
-      stops: [gradientAt(p.from, total), gradientAt(p.to, total)],
-    ).createShader(rect);
-    canvas.drawArc(rect, -pi / 2 + 2 * pi * p.from, 2 * pi * (p.to - p.from), false,
-      Paint()..style = PaintingStyle.stroke..strokeWidth = stroke
-        ..strokeCap = p.capEnd || p.capStart ? StrokeCap.round : StrokeCap.butt
-        ..color = solid ? color : const Color(0x00000000)..shader = shader);
+    if (p.lap >= 1) {
+      // Just before the lap that overlaps it, along that lap's own sweep.
+      final from = max(p.from, geometry.separatorFrom(p.lap)!);
+      final fill = Paint()..color = sepColour;
+      if (from < p.to) canvas.drawPath(band(from, p.to, kSpiralSeparator), fill);
+      if (p.capEnd && p.to > from) {
+        canvas.drawCircle(pt(p.to, geometry.radiusAt(p.to, r0)),
+            half + kSpiralSeparator, fill);
+      }
+    }
+    // A lap cut overlaps the next lap's start slightly: no hairline seam.
+    final to = p.capEnd ? p.to : p.to + .003;
+    final paint = Paint()..style = PaintingStyle.fill;
+    final ua = p.from - p.lap, ub = p.to - p.lap;
+    if (solid || ub - ua < 1e-6) {
+      paint.color = colourAt(p, (p.from + p.to) / 2);
+    } else {
+      paint
+        ..color = const Color(0xFF000000)
+        ..shader = SweepGradient(
+          startAngle: 0,
+          endAngle: 2 * pi,
+          colors: [colourAt(p, p.from), colourAt(p, p.to)],
+          stops: [ua, ub],
+          transform: const GradientRotation(-pi / 2),
+        ).createShader(Rect.fromCircle(center: center, radius: r0));
+    }
+    canvas.drawPath(band(p.from, to, 0), paint);
+    if (p.capEnd) {
+      canvas.drawCircle(pt(p.to, geometry.radiusAt(p.to, r0)), half,
+          Paint()..color = colourAt(p, p.to));
+    }
+    if (p.capStart) {
+      canvas.drawCircle(pt(p.from, geometry.radiusAt(p.from, r0)), half,
+          Paint()..color = colourAt(p, p.from));
+    }
   }
+  canvas.restore();
 }
 
 double gradientAt(double s, double total) => SpiralGeometry.gradientAt(s, total);

@@ -1242,7 +1242,9 @@ _RingState _ringOf(
             LucideIcons.batteryCharging, band.color,
             value: '${v.round()}',
             sub: l?.homeRecoveryFinishingUp ?? 'Finishing up',
-            frac: v / 100,
+            // Recovery is a bounded 0-100 score: out of range is bad data,
+            // not overflow, so it never spirals.
+            frac: (v / 100).clamp(0.0, 1.0),
             provisional: true);
       }
       return v == null
@@ -1266,7 +1268,7 @@ _RingState _ringOf(
                   '')
           : _RingState(k, l?.homeRingRecovery ?? 'Recovery',
               LucideIcons.batteryCharging, band.color,
-              value: '${v.round()}', sub: band.label, frac: v / 100);
+              value: '${v.round()}', sub: band.label, frac: (v / 100).clamp(0.0, 1.0));
     case HomeRingKind.strain:
       final v = d.strain.value;
       // 0–21 is the scale's own ceiling, not a target invented here.
@@ -1274,7 +1276,9 @@ _RingState _ringOf(
           ? _gap(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
               d.strain, l?.homeRingNoStrain ?? 'No strain', l, unit: 'days')
           : _RingState(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
-              value: v.toStringAsFixed(1), sub: l?.homeStrainOf21 ?? 'of 21', frac: v / 21,
+              value: v.toStringAsFixed(1), sub: l?.homeStrainOf21 ?? 'of 21',
+              // Bounded 0-21 scale: out of range is bad data, not overflow.
+              frac: (v / 21).clamp(0.0, 1.0),
               olderVersion: d.strain.fromOlderVersion, olderReason: d.strain.olderVersionReason);
     case HomeRingKind.sleep:
       final label = l?.homeRingSleep ?? 'Sleep';
@@ -1448,9 +1452,12 @@ class _Dial extends StatelessWidget {
                 stroke: stroke, segments: r.need ?? 24)
             : _stageArcs(r, p) != null
             ? StageRing(_stageArcs(r, p)!, p.track,
-                stroke: stroke, t: animate(c, 1))
+                stroke: stroke, t: animate(c, 1), background: p.card)
             : Ring(r.frac ?? 0, r.arc(p), p.track,
-                stroke: stroke, t: animate(c, 1), solid: r.measured),
+                stroke: stroke,
+                t: animate(c, 1),
+                solid: r.measured,
+                background: p.card),
       ),
       Icon(r.icon, size: icon, color: r.ink(p)),
     ]);
@@ -2972,7 +2979,7 @@ class _HomeScreenState extends State<HomeScreen>
               child: CustomPaint(
                 painter: Ring(d.steps.value! / d.stepGoal, C.green,
                     P.of(c).track,
-                    stroke: 3, solid: true),
+                    stroke: 3, solid: true, background: P.of(c).card),
               ),
             ),
     ));

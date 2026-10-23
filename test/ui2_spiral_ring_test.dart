@@ -459,7 +459,7 @@ void main() {
           RingArc(green, .4),
         ], const Color(0x00000000), stroke: w, background: magenta));
         for (final u in [.1, .2, .28, .29, .31, .32, .4, .6]) {
-          expect(innerEdge(d, u), closeTo(expectedInner(1 + u), 1.6),
+          expect(innerEdge(d, u), closeTo(expectedInner(1 + u), 2.0),
               reason: 'u=$u');
         }
       });
@@ -505,8 +505,10 @@ void main() {
         final px = at(d, .2, r0 - w / 2 - .25 * g.inset(1.2));
         // Position in the bar is 1.2 / 2 = .6 -> alpha .55 + .45 * .6 = .82.
         expect(px[3], greaterThan(190), reason: 'restarted per lap? $px');
-        // Start of the bar is faint.
-        expect(at(d, .02, r0 + w / 2 - 2)[3], lessThan(160));
+        // Start of the bar is faint (a one-lap ring, nothing under it).
+        final one = await raster(Ring(1.0, green, const Color(0x00000000),
+            stroke: w, background: magenta));
+        expect(at(one, .02, r0)[3], lessThan(160));
       });
     });
 
@@ -590,7 +592,8 @@ class _Discs implements Canvas {
       _first = false; // the track
       return;
     }
-    if (p.style == PaintingStyle.fill) n++;
+    // Separator halos are background-coloured (here transparent).
+    if (p.style == PaintingStyle.fill && p.color.a > 0) n++;
   }
 
   @override

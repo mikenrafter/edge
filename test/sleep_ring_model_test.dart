@@ -4,7 +4,7 @@
 //
 //   SLEPT   today has a scored night. The ring is that night's stages as
 //           contiguous arcs grouped Deep, REM, Light, then Awake; the total
-//           sweep of the asleep stages is asleep / target, capped at a full
+//           sweep of the asleep stages is asleep / target, NOT capped: above a full
 //           circle. Stage totals absent => ONE solid arc, never an invented
 //           split. Sub-line percentage is asleep / target.
 //   UNSLEPT no scored night yet. Value is an ESTIMATE = wake - max(start, now).

@@ -1751,7 +1751,8 @@ class _LiveStrengthState extends State<LiveStrength> {
             CustomPaint(
                 size: const Size(170, 170),
                 painter:
-                    Ring(restLeft.value / restTarget, p.on(C.teal), p.track)),
+                    Ring(restLeft.value / restTarget, p.on(C.teal), p.track,
+                        background: p.card)),
             Column(mainAxisSize: MainAxisSize.min, children: [
               Text(clock(restLeft.value), style: F.n34.copyWith(color: p.ink)),
               if (logged.isNotEmpty)

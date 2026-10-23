@@ -623,12 +623,18 @@ class Ring extends CustomPainter {
   @override
   void paint(Canvas cv, Size s) {
     paintSpiral(cv, s, stroke: stroke, track: track, colors: [color],
-        fractions: [v], t: t, solid: solid);
+        fractions: [v], t: t, solid: solid, background: background);
   }
 
   @override
   bool shouldRepaint(covariant Ring o) =>
-      o.v != v || o.t != t || o.solid != solid || o.color != color;
+      o.v != v ||
+      o.t != t ||
+      o.solid != solid ||
+      o.color != color ||
+      o.track != track ||
+      o.stroke != stroke ||
+      o.background != background;
 }
 
 /// One coloured arc of a [StageRing]: [fraction] of the FULL circle.
@@ -661,12 +667,14 @@ class StageRing extends CustomPainter {
   @override
   void paint(Canvas cv, Size s) {
     paintSpiral(cv, s, stroke: stroke, track: track,
-      colors: arcs.map((a) => a.color).toList(), fractions: arcs.map((a) => a.fraction).toList(), t: t);
+      colors: arcs.map((a) => a.color).toList(), fractions: arcs.map((a) => a.fraction).toList(), t: t,
+      background: background);
   }
 
   @override
   bool shouldRepaint(covariant StageRing o) =>
       o.track != track ||
+      o.background != background ||
       o.stroke != stroke ||
       o.t != t ||
       o.arcs.length != arcs.length ||

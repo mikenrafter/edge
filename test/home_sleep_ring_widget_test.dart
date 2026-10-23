@@ -293,7 +293,7 @@ void main() {
       expect(ring.solid, isTrue);
     });
 
-    testWidgets('a night longer than the target caps at a full circle',
+    testWidgets('a night longer than the target is drawn past a full circle',
         (t) async {
       await _pump(
         t,
