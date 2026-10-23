@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 
 const double kSpiralSeparator = 1.5;
 
+/// RED STUB.
+double spiralSeparatorWidth(double stroke) => kSpiralSeparator;
+
 class SpiralPiece {
   final int seg, lap;
   final double from, to;
