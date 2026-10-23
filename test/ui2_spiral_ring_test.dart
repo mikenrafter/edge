@@ -407,7 +407,6 @@ void main() {
     }
 
     bool isGreen(List<int> c) => c[3] > 200 && c[1] > 120 && c[0] < 60;
-    bool isMagenta(List<int> c) => c[3] > 200 && c[0] > 200 && c[2] > 200 && c[1] < 60;
 
     // First radius (scanning outward from the centre) that is the ring colour.
     double innerEdge(ByteData d, double u) {
