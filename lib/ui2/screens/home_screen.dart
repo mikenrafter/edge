@@ -1100,7 +1100,7 @@ class RingTrio extends StatelessWidget {
   /// Reserved whether or not the time is known or held. The tap target for a
   /// held caption is NOT here (see [_HomeScreenState] `_sinceTarget`).
   static double sinceRowHeight(BuildContext c) =>
-      MediaQuery.textScalerOf(c).scale(18);
+      math.max(18.0, MediaQuery.textScalerOf(c).scale(18));
 
   Widget _sinceLine(BuildContext c, AppLocalizations? l) {
     final h = sinceRowHeight(c);
