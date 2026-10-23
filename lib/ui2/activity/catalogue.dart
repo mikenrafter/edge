@@ -360,6 +360,12 @@ String workoutTypeLabel(AppLocalizations? l, String? type) =>
     activityByName(type)?.localizedName(l) ??
     (l?.dayTimelineWorkout ?? 'Workout');
 
+/// The label for an IMPORTED workout's health-store kind: the catalogue's
+/// name when it has one, else the store's own readable sport name, else the
+/// localized "Workout". Never the raw kind.
+String importedWorkoutLabel(AppLocalizations? l, Object? kind) =>
+    l?.dayTimelineWorkout ?? 'Workout';
+
 // ── EXERCISES ──────────────────────────────────────────────────────────────
 // The strength catalogue. The hand-written list keeps the strength_set keys
 // already in use; the generated tail is a wger snapshot (see

@@ -61,6 +61,10 @@ class ImportReentryStore {
   static const String _key = 'import_reentry_pending';
   static const String _staleKey = 'import_reentry_stale';
 
+  /// Every preference this store owns; each must be listed in
+  /// kPrefsNotBackedUp (a restore must not carry them to another install).
+  static const List<String> prefKeys = [_key, _staleKey];
+
   Future<Set<String>> _readStale() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_staleKey) ?? '';

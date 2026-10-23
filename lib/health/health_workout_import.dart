@@ -213,6 +213,12 @@ String importedWorkoutTitle(Object? kind) {
       .join(' ');
 }
 
+/// The readable name for a health-store sport enum ("FENCING" -> "Fencing"),
+/// or null when [kind] is not one: an internal slug ('other', 'kite_surfing_2'),
+/// the store's own "OTHER", or anything that is not a bare UPPER_CASE enum name.
+/// A null means "no name the source can vouch for"; the caller says "Workout".
+String? recognizedSportTitle(Object? kind) => null;
+
 /// What one import did, so the screen can report it rather than guess.
 @immutable
 class WorkoutImportResult {
