@@ -1089,6 +1089,12 @@ class RingTrio extends StatelessWidget {
             Padding(padding: EdgeInsets.only(top: pressing.isEmpty && note == null ? 0 : S.x2), child: _HomeOlderPanel(version: older, reason: d.strain.olderVersionReason,
                 onTap: _open(HomeRingKind.strain)),
             ),
+          // An absent ring's reason is never hidden by the rows above.
+          if (gaps.isNotEmpty) ...[
+            const SizedBox(height: S.x3),
+            _HelpStrip(text: [for (final r in gaps) '${r.label} · ${presentationText(l, r.why ?? '')}'].join('\n'),
+                onTap: _open(gaps.first.kind), busy: false, chevron: onOpen != null, reserve: const []),
+          ],
         ] else if (help != null && help!.text.isNotEmpty) ...[
           const SizedBox(height: S.x3),
           _HelpStrip(text: help!.text, onTap: help!.onTap,
