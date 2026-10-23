@@ -2034,6 +2034,8 @@ class DerivationEngine {
       _running = false;
     }
   }
+  /// Why each day's derive declined, until `_settleDay` records it.
+  final Map<String, String> _declineReasons = {};
   final Map<String, dynamic> _diag = {
     'running': false,
     'stage': 'idle',

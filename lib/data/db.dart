@@ -6286,7 +6286,7 @@ class LocalDb {
   }
 
   /// `settled:<day>` rows: days whose derive DECLINED to write (kept the
-  /// existing result, edge#305), recorded as `{v: algoVersion, own, prev, edit}`:
+  /// existing result, edge#305), recorded as `{v, own, prev, edit, reason?, at?}`:
   /// the raw fingerprints of the day and of the day before it (null when that
   /// one had none), and the revision of the wearer's sleep/nap edits for it. Owner of the state: the derive engine writes it (see
   /// engine/settled.dart); this is only its storage.
@@ -6311,7 +6311,13 @@ class LocalDb {
     int? decidedAtMs,
   }) => putComputeFreshness(
     '$_settledPrefix$day',
-    jsonEncode({'v': algoVersion, 'own': own, 'prev': prev, 'edit': edit}),
+    jsonEncode({
+      'v': algoVersion,
+      'own': own,
+      'prev': prev,
+      'edit': edit,
+      if (reason != null) ...{'reason': reason, 'at': decidedAtMs},
+    }),
   );
 
   /// Whether no later night can change [day]'s result at [algoVersion]: it is

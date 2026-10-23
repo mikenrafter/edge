@@ -43,6 +43,7 @@ extension _EngineDayCompute on DerivationEngine {
     // provisional and the caller re-derives it. Null: finalize as decided.
     void Function(String day)? onStaleTonight,
   }) async {
+    _declineReasons.remove(day.date);
     // No state from an earlier pass in this process (a headless wake, a cold
     // start): resume from the stored checkpoint when what it folded is still
     // what the day holds. A user-driven re-derive never resumes; it rebuilds.
@@ -322,6 +323,7 @@ extension _EngineDayCompute on DerivationEngine {
       if (DerivationEngine._isRealDayResult(existing)) {
         _log('derive ${day.date}: no substrate (raw pruned) — kept the '
             'existing result rather than blanking it');
+        _declineReasons[day.date] = 'raw_pruned';
         return DayDerive.declined;
       }
     }
@@ -412,6 +414,7 @@ extension _EngineDayCompute on DerivationEngine {
         // The baseline a later derive is judged by must outlive the
         // fingerprint a declined day records over it.
         await LocalDb.putDerivedCoverage(day.date, coverage.baseline);
+        _declineReasons[day.date] = 'coverage_fell';
         return DayDerive.declined;
       }
       if (existingHadNight) {
@@ -419,6 +422,7 @@ extension _EngineDayCompute on DerivationEngine {
             "under a day that already had real night scalars — kept the "
             'existing result rather than overwriting the readiness baseline '
             '(edge#305)');
+        _declineReasons[day.date] = 'night_substrate_pruned';
         return DayDerive.declined;
       }
     }

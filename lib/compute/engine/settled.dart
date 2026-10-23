@@ -69,13 +69,16 @@ extension _EngineSettled on DerivationEngine {
     Map<String, String> fps,
     Map<String, String> edits,
   ) async {
+    final reason = _declineReasons.remove(day);
     try {
       final own = fps[day];
       if (own == null) return;
       await LocalDb.putSettledDay(day, kAlgoVersion,
           own: own,
           prev: fps[DerivationEngine._adjacentDayIds(day).first],
-          edit: edits[day] ?? '');
+          edit: edits[day] ?? '',
+          reason: reason,
+          decidedAtMs: DateTime.now().millisecondsSinceEpoch);
     } catch (e) {
       _log('derive $day: could not record settled: $e');
     }

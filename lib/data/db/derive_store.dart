@@ -1028,7 +1028,33 @@ Future<Map<String, ({String own, String? prev, String edit})>> _ldbSettledFinger
   }
 
 Future<Map<String, ({String reason, int? keptAlgoVersion, int decidedAtMs})>> _ldbDeclinedDays(int algoVersion) async {
-    return const {};
+    final db = await LocalDb.instance;
+    // Scalars only: never day_result's payload (blob rows overflow the cursor window).
+    final rows = await db.rawQuery(
+      "SELECT f.key AS key, json_extract(f.payload_json, '\$.reason') AS reason, "
+      "json_extract(f.payload_json, '\$.at') AS at, "
+      '(SELECT MAX(r.algo_version) FROM day_result r '
+      'WHERE r.day_id = substr(f.key, ? + 1) AND r.algo_version < ?) AS kept '
+      'FROM compute_freshness f WHERE substr(f.key, 1, ?) = ? '
+      "AND json_extract(f.payload_json, '\$.v') = ? "
+      "AND json_extract(f.payload_json, '\$.reason') IS NOT NULL "
+      'AND kept IS NOT NULL',
+      [
+        LocalDb._settledPrefix.length,
+        algoVersion,
+        LocalDb._settledPrefix.length,
+        LocalDb._settledPrefix,
+        algoVersion,
+      ],
+    );
+    return {
+      for (final r in rows)
+        (r['key'] as String).substring(LocalDb._settledPrefix.length): (
+          reason: r['reason'] as String,
+          keptAlgoVersion: r['kept'] as int?,
+          decidedAtMs: (r['at'] as int?) ?? 0,
+        ),
+    };
   }
 
 Future<bool> _ldbDayIsFinal(String day, int algoVersion) async {
