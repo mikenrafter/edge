@@ -166,11 +166,18 @@ void paintSpiral(Canvas canvas, Size size,
     return path..close();
   }
 
+  // A gradient ring fades from 55% to full colour along the bar. That fade is
+  // PRE-BLENDED against [background] and everything is drawn fully opaque, so
+  // bands and cap discs overlap without compositing twice (a double-alpha
+  // patch) and without any subtraction (which cracked the join and removed the
+  // 100% end cap). With no [background] the translucent colour is used as is,
+  // and a cap overlap shows a slightly denser patch: callers should pass it.
   Color colourAt(SpiralPiece p, double s) {
     final c = colors[p.seg];
-    return solid
-        ? c
-        : Color.lerp(c.withValues(alpha: .55), c, gradientAt(s, total))!;
+    if (solid) return c;
+    final a = .55 + .45 * gradientAt(s, total);
+    final faded = c.withValues(alpha: c.a * a);
+    return background == null ? faded : Color.alphaBlend(faded, background);
   }
 
   final sepColour = background ?? track;
@@ -191,21 +198,8 @@ void paintSpiral(Canvas canvas, Size size,
       (lateDiscs[p.lap + 1] ??= []).add(p);
     }
   }
-  final bandPaths = <SpiralPiece, Path>{};
-  // Translucent colours must be composited ONCE: a cap is only its part that
-  // the band has not already painted, in the colour at its own end (which also
-  // keeps the endpoint colour where a cap crosses the gradient's seam).
-  void disc(SpiralPiece p, double s) {
-    final c = pt(s, geometry.radiusAt(s, r0));
-    if (solid) {
-      canvas.drawCircle(c, half, Paint()..color = colourAt(p, s));
-      return;
-    }
-    final cap = Path()..addOval(Rect.fromCircle(center: c, radius: half));
-    final own = bandPaths[p];
-    canvas.drawPath(own == null ? cap : Path.combine(PathOperation.difference, cap, own),
-        Paint()..color = colourAt(p, s));
-  }
+  void disc(SpiralPiece p, double s) => canvas.drawCircle(
+      pt(s, geometry.radiusAt(s, r0)), half, Paint()..color = colourAt(p, s));
 
   for (final lap in laps.keys.toList()..sort()) {
     final group = laps[lap]!; // already last segment first
@@ -229,9 +223,7 @@ void paintSpiral(Canvas canvas, Size size,
             transform: const GradientRotation(-pi / 2),
           ).createShader(Rect.fromCircle(center: center, radius: r0));
       }
-      final bandPath = band(p.from, to, 0);
-      bandPaths[p] = bandPath;
-      canvas.drawPath(bandPath, paint);
+      canvas.drawPath(band(p.from, to, 0), paint);
     }
     // One thin line along the upper lap's outer edge, laid after the lap's own
     // bands (so stage joins stay contiguous) and before its caps. It starts

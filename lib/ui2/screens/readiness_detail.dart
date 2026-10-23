@@ -335,7 +335,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
               p,
               Ring(d.readiness.normalized(100),
                   d.provisional ? p.ink3 : p.on(band.color), p.track,
-                  stroke: 14, t: animate(c, 1)),
+                  stroke: 14, t: animate(c, 1), background: p.card),
               '${v.round()}',
               band.label,
               bigColor: d.provisional ? p.ink3 : null,

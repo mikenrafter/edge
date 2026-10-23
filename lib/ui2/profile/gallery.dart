@@ -1123,7 +1123,8 @@ Map<String, Widget> extraCases() => {
             footnote: 'Compared with your own 14-day baseline.',
             child: CustomPaint(
                 size: Size.infinite,
-                painter: Ring(.72, p.on(C.green), p.track)),
+                painter: Ring(.72, p.on(C.green), p.track,
+                    background: p.card)),
           ),
         );
       }),

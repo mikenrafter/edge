@@ -573,7 +573,8 @@ class CoachFigure extends StatelessWidget {
               children: [
                 CustomPaint(
                   size: const Size.square(84),
-                  painter: Ring(frac, p.on(C.blue), p.track, stroke: 8),
+                  painter: Ring(frac, p.on(C.blue), p.track,
+                      stroke: 8, background: p.card),
                 ),
                 Text(
                   v == v.roundToDouble()
