@@ -352,6 +352,14 @@ final Map<String, Activity> _byKey = {
 Activity? activityByName(String? type) =>
     type == null ? null : _byKey[type.toLowerCase().replaceAll(' ', '_')];
 
+/// What to call a stored session / activity type on screen: the catalogue's
+/// localized name, else the localized "Workout". A raw slug ('other',
+/// 'kite_surfing_2') never reaches the UI. Display only: the stored type and
+/// its key are not changed by this.
+String workoutTypeLabel(AppLocalizations? l, String? type) =>
+    activityByName(type)?.localizedName(l) ??
+    (l?.dayTimelineWorkout ?? 'Workout');
+
 // ── EXERCISES ──────────────────────────────────────────────────────────────
 // The strength catalogue. The hand-written list keeps the strength_set keys
 // already in use; the generated tail is a wger snapshot (see

@@ -48,7 +48,7 @@ import '../../data/nutrition_store.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/locale_controller.dart';
-import '../activity/catalogue.dart' show activityByName;
+import '../activity/catalogue.dart' show activityByName, workoutTypeLabel;
 import '../profile/devices.dart'
     show DeviceFilter, DeviceOption, signalCandidates;
 import '../profile/wearable_numbers.dart' show deviceScoreLabel, observationTitle;
@@ -260,9 +260,7 @@ List<Moment> dayMoments({
       Moment(
         at: on,
         until: asInt(s['end_ts']),
-        title:
-            act?.localizedName(l) ??
-          (l?.dayTimelineWorkout ?? 'Workout'),
+        title: workoutTypeLabel(l, type),
       detail: bits.join(' · '),
       icon: act?.icon ?? LucideIcons.dumbbell,
       color: act?.color ?? C.orange,

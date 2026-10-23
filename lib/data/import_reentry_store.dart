@@ -13,6 +13,15 @@
 // never read-modify-write: they add, dismiss, begin a fresh import, or load.
 // A write that the platform refuses is retried once, then thrown, never
 // dropped. Device-only state (kPrefsNotBackedUp in backup_extras.dart).
+//
+// STALE acknowledgements. A fresh import's reset of the acknowledgements can be
+// refused by the platform. The acks that survive are then known to belong to an
+// EARLIER import, so they must not hide this import's own warnings. Those ids
+// are kept as a third set, STALE, in its own preference (`import_reentry_stale`:
+// the write that just failed cannot be trusted to carry it, and a restart before
+// the first add must still see it). add() bypasses an ack only for a stale id; a
+// dismissal removes the id from STALE, so it stays dismissed. The reset is
+// retried at load (launch and resume) and, once it lands, STALE is emptied.
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -36,7 +45,8 @@ class ImportReentryStore {
   // Null until the first operation: a future built in the constructor would
   // belong to whatever zone built the store.
   Future<void>? _tail;
-  bool _resetFailedForCurrentImport = false;
+  // Mirror of the stale preference for the case where even that write failed.
+  final Set<String> _staleMem = {};
 
   /// Waits for every earlier operation, then returns the lock to release (in a
   /// finally) with complete(). One at a time, in call order.
@@ -49,6 +59,41 @@ class ImportReentryStore {
   }
 
   static const String _key = 'import_reentry_pending';
+  static const String _staleKey = 'import_reentry_stale';
+
+  Future<Set<String>> _readStale() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_staleKey) ?? '';
+    return {
+      for (final x in raw.split(',')) if (x.isNotEmpty) x,
+      ..._staleMem,
+    };
+  }
+
+  /// Best effort and never throws: a stale set that cannot be saved is still
+  /// held in memory for this process.
+  Future<void> _writeStale(Set<String> stale) async {
+    _staleMem
+      ..clear()
+      ..addAll(stale);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (stale.isEmpty) {
+        await prefs.remove(_staleKey);
+      } else {
+        await prefs.setString(_staleKey, stale.join(','));
+      }
+    } catch (_) {}
+  }
+
+  /// Retries an owed reset: the stale acknowledgements go, the user's own
+  /// later dismissals stay. Throws if the platform refuses the write.
+  Future<void> _settleStale(List<String> pend, List<String> acked) async {
+    final stale = await _readStale();
+    if (stale.isEmpty) return;
+    await _write(pend, [for (final a in acked) if (!stale.contains(a)) a]);
+    await _writeStale({});
+  }
 
   Future<(List<String>, List<String>)> _read() async {
     final prefs = await SharedPreferences.getInstance();
@@ -87,7 +132,11 @@ class ImportReentryStore {
   Future<void> load() async {
     final lock = await _acquire();
     try {
-      pending.value = List.unmodifiable((await _read()).$1);
+      final (pend, acked) = await _read();
+      try {
+        await _settleStale(pend, acked); // the reset an earlier launch owed
+      } catch (_) {}
+      pending.value = List.unmodifiable(pend);
     } finally {
       lock.complete();
     }
@@ -100,9 +149,11 @@ class ImportReentryStore {
     final lock = await _acquire();
     try {
       final (pend, acked) = await _read();
+      final stale = await _readStale();
       final fresh = [
         for (final id in ids)
-          if ((_resetFailedForCurrentImport || !acked.contains(id)) && !pend.contains(id)) id
+          if ((!acked.contains(id) || stale.contains(id)) && !pend.contains(id))
+            id
       ];
       if (fresh.isEmpty) {
         pending.value = List.unmodifiable(pend);
@@ -123,8 +174,13 @@ class ImportReentryStore {
     final lock = await _acquire();
     try {
       final (pend, acked) = await _read();
+      final stale = await _readStale();
       await _write([for (final x in pend) if (!which.contains(x)) x],
           {...acked, ...which}.toList());
+      // A dismissal is the user's own: it no longer counts as stale.
+      if (stale.any(which.contains)) {
+        await _writeStale({for (final x in stale) if (!which.contains(x)) x});
+      }
     } finally {
       lock.complete();
     }
@@ -140,13 +196,19 @@ class ImportReentryStore {
     final lock = await _acquire();
     try {
       final (pend, acked) = await _read();
-      if (acked.isEmpty) return;
+      if (acked.isEmpty) {
+        await _writeStale({});
+        return;
+      }
       if (await _olderImportUnfinished()) return;
-      await _write(pend, const []);
-      _resetFailedForCurrentImport = false;
-    } catch (_) {
-      _resetFailedForCurrentImport = true;
-      rethrow;
+      try {
+        await _write(pend, const []);
+      } catch (_) {
+        // Every ack still stored is from an earlier import.
+        await _writeStale({...await _readStale(), ...acked});
+        rethrow;
+      }
+      await _writeStale({});
     } finally {
       lock.complete();
     }

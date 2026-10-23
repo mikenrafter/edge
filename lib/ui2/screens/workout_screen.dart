@@ -754,9 +754,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
       c,
       title:
           loc?.workoutConfirmDeleteTitle(
-            w.activity.displayName(context).toLowerCase(),
+            w.title(context).toLowerCase(),
           ) ??
-          'Delete this ${w.activity.displayName(context).toLowerCase()}?',
+          'Delete this ${w.title(context).toLowerCase()}?',
       body: w.importedFrom == null
           ? (loc?.workoutDeleteBodyOwn(storeName) ??
               'It disappears from OpenStrap. A copy in $storeName, if there is '
@@ -999,8 +999,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
     return MetricRow(
       a?.icon ?? LucideIcons.activity,
       a?.color ?? C.purple,
-      loc?.workoutAfterActivity(a?.displayName(c) ?? e.type) ??
-          'After ${a?.name ?? e.type}',
+      loc?.workoutAfterActivity(workoutTypeLabel(loc, e.type)) ??
+          'After ${workoutTypeLabel(loc, e.type)}',
       e.exceedsMdc
           ? '$sign${e.delta.abs().toStringAsFixed(1)}'
           : (loc?.workoutUnchangedLabel ?? 'Unchanged'),
@@ -1140,7 +1140,7 @@ class _PastSummaryState extends State<_PastSummary> {
     final w = widget.w;
     return detailScaffold(
       c,
-      w.importedTitle ?? w.activity.displayName(c),
+      w.title(c),
       [
         InlineLoading(
             status: AppLocalizations.of(c)?.loadingWorkout ??
@@ -1212,7 +1212,7 @@ class _HistoryRow extends StatelessWidget {
                           // catalogue knows the ~40 types this app can start, and
                           // "Workout" over a surf loses the one thing we were told.
                           child: Text(
-                            w.importedTitle ?? a.displayName(c),
+                            w.title(c),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           style: F.body.copyWith(
@@ -2018,6 +2018,12 @@ class _PastWorkout {
   /// Metres, from the recording app. Only imported rows carry it — a band
   /// session's distance is read on open with its route.
   final double? distanceM;
+
+  /// What the row is called: the catalogue's localized name, else "Workout".
+  /// Never a raw type slug or the store's own enum name; [activity] keeps the
+  /// stored type for scoring and does not decide what is printed.
+  String title(BuildContext c) =>
+      workoutTypeLabel(AppLocalizations.of(c), activity.typeKey);
 
   const _PastWorkout(this.id, this.activity, this.start, this.duration,
       {this.strain,

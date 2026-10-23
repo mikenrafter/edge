@@ -135,7 +135,8 @@ void main() {
     }
     expect(find.text('Running'), findsWidgets, reason: 'a known type keeps its name');
     for (final raw in ['Other', 'other', 'Kite Surfing 2', 'kite_surfing_2', 'kite surfing 2']) {
-      expect(find.textContaining(raw), findsNothing, reason: raw);
+      // Exact match: 'other' is also an ordinary word in prose.
+      expect(find.text(raw), findsNothing, reason: raw);
     }
     expect(find.text('Workout'), findsNWidgets(2), reason: 'one history row each');
     expect(find.text('After Workout'), findsNWidgets(2));

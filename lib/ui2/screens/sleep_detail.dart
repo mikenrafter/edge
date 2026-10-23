@@ -2241,13 +2241,18 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     final axes = <AxisSpec?>[];
     final units = <String>[];
     final names = <String>[];
+    // Per lane: may its readout print a number? Skin temp is a raw sensor
+    // delta, not a temperature, so no readout on either chart path shows it.
+    final hasNumbers = <bool>[];
 
     // Each lane keeps its own scale — they are different quantities — but the
     // scale is PINNED to the night's own range and its unit is named. Three
     // unlabelled lines on three invisible axes was the least readable chart
     // in the app.
     void lane(List<(int, double)> raw, String label, String unit, Color col,
-        {String Function(double) format = axisInt, String? legendLabel}) {
+        {String Function(double) format = axisInt,
+        String? legendLabel,
+        bool numbers = true}) {
       if (raw.isEmpty || cols == 0) return;
       final g = grid(raw);
       final present = <double>[for (final v in g) ?v];
@@ -2264,6 +2269,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       }
       legend.add((legendLabel ?? '$label ${format(lo)}–${format(hi)} ${uiText(c, unit)}', col));
       names.add(label);
+      hasNumbers.add(numbers);
       axes.add(AxisSpec.of(present, ticks: 2, format: format));
       units.add(unit);
     }
@@ -2278,6 +2284,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     // says so rather than implying a thermometer.
     lane(temp, loc?.sleepDetailSkinTempRelative ?? 'Skin temp · relative', '', p.on(C.orange),
         format: axisFixed,
+        numbers: false,
         legendLabel: loc?.sleepDetailSkinTempRelative ?? 'Skin temp · relative');
 
     if (series.isEmpty) {
@@ -2337,8 +2344,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
                   },
                   keys: [
                     for (var k = 0; k < series.length; k++)
-                      ChartKey.slots(names[k], colors[k], series[k],
-                          (i, v) => '${axisFixedOrInt(v)} ${units[k]}'),
+                      hasNumbers[k]
+                          ? ChartKey.slots(names[k], colors[k], series[k],
+                              (i, v) => '${axisFixedOrInt(v)} ${units[k]}')
+                          : ChartKey.fixed(names[k], colors[k], null),
                   ],
                   child: CustomPaint(
                       size: Size.infinite,
