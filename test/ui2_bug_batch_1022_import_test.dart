@@ -97,4 +97,52 @@ void main() {
     await restarted.loadImportReentry();
     expect(restarted.importReentry.value, [kNeedsReentryCoachKey]);
   });
+
+  // Sol r1 P2 #1: the bypass is for THIS import's own warnings until the user
+  // dismisses them; a dismissal must stay dismissed.
+  test('store: after a failed reset, add -> dismiss -> add (a retry) keeps the '
+      'warning dismissed', () async {
+    final store = await armStore();
+    final s = ImportReentryStore();
+    store.refuse = true;
+    try {
+      await s.beginFreshImport();
+    } catch (_) {}
+    store.refuse = false;
+    await s.add([kNeedsReentryCoachKey]);
+    expect(s.pending.value, [kNeedsReentryCoachKey]);
+    await s.dismiss();
+    expect(s.pending.value, isEmpty);
+    await s.add([kNeedsReentryCoachKey]); // the import retries its summary
+    expect(s.pending.value, isEmpty, reason: 'the user dismissed it');
+    final restarted = ImportReentryStore();
+    await restarted.load();
+    expect(restarted.pending.value, isEmpty);
+  });
+
+  // Sol r1 P2 #2: the process dies after the failed reset and before the first
+  // add. The resumed summary's add() must still show the fresh import's
+  // warning, whether or not the reset can be retried yet.
+  for (final stillRefusing in [true, false]) {
+    test('store: restart BEFORE the first add (writes ${stillRefusing ? 'still '
+        'refused' : 'working again'}) still shows the new warning', () async {
+      final store = await armStore();
+      final first = ImportReentryStore();
+      store.refuse = true;
+      try {
+        await first.beginFreshImport();
+      } catch (_) {}
+      // The process dies here. A fresh store is what the restart builds.
+      SharedPreferences.resetStatic();
+      store.refuse = stillRefusing;
+      final restarted = ImportReentryStore();
+      await restarted.load(); // launch: retries the owed reset
+      store.refuse = false;
+      await restarted.add([kNeedsReentryCoachKey]); // resumed summary
+      expect(restarted.pending.value, [kNeedsReentryCoachKey]);
+      final again = ImportReentryStore();
+      await again.load();
+      expect(again.pending.value, [kNeedsReentryCoachKey]);
+    });
+  }
 }

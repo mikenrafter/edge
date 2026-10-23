@@ -112,7 +112,8 @@ void main() {
         final copied = [
           for (final k in _newKeys())
             // unit-abbreviation-only strings are identical in es/fr by design
-            if (!const {'syncDurationHours', 'syncDurationMinutes'}.contains(k) &&
+            if (!(const {'es', 'fr'}.contains(loc) &&
+                    const {'syncDurationHours', 'syncDurationMinutes'}.contains(k)) &&
                 (en[k] as String).trim().split(RegExp(r'\s+')).length >= 3 &&
                 other[k] == en[k])
               k,
