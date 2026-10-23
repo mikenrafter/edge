@@ -62,13 +62,6 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 import 'support/as_of_recalc_fakes.dart';
 import 'support/older_version_fixtures.dart';
 
-// ── EXPECTED API (does not exist yet) ───────────────────────────────────────
-// Green phase: add `List<HomeRingKind> pressingRings(HomeData d, {DateTime? now})`
-// to lib/ui2/screens/home_screen.dart, DELETE this stub, and the tests below
-// then run against the real one.
-List<HomeRingKind> pressingRings(HomeData d, {DateTime? now}) => const [];
-// ────────────────────────────────────────────────────────────────────────────
-
 final _now = DateTime(2026, 10, 4, 15);
 
 Metric _m(num v, {int? older, String? reason}) => Metric(

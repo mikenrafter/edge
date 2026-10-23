@@ -8162,6 +8162,9 @@ class AppState extends ChangeNotifier {
   bool get derivePending =>
       _deriveScheduler.pendingLight || _deriveScheduler.pendingHeavy;
 
+  /// Whether an offload currently holds day derivation behind its settle gate.
+  bool get offloadActive => _deriveScheduler.offloadActive;
+
   /// Records reached durable storage (see [SyncController.markSyncActivity]).
   void _markSyncActivity() => _sync.markSyncActivity();
 

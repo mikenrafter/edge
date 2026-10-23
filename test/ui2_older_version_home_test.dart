@@ -52,15 +52,15 @@ Future<void> _home(WidgetTester t, HomeData d) async {
 
 void main() {
   group('strain ring', () {
-    testWidgets('older value: number, asterisk, spoken, not tappable',
+    testWidgets('older value: number, silent asterisk; row speaks once',
         (t) async {
       final h = t.ensureSemantics();
       await _rings(
           t, const HomeData(dayId: '2026-10-04', readiness: _rec, strain: _old));
       expect(find.text('8.4'), findsOneWidget);
       expect(olderMark('strain'), findsOneWidget);
-      expect(find.bySemanticsLabel(kSpoken), findsWidgets);
-      expectSpokenNotTappable(t, olderMark('strain'));
+      expectSpokenNotTappable(t, olderMark('strain'), label: isNot(matches(kSpoken)));
+      expect(spokenCount(t), 1);
       h.dispose();
     });
 

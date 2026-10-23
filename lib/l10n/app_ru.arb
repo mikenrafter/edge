@@ -8790,5 +8790,42 @@
   "welcomeImportContinue": "Продолжить",
   "importPausedOlderDays": "Старые дни загрузятся после завершения импорта",
   "importPausedTodayPending": "Сегодня появится, как только будет готово",
-  "importPausedSaving": "Сохранение приостановлено до завершения импорта"
+  "importPausedSaving": "Сохранение приостановлено до завершения импорта",
+  "homeWhyRecoveryTitle": "Низкое восстановление",
+  "homeWhyRecoveryBody": "Показатель восстановления ниже вашего обычного уровня.",
+  "homeWhySleepTitle": "Недостаточно сна",
+  "homeWhySleepBody": "Оценённый сон был короче вашей потребности.",
+  "homeWhyStrainTitle": "Нагрузка выше цели",
+  "homeWhyStrainBody": "Сегодняшняя нагрузка выше целевого диапазона.",
+  "homeWhySleepDetail": "Сон {asleep}, на {gap} меньше вашей потребности {need}.",
+  "homeOlderTitle": "* Нагрузка рассчитана по старой версии",
+  "homeOlderVersion": "Версия {version}",
+  "@homeWhySleepDetail": {
+    "placeholders": {
+      "asleep": {
+        "type": "String"
+      },
+      "gap": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeOlderVersion": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSinceTime": "с {time}",
+  "@homeSinceTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }

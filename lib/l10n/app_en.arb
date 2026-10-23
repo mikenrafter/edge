@@ -17666,5 +17666,42 @@
   "welcomeImportContinue": "Continue",
   "importPausedOlderDays": "Older days load when the import finishes",
   "importPausedTodayPending": "Today appears as soon as it’s ready",
-  "importPausedSaving": "Saving is paused until the import finishes"
+  "importPausedSaving": "Saving is paused until the import finishes",
+  "homeWhyRecoveryTitle": "Recovery is low",
+  "homeWhyRecoveryBody": "Your recovery score is below its usual range.",
+  "homeWhySleepTitle": "Sleep is short of need",
+  "homeWhySleepBody": "Your scored sleep was below your need.",
+  "homeWhyStrainTitle": "Strain is above target",
+  "homeWhyStrainBody": "Today’s strain is above your target range.",
+  "homeWhySleepDetail": "{asleep} asleep, {gap} under your {need} need.",
+  "homeOlderTitle": "* Strain is from an older calculation",
+  "homeOlderVersion": "Version {version}",
+  "@homeWhySleepDetail": {
+    "placeholders": {
+      "asleep": {
+        "type": "String"
+      },
+      "gap": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeOlderVersion": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSinceTime": "since {time}",
+  "@homeSinceTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }

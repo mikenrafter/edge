@@ -987,6 +987,8 @@ class RingTrio extends StatelessWidget {
   /// The instant the sleep ring measures an unslept night's estimate from.
   /// Injected by tests; production reads `clock.now()`.
   final DateTime? now;
+  final DateTime? since;
+  final bool syncPending;
 
   /// What the help strip says instead of the default (the gaps' reasons, then
   /// the "Why?" footer, then the recovery update). The screen sets it for the
@@ -1002,6 +1004,8 @@ class RingTrio extends StatelessWidget {
       required this.d,
       this.onOpen,
       this.now,
+      this.since,
+      this.syncPending = false,
       this.help,
       this.reserveHelp});
 
@@ -1024,36 +1028,8 @@ class RingTrio extends StatelessWidget {
     final at = now ?? pc.clock.now();
     final rings = [for (final k in HomeRingKind.values) _ringOf(k, d, l, at)];
     final gaps = rings.where((r) => r.why != null).toList();
-    // "Why?" and the drivers behind a scored recovery, when there are some.
-    final whyText = d.readiness.value != null && d.drivers.isNotEmpty
-        ? '${l?.homeWhyLabel ?? 'Why?'} ${d.drivers.take(3).map((e) => driverLabel(e['label'], l)).join(' · ')}'
-        : null;
-    // A ring has a value but there are no drivers to name: the link still
-    // belongs there (the strip would be an empty box), just without a list. No
-    // drivers are invented. Only when nothing else would fill the strip.
-    final bareWhy = whyText == null &&
-            recoveryUpdatedLine(d.readinessUpdate, l) == null &&
-            gaps.isEmpty &&
-            rings.any((r) => r.why == null)
-        ? (l?.homeWhyLabel ?? 'Why?')
-        : null;
-    // The strip's lines: the recovery update, the "Why?" drivers, then each
-    // empty ring's reason. Whatever is there, in one box.
-    final note = recoveryUpdatedLine(d.readinessUpdate, l);
-    final RingHelp strip = help ??
-        RingHelp(
-            [
-              ?note,
-              ?whyText,
-              ?bareWhy,
-              for (final r in gaps)
-                '${r.label} · ${presentationText(l, r.why ?? '')}',
-            ].join('\n'),
-            onTap: gaps.isNotEmpty
-                ? _open(gaps.first.kind)
-                : whyText != null || bareWhy != null
-                    ? _open(HomeRingKind.recovery)
-                    : null);
+    final pressing = pressingRings(d, now: at);
+    final older = d.strain.fromOlderVersion;
     // THERE IS NO "THESE TWO ARE FROM SATURDAY" LINE ANY MORE, and there is
     // nothing left for one to explain. Recovery and sleep used to be served
     // from the last scored night whenever today's had not settled, and this
@@ -1065,7 +1041,8 @@ class RingTrio extends StatelessWidget {
 
     return Surface(
       elevation: 2,
-      child: LayoutBuilder(builder: (c, box) => Column(children: [
+      child: LayoutBuilder(builder: (c, box) => Stack(children: [
+        Column(children: [
         // Rows replace columns by locale, text scale and width only, never by
         // the day's data: an empty card and a loaded one are the same layout.
         if (bigText(c))
@@ -1090,20 +1067,37 @@ class RingTrio extends StatelessWidget {
         // THE HELP STRIP: one fixed-height slot under the rings, the same box
         // first launch and loaded. Empty, it says what arrives when (or why a
         // ring is empty); loaded, it is the card's "Why?" footer.
-        const SizedBox(height: S.x3),
-        Divider(color: p.line, height: 1),
-        const SizedBox(height: S.x3),
-        _HelpStrip(
-          text: strip.text,
-          onTap: strip.onTap,
-          busy: strip.busy,
-          chevron: strip.onTap != null,
-          reserve: [
-            ?reserveHelp,
-            ?whyText,
-            if (strip.text.isNotEmpty) strip.text,
+        if (pressing.isNotEmpty || older != null) ...[
+          const SizedBox(height: S.x3),
+          for (var i = 0; i < pressing.length; i++) ...[
+            if (i > 0) const SizedBox(height: S.x2),
+            _HomeWhyPanel(kind: pressing[i], data: d, onTap: _open(pressing[i])),
           ],
-        ),
+          if (older != null)
+            Padding(padding: EdgeInsets.only(top: pressing.isEmpty ? 0 : S.x2), child: _HomeOlderPanel(version: older, reason: d.strain.olderVersionReason,
+                onTap: _open(HomeRingKind.strain)),
+            ),
+        ] else if (help != null && help!.text.isNotEmpty) ...[
+          const SizedBox(height: S.x3),
+          _HelpStrip(text: help!.text, onTap: help!.onTap,
+              busy: help!.busy, chevron: help!.onTap != null,
+              reserve: reserveHelp == null ? const [] : [reserveHelp!]),
+        ] else if (gaps.isNotEmpty) ...[
+          const SizedBox(height: S.x3),
+          _HelpStrip(text: [for (final r in gaps) '${r.label} · ${presentationText(l, r.why ?? '')}'].join('\n'),
+              onTap: _open(gaps.first.kind), busy: false, chevron: onOpen != null, reserve: const []),
+        ],
+      ]),
+        if (since != null)
+          Positioned(top: 0, right: 0, child: Row(key: const ValueKey('home-since'), mainAxisSize: MainAxisSize.min, children: [
+            if (syncPending) ...[
+              SizedBox(key: const ValueKey('home-since-progress'), width: 10, height: 10,
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: P.of(c).ink3)),
+              const SizedBox(width: 4),
+            ],
+            Text(l?.homeSinceTime(DateFormat('HH:mm').format(since!)) ?? 'since ${DateFormat('HH:mm').format(since!)}',
+              style: F.over.copyWith(color: P.of(c).ink3)),
+          ])),
       ])),
     );
   }
@@ -1111,6 +1105,95 @@ class RingTrio extends StatelessWidget {
   VoidCallback? _open(HomeRingKind k) {
     final f = onOpen;
     return f == null ? null : () => f(k);
+  }
+}
+
+class _HomeWhyPanel extends StatelessWidget {
+  final HomeRingKind kind;
+  final HomeData data;
+  final VoidCallback? onTap;
+  const _HomeWhyPanel({required this.kind, required this.data, this.onTap});
+
+  @override
+  Widget build(BuildContext c) {
+    final l = AppLocalizations.of(c);
+    final p = P.of(c);
+    final state = _ringOf(kind, data, l, DateTime.now());
+    final title = switch (kind) {
+      HomeRingKind.recovery => l?.homeWhyRecoveryTitle ?? 'Recovery is low',
+      HomeRingKind.sleep => l?.homeWhySleepTitle ?? 'Sleep is short of need',
+      HomeRingKind.strain => l?.homeWhyStrainTitle ?? 'Strain is above target',
+    };
+    final body = switch (kind) {
+      HomeRingKind.recovery => l?.homeWhyRecoveryBody ?? 'Your recovery score is below its usual range.',
+      HomeRingKind.sleep => _sleepWhy(data, l),
+      HomeRingKind.strain => l?.homeWhyStrainBody ?? 'Today’s strain is above your target range.',
+    };
+    return _HomeInsetRow(key: ValueKey('home-why:${kind.name}'), onTap: onTap,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Container(key: ValueKey('home-why-icon:${kind.name}'), width: 32, height: 32,
+          decoration: BoxDecoration(color: p.on(state.color).withValues(alpha: .14), shape: BoxShape.circle),
+          child: Icon(state.icon, size: 17, color: p.on(state.color))),
+        const SizedBox(width: S.x2),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(title, key: ValueKey('home-why-title:${kind.name}'), maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: F.body.copyWith(fontWeight: FontWeight.w600, color: p.ink)),
+          const SizedBox(height: 2),
+          Text(body, key: ValueKey('home-why-body:${kind.name}'), maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: F.cap.copyWith(color: p.ink2)),
+        ])),
+        const SizedBox(width: S.x1),
+        Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
+      ]));
+  }
+}
+
+String _sleepWhy(HomeData d, AppLocalizations? l) {
+  final asleep = d.sleepMin.value, need = d.sleepNeedMin.value;
+  if (asleep == null || need == null) return l?.homeWhySleepBody ?? 'Your scored sleep was below your need.';
+  final gap = (need - asleep).clamp(0, need);
+  String hm(num m) => '${m ~/ 60}h ${m.round() % 60}m';
+  return l?.homeWhySleepDetail(hm(asleep), hm(gap), hm(need)) ??
+      '${hm(asleep)} asleep, ${hm(gap)} under your ${hm(need)} need.';
+}
+
+class _HomeOlderPanel extends StatelessWidget {
+  final int version;
+  final String? reason;
+  final VoidCallback? onTap;
+  const _HomeOlderPanel({required this.version, this.reason, this.onTap});
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final why = olderVersionReasonText(l, reason);
+    final line = why == null ? (l?.homeOlderVersion(version) ?? 'Version $version') : 'Version $version · $why';
+    return _HomeInsetRow(key: const ValueKey('home-older-row'), onTap: onTap,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Container(key: const ValueKey('home-older-row-icon'), width: 32, height: 32,
+          decoration: BoxDecoration(color: p.ink3.withValues(alpha: .16), shape: BoxShape.circle),
+          child: Icon(LucideIcons.history, size: 17, color: p.ink2)),
+        const SizedBox(width: S.x2),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(l?.homeOlderTitle ?? '* Strain is from an older calculation', style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text(line, style: F.cap.copyWith(color: p.ink2), maxLines: 2, overflow: TextOverflow.ellipsis),
+        ])),
+        Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
+      ]));
+  }
+}
+
+class _HomeInsetRow extends StatelessWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  const _HomeInsetRow({super.key, required this.child, this.onTap});
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final panel = Container(padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+      decoration: BoxDecoration(color: p.card2, borderRadius: R.rMd), child: child);
+    return onTap == null ? panel : Pressable(onTap: onTap, child: panel);
   }
 }
 
@@ -1141,6 +1224,31 @@ String? recoveryStateLine(Map<String, dynamic> head, AppLocalizations? l) =>
 /// Which ring. The three the app can stand behind on a home screen: what the
 /// night gave back, what the day has cost, and what the night was made of.
 enum HomeRingKind { recovery, strain, sleep }
+
+/// The two most urgent rings with readings the Home card can explain.
+List<HomeRingKind> pressingRings(HomeData d, {DateTime? now}) {
+  final ranked = <(HomeRingKind, int)>[];
+  final recovery = d.readiness.value;
+  if (recovery != null && d.recoveryState != 'provisional' &&
+      d.recoveryState != 'night_in_progress') {
+    if (recovery < 26) ranked.add((HomeRingKind.recovery, 3));
+    else if (recovery <= 36) ranked.add((HomeRingKind.recovery, 2));
+  }
+  final sleep = d.sleepMin.value, need = d.sleepNeedMin.value;
+  if (sleep != null && need != null && need > 0 && sleep / need < .85) {
+    ranked.add((HomeRingKind.sleep, sleep / need < .70 ? 3 : 2));
+  }
+  final strain = d.strain.value;
+  final high = d.strainTarget?['high'];
+  if (strain != null && high is num && strain > high) {
+    ranked.add((HomeRingKind.strain, 1));
+  }
+  const order = {HomeRingKind.recovery: 0, HomeRingKind.sleep: 1, HomeRingKind.strain: 2};
+  ranked.sort((a, b) => b.$2.compareTo(a.$2) != 0
+      ? b.$2.compareTo(a.$2)
+      : order[a.$1]!.compareTo(order[b.$1]!));
+  return [for (final item in ranked.take(2)) item.$1];
+}
 
 /// One ring's resolved state — the only place a metric becomes a shape.
 class _RingState {
@@ -1769,7 +1877,7 @@ class _RingText extends StatelessWidget {
                   ? F.n24.copyWith(color: r.provisional ? p.ink3 : p.ink)
                   : F.body.copyWith(color: p.ink2),
           textAlign: align,
-        ), OlderVersionMark(id: 'strain', version: r.olderVersion, reason: r.olderReason)])),
+        ), OlderVersionMark(id: 'strain', version: r.olderVersion, reason: r.olderReason, speak: false)])),
         // The caption line is reserved (two lines at the column's width), so
         // it does not move the card when a reading lands.
         const SizedBox(height: 2),
@@ -2378,6 +2486,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with RevisionReload, WidgetsBindingObserver, PausedReadReload<HomeScreen> {
   HomeData? _d;
+  DateTime? _recordingsThrough;
   bool _loading = true;
 
   /// The day requested by the switcher, or null for "today" — the same
@@ -2445,12 +2554,33 @@ class _HomeScreenState extends State<HomeScreen>
     watchPausedRead();
     WidgetsBinding.instance.addObserver(this);
     _armTick();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSince());
     if (widget.data != null) {
       _d = widget.data;
       _loading = false;
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _loadSince() async {
+    final repo = repoOf(context);
+    final day = widget.data?.dayId ?? _day ?? todayLabel();
+    if (repo == null || day != todayLabel()) return;
+    final through = await repo.dayRecordingsThrough(day);
+    if (mounted && through != _recordingsThrough) {
+      setState(() => _recordingsThrough = through);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.data != oldWidget.data && widget.data != null) {
+      _d = widget.data;
+      _loading = false;
+      _loadSince();
+    }
   }
 
   /// Today and yesterday, plus the older day already on screen (so the
@@ -2555,12 +2685,15 @@ class _HomeScreenState extends State<HomeScreen>
               : day == null || day == today
                   ? await HomeData.load(repo, l, true)
                   : await HomeData.loadForDay(repo, day, l);
+      final through = (day == null || day == today)
+          ? await repo.dayRecordingsThrough(today)
+          : null;
       // During focus only today and yesterday are on offer, in every case.
       final List<String> days = focus
           ? _focusDays(day)
           : await repo.availableDays();
       if (stillNewest(#home, t)) {
-        setState(() => (_d = d, _days = days, _loading = false, _failed = false,
+        setState(() => (_d = d, _recordingsThrough = through, _days = days, _loading = false, _failed = false,
             _paused = false));
         _recordRender();
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
@@ -2849,6 +2982,9 @@ class _HomeScreenState extends State<HomeScreen>
         RingTrio(
           d: ringData,
           now: widget.now,
+          since: isToday ? _recordingsThrough : null,
+          syncPending: isToday && _recordingsThrough != null &&
+              context.read<AppState>().offloadActive,
           help: help,
           reserveHelp: guidance,
           onOpen: (k) => go(
@@ -2865,7 +3001,6 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
       if (!bare) ...[
-        _homeAsOf(c, d),
         // Right under the rings: a failed gesture comes first, the newest
         // undismissed one, one card at a time.
         if (gestureFailuresOf(c) case final failures?)

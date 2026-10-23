@@ -3411,5 +3411,42 @@
   "welcomeImportContinue": "जारी रखें",
   "importPausedOlderDays": "आयात पूरा होने पर पुराने दिन लोड होंगे",
   "importPausedTodayPending": "आज का डेटा तैयार होते ही दिखेगा",
-  "importPausedSaving": "आयात पूरा होने तक सहेजना रुका हुआ है"
+  "importPausedSaving": "आयात पूरा होने तक सहेजना रुका हुआ है",
+  "homeWhyRecoveryTitle": "रिकवरी कम है",
+  "homeWhyRecoveryBody": "आपका रिकवरी स्कोर सामान्य सीमा से कम है।",
+  "homeWhySleepTitle": "नींद की कमी",
+  "homeWhySleepBody": "आपकी मापी गई नींद ज़रूरत से कम थी।",
+  "homeWhyStrainTitle": "लक्ष्य से अधिक स्ट्रेन",
+  "homeWhyStrainBody": "आज का स्ट्रेन आपकी लक्ष्य सीमा से अधिक है।",
+  "homeWhySleepDetail": "{asleep} सोए, आपकी {need} की ज़रूरत से {gap} कम।",
+  "homeOlderTitle": "* स्ट्रेन पुराने हिसाब से है",
+  "homeOlderVersion": "संस्करण {version}",
+  "@homeWhySleepDetail": {
+    "placeholders": {
+      "asleep": {
+        "type": "String"
+      },
+      "gap": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeOlderVersion": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSinceTime": "{time} से",
+  "@homeSinceTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }

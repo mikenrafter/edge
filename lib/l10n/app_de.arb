@@ -3517,5 +3517,42 @@
   "welcomeImportContinue": "Weiter",
   "importPausedOlderDays": "Ältere Tage werden geladen, sobald der Import abgeschlossen ist",
   "importPausedTodayPending": "Heute erscheint, sobald es fertig ist",
-  "importPausedSaving": "Speichern ist pausiert, bis der Import abgeschlossen ist"
+  "importPausedSaving": "Speichern ist pausiert, bis der Import abgeschlossen ist",
+  "homeWhyRecoveryTitle": "Erholung ist niedrig",
+  "homeWhyRecoveryBody": "Dein Erholungswert liegt unter deinem üblichen Bereich.",
+  "homeWhySleepTitle": "Schlaf reicht nicht aus",
+  "homeWhySleepBody": "Dein bewerteter Schlaf lag unter deinem Bedarf.",
+  "homeWhyStrainTitle": "Belastung über dem Ziel",
+  "homeWhyStrainBody": "Die heutige Belastung liegt über deinem Zielbereich.",
+  "homeWhySleepDetail": "{asleep} geschlafen, {gap} unter deinem Bedarf von {need}.",
+  "homeOlderTitle": "* Belastung stammt aus einer älteren Berechnung",
+  "homeOlderVersion": "Version {version}",
+  "@homeWhySleepDetail": {
+    "placeholders": {
+      "asleep": {
+        "type": "String"
+      },
+      "gap": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeOlderVersion": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSinceTime": "seit {time}",
+  "@homeSinceTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }

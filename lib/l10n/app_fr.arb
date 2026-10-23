@@ -3411,5 +3411,42 @@
   "welcomeImportContinue": "Continuer",
   "importPausedOlderDays": "Les jours précédents seront chargés à la fin de l’importation",
   "importPausedTodayPending": "Aujourd’hui apparaîtra dès que ce sera prêt",
-  "importPausedSaving": "L’enregistrement est en pause jusqu’à la fin de l’importation"
+  "importPausedSaving": "L’enregistrement est en pause jusqu’à la fin de l’importation",
+  "homeWhyRecoveryTitle": "Récupération faible",
+  "homeWhyRecoveryBody": "Votre score de récupération est inférieur à votre niveau habituel.",
+  "homeWhySleepTitle": "Sommeil insuffisant",
+  "homeWhySleepBody": "Votre sommeil évalué était inférieur à votre besoin.",
+  "homeWhyStrainTitle": "Effort au-dessus de l’objectif",
+  "homeWhyStrainBody": "L’effort du jour dépasse votre plage cible.",
+  "homeWhySleepDetail": "{asleep} de sommeil, {gap} de moins que vos {need} nécessaires.",
+  "homeOlderTitle": "* Effort issu d’un calcul antérieur",
+  "homeOlderVersion": "Version {version}",
+  "@homeWhySleepDetail": {
+    "placeholders": {
+      "asleep": {
+        "type": "String"
+      },
+      "gap": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeOlderVersion": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSinceTime": "depuis {time}",
+  "@homeSinceTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }

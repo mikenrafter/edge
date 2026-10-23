@@ -3411,5 +3411,42 @@
   "welcomeImportContinue": "继续",
   "importPausedOlderDays": "导入完成后将加载更早的日期",
   "importPausedTodayPending": "今天的内容准备好后会立即显示",
-  "importPausedSaving": "导入完成前暂停保存"
+  "importPausedSaving": "导入完成前暂停保存",
+  "homeWhyRecoveryTitle": "恢复状态偏低",
+  "homeWhyRecoveryBody": "你的恢复评分低于平常范围。",
+  "homeWhySleepTitle": "睡眠不足",
+  "homeWhySleepBody": "已评分的睡眠时长低于你的需求。",
+  "homeWhyStrainTitle": "负荷超过目标",
+  "homeWhyStrainBody": "今天的负荷超过了你的目标范围。",
+  "homeWhySleepDetail": "睡了 {asleep}，比所需的 {need} 少 {gap}。",
+  "homeOlderTitle": "* 负荷来自较早的计算",
+  "homeOlderVersion": "版本 {version}",
+  "@homeWhySleepDetail": {
+    "placeholders": {
+      "asleep": {
+        "type": "String"
+      },
+      "gap": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "@homeOlderVersion": {
+    "placeholders": {
+      "version": {
+        "type": "int"
+      }
+    }
+  },
+  "homeSinceTime": "自 {time}",
+  "@homeSinceTime": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  }
 }
