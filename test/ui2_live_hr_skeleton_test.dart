@@ -115,6 +115,16 @@ Rect _plot(WidgetTester t) {
 
 abstract class _Never {}
 
+bool _isHidden(Element e) {
+  var hidden = false;
+  e.visitAncestorElements((a) {
+    final w = a.widget;
+    if (w is Visibility && !w.visible) hidden = true;
+    return !hidden;
+  });
+  return hidden;
+}
+
 Rect _belowRect(WidgetTester t) => t.getRect(find.byKey(_below));
 
 /// Reference geometry: the card with a full chart.
@@ -190,10 +200,17 @@ void main() {
                 matching: find.byWidgetPredicate(
                     (x) => x is CustomPaint && x.painter is LineChart)),
             findsNothing);
+        // Only what is DRAWN: hidden layout candidates (Visibility off) are
+        // not shown to anyone and are not in semantics.
         final texts = [
-          for (final x in t.widgetList<Text>(find.descendant(
-              of: find.byType(LiveHrCard), matching: find.byType(Text))))
-            x.data ?? x.textSpan?.toPlainText() ?? ''
+          for (final e in find
+              .descendant(
+                  of: find.byType(LiveHrCard), matching: find.byType(Text))
+              .evaluate())
+            if (!_isHidden(e))
+              (e.widget as Text).data ??
+                  (e.widget as Text).textSpan?.toPlainText() ??
+                  ''
         ];
         for (final s in texts) {
           expect(RegExp(r'^\s*\d+\s*$').hasMatch(s), isFalse, reason: s);

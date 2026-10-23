@@ -143,6 +143,13 @@ class LiveHrCard extends StatelessWidget {
       return n == 0 ? 'Now' : '$n readings ago';
     }
 
+    final bodyStyle = F.body.copyWith(color: p.ink2);
+    final reasons = {
+      _absenceMessage(paired: false, connected: false),
+      _absenceMessage(paired: true, connected: false),
+      _absenceMessage(paired: true, connected: true),
+    }.toList();
+
     return Surface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -151,87 +158,85 @@ class LiveHrCard extends StatelessWidget {
           // the number is allowed to scale down inside the space that is left
           // rather than the row overflowing. The pill keeps its size: it is two
           // short words and shrinking it is how a label becomes unreadable.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Icon(LucideIcons.heart, size: 26, color: p.on(C.red)),
-              const SizedBox(width: S.x3),
-              Expanded(
-                flex: 2,
-                // A FIXED slot height: FittedBox shrinks its child to fit the
-                // width, and a wider number shrinks further, which would make
-                // the header (and the card) a different height for "61" than
-                // for no number at all. The slot is one number line tall at
-                // this text scale, whatever is in it.
-                child: SizedBox(
-                  height: _numberLine(c),
-                  child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      // No number yet: a zero-width glyph in the same style, so
-                      // the slot has the number's height and shows nothing.
-                      Text(hr == null ? '\u200B' : '$hr',
-                          style: F.n48.copyWith(color: p.ink)),
-                      const SizedBox(width: S.x2),
-                      Text(
-                        hr == null
-                            ? '\u200B'
-                            : (l?.activityLiveBpmUnit ?? 'bpm'),
-                        style: F.body.copyWith(color: p.ink3),
-                      ),
-                    ],
-                  ),
-                ),
-                ),
-              ),
-              const SizedBox(width: S.x2),
-              // WHOSE PULSE THIS IS, only when two devices are streaming. Below
-              // that the row is byte-identical to today's: same Pill, same
-              // position, no Pressable in the tree at all.
-              // Flexible: a long label (Russian, 3.1x) shrinks the pill's text
-              // instead of overflowing the row.
-              Flexible(
-                child: (!_preview && c.select<AppState, bool>((a) => a.liveHrMultiDevice))
-                ? Builder(
-                  builder: (c) {
-                    final app = c.read<AppState>();
-                    final ranked = rankSources(liveSources(app));
-                    final id = app.liveHrDeviceId;
-                    final source = id == null ? null
-                        : ranked.firstWhereOrNull((s) => deviceIdOf(s) == id);
-                    final label = source?.displayName(c) ?? (l?.devicesLive ?? 'LIVE');
-                    return Pressable(
-                      onTap: () => app.showLiveHrFrom(_nextDevice(app, ranked, id)),
-                      semanticLabel:
-                          l?.liveHrShowingDeviceSemantics(label) ??
-                          'Showing $label. Tap to switch device.',
-                      child: Pill(label, C.red, icon: LucideIcons.radio),
-                    );
-                  },
-                )
-              : Pill(l?.devicesLive ?? 'LIVE', C.red, icon: LucideIcons.radio),
-              ),
-            ],
-          ),
-          const SizedBox(height: S.x3),
           LayoutBuilder(builder: (c, box) {
-            // The plot slot is at least 56 pt, and tall enough for the longest
-            // status reason, measured as it will be drawn (scale, bold, locale).
-            final bodyStyle = F.body.copyWith(color: p.ink2);
-            var slot = 56.0;
-            for (final r in [
-              _absenceMessage(paired: false, connected: false),
-              _absenceMessage(paired: true, connected: false),
-              _absenceMessage(paired: true, connected: true),
-            ]) {
-              slot = math.max(slot,
-                  _textHeight(c, r, bodyStyle, box.maxWidth - 2 * S.x2));
-            }
-            return hasChart ?
+            final bpmUnit = l?.activityLiveBpmUnit ?? 'bpm';
+            // The number and its unit, in one baseline row.
+            Widget numberRow(String n, String unit) => Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(n, style: F.n48.copyWith(color: p.ink)),
+                    const SizedBox(width: S.x2),
+                    Text(unit, style: F.body.copyWith(color: p.ink3)),
+                  ],
+                );
+            final pill = (!_preview &&
+                    c.select<AppState, bool>((a) => a.liveHrMultiDevice))
+                ? Builder(
+                    // WHOSE PULSE THIS IS, only when two devices are streaming.
+                    // Below that the row is byte-identical to today's: same
+                    // Pill, same position, no Pressable in the tree at all.
+                    builder: (c) {
+                      final app = c.read<AppState>();
+                      final ranked = rankSources(liveSources(app));
+                      final id = app.liveHrDeviceId;
+                      final source = id == null ? null
+                          : ranked.firstWhereOrNull((s) => deviceIdOf(s) == id);
+                      final label = source?.displayName(c) ?? (l?.devicesLive ?? 'LIVE');
+                      return Pressable(
+                        onTap: () => app.showLiveHrFrom(_nextDevice(app, ranked, id)),
+                        semanticLabel:
+                            l?.liveHrShowingDeviceSemantics(label) ??
+                            'Showing $label. Tap to switch device.',
+                        child: Pill(label, C.red, icon: LucideIcons.radio),
+                      );
+                    },
+                  )
+                : Pill(l?.devicesLive ?? 'LIVE', C.red, icon: LucideIcons.radio);
+            // At 3.1x text an n48 number plus a pill does not fit a phone width,
+            // so the number is allowed to scale down inside the space that is
+            // left rather than the row overflowing.
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(LucideIcons.heart, size: 26, color: p.on(C.red)),
+                const SizedBox(width: S.x3),
+                Expanded(
+                  // The slot is as tall as the widest realistic reading ("188"
+                  // bpm) in the same styles, laid out by Flutter and hidden. The
+                  // real number is drawn in that box, so the header is the same
+                  // height with a number, with none, and at any text scale.
+                  child: Stack(children: [
+                    _hidden(FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: numberRow('188', bpmUnit),
+                    )),
+                    Positioned.fill(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        // No number yet: a zero-width glyph, nothing drawn.
+                        child: numberRow(hr == null ? '\u200B' : '$hr',
+                            hr == null ? '\u200B' : bpmUnit),
+                      ),
+                    ),
+                  ]),
+                ),
+                const SizedBox(width: S.x2),
+                // The pill keeps its own width and the trailing edge; a very
+                // long label ellipsizes at a third of the row.
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: box.maxWidth / 3),
+                  child: pill,
+                ),
+              ],
+            );
+          }),
+          const SizedBox(height: S.x3),
+          // The plot slot is at least 56 pt and as tall as the tallest status
+          // reason, which is laid out (hidden) by Flutter with the real style.
+          if (hasChart)
             // Bare scrub: no frame, so it draws its own key row under the trace.
             // The 56 pt belongs to the trace alone, not to the row beneath it.
             ChartScrub(
@@ -240,15 +245,17 @@ class LiveHrCard extends StatelessWidget {
               // readings ago", counted from the newest.
               time: ago,
               keys: keys,
-              child: SizedBox(
-                height: slot,
-                child: CustomPaint(
+              child: _PlotSlot(
+                reasons: reasons,
+                shown: null,
+                style: bodyStyle,
+                paint: CustomPaint(
                   painter: LineChart(live, C.red, fill: false),
                   size: Size.infinite,
                 ),
               ),
             )
-            :
+          else
             // The same plot slot and key row, nothing scrubbable in them.
             Semantics(
               container: true,
@@ -257,22 +264,14 @@ class LiveHrCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(
-                    height: slot,
-                    child: CustomPaint(
+                  _PlotSlot(
+                    reasons: reasons,
+                    // With no beat, the reason is stated in the frame.
+                    shown: hr == null ? why : null,
+                    style: bodyStyle,
+                    paint: CustomPaint(
                       painter: _LiveHrSkeleton(p.line, p.track),
                       size: Size.infinite,
-                      // With no beat, the reason is stated in the frame.
-                      child: hr == null
-                          ? Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: S.x2),
-                                child: Text(why,
-                                    textAlign: TextAlign.center,
-                                    style: bodyStyle),
-                              ),
-                            )
-                          : null,
                     ),
                   ),
                   const SizedBox(height: S.x2),
@@ -282,14 +281,13 @@ class LiveHrCard extends StatelessWidget {
                   ),
                 ],
               ),
-            );
-          }),
+            ),
           const SizedBox(height: S.x2),
-          _CaptionSlot(
-            text: caption,
+          _CandidateText(
+            shown: caption,
             style: F.over.copyWith(color: p.ink3),
-            // The tallest text this slot can hold, so no state is taller.
-            reserve: [
+            // Every text this slot can hold, so no state is taller.
+            candidates: [
               _caption(saved, 90, 100, 200),
               notSaved,
               _fixUnpaired,
@@ -301,9 +299,6 @@ class LiveHrCard extends StatelessWidget {
     );
   }
 
-  /// One line of the big number, at the current text scale.
-  static double _numberLine(BuildContext c) => _textHeight(c, '0', F.n48, double.infinity);
-
   String _absenceMessage({required bool paired, required bool connected}) =>
       !paired
           ? 'No band is paired.'
@@ -312,45 +307,62 @@ class LiveHrCard extends StatelessWidget {
               : 'No beat in the last ${AppState.liveHrMaxAge.inSeconds} seconds.';
 }
 
-/// A caption whose height is the tallest of [reserve] at this width and text
-/// scale, so changing the words (or the numbers in them) moves nothing.
-class _CaptionSlot extends StatelessWidget {
-  const _CaptionSlot({required this.text, required this.style, required this.reserve});
-  final String text;
+/// Draws a candidate text so that it takes up its space but cannot be seen,
+/// heard or touched. Flutter lays it out with every ambient setting applied
+/// (text scale, bold, spacing overrides, locale), so a slot containing the
+/// hidden candidates is exactly as tall as the tallest of them.
+Widget _hidden(Widget child) => Visibility(
+      visible: false,
+      maintainSize: true,
+      maintainAnimation: true,
+      maintainState: true,
+      child: child,
+    );
+
+/// A text slot as tall as the tallest of [candidates] (plus [shown]).
+class _CandidateText extends StatelessWidget {
+  const _CandidateText(
+      {required this.shown, required this.style, required this.candidates});
+  final String shown;
   final TextStyle style;
-  final List<String> reserve;
+  final List<String> candidates;
 
   @override
-  Widget build(BuildContext c) => LayoutBuilder(builder: (c, box) {
-        var h = 0.0;
-        for (final s in reserve) {
-          h = math.max(h, _textHeight(c, s, style, box.maxWidth));
-        }
-        return ConstrainedBox(
-          constraints: BoxConstraints(minHeight: h),
-          child: Text(text, style: style),
-        );
-      });
+  Widget build(BuildContext c) => Stack(children: [
+        for (final s in candidates)
+          if (s != shown) _hidden(Text(s, style: style)),
+        Text(shown, style: style),
+      ]);
 }
 
-/// The height [text] takes in a [Text] built from [style] right here: the
-/// ambient DefaultTextStyle underneath, the bold-text setting on top (Text
-/// merges FontWeight.bold when MediaQuery.boldText is on), the same text scaler
-/// and locale.
-double _textHeight(BuildContext c, String text, TextStyle style, double maxWidth) {
-  var eff = DefaultTextStyle.of(c).style.merge(style);
-  if (MediaQuery.boldTextOf(c)) {
-    eff = eff.merge(const TextStyle(fontWeight: FontWeight.bold));
-  }
-  final tp = TextPainter(
-      text: TextSpan(text: text, style: eff),
-      textDirection: Directionality.of(c),
-      textScaler: MediaQuery.textScalerOf(c),
-      locale: Localizations.maybeLocaleOf(c))
-    ..layout(maxWidth: maxWidth);
-  final h = tp.height;
-  tp.dispose();
-  return h;
+/// The plot slot: at least 56 pt, as tall as the tallest of [reasons], with
+/// [paint] filling it. [shown] (one of the reasons, or null) is drawn centered.
+class _PlotSlot extends StatelessWidget {
+  const _PlotSlot(
+      {required this.reasons,
+      required this.shown,
+      required this.style,
+      required this.paint});
+  final List<String> reasons;
+  final String? shown;
+  final TextStyle style;
+  final Widget paint;
+
+  @override
+  Widget build(BuildContext c) => Stack(
+        alignment: Alignment.center,
+        children: [
+          const SizedBox(height: 56, width: double.infinity),
+          Positioned.fill(child: paint),
+          for (final r in reasons)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: S.x2),
+              child: r == shown
+                  ? Text(r, textAlign: TextAlign.center, style: style)
+                  : _hidden(Text(r, textAlign: TextAlign.center, style: style)),
+            ),
+        ],
+      );
 }
 
 class _LiveHrSkeleton extends CustomPainter {
