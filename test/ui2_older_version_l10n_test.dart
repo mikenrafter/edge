@@ -35,7 +35,8 @@ void main() {
     expect(find.textContaining(kReasonSentence), findsNothing);
   });
 
-  testWidgets('the same through the mark\'s tap note', (t) async {
+  testWidgets('the mark is spoken in German and not tappable', (t) async {
+    final h = t.ensureSemantics();
     await t.pumpWidget(MaterialApp(
       locale: const Locale('de'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -44,11 +45,9 @@ void main() {
       home: const Scaffold(
           body: OlderVersionMark(id: 'x', version: 104, reason: kReasonRaw)),
     ));
-    await t.tap(olderMark('x'));
-    await t.pumpAndSettle();
-    expect(find.textContaining(kReasonSentence), findsNothing);
-    expect(find.text(de.olderVersionNote(104, de.olderVersionReasonAge)),
-        findsOneWidget);
+    expectSpokenNotTappable(t, olderMark('x'),
+        label: equals(de.olderVersionSemantics(104)));
+    h.dispose();
   });
 
   testWidgets('a reason with no translation: the version alone, no English',

@@ -2,14 +2,15 @@
 // Not a test itself.
 //
 // PINNED CONTRACT the green phase must satisfy (keys are ValueKey<String>):
-//   older-version-mark:<id>   the asterisk beside a number (text '*'); tapping
-//                             it reveals the note text.
+//   older-version-mark:<id>   the asterisk beside a number (text '*'); spoken,
+//                             never tappable (no button, no tap action).
 //   older-version-note:<id>   the visible note.
 // ids: strain / calories / calories_total (Home ring + tile, Day strain),
 //      headline / latest / selected (Metric detail), readout (any chart
 //      scrub readout: Explorer, month grid, workout bars).
 // Note text: 'From an older calculation (v104): <reason sentence>'; with no
 // reason, 'From an older calculation (v104)'. Reason sentence is whyFromNote().
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/day_label.dart';
@@ -88,4 +89,13 @@ class OlderRepo extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayWear(String date) async => const {};
+}
+
+/// The mark is spoken ([label], by default the English form) and is NOT tappable:
+/// its semantics carry no button flag and no tap action.
+void expectSpokenNotTappable(WidgetTester t, Finder mark, {Matcher? label}) {
+  final d = t.getSemantics(mark).getSemanticsData();
+  expect(d.label, label ?? matches(kSpoken));
+  expect(d.hasFlag(SemanticsFlag.isButton), isFalse);
+  expect(d.hasAction(SemanticsAction.tap), isFalse);
 }

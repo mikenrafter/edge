@@ -52,7 +52,7 @@ Future<void> _home(WidgetTester t, HomeData d) async {
 
 void main() {
   group('strain ring', () {
-    testWidgets('older value: number, asterisk, spoken, tap reveals the note',
+    testWidgets('older value: number, asterisk, spoken, not tappable',
         (t) async {
       final h = t.ensureSemantics();
       await _rings(
@@ -60,9 +60,7 @@ void main() {
       expect(find.text('8.4'), findsOneWidget);
       expect(olderMark('strain'), findsOneWidget);
       expect(find.bySemanticsLabel(kSpoken), findsWidgets);
-      await t.tap(olderMark('strain'));
-      await t.pumpAndSettle();
-      expect(find.text(kNoteV104Reason), findsOneWidget);
+      expectSpokenNotTappable(t, olderMark('strain'));
       h.dispose();
     });
 
@@ -128,8 +126,9 @@ void main() {
       expect(inRings('calories_total'), findsNothing);
     });
 
-    testWidgets('both older: two marks in the tile; tapping each reveals its '
-        'own note', (t) async {
+    testWidgets('both older: two marks in the tile, each spoken and '
+        'not tappable', (t) async {
+      final h = t.ensureSemantics();
       const total = Metric(
           value: 2100,
           confidence: .8,
@@ -140,17 +139,10 @@ void main() {
           const HomeData(dayId: '2026-10-04', calories: _oldKcal, caloriesTotal: total));
       expect(inTile('calories'), findsOneWidget);
       expect(inTile('calories_total'), findsOneWidget);
-      await t.tap(inTile('calories_total'));
-      await t.pumpAndSettle();
-      expect(
-          find.text('From an older calculation (v103): '
-              'This metric needs your weight, which is not on file.'),
-          findsOneWidget);
-      await t.tap(find.text('OK'));
-      await t.pumpAndSettle();
-      await t.tap(inTile('calories'));
-      await t.pumpAndSettle();
-      expect(find.text(kNoteV104Reason), findsOneWidget);
+      expectSpokenNotTappable(t, inTile('calories_total'),
+          label: contains('v103'));
+      expectSpokenNotTappable(t, inTile('calories'), label: contains('v104'));
+      h.dispose();
     });
 
     testWidgets('both current: no marker; absent: dash, no marker', (t) async {

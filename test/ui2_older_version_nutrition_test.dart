@@ -54,9 +54,7 @@ void main() {
     expect(olderMark('calories_total'), findsOneWidget);
     expect(olderMark('balance'), findsOneWidget);
     expect(find.bySemanticsLabel(kSpoken), findsWidgets);
-    await t.tap(olderMark('calories_total'));
-    await t.pumpAndSettle();
-    expect(find.text(kNoteV104Reason), findsOneWidget);
+    expectSpokenNotTappable(t, olderMark('calories_total'));
     h.dispose();
   });
 
@@ -154,9 +152,9 @@ void main() {
       await open(t, older, 'Goals');
       expect(find.text('Estimated expenditure'), findsOneWidget);
       expect(olderMark('calories_total'), findsOneWidget);
-      await t.tap(olderMark('calories_total'));
-      await t.pumpAndSettle();
-      expect(find.text(kNoteV104Reason), findsOneWidget);
+      final h = t.ensureSemantics();
+      expectSpokenNotTappable(t, olderMark('calories_total'));
+      h.dispose();
     });
 
     testWidgets('Goals: current expenditure is plain', (t) async {

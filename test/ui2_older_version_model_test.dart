@@ -116,7 +116,7 @@ void main() {
       expect(olderVersionSemantics(104), matches(kSpoken));
     });
 
-    testWidgets('mark: an asterisk, spoken, and tapping it reveals the note',
+    testWidgets('mark: an asterisk, spoken, and not tappable',
         (t) async {
       final h = t.ensureSemantics();
       await host(t,
@@ -126,9 +126,7 @@ void main() {
           findsOneWidget);
       expect(find.bySemanticsLabel(kSpoken), findsWidgets);
       expect(find.text(kNoteV104Reason), findsNothing);
-      await t.tap(olderMark('x'));
-      await t.pumpAndSettle();
-      expect(find.text(kNoteV104Reason), findsOneWidget);
+      expectSpokenNotTappable(t, olderMark('x'));
       h.dispose();
     });
 
