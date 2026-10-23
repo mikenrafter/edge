@@ -297,6 +297,8 @@ void main() {
     test('a main sleep known only from window_json becomes an override',
         () async {
       final on = t0, off = t0 + 8 * 3600;
+      // The suggestion starts before the default cutoff (t0 - 1): move it back.
+      await db.update('activity_review_meta', {'activated_at': t0 - 3600});
       final s = await suggest(on - 900, on + 600);
       await dayResult(
         dayOf(off),

@@ -465,7 +465,8 @@ void main() {
       expect(r.store.load().ranges, isEmpty);
     });
 
-    testWidgets('a pair overlapping a nap already logged is refused', (t) async {
+    testWidgets('a pair overlapping a nap already logged is accepted (it extends)',
+        (t) async {
       final r = _Rig();
       r.ranges.naps = {
         '2026-10-06': [
@@ -476,8 +477,8 @@ void main() {
       await _tap(t, _choice(mA, MomentChoice.nap));
       await _tap(t, _pair(mA));
       await _tap(t, _pairTarget(mA, mB));
-      expect(_rangeError(mA), findsOneWidget);
-      expect(r.store.load().ranges, isEmpty);
+      expect(_rangeError(mA), findsNothing);
+      expect(r.store.load().ranges, hasLength(1));
     });
 
     testWidgets('Save writes the nap range once, labels both moments, and '

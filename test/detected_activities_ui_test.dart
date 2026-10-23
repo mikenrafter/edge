@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/data/nap_resolution.dart';
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -56,6 +57,7 @@ class _Repo extends LocalRepository {
     int? startTs,
     int? endTs,
     String? workoutType,
+    NapResolution? expected,
   }) async {
     if (items.singleWhere((i) => i.id == s.id).revision != s.revision) {
       throw const ActivityReviewException(

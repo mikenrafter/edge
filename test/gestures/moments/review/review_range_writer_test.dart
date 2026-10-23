@@ -114,8 +114,8 @@ void main() {
     expect(await LocalDb.napEdits('2026-10-06'), hasLength(1));
   });
 
-  test('re-applying a range that was NOT recorded as attempted does see its '
-      'own stored row as an overlap (no blanket exemption)', () async {
+  test('re-applying a range that was NOT recorded as attempted finds its own '
+      'stored row as the union: no error, still one row', () async {
     final q = MomentReviewQueue.empty.withRange(mA, mB, MomentChoice.nap);
     await LocalDb.putNapEdit(
         dayId: '2026-10-06',
@@ -124,7 +124,8 @@ void main() {
         source: 'manual');
     final rep = await applierFor(_Repo())
         .apply(q, moments: [mA, mB], glasses: const [], now: reviewNow);
-    expect(rep.failed, hasLength(1));
+    expect(rep.failed, isEmpty);
+    expect(await LocalDb.napEdits('2026-10-06'), hasLength(1));
   });
 
   test('existingNaps: the day\'s merged naps plus stored manual edits',
@@ -151,7 +152,8 @@ void main() {
         reason: 'a rejection is not a nap');
   });
 
-  test('a nap overlapping a stored manual edit is refused', () async {
+  test('a nap overlapping a stored manual edit extends it (one row, the '
+      'union)', () async {
     await LocalDb.putNapEdit(
         dayId: '2026-10-06',
         startTs: sec(2026, 10, 6, 9, 30),
@@ -162,8 +164,11 @@ void main() {
         moments: [mA, mB],
         glasses: const [],
         now: reviewNow);
-    expect(rep.failed, hasLength(1));
-    expect(await LocalDb.napEdits('2026-10-06'), hasLength(1));
+    expect(rep.failed, isEmpty);
+    final rows = await LocalDb.napEdits('2026-10-06');
+    expect(rows, hasLength(1));
+    expect(rows.single['start_ts'], sec(2026, 10, 6, 9, 15));
+    expect(rows.single['end_ts'], sec(2026, 10, 6, 10, 5));
   });
 
   test('the workout goes to logManualWorkout with the chosen type, "other" by '

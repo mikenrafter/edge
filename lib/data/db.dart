@@ -6878,7 +6878,7 @@ class LocalDb {
   // ── nap edits ─────────────────────────────────────────────────────────────
 
   /// Log a nap the detector missed, or suppress one it invented.
-  static Future<void> putNapEdit({
+  static Future<NapResolution?> putNapEdit({
     required String dayId,
     required int startTs,
     required int endTs,

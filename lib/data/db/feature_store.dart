@@ -1091,10 +1091,20 @@ Future<Map<String, int>> _ldbApplyPendingActivityReviews() async {
     });
   }
 
-Future<void> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, NapResolution? expected}) async {
+Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, NapResolution? expected}) async {
     final db = await LocalDb.instance;
-    await db.transaction((tx) async {
+    final res = await db.transaction((tx) async {
       String? snapshot;
+      if (source != 'rejected') {
+        // A nap that reaches sleep extends it to the union (one transaction
+        // with the write); a stale preview throws and nothing is written.
+        final ext = await ActivityStore.applyNapExtension(tx, startTs, endTs, expected: expected);
+        if (ext.handled) {
+          await ActivityStore.supersede(tx, ActivityKind.nap, ext.res.startTs, ext.res.endTs);
+          await ActivityStore.markDayChanged(tx, dayId);
+          return ext.res;
+        }
+      }
       if (source == 'rejected') {
         // A pre-upgrade nap may still live only in its retained day result.
         // Capture it before replacing that result with the user's rejection.
@@ -1118,7 +1128,11 @@ Future<void> _ldbPutNapEdit({required String dayId, required int startTs, requir
       // would never be reconciled again and could only fail to confirm.
       await ActivityStore.supersede(tx, ActivityKind.nap, startTs, endTs);
       await ActivityStore.markDayChanged(tx, dayId);
+      return null;
     });
+    final main = res?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
+    if (main != null) await LocalDb.releaseFrozenHeadline(main.day);
+    return res;
   }
 
 Future<void> _ldbDeleteNapEdit(String dayId, int startTs) async {

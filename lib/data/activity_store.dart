@@ -8,6 +8,7 @@ import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../compute/nap_edits.dart';
 import '../models/activity_suggestion.dart';
 import 'day_label.dart';
+import 'db.dart' show LocalDb;
 import 'nap_resolution.dart';
 import 'db/input_read_tracker.dart';
 
@@ -305,28 +306,31 @@ class ActivityStore {
     // An evening interval can overlap the main sleep owned by tomorrow's
     // wake date. Walk calendar dates rather than adding a fixed 24 hours.
     final next = dayLabelOf(DateTime(end.year, end.month, end.day + 1));
+    // Only the two parts of the bundle that are read, never the whole row.
     final nights = await tx.rawQuery(
-      '''SELECT d.* FROM day_result d
+      '''SELECT CASE WHEN json_type(d.payload_json, '\$.naps.value') = 'array'
+          THEN json_extract(d.payload_json, '\$.naps.value') END AS naps,
+        json_extract(d.payload_json, '\$.sleep.window.value.onset_ms') AS on_ms,
+        json_extract(d.payload_json, '\$.sleep.window.value.offset_ms') AS off_ms
+      FROM day_result d
       WHERE d.day_id BETWEEN ? AND ? AND d.algo_version =
         (SELECT MAX(r.algo_version) FROM day_result r WHERE r.day_id = d.day_id AND r.algo_version <= ?)''',
       [day, next, kAlgoVersion],
     );
     for (final r in nights) {
-      final b = jsonDecode(r['payload_json'] as String) as Map;
       // Before its first recompute, a pre-upgrade nap still lives only in the
       // day bundle. It is already logged and takes precedence just as a nap
       // that has been copied into the accepted-record table does.
-      final legacy = (b['naps'] as Map?)?['value'];
+      final napsJson = r['naps'] as String?;
+      final legacy = napsJson == null ? null : jsonDecode(napsJson);
       if (legacy is List) {
         for (final nap in legacy.whereType<Map>()) {
           final ns = nap['start'] as num?, ne = nap['end'] as num?;
           if (ns != null && ne != null && s < ne && e > ns) return true;
         }
       }
-      final value = ((b['sleep'] as Map?)?['window'] as Map?)?['value'];
-      // Absent metric envelopes store '—', not a window object.
-      final w = value is Map ? value : null;
-      final ns = w?['onset_ms'] as num?, ne = w?['offset_ms'] as num?;
+      // Absent metric envelopes store '—', which has no onset_ms: NULL here.
+      final ns = r['on_ms'] as num?, ne = r['off_ms'] as num?;
       if (ns != null && ne != null && s * 1000 < ne && e * 1000 > ns) {
         return true;
       }
@@ -396,22 +400,27 @@ class ActivityStore {
     return row;
   }
 
-  Future<void> confirm(
+  /// The nap resolution that was applied (null for a workout or a repeated
+  /// tap). A main sleep it extended is released for re-derive after commit;
+  /// the caller schedules that derive.
+  Future<NapResolution?> confirm(
     ActivitySuggestion expected, {
     required int startTs,
     required int endTs,
     Map<String, dynamic>? session,
     bool edited = false,
     NapResolution? expectedNap,
-  }) => db.transaction((tx) async {
+  }) async {
+    final res = await db.transaction<NapResolution?>((tx) async {
     final row = await _check(tx, expected, 'confirmed');
-    if (row == null) return;
+    if (row == null) return null;
     final now = DateTime.now().millisecondsSinceEpoch;
     if (endTs > now ~/ 1000) {
       throw const ActivityReviewException('The end time is in the future.');
     }
     final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(startTs * 1000));
     String linked;
+    NapResolution? resolution;
     if (expected.kind == ActivityKind.workout) {
       final overlap = await _overlappingSessions(tx, startTs, endTs);
       final invalid = validateManualWindow(
@@ -445,27 +454,29 @@ class ActivityStore {
           'A nap must last between 5 minutes and 6 hours.',
         );
       }
-      if (await _overlapsSleep(tx, startTs, endTs)) {
-        throw const ActivityReviewException(
-          'That overlaps sleep or a workout already in your history.',
-        );
+      final ext = await applyNapExtension(tx, startTs, endTs,
+          expected: expectedNap);
+      resolution = ext.res;
+      if (ext.handled) {
+        linked = '${ext.day}:${ext.res.startTs}';
+      } else {
+        linked = '$day:$startTs';
+        await tx.insert('sleep_nap', {
+          'day_id': day,
+          'start_ts': startTs,
+          'end_ts': endTs,
+          'source': edited ? 'manual' : 'confirmed',
+          'created_at': now ~/ 1000,
+          'payload_json': edited
+              ? null
+              : jsonEncode({
+                  ...expected.details,
+                  'start': startTs,
+                  'end': endTs,
+                  'source': 'confirmed',
+                }),
+        });
       }
-      linked = '$day:$startTs';
-      await tx.insert('sleep_nap', {
-        'day_id': day,
-        'start_ts': startTs,
-        'end_ts': endTs,
-        'source': edited ? 'manual' : 'confirmed',
-        'created_at': now ~/ 1000,
-        'payload_json': edited
-            ? null
-            : jsonEncode({
-                ...expected.details,
-                'start': startTs,
-                'end': endTs,
-                'source': 'confirmed',
-              }),
-      });
       await _changed(tx, day);
     }
     await tx.update(
@@ -475,7 +486,83 @@ class ActivityStore {
       whereArgs: [expected.id],
     );
     await _changed(tx, row['day_id'] as String);
-  });
+    return resolution;
+    });
+    final main = res?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
+    if (main != null) await LocalDb.releaseFrozenHeadline(main.day);
+    return res;
+  }
+
+  /// Keeps a nap at [s]..[e] inside [tx]: re-resolves, throws
+  /// [NapResolutionChanged] (writing nothing) when [expected] no longer
+  /// matches, then writes the union. A main sleep it reaches is rewritten as
+  /// the union through the sleep-override row (the caller releases the frozen
+  /// headline after commit and re-derives); absorbed naps are deleted and no
+  /// nap row is added, so the hours are not credited twice. Otherwise ONE
+  /// manual nap row carries the union; a union equal to one existing nap
+  /// changes nothing. [handled] is false when nothing was reached: the caller
+  /// writes its own plain row. [day] is the day that owns the result.
+  static Future<({NapResolution res, bool handled, String day})>
+  applyNapExtension(
+    DatabaseExecutor tx,
+    int s,
+    int e, {
+    NapResolution? expected,
+  }) async {
+    final res = await NapResolver.grow(tx, s, e);
+    if (expected != null && !NapResolver.same(expected, res)) {
+      throw NapResolutionChanged(res);
+    }
+    final unionDay = dayLabelOf(
+      DateTime.fromMillisecondsSinceEpoch(res.startTs * 1000),
+    );
+    if (res.extended.isEmpty) return (res: res, handled: false, day: unionDay);
+    final mains = res.extended.where((b) => b.kind == 'main_sleep').toList();
+    final naps = res.extended.where((b) => b.kind == 'nap').toList();
+    if (mains.isEmpty &&
+        naps.length == 1 &&
+        naps.single.startTs == res.startTs &&
+        naps.single.endTs == res.endTs) {
+      return (res: res, handled: true, day: naps.single.day);
+    }
+    for (final n in naps) {
+      await tx.delete(
+        'sleep_nap',
+        where: 'day_id = ? AND start_ts = ?',
+        whereArgs: [n.day, n.startTs],
+      );
+      await _changed(tx, n.day);
+    }
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (mains.isNotEmpty) {
+      final main = mains.last;
+      await tx.insert('sleep_override', {
+        'day_id': main.day,
+        'onset_ts': res.startTs,
+        'offset_ts': res.endTs,
+        'source': 'manual',
+        'created_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      // A window edit reopens the night, as putSleepOverride does.
+      await tx.delete(
+        'wake_confirmation',
+        where: 'day_id = ?',
+        whereArgs: [main.day],
+      );
+      await _changed(tx, main.day);
+      return (res: res, handled: true, day: main.day);
+    }
+    await tx.insert('sleep_nap', {
+      'day_id': unionDay,
+      'start_ts': res.startTs,
+      'end_ts': res.endTs,
+      'source': 'manual',
+      'created_at': now,
+      'payload_json': null,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await _changed(tx, unionDay);
+    return (res: res, handled: true, day: unionDay);
+  }
 
   static Future<void> _changed(DatabaseExecutor tx, String day) async {
     await _ensureMeta(tx);

@@ -261,8 +261,8 @@ void main() {
       expect(r.sent, isEmpty);
     });
 
-    test('overlapping a nap already on the day is refused (no overlap '
-        'fabrication)', () async {
+    test('overlapping a nap already on the day is written (it extends the '
+        'nap; no overlap error)', () async {
       final r = _Rig(
           range: FakeRangeWriter(naps: {
         '2026-10-06': [
@@ -271,12 +271,12 @@ void main() {
       }));
       final rep = await r
           .save(MomentReviewQueue.empty.withRange(mA, mB, MomentChoice.nap));
-      expect(r.ranges.loggedNaps, isEmpty);
-      expect(rep.failed, hasLength(1));
+      expect(r.ranges.loggedNaps, hasLength(1));
+      expect(rep.failed, isEmpty);
     });
 
-    test('two ranges overlapping EACH OTHER: the first applies, the second '
-        'is refused (even though the writer is stateless)', () async {
+    test('two ranges overlapping EACH OTHER both apply (the writer extends '
+        'the first)', () async {
       const m1 = PendingMoment(date: '2026-10-06', hhmm: '13:00');
       const m2 = PendingMoment(date: '2026-10-06', hhmm: '14:00');
       const m3 = PendingMoment(date: '2026-10-06', hhmm: '13:30');
@@ -286,10 +286,10 @@ void main() {
           .withRange(m1, m2, MomentChoice.nap)
           .withRange(m3, m4, MomentChoice.nap);
       final rep = await r.save(q, moments: [m1, m2, m3, m4]);
-      expect(r.ranges.loggedNaps, hasLength(1));
-      expect(r.ranges.loggedNaps.single.startSec, sec(2026, 10, 6, 13, 0));
-      expect(rep.applied, hasLength(1));
-      expect(rep.failed, hasLength(1));
+      expect(r.ranges.loggedNaps, hasLength(2));
+      expect(r.ranges.loggedNaps.first.startSec, sec(2026, 10, 6, 13, 0));
+      expect(rep.applied, hasLength(2));
+      expect(rep.failed, isEmpty);
     });
 
     test('a range with an end that is no longer pending is dropped, not written',

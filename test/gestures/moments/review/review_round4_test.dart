@@ -27,15 +27,13 @@ import '../../../support/settings_sections.dart';
 
 /// Validation of a nap reads the day's naps: hold that read.
 class _GatedNaps extends FakeRangeWriter {
-  _GatedNaps({this.then = const []});
-  final List<NapMap> then;
   final gate = Completer<void>();
   final started = Completer<void>();
   @override
   Future<List<NapMap>> existingNaps(String dayId) async {
     if (!started.isCompleted) started.complete();
     await gate.future;
-    return then;
+    return const [];
   }
 }
 
@@ -136,19 +134,20 @@ void main() {
     test('an old Save whose range FAILS validation does not put its range back '
         'over a replacement', () async {
       final s = MomentReviewService();
-      await s.edit((q) => q.withRange(mA, mB, MomentChoice.nap));
-      // The read returns an overlapping nap, so the old Save's range fails.
-      final ranges = _GatedNaps(then: [
-        {'start': sec(2026, 10, 6, 9, 20), 'end': sec(2026, 10, 6, 9, 40)}
-      ]);
-      final run = s.save(_applier(FakeAnswerWriter(), ranges),
-          moments: const [mA, mB], glasses: const [], now: reviewNow);
-      await ranges.started.future;
       await s.edit((q) => q.withRange(mA, mB, MomentChoice.workout));
-      ranges.gate.complete();
+      // The read returns an overlapping workout, so the old Save's range fails
+      // (a nap overlap no longer does: it extends).
+      final spans = _GatedSpans(then: [
+        SessionSpan('other', sec(2026, 10, 6, 9, 20), sec(2026, 10, 6, 9, 40))
+      ]);
+      final run = s.save(_applier(FakeAnswerWriter(), spans),
+          moments: const [mA, mB], glasses: const [], now: reviewNow);
+      await spans.started.future;
+      await s.edit((q) => q.withRange(mA, mB, MomentChoice.nap));
+      spans.gate.complete();
       final rep = await run;
       expect(rep.failed, isNotEmpty);
-      expect(s.queue.ranges.single.choice, MomentChoice.workout);
+      expect(s.queue.ranges.single.choice, MomentChoice.nap);
     });
 
     test('the same pairing, untouched, still goes through', () async {
@@ -309,12 +308,14 @@ void main() {
 }
 
 class _GatedSpans extends FakeRangeWriter {
+  _GatedSpans({this.then = const []});
+  final List<SessionSpan> then;
   final gate = Completer<void>();
   final started = Completer<void>();
   @override
   Future<List<SessionSpan>> sessionSpans() async {
     if (!started.isCompleted) started.complete();
     await gate.future;
-    return const [];
+    return then;
   }
 }

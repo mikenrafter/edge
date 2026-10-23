@@ -64,6 +64,7 @@ class LocalRepositoryImpl extends LocalRepository {
     required this.getProfileMap,
     this.saveProfileFields,
     this.onActivitiesChanged,
+    this.mainSleepListener,
   });
 
   /// Reads the live AppState profile map (age/weight/height/sex/step_goal…).
@@ -81,6 +82,10 @@ class LocalRepositoryImpl extends LocalRepository {
   saveProfileFields;
 
   final Future<void> Function()? onActivitiesChanged;
+
+  /// Told the day_id of a main sleep a kept nap extended (its override is
+  /// already written); `AppState` re-derives that night, as a sleep edit does.
+  final MainSleepExtendedListener? mainSleepListener;
 
   @override
   Future<WearableDay?> wearableDay(String date) async {
@@ -116,17 +121,20 @@ class LocalRepositoryImpl extends LocalRepository {
         sessionId: 'suggestion:${suggestion.id}', suggestion: suggestion);
       await HealthExporter.exportWorkoutId('suggestion:${suggestion.id}');
     } else {
-      await ActivityStore(await LocalDb.instance).confirm(suggestion,
+      final res = await ActivityStore(await LocalDb.instance).confirm(suggestion,
         startTs: start, endTs: end,
         edited: start != suggestion.startTs || end != suggestion.endTs,
         expectedNap: expected);
+      // The night the union was written to is the last main sleep it reached.
+      final main = res?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
+      if (main != null) await mainSleepListener?.mainSleepExtended(main.day);
     }
     await onActivitiesChanged?.call();
   }
 
   @override
   Future<NapResolution> resolveNapKeep(int startTs, int endTs) async =>
-      (startTs: startTs, endTs: endTs, extended: const <NapBlock>[]);
+      NapResolver.resolve(await LocalDb.instance, startTs, endTs);
 
   @override
   Future<List<Map<String, Object?>>> getDeviceNights(String date) async {

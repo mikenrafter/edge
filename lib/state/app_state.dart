@@ -138,6 +138,7 @@ import '../gps/gps_source.dart';
 import '../gps/route_tracker.dart';
 import '../gps/screen_wake.dart';
 import '../data/local_repository_impl.dart';
+import '../data/nap_resolution.dart' show MainSleepExtendedListener;
 import '../data/bundle_store.dart';
 import '../notify/battery_forecast.dart';
 import '../notify/buzz_sequence.dart';
@@ -3018,6 +3019,7 @@ class AppState extends ChangeNotifier {
       getProfileMap: () => user,
       saveProfileFields: updateProfile,
       onActivitiesChanged: refreshActivityReviews,
+      mainSleepListener: _NapExtendsSleep(this),
     );
     // iOS BGProcessing/BGAppRefresh wakes while the FOREGROUND app owns the band
     // skip the headless BLE path (it would fight FBP for the peripheral) — route
@@ -8523,4 +8525,14 @@ class _TrackedAlarmWriter implements AlarmBandWriter {
 
   @override
   Future<void> disableAlarm() => disable();
+}
+
+/// A kept nap that extended a main sleep re-derives that night like a sleep edit.
+class _NapExtendsSleep implements MainSleepExtendedListener {
+  _NapExtendsSleep(this.app);
+  final AppState app;
+  @override
+  Future<void> mainSleepExtended(String day) async {
+    await app.sleepOperations.recalculate(day);
+  }
 }

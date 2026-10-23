@@ -24,7 +24,7 @@ import 'moment_review_queue.dart' show isRangeChoice;
 /// Null when [start]..[end] can be written as a [choice] range.
 ///
 /// Nap: end after start, 5 min..6 h (`manualNapWindowIsValid`), not in the
-/// future, no overlap with [existingNaps]. Workout: `validateManualWindow`
+/// future (an overlap with [existingNaps] is allowed: it extends). Workout: `validateManualWindow`
 /// against [existingSpans]. Only Nap and Workout are range choices
 /// (ArgumentError otherwise). Pure; wall-clock DateTimes in, epoch seconds out.
 ManualWindowError? validateReviewRange({
@@ -49,9 +49,9 @@ ManualWindowError? validateReviewRange({
   if (e - s < kMinManualNapSec) return ManualWindowError.tooShort;
   if (e - s > kMaxManualNapSec) return ManualWindowError.tooLong;
   if (e > nowSec) return ManualWindowError.inFuture;
-  if (napOverlapsExisting(s, e, existingNaps)) {
-    return ManualWindowError.overlapsExisting;
-  }
+  // A nap that overlaps a saved nap or sleep is no error: keeping it extends
+  // that block to the union (see nap_resolution.dart). [existingNaps] stays for
+  // callers; only a workout overlap is still refused.
   return null;
 }
 
@@ -156,9 +156,12 @@ class ReviewRangeWriter {
   /// `putNapEdit(dayId, startSec, endSec, source: 'manual')`. [dayId] is the
   /// START's local day label. Keyed on (day, start): writing it twice is one row.
   Future<void> logNap(
-      {required String dayId, required int startSec, required int endSec}) {
-    return LocalDb.putNapEdit(
+      {required String dayId, required int startSec, required int endSec}) async {
+    final r = await LocalDb.putNapEdit(
         dayId: dayId, startTs: startSec, endTs: endSec, source: 'manual');
+    // A main sleep the nap extended is re-derived like any sleep edit.
+    final main = r?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
+    if (main != null) await app?.sleepOperations.recalculate(main.day);
   }
 
   /// Re-analyse the nap days once after a batch of [logNap]s. A failure here
