@@ -31,6 +31,9 @@ class SpiralGeometry {
   /// radius and the value label carries the number.
   double radiusAt(double s, double r0) =>
       max(r0 - inset(s), min(r0, 1.5 * stroke));
+  /// RED STUB: whole laps beyond which nothing new can be seen.
+  int saturationLaps(double r0) => -1;
+
   static int lapsFor(double fraction) =>
       !fraction.isFinite || fraction <= 0 ? 0 : fraction.ceil();
 
