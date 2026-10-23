@@ -275,12 +275,12 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
   bool get pausedContent => _paused;
 
   @override
-  void reloadPausedRead() {
+  Future<void> reloadPausedRead() async {
     if (!mounted) return;
     setState(() { _paused = false; _loading = true; });
-    _load(refresh: true);
+    await _load(refresh: true);
     // The import-only list was asked for while paused too.
-    _loadImported();
+    await _loadImported();
   }
 
   /// Focus began under a loaded plot: read again, which pauses it.
@@ -451,7 +451,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
       _cals.clear();
     }
     _ann.clear();
-    if (_picks.isNotEmpty) _load(refresh: true);
+    if (_picks.isNotEmpty) trackReload(() => _load(refresh: true));
   }
 
   // ─────────────── choosing ───────────────
@@ -832,7 +832,8 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
               label: a.label),
         // One range per run of older days in EACH picked series, named after
         // it. A slot is the interval [i, i + 1) of the window's domain.
-        if (!paused) ..._olderRanges(c, picked, w),
+        // Kept while paused too: they are part of the lane's reserved height.
+        ..._olderRanges(c, picked, w),
       ];
       marks = items.isEmpty
           ? null

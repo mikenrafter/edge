@@ -94,8 +94,8 @@ class _NutritionScreenState extends State<NutritionScreen>
   bool get pausedContent => _paused;
 
   @override
-  void reloadPausedRead() {
-    if (mounted) _load();
+  Future<void> reloadPausedRead() async {
+    if (mounted) await _load();
   }
 
   @override
@@ -109,7 +109,7 @@ class _NutritionScreenState extends State<NutritionScreen>
   void reload() {
     if (absorbRevision()) return;
     _refresh.reset();
-    _load();
+    trackReload(_load);
   }
 
   final _refresh = TodayRefreshLatch();

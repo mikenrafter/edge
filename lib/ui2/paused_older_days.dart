@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../data/read_paused.dart';
 import '../l10n/app_localizations.dart';
-import '../state/revision_coalescer.dart' show kRevisionMinGap;
 import '../sync/import_focus.dart';
 import 'theme.dart';
 
@@ -92,22 +91,27 @@ Future<PausedReadResult<T>> pausedRead<T>(Future<T> read) async {
 ///
 ///  * focus STARTS ([focusStarted]): what is on screen was read before the
 ///    pause; the screen drops it and shows the paused state.
-///  * focus ENDS ([reloadPausedRead]): ONE reload, and revisions that arrive
-///    right behind it are absorbed ([absorbRevision]).
+///  * focus ENDS ([reloadPausedRead]): one reload.
 ///  * while paused, revisions are ignored ([absorbRevision]): they would only
 ///    read again what cannot be read.
 ///  * a model published while focus is active ([published]): a screen that
 ///    shows today or yesterday refreshes from it.
+///
+/// Reloads run through [trackReload]: at most ONE is in flight; a revision
+/// that arrives meanwhile only marks the screen dirty, and when the reload in
+/// flight completes exactly one trailing reload runs. A burst reads at most
+/// twice, and a revision is never dropped: whatever it announced is read by
+/// the trailing reload.
 mixin PausedReadReload<T extends StatefulWidget> on State<T> {
   bool _watching = false;
-  bool _coalescing = false;
-  Timer? _coalesce;
+  bool _inFlight = false;
+  bool _dirty = false;
 
   /// Whether the screen is showing the paused state now.
   bool get pausedContent;
 
-  /// The one reload after focus ends.
-  void reloadPausedRead();
+  /// The one reload after focus ends. Completes when the read has landed.
+  Future<void> reloadPausedRead();
 
   /// Focus just started under a screen that is already showing content.
   void focusStarted() {}
@@ -115,9 +119,26 @@ mixin PausedReadReload<T extends StatefulWidget> on State<T> {
   /// ImportFocus.days changed while focus is active.
   void published() {}
 
-  /// Call first in `reload()` (the revision hook): true means skip this one.
-  bool absorbRevision() =>
-      _coalescing || (ImportFocus.active.value && pausedContent);
+  /// Call first in `reload()` (the revision hook): true means skip this one
+  /// (the screen is paused; focus end reads it).
+  bool absorbRevision() => ImportFocus.active.value && pausedContent;
+
+  /// Runs [run] unless one is in flight, in which case one trailing run is
+  /// queued for when it completes.
+  void trackReload(Future<void> Function() run) {
+    if (_inFlight) {
+      _dirty = true;
+      return;
+    }
+    _inFlight = true;
+    Future<void>.sync(run).catchError((Object _) {}).whenComplete(() {
+      _inFlight = false;
+      if (_dirty && mounted) {
+        _dirty = false;
+        trackReload(run);
+      }
+    });
+  }
 
   void watchPausedRead() {
     if (_watching) return;
@@ -127,7 +148,6 @@ mixin PausedReadReload<T extends StatefulWidget> on State<T> {
   }
 
   void stopWatchingPausedRead() {
-    _coalesce?.cancel();
     if (!_watching) return;
     ImportFocus.active.removeListener(_onActive);
     ImportFocus.days.removeListener(_onDays);
@@ -138,17 +158,9 @@ mixin PausedReadReload<T extends StatefulWidget> on State<T> {
     if (!mounted) return;
     if (ImportFocus.active.value) {
       focusStarted();
-      return;
+    } else {
+      trackReload(reloadPausedRead);
     }
-    _coalescing = true;
-    // The reload below reads everything committed so far. The day publisher
-    // may still flush a trailing publish up to kRevisionMinGap later (plus the
-    // publish gate's own work), announcing exactly that data: absorb revisions
-    // for twice the gap rather than read it again. (The repository exposes no
-    // per-revision data stamp to compare instead.)
-    _coalesce?.cancel();
-    _coalesce = Timer(kRevisionMinGap * 2, () => _coalescing = false);
-    reloadPausedRead();
   }
 
   void _onDays() {

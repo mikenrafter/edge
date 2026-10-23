@@ -132,8 +132,8 @@ class _NapsScreenState extends State<NapsScreen>
   bool get pausedContent => _paused;
 
   @override
-  void reloadPausedRead() {
-    if (mounted && _paused) _load();
+  Future<void> reloadPausedRead() async {
+    if (mounted && _paused) await _load();
   }
 
   @override

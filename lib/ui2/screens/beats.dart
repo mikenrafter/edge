@@ -295,7 +295,7 @@ class _BeatsState extends State<Beats>
   @override
   void reload() {
     if (absorbRevision()) return;
-    _load();
+    trackReload(_load);
   }
 
   @override
@@ -308,8 +308,8 @@ class _BeatsState extends State<Beats>
   bool get pausedContent => _paused;
 
   @override
-  void reloadPausedRead() {
-    if (mounted && widget.data == null) _load();
+  Future<void> reloadPausedRead() async {
+    if (mounted && widget.data == null) await _load();
   }
 
   @override
@@ -386,6 +386,7 @@ class _BeatsState extends State<Beats>
                   if (!stillNewest(#beats, t) || _beats != null) return;
                   setState(() {
                     _beats = hit.value;
+                    _beatsFailed = false;
                     _cachedAt = hit.cachedAt;
                     _compose();
                   });
@@ -406,6 +407,8 @@ class _BeatsState extends State<Beats>
       setState(() {
         if (m != null) {
           _beats = m;
+          _beatsFailed = false;
+          _paused = false;
           _cachedAt = null;
         } else {
           // A failed read keeps an earlier result (labelled); with none, the

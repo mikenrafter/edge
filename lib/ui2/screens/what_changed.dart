@@ -129,10 +129,10 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> with PausedReadRe
   bool get pausedContent => _paused;
 
   @override
-  void reloadPausedRead() {
+  Future<void> reloadPausedRead() async {
     if (mounted && widget.data == null) {
       setState(() { _paused = false; _loading = true; });
-      _load();
+      await _load();
     }
   }
 

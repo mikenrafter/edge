@@ -2469,10 +2469,10 @@ class _HomeScreenState extends State<HomeScreen>
   bool get pausedContent => _paused;
 
   @override
-  void reloadPausedRead() {
+  Future<void> reloadPausedRead() async {
     if (!mounted || widget.data != null) return;
     setState(() { _loading = true; _paused = false; });
-    _load();
+    await _load();
   }
 
   /// Focus began under a loaded Home: the list shrinks and an older day's
@@ -2509,7 +2509,7 @@ class _HomeScreenState extends State<HomeScreen>
     _latency.revisionBumped();
     _refresh.reset();
     _refreshGaveUp = false;
-    _load();
+    trackReload(_load);
   }
 
   /// Revision -> first commit that consumed it, logged by AppState. Only a

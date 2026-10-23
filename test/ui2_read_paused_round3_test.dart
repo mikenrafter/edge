@@ -216,15 +216,15 @@ void main() {
               today: ex.kToday, annotationLoader: (_, _) async => const []));
       expect(find.byKey(ChartAnnotationLane.laneKey), findsOneWidget,
           reason: 'sanity: older ranges draw the lane');
-      double slot() =>
-          t.getTopLeft(ex.pick('hrv')).dy -
-          t.getTopLeft(find.text('Normalised')).dy;
-      final loaded = slot();
+      final lane = find.byKey(ChartAnnotationLane.laneKey);
+      final loaded = t.getRect(lane);
 
       startFocus();
       await _settle(t);
       expect(find.text(kPausedLine), findsOneWidget);
-      expect(slot(), loaded, reason: 'the lane height (40 px) is kept');
+      expect(lane, findsOneWidget, reason: 'the lane is kept');
+      expect(t.getRect(lane), loaded,
+          reason: 'with its reserved height and position');
     });
 
     testWidgets('idle revisions reload once each', (t) async {

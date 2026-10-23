@@ -941,10 +941,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
   bool get pausedContent => _paused;
 
   @override
-  void reloadPausedRead() {
+  Future<void> reloadPausedRead() async {
     if (mounted && widget.data == null) {
       setState(() { _paused = false; _loading = true; });
-      _load();
+      await _load();
     }
   }
 
@@ -975,7 +975,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
     _journalGen++;
     _journalRead.clear();
     _journalReading.clear();
-    _load();
+    trackReload(_load);
   }
 
   /// Reads the journal marks for [from]..[to] once, when the toggle is on. A

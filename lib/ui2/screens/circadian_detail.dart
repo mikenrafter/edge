@@ -281,7 +281,7 @@ class _CircadianDetailState extends State<CircadianDetail>
   @override
   void reload() {
     if (absorbRevision()) return;
-    _load();
+    trackReload(_load);
   }
 
   @override
@@ -294,8 +294,8 @@ class _CircadianDetailState extends State<CircadianDetail>
   bool get pausedContent => _paused;
 
   @override
-  void reloadPausedRead() {
-    if (mounted && widget.data == null) _load();
+  Future<void> reloadPausedRead() async {
+    if (mounted && widget.data == null) await _load();
   }
 
   @override
@@ -340,7 +340,10 @@ class _CircadianDetailState extends State<CircadianDetail>
       if (art == null) {
         // Nothing fresh: during an import the warm is held, and waiting here
         // would be a spinner with nothing coming. Say so; read once at the end.
-        setState(() => (_loading = false, _paused = ImportFocus.active.value));
+        // Outside focus the warm is on its way (it moves the revision): keep
+        // the pending state; an empty default model would claim "0 nights".
+        final focus = ImportFocus.active.value;
+        setState(() => (_loading = !focus, _paused = focus));
         return;
       }
       setState(() => (_paused = false,

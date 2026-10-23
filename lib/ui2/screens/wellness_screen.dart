@@ -154,15 +154,15 @@ class _WellnessScreenState extends State<WellnessScreen>
   @override
   void reload() {
     if (absorbRevision()) return;
-    _load();
+    trackReload(_load);
   }
 
   @override
   bool get pausedContent => _paused;
 
   @override
-  void reloadPausedRead() {
-    if (mounted) _load();
+  Future<void> reloadPausedRead() async {
+    if (mounted) await _load();
   }
 
   @override

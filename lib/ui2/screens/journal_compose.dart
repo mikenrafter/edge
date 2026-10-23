@@ -79,8 +79,8 @@ class _JournalComposeState extends State<JournalCompose>
   /// Only a screen that never got its day reloads: an open form is the
   /// user's, and a reload would overwrite what they typed.
   @override
-  void reloadPausedRead() {
-    if (mounted && _paused) _load();
+  Future<void> reloadPausedRead() async {
+    if (mounted && _paused) await _load();
   }
 
   @override
