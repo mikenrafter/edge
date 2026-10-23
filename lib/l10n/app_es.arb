@@ -3506,5 +3506,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "liveHrWaitingSemantics": "Gráfico de frecuencia cardíaca en vivo, esperando datos en vivo"
 }

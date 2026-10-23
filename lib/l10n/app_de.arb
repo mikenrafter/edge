@@ -3594,5 +3594,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "liveHrWaitingSemantics": "Live-Herzfrequenzdiagramm, wartet auf Live-Daten"
 }

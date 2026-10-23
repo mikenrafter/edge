@@ -83,12 +83,13 @@ class LiveHrCard extends StatelessWidget {
     final l = AppLocalizations.of(c);
     final hr = _preview ? _hr : c.select<AppState, int?>((a) => a.liveHr);
     if (hr == null) {
-      if (_preview) return _absent(paired: true, connected: true);
+      if (_preview) return _absent(paired: true, connected: true, c: c);
       // SELECTED, not read: with no reading the only thing this widget watched
       // was `liveHr`, which stays null through both pairing and connecting — so
       // the card went on saying "No band is paired" after the band was paired
       // and connected. These are what change in that state.
       return _absent(
+        c: c,
         paired: c.select<AppState, bool>((a) => a.isPaired),
         connected: c.select<AppState, bool>((a) => a.isConnected),
       );
@@ -104,8 +105,14 @@ class LiveHrCard extends StatelessWidget {
       trace = c.read<AppState>().liveHrTrace();
     }
 
+    final hasChart = trace.length > 2;
+    final unavailable = !_preview && hr == null;
+    final absentMessage = _absenceMessage(
+      paired: _preview ? true : c.read<AppState>().isPaired,
+      connected: _preview ? true : c.read<AppState>().isConnected,
+    );
     return Surface(
-      child: Column(
+      child: SizedBox(height: 222, child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // At 3.1x text an n48 number plus a pill does not fit a phone width, so
@@ -125,7 +132,10 @@ class LiveHrCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
-                      Text('$hr', style: F.n48.copyWith(color: p.ink)),
+                      if (hr != null)
+                        Text('$hr', style: F.n48.copyWith(color: p.ink))
+                      else
+                        const SizedBox(height: 48),
                       const SizedBox(width: S.x2),
                       Text(
                         AppLocalizations.of(c)?.activityLiveBpmUnit ?? 'bpm',
@@ -161,7 +171,7 @@ class LiveHrCard extends StatelessWidget {
                 Pill(l?.devicesLive ?? 'LIVE', C.red, icon: LucideIcons.radio),
             ],
           ),
-        if (trace.length > 2) ...[
+        if (hasChart) ...[
           const SizedBox(height: S.x3),
           // Bare scrub: no frame, so it draws its own key row under the trace.
           // The 56 pt belongs to the trace alone, not to the row beneath it.
@@ -194,29 +204,82 @@ class LiveHrCard extends StatelessWidget {
             ' to ${trace.reduce(math.max)} bpm. The live stream is not saved.',
             style: F.over.copyWith(color: p.ink3),
           ),
+        ] else ...[
+          const SizedBox(height: S.x3),
+          Semantics(
+            container: true,
+            label: l?.liveHrWaitingSemantics ?? 'Live heart rate chart, waiting for live data',
+            child: CustomPaint(
+              painter: _LiveHrSkeleton(p.line, p.track),
+              child: SizedBox(
+                height: 56,
+                width: double.infinity,
+                child: unavailable
+                    ? Center(child: Text(absentMessage, style: F.body.copyWith(color: p.ink2), textAlign: TextAlign.center))
+                    : null,
+              ),
+            ),
+          ),
+          // The real scrub chart owns a compact readout row below its plot.
+          // Keep that slot and the caption slot in place while the feed fills.
+          const SizedBox(height: S.x2 + 18),
+          Text(
+            hasChart
+                ? 'The last ${trace.length} readings, ${trace.reduce(math.min)} to ${trace.reduce(math.max)} bpm. The live stream is not saved.'
+                : 'The live stream is not saved.',
+            style: F.over.copyWith(color: p.ink3),
+          ),
         ],
-      ]),
+      ])),
     );
   }
 
   /// No live reading. Three different facts, and only the one the app can
   /// actually see is stated.
-  Widget _absent({required bool paired, required bool connected}) {
-    final (String why, String fix) = !paired
-        ? ('No band is paired.', 'Pair one from Profile to read live beats.')
+  String _absenceMessage({required bool paired, required bool connected}) => !paired
+        ? 'No band is paired.'
         : !connected
-            ? (
-                'Your band is not connected.',
-                'The app connects when you open it with the band in range. '
-                'Live beats need that connection.'
-              )
-            : (
-                'No beat in the last ${AppState.liveHrMaxAge.inSeconds} '
-                    'seconds.',
-                'The band streams while it is on your wrist and the app is '
-                    'open.'
-              );
-    return StatusCard('No live reading', why,
-        fix: fix, icon: LucideIcons.heartOff);
+            ? 'Your band is not connected.'
+            : 'No beat in the last ${AppState.liveHrMaxAge.inSeconds} seconds.';
+
+  Widget _absent({required BuildContext c, required bool paired, required bool connected}) {
+    final waiting = paired && connected;
+    final why = _absenceMessage(paired: paired, connected: connected);
+    final fix = waiting
+        ? 'The live stream is not saved.'
+        : !paired
+        ? 'Pair one from Profile to read live beats.'
+        : !connected
+            ? 'The app connects when you open it with the band in range. Live beats need that connection.'
+            : 'The band streams while it is on your wrist and the app is open.';
+    return Surface(child: SizedBox(height: 222, child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [Icon(LucideIcons.heart, size: 26, color: P.of(c).on(C.red)), const SizedBox(width: S.x3), const Expanded(child: SizedBox(height: 58)), Pill(AppLocalizations.of(c)?.devicesLive ?? 'LIVE', C.red, icon: LucideIcons.radio)]),
+        const SizedBox(height: S.x3),
+        if (waiting)
+          Semantics(container: true, label: AppLocalizations.of(c)?.liveHrWaitingSemantics ?? 'Live heart rate chart, waiting for live data', child: CustomPaint(painter: _LiveHrSkeleton(P.of(c).line, P.of(c).track), child: const SizedBox(height: 56, width: double.infinity)))
+        else
+          CustomPaint(painter: _LiveHrSkeleton(P.of(c).line, P.of(c).track), child: SizedBox(height: 56, width: double.infinity, child: Center(child: Text(why, textAlign: TextAlign.center, style: F.body.copyWith(color: P.of(c).ink2))))),
+        const SizedBox(height: S.x2 + 18),
+        Text(fix, style: F.over.copyWith(color: P.of(c).ink3)),
+      ],
+    )));
   }
+}
+
+class _LiveHrSkeleton extends CustomPainter {
+  const _LiveHrSkeleton(this.frame, this.axis);
+  final Color frame, axis;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = frame..style = PaintingStyle.stroke..strokeWidth = 1;
+    canvas.drawRect(Offset.zero & size, p);
+    final grid = Paint()..color = axis..strokeWidth = 1;
+    for (final y in [size.height / 3, size.height * 2 / 3]) {
+      canvas.drawLine(Offset(1, y), Offset(size.width - 1, y), grid);
+    }
+  }
+  @override
+  bool shouldRepaint(_LiveHrSkeleton old) => frame != old.frame || axis != old.axis;
 }

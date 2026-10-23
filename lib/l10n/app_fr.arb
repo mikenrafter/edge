@@ -3488,5 +3488,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "liveHrWaitingSemantics": "Graphique de fréquence cardiaque en direct, en attente de données"
 }

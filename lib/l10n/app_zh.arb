@@ -3488,5 +3488,6 @@
         "type": "String"
       }
     }
-  }
+  },
+  "liveHrWaitingSemantics": "实时心率图表，正在等待实时数据"
 }
