@@ -15,6 +15,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/ui2/ui2.dart' show AnnotationKind, ChartAnnotation, ChartAnnotationLane;
 
 const kReasonRaw = 'need_input:name=age';
 const kReasonSentence = 'This metric needs your age, which is not on file.';
@@ -132,3 +133,18 @@ int spokenCount(WidgetTester t, [Pattern? what]) {
   walk(t.binding.pipelineOwner.semanticsOwner!.rootSemanticsNode!);
   return n;
 }
+
+/// The algorithm-version RANGES (an `until`, not a point mark) on every
+/// annotation lane in the tree, left to right as given.
+List<ChartAnnotation> olderRanges(WidgetTester t) => [
+      for (final lane in t.widgetList<ChartAnnotationLane>(
+          find.byType(ChartAnnotationLane)))
+        for (final a in lane.set.items)
+          if (a.kind == AnnotationKind.algoVersion && a.until != null) a,
+    ];
+
+/// Occurrences of the canonical spoken form for [version], whole tree.
+int spokenOlder(WidgetTester t, int version) => spokenCount(
+    t,
+    RegExp('from an older calculation \\(v$version\\)',
+        caseSensitive: false));

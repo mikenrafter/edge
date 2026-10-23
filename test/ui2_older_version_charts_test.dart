@@ -53,7 +53,8 @@ void main() {
           reason: 'the strain row says some days are from an older calculation');
       await scrubToday(t);
       expect(olderMark('readout'), findsOneWidget);
-      expect(find.textContaining(kNoteV104), findsWidgets);
+      expect(find.textContaining(kNoteV104), findsOneWidget,
+          reason: 'the on-load strip only; the scrub adds no row');
       h.dispose();
     });
 
@@ -135,7 +136,8 @@ void main() {
       await scrubAt(t, 3.5 / 7); // 1 Oct
       expect(readoutText(t, specOf('strain').title), contains('8'));
       expect(olderMark('readout'), findsOneWidget);
-      expect(find.textContaining(kNoteV104), findsWidgets);
+      expect(find.textContaining(kNoteV104), findsNothing,
+          reason: 'a scrub never adds a reason row');
     });
 
     testWidgets('a current day beside it: no marker', (t) async {
@@ -196,8 +198,7 @@ void main() {
                   .value
                   .startsWith('older-version-mark:')),
           findsNWidgets(2));
-      expect(find.textContaining('(v103)'), findsWidgets);
-      expect(find.textContaining('(v104)'), findsWidgets);
+      expect(find.textContaining(kNoteV104), findsNothing);
     });
 
     testWidgets('value and flag always come from the same day, also at the '
@@ -267,7 +268,8 @@ void main() {
       expect(find.textContaining(' points'), findsWidgets,
           reason: 'the scrub readout shows the value (7 base 40 + 0)');
       expect(olderMark('readout'), findsOneWidget);
-      expect(find.textContaining(kNoteV104), findsWidgets);
+      expect(find.textContaining(kNoteV104), findsOneWidget,
+          reason: 'today is older: the on-load strip, and nothing from the scrub');
     });
 
     testWidgets('a current day: no marker', (t) async {
