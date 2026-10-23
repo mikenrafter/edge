@@ -19,6 +19,7 @@ import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/ui2/grammar.dart' show Pressable;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_tab.dart';
+import 'package:openstrap_edge/ui2/ui2.dart' show S;
 
 import '../../support/as_of_recalc_fakes.dart';
 import '../../support/bundled_fonts.dart';
@@ -116,14 +117,102 @@ void main() {
         reason: worst(name, r, p));
   }
 
-  testWidgets('Home: empty database vs loaded - same cards, same places',
-      (t) => check(t, 'home', () => const HomeScreen(hour: 9)));
+  // HOME RINGS. Owner decision 3 (ui-feedback-2026-10-22.md, DECIDED, 2026-10-22;
+  // applied 2026-10-23): "CLS cost of varying count accepted". The ring card ends
+  // in 0, 1 or 2 why panels / an older row when loaded, and in the help strip
+  // (first-week guidance, status, gap reasons) when empty. That is the same kind
+  // of varying panel, so the card's HEIGHT may differ between the two states,
+  // and the cards below follow it, by exactly that strip and nothing else.
+  // Everything above it is held to zero tolerance: the card's top, the three
+  // dials and their labels sit at identical positions, and the cards below move
+  // by the strip's height (plus whatever their own heights differ by).
+  const labels = ['RECOVERY', 'STRAIN', 'SLEEP'];
+
+  Future<({Map<String, Rect> cards, List<Rect> dials, List<Rect> labels, Rect? strip})>
+      measureHome(WidgetTester t, AppState app) async {
+    t.view.physicalSize = const Size(390 * 3, 3000 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(perfApp(app, const HomeScreen(hour: 9)));
+    await settleShell(t);
+    final cards = <String, Rect>{};
+    for (final e in find
+        .byWidgetPredicate((w) =>
+            w.key is ValueKey<String> &&
+            cardOrShared((w.key as ValueKey<String>).value) &&
+            (w.key as ValueKey<String>).value.startsWith('card:'))
+        .evaluate()) {
+      cards.putIfAbsent((e.widget.key as ValueKey<String>).value,
+          () => t.getRect(find.byElementPredicate((x) => x == e)));
+    }
+    final ringsCard = find.byKey(const ValueKey('card:rings'));
+    final dials = find.descendant(
+        of: ringsCard,
+        matching: find.byWidgetPredicate(
+            (w) => w.runtimeType.toString() == '_Dial'));
+    final strip = find.descendant(
+        of: ringsCard,
+        matching: find.byWidgetPredicate(
+            (w) => w.runtimeType.toString() == '_HelpStrip'));
+    final out = (
+      cards: cards,
+      dials: [for (var i = 0; i < dials.evaluate().length; i++) t.getRect(dials.at(i))],
+      labels: [
+        for (final l in labels)
+          t.getRect(find.descendant(of: ringsCard, matching: find.text(l)).first)
+      ],
+      strip: strip.evaluate().isEmpty ? null : t.getRect(strip.first),
+    );
+    await t.pumpWidget(const SizedBox.shrink());
+    await t.pump(const Duration(seconds: 5));
+    return out;
+  }
+
+  Future<void> checkHomeRings(WidgetTester t, String name, AppState empty) async {
+    final loadedApp = AppState.forTesting()
+      ..repo = TabsRepo(homeBundle(
+          readiness: 70, overnightAt: todayAtMs(8, 42), activityAt: todayAtMs(8, 42)));
+    addTearDown(loadedApp.dispose);
+    addTearDown(empty.dispose);
+    final e = await measureHome(t, empty);
+    final l = await measureHome(t, loadedApp);
+
+    expect(e.cards.keys.toSet(), l.cards.keys.toSet(),
+        reason: '$name: same cards in both states');
+    expect(e.dials.length, 3, reason: '$name: three dials, empty');
+    expect(l.dials, e.dials, reason: '$name: the dials sit at identical positions');
+    expect(l.labels, e.labels, reason: '$name: the labels sit at identical positions');
+    expect(l.cards['card:rings']!.top, e.cards['card:rings']!.top,
+        reason: '$name: the ring card top is identical');
+
+    // Only the panel/strip slot may differ: the empty state's help strip (and
+    // the gap above it). Loaded with 0 panels has none.
+    expect(e.strip, isNotNull, reason: '$name: the empty state explains itself');
+    expect(l.strip, isNull, reason: '$name: a healthy loaded day has no strip');
+    final delta = e.strip!.height + S.x3;
+    expect(e.cards['card:rings']!.height - l.cards['card:rings']!.height,
+        closeTo(delta, 0.01),
+        reason: '$name: the card height differs by the strip (+ its gap) only');
+
+    // The cards below follow it: each moves by that delta plus the height
+    // differences of the cards between it and the rings (their own business).
+    final order = (e.cards.keys.toList()
+      ..sort((a, b) => e.cards[a]!.top.compareTo(e.cards[b]!.top)));
+    var ownDiff = 0.0;
+    for (final id in order.skip(order.indexOf('card:rings') + 1)) {
+      expect(e.cards[id]!.top - l.cards[id]!.top, closeTo(delta + ownDiff, 0.5),
+          reason: '$name: $id moves by the strip height only');
+      ownDiff += e.cards[id]!.height - l.cards[id]!.height;
+    }
+  }
+
+  testWidgets('Home: empty database vs loaded - rings fixed, card height follows the panel count',
+      (t) => checkHomeRings(t, 'home', AppState.forTesting()..repo = EmptyTabsRepo()));
 
   // No repo at all (the database is not open yet): the screen's _d == null
   // path, which draws its own header and its own cards.
-  testWidgets('Home: no repo yet vs loaded - same cards, same places',
-      (t) => check(t, 'home(no repo)', () => const HomeScreen(hour: 9),
-          emptyApp: AppState.forTesting));
+  testWidgets('Home: no repo yet vs loaded - rings fixed, card height follows the panel count',
+      (t) => checkHomeRings(t, 'home(no repo)', AppState.forTesting()));
 
   testWidgets('Health: empty database vs loaded - same cards, same places',
       (t) => check(t, 'health', () => const HealthScreen()));
