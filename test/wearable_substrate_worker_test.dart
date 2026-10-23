@@ -54,16 +54,31 @@ final int _to = _from + 86399 + 3 * 3600; // the day plus the nap buffer
 const String _colmi = 'colmi-w', _uh = 'ultrahuman-w', _garmin = 'garmin-w';
 const String _oura = 'oura-w';
 
-/// The golden per family: FNV-1a over the substrate's JSON, and its length.
-/// Captured from the main-isolate builders at 8c065426.
-const Map<String, (int, int)> _golden = {
-  'colmi': (264, 2162150457),
-  'colmi_night': (85, 3253111834),
-  'colmi_strap': (1161, 695549905),
-  'garmin': (1320, 2083733184),
-  'oura': (288, 3287909487),
-  'ultrahuman': (264, 1939530137),
+/// The golden per family: FNV-1a over the substrate's JSON, and its length,
+/// keyed by the zone's UTC offset on the fixture day (day labels are local, so
+/// the substrate window moves with the zone). The -360 (MDT) set was captured
+/// from the main-isolate builders at 8c065426; the UTC set from the worker at
+/// 89963e2e, where the MDT set still matches.
+const Map<int, Map<String, (int, int)>> _goldens = {
+  -360: {
+    'colmi': (264, 2162150457),
+    'colmi_night': (85, 3253111834),
+    'colmi_strap': (1161, 695549905),
+    'garmin': (1320, 2083733184),
+    'oura': (288, 3287909487),
+    'ultrahuman': (264, 1939530137),
+  },
+  0: {
+    'colmi': (264, 1350492575),
+    'colmi_night': (85, 2279222205),
+    'colmi_strap': (1161, 678983046),
+    'garmin': (1320, 753870275),
+    'oura': (288, 1234590920),
+    'ultrahuman': (264, 3759334063),
+  },
 };
+final Map<String, (int, int)>? _golden =
+    _goldens[DateTime(2026, 10, 4).timeZoneOffset.inMinutes];
 const bool _printGoldens = bool.fromEnvironment('PRINT_GOLDENS');
 
 int _fnv(String s) {
@@ -85,7 +100,11 @@ Future<void> _expectGolden(String key, (String, String) w,
     // ignore: avoid_print
     print("GOLDEN '$key': $got");
   }
-  expect(got, _golden[key], reason: '$key substrate changed');
+  if (_golden == null) {
+    markTestSkipped('goldens exist for TZ=UTC and America/Denver only');
+    return;
+  }
+  expect(got, _golden![key], reason: '$key substrate changed');
 }
 
 Future<String> _stored() async {
