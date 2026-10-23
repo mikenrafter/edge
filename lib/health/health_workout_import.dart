@@ -217,7 +217,14 @@ String importedWorkoutTitle(Object? kind) {
 /// or null when [kind] is not one: an internal slug ('other', 'kite_surfing_2'),
 /// the store's own "OTHER", or anything that is not a bare UPPER_CASE enum name.
 /// A null means "no name the source can vouch for"; the caller says "Workout".
-String? recognizedSportTitle(Object? kind) => null;
+String? recognizedSportTitle(Object? kind) {
+  final raw = kind is String ? kind.trim() : '';
+  // A health-store enum is bare UPPER_CASE words. Digits, lower case and
+  // spaces mean an internal slug or free text, which is not a name to print.
+  if (!RegExp(r'^[A-Z]+(_[A-Z]+)*$').hasMatch(raw)) return null;
+  if (raw == 'OTHER' || raw.startsWith('OTHER_')) return null;
+  return importedWorkoutTitle(raw);
+}
 
 /// What one import did, so the screen can report it rather than guess.
 @immutable

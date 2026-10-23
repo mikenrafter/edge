@@ -47,6 +47,11 @@ class ImportReentryStore {
   Future<void>? _tail;
   // Mirror of the stale preference for the case where even that write failed.
   final Set<String> _staleMem = {};
+  // beginFreshImport could not even READ the acknowledgements: until they can
+  // be, every stored ack is treated as stale for this process, except ids the
+  // user dismissed since (_dismissedSince).
+  bool _resetUnknown = false;
+  final Set<String> _dismissedSince = {};
 
   /// Waits for every earlier operation, then returns the lock to release (in a
   /// finally) with complete(). One at a time, in call order.
@@ -74,29 +79,72 @@ class ImportReentryStore {
     };
   }
 
-  /// Best effort and never throws: a stale set that cannot be saved is still
-  /// held in memory for this process.
+  /// Writes the stale set; retried once, then thrown. A failure is never
+  /// dropped: callers that cannot tolerate one (dismiss) let it propagate.
   Future<void> _writeStale(Set<String> stale) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final ok = stale.isEmpty
+            ? await prefs.remove(_staleKey)
+            : await prefs.setString(_staleKey, stale.join(','));
+        if (ok) {
+          _staleMem
+            ..clear()
+            ..addAll(stale);
+          return;
+        }
+      } catch (_) {}
+      try {
+        await (await SharedPreferences.getInstance()).reload();
+      } catch (_) {}
+    }
+    throw StateError('Could not save the note about stale acknowledgements.');
+  }
+
+  /// Records [stale] where it can be, and in memory always: used where the
+  /// caller is already failing (a refused reset) and has nothing more to do
+  /// with a second failure than keep the bypass for this process.
+  Future<void> _rememberStale(Set<String> stale) async {
     _staleMem
       ..clear()
       ..addAll(stale);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      if (stale.isEmpty) {
-        await prefs.remove(_staleKey);
-      } else {
-        await prefs.setString(_staleKey, stale.join(','));
-      }
+      await _writeStale(stale);
     } catch (_) {}
+  }
+
+  /// The stale ids now, folding in the "the first read failed" case: until the
+  /// preferences can be read again every stored ack is treated as stale, minus
+  /// what the user has dismissed since; then that is persisted and the
+  /// in-memory fallback is dropped.
+  Future<Set<String>> _effectiveStale(List<String> acked) async {
+    final stale = await _readStale();
+    if (!_resetUnknown) return stale;
+    if (await _olderImportUnfinished()) {
+      // The reset would not have run: those acks are not stale.
+      _resetUnknown = false;
+      _dismissedSince.clear();
+      return stale;
+    }
+    stale.addAll(acked.where((a) => !_dismissedSince.contains(a)));
+    try {
+      await _writeStale(stale);
+      _resetUnknown = false;
+      _dismissedSince.clear();
+    } catch (_) {}
+    return stale;
   }
 
   /// Retries an owed reset: the stale acknowledgements go, the user's own
   /// later dismissals stay. Throws if the platform refuses the write.
   Future<void> _settleStale(List<String> pend, List<String> acked) async {
-    final stale = await _readStale();
+    final stale = await _effectiveStale(acked);
     if (stale.isEmpty) return;
     await _write(pend, [for (final a in acked) if (!stale.contains(a)) a]);
     await _writeStale({});
+    _resetUnknown = false;
+    _dismissedSince.clear();
   }
 
   Future<(List<String>, List<String>)> _read() async {
@@ -153,7 +201,7 @@ class ImportReentryStore {
     final lock = await _acquire();
     try {
       final (pend, acked) = await _read();
-      final stale = await _readStale();
+      final stale = await _effectiveStale(acked);
       final fresh = [
         for (final id in ids)
           if ((!acked.contains(id) || stale.contains(id)) && !pend.contains(id))
@@ -176,15 +224,25 @@ class ImportReentryStore {
     pending.value = List.unmodifiable(
         [for (final x in pending.value) if (!which.contains(x)) x]);
     final lock = await _acquire();
+    var pend = const <String>[];
     try {
-      final (pend, acked) = await _read();
-      final stale = await _readStale();
-      await _write([for (final x in pend) if (!which.contains(x)) x],
-          {...acked, ...which}.toList());
-      // A dismissal is the user's own: it no longer counts as stale.
+      final (p, acked) = await _read();
+      pend = p;
+      final stale = await _effectiveStale(acked);
+      // The stale id goes FIRST, strictly. If this fails nothing was dismissed;
+      // if the process dies after it, the ack merely stops being bypassable
+      // while the warning is still pending. The other order could leave a
+      // dismissed ack that a retry bypasses and a launch then deletes.
       if (stale.any(which.contains)) {
         await _writeStale({for (final x in stale) if (!which.contains(x)) x});
       }
+      _dismissedSince.addAll(which);
+      await _write([for (final x in pend) if (!which.contains(x)) x],
+          {...acked, ...which}.toList());
+    } catch (_) {
+      // Not applied: the mirror must not claim it was.
+      pending.value = List.unmodifiable(pend);
+      rethrow;
     } finally {
       lock.complete();
     }
@@ -199,9 +257,20 @@ class ImportReentryStore {
   Future<void> beginFreshImport() async {
     final lock = await _acquire();
     try {
-      final (pend, acked) = await _read();
+      final List<String> pend, acked;
+      try {
+        (pend, acked) = await _read();
+      } catch (_) {
+        // We cannot tell what is acknowledged. Keep a bypass in memory for this
+        // import and settle it when the preferences can be read again.
+        _resetUnknown = true;
+        _dismissedSince.clear();
+        rethrow;
+      }
+      _resetUnknown = false;
+      _dismissedSince.clear();
       if (acked.isEmpty) {
-        await _writeStale({});
+        await _rememberStale({});
         return;
       }
       if (await _olderImportUnfinished()) return;
@@ -209,10 +278,10 @@ class ImportReentryStore {
         await _write(pend, const []);
       } catch (_) {
         // Every ack still stored is from an earlier import.
-        await _writeStale({...await _readStale(), ...acked});
+        await _rememberStale({...await _readStale(), ...acked});
         rethrow;
       }
-      await _writeStale({});
+      await _rememberStale({});
     } finally {
       lock.complete();
     }

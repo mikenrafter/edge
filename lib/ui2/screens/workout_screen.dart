@@ -2008,12 +2008,12 @@ class _PastWorkout {
   /// opens, and what is printed under its name all come off this field.
   final String? importedFrom;
 
-  /// The health store's own name for the activity, already prettified.
-  ///
-  /// Carried because `activityByName` only resolves the types this app's own
-  /// catalogue has, and printing "Workout" over a HealthKit `SURFING` throws
-  /// away the one thing the store did tell us.
-  final String? importedTitle;
+  /// The health store's own sport enum ('SURFING'), raw. [title] turns it into
+  /// a readable name only when it is a bare store enum; it is never printed
+  /// as it came. Carried because `activityByName` only resolves the types this
+  /// app's own catalogue has, and "Workout" over a HealthKit `SURFING` would
+  /// throw away what the store did tell us.
+  final String? importedKind;
 
   /// Metres, from the recording app. Only imported rows carry it — a band
   /// session's distance is read on open with its route.
@@ -2022,8 +2022,14 @@ class _PastWorkout {
   /// What the row is called: the catalogue's localized name, else "Workout".
   /// Never a raw type slug or the store's own enum name; [activity] keeps the
   /// stored type for scoring and does not decide what is printed.
-  String title(BuildContext c) =>
-      workoutTypeLabel(AppLocalizations.of(c), activity.typeKey);
+  String title(BuildContext c) {
+    final l = AppLocalizations.of(c);
+    final known = activityByName(activity.typeKey);
+    if (known != null) return known.localizedName(l);
+    // A row another app recorded may carry a sport name the source vouches for.
+    if (importedFrom != null) return importedWorkoutLabel(l, importedKind);
+    return workoutTypeLabel(l, null);
+  }
 
   const _PastWorkout(this.id, this.activity, this.start, this.duration,
       {this.strain,
@@ -2036,7 +2042,7 @@ class _PastWorkout {
       this.zoneMinutes = const [],
       this.private = false,
       this.importedFrom,
-      this.importedTitle,
+      this.importedKind,
       this.distanceM});
 
   String when(AppLocalizations? loc) {
@@ -2309,7 +2315,7 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
           calories: (r['energy_kcal'] as num?)?.round(),
           steps: (r['steps'] as num?)?.toInt(),
           importedFrom: src,
-          importedTitle: title,
+          importedKind: r['kind'] as String?,
           distanceM: (r['distance_m'] as num?)?.toDouble(),
         ));
       }

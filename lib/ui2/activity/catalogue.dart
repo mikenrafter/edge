@@ -17,6 +17,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../health/health_workout_import.dart'
+    show recognizedSportTitle;
 import '../../l10n/app_localizations.dart';
 import '../theme.dart';
 
@@ -363,8 +365,12 @@ String workoutTypeLabel(AppLocalizations? l, String? type) =>
 /// The label for an IMPORTED workout's health-store kind: the catalogue's
 /// name when it has one, else the store's own readable sport name, else the
 /// localized "Workout". Never the raw kind.
-String importedWorkoutLabel(AppLocalizations? l, Object? kind) =>
-    l?.dayTimelineWorkout ?? 'Workout';
+String importedWorkoutLabel(AppLocalizations? l, Object? kind) {
+  final named = recognizedSportTitle(kind);
+  return activityByName(named)?.localizedName(l) ??
+      named ??
+      workoutTypeLabel(l, null);
+}
 
 // ── EXERCISES ──────────────────────────────────────────────────────────────
 // The strength catalogue. The hand-written list keeps the strength_set keys
