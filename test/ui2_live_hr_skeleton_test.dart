@@ -121,7 +121,7 @@ void main() {
         addTearDown(app.dispose);
         await _pump(t, app, w);
         final sem = t.ensureSemantics();
-        addTearDown(sem.dispose);
+        try {
 
         // Localised: the string lives in app_en.arb and is what is announced.
         final label = _skeletonLabel();
@@ -164,6 +164,9 @@ void main() {
         }
         expect(find.text('LIVE'), findsOneWidget,
             reason: 'the card keeps its LIVE label while waiting');
+        } finally {
+          sem.dispose();
+        }
       });
 
       testWidgets('3. data replaces the skeleton in place, nothing moves',
