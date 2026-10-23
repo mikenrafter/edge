@@ -13,6 +13,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/last_result_cache.dart';
+import 'package:openstrap_edge/ui2/as_of.dart' show AsOfLabel;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 
 import 'support/as_of_recalc_fakes.dart';
@@ -52,7 +53,7 @@ void main() {
     LastResultCache.instance.clear();
   });
 
-  testWidgets('B1: the staleness line is on Home once, not once per row',
+  testWidgets('B1: Home says the results are held once (the since overlay), not once per row',
       (t) async {
     t.view.physicalSize = const Size(390 * 3, 2600 * 3);
     t.view.devicePixelRatio = 3;
@@ -71,9 +72,23 @@ void main() {
     await t.pumpWidget(perfApp(app, const HomeScreen(hour: 16)));
     await settle(t, n: 15);
 
+    // The old per-row "Updated … · recordings through … · Waiting for sync"
+    // lines are gone (owner CLS DECIDED 4). The held state is ONE overlay in
+    // the card, with its arc; the sentence is one tap away, once.
+    expect(find.byKey(const ValueKey('home-since')), findsOneWidget);
+    expect(find.text('since 16:04'), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-since-progress')), findsOneWidget);
+    expect(_label, findsNothing);
+    expect(find.byType(AsOfLabel), findsNothing);
+    expect(find.textContaining('recordings through'), findsNothing);
+    expect(find.textContaining('Waiting for sync to finish'), findsNothing,
+        reason: 'not drawn on the page at all, let alone twice');
+    await t.tap(find.byKey(const ValueKey('home-since')));
+    await t.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('Waiting for sync to finish'), findsOneWidget,
-        reason: 'the same sentence must not be drawn by both AsOfHolds');
-    expect(_label, findsOneWidget);
+        reason: 'the explanation is reachable, once');
+    await t.tap(find.text('OK'));
+    await t.pump(const Duration(milliseconds: 400));
 
     (app as dynamic).debugDeriveScheduler.setOffloadActive(false);
     await t.pump();

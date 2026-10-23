@@ -44,6 +44,7 @@ import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/recalc_state.dart';
 import 'package:openstrap_edge/ui2/last_result_cache.dart';
+import 'package:openstrap_edge/ui2/as_of.dart' show AsOfLabel;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 
 import 'support/artifact_fixtures.dart';
@@ -109,13 +110,14 @@ void main() {
 
       expect(find.text('70'), findsOneWidget, reason: 'the old value stays');
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      // Recovery / sleep come off the OVERNIGHT row, strain / activity off the
-      // ACTIVITY row: each card says when ITS row was computed.
-      expect(find.text('As of 07:10'), findsWidgets);
-      expect(find.text('As of 08:42'), findsWidgets);
+      // Owner 2026-10-22 (CLS DECIDED 4): Home no longer prints an "As of" /
+      // "Updated" line per row. The card's "since hh:mm" overlay is its one
+      // time mark (ui2_home_card_fix_test.dart); a recalculation adds no line.
+      expect(find.textContaining('As of'), findsNothing);
+      expect(find.byType(AsOfLabel), findsNothing);
     });
 
-    testWidgets('the label appears without a DB re-read', (t) async {
+    testWidgets('a recalculation adds no line and costs no DB re-read', (t) async {
       _tall(t);
       final repo = HomeRepo(homeBundle(
           overnightAt: todayAtMs(7, 10), activityAt: todayAtMs(8, 42)));
@@ -126,11 +128,11 @@ void main() {
       app.debugSetRecalc(_recalc([todayId]));
       await t.pump();
       await t.pump();
-      expect(_label, findsWidgets);
+      expect(_label, findsNothing);
       expect(repo.reads, reads);
     });
 
-    testWidgets('the day finishes: label gone, new value shown', (t) async {
+    testWidgets('the day finishes: new value shown, still no line', (t) async {
       _tall(t);
       final repo = HomeRepo(homeBundle(
           overnightAt: todayAtMs(7, 10), activityAt: todayAtMs(8, 42)));
@@ -139,7 +141,8 @@ void main() {
       await settle(t);
       app.debugSetRecalc(_recalc([todayId]));
       await t.pump();
-      expect(_label, findsWidgets);
+      expect(_label, findsNothing);
+      expect(find.text('70'), findsOneWidget, reason: 'old value while it runs');
 
       // The pass commits the day: new row, then the day leaves the set and the
       // revision moves (the order the engine + AppState produce).
@@ -156,8 +159,8 @@ void main() {
       expect(_label, findsNothing);
     });
 
-    testWidgets('the day leaves the set BEFORE the reload lands: the old row '
-        'must not pass as fresh', (t) async {
+    testWidgets('the day leaves the set BEFORE the reload lands: the old value '
+        'stays until the new one does', (t) async {
       _tall(t);
       final repo = HomeRepo(homeBundle(
           overnightAt: todayAtMs(7, 10), activityAt: todayAtMs(8, 42)));
@@ -169,9 +172,9 @@ void main() {
 
       app.debugSetRecalc(RecalcState.idle); // removed, reload not here yet
       await t.pump();
-      expect(find.text('70'), findsOneWidget);
-      expect(_label, findsWidgets,
-          reason: 'still the old row: the label stays until the new one lands');
+      expect(find.text('70'), findsOneWidget,
+          reason: 'still the old row until the new one lands');
+      expect(_label, findsNothing);
 
       repo.today = homeBundle(
           readiness: 75,
@@ -211,11 +214,10 @@ void main() {
       await t.pump();
 
       // The held-over night's numbers are refused in the today slot (existing
-      // rule) and the label must not sneak them back in as "As of 07:10".
+      // rule) and no time line may sneak them back in either.
       expect(find.text('70'), findsNothing);
-      expect(find.text('As of 07:10'), findsNothing);
-      // Today's own activity row is a different matter.
-      expect(find.text('As of 08:42'), findsWidgets);
+      expect(find.textContaining('As of'), findsNothing);
+      expect(_label, findsNothing);
     });
 
     testWidgets('only a day that is NOT on screen recalculates: no label',
