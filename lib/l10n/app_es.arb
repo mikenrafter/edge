@@ -3431,11 +3431,13 @@
   "importPausedTodayPending": "Hoy aparecerá en cuanto esté listo",
   "importPausedSaving": "Guardar está en pausa hasta que termine la importación",
   "homeWhyRecoveryTitle": "La recuperación es baja",
-  "homeWhyRecoveryBody": "Tu puntuación de recuperación está por debajo de lo habitual.",
+  "homeWhyRecoveryDrivers": "Mayor lastre: {a} {za}, {b} {zb} (desviaciones respecto a tu referencia).",
+  "homeWhyRecoveryDriver": "Mayor lastre: {a} {za} (desviaciones respecto a tu referencia).",
+  "homeWhyRecoveryPlain": "Recuperación {score} de 100",
   "homeWhySleepTitle": "Falta sueño",
   "homeWhySleepBody": "El sueño evaluado quedó por debajo de tu necesidad.",
   "homeWhyStrainTitle": "Esfuerzo por encima del objetivo",
-  "homeWhyStrainBody": "El esfuerzo de hoy supera tu rango objetivo.",
+  "homeWhyStrainBody": "Esfuerzo {strain}, por encima del objetivo de hoy de {range}.",
   "homeWhySleepDetail": "{asleep} dormidos, {gap} menos de las {need} que necesitas.",
   "homeOlderTitle": "* Esfuerzo de un cálculo anterior",
   "homeOlderVersion": "Versión {version}",
@@ -3457,6 +3459,31 @@
       "version": {
         "type": "int"
       }
+    }
+  },
+  "@homeWhyRecoveryDrivers": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"},
+      "b": {"type": "String"},
+      "zb": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryDriver": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPlain": {
+    "placeholders": {
+      "score": {"type": "int"}
+    }
+  },
+  "@homeWhyStrainBody": {
+    "placeholders": {
+      "strain": {"type": "String"},
+      "range": {"type": "String"}
     }
   },
   "homeSinceTime": "desde {time}",

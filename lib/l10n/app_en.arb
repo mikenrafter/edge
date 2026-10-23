@@ -17668,11 +17668,13 @@
   "importPausedTodayPending": "Today appears as soon as it’s ready",
   "importPausedSaving": "Saving is paused until the import finishes",
   "homeWhyRecoveryTitle": "Recovery is low",
-  "homeWhyRecoveryBody": "Your recovery score is below its usual range.",
+  "homeWhyRecoveryDrivers": "Biggest drag: {a} {za}, {b} {zb} (spreads from your baseline).",
+  "homeWhyRecoveryDriver": "Biggest drag: {a} {za} (spreads from your baseline).",
+  "homeWhyRecoveryPlain": "Recovery {score} of 100",
   "homeWhySleepTitle": "Sleep is short of need",
   "homeWhySleepBody": "Your scored sleep was below your need.",
   "homeWhyStrainTitle": "Strain is above target",
-  "homeWhyStrainBody": "Today’s strain is above your target range.",
+  "homeWhyStrainBody": "Strain {strain}, above today’s target of {range}.",
   "homeWhySleepDetail": "{asleep} asleep, {gap} under your {need} need.",
   "homeOlderTitle": "* Strain is from an older calculation",
   "homeOlderVersion": "Version {version}",
@@ -17694,6 +17696,31 @@
       "version": {
         "type": "int"
       }
+    }
+  },
+  "@homeWhyRecoveryDrivers": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"},
+      "b": {"type": "String"},
+      "zb": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryDriver": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPlain": {
+    "placeholders": {
+      "score": {"type": "int"}
+    }
+  },
+  "@homeWhyStrainBody": {
+    "placeholders": {
+      "strain": {"type": "String"},
+      "range": {"type": "String"}
     }
   },
   "homeSinceTime": "since {time}",

@@ -988,7 +988,10 @@ class RingTrio extends StatelessWidget {
   /// Injected by tests; production reads `clock.now()`.
   final DateTime? now;
   final DateTime? since;
-  final bool syncPending;
+  /// Non-null while results are held stale (a hold AND newer recordings than
+  /// the result covers): the old line's explanation. Draws the arc, makes the
+  /// caption tappable.
+  final String? holdText;
 
   /// What the help strip says instead of the default (the gaps' reasons, then
   /// the "Why?" footer, then the recovery update). The screen sets it for the
@@ -1005,7 +1008,7 @@ class RingTrio extends StatelessWidget {
       this.onOpen,
       this.now,
       this.since,
-      this.syncPending = false,
+      this.holdText,
       this.help,
       this.reserveHelp});
 
@@ -1041,8 +1044,10 @@ class RingTrio extends StatelessWidget {
 
     return Surface(
       elevation: 2,
-      child: LayoutBuilder(builder: (c, box) => Stack(children: [
-        Column(children: [
+      child: LayoutBuilder(builder: (c, box) => Column(children: [
+        // The "since" line: its own slim right-aligned row above the rings,
+        // its height reserved whether or not the time is known.
+        _sinceLine(c, l),
         // Rows replace columns by locale, text scale and width only, never by
         // the day's data: an empty card and a loaded one are the same layout.
         if (bigText(c))
@@ -1087,25 +1092,91 @@ class RingTrio extends StatelessWidget {
           _HelpStrip(text: [for (final r in gaps) '${r.label} · ${presentationText(l, r.why ?? '')}'].join('\n'),
               onTap: _open(gaps.first.kind), busy: false, chevron: onOpen != null, reserve: const []),
         ],
-      ]),
-        if (since != null)
-          Positioned(top: 0, right: 0, child: Row(key: const ValueKey('home-since'), mainAxisSize: MainAxisSize.min, children: [
-            if (syncPending) ...[
-              SizedBox(key: const ValueKey('home-since-progress'), width: 10, height: 10,
-                child: CircularProgressIndicator(strokeWidth: 1.5, color: P.of(c).ink3)),
-              const SizedBox(width: 4),
-            ],
-            Text(l?.homeSinceTime(DateFormat('HH:mm').format(since!)) ?? 'since ${DateFormat('HH:mm').format(since!)}',
-              style: F.over.copyWith(color: P.of(c).ink3)),
-          ])),
       ])),
     );
+  }
+
+  Widget _sinceLine(BuildContext c, AppLocalizations? l) {
+    final h = _measuredHeight(c, F.over, 'x');
+    final t = since;
+    if (t == null) return SizedBox(height: h + S.x1);
+    final p = P.of(c);
+    final hold = holdText;
+    final text = l?.homeSinceTime(DateFormat('HH:mm').format(t)) ??
+        'since ${DateFormat('HH:mm').format(t)}';
+    final caption = Row(
+        key: const ValueKey('home-since'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (hold != null) ...[
+            SizedBox(
+                key: const ValueKey('home-since-progress'),
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: p.ink3)),
+            const SizedBox(width: 4),
+          ],
+          Text(text, style: F.over.copyWith(color: p.ink3)),
+        ]);
+    if (hold == null) {
+      return Padding(
+          padding: const EdgeInsets.only(bottom: S.x1),
+          child: SizedBox(
+              height: h,
+              child: Align(alignment: Alignment.centerRight, child: caption)));
+    }
+    // Held: the caption opens the old explanation. 44 pt target, no 44 pt of
+    // layout (it overhangs, see HitOverhang).
+    return HitOverhang(
+        visual: h + S.x1,
+        child: Align(
+            alignment: Alignment.centerRight,
+            child: Pressable(
+                semanticLabel: '$text. $hold',
+                onTap: () => showDialog<void>(
+                    context: c,
+                    builder: (dc) => AlertDialog(
+                          content: Text(hold),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.of(dc).pop(),
+                                child: Text(MaterialLocalizations.of(dc)
+                                    .okButtonLabel)),
+                          ],
+                        )),
+                child: caption)));
   }
 
   VoidCallback? _open(HomeRingKind k) {
     final f = onOpen;
     return f == null ? null : () => f(k);
   }
+}
+
+/// Whether the shown results are held stale, and why: a derive hold AND newer
+/// recordings than the result covers (exactly the old "Waiting for ..." line's
+/// condition). Selects on the scheduler, so the caller rebuilds on a hold change
+/// and on nothing else. Returns the old line's explanation, or null.
+String? _holdText(BuildContext c, DateTime? since, DateTime? updatedAt) {
+  (StaleHold?, DateTime?) h = (null, null);
+  try {
+    h = c.select<AppState, (StaleHold?, DateTime?)>((a) {
+      final x = a.staleHold;
+      return (x, x == null ? null : a.lastRecordAt);
+    });
+  } on ProviderNotFoundException {
+    // No AppState (gallery): nothing is held.
+  }
+  final newest = h.$2;
+  if (h.$1 == null || since == null || newest == null || !newest.isAfter(since)) {
+    return null;
+  }
+  return stalenessText(
+      updatedAt: updatedAt ?? since,
+      recordingsThrough: since,
+      newestRecording: newest,
+      hold: h.$1,
+      l: AppLocalizations.of(c));
 }
 
 class _HomeWhyPanel extends StatelessWidget {
@@ -1125,9 +1196,9 @@ class _HomeWhyPanel extends StatelessWidget {
       HomeRingKind.strain => l?.homeWhyStrainTitle ?? 'Strain is above target',
     };
     final body = switch (kind) {
-      HomeRingKind.recovery => l?.homeWhyRecoveryBody ?? 'Your recovery score is below its usual range.',
+      HomeRingKind.recovery => _recoveryWhy(data, l),
       HomeRingKind.sleep => _sleepWhy(data, l),
-      HomeRingKind.strain => l?.homeWhyStrainBody ?? 'Today’s strain is above your target range.',
+      HomeRingKind.strain => _strainWhy(data, l),
     };
     return _HomeInsetRow(key: ValueKey('home-why:${kind.name}'), onTap: onTap,
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
@@ -1146,6 +1217,40 @@ class _HomeWhyPanel extends StatelessWidget {
         Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
       ]));
   }
+}
+
+/// Evidence or nothing: the drivers furthest below this user's own baseline
+/// (their oriented z, off the glass-box `detail`), else the plain score.
+String _recoveryWhy(HomeData d, AppLocalizations? l) {
+  final drags = <(String, double)>[];
+  for (final e in d.drivers) {
+    final z = double.tryParse('${e['detail']}'.split('=').last);
+    if (z != null && z < 0) drags.add((driverLabel(e['label'], l), z));
+  }
+  drags.sort((a, b) => a.$2.compareTo(b.$2));
+  String f(double z) => z.toStringAsFixed(1);
+  if (drags.length >= 2) {
+    final (a, b) = (drags[0], drags[1]);
+    return l?.homeWhyRecoveryDrivers(a.$1, f(a.$2), b.$1, f(b.$2)) ??
+        'Biggest drag: ${a.$1} ${f(a.$2)}, ${b.$1} ${f(b.$2)} (spreads from your baseline).';
+  }
+  if (drags.length == 1) {
+    final a = drags[0];
+    return l?.homeWhyRecoveryDriver(a.$1, f(a.$2)) ??
+        'Biggest drag: ${a.$1} ${f(a.$2)} (spreads from your baseline).';
+  }
+  final v = (d.readiness.value ?? 0).round();
+  return l?.homeWhyRecoveryPlain(v) ?? 'Recovery $v of 100';
+}
+
+String _strainWhy(HomeData d, AppLocalizations? l) {
+  String n(num v) => v == v.round() ? '${v.round()}' : v.toStringAsFixed(1);
+  final t = d.strainTarget;
+  final low = t?['low'], high = t?['high'];
+  final range = low is num && high is num ? '${n(low)}–${n(high)}' : n(high as num);
+  final s = (d.strain.value ?? 0).toStringAsFixed(1);
+  return l?.homeWhyStrainBody(s, range) ??
+      'Strain $s, above today’s target of $range.';
 }
 
 String _sleepWhy(HomeData d, AppLocalizations? l) {
@@ -1229,18 +1334,18 @@ enum HomeRingKind { recovery, strain, sleep }
 List<HomeRingKind> pressingRings(HomeData d, {DateTime? now}) {
   final ranked = <(HomeRingKind, int)>[];
   final recovery = d.readiness.value;
-  if (recovery != null && d.recoveryState != 'provisional' &&
+  if (recovery != null && d.readiness.fromOlderVersion == null && d.recoveryState != 'provisional' &&
       d.recoveryState != 'night_in_progress') {
     if (recovery < 26) ranked.add((HomeRingKind.recovery, 3));
     else if (recovery <= 36) ranked.add((HomeRingKind.recovery, 2));
   }
   final sleep = d.sleepMin.value, need = d.sleepNeedMin.value;
-  if (sleep != null && need != null && need > 0 && sleep / need < .85) {
+  if (sleep != null && d.sleepMin.fromOlderVersion == null && need != null && need > 0 && sleep / need < .85) {
     ranked.add((HomeRingKind.sleep, sleep / need < .70 ? 3 : 2));
   }
   final strain = d.strain.value;
   final high = d.strainTarget?['high'];
-  if (strain != null && high is num && strain > high) {
+  if (strain != null && d.strain.fromOlderVersion == null && high is num && strain > high) {
     ranked.add((HomeRingKind.strain, 1));
   }
   const order = {HomeRingKind.recovery: 0, HomeRingKind.sleep: 1, HomeRingKind.strain: 2};
@@ -2563,11 +2668,19 @@ class _HomeScreenState extends State<HomeScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// The "since hh:mm" time. Read on its own, never as part of the main model:
+  /// during import focus it is paused (ReadPaused) and that means "unknown"
+  /// (the overlay hides), not "today cannot be drawn". Focus end reloads.
   Future<void> _loadSince() async {
     final repo = repoOf(context);
     final day = widget.data?.dayId ?? _day ?? todayLabel();
     if (repo == null || day != todayLabel()) return;
-    final through = await repo.dayRecordingsThrough(day);
+    DateTime? through;
+    try {
+      through = (await pausedRead(repo.dayRecordingsThrough(day))).value;
+    } catch (_) {
+      return; // unreadable: leave what is shown
+    }
     if (mounted && through != _recordingsThrough) {
       setState(() => _recordingsThrough = through);
     }
@@ -2600,6 +2713,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Future<void> reloadPausedRead() async {
+    _loadSince();
     if (!mounted || widget.data != null) return;
     setState(() { _loading = true; _paused = false; });
     await _load();
@@ -2685,17 +2799,15 @@ class _HomeScreenState extends State<HomeScreen>
               : day == null || day == today
                   ? await HomeData.load(repo, l, true)
                   : await HomeData.loadForDay(repo, day, l);
-      final through = (day == null || day == today)
-          ? await repo.dayRecordingsThrough(today)
-          : null;
       // During focus only today and yesterday are on offer, in every case.
       final List<String> days = focus
           ? _focusDays(day)
           : await repo.availableDays();
       if (stillNewest(#home, t)) {
-        setState(() => (_d = d, _recordingsThrough = through, _days = days, _loading = false, _failed = false,
+        setState(() => (_d = d, _days = days, _loading = false, _failed = false,
             _paused = false));
         _recordRender();
+        _loadSince();
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
           if (!mounted) return;
           if (landed) {
@@ -2983,8 +3095,10 @@ class _HomeScreenState extends State<HomeScreen>
           d: ringData,
           now: widget.now,
           since: isToday ? _recordingsThrough : null,
-          syncPending: isToday && _recordingsThrough != null &&
-              context.read<AppState>().offloadActive,
+          holdText: isToday
+              ? _holdText(c, _recordingsThrough,
+                  ringData.overnightAt ?? ringData.activityAt)
+              : null,
           help: help,
           reserveHelp: guidance,
           onOpen: (k) => go(

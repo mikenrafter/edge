@@ -3413,11 +3413,13 @@
   "importPausedTodayPending": "आज का डेटा तैयार होते ही दिखेगा",
   "importPausedSaving": "आयात पूरा होने तक सहेजना रुका हुआ है",
   "homeWhyRecoveryTitle": "रिकवरी कम है",
-  "homeWhyRecoveryBody": "आपका रिकवरी स्कोर सामान्य सीमा से कम है।",
+  "homeWhyRecoveryDrivers": "सबसे बड़ा असर: {a} {za}, {b} {zb} (आपकी बेसलाइन से अंतर)।",
+  "homeWhyRecoveryDriver": "सबसे बड़ा असर: {a} {za} (आपकी बेसलाइन से अंतर)।",
+  "homeWhyRecoveryPlain": "रिकवरी {score}/100",
   "homeWhySleepTitle": "नींद की कमी",
   "homeWhySleepBody": "आपकी मापी गई नींद ज़रूरत से कम थी।",
   "homeWhyStrainTitle": "लक्ष्य से अधिक स्ट्रेन",
-  "homeWhyStrainBody": "आज का स्ट्रेन आपकी लक्ष्य सीमा से अधिक है।",
+  "homeWhyStrainBody": "स्ट्रेन {strain}, आज के लक्ष्य {range} से ऊपर।",
   "homeWhySleepDetail": "{asleep} सोए, आपकी {need} की ज़रूरत से {gap} कम।",
   "homeOlderTitle": "* स्ट्रेन पुराने हिसाब से है",
   "homeOlderVersion": "संस्करण {version}",
@@ -3439,6 +3441,31 @@
       "version": {
         "type": "int"
       }
+    }
+  },
+  "@homeWhyRecoveryDrivers": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"},
+      "b": {"type": "String"},
+      "zb": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryDriver": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPlain": {
+    "placeholders": {
+      "score": {"type": "int"}
+    }
+  },
+  "@homeWhyStrainBody": {
+    "placeholders": {
+      "strain": {"type": "String"},
+      "range": {"type": "String"}
     }
   },
   "homeSinceTime": "{time} से",

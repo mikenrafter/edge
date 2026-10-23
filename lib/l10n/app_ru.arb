@@ -8792,11 +8792,13 @@
   "importPausedTodayPending": "Сегодня появится, как только будет готово",
   "importPausedSaving": "Сохранение приостановлено до завершения импорта",
   "homeWhyRecoveryTitle": "Низкое восстановление",
-  "homeWhyRecoveryBody": "Показатель восстановления ниже вашего обычного уровня.",
+  "homeWhyRecoveryDrivers": "Сильнее всего тянут вниз: {a} {za}, {b} {zb} (отклонения от вашей нормы).",
+  "homeWhyRecoveryDriver": "Сильнее всего тянет вниз: {a} {za} (отклонения от вашей нормы).",
+  "homeWhyRecoveryPlain": "Восстановление {score} из 100",
   "homeWhySleepTitle": "Недостаточно сна",
   "homeWhySleepBody": "Оценённый сон был короче вашей потребности.",
   "homeWhyStrainTitle": "Нагрузка выше цели",
-  "homeWhyStrainBody": "Сегодняшняя нагрузка выше целевого диапазона.",
+  "homeWhyStrainBody": "Нагрузка {strain}, выше сегодняшней цели {range}.",
   "homeWhySleepDetail": "Сон {asleep}, на {gap} меньше вашей потребности {need}.",
   "homeOlderTitle": "* Нагрузка рассчитана по старой версии",
   "homeOlderVersion": "Версия {version}",
@@ -8818,6 +8820,31 @@
       "version": {
         "type": "int"
       }
+    }
+  },
+  "@homeWhyRecoveryDrivers": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"},
+      "b": {"type": "String"},
+      "zb": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryDriver": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPlain": {
+    "placeholders": {
+      "score": {"type": "int"}
+    }
+  },
+  "@homeWhyStrainBody": {
+    "placeholders": {
+      "strain": {"type": "String"},
+      "range": {"type": "String"}
     }
   },
   "homeSinceTime": "с {time}",

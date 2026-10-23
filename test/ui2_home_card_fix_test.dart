@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/read_paused.dart';
 import 'package:openstrap_edge/models/metric.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -30,6 +31,7 @@ import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/as_of_recalc_fakes.dart';
+import 'support/last_result_db.dart';
 import 'support/older_version_fixtures.dart';
 import 'support/read_paused_fakes.dart';
 
@@ -111,6 +113,23 @@ Future<AppState> _home(WidgetTester t, HomeData d,
   await t.pumpWidget(perfApp(app, HomeScreen(data: d, hour: 9, now: _now)));
   await settle(t, n: 6);
   return app;
+}
+
+/// Lets the database reads a hold release started finish (same as
+/// calc_staleness_screen_test): a read in flight at teardown leaves a timer.
+Future<void> _settleDb(WidgetTester t) async {
+  for (var round = 0; round < 2; round++) {
+    var answered = false;
+    LocalDb.instance.then((db) => db.rawQuery('SELECT 1')).then(
+        (_) => answered = true,
+        onError: (_) => answered = true);
+    final end = DateTime.now().add(const Duration(seconds: 30));
+    while (!answered) {
+      if (!DateTime.now().isBefore(end)) fail('database reads still in flight');
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await t.pump();
+    }
+  }
 }
 
 dynamic _sched(AppState a) => (a as dynamic).debugDeriveScheduler;
@@ -229,7 +248,7 @@ void main() {
     testWidgets('strain: the number and the target range', (t) async {
       await _rings(t, _data(strain: 15.2, target: _target));
       expect(t.widget<Text>(body('strain')).data,
-          'Strain 15.2, above today\'s target of 8–12.');
+          'Strain 15.2, above today’s target of 8–12.');
     });
   });
 
@@ -265,6 +284,10 @@ void main() {
 
   // ── P2d / P2e ─────────────────────────────────────────────────────────────
   group('progress arc and the old hold semantics', () {
+    setUp(() async {
+      await g1FreshDb('home_card_fix_test.db');
+    });
+    tearDownAll(() => g1DropDb('home_card_fix_test.db'));
     final ctx = (computedAt: _at(16, 8), through: _at(16, 4));
 
     Future<AppState> open(WidgetTester t, {required DateTime newest}) =>
@@ -281,6 +304,7 @@ void main() {
       _sched(app).setOffloadActive(false);
       await t.pump();
       expect(_arc, findsNothing);
+      await _settleDb(t);
     });
 
     testWidgets('current results (nothing newer): a hold shows no arc',
@@ -292,6 +316,7 @@ void main() {
       expect(_arc, findsNothing);
       _sched(app).setOffloadActive(false);
       await t.pump();
+      await _settleDb(t);
     });
 
     testWidgets('held and stale: arc, tappable, the old explanation, spoken',
@@ -309,6 +334,7 @@ void main() {
       expect(find.text(why), findsOneWidget);
       _sched(app).setOffloadActive(false);
       await t.pump();
+      await _settleDb(t);
       h.dispose();
     });
 
@@ -322,6 +348,7 @@ void main() {
       expect(find.textContaining('Paused during workout'), findsOneWidget);
       _sched(app).setWorkoutActive(false);
       await t.pump();
+      await _settleDb(t);
     });
 
     testWidgets('not held: caption is plain, not a button', (t) async {

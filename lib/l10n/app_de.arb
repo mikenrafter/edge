@@ -3519,11 +3519,13 @@
   "importPausedTodayPending": "Heute erscheint, sobald es fertig ist",
   "importPausedSaving": "Speichern ist pausiert, bis der Import abgeschlossen ist",
   "homeWhyRecoveryTitle": "Erholung ist niedrig",
-  "homeWhyRecoveryBody": "Dein Erholungswert liegt unter deinem üblichen Bereich.",
+  "homeWhyRecoveryDrivers": "Größte Bremse: {a} {za}, {b} {zb} (Streuungen von deiner Basislinie).",
+  "homeWhyRecoveryDriver": "Größte Bremse: {a} {za} (Streuungen von deiner Basislinie).",
+  "homeWhyRecoveryPlain": "Erholung {score} von 100",
   "homeWhySleepTitle": "Schlaf reicht nicht aus",
   "homeWhySleepBody": "Dein bewerteter Schlaf lag unter deinem Bedarf.",
   "homeWhyStrainTitle": "Belastung über dem Ziel",
-  "homeWhyStrainBody": "Die heutige Belastung liegt über deinem Zielbereich.",
+  "homeWhyStrainBody": "Strain {strain}, über dem heutigen Ziel von {range}.",
   "homeWhySleepDetail": "{asleep} geschlafen, {gap} unter deinem Bedarf von {need}.",
   "homeOlderTitle": "* Belastung stammt aus einer älteren Berechnung",
   "homeOlderVersion": "Version {version}",
@@ -3545,6 +3547,31 @@
       "version": {
         "type": "int"
       }
+    }
+  },
+  "@homeWhyRecoveryDrivers": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"},
+      "b": {"type": "String"},
+      "zb": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryDriver": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPlain": {
+    "placeholders": {
+      "score": {"type": "int"}
+    }
+  },
+  "@homeWhyStrainBody": {
+    "placeholders": {
+      "strain": {"type": "String"},
+      "range": {"type": "String"}
     }
   },
   "homeSinceTime": "seit {time}",

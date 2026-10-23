@@ -3413,11 +3413,13 @@
   "importPausedTodayPending": "今天的内容准备好后会立即显示",
   "importPausedSaving": "导入完成前暂停保存",
   "homeWhyRecoveryTitle": "恢复状态偏低",
-  "homeWhyRecoveryBody": "你的恢复评分低于平常范围。",
+  "homeWhyRecoveryDrivers": "拖累最大：{a} {za}、{b} {zb}（与你的基线的偏差）。",
+  "homeWhyRecoveryDriver": "拖累最大：{a} {za}（与你的基线的偏差）。",
+  "homeWhyRecoveryPlain": "恢复 {score}/100",
   "homeWhySleepTitle": "睡眠不足",
   "homeWhySleepBody": "已评分的睡眠时长低于你的需求。",
   "homeWhyStrainTitle": "负荷超过目标",
-  "homeWhyStrainBody": "今天的负荷超过了你的目标范围。",
+  "homeWhyStrainBody": "消耗 {strain}，高于今天的目标 {range}。",
   "homeWhySleepDetail": "睡了 {asleep}，比所需的 {need} 少 {gap}。",
   "homeOlderTitle": "* 负荷来自较早的计算",
   "homeOlderVersion": "版本 {version}",
@@ -3439,6 +3441,31 @@
       "version": {
         "type": "int"
       }
+    }
+  },
+  "@homeWhyRecoveryDrivers": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"},
+      "b": {"type": "String"},
+      "zb": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryDriver": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "za": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPlain": {
+    "placeholders": {
+      "score": {"type": "int"}
+    }
+  },
+  "@homeWhyStrainBody": {
+    "placeholders": {
+      "strain": {"type": "String"},
+      "range": {"type": "String"}
     }
   },
   "homeSinceTime": "自 {time}",
