@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/presentation_text.dart';
 import '../models/metric.dart';
+import 'grammar.dart' show Pressable;
 
 /// English form of the note, for the callers with no localizations in scope.
 String olderVersionNoteText(int version, String? reason) {
@@ -82,9 +83,8 @@ class OlderVersionMark extends StatelessWidget {
     return Semantics(
       label: l?.olderVersionSemantics(v) ?? olderVersionSemantics(v),
       button: showNote,
-      child: GestureDetector(
+      child: Pressable(
         key: ValueKey('older-version-mark:$id'),
-        behavior: HitTestBehavior.opaque,
         onTap: showNote
             ? () => showDialog<void>(
                   context: context,

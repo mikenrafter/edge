@@ -57,7 +57,8 @@ import '../activity/setup.dart' show ActivitySetup;
 import '../activity/tiles.dart';
 import '../activity/share.dart' show ShareSheet, shareOrigin;
 import '../activity/summary.dart';
-import '../onboarding/welcome.dart' show ImportOutcome, ImportReport;
+import '../onboarding/welcome.dart'
+    show ImportOutcome, ImportReport, PostImportNotes;
 // Screens are deliberately not re-exported from the ui2 barrel (see the
 // barrel test), so their components are imported by path.
 import '../screens/screens.dart';
@@ -66,6 +67,7 @@ import '../../state/control_operations.dart';
 import '../ui2.dart';
 import 'buzz_pattern.dart';
 import 'device_lab.dart' show RepeatWindowAdjuster;
+import 'dev_logs_page.dart' show DevLogActions, DevLogActionsPort;
 import 'devices.dart';
 import 'import_progress_view.dart';
 import 'profile.dart';
@@ -1087,6 +1089,25 @@ Map<String, Widget> extraCases() => {
           ]),
         );
       }),
+      // A value served from an older calculation: the asterisk, the note it
+      // opens, and the chart key's notes for flagged cells.
+      'older_version_mark': const Surface(
+        child: Row(children: [
+          Flexible(child: Text('Resting HR 52 bpm')),
+          OlderVersionMark(id: 'gallery', version: 104, reason: 'height'),
+        ]),
+      ),
+      'older_version_note': const Surface(
+        child: OlderVersionNote(id: 'gallery', version: 104, reason: 'height'),
+      ),
+      'chart_older_notes': const Surface(
+        child: ChartOlderNotes([
+          ChartCell('Heart rate (bpm)', null,
+              value: '72 bpm', older: (version: 104, reason: 'height')),
+          ChartCell('Movement (% of time moving)', null,
+              value: '34%', older: (version: 103, reason: null)),
+        ]),
+      ),
       // Nothing selected, like 'scrubber': the cursor appears on touch and the
       // values in the row under the chart follow it.
       'chart_scrub': Builder(builder: (c) {
@@ -2151,11 +2172,28 @@ Map<String, Widget> _whatChangedCases() => {
       ),
     };
 
+/// A dev log port that touches nothing: the buttons draw, the taps do no IO.
+class _FakeDevLogPort implements DevLogActionsPort {
+  const _FakeDevLogPort();
+
+  @override
+  Future<bool> export(Rect origin) async => true;
+
+  @override
+  Future<void> clear() async {}
+}
+
 /// Onboarding and import — the two flows a user sees exactly once, which is
 /// why they are the two nobody re-checks after a change.
 Map<String, Widget> _onboardingCases() => {
       'import_report': const ImportReport(ImportOutcome(
           source: 'WHOOP export', days: 412, lateRows: 38, strandedDays: 2)),
+      'post_import_notes': PostImportNotes(
+          const ['coach_api_key', 'Tasker token'],
+          onDismiss: () {}),
+      'dev_log_actions': const Surface(
+        child: DevLogActions(port: _FakeDevLogPort()),
+      ),
       'import_report_failed': const ImportReport(ImportOutcome(
           source: 'physiological_cycles.csv',
           error: 'The first row has columns this importer does not recognise, so it could not place any data from the file.')),

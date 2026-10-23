@@ -214,7 +214,6 @@ void paintSpiral(Canvas canvas, Size size,
         paint.color = colourAt(p, (p.from + p.to) / 2);
       } else {
         paint
-          ..color = const Color(0xFF000000)
           ..shader = SweepGradient(
             startAngle: 0,
             endAngle: 2 * pi,

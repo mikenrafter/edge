@@ -403,4 +403,11 @@ const _notComponents = {
   // AlertDialog opened over a route.
   'HapticsSettings', 'HapticsSettingsView', 'PatternNameDialog',
   'DetectedActivitiesScreen', 'NapProposalEditor', // Full review/editor routes.
+  // The first-run privacy prompt: an overlay that watches AppState from
+  // Provider (the gallery has none above it) and writes the consent on tap;
+  // `ConsentPromptHost` has no pure half to pump instead.
+  'ConsentPromptHost',
+  // The Logs Scaffold route around `DevLogActions`, which IS in the gallery
+  // (over a fake port). An AppBar and a ListView do not fit a gallery cell.
+  'DevLogsPage',
 };
