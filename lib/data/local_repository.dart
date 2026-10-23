@@ -70,7 +70,13 @@ typedef WearableDay = ({
   Map<String, Map<String, Object?>> cells
 });
 
+/// A day whose re-derive declined to overwrite an older stored result.
+typedef DeclinedDay = ({String reason, int? keptAlgoVersion, int decidedAtMs});
+
 abstract class LocalRepository {
+  /// Days that kept an older result, with why (current version only).
+  Future<Map<String, DeclinedDay>> declinedDays() async => const {};
+
   /// The active wearable's cells for [date]; null with no active wearable or
   /// no cells for the day (every WHOOP-only install).
   Future<WearableDay?> wearableDay(String date) async => null;

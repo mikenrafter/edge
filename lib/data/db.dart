@@ -6298,12 +6298,17 @@ class LocalDb {
       settledFingerprints(int algoVersion) =>
       _ldbSettledFingerprints(algoVersion);
 
+  /// Days that kept an older result at [algoVersion], with the reason.
+  static Future<Map<String, ({String reason, int? keptAlgoVersion, int decidedAtMs})>> declinedDays(int algoVersion) => _ldbDeclinedDays(algoVersion);
+
   static Future<void> putSettledDay(
     String day,
     int algoVersion, {
     required String own,
     required String? prev,
     String edit = '',
+    String? reason,
+    int? decidedAtMs,
   }) => putComputeFreshness(
     '$_settledPrefix$day',
     jsonEncode({'v': algoVersion, 'own': own, 'prev': prev, 'edit': edit}),

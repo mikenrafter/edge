@@ -1027,6 +1027,10 @@ Future<Map<String, ({String own, String? prev, String edit})>> _ldbSettledFinger
     };
   }
 
+Future<Map<String, ({String reason, int? keptAlgoVersion, int decidedAtMs})>> _ldbDeclinedDays(int algoVersion) async {
+    return const {};
+  }
+
 Future<bool> _ldbDayIsFinal(String day, int algoVersion) async {
     final db = await LocalDb.instance;
     final rows = await db.rawQuery(

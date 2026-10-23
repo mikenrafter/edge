@@ -495,6 +495,10 @@ class LocalRepositoryImpl extends LocalRepository {
     return note is String ? note : null;
   }
 
+  @override
+  Future<Map<String, DeclinedDay>> declinedDays() =>
+      LocalDb.declinedDays(kAlgoVersion);
+
   /// The one place a past, final day stops promising more nights. A cold-start
   /// `need_baseline:` note says more nights will fix the absence; on a past
   /// day that is final (finalized at this version, or settled by a declined
