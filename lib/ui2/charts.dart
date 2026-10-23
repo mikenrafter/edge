@@ -615,43 +615,12 @@ class Ring extends CustomPainter {
   Ring(this.v, this.color, this.track,
       {this.stroke = 10, this.t = 1, this.solid = false});
 
-  /// RED STUB: the spiral pieces this ring draws, in paint order.
-  List<SpiralPiece> get pieces => const [];
+  List<SpiralPiece> get pieces => SpiralGeometry(stroke).pieces([v * t.clamp(0.0, 1.0)]);
 
   @override
   void paint(Canvas cv, Size s) {
-    final c = Offset(s.width / 2, s.height / 2);
-    final r = min(s.width, s.height) / 2 - stroke / 2;
-    if (r <= 0) return;
-    cv.drawCircle(
-      c,
-      r,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..color = track,
-    );
-    final sweep = 2 * pi * v.clamp(0, 1) * t.clamp(0, 1);
-    if (sweep <= 0) return;
-    cv.drawArc(
-      Rect.fromCircle(center: c, radius: r),
-      -pi / 2,
-      sweep,
-      false,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..strokeCap = StrokeCap.round
-        ..color = solid ? color : const Color(0x00000000)
-        ..shader = solid
-            ? null
-            : SweepGradient(
-                startAngle: -pi / 2,
-                endAngle: 3 * pi / 2,
-                colors: [color.withValues(alpha: .55), color],
-                transform: const GradientRotation(-pi / 2),
-              ).createShader(Rect.fromCircle(center: c, radius: r)),
-    );
+    paintSpiral(cv, s, stroke: stroke, track: track, colors: [color],
+        fractions: [v], t: t, solid: solid);
   }
 
   @override
@@ -673,10 +642,7 @@ class RingArc {
   int get hashCode => Object.hash(color, fraction);
 }
 
-/// The sleep dial once a night is scored: the track, then [arcs] laid end to
-/// end clockwise from 12 o'clock, each in its own colour. Butt caps, so one
-/// stage ends exactly where the next begins; anything past a full circle is
-/// clipped, never wrapped. [t] is the draw-in progress, as for [Ring].
+/// The sleep dial once a night is scored, with one shared spiral geometry.
 class StageRing extends CustomPainter {
   final List<RingArc> arcs;
   final Color track;
@@ -684,43 +650,12 @@ class StageRing extends CustomPainter {
 
   StageRing(this.arcs, this.track, {this.stroke = 10, this.t = 1});
 
-  /// RED STUB: the spiral pieces this ring draws, in paint order.
-  List<SpiralPiece> get pieces => const [];
+  List<SpiralPiece> get pieces => SpiralGeometry(stroke).pieces(arcs.map((a) => a.fraction * t.clamp(0.0, 1.0)).toList());
 
   @override
   void paint(Canvas cv, Size s) {
-    final c = Offset(s.width / 2, s.height / 2);
-    final r = min(s.width, s.height) / 2 - stroke / 2;
-    if (r <= 0) return;
-    cv.drawCircle(
-      c,
-      r,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..color = track,
-    );
-    final rect = Rect.fromCircle(center: c, radius: r);
-    final k = t.clamp(0.0, 1.0);
-    var at = -pi / 2;
-    var left = 2 * pi;
-    for (final a in arcs) {
-      final sweep = min(2 * pi * a.fraction.clamp(0.0, 1.0) * k, left);
-      if (sweep <= 0) continue;
-      cv.drawArc(
-        rect,
-        at,
-        sweep,
-        false,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = stroke
-          ..strokeCap = StrokeCap.butt
-          ..color = a.color,
-      );
-      at += sweep;
-      left -= sweep;
-    }
+    paintSpiral(cv, s, stroke: stroke, track: track,
+      colors: arcs.map((a) => a.color).toList(), fractions: arcs.map((a) => a.fraction).toList(), t: t);
   }
 
   @override

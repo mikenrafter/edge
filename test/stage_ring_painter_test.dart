@@ -67,38 +67,34 @@ void main() {
       stroke: 7,
     ));
     expect(rec.arcs, hasLength(4));
-    expect(rec.arcs.first.start, closeTo(-pi / 2, 1e-9));
-    for (var i = 0; i < rec.arcs.length - 1; i++) {
-      expect(rec.arcs[i + 1].start,
-          closeTo(rec.arcs[i].start + rec.arcs[i].sweep, 1e-9),
-          reason: 'arc ${i + 1} starts where arc $i ends');
-    }
+    expect(rec.arcs.first.start, closeTo(-pi / 2 + 2 * pi * .9, 1e-9));
     expect([for (final a in rec.arcs) a.color],
-        [_a, _b, _c, _d].map((c) => c.toARGB32()).toList());
-    expect(rec.arcs[0].sweep, closeTo(2 * pi * .2, 1e-9));
-    expect(rec.arcs[2].sweep, closeTo(2 * pi * .4, 1e-9));
+        [_d, _c, _b, _a].map((c) => c.toARGB32()).toList());
+    expect(rec.arcs[3].sweep, closeTo(2 * pi * .2, 1e-9));
+    expect(rec.arcs[1].sweep, closeTo(2 * pi * .4, 1e-9));
     expect(rec.arcs.every((a) => a.stroke == 7), isTrue);
   });
 
-  test('butt caps — a round cap would overlap the neighbouring stage', () {
+  test('clockwise segment ends are round', () {
     final rec = _paint(
         StageRing(const [RingArc(_a, .2), RingArc(_b, .3)], _track));
     expect(rec.arcs, hasLength(2));
-    expect(rec.arcs.every((a) => a.cap == StrokeCap.butt), isTrue);
+    expect(rec.arcs.every((a) => a.cap == StrokeCap.round), isTrue);
   });
 
   test('a zero-length arc draws nothing', () {
     final rec = _paint(
         StageRing(const [RingArc(_a, .3), RingArc(_b, 0), RingArc(_c, .2)], _track));
-    expect(rec.arcs.map((a) => a.color), [_a.toARGB32(), _c.toARGB32()]);
+    expect(rec.arcs.map((a) => a.color), [_c.toARGB32(), _a.toARGB32()]);
   });
 
-  test('arcs past a full circle are clipped to it, never wrapped', () {
+  test('arcs past a full circle continue onto a second lap', () {
     final rec = _paint(
         StageRing(const [RingArc(_a, .7), RingArc(_b, .5)], _track));
-    final total = rec.arcs.fold<double>(0, (s, a) => s + a.sweep);
-    expect(total, closeTo(2 * pi, 1e-9));
-    expect(rec.arcs[1].sweep, closeTo(2 * pi * .3, 1e-9));
+    final total = rec.arcs.where((a) => a.color != _track.toARGB32())
+        .fold<double>(0, (s, a) => s + a.sweep);
+    expect(total, closeTo(2 * pi * 1.2, 1e-9));
+    expect(rec.arcs.map((a) => a.color), containsAll([_a.toARGB32(), _b.toARGB32()]));
   });
 
   test('the draw-in progress t scales every sweep', () {
