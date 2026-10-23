@@ -19,6 +19,7 @@ import '../compute/calc_status.dart';
 import '../compute/derivation_engine.dart' show rawRetentionDays;
 import '../data/day_label.dart';
 import '../data/db.dart';
+import '../sync/import_focus.dart';
 import '../data/local_repository_impl.dart';
 import '../ui2/last_result_cache.dart';
 
@@ -173,6 +174,7 @@ class ArtifactWarmer {
 
   // A hold that cannot be read counts as held: the safe answer is to wait.
   bool _held() {
+    if (ImportFocus.active.value) return true; // the import owns the database
     try {
       return _hold?.call() ?? false;
     } catch (_) {

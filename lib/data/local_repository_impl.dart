@@ -45,6 +45,8 @@ import 'bundle_store.dart';
 import 'json_payload_lane.dart';
 import 'day_label.dart';
 import 'db.dart';
+import 'read_paused.dart';
+import '../sync/import_focus.dart';
 import '../health/health_export.dart';
 import 'journal_fields.dart';
 import 'local_repository.dart';
@@ -89,6 +91,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<WearableDay?> wearableDay(String date) async {
+    _focusCheck('wearableDay');
     final w = await activeWearable();
     if (w == null) return null;
     final cells = await dayCells(date);
@@ -96,11 +99,16 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<int> pendingActivityCount() async => ActivityStore(await LocalDb.instance).pendingCount();
+  Future<int> pendingActivityCount() async {
+    _focusCheck('pendingActivityCount');
+    return ActivityStore(await LocalDb.instance).pendingCount();
+  }
 
   @override
-  Future<List<ActivitySuggestion>> pendingActivities() async =>
-      ActivityStore(await LocalDb.instance).pending();
+  Future<List<ActivitySuggestion>> pendingActivities() async {
+    _focusCheck('pendingActivities');
+    return ActivityStore(await LocalDb.instance).pending();
+  }
 
   @override
   Future<void> discardActivity(ActivitySuggestion suggestion) async {
@@ -138,6 +146,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<List<Map<String, Object?>>> getDeviceNights(String date) async {
+    _focusCheck('getDeviceNights');
     final dayStart = _localMidnightSec(date);
     final dayEnd = _localDayEndSec(date);
     final devices = await LocalDb.deviceRows();
@@ -408,6 +417,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayBlock(String day, List<String> keys) async {
+    _focusCheck('getDayBlock');
     if (keys.isEmpty) return const {};
     // Raw blocks by name (diagnostics, import source, the sleep block the
     // engine re-reads), not a native card's view: unfiltered.
@@ -510,8 +520,10 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<Map<String, DeclinedDay>> declinedDays() =>
-      LocalDb.declinedDays(kAlgoVersion);
+  Future<Map<String, DeclinedDay>> declinedDays() async {
+    _focusCheck('declinedDays');
+    return LocalDb.declinedDays(kAlgoVersion);
+  }
 
   /// The one place a past, final day stops promising more nights. A cold-start
   /// `need_baseline:` note says more nights will fix the absence; on a past
@@ -595,13 +607,52 @@ class LocalRepositoryImpl extends LocalRepository {
     return save({'step_goal': goal});
   }
 
+  // ── import focus ──────────────────────────────────────────────────────────
+  // While an import (and its recalculation) has the database to itself, every
+  // read here stops: [_focusCheck] throws ReadPaused('import') before any
+  // database handle is asked for. The one exception is what the engine
+  // published for today and yesterday (ImportFocus.days, by method name).
+
+  static const Object _kFocusBypass = #importFocusBypass;
+
+  /// The ONE focus check. Null when no import is running (read as usual); the
+  /// published model of [method] for [day] (default: today) when there is one;
+  /// otherwise throws ReadPaused. Writes do not call it.
+  Map<String, dynamic>? _focusCheck(String method, [String? day]) {
+    if (!ImportFocus.active.value || Zone.current[_kFocusBypass] == true) {
+      return null;
+    }
+    final served = ImportFocus.days.value[day ?? todayLabel()]?[method];
+    if (served is Map<String, dynamic>) return served;
+    throw const ReadPaused('import');
+  }
+
+  /// The read models ImportFocus publishes for [day], by serving method, read
+  /// ONCE through the normal read code with the focus check bypassed (this
+  /// zone only). getToday serves today alone.
+  Future<Map<String, dynamic>> focusReadModels(String day,
+          {required bool isToday}) async {
+    if (!ImportFocus.active.value) return const {};
+    return runZoned(
+      () async => <String, dynamic>{
+        // Stored read, no freshness refresh: this runs inside the derive pass.
+        if (isToday) 'getToday': await getTodayStored(),
+        'getDayOverview': await getDayOverview(day),
+      },
+      zoneValues: {_kFocusBypass: true},
+    );
+  }
+
   // ── today ─────────────────────────────────────────────────────────────────
   // Shape per lib/models/payloads.dart TodayData: {daily:{…}, sleep:{…},
   // nocturnal:{…}, resp:{…}, hrv:{…}, skin_temp:{…}, step_goal}.
 
   @override
-  Future<Map<String, dynamic>> getToday() =>
-      ReadPerf.reading('getToday', () => _readToday(refresh: true));
+  Future<Map<String, dynamic>> getToday() async {
+    final served = _focusCheck('getToday');
+    if (served != null) return served;
+    return ReadPerf.reading('getToday', () => _readToday(refresh: true));
+  }
 
   /// What a screen can paint at once. The stored `today` row is read as it is;
   /// when it names another day (or there is none) the refresh is NOT run here.
@@ -611,8 +662,12 @@ class LocalRepositoryImpl extends LocalRepository {
   /// day, never as today's. The caller runs [refreshTodayFreshness] after its
   /// first frame and reads again.
   @override
-  Future<Map<String, dynamic>> getTodayStored() =>
-      ReadPerf.reading('getTodayStored', () => _readToday(refresh: false));
+  Future<Map<String, dynamic>> getTodayStored() async {
+    // Served from the same published model as getToday.
+    final served = _focusCheck('getToday');
+    if (served != null) return served;
+    return ReadPerf.reading('getTodayStored', () => _readToday(refresh: false));
+  }
 
   static Future<void>? _todayRefresh;
 
@@ -620,8 +675,11 @@ class LocalRepositoryImpl extends LocalRepository {
   /// callers that arrive while it runs join it. The latch is cleared in
   /// `finally`, so a throw cannot wedge later opens.
   @override
-  Future<void> refreshTodayFreshness() =>
-      _todayRefresh ??= _refreshTodayOnce();
+  Future<void> refreshTodayFreshness() {
+    // A no-op during an import: the freshness refresh is a database read.
+    if (ImportFocus.active.value) return Future<void>.value();
+    return _todayRefresh ??= _refreshTodayOnce();
+  }
 
   Future<void> _refreshTodayOnce() async {
     try {
@@ -1036,6 +1094,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getInsights() => ReadPerf.reading('getInsights', () async {
+    _focusCheck('getInsights');
     final _BundleAt(bundle: cd, :computedAt) = await _crossDayArtifactAt();
     if (cd == null) return const {};
     final stale = crossDayStaleReason(cd, _todayLocalLabel());
@@ -1211,6 +1270,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayHeart(String date) => ReadPerf.reading('getDayHeart', () async {
+    _focusCheck('getDayHeart');
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     // The baseline window ends at the day actually served: Today falls back
@@ -1269,6 +1329,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayHrv(String date) => ReadPerf.reading('getDayHrv', () async {
+    _focusCheck('getDayHrv');
     final _BundleAt(bundle: b, :computedAt) = await _bundleAtForDate(date);
     if (b == null) return const {};
     // Baseline window ends at the served day, see getDayHeart.
@@ -1326,6 +1387,7 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<({List<double> nn, int rawBeats, double cleanFraction})> getNightBeats(
       String date) async {
+    _focusCheck('getNightBeats');
     const none = (nn: <double>[], rawBeats: 0, cleanFraction: 0.0);
     final row = await LocalDb.dayResult(date);
     final w = row == null ? null : jsonDecode(row['window_json'] as String? ?? '{}');
@@ -1360,15 +1422,22 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<List<String>> availableDays() => LocalDb.availableDayIds();
+  Future<List<String>> availableDays() async {
+    _focusCheck('availableDays');
+    return LocalDb.availableDayIds();
+  }
 
   @override
-  Future<Map<String, dynamic>> getDaySleep(String date) =>
-      ReadPerf.reading('getDaySleep', () => _daySleep(date));
+  Future<Map<String, dynamic>> getDaySleep(String date) async {
+    _focusCheck('getDaySleep');
+    return ReadPerf.reading('getDaySleep', () => _daySleep(date));
+  }
 
   @override
-  Future<Map<String, dynamic>> getDaySleepV2(String date) =>
-      ReadPerf.reading('getDaySleepV2', () => _daySleep(date));
+  Future<Map<String, dynamic>> getDaySleepV2(String date) async {
+    _focusCheck('getDaySleepV2');
+    return ReadPerf.reading('getDaySleepV2', () => _daySleep(date));
+  }
 
   Future<Map<String, dynamic>> _daySleep(String date) async {
     final _BundleAt(bundle: b, :computedAt) = await _bundleAtForDate(date);
@@ -1734,6 +1803,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayLungs(String date) => ReadPerf.reading('getDayLungs', () async {
+    _focusCheck('getDayLungs');
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     final sleepWin = _sub(b, 'sleep.window.value');
@@ -1754,6 +1824,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayWear(String date) => ReadPerf.reading('getDayWear', () async {
+    _focusCheck('getDayWear');
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     final cov = _sub(b, 'coverage');
@@ -1808,6 +1879,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayNaps(String date) => ReadPerf.reading('getDayNaps', () async {
+    _focusCheck('getDayNaps');
     // THE EXACT DAY, never the latest-complete fallback: this list is editable,
     // and offering "not a nap" against another day's naps would write an edit
     // onto a day the user was not looking at.
@@ -1839,6 +1911,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDaySteps(String date) => ReadPerf.reading('getDaySteps', () async {
+    _focusCheck('getDaySteps');
     final r = await LocalDb.resolvedStepsForDay(date);
     // THE EXACT DAY, never `_bundleForDate`'s latest-complete fallback: the
     // spans come from this date's coverage rows, and pairing them with another
@@ -1936,6 +2009,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayStress(String date) => ReadPerf.reading('getDayStress', () async {
+    _focusCheck('getDayStress');
     // Stress = the pipeline's Baevsky Stress Index block (resting autonomic
     // tension; transparent RR-histogram metric → 0–100 score). No fallback: the
     // score stays null when the SI is absent, so the screen renders "—" (the old
@@ -2002,6 +2076,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayStrain(String date) => ReadPerf.reading('getDayStrain', () async {
+    _focusCheck('getDayStrain');
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     final zones = _sub(b, 'zones');
@@ -2150,6 +2225,8 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayOverview(String date) => ReadPerf.reading('getDayOverview', () async {
+    final served = _focusCheck('getDayOverview', date);
+    if (served != null) return served;
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     return {
@@ -2160,6 +2237,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayTimeline(String date) => ReadPerf.reading('getDayTimeline', () async {
+    _focusCheck('getDayTimeline');
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     final hrCurve = (_sub(b, 'series')?['hr_curve'] as List?) ?? const [];
@@ -2312,6 +2390,7 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<List<Map<String, dynamic>>> sleepWindows(
       {int days = 60, String? before}) async {
+    _focusCheck('sleepWindows');
     final rows = await LocalDb.sleepWindowRows(days, before: before);
     final decoded = await JsonPayloadLane.shared.decodeMany([
       for (final row in rows)
@@ -2360,6 +2439,7 @@ class LocalRepositoryImpl extends LocalRepository {
     int? to,
     bool includeDetected = true,
   }) async {
+    _focusCheck('getSessions');
     // The manual/live sessions table, newest first.
     final now = DateTime.now();
     final nowSec = now.millisecondsSinceEpoch ~/ 1000;
@@ -2437,6 +2517,7 @@ class LocalRepositoryImpl extends LocalRepository {
     int? to,
     Set<String> signals = const {},
   }) => ReadPerf.reading('getChart', () async {
+    _focusCheck('getChart');
     if (metric == 'hr') {
       // "Today's heart rate" card: the curve must be TODAY's. _latestBundle
       // falls back to the latest COMPLETE day, so its curve could be
@@ -2551,6 +2632,7 @@ class LocalRepositoryImpl extends LocalRepository {
     required int windowDays,
     String? before,
   }) async {
+    _focusCheck('getSleepDetailBundle');
     final night = await getDaySleepV2(day);
     final timeline = await getDayTimeline(day);
     final insights = await getInsights();
@@ -2735,6 +2817,7 @@ class LocalRepositoryImpl extends LocalRepository {
     required String deviceId,
     required String date,
   }) async {
+    _focusCheck('getDeviceChart');
     // Only `hr`/`resting_hr` resolve to a curve today — an honest "this
     // metric has no per-device intraday form" rather than a plausible-looking
     // empty axis. Do not switch on more metrics until one has a display site.
@@ -2788,11 +2871,14 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<List<Map<String, Object?>>> getDayObservations(String date) =>
-      LocalDb.observationsForDay(date);
+  Future<List<Map<String, Object?>>> getDayObservations(String date) async {
+    _focusCheck('getDayObservations');
+    return LocalDb.observationsForDay(date);
+  }
 
   @override
   Future<Map<String, dynamic>> getRecords() async {
+    _focusCheck('getRecords');
     // ONE INTEGER. The only caller is workout_screen's `_loadWorkoutData`,
     // which reads `['workouts_tracked']` and nothing else — and it awaits this
     // serially while the Workouts tab is opening.
@@ -2865,6 +2951,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getWorkouts({String range = 'month'}) async {
+    _focusCheck('getWorkouts');
     final now = DateTime.now();
     final nowSec = now.millisecondsSinceEpoch ~/ 1000;
     final fromTs = _rangeFromSec(range, now);
@@ -2972,6 +3059,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getWorkout(String id) async {
+    _focusCheck('getWorkout');
     final stored = await LocalDb.session(id);
     if (stored == null) return const {};
     // Reconcile the live tallies against the substrate BEFORE projecting the
@@ -3401,6 +3489,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<List<SessionSpan>> savedSessionSpans() async {
+    _focusCheck('savedSessionSpans');
     // Everything ever logged — the overlap check has to see a session from any
     // date the athlete might be back-filling into, not just a recent window.
     final rows = await LocalDb.sessionsInRange(0, 1 << 40);
@@ -4105,6 +4194,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<WorkoutRoute?> getWorkoutRoute(String id) async {
+    _focusCheck('getWorkoutRoute');
     final rows = await LocalDb.routePoints(id);
     if (rows.length < 2) return null;
     var points = [for (final r in rows) RoutePoint.fromRow(r)];
@@ -4167,6 +4257,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<List<Map<String, dynamic>>> getJournal({String range = '30d'}) => ReadPerf.reading('getJournal', () async {
+    _focusCheck('getJournal');
     final since = _rangeSinceLabel(range);
     final rows = await LocalDb.journalRows(sinceDaysEpoch: since);
     return [
@@ -4185,8 +4276,10 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) =>
-      LocalDb.journalMetricsForDay(date);
+  Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) async {
+    _focusCheck('getJournalMetrics');
+    return LocalDb.journalMetricsForDay(date);
+  }
 
   @override
   Future<void> postJournalMetrics(
@@ -4217,10 +4310,13 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<List<JournalFieldSpec>> getJournalFields() async => [
-    ...kJournalFields,
-    ...await LocalDb.journalFieldDefs(),
-  ];
+  Future<List<JournalFieldSpec>> getJournalFields() async {
+    _focusCheck('getJournalFields');
+    return [
+      ...kJournalFields,
+      ...await LocalDb.journalFieldDefs(),
+    ];
+  }
 
   @override
   Future<void> postCustomJournalField(JournalFieldSpec spec) =>
@@ -4236,6 +4332,7 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>> getJournalInsights({
     String range = '90d',
   }) => ReadPerf.reading('getJournalInsights', () async {
+    _focusCheck('getJournalInsights');
     final since = _rangeSinceLabel(range);
     final journal = await LocalDb.journalRows(sinceDaysEpoch: since);
     final metricsByDay = await LocalDb.journalMetricsByDay(
@@ -4527,6 +4624,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// is a state. Writing the artifact itself (`last_result`) never moves it.
   @override
   Future<String?> artifactSignature(String key) async {
+    _focusCheck('artifactSignature');
     final (kind, arg) = _artifactKey(key);
     final String body;
     switch (kind) {
@@ -4628,6 +4726,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// nothing to store; a failure throws.
   @override
   Future<Map<String, dynamic>?> computeArtifact(String key) async {
+    _focusCheck('computeArtifact');
     final (kind, arg) = _artifactKey(key);
     switch (kind) {
       case 'journal_insights':
@@ -4664,13 +4763,16 @@ class LocalRepositoryImpl extends LocalRepository {
   /// version, as a local time. One keyed read; no payload is read or decoded.
   @override
   Future<DateTime?> dayRecordingsThrough(String day) async {
+    _focusCheck('dayRecordingsThrough');
     final sec = await LocalDb.derivedFingerprintMaxRecTs(day, kAlgoVersion);
     return sec == null ? null : DateTime.fromMillisecondsSinceEpoch(sec * 1000);
   }
 
   @override
-  Future<Map<String, int>> getSeriesCounts(List<String> keys) =>
-      LocalDb.metricSeriesCounts(keys);
+  Future<Map<String, int>> getSeriesCounts(List<String> keys) async {
+    _focusCheck('getSeriesCounts');
+    return LocalDb.metricSeriesCounts(keys);
+  }
 
   /// A day's intraday calories: one record per minute, gaps null, as the
   /// derive stored them (`kcal_minutes|<day>`); null when there is none (no raw
@@ -4678,6 +4780,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// filled. A read of the stored row: no compute.
   @override
   Future<Map<String, dynamic>?> getDayCalorieCurve(String day) async {
+    _focusCheck('getDayCalorieCurve');
     final row = await LocalDb.lastResult('kcal_minutes|$day');
     if (row == null) return null;
     final result = await JsonPayloadLane.shared.decode(
@@ -4717,6 +4820,7 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>> getWeekdayEffect({
     String key = 'readiness',
   }) async {
+    _focusCheck('getWeekdayEffect');
     // MEASURED DAYS ONLY — a permutation test over a series spliced from two
     // different algorithms reports the splice, not the weekday (same reasoning
     // as the journal outcomes above), nor a wearable's estimate.
@@ -4772,6 +4876,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getCycle() => ReadPerf.reading('getCycle', () async {
+    _focusCheck('getCycle');
     final profile = getProfileMap();
     final enabled = profile?['track_cycle'] == true;
     // WH-07 — DECLARED reproductive state. The app never guesses it, and unset
@@ -5017,6 +5122,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, List<String>>> getCycleSymptoms() => ReadPerf.reading('getCycleSymptoms', () async {
+    _focusCheck('getCycleSymptoms');
     final rows = await LocalDb.cycleSymptoms();
     final out = <String, List<String>>{};
     for (final r in rows) {
@@ -5082,6 +5188,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// only when both of those were measured — the 28-day intensity distribution.
   @override
   Future<Map<String, dynamic>> getZones() => ReadPerf.reading('getZones', () async {
+    _focusCheck('getZones');
     final ceiling = await _observedCeiling();
     final rhrHistory = await LocalDb.trailingSeriesValues('rhr', 28);
     final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;

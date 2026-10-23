@@ -351,6 +351,7 @@ class LocalDb {
   static String? sessionWearableSource;
 
   static Future<Database> get instance async {
+    debugHandleRequests++;
     final db = _db;
     // `_db != null` is NOT enough: Android can close the underlying
     // SQLiteDatabase on background teardown without our close() ever nulling
@@ -581,6 +582,25 @@ class LocalDb {
     if (!_foreground) await _closeReader();
   }
 
+  /// True while an import has the database to itself (ImportFocus): [reader]
+  /// answers with the writer and opens nothing.
+  static bool _readerHeld = false;
+
+  /// Holds (closing an open reader, waiting for an open in flight) or releases
+  /// the read connection. Owned by ImportFocus; release only re-allows the
+  /// lazy open on the next read.
+  static Future<void> holdReader(bool held) async {
+    _readerHeld = held;
+    if (!held) return;
+    final opening = _readerOpening;
+    if (opening != null) {
+      try {
+        await opening;
+      } catch (_) {}
+    }
+    if (_readerHeld) await _closeReader();
+  }
+
   /// A fresh process: background, no reader.
   @visibleForTesting
   static void debugResetForeground() => _foreground = false;
@@ -597,7 +617,7 @@ class LocalDb {
   static bool get hasReader => _readDb?.isOpen ?? false;
 
   /// Counts requests for a database handle ([instance] and [reader]), so a
-  /// test can prove a read ran no query. STUB: not wired yet, never moves.
+  /// test can prove a read ran no query.
   @visibleForTesting
   static int debugHandleRequests = 0;
 
@@ -605,8 +625,9 @@ class LocalDb {
   /// or the writer when the reader is off, unavailable or the store is
   /// in-memory.
   static Future<Database> get reader async {
+    debugHandleRequests++;
     final writer = await instance;
-    if (!readerEnabled || !_foreground) return writer;
+    if (!readerEnabled || !_foreground || _readerHeld) return writer;
     final r = _readDb;
     if (r != null && r.isOpen && identical(_readerBeside, writer)) return r;
     if (identical(_readerFailedFor, writer) && _readerFailedEpoch == _wipeEpoch) {

@@ -17,6 +17,13 @@ import '../backup/backup_support.dart';
 
 const _old = '2020-01-01';
 
+/// What the engine publishes for a day: one read model per serving method (the
+/// methods return different shapes, so there is no single map for a day).
+Map<String, dynamic> _model(String marker) => {
+      'getToday': {'marker': marker},
+      'getDayOverview': {'marker': marker},
+    };
+
 void main() {
   late BackupEnv env;
   late LocalRepositoryImpl repo;
@@ -76,7 +83,7 @@ void main() {
   group('today and yesterday: the published map, no query', () {
     test('getToday and getTodayStored serve today', () async {
       ImportFocus.enter();
-      ImportFocus.publishDay(today, {'marker': 'today'});
+      ImportFocus.publishDay(today, _model('today'));
       await pumpEventQueue();
       LocalDb.debugHandleRequests = 0;
       expect(await repo.getToday(), containsPair('marker', 'today'));
@@ -87,8 +94,8 @@ void main() {
     test('a day read serves the published map for today and yesterday',
         () async {
       ImportFocus.enter();
-      ImportFocus.publishDay(today, {'marker': 'today'});
-      ImportFocus.publishDay(yesterday, {'marker': 'yesterday'});
+      ImportFocus.publishDay(today, _model('today'));
+      ImportFocus.publishDay(yesterday, _model('yesterday'));
       await pumpEventQueue();
       LocalDb.debugHandleRequests = 0;
       expect(await repo.getDayOverview(today), {'marker': 'today'});
@@ -98,7 +105,7 @@ void main() {
 
     test('a published day does not unlock any other day', () async {
       ImportFocus.enter();
-      ImportFocus.publishDay(today, {'marker': 'today'});
+      ImportFocus.publishDay(today, _model('today'));
       await expectLater(repo.getDayOverview(_old), throwsA(isA<ReadPaused>()));
     });
 

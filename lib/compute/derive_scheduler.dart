@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../data/db.dart';
+import '../sync/import_focus.dart';
 import 'derive_outcome.dart';
 
 enum DeriveJobKind { light, heavy }
@@ -228,8 +229,15 @@ class DeriveScheduler {
     if (_running && started != null && started == _storedSeq) {
       return;
     }
+    // The pass queued for an import ends import focus when it completes. Held
+    // here, not read back from the job's reason column: a retry overwrites it.
+    if (reason == 'import') _importPassOwed = true;
     unawaited(_enqueue(type: 'derive_heavy', reason: reason));
   }
+
+  /// True from the import's request for a heavy pass until a pass that started
+  /// after it completes (or its job is given up). See [ImportFocus].
+  bool _importPassOwed = false;
 
   /// Hold derivation for the duration of a live workout (see [_workoutActive]).
   /// Queued jobs stay durable and drain the moment the session ends.
@@ -396,6 +404,7 @@ class DeriveScheduler {
     final kind = _parseKind(job['type']?.toString());
     _running = true;
     _heavyStartSeq = kind == DeriveJobKind.heavy ? _storedSeq : null;
+    final importPass = kind == DeriveJobKind.heavy && _importPassOwed;
     await _refreshSnapshot();
     log('[derive-scheduler] running ${kind == DeriveJobKind.heavy ? "heavy" : "light"} pass');
     try {
@@ -409,8 +418,13 @@ class DeriveScheduler {
         thrown = '$e';
         log('[derive-scheduler] ${kind.name} pass failed: $e');
       }
+      var ended = outcome != null && outcome.complete;
       if (id != null && id.isNotEmpty) {
-        await _settleJob(id, job, outcome, thrown);
+        ended = await _settleJob(id, job, outcome, thrown);
+      }
+      if (importPass && ended) {
+        _importPassOwed = false;
+        ImportFocus.importPassDone();
       }
     } finally {
       _running = false;
@@ -424,7 +438,7 @@ class DeriveScheduler {
   /// Decide the claimed job's fate from how its pass ended: delete it when
   /// complete, otherwise back it off for a retry, parking it as 'failed' once
   /// it has used its attempts. Never throws.
-  Future<void> _settleJob(
+  Future<bool> _settleJob(
     String id,
     Map<String, dynamic> job,
     DeriveOutcome? outcome,
@@ -433,7 +447,7 @@ class DeriveScheduler {
     try {
       if (outcome != null && outcome.complete) {
         await LocalDb.completeComputeJob(id);
-        return;
+        return true;
       }
       final reason = thrown ??
           outcome?.error ??
@@ -445,6 +459,7 @@ class DeriveScheduler {
       if (attempts >= maxAttempts) {
         log('[derive-scheduler] giving up after $attempts attempts: $reason');
         await LocalDb.failComputeJob(id, reason);
+        return true; // parked: no pass is owed any more
       } else {
         final wait = retryBackoff(attempts);
         log('[derive-scheduler] retrying in ${wait.inSeconds}s '
@@ -454,6 +469,7 @@ class DeriveScheduler {
     } catch (e) {
       log('[derive-scheduler] could not record the pass result: $e');
     }
+    return false;
   }
 
   /// Wake at the earliest not-yet-due retry so it runs without another trigger.

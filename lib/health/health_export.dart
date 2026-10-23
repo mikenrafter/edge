@@ -28,6 +28,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/day_label.dart';
 import '../data/db.dart';
+import '../sync/import_focus.dart';
 import '../data/bundle_store.dart';
 import '../state/prefs.dart';
 import 'health_heart_rate_batch.dart';
@@ -870,6 +871,9 @@ class HealthExporter {
   }) async {
     await Prefs.ensureLoaded();
     if (Prefs.getBool(Prefs.demoModeEnabled, false)) return 0;
+    // An import has the database to itself; the cursor keeps this pass's days
+    // for the next one.
+    if (ImportFocus.active.value) return 0;
     await _ensureConfigured();
     if (await _androidUnavailable() != null) return 0; // HC missing/outdated
     return _workoutLock.run(() async {

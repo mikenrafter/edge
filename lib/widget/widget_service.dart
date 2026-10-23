@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import '../data/local_repository.dart';
 import '../models/metric.dart';
 import '../models/payloads.dart';
+import '../sync/import_focus.dart';
 import '../ui2/screens/home_screen.dart' show readinessBand;
 
 class WidgetService {
@@ -79,7 +80,7 @@ class WidgetService {
   ///
   /// Best-effort; never throws into the caller.
   static Future<void> refresh(LocalRepository? repo) async {
-    if (repo == null) return;
+    if (repo == null || ImportFocus.active.value) return;
     try {
       await push(TodayData.fromJson(await repo.getToday()));
     } catch (_) {/* the widget is a mirror; it must never break its source */}

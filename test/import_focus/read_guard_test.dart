@@ -130,6 +130,8 @@ void main() {
       'lib/widget/widget_service.dart': 1,
       'lib/health/health_export.dart': 1,
       'lib/coach/coach_engine.dart': 1,
+      'lib/state/artifact_warmer.dart': 1, // insights.refresh
+      'lib/state/app_state.dart': 1, // notifications.schedule
     };
     files.forEach((f, n) {
       final src = File(f).readAsStringSync();

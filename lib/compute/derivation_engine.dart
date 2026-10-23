@@ -51,6 +51,7 @@ import '../data/step_calibration.dart';
 import '../ble/adapters/signals.dart';
 import '../data/coverage_resolver.dart';
 import '../data/db.dart';
+import '../sync/import_focus.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
 import '../data/sample_archive.dart' show SampleArchiver;
@@ -2558,10 +2559,16 @@ class DerivationEngine {
   }) async {
     final sw = Stopwatch()..start();
     try {
-      return await _derivePreparedDay(day, profile, dataNowSec, history,
+      final committed = await _derivePreparedDay(day, profile, dataNowSec, history,
           calculationMode: calculationMode,
           reason: reason,
           onStaleTonight: onStaleTonight);
+      // During an import, today's and yesterday's read models are published
+      // right after they commit (no-op for any other day or time).
+      if (committed == DayDerive.committed) {
+        await ImportFocus.publishCommitted(day.date);
+      }
+      return committed;
     } finally {
       final persist = _persistMs.remove(day.date);
       final total = sw.elapsedMilliseconds;

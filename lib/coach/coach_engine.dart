@@ -20,6 +20,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../data/day_label.dart';
 import '../data/db.dart';
+import '../sync/import_focus.dart';
 import '../data/local_repository.dart';
 import '../models/payloads.dart' show todayHeadlineOf;
 import 'coach_actions.dart';
@@ -833,6 +834,12 @@ class CoachEngine {
     required void Function(CoachItem) onItem,
     required Future<bool> Function(ActionRequest) confirm,
   }) async {
+    // An import has the database to itself: no tool reads until it is done.
+    if (ImportFocus.active.value) {
+      return jsonEncode({
+        'error': 'An import is running; data tools are paused until it finishes.'
+      });
+    }
     try {
       switch (name) {
         // data — one read-only SQL tool over the derived views

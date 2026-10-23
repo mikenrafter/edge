@@ -192,6 +192,7 @@ import 'units_controller.dart' show UnitsController;
 import '../sync/background_sync.dart' show checkSyncStaleness;
 import '../sync/band_ownership.dart';
 import '../sync/import_gate.dart';
+import '../sync/import_focus.dart';
 import '../sync/high_freq_wake_window.dart';
 import '../sync/ios_bg_task.dart';
 import '../sync/reset_gate.dart';
@@ -3012,12 +3013,14 @@ class AppState extends ChangeNotifier {
     // otherwise only flips on a transition, so a headless start paced its very
     // first sweep as if the app were on screen.
     _deriveScheduler.setBackground(_background);
-    repo = LocalRepositoryImpl(
+    final impl = LocalRepositoryImpl(
       getProfileMap: () => user,
       saveProfileFields: updateProfile,
       onActivitiesChanged: refreshActivityReviews,
       mainSleepListener: _NapExtendsSleep(this),
     );
+    repo = impl;
+    ImportFocus.repo = impl; // what an import-time publish reads with
     // iOS BGProcessing/BGAppRefresh wakes while the FOREGROUND app owns the band
     // skip the headless BLE path (it would fight FBP for the peripheral) — route
     // them to a catch-up pull over the existing live connection instead.
@@ -4463,9 +4466,27 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  bool _remindersDeferred = false;
+
   /// (Re)register standing scheduled reminders per the user's prefs. Idempotent;
   /// safe to call repeatedly (cancels + re-schedules). Best-effort.
   Future<void> _ensureRemindersScheduled() async {
+    // Scheduling reads the database for its inputs; an import has it to itself.
+    // Run once when the import ends.
+    if (ImportFocus.active.value) {
+      if (!_remindersDeferred) {
+        _remindersDeferred = true;
+        void again() {
+          if (ImportFocus.active.value) return;
+          ImportFocus.active.removeListener(again);
+          _remindersDeferred = false;
+          unawaited(_ensureRemindersScheduled());
+        }
+
+        ImportFocus.active.addListener(again);
+      }
+      return;
+    }
     try {
       final prefs = await NotificationPrefs.load();
       // ONE crossday read feeds every schedule that hangs off the rollup:

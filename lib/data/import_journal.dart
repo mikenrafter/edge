@@ -17,6 +17,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../sync/edge_tracking.dart';
+import '../sync/import_focus.dart';
 import '../sync/import_gate.dart';
 import 'db.dart';
 import 'import_perf.dart';
@@ -285,7 +286,10 @@ class ImportJournal {
   /// Calls [request] only when the import is done; returns whether it did.
   /// An unfinished import is resumed from app start, which asks again.
   static Future<bool> requestDeriveWhenDone(void Function() request) async {
-    if (!await deriveAllowed()) return false;
+    if (!await deriveAllowed()) {
+      ImportFocus.leave(); // no post-import pass is owed
+      return false;
+    }
     await LocalDb.applyImportRederive();
     Zone.current.run(request);
     return true;
@@ -582,16 +586,26 @@ class ImportJournal {
     notify();
     final svc = ImportForegroundService.instance;
     var entered = false;
+    var ok = false;
     try {
       // Raises the sync gate and waits out a drain that is mid-chunk: an
       // import never starts under one (commit-before-ACK).
       final admission = await ImportGate.beginImport();
       if (admission is ImportDeferred) throw StateError(admission.message);
       entered = true;
+      // The import and its recalculation have the database to themselves. A
+      // clean return keeps focus until the post-import derive pass completes
+      // (DeriveScheduler); a failure ends it here.
+      ImportFocus.enter();
       await svc.request(stage);
-      return await Zone.current.run(job);
+      final result = await Zone.current.run(job);
+      ok = true;
+      return result;
     } finally {
-      if (entered) ImportGate.leave();
+      if (entered) {
+        ImportGate.leave();
+        if (!ok) ImportFocus.leave();
+      }
       // A run that failed or was killed stays journaled; sync stays shut until
       // the resume finishes it.
       await ImportGate.probe();
