@@ -38,7 +38,9 @@ import '../activity/picker.dart';
 import '../activity/poster.dart' show PosterStatRow;
 import '../activity/setup.dart';
 import '../activity/summary.dart';
+import '../chart_annotations.dart';
 import '../charts.dart';
+import '../older_version.dart';
 import '../profile/profile.dart' show ProfileAvatar, openProfile;
 import '../grammar.dart';
 import '../inline_loading.dart';
@@ -412,6 +414,29 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                 for (var i = 6; i >= 0; i--)
                   _weekdayLetter(c, DateTime(end.year, end.month, end.day - i)),
               ],
+              // One range per run of older days; a bar is the interval
+              // [i, i + 1). The label shows only while the finger is on a run.
+              annotations: olderRuns(d.trimpOlder7).isEmpty
+                  ? null
+                  : AnnotationSet(
+                      items: olderRangeAnnotations(
+                        slots: d.trimpOlder7,
+                        idPrefix: 'older',
+                        label: (r) => olderRangeLabel(
+                            loc,
+                            olderRunText(
+                                Localizations.localeOf(c).toString(),
+                                DateTime(end.year, end.month,
+                                    end.day - (6 - r.from)),
+                                DateTime(end.year, end.month,
+                                    end.day - (6 - r.to)),
+                                weekdays: true),
+                            r.older.version,
+                            r.older.reason),
+                      ),
+                      domainStart: 0,
+                      domainEnd: 7,
+                      reach: 0),
               footnote: ld == null
                   ? (d.loadNote ??
                       (loc?.workoutNoLoadBody ??

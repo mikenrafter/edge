@@ -32,6 +32,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/day_label.dart' show dayLabelOf;
+import '../models/chart_point.dart' show ChartOlder;
 import 'grammar.dart' show Pressable;
 import 'theme.dart';
 
@@ -520,6 +521,48 @@ List<ChartAnnotation> algoBreakAnnotations({
         ),
   ];
 }
+
+/// One run of consecutive slots that all come from the same older calculation.
+typedef OlderRun = ({int from, int to, ChartOlder older});
+
+/// The runs of [slots] (oldest first; null is a current value or a gap). A gap
+/// or a different (version, reason) ends a run, so a run's label is true of
+/// every day in it. Shared by every surface that marks older days.
+List<OlderRun> olderRuns(List<ChartOlder?> slots) {
+  final out = <OlderRun>[];
+  for (var i = 0; i < slots.length; i++) {
+    final o = slots[i];
+    if (o == null) continue;
+    if (out.isNotEmpty && out.last.to == i - 1 && out.last.older == o) {
+      out[out.length - 1] = (from: out.last.from, to: i, older: o);
+    } else {
+      out.add((from: i, to: i, older: o));
+    }
+  }
+  return out;
+}
+
+/// One algoVersion RANGE per run of older days: shaded area, dashed ends, one
+/// icon, its label in the lane's one fixed place. A run over slots a..b spans
+/// `a + lead` to `b + trail` in the chart's domain: (0, 1) when a slot is the
+/// interval [i, i+1), (-.5, .5) when it is the point i.
+List<ChartAnnotation> olderRangeAnnotations({
+  required List<ChartOlder?> slots,
+  required String Function(OlderRun run) label,
+  String idPrefix = 'older',
+  double lead = 0,
+  double trail = 1,
+}) =>
+    [
+      for (final r in olderRuns(slots))
+        ChartAnnotation(
+          id: '$idPrefix:${r.from}',
+          kind: AnnotationKind.algoVersion,
+          at: r.from + lead,
+          until: r.to + trail,
+          label: label(r),
+        ),
+    ];
 
 /// Intraday annotations (domain: epoch seconds) onto a daily chart whose slots
 /// are the local day [dayLabels] ('YYYY-MM-DD', oldest first). Slot i is at

@@ -24,6 +24,7 @@ import '../../l10n/display_text.dart';
 // than for scattered ones.
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
@@ -195,6 +196,72 @@ class MonthGrid extends StatelessWidget {
         ],
       );
 
+  /// A soft band behind each run of consecutive older days: 2.5 px out left
+  /// and right, 4 px above and below the cells, behind them and adding no
+  /// height (the strip keeps its 22 px). Positions mirror [_SideStrip]'s cells.
+  /// A later treatment of a run (a tint on the cells themselves) starts from
+  /// the same [olderRuns].
+  List<Widget> _bands(GridRow r) => [
+        for (final run in olderRuns(r.older))
+          Positioned.fill(
+            child: IgnorePointer(
+              child: LayoutBuilder(builder: (c, box) {
+                final cw = box.maxWidth / r.cells.length;
+                return Stack(clipBehavior: Clip.none, children: [
+                  Positioned(
+                    key: ValueKey('month-older-band:${r.key}:${run.from}'),
+                    left: run.from * cw + 1 - 2.5,
+                    width: (run.to - run.from) * cw + cw - 2.5 + 5,
+                    top: -4,
+                    height: box.maxHeight + 8,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: C.n400.withValues(alpha: .22),
+                        borderRadius: const BorderRadius.all(Radius.circular(5)),
+                      ),
+                    ),
+                  ),
+                ]);
+              }),
+            ),
+          ),
+      ];
+
+  /// One line per run, under the row title: the algoVersion icon and where and
+  /// why the run is older. Takes no space when nothing is older.
+  List<Widget> _runLabels(BuildContext c, GridRow r) {
+    final l = AppLocalizations.of(c);
+    final p = P.of(c);
+    final now = DateTime.now();
+    DateTime day(int i) =>
+        DateTime(now.year, now.month, now.day - (r.cells.length - 1 - i));
+    final locale = Localizations.localeOf(c).toString();
+    return [
+      for (final run in olderRuns(r.older))
+        Padding(
+          padding: const EdgeInsets.only(bottom: S.x1),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(LucideIcons.gitCommitVertical,
+                  size: 13, color: annotationColor(AnnotationKind.algoVersion)),
+            ),
+            const SizedBox(width: S.x2),
+            Expanded(
+              child: Text(
+                olderRangeLabel(
+                    l,
+                    olderRunText(locale, day(run.from), day(run.to)),
+                    run.older.version,
+                    run.older.reason),
+                style: F.cap.copyWith(color: p.ink2),
+              ),
+            ),
+          ]),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
@@ -248,6 +315,7 @@ class MonthGrid extends StatelessWidget {
                             ],
                           ),
                   ),
+                  ..._runLabels(c, r),
                   Semantics(
                     label: (l?.monthGridRowSemantics(
                           uiText(c, r.spec.title),
@@ -287,15 +355,20 @@ class MonthGrid extends StatelessWidget {
                       ],
                       child: SizedBox(
                         height: 22,
-                        child: CustomPaint(
-                          size: Size.infinite,
-                          painter: _SideStrip(
-                            r.cells,
-                            (s) => _cellInk(p, r, s),
-                            p.line,
-                            p.ink,
+                        child: Stack(clipBehavior: Clip.none, children: [
+                          ..._bands(r),
+                          Positioned.fill(
+                            child: CustomPaint(
+                              size: Size.infinite,
+                              painter: _SideStrip(
+                                r.cells,
+                                (s) => _cellInk(p, r, s),
+                                p.line,
+                                p.ink,
+                              ),
+                            ),
                           ),
-                        ),
+                        ]),
                       ),
                     ),
                   ),

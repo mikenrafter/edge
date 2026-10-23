@@ -275,13 +275,15 @@ void main() {
     testWidgets('a current day: no marker', (t) async {
       await open(t, series(7, flagged: {0}, base: 40));
       await scrubSlot(t, 2);
-      expect(anyOlderMarker(), findsNothing);
+      expect(olderMark('readout'), findsNothing);
+      // (today is older, so the on-load strip is on the page; the scrub adds none)
     });
 
     testWidgets('a gap day: no marker', (t) async {
       await open(t, series(7, flagged: {0}, gaps: {3}, base: 40));
       await scrubSlot(t, 3);
-      expect(anyOlderMarker(), findsNothing);
+      expect(olderMark('readout'), findsNothing);
+      // (today is older, so the on-load strip is on the page; the scrub adds none)
     });
 
     Future<void> scrubAtFrac(WidgetTester t, double f) async {

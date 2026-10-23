@@ -282,7 +282,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
           icon: LucideIcons.trendingUp,
         ),
         if (s != null && d.olderVersion != null) ...[
-          OlderVersionMark(id: 'strain', version: d.olderVersion, reason: d.olderReason),
+          OlderVersionMark(id: 'strain', version: d.olderVersion, reason: d.olderReason, speak: false),
           OlderVersionNote(id: 'strain', version: d.olderVersion, reason: d.olderReason),
         ],
       ];
@@ -332,7 +332,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
                 (l?.dayStrainWorn ?? 'Worn', '${d.wornMin} min', C.teal),
             ]),
             if (d.olderVersion != null) ...[
-              OlderVersionMark(id: 'strain', version: d.olderVersion, reason: d.olderReason),
+              OlderVersionMark(id: 'strain', version: d.olderVersion, reason: d.olderReason, speak: false),
               OlderVersionNote(id: 'strain', version: d.olderVersion, reason: d.olderReason),
             ],
           ],

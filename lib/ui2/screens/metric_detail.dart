@@ -1541,7 +1541,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(_fmt(spec, mean), style: F.n48.copyWith(color: p.ink)),
-              if (headlineVersion != null) OlderVersionMark(id: 'headline', version: headlineVersion, reason: headlineReason),
+              if (headlineVersion != null) OlderVersionMark(id: 'headline', version: headlineVersion, reason: headlineReason, speak: false),
               const SizedBox(width: S.x2),
               // NOT `spec.unit`. `metricValue('min', 443)` is already "7h 23m",
               // so every min-unit metric — Time asleep, Deep, REM, Wear time —
@@ -1553,7 +1553,6 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             ],
           ),
           const SizedBox(height: S.x1),
-          if (headlineVersion != null) OlderVersionNote(id: 'headline', version: headlineVersion, reason: headlineReason),
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
@@ -1576,9 +1575,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                             _fmt(spec, latest), unitBeside(spec.unit), asOf) ??
                         'Latest ${_fmt(spec, latest)} ${unitBeside(spec.unit)} · $asOf')
                     .replaceAll('  ', ' '),
-                style: F.cap.copyWith(color: p.ink3)), if (latestVersion != null) OlderVersionMark(id: 'latest', version: latestVersion, reason: latestReason)]),
+                style: F.cap.copyWith(color: p.ink3)), if (latestVersion != null) OlderVersionMark(id: 'latest', version: latestVersion, reason: latestReason, speak: false)]),
           ),
-          if (win > 1 && latestVersion != null) OlderVersionNote(id: 'latest', version: latestVersion, reason: latestReason),
         ],
         if (band != null) ...[
           const SizedBox(height: S.x2),
@@ -1596,6 +1594,13 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             ),
           ),
         ],
+        // The reason for the at-rest headline and latest reading: one strip,
+        // on the page from the first frame, each distinct reason once. A scrub
+        // never adds to it.
+        OlderVersionStrip(id: 'headline', items: [
+          (version: headlineVersion, reason: headlineReason),
+          if (win > 1) (version: latestVersion, reason: latestReason),
+        ]),
         if (d.sources.length >= 2) ...[
           const SizedBox(height: S.x4),
           DeviceFilter(
@@ -1688,7 +1693,28 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
               journal = dailyAnnotations(read, dayLabels);
             }
           }
-          final shown = [...marks, ...journal];
+          // One range per run of older days (a slot is the point i, so a run
+          // a..b spans a - .5 to b + .5).
+          final olderSlots = [
+            for (final q in denseChartPoints(d.series, series.length))
+              q?.olderVersion == null
+                  ? null
+                  : (version: q!.olderVersion!, reason: q.olderReason),
+          ];
+          final locale = Localizations.localeOf(context).toString();
+          DateTime dayOf(int i) => DateTime.parse(_dayOfSlot(i, series.length));
+          final older = olderRangeAnnotations(
+            slots: olderSlots,
+            lead: -.5,
+            trail: .5,
+            label: (r) => olderRangeLabel(
+                l,
+                olderRunText(locale, dayOf(r.from), dayOf(r.to),
+                    weekdays: series.length <= 7),
+                r.older.version,
+                r.older.reason),
+          );
+          final shown = [...marks, ...journal, ...older];
           final dim = _dimMask(d, series.length);
           return ChartFrame(
             title: uiText(context, spec.title),
@@ -1704,7 +1730,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                 : AnnotationSet(
                     items: shown,
                     domainStart: 0,
-                    domainEnd: (series.length - 1).toDouble()),
+                    domainEnd: (series.length - 1).toDouble(),
+                    // Only older runs on the chart: the label shows while the
+                    // finger is ON a run, not for the nearest one anywhere.
+                    reach: marks.isEmpty && journal.isEmpty ? 0 : null),
             annotationCursor:
                 _pick == null ? null : _slotAt01(_pick!, series.length),
             // The mark's only screen-reader form, and the only thing that can
@@ -2024,7 +2053,6 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
           if (v != null && points[i]?.olderVersion != null) ...[
             Padding(padding: const EdgeInsets.only(top: S.x1), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               OlderVersionMark(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason, speak: false),
-              OlderVersionNote(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason),
             ])),
           ],
           // WHICH DEVICE, second line, only under the gate. A day-level scalar

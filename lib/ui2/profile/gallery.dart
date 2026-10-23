@@ -1107,14 +1107,6 @@ Map<String, Widget> extraCases() => {
           (version: 103, reason: null),
         ]),
       ),
-      'chart_older_notes': const Surface(
-        child: ChartOlderNotes([
-          ChartCell('Heart rate (bpm)', null,
-              value: '72 bpm', older: (version: 104, reason: 'height')),
-          ChartCell('Movement (% of time moving)', null,
-              value: '34%', older: (version: 103, reason: null)),
-        ]),
-      ),
       // Nothing selected, like 'scrubber': the cursor appears on touch and the
       // values in the row under the chart follow it.
       'chart_scrub': Builder(builder: (c) {

@@ -462,11 +462,13 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
                       OlderVersionMark(
                           id: 'calories_total',
                           version: _burned!.fromOlderVersion,
-                          reason: _burned!.olderVersionReason),
+                          reason: _burned!.olderVersionReason,
+                          speak: false),
                       OlderVersionMark(
                           id: 'balance',
                           version: _burned!.fromOlderVersion,
-                          reason: _burned!.olderVersionReason),
+                          reason: _burned!.olderVersionReason,
+                          speak: false),
                     ]),
                     OlderVersionNote(
                         id: 'calories_total',

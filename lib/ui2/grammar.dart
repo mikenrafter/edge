@@ -779,7 +779,10 @@ class _ChartScrubState extends State<ChartScrub> {
           if (box.hasBoundedHeight) Expanded(child: hitPlot) else hitPlot,
           const SizedBox(height: S.x2),
           ExcludeSemantics(child: row),
-          ChartOlderNotes(_resolve(v).cells),
+          // The reason is on the page from the first frame and does not move
+          // with the finger: it is read at rest, never at the scrub position.
+          OlderVersionStrip(
+              id: 'readout', items: chartRestOlder(_resolve(null).cells)),
         ],
       ),
     ));
@@ -945,7 +948,7 @@ class ChartKeyReadout extends StatelessWidget {
                 ),
               ),
               // The asterisk sits beside the value, outside the fitted text, so
-              // it is never scaled away. The note is [ChartOlderNotes].
+              // it is never scaled away. The reason is the at-rest [OlderVersionStrip].
               if (present && cell.older != null)
                 OlderVersionMark(
                     id: chartOlderId(cells, cell),
@@ -967,36 +970,14 @@ String chartOlderId(List<ChartCell> cells, ChartCell cell) {
   return identical(first, cell) ? 'readout' : 'readout:${cell.label}';
 }
 
-/// The note under a key row, one per flagged cell: "From an older calculation
-/// (v104)" and the reason when the data has one. A Column of wrapping text, so
-/// a long reason or a large text size never overflows.
-class ChartOlderNotes extends StatelessWidget {
-  final List<ChartCell> cells;
-  const ChartOlderNotes(this.cells, {super.key});
-
-  @override
-  Widget build(BuildContext c) {
-    final flagged = [
+/// The reasons for the at-rest readout (what shows before any touch), each
+/// distinct (version, reason) once, as the items of an [OlderVersionStrip].
+/// Static: a scrub never changes it.
+List<({int? version, String? reason})> chartRestOlder(List<ChartCell> cells) => [
       for (final x in cells)
-        if (x.older != null && x.value != null) x,
+        if (x.older != null && x.value != null)
+          (version: x.older!.version, reason: x.older!.reason),
     ];
-    if (flagged.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: S.x1),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final x in flagged)
-            OlderVersionNote(
-                id: chartOlderId(cells, x),
-                version: x.older!.version,
-                reason: x.older!.reason),
-        ],
-      ),
-    );
-  }
-}
 
 /// ── the frame ↔ scrub hand-off ─────────────────────────────────────────────
 ///
@@ -1015,6 +996,9 @@ class _ChartHub extends ChangeNotifier {
   bool _pending = false;
   bool _dead = false;
   ChartReadout? read() => _resolve?.call(at);
+
+  /// The at-rest readout, whatever the finger is doing.
+  ChartReadout? readRest() => _resolve?.call(null);
 
   void attach(Object owner, ChartReadout Function(double? at) resolve,
       double? position) {
@@ -3898,14 +3882,17 @@ class _FrameKeys extends StatelessWidget {
                 );
           return Padding(
             padding: const EdgeInsets.only(top: S.x3),
-            // The row is spoken by the scrub (its value says so); the note is
-            // a sentence of its own and stays readable.
+            // The row is spoken by the scrub (its value says so); the strip is
+            // the at-rest reason, a sentence of its own that stays readable
+            // and never changes while scrubbing.
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
                 ExcludeSemantics(child: baseRow),
-                ChartOlderNotes(cells),
+                OlderVersionStrip(
+                    id: 'readout',
+                    items: chartRestOlder(hub.readRest()?.cells ?? cells)),
               ],
             ),
           );

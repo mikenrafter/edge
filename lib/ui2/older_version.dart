@@ -3,6 +3,7 @@
 // note "From an older calculation (v104): <reason>". Every surface that prints
 // such a value uses these two widgets; nothing formats its own.
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../l10n/app_localizations.dart';
@@ -165,4 +166,43 @@ class OlderVersionStrip extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// A run of days as short text: "Sun–Mon" for [weekdays] (a window of a week or
+/// less), else "Oct 12–15" (or "Sep 28–Oct 2" across a month). One day names
+/// itself. [locale] is the ambient locale's name.
+String olderRunText(String locale, DateTime first, DateTime last,
+    {bool weekdays = false}) {
+  DateFormat f(DateFormat Function(String) make) {
+    try {
+      return make(locale);
+    } catch (_) {
+      return make('en');
+    }
+  }
+
+  final same = first.year == last.year &&
+      first.month == last.month &&
+      first.day == last.day;
+  if (weekdays) {
+    final e = f((l) => DateFormat.E(l));
+    return same ? e.format(first) : '${e.format(first)}–${e.format(last)}';
+  }
+  final md = f((l) => DateFormat.MMMd(l));
+  if (same) return md.format(first);
+  final sameMonth = first.year == last.year && first.month == last.month;
+  return '${md.format(first)}–'
+      '${sameMonth ? f((l) => DateFormat.d(l)).format(last) : md.format(last)}';
+}
+
+/// The label of a run of older days: "<days>: older calculation (v104),
+/// <reason>". English is the short form; another language reuses the
+/// localized note so it never prints English.
+String olderRangeLabel(
+    AppLocalizations? l, String days, int version, String? reason) {
+  if (l != null && l.localeName != 'en') {
+    return '$days: ${olderVersionNoteLocalized(l, version, reason)}';
+  }
+  final why = olderVersionReasonText(l, reason);
+  return '$days: older calculation (v$version)${why == null ? '' : ', $why'}';
 }

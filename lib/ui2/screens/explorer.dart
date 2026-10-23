@@ -798,6 +798,9 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
               at: a.at + .5,
               until: a.until == null ? null : a.until! + .5,
               label: a.label),
+        // One range per run of older days in EACH picked series, named after
+        // it. A slot is the interval [i, i + 1) of the window's domain.
+        ..._olderRanges(c, picked, w),
       ];
       marks = items.isEmpty
           ? null
@@ -859,6 +862,24 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
         ...notes,
       ]),
     );
+  }
+
+  /// The algoVersion ranges of every picked series over the daily [w]: its
+  /// older days read at each slot's centre, the same slot rule as the readout.
+  List<ChartAnnotation> _olderRanges(
+      BuildContext c, List<_Pick> picked, ExploreWindow w) {
+    final l = AppLocalizations.of(c);
+    final locale = Localizations.localeOf(c).toString();
+    final n = w.days.length;
+    return [
+      for (final m in picked)
+        if (m.line != null)
+          ...olderRangeAnnotations(
+            slots: [for (var i = 0; i < n; i++) m.line!.olderAt((i + .5) / n)],
+            idPrefix: 'older:${m.key}',
+            label: (r) => '${m.label}: ${olderRangeLabel(l, olderRunText(locale, DateTime.parse(w.days[r.from]), DateTime.parse(w.days[r.to]), weekdays: n <= 7), r.older.version, r.older.reason)}',
+          ),
+    ];
   }
 
   Widget _picker(BuildContext c, P p, AppLocalizations? l) {
