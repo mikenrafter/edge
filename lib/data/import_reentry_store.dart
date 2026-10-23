@@ -42,6 +42,10 @@ class _Run {
   final List<String> acked;
 }
 
+class _Batch {
+  String? runId;
+}
+
 class ImportReentryStore {
   ImportReentryStore();
 
@@ -85,20 +89,15 @@ class ImportReentryStore {
 
   // A multi-select import is one batch: its backups share the run identity of
   // the first one that records, so a dismissal made between two of them holds
-  // for the rest. Only while a batch is open; a resume of an interrupted file
-  // later has just its own journal identity (the batch id is not journaled).
-  int _batchDepth = 0;
-  String? _batchRunId;
+  // for the rest. The identity lives in a ZONE value of that one batch
+  // invocation, so a separate import running at the same time has its own. Only
+  // while a batch is open; a resume of an interrupted file later has just its
+  // own journal identity (the batch id is not journaled).
 
-  /// Runs [body] as one batch: every [add] inside shares one run identity.
-  Future<T> batch<T>(Future<T> Function() body) async {
-    _batchDepth++;
-    try {
-      return await body();
-    } finally {
-      if (--_batchDepth == 0) _batchRunId = null;
-    }
-  }
+  /// Runs [body] as one batch: every [add] made from inside it (however deep
+  /// in the awaited calls) shares one run identity.
+  Future<T> batch<T>(Future<T> Function() body) =>
+      runZoned(body, zoneValues: {this: _Batch()});
 
   Future<List<_Run>> _read() async {
     final prefs = await SharedPreferences.getInstance();
@@ -184,7 +183,8 @@ class ImportReentryStore {
   Future<void> add(Iterable<String> ids, {required String runId}) async {
     // Nothing to add touches nothing (no preferences read, no lock).
     if (ids.isEmpty) return;
-    if (_batchDepth > 0) runId = _batchRunId ??= runId;
+    final batch = Zone.current[this];
+    if (batch is _Batch) runId = batch.runId ??= runId;
     final lock = await _acquire();
     try {
       final runs = await _read();
