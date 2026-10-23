@@ -73,8 +73,13 @@ class FocusRepo extends LocalRepository {
 
   /// The published model, null when focus is off; throws while it is on and
   /// nothing was published for that method and day.
+  /// Called with the method name before the focus check (a test can start
+  /// focus "between the reads and the write").
+  void Function(String method)? onRead;
+
   Map<String, dynamic>? _gate(String method, [String? day]) {
     reads.add(day == null ? method : '$method:$day');
+    onRead?.call(method);
     if (!ImportFocus.active.value) return null;
     final served = ImportFocus.days.value[day ?? todayLabel()]?[method];
     if (served is Map<String, dynamic>) return served;
@@ -174,6 +179,20 @@ class FocusRepo extends LocalRepository {
   @override
   Future<Map<String, dynamic>> getDayHeart(String date) async =>
       _gate('getDayHeart', date) ?? const {};
+
+  @override
+  Future<Map<String, dynamic>> getDayHrv(String date) async =>
+      _gate('getDayHrv', date) ?? const {};
+
+  @override
+  Future<Map<String, dynamic>> getDayNaps(String date) async =>
+      _gate('getDayNaps', date) ?? {'naps': <Map<String, dynamic>>[], 'nap_min': 0};
+
+  @override
+  Future<String?> artifactSignature(String key) async {
+    reads.add('artifactSignature:$key');
+    return null;
+  }
 
   @override
   Future<Map<String, int>> getSeriesCounts(List<String> keys) async {

@@ -271,17 +271,15 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final repo = _SavingRepo();
       await _pump(t, repo, JournalCompose(date: kToday));
+      final loadReads = repo.metricReads;
       startFocus();
       await t.tap(find.text('Save').first);
       await _settle(t);
       expect(find.text(kSavingLine), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
 
-      final tries = repo.metricReads;
-      await t.tap(find.text('Save').first);
-      await _settle(t);
-      expect(repo.metricReads, tries + 1,
-          reason: 'the button is live again, not stuck on _saving');
+      expect(repo.metricReads, loadReads, reason: 'refused up front: nothing read');
+      expect(repo.posted, isFalse);
 
       endFocus();
       await t.tap(find.text('Save').first);
