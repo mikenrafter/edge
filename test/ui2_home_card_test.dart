@@ -432,7 +432,7 @@ void main() {
       expect(card.contains(s.topLeft) && card.contains(s.bottomRight), isTrue,
           reason: 'inside card:rings');
       expect(s.center.dx, greaterThan(card.center.dx), reason: 'right half');
-      // The caption sits in the card's first line (>= 44 pt, full width: round 3).
+      // The caption sits in the card's first line (18 pt visual row, round 4).
       final line = t.getRect(find.byKey(const ValueKey('home-since-line')));
       expect(line.top - card.top, lessThan(28), reason: 'the line is the top of the card');
       expect(line.contains(s.center), isTrue, reason: 'caption inside the line');

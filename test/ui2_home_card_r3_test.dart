@@ -7,8 +7,8 @@
 //       no numbers: "Pulling it down: HRV, Skin temperature."  (one: "Pulling it down: HRV.")
 //       numbers:    "Biggest drag: HRV -2.0, Resting heart rate -1.0 (spreads from your baseline)."
 //  2. Ranked by negative weighted contribution (largest drag first), not by z.
-//  3. The since line is >= 32 pt tall, the WHOLE card width is the tap target
-//     when held, it overlaps no dial, and the dial below still opens its ring.
+//  3. (superseded by round 4) The since caption row overlaps no dial and the dial
+//     below still opens its ring; the held tap target lives in the r4 test.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -143,27 +143,17 @@ void main() {
     const why = 'Updated 16:08 · recordings through 16:04 · Waiting for sync to finish';
     final since = DateTime(2026, 10, 4, 16, 4);
 
-    testWidgets('>= 32 pt tall, full card width, overlaps no dial', (t) async {
+    // Round 4 moved the 44 pt target out of RingTrio (test/ui2_home_card_r4_test.dart
+    // taps its edges). In RingTrio the caption is only the visual row.
+    testWidgets('RingTrio draws the caption as a plain row above the dials, full width',
+        (t) async {
       await _rings(t, _syn(), since: since, hold: why);
       final line = t.getRect(_line);
       final card = t.getRect(find.byType(RingTrio));
-      expect(line.height, greaterThanOrEqualTo(32));
       expect(line.width, greaterThanOrEqualTo(card.width - 32));
+      expect(find.descendant(of: _line, matching: find.byType(Pressable)), findsNothing);
       for (var i = 0; i < 3; i++) {
         expect(line.overlaps(t.getRect(_dials.at(i))), isFalse, reason: 'dial $i');
-      }
-    });
-
-    testWidgets('tapping the top and bottom edges, far from the text, opens it',
-        (t) async {
-      await _rings(t, _syn(), since: since, hold: why);
-      final r = t.getRect(_line);
-      for (final y in [r.top + 1, r.bottom - 1]) {
-        await t.tapAt(Offset(r.left + 6, y));
-        await t.pump(const Duration(milliseconds: 400));
-        expect(find.text(why), findsOneWidget, reason: 'tap at y=$y');
-        await t.tap(find.text('OK'));
-        await t.pump(const Duration(milliseconds: 400));
       }
     });
 

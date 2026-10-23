@@ -327,7 +327,9 @@ void main() {
       await t.pump();
       const why = 'Updated 16:08 · recordings through 16:04 · Waiting for sync to finish';
       expect(_arc, findsOneWidget);
-      expect(t.getSemantics(_since).label, contains('Waiting for sync to finish'));
+      // Round 4: the tap target is the held-only wrapper target, not the caption.
+      expect(t.getSemantics(find.byKey(const ValueKey('home-since-target'))).label,
+          contains('Waiting for sync to finish'));
       expect(find.text(why), findsNothing, reason: 'not on the card itself');
       await t.tap(_since);
       await t.pump(const Duration(milliseconds: 400));

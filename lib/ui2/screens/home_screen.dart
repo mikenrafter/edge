@@ -1096,57 +1096,46 @@ class RingTrio extends StatelessWidget {
     );
   }
 
-  /// The "since" line: ITS OWN row above the rings, at least 44 pt tall (S.tap) and
-  /// the full card width, reserved whether or not the time is known (so it
-  /// appears with no shift). When held, the whole line is the tap target; it is
-  /// in the Column's flow, so it overlaps no dial and clips nothing.
+  /// The height of the caption row: 18 pt at scale 1.0, growing with the text.
+  /// Reserved whether or not the time is known or held. The tap target for a
+  /// held caption is NOT here (see [_HomeScreenState] `_sinceTarget`).
+  static double sinceRowHeight(BuildContext c) =>
+      MediaQuery.textScalerOf(c).scale(18);
+
   Widget _sinceLine(BuildContext c, AppLocalizations? l) {
-    final lineH = math.max(S.tap, _measuredHeight(c, F.over, 'x') + 2 * S.x2);
+    final h = sinceRowHeight(c);
     final t = since;
     if (t == null) {
       return SizedBox(
           key: const ValueKey('home-since-line'),
           width: double.infinity,
-          height: lineH);
+          height: h);
     }
     final p = P.of(c);
-    final hold = holdText;
     final text = l?.homeSinceTime(DateFormat('HH:mm').format(t)) ??
         'since ${DateFormat('HH:mm').format(t)}';
-    final caption = Row(
-        key: const ValueKey('home-since'),
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (hold != null) ...[
-            SizedBox(
-                key: const ValueKey('home-since-progress'),
-                width: 10,
-                height: 10,
-                child: CircularProgressIndicator(strokeWidth: 1.5, color: p.ink3)),
-            const SizedBox(width: 4),
-          ],
-          Text(text, style: F.over.copyWith(color: p.ink3)),
-        ]);
-    final line = SizedBox(
+    return SizedBox(
         key: const ValueKey('home-since-line'),
         width: double.infinity,
-        height: lineH,
-        child: Align(alignment: Alignment.centerRight, child: caption));
-    if (hold == null) return line;
-    return Pressable(
-        semanticLabel: '$text. $hold', onTap: () => _explain(c, hold), child: line);
+        height: h,
+        child: Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+                key: const ValueKey('home-since'),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (holdText != null) ...[
+                    SizedBox(
+                        key: const ValueKey('home-since-progress'),
+                        width: 10,
+                        height: 10,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 1.5, color: p.ink3)),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(text, style: F.over.copyWith(color: p.ink3)),
+                ])));
   }
-
-  void _explain(BuildContext c, String hold) => showDialog<void>(
-      context: c,
-      builder: (dc) => AlertDialog(
-            content: Text(hold),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.of(dc).pop(),
-                  child: Text(MaterialLocalizations.of(dc).okButtonLabel)),
-            ],
-          ));
 
   VoidCallback? _open(HomeRingKind k) {
     final f = onOpen;
@@ -3025,6 +3014,11 @@ class _HomeScreenState extends State<HomeScreen>
     Widget card(String name, Widget child) =>
         KeyedSubtree(key: ValueKey('card:$name'), child: child);
 
+    final String? held = isToday
+        ? _holdText(c, _recordingsThrough,
+            ringData.overnightAt ?? ringData.activityAt)
+        : null;
+
     return _refreshable(tabRootList(padding: pad, children: [
       // ── greeting ──
       //
@@ -3083,7 +3077,9 @@ class _HomeScreenState extends State<HomeScreen>
       // second day, so the card is there from the first launch.
       card('daynav',
           DayNav(day: _day ?? d.dayId, days: _days, onDay: _goDay, alwaysShow: true)),
-      const SizedBox(height: S.x3),
+      // (Held: the gap is inside the rings wrapper below, so the caption's tap
+      // target can start at the day bar's edge.)
+      if (held == null) const SizedBox(height: S.x3),
       // Stepped back through the record: one tap home.
       if (!isToday)
         Align(
@@ -3102,16 +3098,17 @@ class _HomeScreenState extends State<HomeScreen>
       // replaced by a status card, which made first launch a different layout
       // from the loaded one. The pipeline records why readiness came back
       // absent; that diagnostic is one tap away on the Readiness screen.
-      card(
+      _sinceWrap(
+        c,
+        held,
+        since: _recordingsThrough,
+        card(
         'rings',
         RingTrio(
           d: ringData,
           now: widget.now,
           since: isToday ? _recordingsThrough : null,
-          holdText: isToday
-              ? _holdText(c, _recordingsThrough,
-                  ringData.overnightAt ?? ringData.activityAt)
-              : null,
+          holdText: held,
           help: help,
           reserveHelp: guidance,
           onOpen: (k) => go(
@@ -3126,6 +3123,7 @@ class _HomeScreenState extends State<HomeScreen>
                 HomeRingKind.sleep => SleepDetail(day: isToday ? null : _day),
               }),
         ),
+      ),
       ),
       if (!bare) ...[
         // Right under the rings: a failed gesture comes first, the newest
@@ -3306,6 +3304,44 @@ class _HomeScreenState extends State<HomeScreen>
         on ProviderNotFoundException { /* Standalone fixture has local data only. */ }
         if (mounted) await _load();
       }, child: list);
+
+  /// The rings card, wrapped when the results are held: a Stack of (the gap
+  /// above the card + the card) and a transparent 44 pt target at its top. The
+  /// wrapper owns the whole target, so nothing clips its hit test; it starts at
+  /// the day bar's edge and ends two points above the dials. Row and target grow
+  /// together with the text scale.
+  Widget _sinceWrap(BuildContext c, String? hold, Widget card,
+      {DateTime? since}) {
+    if (hold == null || since == null) return card;
+    final l = AppLocalizations.of(c);
+    final row = RingTrio.sinceRowHeight(c);
+    final text = l?.homeSinceTime(DateFormat('HH:mm').format(since)) ??
+        'since ${DateFormat('HH:mm').format(since)}';
+    return Stack(children: [
+      Column(children: [const SizedBox(height: S.x3), card]),
+      Positioned(
+          key: const ValueKey('home-since-target'),
+          top: 0,
+          left: S.x4,
+          right: S.x4,
+          height: row + 26,
+          child: Pressable(
+              semanticLabel: '$text. $hold',
+              onTap: () => _explain(c, hold),
+              child: const SizedBox.expand())),
+    ]);
+  }
+
+  void _explain(BuildContext c, String hold) => showDialog<void>(
+      context: c,
+      builder: (dc) => AlertDialog(
+            content: Text(hold),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(dc).pop(),
+                  child: Text(MaterialLocalizations.of(dc).okButtonLabel)),
+            ],
+          ));
 
   Widget _glance(BuildContext c, HomeData d, {required bool isToday}) {
     final l = AppLocalizations.of(c);
