@@ -1,5 +1,9 @@
 {
   "@@locale": "es",
+  "chartPanelLatest": "ÚLTIMO",
+  "chartPanelSelected": "SELECCIONADO",
+  "chartPanelSevenDayAvg": "promedio de 7 días",
+  "chartPanelVsAvg": "vs. promedio",
   "profileTitle": "Perfil",
   "profileMyDevices": "Mis dispositivos",
   "profileLanguage": "Idioma",

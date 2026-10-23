@@ -815,7 +815,11 @@ class _ChartScrubState extends State<ChartScrub> {
     // In a frame the frame draws the row, under its own x labels. Bare, the row
     // goes directly under the chart.
     if (hub != null) return plot;
-    final row = ChartKeyReadout.of(_resolve(v));
+    final row = ChartKeyReadout(
+        cells: _resolve(v).cells,
+        time: _resolve(v).time,
+        scrubbed: _resolve(v).scrubbed,
+        restOlder: chartRestOlder(_resolve(null).cells));
     return LayoutBuilder(
       builder: (_, box) => Column(
         mainAxisSize:
@@ -825,10 +829,6 @@ class _ChartScrubState extends State<ChartScrub> {
           if (box.hasBoundedHeight) Expanded(child: plot) else plot,
           const SizedBox(height: S.x2),
           ExcludeSemantics(child: row),
-          // The reason is on the page from the first frame and does not move
-          // with the finger: it is read at rest, never at the scrub position.
-          OlderVersionStrip(
-              id: 'readout', items: chartRestOlder(_resolve(null).cells)),
         ],
       ),
     );
@@ -847,9 +847,11 @@ class ChartKeyReadout extends StatelessWidget {
   final String? time;
   final bool scrubbed;
   final List<ChartCell> cells;
+  final List<({int? version, String? reason})>? restOlder;
+  final VoidCallback? onOpen;
 
   const ChartKeyReadout(
-      {super.key, required this.cells, this.time, this.scrubbed = false});
+      {super.key, required this.cells, this.time, this.scrubbed = false, this.restOlder, this.onOpen});
 
   factory ChartKeyReadout.of(ChartReadout r) =>
       ChartKeyReadout(cells: r.cells, time: r.time, scrubbed: r.scrubbed);
@@ -860,54 +862,76 @@ class ChartKeyReadout extends StatelessWidget {
   static const absent = '—';
   static const notRecorded = 'Not recorded';
   static const here = 'Here';
+  static const panelKey = ValueKey('chart-panel');
+  static const captionKey = ValueKey('chart-panel-caption');
+  static const valueKey = ValueKey('chart-panel-value');
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    final scale = MediaQuery.textScalerOf(c).scale(1).clamp(1.0, 1.8);
-    final items = <Widget>[
-      if (time != null) _time(p),
-      for (final cell in cells) _cell(p, cell),
-    ];
-    if (items.isEmpty) return const SizedBox.shrink();
-    const gap = S.x3;
-    final minW = 92.0 * scale;
-    return LayoutBuilder(
-      builder: (_, box) {
-        final w = box.maxWidth;
-        final cols = w.isFinite
-            ? ((w + gap) / (minW + gap)).floor().clamp(1, items.length)
-            : items.length;
-        final cellW =
-            w.isFinite ? ((w - gap * (cols - 1)) / cols) - .01 : minW;
-        // Rows of equal cells. Within a row every cell is as tall as the
-        // tallest, with its value pinned to the foot, so the values line up
-        // along one baseline however many lines a label wrapped to.
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var r = 0; r * cols < items.length; r++) ...[
-              if (r > 0) const SizedBox(height: S.x2),
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var k = 0; k < cols; k++) ...[
-                      if (k > 0) const SizedBox(width: gap),
-                      SizedBox(
-                        width: cellW,
-                        child: r * cols + k < items.length
-                            ? items[r * cols + k]
-                            : null,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+    final recorded = cells.where((x) => x.color != null).toList();
+    if (recorded.isEmpty || (!scrubbed && recorded.every((x) => x.value == null))) {
+      return const SizedBox.shrink();
+    }
+    final main = recorded.first;
+    final stats = recorded.skip(1).toList();
+    final mainColor = main.color!;
+    final older = restOlder ?? chartRestOlder(cells);
+    return Container(
+      key: panelKey,
+      height: older.isEmpty ? 160 : 266,
+      decoration: BoxDecoration(
+        color: p.card2,
+        borderRadius: R.rMd,
+        border: scrubbed
+            ? Border.all(color: mainColor.withValues(alpha: .55), width: 1.5)
+            : null,
+      ),
+      padding: EdgeInsets.symmetric(
+          horizontal: S.x3 - (scrubbed ? 1.5 : 0),
+          vertical: S.x2 - (scrubbed ? 1.5 : 0)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Expanded(flex: 5, child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text('${scrubbed ? (AppLocalizations.of(c)?.chartPanelSelected ?? 'SELECTED') : (AppLocalizations.of(c)?.chartPanelLatest ?? 'LATEST')} · ${time ?? absent}'.toUpperCase(),
+                key: captionKey,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: F.over.copyWith(color: scrubbed ? mainColor : p.ink3, fontWeight: FontWeight.w700)),
+            const SizedBox(height: S.x1),
+            Pressable(
+              onTap: onOpen,
+              semanticLabel: onOpen == null
+                  ? null
+                  : (AppLocalizations.of(c)?.metricDetailOpenDay(time ?? '') ?? 'Open $time'),
+              child: Row(key: valueKey, mainAxisSize: MainAxisSize.min, children: [
+              Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+                child: Text(main.value ?? absent,
+                  style: F.n34.copyWith(color: p.ink, fontWeight: FontWeight.w700)))),
+              if (main.value != null && main.older != null)
+                OlderVersionMark(id: chartOlderId(cells, main), version: main.older!.version,
+                    reason: main.older!.reason),
+              if (main.value != null) const SizedBox(width: S.x1),
+              if (main.value != null) Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
+            ]),
+            ),
+          ])),
+          for (var i = 0; i < stats.length && i < 2; i++) ...[
+            const SizedBox(width: S.x2),
+            Expanded(flex: 3, child: Column(key: ValueKey('chart-panel-stat:${stats[i].label}'), mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(stats[i].label.toUpperCase(), maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: F.over.copyWith(color: p.ink3, fontWeight: FontWeight.w600)),
+              Text(stats[i].value ?? absent,
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: F.n17.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+            ])),
           ],
-        );
-      },
+        ])),
+        SizedBox(height: older.isEmpty ? 20 : 80, child: older.isEmpty
+            ? const SizedBox.shrink()
+            : OlderVersionStrip(id: 'readout', items: older)),
+      ]),
     );
   }
 
@@ -3446,6 +3470,7 @@ class ChartFrame extends StatelessWidget {
   /// not a [ChartScrub] (the frame reads a [ChartScrub]'s own position). The
   /// nearest annotation to it is the focused one.
   final double? annotationCursor;
+  final Widget? panel;
 
   const ChartFrame({
     super.key,
@@ -3465,6 +3490,7 @@ class ChartFrame extends StatelessWidget {
     this.bandColor,
     this.annotations,
     this.annotationCursor,
+    this.panel,
   });
 
   /// Width and height of [s] as it will actually be laid out — including the
@@ -3867,6 +3893,7 @@ class ChartFrame extends StatelessWidget {
                     ],
                   )
                 : null,
+            panel: panel,
           ),
 
           if (footnote != null)
@@ -3903,17 +3930,25 @@ class _FrameKeys extends StatelessWidget {
   /// A static key entry after the legend (the usual-range band's swatch).
   /// It describes the plot, not a point, so it stays put while scrubbing.
   final Widget? extra;
+  final Widget? panel;
   const _FrameKeys(
       {required this.hub,
       required this.legend,
       required this.tick,
       required this.line,
-      this.extra});
+      this.extra,
+      this.panel});
 
   @override
   Widget build(BuildContext c) => ListenableBuilder(
         listenable: hub,
         builder: (c, _) {
+          if (panel != null) {
+            return Padding(
+              padding: const EdgeInsets.only(top: S.x3),
+              child: ExcludeSemantics(child: panel!),
+            );
+          }
           final r = hub.read();
           hub.rendered = r?.signature ?? '';
           if (r == null) return _plain(c);
@@ -3934,12 +3969,14 @@ class _FrameKeys extends StatelessWidget {
           }
           cells.addAll(r.cells.where((x) => !used.contains(x)));
           final baseRow = extra == null
-              ? ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed)
+              ? ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed,
+                  restOlder: chartRestOlder(hub.readRest()?.cells ?? cells))
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed),
+                    ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed,
+                        restOlder: chartRestOlder(hub.readRest()?.cells ?? cells)),
                     const SizedBox(height: S.x1),
                     extra!,
                   ],
@@ -3952,12 +3989,7 @@ class _FrameKeys extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
-              children: [
-                ExcludeSemantics(child: baseRow),
-                OlderVersionStrip(
-                    id: 'readout',
-                    items: chartRestOlder(hub.readRest()?.cells ?? cells)),
-              ],
+              children: [ExcludeSemantics(child: baseRow)],
             ),
           );
         },

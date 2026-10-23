@@ -1,5 +1,9 @@
 {
   "@@locale": "en",
+  "chartPanelLatest": "LATEST",
+  "chartPanelSelected": "SELECTED",
+  "chartPanelSevenDayAvg": "7-day avg",
+  "chartPanelVsAvg": "vs avg",
   "profileTitle": "Profile",
   "@profileTitle": {
     "description": "Profile screen header."

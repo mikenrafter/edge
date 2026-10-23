@@ -1,5 +1,9 @@
 {
   "@@locale": "hi",
+  "chartPanelLatest": "नवीनतम",
+  "chartPanelSelected": "चयनित",
+  "chartPanelSevenDayAvg": "7-दिन औसत",
+  "chartPanelVsAvg": "औसत से",
   "profileTitle": "प्रोफ़ाइल",
   "profileMyDevices": "मेरे डिवाइस",
   "profileLanguage": "भाषा",

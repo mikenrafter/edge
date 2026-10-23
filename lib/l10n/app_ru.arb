@@ -1,5 +1,9 @@
 {
   "@@locale": "ru",
+  "chartPanelLatest": "ПОСЛЕДНЕЕ",
+  "chartPanelSelected": "ВЫБРАНО",
+  "chartPanelSevenDayAvg": "среднее за 7 дней",
+  "chartPanelVsAvg": "к среднему",
   "profileTitle": "Профиль",
   "profileMyDevices": "Мои устройства",
   "profileLanguage": "Язык",

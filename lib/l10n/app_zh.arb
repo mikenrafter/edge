@@ -1,5 +1,9 @@
 {
   "@@locale": "zh",
+  "chartPanelLatest": "最新",
+  "chartPanelSelected": "已选",
+  "chartPanelSevenDayAvg": "7日平均",
+  "chartPanelVsAvg": "与平均值相比",
   "profileTitle": "个人资料",
   "profileMyDevices": "我的设备",
   "profileLanguage": "语言",
