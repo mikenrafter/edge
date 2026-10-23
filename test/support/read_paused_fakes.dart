@@ -73,6 +73,12 @@ class FocusRepo extends LocalRepository {
 
   /// The published model, null when focus is off; throws while it is on and
   /// nothing was published for that method and day.
+  /// Normal (focus off) readiness by day, overriding the defaults.
+  final Map<String, int> overview = {};
+
+  /// The signature `artifactSignature` answers (null: none).
+  String? sig;
+
   /// Called with the method name before the focus check (a test can start
   /// focus "between the reads and the write").
   void Function(String method)? onRead;
@@ -126,7 +132,7 @@ class FocusRepo extends LocalRepository {
   @override
   Future<Map<String, dynamic>> getDayOverview(String date) async =>
       _gate('getDayOverview', date) ??
-      {'readiness': date == kYesterday ? 42 : 33, 'resting_hr': 60};
+      {'readiness': overview[date] ?? (date == kYesterday ? 42 : 33), 'resting_hr': 60};
 
   @override
   Future<Map<String, dynamic>> getDayStrain(String date) async =>
@@ -191,7 +197,7 @@ class FocusRepo extends LocalRepository {
   @override
   Future<String?> artifactSignature(String key) async {
     reads.add('artifactSignature:$key');
-    return null;
+    return sig;
   }
 
   @override

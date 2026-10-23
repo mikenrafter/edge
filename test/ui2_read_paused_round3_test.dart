@@ -24,6 +24,7 @@ import 'package:openstrap_edge/ui2/screens/explorer.dart';
 import 'package:openstrap_edge/ui2/screens/explorer_annotations.dart';
 import 'package:openstrap_edge/ui2/screens/journal_compose.dart';
 import 'package:openstrap_edge/ui2/screens/naps.dart';
+import 'package:openstrap_edge/ui2/last_result_cache.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -65,6 +66,15 @@ class _ExRepo extends ex.ExplorerRepo {
       : super(charts: {
           specOf('resting_hr').chartKey: [
             for (final d in ex.kWeek) ex.pt(d, 55),
+          ],
+        });
+
+  /// Every point of the week comes from an older calculation.
+  _ExRepo.older()
+      : super(charts: {
+          specOf('resting_hr').chartKey: [
+            for (final d in ex.kWeek)
+              {...ex.pt(d, 55), 'from_older_version': 104},
           ],
         });
 
@@ -193,41 +203,94 @@ void main() {
           reason: 'the annotation lane keeps its reserved height');
     });
 
-    testWidgets('a publish 1.5 s after focus ends does not reload twice',
-        (t) async {
-      final (repo, app) = await warm(t);
+    testWidgets('a chart whose only lane is older-version ranges keeps it '
+        'when paused', (t) async {
+      await ex.initPrefs();
+      Prefs.setString(kExploreMetricsPref, 'resting_hr');
+      addTearDown(ex.clearPrefs);
+      final repo = _ExRepo.older();
+      await _pump(
+          t,
+          repo,
+          ExplorerView(
+              today: ex.kToday, annotationLoader: (_, _) async => const []));
+      expect(find.byKey(ChartAnnotationLane.laneKey), findsOneWidget,
+          reason: 'sanity: older ranges draw the lane');
+      double slot() =>
+          t.getTopLeft(ex.pick('hrv')).dy -
+          t.getTopLeft(find.text('Normalised')).dy;
+      final loaded = slot();
+
       startFocus();
       await _settle(t);
-      final calls = repo.chartCalls.length;
+      expect(find.text(kPausedLine), findsOneWidget);
+      expect(slot(), loaded, reason: 'the lane height (40 px) is kept');
+    });
 
-      endFocus();
-      await _settle(t, n: 5);
-      await t.pump(const Duration(milliseconds: 1500));
-      app.bumpInsights(); // the coalescer's trailing publish
-      await _settle(t);
-      expect(repo.chartCalls.length, calls + 1,
-          reason: 'one reload; the delayed publish announces what it read');
+    testWidgets('idle revisions reload once each', (t) async {
+      final (repo, app) = await warm(t);
+      final calls = repo.chartCalls.length;
+      for (var i = 1; i <= 3; i++) {
+        app.bumpInsights();
+        await _settle(t);
+        expect(repo.chartCalls.length, calls + i, reason: 'revision $i');
+      }
     });
   });
 
-  testWidgets('Home: a publish 1.5 s after focus ends does not reload twice',
-      (t) async {
-    final repo = FocusRepo();
-    final app = await _pump(t, repo, const HomeScreen(hour: 9));
-    await t.tap(find.bySemanticsLabel('Previous day'));
-    await _settle(t);
-    await t.tap(find.bySemanticsLabel('Previous day'));
-    await _settle(t);
-    startFocus();
-    await _settle(t);
-    final before = repo.count('getDayOverview', kDay2);
+  group('Home, around the end of focus', () {
+    Future<(FocusRepo, AppState)> pausedOnDay2(WidgetTester t) async {
+      final repo = FocusRepo();
+      final app = await _pump(t, repo, const HomeScreen(hour: 9));
+      await t.tap(find.bySemanticsLabel('Previous day'));
+      await _settle(t);
+      await t.tap(find.bySemanticsLabel('Previous day'));
+      await _settle(t);
+      startFocus();
+      await _settle(t);
+      return (repo, app);
+    }
 
-    endFocus();
-    await _settle(t, n: 5);
-    await t.pump(const Duration(milliseconds: 1500));
-    app.bumpInsights();
-    await _settle(t);
-    expect(repo.count('getDayOverview', kDay2), before + 1);
+    testWidgets('a burst of revisions around the end: the focus-end reload '
+        'plus at most ONE trailing', (t) async {
+      final (repo, app) = await pausedOnDay2(t);
+      final before = repo.count('getDayOverview', kDay2);
+      endFocus();
+      for (var i = 0; i < 6; i++) {
+        app.bumpInsights();
+      }
+      await _settle(t);
+      final n = repo.count('getDayOverview', kDay2) - before;
+      expect(n, inInclusiveRange(1, 2), reason: 'reads for the burst: $n');
+    });
+
+    testWidgets('NEW data published 1.5 s after the end is shown (nothing is '
+        'dropped)', (t) async {
+      final (repo, app) = await pausedOnDay2(t);
+      endFocus();
+      await _settle(t);
+      expect(find.text('33'), findsOneWidget);
+
+      repo.overview[kDay2] = 44; // a sync / workout save right after the import
+      await t.pump(const Duration(milliseconds: 1500));
+      app.bumpInsights();
+      await _settle(t);
+      expect(find.text('44'), findsOneWidget,
+          reason: 'the revision carried new data: it must be read');
+      expect(find.text('33'), findsNothing);
+    });
+
+    testWidgets('idle revisions reload once each', (t) async {
+      final (repo, app) = await pausedOnDay2(t);
+      endFocus();
+      await _settle(t);
+      final base = repo.count('getDayOverview', kDay2);
+      for (var i = 1; i <= 3; i++) {
+        app.bumpInsights();
+        await _settle(t);
+        expect(repo.count('getDayOverview', kDay2), base + i);
+      }
+    });
   });
 
   group('journal compose', () {
@@ -324,6 +387,43 @@ void main() {
   });
 
   group('screens that waited forever', () {
+    testWidgets('Body clock outside focus: no artifact yet is pending, '
+        'never an empty "0 nights" model', (t) async {
+      final repo = FocusRepo();
+      await _pump(t, repo, const CircadianDetail());
+      await _real(t);
+      expect(find.text(kPausedLine), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget,
+          reason: 'still waiting for the warm: a pending state');
+    });
+
+    testWidgets('Beats: beats accepted on a retry of the same night clear '
+        'the failed flag, and the Poincare panel shows', (t) async {
+      final repo = FocusRepo();
+      final app = await _pump(t, repo, const Beats());
+      await _real(t);
+      const title = 'Every beat against the one before it';
+      expect(find.text(title), findsNothing,
+          reason: 'sanity: no beats yet, panel left out');
+
+      final day = repo.reads
+          .firstWhere((r) => r.startsWith('getDayHrv:'))
+          .split(':')[1];
+      final key = LastResultCache.keyOf('beats', [day]);
+      repo.sig = 's1';
+      LastResultCache.instance.put<Map<String, dynamic>>(
+          key,
+          {
+            'nn': [800.0, 810.0, 790.0, 805.0],
+            'raw_beats': 4,
+            'clean_fraction': 1.0,
+          },
+          sig: 's1');
+      app.bumpInsights(); // the warm landed: the same night is read again
+      await _real(t);
+      expect(find.text(title), findsOneWidget);
+    });
+
     testWidgets("Beats: an interrupted shell read is the paused line, not "
         "\"Reading the night's beats\" forever; one reload after", (t) async {
       final repo = FocusRepo();

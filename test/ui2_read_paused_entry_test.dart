@@ -135,7 +135,8 @@ void main() {
       app.bumpInsights();
       await _settle(t);
       expect(find.text(kPausedLine), findsNothing);
-      expect(repo.count('getChart'), charts + 1);
+      expect(repo.count('getChart'), inInclusiveRange(charts + 1, charts + 2),
+          reason: 'the focus-end reload plus at most one trailing');
     });
 
     testWidgets('Explorer: the plot goes, revisions while paused read '
@@ -168,8 +169,8 @@ void main() {
       app.bumpInsights();
       app.bumpInsights();
       await _settle(t);
-      expect(repo.chartCalls.length, calls + 1,
-          reason: 'one reload, trailing revisions coalesced');
+      expect(repo.chartCalls.length, inInclusiveRange(calls + 1, calls + 2),
+          reason: 'the focus-end reload plus at most one trailing');
       expect(find.byKey(ExplorerView.plotKey), findsOneWidget);
     });
   });

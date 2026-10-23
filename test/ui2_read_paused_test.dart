@@ -197,8 +197,9 @@ void main() {
 
       expect(find.text(kPausedLine), findsNothing);
       expect(find.text('33'), findsOneWidget, reason: 'the real value is in');
-      expect(repo.count('getDayOverview', kDay2), before + 1,
-          reason: 'exactly one reload, no more');
+      expect(repo.count('getDayOverview', kDay2),
+          inInclusiveRange(before + 1, before + 2),
+          reason: 'the focus-end reload plus at most one trailing');
       final after = repo.reads.length;
       await _settle(t, n: 200);
       expect(repo.reads.length, after, reason: 'and it stays quiet');
@@ -367,7 +368,8 @@ void main() {
       app.bumpInsights();
       app.bumpInsights();
       await _settle(t);
-      expect(repo.count('getSleepDetailBundle', kDay2), bundles + 1);
+      expect(repo.count('getSleepDetailBundle', kDay2),
+          inInclusiveRange(bundles + 1, bundles + 2));
     });
   });
 }
