@@ -3408,5 +3408,6 @@
   "consentConfirm": "Continuer",
   "consentDecline": "Non merci",
   "postImportDismiss": "Compris",
-  "welcomeImportContinue": "Continuer"
+  "welcomeImportContinue": "Continuer",
+  "importPausedOlderDays": "Les jours précédents seront chargés à la fin de l’importation"
 }

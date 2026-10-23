@@ -3514,5 +3514,6 @@
   "consentConfirm": "Weiter",
   "consentDecline": "Nein danke",
   "postImportDismiss": "Verstanden",
-  "welcomeImportContinue": "Weiter"
+  "welcomeImportContinue": "Weiter",
+  "importPausedOlderDays": "Ältere Tage werden geladen, sobald der Import abgeschlossen ist"
 }

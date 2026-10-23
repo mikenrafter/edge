@@ -27,6 +27,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
 import '../../l10n/app_localizations.dart';
 import '../ui2.dart';
 import 'home_screen.dart' show ChartPoint, denseChartPoints, denseDays, pointsOf;
@@ -119,6 +120,8 @@ Future<List<GridRow>> loadGridRows(LocalRepository repo) async {
   for (final key in kGridMetrics) {
     try {
       out.add(gridRow(key, pointsOf(await repo.getChart(specOf(key).chartKey))));
+    } on ReadPaused {
+      rethrow;
     } catch (_) {/* a series we cannot read is a row we do not draw */}
   }
   return out;

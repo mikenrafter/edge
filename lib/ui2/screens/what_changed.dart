@@ -28,6 +28,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../ai/briefing_engine.dart' show collectSweepSeries;
 import '../../ai/nightly_sweep.dart';
 import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/sweep_text.dart';
 import '../ui2.dart';
@@ -102,9 +103,10 @@ class WhatChangedScreen extends StatefulWidget {
   State<WhatChangedScreen> createState() => _WhatChangedScreenState();
 }
 
-class _WhatChangedScreenState extends State<WhatChangedScreen> {
+class _WhatChangedScreenState extends State<WhatChangedScreen> with PausedReadReload<WhatChangedScreen> {
   WhatChangedData? _d;
   bool _loading = true;
+  bool _paused = false;
   String? _day;
   // A quick second tap on the day stepper starts a second load; the first
   // can finish last and must not paint the old day under the new label.
@@ -113,6 +115,7 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> {
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     _day = widget.day;
     if (widget.data != null) {
       _d = widget.data;
@@ -121,6 +124,12 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
+
+  @override
+  void reloadPausedRead() { if (mounted) { setState(() { _paused = false; _loading = true; }); _load(); } }
+
+  @override
+  void dispose() { stopWatchingPausedRead(); super.dispose(); }
 
   Future<void> _load() async {
     final token = ++_loadToken;
@@ -134,6 +143,8 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> {
       if (mounted && token == _loadToken) {
         setState(() => (_d = d, _loading = false));
       }
+    } on ReadPaused {
+      if (mounted && token == _loadToken) setState(() { _loading = false; _paused = true; });
     } catch (_) {
       if (mounted && token == _loadToken) setState(() => _loading = false);
     }
@@ -155,7 +166,10 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> {
         c, l?.whatChangedTitle ?? 'What changed',
         sub: l?.whatChangedSub ?? 'AGAINST YOUR OWN HISTORY', [
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
-      if (_loading) ...[
+      if (_paused) ...[
+        const SizedBox(height: S.x4),
+        const PausedOlderDays(),
+      ] else if (_loading) ...[
         const SizedBox(height: S.x4),
         InlineLoading(
             status: l?.loadingWhatChanged ??

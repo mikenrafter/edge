@@ -21,6 +21,7 @@ export 'haptic_score.dart';
 export 'nudges.dart';
 export 'older_version.dart';
 export 'paint_activity.dart';
+export 'paused_older_days.dart';
 export 'research_refs.dart';
 export 'revision.dart';
 export 'scroll_hint.dart';

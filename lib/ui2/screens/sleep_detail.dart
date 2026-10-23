@@ -24,6 +24,8 @@ import 'package:provider/provider.dart';
 import '../../compute/vendor_sleep.dart' show vendorStagesReported;
 import '../../data/day_label.dart';
 import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
+import '../../sync/import_focus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
@@ -348,6 +350,15 @@ class SleepData {
     // Stored read: the night to open is all this needs from `getToday`, and
     // the freshness refresh behind it must not hold the first paint.
     final today = await repo.getTodayStored();
+    if (ImportFocus.active.value && (want == null || want == todayLabel())) {
+      final published = ImportFocus.days.value[todayLabel()]?['getToday'];
+      final sleep = published is Map ? published['sleep'] : null;
+      if (sleep is Map) {
+        final duration = sleep['duration_min'];
+        return SleepData(day: todayLabel(), days: [todayLabel()],
+            night: <String, Object?>{'duration_min': duration is Map ? duration['value'] : duration});
+      }
+    }
     final pending = (today['status'] as Map?)?['refresh_pending'] == true;
     // THE NIGHT `getToday` ACTUALLY SERVED. Home's Sleep card is that night, so
     // tapping it has to open that night. Resolving on `today_day` alone opened
@@ -454,7 +465,7 @@ class SleepDetail extends StatefulWidget {
   State<SleepDetail> createState() => _SleepDetailState();
 }
 
-class _SleepDetailState extends State<SleepDetail> with RevisionReload {
+class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedReadReload<SleepDetail> {
   /// The pushed screen's scaffold, or the tab's own header and footer.
   Widget _frame(BuildContext c, String title, List<Widget> body,
       {String sub = ''}) {
@@ -475,7 +486,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
               child: Text(sub, style: F.over.copyWith(color: p.ink3)),
             ),
           ...body,
-          ...widget.footer,
+          if (!ImportFocus.active.value) ...widget.footer,
         ],
       ),
     );
@@ -483,6 +494,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
 
   SleepData? _d;
   bool _loading = true;
+  bool _paused = false;
   String? _day;
   bool _saving = false; // an override write + its forced re-derive is in flight
   double? _scrub; // 0..1 across the night
@@ -503,6 +515,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     _day = widget.day;
     if (widget.data != null) {
       _d = widget.data;
@@ -511,6 +524,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
+
+  @override
+  void reloadPausedRead() { if (mounted) { setState(() { _paused = false; _loading = true; }); _load(); } }
+
+  @override
+  void dispose() { stopWatchingPausedRead(); super.dispose(); }
 
   // `_rough` bakes `AppLocalizations` strings into `knows`/`moved` at load
   // time (see `loadRoughNight`), so a language switch while this screen is
@@ -556,6 +575,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
           if (landed && mounted) _load();
         });
       }
+    } on ReadPaused {
+      if (mounted && gen == _loadGen) setState(() { _loading = false; _paused = true; });
     } catch (_) {
       if (mounted && gen == _loadGen) setState(() => _loading = false);
     }
@@ -597,6 +618,21 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     final l = AppLocalizations.of(c);
     final title = l?.sleepDetailNavTitle ?? 'Sleep';
 
+    final publishedToday = ImportFocus.active.value &&
+            (widget.day == null || widget.day == todayLabel())
+        ? (ImportFocus.days.value[todayLabel()] ?? const {})['getToday']
+        : null;
+    final publishedSleep = publishedToday is Map ? publishedToday['sleep'] : null;
+    if (publishedSleep is Map) {
+      final duration = publishedSleep['duration_min'];
+      final model = SleepData(day: todayLabel(),
+          night: <String, Object?>{'duration_min': duration is Map ? duration['value'] : duration});
+      return _frame(c, title, [_answer(c, P.of(c), model, model.night)]);
+    }
+
+    if (_paused) {
+      return _frame(c, title, [const SizedBox(height: S.x4), const PausedOlderDays()]);
+    }
     if (_loading && _d == null) {
       return _frame(c, title, [
         const SizedBox(height: S.x4),

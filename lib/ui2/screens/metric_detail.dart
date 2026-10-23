@@ -19,6 +19,8 @@ import '../../ble/adapters/signals.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart' show LocalDb;
 import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
+import '../../sync/import_focus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/display_text.dart';
 import '../../state/app_state.dart';
@@ -793,7 +795,7 @@ class MetricDetail extends StatefulWidget {
   State<MetricDetail> createState() => _MetricDetailState();
 }
 
-class _MetricDetailState extends State<MetricDetail> with RevisionReload {
+class _MetricDetailState extends State<MetricDetail> with RevisionReload, PausedReadReload<MetricDetail> {
   // Today is its own window, not the left edge of the 7-day one. Asking "what
   // is it right now" and "what has it been lately" are different questions,
   // and a range list that starts at 7 days made the first one unanswerable.
@@ -824,6 +826,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   late int _range = _windows.indexOf(widget.initialRange ?? 1).clamp(0, 4);
   MetricData? _d;
   bool _loading = true;
+  bool _paused = false;
 
   /// The hero's journal marks toggle. OFF by default and not remembered: algo
   /// marks are provenance and always on, journal marks are opt-in detail.
@@ -923,6 +926,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     if (widget.data != null) {
       _d = widget.data;
       _loading = false;
@@ -935,7 +939,11 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   }
 
   @override
+  void reloadPausedRead() { if (mounted) { setState(() { _paused = false; _loading = true; }); _load(); } }
+
+  @override
   void dispose() {
+    stopWatchingPausedRead();
     _liveHrOwner?.releaseLiveHrView();
     super.dispose();
   }
@@ -1091,8 +1099,13 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                 },
               )
               .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
-      final d = await MetricData.load(repo, widget.metricKey,
-          candidates: candidates, journal: false);
+      final loaded = await pausedRead(MetricData.load(repo, widget.metricKey,
+          candidates: candidates, journal: false));
+      if (loaded.paused) {
+        if (mounted) setState(() { _loading = false; _paused = true; });
+        return;
+      }
+      final d = loaded.value!;
       var winners = const <InputSignal, String?>{};
       if (d.sources.length >= 2 && spec.requires.isNotEmpty && mounted) {
         // Read before the query, so the `mounted` in the condition above is
@@ -1136,6 +1149,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
         }
         _recompose();
       });
+    } on ReadPaused {
+      if (mounted) setState(() { _loading = false; _paused = true; });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -1214,6 +1229,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
         ),
         const SizedBox(height: S.x5),
         investigateRow(c, () => go(c, Investigate(widget.metricKey))),
+      ] else if (_paused) ...[
+        _ranges(c, d, spec.color),
+        const SizedBox(height: S.x5),
+        const PausedOlderDays(),
       ] else if (vals.isEmpty) ...[
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),

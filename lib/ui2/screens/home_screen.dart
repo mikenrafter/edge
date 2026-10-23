@@ -49,12 +49,14 @@ import '../../compute/findings.dart'
         kReadinessEasyBelow,
         kReadinessGoodFrom,
         kReadinessRestBelow;
-import '../../data/day_label.dart' show todayLabel, calendarDaysBetween;
+import '../../data/day_label.dart' show todayLabel, calendarDaysBetween, dayLabelBefore;
 import '../../compute/onehz_pipeline.dart'
     show readinessInputShortfallNote, readinessUnstableBaselineNote;
 import '../../data/db.dart' show DbRebuild;
 import '../../data/journal_fields.dart' show formatMinuteOfDay;
 import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
+import '../../sync/import_focus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/presentation_text.dart';
 import '../../l10n/display_text.dart';
@@ -2006,6 +2008,24 @@ class HomeData {
     this.wearable,
   });
 
+  static HomeData fromPublishedOverview(String day, Map<String, dynamic> overview) =>
+      HomeData(dayId: day, readiness: metricOf(overview['readiness']),
+          rhr: metricOf(overview['resting_hr']));
+
+  static HomeData fromPublishedToday(Map<String, dynamic> today) {
+    final daily = today['daily'];
+    final sleep = today['sleep'];
+    Object? metric(Map? map, String key) => map?[key];
+    return HomeData(
+      dayId: (today['status'] as Map?)?['today_day']?.toString(),
+      readiness: metricOf(metric(daily is Map ? daily : null, 'readiness')),
+      rhr: metricOf(metric(daily is Map ? daily : null, 'resting_hr')),
+      strain: metricOf(metric(daily is Map ? daily : null, 'strain')),
+      steps: metricOf(metric(daily is Map ? daily : null, 'steps')),
+      sleepMin: metricOf(metric(sleep is Map ? sleep : null, 'duration_min')),
+    );
+  }
+
   /// The three illness fields, replaced together. Test-facing sugar, and they
   /// travel as a set on purpose — they are read as one envelope, and setting
   /// one without the others describes a state the pipeline cannot produce.
@@ -2323,7 +2343,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with RevisionReload, WidgetsBindingObserver {
+    with RevisionReload, WidgetsBindingObserver, PausedReadReload<HomeScreen> {
   HomeData? _d;
   bool _loading = true;
 
@@ -2341,6 +2361,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// database is a read problem, and telling a user with three months of
   /// history that their band has never produced data is the wrong answer to it.
   bool _failed = false;
+  bool _paused = false;
 
   /// Fires on each minute boundary so the sleep ring's estimate (wake minus
   /// now) does not freeze at the minute the screen was built.
@@ -2379,6 +2400,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    stopWatchingPausedRead();
     WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
     super.dispose();
@@ -2387,6 +2409,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     WidgetsBinding.instance.addObserver(this);
     _armTick();
     if (widget.data != null) {
@@ -2395,6 +2418,13 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void reloadPausedRead() {
+    if (!mounted) return;
+    setState(() { _loading = true; _paused = false; });
+    _load();
   }
 
   /// Handed its data (golden, gallery) — the screen just renders what it has.
@@ -2438,10 +2468,24 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       final day = _day;
       final l = AppLocalizations.of(context);
-      final d = day == null || day == todayLabel()
+      final publishedYesterday = day != null && ImportFocus.active.value
+          ? (ImportFocus.days.value[day] ?? const {})['getDayOverview']
+          : null;
+      final publishedToday = day == null || day == todayLabel()
+          ? (ImportFocus.days.value[todayLabel()] ?? const {})['getToday']
+          : null;
+      final d = ImportFocus.active.value && publishedToday is Map<String, dynamic>
+          ? HomeData.fromPublishedToday(publishedToday)
+          : day != null && publishedYesterday is Map<String, dynamic>
+          ? HomeData.fromPublishedOverview(day, publishedYesterday)
+          : day == null || day == todayLabel()
           ? await HomeData.load(repo, l, true)
           : await HomeData.loadForDay(repo, day, l);
-      final days = await repo.availableDays();
+      final List<String> days = ImportFocus.active.value
+          ? (_days.isEmpty
+              ? [todayLabel(), dayLabelBefore(todayLabel(), 1)!]
+              : _days)
+          : await repo.availableDays();
       if (stillNewest(#home, t)) {
         setState(() => (_d = d, _days = days, _loading = false, _failed = false));
         _recordRender();
@@ -2453,6 +2497,13 @@ class _HomeScreenState extends State<HomeScreen>
             setState(() => _refreshGaveUp = true);
           }
         });
+      }
+    } on ReadPaused {
+      if (stillNewest(#home, t)) {
+        final today = todayLabel();
+        final yesterday = dayLabelBefore(today, 1)!;
+        setState(() => (_loading = false, _failed = false, _paused = true,
+            _days = [today, yesterday]));
       }
     } catch (_) {
       if (stillNewest(#home, t)) {
@@ -2581,6 +2632,8 @@ class _HomeScreenState extends State<HomeScreen>
     RingHelp? help;
     if (loaded == null && _loading) {
       help = RingHelp.busy(l?.loadingHomeToday ?? 'Reading today');
+    } else if (_paused && !isToday) {
+      help = RingHelp(l?.importPausedOlderDays ?? 'Older days load when the import finishes');
     } else if (loaded == null && _failed) {
       help = RingHelp(
           '${l?.homeLoadFailedTitle ?? 'Today could not be read'} · '
@@ -2692,7 +2745,7 @@ class _HomeScreenState extends State<HomeScreen>
         // Not while the first read is out: the card reads its own count.
         if (!_loading) card('detected', const DetectedActivitiesCard()),
       ] else if (bare && !building)
-        card('detected', _detectedActivities(d)),
+        if (!ImportFocus.active.value) card('detected', _detectedActivities(d)),
       // The day switcher keeps its slot (arrows dimmed) before there is a
       // second day, so the card is there from the first launch.
       card('daynav',
@@ -2744,7 +2797,7 @@ class _HomeScreenState extends State<HomeScreen>
           GestureFailureCard(store: failures),
       ],
       const SizedBox(height: S.x3),
-      if (!bare) card('detected', _detectedActivities(d)),
+      if (!bare && !ImportFocus.active.value) card('detected', _detectedActivities(d)),
       // Community asks: eligible or not, never part of the first-launch layout.
       if (!bare) const CommunityNudge(key: ValueKey('card:nudge')),
 

@@ -3408,5 +3408,6 @@
   "consentConfirm": "जारी रखें",
   "consentDecline": "नहीं धन्यवाद",
   "postImportDismiss": "समझ गया",
-  "welcomeImportContinue": "जारी रखें"
+  "welcomeImportContinue": "जारी रखें",
+  "importPausedOlderDays": "आयात पूरा होने पर पुराने दिन लोड होंगे"
 }

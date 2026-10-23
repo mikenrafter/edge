@@ -8787,5 +8787,6 @@
   "consentConfirm": "Продолжить",
   "consentDecline": "Нет, спасибо",
   "postImportDismiss": "Понятно",
-  "welcomeImportContinue": "Продолжить"
+  "welcomeImportContinue": "Продолжить",
+  "importPausedOlderDays": "Старые дни загрузятся после завершения импорта"
 }

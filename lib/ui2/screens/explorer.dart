@@ -35,6 +35,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../compute/explorer_series.dart';
 import '../../data/day_label.dart';
+import '../../data/read_paused.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/prefs.dart';
 import '../ui2.dart';
@@ -213,7 +214,7 @@ class ExplorerView extends StatefulWidget {
   State<ExplorerView> createState() => _ExplorerViewState();
 }
 
-class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
+class _ExplorerViewState extends State<ExplorerView> with RevisionReload, PausedReadReload<ExplorerView> {
   late bool _day = Prefs.getString(kExploreScalePref, '') == 'day';
   late ExploreRange _range;
   String? _from, _to;
@@ -223,6 +224,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
   // Import-only rows with stored history; nothing else may be offered.
   Set<String> _imported = const {};
   bool _full = false, _loading = false, _failed = false;
+  bool _paused = false;
 
   // What has been read. A daily metric's WHOLE stored series, oldest first (the
   // window cuts it and a baseline needs what is outside it); one day's timeline
@@ -246,6 +248,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     _daily = decodeExploreKeys(Prefs.getString(kExploreMetricsPref, ''),
         valid: _dailyKeys);
     _intra = decodeExploreKeys(Prefs.getString(kExploreIntradayPref, ''),
@@ -267,6 +270,12 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
       }
     });
   }
+
+  @override
+  void reloadPausedRead() { if (mounted) { setState(() { _paused = false; _loading = true; }); _load(refresh: true); } }
+
+  @override
+  void dispose() { stopWatchingPausedRead(); super.dispose(); }
 
   Future<void> _loadImported() async {
     final rows = [
@@ -380,6 +389,9 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
         if (readCal) _cals[day] = cal;
         _loading = false;
       });
+    } on ReadPaused {
+      if (!stillNewest(#explore, t)) return;
+      setState(() { _paused = true; _failed = false; _loading = false; });
     } catch (_) {
       if (!stillNewest(#explore, t)) return;
       setState(() {
@@ -658,6 +670,9 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
           child: NoData(
               message: l?.exploreHint ??
                   'Pick up to 4 metrics below. They share one time axis, each on its own scale.'));
+    }
+    if (_paused) {
+      return const Surface(child: PausedOlderDays());
     }
     if (_failed) {
       return Surface(
