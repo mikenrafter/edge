@@ -111,3 +111,24 @@ void expectSpokenNotTappable(WidgetTester t, Finder mark, {Matcher? label}) {
   expect(d.hasFlag(SemanticsFlag.isButton), isFalse);
   expect(d.hasAction(SemanticsAction.tap), isFalse);
 }
+
+/// How many times the whole semantics tree says [what] (default: "from an older
+/// calculation"), counting inside merged labels too. Needs
+/// `t.ensureSemantics()`.
+int spokenCount(WidgetTester t, [Pattern? what]) {
+  final re = what is RegExp
+      ? what
+      : RegExp(what == null ? kSpoken.pattern : RegExp.escape('$what'),
+          caseSensitive: false);
+  var n = 0;
+  void walk(SemanticsNode node) {
+    n += re.allMatches(node.getSemanticsData().label).length;
+    node.visitChildren((c) {
+      walk(c);
+      return true;
+    });
+  }
+
+  walk(t.binding.pipelineOwner.semanticsOwner!.rootSemanticsNode!);
+  return n;
+}

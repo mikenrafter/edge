@@ -114,4 +114,31 @@ void main() {
     final old = await height((version: 104, reason: kReasonRaw));
     expect(old, plain);
   });
+
+  testWidgets('a flagged card announces each older version exactly once',
+      (t) async {
+    final h = t.ensureSemantics();
+    _phone(t, 360);
+    await t.pumpWidget(MaterialApp(
+      theme: buildTheme(Brightness.light),
+      home: const Scaffold(
+          body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                  width: 170,
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    SignalCard(Icons.bolt, C.orange, 'Active energy', '420',
+                        unit: 'kcal',
+                        sub: '2100 total',
+                        olderVersion: 104,
+                        olderReason: kReasonRaw,
+                        olderTotalVersion: 103,
+                        olderTotalReason: kReasonRaw)
+                  ])))),
+    ));
+    await t.pump();
+    expect(spokenCount(t, 'v104'), 1);
+    expect(spokenCount(t, 'v103'), 1);
+    h.dispose();
+  });
 }

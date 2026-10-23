@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
@@ -56,6 +58,30 @@ void main() {
     expect(find.bySemanticsLabel(kSpoken), findsWidgets);
     expectSpokenNotTappable(t, olderMark('calories_total'));
     h.dispose();
+  });
+
+  testWidgets('older burned: the reason strip is on the card from the first '
+      'frame, once, with the history icon and no tap', (t) async {
+    final h = t.ensureSemantics();
+    await _card(
+        t,
+        const Metric(
+            value: 2300,
+            confidence: .8,
+            fromOlderVersion: 104,
+            olderVersionReason: kReasonRaw));
+    expect(olderNote('calories_total'), findsOneWidget);
+    expect(t.widget<Text>(olderNote('calories_total')).data, kNoteV104Reason);
+    expect(find.byIcon(LucideIcons.history), findsOneWidget);
+    // One source for the announcement: the strip's note, not note plus marks.
+    expect(spokenCount(t), 1);
+    h.dispose();
+  });
+
+  testWidgets('current burned: no strip, no icon', (t) async {
+    await _card(t, const Metric(value: 2300, confidence: .8));
+    expect(find.byIcon(LucideIcons.history), findsNothing);
+    expect(olderNote('calories_total'), findsNothing);
   });
 
   testWidgets('current burned: no marker', (t) async {
@@ -153,6 +179,16 @@ void main() {
       expect(find.text('Estimated expenditure'), findsOneWidget);
       expect(olderMark('calories_total'), findsOneWidget);
       expectBareMark(olderMark('calories_total'));
+    });
+
+    testWidgets('Goals: the reason strip is on the card on load, once',
+        (t) async {
+      final h = t.ensureSemantics();
+      await open(t, older, 'Goals');
+      expect(olderNote('calories_total'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.history), findsOneWidget);
+      expect(spokenCount(t), 1);
+      h.dispose();
     });
 
     testWidgets('Goals: current expenditure is plain', (t) async {
