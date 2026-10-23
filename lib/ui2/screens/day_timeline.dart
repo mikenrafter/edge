@@ -262,9 +262,7 @@ List<Moment> dayMoments({
         until: asInt(s['end_ts']),
         title:
             act?.localizedName(l) ??
-          (type == null
-              ? (l?.dayTimelineWorkout ?? 'Workout')
-              : type.replaceAll('_', ' ')),
+          (l?.dayTimelineWorkout ?? 'Workout'),
       detail: bits.join(' · '),
       icon: act?.icon ?? LucideIcons.dumbbell,
       color: act?.color ?? C.orange,
@@ -327,7 +325,7 @@ List<Moment> dayMoments({
     out.add(Moment(
       at: t,
       title: def.$1,
-      detail: clockOfTs(t),
+      detail: '',
       icon: def.$2,
       eventId: id,
     ));

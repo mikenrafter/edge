@@ -109,6 +109,7 @@ class AsOfHold extends StatefulWidget {
     required this.builder,
     this.day,
     this.computedAt,
+    this.suppressStaleHold = false,
   });
 
   /// The day the shown result is for, and when its row was computed. With both,
@@ -118,6 +119,7 @@ class AsOfHold extends StatefulWidget {
   /// it is only the "As of" label of a running pass.
   final String? day;
   final DateTime? computedAt;
+  final bool suppressStaleHold;
 
   final Object? shown;
   final DateTime? Function(RecalcState recalc) asOf;
@@ -206,6 +208,7 @@ class _AsOfHoldState extends State<AsOfHold> {
             newest != null &&
             newest.isAfter(through);
         final at = live ?? _held ?? (newer ? pausedAt : null);
+        if (newer && widget.suppressStaleHold) return const SizedBox.shrink();
         if (at == null) return const SizedBox.shrink();
         final label = widget.builder(context, at);
         if (through == null) return label;

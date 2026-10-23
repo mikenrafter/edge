@@ -8285,6 +8285,7 @@
     "description": "All-caps inline metric label for breathing rate summary."
   },
   "sleepDetailSkinTemp": "Skin temp",
+  "sleepDetailSkinTempRelative": "Skin temp · relative",
   "@sleepDetailSkinTemp": {
     "description": "Chart lane legend label for skin temperature."
   },
@@ -10884,11 +10885,11 @@
   "@devLogsDescription": {
     "description": "Explanatory text above the dev log's Share and Clear buttons"
   },
-  "devLogsClearLabel": "Clear dev log",
+  "devLogsClearLabel": "Delete dev log",
   "@devLogsClearLabel": {
     "description": "Button that deletes the saved dev log"
   },
-  "devLogsClearConfirmTitle": "Clear the dev log?",
+  "devLogsClearConfirmTitle": "Delete the dev log?",
   "@devLogsClearConfirmTitle": {
     "description": "Title of the confirmation before the dev log is deleted"
   },
@@ -10896,7 +10897,7 @@
   "@devLogsClearConfirmBody": {
     "description": "Body of the confirmation before the dev log is deleted"
   },
-  "devLogsClearAction": "Clear",
+  "devLogsClearAction": "Delete",
   "@devLogsClearAction": {
     "description": "Confirm button that deletes the dev log"
   },
@@ -10908,11 +10909,11 @@
   "@devLogsExportFailed": {
     "description": "Message when sharing the dev log fails"
   },
-  "devLogsCleared": "Dev log cleared",
+  "devLogsCleared": "Dev log deleted",
   "@devLogsCleared": {
     "description": "Message after the dev log is deleted"
   },
-  "devLogsClearFailed": "Could not clear the dev log.",
+  "devLogsClearFailed": "Could not delete the dev log.",
   "@devLogsClearFailed": {
     "description": "Message when deleting the dev log fails"
   },

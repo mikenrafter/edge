@@ -111,7 +111,9 @@ void main() {
         final other = _arb(loc);
         final copied = [
           for (final k in _newKeys())
-            if ((en[k] as String).trim().split(RegExp(r'\s+')).length >= 3 &&
+            // unit-abbreviation-only strings are identical in es/fr by design
+            if (!const {'syncDurationHours', 'syncDurationMinutes'}.contains(k) &&
+                (en[k] as String).trim().split(RegExp(r'\s+')).length >= 3 &&
                 other[k] == en[k])
               k,
         ];

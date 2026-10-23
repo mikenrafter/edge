@@ -2447,36 +2447,32 @@ class InlineMetrics extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return Row(
+    return LayoutBuilder(builder: (context, constraints) {
+      final gap = 8.0;
+      final cellWidth = (constraints.maxWidth - gap * (items.length - 1)) / items.length;
+      return Wrap(
+      spacing: gap,
+      runSpacing: S.x2,
       children: [
         for (final e in items)
-          Expanded(
+          SizedBox(
+            width: cellWidth,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(e.$1, style: F.over.copyWith(color: p.ink3)),
                 const SizedBox(height: S.x1),
-                // scaleDown, NOT ellipsis. These are measurements sharing
-                // one row, so the slot is a third of a card and a two-digit
-                // fixture fits where a real one does not: at 2x text the
-                // journey summary printed '+642…' and '−618…' where the
-                // numbers are +642 m and −618 m. A shrunk measurement is
-                // still the measurement; a truncated one is a different
-                // number.
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: AlignmentDirectional.centerStart,
-                  child: Text(
-                    e.$2,
-                    style: F.n17.copyWith(color: p.on(e.$3)),
-                    maxLines: 1,
-                  ),
+                Text(
+                  e.$2,
+                  style: F.n17.copyWith(color: p.on(e.$3)),
+                  softWrap: true,
                 ),
               ],
             ),
           ),
       ],
     );
+    });
   }
 }
 
@@ -3509,9 +3505,9 @@ class ChartFrame extends StatelessWidget {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Expanded(child: name),
-          const SizedBox(width: S.x2),
-          measure,
+          Flexible(child: name),
+          const SizedBox(width: S.x1),
+          Flexible(child: measure),
         ],
       );
     }
@@ -3604,7 +3600,7 @@ class ChartFrame extends StatelessWidget {
           // Title and unit share a line until the text scale makes that a
           // choice between truncating the title and dropping the unit — at
           // which point the unit moves under it. Neither is ever dropped.
-          ExcludeSemantics(child: _header(c, p, scaler.scale(1) > 1.3)),
+          ExcludeSemantics(child: _header(c, p, scaler.scale(1) >= 1.3)),
           const SizedBox(height: S.x3),
 
           // ── plot, or the honest absence of one ──

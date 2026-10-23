@@ -2808,6 +2808,8 @@ class _HomeScreenState extends State<HomeScreen>
       AsOfHold(
         shown: d,
         builder: label,
+        suppressStaleHold: d.activityAt == d.overnightAt &&
+            d.activityDay == d.overnightDay,
         day: d.overnightDay,
         computedAt: d.overnightAt,
         asOf: (recalc) => asOfFor(

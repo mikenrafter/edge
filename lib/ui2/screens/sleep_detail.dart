@@ -1524,8 +1524,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       if (at('resp') != null)
         (l?.sleepDetailBreathing ?? 'Breathing',
             '${at('resp')!.toStringAsFixed(1)} br/min', C.teal),
-      if (at('skin_temp') != null)
-        (l?.sleepDetailTemp ?? 'Temp', at('skin_temp')!.toStringAsFixed(2), C.orange),
     ];
 
     return Padding(
@@ -2249,7 +2247,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     // unlabelled lines on three invisible axes was the least readable chart
     // in the app.
     void lane(List<(int, double)> raw, String label, String unit, Color col,
-        {String Function(double) format = axisInt}) {
+        {String Function(double) format = axisInt, String? legendLabel}) {
       if (raw.isEmpty || cols == 0) return;
       final g = grid(raw);
       final present = <double>[for (final v in g) ?v];
@@ -2264,7 +2262,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
         if (v < lo) lo = v;
         if (v > hi) hi = v;
       }
-      legend.add(('$label ${format(lo)}–${format(hi)} ${uiText(c, unit)}', col));
+      legend.add((legendLabel ?? '$label ${format(lo)}–${format(hi)} ${uiText(c, unit)}', col));
       names.add(label);
       axes.add(AxisSpec.of(present, ticks: 2, format: format));
       units.add(unit);
@@ -2278,8 +2276,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
     lane(resp, loc?.sleepDetailBreathing ?? 'Breathing', 'br/min', p.on(C.teal));
     // Skin temperature is ADC-relative — a deviation, never a °C. The unit
     // says so rather than implying a thermometer.
-    lane(temp, loc?.sleepDetailSkinTemp ?? 'Skin temp', 'rel', p.on(C.orange),
-        format: axisFixed);
+    lane(temp, loc?.sleepDetailSkinTempRelative ?? 'Skin temp · relative', '', p.on(C.orange),
+        format: axisFixed,
+        legendLabel: loc?.sleepDetailSkinTempRelative ?? 'Skin temp · relative');
 
     if (series.isEmpty) {
       return summary.isEmpty

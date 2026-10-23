@@ -173,7 +173,7 @@ class LiveHrCard extends StatelessWidget {
               // readings ago", counted from the newest.
               time: (at) {
                 final ago = live.length - 1 - ChartScrub.slotAt(live.length, at);
-                return ago == 0 ? 'Latest' : '$ago readings ago';
+                return ago == 0 ? 'Now' : '$ago readings ago';
               },
               keys: [
                 ChartKey.slots('Heart rate (bpm)', C.red, live,

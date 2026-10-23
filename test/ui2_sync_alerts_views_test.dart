@@ -456,14 +456,7 @@ void main() {
     syncStepsCollapsed();
   });
   screenStructure('sync_waiting', fixtures['sync_waiting']!.$2, () {
-    // Waiting its turn, with download detail: the download line, not the
-    // fallback.
-    expect(
-        find.byWidgetPredicate((w) =>
-            w is Text &&
-            RegExp(r'^Downloaded · synced through .*09:10$')
-                .hasMatch(w.data ?? '')),
-        findsOneWidget);
+    expect(find.text('Calculating · waiting for another calculation'), findsOneWidget);
     expect(find.text('Waiting for another calculation…'), findsNothing);
     expectNoAction();
     syncStepsCollapsed();

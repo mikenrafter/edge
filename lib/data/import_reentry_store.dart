@@ -36,6 +36,7 @@ class ImportReentryStore {
   // Null until the first operation: a future built in the constructor would
   // belong to whatever zone built the store.
   Future<void>? _tail;
+  bool _resetFailedForCurrentImport = false;
 
   /// Waits for every earlier operation, then returns the lock to release (in a
   /// finally) with complete(). One at a time, in call order.
@@ -101,7 +102,7 @@ class ImportReentryStore {
       final (pend, acked) = await _read();
       final fresh = [
         for (final id in ids)
-          if (!acked.contains(id) && !pend.contains(id)) id
+          if ((_resetFailedForCurrentImport || !acked.contains(id)) && !pend.contains(id)) id
       ];
       if (fresh.isEmpty) {
         pending.value = List.unmodifiable(pend);
@@ -142,6 +143,10 @@ class ImportReentryStore {
       if (acked.isEmpty) return;
       if (await _olderImportUnfinished()) return;
       await _write(pend, const []);
+      _resetFailedForCurrentImport = false;
+    } catch (_) {
+      _resetFailedForCurrentImport = true;
+      rethrow;
     } finally {
       lock.complete();
     }
