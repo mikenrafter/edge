@@ -139,6 +139,17 @@ void main() {
     await _settleDb(t);
   });
 
+  testWidgets('text scale 0.85: the target keeps 44 pt, ends above the dials, row stays 18 pt',
+      (t) async {
+    await _home(t, scale: 0.85, held: true);
+    expect(t.getSize(_target).height, greaterThanOrEqualTo(44));
+    expect(t.getSize(_line).height, 18, reason: 'the row never shrinks below 18');
+    final dialTop = t.getTopLeft(_dials.first).dy;
+    expect(t.getRect(_target).bottom, lessThanOrEqualTo(dialTop));
+    expect(dialTop - t.getTopLeft(_card).dy, inInclusiveRange(24, 36));
+    await _settleDb(t);
+  });
+
   testWidgets('held: a 44 pt transparent target between the day bar and the dials',
       (t) async {
     await _home(t, held: true);
