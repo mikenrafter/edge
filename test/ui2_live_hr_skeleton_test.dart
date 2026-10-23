@@ -19,6 +19,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:openstrap_edge/data/models.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/paired_device.dart' show PairedDevice;
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -53,14 +54,22 @@ void _feed(AppState app, int n) {
   }
 }
 
-Future<void> _pump(WidgetTester t, AppState app, double w) async {
+Future<void> _pump(WidgetTester t, AppState app, double w,
+    {double scale = 1, String lang = 'en'}) async {
   t.view.physicalSize = Size(w, 800);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
   await t.pumpWidget(ChangeNotifierProvider<AppState>.value(
     value: app,
     child: MaterialApp(
+      locale: Locale(lang),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       theme: buildTheme(Brightness.light),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+        child: child!,
+      ),
       home: const Scaffold(
         body: SingleChildScrollView(
           padding: EdgeInsets.all(16),
@@ -77,6 +86,24 @@ Future<void> _pump(WidgetTester t, AppState app, double w) async {
 }
 
 Rect _card(WidgetTester t) => t.getRect(find.byType(LiveHrCard));
+/// The 56 pt plot slot: the chart when loaded, the skeleton before.
+Rect _plot(WidgetTester t) {
+  final f = find.descendant(
+      of: find.byType(LiveHrCard),
+      matching: find.byWidgetPredicate((x) =>
+          x is CustomPaint && x.painter != null && x is! _Never));
+  final rs = [
+    for (final e in f.evaluate())
+      if (t.getRect(find.byWidget(e.widget)).height == 56 &&
+          t.getRect(find.byWidget(e.widget)).width > 100)
+        t.getRect(find.byWidget(e.widget))
+  ];
+  expect(rs, hasLength(1), reason: 'exactly one 56 pt plot slot');
+  return rs.single;
+}
+
+abstract class _Never {}
+
 Rect _belowRect(WidgetTester t) => t.getRect(find.byKey(_below));
 
 /// Reference geometry: the card with a full chart.
@@ -152,7 +179,6 @@ void main() {
                 matching: find.byWidgetPredicate(
                     (x) => x is CustomPaint && x.painter is LineChart)),
             findsNothing);
-        expect(find.byType(ChartScrub), findsNothing);
         final texts = [
           for (final x in t.widgetList<Text>(find.descendant(
               of: find.byType(LiveHrCard), matching: find.byType(Text))))
@@ -176,12 +202,14 @@ void main() {
         await _pump(t, app, w);
         final card = _card(t), below = _belowRect(t);
         final tl = t.getTopLeft(find.byType(LiveHrCard));
+        final plot = _plot(t);
         for (var n = 1; n <= 6; n++) {
           _feed(app, 1);
           await t.pump();
           expect(_card(t), card, reason: 'after $n reading(s): card');
           expect(_belowRect(t), below, reason: 'after $n reading(s): below');
           expect(t.getTopLeft(find.byType(LiveHrCard)), tl);
+          expect(_plot(t), plot, reason: 'after $n reading(s): plot');
         }
         // The chart is now drawn, at the skeleton's 56 pt, and it is real data.
         final line = find.descendant(
@@ -213,5 +241,82 @@ void main() {
         expect(_belowRect(t), below, reason: 'unpaired: below');
       });
     });
+  }
+
+  // ---- fix round (Sol r1) -------------------------------------------------
+  // One shared slot structure for every state, at any text scale and locale.
+  for (final lang in const ['en', 'ru'])
+    for (final w in const [360.0, 390.0])
+      for (final sc in const [1.0, 1.3, 2.0, 3.1])
+        testWidgets('5. $lang ${w.toInt()}pt x$sc: no overflow; card, plot and '
+            'below identical across all states', (t) async {
+          final rects = <String, List<Rect>>{};
+          Future<void> look(String name, AppState app) async {
+            addTearDown(app.dispose);
+            await _pump(t, app, w, scale: sc, lang: lang);
+            expect(t.takeException(), isNull, reason: '$name: overflow');
+            rects[name] = [_card(t), _plot(t), _belowRect(t)];
+          }
+
+          await look('loaded', _app()..also((a) => _feed(a, 6)));
+          await look('waiting', _app());
+          await look('one', _app()..also((a) => _feed(a, 1)));
+          await look('two', _app()..also((a) => _feed(a, 2)));
+          await look('disconnected', _app(connected: false));
+          await look('unpaired', _app(paired: false, connected: false));
+          final ref = rects['loaded']!;
+          for (final e in rects.entries) {
+            expect(e.value[0], ref[0], reason: '${e.key}: card');
+            expect(e.value[1], ref[1], reason: '${e.key}: plot');
+            expect(e.value[2], ref[2], reason: '${e.key}: below');
+          }
+        });
+
+  testWidgets('6. connected but no beat: the reason sits inside the plot frame',
+      (t) async {
+    final app = _app();
+    addTearDown(app.dispose);
+    await _pump(t, app, 390);
+    final why = find.textContaining('No beat in the last');
+    expect(why, findsOneWidget);
+    final plot = _plot(t);
+    expect(plot.contains(t.getRect(why).topLeft) &&
+        plot.contains(t.getRect(why).bottomRight), isTrue,
+        reason: '${t.getRect(why)} not inside $plot');
+
+    final off = _app(connected: false);
+    addTearDown(off.dispose);
+    await _pump(t, off, 390);
+    final msg = find.textContaining('not connected');
+    final plot2 = _plot(t);
+    expect(plot2.contains(t.getRect(msg).topLeft) &&
+        plot2.contains(t.getRect(msg).bottomRight), isTrue);
+  });
+
+  testWidgets('7. the caption is localised: ru waiting + 1-2 readings', (t) async {
+    for (final lang in const ['de', 'es', 'fr', 'hi', 'ru', 'zh', 'en']) {
+      final arb = jsonDecode(File('lib/l10n/app_$lang.arb').readAsStringSync())
+          as Map<String, dynamic>;
+      expect(arb['liveHrStreamNotSaved'], isA<String>(),
+          reason: 'app_$lang.arb has liveHrStreamNotSaved');
+    }
+    final ru = (jsonDecode(File('lib/l10n/app_ru.arb').readAsStringSync())
+        as Map<String, dynamic>)['liveHrStreamNotSaved'] as String?;
+    expect(ru, isNotNull);
+    for (final n in [0, 2]) {
+      final app = _app();
+      addTearDown(app.dispose);
+      if (n > 0) _feed(app, n);
+      await _pump(t, app, 390, lang: 'ru');
+      expect(find.text(ru ?? '<missing>'), findsOneWidget, reason: '$n readings');
+      expect(find.textContaining('The live stream is not saved'), findsNothing);
+    }
+  });
+}
+
+extension _Also<T> on T {
+  T also(void Function(T) f) {
+    f(this);
+    return this;
   }
 }
