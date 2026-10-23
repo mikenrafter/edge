@@ -3434,6 +3434,8 @@
   "homeWhyRecoveryDrivers": "Mayor lastre: {a} {za}, {b} {zb} (desviaciones respecto a tu referencia).",
   "homeWhyRecoveryDriver": "Mayor lastre: {a} {za} (desviaciones respecto a tu referencia).",
   "homeWhyRecoveryPlain": "Recuperación {score} de 100",
+  "homeWhyRecoveryPullingTwo": "Lo reduce: {a}, {b}.",
+  "homeWhyRecoveryPullingOne": "Lo reduce: {a}.",
   "homeWhySleepTitle": "Falta sueño",
   "homeWhySleepBody": "El sueño evaluado quedó por debajo de tu necesidad.",
   "homeWhyStrainTitle": "Esfuerzo por encima del objetivo",
@@ -3484,6 +3486,17 @@
     "placeholders": {
       "strain": {"type": "String"},
       "range": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingTwo": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "b": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingOne": {
+    "placeholders": {
+      "a": {"type": "String"}
     }
   },
   "homeSinceTime": "desde {time}",

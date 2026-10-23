@@ -3522,6 +3522,8 @@
   "homeWhyRecoveryDrivers": "Größte Bremse: {a} {za}, {b} {zb} (Streuungen von deiner Basislinie).",
   "homeWhyRecoveryDriver": "Größte Bremse: {a} {za} (Streuungen von deiner Basislinie).",
   "homeWhyRecoveryPlain": "Erholung {score} von 100",
+  "homeWhyRecoveryPullingTwo": "Zieht ihn nach unten: {a}, {b}.",
+  "homeWhyRecoveryPullingOne": "Zieht ihn nach unten: {a}.",
   "homeWhySleepTitle": "Schlaf reicht nicht aus",
   "homeWhySleepBody": "Dein bewerteter Schlaf lag unter deinem Bedarf.",
   "homeWhyStrainTitle": "Belastung über dem Ziel",
@@ -3572,6 +3574,17 @@
     "placeholders": {
       "strain": {"type": "String"},
       "range": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingTwo": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "b": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingOne": {
+    "placeholders": {
+      "a": {"type": "String"}
     }
   },
   "homeSinceTime": "seit {time}",

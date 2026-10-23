@@ -1096,10 +1096,19 @@ class RingTrio extends StatelessWidget {
     );
   }
 
+  /// The "since" line: ITS OWN row above the rings, at least 44 pt tall (S.tap) and
+  /// the full card width, reserved whether or not the time is known (so it
+  /// appears with no shift). When held, the whole line is the tap target; it is
+  /// in the Column's flow, so it overlaps no dial and clips nothing.
   Widget _sinceLine(BuildContext c, AppLocalizations? l) {
-    final h = _measuredHeight(c, F.over, 'x');
+    final lineH = math.max(S.tap, _measuredHeight(c, F.over, 'x') + 2 * S.x2);
     final t = since;
-    if (t == null) return SizedBox(height: h + S.x1);
+    if (t == null) {
+      return SizedBox(
+          key: const ValueKey('home-since-line'),
+          width: double.infinity,
+          height: lineH);
+    }
     final p = P.of(c);
     final hold = holdText;
     final text = l?.homeSinceTime(DateFormat('HH:mm').format(t)) ??
@@ -1118,34 +1127,26 @@ class RingTrio extends StatelessWidget {
           ],
           Text(text, style: F.over.copyWith(color: p.ink3)),
         ]);
-    if (hold == null) {
-      return Padding(
-          padding: const EdgeInsets.only(bottom: S.x1),
-          child: SizedBox(
-              height: h,
-              child: Align(alignment: Alignment.centerRight, child: caption)));
-    }
-    // Held: the caption opens the old explanation. 44 pt target, no 44 pt of
-    // layout (it overhangs, see HitOverhang).
-    return HitOverhang(
-        visual: h + S.x1,
-        child: Align(
-            alignment: Alignment.centerRight,
-            child: Pressable(
-                semanticLabel: '$text. $hold',
-                onTap: () => showDialog<void>(
-                    context: c,
-                    builder: (dc) => AlertDialog(
-                          content: Text(hold),
-                          actions: [
-                            TextButton(
-                                onPressed: () => Navigator.of(dc).pop(),
-                                child: Text(MaterialLocalizations.of(dc)
-                                    .okButtonLabel)),
-                          ],
-                        )),
-                child: caption)));
+    final line = SizedBox(
+        key: const ValueKey('home-since-line'),
+        width: double.infinity,
+        height: lineH,
+        child: Align(alignment: Alignment.centerRight, child: caption));
+    if (hold == null) return line;
+    return Pressable(
+        semanticLabel: '$text. $hold', onTap: () => _explain(c, hold), child: line);
   }
+
+  void _explain(BuildContext c, String hold) => showDialog<void>(
+      context: c,
+      builder: (dc) => AlertDialog(
+            content: Text(hold),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(dc).pop(),
+                  child: Text(MaterialLocalizations.of(dc).okButtonLabel)),
+            ],
+          ));
 
   VoidCallback? _open(HomeRingKind k) {
     final f = onOpen;
@@ -1219,25 +1220,37 @@ class _HomeWhyPanel extends StatelessWidget {
   }
 }
 
-/// Evidence or nothing: the drivers furthest below this user's own baseline
-/// (their oriented z, off the glass-box `detail`), else the plain score.
+/// Evidence or nothing. Built from what BOTH driver shapes carry (label and the
+/// sign/size of the weighted `contribution`; the production `detail` is prose):
+/// the biggest drags first. A number is added only when a numeric z is really in
+/// `detail` (`...=<z>`) for every driver named; otherwise none is invented.
 String _recoveryWhy(HomeData d, AppLocalizations? l) {
-  final drags = <(String, double)>[];
+  final drags = <(String, double, double?)>[];
   for (final e in d.drivers) {
-    final z = double.tryParse('${e['detail']}'.split('=').last);
-    if (z != null && z < 0) drags.add((driverLabel(e['label'], l), z));
+    final c = e['contribution'];
+    if (c is! num || c >= 0) continue;
+    final detail = '${e['detail']}';
+    final z = detail.contains('=') ? double.tryParse(detail.split('=').last) : null;
+    drags.add((driverLabel(e['label'], l), c.toDouble(), z));
   }
-  drags.sort((a, b) => a.$2.compareTo(b.$2));
-  String f(double z) => z.toStringAsFixed(1);
-  if (drags.length >= 2) {
-    final (a, b) = (drags[0], drags[1]);
-    return l?.homeWhyRecoveryDrivers(a.$1, f(a.$2), b.$1, f(b.$2)) ??
-        'Biggest drag: ${a.$1} ${f(a.$2)}, ${b.$1} ${f(b.$2)} (spreads from your baseline).';
+  drags.sort((a, b) => a.$2.compareTo(b.$2)); // largest drag first
+  final top = drags.take(2).toList();
+  String f(double? z) => z!.toStringAsFixed(1);
+  final numeric = top.isNotEmpty && top.every((x) => x.$3 != null);
+  if (top.length == 2) {
+    final (a, b) = (top[0], top[1]);
+    return numeric
+        ? (l?.homeWhyRecoveryDrivers(a.$1, f(a.$3), b.$1, f(b.$3)) ??
+            'Biggest drag: ${a.$1} ${f(a.$3)}, ${b.$1} ${f(b.$3)} (spreads from your baseline).')
+        : (l?.homeWhyRecoveryPullingTwo(a.$1, b.$1) ??
+            'Pulling it down: ${a.$1}, ${b.$1}.');
   }
-  if (drags.length == 1) {
-    final a = drags[0];
-    return l?.homeWhyRecoveryDriver(a.$1, f(a.$2)) ??
-        'Biggest drag: ${a.$1} ${f(a.$2)} (spreads from your baseline).';
+  if (top.length == 1) {
+    final a = top[0];
+    return numeric
+        ? (l?.homeWhyRecoveryDriver(a.$1, f(a.$3)) ??
+            'Biggest drag: ${a.$1} ${f(a.$3)} (spreads from your baseline).')
+        : (l?.homeWhyRecoveryPullingOne(a.$1) ?? 'Pulling it down: ${a.$1}.');
   }
   final v = (d.readiness.value ?? 0).round();
   return l?.homeWhyRecoveryPlain(v) ?? 'Recovery $v of 100';
@@ -3317,6 +3330,7 @@ class _HomeScreenState extends State<HomeScreen>
     final fillsMove = l?.homeGlanceFillsMove ?? 'Fills as you move';
     cards.add(d.rhr.isEmpty
         ? SignalCard(LucideIcons.heart, C.red, l?.homeHeartRate ?? 'Heart rate', '—',
+            reserveUnit: 'bpm',
             sub: fillsNight,
             subMinLines: lines,
             onTap: () => go(c, const MetricDetail('resting_hr')))
@@ -3348,8 +3362,10 @@ class _HomeScreenState extends State<HomeScreen>
             ].join(' · '),
       subMinLines: lines,
       onTap: () => go(c, const MetricDetail('steps')),
+      // The ring's 20 pt slot is kept when there is no ring, so the tile is the
+      // same height with and without it.
       trailing: d.steps.value == null || d.stepGoal <= 0
-          ? null
+          ? const SizedBox(width: 20, height: 20)
           : SizedBox(
               width: 20,
               height: 20,

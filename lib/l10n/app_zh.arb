@@ -3416,6 +3416,8 @@
   "homeWhyRecoveryDrivers": "拖累最大：{a} {za}、{b} {zb}（与你的基线的偏差）。",
   "homeWhyRecoveryDriver": "拖累最大：{a} {za}（与你的基线的偏差）。",
   "homeWhyRecoveryPlain": "恢复 {score}/100",
+  "homeWhyRecoveryPullingTwo": "拉低恢复评分的因素：{a}、{b}。",
+  "homeWhyRecoveryPullingOne": "拉低恢复评分的因素：{a}。",
   "homeWhySleepTitle": "睡眠不足",
   "homeWhySleepBody": "已评分的睡眠时长低于你的需求。",
   "homeWhyStrainTitle": "负荷超过目标",
@@ -3466,6 +3468,17 @@
     "placeholders": {
       "strain": {"type": "String"},
       "range": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingTwo": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "b": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingOne": {
+    "placeholders": {
+      "a": {"type": "String"}
     }
   },
   "homeSinceTime": "自 {time}",

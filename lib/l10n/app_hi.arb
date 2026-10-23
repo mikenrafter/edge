@@ -3416,6 +3416,8 @@
   "homeWhyRecoveryDrivers": "सबसे बड़ा असर: {a} {za}, {b} {zb} (आपकी बेसलाइन से अंतर)।",
   "homeWhyRecoveryDriver": "सबसे बड़ा असर: {a} {za} (आपकी बेसलाइन से अंतर)।",
   "homeWhyRecoveryPlain": "रिकवरी {score}/100",
+  "homeWhyRecoveryPullingTwo": "इसे नीचे खींच रहे हैं: {a}, {b}।",
+  "homeWhyRecoveryPullingOne": "इसे नीचे खींच रहा है: {a}।",
   "homeWhySleepTitle": "नींद की कमी",
   "homeWhySleepBody": "आपकी मापी गई नींद ज़रूरत से कम थी।",
   "homeWhyStrainTitle": "लक्ष्य से अधिक स्ट्रेन",
@@ -3466,6 +3468,17 @@
     "placeholders": {
       "strain": {"type": "String"},
       "range": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingTwo": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "b": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingOne": {
+    "placeholders": {
+      "a": {"type": "String"}
     }
   },
   "homeSinceTime": "{time} से",

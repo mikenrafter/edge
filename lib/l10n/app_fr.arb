@@ -3416,6 +3416,8 @@
   "homeWhyRecoveryDrivers": "Principal frein : {a} {za}, {b} {zb} (écarts par rapport à votre référence).",
   "homeWhyRecoveryDriver": "Principal frein : {a} {za} (écarts par rapport à votre référence).",
   "homeWhyRecoveryPlain": "Récupération {score} sur 100",
+  "homeWhyRecoveryPullingTwo": "Ce qui la tire vers le bas : {a}, {b}.",
+  "homeWhyRecoveryPullingOne": "Ce qui la tire vers le bas : {a}.",
   "homeWhySleepTitle": "Sommeil insuffisant",
   "homeWhySleepBody": "Votre sommeil évalué était inférieur à votre besoin.",
   "homeWhyStrainTitle": "Effort au-dessus de l’objectif",
@@ -3466,6 +3468,17 @@
     "placeholders": {
       "strain": {"type": "String"},
       "range": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingTwo": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "b": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingOne": {
+    "placeholders": {
+      "a": {"type": "String"}
     }
   },
   "homeSinceTime": "depuis {time}",

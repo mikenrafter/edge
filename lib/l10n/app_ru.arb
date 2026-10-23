@@ -8795,6 +8795,8 @@
   "homeWhyRecoveryDrivers": "Сильнее всего тянут вниз: {a} {za}, {b} {zb} (отклонения от вашей нормы).",
   "homeWhyRecoveryDriver": "Сильнее всего тянет вниз: {a} {za} (отклонения от вашей нормы).",
   "homeWhyRecoveryPlain": "Восстановление {score} из 100",
+  "homeWhyRecoveryPullingTwo": "Снижают показатель: {a}, {b}.",
+  "homeWhyRecoveryPullingOne": "Снижает показатель: {a}.",
   "homeWhySleepTitle": "Недостаточно сна",
   "homeWhySleepBody": "Оценённый сон был короче вашей потребности.",
   "homeWhyStrainTitle": "Нагрузка выше цели",
@@ -8845,6 +8847,17 @@
     "placeholders": {
       "strain": {"type": "String"},
       "range": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingTwo": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "b": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingOne": {
+    "placeholders": {
+      "a": {"type": "String"}
     }
   },
   "homeSinceTime": "с {time}",

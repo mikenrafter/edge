@@ -1192,6 +1192,11 @@ class SignalCard extends StatelessWidget {
   final Color color;
   final String label, value, unit, sub;
 
+  /// The unit the loaded tile prints, set on its EMPTY twin: drawn invisibly so
+  /// the unit's line height is in the row either way (a tile that is a dash
+  /// today and a number tomorrow is the same height both ways).
+  final String reserveUnit;
+
   final VoidCallback? onTap;
 
   /// A small dial in the header row's slack — steps is the only caller today,
@@ -1214,6 +1219,7 @@ class SignalCard extends StatelessWidget {
     this.value, {
     super.key,
     this.unit = '',
+    this.reserveUnit = '',
     this.sub = '',
     this.onTap,
     this.trailing,
@@ -1272,6 +1278,12 @@ class SignalCard extends StatelessWidget {
               if (unit.isNotEmpty) ...[
                 const SizedBox(width: S.x1),
                 Text(uiText(c, unit), style: F.cap.copyWith(color: p.ink3)),
+              ] else if (reserveUnit.isNotEmpty) ...[
+                const SizedBox(width: S.x1),
+                ExcludeSemantics(
+                    child: Opacity(
+                        opacity: 0,
+                        child: Text(uiText(c, reserveUnit), style: F.cap))),
               ],
             ],
           ),

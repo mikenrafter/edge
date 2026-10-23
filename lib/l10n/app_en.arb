@@ -17671,6 +17671,8 @@
   "homeWhyRecoveryDrivers": "Biggest drag: {a} {za}, {b} {zb} (spreads from your baseline).",
   "homeWhyRecoveryDriver": "Biggest drag: {a} {za} (spreads from your baseline).",
   "homeWhyRecoveryPlain": "Recovery {score} of 100",
+  "homeWhyRecoveryPullingTwo": "Pulling it down: {a}, {b}.",
+  "homeWhyRecoveryPullingOne": "Pulling it down: {a}.",
   "homeWhySleepTitle": "Sleep is short of need",
   "homeWhySleepBody": "Your scored sleep was below your need.",
   "homeWhyStrainTitle": "Strain is above target",
@@ -17721,6 +17723,17 @@
     "placeholders": {
       "strain": {"type": "String"},
       "range": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingTwo": {
+    "placeholders": {
+      "a": {"type": "String"},
+      "b": {"type": "String"}
+    }
+  },
+  "@homeWhyRecoveryPullingOne": {
+    "placeholders": {
+      "a": {"type": "String"}
     }
   },
   "homeSinceTime": "since {time}",

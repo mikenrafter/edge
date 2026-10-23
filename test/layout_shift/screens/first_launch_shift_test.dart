@@ -128,23 +128,9 @@ void main() {
   // by the strip's height (plus whatever their own heights differ by).
   const labels = ['RECOVERY', 'STRAIN', 'SLEEP'];
 
-  Future<({Map<String, Rect> cards, List<Rect> dials, List<Rect> labels, Rect? strip})>
-      measureHome(WidgetTester t, AppState app) async {
-    t.view.physicalSize = const Size(390 * 3, 3000 * 3);
-    t.view.devicePixelRatio = 3;
-    addTearDown(t.view.reset);
-    await t.pumpWidget(perfApp(app, const HomeScreen(hour: 9)));
-    await settleShell(t);
-    final cards = <String, Rect>{};
-    for (final e in find
-        .byWidgetPredicate((w) =>
-            w.key is ValueKey<String> &&
-            cardOrShared((w.key as ValueKey<String>).value) &&
-            (w.key as ValueKey<String>).value.startsWith('card:'))
-        .evaluate()) {
-      cards.putIfAbsent((e.widget.key as ValueKey<String>).value,
-          () => t.getRect(find.byElementPredicate((x) => x == e)));
-    }
+  // What the ring card shows, read off the live tree (frame capture has no
+  // private widget types): the dials, their labels and the help strip.
+  ({List<Rect> dials, List<Rect> labels, Rect? strip}) ringsNow(WidgetTester t) {
     final ringsCard = find.byKey(const ValueKey('card:rings'));
     final dials = find.descendant(
         of: ringsCard,
@@ -154,8 +140,7 @@ void main() {
         of: ringsCard,
         matching: find.byWidgetPredicate(
             (w) => w.runtimeType.toString() == '_HelpStrip'));
-    final out = (
-      cards: cards,
+    return (
       dials: [for (var i = 0; i < dials.evaluate().length; i++) t.getRect(dials.at(i))],
       labels: [
         for (final l in labels)
@@ -163,46 +148,76 @@ void main() {
       ],
       strip: strip.evaluate().isEmpty ? null : t.getRect(strip.first),
     );
-    await t.pumpWidget(const SizedBox.shrink());
-    await t.pump(const Duration(seconds: 5));
-    return out;
   }
 
   Future<void> checkHomeRings(WidgetTester t, String name, AppState empty) async {
+    t.view.physicalSize = const Size(390 * 3, 3000 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
     final loadedApp = AppState.forTesting()
       ..repo = TabsRepo(homeBundle(
           readiness: 70, overnightAt: todayAtMs(8, 42), activityAt: todayAtMs(8, 42)));
     addTearDown(loadedApp.dispose);
     addTearDown(empty.dispose);
-    final e = await measureHome(t, empty);
-    final l = await measureHome(t, loadedApp);
+    late ({List<Rect> dials, List<Rect> labels, Rect? strip}) e, l;
+    final ef = await settled(t, const HomeScreen(hour: 9), empty, (t) async => e = ringsNow(t));
+    final lf = await settled(t, const HomeScreen(hour: 9), loadedApp, (t) async => l = ringsNow(t));
 
-    expect(e.cards.keys.toSet(), l.cards.keys.toSet(),
-        reason: '$name: same cards in both states');
-    expect(e.dials.length, 3, reason: '$name: three dials, empty');
+    expect(cardIds(ef), cardIds(lf), reason: '$name: same cards in both states');
+    expect(e.dials.length, 3, reason: '$name: three dials');
     expect(l.dials, e.dials, reason: '$name: the dials sit at identical positions');
     expect(l.labels, e.labels, reason: '$name: the labels sit at identical positions');
-    expect(l.cards['card:rings']!.top, e.cards['card:rings']!.top,
-        reason: '$name: the ring card top is identical');
+    ShiftRect rect(Frame f, String id) =>
+        f.elements.firstWhere((x) => x.id == id).rect;
+    final re = rect(ef, 'card:rings'), rl = rect(lf, 'card:rings');
+    expect(rl.top, re.top, reason: '$name: the ring card top is identical');
+    expect(rl.left, re.left);
+    expect(rl.width, re.width, reason: '$name: the ring card width is identical');
 
-    // Only the panel/strip slot may differ: the empty state's help strip (and
-    // the gap above it). Loaded with 0 panels has none.
+    // The ONE exemption: the rings card's panel slot. Empty shows the help
+    // strip (and the gap above it); a healthy loaded day shows nothing.
     expect(e.strip, isNotNull, reason: '$name: the empty state explains itself');
     expect(l.strip, isNull, reason: '$name: a healthy loaded day has no strip');
     final delta = e.strip!.height + S.x3;
-    expect(e.cards['card:rings']!.height - l.cards['card:rings']!.height,
-        closeTo(delta, 0.01),
+    expect(re.height - rl.height, closeTo(delta, 0.01),
         reason: '$name: the card height differs by the strip (+ its gap) only');
 
-    // The cards below follow it: each moves by that delta plus the height
-    // differences of the cards between it and the rings (their own business).
-    final order = (e.cards.keys.toList()
-      ..sort((a, b) => e.cards[a]!.top.compareTo(e.cards[b]!.top)));
-    var ownDiff = 0.0;
-    for (final id in order.skip(order.indexOf('card:rings') + 1)) {
-      expect(e.cards[id]!.top - l.cards[id]!.top, closeTo(delta + ownDiff, 0.5),
-          reason: '$name: $id moves by the strip height only');
-      ownDiff += e.cards[id]!.height - l.cards[id]!.height;
+    // EVERYTHING else is held to the original test: take the rings delta out of
+    // the empty frame (the rings card shrinks by it, whatever sits below moves
+    // up by it) and compare under the standard policy, shared elements and
+    // widths included. Then exactly: every other card has identical width and
+    // height and sits `delta` lower.
+    Frame minusDelta(Frame f) => Frame(f.atMs, [
+          for (final x in f.elements)
+            if (x.id == 'card:rings')
+              ElementSnapshot(
+                  id: x.id,
+                  rect: ShiftRect(x.rect.left, x.rect.top, x.rect.width,
+                      x.rect.height - delta),
+                  role: x.role,
+                  colorArgb: x.colorArgb)
+            else if (x.rect.top >= re.top + re.height - 0.01)
+              ElementSnapshot(
+                  id: x.id,
+                  rect: ShiftRect(x.rect.left, x.rect.top - delta,
+                      x.rect.width, x.rect.height),
+                  role: x.role,
+                  colorArgb: x.colorArgb)
+            else
+              x
+        ]);
+    final r = compareLayouts(minusDelta(ef), lf, p,
+        viewport: tall, only: cardOrShared);
+    printOnFailure(top('$name empty (rings delta removed) vs loaded', r));
+    expect(r.findings.where((f) => f.score >= p.warnAt), isEmpty,
+        reason: worst(name, r, p));
+    for (final id in cardIds(ef).where((x) => x != 'card:rings')) {
+      final a = rect(ef, id), b = rect(lf, id);
+      expect(a.width, b.width, reason: '$name: $id width');
+      expect(a.height, closeTo(b.height, 0.01), reason: '$name: $id height');
+      final below = a.top > re.top;
+      expect(a.top - b.top, closeTo(below ? delta : 0, 0.01),
+          reason: '$name: $id ${below ? 'moves down by the rings delta' : 'does not move'}');
     }
   }
 
