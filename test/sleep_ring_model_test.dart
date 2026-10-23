@@ -138,13 +138,13 @@ void main() {
       expect(_slept(need: 462).pct, 96);
     });
 
-    test('percent may exceed 100 even though the ring is capped', () {
+    test('percent above 100 is also drawn above 100: the ring is a spiral', () {
       final m = _slept(
         duration: 540,
         stages: const SleepStageMin(deep: 90, rem: 120, light: 330),
       );
       expect(m.pct, 113);
-      expect(m.sweep, closeTo(1.0, 1e-9));
+      expect(m.sweep, closeTo(540 / 480, 1e-9));
     });
 
     test('arcs are grouped Deep, REM, Light, Awake — in that order', () {
@@ -218,11 +218,11 @@ void main() {
         ),
       );
       expect(m.arcs.any((a) => a.kind == SleepArcKind.awake), isFalse);
-      expect(m.sweep, closeTo(1.0, 1e-9));
-      // Proportions are preserved when scaled down to the circle.
-      expect(m.arcs[0].fraction, closeTo(90 / 540, 1e-9));
-      expect(m.arcs[1].fraction, closeTo(120 / 540, 1e-9));
-      expect(m.arcs[2].fraction, closeTo(330 / 540, 1e-9));
+      expect(m.sweep, closeTo(540 / 480, 1e-9));
+      // Stage fractions are minutes / NEED, not rescaled to the circle.
+      expect(m.arcs[0].fraction, closeTo(90 / 480, 1e-9));
+      expect(m.arcs[1].fraction, closeTo(120 / 480, 1e-9));
+      expect(m.arcs[2].fraction, closeTo(330 / 480, 1e-9));
     });
 
     test('no awake figure => no awake arc (not a zero-length one)', () {
@@ -260,10 +260,10 @@ void main() {
       expect(m.arcs.single.kind, SleepArcKind.solid);
     });
 
-    test('a solid arc is capped at a full circle', () {
+    test('a solid arc is NOT capped: 600 min against 480 is 125%', () {
       final m = _slept(duration: 600, stages: null);
-      expect(m.arcs.single.fraction, closeTo(1.0, 1e-9));
-      expect(m.sweep, closeTo(1.0, 1e-9));
+      expect(m.arcs.single.fraction, closeTo(600 / 480, 1e-9));
+      expect(m.sweep, closeTo(600 / 480, 1e-9));
     });
 
     test('a scored night wins over every schedule/alarm input', () {

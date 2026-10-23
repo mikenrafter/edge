@@ -14,6 +14,7 @@
 // then through Ring.pieces / StageRing.pieces, then a pixel smoke test.
 
 import 'dart:math';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -381,4 +382,217 @@ void main() {
       });
     });
   });
+
+  // ── fix round: the RENDERED shape, not just the helper maths ──────────────
+
+  group('rendered spiral (pixel probes)', () {
+    const side = 200, w = 20.0, r0 = 100 - w / 2;
+    const green = Color(0xFF00AA00);
+    const magenta = Color(0xFFFF00FF);
+    final g = SpiralGeometry(w);
+
+    Future<ByteData> raster(CustomPainter p, {int px = side}) async {
+      final rec = ui.PictureRecorder();
+      p.paint(Canvas(rec), Size(px.toDouble(), px.toDouble()));
+      final img = await rec.endRecording().toImage(px, px);
+      return (await img.toByteData())!;
+    }
+
+    // RGBA at the pixel under polar (u laps clockwise from 12, radius r).
+    List<int> at(ByteData d, double u, double r, {int px = side}) {
+      final x = (px / 2 + r * sin(2 * pi * u)).floor().clamp(0, px - 1);
+      final y = (px / 2 - r * cos(2 * pi * u)).floor().clamp(0, px - 1);
+      final i = (y * px + x) * 4;
+      return [for (var k = 0; k < 4; k++) d.getUint8(i + k)];
+    }
+
+    bool isGreen(List<int> c) => c[3] > 200 && c[1] > 120 && c[0] < 60;
+    bool isMagenta(List<int> c) => c[3] > 200 && c[0] > 200 && c[2] > 200 && c[1] < 60;
+
+    // First radius (scanning outward from the centre) that is the ring colour.
+    double innerEdge(ByteData d, double u) {
+      for (var r = 5.0; r < 100; r += .25) {
+        if (isGreen(at(d, u, r))) return r;
+      }
+      return double.nan;
+    }
+
+    // The innermost painted edge at angle u when laps 0..top overlap there.
+    double expectedInner(double sTop) => r0 - g.inset(sTop) - w / 2;
+
+    testWidgets('130% ring: the inner edge follows the eased ramp r0 -> '
+        'r0 - 0.75 x stroke, then holds', (tester) async {
+      await tester.runAsync(() async {
+        final d = await raster(Ring(1.3, green, const Color(0x00000000),
+            stroke: w, solid: true, background: magenta));
+        for (final u in [.03, .06, .1, .15, .2, .25, .28]) {
+          expect(innerEdge(d, u), closeTo(expectedInner(1 + u), 1.6),
+              reason: 'u=$u inset=${g.inset(1 + u)}');
+        }
+        // Past the value (u > .3) only lap 0 is there: edge back at r0 - w/2.
+        for (final u in [.4, .6, .9]) {
+          expect(innerEdge(d, u), closeTo(r0 - w / 2, 1.6), reason: 'u=$u');
+        }
+      });
+    });
+
+    testWidgets('300% ring: the innermost edge follows the profile on lap 2',
+        (tester) async {
+      await tester.runAsync(() async {
+        final d = await raster(Ring(3.0, green, const Color(0x00000000),
+            stroke: w, solid: true, background: magenta));
+        for (final u in [.05, .1, .2, .5, .9]) {
+          expect(innerEdge(d, u), closeTo(expectedInner(2 + u), 1.6),
+              reason: 'u=$u');
+        }
+      });
+    });
+
+    testWidgets('stage ring: segment joins and lap cuts have no radial jump',
+        (tester) async {
+      await tester.runAsync(() async {
+        // Joins at s = .5, .9, 1.3 (inside lap 1) and the lap cut at 1.0.
+        final d = await raster(StageRing(const [
+          RingArc(green, .5),
+          RingArc(green, .4),
+          RingArc(green, .4),
+          RingArc(green, .4),
+        ], const Color(0x00000000), stroke: w, background: magenta));
+        for (final u in [.1, .2, .28, .29, .31, .32, .4, .6]) {
+          expect(innerEdge(d, u), closeTo(expectedInner(1 + u), 1.6),
+              reason: 'u=$u');
+        }
+      });
+    });
+
+    testWidgets('the separator is the BACKGROUND colour, above lap 0, only '
+        'along the lap\'s real sweep', (tester) async {
+      await tester.runAsync(() async {
+        final d = await raster(Ring(1.3, green, const Color(0xFFFFFF00),
+            stroke: w, solid: true, background: magenta));
+        // Just outside lap 1's outer edge, on top of lap 0's band.
+        double rim(double s) => r0 - g.inset(s) + w / 2 + .75;
+        for (final u in [.15, .2, .25]) {
+          final c = at(d, u, rim(1 + u));
+          expect(isMagenta(c), isTrue, reason: 'u=$u px=$c');
+        }
+        // Past the value: no separator, lap 0 colour is intact.
+        for (final u in [.4, .5]) {
+          expect(isGreen(at(d, u, rim(1.25))), isTrue, reason: 'u=$u');
+        }
+        // And never the track colour.
+        expect(at(d, .2, rim(1.2)), isNot(equals([255, 255, 0, 255])));
+      });
+    });
+
+    testWidgets('default gradient Ring is visible (solid: false)',
+        (tester) async {
+      await tester.runAsync(() async {
+        final d = await raster(Ring(.66, green, const Color(0x00000000),
+            stroke: w, background: magenta));
+        expect(at(d, .3, r0)[3], greaterThan(120));
+        expect(at(d, .05, r0)[3], greaterThan(60));
+        expect(at(d, .8, r0)[3], 0, reason: 'past .66 nothing is drawn');
+      });
+    });
+
+    testWidgets('gradient spans the WHOLE bar: lap 1 continues where lap 0 '
+        'ended', (tester) async {
+      await tester.runAsync(() async {
+        final d = await raster(Ring(2.0, green, const Color(0x00000000),
+            stroke: w, background: magenta));
+        // At u=.2 lap 1 has an inner sliver lap 0 does not cover.
+        final px = at(d, .2, r0 - w / 2 - .25 * g.inset(1.2));
+        // Position in the bar is 1.2 / 2 = .6 -> alpha .55 + .45 * .6 = .82.
+        expect(px[3], greaterThan(190), reason: 'restarted per lap? $px');
+        // Start of the bar is faint.
+        expect(at(d, .02, r0 + w / 2 - 2)[3], lessThan(160));
+      });
+    });
+
+    testWidgets('20 px / stroke 3 ring survives 500% and 1000%',
+        (tester) async {
+      await tester.runAsync(() async {
+        for (final v in [5.0, 10.0]) {
+          final d = await raster(
+              Ring(v, green, const Color(0x00000000),
+                  stroke: 3, solid: true, background: magenta),
+              px: 20);
+          // The ring is painted, nothing is drawn through the centre.
+          expect(at(d, .3, 8.5, px: 20)[3], greaterThan(200), reason: 'v=$v');
+          expect(at(d, .3, 0.5, px: 20)[3], 0, reason: 'centre stays empty');
+        }
+      });
+    });
+  });
+
+  group('small rings never run out of centre', () {
+    test('centre-line radius floors at 1.5 x stroke (20 px ring, stroke 3)', () {
+      const small = SpiralGeometry(3);
+      const r0 = 10 - 1.5;
+      for (var s = 0.0; s <= 20; s += .05) {
+        expect(small.radiusAt(s, r0), greaterThanOrEqualTo(1.5 * 3 - 1e-9),
+            reason: 's=$s');
+      }
+      expect(small.radiusAt(5.3, r0), closeTo(4.5, 1e-9)); // 500% floored
+      expect(small.radiusAt(1.3, r0), closeTo(r0 - 2.25, 1e-9)); // untouched
+    });
+  });
+
+  group('caps are applied independently', () {
+    int discs(CustomPainter p) {
+      final rec = _Discs();
+      p.paint(rec, const Size(100, 100));
+      return rec.n;
+    }
+
+    const none = Color(0x00000000);
+
+    test('150% single colour: one disc (the end); the lap-cut start is square',
+        () {
+      expect(discs(Ring(1.5, Colors.green, none, solid: true)), 1);
+    });
+
+    test('66% single colour: discs at both ends', () {
+      expect(discs(Ring(.66, Colors.green, none, solid: true)), 2);
+    });
+
+    test('a full segmented circle: no start disc over the last segment\'s end',
+        () {
+      expect(
+          discs(StageRing(const [
+            RingArc(Colors.blue, .5),
+            RingArc(Colors.red, .5),
+          ], none)),
+          2);
+    });
+  });
+
+  group('shouldRepaint covers every input', () {
+    test('Ring: track, stroke, v, t, solid, color, background', () {
+      final base = Ring(.5, Colors.green, Colors.grey);
+      expect(Ring(.5, Colors.green, Colors.grey).shouldRepaint(base), isFalse);
+      expect(Ring(.5, Colors.green, Colors.black).shouldRepaint(base), isTrue);
+      expect(Ring(.5, Colors.green, Colors.grey, stroke: 4).shouldRepaint(base),
+          isTrue);
+      expect(Ring(.5, Colors.green, Colors.grey, background: Colors.white)
+          .shouldRepaint(base), isTrue);
+    });
+  });
+}
+
+class _Discs implements Canvas {
+  int n = 0;
+  var _first = true;
+  @override
+  void drawCircle(Offset c, double r, Paint p) {
+    if (_first) {
+      _first = false; // the track
+      return;
+    }
+    if (p.style == PaintingStyle.fill) n++;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

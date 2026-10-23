@@ -219,6 +219,29 @@ List<Map<String, dynamic>> _windows() => [
     ];
 
 void main() {
+  group('bounded scores are clamped at the call site', () {
+    testWidgets('recovery 130 and strain 30 draw one lap, not a spiral',
+        (t) async {
+      await _pump(
+        t,
+        HomeData(
+          dayId: '2026-10-09',
+          readiness:
+              const Metric(value: 130, confidence: .8, tier: MetricTier.high),
+          strain: const Metric(
+              value: 30, confidence: .6, tier: MetricTier.estimate),
+          sleepMin: _min(442),
+          sleepStages: _stages,
+        ),
+      );
+      final rings = _ringPainters(t).whereType<Ring>().toList();
+      expect(rings, hasLength(2));
+      for (final r in rings) {
+        expect(r.v, 1.0);
+      }
+    });
+  });
+
   group('slept: stage arcs', () {
     testWidgets('Deep, REM, Light, Awake in the hypnogram colours, '
         'contiguous, on the track', (t) async {
@@ -281,7 +304,7 @@ void main() {
       );
       final ring = _sleepPainter(t) as StageRing;
       final sweep = ring.arcs.fold<double>(0, (s, a) => s + a.fraction);
-      expect(sweep, closeTo(1.0, 1e-9));
+      expect(sweep, closeTo(540 / 480, 1e-9));
       _caption('113% of 8h 00m (default)', ['113% of 8h · default target', '113% of default 8h']);
     });
 

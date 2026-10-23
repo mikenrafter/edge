@@ -612,8 +612,11 @@ class Ring extends CustomPainter {
   /// calibrating" and "this is missing" into one look.
   final bool solid;
 
+  /// The surface the ring sits on: the 1.5 px separator between laps.
+  final Color? background;
+
   Ring(this.v, this.color, this.track,
-      {this.stroke = 10, this.t = 1, this.solid = false});
+      {this.stroke = 10, this.t = 1, this.solid = false, this.background});
 
   List<SpiralPiece> get pieces => SpiralGeometry(stroke).pieces([v * t.clamp(0.0, 1.0)]);
 
@@ -648,7 +651,10 @@ class StageRing extends CustomPainter {
   final Color track;
   final double stroke, t;
 
-  StageRing(this.arcs, this.track, {this.stroke = 10, this.t = 1});
+  final Color? background;
+
+  StageRing(this.arcs, this.track,
+      {this.stroke = 10, this.t = 1, this.background});
 
   List<SpiralPiece> get pieces => SpiralGeometry(stroke).pieces(arcs.map((a) => a.fraction * t.clamp(0.0, 1.0)).toList());
 
