@@ -31,8 +31,20 @@ class SpiralGeometry {
   /// radius and the value label carries the number.
   double radiusAt(double s, double r0) =>
       max(r0 - inset(s), min(r0, 1.5 * stroke));
-  /// RED STUB: whole laps beyond which nothing new can be seen.
-  int saturationLaps(double r0) => -1;
+  /// Laps after which a further lap would be drawn exactly on the previous
+  /// one: the first lap whose held radius is at the floor, plus lap 0.
+  ///
+  /// DECISION (saturation): on a small ring at a high ratio the laps run out
+  /// of room, so the picture stops growing here and the value label carries
+  /// the true number. It also bounds the work per paint: a 200-lap input
+  /// builds the same few paths as the saturation point. [Ring.pieces] still
+  /// reports the full value.
+  int saturationLaps(double r0) {
+    final floor = min(r0, 1.5 * stroke);
+    final step = insetPerStroke * stroke;
+    if (r0 <= floor || step <= 0) return 1;
+    return (r0 - floor) ~/ step + ((r0 - floor) % step > 1e-9 ? 1 : 0) + 1;
+  }
 
   static int lapsFor(double fraction) =>
       !fraction.isFinite || fraction <= 0 ? 0 : fraction.ceil();
@@ -61,7 +73,7 @@ class SpiralGeometry {
         final trueStart = from == start, trueEnd = to == end;
         pieces.add(SpiralPiece(valid[i].$1, lap, from, to,
           capStart: trueStart && start == 0 && total < 1,
-          capEnd: trueEnd && (to != lap + 1 || to == total)));
+          capEnd: trueEnd));
       }
       result.addAll(pieces.reversed);
     }
@@ -109,10 +121,16 @@ void paintSpiral(Canvas canvas, Size size,
         ..strokeWidth = stroke
         ..color = track);
   final progress = t.clamp(0.0, 1.0);
-  final scaled = [
-    for (final f in fractions) f.isFinite && f > 0 ? f * progress : 0.0
-  ];
   final geometry = SpiralGeometry(stroke);
+  // Saturation: laps past the one that reaches the floor would repaint it.
+  var room = geometry.saturationLaps(r0).toDouble();
+  final scaled = <double>[];
+  for (final f in fractions) {
+    final v = f.isFinite && f > 0 ? f * progress : 0.0;
+    final take = min(v, room);
+    scaled.add(take);
+    room -= take;
+  }
   final total = scaled.fold<double>(0, (a, b) => a + b);
   final pieces = geometry.pieces(scaled);
   if (pieces.isEmpty) return;
@@ -151,42 +169,66 @@ void paintSpiral(Canvas canvas, Size size,
   // The outer edge never leaves the lap-0 circle.
   canvas.clipPath(
       Path()..addOval(Rect.fromCircle(center: center, radius: r0 + half)));
+
+  final laps = <int, List<SpiralPiece>>{};
   for (final p in pieces) {
-    if (p.lap >= 1) {
-      // Just before the lap that overlaps it, along that lap's own sweep.
-      final from = max(p.from, geometry.separatorFrom(p.lap)!);
+    (laps[p.lap] ??= []).add(p);
+  }
+  // A cap on a segment end that lands exactly on a lap boundary rounds over
+  // the NEXT lap's first band, so it is drawn with that lap.
+  final lateDiscs = <int, List<SpiralPiece>>{};
+  for (final p in pieces) {
+    if (p.capEnd && p.to == p.lap + 1 && laps.containsKey(p.lap + 1)) {
+      (lateDiscs[p.lap + 1] ??= []).add(p);
+    }
+  }
+  void disc(SpiralPiece p, double s) => canvas.drawCircle(
+      pt(s, geometry.radiusAt(s, r0)), half, Paint()..color = colourAt(p, s));
+
+  for (final lap in laps.keys.toList()..sort()) {
+    final group = laps[lap]!; // already last segment first
+    // The separator is laid ONCE per lap, before any of its segments, so
+    // stage joins stay contiguous.
+    if (lap >= 1) {
+      final to = group.map((p) => p.to).reduce(max);
+      final from = max(group.map((p) => p.from).reduce(min),
+          geometry.separatorFrom(lap)!);
       final fill = Paint()..color = sepColour;
-      if (from < p.to) canvas.drawPath(band(from, p.to, kSpiralSeparator), fill);
-      if (p.capEnd && p.to > from) {
-        canvas.drawCircle(pt(p.to, geometry.radiusAt(p.to, r0)),
+      if (from < to) canvas.drawPath(band(from, to, kSpiralSeparator), fill);
+      final last = group.firstWhere((p) => p.to == to);
+      if (last.capEnd && to > from) {
+        canvas.drawCircle(pt(to, geometry.radiusAt(to, r0)),
             half + kSpiralSeparator, fill);
       }
     }
-    // A lap cut overlaps the next lap's start slightly: no hairline seam.
-    final to = p.capEnd ? p.to : p.to + .003;
-    final paint = Paint()..style = PaintingStyle.fill;
-    final ua = p.from - p.lap, ub = p.to - p.lap;
-    if (solid || ub - ua < 1e-6) {
-      paint.color = colourAt(p, (p.from + p.to) / 2);
-    } else {
-      paint
-        ..color = const Color(0xFF000000)
-        ..shader = SweepGradient(
-          startAngle: 0,
-          endAngle: 2 * pi,
-          colors: [colourAt(p, p.from), colourAt(p, p.to)],
-          stops: [ua, ub],
-          transform: const GradientRotation(-pi / 2),
-        ).createShader(Rect.fromCircle(center: center, radius: r0));
+    for (final p in group) {
+      // A lap cut overlaps the next lap's start slightly: no hairline seam.
+      final to = p.capEnd ? p.to : p.to + .003;
+      final paint = Paint()..style = PaintingStyle.fill;
+      final ua = p.from - p.lap, ub = p.to - p.lap;
+      if (solid || ub - ua < 1e-6) {
+        paint.color = colourAt(p, (p.from + p.to) / 2);
+      } else {
+        paint
+          ..color = const Color(0xFF000000)
+          ..shader = SweepGradient(
+            startAngle: 0,
+            endAngle: 2 * pi,
+            colors: [colourAt(p, p.from), colourAt(p, p.to)],
+            stops: [ua, ub],
+            transform: const GradientRotation(-pi / 2),
+          ).createShader(Rect.fromCircle(center: center, radius: r0));
+      }
+      canvas.drawPath(band(p.from, to, 0), paint);
     }
-    canvas.drawPath(band(p.from, to, 0), paint);
-    if (p.capEnd) {
-      canvas.drawCircle(pt(p.to, geometry.radiusAt(p.to, r0)), half,
-          Paint()..color = colourAt(p, p.to));
-    }
-    if (p.capStart) {
-      canvas.drawCircle(pt(p.from, geometry.radiusAt(p.from, r0)), half,
-          Paint()..color = colourAt(p, p.from));
+    // Caps after every band of the lap, so each segment's round end sits over
+    // its clockwise neighbour (and the last one over the first at the seam).
+    for (final p in [...?lateDiscs[lap], ...group]) {
+      final late = lateDiscs[lap]?.contains(p) ?? false;
+      if (p.capEnd && (late || !(lateDiscs[lap + 1]?.contains(p) ?? false))) {
+        disc(p, p.to);
+      }
+      if (p.capStart && !late) disc(p, p.from);
     }
   }
   canvas.restore();

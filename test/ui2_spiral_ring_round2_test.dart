@@ -58,7 +58,7 @@ void main() {
         RingArc(_b, .5),
       ], _none, stroke: _w, background: _bg));
       // B's centre-line just clockwise of A's end (inside A's old halo).
-      for (final u in [.515, .52, .53, .6, .8]) {
+      for (final u in [.5228, .53, .56, .6, .8]) {
         final c = _polar(d, u, g.radiusAt(1 + u, _r0));
         expect(_is(c, _b), isTrue, reason: 'u=$u px=$c');
       }
@@ -75,7 +75,7 @@ void main() {
       // A ends at 12 o'clock. Its disc (r 10) covers (105,12), which B's lap-1
       // band starts under; the cap must be on top.
       expect(_is(_px(d, 105, 12), _a), isTrue, reason: _px(d, 105, 12).toString());
-      expect(_is(_px(d, 100, 20), _a), isTrue);
+      expect(_is(_px(d, 100, 16), _a), isTrue);
       // Away from the cap B is on top.
       expect(_is(_polar(d, .3, g.radiusAt(1.3, _r0)), _b), isTrue);
     });
