@@ -290,11 +290,8 @@ void main() {
       expect(rhr, contains('bpm'));
       expect(hrv, contains('62'));
       expect(hrv, contains('ms'));
-      expect(
-          find.descendant(
-              of: find.byKey(ChartKeyReadout.timeKey),
-              matching: find.text(ChartScrub.day(DateTime(2026, 9, 30)))),
-          findsOneWidget);
+      expect(panelCaption(t),
+          'SELECTED · ${ChartScrub.day(DateTime(2026, 9, 30))}'.toUpperCase());
     });
 
     testWidgets('a day one metric has no reading for reads "—" for it alone',

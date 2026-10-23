@@ -331,12 +331,18 @@ void main() {
     Finder slider() => find.byWidgetPredicate(
         (w) => w is Semantics && w.properties.slider == true);
 
-    testWidgets('the headline and latest reasons are ONE strip on load',
+    Finder panel() => find.byKey(ChartKeyReadout.panelKey);
+
+    testWidgets('the latest reason is ONE strip on load, inside the panel',
         (t) async {
       final h = t.ensureSemantics();
       await pump(t, series(10, flagged: {0}), window: '7 days');
       expect(_strip, findsOneWidget);
-      expect(olderNote('headline'), findsOneWidget);
+      expect(
+          find.descendant(of: panel(), matching: olderNote('readout')),
+          findsOneWidget,
+          reason: 'the strip lives in the inset now');
+      expect(olderNote('headline'), findsNothing);
       expect(olderNote('latest'), findsNothing);
       expect(spokenOlder(t, 104), 1);
       h.dispose();
@@ -346,13 +352,19 @@ void main() {
         (t) async {
       await pump(t, series(10, flagged: {3}), window: '7 days');
       final before = t.getSize(find.byType(ChartFrame).first);
-      final stripAt = _strip.evaluate().isEmpty ? null : t.getTopLeft(_strip);
+      final rect = t.getRect(panel());
+      expect(_strip, findsNothing);
       await t.tapAt(t.getCenter(slider()));
       await t.pumpAndSettle();
       expect(olderNote('selected'), findsNothing);
-      expect(olderMark('selected'), findsOneWidget);
+      expect(olderNote('readout'), findsNothing);
+      expect(
+          find.descendant(of: panel(), matching: olderMark('readout')),
+          findsOneWidget,
+          reason: 'the compact * rides with the scrubbed value');
       expect(t.getSize(find.byType(ChartFrame).first), before);
-      expect(_strip.evaluate().isEmpty ? null : t.getTopLeft(_strip), stripAt);
+      expect(t.getRect(panel()), rect);
+      expect(_strip, findsNothing);
     });
 
     testWidgets('one range per run of older days', (t) async {
@@ -362,20 +374,18 @@ void main() {
       expect(ranges.single.until! - ranges.single.at, 2.0);
     });
 
-    testWidgets('the selected inset is the same height on a current and an '
-        'older day', (t) async {
+    testWidgets('the panel is the same height on a current and an older day',
+        (t) async {
       await pump(t, series(10, flagged: {3}), window: '7 days');
       final r = t.getRect(slider());
-      final inset = find.byWidgetPredicate(
-          (w) => w is Surface && w.color != null && w.elevation == 0);
       await t.tapAt(Offset(r.right - 3, r.center.dy)); // today: current
       await t.pumpAndSettle();
-      expect(olderMark('selected'), findsNothing);
-      final current = t.getSize(inset.first).height;
+      expect(olderMark('readout'), findsNothing);
+      final current = t.getRect(panel());
       await t.tapAt(t.getCenter(slider())); // 3 days back: older
       await t.pumpAndSettle();
-      expect(olderMark('selected'), findsOneWidget);
-      expect(t.getSize(inset.first).height, current);
+      expect(olderMark('readout'), findsOneWidget);
+      expect(t.getRect(panel()), current);
     });
 
     testWidgets('selected older day: spoken once', (t) async {

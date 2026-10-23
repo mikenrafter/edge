@@ -261,13 +261,40 @@ Future<void> scrubAt(WidgetTester t, double frac) async {
   await t.pump();
 }
 
-Finder readoutValue(String label) =>
-    find.byKey(ValueKey('chart-key-value:$label'));
+/// The panel's value for the series called [label]: the big value when it is
+/// the panel's main series (the chart's first legend entry), else the value
+/// under its `chart-panel-stat:<label>` slot. Matches nothing when [label] has
+/// no place in the panel. The older-calculation `*` is not part of the value.
+Finder readoutValue(String label) => find.byElementPredicate((e) {
+      final w = e.widget;
+      if (w is! Text || w.data == '*') return false;
+      var hit = false;
+      e.visitAncestorElements((a) {
+        final k = a.widget.key;
+        if (k == ValueKey('chart-panel-stat:$label')) {
+          hit = w.data != label.toUpperCase();
+          return false;
+        }
+        if (k == ChartKeyReadout.valueKey) {
+          final f = a.findAncestorWidgetOfExactType<ChartFrame>();
+          hit = f != null && f.legend.isNotEmpty && f.legend.first.$1 == label;
+          return false;
+        }
+        return true;
+      });
+      return hit;
+    });
 
 String readoutText(WidgetTester t, String label) {
   final f = readoutValue(label);
   expect(f, findsOneWidget, reason: 'no readout cell for $label');
-  final texts = t.widgetList<Text>(
-      find.descendant(of: f, matching: find.byType(Text)));
-  return [for (final x in texts) x.data ?? x.textSpan?.toPlainText() ?? ''].join();
+  final x = t.widget<Text>(f);
+  return x.data ?? x.textSpan?.toPlainText() ?? '';
+}
+
+/// The panel's caption ("LATEST · 10:00" / "SELECTED · Wed 30 Sep").
+String panelCaption(WidgetTester t) {
+  final f = find.byKey(ChartKeyReadout.captionKey);
+  expect(f, findsOneWidget, reason: 'no panel caption');
+  return t.widget<Text>(f).data ?? '';
 }

@@ -246,10 +246,7 @@ void main() {
       expect(hr, contains('bpm'));
       final n = int.parse(RegExp(r'\d+').firstMatch(hr)!.group(0)!);
       expect(n, inInclusiveRange(84, 96), reason: 'minute ~510 reads ~90');
-      final clock = t.widgetList<Text>(find.descendant(
-          of: find.byKey(ChartKeyReadout.timeKey), matching: find.byType(Text)));
-      expect([for (final x in clock) x.data ?? ''].join(' '),
-          matches(RegExp(r'\d{1,2}:\d{2}')),
+      expect(panelCaption(t), matches(RegExp(r'\d{1,2}:\d{2}')),
           reason: 'the time row names the clock time of the position');
     });
 

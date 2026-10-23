@@ -45,16 +45,16 @@ void main() {
     await t.pumpWidget(_app(const LiveHrCard.preview(
         hr: 85, trace: [85, 85, 85, 85, 85, 85])));
     await t.pumpAndSettle();
-    final texts = find
-        .descendant(
-            of: find.byKey(ChartKeyReadout.timeKey), matching: find.byType(Text))
-        .evaluate()
-        .map((e) => (e.widget as Text).data)
-        .toList();
-    expect(texts.length, 2, reason: 'label slot and value slot');
-    expect(texts[0], isNot(texts[1]),
-        reason: 'label and value are both "${texts[0]}"');
-    expect(texts[1], isNot('—'), reason: 'there is a latest reading');
+    // The panel's caption is "<STATUS> · <time>". The status slot says LATEST
+    // for the unscrubbed row, so the time slot must not repeat it.
+    final cap = t
+        .widget<Text>(find.byKey(ChartKeyReadout.captionKey))
+        .data!
+        .split(' · ');
+    expect(cap.length, 2, reason: 'status slot and time slot');
+    expect(cap[0].toLowerCase(), isNot(cap[1].toLowerCase()),
+        reason: 'status and time are both "${cap[0]}"');
+    expect(cap[1], isNot('—'), reason: 'there is a latest reading');
   });
 
   group('B6: a charger event does not repeat its time', () {
