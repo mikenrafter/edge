@@ -51,6 +51,10 @@ class ImportReentryStore {
   // be, every stored ack is treated as stale for this process, except ids the
   // user dismissed since (_dismissedSince).
   bool _resetUnknown = false;
+  // Whether an OLDER import was unfinished when the fresh one began, decided
+  // once at that boundary. The journal read later cannot tell: by then it holds
+  // the NEW import's own unfinished journal.
+  bool _priorUnfinished = false;
   final Set<String> _dismissedSince = {};
 
   /// Waits for every earlier operation, then returns the lock to release (in a
@@ -121,7 +125,7 @@ class ImportReentryStore {
   Future<Set<String>> _effectiveStale(List<String> acked) async {
     final stale = await _readStale();
     if (!_resetUnknown) return stale;
-    if (await _olderImportUnfinished()) {
+    if (_priorUnfinished) {
       // The reset would not have run: those acks are not stale.
       _resetUnknown = false;
       _dismissedSince.clear();
@@ -265,6 +269,7 @@ class ImportReentryStore {
         // import and settle it when the preferences can be read again.
         _resetUnknown = true;
         _dismissedSince.clear();
+        _priorUnfinished = await _olderImportUnfinished();
         rethrow;
       }
       _resetUnknown = false;
