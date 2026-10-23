@@ -55,7 +55,7 @@ void _feed(AppState app, int n) {
 }
 
 Future<void> _pump(WidgetTester t, AppState app, double w,
-    {double scale = 1, String lang = 'en'}) async {
+    {double scale = 1, String lang = 'en', bool bold = false}) async {
   t.view.physicalSize = Size(w, 800);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
@@ -67,7 +67,7 @@ Future<void> _pump(WidgetTester t, AppState app, double w,
       supportedLocales: AppLocalizations.supportedLocales,
       theme: buildTheme(Brightness.light),
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale), boldText: bold),
         child: child!,
       ),
       home: const Scaffold(
@@ -94,11 +94,11 @@ Rect _plot(WidgetTester t) {
           x is CustomPaint && x.painter != null && x is! _Never));
   final rs = [
     for (final e in f.evaluate())
-      if (t.getRect(find.byWidget(e.widget)).height == 56 &&
+      if (t.getRect(find.byWidget(e.widget)).height >= 56 &&
           t.getRect(find.byWidget(e.widget)).width > 100)
         t.getRect(find.byWidget(e.widget))
   ];
-  expect(rs, hasLength(1), reason: 'exactly one 56 pt plot slot');
+  expect(rs, hasLength(1), reason: 'exactly one plot slot');
   return rs.single;
 }
 
@@ -312,6 +312,52 @@ void main() {
       expect(find.textContaining('The live stream is not saved'), findsNothing);
     }
   });
+
+  // ---- round 3 (Sol r2) ---------------------------------------------------
+  // The status reasons must be laid out in full inside the reserved slot, with
+  // big text and with the bold-text accessibility setting, in all states.
+  for (final lang in const ['en', 'ru'])
+    for (final w in const [360.0, 390.0])
+      for (final (sc, bold) in const [(3.1, false), (1.0, true), (3.1, true)])
+        testWidgets('8. $lang ${w.toInt()}pt x$sc bold=$bold: reasons unclipped, '
+            'rects identical', (t) async {
+          final rects = <String, List<Rect>>{};
+          Future<void> look(String name, AppState app, {String? reason}) async {
+            addTearDown(app.dispose);
+            await _pump(t, app, w, scale: sc, lang: lang, bold: bold);
+            expect(t.takeException(), isNull, reason: '$name: overflow');
+            final plot = _plot(t);
+            rects[name] = [_card(t), plot, _belowRect(t)];
+            if (reason != null) {
+              final f = find.textContaining(reason);
+              expect(f, findsOneWidget, reason: name);
+              final ro = t.renderObject<RenderParagraph>(f);
+              final need = ro
+                  .getDryLayout(BoxConstraints(maxWidth: ro.constraints.maxWidth))
+                  .height;
+              expect(ro.size.height, greaterThanOrEqualTo(need - 0.5),
+                  reason: '$name: text is squeezed below the $need it needs');
+              expect(ro.size.height, lessThanOrEqualTo(plot.height),
+                  reason: '$name: text taller than the plot slot');
+              expect(t.getRect(f).top, greaterThanOrEqualTo(plot.top - .5));
+              expect(t.getRect(f).bottom, lessThanOrEqualTo(plot.bottom + .5));
+            }
+          }
+
+          await look('loaded', _app()..also((a) => _feed(a, 6)));
+          await look('nobeat', _app(), reason: 'No beat in the last');
+          await look('one', _app()..also((a) => _feed(a, 1)));
+          await look('disconnected', _app(connected: false),
+              reason: 'Your band is not connected');
+          await look('unpaired', _app(paired: false, connected: false),
+              reason: 'No band is paired');
+          final ref = rects['loaded']!;
+          for (final e in rects.entries) {
+            expect(e.value[0], ref[0], reason: '${e.key}: card');
+            expect(e.value[1], ref[1], reason: '${e.key}: plot');
+            expect(e.value[2], ref[2], reason: '${e.key}: below');
+          }
+        });
 }
 
 extension _Also<T> on T {
