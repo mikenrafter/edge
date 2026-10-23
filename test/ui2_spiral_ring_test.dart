@@ -502,14 +502,17 @@ void main() {
       await tester.runAsync(() async {
         final d = await raster(Ring(2.0, green, const Color(0x00000000),
             stroke: w, background: magenta));
-        // At u=.2 lap 1 has an inner sliver lap 0 does not cover.
+        // At u=.2 lap 1 has an inner sliver lap 0 does not cover. Its colour
+        // is pre-blended against the background: bar position 1.2 / 2 = .6 ->
+        // 82% green, 18% background, so red is about 46. A lap that restarted
+        // faint would be about 92.
         final px = at(d, .2, r0 - w / 2 - .25 * g.inset(1.2));
-        // Position in the bar is 1.2 / 2 = .6 -> alpha .55 + .45 * .6 = .82.
-        expect(px[3], greaterThan(190), reason: 'restarted per lap? $px');
+        expect(px[3], 255);
+        expect(px[0], lessThan(65), reason: 'restarted per lap? $px');
         // Start of the bar is faint (a one-lap ring, nothing under it).
         final one = await raster(Ring(1.0, green, const Color(0x00000000),
             stroke: w, background: magenta));
-        expect(at(one, .02, r0)[3], lessThan(160));
+        expect(at(one, .02, r0)[0], greaterThan(95));
       });
     });
 
