@@ -292,7 +292,8 @@ class MomentFollowUps {
   }
 
   /// Reads the journal and the labels from the database.
-  static Future<MomentFollowUps> load({required DateTime? enabledSince}) async {
+  static Future<MomentFollowUps> load(
+      {required DateTime? enabledSince, DateTime? now}) async {
     if (enabledSince == null) return const MomentFollowUps(enabledSince: null);
     final from = dayLabelOf(enabledSince);
     final rows = await LocalDb.journalRows(sinceDaysEpoch: from);

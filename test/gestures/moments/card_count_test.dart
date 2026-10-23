@@ -44,10 +44,11 @@ void main() {
       expect(f.pendingCount(_now), 3);
     });
 
-    test('setting off: nothing to review', () {
+    test('setting off: assumed glasses still count (water review does not '
+        'depend on the follow-up opt-in)', () {
       final f = MomentFollowUps(
           enabledSince: null, assumed: [_g('2026-10-07', 480)]);
-      expect(f.pendingCount(_now), 0);
+      expect(f.pendingCount(_now), 1);
     });
   });
 
@@ -109,7 +110,7 @@ void main() {
       }
     });
 
-    test('setting off: both are zero, never a count for something hidden', () {
+    test('setting off: no moments, but assumed glasses still count', () {
       final f = MomentFollowUps(
         enabledSince: null,
         marked: const [(date: '2026-10-07', hhmm: '07:05')],
@@ -117,7 +118,7 @@ void main() {
       );
       final c = f.reviewCounts(
           _now, MomentReviewQueue.empty.withRangeProgress(owed));
-      expect((c.moments, c.assumedWater), (0, 0));
+      expect((c.moments, c.assumedWater), (0, 1));
     });
   });
 

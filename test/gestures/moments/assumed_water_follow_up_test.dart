@@ -1,16 +1,16 @@
 // Assumed water glasses in the marked-moment follow-up (RED).
 //
 //   * Pure: `MomentFollowUps.pendingAssumed(now)` is the assumed (not kept, not
-//     removed) glasses, with the same gates as pending moments: empty while the
-//     follow-up setting is off, nothing from before it was enabled, nothing
-//     older than 7 local calendar days, oldest first.
+//     removed) glasses, nothing older than 7 local calendar days, oldest first.
+//     Independent of the follow-up setting (owner 2026-10-22): pending while it
+//     is off, and glasses from before it was enabled are pending too.
 //   * The screen lists them chronologically INTERSPERSED with the pending
 //     moments, each clearly labelled as an assumed glass that adds to water
 //     drunk, in the user's unit, with Keep (acknowledge, leaves the list) and
 //     Remove (subtracts exactly that glass, leaves the list). A glass offers no
 //     moment choices and no Skip.
-//   * With the setting off nothing is listed, but glasses are still logged
-//     and still counted as assumed (LocalDb.assumedWaterMl).
+//   * With the setting off, glasses are still logged, counted as assumed
+//     (LocalDb.assumedWaterMl) and listed for review; moments are not.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -113,17 +113,19 @@ void main() {
           ['2026-10-06 08:00', '2026-10-07 10:00']);
     });
 
-    test('setting off: nothing is pending, whatever was logged', () {
+    // Owner 2026-10-22: water review is independent of the follow-up opt-in.
+    test('setting off: assumed glasses are still pending', () {
       final f = _f(since: null, assumed: [_g('2026-10-07', 600)]);
-      expect(f.pendingAssumed(_now), isEmpty);
+      expect([for (final g in f.pendingAssumed(_now)) g.hhmm], ['10:00']);
     });
 
-    test('nothing from before the setting was enabled', () {
+    test('glasses from before the setting was enabled are pending too', () {
       final f = _f(since: DateTime(2026, 10, 7, 9, 0), assumed: [
         _g('2026-10-07', 8 * 60),
         _g('2026-10-07', 10 * 60),
       ]);
-      expect([for (final g in f.pendingAssumed(_now)) g.hhmm], ['10:00']);
+      expect([for (final g in f.pendingAssumed(_now)) g.hhmm],
+          ['08:00', '10:00']);
     });
 
     test('nothing older than 7 local calendar days', () {
@@ -188,12 +190,13 @@ void main() {
       expect(f.pending(_now), hasLength(1), reason: 'the 09:15 moment');
     });
 
-    test('setting off: glasses were still logged and still count as assumed '
-        'water, but nothing is pending', () async {
+    test('setting off: glasses are logged, count as assumed water, and are '
+        'still pending review', () async {
       await LocalDb.logAssumedWater(
           date: '2026-10-06', atMin: 600, ml: 250, loggedAtMs: 1);
-      final f = await MomentFollowUps.load(enabledSince: null);
-      expect(f.pendingAssumed(_now), isEmpty);
+      final f = await MomentFollowUps.load(enabledSince: null, now: _now);
+      expect([for (final g in f.pendingAssumed(_now)) g.hhmm], ['10:00']);
+      expect(f.pending(_now), isEmpty, reason: 'moments stay opt-in');
       expect(await LocalDb.assumedWaterMl('2026-10-06'), 250);
       expect(
           (await LocalDb.journalMetricsForDay('2026-10-06'))['water_ml']!.value,
