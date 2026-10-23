@@ -218,7 +218,20 @@ class LiveHrCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: S.x3),
-          if (hasChart)
+          LayoutBuilder(builder: (c, box) {
+            // The plot slot is at least 56 pt, and tall enough for the longest
+            // status reason, measured as it will be drawn (scale, bold, locale).
+            final bodyStyle = F.body.copyWith(color: p.ink2);
+            var slot = 56.0;
+            for (final r in [
+              _absenceMessage(paired: false, connected: false),
+              _absenceMessage(paired: true, connected: false),
+              _absenceMessage(paired: true, connected: true),
+            ]) {
+              slot = math.max(slot,
+                  _textHeight(c, r, bodyStyle, box.maxWidth - 2 * S.x2));
+            }
+            return hasChart ?
             // Bare scrub: no frame, so it draws its own key row under the trace.
             // The 56 pt belongs to the trace alone, not to the row beneath it.
             ChartScrub(
@@ -228,14 +241,14 @@ class LiveHrCard extends StatelessWidget {
               time: ago,
               keys: keys,
               child: SizedBox(
-                height: 56,
+                height: slot,
                 child: CustomPaint(
                   painter: LineChart(live, C.red, fill: false),
                   size: Size.infinite,
                 ),
               ),
             )
-          else
+            :
             // The same plot slot and key row, nothing scrubbable in them.
             Semantics(
               container: true,
@@ -245,7 +258,7 @@ class LiveHrCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   SizedBox(
-                    height: 56,
+                    height: slot,
                     child: CustomPaint(
                       painter: _LiveHrSkeleton(p.line, p.track),
                       size: Size.infinite,
@@ -256,7 +269,7 @@ class LiveHrCard extends StatelessWidget {
                                 padding: const EdgeInsets.symmetric(horizontal: S.x2),
                                 child: Text(why,
                                     textAlign: TextAlign.center,
-                                    style: F.body.copyWith(color: p.ink2)),
+                                    style: bodyStyle),
                               ),
                             )
                           : null,
@@ -269,7 +282,8 @@ class LiveHrCard extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
+            );
+          }),
           const SizedBox(height: S.x2),
           _CaptionSlot(
             text: caption,
@@ -288,16 +302,7 @@ class LiveHrCard extends StatelessWidget {
   }
 
   /// One line of the big number, at the current text scale.
-  static double _numberLine(BuildContext c) {
-    final tp = TextPainter(
-        text: TextSpan(text: '0', style: F.n48),
-        textDirection: Directionality.of(c),
-        textScaler: MediaQuery.textScalerOf(c))
-      ..layout();
-    final h = tp.height;
-    tp.dispose();
-    return h;
-  }
+  static double _numberLine(BuildContext c) => _textHeight(c, '0', F.n48, double.infinity);
 
   String _absenceMessage({required bool paired, required bool connected}) =>
       !paired
@@ -317,23 +322,35 @@ class _CaptionSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) => LayoutBuilder(builder: (c, box) {
-        final scaler = MediaQuery.textScalerOf(c);
-        final dir = Directionality.of(c);
         var h = 0.0;
         for (final s in reserve) {
-          final tp = TextPainter(
-              text: TextSpan(text: s, style: style),
-              textDirection: dir,
-              textScaler: scaler)
-            ..layout(maxWidth: box.maxWidth);
-          h = math.max(h, tp.height);
-          tp.dispose();
+          h = math.max(h, _textHeight(c, s, style, box.maxWidth));
         }
         return ConstrainedBox(
           constraints: BoxConstraints(minHeight: h),
           child: Text(text, style: style),
         );
       });
+}
+
+/// The height [text] takes in a [Text] built from [style] right here: the
+/// ambient DefaultTextStyle underneath, the bold-text setting on top (Text
+/// merges FontWeight.bold when MediaQuery.boldText is on), the same text scaler
+/// and locale.
+double _textHeight(BuildContext c, String text, TextStyle style, double maxWidth) {
+  var eff = DefaultTextStyle.of(c).style.merge(style);
+  if (MediaQuery.boldTextOf(c)) {
+    eff = eff.merge(const TextStyle(fontWeight: FontWeight.bold));
+  }
+  final tp = TextPainter(
+      text: TextSpan(text: text, style: eff),
+      textDirection: Directionality.of(c),
+      textScaler: MediaQuery.textScalerOf(c),
+      locale: Localizations.maybeLocaleOf(c))
+    ..layout(maxWidth: maxWidth);
+  final h = tp.height;
+  tp.dispose();
+  return h;
 }
 
 class _LiveHrSkeleton extends CustomPainter {
