@@ -17,7 +17,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
-import 'package:openstrap_edge/ui2/live_hr.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/home_screen.dart' show clockOfTs;
 import 'package:openstrap_edge/ui2/ui2.dart';
