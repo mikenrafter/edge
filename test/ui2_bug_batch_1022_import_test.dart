@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 import 'package:openstrap_edge/data/backup_extras.dart';
+import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/import_reentry_store.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 
@@ -30,7 +31,19 @@ class _FlakyStore extends SharedPreferencesStorePlatform {
   bool refuse = false; // the main value
   bool refuseStale = false; // the stale-set value
   bool failReads = false; // every read throws
+  // "The process dies": after this many more successful writes, every write
+  // is refused. Null = no crash planned.
+  int? writesBeforeCrash;
+  bool _crashed() {
+    final n = writesBeforeCrash;
+    if (n == null) return false;
+    if (n <= 0) return true;
+    writesBeforeCrash = n - 1;
+    return false;
+  }
+
   bool _no(String key) =>
+      _crashed() ||
       (refuse && key.endsWith(_prefKey)) ||
       (refuseStale && key.endsWith('import_reentry_stale'));
   @override
@@ -189,8 +202,13 @@ void main() {
     expect(last.pending.value, isEmpty);
   });
 
-  test('store: a crash between the two dismissal writes loses nothing and '
-      'deletes no live acknowledgement', () async {
+  // The process dies after the FIRST of dismiss()'s two writes. Whichever order
+  // the writes run in, restart must never find a dismissal that landed while
+  // its acknowledgement is stale and about to be deleted by the owed reset.
+  // (With the old order, main value first, this fails: the dismissal lands,
+  // the stale id survives, and load() deletes the ack.)
+  test('store: a crash after the first dismissal write never leaves a '
+      'dismissed ack for the reset to delete', () async {
     final store = await armStore();
     final s = ImportReentryStore();
     store.refuse = true;
@@ -199,16 +217,21 @@ void main() {
     } catch (_) {}
     store.refuse = false;
     await s.add([kNeedsReentryCoachKey]);
-    store.refuse = true; // the stale id goes first; the main write then dies
+    store.writesBeforeCrash = 1; // one write lands, then the process is gone
     try {
       await s.dismiss();
     } catch (_) {}
-    store.refuse = false;
+    store.writesBeforeCrash = null;
     SharedPreferences.resetStatic();
     final restarted = ImportReentryStore();
-    await restarted.load();
-    expect(restarted.pending.value, [kNeedsReentryCoachKey],
-        reason: 'the dismissal never landed, so the warning is still due');
+    await restarted.load(); // launch retries the owed reset
+    final raw = (await SharedPreferences.getInstance()).getString(_prefKey) ?? '';
+    final ackedStored = raw.contains(';') && raw.split(';')[1].contains(kNeedsReentryCoachKey);
+    expect(restarted.pending.value.contains(kNeedsReentryCoachKey) || ackedStored,
+        isTrue,
+        reason: 'either the warning is still due, or its dismissal is stored; '
+            'got pending=${restarted.pending.value} raw="$raw"');
+    // And the user's next dismissal then holds.
     await restarted.dismiss();
     await restarted.add([kNeedsReentryCoachKey]);
     expect(restarted.pending.value, isEmpty);
@@ -234,5 +257,42 @@ void main() {
     await s.dismiss();
     await s.add([kNeedsReentryCoachKey]);
     expect(s.pending.value, isEmpty, reason: 'a dismissal stays dismissed');
+  });
+
+  // Sol r3 P2: the first read fails at the fresh-import boundary; the new
+  // import then creates its OWN journal (still `extras` when its summary is
+  // recorded). That journal is not an older unfinished import.
+  test('store: after a failed first read, the new import\'s own unfinished '
+      'journal does not drop the bypass', () async {
+    final store = await armStore();
+    await SharedPreferences.getInstance();
+    final db = await LocalDb.instance;
+    // The previous import finished.
+    final prior = await db.insert('import_journal',
+        {'state': 'done', 'table_idx': 0, 'last_rowid': 0, 'rows_copied': 0});
+    final s = ImportReentryStore();
+    store.failReads = true;
+    try {
+      await s.beginFreshImport();
+    } catch (_) {}
+    store.failReads = false;
+    // The new import's journal, still copying extras when its summary lands.
+    final mine = await db.insert('import_journal',
+        {'state': 'extras', 'table_idx': 0, 'last_rowid': 0, 'rows_copied': 0});
+    expect(mine, greaterThan(prior));
+    await s.add([kNeedsReentryCoachKey]);
+    expect(s.pending.value, [kNeedsReentryCoachKey],
+        reason: 'the old ack must not hide the fresh import\'s warning');
+    // The import completes, and its summary step records again.
+    await db.update('import_journal', {'state': 'done'},
+        where: 'id = ?', whereArgs: [mine]);
+    await s.add([kNeedsReentryCoachKey]);
+    expect(s.pending.value, [kNeedsReentryCoachKey]);
+    final restarted = ImportReentryStore();
+    await restarted.load();
+    expect(restarted.pending.value, [kNeedsReentryCoachKey]);
+    await s.dismiss();
+    await s.add([kNeedsReentryCoachKey]);
+    expect(s.pending.value, isEmpty, reason: 'a dismissal still holds');
   });
 }
