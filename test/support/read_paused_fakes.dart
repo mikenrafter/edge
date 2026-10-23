@@ -5,10 +5,16 @@
 // ImportFocus.days (today and yesterday only, by method name).
 import 'package:flutter/material.dart';
 import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/data/read_paused.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/sync/import_focus.dart';
+
+String get kPendingLine =>
+    lookupAppLocalizations(const Locale('en')).importPausedTodayPending;
+String get kSavingLine =>
+    lookupAppLocalizations(const Locale('en')).importPausedSaving;
 
 final String kToday = todayLabel();
 final String kYesterday =
@@ -83,7 +89,10 @@ class FocusRepo extends LocalRepository {
   Future<Map<String, dynamic>> getTodayStored() async =>
       _gate('getToday') ?? _today();
 
-  Map<String, dynamic> _today() => {
+  /// What a normal (focus off) read of today answers; null: the default.
+  Map<String, dynamic>? todayPayload;
+
+  Map<String, dynamic> _today() => todayPayload ?? {
         'daily': {
           'readiness': {'value': 70, 'confidence': .8, 'tier': 'HIGH'},
           'resting_hr': {'value': 50, 'confidence': .8, 'tier': 'HIGH'},
@@ -166,6 +175,12 @@ class FocusRepo extends LocalRepository {
   Future<Map<String, dynamic>> getDayHeart(String date) async =>
       _gate('getDayHeart', date) ?? const {};
 
+  @override
+  Future<Map<String, int>> getSeriesCounts(List<String> keys) async {
+    _gate('getSeriesCounts');
+    return {for (final k in keys) k: 0};
+  }
+
   /// 40 days of a flat series, newest last, ending today.
   @override
   Future<Map<String, dynamic>> getChart(String metric,
@@ -184,4 +199,47 @@ class FocusRepo extends LocalRepository {
       ],
     };
   }
+}
+
+/// Every read a "second batch" screen makes throws ReadPaused, whatever it
+/// asks for (the screens here read things no import publishes).
+class PausedRepo extends LocalRepository {
+  final List<String> reads = [];
+  Never _p(String m) {
+    reads.add(m);
+    throw const ReadPaused('import');
+  }
+
+  @override
+  Future<List<String>> availableDays() async => _p('availableDays');
+  @override
+  Future<Map<String, dynamic>> getDayNaps(String date) async => _p('getDayNaps');
+  @override
+  Future<Map<String, dynamic>> getToday() async => _p('getToday');
+  @override
+  Future<Map<String, dynamic>> getTodayStored() async => _p('getTodayStored');
+  @override
+  Future<Map<String, dynamic>> getInsights() async => _p('getInsights');
+  @override
+  Future<Map<String, dynamic>> getDayStress(String date) async => _p('getDayStress');
+  @override
+  Future<Map<String, dynamic>> getDayHeart(String date) async => _p('getDayHeart');
+  @override
+  Future<Map<String, dynamic>> getDaySleep(String date) async => _p('getDaySleep');
+  @override
+  Future<Map<String, dynamic>> getChart(String metric,
+          {int? from, int? to, Set<String> signals = const {}}) async =>
+      _p('getChart');
+  @override
+  Future<List<Map<String, dynamic>>> getSessions(
+          {int? from, int? to, bool includeDetected = true}) async =>
+      _p('getSessions');
+  @override
+  Future<List<JournalFieldSpec>> getJournalFields() async => _p('getJournalFields');
+  @override
+  Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) async =>
+      _p('getJournalMetrics');
+  @override
+  Future<List<Map<String, dynamic>>> getJournal({String range = '30d'}) async =>
+      _p('getJournal');
 }

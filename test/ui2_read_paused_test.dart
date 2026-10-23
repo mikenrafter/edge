@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/sync/import_focus.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_tab.dart';
@@ -28,7 +29,7 @@ Future<void> _settle(WidgetTester t, {int n = 40}) async {
   }
 }
 
-Future<void> _pump(WidgetTester t, FocusRepo repo, Widget home) async {
+Future<AppState> _pump(WidgetTester t, FocusRepo repo, Widget home) async {
   t.view.physicalSize = const Size(390 * 3, 1800 * 3);
   t.view.devicePixelRatio = 3;
   addTearDown(t.view.reset);
@@ -47,6 +48,7 @@ Future<void> _pump(WidgetTester t, FocusRepo repo, Widget home) async {
     ),
   ));
   await _settle(t);
+  return app;
 }
 
 /// Nothing that reads as an error or an unfinished wait.
@@ -80,67 +82,108 @@ void main() {
           reason: 'today is not an older day');
     });
 
-    testWidgets('stepping onto yesterday shows its published numbers; onto '
-        'an older day shows the line, in place', (t) async {
+    /// Focus starts while Home shows an older day (the day list is the
+    /// import-time one: today and yesterday, plus the day on screen).
+    Future<(FocusRepo, AppState)> onOlderDayThenFocus(WidgetTester t) async {
       final repo = FocusRepo();
-      await _pump(t, repo, const HomeScreen(hour: 9));
-      expect(find.text('70'), findsOneWidget);
-
+      final app = await _pump(t, repo, const HomeScreen(hour: 9));
+      await t.tap(find.bySemanticsLabel('Previous day'));
+      await _settle(t);
+      await t.tap(find.bySemanticsLabel('Previous day'));
+      await _settle(t);
+      expect(find.text('33'), findsOneWidget, reason: 'older day, loaded');
       startFocus();
-      await t.tap(find.bySemanticsLabel('Previous day'));
       await _settle(t);
-      expect(find.text('61'), findsOneWidget,
-          reason: "yesterday's published readiness");
-      _quiet();
-      expect(find.text(kPausedLine), findsNothing);
-      final navAtYesterday = t.getTopLeft(find.byType(DayNav));
-      final ringsAtYesterday = t.getTopLeft(find.byType(RingTrio));
+      return (repo, app);
+    }
 
-      await t.tap(find.bySemanticsLabel('Previous day'));
-      await _settle(t);
+    testWidgets('focus starting on an older day: ITS numbers go, the line '
+        'stands in the rings, nothing else moves', (t) async {
+      final (repo, _) = await onOlderDayThenFocus(t);
+
+      expect(find.text('33'), findsNothing,
+          reason: 'a paused day shows NO numbers');
+      expect(find.text('42'), findsNothing);
+      expect(find.text('70'), findsNothing);
       expect(find.text(kPausedLine), findsOneWidget);
       expect(
           find.descendant(
               of: find.byType(RingTrio), matching: find.text(kPausedLine)),
           findsOneWidget,
-          reason: 'the line stands where the rings help text is, '
-              'not in an extra row above');
+          reason: 'the line is IN the rings card, not a row above it');
       _quiet();
-      expect(t.getTopLeft(find.byType(DayNav)), navAtYesterday,
-          reason: 'no layout shift');
-      expect(t.getTopLeft(find.byType(RingTrio)), ringsAtYesterday,
-          reason: 'no row was inserted above the rings');
+      expect(repo.reads, isNotEmpty);
     });
 
-    testWidgets('a paused day is not read again and again', (t) async {
+    testWidgets('stepping onto published yesterday clears the pause: its '
+        'numbers, no line; nothing older is reachable', (t) async {
+      final (repo, _) = await onOlderDayThenFocus(t);
+      final navAtOlder = t.getTopLeft(find.byType(DayNav));
+      final ringsAtOlder = t.getTopLeft(find.byType(RingTrio));
+
+      await t.tap(find.bySemanticsLabel('Next day'));
+      await _settle(t);
+      expect(find.text('61'), findsOneWidget);
+      expect(find.text(kPausedLine), findsNothing,
+          reason: 'a successful read un-pauses the screen');
+      _quiet();
+      expect(t.getTopLeft(find.byType(DayNav)), navAtOlder);
+      expect(t.getTopLeft(find.byType(RingTrio)), ringsAtOlder);
+
+      final d2Reads = repo.count('getDayOverview', kDay2);
+      final prev = find.bySemanticsLabel('Previous day');
+      if (prev.evaluate().isNotEmpty) {
+        await t.tap(prev, warnIfMissed: false);
+        await _settle(t);
+      }
+      expect(find.text('61'), findsOneWidget, reason: 'still yesterday');
+      expect(repo.count('getDayOverview', kDay2), d2Reads,
+          reason: 'during focus only today and yesterday are on offer');
+    });
+
+    testWidgets('warm Home: focus keeps the day list to today and '
+        'yesterday', (t) async {
       final repo = FocusRepo();
       await _pump(t, repo, const HomeScreen(hour: 9));
       startFocus();
-      await t.tap(find.bySemanticsLabel('Previous day'));
       await _settle(t);
-      await t.tap(find.bySemanticsLabel('Previous day'));
+
+      final prev = find.bySemanticsLabel('Previous day');
+      await t.tap(prev);
       await _settle(t);
+      expect(find.text('61'), findsOneWidget);
+      if (prev.evaluate().isNotEmpty) {
+        await t.tap(prev, warnIfMissed: false);
+        await _settle(t);
+      }
+      expect(find.text('61'), findsOneWidget, reason: 'cannot go past yesterday');
+      expect(repo.count('getDayOverview', kDay2), 0);
+    });
+
+    testWidgets('a paused day is not read again and again, whatever the '
+        'revisions do', (t) async {
+      final (repo, app) = await onOlderDayThenFocus(t);
       expect(find.text(kPausedLine), findsOneWidget);
 
       final before = repo.reads.length;
       await _settle(t, n: 400); // 8 s of frames
-      expect(repo.reads.length, before,
-          reason: 'no retry loop while paused: ${repo.reads.skip(before)}');
+      for (var i = 0; i < 5; i++) {
+        app.bumpInsights(); // a derive publishes again and again
+        await _settle(t, n: 20);
+      }
+      expect(repo.reads.skip(before), isEmpty,
+          reason: 'no read at all while the day is paused');
+      expect(find.text(kPausedLine), findsOneWidget);
     });
 
-    testWidgets('when focus ends the older day loads by itself, once',
-        (t) async {
-      final repo = FocusRepo();
-      await _pump(t, repo, const HomeScreen(hour: 9));
-      startFocus();
-      await t.tap(find.bySemanticsLabel('Previous day'));
-      await _settle(t);
-      await t.tap(find.bySemanticsLabel('Previous day'));
-      await _settle(t);
-      expect(find.text('33'), findsNothing);
+    testWidgets('when focus ends the older day loads by itself, once, even '
+        'with a trailing revision', (t) async {
+      final (repo, app) = await onOlderDayThenFocus(t);
       final before = repo.count('getDayOverview', kDay2);
 
       endFocus();
+      app.bumpInsights(); // the derive's last publish lands right behind it
+      app.bumpInsights();
       await _settle(t);
 
       expect(find.text(kPausedLine), findsNothing);
@@ -150,6 +193,84 @@ void main() {
       final after = repo.reads.length;
       await _settle(t, n: 200);
       expect(repo.reads.length, after, reason: 'and it stays quiet');
+    });
+
+    testWidgets('cold start before anything is published: a quiet pending '
+        'line, no spinner, no first-weeks guidance; then the publish lands',
+        (t) async {
+      startFocus(const {});
+      final repo = FocusRepo();
+      await _pump(t, repo, const HomeScreen(hour: 9));
+
+      expect(find.text(kPendingLine), findsOneWidget);
+      expect(find.textContaining('Crunching'), findsNothing);
+      expect(find.text('Reading today'), findsNothing);
+      expect(find.textContaining('No nights scored yet'), findsNothing);
+      expect(find.textContaining('Wear the band'), findsNothing);
+      _quiet();
+
+      ImportFocus.days.value = publishedDays();
+      await _settle(t);
+      expect(find.text('77'), findsOneWidget);
+      expect(find.text(kPendingLine), findsNothing);
+    });
+
+    group('published today goes through the normal mapping', () {
+      Map<String, dynamic> payload({
+        Map<String, dynamic> status = const {},
+        Map<String, dynamic> daily = const {},
+      }) =>
+          {
+            'daily': {
+              'readiness': {'value': 55, 'confidence': .8, 'tier': 'HIGH'},
+              'resting_hr': {'value': 58, 'confidence': .8, 'tier': 'HIGH'},
+              ...daily,
+            },
+            'sleep': {
+              'duration_min': {'value': 300, 'confidence': .8, 'tier': 'HIGH'},
+            },
+            'status': {'today_day': kToday, 'overnight_state': 'ready', ...status},
+          };
+
+      testWidgets("a prior overnight is not shown as today's", (t) async {
+        startFocus({
+          kToday: {
+            'getToday': payload(status: {
+              'showing_prior_overnight': true,
+              'overnight_day': kYesterday,
+              'overnight_state': 'building',
+            }),
+          },
+        });
+        await _pump(t, FocusRepo(), const HomeScreen(hour: 9));
+        expect(find.text('55'), findsNothing, reason: "last night's recovery");
+        expect(find.text('58'), findsNothing, reason: "last night's RHR");
+        expect(find.text('5h 00m'), findsNothing, reason: "last night's sleep");
+        _quiet();
+      });
+
+      testWidgets('provisional recovery is the provisional number, as on a '
+          'normal load', (t) async {
+        final p = payload(status: {
+          'overnight_state': 'building',
+          'recovery_state': 'provisional',
+        }, daily: {
+          'readiness_provisional': {'value': 48, 'confidence': .5, 'tier': 'ESTIMATE'},
+        });
+        // The same payload through the ordinary path.
+        final normal = FocusRepo()..todayPayload = p;
+        await _pump(t, normal, const HomeScreen(hour: 9));
+        final normalShows48 = find.text('48').evaluate().length;
+        final normalShows55 = find.text('55').evaluate().length;
+        expect(normalShows48, 1, reason: 'sanity: the normal path');
+        expect(normalShows55, 0);
+
+        await t.pumpWidget(const SizedBox());
+        startFocus({kToday: {'getToday': p}});
+        await _pump(t, FocusRepo(), const HomeScreen(hour: 9));
+        expect(find.text('48'), findsNWidgets(normalShows48));
+        expect(find.text('55'), findsNothing);
+      });
     });
   });
 
@@ -194,6 +315,50 @@ void main() {
       expect(find.text(kPausedLine), findsNothing);
       expect(repo.count('getSleepDetailBundle', kDay2), bundles + 1,
           reason: 'one reload when focus ends');
+    });
+
+    testWidgets('the SELECTED night decides: on yesterday, publishing today '
+        'does not put today\'s sleep in its place', (t) async {
+      final repo = FocusRepo();
+      final app = await _pump(t, repo, const SleepDetail());
+      await t.tap(find.bySemanticsLabel('Previous day'));
+      await _settle(t);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('card:answer')),
+              matching: find.text('4h 10m')),
+          findsOneWidget,
+          reason: 'yesterday, loaded');
+
+      startFocus(); // today is published; yesterday has no sleep model
+      await _settle(t);
+      app.bumpInsights();
+      await _settle(t);
+
+      expect(find.text('7h 11m'), findsNothing,
+          reason: "today's published night is not yesterday's");
+      expect(find.text('4h 10m'), findsNothing);
+      expect(find.text(kPausedLine), findsOneWidget);
+    });
+
+    testWidgets('revisions while an older night is paused read nothing; '
+        'one reload after focus, trailing revision or not', (t) async {
+      startFocus();
+      final repo = FocusRepo();
+      final app = await _pump(t, repo, SleepDetail(day: kDay2));
+      final before = repo.reads.length;
+      for (var i = 0; i < 5; i++) {
+        app.bumpInsights();
+        await _settle(t, n: 20);
+      }
+      expect(repo.reads.skip(before), isEmpty);
+
+      final bundles = repo.count('getSleepDetailBundle', kDay2);
+      endFocus();
+      app.bumpInsights();
+      app.bumpInsights();
+      await _settle(t);
+      expect(repo.count('getSleepDetailBundle', kDay2), bundles + 1);
     });
   });
 }

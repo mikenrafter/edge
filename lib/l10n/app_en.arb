@@ -17664,5 +17664,7 @@
   "consentDecline": "No thanks",
   "postImportDismiss": "Got it",
   "welcomeImportContinue": "Continue",
-  "importPausedOlderDays": "Older days load when the import finishes"
+  "importPausedOlderDays": "Older days load when the import finishes",
+  "importPausedTodayPending": "Today appears as soon as it’s ready",
+  "importPausedSaving": "Saving is paused until the import finishes"
 }
