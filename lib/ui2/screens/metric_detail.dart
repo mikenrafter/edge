@@ -1962,7 +1962,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
       final olderVersion = denseChartPoints(d.series, series.length)[i]?.olderVersion;
       final shown = olderVersion == null
           ? base
-          : '$base, ${l?.olderVersionSemantics(olderVersion) ?? olderVersionSemantics(olderVersion)}';
+          : '$base, ${olderVersionSpokenShort(l, olderVersion)}';
       if (!attribute) return shown;
       final who = _contributors(_labelsFor(day, d.coverage, d.sources));
       // A day inside a two-device window that nevertheless has one
@@ -2045,16 +2045,15 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                   ? F.cap.copyWith(color: p.ink3)
                   : F.n17.copyWith(color: p.ink),
             ),
+            // Beside the value, like every other mark: never a line of its own
+            // that would make the inset taller on an older day.
+            if (v != null && points[i]?.olderVersion != null)
+              OlderVersionMark(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason, speak: false),
             if (v != null) ...[
               const SizedBox(width: S.x2),
               Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
             ],
           ]),
-          if (v != null && points[i]?.olderVersion != null) ...[
-            Padding(padding: const EdgeInsets.only(top: S.x1), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              OlderVersionMark(id: 'selected', version: points[i]!.olderVersion, reason: points[i]!.olderReason, speak: false),
-            ])),
-          ],
           // WHICH DEVICE, second line, only under the gate. A day-level scalar
           // from a merged substrate has no single producer, so this names the
           // SET (final-plan §4.4) and never picks one of two.

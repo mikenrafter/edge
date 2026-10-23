@@ -865,7 +865,12 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
           for (final i in layout.items) ...i.memberIds,
           ...layout.unplaced,
         ])
-          if (byId[id] != null) byId[id]!,
+          // An older-calculation RANGE is visual: the strip and the slider are
+          // its spoken sources, so the lane does not say it a third time.
+          if (byId[id] != null &&
+              !(byId[id]!.kind == AnnotationKind.algoVersion &&
+                  byId[id]!.until != null))
+            byId[id]!,
       ]..sort(_byTime);
 
       void step(PlacedAnnotation i) =>

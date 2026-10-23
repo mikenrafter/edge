@@ -677,10 +677,10 @@ class _ChartScrubState extends State<ChartScrub> {
     final vals = [
       for (final c in r.cells)
         if (c.color != null && c.value != null)
-          // The older-calculation fact is part of what is heard, never only of
-          // what is drawn.
+          // The older-calculation fact is heard, never only drawn, but short:
+          // the strip is the one source of the full note.
           '${c.label} ${c.value}'
-              '${c.older == null ? '' : ' (${l?.olderVersionSemantics(c.older!.version) ?? olderVersionSemantics(c.older!.version)})'}',
+              '${c.older == null ? '' : ' (${olderVersionSpokenShort(l, c.older!.version)})'}',
     ];
     return [
       if (r.time != null && r.time != ChartKeyReadout.absent) r.time!,

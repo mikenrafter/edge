@@ -206,3 +206,12 @@ String olderRangeLabel(
   final why = olderVersionReasonText(l, reason);
   return '$days: older calculation (v$version)${why == null ? '' : ', $why'}';
 }
+
+/// What a slider says of the selected day when its value is from an older
+/// calculation: the short fact only. The full "From an older calculation
+/// (vN): reason" has ONE spoken source, the on-load strip, so a scrub never
+/// repeats it. Other languages say the localized full form.
+String olderVersionSpokenShort(AppLocalizations? l, int version) =>
+    l == null || l.localeName == 'en'
+        ? 'older calculation'
+        : (l.olderVersionSemantics(version));
