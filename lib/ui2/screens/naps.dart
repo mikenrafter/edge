@@ -103,7 +103,8 @@ class NapsScreen extends StatefulWidget {
   State<NapsScreen> createState() => _NapsScreenState();
 }
 
-class _NapsScreenState extends State<NapsScreen> {
+class _NapsScreenState extends State<NapsScreen>
+    with PausedReadReload<NapsScreen> {
   NapsData? _d;
   String? _day;
   // A quick second tap on the day stepper starts a second load; the first
@@ -116,9 +117,27 @@ class _NapsScreenState extends State<NapsScreen> {
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     _day = widget.day;
     _load();
   }
+
+  @override
+  void dispose() {
+    stopWatchingPausedRead();
+    super.dispose();
+  }
+
+  @override
+  bool get pausedContent => _paused;
+
+  @override
+  void reloadPausedRead() {
+    if (mounted && _paused) _load();
+  }
+
+  @override
+  void focusStarted() => _load();
 
   Future<void> _load() async {
     final repo = repoOf(context);

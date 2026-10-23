@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../data/read_paused.dart';
 import '../l10n/app_localizations.dart';
+import '../state/revision_coalescer.dart' show kRevisionMinGap;
 import '../sync/import_focus.dart';
 import 'theme.dart';
 
@@ -100,6 +101,7 @@ Future<PausedReadResult<T>> pausedRead<T>(Future<T> read) async {
 mixin PausedReadReload<T extends StatefulWidget> on State<T> {
   bool _watching = false;
   bool _coalescing = false;
+  Timer? _coalesce;
 
   /// Whether the screen is showing the paused state now.
   bool get pausedContent;
@@ -125,6 +127,7 @@ mixin PausedReadReload<T extends StatefulWidget> on State<T> {
   }
 
   void stopWatchingPausedRead() {
+    _coalesce?.cancel();
     if (!_watching) return;
     ImportFocus.active.removeListener(_onActive);
     ImportFocus.days.removeListener(_onDays);
@@ -138,9 +141,13 @@ mixin PausedReadReload<T extends StatefulWidget> on State<T> {
       return;
     }
     _coalescing = true;
-    // Revisions already queued behind the focus end are absorbed; anything
-    // later is a real, new change.
-    Timer.run(() => _coalescing = false);
+    // The reload below reads everything committed so far. The day publisher
+    // may still flush a trailing publish up to kRevisionMinGap later (plus the
+    // publish gate's own work), announcing exactly that data: absorb revisions
+    // for twice the gap rather than read it again. (The repository exposes no
+    // per-revision data stamp to compare instead.)
+    _coalesce?.cancel();
+    _coalesce = Timer(kRevisionMinGap * 2, () => _coalescing = false);
     reloadPausedRead();
   }
 

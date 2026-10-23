@@ -24,6 +24,8 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 import '../../data/circadian_artifact.dart';
 import '../../data/day_label.dart' show dayLabelOf, todayLabel;
 import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
+import '../../sync/import_focus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
 import '../../state/recalc_state.dart';
@@ -244,9 +246,11 @@ class CircadianDetail extends StatefulWidget {
   State<CircadianDetail> createState() => _CircadianDetailState();
 }
 
-class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
+class _CircadianDetailState extends State<CircadianDetail>
+    with RevisionReload, PausedReadReload<CircadianDetail> {
   CircadianData? _d;
   bool _loading = true;
+  bool _paused = false;
 
   /// Whether the non-parametric battery is unfolded. Off by default.
   bool _showStrength = false;
@@ -259,6 +263,7 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     if (widget.data != null) {
       _d = widget.data;
       _loading = false;
@@ -274,7 +279,29 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
   bool get revisionReloads => widget.data == null;
 
   @override
-  void reload() => _load();
+  void reload() {
+    if (absorbRevision()) return;
+    _load();
+  }
+
+  @override
+  void dispose() {
+    stopWatchingPausedRead();
+    super.dispose();
+  }
+
+  @override
+  bool get pausedContent => _paused;
+
+  @override
+  void reloadPausedRead() {
+    if (mounted && widget.data == null) _load();
+  }
+
+  @override
+  void focusStarted() {
+    if (widget.data == null) _load();
+  }
 
   /// Set while the page shows the last stored result, stale, while the warmer
   /// prepares a fresh one; null once the fresh one has replaced it.
@@ -309,14 +336,23 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
               ));
         },
       );
-      if (!stillNewest(#circadian, t) || art == null) return;
-      setState(() => (
+      if (!stillNewest(#circadian, t)) return;
+      if (art == null) {
+        // Nothing fresh: during an import the warm is held, and waiting here
+        // would be a spinner with nothing coming. Say so; read once at the end.
+        setState(() => (_loading = false, _paused = ImportFocus.active.value));
+        return;
+      }
+      setState(() => (_paused = false,
             _d = CircadianData.fromArtifact(art),
             _cachedAt = null,
             _loading = false,
           ));
-    } catch (_) {
-      if (stillNewest(#circadian, t)) setState(() => _loading = false);
+    } catch (e) {
+      if (stillNewest(#circadian, t)) {
+        setState(() => (_loading = false,
+            _paused = e is ReadPaused || ImportFocus.active.value));
+      }
     }
   }
 
@@ -334,7 +370,10 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
             ? (l?.advancedRhythmTitle ?? 'Sleep timing and daily rhythm')
             : (l?.circadianDetailTitle ?? 'Body clock'),
         [
-      if (_loading && _d == null) ...[
+      if (_paused && _d == null) ...[
+        const SizedBox(height: S.x4),
+        const PausedOlderDays(),
+      ] else if (_loading && _d == null) ...[
         const SizedBox(height: S.x4),
         InlineLoading(
             status: l?.loadingCircadian ?? 'Reading your daily rhythm'),

@@ -113,6 +113,15 @@ class _JournalRepo extends LocalRepository {
       journalPosted = true;
 }
 
+/// Real-time waits: the stored-result read goes to sqflite on another isolate.
+Future<void> _real(WidgetTester t) async {
+  for (var i = 0; i < 40; i++) {
+    await t.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)));
+    await t.pump();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() async {
@@ -263,7 +272,7 @@ void main() {
     });
   });
 
-  group('naps', () {
+  group('screens on the real database', () {
     setUpAll(() async {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
@@ -293,27 +302,28 @@ void main() {
       expect(find.text(kPausedLine), findsNothing);
       expect(repo.count('availableDays'), days + 1);
     });
-  });
 
-  group('screens that waited forever', () {
     testWidgets('Body clock: a null artifact during focus is the paused '
         'line, not a spinner; one reload after', (t) async {
       startFocus();
       final repo = FocusRepo();
       await _pump(t, repo, const CircadianDetail());
-      await _settle(t, n: 100);
+      await _real(t);
       expect(find.byType(CircularProgressIndicator), findsNothing,
           reason: 'no endless spinner');
       expect(find.text(kPausedLine), findsOneWidget);
 
       final sigs = repo.count('artifactSignature');
       endFocus();
-      await _settle(t, n: 100);
+      await _real(t);
       expect(find.text(kPausedLine), findsNothing);
       expect(repo.count('artifactSignature'), sigs + 1,
           reason: 'read once when focus ends');
     });
 
+  });
+
+  group('screens that waited forever', () {
     testWidgets("Beats: an interrupted shell read is the paused line, not "
         "\"Reading the night's beats\" forever; one reload after", (t) async {
       final repo = FocusRepo();

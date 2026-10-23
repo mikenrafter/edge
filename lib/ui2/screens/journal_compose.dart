@@ -23,6 +23,7 @@ import '../../data/db.dart';
 import '../../data/journal_fields.dart';
 import '../../data/local_repository.dart';
 import '../../data/read_paused.dart';
+import '../../sync/import_focus.dart';
 import '../../data/water_units.dart';
 import '../../gestures/symptom_description.dart';
 import '../../l10n/app_localizations.dart';
@@ -44,7 +45,8 @@ class JournalCompose extends StatefulWidget {
   State<JournalCompose> createState() => _JournalComposeState();
 }
 
-class _JournalComposeState extends State<JournalCompose> {
+class _JournalComposeState extends State<JournalCompose>
+    with PausedReadReload<JournalCompose> {
   late final String _date = widget.date ?? todayLabel();
   final _note = TextEditingController();
 
@@ -67,11 +69,23 @@ class _JournalComposeState extends State<JournalCompose> {
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     _load();
   }
 
   @override
+  bool get pausedContent => _paused;
+
+  /// Only a screen that never got its day reloads: an open form is the
+  /// user's, and a reload would overwrite what they typed.
+  @override
+  void reloadPausedRead() {
+    if (mounted && _paused) _load();
+  }
+
+  @override
   void dispose() {
+    stopWatchingPausedRead();
     _note.dispose();
     super.dispose();
   }
@@ -237,16 +251,31 @@ class _JournalComposeState extends State<JournalCompose> {
   Future<void> _save() async {
     final repo = context.read<AppState>().repo;
     if (repo == null) return;
+    // An import has the database: refuse the whole save up front, before
+    // anything is read or written.
+    if (ImportFocus.active.value) {
+      setState(() => _saveBlocked = true);
+      return;
+    }
     setState(() => (_saving = true, _saveBlocked = false));
     try {
       await _write(repo);
     } on ReadPaused {
-      // The merge re-reads the day first; nothing was written.
+      // Raised while PREPARING (or by the first write, which reads first):
+      // nothing has been written.
       if (mounted) setState(() => (_saving = false, _saveBlocked = true));
     }
   }
 
   Future<void> _write(LocalRepository repo) async {
+    // Both writes REPLACE the day, and the strap's double-tap (a glass of
+    // water, a moment tag) writes the same day while this screen is open.
+    // Re-read and lay only this screen's own edits over it, or Save puts the
+    // snapshot from when the screen opened back and the tap is lost.
+    //
+    // BOTH merges are prepared before either write, so a pause cannot leave
+    // the numbers saved and the tags not (there is no transaction to wrap
+    // them in).
     final metrics = {...await repo.getJournalMetrics(_date)};
     for (final k in {..._loadedValues.keys, ..._values.keys}) {
       final v = _values[k];
@@ -257,7 +286,6 @@ class _JournalComposeState extends State<JournalCompose> {
         metrics[k] = v;
       }
     }
-    await repo.postJournalMetrics(_date, metrics);
     final tags = <String>{};
     for (final e in await repo.getJournal(range: '30d')) {
       if (e['date'] == _date) {
@@ -267,6 +295,11 @@ class _JournalComposeState extends State<JournalCompose> {
     tags
       ..removeAll(_loadedTags.difference(_tags))
       ..addAll(_tags);
+    // Focus may have begun while the reads were in flight.
+    if (ImportFocus.active.value) throw const ReadPaused('import');
+    // The metrics write reads the field specs first (the one write that can
+    // be paused), so it goes first: if it throws, nothing was written.
+    await repo.postJournalMetrics(_date, metrics);
     await repo.postJournal(_date, tags.toList(), _note.text.trim());
     if (!mounted) return;
     // Today's "How was today?" is already armed; a rated day moves it to

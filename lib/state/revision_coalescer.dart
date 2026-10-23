@@ -3,11 +3,14 @@ import 'dart:async';
 /// At most one publish per [minGap] while a pass commits days, with a trailing
 /// fire so the LAST committed day always publishes. Pure: the clock and the
 /// timer are injected.
+/// The least gap between two day publishes (a trailing one is flushed after it).
+const Duration kRevisionMinGap = Duration(milliseconds: 1500);
+
 class RevisionCoalescer {
   RevisionCoalescer({
     required void Function() fire,
     required int Function() nowMs,
-    this.minGap = const Duration(milliseconds: 1500),
+    this.minGap = kRevisionMinGap,
     Timer Function(Duration, void Function()) timer = Timer.new,
   })  : _fire = fire,
         _now = nowMs,

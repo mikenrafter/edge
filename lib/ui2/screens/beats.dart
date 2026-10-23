@@ -54,6 +54,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/journal_fields.dart' show formatMinuteOfDay;
 import '../../data/local_repository.dart';
+import '../../data/read_paused.dart';
+import '../../sync/import_focus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
 import '../../state/recalc_state.dart';
@@ -264,14 +266,17 @@ class Beats extends StatefulWidget {
   State<Beats> createState() => _BeatsState();
 }
 
-class _BeatsState extends State<Beats> with RevisionReload {
+class _BeatsState extends State<Beats>
+    with RevisionReload, PausedReadReload<Beats> {
   BeatsData? _d;
   bool _loading = true;
+  bool _paused = false;
   String? _day;
 
   @override
   void initState() {
     super.initState();
+    watchPausedRead();
     _day = widget.day;
     if (widget.data != null) {
       _d = widget.data;
@@ -288,7 +293,29 @@ class _BeatsState extends State<Beats> with RevisionReload {
   bool get revisionReloads => widget.data == null;
 
   @override
-  void reload() => _load();
+  void reload() {
+    if (absorbRevision()) return;
+    _load();
+  }
+
+  @override
+  void dispose() {
+    stopWatchingPausedRead();
+    super.dispose();
+  }
+
+  @override
+  bool get pausedContent => _paused;
+
+  @override
+  void reloadPausedRead() {
+    if (mounted && widget.data == null) _load();
+  }
+
+  @override
+  void focusStarted() {
+    if (widget.data == null) _load();
+  }
 
   /// Set while the beats on screen are the last result of an earlier open
   /// (memory or the stored copy), shown at once while they are read again; null
@@ -370,6 +397,7 @@ class _BeatsState extends State<Beats> with RevisionReload {
       setState(() {
         _shell = shell;
         _loading = false;
+        _paused = false;
         _compose();
       });
       if (slow == null) return;
@@ -383,11 +411,18 @@ class _BeatsState extends State<Beats> with RevisionReload {
           // A failed read keeps an earlier result (labelled); with none, the
           // panel is left out rather than claiming the beats are gone.
           _beatsFailed = _beats == null;
+          _paused = ImportFocus.active.value;
         }
         _compose();
       });
-    } catch (_) {
-      if (stillNewest(#beats, t)) setState(() => _loading = false);
+    } catch (e) {
+      // An interrupted read must not leave "reading the night's beats" up:
+      // the panel is left out (failed) and, during an import, says why.
+      if (stillNewest(#beats, t)) {
+        setState(() => (_loading = false,
+            _beatsFailed = _beats == null,
+            _paused = e is ReadPaused || ImportFocus.active.value));
+      }
     }
   }
 
@@ -428,7 +463,12 @@ class _BeatsState extends State<Beats> with RevisionReload {
       [
         _asOf(d),
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
-        if (_loading)
+        if (_paused)
+          const Padding(
+            padding: EdgeInsets.only(top: S.x4),
+            child: PausedOlderDays(),
+          )
+        else if (_loading)
           Padding(
             padding: const EdgeInsets.only(top: S.x4),
             child: InlineLoading(

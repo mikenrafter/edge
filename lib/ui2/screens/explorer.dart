@@ -832,7 +832,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
               label: a.label),
         // One range per run of older days in EACH picked series, named after
         // it. A slot is the interval [i, i + 1) of the window's domain.
-        ..._olderRanges(c, picked, w),
+        if (!paused) ..._olderRanges(c, picked, w),
       ];
       marks = items.isEmpty
           ? null
@@ -849,7 +849,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
           title: title,
           unit: l?.exploreUnitNormalised ?? 'Normalised',
           height: 200,
-          annotations: paused ? null : marks,
+          annotations: marks,
           xLabels: xLabels,
           legend: [
             for (final m in picked) (m.label, p.on(m.color)),
@@ -861,19 +861,22 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
             keys: [
               for (final m in picked)
                 ChartKey(m.label, p.on(m.color), (at) {
-                  final v = m.line?.valueAt(at);
+                  // Paused: no numbers anywhere in the chart, cached or not.
+                  final v = paused ? null : m.line?.valueAt(at);
                   return v == null ? null : _say(m.unit, v * m.scale);
                 },
                     // Flag and value are read off the same slot of the same
                     // line, for every picked metric, not just the first.
-                    older: m.line,
-                    latest: m.hasData ? m.line!.runs.last.last.at : null),
+                    older: paused ? null : m.line,
+                    latest: !paused && m.hasData
+                        ? m.line!.runs.last.last.at
+                        : null),
               if (asleep.isNotEmpty) shade(asleepLabel, C.blue, asleep),
             ],
             // The boundary holds the painter and not the cursor, which the
             // scrub draws above it.
             child: paused
-                ? const Center(child: PausedOlderDays())
+                ? const IgnorePointer(child: Center(child: PausedOlderDays()))
                 : RepaintBoundary(
               key: ExplorerView.plotKey,
               child: CustomPaint(
