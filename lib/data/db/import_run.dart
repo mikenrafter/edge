@@ -67,6 +67,7 @@ Future<Map<String, int>> _ldbRunJournaledImport(ImportRun run, void Function(Imp
             counts['_substrate_archive_skipped'] ?? run.archiveSkipped,
         extras: extras,
         interruptedAndResumed: run.resumes,
+        runId: reentryRunIdOf(run.id, run.startedAt),
       );
       if (extras.keysWritten.isNotEmpty) {
         await SettingsRepository.instance.announceRestored(extras.keysWritten);

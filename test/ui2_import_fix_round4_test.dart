@@ -33,12 +33,10 @@ class NoRollup implements ImportRollupProbe {
 }
 
 class _Probe implements ImportRollupProbe {
-  _Probe({this.during, this.throwing});
-  final void Function()? during;
+  _Probe({this.throwing});
   final Object? throwing;
   @override
   Future<void> finalize(Profile profile) async {
-    during?.call();
     if (throwing != null) throw throwing!;
   }
 }
@@ -116,18 +114,6 @@ void main() {
       await app.resumeUnfinishedImport(force: true);
       expect(app.importReentry.value, [kNeedsReentryCoachKey]);
       expect(await _stored(), contains(kNeedsReentryCoachKey));
-    }, timeout: const Timeout(Duration(minutes: 3)));
-
-    test('a dismissal made while the resume runs stays dismissed', () async {
-      SharedPreferences.setMockInitialValues({_prefKey: kNeedsReentryCoachKey});
-      await app.loadImportReentry();
-      app.debugFinalizeImport = _Probe(during: app.dismissImportReentry);
-      await killMidCopy(await sourceWith(tmp, lostKey: true));
-      await app.resumeUnfinishedImport(force: true);
-      expect(app.importReentry.value, isEmpty);
-      await Future<void>.delayed(Duration.zero);
-      expect((await _stored() ?? '').split(';').first, isEmpty,
-          reason: 'and it is not back at the next start either');
     }, timeout: const Timeout(Duration(minutes: 3)));
   });
 

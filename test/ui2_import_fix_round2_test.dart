@@ -27,6 +27,7 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:openstrap_edge/data/import_reentry_store.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/import_progress.dart';
@@ -56,6 +57,11 @@ class _App extends AppState {
   @override
   Future<int> importEdgeBackup(String path) async {
     lastBackupSummary = summaries[pth.basename(path)];
+    // What the real record step does inside the import, under this file's
+    // journaled run.
+    await ImportReentryStore.current.add(
+        lastBackupSummary?.needsReentry ?? const [],
+        runId: 'journal-${pth.basename(path)}');
     return 1;
   }
 
@@ -175,7 +181,8 @@ void main() {
           () async {
         await recordImportSummary('${tmp.path}/no_such.db',
             archiveBucketsSkipped: 0,
-            extras: const BackupExtrasResult());
+            extras: const BackupExtrasResult(),
+            runId: 'r');
         // Control: seed a real older summary with a lost key.
         await LocalDb.putComputeFreshness(
             kImportSummaryKey, 'v1:5,0,0,1,1,0,0,1');
@@ -184,7 +191,8 @@ void main() {
             reason: 'control: the older summary reads back');
         await recordImportSummary('${tmp.path}/no_such.db',
             archiveBucketsSkipped: 0,
-            extras: const BackupExtrasResult());
+            extras: const BackupExtrasResult(),
+            runId: 'r');
         expect((await lastImportSummary())?.needsReentry ?? const [], isEmpty,
             reason: 'the older import\'s warning must not describe this one');
       });

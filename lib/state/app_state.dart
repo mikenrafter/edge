@@ -1569,12 +1569,9 @@ class AppState extends ChangeNotifier {
   Future<void> dismissImportReentry() => _reentry.dismiss();
   Future<void> loadImportReentry() => _reentry.load();
 
-  /// A user-started import begins; earlier acknowledgements stop applying.
-  Future<void> beginFreshImport() => _reentry.beginFreshImport();
-
-  /// Adds items a finished backup says need entering again (acknowledged ones
-  /// are skipped by the store).
-  Future<void> addImportReentry(Iterable<String> ids) => _reentry.add(ids);
+  /// Runs a multi-select import as one batch: its backups share one re-entry
+  /// run identity, so a dismissal between two of them holds for the rest.
+  Future<T> importBatch<T>(Future<T> Function() body) => _reentry.batch(body);
 
   /// Days of stored raw history (substrate archive buckets) the last backup
   /// import could NOT merge, because they are in a format this build does

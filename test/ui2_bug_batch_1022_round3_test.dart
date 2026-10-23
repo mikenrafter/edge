@@ -22,7 +22,6 @@ import 'package:openstrap_edge/ui2/activity/catalogue.dart';
 
 void main() {
   test('every preference key ImportReentryStore owns is device-only', () {
-    expect(ImportReentryStore.prefKeys, contains('import_reentry_stale'));
     for (final k in ImportReentryStore.prefKeys) {
       expect(prefsKeyBackedUp(k), isFalse, reason: '$k must be in kPrefsNotBackedUp');
       expect(kPrefsNotBackedUp[k], isNotEmpty);

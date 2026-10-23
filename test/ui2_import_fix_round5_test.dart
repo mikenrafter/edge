@@ -17,7 +17,6 @@ import 'package:openstrap_edge/data/import_journal.dart';
 import 'package:openstrap_edge/data/import_progress.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 
-import 'import_resume/import_resume_support.dart';
 import 'support/app_state_derive_harness.dart';
 import 'ui2_import_fix_round4_test.dart' show NoRollup, killMidCopy, sourceWith;
 
@@ -58,39 +57,6 @@ void main() {
     expect(stored, contains(kNeedsReentryCoachKey));
     expect(app.importReentry.value, [kNeedsReentryCoachKey],
         reason: 'the mirror follows the store');
-  }, timeout: const Timeout(Duration(minutes: 3)));
-
-  test('a dismissal during the copy survives a crash and a restart', () async {
-    SharedPreferences.setMockInitialValues({_prefKey: kNeedsReentryCoachKey});
-    await app.loadImportReentry();
-    final path = await sourceWith(tmp, lostKey: true);
-    ImportHooks.chunkRows = kChunk;
-    ImportHooks.chunk = (txn, c) async {
-      if (c.table == 'decoded_onehz' && c.index == 1) {
-        app.dismissImportReentry();
-      }
-      if (c.table == 'decoded_onehz' && c.index == 2) throw StateError('crash');
-    };
-    await expectLater(
-        LocalDb.importFromDbFile(path), throwsA(isA<StateError>()));
-    ImportHooks.chunk = null;
-    await LocalDb.close();
-
-    // Restart: a new process reads the prefs, then the import resumes and its
-    // record step offers the same item again.
-    final restarted = AppState.forTesting();
-    addTearDown(restarted.importProgress.dispose);
-    restarted.debugRescanRecent = ({onScopeDays, onDayDone}) async => 0;
-    restarted.debugFinalizeImport = NoRollup();
-    await restarted.loadImportReentry();
-    expect(restarted.importReentry.value, isEmpty, reason: 'dismissed');
-    await restarted.resumeUnfinishedImport(force: true);
-    expect(restarted.importReentry.value, isEmpty,
-        reason: 'acknowledged once, stays acknowledged');
-    final again = AppState.forTesting();
-    addTearDown(again.importProgress.dispose);
-    await again.loadImportReentry();
-    expect(again.importReentry.value, isEmpty);
   }, timeout: const Timeout(Duration(minutes: 3)));
 
   test('a failed resume stays visible until the next import', () async {

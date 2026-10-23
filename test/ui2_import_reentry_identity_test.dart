@@ -149,4 +149,28 @@ void main() {
     await expectLater(u.dismiss(), throwsA(isA<StateError>()));
     expect(u.pending.value, before, reason: 'not dismissed, so still shown');
   });
+
+  test('a multi-select batch shares one run: a dismissal between two backups '
+      'holds for the second', () async {
+    await _arm();
+    final s = ImportReentryStore();
+    await s.batch(() async {
+      await s.add([_x], runId: 'journal-1');
+      await s.dismiss();
+      await s.add([_x], runId: 'journal-2'); // the next file of the same batch
+    });
+    expect(s.pending.value, isEmpty);
+    await s.add([_x], runId: 'journal-3'); // a later, separate import
+    expect(s.pending.value, [_x]);
+  });
+
+  test('the same run retrying its record step after a dismissal adds nothing',
+      () async {
+    await _arm();
+    final s = ImportReentryStore();
+    await s.add([_x], runId: 'A');
+    await s.dismiss();
+    await s.add([_x], runId: 'A');
+    expect(s.pending.value, isEmpty);
+  });
 }

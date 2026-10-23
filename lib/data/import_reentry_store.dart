@@ -1,38 +1,46 @@
 // ImportReentryStore: the ONE owner of "what the user still has to enter again
 // after an import".
 //
-// Owned state: two sets, PENDING (not yet acknowledged) and ACKNOWLEDGED (the
-// user dismissed it; stays dismissed until the next user-started import). They
-// live together in one preference, `import_reentry_pending`, written in a
-// single call so no crash can leave them disagreeing. The value is
-// "pending;acknowledged", each a comma-joined list; a value without ';' is the
-// older pending-only form.
+// Owned state: for each import RUN, the items still PENDING and the items the
+// user has ACKNOWLEDGED (dismissed). Everything is keyed by (runId, itemId): an
+// acknowledgement only ever suppresses the same item of the same run. There is
+// no reset step and no exception to it. A resume of a run reads the same
+// journal row and so records under the same runId (its dismissal stands); a
+// fresh backup, including one that replaces an unfinished journal, is a new
+// run (its own warnings are never hidden by an old ack).
+//
+// runId comes from the import journal (see [reentryRunIdOf]); nothing new is
+// stored there. A multi-select import is one journaled run per backup file.
+//
+// All runs live together in ONE preference, `import_reentry_pending`, so any
+// operation, a dismissal included, is a single write and no crash can leave
+// the sets disagreeing. The value is JSON {"v":2,"runs":[{"id","p","a"}]}.
+// Older values ("pending" or "pending;acknowledged") are read as one run of
+// UNKNOWN identity: their pending items stay visible, and their acks match no
+// run, since it cannot be told which import they were for.
 //
 // Every operation runs through one queue and re-reads the preference first, so
 // the in-memory mirror ([pending]) can never overwrite what is stored. Callers
-// never read-modify-write: they add, dismiss, begin a fresh import, or load.
-// A write that the platform refuses is retried once, then thrown, never
-// dropped. Device-only state (kPrefsNotBackedUp in backup_extras.dart).
-//
-// STALE acknowledgements. A fresh import's reset of the acknowledgements can be
-// refused by the platform. The acks that survive are then known to belong to an
-// EARLIER import, so they must not hide this import's own warnings. Those ids
-// are kept as a third set, STALE, in its own preference (`import_reentry_stale`:
-// the write that just failed cannot be trusted to carry it, and a restart before
-// the first add must still see it). add() bypasses an ack only for a stale id; a
-// dismissal removes the id from STALE, so it stays dismissed. The reset is
-// retried at load (launch and resume) and, once it lands, STALE is emptied.
+// never read-modify-write. A write the platform refuses is retried once, then
+// thrown, never dropped. Device-only state (kPrefsNotBackedUp in
+// backup_extras.dart).
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'import_journal.dart';
-
 /// The identity of one journaled import run: its journal row id (AUTOINCREMENT,
 /// never reused) with its start time. A resume reads the same row and so gets
 /// the same value; a backup that replaces the journal gets a new one.
-String reentryRunIdOf(int journalId, int startedAt) => '0';
+String reentryRunIdOf(int journalId, int startedAt) => '$startedAt-$journalId';
+
+class _Run {
+  _Run(this.id, this.pending, this.acked);
+  final String id;
+  final List<String> pending;
+  final List<String> acked;
+}
 
 class ImportReentryStore {
   ImportReentryStore();
@@ -44,23 +52,13 @@ class ImportReentryStore {
   static ImportReentryStore get current => _current ??= ImportReentryStore();
   static set current(ImportReentryStore s) => _current = s;
 
-  /// A mirror of the stored pending set, for screens. Only this class writes it.
+  /// A mirror of the stored pending items (all runs, each once), for screens.
+  /// Only this class writes it.
   final ValueNotifier<List<String>> pending = ValueNotifier(const []);
 
   // Null until the first operation: a future built in the constructor would
   // belong to whatever zone built the store.
   Future<void>? _tail;
-  // Mirror of the stale preference for the case where even that write failed.
-  final Set<String> _staleMem = {};
-  // beginFreshImport could not even READ the acknowledgements: until they can
-  // be, every stored ack is treated as stale for this process, except ids the
-  // user dismissed since (_dismissedSince).
-  bool _resetUnknown = false;
-  // Whether an OLDER import was unfinished when the fresh one began, decided
-  // once at that boundary. The journal read later cannot tell: by then it holds
-  // the NEW import's own unfinished journal.
-  bool _priorUnfinished = false;
-  final Set<String> _dismissedSince = {};
 
   /// Waits for every earlier operation, then returns the lock to release (in a
   /// finally) with complete(). One at a time, in call order.
@@ -73,110 +71,91 @@ class ImportReentryStore {
   }
 
   static const String _key = 'import_reentry_pending';
-  static const String _staleKey = 'import_reentry_stale';
+
+  /// The run an older-format value is read as.
+  static const String _unknownRun = '?';
+
+  /// Runs kept once they have nothing pending: enough that a resume of a
+  /// recent run still finds its acknowledgements.
+  static const int _keepRuns = 6;
 
   /// Every preference this store owns; each must be listed in
   /// kPrefsNotBackedUp (a restore must not carry them to another install).
-  static const List<String> prefKeys = [_key, _staleKey];
+  static const List<String> prefKeys = [_key];
 
-  Future<Set<String>> _readStale() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_staleKey) ?? '';
-    return {
-      for (final x in raw.split(',')) if (x.isNotEmpty) x,
-      ..._staleMem,
-    };
-  }
+  // A multi-select import is one batch: its backups share the run identity of
+  // the first one that records, so a dismissal made between two of them holds
+  // for the rest. Only while a batch is open; a resume of an interrupted file
+  // later has just its own journal identity (the batch id is not journaled).
+  int _batchDepth = 0;
+  String? _batchRunId;
 
-  /// Writes the stale set; retried once, then thrown. A failure is never
-  /// dropped: callers that cannot tolerate one (dismiss) let it propagate.
-  Future<void> _writeStale(Set<String> stale) async {
-    for (var attempt = 0; attempt < 2; attempt++) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final ok = stale.isEmpty
-            ? await prefs.remove(_staleKey)
-            : await prefs.setString(_staleKey, stale.join(','));
-        if (ok) {
-          _staleMem
-            ..clear()
-            ..addAll(stale);
-          return;
-        }
-      } catch (_) {}
-      try {
-        await (await SharedPreferences.getInstance()).reload();
-      } catch (_) {}
-    }
-    throw StateError('Could not save the note about stale acknowledgements.');
-  }
-
-  /// Records [stale] where it can be, and in memory always: used where the
-  /// caller is already failing (a refused reset) and has nothing more to do
-  /// with a second failure than keep the bypass for this process.
-  Future<void> _rememberStale(Set<String> stale) async {
-    _staleMem
-      ..clear()
-      ..addAll(stale);
+  /// Runs [body] as one batch: every [add] inside shares one run identity.
+  Future<T> batch<T>(Future<T> Function() body) async {
+    _batchDepth++;
     try {
-      await _writeStale(stale);
-    } catch (_) {}
-  }
-
-  /// The stale ids now, folding in the "the first read failed" case: until the
-  /// preferences can be read again every stored ack is treated as stale, minus
-  /// what the user has dismissed since; then that is persisted and the
-  /// in-memory fallback is dropped.
-  Future<Set<String>> _effectiveStale(List<String> acked) async {
-    final stale = await _readStale();
-    if (!_resetUnknown) return stale;
-    if (_priorUnfinished) {
-      // The reset would not have run: those acks are not stale.
-      _resetUnknown = false;
-      _dismissedSince.clear();
-      return stale;
+      return await body();
+    } finally {
+      if (--_batchDepth == 0) _batchRunId = null;
     }
-    stale.addAll(acked.where((a) => !_dismissedSince.contains(a)));
-    try {
-      await _writeStale(stale);
-      _resetUnknown = false;
-      _dismissedSince.clear();
-    } catch (_) {}
-    return stale;
   }
 
-  /// Retries an owed reset: the stale acknowledgements go, the user's own
-  /// later dismissals stay. Throws if the platform refuses the write.
-  Future<void> _settleStale(List<String> pend, List<String> acked) async {
-    final stale = await _effectiveStale(acked);
-    if (stale.isEmpty) return;
-    await _write(pend, [for (final a in acked) if (!stale.contains(a)) a]);
-    await _writeStale({});
-    _resetUnknown = false;
-    _dismissedSince.clear();
-  }
-
-  Future<(List<String>, List<String>)> _read() async {
+  Future<List<_Run>> _read() async {
     final prefs = await SharedPreferences.getInstance();
     // The plugin updates its cache BEFORE the platform confirms a write, so a
     // refused write leaves the cache ahead of the disk. Disk is the truth.
     await prefs.reload();
     final raw = prefs.getString(_key) ?? '';
-    final parts = raw.split(';');
-    List<String> ids(String s) => [for (final x in s.split(',')) if (x.isNotEmpty) x];
-    return (ids(parts[0]), parts.length > 1 ? ids(parts[1]) : <String>[]);
+    if (raw.isEmpty) return [];
+    List<String> ids(Object? v) =>
+        v is List ? [for (final x in v) if (x is String && x.isNotEmpty) x] : [];
+    if (raw.startsWith('{')) {
+      try {
+        final j = jsonDecode(raw);
+        final runs = j is Map ? j['runs'] : null;
+        if (runs is List) {
+          return [
+            for (final r in runs)
+              if (r is Map && r['id'] is String)
+                _Run(r['id'] as String, ids(r['p']), ids(r['a'])),
+          ];
+        }
+      } catch (_) {}
+      return [];
+    }
+    // Older format: "pending" or "pending;acknowledged". The acks are dropped:
+    // they belong to no run this build can name.
+    final pend = ids(raw.split(';').first.split(','));
+    return pend.isEmpty ? [] : [_Run(_unknownRun, pend, [])];
   }
 
-  /// Both sets in one write; retried once; throws if the platform refuses.
-  Future<void> _write(List<String> pend, List<String> acked) async {
+  List<String> _pendingOf(List<_Run> runs) =>
+      [for (final id in {for (final r in runs) ...r.pending}) id];
+
+  /// All runs in one write; retried once; throws if the platform refuses.
+  Future<void> _write(List<_Run> runs) async {
+    // Bounded: a run with nothing pending is only worth keeping for its acks.
+    while (runs.length > _keepRuns) {
+      final i = runs.indexWhere((r) => r.pending.isEmpty);
+      if (i < 0) break;
+      runs.removeAt(i);
+    }
+    final live = [for (final r in runs) if (r.pending.isNotEmpty || r.acked.isNotEmpty) r];
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
         final prefs = await SharedPreferences.getInstance();
-        final ok = pend.isEmpty && acked.isEmpty
+        final ok = live.isEmpty
             ? await prefs.remove(_key)
-            : await prefs.setString(_key, '${pend.join(',')};${acked.join(',')}');
+            : await prefs.setString(
+                _key,
+                jsonEncode({
+                  'v': 2,
+                  'runs': [
+                    for (final r in live) {'id': r.id, 'p': r.pending, 'a': r.acked},
+                  ],
+                }));
         if (ok) {
-          pending.value = List.unmodifiable(pend);
+          pending.value = List.unmodifiable(_pendingOf(live));
           return;
         }
       } catch (_) {}
@@ -189,122 +168,70 @@ class ImportReentryStore {
     throw StateError('Could not save the note about what to enter again.');
   }
 
-  /// Reads the stored sets into the mirror.
+  /// Reads the stored items into the mirror.
   Future<void> load() async {
     final lock = await _acquire();
     try {
-      final (pend, acked) = await _read();
-      try {
-        await _settleStale(pend, acked); // the reset an earlier launch owed
-      } catch (_) {}
-      pending.value = List.unmodifiable(pend);
+      pending.value = List.unmodifiable(_pendingOf(await _read()));
     } finally {
       lock.complete();
     }
   }
 
-  /// pending ∪= ids − acknowledged. Writes only when something is new.
-  Future<void> add(Iterable<String> ids, {String? runId}) async {
+  /// Records [ids] as pending for the import run [runId], unless the user has
+  /// already acknowledged that item of that same run. Writes only when
+  /// something is new.
+  Future<void> add(Iterable<String> ids, {required String runId}) async {
     // Nothing to add touches nothing (no preferences read, no lock).
     if (ids.isEmpty) return;
+    if (_batchDepth > 0) runId = _batchRunId ??= runId;
     final lock = await _acquire();
     try {
-      final (pend, acked) = await _read();
-      final stale = await _effectiveStale(acked);
+      final runs = await _read();
+      var run = runs.where((r) => r.id == runId).firstOrNull;
       final fresh = [
         for (final id in ids)
-          if ((!acked.contains(id) || stale.contains(id)) && !pend.contains(id))
+          if (!(run?.acked.contains(id) ?? false) &&
+              !(run?.pending.contains(id) ?? false))
             id
       ];
       if (fresh.isEmpty) {
-        pending.value = List.unmodifiable(pend);
+        pending.value = List.unmodifiable(_pendingOf(runs));
         return;
       }
-      await _write([...pend, ...fresh], acked);
+      if (run == null) {
+        run = _Run(runId, [], []);
+        runs.add(run);
+      }
+      run.pending.addAll(fresh);
+      await _write(runs);
     } finally {
       lock.complete();
     }
   }
 
-  /// acknowledged ∪= ids; pending −= ids. No ids means everything pending now.
-  /// The mirror drops them at once; the write follows in order.
+  /// Acknowledges [ids] (no ids: everything pending now) in every run that has
+  /// them pending. One write. The mirror drops them at once and is put back if
+  /// the write fails, so it never claims a dismissal that did not happen.
   Future<void> dismiss([Iterable<String>? ids]) async {
-    final which = [...(ids ?? pending.value)];
+    final which = {...(ids ?? pending.value)};
+    final before = pending.value;
     pending.value = List.unmodifiable(
-        [for (final x in pending.value) if (!which.contains(x)) x]);
+        [for (final x in before) if (!which.contains(x)) x]);
     final lock = await _acquire();
-    var pend = const <String>[];
     try {
-      final (p, acked) = await _read();
-      pend = p;
-      final stale = await _effectiveStale(acked);
-      // The stale id goes FIRST, strictly. If this fails nothing was dismissed;
-      // if the process dies after it, the ack merely stops being bypassable
-      // while the warning is still pending. The other order could leave a
-      // dismissed ack that a retry bypasses and a launch then deletes.
-      if (stale.any(which.contains)) {
-        await _writeStale({for (final x in stale) if (!which.contains(x)) x});
+      final runs = await _read();
+      for (final r in runs) {
+        final hit = [for (final x in r.pending) if (which.contains(x)) x];
+        r.pending.removeWhere(which.contains);
+        r.acked.addAll([for (final x in hit) if (!r.acked.contains(x)) x]);
       }
-      _dismissedSince.addAll(which);
-      await _write([for (final x in pend) if (!which.contains(x)) x],
-          {...acked, ...which}.toList());
+      await _write(runs);
     } catch (_) {
-      // Not applied: the mirror must not claim it was.
-      pending.value = List.unmodifiable(pend);
+      pending.value = before;
       rethrow;
     } finally {
       lock.complete();
-    }
-  }
-
-  /// A user-started import begins: earlier acknowledgements no longer apply,
-  /// so a new import that loses the same item shows it again (the destination
-  /// has no such item, or it would not have been lost). Never called for a
-  /// resume. Skipped while an OLDER import is still unfinished: when that one
-  /// resumes it will record the same item, and the dismissal still stands for
-  /// it. (Limit: a journal nobody finishes keeps its acknowledgements.)
-  Future<void> beginFreshImport() async {
-    final lock = await _acquire();
-    try {
-      final List<String> pend, acked;
-      try {
-        (pend, acked) = await _read();
-      } catch (_) {
-        // We cannot tell what is acknowledged. Keep a bypass in memory for this
-        // import and settle it when the preferences can be read again.
-        _resetUnknown = true;
-        _dismissedSince.clear();
-        _priorUnfinished = await _olderImportUnfinished();
-        rethrow;
-      }
-      _resetUnknown = false;
-      _dismissedSince.clear();
-      if (acked.isEmpty) {
-        await _rememberStale({});
-        return;
-      }
-      if (await _olderImportUnfinished()) return;
-      try {
-        await _write(pend, const []);
-      } catch (_) {
-        // Every ack still stored is from an earlier import.
-        await _rememberStale({...await _readStale(), ...acked});
-        rethrow;
-      }
-      await _rememberStale({});
-    } finally {
-      lock.complete();
-    }
-  }
-
-  /// True when the latest journaled import has not finished, or when that
-  /// cannot be told (then the acknowledgements are kept, not dropped).
-  Future<bool> _olderImportUnfinished() async {
-    try {
-      final st = await ImportJournal.current();
-      return st != null && st.state != ImportJournalState.done;
-    } catch (_) {
-      return true;
     }
   }
 }

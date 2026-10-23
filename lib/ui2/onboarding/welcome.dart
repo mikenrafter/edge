@@ -384,12 +384,9 @@ Future<ImportOutcome> runImport(
   // each backup lands so no page has to still be there to hold them.
   final reenter = <String>[];
   var summarised = false;
-  // Best effort: preferences that cannot be read must not stop an import from
-  // starting. Acknowledgements then simply stay as they were, and the store
-  // fails loudly later if it cannot save a note (recordImportSummary).
-  try {
-    await app.beginFreshImport();
-  } catch (_) {}
+  // No reset of earlier acknowledgements: each import run records its notes
+  // under its own run identity (recordImportSummary), so an old dismissal can
+  // never hide this run's warnings.
 
   final plain = <String>[];
   for (final p in paths) {
@@ -445,23 +442,26 @@ Future<ImportOutcome> runImport(
   if (decrypted.isNotEmpty) sources.add('Encrypted backup');
   if (plain.any(_isDbBackup)) sources.add('OpenStrap backup');
   try {
-    for (final p in db) {
-      days += await app.importEdgeBackup(p);
-      // The rows are in and the rollup rebuild threw. AppState's own note:
-      // reporting the row count alone claims a success the user does not have
-      // — which is exactly what this path did until now.
-      rollupError ??= app.importRollupError;
-      archiveSkipped += app.lastImportArchiveSkipped;
-      archiveRestored += app.lastImportArchiveRestored;
-      final said = app.lastBackupSummary;
-      if (said != null) {
-        summarised = true;
-        for (final id in said.needsReentry) {
-          if (!reenter.contains(id)) reenter.add(id);
+    await app.importBatch(() async {
+      for (final p in db) {
+        days += await app.importEdgeBackup(p);
+        // The rows are in and the rollup rebuild threw. AppState's own note:
+        // reporting the row count alone claims a success the user does not have
+        // — which is exactly what this path did until now.
+        rollupError ??= app.importRollupError;
+        archiveSkipped += app.lastImportArchiveSkipped;
+        archiveRestored += app.lastImportArchiveRestored;
+        final said = app.lastBackupSummary;
+        if (said != null) {
+          summarised = true;
+          for (final id in said.needsReentry) {
+            if (!reenter.contains(id)) reenter.add(id);
+          }
+          // The run's record step already saved them; the mirror follows the store.
+          await app.loadImportReentry();
         }
-        await app.addImportReentry(said.needsReentry);
       }
-    }
+    });
   } finally {
     // The decrypted copy is the whole health record in plaintext. It exists
     // for the length of one import and no longer — leaving it in the temp

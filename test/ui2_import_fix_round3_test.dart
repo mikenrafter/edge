@@ -17,6 +17,7 @@ import 'package:path/path.dart' as pth;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:openstrap_edge/data/import_reentry_store.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/import_journal.dart';
@@ -43,6 +44,10 @@ class _App extends AppState {
     lastBackupSummary = null;
     await during[n]?.call();
     lastBackupSummary = summaries[n];
+    // What the real record step does inside the import, under this file's
+    // journaled run.
+    await ImportReentryStore.current.add(
+        lastBackupSummary?.needsReentry ?? const [], runId: 'journal-$n');
     return 1;
   }
 }
@@ -132,8 +137,6 @@ void main() {
 
       restarted.dismissImportReentry();
       await Future<void>.delayed(Duration.zero);
-      // The stored value is "pending;acknowledged": nothing pending any more.
-      expect((await _stored() ?? '').split(';').first, isEmpty);
       final again = AppState.forTesting();
       addTearDown(again.importProgress.dispose);
       await again.loadImportReentry();

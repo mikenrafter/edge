@@ -45,12 +45,9 @@ const Map<String, String> kPrefsNotBackedUp = {
   'consent_health_data': 'consent is asked again on each install',
   'consent_chosen': 'says the consent question was answered; it is asked '
       'again on each install, so a restore must not mark it answered',
-  'import_reentry_pending': 'secrets the last import could not restore and '
-      'the user has not acknowledged; a fact about THIS install, so a restore '
-      'must not carry it to another one',
-  'import_reentry_stale': 'which stored acknowledgements belong to an earlier '
-      'import (their reset was refused); a fact about THIS install\'s import '
-      'in progress, so a restore must not carry it to another one',
+  'import_reentry_pending': 'secrets an import could not restore and the '
+      'user has not acknowledged, kept per import run; a fact about THIS '
+      'install, so a restore must not carry it to another one',
   'coach_api_key_present': 'marks a key in this phone\'s keychain; the key '
       'is not carried (kSecretsNotBackedUp), so the marker would be false',
   'backup.folder': 'a storage-access URI/permission that is not valid elsewhere',
@@ -475,10 +472,11 @@ Future<void> recordImportSummary(
   required int archiveBucketsSkipped,
   required BackupExtrasResult extras,
   int interruptedAndResumed = 0,
+  required String runId,
 }) async {
   // Before the journal is marked done, through the one owner. A refused write
   // throws: the import stays unfinished and the next start retries.
-  await ImportReentryStore.current.add(extras.needsReentry);
+  await ImportReentryStore.current.add(extras.needsReentry, runId: runId);
   try {
     final (raw, above) = await _sourceFacts(srcPath);
     await LocalDb.putComputeFreshness(
