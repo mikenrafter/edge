@@ -29,6 +29,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'import_journal.dart';
 
+/// The identity of one journaled import run: its journal row id (AUTOINCREMENT,
+/// never reused) with its start time. A resume reads the same row and so gets
+/// the same value; a backup that replaces the journal gets a new one.
+String reentryRunIdOf(int journalId, int startedAt) => '0';
+
 class ImportReentryStore {
   ImportReentryStore();
 
@@ -199,7 +204,7 @@ class ImportReentryStore {
   }
 
   /// pending ∪= ids − acknowledged. Writes only when something is new.
-  Future<void> add(Iterable<String> ids) async {
+  Future<void> add(Iterable<String> ids, {String? runId}) async {
     // Nothing to add touches nothing (no preferences read, no lock).
     if (ids.isEmpty) return;
     final lock = await _acquire();
