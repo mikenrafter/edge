@@ -1699,6 +1699,10 @@ class AppState extends ChangeNotifier {
   /// D38: finish an import the process died in (app start, import screen).
   /// The derive is requested only once the journal says done.
   Future<void> resumeUnfinishedImport({bool force = false}) async {
+    // A newer import that starts while this one is deciding owns the progress
+    // and the retained failure; this call must not write either afterwards.
+    final startsAtEntry = _backupStarts;
+    bool superseded() => _backupStarts != startsAtEntry;
     final r = await ImportJournal.resumeIfUnfinished(
       force: force,
       onProgress: (p) => importProgress.value = p,
@@ -1707,6 +1711,7 @@ class AppState extends ChangeNotifier {
     // reports an error with resumed == false or true; both are retained, like
     // a backup failure, until the next import.
     if (r.error != null) {
+      if (superseded()) return;
       final failure = ImportFailed(r.error!);
       _backupFailure = failure;
       importProgress.value = failure;
@@ -1718,6 +1723,8 @@ class AppState extends ChangeNotifier {
       // the next import, instead of leaving an unfinished import silent.
       try {
         final st = await ImportJournal.current();
+        // Nothing ran here, so any progress now belongs to another import.
+        if (superseded() || importProgress.value != null) return;
         if (st != null &&
             st.state == ImportJournalState.failed &&
             st.error != null) {

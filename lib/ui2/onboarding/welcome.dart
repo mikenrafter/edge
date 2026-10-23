@@ -384,7 +384,12 @@ Future<ImportOutcome> runImport(
   // each backup lands so no page has to still be there to hold them.
   final reenter = <String>[];
   var summarised = false;
-  await app.beginFreshImport();
+  // Best effort: preferences that cannot be read must not stop an import from
+  // starting. Acknowledgements then simply stay as they were, and the store
+  // fails loudly later if it cannot save a note (recordImportSummary).
+  try {
+    await app.beginFreshImport();
+  } catch (_) {}
 
   final plain = <String>[];
   for (final p in paths) {

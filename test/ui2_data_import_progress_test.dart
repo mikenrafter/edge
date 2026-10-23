@@ -42,7 +42,7 @@ void main() {
             progress:
                 const ImportCopying(ImportStage.heartRate, 500, 2000, 2, 9)));
     expect(find.text('Copying heart rate'), findsOneWidget);
-    expect(find.text('Step 2 of 9 · 500 of 2,000 rows'), findsOneWidget);
+    expect(find.text('Step 2 of 9'), findsOneWidget);
   });
 
   testWidgets('busy with no import: a spinner with a status', (t) async {

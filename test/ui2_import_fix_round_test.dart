@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 // ignore: depend_on_referenced_packages
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:openstrap_edge/data/auto_backup.dart';
 import 'package:openstrap_edge/data/import_progress.dart';
@@ -123,6 +124,11 @@ Future<void> _retryAfterFailed(WidgetTester t, FilePicker picker) async {
 }
 
 void main() {
+  // runImport starts a fresh import through the re-entry store, which reads the
+  // preferences; without the mock the plugin call never completes under a
+  // fake-async pump.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   group('1: a retained failure is not "busy" for the StatusLine', () {
     for (final syncActions in [false, true]) {
       testWidgets('falls through to Synced through (syncActions=$syncActions)',
