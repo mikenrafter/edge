@@ -596,6 +596,11 @@ class LocalDb {
   @visibleForTesting
   static bool get hasReader => _readDb?.isOpen ?? false;
 
+  /// Counts requests for a database handle ([instance] and [reader]), so a
+  /// test can prove a read ran no query. STUB: not wired yet, never moves.
+  @visibleForTesting
+  static int debugHandleRequests = 0;
+
   /// The handle for a pure-SELECT screen read: the query-only WAL connection,
   /// or the writer when the reader is off, unavailable or the store is
   /// in-memory.
