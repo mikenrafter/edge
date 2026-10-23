@@ -55,7 +55,7 @@ void _feed(AppState app, int n) {
 }
 
 Future<void> _pump(WidgetTester t, AppState app, double w,
-    {double scale = 1, String lang = 'en', bool bold = false}) async {
+    {double scale = 1, String lang = 'en', bool bold = false, bool spacing = false}) async {
   t.view.physicalSize = Size(w, 800);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
@@ -67,7 +67,18 @@ Future<void> _pump(WidgetTester t, AppState app, double w,
       supportedLocales: AppLocalizations.supportedLocales,
       theme: buildTheme(Brightness.light),
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale), boldText: bold),
+        data: () {
+          final d = MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(scale), boldText: bold);
+          // The accessibility text-spacing overrides (WCAG 1.4.12).
+          return spacing
+              ? d.applyTextStyleOverrides(
+                  lineHeightScaleFactorOverride: 1.6,
+                  letterSpacingOverride: 1.5,
+                  wordSpacingOverride: 6.0,
+                  paragraphSpacingOverride: null)
+              : d;
+        }(),
         child: child!,
       ),
       home: const Scaffold(
@@ -318,13 +329,21 @@ void main() {
   // big text and with the bold-text accessibility setting, in all states.
   for (final lang in const ['en', 'ru'])
     for (final w in const [360.0, 390.0])
-      for (final (sc, bold) in const [(3.1, false), (1.0, true), (3.1, true)])
-        testWidgets('8. $lang ${w.toInt()}pt x$sc bold=$bold: reasons unclipped, '
+      for (final (sc, bold, sp) in const [
+        (3.1, false, false),
+        (1.0, true, false),
+        (3.1, true, false),
+        (1.0, false, true),
+        (3.1, false, true),
+        (3.1, true, true),
+      ])
+        testWidgets('8. $lang ${w.toInt()}pt x$sc bold=$bold spacing=$sp: reasons unclipped, '
             'rects identical', (t) async {
           final rects = <String, List<Rect>>{};
           Future<void> look(String name, AppState app, {String? reason}) async {
             addTearDown(app.dispose);
-            await _pump(t, app, w, scale: sc, lang: lang, bold: bold);
+            await _pump(t, app, w,
+                scale: sc, lang: lang, bold: bold, spacing: sp);
             expect(t.takeException(), isNull, reason: '$name: overflow');
             final plot = _plot(t);
             rects[name] = [_card(t), plot, _belowRect(t)];
@@ -358,6 +377,44 @@ void main() {
             expect(e.value[2], ref[2], reason: '${e.key}: below');
           }
         });
+
+  // ---- round 4 (Sol r3) ---------------------------------------------------
+  for (final w in const [360.0, 390.0])
+    testWidgets('9. ${w.toInt()}pt x1.0 en: the LIVE pill stays at the right edge '
+        'in every state', (t) async {
+      for (final (name, mk) in <(String, AppState Function())>[
+        ('loaded', () => _app()..also((a) => _feed(a, 6))),
+        ('waiting', () => _app()),
+        ('one', () => _app()..also((a) => _feed(a, 1))),
+        ('disconnected', () => _app(connected: false)),
+      ]) {
+        final app = mk();
+        addTearDown(app.dispose);
+        await _pump(t, app, w);
+        final card = _card(t), pill = t.getRect(find.byType(Pill));
+        // Surface padding is S.x4 = 16: the pill is the row's trailing child.
+        expect(pill.right, card.right - 16, reason: '$name: pill right edge');
+      }
+    });
+
+  testWidgets('10. reason/caption candidates that are not shown are not in the '
+      'semantics tree', (t) async {
+    final sem = t.ensureSemantics();
+    try {
+      final app = _app(); // connected, no beat
+      addTearDown(app.dispose);
+      await _pump(t, app, 390);
+      expect(find.bySemanticsLabel(RegExp('No beat in the last')), findsOneWidget);
+      for (final other in ['Your band is not connected', 'No band is paired']) {
+        expect(find.bySemanticsLabel(RegExp(other)), findsNothing, reason: other);
+      }
+      for (final other in ['Pair one from Profile', 'The app connects when']) {
+        expect(find.bySemanticsLabel(RegExp(other)), findsNothing, reason: other);
+      }
+    } finally {
+      sem.dispose();
+    }
+  });
 }
 
 extension _Also<T> on T {
