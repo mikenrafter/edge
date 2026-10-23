@@ -326,7 +326,8 @@ void main() {
       final slider = find.byWidgetPredicate(
           (w) => w is Semantics && w.properties.slider == true &&
               w.properties.label == 'Heart effort by day');
-      expect(t.getSemantics(slider).value, matches(kSpoken));
+      // The slider says only the short form; the strip carries the full note.
+      expect(t.getSemantics(slider).value, contains('older calculation'));
       expect(find.bySemanticsLabel(RegExp(r'From an older calculation \(v104\)')),
           findsWidgets);
       h.dispose();

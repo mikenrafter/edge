@@ -76,6 +76,17 @@ void main() {
       expect(t.getSize(find.byType(MonthGrid)), size);
     });
 
+    testWidgets('a scrub onto another older day adds no second announcement',
+        (t) async {
+      final h = t.ensureSemantics();
+      await host(t, series(30, flagged: {0, 5}));
+      expect(spokenOlder(t, 104), 1, reason: 'the strip');
+      await scrubBack(t, 5);
+      expect(olderMark('readout'), findsOneWidget);
+      expect(spokenOlder(t, 104), 1, reason: 'the slider value stays short');
+      h.dispose();
+    });
+
     testWidgets('spoken once', (t) async {
       final h = t.ensureSemantics();
       await host(t, series(30, flagged: {0}));
@@ -351,12 +362,29 @@ void main() {
       expect(ranges.single.until! - ranges.single.at, 2.0);
     });
 
+    testWidgets('the selected inset is the same height on a current and an '
+        'older day', (t) async {
+      await pump(t, series(10, flagged: {3}), window: '7 days');
+      final r = t.getRect(slider());
+      final inset = find.byWidgetPredicate(
+          (w) => w is Surface && w.color != null && w.elevation == 0);
+      await t.tapAt(Offset(r.right - 3, r.center.dy)); // today: current
+      await t.pumpAndSettle();
+      expect(olderMark('selected'), findsNothing);
+      final current = t.getSize(inset.first).height;
+      await t.tapAt(t.getCenter(slider())); // 3 days back: older
+      await t.pumpAndSettle();
+      expect(olderMark('selected'), findsOneWidget);
+      expect(t.getSize(inset.first).height, current);
+    });
+
     testWidgets('selected older day: spoken once', (t) async {
       final h = t.ensureSemantics();
       await pump(t, series(10, flagged: {3}), window: '7 days');
       await t.tapAt(t.getCenter(slider()));
       await t.pumpAndSettle();
-      expect(t.getSemantics(slider()).value, matches(kSpoken));
+      expect(t.getSemantics(slider()).value, contains('older calculation'));
+      expect(t.getSemantics(slider()).value, isNot(matches(kSpoken)));
       expect(spokenOlder(t, 104), 1,
           reason: 'only the slider says it; the mark and card stay quiet');
       h.dispose();

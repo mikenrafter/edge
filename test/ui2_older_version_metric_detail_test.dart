@@ -107,7 +107,7 @@ void main() {
       expect(olderNote('selected'), findsNothing,
           reason: 'a scrub never adds a reason row');
       final said = t.getSemantics(_slider).value;
-      expect(said, matches(kSpoken));
+      expect(said, contains('older calculation'));
       h.dispose();
     });
 
