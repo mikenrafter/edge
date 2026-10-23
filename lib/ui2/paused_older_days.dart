@@ -106,6 +106,7 @@ mixin PausedReadReload<T extends StatefulWidget> on State<T> {
   bool _watching = false;
   bool _inFlight = false;
   bool _dirty = false;
+  bool _full = false;
 
   /// Whether the screen is showing the paused state now.
   bool get pausedContent;
@@ -130,12 +131,30 @@ mixin PausedReadReload<T extends StatefulWidget> on State<T> {
       _dirty = true;
       return;
     }
+    _start(run);
+  }
+
+  /// Focus ended: the screen's FULL reload ([reloadPausedRead]). If a reload
+  /// is in flight, the trailing one is the full reload too (it wins over the
+  /// revision path's narrower `run`, which would miss what the full one reads).
+  void _trackFullReload() {
+    if (_inFlight) {
+      _dirty = true;
+      _full = true;
+      return;
+    }
+    _start(reloadPausedRead);
+  }
+
+  void _start(Future<void> Function() run) {
     _inFlight = true;
     Future<void>.sync(run).catchError((Object _) {}).whenComplete(() {
       _inFlight = false;
       if (_dirty && mounted) {
         _dirty = false;
-        trackReload(run);
+        final full = _full;
+        _full = false;
+        _start(full ? reloadPausedRead : run);
       }
     });
   }
@@ -159,7 +178,7 @@ mixin PausedReadReload<T extends StatefulWidget> on State<T> {
     if (ImportFocus.active.value) {
       focusStarted();
     } else {
-      trackReload(reloadPausedRead);
+      _trackFullReload();
     }
   }
 
