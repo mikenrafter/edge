@@ -81,6 +81,7 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'metric_method': (SliceKeep.all, null, 'how each daily metric was measured'),
   'baselines': (SliceKeep.all, null, 'personal baselines'),
   'compute_freshness': (SliceKeep.all, null, 'compute bookkeeping'),
+  'input_rev': (SliceKeep.all, null, 'per-bucket input revisions'),
   'sleep_nap': (SliceKeep.all, null, 'naps'),
   'sleep_override': (SliceKeep.all, null, 'sleep times the user edited'),
   // Workouts and activity: one row each.
