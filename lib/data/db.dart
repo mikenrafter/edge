@@ -503,6 +503,13 @@ class LocalDb {
     );
   }
 
+  /// Session identity/window writes invalidate ceiling reuse, including an
+  /// identical REPLACE or UPDATE. Derived score writes do not affect it.
+  static Future<int> sessionCeilingRevision() async {
+    final rows = await (await instance).query('session_ceiling_rev');
+    return rows.isEmpty ? 0 : (rows.single['rev'] as num).toInt();
+  }
+
   @visibleForTesting
   static Future<void> repairOpenSchemaForTest(Database db) =>
       _repairOpenSchema(db);
@@ -1264,6 +1271,7 @@ class LocalDb {
           // Additive revision counters only: no decoded scan or backfill.
           // Attach after any earlier rung that rebuilds decoded tables.
           await _createInputRev(db);
+          await _createSessionCeilingRev(db);
         }
       },
       onOpen: (db) async {
@@ -1374,6 +1382,7 @@ class LocalDb {
     await _createStepCalibration(db);
     // A decoded-table rebuild above drops its triggers; attach them last.
     await _createInputRev(db);
+    await _createSessionCeilingRev(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -5115,6 +5124,28 @@ class LocalDb {
         read INTEGER NOT NULL DEFAULT 0
       )
     ''');
+  }
+
+  // Schema 59 and every-open repair; no session scan or backfill.
+  static Future<void> _createSessionCeilingRev(Database db) async {
+    await db.execute('CREATE TABLE IF NOT EXISTS session_ceiling_rev ('
+        'id INTEGER PRIMARY KEY CHECK (id = 1), rev INTEGER NOT NULL)');
+    // Sparse legacy schemas get their sessions table during onOpen repair.
+    final present = await db.rawQuery(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'",
+    );
+    if (present.isEmpty) return;
+    const bump = 'INSERT INTO session_ceiling_rev(id, rev) SELECT 1, 0 '
+        'WHERE NOT EXISTS (SELECT 1 FROM session_ceiling_rev WHERE id = 1); '
+        'UPDATE session_ceiling_rev SET rev = rev + 1 WHERE id = 1;';
+    for (final event in const {
+      'ai': 'INSERT',
+      'au': 'UPDATE OF id, type, status, start_ts, end_ts',
+      'ad': 'DELETE',
+    }.entries) {
+      await db.execute('CREATE TRIGGER IF NOT EXISTS sessions_ceiling_${event.key} '
+          'AFTER ${event.value} ON sessions BEGIN $bump END');
+    }
   }
 
   static Future<void> _createSyncState(DatabaseExecutor db) async {
@@ -9801,8 +9832,8 @@ class LocalDb {
     final rows = await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table' "
       "AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata' "
-      // Clear revisions after the decoded DELETE triggers have finished.
-      "ORDER BY name = 'input_rev'",
+      // Clear revisions after the decoded/session DELETE triggers have finished.
+      "ORDER BY name IN ('input_rev', 'session_ceiling_rev')",
     );
     var deleted = 0;
     await db.transaction((txn) async {
