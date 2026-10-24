@@ -1265,7 +1265,7 @@ List<PhysioDay> calendarDays(
   List<VendorNight> vendorNights = const [],
   String? targetDay,
   bool skipUnusedDays = false,
-  ana.CardioRowCache? rowCache, // ED-2b RED: unused until E6 adoption.
+  ana.CardioRowCache? rowCache,
   // D36: other walked nights must not train under the target's ID.
   // Restore the caller's recording flag on every exit.
   bool recordTargetOnly = false,
@@ -1388,6 +1388,7 @@ List<PhysioDay> calendarDays(
           accelSlice,
           hrSlice,
           hrBaseline: hrBaseline,
+          rowCache: rowCache,
           rrMs: rrMsSeg,
           rrTsMs: rrTsSeg,
           forcedWindow: (onsetSec: ov.onsetSec, offsetSec: ov.offsetSec),
@@ -1411,6 +1412,7 @@ List<PhysioDay> calendarDays(
             accelSlice,
             hrSlice,
             hrBaseline: hrBaseline,
+            rowCache: rowCache,
             rrMs: rrMsSeg,
             rrTsMs: rrTsSeg,
             habitualMidsleepSec: habitualMidsleepSec,
@@ -1441,6 +1443,7 @@ List<PhysioDay> calendarDays(
               accelSlice,
               hrSlice,
               hrBaseline: hrBaseline,
+              rowCache: rowCache,
               rrMs: rrMsSeg,
               rrTsMs: rrTsSeg,
               forcedWindow:
@@ -1471,6 +1474,7 @@ List<PhysioDay> calendarDays(
               accelSlice,
               hrSlice,
               hrBaseline: hrBaseline,
+              rowCache: rowCache,
               rrMs: rrMsSeg,
               rrTsMs: rrTsSeg,
               forcedWindow: (onsetSec: vn.onsetSec, offsetSec: vn.offsetSec),
