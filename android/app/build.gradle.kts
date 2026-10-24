@@ -94,6 +94,13 @@ android {
     }
 
     buildTypes {
+        // TEST BUILD ONLY (branch test/ed1-apk, never upstream): the ED-1 PR
+        // code as its own app beside Edge / Edge Dev, so it never opens or
+        // downgrades another install's database.
+        getByName("profile") {
+            applicationIdSuffix = ".ed1"
+            versionNameSuffix = "-ed1"
+        }
         release {
             // Use the real release key when it's configured (local key.properties or CI
             // env), otherwise fall back to debug so `flutter run --release` still works.

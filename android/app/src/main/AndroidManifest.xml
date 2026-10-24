@@ -122,7 +122,7 @@
         android:required="false" />
 
     <application
-        android:label="Edge"
+        android:label="Edge ED-1"
         android:name=".EdgeApplication"
         android:icon="@mipmap/launcher_icon"
         android:allowBackup="false"
