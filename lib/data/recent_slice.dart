@@ -83,6 +83,8 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'compute_freshness': (SliceKeep.all, null, 'compute bookkeeping'),
   'input_rev': (SliceKeep.all, null, 'per-bucket input revisions'),
   'session_ceiling_rev': (SliceKeep.all, null, 'session ceiling revisions'),
+  'store_identity': (SliceKeep.none, null, 'local checkpoint store identity'),
+  'day_checkpoint': (SliceKeep.none, null, 'disposable night/cardio checkpoints'),
   'sleep_nap': (SliceKeep.all, null, 'naps'),
   'sleep_override': (SliceKeep.all, null, 'sleep times the user edited'),
   // Workouts and activity: one row each.

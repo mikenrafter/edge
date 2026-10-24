@@ -3,10 +3,35 @@ import 'package:openstrap_analytics/onehz.dart';
 /// Thirty-minute bins anchored at the first corrected beat, like the batch.
 /// Settled beats close bins; snapshots never commit provisional tail rates.
 class NightRespBins {
+  NightRespBins();
   double? _origin;
   int _openIndex = 0, _openCount = 0;
   RsaRespStream _open = RsaRespStream();
   final List<double> _closed = [];
+
+  Map<String, dynamic> toJson() => {
+    'v': 1, 'origin': _origin, 'index': _openIndex, 'count': _openCount,
+    'open': _open.toJson(), 'closed': _closed,
+  };
+
+  factory NightRespBins.fromJson(Map<String, dynamic> json, int fed) {
+    final origin = json['origin'], index = json['index'], count = json['count'];
+    final closed = (json['closed'] as List).cast<num>();
+    if (json['v'] != 1 || index is! int || index < 0 || count is! int ||
+        count < 0 || count > fed || closed.length > fed ~/ 60 ||
+        closed.any((x) => !x.isFinite) ||
+        (fed == 0 ? origin != null : origin is! num || !origin.isFinite)) {
+      throw const FormatException('RSA bins');
+    }
+    final open = (json['open'] as Map).cast<String, dynamic>();
+    if (open['n'] != count) throw const FormatException('RSA bin count');
+    return NightRespBins()
+      .._origin = (origin as num?)?.toDouble()
+      .._openIndex = index
+      .._openCount = count
+      .._open = RsaRespStream.fromJson(open)
+      .._closed.addAll(closed.map((x) => x.toDouble()));
+  }
 
   int _bin(double time, double origin) => ((time - origin) / 1800000.0).floor();
 
