@@ -2,7 +2,7 @@
  "day_result": [
   {
    "day_id": "2026-07-13",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "date": "2026-07-13",
     "day_confidence": 0.6,
@@ -232,7 +232,7 @@
       "note": "need_baseline:have=0,need=3"
      },
      "trimp": {
-      "value": 227.5841832798056,
+      "value": 227.58418327980579,
       "confidence": 0.6,
       "tier": "ESTIMATE",
       "inputs_used": [
@@ -23019,12 +23019,12 @@
      "skin_temp_adc": 30406.0,
      "skin_temp_coverage_frac": 1.0,
      "skin_temp_settled_frac": 1.0,
-     "sdnn": 77.77577302925846,
+     "sdnn": 77.77577302925867,
      "sdnn_window": 32.11774263281863,
      "prsa_dc": 10.513,
      "prsa_dc_anchors": 11257.0,
      "dip_pct": 27.601235828808456,
-     "trimp": 227.5841832798056,
+     "trimp": 227.58418327980579,
      "odi_per_hour": null,
      "stress": 61.03520288391907,
      "stress_si": 159.4387755102041,
@@ -24898,11 +24898,11 @@
    "readiness": 27.03382323567632,
    "skipped": 0,
    "partial": 0,
-   "payload_sha256": "6af3a3dd03487fb00e59cee8fc3b80d13d8b3df613625f0e53e6b354b3beacae"
+   "payload_sha256": "9b7750e98fa202c8257fb721d3ca02a45e28bdd5e47b0f17a09824b1e70f706a"
   },
   {
    "day_id": "2026-07-14",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "date": "2026-07-14",
     "day_confidence": 0.6,
@@ -25132,7 +25132,7 @@
       "note": "need_baseline:have=1,need=3"
      },
      "trimp": {
-      "value": 221.15132594116318,
+      "value": 221.15132594116335,
       "confidence": 0.6,
       "tier": "ESTIMATE",
       "inputs_used": [
@@ -47739,12 +47739,12 @@
      "skin_temp_adc": 30406.000332864856,
      "skin_temp_coverage_frac": 1.0,
      "skin_temp_settled_frac": 1.0,
-     "sdnn": 77.77577302925846,
+     "sdnn": 77.77577302925867,
      "sdnn_window": 32.11774263281863,
      "prsa_dc": 10.513,
      "prsa_dc_anchors": 11257.0,
      "dip_pct": 27.885325793318177,
-     "trimp": 221.15132594116318,
+     "trimp": 221.15132594116335,
      "odi_per_hour": null,
      "stress": 61.03520288391907,
      "stress_si": 159.4387755102041,
@@ -49591,11 +49591,11 @@
    "readiness": 27.033601802905416,
    "skipped": 0,
    "partial": 0,
-   "payload_sha256": "1a10d8277390720929818867fe39e2a3ae139149d0d93057c2ca4f1776cae03b"
+   "payload_sha256": "9fbd6fa3b066beb83958d8b1120569f8b7825fdf7b10f23f0838908b3545f6c1"
   },
   {
    "day_id": "2026-07-15",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "date": "2026-07-15",
     "day_confidence": 0.6,
@@ -49831,7 +49831,7 @@
       "note": "need_baseline:have=2,need=3"
      },
      "trimp": {
-      "value": 218.15549360346512,
+      "value": 218.15549360346523,
       "confidence": 0.6,
       "tier": "ESTIMATE",
       "inputs_used": [
@@ -71054,12 +71054,12 @@
      "skin_temp_adc": 30406.00018492492,
      "skin_temp_coverage_frac": 1.0,
      "skin_temp_settled_frac": 1.0,
-     "sdnn": 77.77577302925846,
+     "sdnn": 77.77577302925867,
      "sdnn_window": 32.11774263281863,
      "prsa_dc": 10.513,
      "prsa_dc_anchors": 11257.0,
      "dip_pct": 29.23441483806156,
-     "trimp": 218.15549360346512,
+     "trimp": 218.15549360346523,
      "odi_per_hour": null,
      "stress": 61.03520288391907,
      "stress_si": 159.4387755102041,
@@ -71090,7 +71090,7 @@
      "quiet_hrr": 0.18057477316419124,
      "trimp_net": null,
      "calories_total": 2151.991671845124,
-     "dyn_p90": 0.016617360477042792,
+     "dyn_p90": 0.0166173604770428,
      "nap_min": 0.0,
      "hrr_bpm": 18.0
     },
@@ -72717,7 +72717,7 @@
    "readiness": 66.1155535435143,
    "skipped": 0,
    "partial": 0,
-   "payload_sha256": "180be6438701ff7edef6abd47022db857f820e5821842d48daad59504205106f"
+   "payload_sha256": "0a8810ad8390cb3d42614f0b6ba3b803633175ad9827b5ea5c8d9b4bd92c1f26"
   }
  ],
  "metric_series": [
@@ -72864,7 +72864,7 @@
   {
    "date": "2026-07-13",
    "key": "sdnn",
-   "value": 77.77577302925846
+   "value": 77.77577302925867
   },
   {
    "date": "2026-07-13",
@@ -72909,7 +72909,7 @@
   {
    "date": "2026-07-13",
    "key": "trimp",
-   "value": 227.5841832798056
+   "value": 227.58418327980579
   },
   {
    "date": "2026-07-13",
@@ -73074,7 +73074,7 @@
   {
    "date": "2026-07-14",
    "key": "sdnn",
-   "value": 77.77577302925846
+   "value": 77.77577302925867
   },
   {
    "date": "2026-07-14",
@@ -73119,7 +73119,7 @@
   {
    "date": "2026-07-14",
    "key": "trimp",
-   "value": 221.15132594116318
+   "value": 221.15132594116335
   },
   {
    "date": "2026-07-14",
@@ -73179,7 +73179,7 @@
   {
    "date": "2026-07-15",
    "key": "dyn_p90",
-   "value": 0.016617360477042792
+   "value": 0.0166173604770428
   },
   {
    "date": "2026-07-15",
@@ -73284,7 +73284,7 @@
   {
    "date": "2026-07-15",
    "key": "sdnn",
-   "value": 77.77577302925846
+   "value": 77.77577302925867
   },
   {
    "date": "2026-07-15",
@@ -73329,7 +73329,7 @@
   {
    "date": "2026-07-15",
    "key": "trimp",
-   "value": 218.15549360346512
+   "value": 218.15549360346523
   },
   {
    "date": "2026-07-15",
@@ -73355,7 +73355,7 @@
  "metric_series_version": [
   {
    "date": "2026-07-13",
-   "algo_version": 113,
+   "algo_version": 114,
    "source": "band",
    "device_family": "gen4",
    "coverage_devices": "",
@@ -73363,7 +73363,7 @@
   },
   {
    "date": "2026-07-14",
-   "algo_version": 113,
+   "algo_version": 114,
    "source": "band",
    "device_family": "gen4",
    "coverage_devices": "",
@@ -73371,7 +73371,7 @@
   },
   {
    "date": "2026-07-15",
-   "algo_version": 113,
+   "algo_version": 114,
    "source": "band",
    "device_family": "gen4",
    "coverage_devices": "",
@@ -73381,7 +73381,7 @@
  "wake_day_features": [
   {
    "day_id": "2026-07-13",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "day_id": "2026-07-13",
     "active_min": 90,
@@ -74589,7 +74589,7 @@
   },
   {
    "day_id": "2026-07-14",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "day_id": "2026-07-14",
     "active_min": 240,
@@ -75797,7 +75797,7 @@
   },
   {
    "day_id": "2026-07-15",
-   "algo_version": 113,
+   "algo_version": 114,
    "payload_json": {
     "day_id": "2026-07-15",
     "active_min": 40,
@@ -76993,7 +76993,7 @@
    "resp_rate": 13.51304972588547,
    "skin_temp_z": 3.8090587513754603,
    "skin_temp_illness_ok": false,
-   "trimp": 227.5841832798056,
+   "trimp": 227.58418327980579,
    "strain": null,
    "steps": null,
    "nap_min": 0.0,
@@ -77204,7 +77204,7 @@
    "resp_rate": 13.51304972588547,
    "skin_temp_z": 2.5820748428079483,
    "skin_temp_illness_ok": false,
-   "trimp": 221.15132594116318,
+   "trimp": 221.15132594116335,
    "strain": null,
    "steps": null,
    "nap_min": 45.0,
@@ -77415,7 +77415,7 @@
    "resp_rate": 13.51304972588547,
    "skin_temp_z": 2.083348400888466,
    "skin_temp_illness_ok": false,
-   "trimp": 218.15549360346512,
+   "trimp": 218.15549360346523,
    "strain": null,
    "steps": null,
    "nap_min": 0.0,
