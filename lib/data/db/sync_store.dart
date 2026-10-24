@@ -291,27 +291,6 @@ Future<List<List<int>>> _ldbPrivToggleSpans(int loSec, int hiSec, {required int 
     return spans;
   }
 
-Future<void> _ldbBeginOffloadSession() => LocalDb._withCommitGate(() async {
-    try {
-      // The already-open handle only — never `instance`. A session is a speed
-      // optimisation, so it must not be what opens (or hangs opening) the
-      // store; with no open handle the commits keep their own bracket.
-      final db = LocalDb._db;
-      if (db == null || !db.isOpen) return;
-      if (identical(LocalDb._offloadSessionDb, db)) return;
-      await db.execute('PRAGMA synchronous=FULL');
-      final got = await db.rawQuery('PRAGMA synchronous');
-      final level = got.isEmpty ? null : got.first.values.firstOrNull;
-      if (level is num && level.toInt() == 2) {
-        LocalDb._offloadSessionDb = db;
-      } else {
-        LocalDb._syncFullDowngrades++;
-      }
-    } catch (_) {
-      LocalDb._syncFullDowngrades++;
-    }
-  });
-
 Future<void> _ldbCommitSyncBatch(List<RawRecord> raws, List<Sample?> samples, {required String? trimToken, required Map<String, String>? extraCursors, required List<ArchiveRecord>? archives, required List<NeutralSample>? neutrals, required List<EcgRawPacket>? ecgRawPackets, required void Function(String)? onCheckpoint, required String? deviceFamily, required String deviceId, required Map<String, int>? coverageToleranceSec}) =>
       LocalDb._withCommitGate(() => LocalDb._commitSyncBatchLocked(
             raws,
@@ -389,12 +368,6 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
     // What it must not do is fail SILENTLY, which is what "best-effort" meant
     // before: read it back, so a downgrade shows up in the log and the counter
     // instead of being invisible for the life of the install.
-    // Inside an offload session FULL is already held and verified on this very
-    // connection ([beginOffloadSession]), so the three pragma round trips per
-    // chunk are skipped; outside one (headless drains, one-off commits) the
-    // bracket below is unchanged.
-    final inSession = identical(LocalDb._offloadSessionDb, db);
-    if (!inSession) {
     try {
       await db.execute('PRAGMA synchronous=FULL');
       final got = await db.rawQuery('PRAGMA synchronous');
@@ -415,7 +388,6 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
         'ACK-gating commit is running at NORMAL '
         '(downgrades_total=${LocalDb._syncFullDowngrades}).',
       );
-    }
     }
     try {
       await db.transaction((txn) async {
@@ -588,14 +560,11 @@ Future<void> _ldbPrivCommitSyncBatchLocked(List<RawRecord> raws, List<Sample?> s
       });
     } finally {
       // ALWAYS restore NORMAL — even if the commit threw — so a leaked FULL does
-      // not fsync every subsequent write on this connection. Non-fatal. A
-      // session commit leaves FULL up: [endOffloadSession] owns that reset.
-      if (!inSession) {
-        try {
-          await db.execute('PRAGMA synchronous=NORMAL');
-        } catch (_) {
-          /* non-fatal — see open-time PRAGMA discipline */
-        }
+      // not fsync every subsequent write on this connection. Non-fatal.
+      try {
+        await db.execute('PRAGMA synchronous=NORMAL');
+      } catch (_) {
+        /* non-fatal — see open-time PRAGMA discipline */
       }
     }
   }

@@ -2959,45 +2959,6 @@ class LocalDb {
     return completer.future;
   }
 
-  /// The connection an offload session raised to `synchronous=FULL`, or null
-  /// when none is open. Held as the HANDLE, not a bool: `synchronous` is
-  /// per-connection, so a session is only true of the connection it was set on.
-  /// After [close] or a recovery reopen the new handle is at NORMAL, and a bool
-  /// would let commits skip their own FULL bracket against it — an ACKed chunk
-  /// at weaker durability, silently.
-  static Database? _offloadSessionDb;
-
-  /// Offload-session durability bracket (design-sync-throughput.md, plan 2).
-  ///
-  /// The band waits on each HISTORY_END ACK before the next burst, so the
-  /// per-commit FULL / read-back / NORMAL (3 round trips) was a fixed cost on
-  /// every chunk. Held once for the whole offload instead: FULL is set and
-  /// verified here, every commit inside it runs at FULL without touching the
-  /// pragma, and [endOffloadSession] puts it back. Durability of the
-  /// ACK-gating commit is unchanged; only the number of pragma calls is.
-  ///
-  /// Serialised behind [_withCommitGate] so it can never flip the level under
-  /// an in-flight commit. Never throws, and is a no-op when the store is not
-  /// already open. A refused or non-sticking FULL leaves the session closed, and
-  /// the commits then keep their own per-commit bracket (and downgrade
-  /// accounting) rather than trusting a level that never took.
-  static Future<void> beginOffloadSession() => _ldbBeginOffloadSession();
-
-  /// Counterpart of [beginOffloadSession]. Idempotent, and safe to call with no
-  /// session open (a give-up path calls it unconditionally). The flag is
-  /// dropped BEFORE the pragma is attempted, so a refused NORMAL can never leave
-  /// the session latched open (AGENTS 4.3); a leaked FULL only costs speed.
-  static Future<void> endOffloadSession() => _withCommitGate(() async {
-    final db = _offloadSessionDb;
-    _offloadSessionDb = null;
-    if (db == null) return;
-    try {
-      await db.execute('PRAGMA synchronous=NORMAL');
-    } catch (_) {
-      /* non-fatal — see open-time PRAGMA discipline */
-    }
-  });
-
   static Future<void> commitSyncBatch(
     List<RawRecord> raws,
     List<Sample?> samples, {

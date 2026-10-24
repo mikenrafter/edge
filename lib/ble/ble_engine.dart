@@ -9451,16 +9451,6 @@ class BleEngine implements AlarmBandWriter {
     _offloadActive = active;
     // Same choke point, same reason: an import waits for a drain mid-chunk.
     ImportGate.drainChanged(this, active);
-    // Hold synchronous=FULL for the whole offload instead of toggling it per
-    // chunk. This is the one choke point for the flag, so every release in the
-    // table above (COMPLETE, watchdogs, rollbacks, abort terminals, link
-    // teardown) also ends the session; a separate begin/end pair would be a
-    // second latch to leak (AGENTS 4.3). Both calls are serialised in LocalDb
-    // behind the commit gate and never throw, so fire-and-forget is safe and
-    // cannot reorder against the commits that follow.
-    unawaited(active
-        ? LocalDb.beginOffloadSession()
-        : LocalDb.endOffloadSession());
     // An offload is the one thing that genuinely needs the fast interval; as
     // soon as it ends the link steps back down (issue #200).
     unawaited(_applyLinkPriority());

@@ -1,22 +1,21 @@
 // Band-sync per-chunk overhead (design: edge.research/design-sync-throughput.md).
 //
-// The band waits for each HISTORY_END ACK before it sends the next burst, so
-// every fixed cost per chunk caps sync throughput. Today a chunk pays for:
-//   - PRAGMA synchronous=FULL, a read-back, then =NORMAL (3 round trips);
-//   - a capture-freshness select + insert AFTER the commit, outside it;
-//   - two sync_ledger upserts (select + insert each) after the ACK;
-//   - no [perf] line at all, so nobody can see any of it.
+// Each ACK-gating commit sets synchronous=FULL, reads it back, and restores
+// NORMAL in finally. An active offload leaves the connection at NORMAL between
+// chunks. Capture freshness shares the rows + cursor transaction; the two
+// post-ACK ledger upserts share one separate transaction. Each completed chunk
+// logs its counts and commit, ACK and post-ACK timings.
 //
-// What must NOT change (AGENTS.md invariant 1): the rows + cursor commit in
-// one transaction, at synchronous=FULL, BEFORE the verbatim token is echoed;
-// a commit that fails produces no ACK.
+// AGENTS.md invariant 1: rows + cursor commit BEFORE the verbatim token is
+// echoed; a failed commit or incomplete burst produces no ACK.
 //
 // Layout:
-//   A. LocalDb.commitSyncBatch round trips and durability (tests 1-3).
-//   B. The engine's HISTORY_END path over a real database (tests 4-6).
+//   A. LocalDb.commitSyncBatch durability and transactional freshness (2-3).
+//   B. The engine's HISTORY_END path over a real database (2g, 4-6), including
+//      a FULL/read-back/commit/NORMAL bracket for every chunk during an offload.
 //
-// The sqflite logger sees every call LocalDb makes, the way
-// import_bulk_restore_test.dart does. Calls made outside a transaction carry
+// The sqflite logger sees every call LocalDb makes, extending the SQL spy in
+// ack_commit_sync_full_test.dart. Calls made outside a transaction carry
 // no transactionId; that is how "one transaction" is told from "N autocommits".
 
 import 'dart:async';
@@ -57,9 +56,6 @@ class _Ev {
 
   bool get isSynchronousPragma =>
       sql.any((s) => RegExp(r'pragma\s+synchronous', caseSensitive: false).hasMatch(s));
-
-  bool get isSynchronousSet =>
-      sql.any((s) => RegExp(r'pragma\s+synchronous\s*=', caseSensitive: false).hasMatch(s));
 
   bool sqlIs(String re) =>
       sql.any((s) => RegExp(re, caseSensitive: false).hasMatch(s));
@@ -162,9 +158,6 @@ int _wallNow() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 Uint8List _historyStart() =>
     Uint8List.fromList(<int>[PacketType.metadata, 0x01, SyncMeta.historyStart]);
 
-Uint8List _historyComplete() => Uint8List.fromList(
-    <int>[PacketType.metadata, 0x03, SyncMeta.historyComplete]);
-
 Uint8List _historyEnd({required int expected, required int token}) {
   final inner = Uint8List(24);
   inner[0] = PacketType.metadata;
@@ -201,6 +194,7 @@ class _Rig {
   late final BleEngine engine;
 
   _Rig() {
+    _rigs.add(this);
     engine = BleEngine(onRecord: (_, _) async {}, onState: (_) {}, log: logs.add);
     engine.debugInstallFakeLink(
       band: BandProfile.gen5,
@@ -256,8 +250,8 @@ class _Rig {
     rx(_historyEnd(expected: n, token: token));
   }
 
-  /// Wait until the timeline and the log stop growing: the commit, the ACK
-  /// and the post-ACK writes are all async over the ffi isolate.
+  /// Wait for the real receive queue, then for the logs to stop growing.
+  /// A quiet log alone could mean an ffi transaction is still in flight.
   Future<void> settle() async {
     var last = -1;
     var stable = 0;
@@ -265,11 +259,17 @@ class _Rig {
       await pumpEventQueue();
       await Future<void>.delayed(const Duration(milliseconds: 25));
       final now = _log.length + logs.length;
-      stable = now == last ? stable + 1 : 0;
+      final snapshot = engine.offloadSnapshot;
+      final idle = snapshot['queue_draining'] == false &&
+          snapshot['queued_frames'] == 0;
+      stable = idle && now == last ? stable + 1 : 0;
       last = now;
     }
+    expect(stable, 4, reason: 'the real receive queue must finish before assertions');
   }
 }
+
+final _rigs = <_Rig>[];
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -317,103 +317,57 @@ void main() {
 
   tearDown(() async {
     _counting = false;
-    // A session left open by a failing assertion must not leak FULL (or an
-    // open-session flag) into the next test.
-    await LocalDb.endOffloadSession();
+    for (final r in _rigs) {
+      await r.engine.disconnect();
+      await r.settle();
+    }
+    _rigs.clear();
   });
 
   group('A. commitSyncBatch round trips and durability', () {
-    // 1. The bracket is per session, not per chunk.
-    test('1. ten commits inside an offload session make no PRAGMA synchronous '
-        'call', () async {
-      await LocalDb.beginOffloadSession();
-      _counting = true;
-      for (var i = 0; i < 10; i++) {
-        await _commit(1 + i * 50, 50, token: 'tok$i');
-      }
-      _counting = false;
-
-      final pragmas = _log.where((e) => e.isSynchronousPragma).toList();
-      expect(
-        pragmas,
-        isEmpty,
-        reason: 'FULL is set once when the offload starts, so a chunk commit '
-            'runs no synchronous pragma; saw ${pragmas.length} in 10 commits '
-            '(today: set FULL + read back + set NORMAL per commit = 30)',
-      );
-      expect(_log.where((e) => e.sqlIs(r'^\s*COMMIT')), hasLength(10),
-          reason: 'harness check: ten real transactions committed');
-      expect(await _count('samples'), 500);
-      await LocalDb.endOffloadSession();
-    });
-
-    test('1b. a whole session costs at most one set to FULL and one back to '
-        'NORMAL', () async {
-      _counting = true;
-      await LocalDb.beginOffloadSession();
-      for (var i = 0; i < 10; i++) {
-        await _commit(1 + i * 50, 50, token: 'tok$i');
-      }
-      await LocalDb.endOffloadSession();
-      _counting = false;
-
-      final sets = _log.where((e) => e.isSynchronousSet).length;
-      expect(sets, lessThanOrEqualTo(2),
-          reason: 'begin sets FULL, end sets NORMAL; commits set nothing '
-              '(today: 20 sets over the same ten commits)');
-    });
-
-    // 2. Durability is unchanged.
-    test('2a. inside a session the connection is FULL (2) after every commit',
-        () async {
-      await LocalDb.beginOffloadSession();
-      expect(await _syncLevel(), 2,
-          reason: 'beginOffloadSession raises the connection to FULL');
-      for (var i = 0; i < 3; i++) {
-        await _commit(1 + i * 50, 50, token: 'tok$i');
-        expect(await _syncLevel(), 2,
-            reason: 'commit $i must not drop the session back to NORMAL '
-                '(today the per-commit finally resets it to 1)');
-      }
-      await LocalDb.endOffloadSession();
-    });
-
-    test('2b. after endOffloadSession the connection is NORMAL (1) '
-        '(guard: holds today, must stay)', () async {
-      await LocalDb.beginOffloadSession();
-      await _commit(1, 50, token: 't');
-      await LocalDb.endOffloadSession();
-      expect(await _syncLevel(), 1);
-    });
-
-    test('2c. a throwing commit does not leak FULL past endOffloadSession',
-        () async {
-      await LocalDb.beginOffloadSession();
-      expect(await _syncLevel(), 2, reason: 'harness check: session is FULL');
+    // 2. Durability is bracketed per commit, including failures.
+    test('2b. a throwing commit restores NORMAL (1)', () async {
       final db = await LocalDb.instance;
       await db.execute('CREATE TRIGGER t_cursor_boom BEFORE INSERT ON sync_cursor '
           "WHEN NEW.name = 'strap_trim' BEGIN SELECT RAISE(ABORT, 'boom'); END");
+      _counting = true;
       await expectLater(_commit(1, 50, token: 't'), throwsA(anything));
-      await db.execute('DROP TRIGGER t_cursor_boom');
-      await LocalDb.endOffloadSession();
-      expect(await _syncLevel(), 1,
-          reason: 'sticky-latch rule (AGENTS 4.3): the session ends on the '
-              'failure path too');
+      _counting = false;
+
+      final full = _log.indexWhere(
+          (e) => e.sqlIs(r'pragma\s+synchronous\s*=\s*FULL'));
+      final verify = _log.indexWhere(
+          (e) => e.sqlIs(r'^\s*pragma\s+synchronous\s*;?\s*$'));
+      final begin = _log.indexWhere((e) => e.sqlIs(r'^\s*BEGIN'));
+      final rollback = _log.indexWhere((e) => e.sqlIs(r'^\s*ROLLBACK'));
+      final normal = _log.indexWhere(
+          (e) => e.sqlIs(r'pragma\s+synchronous\s*=\s*NORMAL'));
+      expect(full, isNonNegative);
+      expect(verify, greaterThan(full));
+      expect(begin, greaterThan(verify));
+      expect(rollback, greaterThan(begin));
+      expect(normal, greaterThan(rollback),
+          reason: 'finally restores NORMAL after a failed transaction');
+      expect(await _syncLevel(), 1);
+      expect(await _count('samples'), 0);
     });
 
-    test('2d. a commit OUTSIDE a session still runs at FULL, bracketed per '
-        'commit (today\'s path)', () async {
+    test('2d. a commit runs at FULL and restores NORMAL after COMMIT', () async {
       _counting = true;
       await _commit(1, 50, token: 't');
       _counting = false;
 
-      final idx = (bool Function(_Ev) f) => _log.indexWhere(f);
+      int idx(bool Function(_Ev) f) => _log.indexWhere(f);
       final full = idx((e) => e.sqlIs(r'pragma\s+synchronous\s*=\s*FULL'));
+      final verify = idx(
+          (e) => e.sqlIs(r'^\s*pragma\s+synchronous\s*;?\s*$'));
       final begin = idx((e) => e.sqlIs(r'^\s*BEGIN'));
       final commit = idx((e) => e.sqlIs(r'^\s*COMMIT'));
       final normal = idx((e) => e.sqlIs(r'pragma\s+synchronous\s*=\s*NORMAL'));
       expect(full, isNonNegative);
-      expect(begin, greaterThan(full), reason: 'FULL is set BEFORE the txn opens');
+      expect(verify, greaterThan(full));
+      expect(begin, greaterThan(verify),
+          reason: 'FULL is set and read back BEFORE the txn opens');
       expect(commit, greaterThan(begin));
       expect(normal, greaterThan(commit), reason: 'NORMAL restored after COMMIT');
       expect(await _syncLevel(), 1);
@@ -462,6 +416,12 @@ void main() {
       expect(outside, 0,
           reason: '$outside freshness call(s) ran outside the commit '
               'transaction (today: a select and an insert, 2 extra round trips)');
+      final rows = _log.singleWhere((e) => e.touches('samples') && e.isWrite);
+      final cursor = _log.where((e) => e.touches('sync_cursor') && e.isWrite);
+      expect(rows.txId, isNotNull);
+      expect(cursor, isNotEmpty);
+      expect([...fresh, ...cursor].every((e) => e.txId == rows.txId), isTrue,
+          reason: 'freshness, decoded rows and trim cursor share the SAME txn');
     });
 
     test('3d. the freshness row still carries the batch max record time '
@@ -476,6 +436,45 @@ void main() {
 
   group('B. HISTORY_END over a real database', () {
     final ts = _wallNow() - 3600;
+
+    test('2g. EVERY commit during an offload has its own FULL bracket and '
+        'leaves NORMAL between chunks', () async {
+      final r = _Rig();
+      r.engine.debugClaimHistoryTask();
+      expect(await _syncLevel(), 1,
+          reason: 'starting an offload must leave the connection at NORMAL');
+      for (var i = 0; i < 3; i++) {
+        _log.clear();
+        _counting = true;
+        r.rx(_historyStart());
+        r.chunk(3, 0xB200 + i, ts: ts + i * 100, counter: 2000 + i * 100);
+        await r.settle();
+        _counting = false;
+
+        expect(r.acks, hasLength(i + 1));
+        expect(r.engine.offloadActive, isTrue,
+            reason: 'the same offload remains active between chunks');
+        expect(_log.where((e) => e.isSynchronousPragma), hasLength(3),
+            reason: 'chunk $i sets FULL, reads it back, then restores NORMAL');
+        final full = _log.indexWhere(
+            (e) => e.sqlIs(r'pragma\s+synchronous\s*=\s*FULL'));
+        final verify = _log.indexWhere(
+            (e) => e.sqlIs(r'^\s*pragma\s+synchronous\s*;?\s*$'));
+        final begin = _log.indexWhere((e) => e.sqlIs(r'^\s*BEGIN'));
+        final commit = _log.indexWhere((e) => e.sqlIs(r'^\s*COMMIT'));
+        final normal = _log.indexWhere(
+            (e) => e.sqlIs(r'pragma\s+synchronous\s*=\s*NORMAL'));
+        final ack = _log.indexWhere((e) => e.mark == 'ack');
+        expect(full, isNonNegative);
+        expect(verify, greaterThan(full));
+        expect(begin, greaterThan(verify));
+        expect(commit, greaterThan(begin));
+        expect(normal, greaterThan(commit));
+        expect(ack, greaterThan(normal));
+        expect(await _syncLevel(), 1,
+            reason: 'chunk $i must leave NORMAL for post-ACK writes and idle time');
+      }
+    });
 
     // 4. Ledger: one transaction per marker.
     test('4. the two post-ACK ledger upserts cost one commit, and both rows '
@@ -494,8 +493,8 @@ void main() {
       expect(ackAt, isNonNegative);
       final after = _log.sublist(ackAt + 1);
       final commits = _commitsTouching(after, 'sync_ledger');
-      expect(commits, lessThanOrEqualTo(1),
-          reason: 'one marker costs at most one ledger commit after the ACK; '
+      expect(commits, 1,
+          reason: 'one marker costs one ledger commit after the ACK; '
               'today it is $commits (two separate upserts)');
 
       // Same content as before: the 'capture' row and the per-token row.
@@ -518,6 +517,7 @@ void main() {
       r.rx(_historyStart());
       r.chunk(3, 0xB500, ts: ts, counter: 5000);
       await r.settle();
+      r.rx(_historyStart());
       r.chunk(2, 0xB501, ts: ts + 100, counter: 5100);
       await r.settle();
 
@@ -585,39 +585,25 @@ void main() {
           reason: 'a failed commit is not a completed chunk');
     });
 
-    // The engine brackets the session around the offload (plan 2, test 1/2).
-    test('7. the engine holds FULL for the whole offload and releases it on '
-        'COMPLETE and on a mid-offload disconnect', () async {
+    test('6c. an incomplete burst is neither committed nor ACKed (guard)',
+        () async {
       final r = _Rig();
       r.engine.debugClaimHistoryTask();
+      _counting = true;
       r.rx(_historyStart());
-      r.chunk(3, 0xB700, ts: ts, counter: 7000);
+      r.rx(_gen5V18Inner(ts: ts, counter: 6200));
+      r.rx(_historyEnd(expected: 3, token: 0xB602));
       await r.settle();
-      expect(r.acks, hasLength(1), reason: 'harness check: chunk ACKed');
-      expect(r.engine.offloadActive, isTrue,
-          reason: 'harness check: still mid-offload after the first chunk');
-      expect(await _syncLevel(), 2,
-          reason: 'FULL is held for the offload, not toggled per chunk');
+      _counting = false;
 
-      // COMPLETE may auto-continue into a new history task (rows banked, trim
-      // advanced), so the offload can still be active here. Whatever the
-      // engine decided, the session follows it: FULL exactly while offloading.
-      r.rx(_historyComplete());
-      await r.settle();
-      expect(await _syncLevel(), r.engine.offloadActive ? 2 : 1,
-          reason: 'FULL exactly while an offload is active');
-
-      // Second offload, ended by a link drop instead of COMPLETE.
-      r.engine.debugClaimHistoryTask();
-      r.rx(_historyStart());
-      r.chunk(2, 0xB701, ts: ts + 100, counter: 7100);
-      await r.settle();
-      expect(await _syncLevel(), 2,
-          reason: 'harness check: the new offload holds FULL again');
-      await r.engine.disconnect();
-      await r.settle();
-      expect(await _syncLevel(), 1,
-          reason: 'a dropped link must not leave FULL latched (AGENTS 4.3)');
+      expect(r.acks, isEmpty, reason: 'a partial chunk must never trim flash');
+      // Upstream's count gate stores what arrived without the trim token
+      // (_refuseHistoryEndOnShortCount), so only the cursor and ACK are pinned.
+      expect(await LocalDb.getCursor('strap_trim'), isNull);
+      final ledger = await LocalDb.syncLedger();
+      expect(ledger.where(
+          (e) => e['status'] == 'acked' || e['status'] == 'acknowledged'), isEmpty);
     });
+
   });
 }
