@@ -1320,7 +1320,12 @@ Uint8List _tamperRr(Uint8List blob, void Function(Map<String, dynamic> j) edit) 
               i['type'] = 'SomethingElse';
             case 3:
               final c = (j['c'] as Map).cast<String, dynamic>();
-              c['n'] = (c['n'] as int) + 1; // the corrector disagrees about the beats
+              // A capped corrector keeps its beat count in its cap state.
+              final s = c['capped'] == null
+                  ? c
+                  : (c['capped'] as Map).cast<String, dynamic>();
+              s['n'] = (s['n'] as int) + 1; // the corrector disagrees about the beats
+              if (c['capped'] != null) c['capped'] = s;
               j['c'] = c;
             default:
               (j['c'] as Map)['version'] = 99;

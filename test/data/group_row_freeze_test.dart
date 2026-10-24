@@ -285,7 +285,10 @@ void main() {
           before.toList());
       final r2 = (await _rows(db, _day, group: 'sleep.stage'))
           .firstWhere((r) => r['revision'] == 2);
-      expect(r2['counter'], 2);
+      // The declared counter plus the bump: analytics registries move their
+      // own counters (sleep.stage is 2 from analytics #99 on).
+      expect(r2['counter'], kMergedRegistry.groups
+          .firstWhere((x) => x.id == 'sleep.stage').counter + 1);
       expect(_payload(r2), _slice(_bundle(_day, tst: 450), 'sleep.stage'));
     });
 
