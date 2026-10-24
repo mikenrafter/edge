@@ -485,6 +485,8 @@ void main() {
       final part = _folded(full, 300).exportNight()!;
       final wire = jsonDecode(jsonEncode(part.toJson())) as Map<String, dynamic>;
       expect(wire['v'], 1);
+      expect(part.buildCorrectorHeavy().snapshot().n, 300,
+          reason: 'the capped corrector reports its folded count via the API');
       final back = NightResumePart.fromJson(wire);
       expect(back.tag, part.tag);
       final tag = wire['tag'] as Map;

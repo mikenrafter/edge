@@ -207,10 +207,10 @@ void main() {
     final src = File('lib/compute/derivation_engine.dart').readAsStringSync();
     final m = RegExp(r'const int kAlgoVersion = (\d+);').firstMatch(src)!;
 
-    test('kAlgoVersion is one more than before D36 (114 -> 115)', () {
+    test('kAlgoVersion includes D36 and the analytics #99 repin', () {
       // 114 was the value when this test was written; the fold fix changes
-      // stored output (AGENTS 3.4), so exactly one bump.
-      expect(kAlgoVersion, 115);
+      // stored output (AGENTS 3.4). Analytics #99 adds the next bump.
+      expect(kAlgoVersion, 116);
     });
 
     test('the changelog block above the constant names D36', () {

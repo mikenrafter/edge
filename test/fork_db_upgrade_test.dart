@@ -180,8 +180,8 @@ void main() {
         reason: 'cutoff $cutoff would drop raw from $_firstRawSec on');
   });
 
-  test('a backfill derive pass writes (day, 114) for each day with raw, '
-      'and every fork row stays (RED until the 114 bump)', () async {
+  test('a backfill derive pass writes (day, 116) for each day with raw, '
+      'and every fork row stays', () async {
     final rawBefore = await _count(db, 'decoded_onehz');
     // The backfill pass (heavy): every pending day in one pass. A light pass
     // takes one pending day at a time, newest first, by design.
@@ -192,8 +192,8 @@ void main() {
       expect(vs, contains(104), reason: '$day: the fork row is a sibling, kept');
       expect(vs, contains(kAlgoVersion),
           reason: '$day: derived at the current version, got $vs');
-      expect(vs, contains(115), reason: '$day: derived at our bump, got $vs');
-      expect((await LocalDb.dayResult(day))!['algo_version'], 115,
+      expect(vs, contains(116), reason: '$day: derived at our bump, got $vs');
+      expect((await LocalDb.dayResult(day))!['algo_version'], 116,
           reason: '$day serves the current version');
     }
 

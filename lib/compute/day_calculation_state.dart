@@ -7,6 +7,7 @@ import 'package:openstrap_analytics/onehz.dart';
 
 import 'day_activity_state.dart';
 import 'day_resume_state.dart';
+import 'day_rr_state.dart' show rrCheckpointBeatCount;
 import 'minute_bills.dart';
 import 'night_prsa.dart';
 import 'night_resp_bins.dart';
@@ -262,7 +263,7 @@ class DayCalculationState {
     try {
       final corrector = part.buildCorrectorHeavy();
       // The tag must describe what the corrector folded.
-      if (corrector.toJson()['n'] != tag.count) {
+      if (rrCheckpointBeatCount(corrector.toJson()) != tag.count) {
         throw const FormatException('night part: tag disagrees with corrector');
       }
       final hrv = part.buildHrvHeavy(), resp = part.buildRespHeavy();

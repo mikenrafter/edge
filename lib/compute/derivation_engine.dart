@@ -1959,7 +1959,17 @@ part 'engine/settled.dart';
 // nights of history), which is exact and moves no output by itself. Outputs
 // that move: the profile, so later nights staged from it; this bump recomputes
 // stored days once. No sibling re-pin is involved.
-const int kAlgoVersion = 115;
+// 116: analytics #99, pin 6a2a9fc7392b03103ab0b371b0449c28cca104f7.
+// Toleranced aggregators now back hrvTime, banisterTrimp, ctlAtlTsb, cosinor,
+// timeInZone and circadianNonparametric: last digits can move, and circadian
+// near-ties can select different L5/M10 start epochs. Near-singular cosinor
+// fits abstain. RR artifact runs longer than 32 beats become gaps, changing
+// downstream metrics. Guards for non-finite beat times abstain; IrregularScreenState
+// excludes pairs across timestamp gaps, so statistics, votes and verdicts can
+// change. EpochRows keeps staging labels unchanged by the row refactor; the
+// separate RR/spectral changes can affect staging features. Re-derive stored
+// days under the new pin; old checkpoints are refused by version/pin gates.
+const int kAlgoVersion = 116;
 class DerivationEngine {
   DerivationEngine({
     this.log,

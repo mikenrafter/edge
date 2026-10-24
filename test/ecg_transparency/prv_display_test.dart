@@ -139,14 +139,13 @@ void main() {
   });
 
   group('no derived output changes (R4)', () {
-    test('kAlgoVersion stays at the PRV diagnostics empty-input repin (v104); '
-        'the analytics pin moved on to its aggregator descendant with no '
-        'output change', () {
+    test('R4 keeps the current algorithm and analytics pin; '
+        'the display change itself adds no output change', () {
       // Upstream's numbering since the catch-up (merge log D4), plus our one
       // bump atop upstream 113 (D27 revised): 114, then 115 (D36, the fold
-      // fix). Nothing in this artifact bumped it.
-      expect(kAlgoVersion, 115);
-      expect(kAnalyticsPin, '83fc308545c886ef2757b3df396accea78849aa5');
+      // fix), then 116 (analytics #99). Nothing in this artifact bumped it.
+      expect(kAlgoVersion, 116);
+      expect(kAnalyticsPin, '6a2a9fc7392b03103ab0b371b0449c28cca104f7');
       expect(kProtocolPin, '89080bcfac7767b3a871fd3a7d9307f5f30dad26');
     });
 

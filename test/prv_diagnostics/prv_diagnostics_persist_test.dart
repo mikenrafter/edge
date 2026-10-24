@@ -313,7 +313,7 @@ void main() {
       // or (day, 104) row is never served as current. The fork entries stay in
       // the changelog as `// | vNNN` history lines.
       expect(v, greaterThan(104));
-      expect(kAnalyticsPin, '83fc308545c886ef2757b3df396accea78849aa5');
+      expect(kAnalyticsPin, '6a2a9fc7392b03103ab0b371b0449c28cca104f7');
       final lines = src.substring(0, m.start).split('\n');
       final entry =
           lines.lastWhere((l) => RegExp(r'^//\s*\|?\s*v104\b').hasMatch(l));
@@ -341,8 +341,8 @@ void main() {
       // upstream catch-up (merge log D4) the diagnostics entry is the fork's
       // v103 history line. The current version is our single bump atop
       // upstream 113 (D27 revised), named in the entry that closes the block.
-      // 115 (D36) follows it.
-      expect(v, 115);
+      // 115 (D36) and 116 (analytics #99) follow it.
+      expect(v, 116);
       expect(block.join('\n'), contains('single bump atop upstream 113'),
           reason: 'the 114 entry names what it sits on');
       final from =

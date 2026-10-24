@@ -242,10 +242,12 @@ part of '../derivation_engine.dart';
 // sleep.stage_ranges (kAlgoVersion 114, D27 revised).
 // REPIN @ d9eda83 (same branch): hrvTime, nocturnalRmssd and session RMSSD abstain on
 // a non-finite beat time instead of throwing; finite output unchanged, no bump.
-// REPIN @ 83fc308 (b18b681 + 83fc308, same branch): registry only
-// (onehz/registry/group_registry.dart and its export); no algorithm touched, so
-// outputs are unchanged and kAlgoVersion is not bumped (design 06 1b).
-const String kAnalyticsPin = '83fc308545c886ef2757b3df396accea78849aa5';
+// REPIN @ 6a2a9fc (same branch, analytics #99): RR cap 32, toleranced batch
+// aggregators, cosinor abstention, non-finite guards and irregular-screen gaps.
+// EpochRows preserves staging labels; checkpoint formats advance. Output
+// changes are covered by kAlgoVersion 116; jitter-evidence perf and citations
+// are also included.
+const String kAnalyticsPin = '6a2a9fc7392b03103ab0b371b0449c28cca104f7';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

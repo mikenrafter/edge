@@ -16,6 +16,15 @@ import 'package:openstrap_analytics/onehz.dart';
 import '../util/heavy.dart';
 import 'resume_bytes.dart';
 
+// The corrector's validated checkpoint keeps `n` at the top level when
+// uncapped and inside `capped` with the artifact-run cap. Share this bounded
+// metadata read with night adoption; taking a snapshot would recompute the tail.
+int? rrCheckpointBeatCount(Map<String, dynamic> checkpoint) {
+  final capped = checkpoint['capped'];
+  final n = capped is Map ? capped['n'] : checkpoint['n'];
+  return n is int ? n : null;
+}
+
 class DayRrState {
   DayRrState()
       : _corr = RrCorrector(),
@@ -82,7 +91,7 @@ class DayRrState {
       final corr = RrCorrector.fromJson((j['c'] as Map).cast<String, dynamic>());
       final irr =
           IrregularScreenState.fromJson((j['i'] as Map).cast<String, dynamic>());
-      if (beats < 0 || corr.toJson()['n'] != beats) {
+      if (beats < 0 || rrCheckpointBeatCount(corr.toJson()) != beats) {
         throw const FormatException('RR state: beat counts disagree');
       }
       return DayRrState._(corr, irr, beats, last);

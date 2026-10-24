@@ -198,6 +198,22 @@ void main() {
       expect(encodeDayResumeState(back), blob);
     });
 
+    test('a capped RR checkpoint retains its count and continues after restore', () {
+      final rr = List.generate(600, (i) => 850.0 + 20 * math.sin(i * .2));
+      final ts = List.generate(600, (i) => 1760000000000.0 + i * 850);
+      final state = DayResumeState();
+      state.rr.fold(rr.sublist(0, 400), ts.sublist(0, 400));
+      final bytes = encodeDayResumeState(state);
+      final restored = decodeDayResumeState(bytes);
+      expect(restored, isNotNull, reason: 'the capped corrector must resume');
+      expect(restored!.rr.beats, 400);
+      expect(encodeDayResumeState(restored), bytes);
+      restored.rr.fold(rr.sublist(400), ts.sublist(400));
+      state.rr.fold(rr.sublist(400), ts.sublist(400));
+      expect(restored.rr.beats, 600);
+      expect(encodeDayResumeState(restored), encodeDayResumeState(state));
+    });
+
     test('an empty state round-trips', () {
       final empty = encodeDayResumeState(DayResumeState());
       expect(decodeDayResumeState(empty)!.folded, 0);
