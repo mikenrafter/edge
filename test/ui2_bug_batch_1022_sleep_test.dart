@@ -106,12 +106,14 @@ void main() {
       (t) async {
     await _pump(t, scale: 1.3);
     await _scrubMiddle(t);
-    final rows = find.ancestor(
-        of: find.text('17.5 br/min'), matching: find.byType(InlineMetrics));
-    expect(rows, findsWidgets);
-    for (final row in rows.evaluate()) {
+    final panels = find.byKey(ChartKeyReadout.panelKey);
+    expect(panels, findsNWidgets(2));
+    for (final panel in panels.evaluate()) {
+      final scope = find.byWidget(panel.widget);
+      expect(find.descendant(of: scope, matching: find.text('17.5 br/min')),
+          findsOneWidget);
       final texts = find
-          .descendant(of: find.byWidget(row.widget), matching: find.byType(Text))
+          .descendant(of: scope, matching: find.byType(Text))
           .evaluate()
           .map((e) => t.getRect(find.byWidget(e.widget)))
           .toList();

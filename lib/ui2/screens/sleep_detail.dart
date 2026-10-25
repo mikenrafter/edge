@@ -780,10 +780,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       ],
       if (_deviceNight(d) case final dn?)
         _night(c, p, d, dn, device: dn)
-      else ...[
+      else
         _night(c, p, d, n),
-        if (_scrub != null) _scrubCard(c, p, d),
-      ],
 
       // ── 2b · WHOSE WINDOW IS THIS ──
       ...?_windowCard(c, p, d, n),
@@ -1373,6 +1371,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           ],
           child: _labelledHypnogram(c, p, stages, n, lane, totals),
         ),
+        _scrubPanel(c, p, d, n, stages),
         if (device != null) ..._deviceStaging(c, p, device),
         // Not our staging: say whose it is, wherever it is drawn.
         if (device == null && n['sleep_source'] == 'vendor_staged') ...[
@@ -1553,23 +1552,27 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         ),
       );
 
-  /// What every signal read at the scrubbed instant. Each line abstains on its
-  /// own — a night with no respiration series still shows heart rate.
-  Widget _scrubCard(BuildContext c, P p, SleepData d) {
+  /// Both charts read the same instant, defaulting to wake. Fixed cells keep
+  /// the inset's height when a stage or any one signal is unobserved.
+  Widget _scrubPanel(BuildContext c, P p, SleepData d,
+      Map<String, dynamic> n, List<SleepStage?> stages) {
     final l = AppLocalizations.of(c);
-    final n = d.night;
     final t0 = (n['onset_ts'] as num?)?.toInt();
     final t1 = (n['wake_ts'] as num?)?.toInt();
-    if (t0 == null || t1 == null || t1 <= t0) return const SizedBox.shrink();
-    final t = t0 + ((t1 - t0) * _scrub!).round();
+    final at = _scrub ?? 1.0;
+    final t = t0 == null || t1 == null || t1 <= t0
+        ? null
+        : t0 + ((t1 - t0) * at).round();
 
-    num? at(String key) {
+    num? signal(String key) {
+      if (t == null) return null;
       final list = d.timeline[key];
       if (list is! List) return null;
       num? best;
       var bestGap = 1 << 30;
       for (final e in list) {
-        if (e is Map && e['t'] is num && e['v'] is num) {
+        if (e is Map && e['t'] is num && e['v'] is num &&
+            (e['v'] as num).isFinite) {
           final gap = ((e['t'] as num).round() - t).abs();
           if (gap < bestGap) {
             bestGap = gap;
@@ -1580,53 +1583,47 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       return bestGap > 900 ? null : best;
     }
 
-    final stages = d.stages;
     final stage = stages.isEmpty
         ? null
-        : stages[(_scrub! * (stages.length - 1)).round()];
-    final items = <(String, String, Color)>[
-      if (at('hr') != null)
-        (l?.sleepDetailHeartRate ?? 'Heart rate', '${at('hr')!.round()} bpm', C.red),
-      if (at('hrv') != null)
-        (l?.sleepDetailHrv ?? 'HRV', '${at('hrv')!.round()} ms', C.green),
-      if (at('resp') != null)
-        (l?.sleepDetailBreathing ?? 'Breathing',
-            '${at('resp')!.toStringAsFixed(1)} br/min', C.teal),
+        : stages[(at * (stages.length - 1)).round()];
+    final color = Hypnogram.pigment[stage] ?? p.ink3;
+    final hr = signal('hr'), hrv = signal('hrv'), resp = signal('resp');
+    final cells = [
+      ChartCell(_capitalise(l?.sleepDetailUnitStage ?? 'stage'), color,
+          value: stage == null
+              ? (l?.sleepDetailNotMeasuredCap ?? 'Not measured')
+              : _stageName(c, stage),
+          valueColor: color),
+      ChartCell(l?.sleepDetailHeartRate ?? 'Heart rate', C.red,
+          value: hr == null ? null : '${hr.round()} bpm'),
+      ChartCell(l?.sleepDetailHrv ?? 'HRV', C.green,
+          value: hrv == null ? null : '${hrv.round()} ms'),
+      ChartCell(l?.sleepDetailBreathing ?? 'Breathing', C.teal,
+          value: resp == null ? null : '${resp.toStringAsFixed(1)} br/min'),
     ];
+    final time = t == null ? null : clockOfTs(t);
+    final mode = _scrub == null
+        ? (l?.chartPanelLatest ?? 'LATEST')
+        : (l?.chartPanelSelected ?? 'SELECTED');
 
     return Padding(
       key: const ValueKey('apk1-sleep-scrub-selection'),
       padding: const EdgeInsets.only(top: S.x3),
-      child: Surface(
-        color: p.card2,
-        elevation: 0,
-        child: Column(children: [
-          // The slider already speaks the selected time and stage. Keep
-          // the signal values below available to assistive technology.
-          ExcludeSemantics(child: Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: S.x2, runSpacing: S.x2,
-            children: [
-            Text(clockOfTs(t),
-                style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
-            if (stage != null)
-              Pill(_stageName(c, stage), Hypnogram.pigment[stage] ?? C.blue, wrap: true)
-            else if (stages.isNotEmpty)
-              // Not a stage, so not a Pill: this instant has no colour because
-              // the band was not recording it.
-              Text(l?.sleepDetailNotMeasuredCap ?? 'Not measured',
-                  style: F.cap.copyWith(color: p.ink3)),
-          ])),
-          if (items.isEmpty) ...[
-            const SizedBox(height: S.x3),
-            Text(l?.sleepDetailNoSignalAtMoment ?? 'No signal recorded at this moment.',
-                style: F.cap.copyWith(color: p.ink3)),
-          ] else ...[
-            const SizedBox(height: S.x4),
-            InlineMetrics(items),
+      child: Semantics(
+        container: true,
+        label: '$mode · ${time ?? ChartKeyReadout.absent}, '
+            '${cells.map((x) => '${x.label} ${x.value ?? ChartKeyReadout.absent}').join(', ')}',
+        child: ExcludeSemantics(child: ChartKeyReadout(
+          cells: cells,
+          time: time,
+          scrubbed: _scrub != null,
+          timeSpan: [
+            if (t0 != null && t1 != null && t1 > t0) ...[
+              for (var ts = t0; ts <= t1; ts += 60) clockOfTs(ts),
+              clockOfTs(t1),
+            ],
           ],
-        ]),
+        )),
       ),
     );
   }
@@ -2428,7 +2425,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                       painter: NightStack(series, colors, axes: axes)),
                 ),
         ),
-        if (linked && _scrub != null) _scrubCard(c, p, d),
+        if (linked) _scrubPanel(c, p, d, n, d.stages),
       ]),
     );
   }

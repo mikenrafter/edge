@@ -29,9 +29,12 @@ Widget _page(String chart) => chart == _charts.first
 Finder _plot(String chart) => find.byWidgetPredicate((w) => w is Scrubber &&
     w.label == (chart == _charts.first ? 'Heart rate variability' : 'Hypnogram'));
 
+// The sleep panel is always there now; a selection is the panel scrubbed.
 Finder _selection(String chart) => chart == _charts.first
     ? find.byWidgetPredicate((w) => w is ChartKeyReadout && w.scrubbed)
-    : find.byKey(const ValueKey<String>(apk1SleepSelection));
+    : find.descendant(
+        of: find.byKey(const ValueKey<String>(apk1SleepSelection)).first,
+        matching: find.byWidgetPredicate((w) => w is ChartKeyReadout && w.scrubbed));
 
 Future<ScrollPosition> _mount(WidgetTester t, String chart, double scale,
     Apk1Routes routes) async {

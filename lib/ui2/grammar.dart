@@ -566,13 +566,14 @@ class ChartCell {
   /// Null with [hasValue] reads "—" (the series has nothing here). A cell with
   /// no [hasValue] is a plain key entry with no series behind it.
   final String? value;
+  final Color? valueColor;
   final bool hasValue;
   final bool active;
 
   /// The older calculation [value] came from, when it did.
   final ChartOlder? older;
   const ChartCell(this.label, this.color,
-      {this.value, this.hasValue = true, this.active = false, this.older});
+      {this.value, this.valueColor, this.hasValue = true, this.active = false, this.older});
 }
 
 /// What the row says at one position: the time, then a cell per series.
@@ -1129,7 +1130,7 @@ class ChartKeyReadout extends StatelessWidget {
     final shown = cell.hasValue ? (cell.value ?? absent) : ' ';
     final present = cell.hasValue && cell.value != null;
     final valueStyle = (big ? F.n34 : F.cap).copyWith(
-        color: present ? p.ink : p.ink3,
+        color: present ? (cell.valueColor ?? p.ink) : p.ink3,
         fontWeight: big ? FontWeight.w700 : FontWeight.w600,
         fontFeatures: const [FontFeature.tabularFigures()]);
     final tp = TextPainter(
