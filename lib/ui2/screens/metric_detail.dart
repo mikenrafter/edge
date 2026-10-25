@@ -1570,9 +1570,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
 
     return Surface(
       child: Column(children: [
-        Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+        // Durations must wrap at large text scales instead of making the
+        // headline wider than the card.
+        Wrap(
+            crossAxisAlignment: WrapCrossAlignment.end,
             children: [
               Text(_fmt(spec, mean), style: F.n48.copyWith(color: p.ink)),
               if (headlineVersion != null) OlderVersionMark(id: 'headline', version: headlineVersion, reason: headlineReason, speak: false),

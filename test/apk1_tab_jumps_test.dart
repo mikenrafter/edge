@@ -50,7 +50,7 @@ void main() {
           source: HomeScreen(data: apk1Home(observation: null), now: apk1Now));
       // The dial's visible title, scoped to the ring card so it cannot hit
       // the Sleep tab-bar label. This is a pointer tap, not onOpen invocation.
-      await _jump(t, find.descendant(of: apk1Rings, matching: find.text('Sleep')), routes);
+      await _jump(t, find.descendant(of: apk1Rings, matching: find.text('SLEEP')), routes);
     });
 
     apk1Test('Home short-sleep why row selects the Sleep tab without a push at $scale', (t) async {

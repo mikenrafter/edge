@@ -754,15 +754,21 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     void row(Metric m, IconData icon, Color col, String name, String sub,
         String value, String unit, List<double?> series, String metricKey,
         {String? whyAbsent,
+        Widget? preview,
         bool overnight = true,
         Rising rising = Rising.neither}) {
       void open() => go(c, MetricDetail(metricKey, initialDay: night));
+      // The preview shares this metric's row, with its own scroll-first
+      // scrubber outside the row's navigation tap target.
+      void add(Widget row) => rows.add(preview == null ? row : Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [row, preview]));
       if (m.isEmpty && building) {
         // Today's row is still being worked out, so this is not yet an absence
         // to explain: hold the landed row's box with a dash. A tall absence
         // card swapping for a short row moved everything under it when the
         // refresh landed. Never another day's number.
-        rows.add(MetricRow(icon, col, name, '—',
+        add(MetricRow(icon, col, name, '—',
             sub: sub, unit: '', series: series, onTap: open,
             subMaxLines: 1));
         return;
@@ -786,7 +792,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                     'Not enough overnight data for this one')
                 : whyAbsent,
             gap: overnight ? d.nightGap : null);
-        rows.add(MetricRow(icon, col, name, '—',
+        add(MetricRow(icon, col, name, '—',
             sub: s == null
                 ? sub
                 : (s.fix.isNotEmpty ? s.fix : s.why),
@@ -796,7 +802,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             subMaxLines: 1));
         return;
       }
-      rows.add(MetricRow(icon, col, name, value,
+      add(MetricRow(icon, col, name, value,
           sub: sub,
           unit: unit,
           series: series,
@@ -832,6 +838,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         ofNight(l?.healthSubRmssdAsleep ?? 'HRV, asleep'),
         hrvMetric.value == null ? '' : '${hrvMetric.value!.round()}', 'ms',
         d.spark('hrv', 24), 'hrv',
+        preview: _hrvPreview(c, d),
         rising: Rising.good,
         // Blaming signal quality unconditionally told a day-one user their
         // sensor produced dirty data on a night that never happened.

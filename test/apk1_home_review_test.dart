@@ -70,6 +70,8 @@ void main() {
         expect(apk1Selected(t), ShellDomain.today.index);
         expect(t.takeException(), isNull);
         await t.binding.handlePopRoute();
+        // Let the default route's reverse transition finish.
+        await t.pump(const Duration(milliseconds: 500));
         await apk1Settle(t);
         expect(routes.routes, hasLength(1));
         expect(find.byType(DetectedActivitiesScreen), findsNothing);
