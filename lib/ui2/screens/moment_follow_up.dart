@@ -178,12 +178,21 @@ class _HomeMomentCardState extends State<_HomeMomentCard> {
   }
 
   Future<void> _read() async {
+    // Home hides this card while follow-ups are off. Loading assumed water
+    // and the review queue then cannot produce anything Home can display.
+    if (!widget.settings.followUpMoments) {
+      if (mounted && (_moments != 0 || _water != 0)) {
+        setState(() { _moments = 0; _water = 0; });
+      }
+      return;
+    }
     if (_reading) return;
     _reading = true;
     try {
       final g = widget.settings;
       final since = g.followUpMoments ? g.followUpMomentsSince : null;
       final f = await MomentFollowUps.load(enabledSince: since);
+      if (!mounted || !widget.settings.followUpMoments) return;
       // A started range with only its announcement left has no pending mark,
       // but is still waiting for Save: it counts too.
       final review = MomentReviewService.shared..reload();

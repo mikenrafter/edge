@@ -118,6 +118,32 @@ void main() {
     });
   }
 
+  apk1Test('importing settings-as-tab refreshes the mounted shell without a remount', (t) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setBool(apk1SettingsPref, true);
+    final path = await t.runAsync(() => LocalDb.exportCopy());
+    expect(path, isNotNull);
+    await sp.remove(apk1SettingsPref);
+    await apk1Mount(t);
+    final shell = t.state(find.byType(AppShell));
+    expect(_tabs, findsNWidgets(4));
+    expect(_cog, findsNothing);
+    expect(_profile, findsOneWidget);
+
+    await t.runAsync(() => LocalDb.importFromDbFile(path!));
+    await apk1Settle(t);
+    expect(sp.getBool(apk1SettingsPref), isTrue);
+    expect(t.state(find.byType(AppShell)), same(shell));
+    expect(_tabs, findsNWidgets(5));
+    expect(_cog, findsOneWidget);
+    expect(_profile, findsNothing);
+    await t.tap(_cog);
+    await apk1Settle(t);
+    expect(find.byType(MoreSettings), findsOneWidget);
+    expect(apk1Selected(t), 4);
+    expect(t.takeException(), isNull);
+  });
+
   apk1Test('the UI-written settings-as-tab pref survives a full export and import', (t) async {
     final routes = Apk1Routes();
     await apk1Mount(t, routes: routes);

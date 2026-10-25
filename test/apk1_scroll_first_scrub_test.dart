@@ -100,6 +100,31 @@ void main() {
         expect(t.takeException(), isNull);
       });
 
+      apk1Test('$chart first move of 24 horizontal and 60 vertical scrolls without selecting at $scale', (t) async {
+        final routes = Apk1Routes();
+        final scroll = await _mount(t, chart, scale, routes);
+        final before = scroll.pixels;
+        final dy = scroll.extentAfter > 150 ? -60.0 : 60.0;
+        expect(dy < 0 ? scroll.extentAfter : scroll.extentBefore, greaterThan(100));
+        final g = await t.startGesture(t.getCenter(_plot(chart)));
+        // One event crosses BOTH axis slops. Splitting it into small moves
+        // would let the vertical recognizer win before horizontal slop.
+        await g.moveBy(Offset(24, dy));
+        await t.pump();
+        expect(t.widget<Scrubber>(_plot(chart)).value, isNull);
+        expect(_selection(chart), findsNothing);
+        // Continue the scroll after its recognizer has accepted the gesture.
+        await g.moveBy(Offset(0, dy));
+        await g.up();
+        await t.pumpAndSettle();
+        expect((scroll.pixels - before).abs(), greaterThan(40));
+        await apk1Reveal(t, _plot(chart));
+        expect(t.widget<Scrubber>(_plot(chart)).value, isNull);
+        expect(_selection(chart), findsNothing);
+        expect(routes.pushes, 1);
+        expect(t.takeException(), isNull);
+      });
+
       apk1Test('$chart waits for drag intent then selects horizontally without scrolling at $scale', (t) async {
         final routes = Apk1Routes();
         final scroll = await _mount(t, chart, scale, routes);

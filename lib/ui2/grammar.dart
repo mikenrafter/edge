@@ -39,7 +39,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/gestures.dart' show DragStartBehavior;
+import 'package:flutter/gestures.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/journal_fields.dart' show formatMinuteOfDay;
@@ -291,6 +291,9 @@ class Scrubber extends StatelessWidget {
     // either direction places the cursor rather than doing nothing.
     final up = ((v ?? -step) + step).clamp(0.0, 1.0);
     final down = ((v ?? 1 + step) - step).clamp(0.0, 1.0);
+    // Keep callback invocation in one place; arena handlers call a resolved
+    // local function so the heavy-work guard can follow those calls.
+    void end() => onEnd?.call();
     return Semantics(
       label: label,
       slider: true,
@@ -315,31 +318,71 @@ class Scrubber extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               onLongPressStart: (e) => set(e.localPosition),
               onLongPressMoveUpdate: (e) => set(e.localPosition),
-              onLongPressEnd: (_) => onEnd?.call(),
-              onLongPressCancel: () => onEnd?.call(),
+              onLongPressEnd: (_) => end(),
+              onLongPressCancel: end,
               child: child,
             );
           }
-          // Let the gesture arena give vertical movement to the page. A tap
-          // selects on release; a held finger can then move in any direction.
-          return GestureDetector(
+          // Decide dominance before accepting the arena: a diagonal move can
+          // cross horizontal slop while still belonging to the page scroll.
+          return RawGestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTapUp: (e) => set(e.localPosition),
-            dragStartBehavior: DragStartBehavior.down,
-            onHorizontalDragStart: (e) => set(e.localPosition),
-            onHorizontalDragUpdate: (e) => set(e.localPosition),
-            onHorizontalDragEnd: (_) => onEnd?.call(),
-            onHorizontalDragCancel: () => onEnd?.call(),
-            onLongPressStart: (e) => set(e.localPosition),
-            onLongPressMoveUpdate: (e) => set(e.localPosition),
-            onLongPressEnd: (_) => onEnd?.call(),
-            onLongPressCancel: () => onEnd?.call(),
+            gestures: {
+              TapGestureRecognizer: GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                () => TapGestureRecognizer(),
+                (r) => r..onTapUp = (e) => set(e.localPosition),
+              ),
+              _ScrubDragRecognizer: GestureRecognizerFactoryWithHandlers<_ScrubDragRecognizer>(
+                () => _ScrubDragRecognizer(),
+                (r) {
+                  r.dragStartBehavior = DragStartBehavior.down;
+                  r.onlyAcceptDragOnThreshold = true;
+                  r.onStart = (e) => set(e.localPosition);
+                  r.onUpdate = (e) => set(e.localPosition);
+                  r.onEnd = (_) => end();
+                  r.onCancel = end;
+                },
+              ),
+              LongPressGestureRecognizer: GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+                () => LongPressGestureRecognizer(),
+                (r) {
+                  r.onLongPressStart = (e) => set(e.localPosition);
+                  r.onLongPressMoveUpdate = (e) => set(e.localPosition);
+                  r.onLongPressEnd = (_) => end();
+                  r.onLongPressCancel = end;
+                },
+              ),
+            },
             child: child,
           );
         },
       ),
     );
   }
+}
+
+/// Owns the pending pointer displacement; Flutter owns the drag after intent
+/// is accepted. A long press uses its separate recognizer and stays free-axis.
+class _ScrubDragRecognizer extends HorizontalDragGestureRecognizer {
+  Offset _pending = Offset.zero;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _pending = Offset.zero;
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerMoveEvent) _pending += event.delta;
+    if (event is PointerPanZoomUpdateEvent) _pending = event.pan;
+    super.handleEvent(event);
+  }
+
+  @override
+  bool hasSufficientGlobalDistanceToAccept(PointerDeviceKind kind, double? slop) =>
+      super.hasSufficientGlobalDistanceToAccept(kind, slop) &&
+      _pending.dx.abs() > 1.5 * _pending.dy.abs();
 }
 
 /// ── CHARTSCRUB ── every chart is scrubbable ──────────────────────────────

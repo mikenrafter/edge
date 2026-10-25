@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../l10n/app_localizations.dart';
+import '../settings/settings_repository.dart' show settingsRestoredSignal;
 import '../state/prefs.dart';
 import 'profile/settings.dart' show MoreSettings;
 import 'grammar.dart';
@@ -41,23 +42,31 @@ enum ShellDomain {
   final Color accent;
 }
 
+/// The shell owns navigation state; detail routes can only request selection.
+abstract interface class ShellNavigationController {
+  void selectDomain(ShellDomain domain, {String? date});
+}
+
 /// Carried into detail routes by the shared navigation helpers, so a domain
 /// link can return to its shell even from a pushed detail.
 class ShellNavigation extends InheritedWidget {
-  final void Function(ShellDomain domain, {String? date}) selectDomain;
-  const ShellNavigation({super.key, required this.selectDomain, required super.child});
+  final ShellNavigationController controller;
+  const ShellNavigation({super.key, required this.controller, required super.child});
+
+  void selectDomain(ShellDomain domain, {String? date}) =>
+      controller.selectDomain(domain, date: date);
 
   static ShellNavigation? maybeOf(BuildContext c) =>
       c.dependOnInheritedWidgetOfExactType<ShellNavigation>();
 
   static Widget carry(BuildContext c, Widget child) {
     final nav = maybeOf(c);
-    return nav == null ? child : ShellNavigation(selectDomain: nav.selectDomain, child: child);
+    return nav == null ? child : ShellNavigation(controller: nav.controller, child: child);
   }
 
   @override
   bool updateShouldNotify(ShellNavigation oldWidget) =>
-      selectDomain != oldWidget.selectDomain;
+      controller != oldWidget.controller;
 }
 
 /// A domain's requested calendar date. The shell retains it while tabs park.
@@ -100,7 +109,7 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> implements ShellNavigationController {
   late ShellDomain _current = widget.initial;
   bool _settings = false;
   bool _settingsBuilt = false;
@@ -111,11 +120,13 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     Prefs.settingsAsTabRevision.addListener(_settingsChanged);
+    settingsRestoredSignal.addListener(_settingsChanged);
   }
 
   @override
   void dispose() {
     Prefs.settingsAsTabRevision.removeListener(_settingsChanged);
+    settingsRestoredSignal.removeListener(_settingsChanged);
     super.dispose();
   }
 
@@ -135,7 +146,8 @@ class _AppShellState extends State<AppShell> {
     }
   });
 
-  void _selectDomain(ShellDomain domain, {String? date}) {
+  @override
+  void selectDomain(ShellDomain domain, {String? date}) {
     _dates[domain] = date;
     _dateRevisions[domain] = (_dateRevisions[domain] ?? 0) + 1;
     _select(domain);
@@ -195,7 +207,7 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext c) {
     final p = P.of(c);
     return ShellNavigation(
-      selectDomain: _selectDomain,
+      controller: this,
       child: PopScope<Object?>(
       canPop: !_settings && _history.isEmpty,
       onPopInvokedWithResult: (didPop, _) {
