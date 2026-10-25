@@ -36,8 +36,7 @@ import 'ui2/screens/what_changed.dart';
 import 'ui2/screens/health_screen.dart';
 import 'ui2/screens/home_screen.dart';
 import 'ui2/screens/journal_compose.dart';
-import 'ui2/screens/log_workout.dart';
-import 'ui2/screens/detected_activities.dart';
+import 'ui2/screens/day_review.dart';
 import 'ui2/screens/nutrition_screen.dart';
 import 'ui2/screens/sleep_tab.dart';
 import 'ui2/screens/wellness_screen.dart';
@@ -532,9 +531,9 @@ Widget? screenForRoute(String route) => switch (routePath(route)) {
       // The detected bout, with the three answers to it: log it, adjust the
       // times first, or say it never happened. PUSHED by `_consume`, so every
       // tap builds a fresh one and the id reaches it.
-      kRouteDetectedActivities => DetectedActivitiesScreen(focusId: routeId(route)),
+      kRouteDetectedActivities => DayReviewEntry(focusId: routeId(route)),
       kRouteWorkoutSuggestion =>
-        WorkoutSuggestionScreen(focusId: routeId(route)),
+        DayReviewEntry(focusId: routeId(route)),
       // Battery, band and sources live behind Settings > Hardware > My devices;
       // there is no profile landing screen in between.
       kRouteProfile => const MoreSettings(),

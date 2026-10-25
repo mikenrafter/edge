@@ -1,3 +1,5 @@
+// The retained moment editor is opened from the day breakdown. These
+// component tests keep its dose, symptom, water and pairing contracts.
 // Layout shift budget on the marked-moment REVIEW screen, one state per test.
 // Measurement tests: they fail where the screen really moves.
 //
@@ -51,7 +53,7 @@ Future<ShiftRun> _open(WidgetTester t) async {
   final log = WriteLog();
   await t.pumpWidget(MaterialApp(
     theme: buildTheme(Brightness.light),
-    home: MomentFollowUpScreen(
+    home: MomentReviewEditor(
       preloaded: _m,
       preloadedAssumed: [_g],
       writer: FakeAnswerWriter(log: log),
@@ -75,7 +77,7 @@ void main() {
     final run = ShiftRun(t);
     await t.pumpWidget(MaterialApp(
       theme: buildTheme(Brightness.light),
-      home: MomentFollowUpScreen(
+      home: MomentReviewEditor(
         preloaded: _m,
         preloadedAssumed: [_g],
         writer: FakeAnswerWriter(),

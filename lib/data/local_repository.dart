@@ -13,9 +13,12 @@
 // nothing above this file references HTTP, JWT, or a backend URL anymore.
 
 import '../models/activity_suggestion.dart';
+import '../gestures/moment_review_queue.dart';
 import '../compute/manual_session.dart' show SessionSpan;
 import '../gps/route_models.dart';
 import 'journal_fields.dart';
+import 'day_review.dart';
+import 'assumed_water.dart';
 import 'nap_resolution.dart';
 
 /// The single source of truth for "no step goal configured yet" (8k/day is
@@ -75,6 +78,15 @@ typedef WearableDay = ({
 typedef DeclinedDay = ({String reason, int? keptAlgoVersion, int decidedAtMs});
 
 abstract class LocalRepository {
+  /// All decisions commit together or throw without writing any of them.
+  Future<DayReviewReceipt> saveDayReview({
+    required List<ActivityDecision> activities,
+    required List<MomentDecision> moments,
+    List<ReviewRange> ranges = const [],
+    List<MomentWorkoutDecision> workouts = const [],
+    Map<AssumedGlass, bool> glasses = const {},
+  }) => throw UnimplementedError('saveDayReview');
+
   /// Days that kept an older result, with why (current version only).
   Future<Map<String, DeclinedDay>> declinedDays() async => const {};
 

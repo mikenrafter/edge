@@ -525,12 +525,11 @@ Future<List<MomentLabel>> _ldbMomentLabels({required String? date, required Stri
     ];
   }
 
-Future<bool> _ldbAnswerMoment(MomentLabel l, {required String? metricField, required double? metricValue, required double? metricMax}) async {
-    final db = await LocalDb.instance;
+Future<bool> _ldbAnswerMoment(MomentLabel l, {required String? metricField, required double? metricValue, required double? metricMax, Transaction? transaction}) async {
     // One transaction: the label check, the read of the day's total and the
     // write back are serialized by sqflite, so two overlapping answers on one
     // day cannot read the same total and lose one.
-    return db.transaction((txn) async {
+    Future<bool> write(Transaction txn) async {
       final have = await txn.query('moment_label',
           columns: ['date'],
           where: 'date = ? AND hhmm = ?',
@@ -561,7 +560,9 @@ Future<bool> _ldbAnswerMoment(MomentLabel l, {required String? metricField, requ
             conflictAlgorithm: ConflictAlgorithm.replace);
       }
       return true;
-    });
+    }
+    return transaction == null
+        ? (await LocalDb.instance).transaction(write) : write(transaction);
   }
 
 Future<void> _ldbPutWakeEvidence({required int onsetSec, required String kind, required int atSec}) async {
@@ -838,9 +839,8 @@ Future<List<AssumedGlass>> _ldbAssumedWater({required String? date, required Str
     ];
   }
 
-Future<bool> _ldbRemoveAssumedWater(AssumedGlass g) async {
-    final db = await LocalDb.instance;
-    return db.transaction((txn) async {
+Future<bool> _ldbRemoveAssumedWater(AssumedGlass g, {Transaction? transaction}) async {
+    Future<bool> write(Transaction txn) async {
       final rows = await txn.query('assumed_water',
           where: 'date = ? AND at_min = ?', whereArgs: [g.date, g.atMin], limit: 1);
       if (rows.isEmpty ||
@@ -865,7 +865,8 @@ Future<bool> _ldbRemoveAssumedWater(AssumedGlass g) async {
       await txn.update('assumed_water', {'state': AssumedState.removed.name},
           where: 'date = ? AND at_min = ?', whereArgs: [g.date, g.atMin]);
       return true;
-    });
+    }
+    return transaction == null ? (await LocalDb.instance).transaction(write) : write(transaction);
   }
 
 Map<String, Object?> _ldbPrivSymptomRow(StoredSymptom s) {
@@ -1091,9 +1092,8 @@ Future<Map<String, int>> _ldbApplyPendingActivityReviews() async {
     });
   }
 
-Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, NapResolution? expected}) async {
-    final db = await LocalDb.instance;
-    final res = await db.transaction((tx) async {
+Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int startTs, required int endTs, required String source, NapResolution? expected, Transaction? transaction}) async {
+    Future<NapResolution?> write(Transaction tx) async {
       String? snapshot;
       if (source != 'rejected') {
         // A nap that reaches sleep extends it to the union (one transaction
@@ -1129,9 +1129,10 @@ Future<NapResolution?> _ldbPutNapEdit({required String dayId, required int start
       await ActivityStore.supersede(tx, ActivityKind.nap, startTs, endTs);
       await ActivityStore.markDayChanged(tx, dayId);
       return null;
-    });
+    }
+    final res = transaction == null ? await (await LocalDb.instance).transaction(write) : await write(transaction);
     final main = res?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
-    if (main != null) await LocalDb.releaseFrozenHeadline(main.day);
+    if (main != null && transaction == null) await LocalDb.releaseFrozenHeadline(main.day);
     return res;
   }
 

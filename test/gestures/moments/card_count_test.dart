@@ -19,6 +19,7 @@ import 'package:openstrap_edge/gestures/moment_review_queue.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
+import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 final _now = DateTime(2026, 10, 7, 12, 0);
@@ -206,7 +207,14 @@ void main() {
       await t.tap(answer);
       await t.pump();
       await t.pump(const Duration(milliseconds: 400));
-      expect(find.byType(MomentFollowUpScreen), findsOneWidget);
+      // Route loading includes real SQLite reads; wait through the shared
+      // SQL-aware helper instead of checking the old wrapper after one frame.
+      for (var i = 0; i < 60 && find.byType(DayTimelineScreen).evaluate().isEmpty; i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await t.pump();
+      }
+      expect(find.byType(DayTimelineScreen), findsOneWidget);
+      expect(find.byKey(const ValueKey('apk2-review-tray')), findsOneWidget);
     });
   });
 }

@@ -1,3 +1,5 @@
+// The retained moment editor is opened from the day breakdown. These
+// component tests keep its dose, symptom, water and pairing contracts.
 // The follow-up screen as a REVIEW: choices are queued, not applied. Each card
 // stays and shows its pending decision (editable, undoable); nothing is written
 // until Save; Save applies everything in one go and tells which failed; the
@@ -71,7 +73,7 @@ class _Rig {
           List<AssumedGlass> glassList = const []}) =>
       MaterialApp(
         theme: buildTheme(Brightness.light),
-        home: MomentFollowUpScreen(
+        home: MomentReviewEditor(
           preloaded: moments,
           preloadedAssumed: glassList,
           writer: writer,
@@ -105,6 +107,37 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await Prefs.ensureLoaded();
     Prefs.setString(MomentReviewStore.prefKey, '');
+  });
+
+  testWidgets('the breakdown editor returns a draft without writing or exporting', (t) async {
+    final r = _Rig();
+    addTearDown(r.service.dispose);
+    MomentReviewQueue? returned;
+    t.view.physicalSize = const Size(390 * 3, 2400 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(theme: buildTheme(Brightness.light),
+      home: Builder(builder: (c) => Scaffold(body: TextButton(
+        child: const Text('Edit marked moments'),
+        onPressed: () async {
+          returned = await Navigator.of(c).push<MomentReviewQueue>(MaterialPageRoute(
+            builder: (_) => MomentReviewEditor(
+              preloaded: const [mA], preloadedAssumed: const [],
+              writer: r.writer, assumedWriter: r.glasses, rangeWriter: r.ranges,
+              service: r.service, exporter: r.exporter, now: reviewNow,
+              stageOnly: true)));
+        },
+      )))));
+    await _tap(t, find.text('Edit marked moments'));
+    await _tap(t, _choice(mA, MomentChoice.caffeine));
+    await t.enterText(_value(mA), '80');
+    await _tap(t, _confirm(mA));
+    await _tap(t, _save);
+    expect(returned!.decisionFor(ReviewKey.moment(mA))!.choice, MomentChoice.caffeine);
+    expect(returned!.decisionFor(ReviewKey.moment(mA))!.value, 80);
+    expect(r.log.entries, isEmpty);
+    expect(r.sent, isEmpty);
+    expect(find.text('Edit marked moments'), findsOneWidget);
   });
 
   group('choices are queued, not applied', () {

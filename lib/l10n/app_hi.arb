@@ -3496,5 +3496,17 @@
   "liveHrWaitingSemantics": "लाइव हृदय गति चार्ट, लाइव डेटा की प्रतीक्षा में",
   "liveHrStreamNotSaved": "लाइव स्ट्रीम सहेजी नहीं जाती।",
   "settingsAsTab": "सेटिंग को टैब में दिखाएँ",
-  "homeReviewActivities": "गतिविधियों की समीक्षा करें"
+  "homeReviewActivities": "गतिविधियों की समीक्षा करें",
+  "dayReviewDiscard": "हटाएँ",
+  "dayReviewAlreadyReviewed": "पहले ही समीक्षा हो चुकी है",
+  "dayReviewLeaveTitle": "बिना सहेजे निर्णय हटाएँ?",
+  "dayReviewLeaveBody": "आपके चुने हुए निर्णय अभी सहेजे नहीं गए हैं।",
+  "dayReviewStay": "यहीं रहें",
+  "dayReviewLeave": "हटाएँ और बाहर जाएँ",
+  "dayReviewPrevious": "पिछला पेज",
+  "dayReviewNext": "अगला पेज",
+  "dayReviewSave": "सहेजें",
+  "dayReviewFollowUpFailed": "निर्णय सहेज दिए गए। सभी आइटम रीफ़्रेश या एक्सपोर्ट नहीं हो सके।",
+  "dayReviewPage": "{pages} में से {page}",
+  "dayReviewNoReviewNeeded": "समीक्षा की आवश्यकता नहीं"
 }

@@ -3514,5 +3514,17 @@
   "liveHrWaitingSemantics": "Gráfico de frecuencia cardíaca en vivo, esperando datos en vivo",
   "liveHrStreamNotSaved": "La transmisión en vivo no se guarda.",
   "settingsAsTab": "Ajustes como pestaña",
-  "homeReviewActivities": "Revisar actividades"
+  "homeReviewActivities": "Revisar actividades",
+  "dayReviewDiscard": "Descartar",
+  "dayReviewAlreadyReviewed": "Ya revisado",
+  "dayReviewLeaveTitle": "¿Descartar las decisiones sin guardar?",
+  "dayReviewLeaveBody": "Tus decisiones pendientes aún no se han guardado.",
+  "dayReviewStay": "Quedarse",
+  "dayReviewLeave": "Descartar y salir",
+  "dayReviewPrevious": "Página anterior",
+  "dayReviewNext": "Página siguiente",
+  "dayReviewSave": "Guardar",
+  "dayReviewFollowUpFailed": "Decisiones guardadas. No se pudieron actualizar o exportar todos los elementos.",
+  "dayReviewPage": "{page} de {pages}",
+  "dayReviewNoReviewNeeded": "No requiere revisión"
 }

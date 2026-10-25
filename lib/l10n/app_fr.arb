@@ -3496,5 +3496,17 @@
   "liveHrWaitingSemantics": "Graphique de fréquence cardiaque en direct, en attente de données",
   "liveHrStreamNotSaved": "Le flux en direct n’est pas enregistré.",
   "settingsAsTab": "Réglages dans un onglet",
-  "homeReviewActivities": "Examiner les activités"
+  "homeReviewActivities": "Examiner les activités",
+  "dayReviewDiscard": "Ignorer",
+  "dayReviewAlreadyReviewed": "Déjà vérifié",
+  "dayReviewLeaveTitle": "Ignorer les décisions non enregistrées ?",
+  "dayReviewLeaveBody": "Vos décisions en attente ne sont pas encore enregistrées.",
+  "dayReviewStay": "Rester",
+  "dayReviewLeave": "Ignorer et quitter",
+  "dayReviewPrevious": "Page précédente",
+  "dayReviewNext": "Page suivante",
+  "dayReviewSave": "Enregistrer",
+  "dayReviewFollowUpFailed": "Décisions enregistrées. Certains éléments n’ont pas pu être actualisés ou exportés.",
+  "dayReviewPage": "{page} sur {pages}",
+  "dayReviewNoReviewNeeded": "Aucune vérification nécessaire"
 }

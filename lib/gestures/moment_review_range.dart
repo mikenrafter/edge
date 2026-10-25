@@ -10,6 +10,7 @@
 //               unless the wearer picked one in the pairing sheet).
 
 import 'package:flutter/foundation.dart';
+import 'package:sqflite/sqflite.dart' show Transaction;
 
 import '../compute/manual_session.dart';
 import '../compute/nap_edits.dart';
@@ -118,7 +119,12 @@ Future<ManualWindowError?> checkReviewRange(
 /// Where a range lands. Subclassed by fakes in tests; the real one talks to
 /// `LocalDb` / `LocalRepository` / `AppState`.
 class ReviewRangeWriter {
-  const ReviewRangeWriter({this.repo, this.app});
+  const ReviewRangeWriter({this.repo, this.app, this.transaction,
+      this.preparedWorkouts = const {}, this.reopened});
+
+  final Transaction? transaction;
+  final Map<int, Map<String, dynamic>> preparedWorkouts;
+  final Set<String>? reopened;
 
   /// The read/write seam (`getDayNaps`, `savedSessionSpans`, `logManualWorkout`).
   final LocalRepository? repo;
@@ -135,6 +141,8 @@ class ReviewRangeWriter {
   /// manual nap edits stored for it (a day not yet re-analysed shows them only
   /// here).
   Future<List<NapMap>> existingNaps(String dayId) async {
+    // Nap overlaps extend through putNapEdit; only workout overlaps refuse.
+    if (transaction != null) return [];
     final d = await _repo().getDayNaps(dayId);
     final out = <NapMap>[
       for (final n in (d['naps'] as List?) ?? const [])
@@ -151,17 +159,26 @@ class ReviewRangeWriter {
   }
 
   /// Every saved session window.
-  Future<List<SessionSpan>> sessionSpans() => _repo().savedSessionSpans();
+  Future<List<SessionSpan>> sessionSpans() async {
+    if (transaction == null) return _repo().savedSessionSpans();
+    return [for (final row in await transaction!.query('sessions',
+        columns: ['id', 'start_ts', 'end_ts']))
+      SessionSpan(row['id'] as String, row['start_ts'] as int,
+          (row['end_ts'] as int?) ?? DateTime.now().millisecondsSinceEpoch ~/ 1000)];
+  }
 
   /// `putNapEdit(dayId, startSec, endSec, source: 'manual')`. [dayId] is the
   /// START's local day label. Keyed on (day, start): writing it twice is one row.
   Future<void> logNap(
       {required String dayId, required int startSec, required int endSec}) async {
     final r = await LocalDb.putNapEdit(
-        dayId: dayId, startTs: startSec, endTs: endSec, source: 'manual');
+        dayId: dayId, startTs: startSec, endTs: endSec, source: 'manual', transaction: transaction);
     // A main sleep the nap extended is re-derived like any sleep edit.
     final main = r?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
-    if (main != null) await app?.sleepOperations.recalculate(main.day);
+    if (main != null) {
+      if (transaction != null) { reopened?.add(main.day); }
+      else { await app?.sleepOperations.recalculate(main.day); }
+    }
   }
 
   /// Re-analyse the nap days once after a batch of [logNap]s. A failure here
@@ -178,6 +195,12 @@ class ReviewRangeWriter {
   /// id comes from the start second, so writing it twice is one row.
   Future<void> logWorkout(
       {required int startSec, required int endSec, String type = 'other'}) async {
+    if (transaction != null) {
+      final row = preparedWorkouts[startSec];
+      if (row == null) throw StateError('Range must be scored before commit');
+      await LocalDb.putSession(row, transaction: transaction);
+      return;
+    }
     final r = await _repo()
         .logManualWorkout(startTs: startSec, endTs: endSec, type: type);
     await HealthExporter.exportWorkoutId(r['workout_id'] as String?);

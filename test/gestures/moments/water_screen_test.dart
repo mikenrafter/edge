@@ -1,3 +1,5 @@
+// The retained moment editor is opened from the day breakdown. These
+// component tests keep its dose, symptom, water and pairing contracts.
 // The follow-up screen offers Water: one tap on the pill queues the answer
 // (applied on Save), with no amount field (one tap = one glass, like the old
 // "Log water" gesture). The writer is a fake; what the glass adds is
@@ -50,7 +52,7 @@ Future<_FakeWriter> _pump(WidgetTester t, List<PendingMoment> moments) async {
   addTearDown(t.view.reset);
   await t.pumpWidget(MaterialApp(
     theme: buildTheme(Brightness.light),
-    home: MomentFollowUpScreen(preloaded: moments, writer: w, now: _now),
+    home: MomentReviewEditor(preloaded: moments, writer: w, now: _now),
   ));
   await t.pumpAndSettle();
   return w;

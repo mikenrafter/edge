@@ -31,8 +31,9 @@ import '../../theme/theme_switcher.dart' show themedRoute;
 import '../ui2.dart';
 import '../activity/catalogue.dart';
 import 'home_screen.dart' show repoOf;
+import 'day_review.dart';
 import 'journal_compose.dart' show OsTextField;
-import 'log_workout.dart' show ActivityTypeSheet, LogWorkout, appOf;
+import 'log_workout.dart' show ActivityTypeSheet, LogWorkout, WorkoutDraft, appOf;
 
 /// Home card for what waits for review: one line "N marked moments", one line
 /// "N assumed water" (a zero line is hidden), and an Answer button. Laid out
@@ -234,8 +235,29 @@ class _HomeMomentCardState extends State<_HomeMomentCard> {
 /// written until Save, which applies the whole queue (see
 /// `gestures/moment_review_apply.dart`). The queue persists in
 /// `MomentReviewStore`.
-class MomentFollowUpScreen extends StatefulWidget {
-  const MomentFollowUpScreen({
+class MomentFollowUpScreen extends StatelessWidget {
+  const MomentFollowUpScreen({super.key, this.preloaded,
+    this.writer = const MomentAnswerWriter(), this.now, this.preloadedAssumed,
+    this.assumedWriter = const AssumedWaterWriter(), this.service,
+    this.rangeWriter, this.exporter});
+  final List<PendingMoment>? preloaded;
+  final List<AssumedGlass>? preloadedAssumed;
+  final MomentAnswerWriter writer;
+  final AssumedWaterWriter assumedWriter;
+  final DateTime? now;
+  final MomentReviewService? service;
+  final ReviewRangeWriter? rangeWriter;
+  final TaskerMomentExport? exporter;
+  @override
+  Widget build(BuildContext c) => DayReviewEntry(moments: preloaded,
+    service: service, editor: MomentReviewEditor(preloaded: preloaded,
+      writer: writer, now: now, preloadedAssumed: preloadedAssumed,
+      assumedWriter: assumedWriter, service: service, rangeWriter: rangeWriter,
+      exporter: exporter, stageOnly: true));
+}
+
+class MomentReviewEditor extends StatefulWidget {
+  const MomentReviewEditor({
     super.key,
     this.preloaded,
     this.writer = const MomentAnswerWriter(),
@@ -245,7 +267,12 @@ class MomentFollowUpScreen extends StatefulWidget {
     this.service,
     this.rangeWriter,
     this.exporter,
+    this.stageOnly = false,
+    this.onStagedWorkout,
   });
+
+  final bool stageOnly;
+  final void Function(PendingMoment, WorkoutDraft)? onStagedWorkout;
 
   /// Injected in tests; null reads them from the database.
   final List<PendingMoment>? preloaded;
@@ -269,10 +296,10 @@ class MomentFollowUpScreen extends StatefulWidget {
   final TaskerMomentExport? exporter;
 
   @override
-  State<MomentFollowUpScreen> createState() => _MomentFollowUpScreenState();
+  State<MomentReviewEditor> createState() => _MomentReviewEditorState();
 }
 
-class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
+class _MomentReviewEditorState extends State<MomentReviewEditor> {
   List<PendingMoment>? _items;
   List<AssumedGlass> _glasses = [];
   late final MomentReviewService _svc;
@@ -454,6 +481,16 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   /// The "Log a workout at this time" form saves a workout on its own, so the
   /// moment is answered right away (it is not part of the queue).
   Future<void> _logWorkout(PendingMoment m) async {
+    if (widget.stageOnly) {
+      final w = workoutPrefillFor(m, widget.now ?? DateTime.now());
+      final draft = await Navigator.of(context).push<WorkoutDraft>(MaterialPageRoute(
+          builder: (_) => LogWorkout(start: w.start, end: w.end, now: widget.now,
+              stageOnly: true)));
+      if (!mounted || draft == null) return;
+      widget.onStagedWorkout?.call(m, draft);
+      _queueMoment(m, const ReviewDecision.label(MomentChoice.workout));
+      return;
+    }
     final now = widget.now ?? DateTime.now();
     final w = workoutPrefillFor(m, now);
     final saved = await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
@@ -547,6 +584,10 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
 
   Future<void> _save() async {
     if (_busy || _queue.isEmpty) return;
+    if (widget.stageOnly) {
+      Navigator.of(context).pop(_queue);
+      return;
+    }
     setState(() => _busy = true);
     ReviewSaveReport? report;
     try {

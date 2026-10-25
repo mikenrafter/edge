@@ -30,8 +30,8 @@ import 'package:openstrap_edge/ui2/onboarding/pairing.dart';
 import 'package:openstrap_edge/ui2/onboarding/profile_setup.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart'
     show isEncryptedBackup;
-import 'package:openstrap_edge/ui2/screens/log_workout.dart'
-    show WorkoutSuggestionScreen;
+import 'package:openstrap_edge/ui2/screens/day_review.dart'
+    show DayReviewEntry;
 import 'package:openstrap_edge/ui2/profile/devices.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart' show MoreSettings;
@@ -188,11 +188,11 @@ void main() {
       final route = workoutSuggestionRoute(id);
       expect(domainForRoute(route), ShellDomain.today);
       final screen = screenForRoute(route);
-      expect(screen, isA<WorkoutSuggestionScreen>());
-      expect((screen! as WorkoutSuggestionScreen).focusId, id);
+      expect(screen, isA<DayReviewEntry>());
+      expect((screen! as DayReviewEntry).focusId, id);
       // A payload from a build that carried no id still reviews everything.
       expect(
-          (screenForRoute(kRouteWorkoutSuggestion)! as WorkoutSuggestionScreen)
+          (screenForRoute(kRouteWorkoutSuggestion)! as DayReviewEntry)
               .focusId,
           isNull);
     });

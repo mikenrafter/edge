@@ -1940,7 +1940,8 @@ class LocalDb {
     String? metricField,
     double? metricValue,
     double? metricMax,
-  }) => _ldbAnswerMoment(l, metricField: metricField, metricValue: metricValue, metricMax: metricMax);
+    Transaction? transaction,
+  }) => _ldbAnswerMoment(l, metricField: metricField, metricValue: metricValue, metricMax: metricMax, transaction: transaction);
 
   /// How long a block's evidence is kept after the block began (days).
   static const int _wakeEvidenceKeepDays = 7;
@@ -6695,8 +6696,8 @@ class LocalDb {
   }) => _ldbAssumedWater(date: date, sinceDate: sinceDate, includeRemoved: includeRemoved);
 
   /// Acknowledge: state `kept`. False when the glass is not `assumed`.
-  static Future<bool> keepAssumedWater(AssumedGlass g) async {
-    final db = await instance;
+  static Future<bool> keepAssumedWater(AssumedGlass g, {Transaction? transaction}) async {
+    final db = transaction ?? await instance;
     final n = await db.update('assumed_water',
         {'state': AssumedState.kept.name},
         where: 'date = ? AND at_min = ? AND state = ?',
@@ -6709,7 +6710,7 @@ class LocalDb {
   /// a logged zero) and tombstone it, in ONE transaction. False, changing
   /// nothing, when it is already removed. The subtracted amount is the ROW's
   /// `ml`, not the caller's copy, so a stale screen cannot take back too much.
-  static Future<bool> removeAssumedWater(AssumedGlass g) => _ldbRemoveAssumedWater(g);
+  static Future<bool> removeAssumedWater(AssumedGlass g, {Transaction? transaction}) => _ldbRemoveAssumedWater(g, transaction: transaction);
 
   /// The part of [date]'s water total that is assumed (state assumed or kept,
   /// never above the day's total); 0 when none.
@@ -6735,9 +6736,8 @@ class LocalDb {
 
   /// Stores [l] (a `symptom` label) and [s] in ONE transaction. Returns false,
   /// writing nothing, when the moment already has an answer.
-  static Future<bool> answerMomentSymptom(MomentLabel l, StoredSymptom s) async {
-    final db = await instance;
-    return db.transaction((txn) async {
+  static Future<bool> answerMomentSymptom(MomentLabel l, StoredSymptom s, {Transaction? transaction}) async {
+    Future<bool> write(Transaction txn) async {
       final have = await txn.query('moment_label',
           columns: ['date'],
           where: 'date = ? AND hhmm = ?',
@@ -6748,7 +6748,8 @@ class LocalDb {
       await txn.insert('symptom_entry', _symptomRow(s),
           conflictAlgorithm: ConflictAlgorithm.replace);
       return true;
-    });
+    }
+    return transaction == null ? (await instance).transaction(write) : write(transaction);
   }
 
   /// Stored symptoms, narrowed to one [date] or from [sinceDate], in
@@ -6872,7 +6873,8 @@ class LocalDb {
     required int endTs,
     required String source,
     NapResolution? expected,
-  }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, expected: expected);
+    Transaction? transaction,
+  }) => _ldbPutNapEdit(dayId: dayId, startTs: startTs, endTs: endTs, source: source, expected: expected, transaction: transaction);
 
   static Future<void> deleteNapEdit(String dayId, int startTs) => _ldbDeleteNapEdit(dayId, startTs);
 
@@ -7048,16 +7050,20 @@ class LocalDb {
   // ── sessions (workouts) I/O ────────────────────────────────────────────────
 
   /// Upsert a workout session row (INSERT OR REPLACE — idempotent on id).
-  static Future<void> putSession(Map<String, dynamic> row) async {
-    final db = await instance;
-    await db.transaction((tx) async {
+  static Future<void> putSession(Map<String, dynamic> row, {Transaction? transaction}) async {
+    Future<void> write(Transaction tx) async {
       await tx.insert('sessions', row, conflictAlgorithm: ConflictAlgorithm.replace);
       final start = row['start_ts'] as int?;
       if (start != null) {
         await ActivityStore.supersede(tx, ActivityKind.workout, start,
           (row['end_ts'] as int?) ?? DateTime.now().millisecondsSinceEpoch ~/ 1000);
       }
-    });
+    }
+    if (transaction == null) {
+      await (await instance).transaction(write);
+    } else {
+      await write(transaction);
+    }
   }
 
   /// Update ONLY a session's derived score columns.

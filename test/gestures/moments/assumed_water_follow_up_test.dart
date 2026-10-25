@@ -1,3 +1,5 @@
+// The retained moment editor is opened from the day breakdown. These
+// component tests keep its dose, symptom, water and pairing contracts.
 // Assumed water glasses in the marked-moment follow-up (RED).
 //
 //   * Pure: `MomentFollowUps.pendingAssumed(now)` is the assumed (not kept, not
@@ -77,7 +79,7 @@ Future<_Fake> _pump(
   t.view.physicalSize = const Size(390 * 3, 4000 * 3);
   t.view.devicePixelRatio = 3;
   addTearDown(t.view.reset);
-  Widget screen = MomentFollowUpScreen(
+  Widget screen = MomentReviewEditor(
     preloaded: moments,
     preloadedAssumed: glasses,
     assumedWriter: w,

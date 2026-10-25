@@ -8875,5 +8875,17 @@
   "liveHrWaitingSemantics": "График пульса в реальном времени, ожидание данных",
   "liveHrStreamNotSaved": "Прямая трансляция не сохраняется.",
   "settingsAsTab": "Настройки во вкладке",
-  "homeReviewActivities": "Проверить активности"
+  "homeReviewActivities": "Проверить активности",
+  "dayReviewDiscard": "Отклонить",
+  "dayReviewAlreadyReviewed": "Уже проверено",
+  "dayReviewLeaveTitle": "Отменить несохранённые решения?",
+  "dayReviewLeaveBody": "Выбранные решения ещё не сохранены.",
+  "dayReviewStay": "Остаться",
+  "dayReviewLeave": "Отменить и выйти",
+  "dayReviewPrevious": "Предыдущая страница",
+  "dayReviewNext": "Следующая страница",
+  "dayReviewSave": "Сохранить",
+  "dayReviewFollowUpFailed": "Решения сохранены. Не удалось обновить или экспортировать все записи.",
+  "dayReviewPage": "{page} из {pages}",
+  "dayReviewNoReviewNeeded": "Проверка не требуется"
 }

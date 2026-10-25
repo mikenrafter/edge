@@ -3496,5 +3496,17 @@
   "liveHrWaitingSemantics": "实时心率图表，正在等待实时数据",
   "liveHrStreamNotSaved": "实时数据流不会被保存。",
   "settingsAsTab": "将设置显示为标签页",
-  "homeReviewActivities": "查看活动"
+  "homeReviewActivities": "查看活动",
+  "dayReviewDiscard": "舍弃",
+  "dayReviewAlreadyReviewed": "已审核",
+  "dayReviewLeaveTitle": "舍弃未保存的决定？",
+  "dayReviewLeaveBody": "您暂存的决定尚未保存。",
+  "dayReviewStay": "留下",
+  "dayReviewLeave": "舍弃并离开",
+  "dayReviewPrevious": "上一页",
+  "dayReviewNext": "下一页",
+  "dayReviewSave": "保存",
+  "dayReviewFollowUpFailed": "决定已保存。部分项目未能刷新或导出。",
+  "dayReviewPage": "第 {page} 页，共 {pages} 页",
+  "dayReviewNoReviewNeeded": "无需审核"
 }

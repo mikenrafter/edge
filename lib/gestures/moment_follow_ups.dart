@@ -9,6 +9,7 @@
 // invents a sleep window), local day labels only, additive idempotent storage.
 
 import 'dart:convert';
+import 'package:sqflite/sqflite.dart' show Transaction;
 
 import '../data/day_label.dart' show dayLabelOf;
 import '../data/assumed_water.dart';
@@ -332,7 +333,10 @@ enum MomentAnswerResult { saved, alreadyAnswered }
 
 /// Where an answer goes. Overridable so the screen can be tested without a DB.
 class MomentAnswerWriter {
-  const MomentAnswerWriter();
+  const MomentAnswerWriter({this.transaction});
+
+  /// Supplied only by the atomic day-review batch.
+  final Transaction? transaction;
 
   /// Stores [choice] as the moment's label (always) and, for a dose field with a
   /// [value], adds it to that local day's journal metric. Null [value] never
@@ -413,6 +417,7 @@ class MomentAnswerWriter {
           answeredAtMs: at),
       StoredSymptom(
           date: m.date, hhmm: m.hhmm, description: d, createdAtMs: at),
+      transaction: transaction,
     );
     return saved ? MomentAnswerResult.saved : MomentAnswerResult.alreadyAnswered;
   }
@@ -427,6 +432,11 @@ class MomentAnswerWriter {
 
   /// The label id stored for the mark at [date] [hhmm] (null: none, or a skip).
   Future<String?> labelOf(String date, String hhmm) async {
+    if (transaction != null) {
+      final rows = await transaction!.query('moment_label', columns: ['label'],
+          where: 'date = ? AND hhmm = ?', whereArgs: [date, hhmm]);
+      return rows.firstOrNull?['label'] as String?;
+    }
     final labels = await LocalDb.momentLabels(date: date);
     for (final l in labels) {
       if (l.key == '$date $hhmm') return l.label;
@@ -436,6 +446,10 @@ class MomentAnswerWriter {
 
   /// Whether this moment already has an answer (a skip counts).
   Future<bool> isAnswered(PendingMoment m) async {
+    if (transaction != null) {
+      return (await transaction!.query('moment_label', columns: ['date'],
+          where: 'date = ? AND hhmm = ?', whereArgs: [m.date, m.hhmm])).isNotEmpty;
+    }
     final labels = await LocalDb.momentLabels(date: m.date);
     return labels.any((l) => l.key == m.key);
   }
@@ -451,7 +465,7 @@ class MomentAnswerWriter {
   Future<MomentAnswerResult> _store(MomentLabel l,
       {String? field, double? value, double? max}) async {
     final saved = await LocalDb.answerMoment(l,
-        metricField: field, metricValue: value, metricMax: max);
+        metricField: field, metricValue: value, metricMax: max, transaction: transaction);
     return saved ? MomentAnswerResult.saved : MomentAnswerResult.alreadyAnswered;
   }
 }

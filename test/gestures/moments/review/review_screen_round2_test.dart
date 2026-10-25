@@ -1,3 +1,5 @@
+// The retained moment editor is opened from the day breakdown. These
+// component tests keep its dose, symptom, water and pairing contracts.
 // Round 2 on the screen: a half-done range resumes from the one card left, a
 // departed screen's Save leaves a newer screen's drafts alone, bad amounts are
 // refused where they are typed, a storage write the platform refused is said
@@ -63,7 +65,7 @@ class _Rig {
 
   Widget screen(List<PendingMoment> moments) => MaterialApp(
         theme: buildTheme(Brightness.light),
-        home: MomentFollowUpScreen(
+        home: MomentReviewEditor(
           preloaded: moments,
           preloadedAssumed: const [],
           writer: writer,
@@ -137,7 +139,7 @@ void main() {
       final old = _Rig(service: service);
       final a = MaterialApp(
           theme: buildTheme(Brightness.light),
-          home: MomentFollowUpScreen(
+          home: MomentReviewEditor(
               preloaded: const [mA, mB, mC],
               writer: old.writer,
               rangeWriter: slow,

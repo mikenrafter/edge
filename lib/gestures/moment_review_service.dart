@@ -116,6 +116,27 @@ class MomentReviewService extends ChangeNotifier {
     }
   }
 
+  /// Serializes a day batch with direct answers and the legacy range writer.
+  /// Drafts are removed only after the complete transaction succeeds.
+  Future<T> commitDay<T>(Future<T> Function() commit,
+      Set<String> applied) => _exclusive(() async {
+    final snapshot = _queue;
+    final result = await commit();
+    var q = _queue;
+    for (final key in applied) {
+      if (q.decisionFor(key) == snapshot.decisionFor(key)) q = q.without(key);
+    }
+    q = MomentReviewQueue(decisions: q.decisions, ranges: [
+      for (final r in q.ranges)
+        if (!(applied.contains('moment:${r.startKey}') &&
+            applied.contains('moment:${r.endKey}') &&
+            snapshot.ranges.any((old) => old == r))) r,
+    ]);
+    _set(q);
+    await _persist();
+    return result;
+  });
+
   /// One direct answer ("Log a workout at this time" labels its mark at once),
   /// in the same critical section as Saves. Returns [write]'s result; the mark's
   /// queued draft goes with it (an unstarted range it belonged to dissolves).

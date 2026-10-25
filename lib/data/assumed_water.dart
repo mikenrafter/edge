@@ -8,6 +8,7 @@
 // subtracts exactly what it added. No gap filling: only slots, never "the hours
 // in between".
 
+import 'package:sqflite/sqflite.dart' show Transaction;
 import '../notify/notification_center.dart';
 import '../notify/notification_prefs.dart';
 import '../state/units_controller.dart' show UnitSystem;
@@ -125,15 +126,16 @@ class AssumedWater {
 /// Where keep / remove land. Overridable so the follow-up screen is testable
 /// without a database.
 class AssumedWaterWriter {
-  const AssumedWaterWriter();
+  const AssumedWaterWriter({this.transaction});
+  final Transaction? transaction;
 
   /// Acknowledge: the glass stays in the total, leaves the follow-up list.
   Future<void> keep(AssumedGlass g) async {
-    await LocalDb.keepAssumedWater(g);
+    await LocalDb.keepAssumedWater(g, transaction: transaction);
   }
 
   /// Remove: subtract exactly [g]'s ml, leave a tombstone.
   Future<void> remove(AssumedGlass g) async {
-    await LocalDb.removeAssumedWater(g);
+    await LocalDb.removeAssumedWater(g, transaction: transaction);
   }
 }

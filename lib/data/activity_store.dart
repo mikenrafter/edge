@@ -351,8 +351,8 @@ class ActivityStore {
     );
   }
 
-  Future<void> discard(ActivitySuggestion expected) =>
-      db.transaction((tx) async {
+  Future<void> discard(ActivitySuggestion expected, {Transaction? transaction}) {
+    Future<void> write(Transaction tx) async {
         final row = await _check(tx, expected, 'discarded');
         if (row == null) return;
         await tx.update(
@@ -365,7 +365,9 @@ class ActivityStore {
           whereArgs: [expected.id],
         );
         await _changed(tx, row['day_id'] as String);
-      });
+      }
+    return transaction == null ? db.transaction(write) : write(transaction);
+  }
 
   /// Null when the row is already [done] (a repeated tap). Any other decided
   /// status means it changed underneath the caller, which must not report
@@ -410,8 +412,9 @@ class ActivityStore {
     Map<String, dynamic>? session,
     bool edited = false,
     NapResolution? expectedNap,
+    Transaction? transaction,
   }) async {
-    final res = await db.transaction<NapResolution?>((tx) async {
+    Future<NapResolution?> write(Transaction tx) async {
     final row = await _check(tx, expected, 'confirmed');
     if (row == null) return null;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -487,9 +490,11 @@ class ActivityStore {
     );
     await _changed(tx, row['day_id'] as String);
     return resolution;
-    });
+    }
+    final res = transaction == null
+        ? await db.transaction<NapResolution?>(write) : await write(transaction);
     final main = res?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
-    if (main != null) await LocalDb.releaseFrozenHeadline(main.day);
+    if (main != null && transaction == null) await LocalDb.releaseFrozenHeadline(main.day);
     return res;
   }
 

@@ -1,3 +1,5 @@
+// The retained moment editor is opened from the day breakdown. These
+// component tests keep its dose, symptom, water and pairing contracts.
 // The Symptom describer on the follow-up screen (RED).
 //
 // Tapping Symptom no longer answers the moment at once: it opens a describer in
@@ -75,7 +77,7 @@ Future<_FakeWriter> _pump(WidgetTester t, List<PendingMoment> moments) async {
   addTearDown(t.view.reset);
   await t.pumpWidget(MaterialApp(
     theme: buildTheme(Brightness.light),
-    home: MomentFollowUpScreen(preloaded: moments, writer: w, now: _now),
+    home: MomentReviewEditor(preloaded: moments, writer: w, now: _now),
   ));
   await t.pumpAndSettle();
   return w;

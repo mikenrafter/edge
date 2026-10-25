@@ -1,3 +1,5 @@
+// The retained moment editor is opened from the day breakdown. These
+// component tests keep its dose, symptom, water and pairing contracts.
 // Round 3 on the screen.
 //  5  the remaining end of a started range has no live answer / Skip / pair
 //     controls (and the queue owner would refuse them anyway)
@@ -46,7 +48,7 @@ Future<void> _pump(WidgetTester t, MomentReviewService service,
   addTearDown(t.view.reset);
   await t.pumpWidget(MaterialApp(
     theme: buildTheme(Brightness.light),
-    home: MomentFollowUpScreen(
+    home: MomentReviewEditor(
       preloaded: moments,
       preloadedAssumed: const [],
       writer: writer ?? FakeAnswerWriter(),

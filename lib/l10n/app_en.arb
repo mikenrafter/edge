@@ -17757,5 +17757,18 @@
     }
   },
   "settingsAsTab": "Settings as tab",
-  "homeReviewActivities": "Review activities"
+  "homeReviewActivities": "Review activities",
+  "dayReviewDiscard": "Discard",
+  "dayReviewAlreadyReviewed": "Already reviewed",
+  "dayReviewLeaveTitle": "Discard unsaved decisions?",
+  "dayReviewLeaveBody": "Your staged decisions have not been saved.",
+  "dayReviewStay": "Stay",
+  "dayReviewLeave": "Discard and leave",
+  "dayReviewPrevious": "Previous page",
+  "dayReviewNext": "Next page",
+  "dayReviewSave": "Save",
+  "dayReviewFollowUpFailed": "Decisions saved. Could not refresh or export every item.",
+  "dayReviewPage": "{page} of {pages}",
+  "@dayReviewPage": {"placeholders": {"page": {"type": "int"}, "pages": {"type": "int"}}},
+  "dayReviewNoReviewNeeded": "No review needed"
 }

@@ -3,6 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/data/day_review.dart';
+import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/assumed_water.dart';
+import 'package:openstrap_edge/gestures/moment_review_queue.dart';
+import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
+import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
 import 'package:openstrap_edge/data/nap_resolution.dart';
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
@@ -42,6 +48,27 @@ class _Repo extends LocalRepository {
   Future<int> pendingActivityCount() async {
     if (fail) throw StateError('offline database');
     return items.length;
+  }
+
+  @override
+  Future<DayReviewReceipt> saveDayReview({required List<ActivityDecision> activities,
+      required List<MomentDecision> moments, List<ReviewRange> ranges = const [],
+      List<MomentWorkoutDecision> workouts = const [],
+      Map<AssumedGlass, bool> glasses = const {}}) async {
+    for (final d in activities) {
+      if (items.singleWhere((i) => i.id == d.suggestion.id).revision != d.suggestion.revision) {
+        throw const ActivityReviewException('The proposal changed. Review the new times.');
+      }
+    }
+    for (final d in activities) {
+      if (d.keep) {
+        await confirmActivity(d.suggestion, startTs: d.startTs,
+            endTs: d.endTs, workoutType: d.workoutType);
+      } else {
+        await discardActivity(d.suggestion);
+      }
+    }
+    return const DayReviewReceipt();
   }
 
   @override
@@ -92,7 +119,11 @@ void main() {
         ],
         child: MaterialApp(
           theme: buildTheme(Brightness.light),
-          home: home ?? const DetectedActivitiesScreen(),
+          home: home ?? DayTimelineScreen(
+            data: TimelineData(day: dayLabelOf(DateTime.fromMillisecondsSinceEpoch(
+                proposal('nap', ActivityKind.nap).startTs * 1000))),
+            reviewMoments: const [],
+            reviewEditor: const MomentReviewEditor(preloadedAssumed: [])),
         ),
       ),
     );
@@ -109,79 +140,69 @@ void main() {
     repo.fail = false;
     await t.tap(find.text('Try again'));
     await t.pumpAndSettle();
-    expect(find.text('Possible nap'), findsOneWidget);
-    expect(find.text('Possible workout'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('apk2-review-tray')),
+        matching: find.text('Possible nap')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('apk2-review-tray')),
+        matching: find.text('Possible workout')), findsOneWidget);
   });
 
-  testWidgets('confirm and discard remove only the selected item', (t) async {
+  Finder key(String value) => find.byKey(ValueKey(value));
+  Future<void> tap(WidgetTester t, String value) async {
+    await t.ensureVisible(key(value));
+    await t.tap(key(value));
+    await t.pumpAndSettle();
+  }
+
+  testWidgets('Keep and Discard are staged, then Save removes only chosen items', (t) async {
     final repo = await pump(t);
-    await t.tap(find.text('Confirm').first);
-    await t.pumpAndSettle();
+    await tap(t, 'apk2-review-keep:activity:nap');
+    expect(repo.items, hasLength(2));
+    await tap(t, 'apk2-review-save');
     expect(repo.items.single.id, 'workout');
-    await t.tap(find.text('Not a workout'));
-    await t.pumpAndSettle();
+    await tap(t, 'apk2-review-discard:activity:workout');
+    expect(repo.items, hasLength(1));
+    await tap(t, 'apk2-review-save');
     expect(repo.items, isEmpty);
     expect(find.text('Nothing to review'), findsOneWidget);
   });
 
-  testWidgets('cancelling a nap edit leaves it pending', (t) async {
+  testWidgets('cancelling a nap edit leaves it pending and stages nothing', (t) async {
     final repo = await pump(t);
-    await t.tap(find.text('Edit').first);
-    await t.pumpAndSettle();
-    expect(find.text('Save and confirm'), findsOneWidget);
+    await tap(t, 'day-review-label:activity:nap');
+    expect(find.text('Queue this answer'), findsOneWidget);
     Navigator.of(t.element(find.byType(NapProposalEditor))).pop();
     await t.pumpAndSettle();
     expect(repo.items, hasLength(2));
+    await tap(t, 'apk2-review-save');
+    expect(repo.items, hasLength(2));
   });
 
-  testWidgets(
-    'unknown workout stays Other; stale edit shows new proposal before a second save',
-    (t) async {
-      final repo = await pump(t);
-      await t.tap(find.text('Change sport'));
-      await t.pumpAndSettle();
-      expect(find.text('Other'), findsOneWidget);
-      repo.items[1] = proposal(
-        'workout',
-        ActivityKind.workout,
-        revision: 1,
-        shift: 600,
-      );
-      await t.tap(find.text('Save and confirm'));
-      await t.pumpAndSettle();
-      expect(repo.items, hasLength(2));
-      expect(
-        find.text('The proposal changed. Review the new times.'),
-        findsOneWidget,
-      );
-      await t.tap(find.text('Save and confirm'));
-      await t.pumpAndSettle();
-      expect(repo.items.single.id, 'nap');
-      expect(repo.savedType, 'other');
-    },
-  );
-
-  testWidgets('failed stale-proposal reload does not leave save stuck', (
-    t,
-  ) async {
+  testWidgets('unknown workout stays Other; stale Save reloads the proposal for retry', (t) async {
     final repo = await pump(t);
-    await t.tap(find.text('Change sport'));
-    await t.pumpAndSettle();
-    repo.items[1] = proposal(
-      'workout',
-      ActivityKind.workout,
-      revision: 1,
-      shift: 600,
-    );
-    repo.fail = true;
-    await t.tap(find.text('Save and confirm'));
+    await tap(t, 'day-review-label:activity:workout');
+    expect(find.text('Other'), findsOneWidget);
+    await t.tap(find.text('Queue this answer'));
     await t.pumpAndSettle();
     expect(repo.items, hasLength(2));
+    repo.items[1] = proposal('workout', ActivityKind.workout, revision: 1, shift: 600);
+    await tap(t, 'apk2-review-save');
+    expect(repo.items, hasLength(2));
+    expect(key('apk2-review-save-error'), findsOneWidget);
+    await tap(t, 'apk2-review-save');
+    expect(repo.items.single.id, 'nap');
+    expect(repo.savedType, 'other');
+  });
+
+  testWidgets('failed stale-proposal reload does not leave Save stuck', (t) async {
+    final repo = await pump(t);
+    await tap(t, 'apk2-review-keep:activity:workout');
+    repo.items[1] = proposal('workout', ActivityKind.workout, revision: 1, shift: 600);
+    repo.fail = true;
+    await tap(t, 'apk2-review-save');
+    expect(repo.items, hasLength(2));
     repo.fail = false;
-    await t.tap(find.text('Save and confirm'));
-    await t.pumpAndSettle();
-    await t.tap(find.text('Save and confirm'));
-    await t.pumpAndSettle();
+    await tap(t, 'apk2-review-save');
+    await tap(t, 'apk2-review-save');
     expect(repo.items.single.id, 'nap');
   });
 

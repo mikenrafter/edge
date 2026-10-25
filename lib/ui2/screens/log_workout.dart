@@ -33,6 +33,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../compute/manual_session.dart';
+import '../../data/day_review.dart' show WorkoutWindow;
 import '../../data/day_label.dart' show calendarDaysBetween;
 import '../../models/activity_suggestion.dart';
 import 'detected_activities.dart';
@@ -117,6 +118,8 @@ String dayLabel(DateTime at, {DateTime? now, AppLocalizations? l}) {
 }
 
 
+typedef WorkoutDraft = WorkoutWindow;
+
 class LogWorkout extends StatefulWidget {
   const LogWorkout({
     super.key,
@@ -129,8 +132,10 @@ class LogWorkout extends StatefulWidget {
     this.spans,
     this.now,
     this.importedUuid,
+    this.stageOnly = false,
   });
 
+  final bool stageOnly;
   final String? sessionId;
   final ActivitySuggestion? suggestion;
   final DateTime? start, end;
@@ -277,6 +282,11 @@ class _LogWorkoutState extends State<LogWorkout> {
   }
 
   Future<void> _save() async {
+    if (widget.stageOnly) {
+      if (_saving || _invalid != null) return;
+      Navigator.of(context).pop(WorkoutDraft(_startSec, _endSec, _activity.typeKey));
+      return;
+    }
     final repo = repoOf(context);
     if (repo == null || _saving || _invalid != null) return;
     final nav = Navigator.of(context);
@@ -446,7 +456,8 @@ class _LogWorkoutState extends State<LogWorkout> {
                   _saving
                       ? (l?.logWorkoutSaving ?? 'Saving…')
                       : widget.suggestion != null
-                          ? (l?.activitySaveConfirm ?? 'Save and confirm')
+                          ? (widget.stageOnly ? (l?.momentReviewQueueIt ?? 'Queue this answer') :
+                        (l?.activitySaveConfirm ?? 'Save and confirm'))
                           : retime
                           ? (l?.logWorkoutSaveNewTimes ?? 'Save the new times')
                           : (l?.logWorkoutLogIt ?? 'Log it'),

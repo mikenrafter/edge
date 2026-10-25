@@ -24,6 +24,13 @@ import '../ble/adapters/_registry.dart' show kBandRegistry;
 import '../compute/quiet_level.dart';
 import '../models/activity_suggestion.dart';
 import 'activity_store.dart';
+import 'day_review.dart';
+import 'assumed_water.dart';
+import '../gestures/moment_follow_ups.dart';
+import '../gestures/moment_review_queue.dart';
+import '../gestures/moment_review_apply.dart';
+import '../gestures/moment_review_range.dart';
+import '../platform/tasker_moment_export.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
@@ -138,6 +145,140 @@ class LocalRepositoryImpl extends LocalRepository {
       if (main != null) await mainSleepListener?.mainSleepExtended(main.day);
     }
     await onActivitiesChanged?.call();
+  }
+
+  @override
+  Future<DayReviewReceipt> saveDayReview({
+    required List<ActivityDecision> activities,
+    required List<MomentDecision> moments,
+    List<ReviewRange> ranges = const [],
+    List<MomentWorkoutDecision> workouts = const [],
+    Map<AssumedGlass, bool> glasses = const {},
+  }) async {
+    // Scoring reads substrate; it must finish before the DB transaction so
+    // no read on the outer connection can deadlock sqflite's transaction.
+    final sessions = <String, Map<String, dynamic>>{};
+    for (final d in activities) {
+      final s = d.suggestion;
+      if (d.keep && s.kind == ActivityKind.workout) {
+        sessions[s.id] = await _writeManualSession(
+          startTs: d.startTs ?? s.startTs, endTs: d.endTs ?? s.endTs,
+          type: d.workoutType ?? s.sport ?? 'other',
+          validateAgainstId: 'suggestion:${s.id}',
+          sessionId: 'suggestion:${s.id}', prepareOnly: true);
+      }
+    }
+    final rangeSessions = <int, Map<String, dynamic>>{};
+    for (final r in ranges) {
+      if (r.choice == MomentChoice.workout && !r.windowWritten) {
+        if (r.startSec == null || r.endSec == null) {
+          throw StateError('A review range needs known bounds');
+        }
+        rangeSessions[r.startSec!] = await _writeManualSession(
+          startTs: r.startSec!, endTs: r.endSec!, type: r.workoutType ?? 'other',
+          validateAgainstId: r.attempting ? manualSessionId(r.startSec!) : null,
+          prepareOnly: true);
+      }
+    }
+    final manualSessions = <String, Map<String, dynamic>>{};
+    for (final d in workouts) {
+      manualSessions[ReviewKey.moment(d.moment)] = await _writeManualSession(
+          startTs: d.window.startTs, endTs: d.window.endTs, type: d.window.type,
+          validateAgainstId: null, prepareOnly: true);
+    }
+    final writtenManual = <Map<String, dynamic>>[];
+    final db = await LocalDb.instance;
+    final store = ActivityStore(db);
+    final reopened = <String>{};
+    final appliedMoments = <String>{};
+    await db.transaction((tx) async {
+      final writer = MomentAnswerWriter(transaction: tx);
+      final rangeMarks = <PendingMoment>[];
+      for (final r in ranges) {
+        if (r.startSec == null || r.endSec == null) {
+          throw StateError('A review range needs known bounds');
+        }
+        for (final key in [r.startKey, r.endKey]) {
+          final parts = key.split(' ');
+          final mark = PendingMoment(date: parts.first, hhmm: parts.last,
+              epochSec: key == r.startKey ? r.startSec : r.endSec);
+          if (!await writer.isAnswered(mark)) rangeMarks.add(mark);
+        }
+      }
+      final report = await MomentReviewApplier(
+        writer: writer,
+        assumedWriter: AssumedWaterWriter(transaction: tx),
+        ranges: ReviewRangeWriter(repo: this, transaction: tx,
+            preparedWorkouts: rangeSessions, reopened: reopened),
+        // Broadcasts belong after commit, including range announcements.
+        exporter: TaskerMomentExport(connectionOn: () => false),
+      ).apply(MomentReviewQueue(decisions: {
+          for (final d in moments) ReviewKey.moment(d.moment): d.decision,
+          for (final e in glasses.entries) ReviewKey.glass(e.key): e.value
+              ? const ReviewDecision.keepGlass() : const ReviewDecision.removeGlass(),
+        }, ranges: ranges),
+        moments: [for (final d in moments) d.moment, ...rangeMarks],
+        glasses: glasses.keys.toList(), now: DateTime.now());
+      if (report.failed.isNotEmpty) throw report.failed.values.first;
+      appliedMoments.addAll(report.applied);
+      for (final d in workouts) {
+        if (!appliedMoments.contains(ReviewKey.moment(d.moment))) continue;
+        // Preparation checked saved spans; recheck under the same transaction
+        // as every new range and detection in this Save.
+        final invalid = validateManualWindow(startSec: d.window.startTs,
+            endSec: d.window.endTs, nowSec: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+            existing: await ReviewRangeWriter(transaction: tx).sessionSpans());
+        if (invalid != null) throw ManualWindowException(invalid);
+        final row = manualSessions[ReviewKey.moment(d.moment)]!;
+        await LocalDb.putSession(row, transaction: tx);
+        writtenManual.add(row);
+      }
+      for (final d in activities) {
+        final s = d.suggestion;
+        if (!d.keep) {
+          await store.discard(s, transaction: tx);
+        } else {
+          final res = await store.confirm(s, startTs: d.startTs ?? s.startTs,
+              endTs: d.endTs ?? s.endTs, session: sessions[s.id],
+              edited: d.startTs != null || d.endTs != null, transaction: tx);
+          if (res != null) {
+            for (final b in res.extended) {
+              if (b.kind == 'main_sleep') reopened.add(b.day);
+            }
+          }
+        }
+      }
+    });
+    // Nothing observable outside SQLite runs until the complete batch landed.
+    var followUpFailed = false;
+    try {
+      for (final day in reopened) {
+        await LocalDb.releaseFrozenHeadline(day);
+        await mainSleepListener?.mainSleepExtended(day);
+      }
+      for (final row in [...sessions.values, ...rangeSessions.values, ...writtenManual]) {
+        final id = row['id'] as String;
+        final rows = await LocalDb.hrSamplesInRange(
+            row['start_ts'] as int, row['end_ts'] as int);
+        await _stampSessionSensor(id, rows);
+        await HealthExporter.exportWorkoutId(id);
+      }
+      await TaskerMomentExport().exportAll([
+        for (final d in moments)
+          if (d.decision.choice != null && appliedMoments.contains(ReviewKey.moment(d.moment)))
+            ReviewedItem(choice: d.decision.choice!, start: d.moment.local,
+                value: d.decision.value),
+        for (final r in ranges)
+          if (appliedMoments.contains(ReviewKey.range(r)))
+            ReviewedItem(choice: r.choice,
+                start: DateTime.fromMillisecondsSinceEpoch(r.startSec! * 1000),
+                end: DateTime.fromMillisecondsSinceEpoch(r.endSec! * 1000)),
+      ]);
+      await onActivitiesChanged?.call();
+    } catch (_) {
+      followUpFailed = true;
+    }
+    return DayReviewReceipt(followUpFailed: followUpFailed);
   }
 
   @override
@@ -3612,6 +3753,7 @@ class LocalRepositoryImpl extends LocalRepository {
     String? sessionId,
     String source = 'manual',
     ActivitySuggestion? suggestion,
+    bool prepareOnly = false,
   }) async {
     // Re-check at the write seam. The form validates live, but its snapshot of
     // saved spans can be stale by the time save is tapped (a background derive
@@ -3677,6 +3819,8 @@ class LocalRepositoryImpl extends LocalRepository {
     // trace all band on the SAME ceiling this write did — `putSession` is
     // INSERT-OR-REPLACE, so omitting it would blank an edit's existing stamp.
     row['device_family'] = deviceFamily;
+    // Batch review prepares every scored row before opening its transaction.
+    if (prepareOnly) return row;
     if (suggestion != null) {
       await ActivityStore(await LocalDb.instance).confirm(suggestion,
         startTs: startTs, endTs: endTs, session: row);

@@ -17,17 +17,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/ui2/activity/catalogue.dart';
 import 'package:openstrap_edge/ui2/screens/log_workout.dart';
-import 'package:openstrap_edge/ui2/screens/detected_activities.dart';
+import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
+import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
+import 'package:openstrap_edge/data/day_label.dart' show dayLabelOf;
+import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/models/activity_suggestion.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/clock_format.dart';
+import 'package:provider/provider.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 /// A real phone, and tall enough that nothing under test is below the fold —
 /// the default 800x600 harness hides the very controls these tests are about.
-Future<void> _pump(WidgetTester t, Widget w) async {
+Future<void> _pump(WidgetTester t, Widget w,
+    {Brightness brightness = Brightness.light}) async {
   t.view.physicalSize = const Size(390 * 3, 2400 * 3);
   t.view.devicePixelRatio = 3;
   addTearDown(t.view.reset);
   await t.pumpWidget(MaterialApp(
-    theme: buildTheme(Brightness.light),
+    theme: buildTheme(brightness),
     home: w,
   ));
   await t.pumpAndSettle();
@@ -48,71 +56,72 @@ Suggestion _sug({String id = 'a', int? avg = 148, int? peak = 171}) =>
       peakBpm: peak,
     );
 
-void main() {
-  group('the detected-activity review', () {
-    testWidgets('draws the bout, its window and all three answers', (t) async {
-      await _pump(t, WorkoutSuggestionScreen(preloaded: [_sug()]));
+class _ReviewRepo extends LocalRepository {
+  _ReviewRepo(this.items);
+  final List<ActivitySuggestion> items;
+  @override
+  Future<List<ActivitySuggestion>> pendingActivities() async => items;
+}
 
-      expect(find.text('Detected activities'), findsOneWidget);
-      expect(find.text('Possible workout'), findsOneWidget);
-      // The WINDOW, not just a start time — the whole reason to open this
-      // screen is to see whether the detector clipped it.
-      expect(find.textContaining('6:30 PM'), findsOneWidget);
-      expect(find.textContaining('7:31 PM'), findsOneWidget);
-      expect(find.text('61 min'), findsOneWidget);
-      // Every answer is reachable, including the one that matters most.
-      expect(find.text('Confirm'), findsOneWidget);
-      expect(find.text('Change sport'), findsOneWidget);
-      expect(find.text('Not a workout'), findsOneWidget);
-      // and it never prints a strain or a calorie figure it has not scored
+Future<void> _review(WidgetTester t, List<Suggestion> suggestions,
+    {String? focusId, double scale = 1, Brightness brightness = Brightness.light}) async {
+  ClockFormatController.seed(ClockFormat.h12);
+  addTearDown(ClockFormatController.debugReset);
+  final app = AppState.forTesting();
+  addTearDown(app.dispose);
+  app.repo = _ReviewRepo([for (final s in suggestions) ActivitySuggestion(
+    id: s.id, kind: ActivityKind.workout, startTs: s.startTs, endTs: s.endTs,
+    revision: 0, details: {'sport': s.sport})]);
+  await _pump(t, ChangeNotifierProvider<AppState>.value(value: app,
+    child: MediaQuery(data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+      child: DayTimelineScreen(
+        data: TimelineData(day: dayLabelOf(_start)), focusId: focusId,
+        reviewMoments: const [],
+        reviewEditor: const MomentReviewEditor(preloadedAssumed: [])))),
+      brightness: brightness);
+}
+
+void main() {
+  group('day breakdown workout review', () {
+    testWidgets('draws the bout and its whole window with staged actions', (t) async {
+      await _review(t, [_sug()]);
+      final tray = find.byKey(const ValueKey('apk2-review-tray'));
+      expect(find.text('Breakdown of your day'), findsOneWidget);
+      expect(find.descendant(of: tray, matching: find.text('Possible workout')), findsOneWidget);
+      expect(find.descendant(of: tray, matching: find.textContaining('6:30 PM')), findsOneWidget);
+      expect(find.descendant(of: tray, matching: find.textContaining('7:31 PM')), findsOneWidget);
+      expect(find.descendant(of: tray, matching: find.textContaining('61 min')), findsOneWidget);
+      expect(find.byKey(const ValueKey('apk2-review-keep:activity:a')), findsOneWidget);
+      expect(find.byKey(const ValueKey('apk2-review-discard:activity:a')), findsOneWidget);
+      expect(find.byKey(const ValueKey('day-review-label:activity:a')), findsOneWidget);
       expect(find.textContaining('strain'), findsNothing);
     });
 
-    testWidgets('an empty review says so, and never as a bare dash', (t) async {
-      await _pump(t, WorkoutSuggestionScreen(preloaded: []));
+    testWidgets('an empty review says so, without inventing a measurement', (t) async {
+      await _review(t, []);
       expect(find.text('Nothing to review'), findsOneWidget);
       expect(find.text('—'), findsNothing);
     });
 
     testWidgets('a reviewed notification target leaves pending items visible', (t) async {
-      await _pump(t, WorkoutSuggestionScreen(
-        preloaded: [_sug(), _sug(id: 'b')],
-        focusId: 'gone',
-      ));
-      expect(find.text('Confirm'), findsNWidgets(2));
+      await _review(t, [_sug(), _sug(id: 'b')], focusId: 'gone');
+      expect(find.byKey(const ValueKey('apk2-review-keep:activity:a')), findsOneWidget);
+      expect(find.byKey(const ValueKey('apk2-review-keep:activity:b')), findsOneWidget);
       expect(find.text('Nothing to review'), findsNothing);
-      final cards = t.widgetList<ActivityProposalCard>(find.byType(ActivityProposalCard));
-      expect(cards.any((c) => c.highlighted), isFalse);
+      expect(find.byKey(const ValueKey('apk2-day-highlight:activity:gone')), findsNothing);
     });
 
-    testWidgets('notification highlights the bout and keeps the other pending items',
-        (t) async {
-      await _pump(
-        t,
-        WorkoutSuggestionScreen(
-          preloaded: [_sug(), _sug(id: 'b', avg: 96, peak: 110)],
-          focusId: 'b',
-        ),
-      );
-      expect(find.text('Confirm'), findsNWidgets(2));
-      final cards = t.widgetList<ActivityProposalCard>(find.byType(ActivityProposalCard)).toList();
-      expect(cards.singleWhere((c) => c.highlighted).suggestion.id, 'b');
+    testWidgets('notification highlights its bout and keeps other pending items', (t) async {
+      await _review(t, [_sug(), _sug(id: 'b')], focusId: 'b');
+      expect(find.byKey(const ValueKey('apk2-day-highlight:activity:b')), findsOneWidget);
+      expect(find.byKey(const ValueKey('apk2-review-keep:activity:a')), findsOneWidget);
+      expect(find.byKey(const ValueKey('apk2-review-keep:activity:b')), findsOneWidget);
+      await t.pump(const Duration(seconds: 5));
+      expect(find.byKey(const ValueKey('apk2-day-highlight:activity:b')), findsNothing);
     });
 
-    testWidgets('nothing overflows at 2x text', (t) async {
-      t.view.physicalSize = const Size(390 * 3, 3000 * 3);
-      t.view.devicePixelRatio = 3;
-      addTearDown(t.view.reset);
-      await t.pumpWidget(MediaQuery(
-        data: const MediaQueryData(textScaler: TextScaler.linear(2)),
-        child: MaterialApp(
-          theme: buildTheme(Brightness.dark),
-          home: WorkoutSuggestionScreen(preloaded: [_sug(), _sug(id: 'b')]),
-        ),
-      ));
-      await t.pumpAndSettle();
-      // An overflow paints its stripe and reports through the harness rather
-      // than failing the pump, so it has to be taken to be seen.
+    testWidgets('review fits at 2x text', (t) async {
+      await _review(t, [_sug(), _sug(id: 'b')], scale: 2, brightness: Brightness.dark);
       expect(t.takeException(), isNull);
     });
   });
