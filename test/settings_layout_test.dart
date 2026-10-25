@@ -175,6 +175,7 @@ void main() {
       expect(rows, [
         'Edit profile',
         'Language',
+        'Settings as tab',
         'Units',
         'Appearance',
         'Time format',

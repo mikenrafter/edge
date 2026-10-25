@@ -109,6 +109,7 @@ const Map<String, List<List<String>>> _rows = {
   'You & preferences': [
     ['Edit profile'],
     ['Language'],
+    ['Settings as tab'],
     ['Units'],
     ['Appearance'],
     ['Time format'],
