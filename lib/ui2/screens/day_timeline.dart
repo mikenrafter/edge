@@ -1222,6 +1222,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           : const <DeviceOption>[];
       if (mounted && token == _loadToken) {
         if (_review?.day != d.day && d.day != null) _loadReview(d.day!);
+        _review?.clearSettled();
         setState(() => (
           _d = d,
           _candidates = candidates,
@@ -1329,9 +1330,17 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         child: Container(
           key: ValueKey('apk2-day-row:${row.id}'),
           color: _highlight == row.id ? p.wash(C.domMind) : null,
-          child: MomentRow(row.moment,
-              below: DayReviewActions(controller: review, id: row.id,
-                  moment: row.moment, editor: this)),
+          child: DayReviewActions.shows(review, row.id, row.moment, this)
+              // Buttons belong to their item: one inset card holds both.
+              ? Container(
+                  margin: const EdgeInsets.symmetric(vertical: S.x1),
+                  padding: const EdgeInsets.symmetric(horizontal: S.x3),
+                  decoration: BoxDecoration(color: p.card2,
+                      borderRadius: BorderRadius.circular(R.md)),
+                  child: MomentRow(row.moment,
+                      below: DayReviewActions(controller: review, id: row.id,
+                          moment: row.moment, editor: this)))
+              : MomentRow(row.moment),
         ),
       ));
     }

@@ -114,6 +114,12 @@ class DayReviewController extends ChangeNotifier {
   final Map<String, ActivityDecision> _activityEdits = {};
   final Map<String, WorkoutDraft> _momentWorkouts = {};
   final Map<String, bool> _choices = {};
+  /// Rows just saved as Keep: they stay where they were (state swapped in
+  /// place) until the reload brings the stored rows, so nothing moves.
+  final Map<String, Moment> _settled = {};
+  bool isSettled(String id) => _settled.containsKey(id);
+  /// Called by the screen in the same frame that shows the reloaded rows.
+  void clearSettled() => _settled.clear();
   int savedRevision = 0;
   final Map<String, ReviewDecision> _drafts = {};
   bool loading = true, loadFailed = false, saveFailed = false;
@@ -252,6 +258,7 @@ class DayReviewController extends ChangeNotifier {
           at: g.local.millisecondsSinceEpoch ~/ 1000,
           title: title(c, ReviewKey.glass(g)), detail: '',
           icon: LucideIcons.droplet, color: C.sky)),
+    for (final e in _settled.entries) (id: e.key, moment: e.value),
   ];
   void choose(String id, bool keep) {
     if (!canEdit || !needsReview(id)) return;
@@ -383,6 +390,7 @@ class DayReviewController extends ChangeNotifier {
     final selectedRanges = _ranges.where((r) =>
         staged['moment:${r.startKey}'] == true &&
         staged['moment:${r.endKey}'] == true).toList();
+    final before = {for (final r in pendingRows(c)) r.id: r.moment};
     final applied = <String, ReviewDecision>{};
     final marks = <MomentDecision>[];
     for (final m in _pendingMarks) {
@@ -418,6 +426,13 @@ class DayReviewController extends ChangeNotifier {
       });
       if (_disposed) return;
       followUpFailed = receipt.followUpFailed;
+      for (final e in staged.entries) {
+        final row = before[e.key];
+        if (e.value && row != null && !e.key.startsWith('range:') &&
+            (applied.containsKey(e.key) || !ReviewKey.isMoment(e.key))) {
+          _settled[e.key] = row;
+        }
+      }
       _activities.removeWhere((s) => staged.containsKey('activity:${s.id}'));
       _marks.removeWhere((m) => staged.containsKey(ReviewKey.moment(m)));
       _pendingMarks.removeWhere((m) => staged.containsKey(ReviewKey.moment(m)));
@@ -500,14 +515,21 @@ class DayReviewActions extends StatelessWidget {
   final String id;
   final Moment moment;
   final DayRowEditListener? editor;
+  /// Whether this row has a button line (then the list draws it as a card).
+  static bool shows(DayReviewController? r, String id, Moment m,
+      DayRowEditListener? editor) =>
+      (r != null && !r.loading && r.needsReview(id)) ||
+      (m.editRef != null && editor != null) ||
+      (r?.isSettled(id) == true && id.startsWith('activity:'));
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c), r = controller;
     final pending = r != null && !r.loading && r.needsReview(id);
     final range = id.startsWith('range:');
     final pendingEdit = pending && !ReviewKey.isGlass(id) && !range;
+    final settled = r?.isSettled(id) == true && id.startsWith('activity:');
     final savedEdit = !pending && moment.editRef != null && editor != null;
-    if (!pending && !savedEdit) return const SizedBox.shrink();
+    if (!pending && !savedEdit && !settled) return const SizedBox.shrink();
     final enabled = r?.canEdit ?? true;
     Widget slot(Widget? w, {bool last = false}) => Expanded(child: Padding(
         padding: EdgeInsets.only(right: last ? 0 : S.x2),
@@ -534,7 +556,13 @@ class DayReviewActions extends StatelessWidget {
                     l?.activityEdit ?? 'Edit',
                     () => editor!.openRowEditor(moment),
                     glyph: LucideIcons.pencil)
-                : null, last: true),
+                : settled
+                    // Saved a moment ago: the editor opens once the stored
+                    // row is back, and the line keeps its height meanwhile.
+                    ? reviewButton(c, 'day-row-edit:$id',
+                        l?.activityEdit ?? 'Edit', null,
+                        glyph: LucideIcons.pencil)
+                    : null, last: true),
       ]),
       if (pending && r.isStarted(id))
         Padding(padding: const EdgeInsets.only(top: S.x1),
