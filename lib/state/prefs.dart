@@ -92,6 +92,17 @@ class Prefs {
 
   /// The four-tab bar's index (Today, Sleep, Activity, Health).
   static const String shellTabV2 = 'ui.shell_tab.v2';
+
+  /// Optional Settings destination. Prefs owns the value and change signal.
+  static const String settingsAsTab = 'ui.settings_as_tab';
+  static bool get settingsAsTabOn => getBool(settingsAsTab, false);
+  static final ValueNotifier<int> settingsAsTabRevision = ValueNotifier(0);
+
+  static void setSettingsAsTab(bool on) {
+    setBool(settingsAsTab, on);
+    settingsAsTabRevision.value++;
+  }
+
   static const String recapRange = 'ui.recap_range';
   static const String workoutsRange = 'ui.workouts_range';
 

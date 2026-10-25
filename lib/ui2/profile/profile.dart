@@ -1,7 +1,6 @@
 // Profile.
 //
-// Reached from the avatar in every tab's header, never a tab of its own — the
-// shell has four destinations and the type system says so.
+// Reached from the avatar, or from the optional Settings tab.
 //
 // The reference design had a Premium badge and a Following/Followers pair.
 // Both are gone, and not for lack of screen space: there is no account and no
@@ -19,6 +18,7 @@ import '../../state/app_state.dart';
 import '../../state/locale_controller.dart';
 import '../../state/prefs.dart';
 import '../ui2.dart';
+import '../screens/home_screen.dart' show selectShellDestination;
 import 'settings.dart';
 
 // ══════════════════ shared list furniture ══════════════════
@@ -389,12 +389,15 @@ class SwitchRow extends StatelessWidget {
 /// Push a screen, keeping the enclosing domain accent. Returns when it pops,
 /// so a caller whose own numbers the pushed screen can change is able to
 /// re-read them.
-Future<void> goto(BuildContext c, Widget w) =>
-    Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => w));
+Future<void> goto(BuildContext c, Widget w) {
+  if (selectShellDestination(c, w)) return Future<void>.value();
+  final page = ShellNavigation.carry(c, w);
+  return Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => page));
+}
 
 /// The one way into Settings from Home's Profile button. There is no profile
 /// landing screen in between: Settings is the landing, and it is a
-/// pushed route, never a sixth tab.
+/// pushed route when Settings is not a tab.
 void openProfile(BuildContext c) => goto(c, const MoreSettings());
 
 /// The way into Profile, in the top-right of every tab. It used to be a gear

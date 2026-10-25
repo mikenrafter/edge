@@ -3596,5 +3596,7 @@
     }
   },
   "liveHrWaitingSemantics": "Live-Herzfrequenzdiagramm, wartet auf Live-Daten",
-  "liveHrStreamNotSaved": "Der Live-Stream wird nicht gespeichert."
+  "liveHrStreamNotSaved": "Der Live-Stream wird nicht gespeichert.",
+  "settingsAsTab": "Einstellungen als Tab",
+  "homeReviewActivities": "Aktivitäten prüfen"
 }

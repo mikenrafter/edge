@@ -98,4 +98,36 @@ void main() {
           reason: 'switching domains must preserve the chosen calendar day');
     });
   }
+
+  for (final (domain, destination) in <(ShellDomain, Widget)>[
+    (ShellDomain.activity, const WorkoutScreen()),
+    (ShellDomain.health, const HealthScreen()),
+  ]) {
+    apk1Test('${domain.label} links through go reuse the shell tab', (t) async {
+      final routes = Apk1Routes();
+      // Exercise the shared production link and navigation helper with both
+      // non-sleep roots. Details keep their own routes; roots select domains.
+      await apk1Mount(t, routes: routes, source: Builder(builder: (c) =>
+        detailLinkRow(c, domain.icon, 'Open ${domain.label}', '',
+            () => go(c, destination))));
+      final link = find.text('Open ${domain.label}');
+      final depth = routes.routes.length;
+      final pushes = routes.pushes;
+      for (var visit = 0; visit < 2; visit++) {
+        await apk1Reveal(t, link);
+        await t.tap(link);
+        await apk1Settle(t);
+        expect(apk1Selected(t), domain.index);
+        expect(routes.routes, hasLength(depth));
+        expect(routes.pushes, pushes);
+        expect(find.byType(destination.runtimeType), findsOneWidget);
+        expect(t.takeException(), isNull);
+        await t.binding.handlePopRoute();
+        await apk1Settle(t);
+        expect(apk1Selected(t), ShellDomain.today.index);
+        expect(find.byType(destination.runtimeType), findsNothing);
+      }
+    });
+  }
+
 }

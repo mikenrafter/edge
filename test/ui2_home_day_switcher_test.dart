@@ -157,7 +157,7 @@ void main() {
         _yesterday);
   });
 
-  testWidgets('back on today the sleep ring opens the held-over night',
+  testWidgets('outside the shell the today sleep ring keeps the default-night push',
       (t) async {
     final app = AppState.forTesting();
     addTearDown(app.dispose);
@@ -186,6 +186,8 @@ void main() {
     t.widget<RingTrio>(find.byType(RingTrio)).onOpen!(HomeRingKind.sleep);
     await _settle(t);
     expect(t.widget<SleepDetail>(find.byType(SleepDetail)).day, isNull);
+    expect(t.widget<SleepDetail>(find.byType(SleepDetail)).embedded, isFalse,
+        reason: 'standalone screens keep their pushed-screen fallback');
   });
 
   testWidgets('a past day with nothing recorded says so, not "sync the band"',

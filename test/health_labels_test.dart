@@ -256,8 +256,8 @@ void main() {
     });
   });
 
-  group('the illness card reads the same on Home and Health', () {
-    Future<Observation> homeCard(WidgetTester t, String state, double? z) async {
+  group('the illness row and Health card describe the same finding', () {
+    Future<(String, String)> homeCard(WidgetTester t, String state, double? z) async {
       t.view.physicalSize = const Size(390 * 3, 6000 * 3);
       t.view.devicePixelRatio = 3;
       addTearDown(t.view.reset);
@@ -269,7 +269,10 @@ void main() {
                       state, todayLabel(), z),
                   hour: 9))));
       await t.pump();
-      return t.widget<Observation>(find.byType(Observation));
+      expect(find.byType(Observation), findsNothing);
+      final title = t.widget<Text>(find.byKey(const ValueKey('home-why-title:observation'))).data!;
+      final body = t.widget<Text>(find.byKey(const ValueKey('home-why-body:observation'))).data!;
+      return (title, body);
     }
 
     Future<Observation> healthCard(
@@ -294,10 +297,10 @@ void main() {
           (t) async {
         final onHome = await homeCard(t, state, z);
         final onHealth = await healthCard(t, state, z);
-        expect(onHealth.headline, onHome.headline);
+        expect(onHealth.headline, onHome.$1);
         // The body is not compared: Health keeps its own fuller wording of
         // the same finding (upstream's two cards, see HomeScreen._bodyWatch).
-        expect(onHealth.advice, onHome.advice);
+        expect(onHome.$2, contains(onHealth.advice));
       });
     }
   });

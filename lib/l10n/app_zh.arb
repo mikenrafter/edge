@@ -3490,5 +3490,7 @@
     }
   },
   "liveHrWaitingSemantics": "实时心率图表，正在等待实时数据",
-  "liveHrStreamNotSaved": "实时数据流不会被保存。"
+  "liveHrStreamNotSaved": "实时数据流不会被保存。",
+  "settingsAsTab": "将设置显示为标签页",
+  "homeReviewActivities": "查看活动"
 }

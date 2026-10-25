@@ -1595,23 +1595,29 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     ];
 
     return Padding(
+      key: const ValueKey('apk1-sleep-scrub-selection'),
       padding: const EdgeInsets.only(top: S.x3),
       child: Surface(
         color: p.card2,
         elevation: 0,
         child: Column(children: [
-          Row(children: [
+          // The slider already speaks the selected time and stage. Keep
+          // the signal values below available to assistive technology.
+          ExcludeSemantics(child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: S.x2, runSpacing: S.x2,
+            children: [
             Text(clockOfTs(t),
                 style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
-            const Spacer(),
             if (stage != null)
-              Pill(_stageName(c, stage), Hypnogram.pigment[stage] ?? C.blue)
+              Pill(_stageName(c, stage), Hypnogram.pigment[stage] ?? C.blue, wrap: true)
             else if (stages.isNotEmpty)
               // Not a stage, so not a Pill: this instant has no colour because
               // the band was not recording it.
               Text(l?.sleepDetailNotMeasuredCap ?? 'Not measured',
                   style: F.cap.copyWith(color: p.ink3)),
-          ]),
+          ])),
           if (items.isEmpty) ...[
             const SizedBox(height: S.x3),
             Text(l?.sleepDetailNoSignalAtMoment ?? 'No signal recorded at this moment.',

@@ -165,10 +165,12 @@ void main() {
       expect(find.text('09:00'), findsOneWidget);
     });
 
-    testWidgets('the cursor and the row track a drag', (t) async {
+    testWidgets('the cursor and the row track a held drag', (t) async {
       await _pump(t, _scrub());
       final g = await t.startGesture(_at(t, 0));
       await t.pump();
+      expect(t.widget<Scrubber>(find.byType(Scrubber)).value, isNull);
+      await t.pump(const Duration(milliseconds: 700));
       expect(find.text('60 bpm'), findsOneWidget);
       await g.moveTo(_at(t, 1 / 3));
       await t.pump();

@@ -39,10 +39,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/journal_fields.dart' show formatMinuteOfDay;
 import '../models/metric.dart';
+import '../state/prefs.dart';
 import 'shared_slot.dart';
 import 'chart_annotations.dart' show AnnotationSet, ChartAnnotationLane;
 import 'charts.dart';
@@ -318,13 +320,20 @@ class Scrubber extends StatelessWidget {
               child: child,
             );
           }
-          return Listener(
-            // Opaque, like Pressable. A `Listener` defers to its child by
-            // default, so the strip was only touchable where the painter
-            // happened to claim a hit — which is a coincidence, not a target.
+          // Let the gesture arena give vertical movement to the page. A tap
+          // selects on release; a held finger can then move in any direction.
+          return GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onPointerDown: (e) => set(e.localPosition),
-            onPointerMove: (e) => set(e.localPosition),
+            onTapUp: (e) => set(e.localPosition),
+            dragStartBehavior: DragStartBehavior.down,
+            onHorizontalDragStart: (e) => set(e.localPosition),
+            onHorizontalDragUpdate: (e) => set(e.localPosition),
+            onHorizontalDragEnd: (_) => onEnd?.call(),
+            onHorizontalDragCancel: () => onEnd?.call(),
+            onLongPressStart: (e) => set(e.localPosition),
+            onLongPressMoveUpdate: (e) => set(e.localPosition),
+            onLongPressEnd: (_) => onEnd?.call(),
+            onLongPressCancel: () => onEnd?.call(),
             child: child,
           );
         },
@@ -753,33 +762,17 @@ class _ChartScrubState extends State<ChartScrub> {
           ),
       ]),
     );
-    final hitPlot = LayoutBuilder(builder: (_, box) => Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (e) {
-        if (box.maxWidth > 0) _place((e.localPosition.dx / box.maxWidth).clamp(0.0, 1.0));
-      },
-      onPointerMove: (e) {
-        if (box.maxWidth > 0) _place((e.localPosition.dx / box.maxWidth).clamp(0.0, 1.0));
-      },
-      child: plot,
-    ));
-    Widget capturePosition(Widget child) => LayoutBuilder(builder: (_, box) => Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (e) { if (box.maxWidth > 0) _place((e.localPosition.dx / box.maxWidth).clamp(0.0, 1.0)); },
-      onPointerMove: (e) { if (box.maxWidth > 0) _place((e.localPosition.dx / box.maxWidth).clamp(0.0, 1.0)); },
-      child: child,
-    ));
     // In a frame the frame draws the row, under its own x labels. Bare, the row
     // goes directly under the chart.
-    if (hub != null) return capturePosition(hitPlot);
+    if (hub != null) return plot;
     final row = ChartKeyReadout.of(_resolve(v));
-    return capturePosition(LayoutBuilder(
+    return LayoutBuilder(
       builder: (_, box) => Column(
         mainAxisSize:
             box.hasBoundedHeight ? MainAxisSize.max : MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (box.hasBoundedHeight) Expanded(child: hitPlot) else hitPlot,
+          if (box.hasBoundedHeight) Expanded(child: plot) else plot,
           const SizedBox(height: S.x2),
           ExcludeSemantics(child: row),
           // The reason is on the page from the first frame and does not move
@@ -788,7 +781,7 @@ class _ChartScrubState extends State<ChartScrub> {
               id: 'readout', items: chartRestOlder(_resolve(null).cells)),
         ],
       ),
-    ));
+    );
   }
 }
 
@@ -3180,7 +3173,13 @@ class ScreenTitle extends StatelessWidget {
                   }),
                 ),
               ),
-              if (avatar != null) SharedSlot('avatar', child: avatar!),
+              if (avatar != null)
+                ValueListenableBuilder<int>(
+                  valueListenable: Prefs.settingsAsTabRevision,
+                  builder: (c, _, _) => Prefs.settingsAsTabOn
+                      ? const SizedBox.shrink()
+                      : SharedSlot('avatar', child: avatar!),
+                ),
               ?trailing,
             ],
           ),

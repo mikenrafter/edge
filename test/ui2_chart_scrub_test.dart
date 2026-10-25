@@ -70,10 +70,12 @@ void main() {
     expect(find.text('60 bpm'), findsOneWidget);
   });
 
-  testWidgets('line chart: the cursor tracks a drag', (t) async {
+  testWidgets('line chart: the cursor tracks a held drag', (t) async {
     await _pump(t, _line());
     final g = await t.startGesture(_at(t, 1 / 3));
     await t.pump();
+    expect(t.widget<Scrubber>(find.byType(Scrubber)).value, isNull);
+    await t.pump(const Duration(milliseconds: 700));
     expect(find.text('64 bpm'), findsOneWidget);
     await g.moveTo(_at(t, 1));
     await t.pump();

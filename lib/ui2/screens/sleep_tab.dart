@@ -23,7 +23,10 @@ class SleepTab extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
+    final request = ShellDate.maybeOf(c);
     return SleepDetail(
+      key: ValueKey(request?.revision ?? 0),
+      day: request?.date,
       embedded: true,
       footer: [
         Section(

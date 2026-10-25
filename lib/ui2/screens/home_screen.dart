@@ -12,7 +12,7 @@ import '../../l10n/date_text.dart';
 // what this rebuild is replacing.
 //
 // ONE NAMED EXCEPTION, and it is deliberately not a crack in that rule: the
-// illness watch ([_bodyWatch]). It is not a feed and it cannot grow into one —
+// illness watch in the first pressing row. It is not a feed and it cannot grow into one —
 // exactly one detector may render here, it renders only when its own state is
 // amber or red, and it is silent on every ordinary day. The reason it earns
 // Home is timing rather than importance: the watch is at its most useful when
@@ -94,11 +94,32 @@ import 'natural_wake_card.dart';
 import 'snooze_card.dart';
 import 'readiness_detail.dart';
 import 'sleep_detail.dart';
+import 'sleep_tab.dart';
+import 'workout_screen.dart';
+import 'health_screen.dart';
 
 // ═══════════════════ shared plumbing ═══════════════════
 
 /// Page padding. The bottom inset clears the shell's floating nav.
 const pad = kTabRootPad;
+
+/// Select a domain root when the caller belongs to a shell. Both navigation
+/// helpers use this gate; standalone screens keep their pushed fallback.
+bool selectShellDestination(BuildContext c, Widget w) {
+  final domain = switch (w) {
+    HomeScreen() => ShellDomain.today,
+    SleepDetail() || SleepTab() => ShellDomain.sleep,
+    WorkoutScreen() => ShellDomain.activity,
+    HealthScreen() => ShellDomain.health,
+    _ => null,
+  };
+  final nav = ShellNavigation.maybeOf(c);
+  if (domain != null && nav != null) {
+    nav.selectDomain(domain, date: w is SleepDetail ? w.day : null);
+    return true;
+  }
+  return false;
+}
 
 /// Push a detail screen. Every drill-down in ui2 goes through here.
 ///
@@ -109,8 +130,11 @@ const pad = kTabRootPad;
 /// so a plain route gets the fade-through on Android and the Cupertino slide
 /// WITH swipe-back on iOS. [themedRoute] also keeps the pushed screen
 /// re-colouring on an appearance change and names the route for Crashlytics.
-void go(BuildContext c, Widget w) => Navigator.of(c)
-    .push(themedRoute((_) => w, name: w.runtimeType.toString()));
+Future<void> go(BuildContext c, Widget w) {
+  if (selectShellDestination(c, w)) return Future<void>.value();
+  final page = ShellNavigation.carry(c, w);
+  return Navigator.of(c).push<void>(themedRoute<void>((_) => page, name: w.runtimeType.toString()));
+}
 
 /// The repo, or null when there is no AppState above us — which is the case in
 /// every golden. A screen with no repo renders its absent states, which is
@@ -1031,7 +1055,8 @@ class RingTrio extends StatelessWidget {
     final at = now ?? pc.clock.now();
     final rings = [for (final k in HomeRingKind.values) _ringOf(k, d, l, at)];
     final gaps = rings.where((r) => r.why != null).toList();
-    final pressing = pressingRings(d, now: at);
+    final observation = _HomeScreenState._bodyWatch(c, d, todayLabel(at));
+    final pressing = pressingRings(d, now: at).take(observation == null ? 2 : 1).toList();
     final older = d.strain.fromOlderVersion;
     // The shared "Updated 8:12 · 62 → 58" line (Readiness detail and Health print
     // it too): a changed number is explained, as a neutral row.
@@ -1075,11 +1100,12 @@ class RingTrio extends StatelessWidget {
         // THE HELP STRIP: one fixed-height slot under the rings, the same box
         // first launch and loaded. Empty, it says what arrives when (or why a
         // ring is empty); loaded, it is the card's "Why?" footer.
-        if (pressing.isNotEmpty || older != null || note != null) ...[
+        if (observation != null || pressing.isNotEmpty || older != null || note != null) ...[
           const SizedBox(height: S.x3),
-          // Order: the whys (max 2), the update note, the older row.
+          // The observation takes the first of the two pressing slots.
+          ?observation,
           for (var i = 0; i < pressing.length; i++) ...[
-            if (i > 0) const SizedBox(height: S.x2),
+            if (i > 0 || observation != null) const SizedBox(height: S.x2),
             _HomeWhyPanel(kind: pressing[i], data: d, onTap: _open(pressing[i])),
           ],
           if (note != null)
@@ -1191,7 +1217,6 @@ class _HomeWhyPanel extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
-    final p = P.of(c);
     final state = _ringOf(kind, data, l, DateTime.now());
     final title = switch (kind) {
       HomeRingKind.recovery => l?.homeWhyRecoveryTitle ?? 'Recovery is low',
@@ -1203,17 +1228,33 @@ class _HomeWhyPanel extends StatelessWidget {
       HomeRingKind.sleep => _sleepWhy(data, l),
       HomeRingKind.strain => _strainWhy(data, l),
     };
-    return _HomeInsetRow(key: ValueKey('home-why:${kind.name}'), onTap: onTap,
+    return _HomeWhyRow(id: kind.name, title: title, body: body,
+        color: state.color, icon: state.icon, onTap: onTap);
+  }
+}
+
+class _HomeWhyRow extends StatelessWidget {
+  final String id, title, body;
+  final Color color;
+  final IconData icon;
+  final VoidCallback? onTap;
+  const _HomeWhyRow({required this.id, required this.title, required this.body,
+      required this.color, required this.icon, this.onTap});
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return _HomeInsetRow(key: ValueKey('home-why:$id'), onTap: onTap,
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        Container(key: ValueKey('home-why-icon:${kind.name}'), width: 32, height: 32,
-          decoration: BoxDecoration(color: p.on(state.color).withValues(alpha: .14), shape: BoxShape.circle),
-          child: Icon(state.icon, size: 17, color: p.on(state.color))),
+        Container(key: ValueKey('home-why-icon:$id'), width: 32, height: 32,
+          decoration: BoxDecoration(color: p.on(color).withValues(alpha: .14), shape: BoxShape.circle),
+          child: Icon(icon, size: 17, color: p.on(color))),
         const SizedBox(width: S.x2),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text(title, key: ValueKey('home-why-title:${kind.name}'), maxLines: 1, overflow: TextOverflow.ellipsis,
+          Text(title, key: ValueKey('home-why-title:$id'), maxLines: 1, overflow: TextOverflow.ellipsis,
             style: F.body.copyWith(fontWeight: FontWeight.w600, color: p.ink)),
           const SizedBox(height: 2),
-          Text(body, key: ValueKey('home-why-body:${kind.name}'), maxLines: 2, overflow: TextOverflow.ellipsis,
+          Text(body, key: ValueKey('home-why-body:$id'), maxLines: 2, overflow: TextOverflow.ellipsis,
             style: F.cap.copyWith(color: p.ink2)),
         ])),
         const SizedBox(width: S.x1),
@@ -3092,21 +3133,6 @@ class _HomeScreenState extends State<HomeScreen>
       ?snoozeCardFor(c),
       ?momentFollowUpCard(c),
 
-      // ── the one observation Home is allowed to make ──
-      //
-      // OUTSIDE the derived / not-derived split, and above the rings: it
-      // outranks them, and it does not depend on them — the watch comes off the
-      // CROSSDAY rollup, so it can carry a real state on a morning whose own
-      // bundle has not derived yet.
-      ...?_bodyWatch(c, d, todayLabel(widget.now)),
-
-      // Conditional by design (it appears when there is something to review),
-      // so it is outside the first-launch comparison.
-      if (loaded == null) ...[
-        // Not while the first read is out: the card reads its own count.
-        if (!_loading && !ImportFocus.active.value) card('detected', const DetectedActivitiesCard()),
-      ] else if (bare && !building)
-        if (!ImportFocus.active.value) card('detected', _detectedActivities(d)),
       // The day switcher keeps its slot (arrows dimmed) before there is a
       // second day, so the card is there from the first launch.
       card('daynav',
@@ -3166,7 +3192,13 @@ class _HomeScreenState extends State<HomeScreen>
           GestureFailureCard(store: failures),
       ],
       const SizedBox(height: S.x3),
-      if (!bare && !ImportFocus.active.value) card('detected', _detectedActivities(d)),
+      if (!ImportFocus.active.value)
+        Pressable(
+          key: const ValueKey('apk1-review-activities'),
+          onTap: () => go(c, const DetectedActivitiesScreen()),
+          child: Text(l?.homeReviewActivities ?? 'Review activities',
+              style: F.body.copyWith(color: p.ink)),
+        ),
       // Community asks: eligible or not, never part of the first-launch layout.
       if (!bare) const CommunityNudge(key: ValueKey('card:nudge')),
 
@@ -3279,7 +3311,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// [today] is the WALL-CLOCK day at build time, not the loaded payload's: a
   /// payload loaded yesterday and rebuilt today with no new sync has aged a
   /// day all the same.
-  static List<Widget>? _bodyWatch(BuildContext c, HomeData d, String today) {
+  static Widget? _bodyWatch(BuildContext c, HomeData d, String today) {
     final state = d.illnessState;
     if (state == null || state == 'green') return null;
     // The watch publishes the newest SETTLED night, which after days off the
@@ -3292,37 +3324,26 @@ class _HomeScreenState extends State<HomeScreen>
     final sameNight = day == today;
     final z = d.illnessZ;
 
-    return [
-      Observation(
-        state == 'red'
+    return _HomeWhyRow(
+        id: 'observation', color: state == 'red' ? C.red : C.orange, icon: LucideIcons.heartPulse,
+        title: state == 'red'
             ? (l?.homeIllnessRedTitle ?? 'Recent nights add up to a raised resting heart rate')
             : sameNight
                 ? (l?.homeIllnessAmberSameNight ?? 'Last night sat outside your normal range')
                 : (l?.homeIllnessAmberOtherNight(prettyDay(d.illnessDay, l)) ??
                     '${prettyDay(d.illnessDay, l)} sat outside your normal range'),
-        z == null
+        body: (z == null
             ? (l?.homeIllnessBodyNoZ ??
                 'Your resting heart rate has been above your usual over recent nights. A pattern, not a cause.')
             : (z >= 0
                 ? (l?.homeIllnessBodyAbove ??
                     'Recent nights put your resting heart rate above your usual. That night was above it too. A pattern, not a cause.')
                 : (l?.homeIllnessBodyBelow ??
-                    'Recent nights together put your resting heart rate above your usual, though that night alone was below it. A pattern, not a cause.')),
-        advice: l?.homeIllnessAdvice ?? 'Worth noting if it continues past a couple of days.',
+                    'Recent nights together put your resting heart rate above your usual, though that night alone was below it. A pattern, not a cause.'))) +
+            ' ${l?.homeIllnessAdvice ?? 'Worth noting if it continues past a couple of days.'}',
         onTap: () => go(c, const MetricDetail('resting_hr')),
-      ),
-      const SizedBox(height: S.x3),
-    ];
+      );
   }
-
-  /// "Detected activities", handed the count read with the day so it is in
-  /// its landed shape on the first paint. Keyed by the count: the card copies
-  /// it once, so a new count (a reload after a review) needs a new card.
-  static Widget _detectedActivities(HomeData d) => DetectedActivitiesCard(
-      key: ValueKey<(int?, bool)>(
-          (d.pendingActivities, d.pendingActivitiesFailed)),
-      pendingCount: d.pendingActivities,
-      loadFailed: d.pendingActivitiesFailed);
 
   /// Pull to reload. The screen also reloads itself on `insightsRevision`, but
   /// a derive that fails silently, an import, or anything that lands without

@@ -37,7 +37,7 @@ import '../ui2.dart';
 import 'calm_breathing.dart';
 import 'driver_breakdown.dart';
 import 'cycle_screen.dart';
-import 'home_screen.dart' show envValue, metricOf, weekdayShortName;
+import 'home_screen.dart' show go, envValue, metricOf, weekdayShortName;
 import 'journal_compose.dart';
 import 'start_card.dart';
 import 'metric_detail.dart' show detailScaffold;
@@ -537,9 +537,7 @@ class _WellnessScreenState extends State<WellnessScreen>
                       'tonight\'s is ${_hm(needSec / 60)}.',
               l?.wellnessSeeWhatLastNightCost ?? 'See what last night cost you',
               color: C.indigo,
-              onTap: () => Navigator.of(c).push(
-                MaterialPageRoute<void>(builder: (_) => const SleepDetail()),
-              ),
+              onTap: () => go(c, const SleepDetail()),
             ),
           ),
         Section(

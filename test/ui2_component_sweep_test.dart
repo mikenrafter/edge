@@ -9,6 +9,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 // The cases are the GALLERY's cases. One list, so a component added to the
 // gallery is swept here too.
 import 'package:openstrap_edge/ui2/profile/gallery.dart';
@@ -73,18 +75,29 @@ void main() {
     await _loadType();
   });
 
-  testWidgets('the shell has four destinations and cannot grow a fifth',
+  testWidgets('the shell has four domains and an optional Settings tab',
       (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      theme: buildTheme(Brightness.light),
-      home: AppShell(
-        builder: (c, d) => Center(child: Text(d.label)),
-      ),
-    ));
-    expect(ShellDomain.values, hasLength(4));
-    for (final d in ShellDomain.values) {
-      expect(find.text(d.label), findsWidgets, reason: '${d.label} tab missing');
+    SharedPreferences.setMockInitialValues({});
+    await Prefs.ensureLoaded();
+    for (final enabled in [false, true]) {
+      Prefs.setSettingsAsTab(enabled);
+      await tester.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: AppShell(builder: (c, d) => Center(child: Text(d.label))),
+      ));
+      await tester.pump();
+      expect(ShellDomain.values, hasLength(4));
+      for (final d in ShellDomain.values) {
+        expect(find.text(d.label), findsWidgets, reason: '${d.label} tab missing');
+      }
+      final bar = find.byKey(const ValueKey('shared:tabbar'));
+      expect(find.descendant(of: bar, matching: find.byType(Pressable)),
+          findsNWidgets(enabled ? 5 : 4));
+      expect(find.byKey(const ValueKey('apk1-settings-tab')),
+          enabled ? findsOneWidget : findsNothing);
     }
+    Prefs.setSettingsAsTab(false);
+    await tester.pump();
   });
 
   testWidgets('every tap target in the shell clears 44 pt', (tester) async {

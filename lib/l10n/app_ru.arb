@@ -8869,5 +8869,7 @@
     }
   },
   "liveHrWaitingSemantics": "График пульса в реальном времени, ожидание данных",
-  "liveHrStreamNotSaved": "Прямая трансляция не сохраняется."
+  "liveHrStreamNotSaved": "Прямая трансляция не сохраняется.",
+  "settingsAsTab": "Настройки во вкладке",
+  "homeReviewActivities": "Проверить активности"
 }

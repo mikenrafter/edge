@@ -17751,5 +17751,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "settingsAsTab": "Settings as tab",
+  "homeReviewActivities": "Review activities"
 }

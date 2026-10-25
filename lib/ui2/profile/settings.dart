@@ -86,7 +86,8 @@ void backToRoot(BuildContext c) =>
 const kDevTaps = 7;
 
 class MoreSettings extends StatefulWidget {
-  const MoreSettings({super.key});
+  final bool embedded;
+  const MoreSettings({super.key, this.embedded = false});
 
   @override
   State<MoreSettings> createState() => _MoreSettingsState();
@@ -115,6 +116,7 @@ class _MoreSettingsState extends State<MoreSettings> {
   @override
   void initState() {
     super.initState();
+    Prefs.settingsAsTabRevision.addListener(_settingsChanged);
     _readVersion();
     _readIcon();
     _readStorage();
@@ -122,6 +124,16 @@ class _MoreSettingsState extends State<MoreSettings> {
     if (context.read<AppState>().devMode) {
       WearableDisplay.instance.loadDevices().catchError((Object _) {});
     }
+  }
+
+  void _settingsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    Prefs.settingsAsTabRevision.removeListener(_settingsChanged);
+    super.dispose();
   }
 
   Future<void> _readStorage() async {
@@ -211,6 +223,11 @@ class _MoreSettingsState extends State<MoreSettings> {
     final clock = c.watch<ClockFormatController>();
     final caps = c.caps;
     return MoreSettingsView(
+      embedded: widget.embedded,
+      settingsAsTab: Prefs.settingsAsTabOn,
+      onToggleSettingsAsTab: () {
+        Prefs.setSettingsAsTab(!Prefs.settingsAsTabOn);
+      },
       version: _version,
       devMode: caps.has(Feature.developerMode),
       // The engine's `last_pass_perf`: measured values only.
@@ -555,6 +572,8 @@ Future<void> editExpectedSleepSchedule(BuildContext context, AppState app) async
 }
 
 class MoreSettingsView extends StatelessWidget {
+  final bool embedded, settingsAsTab;
+  final VoidCallback? onToggleSettingsAsTab;
   final String units, appearance;
 
   /// 12- or 24-hour clock, or whatever the OS says ("System", the default).
@@ -654,6 +673,9 @@ class MoreSettingsView extends StatelessWidget {
 
   const MoreSettingsView({
     super.key,
+    this.embedded = false,
+    this.settingsAsTab = false,
+    this.onToggleSettingsAsTab,
     this.units = 'Metric',
     this.appearance = 'System',
     this.clockFormat = ClockFormat.system,
@@ -723,7 +745,8 @@ class MoreSettingsView extends StatelessWidget {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          NavBar(l?.settingsNavTitle ?? 'Settings'),
+          if (embedded) ScreenTitle(l?.settingsNavTitle ?? 'Settings')
+          else NavBar(l?.settingsNavTitle ?? 'Settings'),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
@@ -746,6 +769,11 @@ class MoreSettingsView extends StatelessWidget {
                       AppLocalizations.of(c)?.profileLanguage ?? 'Language',
                       sub: _languageSub(c),
                       onTap: () => pickLanguage(c))),
+                  SetRow(LucideIcons.settings, C.domHome,
+                      l?.settingsAsTab ?? 'Settings as tab',
+                      key: const ValueKey('apk1-settings-as-tab'),
+                      value: settingsAsTab ? on : off,
+                      onTap: onToggleSettingsAsTab),
                   SetRow(LucideIcons.ruler, C.blue,
                       l?.settingsUnitsRowTitle ?? 'Units',
                       value: units, onTap: onCycleUnits),

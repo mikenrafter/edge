@@ -1,20 +1,12 @@
-// The four-tab shell.
-//
-// Today · Sleep · Activity · Health. Stable: the contents personalise, the
-// mental map does not. Each domain owns an accent, so colour tells you where
-// you are before the label does. Profile is not a tab; every tab's header
-// carries the avatar into it.
-//
-// There is no fifth tab, and the type system is what says so — [ShellDomain]
-// is a closed enum and [AppShell] takes a builder keyed by it, so "just add a
-// tab for X" is a change to this file with a reviewer attached, not something
-// a screen can do on its own. Anything that feels like another destination is
-// a section or a pushed screen inside the domain that owns it.
+// AppShell owns tab selection, history and requested dates.
+// Four domains, with an optional Settings tab.
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../l10n/app_localizations.dart';
+import '../state/prefs.dart';
+import 'profile/settings.dart' show MoreSettings;
 import 'grammar.dart';
 import 'shared_slot.dart';
 import 'theme.dart';
@@ -49,11 +41,35 @@ enum ShellDomain {
   final Color accent;
 }
 
-// There is no `Domain` InheritedWidget. There was one, promising that a screen
-// "and anything it pushes" could pick up its accent without threading it — but
-// nothing ever read it, and a pushed route could not have: `MaterialApp.home`
-// is the gate, so `Navigator.of` pushes above the shell entirely. Screens take
-// their accent as a parameter, which is honest about where it comes from.
+/// Carried into detail routes by the shared navigation helpers, so a domain
+/// link can return to its shell even from a pushed detail.
+class ShellNavigation extends InheritedWidget {
+  final void Function(ShellDomain domain, {String? date}) selectDomain;
+  const ShellNavigation({super.key, required this.selectDomain, required super.child});
+
+  static ShellNavigation? maybeOf(BuildContext c) =>
+      c.dependOnInheritedWidgetOfExactType<ShellNavigation>();
+
+  static Widget carry(BuildContext c, Widget child) {
+    final nav = maybeOf(c);
+    return nav == null ? child : ShellNavigation(selectDomain: nav.selectDomain, child: child);
+  }
+
+  @override
+  bool updateShouldNotify(ShellNavigation oldWidget) =>
+      selectDomain != oldWidget.selectDomain;
+}
+
+/// A domain's requested calendar date. The shell retains it while tabs park.
+class ShellDate extends InheritedWidget {
+  final String? date;
+  final int revision;
+  const ShellDate({super.key, this.date, required this.revision, required super.child});
+  static ShellDate? maybeOf(BuildContext c) =>
+      c.dependOnInheritedWidgetOfExactType<ShellDate>();
+  @override
+  bool updateShouldNotify(ShellDate oldWidget) => revision != oldWidget.revision;
+}
 
 class AppShell extends StatefulWidget {
   /// Builds the body of one domain. Called lazily — a tab is not built until
@@ -86,6 +102,51 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   late ShellDomain _current = widget.initial;
+  bool _settings = false;
+  bool _settingsBuilt = false;
+  final Map<ShellDomain, String?> _dates = {};
+  final Map<ShellDomain, int> _dateRevisions = {};
+
+  @override
+  void initState() {
+    super.initState();
+    Prefs.settingsAsTabRevision.addListener(_settingsChanged);
+  }
+
+  @override
+  void dispose() {
+    Prefs.settingsAsTabRevision.removeListener(_settingsChanged);
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant AppShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!Prefs.settingsAsTabOn) {
+      _settings = false;
+      _settingsBuilt = false;
+    }
+  }
+
+  void _settingsChanged() => setState(() {
+    if (!Prefs.settingsAsTabOn) {
+      _settings = false;
+      _settingsBuilt = false;
+    }
+  });
+
+  void _selectDomain(ShellDomain domain, {String? date}) {
+    _dates[domain] = date;
+    _dateRevisions[domain] = (_dateRevisions[domain] ?? 0) + 1;
+    _select(domain);
+    final route = ModalRoute.of(context);
+    if (route != null) Navigator.of(context).popUntil((r) => r == route);
+  }
+
+  void _selectSettings() => setState(() {
+    _settings = true;
+    _settingsBuilt = true;
+  });
   late final Set<ShellDomain> _built = {widget.initial};
   // Tabs are kept alive, not pushed onto the Navigator. Keep their history
   // here so Android Back can return to the previous tab. A restored tab or
@@ -96,6 +157,7 @@ class _AppShellState extends State<AppShell> {
 
   void _select(ShellDomain d) {
     setState(() {
+      _settings = false;
       // Each tab at most once, most recent last, so switching back and forth
       // between two tabs does not add a Back press per switch. Today stays in
       // as the way back into the app even while it is the tab on screen.
@@ -117,6 +179,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _back() {
+    if (_settings) {
+      setState(() => _settings = false);
+      return;
+    }
     if (_history.isEmpty) return;
     setState(() {
       _current = _history.removeLast();
@@ -128,8 +194,10 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return PopScope<Object?>(
-      canPop: _history.isEmpty,
+    return ShellNavigation(
+      selectDomain: _selectDomain,
+      child: PopScope<Object?>(
+      canPop: !_settings && _history.isEmpty,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _back();
       },
@@ -141,7 +209,7 @@ class _AppShellState extends State<AppShell> {
             children: [
               Expanded(
                 child: IndexedStack(
-                  index: _current.index,
+                  index: _settings ? 4 : _current.index,
                   children: [
                     // An unvisited tab is an empty box, not a built screen — the
                     // old shell built all forty screens' worth of state on launch.
@@ -150,11 +218,17 @@ class _AppShellState extends State<AppShell> {
                         // A parked tab keeps its state but stops its tickers and
                         // its revision reloads (see RevisionReload).
                         TickerMode(
-                          enabled: d == _current,
-                          child: widget.builder(c, d),
+                          enabled: !_settings && d == _current,
+                          child: ShellDate(
+                            date: _dates[d], revision: _dateRevisions[d] ?? 0,
+                            child: Builder(builder: (c) => widget.builder(c, d))),
                         )
                       else
                         const SizedBox.shrink(),
+                    if (Prefs.settingsAsTabOn)
+                      _settingsBuilt
+                          ? TickerMode(enabled: _settings, child: const MoreSettings(embedded: true))
+                          : const SizedBox.shrink(),
                   ],
                 ),
               ),
@@ -163,17 +237,20 @@ class _AppShellState extends State<AppShell> {
           ),
         ),
         bottomNavigationBar:
-            SharedSlot('tabbar', child: _TabBar(current: _current, onTap: _select)),
+            SharedSlot('tabbar', child: _TabBar(current: _settings ? null : _current, onTap: _select, onSettings: Prefs.settingsAsTabOn ? _selectSettings : null)),
+      ),
       ),
     );
   }
 }
 
 class _TabBar extends StatelessWidget {
-  final ShellDomain current;
+  final ShellDomain? current;
   final ValueChanged<ShellDomain> onTap;
 
-  const _TabBar({required this.current, required this.onTap});
+  final VoidCallback? onSettings;
+
+  const _TabBar({required this.current, required this.onTap, this.onSettings});
 
   @override
   Widget build(BuildContext c) {
@@ -197,6 +274,26 @@ class _TabBar extends StatelessWidget {
                     onTap: () => onTap(d),
                   ),
                 ),
+              if (onSettings != null)
+                Expanded(child: Semantics(
+                  key: const ValueKey('apk1-settings-tab'),
+                  selected: current == null,
+                  child: Pressable(
+                    semanticLabel: AppLocalizations.of(c)?.settingsNavTitle ?? 'Settings',
+                    onTap: onSettings,
+                    child: ExcludeSemantics(child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(LucideIcons.settings, size: 20,
+                            color: current == null ? p.on(C.domHome) : p.ink3),
+                        const SizedBox(height: 3),
+                        Text(AppLocalizations.of(c)?.settingsNavTitle ?? 'Settings',
+                            textAlign: TextAlign.center,
+                            style: F.over.copyWith(color: p.ink3)),
+                      ]),
+                    )),
+                  ),
+                )),
             ],
           ),
         ),

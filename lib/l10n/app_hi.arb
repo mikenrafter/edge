@@ -3490,5 +3490,7 @@
     }
   },
   "liveHrWaitingSemantics": "लाइव हृदय गति चार्ट, लाइव डेटा की प्रतीक्षा में",
-  "liveHrStreamNotSaved": "लाइव स्ट्रीम सहेजी नहीं जाती।"
+  "liveHrStreamNotSaved": "लाइव स्ट्रीम सहेजी नहीं जाती।",
+  "settingsAsTab": "सेटिंग को टैब में दिखाएँ",
+  "homeReviewActivities": "गतिविधियों की समीक्षा करें"
 }

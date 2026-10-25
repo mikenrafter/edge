@@ -473,17 +473,17 @@ void main() {
 
     testWidgets('adds no row: rings and the next card sit at the same y',
         (t) async {
-      final detected = find.byKey(const ValueKey('card:detected'));
+      final review = find.byKey(const ValueKey('apk1-review-activities'));
       await _home(t, _data(computedAt: _at(16, 8)));
       final without = _ringPos(t);
       final cardH = t.getSize(_card).height;
-      final next = t.getTopLeft(detected).dy;
+      final next = t.getTopLeft(review).dy;
 
       await _home(t, _data(computedAt: _at(16, 8)),
           through: _at(16, 4), syncPending: true);
       expect(_ringPos(t), without, reason: 'rings do not move');
       expect(t.getSize(_card).height, cardH, reason: 'card does not grow');
-      expect(t.getTopLeft(detected).dy, next, reason: 'no row under the card');
+      expect(t.getTopLeft(review).dy, next, reason: 'no row under the card');
     });
   });
 
