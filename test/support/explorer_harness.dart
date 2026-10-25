@@ -261,29 +261,11 @@ Future<void> scrubAt(WidgetTester t, double frac) async {
   await t.pump();
 }
 
-/// The panel's value for the series called [label]: the big value when it is
-/// the panel's main series (the chart's first legend entry), else the value
-/// under its `chart-panel-stat:<label>` slot. Matches nothing when [label] has
-/// no place in the panel. The older-calculation `*` is not part of the value.
-Finder readoutValue(String label) => find.byElementPredicate((e) {
-      final w = e.widget;
-      if (w is! Text || w.data == '*') return false;
-      var hit = false;
-      e.visitAncestorElements((a) {
-        final k = a.widget.key;
-        if (k == ValueKey('chart-panel-stat:$label')) {
-          hit = w.data != label.toUpperCase();
-          return false;
-        }
-        if (k == ChartKeyReadout.valueKey) {
-          final f = a.findAncestorWidgetOfExactType<ChartFrame>();
-          hit = f != null && f.legend.isNotEmpty && f.legend.first.$1 == label;
-          return false;
-        }
-        return true;
-      });
-      return hit;
-    });
+/// The value in the series' own cell, for both single- and multi-series
+/// panels. The older-calculation `*` is outside this value.
+Finder readoutValue(String label) => find.descendant(
+    of: find.byKey(ValueKey('chart-key-value:$label')),
+    matching: find.byType(Text));
 
 String readoutText(WidgetTester t, String label) {
   final f = readoutValue(label);

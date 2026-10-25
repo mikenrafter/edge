@@ -828,7 +828,7 @@ class _ChartScrubState extends State<ChartScrub> {
         children: [
           if (box.hasBoundedHeight) Expanded(child: plot) else plot,
           const SizedBox(height: S.x2),
-          ExcludeSemantics(child: row),
+          row,
         ],
       ),
     );
@@ -837,21 +837,23 @@ class _ChartScrubState extends State<ChartScrub> {
 
 /// ── CHARTKEYREADOUT ── the key row, with the values in it ───────────────────
 ///
-/// The time first (a "Latest" or "Selected" caption over the clock or day),
-/// then one cell per series: colour swatch, label, and the value under them. A
-/// value is always one line — it shrinks to fit before it wraps — and the row
-/// is as tall for "—" as for a number, so scrubbing never moves what is below
-/// it. Cells share the width equally and wrap to further rows when the text
-/// scale leaves no room for them side by side.
+/// An inset with a LATEST/SELECTED caption, then a full label and value per
+/// series. A single series has a big value and optional summary stats; multiple
+/// series keep their swatches and equal-height cells. Labels wrap and values
+/// scale down within a reserved line, so gaps never change the row height.
+/// The static older-calculation strip is inside the inset and stays spoken.
 class ChartKeyReadout extends StatelessWidget {
   final String? time;
   final bool scrubbed;
   final List<ChartCell> cells;
+
+  /// Summary statistics of a single series, not additional plotted series.
+  final List<ChartCell> stats;
   final List<({int? version, String? reason})>? restOlder;
   final VoidCallback? onOpen;
 
   const ChartKeyReadout(
-      {super.key, required this.cells, this.time, this.scrubbed = false, this.restOlder, this.onOpen});
+      {super.key, required this.cells, this.time, this.scrubbed = false, this.stats = const [], this.restOlder, this.onOpen});
 
   factory ChartKeyReadout.of(ChartReadout r) =>
       ChartKeyReadout(cells: r.cells, time: r.time, scrubbed: r.scrubbed);
@@ -869,17 +871,25 @@ class ChartKeyReadout extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    final recorded = cells.where((x) => x.color != null).toList();
+    final recorded = cells.where((x) => x.color != null && x.hasValue).toList();
     if (recorded.isEmpty || (!scrubbed && recorded.every((x) => x.value == null))) {
       return const SizedBox.shrink();
     }
     final main = recorded.first;
-    final stats = recorded.skip(1).toList();
+    final single = recorded.length == 1;
     final mainColor = main.color!;
-    final older = restOlder ?? chartRestOlder(cells);
+    final older = restOlder ?? (scrubbed ? [] : chartRestOlder(cells));
+    final items = <Widget>[
+      for (final cell in cells)
+        _cell(c, p, cell, big: single && identical(cell, main)),
+      for (final stat in stats)
+        KeyedSubtree(
+          key: ValueKey('chart-panel-stat:${stat.label}'),
+          child: _cell(c, p, stat),
+        ),
+    ];
     return Container(
       key: panelKey,
-      height: older.isEmpty ? 160 : 266,
       decoration: BoxDecoration(
         color: p.card2,
         borderRadius: R.rMd,
@@ -887,82 +897,136 @@ class ChartKeyReadout extends StatelessWidget {
             ? Border.all(color: mainColor.withValues(alpha: .55), width: 1.5)
             : null,
       ),
+      // Container includes the border in its padding. Compensate so a scrub
+      // never changes the available text width or the inset's position.
       padding: EdgeInsets.symmetric(
           horizontal: S.x3 - (scrubbed ? 1.5 : 0),
           vertical: S.x2 - (scrubbed ? 1.5 : 0)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-          Expanded(flex: 5, child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text('${scrubbed ? (AppLocalizations.of(c)?.chartPanelSelected ?? 'SELECTED') : (AppLocalizations.of(c)?.chartPanelLatest ?? 'LATEST')} · ${time ?? absent}'.toUpperCase(),
-                key: captionKey,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: F.over.copyWith(color: scrubbed ? mainColor : p.ink3, fontWeight: FontWeight.w700)),
-            const SizedBox(height: S.x1),
-            Pressable(
-              onTap: onOpen,
-              semanticLabel: onOpen == null
-                  ? null
-                  : (AppLocalizations.of(c)?.metricDetailOpenDay(time ?? '') ?? 'Open $time'),
-              child: Row(key: valueKey, mainAxisSize: MainAxisSize.min, children: [
-              Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
-                child: Text(main.value ?? absent,
-                  style: F.n34.copyWith(color: p.ink, fontWeight: FontWeight.w700)))),
-              if (main.value != null && main.older != null)
-                OlderVersionMark(id: chartOlderId(cells, main), version: main.older!.version,
-                    reason: main.older!.reason),
-              if (main.value != null) const SizedBox(width: S.x1),
-              if (main.value != null) Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
-            ]),
-            ),
-          ])),
-          for (var i = 0; i < stats.length && i < 2; i++) ...[
-            const SizedBox(width: S.x2),
-            Expanded(flex: 3, child: Column(key: ValueKey('chart-panel-stat:${stats[i].label}'), mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(stats[i].label.toUpperCase(), maxLines: 2, overflow: TextOverflow.ellipsis,
-                  style: F.over.copyWith(color: p.ink3, fontWeight: FontWeight.w600)),
-              Text(stats[i].value ?? absent,
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: F.n17.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
-            ])),
-          ],
-        ])),
-        SizedBox(height: older.isEmpty ? 20 : 80, child: older.isEmpty
-            ? const SizedBox.shrink()
-            : OlderVersionStrip(id: 'readout', items: older)),
-      ]),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // The slider speaks the values; only the static reason strip below
+          // supplies the full explanation to a screen reader.
+          Semantics(
+            button: onOpen == null ? null : true,
+            onTap: onOpen,
+            label: onOpen == null ? null :
+                (AppLocalizations.of(c)?.metricDetailOpenDay(time ?? '') ?? 'Open $time'),
+            child: ExcludeSemantics(child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _caption(c, mainColor),
+                const SizedBox(height: S.x1),
+                _equalCells(c, items),
+              ],
+            )),
+          ),
+          OlderVersionStrip(id: 'readout', items: older),
+        ],
+      ),
     );
   }
 
-  Widget _time(P p) => Column(
+  Widget _caption(BuildContext c, Color color) {
+    final l = AppLocalizations.of(c);
+    final latestText = l?.chartPanelLatest ?? 'LATEST';
+    final selectedText = l?.chartPanelSelected ?? 'SELECTED';
+    final style = F.over.copyWith(color: color, fontWeight: FontWeight.w700);
+    return LayoutBuilder(builder: (_, box) {
+      // Reserve both mode captions at this text size. They wrap in full, and
+      // switching LATEST to SELECTED cannot add a line to a clock readout.
+      var height = 0.0;
+      for (final mode in [latestText, selectedText]) {
+        final tp = TextPainter(
+          text: TextSpan(text: '$mode · ${time ?? absent}'.toUpperCase(), style: style),
+          textDirection: Directionality.of(c),
+          textScaler: MediaQuery.textScalerOf(c),
+        )..layout(maxWidth: box.maxWidth);
+        height = math.max(height, tp.height);
+        tp.dispose();
+      }
+      return ConstrainedBox(
         key: timeKey,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        constraints: BoxConstraints(minHeight: height),
+        child: Text('${scrubbed ? selectedText : latestText} · ${time ?? absent}'.toUpperCase(),
+            key: captionKey, style: style),
+      );
+    });
+  }
+
+  Widget _equalCells(BuildContext c, List<Widget> items) {
+    final scale = math.max(1.0, MediaQuery.textScalerOf(c).scale(1));
+    const gap = S.x3;
+    final minW = 92.0 * scale;
+    return LayoutBuilder(builder: (_, box) {
+      final w = box.maxWidth;
+      final cols = w.isFinite
+          ? ((w + gap) / (minW + gap)).floor().clamp(1, items.length)
+          : items.length;
+      final cellW = w.isFinite ? ((w - gap * (cols - 1)) / cols) - .01 : minW;
+      // Keep the existing equal-height rule: labels wrap, values share a
+      // baseline, and a missing value occupies the same line as a number.
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(scrubbed ? selected : latest,
-              style: F.over.copyWith(color: p.ink3),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(time!,
-                  maxLines: 1,
-                  style: F.cap.copyWith(
-                      color: time == absent ? p.ink3 : p.ink,
-                      fontWeight: FontWeight.w600)),
-            ),
-          ),
+          for (var r = 0; r * cols < items.length; r++) ...[
+            if (r > 0) const SizedBox(height: S.x2),
+            IntrinsicHeight(child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var k = 0; k < cols; k++) ...[
+                  if (k > 0) const SizedBox(width: gap),
+                  SizedBox(width: cellW,
+                    child: r * cols + k < items.length ? items[r * cols + k] : null),
+                ],
+              ],
+            )),
+          ],
         ],
       );
+    });
+  }
 
-  Widget _cell(P p, ChartCell cell) {
+  Widget _cell(BuildContext c, P p, ChartCell cell, {bool big = false}) {
     final gapKey = cell.color == null;
     final shown = cell.hasValue ? (cell.value ?? absent) : ' ';
     final present = cell.hasValue && cell.value != null;
+    final valueStyle = (big ? F.n34 : F.cap).copyWith(
+        color: present ? p.ink : p.ink3,
+        fontWeight: big ? FontWeight.w700 : FontWeight.w600,
+        fontFeatures: const [FontFeature.tabularFigures()]);
+    final tp = TextPainter(
+      text: TextSpan(text: absent, style: valueStyle),
+      textDirection: Directionality.of(c),
+      textScaler: MediaQuery.textScalerOf(c),
+    )..layout();
+    final valueHeight = tp.height;
+    tp.dispose();
+    final value = ConstrainedBox(
+      constraints: BoxConstraints(minHeight: valueHeight),
+      child: Row(
+        key: big ? valueKey : null,
+        children: [
+          Flexible(child: FittedBox(
+            key: ValueKey('chart-key-value:${cell.label}'),
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(shown, maxLines: 1, style: valueStyle),
+          )),
+          if (present && cell.older != null)
+            OlderVersionMark(id: chartOlderId(cells, cell),
+                version: cell.older!.version, reason: cell.older!.reason,
+                speak: false),
+          if (big && onOpen != null) ...[
+            const SizedBox(width: S.x1),
+            Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
+          ],
+        ],
+      ),
+    );
     return Column(
       key: ValueKey('chart-key-cell:${cell.label}'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1002,30 +1066,13 @@ class ChartKeyReadout extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.only(top: 2),
-          child: Row(
-            children: [
-              Flexible(
-                child: FittedBox(
-                  key: ValueKey('chart-key-value:${cell.label}'),
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(shown,
-                      maxLines: 1,
-                      style: F.cap.copyWith(
-                          color: present ? p.ink : p.ink3,
-                          fontWeight: FontWeight.w600,
-                          fontFeatures: const [FontFeature.tabularFigures()])),
-                ),
-              ),
-              // The asterisk sits beside the value, outside the fitted text, so
-              // it is never scaled away. The reason is the at-rest [OlderVersionStrip].
-              if (present && cell.older != null)
-                OlderVersionMark(
-                    id: chartOlderId(cells, cell),
-                    version: cell.older!.version,
-                    reason: cell.older!.reason),
-            ],
-          ),
+          child: big
+              ? Pressable(
+                  onTap: onOpen,
+                  semanticLabel: AppLocalizations.of(c)?.metricDetailOpenDay(time ?? '') ?? 'Open $time',
+                  child: value,
+                )
+              : value,
         ),
       ],
     );
@@ -3946,7 +3993,7 @@ class _FrameKeys extends StatelessWidget {
           if (panel != null) {
             return Padding(
               padding: const EdgeInsets.only(top: S.x3),
-              child: ExcludeSemantics(child: panel!),
+              child: panel!,
             );
           }
           final r = hub.read();
@@ -3978,7 +4025,7 @@ class _FrameKeys extends StatelessWidget {
                     ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed,
                         restOlder: chartRestOlder(hub.readRest()?.cells ?? cells)),
                     const SizedBox(height: S.x1),
-                    extra!,
+                    ExcludeSemantics(child: extra!),
                   ],
                 );
           return Padding(
@@ -3989,7 +4036,7 @@ class _FrameKeys extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
-              children: [ExcludeSemantics(child: baseRow)],
+              children: [baseRow],
             ),
           );
         },

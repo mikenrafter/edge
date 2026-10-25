@@ -1629,9 +1629,13 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
             ),
           ),
         ],
-        // The reason for the at-rest headline and latest reading: one strip,
-        // on the page from the first frame, each distinct reason once. A scrub
-        // never adds to it.
+        // A current latest point cannot explain an average that includes older
+        // values. Keep that headline reason here; a shared reason is spoken
+        // only by the latest reading's strip inside the chart panel.
+        OlderVersionStrip(id: 'headline', items: [
+          if (headlineVersion != latestVersion || headlineReason != latestReason)
+            (version: headlineVersion, reason: headlineReason),
+        ]),
         if (d.sources.length >= 2) ...[
           const SizedBox(height: S.x4),
           DeviceFilter(
@@ -1797,33 +1801,33 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
               l?.metricDetailToday ?? 'Today',
             ],
             panel: Builder(builder: (panelContext) {
-              final selected = _pick?.clamp(0, series.length - 1) ?? series.length - 1;
-              final latest = series.length - 1;
+              final latest = series.lastIndexWhere((v) => v != null && v.isFinite);
+              final selected = _pick?.clamp(0, series.length - 1) ?? latest;
               final recent = series.skip(series.length > 7 ? series.length - 7 : 0)
                   .whereType<double>().toList();
               final avg = recent.isEmpty ? null : recent.reduce((a, b) => a + b) / recent.length;
               final v = series[selected];
               final u = unitBeside(spec.unit);
-              String fmtValue(double? n) => n == null ? '—' : '${_fmt(spec, n)} $u'.trimRight();
+              String? fmtValue(double? n) => n == null ? null : '${_fmt(spec, n)} $u'.trimRight();
               final diff = v == null || avg == null ? null : v - avg;
               final allPoints = denseChartPoints(d.series, series.length);
               final latestPoint = allPoints[latest];
               final selectedPoint = allPoints[selected];
               final statCells = <ChartCell>[
-                if (avg != null) ChartCell(AppLocalizations.of(panelContext)?.chartPanelSevenDayAvg ?? '7-day avg', p.ink3, value: fmtValue(avg)),
-                if (diff != null) ChartCell(AppLocalizations.of(panelContext)?.chartPanelVsAvg ?? 'vs avg', p.ink3,
-                    value: '${diff < 0 ? '−' : '+'}${fmtValue(diff.abs())}'),
+                ChartCell(AppLocalizations.of(panelContext)?.chartPanelSevenDayAvg ?? '7-day avg', p.ink3, value: fmtValue(avg)),
+                ChartCell(AppLocalizations.of(panelContext)?.chartPanelVsAvg ?? 'vs avg', p.ink3,
+                    value: diff == null ? null : '${diff < 0 ? '−' : '+'}${fmtValue(diff.abs())}'),
               ];
-              final atRestOlder = latestPoint?.olderVersion == null
-                  ? const <({int? version, String? reason})>[]
-                  : [(version: latestPoint!.olderVersion!, reason: latestPoint.olderReason)];
+              final atRestOlder = [
+                (version: latestPoint?.olderVersion, reason: latestPoint?.olderReason),
+              ];
               return ChartKeyReadout(
                 cells: [
                   ChartCell(spec.title, p.on(spec.color), value: fmtValue(v),
                     older: selectedPoint?.olderVersion == null ? null :
                       (version: selectedPoint!.olderVersion!, reason: selectedPoint.olderReason)),
-                  ...statCells,
                 ],
+                stats: statCells,
                 time: prettyDay(_dayOfSlot(selected, series.length), AppLocalizations.of(panelContext)),
                 scrubbed: _pick != null,
                 restOlder: atRestOlder,

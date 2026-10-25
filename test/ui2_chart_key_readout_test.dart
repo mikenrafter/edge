@@ -3,14 +3,16 @@
 //
 // ChartScrub keeps the cursor. The values go to a ChartKeyReadout, now the
 // scrub panel (owner decision 2026-10-22): a fixed-size inset with the caption
-// "LATEST · <time>" / "SELECTED · <time>", the first series' value big, and
-// the next series as secondary stats (label over value). At rest the panel
-// shows the latest point; an absent value is "—", never a 0.
+// "LATEST · <time>" / "SELECTED · <time>". A single series has a big value;
+// multiple series keep their full labels, swatches and values in equal-height
+// cells. At rest the panel shows the latest point; a gap is "—", never a 0.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+
+import 'support/older_version_fixtures.dart' show spokenOlder;
 
 const _w = 300.0;
 
@@ -66,9 +68,10 @@ Offset _at(WidgetTester t, double frac) {
 Finder _panel() => find.byKey(ChartKeyReadout.panelKey);
 Finder _big() => find.descendant(
     of: find.byKey(ChartKeyReadout.valueKey), matching: find.byType(Text));
-Finder _stat(String label) => find.byKey(ValueKey('chart-panel-stat:$label'));
-Finder _statValue(String label) =>
-    find.descendant(of: _stat(label), matching: find.byType(Text)).last;
+Finder _cell(String label) => find.byKey(ValueKey('chart-key-cell:$label'));
+Finder _value(String label) => find.descendant(
+    of: find.byKey(ValueKey('chart-key-value:$label')),
+    matching: find.byType(Text));
 String _caption(WidgetTester t) =>
     t.widget<Text>(find.byKey(ChartKeyReadout.captionKey)).data!;
 
@@ -91,8 +94,7 @@ void main() {
           findsNothing);
     });
 
-    testWidgets('the panel has the series colour and the value; a second '
-        'series is a stat with its label and value', (t) async {
+    testWidgets('the panel has the series colour and a full cell per series', (t) async {
       await _pump(
           t,
           _scrub(keys: [
@@ -104,7 +106,7 @@ void main() {
       await t.tapAt(_at(t, 0));
       await t.pump();
       expect(_panel(), findsOneWidget);
-      expect(t.widget<Text>(_big().first).data, '60 bpm');
+      expect(t.widget<Text>(_value('Heart rate (bpm)')).data, '60 bpm');
       final box = (t.widget<Container>(_panel()).decoration as BoxDecoration);
       expect(box.border!.top.color.toARGB32() & 0xFFFFFF,
           _red.toARGB32() & 0xFFFFFF,
@@ -114,11 +116,11 @@ void main() {
           _red.toARGB32() & 0xFFFFFF);
       expect(
           find.descendant(
-              of: _stat('Movement (% of time)'),
-              matching: find.text('MOVEMENT (% OF TIME)')),
+              of: _cell('Movement (% of time)'),
+              matching: find.text('Movement (% of time)')),
           findsOneWidget,
-          reason: 'the stat names its series');
-      expect(t.widget<Text>(_statValue('Movement (% of time)')).data, '10%');
+          reason: 'the cell names its series');
+      expect(t.widget<Text>(_value('Movement (% of time)')).data, '10%');
     });
 
     testWidgets('the time comes first in the panel', (t) async {
@@ -133,8 +135,8 @@ void main() {
       await t.tapAt(_at(t, 1 / 3));
       await t.pump();
       expect(_caption(t), 'SELECTED · 08:00');
-      expect(t.getTopLeft(find.byKey(ChartKeyReadout.captionKey)).dx,
-          lessThan(t.getTopLeft(_stat('Movement (% of time)')).dx));
+      expect(t.getBottomLeft(find.byKey(ChartKeyReadout.captionKey)).dy,
+          lessThan(t.getTopLeft(_cell('Heart rate (bpm)')).dy));
     });
 
     testWidgets('nothing scrubbed: the latest point and its time', (t) async {
@@ -142,6 +144,7 @@ void main() {
       // Slot 3 (10:00, 70 bpm) is the last one with data.
       expect(_caption(t), 'LATEST · 10:00');
       expect(find.text('70 bpm'), findsOneWidget);
+      expect(find.text('Heart rate (bpm)'), findsOneWidget);
       await t.tapAt(_at(t, 0));
       await t.pump();
       expect(_caption(t), 'SELECTED · 07:00');
@@ -211,15 +214,16 @@ void main() {
       await t.pump();
       expect(find.text('60 bpm'), findsOneWidget);
       expect(find.text('10%'), findsOneWidget);
-      expect(t.getTopLeft(_big().first).dx,
-          lessThan(t.getTopLeft(_stat('Movement (% of time)')).dx));
+      expect(t.getTopLeft(_value('Heart rate (bpm)')).dx,
+          lessThan(t.getTopLeft(_value('Movement (% of time)')).dx));
     });
 
-    // The panel no longer DRAWS a "Not recorded" entry (it has no colour, so
-    // the panel skips it); the readout model still says it, so these two guard
-    // the model. See the report: the panel's own "—" is all a user sees now.
     testWidgets('"Not recorded" only appears when the window has gaps',
         (t) async {
+      await _pump(t, _scrub(gaps: true));
+      expect(find.text('Not recorded'), findsOneWidget);
+      await _pump(t, _scrub(hr: const [60, 64, 66, 70]));
+      expect(find.text('Not recorded'), findsNothing);
       List<String> labels(bool gaps, List<double?> hr) => [
             for (final c in ChartScrub.resolve(
                     keys: [
@@ -262,11 +266,11 @@ void main() {
             ChartKey.slots(label, _blue, const [10, 20, 30, 40],
                 (i, v) => '${v.round()}%'),
           ]));
-      final f = find.text(label.toUpperCase());
+      final f = find.text(label);
       expect(f, findsOneWidget);
       final para = t.renderObject<RenderParagraph>(f);
       expect(para.didExceedMaxLines, isFalse,
-          reason: 'the whole label fits in the stat, none of it is ellipsised');
+          reason: 'the whole label wraps in the cell, none of it is ellipsised');
     });
 
     testWidgets('the spoken value is the same text the row shows', (t) async {
@@ -280,6 +284,43 @@ void main() {
       expect(v, contains('60 bpm'));
       handle.dispose();
     });
+  });
+
+  for (final framed in [false, true]) {
+    testWidgets('the static reason is spoken once, framed=$framed, at 3.1x',
+        (t) async {
+      final handle = t.ensureSemantics();
+      addTearDown(handle.dispose);
+      final chart = _scrub(keys: [
+        ChartKey.slots('Heart rate (bpm)', _red, _hr,
+            (i, v) => '${v.round()} bpm', older: const [
+          null, null, null,
+          (version: 104, reason: 'need_input:name=age'),
+        ]),
+      ]);
+      await _pump(t,
+          framed ? ChartFrame(title: 'Heart rate', unit: 'bpm', child: chart) : chart,
+          scale: 3.1, h: 2200);
+      expect(spokenOlder(t, 104), 1);
+      final rect = t.getRect(_panel());
+      final plot = t.getRect(find.byType(Scrubber));
+      await t.tapAt(Offset(plot.left + plot.width / 3, plot.center.dy));
+      await t.pump();
+      expect(spokenOlder(t, 104), 1);
+      expect(t.getRect(_panel()), rect);
+      expect(t.takeException(), isNull);
+    });
+  }
+
+  testWidgets('every series and the gap key stay inside the panel', (t) async {
+    await _pump(t, _scrub(gaps: true, keys: [
+      for (final label in ['Heart rate', 'Movement', 'Breathing', 'Temperature'])
+        ChartKey.slots(label, _red, _hr, (i, v) => '${v.round()}'),
+    ]), h: 700);
+    for (final label in ['Heart rate', 'Movement', 'Breathing', 'Temperature', 'Not recorded']) {
+      expect(find.descendant(of: _panel(), matching: _cell(label)), findsOneWidget);
+    }
+    expect(t.takeException(), isNull);
   });
 
   group('the panel never changes size', () {
@@ -335,12 +376,11 @@ void main() {
       await _pump(t, frame(), h: 520);
       await t.tapAt(t.getTopLeft(find.byType(ChartScrub)) + const Offset(2, 30));
       await t.pump();
-      // The key is not drawn twice: the second series is named once, in its
-      // stat; the first is the panel's own value.
-      expect(find.text('MOVEMENT (% OF TIME)'), findsOneWidget);
-      expect(find.text('Movement (% of time)'), findsNothing);
-      expect(t.getTopLeft(_big().first).dx,
-          lessThan(t.getTopLeft(_stat('Movement (% of time)')).dx));
+      // Each plotted series keeps its own full label, once inside the panel.
+      expect(find.text('Movement (% of time)'), findsOneWidget);
+      expect(find.text('Heart rate (bpm)'), findsOneWidget);
+      expect(t.getTopLeft(_value('Heart rate (bpm)')).dx,
+          lessThan(t.getTopLeft(_value('Movement (% of time)')).dx));
       expect(find.text('60 bpm'), findsOneWidget);
       expect(find.text('10%'), findsOneWidget);
     });

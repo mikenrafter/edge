@@ -162,6 +162,51 @@ void main() {
           reason: 'vs avg for the latest day (50 vs 53.17)');
     });
 
+    testWidgets('a current latest reading keeps the older headline reason',
+        (t) async {
+      final handle = t.ensureSemantics();
+      addTearDown(handle.dispose);
+      await _rhr.open(t);
+      expect(olderNote('headline'), findsOneWidget);
+      expect(noteIn(panelOf(_rhr)), findsNothing);
+      expect(spokenOlder(t, 104), 1);
+    });
+
+    testWidgets('distinct headline and latest reasons are both kept',
+        (t) async {
+      final handle = t.ensureSemantics();
+      addTearDown(handle.dispose);
+      _phone(t, 390, 1800);
+      final points = panelSeries(10, olderLatest: true);
+      for (final point in points) {
+        if (point['from_older_version'] != null) {
+          point['older_version_reason'] = 'need_input:name=height_cm';
+          if (point['v'] == 54) {
+            point['from_older_version'] = 103;
+            point['older_version_reason'] = 'need_input:name=age';
+          }
+        }
+      }
+      final d = await MetricData.load(
+          OlderRepo(charts: {specOf('resting_hr').chartKey: points}),
+          'resting_hr', journal: false);
+      await t.pumpWidget(_scaled(1,
+          Scaffold(body: MetricDetail('resting_hr', data: d))));
+      await t.pumpAndSettle();
+      await t.tap(find.text('7 days'));
+      await t.pumpAndSettle();
+      expect(olderNote('headline'), findsOneWidget);
+      expect(noteIn(panelOf(_rhr)), findsOneWidget);
+      expect(t.widget<Text>(olderNote('headline')).data,
+          contains('From an older calculation (v103)'));
+      expect(t.widget<Text>(olderNote('readout')).data,
+          contains('From an older calculation (v104)'));
+      expect(t.widget<Text>(olderNote('headline')).data, contains('age'));
+      expect(t.widget<Text>(olderNote('readout')).data, contains('height'));
+      expect(spokenOlder(t, 103), 1);
+      expect(spokenOlder(t, 104), 1);
+    });
+
     testWidgets('the picked day no longer pops in as a separate card: the '
         'scroll extent does not change on a scrub', (t) async {
       await _rhr.open(t);

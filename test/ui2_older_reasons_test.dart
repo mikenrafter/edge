@@ -353,7 +353,8 @@ void main() {
       await pump(t, series(10, flagged: {3}), window: '7 days');
       final before = t.getSize(find.byType(ChartFrame).first);
       final rect = t.getRect(panel());
-      expect(_strip, findsNothing);
+      expect(olderNote('headline'), findsOneWidget);
+      expect(_strip, findsOneWidget);
       await t.tapAt(t.getCenter(slider()));
       await t.pumpAndSettle();
       expect(olderNote('selected'), findsNothing);
@@ -364,7 +365,8 @@ void main() {
           reason: 'the compact * rides with the scrubbed value');
       expect(t.getSize(find.byType(ChartFrame).first), before);
       expect(t.getRect(panel()), rect);
-      expect(_strip, findsNothing);
+      expect(olderNote('headline'), findsOneWidget);
+      expect(_strip, findsOneWidget);
     });
 
     testWidgets('one range per run of older days', (t) async {
@@ -396,7 +398,7 @@ void main() {
       expect(t.getSemantics(slider()).value, contains('older calculation'));
       expect(t.getSemantics(slider()).value, isNot(matches(kSpoken)));
       expect(spokenOlder(t, 104), 1,
-          reason: 'only the slider says it; the mark and card stay quiet');
+          reason: 'the headline strip speaks the full explanation once');
       h.dispose();
     });
   });

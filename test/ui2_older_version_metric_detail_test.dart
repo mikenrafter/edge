@@ -47,7 +47,7 @@ void main() {
         await _pump(t, key, series(10, flagged: {0}));
         expect(olderMark('headline'), findsOneWidget);
         expect(find.textContaining(kNoteV104), findsWidgets);
-        expect(olderNote('headline'), findsOneWidget);
+        expect(olderNote('readout'), findsOneWidget);
         expect(find.bySemanticsLabel(kSpoken), findsWidgets);
         h.dispose();
       });
@@ -82,7 +82,7 @@ void main() {
           window: '7 days');
       expect(olderMark('latest'), findsOneWidget);
       expect(olderNote('latest'), findsNothing, reason: 'one strip, deduped');
-      expect(t.widget<Text>(olderNote('headline')).data, contains(kNoteV104));
+      expect(t.widget<Text>(olderNote('readout')).data, contains(kNoteV104));
     });
 
     testWidgets('a trailing gap with a current latest reading: no flag on it '
@@ -103,7 +103,7 @@ void main() {
       final h = t.ensureSemantics();
       await _pump(t, 'strain', series(10, flagged: {3}), window: '7 days');
       await _scrubCenter(t);
-      expect(olderMark('selected'), findsOneWidget);
+      expect(olderMark('readout'), findsOneWidget);
       expect(olderNote('selected'), findsNothing,
           reason: 'a scrub never adds a reason row');
       final said = t.getSemantics(_slider).value;
@@ -116,7 +116,7 @@ void main() {
       final h = t.ensureSemantics();
       await _pump(t, 'strain', series(10, flagged: {0, 1}), window: '7 days');
       await _scrubCenter(t);
-      expect(olderMark('selected'), findsNothing);
+      expect(olderMark('readout'), findsNothing);
       expect(t.getSemantics(_slider).value, isNot(matches(kSpoken)));
       h.dispose();
     });
@@ -126,7 +126,7 @@ void main() {
       await _pump(t, 'strain', series(10, flagged: {0}, gaps: {3}),
           window: '7 days');
       await _scrubCenter(t);
-      expect(olderMark('selected'), findsNothing);
+      expect(olderMark('readout'), findsNothing);
       expect(t.getSemantics(_slider).value, isNot(matches(kSpoken)));
       h.dispose();
     });
