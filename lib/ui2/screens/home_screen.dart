@@ -1280,7 +1280,7 @@ String _recoveryWhy(HomeData d, AppLocalizations? l) {
     final (a, b) = (top[0], top[1]);
     return numeric
         ? (l?.homeWhyRecoveryDrivers(a.$1, f(a.$3), b.$1, f(b.$3)) ??
-            'Biggest drag: ${a.$1} ${f(a.$3)}, ${b.$1} ${f(b.$3)} (spreads from your baseline).')
+            'Biggest drag: ${a.$1} ${f(a.$3)}, ${b.$1} ${f(b.$3)} (how far each sits from your usual).')
         : (l?.homeWhyRecoveryPullingTwo(a.$1, b.$1) ??
             'Pulling it down: ${a.$1}, ${b.$1}.');
   }
@@ -1288,7 +1288,7 @@ String _recoveryWhy(HomeData d, AppLocalizations? l) {
     final a = top[0];
     return numeric
         ? (l?.homeWhyRecoveryDriver(a.$1, f(a.$3)) ??
-            'Biggest drag: ${a.$1} ${f(a.$3)} (spreads from your baseline).')
+            'Biggest drag: ${a.$1} ${f(a.$3)} (how far each sits from your usual).')
         : (l?.homeWhyRecoveryPullingOne(a.$1) ?? 'Pulling it down: ${a.$1}.');
   }
   final v = (d.readiness.value ?? 0).round();
