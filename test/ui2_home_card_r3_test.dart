@@ -5,7 +5,7 @@
 //     z. So the copy is built from label + contribution sign; a number is added
 //     only when a numeric z is actually present in `detail`.
 //       no numbers: "Pulling it down: HRV, Skin temperature."  (one: "Pulling it down: HRV.")
-//       numbers:    "Biggest drag: HRV -2.0, Resting heart rate -1.0 (spreads from your baseline)."
+//       numbers:    "Biggest drag: HRV -2.0, Resting heart rate -1.0 (how far each sits from your usual)."
 //  2. Ranked by negative weighted contribution (largest drag first), not by z.
 //  3. (superseded by round 4) The since caption row overlaps no dial and the dial
 //     below still opens its ring; the held tap target lives in the r4 test.
@@ -124,7 +124,7 @@ void main() {
             z('rhr', -3.0, -1.0),
           ]));
       expect(t.widget<Text>(_body).data,
-          'Biggest drag: HRV -2.0, Resting heart rate -1.0 (spreads from your baseline).');
+          'Biggest drag: HRV -2.0, Resting heart rate -1.0 (how far each sits from your usual).');
     });
 
     testWidgets('without numbers the same order holds', (t) async {

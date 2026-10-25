@@ -6,7 +6,7 @@
 //  P2a an older-version value is never pressing (no why panel for it).
 //  P2b why-copy states evidence or nothing:
 //        recovery, drivers present: the biggest drags with their numbers
-//          "Biggest drag: HRV -1.8, Resting heart rate -1.2 (spreads from your baseline)."
+//          "Biggest drag: HRV -1.8, Resting heart rate -1.2 (how far each sits from your usual)."
 //        recovery, no drivers: "Recovery 22 of 100" (no "usual range" claim)
 //        strain: "Strain 15.2, above today's target of 8–12."
 //      (driver fields: label, detail "...=<oriented z>", contribution)
@@ -226,14 +226,14 @@ void main() {
             _drv('resp', .5, .1),
           ]));
       expect(t.widget<Text>(body('recovery')).data,
-          'Biggest drag: HRV -1.8, Resting heart rate -1.2 (spreads from your baseline).');
+          'Biggest drag: HRV -1.8, Resting heart rate -1.2 (how far each sits from your usual).');
     });
 
     testWidgets('recovery, one drag: just that one', (t) async {
       await _rings(
           t, _data(recovery: 22, drivers: [_drv('hrv', -1.8, -.8), _drv('rhr', .4, .1)]));
       expect(t.widget<Text>(body('recovery')).data,
-          'Biggest drag: HRV -1.8 (spreads from your baseline).');
+          'Biggest drag: HRV -1.8 (how far each sits from your usual).');
     });
 
     testWidgets('recovery, no drivers (or none below baseline): plain fact, no usual-range claim',
