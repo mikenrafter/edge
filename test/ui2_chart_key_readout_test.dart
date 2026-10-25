@@ -532,4 +532,53 @@ void main() {
     expect(find.bySemanticsLabel(RegExp('Resting heart rate')), findsNothing);
     handle.dispose();
   });
+
+  testWidgets('a caption sampling would miss still keeps the height: the span '
+      'is the chart\'s own slots', (t) async {
+    // 1000 slots; only slot 1 has the long caption. A 201-point sample reads
+    // slots 0, 5, 10... and never sees it.
+    final long = 'Wednesday, 30 September, the very long one';
+    final d = [for (var i = 0; i < 1000; i++) 60.0 + i % 7];
+    final chart = ChartScrub(
+      label: 'Categorical',
+      time: (at) => ChartScrub.slotAt(1000, at) == 1 ? long : 'Mon',
+      keys: [
+        ChartKey.slots('Heart rate (bpm)', _red, d, (i, v) => '${v.round()} bpm'),
+      ],
+      child: CustomPaint(size: Size.infinite, painter: LineChart(d, _red)),
+    );
+    await _pump(t, chart, scale: 3.1, h: 2200);
+    expect(_caption(t), contains('MON'));
+    final rect = t.getRect(_panel());
+    final plot = t.getRect(find.byType(Scrubber));
+    await t.tapAt(Offset(plot.left + plot.width / 999, plot.center.dy));
+    await t.pump();
+    expect(_caption(t), contains('VERY LONG'));
+    expect(t.getRect(_panel()), rect);
+  });
+
+  testWidgets('changing the selection measures no caption again', (t) async {
+    final d = [for (var i = 0; i < 365; i++) 60.0 + i % 7];
+    await _pump(
+        t,
+        ChartScrub(
+          label: 'Year',
+          time: (at) => 'Day ${ChartScrub.slotAt(365, at)}',
+          keys: [
+            ChartKey.slots('Heart rate (bpm)', _red, d, (i, v) => '${v.round()} bpm'),
+          ],
+          child: CustomPaint(size: Size.infinite, painter: LineChart(d, _red)),
+        ),
+        h: 400);
+    final plot = t.getRect(find.byType(Scrubber));
+    await t.tapAt(Offset(plot.left + 10, plot.center.dy));
+    await t.pump();
+    final before = ChartKeyReadout.captionMeasures;
+    for (final f in [.2, .4, .6, .8]) {
+      await t.tapAt(Offset(plot.left + plot.width * f, plot.center.dy));
+      await t.pump();
+    }
+    expect(ChartKeyReadout.captionMeasures, before,
+        reason: 'the span was measured once; selections reuse it');
+  });
 }

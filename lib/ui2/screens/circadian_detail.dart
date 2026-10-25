@@ -463,6 +463,8 @@ class _CircadianDetailState extends State<CircadianDetail>
                       final last = d.actogram.lastIndexWhere((col) => col != null);
                       return last < 0 ? null : (last + .5) / d.actogram.length;
                     }(),
+                    slots: d.actogram.length,
+                    slotBars: true,
                   ),
                 ],
                 child: CustomPaint(

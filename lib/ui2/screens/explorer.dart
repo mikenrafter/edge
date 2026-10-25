@@ -859,6 +859,9 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
           child: ChartScrub(
             label: title,
             time: timeAt,
+            // Its own slots: a day per bar, or a minute per bar on one day.
+            slots: _day ? ((dayEnd - dayStart + 59) ~/ 60) : w!.length,
+            slotBars: true,
             keys: [
               for (final m in picked)
                 ChartKey(m.label, p.on(m.color), (at) {

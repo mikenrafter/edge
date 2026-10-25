@@ -479,12 +479,20 @@ class ChartKey {
   /// number are always one point. Null for a series with no such values.
   final OlderAt? older;
 
+  /// How many slots this series' x axis has, and whether a finger reads the
+  /// bar under it ([slotBars]) or the nearest sample. Lets [ChartScrub] list
+  /// every caption the scrub can produce instead of guessing at positions.
+  final int? slots;
+  final bool slotBars;
+
   const ChartKey(this.label, this.color, this.value,
       {this.latest = 1.0,
       this.active,
       this.atRest,
       this.data = true,
-      this.older});
+      this.older,
+      this.slots,
+      this.slotBars = false});
 
   /// A dense series — one entry per slot, `null` in the holes, the same list
   /// the painter draws. Lines read the slot nearest the finger; with [bars] the
@@ -512,6 +520,8 @@ class ChartKey {
         return ok(v) ? say(i, v!) : null;
       },
       older: older == null ? null : _SlotOlder(d, older, bars),
+      slots: d.length,
+      slotBars: bars,
       latest: last < 0
           ? null
           : bars
@@ -593,6 +603,16 @@ class ChartScrub extends StatefulWidget {
   final Widget child;
   final ChartScrubMode mode;
   final double step;
+
+  /// The slots the plot's x axis has, when the keys do not say (see
+  /// [ChartKey.slots]); [slotBars] as there. With neither, the caption span is
+  /// sampled at 201 positions, which is exact only for a continuous axis.
+  final int? slots;
+  final bool slotBars;
+
+  /// The position a slot reads at: the bar's centre, or the sample itself.
+  static double slotPosition(int i, int n, {bool bars = false}) =>
+      bars ? (i + .5) / n : (n < 2 ? 0.0 : i / (n - 1));
 
   static const cursorKey = ValueKey('chart-scrub-cursor');
   static const noData = 'No data here';
@@ -716,6 +736,8 @@ class ChartScrub extends StatefulWidget {
     this.gaps = false,
     this.mode = ChartScrubMode.line,
     this.step = .05,
+    this.slots,
+    this.slotBars = false,
   });
 
   @override
@@ -736,9 +758,26 @@ class _ChartScrubState extends State<ChartScrub> {
   List<String> timeSpan() {
     final t = widget.time;
     if (t == null) return const [];
-    return _span ??= {
-      for (var i = 0; i <= 200; i++) ?t(i / 200),
-    }.toList();
+    return _span ??= _captions(t);
+  }
+
+  /// The caption at every position the plot can resolve to: each slot of the
+  /// chart's own x axis (from [ChartScrub.slots] or its keys), so a categorical
+  /// or discontinuous axis and a chart of any length are covered exactly. Only
+  /// a chart that names no slots is sampled.
+  List<String> _captions(String? Function(double at) t) {
+    final axes = <(int, bool)>{
+      if (widget.slots != null) (widget.slots!, widget.slotBars),
+      for (final k in widget.keys)
+        if (k.slots != null) (k.slots!, k.slotBars),
+    };
+    final positions = <double>[
+      for (final (n, bars) in axes)
+        for (var i = 0; i < n; i++) ChartScrub.slotPosition(i, n, bars: bars),
+      if (axes.isEmpty)
+        for (var i = 0; i <= 200; i++) i / 200,
+    ];
+    return {...positions.map(t).whereType<String>()}.toList();
   }
 
   @override
@@ -771,6 +810,8 @@ class _ChartScrubState extends State<ChartScrub> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // A locale change makes the time callback answer in another language.
+    _span = null;
     final h = _ChartHubScope.maybeOf(context);
     if (!identical(h, _hub)) {
       _hub?.removeListener(_hubChanged);
@@ -873,6 +914,11 @@ class ChartKeyReadout extends StatelessWidget {
 
   static final _captionHeights = <Object, double>{};
 
+  /// Caption layouts done so far; a test reads it to see that a selection
+  /// change measures nothing.
+  @visibleForTesting
+  static int captionMeasures = 0;
+
   /// Every caption time the reader can scrub to. Day names differ in width, so
   /// the caption reserves the tallest of them and a scrub never reflows it.
   final List<String> timeSpan;
@@ -971,31 +1017,42 @@ class ChartKeyReadout extends StatelessWidget {
     return LayoutBuilder(builder: (_, box) {
       // Reserve both mode captions at this text size. They wrap in full, and
       // switching LATEST to SELECTED cannot add a line to a clock readout.
-      // Measured once per (span, width, style, scale, language): a scrub
-      // rebuilds this on every pointer move, and a year has 365 captions.
+      // The tallest caption of the whole span, measured once per (span,
+      // width, style, scale, direction, language) and not per selection: a
+      // scrub rebuilds this on every pointer move, and a year has 365 captions.
       final scaler = MediaQuery.textScalerOf(c);
       final dir = Directionality.of(c);
-      final key = (
-        style, scaler, box.maxWidth, dir, '$latestText|$selectedText',
-        time ?? absent, Object.hashAll(timeSpan), timeSpan.length
-      );
-      var height = _captionHeights[key] ?? -1.0;
-      if (height < 0) {
-        height = 0.0;
+      double tallest(Iterable<String> times) {
+        var h = 0.0;
         for (final mode in [latestText, selectedText]) {
-          for (final at in {time ?? absent, ...timeSpan}) {
+          for (final at in times) {
+            captionMeasures++;
             final tp = TextPainter(
               text: TextSpan(text: '$mode · $at'.toUpperCase(), style: style),
               textDirection: dir,
               textScaler: scaler,
             )..layout(maxWidth: box.maxWidth);
-            height = math.max(height, tp.height);
+            h = math.max(h, tp.height);
             tp.dispose();
           }
         }
+        return h;
+      }
+
+      final key = (
+        style, scaler, box.maxWidth, dir, '$latestText|$selectedText',
+        Object.hashAll(timeSpan), timeSpan.length
+      );
+      var height = _captionHeights[key];
+      if (height == null) {
+        height = tallest(timeSpan);
         if (_captionHeights.length > 64) _captionHeights.clear();
         _captionHeights[key] = height;
       }
+      // A caption the span does not hold (no span given, or "—") is measured
+      // alone: two layouts, not the span's.
+      final now = time ?? absent;
+      if (!timeSpan.contains(now)) height = math.max(height, tallest([now]));
       return ConstrainedBox(
         key: timeKey,
         constraints: BoxConstraints(minHeight: height),

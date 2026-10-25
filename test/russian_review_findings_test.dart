@@ -472,6 +472,12 @@ void main() {
       testWidgets('Russian percentile message today=$today band=$hasBand', (
         t,
       ) async {
+        // Tall enough to build the whole page: the 7-day chart now carries its
+        // readout panel, which pushes "Your normal range" past the lazy list's
+        // build extent on the default 600 px surface.
+        t.view.devicePixelRatio = 1;
+        t.view.physicalSize = const Size(800, 4000);
+        addTearDown(t.view.reset);
         final now = DateTime.now();
         final at = today ? now : DateTime(now.year, now.month, now.day - 2, 12);
         final ts = at.millisecondsSinceEpoch ~/ 1000;

@@ -1175,6 +1175,7 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
         return i < d.length && present(d[i]) ? say(d[i]!) : null;
       },
       latest: last < 0 || d.length < 2 ? null : last / (d.length - 1),
+      slots: d.length,
     );
   }
 
@@ -1190,6 +1191,7 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
         },
         latest: null,
         data: false,
+        slots: n,
       );
 
   // The readout's time is the instant under the finger, read off the same

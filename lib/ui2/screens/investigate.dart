@@ -879,7 +879,9 @@ class _InvestigateState extends State<Investigate> {
 
       final last = grid.lastIndexWhere((col) => col.any((v) => v != null));
       return ChartKey(label, ink, say,
-          latest: last < 0 ? null : (last + .5) / weeks);
+          latest: last < 0 ? null : (last + .5) / weeks,
+          slots: weeks,
+          slotBars: true);
     }
 
     return Surface(
