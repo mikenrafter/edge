@@ -50,7 +50,6 @@ int apk2At(int hour, [int minute = 0]) =>
     DateTime(2026, 10, 6, hour, minute).millisecondsSinceEpoch ~/ 1000;
 
 Finder apk2Key(String key) => find.byKey(ValueKey<String>(key));
-Finder apk2Item(String id) => apk2Key('$apk2TrayItemPrefix$id');
 Finder apk2Row(String id) => apk2Key('$apk2RowPrefix$id');
 Finder apk2Keep(String id) => apk2Key('$apk2KeepPrefix$id');
 Finder apk2Discard(String id) => apk2Key('$apk2DiscardPrefix$id');
@@ -79,40 +78,30 @@ bool apk2Selected(WidgetTester t, Finder f) {
   return t.getSemantics(f).getSemanticsData().hasFlag(SemanticsFlag.isSelected);
 }
 
+/// The ids of the rows still waiting for review: the ones carrying a Keep.
 Set<String> apk2PageIds() => {
   for (final e in find.byWidgetPredicate((w) => w.key is ValueKey<String> &&
-      (w.key! as ValueKey<String>).value.startsWith(apk2TrayItemPrefix)).evaluate())
-    ((e.widget.key! as ValueKey<String>).value).substring(apk2TrayItemPrefix.length),
+      (w.key! as ValueKey<String>).value.startsWith(apk2KeepPrefix)).evaluate())
+    ((e.widget.key! as ValueKey<String>).value).substring(apk2KeepPrefix.length),
 };
 
-/// Navigate at most two pages. Failure is an assertion naming the missing item.
+/// Scrolls the day list to a row (every row is in the list, none is paged).
 Future<void> apk2Show(WidgetTester t, String id) async {
-  expect(apk2Key(apk2Tray), findsOneWidget);
-  if (apk2Item(id).evaluate().isEmpty) {
-    final next = apk2Key(apk2Next);
-    if (apk2Enabled(t, next)) {
-      await apk2Tap(t, next);
-    } else {
-      await apk2Tap(t, apk2Key(apk2Previous));
-    }
-  }
-  expect(apk2Item(id), findsOneWidget, reason: '$id must be in this day queue');
+  expect(apk2Row(id), findsOneWidget, reason: '$id must be in this day list');
+  await t.ensureVisible(apk2Row(id));
+  await t.pump();
 }
 
-/// Open a marker's chooser when its time slot contains several items.
-Future<Finder> apk2MarkerTarget(WidgetTester t, String id) async {
-  final target = apk2Key('$apk2MarkerPrefix$id');
-  if (target.evaluate().isNotEmpty) return target;
-  final clusters = find.byWidgetPredicate((w) => w.key is ValueKey<String> &&
-      (w.key! as ValueKey<String>).value.startsWith('apk2-day-marker-cluster:'));
-  final keys = [for (final e in clusters.evaluate()) e.widget.key!];
-  for (final key in keys) {
-    await apk2Tap(t, find.byKey(key));
-    if (target.evaluate().isNotEmpty) return target;
-    await t.binding.handlePopRoute();
-    await settle(t);
-  }
-  fail('No chart marker for $id');
+/// The Save bar's button, present only while a choice is staged.
+Finder apk2SaveButton() => apk2Key(apk2Save);
+
+/// Tap the chart annotation icon for [annotationId] (e.g. `moment:1759...`).
+/// It reveals the list row the marker was made from.
+Future<void> apk2TapAnnotation(WidgetTester t, String annotationId) async {
+  final icon = find.byKey(ValueKey('annotation-icon:$annotationId'));
+  expect(icon, findsOneWidget, reason: 'annotation $annotationId on the chart');
+  await t.tap(icon);
+  await settle(t);
 }
 
 /// Count occurrences across the actual semantics tree, including merged labels.
@@ -151,6 +140,14 @@ class Apk2Repository extends LocalRepositoryImpl {
   bool failQueueRead = false;
   Completer<List<ActivitySuggestion>>? queueGate;
   Completer<Map<String, dynamic>>? timelineGate;
+  /// Extra `getDayTimeline` keys for [apk2Day] (stored `naps`, `sessions`).
+  Map<String, dynamic> extraTimeline = {};
+  /// When the day's result was "calculated" (epoch ms), as the timeline load
+  /// reads it. Null: no marker.
+  int? computedAtMs;
+  @override
+  Future<Map<String, dynamic>> getDayHrv(String date) async =>
+      {'computed_at': computedAtMs};
 
   @override
   Future<List<ActivitySuggestion>> pendingActivities() async {
@@ -190,6 +187,7 @@ class Apk2Repository extends LocalRepositoryImpl {
         {'event_id': 22, 'ts': apk2At(6)},
         {'event_id': 57, 'ts': apk2At(7)},
       ] : [],
+      if (date == apk2Day) ...extraTimeline,
     };
   }
   @override

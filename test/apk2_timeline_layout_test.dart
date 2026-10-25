@@ -31,49 +31,15 @@ void _rowStartsInside(WidgetTester t, Finder item, Finder viewport) {
 void main() {
   pinProcessTimeZone('America/Denver');
 
-  testWidgets('coincident markers offer each item as a labelled tappable choice', (t) async {
-    final semantics = t.ensureSemantics();
-    final r = await Apk2Rig.create(t);
-    await t.runAsync(() => r.store.reconcile(ActivityKind.workout, [
-      {'id': 'apk2-coincident', 'start_ts': apk2At(9, 15),
-        'end_ts': apk2At(9, 45), 'sport': 'walking'},
-    ]));
-    await r.mount(t, marked: true);
-    const activity = 'activity:apk2-coincident';
-    final cluster = find.byWidgetPredicate((w) => w is Pressable &&
-        w.key is ValueKey<String> &&
-        (w.key! as ValueKey<String>).value.startsWith('apk2-day-marker-cluster:') &&
-        w.semanticLabel!.contains('09:15, Marked moments') &&
-        w.semanticLabel!.contains('09:15, Possible workout'));
-    for (final id in [apk2MarkA, activity]) {
-      expect(cluster.hitTestable(), findsOneWidget);
-      await apk2Tap(t, cluster);
-      final marker = apk2Key('$apk2MarkerPrefix$id');
-      expect(marker.hitTestable(), findsOneWidget);
-      final label = t.getSemantics(marker).getSemanticsData().label;
-      expect(label, contains('09:15'));
-      expect(label, contains(id == activity ? 'Possible workout' : 'Marked moments'));
-      await t.tap(marker);
-      await t.pump();
-      expect(apk2Key('$apk2HighlightPrefix$id'), findsOneWidget);
-      await t.pump(const Duration(milliseconds: 400));
-      _rowStartsInside(t, apk2Row(id), apk2Key(apk2List));
-      await t.pump(const Duration(seconds: 5));
-    }
-    semantics.dispose();
-  });
-
-  /// The chart itself and its range control, not just the box reserved for
-  /// them, are on screen inside the pinned header and can be hit.
-  void headerControlsReachable(WidgetTester t) {
-    final header = t.getRect(apk2Key(apk2Chart));
+  /// The chart and its range control are inline in the page: scroll them into
+  /// view and they can be hit.
+  Future<void> chartControlsReachable(WidgetTester t) async {
     for (final f in [find.byType(ChartScrub), find.byType(RangeSlider)]) {
       expect(f, findsOneWidget);
+      await t.ensureVisible(f);
+      await t.pump();
       expect(f.hitTestable(), findsOneWidget);
-      final r = t.getRect(f);
-      expect(r.height, greaterThan(0));
-      expect(r.top, greaterThanOrEqualTo(header.top - 1));
-      expect(r.bottom, lessThanOrEqualTo(header.bottom + 1));
+      expect(t.getRect(f).height, greaterThan(0));
     }
   }
 
@@ -81,30 +47,28 @@ void main() {
       const Size(640, 360)]) {
     for (final scale in [1.0, 3.1]) {
       testWidgets('short ${size.width}x${size.height} viewport at ${scale}x '
-          'keeps the list and scrolling tray usable', (t) async {
+          'keeps the inline chart, the list and the Save bar usable', (t) async {
         final semantics = t.ensureSemantics();
         final errors = captureFlutterErrors();
         final r = await Apk2Rig.create(t);
         await r.mount(t, size: size, scale: scale);
-        final chart = t.getRect(apk2Key(apk2Chart));
         final list = t.getRect(apk2Key(apk2List));
-        final tray = t.getRect(apk2Key(apk2Tray));
-        headerControlsReachable(t);
-        expect(t.getRect(find.byType(ChartScrub)).height, greaterThan(24));
         expect(list.height, greaterThanOrEqualTo(size.height * .2));
-        // Stacked, or side by side on a short, wide screen.
-        expect(chart.bottom <= list.top || chart.right <= list.left, isTrue);
-        expect(tray.top, greaterThanOrEqualTo(list.bottom));
-        expect(tray.bottom, lessThanOrEqualTo(size.height));
+        await chartControlsReachable(t);
+        expect(t.getRect(find.byType(ChartScrub)).height, greaterThan(24));
         await apk2Show(t, apk2NapA);
         await apk2Tap(t, apk2Keep(apk2NapA));
+        final bar = t.getRect(apk2Key('apk2-review-savebar'));
+        expect(bar.bottom, lessThanOrEqualTo(size.height));
+        expect(bar.top, greaterThanOrEqualTo(t.getRect(apk2Key(apk2List)).bottom - 1),
+            reason: 'the Save bar sits below the list, not over it');
         await apk2Tap(t, apk2Key(apk2Save));
         expect(await r.status(t, apk2NapA), ActivityReviewStatus.confirmed);
+        expect(apk2Key(apk2Save), findsNothing);
         final scroll = t.state<ScrollableState>(_listScroll());
         await t.drag(apk2Key(apk2List), const Offset(0, -200));
         await t.pumpAndSettle();
         expect(scroll.position.pixels, greaterThan(0));
-        expect(t.getRect(apk2Key(apk2Chart)), chart);
         expect(errors, isEmpty);
         expect(t.takeException(), isNull);
         semantics.dispose();
@@ -118,25 +82,26 @@ void main() {
     final r = await Apk2Rig.create(t);
     await r.mount(t);
     final slider = find.byType(RangeSlider);
-    // Clusters count too: how many marks the chart offers at all.
-    final marks = find.byWidgetPredicate((w) => w is Pressable &&
-        w.key is ValueKey<String> &&
-        (w.key! as ValueKey<String>).value.startsWith('apk2-day-marker'));
+    // How many chart annotations are drawn at all.
+    final marks = find.byWidgetPredicate((w) => w.key is ValueKey<String> &&
+        (w.key! as ValueKey<String>).value.startsWith('annotation-icon:'));
     final whole = marks.evaluate().length;
-    expect(whole, greaterThan(2));
+    expect(whole, greaterThan(1));
     t.widget<RangeSlider>(slider).onChanged!(const RangeValues(540, 600));
     await t.pumpAndSettle();
     final zoomed = marks.evaluate().length;
-    expect(zoomed, lessThan(whole), reason: '09:00-10:00 hides most marks');
+    expect(zoomed, lessThan(whole), reason: '09:00-10:00 hides the other marks');
     t.view.physicalSize = const Size(640, 360) * 3;
     await t.pumpAndSettle();
-    headerControlsReachable(t);
+    await chartControlsReachable(t);
     final values = t.widget<RangeSlider>(slider).values;
     expect((values.start, values.end), (540.0, 600.0));
     expect(marks.evaluate().length, zoomed);
     t.widget<RangeSlider>(slider).onChanged!(const RangeValues(0, 1440));
     await t.pumpAndSettle();
     expect(marks.evaluate().length, greaterThan(zoomed));
+    await t.ensureVisible(marks.first);
+    await t.pump();
     expect(marks.hitTestable(), findsWidgets);
     expect(errors, isEmpty);
     expect(t.takeException(), isNull);
@@ -161,87 +126,76 @@ void main() {
     expect(apk2Key(apk2LeaveDialog), findsOneWidget);
     await apk2Tap(t, apk2Key(apk2Leave));
     expect(find.text('Outside breakdown'), findsOneWidget);
-    expect(apk2Key(apk2Tray), findsNothing);
+    expect(apk2Key(apk2Save), findsNothing);
     expect(await r.snapshot(t), before);
     semantics.dispose();
   });
 
   for (final scale in [1.0, 3.1]) {
-    testWidgets('at 360 pt and ${scale}x, scrolling the list moves its rows '
-        'while the pinned chart keeps the same viewport rectangle', (t) async {
+    testWidgets('at 360 pt and ${scale}x, the chart is inline: scrolling the '
+        'page carries the chart away with the rows', (t) async {
       final errors = captureFlutterErrors();
       final r = await Apk2Rig.create(t);
       await r.mount(t, scale: scale);
       expect(apk2Key(apk2Chart), findsOneWidget);
       expect(apk2Key(apk2List), findsOneWidget);
       expect(_listScroll(), findsOneWidget);
+      expect(find.descendant(of: apk2Key(apk2List),
+          matching: apk2Key(apk2Chart)), findsOneWidget,
+          reason: 'the chart is inside the scrolling list, not pinned above it');
       final chart = t.getRect(apk2Key(apk2Chart));
-      final list = t.getRect(apk2Key(apk2List));
-      expect(chart.top, greaterThanOrEqualTo(0));
-      expect(chart.bottom, lessThanOrEqualTo(list.top + 1));
       final scroll = t.state<ScrollableState>(_listScroll());
       final initialOffset = scroll.position.pixels;
-      await t.drag(apk2Key(apk2List), const Offset(0, -700));
+      await t.drag(apk2Key(apk2List), const Offset(0, -300));
       await t.pumpAndSettle();
-      expect(scroll.position.pixels, greaterThan(initialOffset + 150),
-          reason: 'a frozen list cannot make this pinned-header test pass');
-      expect(t.getRect(apk2Key(apk2Chart)), chart);
+      final moved = scroll.position.pixels - initialOffset;
+      expect(moved, greaterThan(150));
+      expect(t.getRect(apk2Key(apk2Chart)).top, closeTo(chart.top - moved, 1),
+          reason: 'the chart moves one-to-one with the page');
       await t.scrollUntilVisible(apk2Row(apk2Answered), 150,
           scrollable: _listScroll());
       await t.ensureVisible(apk2Row(apk2Answered));
       await t.pumpAndSettle();
       _rowStartsInside(t, apk2Row(apk2Answered), apk2Key(apk2List));
-      expect(t.getRect(apk2Key(apk2Chart)), chart);
       expect(errors, isEmpty, reason: 'includes RenderFlex overflow exceptions');
       expect(t.takeException(), isNull);
     });
 
-    testWidgets('at 360 pt and ${scale}x, tapping a chart marker reveals '
-        'its offscreen row and briefly highlights only that row', (t) async {
+    testWidgets('at 360 pt and ${scale}x, tapping a chart annotation reveals '
+        'its offscreen row and highlights only that row', (t) async {
       final errors = captureFlutterErrors();
       final r = await Apk2Rig.create(t);
       await r.mount(t, scale: scale);
-      expect(apk2Key(apk2List), findsOneWidget);
       final target = apk2Row(apk2Answered);
       final viewport = t.getRect(apk2Key(apk2List));
       final initiallyVisible = target.evaluate().isNotEmpty &&
           t.getRect(target).overlaps(viewport);
       expect(initiallyVisible, isFalse,
-          reason: 'the marker must scroll to a row outside the viewport');
-      final marker = await apk2MarkerTarget(t, apk2Answered);
-      expect(marker, findsOneWidget);
-      expect(marker.hitTestable(), findsOneWidget);
-      expect(apk2Key('$apk2HighlightPrefix$apk2Answered'), findsNothing);
-      await t.tap(marker);
-      await t.pump();
-      expect(apk2Key('$apk2HighlightPrefix$apk2Answered'), findsOneWidget,
-          reason: 'highlight starts immediately, before waiting out its timer');
-      expect(find.byWidgetPredicate((w) => w.key is ValueKey<String> &&
-          (w.key! as ValueKey<String>).value.startsWith(apk2HighlightPrefix)),
-          findsOneWidget, reason: 'other items must not be highlighted');
-      await t.pump(const Duration(milliseconds: 400));
+          reason: 'the tap must scroll to a row outside the viewport');
+      Color? tint(String id) => t.widget<Container>(apk2Row(id)).color;
+      expect(tint(apk2Answered), isNull);
+      await apk2TapAnnotation(t, 'moment:${apk2At(20, 45)}');
+      expect(tint(apk2Answered), isNotNull, reason: 'the tapped row is tinted');
+      expect(tint(apk2Meal), isNull, reason: 'no other row is');
       _rowStartsInside(t, target, apk2Key(apk2List));
-      await t.pump(const Duration(seconds: 5));
-      expect(apk2Key('$apk2HighlightPrefix$apk2Answered'), findsNothing,
-          reason: 'the highlight must clear without another tap');
       expect(errors, isEmpty);
       expect(t.takeException(), isNull);
     });
 
-    testWidgets('at 360 pt and ${scale}x, tray paging, staged controls and '
+    testWidgets('at 360 pt and ${scale}x, staged controls, the Save bar and '
         'the leave confirmation fit without overflow', (t) async {
       final semantics = t.ensureSemantics();
       final errors = captureFlutterErrors();
       final r = await Apk2Rig.create(t);
       await r.mount(t, scale: scale);
-      expect(apk2Key(apk2Tray), findsOneWidget);
-      final tray = t.getRect(apk2Key(apk2Tray));
-      expect(tray.left, greaterThanOrEqualTo(0));
-      expect(tray.right, lessThanOrEqualTo(360));
-      expect(tray.bottom, closeTo(900, 1), reason: 'the tray belongs at the bottom');
+      expect(apk2Key(apk2Save), findsNothing, reason: 'no bar before staging');
       await apk2Show(t, apk2NapA);
       await apk2Tap(t, apk2Keep(apk2NapA));
       expect(apk2Selected(t, apk2Keep(apk2NapA)), isTrue);
+      final bar = t.getRect(apk2Key('apk2-review-savebar'));
+      expect(bar.left, greaterThanOrEqualTo(0));
+      expect(bar.right, lessThanOrEqualTo(360));
+      expect(bar.bottom, closeTo(900, 1), reason: 'the bar belongs at the bottom');
       await apk2Show(t, apk2WorkoutA);
       await apk2Tap(t, apk2Discard(apk2WorkoutA));
       expect(apk2Enabled(t, apk2Key(apk2Save)), isTrue);
@@ -256,33 +210,28 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('at 360 pt and ${scale}x, normal entry reserves an empty tray '
-        'through loading and speaks the empty status once', (t) async {
+    testWidgets('at 360 pt and ${scale}x, a day with nothing to review shifts '
+        'nothing when its read completes and shows no Save bar', (t) async {
       final semantics = t.ensureSemantics();
       final errors = captureFlutterErrors();
       final r = await Apk2Rig.create(t, pending: false);
       final gate = Completer<List<ActivitySuggestion>>();
       r.repo.queueGate = gate;
       await r.mount(t, scale: scale);
-      expect(apk2Key(apk2Tray), findsOneWidget);
       expect(apk2Key(apk2List), findsOneWidget);
       expect(apk2Key(apk2Chart), findsOneWidget);
-      expect(apk2Key(apk2Empty), findsNothing,
-          reason: 'waiting for a read must not announce an empty queue');
-      final beforeTray = t.getRect(apk2Key(apk2Tray));
+      expect(apk2Key(apk2Save), findsNothing);
       final beforeList = t.getRect(apk2Key(apk2List));
       final beforeChart = t.getRect(apk2Key(apk2Chart));
+      final beforeRow = t.getRect(apk2Row(apk2Meal));
       gate.complete([]);
       await settle(t);
-      expect(apk2Key(apk2Empty), findsOneWidget);
-      expect(find.descendant(of: apk2Key(apk2Empty),
-          matchRoot: true, matching: find.text('Nothing to review')), findsOneWidget);
-      expect(apk2SpokenCount(t, 'Nothing to review'), 1);
-      expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+      expect(find.text('Breakdown of your day'), findsOneWidget);
+      expect(apk2Key(apk2Save), findsNothing);
       expect(apk2PageIds(), isEmpty);
-      expect(t.getRect(apk2Key(apk2Tray)), beforeTray);
       expect(t.getRect(apk2Key(apk2List)), beforeList);
       expect(t.getRect(apk2Key(apk2Chart)), beforeChart);
+      expect(t.getRect(apk2Row(apk2Meal)), beforeRow);
       expect(errors, isEmpty);
       expect(t.takeException(), isNull);
       // Disposed in the body: the binding checks handles before teardowns run.

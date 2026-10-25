@@ -14,7 +14,7 @@ import 'support/pin_tz.dart';
 void main() {
   pinProcessTimeZone('America/Denver');
 
-  testWidgets('day change clears the old tray while the new timeline is loading', (t) async {
+  testWidgets('day change clears the old rows and the Save bar while the new timeline is loading', (t) async {
     final semantics = t.ensureSemantics();
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
@@ -28,47 +28,39 @@ void main() {
         w is Pressable && w.semanticLabel == 'Next day'));
     await apk2Tap(t, apk2Key(apk2Leave));
     expect(apk2PageIds(), isEmpty);
-    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    expect(apk2Key(apk2Save), findsNothing);
     expect(apk2Keep(apk2NapA), findsNothing);
     expect(apk2Row(apk2NapA), findsNothing);
-    await apk2Tap(t, apk2Key(apk2Save));
     expect(await r.snapshot(t), before);
     gate.complete(newer);
     await settle(t);
     expect(apk2PageIds(), isEmpty);
-    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    expect(apk2Key(apk2Save), findsNothing);
     expect(await r.snapshot(t), before);
     semantics.dispose();
   });
 
-  testWidgets('normal breakdown pages four pending items three at a time, '
-      'with disabled boundary arrows and Save', (t) async {
+  testWidgets('normal breakdown lists all four pending items in the list, '
+      'with no tray, no pagination and no Save bar until something is staged', (t) async {
     final semantics = t.ensureSemantics();
     final r = await Apk2Rig.create(t);
     await r.mount(t);
-    expect(apk2Key(apk2Tray), findsOneWidget);
-    final first = apk2PageIds();
-    expect(first, hasLength(3));
-    expect(apk2ActivityIds.containsAll(first), isTrue);
-    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
-    expect(apk2Enabled(t, apk2Key(apk2Previous)), isFalse);
-    expect(apk2Enabled(t, apk2Key(apk2Next)), isTrue);
-    expect(find.descendant(of: apk2Key(apk2Page), matchRoot: true,
-        matching: find.text('1 of 2')),
-        findsOneWidget);
-    expect(apk2SpokenCount(t, '1 of 2'), 1);
-
-    await apk2Tap(t, apk2Key(apk2Next));
-    final second = apk2PageIds();
-    expect(second, hasLength(1));
-    expect(first.intersection(second), isEmpty);
-    expect(first.union(second), apk2ActivityIds);
-    expect(apk2Enabled(t, apk2Key(apk2Next)), isFalse);
-    expect(apk2Enabled(t, apk2Key(apk2Previous)), isTrue);
-    expect(apk2SpokenCount(t, '2 of 2'), 1);
-    expect(apk2SpokenCount(t, '1 of 2'), 0);
-    await apk2Tap(t, apk2Key(apk2Previous));
-    expect(apk2PageIds(), first);
+    expect(apk2PageIds(), apk2ActivityIds);
+    for (final key in ['apk2-review-tray', 'apk2-review-next',
+        'apk2-review-previous', 'apk2-review-page', 'apk2-review-empty']) {
+      expect(apk2Key(key), findsNothing, reason: key);
+    }
+    expect(apk2Key(apk2Save), findsNothing);
+    for (final id in apk2ActivityIds) {
+      await apk2Show(t, id);
+      expect(apk2Keep(id), findsOneWidget);
+      expect(apk2Discard(id), findsOneWidget);
+      expect(apk2Key('day-review-label:$id'), findsOneWidget);
+      expect(apk2Enabled(t, apk2Keep(id)), isTrue);
+    }
+    await apk2Tap(t, apk2Keep(apk2NapA));
+    expect(apk2Key(apk2Save), findsOneWidget);
+    expect(apk2Enabled(t, apk2Key(apk2Save)), isTrue);
     // Disposed in the body: the binding checks handles before teardowns run.
     semantics.dispose();
   });
@@ -99,7 +91,7 @@ void main() {
     expect(after['sleep_nap']!.single['source'], 'confirmed');
     expect(after['sessions'], isEmpty, reason: 'discarded workout is not logged');
     expect(after['moment_label'], before['moment_label']);
-    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    expect(apk2Key(apk2Save), findsNothing);
     expect(apk2PageIds(), {apk2NapB, apk2WorkoutB});
     // Disposed in the body: the binding checks handles before teardowns run.
     semantics.dispose();
@@ -119,7 +111,7 @@ void main() {
       expect(apk2Enabled(t, apk2Key(apk2Save)), isTrue);
       await apk2Tap(t, choice);
       expect(apk2Selected(t, choice), isFalse);
-      expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+      expect(apk2Key(apk2Save), findsNothing);
       expect(await r.snapshot(t), before);
       // Disposed in the body: the binding checks handles before teardowns run.
       semantics.dispose();
@@ -152,17 +144,14 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('paging preserves a choice; choosing the other action replaces '
-      'it and Save applies only the replacement', (t) async {
+  testWidgets('choosing the other action replaces a staged choice and Save '
+      'applies only the replacement', (t) async {
     final semantics = t.ensureSemantics();
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     await r.mount(t);
-    expect(apk2Key(apk2Tray), findsOneWidget);
-    final chosen = apk2PageIds().first;
+    const chosen = apk2NapA;
     await apk2Tap(t, apk2Keep(chosen));
-    await apk2Tap(t, apk2Key(apk2Next));
-    await apk2Tap(t, apk2Key(apk2Previous));
     expect(apk2Selected(t, apk2Keep(chosen)), isTrue);
     await apk2Tap(t, apk2Discard(chosen));
     expect(apk2Selected(t, apk2Keep(chosen)), isFalse);
@@ -179,15 +168,14 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('Back asks before losing changes; cancel preserves page and '
+  testWidgets('Back asks before losing changes; cancel preserves the page and '
       'choice; confirming leaves without saving or restoring a stale draft', (t) async {
     final semantics = t.ensureSemantics();
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     await r.mount(t);
-    expect(apk2Key(apk2Tray), findsOneWidget);
-    await apk2Tap(t, apk2Key(apk2Next));
-    final chosen = apk2PageIds().single;
+    expect(apk2PageIds(), apk2ActivityIds);
+    const chosen = apk2WorkoutB;
     await apk2Tap(t, apk2Discard(chosen));
     await t.binding.handlePopRoute();
     await settle(t, n: 8);
@@ -197,7 +185,7 @@ void main() {
         findsWidgets);
     await apk2Tap(t, apk2Key(apk2Stay));
     expect(apk2Key(apk2LeaveDialog), findsNothing);
-    expect(apk2PageIds(), {chosen});
+    expect(apk2PageIds(), apk2ActivityIds);
     expect(apk2Selected(t, apk2Discard(chosen)), isTrue);
     expect(apk2Enabled(t, apk2Key(apk2Save)), isTrue);
     expect(await r.snapshot(t), before);
@@ -206,13 +194,13 @@ void main() {
     await settle(t, n: 8);
     await apk2Tap(t, apk2Key(apk2Leave));
     expect(find.text('Outside breakdown'), findsOneWidget);
-    expect(apk2Key(apk2Tray), findsNothing);
+    expect(apk2Key(apk2Save), findsNothing);
     expect(await r.snapshot(t), before);
     await apk2Tap(t, find.text('Open breakdown'));
     await settle(t);
     await apk2Show(t, chosen);
     expect(apk2Selected(t, apk2Discard(chosen)), isFalse);
-    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    expect(apk2Key(apk2Save), findsNothing);
     // Disposed in the body: the binding checks handles before teardowns run.
     semantics.dispose();
   });
@@ -260,26 +248,18 @@ void main() {
     final labels = (await t.runAsync(() => LocalDb.momentLabels(date: apk2Day)))!;
     expect(labels.where((l) => l.hhmm == '09:15'), hasLength(1));
     expect(labels.singleWhere((l) => l.hhmm == '09:15').label, isNull);
-    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    expect(apk2Key(apk2Save), findsNothing);
     // Disposed in the body: the binding checks handles before teardowns run.
     semantics.dispose();
   });
 
   testWidgets('marked moments and detected naps and workouts share one '
-      'paginated queue and one Save with no early writes', (t) async {
+      'list and one Save with no early writes', (t) async {
     final semantics = t.ensureSemantics();
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     await r.mount(t, marked: true);
-    expect(apk2Key(apk2Tray), findsOneWidget);
-    final first = apk2PageIds();
-    expect(first, hasLength(3));
-    await apk2Tap(t, apk2Key(apk2Next));
-    final second = apk2PageIds();
-    expect(second, hasLength(3));
-    expect(first.intersection(second), isEmpty);
-    expect(first.union(second), apk2MixedIds);
-    expect(apk2Enabled(t, apk2Key(apk2Next)), isFalse);
+    expect(apk2PageIds(), apk2MixedIds);
     await apk2Show(t, apk2MarkA);
     await apk2Tap(t, apk2Discard(apk2MarkA));
     await apk2Show(t, apk2NapA);
@@ -296,13 +276,13 @@ void main() {
     expect(await r.status(t, apk2NapA), ActivityReviewStatus.confirmed);
     expect(await r.status(t, apk2WorkoutA), ActivityReviewStatus.discarded);
     expect(apk2PageIds(), {apk2NapB, apk2WorkoutB, apk2MarkB});
-    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    expect(apk2Key(apk2Save), findsNothing);
     // Disposed in the body: the binding checks handles before teardowns run.
     semantics.dispose();
   });
 
   testWidgets('a queue read failure stays visible beside the day chart, '
-      'does not claim empty, and Retry restores pending items', (t) async {
+      'does not claim nothing to review, and Retry restores pending items', (t) async {
     final semantics = t.ensureSemantics();
     final r = await Apk2Rig.create(t);
     r.repo.failQueueRead = true;
@@ -310,13 +290,92 @@ void main() {
     expect(apk2Key(apk2LoadError), findsOneWidget);
     apk2StatusSpokenOnce(t, apk2LoadError);
     expect(apk2Key(apk2Chart), findsOneWidget);
-    expect(apk2Key(apk2Empty), findsNothing);
     expect(apk2PageIds(), isEmpty);
     r.repo.failQueueRead = false;
     await apk2Tap(t, apk2Key(apk2Retry));
     expect(apk2Key(apk2LoadError), findsNothing);
-    expect(apk2PageIds(), hasLength(3));
+    expect(apk2PageIds(), apk2ActivityIds);
     // Disposed in the body: the binding checks handles before teardowns run.
     semantics.dispose();
+  });
+
+  // A saved nap or workout keeps its row (disabled Edit) until the day is
+  // calculated again AFTER the Save.
+  group('a saved row waits for a result newer than its Save', () {
+    final future = DateTime.now().add(const Duration(days: 1)).millisecondsSinceEpoch;
+    // Another Save is what makes the screen read the day again.
+    Future<void> saveThenReloadViaSecondSave(WidgetTester t, Apk2Rig r) async {
+      await apk2Tap(t, apk2Keep(apk2NapA));
+      await apk2Tap(t, apk2Key(apk2Save));
+      await apk2Tap(t, apk2Discard(apk2WorkoutB));
+      await apk2Tap(t, apk2Key(apk2Save));
+    }
+
+    testWidgets('a stale reload keeps it, even beside a stored overlapping nap', (t) async {
+      final semantics = t.ensureSemantics();
+      final r = await Apk2Rig.create(t);
+      // Derivation deferred: the stored bundle is the OLD one, with a nap that
+      // happens to overlap the edited window.
+      r.repo.computedAtMs = 1;
+      r.repo.extraTimeline = {'naps': [
+        {'start': apk2At(11, 20), 'end': apk2At(11, 40), 'duration_min': 20},
+      ]};
+      await r.mount(t);
+      await saveThenReloadViaSecondSave(t, r);
+      expect(apk2Row(apk2NapA), findsOneWidget,
+          reason: 'old data must not retire the placeholder');
+      expect(apk2Key('day-row-edit:$apk2NapA'), findsOneWidget);
+      expect(apk2Enabled(t, apk2Key('day-row-edit:$apk2NapA')), isFalse);
+      semantics.dispose();
+    });
+
+    testWidgets('a newer result clears it even when no nap row exists '
+        '(absorbed into the main sleep)', (t) async {
+      final semantics = t.ensureSemantics();
+      final r = await Apk2Rig.create(t);
+      r.repo.computedAtMs = future;
+      await r.mount(t);
+      await saveThenReloadViaSecondSave(t, r);
+      expect(apk2Row(apk2NapA), findsNothing);
+      expect(apk2Key('day-row-edit:$apk2NapA'), findsNothing);
+      semantics.dispose();
+    });
+
+    testWidgets('its stored replacement takes the placeholder\'s place among '
+        'rows at the same time', (t) async {
+      final semantics = t.ensureSemantics();
+      final r = await Apk2Rig.create(t);
+      const tie = 'activity:apk2-tie';
+      await t.runAsync(() => r.store.reconcile(ActivityKind.workout, [
+        {'id': 'apk2-workout-a', 'start_ts': apk2At(12),
+          'end_ts': apk2At(12, 30), 'sport': 'walking'},
+        {'id': 'apk2-workout-b', 'start_ts': apk2At(18),
+          'end_ts': apk2At(18, 40), 'sport': 'running'},
+        {'id': 'apk2-tie', 'start_ts': apk2At(11),
+          'end_ts': apk2At(11, 25), 'sport': 'walking'},
+      ]));
+      await r.mount(t);
+      expect(apk2PageIds(), contains(tie));
+      final first = t.getTopLeft(apk2Row(apk2NapA)).dy <=
+              t.getTopLeft(apk2Row(tie)).dy ? apk2NapA : tie;
+      final second = first == apk2NapA ? tie : apk2NapA;
+      // The kept one comes back as a stored row at the very same time.
+      r.repo.computedAtMs = future;
+      r.repo.extraTimeline = first == apk2NapA
+          ? {'naps': [{'start': apk2At(11), 'end': apk2At(11, 25), 'duration_min': 25}]}
+          : {'sessions': [{'id': 'apk2-stored', 'start_ts': apk2At(11),
+              'end_ts': apk2At(11, 25), 'type': 'walking'}]};
+      await apk2Tap(t, apk2Keep(first));
+      await apk2Tap(t, apk2Key(apk2Save));
+      expect(apk2Row(first), findsNothing, reason: 'the placeholder is gone');
+      final stored = first == apk2NapA
+          ? apk2Key('apk2-day-row:nap:${apk2At(11)}')
+          : apk2Key('apk2-day-row:session:apk2-stored');
+      expect(stored, findsOneWidget);
+      expect(apk2Row(second), findsOneWidget);
+      expect(t.getTopLeft(stored).dy, lessThan(t.getTopLeft(apk2Row(second)).dy),
+          reason: 'A then B stays A then B');
+      semantics.dispose();
+    });
   });
 }

@@ -118,11 +118,13 @@ class DayReviewController extends ChangeNotifier {
   /// place) until the reload brings the stored rows, so nothing moves.
   final Map<String, Moment> _settled = {};
   bool isSettled(String id) => _settled.containsKey(id);
-  /// The time span and kind of each settled activity, to find its stored row.
-  final Map<String, ({bool nap, int start, int end})> _settledSpan = {};
+  /// The time span and kind of each settled activity, and when it was saved.
+  final Map<String, ({bool nap, int start, int end, int savedAtMs})> _settledSpan = {};
   /// A stable position per row id, so a row keeps its place in the list when
   /// its state changes (a settled row stays where it was among its peers).
   final Map<String, int> _order = {};
+  /// Positions of cleared placeholders, handed to the rows that replace them.
+  final List<({bool nap, int start, int end, int order})> _replaced = [];
   bool get hasSettled => _settled.isNotEmpty;
   /// The screen could not reload the day after a Save.
   bool reloadFailed = false;
@@ -132,25 +134,42 @@ class DayReviewController extends ChangeNotifier {
     _changed();
   }
   /// Called by the screen in the same frame that shows the reloaded rows.
-  /// A settled activity stays until the reloaded rows hold its replacement
-  /// (same kind, overlapping time); a settled moment or glass is stored
-  /// before the reload, so it goes.
-  void reconcileSettled(List<Moment> loaded) {
+  /// [computedAtMs] is when the day's result was calculated. A settled
+  /// activity stays until a result NEWER than its Save arrives (an older one
+  /// is the derivation still being deferred); then it goes whether or not a
+  /// row replaces it (a nap folded into the main sleep has none). A settled
+  /// moment or glass is stored before the reload, so it goes at once.
+  void reconcileSettled(int? computedAtMs) {
     reloadFailed = false;
     _settled.removeWhere((id, _) {
       final span = _settledSpan[id];
-      if (span == null) return true;
-      final found = loaded.any((m) {
-        final ref = m.editRef;
-        if (ref == null || (span.nap ? ref != 'nap' : !ref.startsWith('session:'))) {
-          return false;
-        }
-        return m.at <= span.end && (m.until ?? m.at) >= span.start;
-      });
-      if (found) _settledSpan.remove(id);
-      return found;
+      if (span != null && (computedAtMs == null || computedAtMs <= span.savedAtMs)) {
+        return false;
+      }
+      final order = _order[id];
+      if (span != null && order != null) {
+        _replaced.add((nap: span.nap, start: span.start, end: span.end, order: order));
+      }
+      _settledSpan.remove(id);
+      return true;
     });
-    _settledSpan.removeWhere((id, _) => !_settled.containsKey(id));
+  }
+  /// Where [m] sorts among rows at the same time: a pending or settled row by
+  /// its place in the list, a stored row by the placeholder it replaced.
+  /// Null: a row the review never held.
+  int? rowOrder(String id, Moment m) {
+    final own = _order[id];
+    if (own != null) return own;
+    final ref = m.editRef;
+    if (ref == null) return null;
+    final nap = ref == 'nap';
+    if (!nap && !ref.startsWith('session:')) return null;
+    for (final r in _replaced) {
+      if (r.nap == nap && m.at <= r.end && (m.until ?? m.at) >= r.start) {
+        return r.order;
+      }
+    }
+    return null;
   }
   int savedRevision = 0;
   final Map<String, ReviewDecision> _drafts = {};
@@ -426,6 +445,7 @@ class DayReviewController extends ChangeNotifier {
     saveFailed = false;
     _changed();
     final staged = Map.of(_choices);
+    final savedAtMs = DateTime.now().millisecondsSinceEpoch;
     final selectedRanges = _ranges.where((r) =>
         staged['moment:${r.startKey}'] == true &&
         staged['moment:${r.endKey}'] == true).toList();
@@ -474,7 +494,8 @@ class DayReviewController extends ChangeNotifier {
           if (s != null) {
             final edit = _activityEdits[e.key];
             _settledSpan[e.key] = (nap: s.kind == ActivityKind.nap,
-                start: edit?.startTs ?? s.startTs, end: edit?.endTs ?? s.endTs);
+                start: edit?.startTs ?? s.startTs, end: edit?.endTs ?? s.endTs,
+                savedAtMs: savedAtMs);
           }
         }
       }
@@ -581,38 +602,45 @@ class DayReviewActions extends StatelessWidget {
     Widget slot(Widget? w, {bool last = false}) => Expanded(child: Padding(
         padding: EdgeInsets.only(right: last ? 0 : S.x2),
         child: w ?? const SizedBox.shrink()));
-    return Padding(padding: const EdgeInsets.only(bottom: S.x2),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
-        slot(pending ? reviewButton(c, 'apk2-review-keep:$id',
-          l?.assumedWaterKeep ?? 'Keep', enabled ? () => r.choose(id, true) : null,
-          selected: r.choice(id) == true, glyph: LucideIcons.check,
-          color: C.green) : null),
-        slot(pending && !range ? reviewButton(c, 'apk2-review-discard:$id',
-            l?.dayReviewDiscard ?? 'Discard',
-            enabled ? () => r.choose(id, false) : null,
-            selected: r.choice(id) == false, glyph: LucideIcons.x,
-            color: C.red) : null),
-        slot(pendingEdit
-            ? reviewButton(c, 'day-review-label:$id', l?.activityEdit ?? 'Edit',
-                enabled ? () => id.startsWith('activity:')
-                    ? r.editActivity(c, id) : r.editMoment(c, id) : null,
+    final keep = pending ? reviewButton(c, 'apk2-review-keep:$id',
+        l?.assumedWaterKeep ?? 'Keep', enabled ? () => r.choose(id, true) : null,
+        selected: r.choice(id) == true, glyph: LucideIcons.check,
+        color: C.green) : null;
+    final discard = pending && !range ? reviewButton(c, 'apk2-review-discard:$id',
+        l?.dayReviewDiscard ?? 'Discard',
+        enabled ? () => r.choose(id, false) : null,
+        selected: r.choice(id) == false, glyph: LucideIcons.x,
+        color: C.red) : null;
+    final edit = pendingEdit
+        ? reviewButton(c, 'day-review-label:$id', l?.activityEdit ?? 'Edit',
+            enabled ? () => id.startsWith('activity:')
+                ? r.editActivity(c, id) : r.editMoment(c, id) : null,
+            glyph: LucideIcons.pencil)
+        : savedEdit
+            ? reviewButton(c, 'day-row-edit:$id',
+                l?.activityEdit ?? 'Edit',
+                () => editor!.openRowEditor(moment),
                 glyph: LucideIcons.pencil)
-            : savedEdit
+            : settled
+                // Saved a moment ago: the editor opens once the stored
+                // row is back, and the line keeps its height meanwhile.
+                // If that reload failed, pressing Edit tries it again.
                 ? reviewButton(c, 'day-row-edit:$id',
                     l?.activityEdit ?? 'Edit',
-                    () => editor!.openRowEditor(moment),
+                    r!.reloadFailed && editor != null ? editor!.reloadDay : null,
                     glyph: LucideIcons.pencil)
-                : settled
-                    // Saved a moment ago: the editor opens once the stored
-                    // row is back, and the line keeps its height meanwhile.
-                    // If that reload failed, pressing Edit tries it again.
-                    ? reviewButton(c, 'day-row-edit:$id',
-                        l?.activityEdit ?? 'Edit',
-                        r!.reloadFailed && editor != null ? editor!.reloadDay : null,
-                        glyph: LucideIcons.pencil)
-                    : null, last: true),
-      ]),
+                : null;
+    // Three across need a word's width each; at large text a word like
+    // "Discard" no longer fits a third of the row, so the buttons stack.
+    final stacked = MediaQuery.textScalerOf(c).scale(1) > 1.25;
+    return Padding(padding: const EdgeInsets.only(bottom: S.x2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (stacked) ...[
+        for (final b in [keep, discard, edit])
+          if (b != null) Padding(
+              padding: const EdgeInsets.only(bottom: S.x1), child: b),
+      ] else
+        Row(children: [slot(keep), slot(discard), slot(edit, last: true)]),
       if (pending && r.isStarted(id))
         Padding(padding: const EdgeInsets.only(top: S.x1),
           child: Text(l?.momentReviewResume ??

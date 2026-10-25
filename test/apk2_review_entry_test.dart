@@ -54,7 +54,8 @@ void main() {
     await _dayArrow(t, 'Previous day');
     expect(apk2Row(apk2MarkA), findsOneWidget);
     await _showRow(t, apk2MarkA);
-    expect(apk2Enabled(t, apk2Key('$apk2RowKeepPrefix$apk2MarkA')), isFalse);
+    expect(apk2Keep(apk2MarkA), findsNothing);
+    expect(apk2Discard(apk2MarkA), findsNothing);
     expect(apk2PageIds().contains(apk2MarkA), isFalse);
     final labels = (await t.runAsync(() => LocalDb.momentLabels(date: apk2Day)))!;
     expect(labels.singleWhere((l) => l.hhmm == '09:15').label, 'other');
@@ -76,7 +77,7 @@ void main() {
     await apk2Tap(t, apk2Key('review-save'));
     await apk2Show(t, apk2MarkA);
     expect(apk2Selected(t, apk2Keep(apk2MarkA)), isFalse);
-    expect(find.descendant(of: apk2Item(apk2MarkA),
+    expect(find.descendant(of: apk2Row(apk2MarkA),
         matching: find.text('Meal')), findsNothing);
     await apk2Tap(t, apk2Key(apk2Save));
     final labels = (await t.runAsync(() => LocalDb.momentLabels(date: apk2Day)))!;
@@ -109,7 +110,7 @@ void main() {
     await apk2Tap(t, apk2Key('moment-undo:${late.key}'));
     await t.binding.handlePopRoute();
     await settle(t);
-    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    expect(apk2Key(apk2Save), findsNothing);
     await apk2Show(t, 'moment:${late.key}');
     await apk2Tap(t, apk2Key('day-review-label:moment:${late.key}'));
     await _answer(t, late.key, 'nap');
@@ -162,8 +163,8 @@ void main() {
     await settle(t);
     await apk2Show(t, apk2MarkA);
     expect(apk2Selected(t, apk2Keep(apk2MarkA)), isFalse);
-    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
-    expect(find.descendant(of: apk2Item(apk2MarkA),
+    expect(apk2Key(apk2Save), findsNothing);
+    expect(find.descendant(of: apk2Row(apk2MarkA),
         matching: find.text('Meal')), findsNothing);
     expect(await r.snapshot(t), before);
     semantics.dispose();
@@ -183,8 +184,7 @@ void main() {
     expect(find.byType(DetectedActivitiesScreen), findsNothing);
     expect(find.byType(ActivityProposalCard), findsNothing);
     expect(apk2Key(apk2Chart), findsOneWidget);
-    expect(apk2Key(apk2Tray), findsOneWidget);
-    expect(apk2PageIds(), hasLength(3));
+    expect(apk2PageIds(), apk2ActivityIds);
   });
 
   testWidgets('Review activities preserves marked-moment labels, wall times '
@@ -217,36 +217,32 @@ void main() {
     expect(find.byType(DayTimelineScreen), findsOneWidget);
     expect(apk2Key(apk2Chart), findsOneWidget);
     await apk2Show(t, apk2MarkA);
-    expect(find.descendant(of: apk2Item(apk2MarkA),
+    expect(find.descendant(of: apk2Row(apk2MarkA),
         matching: find.textContaining('09:15')), findsWidgets);
     expect(apk2Keep(apk2MarkA), findsOneWidget);
     expect(apk2Discard(apk2MarkA), findsOneWidget);
     await apk2Show(t, apk2MarkB);
-    expect(find.descendant(of: apk2Item(apk2MarkB),
+    expect(find.descendant(of: apk2Row(apk2MarkB),
         matching: find.textContaining('10:05')), findsWidgets);
     expect(apk2Keep(apk2MarkB), findsOneWidget);
     expect(apk2Discard(apk2MarkB), findsOneWidget);
   });
 
-  testWidgets('an answered item retains disabled Keep and Discard controls '
-      'and speaks its reason exactly once', (t) async {
+  testWidgets('an answered item has no Keep, Discard or reason line, '
+      'and the list offers nothing to press on it', (t) async {
     final semantics = t.ensureSemantics();
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     await r.mount(t);
     await _showRow(t, apk2Answered);
-    final keep = apk2Key('$apk2RowKeepPrefix$apk2Answered');
-    final discard = apk2Key('$apk2RowDiscardPrefix$apk2Answered');
-    expect(apk2Enabled(t, keep), isFalse);
-    expect(apk2Enabled(t, discard), isFalse);
-    expect(apk2Key('$apk2DisabledReasonPrefix$apk2Answered'), findsOneWidget);
-    // The phrase must not be attached separately to BOTH disabled actions.
+    expect(apk2Keep(apk2Answered), findsNothing);
+    expect(apk2Discard(apk2Answered), findsNothing);
+    expect(apk2Key('day-review-label:$apk2Answered'), findsNothing);
     expect(find.descendant(of: apk2Row(apk2Answered),
-        matching: find.text('Already reviewed')), findsOneWidget);
-    expect(apk2SpokenCount(t, 'Already reviewed'), 1);
-    await apk2Tap(t, keep);
-    await apk2Tap(t, discard);
-    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+        matching: find.byType(Pressable)), findsNothing);
+    expect(find.text('Already reviewed'), findsNothing);
+    expect(find.text('No review needed'), findsNothing);
+    expect(apk2Key(apk2Save), findsNothing);
     expect(await r.snapshot(t), before);
     // Disposed in the body: the binding checks handles before teardowns run.
     semantics.dispose();
@@ -266,11 +262,11 @@ void main() {
     await r.mount(t, marked: true, service: service);
     expect(find.byType(DayTimelineScreen), findsOneWidget);
     await apk2Show(t, apk2MarkA);
-    expect(find.descendant(of: apk2Item(apk2MarkA),
+    expect(find.descendant(of: apk2Row(apk2MarkA),
         matching: find.textContaining('Other')), findsWidgets);
-    expect(find.descendant(of: apk2Item(apk2MarkA),
+    expect(find.descendant(of: apk2Row(apk2MarkA),
         matching: find.textContaining('09:15')), findsWidgets);
-    expect(find.descendant(of: apk2Item(apk2MarkA),
+    expect(find.descendant(of: apk2Row(apk2MarkA),
         matching: find.textContaining('Felt dizzy while standing up.')), findsOneWidget);
     expect(await r.snapshot(t), before);
   });

@@ -807,7 +807,11 @@ class TimelineData {
     this.moments = const [],
     this.notes = const [],
     this.raw,
+    this.computedAtMs,
   });
+
+  /// When the day's result was calculated (epoch ms), or null when unknown.
+  final int? computedAtMs;
 
   final String? day;
 
@@ -873,9 +877,17 @@ class TimelineData {
     final heightCm = profile?['height_cm'] as num?;
     final weightKg = profile?['weight_kg'] as num?;
 
+    // When this day's result was calculated: a Save's placeholder row waits
+    // for a result newer than the Save. Unknown (no result) reads as not newer.
+    int? computedAtMs;
+    try {
+      computedAtMs = ((await repo.getDayHrv(day))['computed_at'] as num?)?.toInt();
+    } catch (_) {/* no marker: the placeholder stays */}
+
     return TimelineData(
       day: day,
       days: days,
+      computedAtMs: computedAtMs,
       graph: dayGraph(timeline),
       raw: timeline,
       moments: dayMoments(
@@ -1222,7 +1234,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           : const <DeviceOption>[];
       if (mounted && token == _loadToken) {
         if (_review?.day != d.day && d.day != null) _loadReview(d.day!);
-        _review?.reconcileSettled(d.moments);
+        _review?.reconcileSettled(d.computedAtMs);
         setState(() => (
           _d = d,
           _candidates = candidates,
@@ -1262,6 +1274,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           moments: d.moments,
           notes: d.notes,
           raw: d.raw,
+          computedAtMs: d.computedAtMs,
         );
       });
       return;
@@ -1294,6 +1307,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         moments: d.moments,
         notes: d.notes,
         raw: d.raw,
+        computedAtMs: d.computedAtMs,
       );
     });
   }
@@ -1366,13 +1380,19 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       for (var i = 0; i < d.moments.length; i++)
         d.moments[i].identity ?? 'event:$i:${d.moments[i].at}': d.moments[i],
     };
-    // Equal times keep the order they arrived in (the sort alone is not stable).
+    // Equal times keep the order they had: review rows by their place in the
+    // list (a stored row by the placeholder it replaced), then the rest as
+    // they arrived. The sort alone is not stable.
     final arrived = [
       for (final row in byId.entries) (id: row.key, moment: row.value),
     ];
-    final ranked = [for (var i = 0; i < arrived.length; i++) (i: i, row: arrived[i])]
-      ..sort((a, b) => a.row.moment.at != b.row.moment.at
-          ? a.row.moment.at.compareTo(b.row.moment.at) : a.i.compareTo(b.i));
+    final ranked = [
+      for (var i = 0; i < arrived.length; i++)
+        (rank: review?.rowOrder(arrived[i].id, arrived[i].moment) ?? (1 << 30) + i,
+            row: arrived[i]),
+    ]..sort((a, b) => a.row.moment.at != b.row.moment.at
+          ? a.row.moment.at.compareTo(b.row.moment.at)
+          : a.rank.compareTo(b.rank));
     final rows = [for (final e in ranked) e.row];
     final reviewing = review?.reviewing == true;
     final title = reviewing

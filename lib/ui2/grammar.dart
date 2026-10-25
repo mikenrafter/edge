@@ -997,8 +997,10 @@ class NerdStatsLink extends StatelessWidget {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(LucideIcons.chartNoAxesColumn, size: 14, color: p.ink2),
             const SizedBox(width: S.x1),
-            Text(label, style: F.cap.copyWith(
-                color: p.ink2, fontWeight: FontWeight.w600)),
+            // Flexible: at accessibility text sizes the label wraps, not overflows.
+            Flexible(child: Text(label, textAlign: TextAlign.end,
+                style: F.cap.copyWith(
+                    color: p.ink2, fontWeight: FontWeight.w600))),
           ]),
         ),
       ),
