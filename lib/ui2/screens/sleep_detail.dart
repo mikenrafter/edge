@@ -34,6 +34,7 @@ import '../../models/metric.dart';
 import '../profile/devices.dart' show DeviceFilter;
 import '../profile/profile.dart' show ProfileAvatar;
 import '../ui2.dart';
+import 'investigate.dart' show Investigate;
 import 'home_screen.dart';
 import 'metric_detail.dart';
 import 'naps.dart';
@@ -490,7 +491,12 @@ class SleepDetail extends StatefulWidget {
   State<SleepDetail> createState() => _SleepDetailState();
 }
 
-class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedReadReload<SleepDetail> {
+class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedReadReload<SleepDetail> implements NerdStatsListener {
+
+  /// The panels' Nerd stats action.
+  @override
+  void openNerdStats() => go(context, Investigate('sleep', day: _day));
+
   /// The pushed screen's scaffold, or the tab's own header and footer.
   Widget _frame(BuildContext c, String title, List<Widget> body,
       {String sub = ''}) {
@@ -1344,6 +1350,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         key: const ValueKey('card:night'),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ChartFrame(
+            nerdStats: this,
             title: l?.sleepDetailThroughTheNight ?? 'Through the night',
             unit: l?.sleepDetailUnitStage ?? 'stage',
             height: lane * 4,
@@ -1378,6 +1385,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       key: const ValueKey('card:night'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ChartFrame(
+          nerdStats: this,
           title: l?.sleepDetailThroughTheNight ?? 'Through the night',
           unit: l?.sleepDetailUnitStage ?? 'stage',
           height: lane * 4,
@@ -1629,6 +1637,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         label: '$mode · ${time ?? ChartKeyReadout.absent}, '
             '${cells.map((x) => '${x.label} ${x.value ?? ChartKeyReadout.absent}').join(', ')}',
         child: ExcludeSemantics(child: ChartKeyReadout(
+          nerdStats: this,
           cells: cells,
           time: time,
           scrubbed: _scrub != null,
@@ -2389,6 +2398,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           const SizedBox(height: S.x5),
         ],
         ChartFrame(
+          nerdStats: this,
           title: loc?.sleepDetailThroughTheNight ?? 'Through the night',
           unit: units.join(' · '),
           height: 44.0 * series.length + 20,

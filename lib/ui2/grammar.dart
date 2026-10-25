@@ -785,7 +785,11 @@ class ChartScrub extends StatefulWidget {
     this.step = .05,
     this.slots,
     this.slotBars = false,
+    this.nerdStats,
   });
+
+  /// The chart's Nerd stats action, shown in its panel.
+  final NerdStatsListener? nerdStats;
 
   @override
   State<ChartScrub> createState() => _ChartScrubState();
@@ -926,6 +930,7 @@ class _ChartScrubState extends State<ChartScrub> {
         time: _resolve(v).time,
         scrubbed: _resolve(v).scrubbed,
         timeSpan: timeSpan(),
+        nerdStats: widget.nerdStats,
         reserveTimes: widget.reserveTimes,
         restOlder: chartRestOlder(_resolve(null).cells));
     return LayoutBuilder(
@@ -950,6 +955,41 @@ class _ChartScrubState extends State<ChartScrub> {
 /// series keep their swatches and equal-height cells. Labels wrap and values
 /// scale down within a reserved line, so gaps never change the row height.
 /// The static older-calculation strip is inside the inset and stays spoken.
+/// Hears the panel's secondary "Nerd stats" action.
+abstract interface class NerdStatsListener {
+  void openNerdStats();
+}
+
+/// The small secondary "Nerd stats" action inside a chart panel. Always
+/// tappable, whether or not the chart has data.
+class NerdStatsLink extends StatelessWidget {
+  const NerdStatsLink({super.key, required this.listener});
+  final NerdStatsListener listener;
+  static const linkKey = ValueKey('chart-panel-nerd-stats');
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final label = AppLocalizations.of(c)?.metricDetailNerdStatsTitle ?? 'Nerd stats';
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Pressable(
+        key: linkKey,
+        onTap: listener.openNerdStats,
+        semanticLabel: label,
+        child: Padding(
+          padding: const EdgeInsets.only(top: S.x2),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(LucideIcons.chartNoAxesColumn, size: 14, color: p.ink2),
+            const SizedBox(width: S.x1),
+            Text(label, style: F.cap.copyWith(
+                color: p.ink2, fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 class ChartKeyReadout extends StatelessWidget {
   final String? time;
   final bool scrubbed;
@@ -959,6 +999,10 @@ class ChartKeyReadout extends StatelessWidget {
   final List<ChartCell> stats;
   final List<({int? version, String? reason})>? restOlder;
   final VoidCallback? onOpen;
+
+  /// When set, the panel carries a Nerd stats action and stays (showing "—")
+  /// even when nothing was recorded.
+  final NerdStatsListener? nerdStats;
 
   static final _captionHeights = <Object, double>{};
 
@@ -976,7 +1020,7 @@ class ChartKeyReadout extends StatelessWidget {
   final List<String> reserveTimes;
 
   const ChartKeyReadout(
-      {super.key, required this.cells, this.time, this.scrubbed = false, this.stats = const [], this.restOlder, this.onOpen, this.timeSpan = const [], this.reserveTimes = const []});
+      {super.key, required this.cells, this.time, this.scrubbed = false, this.stats = const [], this.restOlder, this.onOpen, this.nerdStats, this.timeSpan = const [], this.reserveTimes = const []});
 
   factory ChartKeyReadout.of(ChartReadout r) =>
       ChartKeyReadout(cells: r.cells, time: r.time, scrubbed: r.scrubbed);
@@ -994,11 +1038,16 @@ class ChartKeyReadout extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    final recorded = cells.where((x) => x.color != null && x.hasValue).toList();
-    // The panel is always there once a series exists, so a chart with nothing
-    // to read yet (or a paused read) keeps its height and says "—".
+    var recorded = cells.where((x) => x.color != null && x.hasValue).toList();
+    // With a Nerd stats action the panel stays when nothing was recorded, its
+    // values absent, so the action is never lost with the data.
+    if (recorded.isEmpty && nerdStats != null) {
+      recorded = cells.where((x) => x.color != null).toList();
+    }
     if (recorded.isEmpty) {
-      return const SizedBox.shrink();
+      return nerdStats == null
+          ? const SizedBox.shrink()
+          : NerdStatsLink(listener: nerdStats!);
     }
     final main = recorded.first;
     final single = recorded.length == 1;
@@ -1056,6 +1105,7 @@ class ChartKeyReadout extends StatelessWidget {
             ),
           ),
           OlderVersionStrip(id: 'readout', items: older),
+          if (nerdStats != null) NerdStatsLink(listener: nerdStats!),
         ],
       ),
     );
@@ -3712,6 +3762,9 @@ class ChartFrame extends StatelessWidget {
   final double? annotationCursor;
   final Widget? panel;
 
+  /// The chart's Nerd stats action, shown in its panel (also with no data).
+  final NerdStatsListener? nerdStats;
+
   const ChartFrame({
     super.key,
     required this.title,
@@ -3731,6 +3784,7 @@ class ChartFrame extends StatelessWidget {
     this.annotations,
     this.annotationCursor,
     this.panel,
+    this.nerdStats,
   });
 
   /// Width and height of [s] as it will actually be laid out — including the
@@ -4152,6 +4206,7 @@ class ChartFrame extends StatelessWidget {
                   )
                 : null,
             panel: panel,
+            nerdStats: nerdStats,
           ),
 
           if (footnote != null)
@@ -4189,8 +4244,10 @@ class _FrameKeys extends StatelessWidget {
   /// It describes the plot, not a point, so it stays put while scrubbing.
   final Widget? extra;
   final Widget? panel;
+  final NerdStatsListener? nerdStats;
   const _FrameKeys(
-      {required this.hub,
+      {this.nerdStats,
+      required this.hub,
       required this.legend,
       required this.tick,
       required this.line,
@@ -4228,14 +4285,14 @@ class _FrameKeys extends StatelessWidget {
           cells.addAll(r.cells.where((x) => !used.contains(x)));
           final baseRow = extra == null
               ? ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed,
-                  timeSpan: hub.readTimeSpan(),
+                  timeSpan: hub.readTimeSpan(), nerdStats: nerdStats,
                   restOlder: chartRestOlder(hub.readRest()?.cells ?? cells))
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed,
-                        timeSpan: hub.readTimeSpan(),
+                        timeSpan: hub.readTimeSpan(), nerdStats: nerdStats,
                         restOlder: chartRestOlder(hub.readRest()?.cells ?? cells)),
                     const SizedBox(height: S.x1),
                     ExcludeSemantics(child: extra!),
@@ -4256,6 +4313,14 @@ class _FrameKeys extends StatelessWidget {
       );
 
   Widget _plain(BuildContext c) {
+    final plain = _plainLegend(c);
+    if (nerdStats == null) return plain;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [plain, NerdStatsLink(listener: nerdStats!)]);
+  }
+
+  Widget _plainLegend(BuildContext c) {
     if (legend.isEmpty && extra == null) return const SizedBox.shrink();
     return ExcludeSemantics(
       child: Padding(

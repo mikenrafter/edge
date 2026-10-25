@@ -17773,5 +17773,7 @@
   "dayReviewNoReviewNeeded": "No review needed",
   "dayReviewPending": "To review",
   "dayReviewMarkedMoment": "Marked moment",
-  "homeBreakdownOpen": "Open"
+  "homeBreakdownOpen": "Open",
+  "dayReviewStaged": "{count} staged",
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
 }

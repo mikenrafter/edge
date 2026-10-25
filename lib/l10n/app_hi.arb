@@ -3511,5 +3511,7 @@
   "dayReviewNoReviewNeeded": "समीक्षा की आवश्यकता नहीं",
   "dayReviewPending": "समीक्षा बाकी",
   "dayReviewMarkedMoment": "चिह्नित क्षण",
-  "homeBreakdownOpen": "खोलें"
+  "homeBreakdownOpen": "खोलें",
+  "dayReviewStaged": "{count} तैयार",
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
 }

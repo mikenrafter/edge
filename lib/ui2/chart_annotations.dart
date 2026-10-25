@@ -610,6 +610,11 @@ List<ChartAnnotation> dailyAnnotations(
   return out;
 }
 
+/// Hears a tap on an annotation icon.
+abstract interface class AnnotationListener {
+  void annotationTapped(String id);
+}
+
 /// What a chart is annotated with.
 @immutable
 class AnnotationSet {
@@ -618,8 +623,12 @@ class AnnotationSet {
     required this.domainStart,
     required this.domainEnd,
     this.reach,
+    this.listener,
   });
   final List<ChartAnnotation> items;
+
+  /// Told which annotation a tap on the lane settled on.
+  final AnnotationListener? listener;
   final double domainStart;
   final double domainEnd;
 
@@ -873,8 +882,11 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
             byId[id]!,
       ]..sort(_byTime);
 
-      void step(PlacedAnnotation i) =>
-          setState(() => _pin = i.next(layout.focusedId));
+      void step(PlacedAnnotation i) {
+        final next = i.next(layout.focusedId);
+        setState(() => _pin = next);
+        set.listener?.annotationTapped(next);
+      }
 
       final children = <Widget>[
         for (final s in layout.shades)

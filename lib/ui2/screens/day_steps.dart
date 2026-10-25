@@ -38,7 +38,8 @@ import '../../models/metric.dart' show whyFromNote;
 import '../activity/catalogue.dart' show activityByName;
 import '../profile/devices.dart' show bandLabelFor;
 import '../ui2.dart';
-import 'home_screen.dart' show clockOfTs, prettyDay, repoOf, thousands;
+import 'investigate.dart' show Investigate;
+import 'home_screen.dart' show clockOfTs, go, prettyDay, repoOf, thousands;
 import 'metric_detail.dart'
     show dayNavLabel, dayNavRow, detailScaffold, pickDay;
 
@@ -244,7 +245,12 @@ class DayStepsDetail extends StatefulWidget {
   State<DayStepsDetail> createState() => _DayStepsDetailState();
 }
 
-class _DayStepsDetailState extends State<DayStepsDetail> {
+class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsListener {
+
+  /// The panels' Nerd stats action.
+  @override
+  void openNerdStats() => go(context, Investigate('steps', day: _day));
+
   DayStepsData? _d;
   bool _loading = true;
   String? _day;
@@ -351,6 +357,7 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
       child: Column(
         children: [
           ChartFrame(
+            nerdStats: this,
             title: l?.dayStepsChartTitle ?? 'When they were counted',
             unit: l?.dayStepsUnit ?? 'steps',
             height: 150,

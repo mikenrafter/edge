@@ -3617,5 +3617,7 @@
   "dayReviewNoReviewNeeded": "Keine Prüfung erforderlich",
   "dayReviewPending": "Zu prüfen",
   "dayReviewMarkedMoment": "Markierter Moment",
-  "homeBreakdownOpen": "Öffnen"
+  "homeBreakdownOpen": "Öffnen",
+  "dayReviewStaged": "{count} vorgemerkt",
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
 }

@@ -1849,29 +1849,6 @@ class _RingRow extends StatelessWidget {
       );
 }
 
-/// Three lines of caption text at the current text scale (prototype C: the
-/// columns reserve three, so the tightest wording has room in the worst case).
-double _twoLines(BuildContext c) => _measuredHeight(c, F.cap, 'x\nx\nx');
-
-/// Height of [text] in [base] under the ambient default style, scale and bold
-/// setting. Measured, not multiplied: the paragraph rounds each line.
-double _measuredHeight(BuildContext c, TextStyle base, String text,
-    {double maxWidth = double.infinity}) {
-  var st = DefaultTextStyle.of(c).style.merge(base);
-  if (MediaQuery.boldTextOf(c)) {
-    st = st.merge(const TextStyle(fontWeight: FontWeight.bold));
-  }
-  final tp = TextPainter(
-    text: TextSpan(text: text, style: st),
-    textDirection: Directionality.of(c),
-    textScaler: MediaQuery.textScalerOf(c),
-    locale: Localizations.maybeLocaleOf(c),
-  )..layout(maxWidth: maxWidth);
-  final h = tp.height;
-  tp.dispose();
-  return h;
-}
-
 /// The caption's render settings, resolved once from the context so the text
 /// that is MEASURED and the Text that is BUILT can not disagree: the same
 /// DefaultTextStyle merge, bold-text setting, locale, scaler and width basis.
@@ -1944,37 +1921,6 @@ class _CaptionSpec {
       overflow: TextOverflow.clip);
 }
 
-/// The numeral slot's reserved height in a column [width] wide: the longest
-/// realistic sleep numeral ("10h 30m" in the locale's own format) laid out at
-/// that width with the numeral's real style. A fixed sample, so it is the same
-/// empty and loaded.
-double _numeralReserve(BuildContext c, double width) => _measuredHeight(
-    c,
-    F.n24,
-    presentationText(
-        AppLocalizations.of(c), _compactHm(630, AppLocalizations.of(c))),
-    maxWidth: width);
-
-/// The sleep caption's reserved height in a column [width] wide: three lines,
-/// or more where the shortest wordings (the ones shown whole when nothing fits
-/// three lines) need it. Fixed localized samples, never today's data.
-double _sleepCaptionReserve(BuildContext c, double width) {
-  final l = AppLocalizations.of(c);
-  final dur = _compactHm(630, l);
-  final samples = [
-    l?.homeSleepEstimateDefaultMin(10) ?? '~10 cycles · default goal',
-    l?.homeSleepEstimateBare(10) ?? '~10 cycles',
-    l?.homeSleepPctDefaultTight(100, dur) ?? '100% of default $dur',
-    l?.homeSleepPctCompact(100, dur) ?? '100% of $dur',
-  ];
-  var h = _twoLines(c);
-  for (final t in samples) {
-    h = math.max(
-        h, _measuredHeight(c, F.cap, presentationText(l, t), maxWidth: width));
-  }
-  return h;
-}
-
 class _RingText extends StatelessWidget {
   final _RingState r;
   final TextAlign align;
@@ -1999,16 +1945,9 @@ class _RingText extends StatelessWidget {
         // card is the same card first launch and loaded, and the reason is in
         // the help strip under the rings. Words that are not an absence
         // ("Sleeping…", "Learning your usual") keep the sentence weight.
-        ConstrainedBox(
-          // The sleep numeral ("7h 22m") can wrap in a narrow column at larger
-          // text; reserve what the longest sample needs, so the slot never
-          // depends on the day's data.
-          constraints: BoxConstraints(
-              // Both layouts, each at its own text width (the column's, or the
-              // row's beside the ring).
-              minHeight:
-                  r.kind == HomeRingKind.sleep ? _numeralReserve(c, colWidth) : 0),
-          child: Wrap(alignment: align == TextAlign.center ? WrapAlignment.center : WrapAlignment.start, crossAxisAlignment: WrapCrossAlignment.center, children: [Text(
+        // No reserved numeral height either: a wrapped numeral takes what it
+        // needs, an unwrapped one leaves no gap under it.
+        Wrap(alignment: align == TextAlign.center ? WrapAlignment.center : WrapAlignment.start, crossAxisAlignment: WrapCrossAlignment.center, children: [Text(
           r.dash ? '—' : presentationText(AppLocalizations.of(c), r.value),
           style: r.dash
               ? F.n24.copyWith(color: p.ink3)
@@ -2016,35 +1955,12 @@ class _RingText extends StatelessWidget {
                   ? F.n24.copyWith(color: r.provisional ? p.ink3 : p.ink)
                   : F.body.copyWith(color: p.ink2),
           textAlign: align,
-        ), OlderVersionMark(id: 'strain', version: r.olderVersion, reason: r.olderReason, speak: false)])),
-        // The caption line is reserved (two lines at the column's width), so
-        // it does not move the card when a reading lands.
-        const SizedBox(height: 2),
-        LayoutBuilder(builder: (c, outer) {
-          var reserve = _twoLines(c);
-          if (align == TextAlign.center && r.kind == HomeRingKind.sleep) {
-            reserve = _sleepCaptionReserve(c, outer.maxWidth);
-          }
-          if (align != TextAlign.center && r.kind == HomeRingKind.sleep) {
-            final l = AppLocalizations.of(c);
-            final dur = _compactHm(630, l);
-            final sample = presentationText(
-                l,
-                l?.homeSleepOnTrackDefault(10, dur, dur) ??
-                    'on track for 10 cycles, $dur · target $dur (default)');
-            final h = _CaptionSpec.of(c, P.of(c).ink3, align, null)
-                .height(sample, outer.maxWidth);
-            if (h > reserve) reserve = h;
-          }
-          return ConstrainedBox(
-          // Both layouts reserve their caption height, so an empty card and a
-          // loaded one are the same height. Columns: two lines. Rows (no line
-          // cap): the sleep ring reserves its longest caption (a fixed sample,
-          // not today's data) at the row's own width.
-          constraints: BoxConstraints(minHeight: reserve),
-          child: r.sub.isEmpty
-              ? null
-              : LayoutBuilder(builder: (c, box) {
+        ), OlderVersionMark(id: 'strain', version: r.olderVersion, reason: r.olderReason, speak: false)]),
+        // No reserved caption lines: an empty caption takes no space, so the
+        // card has no blank band under the rings.
+        if (r.sub.isNotEmpty) const SizedBox(height: 2),
+        if (r.sub.isNotEmpty)
+          LayoutBuilder(builder: (c, box) {
                   final l = AppLocalizations.of(c);
                   // The two-line bound is the centred column's; the big-text
                   // row has the width it needs and wraps without a limit.
@@ -2065,9 +1981,7 @@ class _RingText extends StatelessWidget {
                   // Past even the tightest wording (320 pt at 1.3x in es, de,
                   // ru): show it whole on extra lines — never cut a qualifier.
                   return spec.build(forms.last, bounded: false);
-                }),
-        );
-        }),
+          }),
       ],
     );
   }

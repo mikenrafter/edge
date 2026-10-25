@@ -29,6 +29,7 @@ import '../profile/profile.dart' show ProfileAvatar;
 import '../profile/wearable_numbers.dart'
     show WearableCells, kHealthWearableRows, wearableName;
 import '../ui2.dart';
+import 'investigate.dart' show Investigate;
 import 'advanced.dart';
 import 'ecg.dart' show EcgEntryCard;
 import 'findings_log.dart';
@@ -476,7 +477,12 @@ class HealthScreen extends StatefulWidget {
   State<HealthScreen> createState() => _HealthScreenState();
 }
 
-class _HealthScreenState extends State<HealthScreen> with RevisionReload {
+class _HealthScreenState extends State<HealthScreen> with RevisionReload implements NerdStatsListener {
+
+  /// The panels' Nerd stats action.
+  @override
+  void openNerdStats() => go(context, Investigate('hrv'));
+
   // EXPLORE SITS SECOND, not last. Five chips do not fit a 390 pt frame at 1×:
   // the fifth is clipped by the edge, and a half-visible chip is exactly the
   // discoverability failure this tab exists to fix. Labs takes the clip instead
@@ -1512,6 +1518,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     return ChartFrame(
+      nerdStats: this,
       title: l?.healthRmssdOfLastNights(have.length, days) ??
           'HRV, ${have.length} of the last $days nights',
       unit: 'ms',

@@ -19,6 +19,7 @@ import '../../models/metric.dart';
 import '../../models/payloads.dart' show todayHeadlineOf;
 import '../../state/recalc_state.dart';
 import '../ui2.dart';
+import 'investigate.dart' show Investigate;
 import 'home_screen.dart';
 import 'metric_detail.dart';
 
@@ -181,7 +182,12 @@ class ReadinessDetail extends StatefulWidget {
   State<ReadinessDetail> createState() => _ReadinessDetailState();
 }
 
-class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
+class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload implements NerdStatsListener {
+
+  /// The panels' Nerd stats action.
+  @override
+  void openNerdStats() => go(context, Investigate('readiness'));
+
   ReadinessData? _d;
   bool _loading = true;
 
@@ -466,6 +472,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
         dayLabelOf(DateTime(n.year, n.month, n.day - (win.length - 1 - i))), l);
 
     return ChartFrame(
+      nerdStats: this,
       title: l?.readinessDetailTitle ?? 'Recovery',
       unit: l?.readinessDetailUnit ?? '/100',
       height: 120,

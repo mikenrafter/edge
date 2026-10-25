@@ -3511,5 +3511,7 @@
   "dayReviewNoReviewNeeded": "Aucune vérification nécessaire",
   "dayReviewPending": "À examiner",
   "dayReviewMarkedMoment": "Moment marqué",
-  "homeBreakdownOpen": "Ouvrir"
+  "homeBreakdownOpen": "Ouvrir",
+  "dayReviewStaged": "{count} en attente",
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
 }

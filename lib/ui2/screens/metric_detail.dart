@@ -794,7 +794,25 @@ class MetricDetail extends StatefulWidget {
   State<MetricDetail> createState() => _MetricDetailState();
 }
 
-class _MetricDetailState extends State<MetricDetail> with RevisionReload, PausedReadReload<MetricDetail> {
+class _MetricDetailState extends State<MetricDetail> with RevisionReload, PausedReadReload<MetricDetail> implements NerdStatsListener {
+
+  /// The panel's Nerd stats action: this metric's figures for the day the
+  /// panel is on (the newest when there is no series).
+  @override
+  void openNerdStats() {
+    final d = _d ?? const MetricData();
+    final series = denseDays(d.series, _windows[_range.clamp(0, _offered(d) - 1)]);
+    final latest = series.lastIndexWhere((v) => v != null && v.isFinite);
+    final at = _pick?.clamp(0, series.length - 1) ?? latest;
+    go(context, Investigate(widget.metricKey,
+        day: series.isEmpty || at < 0 ? null : _dayOfSlot(at, series.length)));
+  }
+
+  /// A panel with absent values: what a window with no data still owes the
+  /// reader, since its Nerd stats action must stay reachable.
+  Widget _emptyPanel(BuildContext c, MetricSpec spec) => ChartKeyReadout(
+      cells: [ChartCell(uiText(c, spec.title), P.of(c).on(spec.color))],
+      nerdStats: this);
 
   // The caption times of one window, built once per window and locale: a scrub
   // rebuilds the panel on every pointer move and a year is 365 dates.
@@ -1256,6 +1274,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
           fix: uiText(context, spec.suppressFix ?? ''),
           icon: spec.icon,
         ),
+        NerdStatsLink(listener: this),
       ] else if (_paused) ...[
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
@@ -1292,6 +1311,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                 : '',
             icon: spec.icon,
           ),
+        if (!_loading) _emptyPanel(c, spec),
         // The goal is editable even before today has a steps value — the
         // gate below matches the measured branch's. `steps: null` keeps the
         // ring an empty track rather than fabricating a 0% reading. Gated on
@@ -1844,10 +1864,12 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                 time: prettyDay(_dayOfSlot(selected, series.length), AppLocalizations.of(panelContext)),
                 scrubbed: _pick != null,
                 restOlder: atRestOlder,
-                // Tappable even for a day with no value yet: this is the one
-                // way into Nerd stats, so it is never switched off.
-                onOpen: () => go(panelContext, _dayScreen(
-                    widget.metricKey, _dayOfSlot(selected, series.length))),
+                nerdStats: this,
+                // The day's own detail where one exists; tappable even for a
+                // day with no value yet. Nerd stats is the panel's own action.
+                onOpen: _hasDayScreen(widget.metricKey) ? () => go(panelContext,
+                    _dayScreen(widget.metricKey, _dayOfSlot(selected, series.length)))
+                    : null,
               );
             }),
             // The dots are already beside the big number two rows up; twice on
@@ -2081,6 +2103,11 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
   /// Where a day opens. Each metric lands on the screen that actually shows
   /// that day — Nerd stats is the fallback because it is the one screen that
   /// exists for every key.
+  bool _hasDayScreen(String key) => switch (key) {
+        'sleep' || 'deep' || 'rem' || 'efficiency' || 'steps' => true,
+        _ => false,
+      };
+
   Widget _dayScreen(String key, String day) => switch (key) {
         'sleep' ||
         'deep' ||

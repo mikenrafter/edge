@@ -59,7 +59,8 @@ import '../profile/devices.dart'
     show DeviceFilter, DeviceOption, signalCandidates;
 import '../profile/wearable_numbers.dart' show deviceScoreLabel, observationTitle;
 import '../ui2.dart';
-import 'home_screen.dart' show clockOfTs, repoOf;
+import 'investigate.dart' show Investigate;
+import 'home_screen.dart' show clockOfTs, go, repoOf;
 import 'metric_detail.dart' show dayNavRow, pickDay;
 
 /// One thing that happened, at a time it is known to have happened at.
@@ -436,10 +437,8 @@ List<Moment> dayMoments({
       at: at,
       identity: 'moment:${m.key}',
       title: described?.describe(l) ?? choice.localized(l),
-      detail: [
-        l?.dayTimelineMarkedAt(m.hhmm) ?? 'Marked moment at ${m.hhmm}',
-        if (note != null && note.isNotEmpty) note,
-      ].join(' · '),
+      // The row carries the clock; the detail is only the wearer's note.
+      detail: note != null && note.isNotEmpty ? note : '',
       icon: LucideIcons.bookmark,
       color: C.domMind,
       annotationKind: switch (choice) {
@@ -458,7 +457,7 @@ List<Moment> dayMoments({
     out.add(Moment(
       at: at,
       title: l?.assumedWaterTitle ?? 'Assumed glass of water',
-      detail: g.hhmm,
+      detail: '',
       icon: LucideIcons.droplet,
       color: C.sky,
       annotationKind: AnnotationKind.assumedWater,
@@ -927,7 +926,7 @@ class DayTimelineScreen extends StatefulWidget {
 }
 
 class _DayTimelineScreenState extends State<DayTimelineScreen>
-    implements EdgeSwipeListener {
+    implements EdgeSwipeListener, AnnotationListener, NerdStatsListener {
   DayReviewController? _review;
   final _rowKeys = <String, GlobalKey>{};
   final _listController = ScrollController();
@@ -955,7 +954,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       _focused = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _review?.showInTray('activity:$focus');
           _reveal('activity:$focus');
         }
       });
@@ -1020,6 +1018,28 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) Navigator.of(context).pop();
     });
+  }
+
+  /// The heart-rate panel's Nerd stats action, for the day on screen.
+  @override
+  void openNerdStats() =>
+      go(context, Investigate('resting_hr', day: _day ?? _d?.day));
+
+  /// A chart marker tap scrolls the list to the row at the marker's time.
+  @override
+  void annotationTapped(String id) {
+    final moments = _d?.moments ?? const <Moment>[];
+    final at = dayAnnotations(moments).where((a) => a.id == id)
+        .map((a) => a.at.round()).firstOrNull;
+    if (at == null) return;
+    final byId = <String, Moment>{
+      if (_review != null)
+        for (final row in _review!.pendingRows(context)) row.id: row.moment,
+      for (var i = 0; i < moments.length; i++)
+        moments[i].identity ?? 'event:$i:${moments[i].at}': moments[i],
+    };
+    final row = byId.entries.where((e) => e.value.at == at).firstOrNull;
+    if (row != null) _reveal(row.key);
   }
 
   void _reveal(String id) {
@@ -1252,7 +1272,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         SafeArea(child: LayoutBuilder(builder: (c, box) => Column(children: [
           NavBar(title, onBack: _leave),
           // The chart scrolls with the page, as it did before review existed.
-          // The tray is a sibling BELOW the list, so no row can sit behind it.
+          // The Save bar is a sibling BELOW the list, so no row sits behind it.
           Expanded(child: SingleChildScrollView(
             key: const ValueKey('apk2-day-list'),
             controller: _listController,
@@ -1261,6 +1281,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                 ...dayNavRow(_day ?? d.day, d.days, _goDay),
+                DayReviewNotices(controller: review),
                 if (_loading) ...[
                   const SizedBox(height: S.x4),
                   InlineLoading(status: l?.loadingDayTimeline ??
@@ -1279,6 +1300,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                           fineDetail: _device == null,
                           owners: coverageFromJson(d.raw?['hr_owner']),
                           annotations: dayAnnotations(d.moments),
+                          listener: this,
+                          nerdStats: this,
                           key: ValueKey(d.day)))
                   else if (rows.isEmpty && d.notes.isEmpty)
                     StatusCard(
@@ -1293,12 +1316,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                       child: Container(
                         key: ValueKey('apk2-day-row:${row.id}'),
                         color: _highlight == row.id ? p.wash(C.domMind) : null,
-                        child: Pressable(
-                          // A pending row opens in the tray, which holds the
-                          // controls; any other row is only read.
-                          onTap: review?.needsReview(row.id) == true
-                              ? () => review!.showInTray(row.id) : null,
-                          child: Padding(
+                        child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: S.x3),
                             child: Row(crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -1314,9 +1332,9 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                                     if (row.moment.detail.isNotEmpty)
                                       Text(row.moment.detail,
                                           style: F.cap.copyWith(color: p.ink2)),
+                                    DayReviewActions(controller: review, id: row.id),
                                   ])),
-                                DayReviewRowState(controller: review, id: row.id),
-                              ])))),
+                              ]))),
                     ),
                   for (final note in d.notes) ...[
                     Text(note.title, style: F.body.copyWith(color: p.ink)),
@@ -1330,8 +1348,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                 ],
                 ]))),
           )),
-          if (review?.trayShown == true)
-            DayReviewTray(controller: review, maxHeight: box.maxHeight * .4),
+          DayReviewSaveBar(controller: review),
         ]))),
         // Cupertino suppresses its route gesture while PopScope guards a
         // batch. Keep the leading-edge swipe as a request for confirmation.
@@ -1405,7 +1422,9 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
     {bool zoomed = false,
     List<double?>? fine,
     String? footnote,
-    List<ChartAnnotation> annotations = const []}) {
+    List<ChartAnnotation> annotations = const [],
+    AnnotationListener? listener,
+    NerdStatsListener? nerdStats}) {
   if (!g.hasCurve && !zoomed) return null;
   final p = P.of(c);
   final l = AppLocalizations.of(c);
@@ -1433,7 +1452,8 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
           items: annotations,
           domainStart: start.toDouble(),
           domainEnd: (start + n * 60).toDouble(),
-          reach: 48);
+          reach: 48,
+          listener: listener);
 
   bool present(double? v) => v != null && v.isFinite;
   // A lane, one slot per sample of its own list (a minute, or a second for a
@@ -1481,6 +1501,7 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
   final notes = [if (hasMovement) _movementNote, ?footnote];
   return Surface(
     child: ChartFrame(
+      nerdStats: nerdStats,
       title: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
       unit: 'bpm',
       height: 200,
@@ -1602,7 +1623,12 @@ class _DayGraphZoom extends StatefulWidget {
       {super.key,
       this.fineDetail = true,
       this.owners = const [],
-      this.annotations = const []});
+      this.annotations = const [],
+      this.listener,
+      this.nerdStats});
+
+  final AnnotationListener? listener;
+  final NerdStatsListener? nerdStats;
 
   final DayGraph graph;
   final bool fineDetail;
@@ -1702,7 +1728,9 @@ class _ZoomState extends State<_DayGraphZoom> {
         zoomed: zoomed,
         fine: _fine,
         footnote: note,
-        annotations: widget.annotations);
+        annotations: widget.annotations,
+        listener: widget.listener,
+        nerdStats: widget.nerdStats);
     if (card == null || n < 2) return card ?? const SizedBox.shrink();
     // Smaller thumbs and the theme's own colour: the same control as the app's
     // other sliders, not a red bar.

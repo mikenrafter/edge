@@ -214,7 +214,7 @@ const _notComponents = {
   'MomentFollowUpCard', 'MomentFollowUpScreen', 'MomentReviewEditor',
   // Day-bound review state and its controls are swept by the APK2 tests at
   // 360 pt, 1x and 3.1x; they require the repository/controller lifecycle.
-  'DayReviewEntry', 'DayReviewTray', 'DayReviewActions',
+  'DayReviewEntry', 'DayReviewSaveBar', 'DayReviewActions', 'DayReviewNotices',
   // The searchable activity list of the Log-a-workout form, also offered by the
   // marked-moment pairing sheet; a bottom sheet over a database-free list,
   // pumped through both in test/gestures/moments/review/review_screen_test.dart.

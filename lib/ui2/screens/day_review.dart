@@ -1,4 +1,4 @@
-// The open breakdown owns staged decisions and pagination. Durable writes go
+// The open breakdown owns staged decisions. Durable writes go
 // through the repository batch, serialized with the existing moment service.
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -114,19 +114,17 @@ class DayReviewController extends ChangeNotifier {
   final Map<String, ActivityDecision> _activityEdits = {};
   final Map<String, WorkoutDraft> _momentWorkouts = {};
   final Map<String, bool> _choices = {};
-  final trayScroll = ScrollController();
   int savedRevision = 0;
   final Map<String, ReviewDecision> _drafts = {};
   bool loading = true, loadFailed = false, saveFailed = false;
   bool followUpFailed = false, busy = false, _disposed = false;
-  int page = 0, _generation = 0;
+  int _generation = 0;
   bool get hasChanges => _choices.isNotEmpty;
+  /// Items with a staged answer (a pair's two moments count once).
+  int get stagedCount => ids.where(_choices.containsKey).length;
   bool get canEdit => !loading && !loadFailed && !busy;
   /// Review mode: something waits for an answer (staged or not).
   bool get reviewing => ids.isNotEmpty;
-  /// Whether the tray has anything to say; false on a plain breakdown.
-  bool get trayShown => !loading &&
-      (reviewing || loadFailed || saveFailed || followUpFailed);
   List<String> get ids => [
     for (final s in _activities) 'activity:${s.id}',
     for (final m in _marks)
@@ -135,15 +133,13 @@ class DayReviewController extends ChangeNotifier {
     for (final r in _ranges) if (r.inProgress) ReviewKey.range(r),
     for (final g in _glasses) ReviewKey.glass(g),
   ];
-  int get pages => (ids.length + 2) ~/ 3;
-  List<String> get pageIds => ids.skip(page * 3).take(3).toList();
   bool needsReview(String id) => ids.contains(id);
   bool isStarted(String id) => _ranges.any((r) => r.inProgress &&
       (ReviewKey.range(r) == id || 'moment:${r.startKey}' == id ||
           'moment:${r.endKey}' == id));
   bool? choice(String id) => _choices[id];
   @override
-  void dispose() { trayScroll.dispose(); _disposed = true; _generation++; super.dispose(); }
+  void dispose() { _disposed = true; _generation++; super.dispose(); }
   void _changed() { if (!_disposed) notifyListeners(); }
 
   Future<void> load() async {
@@ -175,7 +171,6 @@ class DayReviewController extends ChangeNotifier {
       _marks = marks.where((m) => m.date == day).toList();
       _pendingMarks = marks;
       _glasses = glasses.where((g) => g.date == day).toList();
-      page = page.clamp(0, pages > 0 ? pages - 1 : 0);
     } catch (_) {
       if (!_disposed && generation == _generation) loadFailed = true;
     } finally {
@@ -286,20 +281,6 @@ class DayReviewController extends ChangeNotifier {
     }
     if (undo) { _choices.remove(id); } else { _choices[id] = keep; }
     saveFailed = false;
-    _changed();
-  }
-  /// Brings [id] up in the tray (a tap on its list row).
-  void showInTray(String id) {
-    final at = ids.indexOf(id);
-    if (at < 0) return;
-    page = at ~/ 3;
-    if (trayScroll.hasClients) trayScroll.jumpTo(0);
-    _changed();
-  }
-  void move(int delta) {
-    if (!canEdit) return;
-    page = (page + delta).clamp(0, pages > 0 ? pages - 1 : 0);
-    if (trayScroll.hasClients) trayScroll.jumpTo(0);
     _changed();
   }
   Future<void> discardDraft() async {
@@ -443,13 +424,11 @@ class DayReviewController extends ChangeNotifier {
       _drafts.removeWhere((key, _) => staged.containsKey(key));
       _choices.clear();
       savedRevision++;
-      page = 0;
       if (c.mounted) bumpInsights(c);
     } catch (error) {
       if (error is ActivityReviewException && !_disposed) await load();
       if (!_disposed) {
         saveFailed = true;
-        if (trayScroll.hasClients) trayScroll.jumpTo(0);
       }
     } finally {
       busy = false;
@@ -490,48 +469,20 @@ class _DraftStore extends MomentReviewStore {
 }
 
 /// One semantics node per action, including disabled and selected state. A
-/// labelled button is a dense [BigButton]: filled when [selected], soft
-/// otherwise, dimmed when it cannot be pressed. With [icon] it is bare (pager).
+/// dense [BigButton]: filled when [selected] or [primary], soft otherwise,
+/// dimmed when it cannot be pressed.
 Widget reviewButton(BuildContext c, String key, String label, VoidCallback? tap,
-    {bool selected = false, Widget? icon, IconData? glyph,
+    {bool selected = false, IconData? glyph,
     Color color = C.blue, bool primary = false}) => Semantics(
   key: ValueKey(key), button: true, enabled: tap != null, selected: selected,
   label: label, onTap: tap, excludeSemantics: true,
-  child: icon != null
-      ? Pressable(onTap: tap, child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: S.x2), child: icon))
-      : Opacity(opacity: tap == null ? .4 : 1, child: BigButton(label,
-          dense: !primary, icon: glyph, color: color,
-          soft: !primary && !selected, onTap: tap)),
+  child: Opacity(opacity: tap == null ? .4 : 1, child: BigButton(label,
+      dense: true, icon: glyph, color: color,
+      soft: !primary && !selected, onTap: tap)),
 );
 
-/// What a list row says about its review: still to do, or the staged answer.
-/// Nothing for a row that needs no review. The tray holds the controls.
-class DayReviewRowState extends StatelessWidget {
-  const DayReviewRowState({super.key, required this.controller, required this.id});
-  final DayReviewController? controller;
-  final String id;
-  @override
-  Widget build(BuildContext c) {
-    final l = AppLocalizations.of(c), r = controller;
-    if (r == null || r.loading) return const SizedBox.shrink();
-    final keep = r.choice(id);
-    final pill = keep == true
-        ? Pill(l?.assumedWaterKeep ?? 'Keep', C.green, icon: LucideIcons.check)
-        : keep == false
-            ? Pill(l?.dayReviewDiscard ?? 'Discard', C.red, icon: LucideIcons.x)
-            : r.needsReview(id)
-                ? Pill(l?.dayReviewPending ?? 'To review', C.orange,
-                    icon: LucideIcons.circleDot)
-                : null;
-    if (pill == null) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(left: S.x3),
-      child: KeyedSubtree(key: ValueKey('apk2-day-state:$id'), child: pill));
-  }
-}
-
-/// The tray's controls for one item: Keep, Discard and Edit where they apply.
+/// Under a pending list row: its Keep / Discard / Edit buttons, the staged
+/// answer shown as the selected button. Nothing for a row that needs no review.
 class DayReviewActions extends StatelessWidget {
   const DayReviewActions({super.key, required this.controller, required this.id});
   final DayReviewController? controller;
@@ -539,119 +490,100 @@ class DayReviewActions extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c), r = controller;
-    final enabled = r?.needsReview(id) == true && r?.canEdit == true;
+    if (r == null || r.loading || !r.needsReview(id)) return const SizedBox.shrink();
+    final enabled = r.canEdit;
     final range = id.startsWith('range:');
     final edit = !ReviewKey.isGlass(id) && !range;
     Widget slot(Widget w) => Expanded(child: Padding(
         padding: const EdgeInsets.only(right: S.x2), child: w));
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return Padding(padding: const EdgeInsets.only(top: S.x2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         slot(reviewButton(c, 'apk2-review-keep:$id',
-          l?.assumedWaterKeep ?? 'Keep', enabled ? () => r!.choose(id, true) : null,
-          selected: r?.choice(id) == true, glyph: LucideIcons.check,
+          l?.assumedWaterKeep ?? 'Keep', enabled ? () => r.choose(id, true) : null,
+          selected: r.choice(id) == true, glyph: LucideIcons.check,
           color: C.green)),
         if (!range)
           slot(reviewButton(c, 'apk2-review-discard:$id',
             l?.dayReviewDiscard ?? 'Discard',
-            enabled ? () => r!.choose(id, false) : null,
-            selected: r?.choice(id) == false, glyph: LucideIcons.x,
+            enabled ? () => r.choose(id, false) : null,
+            selected: r.choice(id) == false, glyph: LucideIcons.x,
             color: C.red)),
         if (edit)
           slot(reviewButton(c, 'day-review-label:$id', l?.activityEdit ?? 'Edit',
               enabled ? () => id.startsWith('activity:')
-                  ? r!.editActivity(c, id) : r!.editMoment(c, id) : null,
+                  ? r.editActivity(c, id) : r.editMoment(c, id) : null,
               glyph: LucideIcons.pencil)),
       ]),
-      if (r?.isStarted(id) == true)
+      if (r.isStarted(id))
         Padding(padding: const EdgeInsets.only(top: S.x1),
           child: Text(l?.momentReviewResume ??
               'Saved so far. Press Save to finish this pair.',
             key: ValueKey('apk2-day-review-reason:$id'),
             style: F.cap.copyWith(color: P.of(c).ink2))),
+    ]));
+  }
+}
+
+/// Load, save and follow-up problems, at the top of the list.
+class DayReviewNotices extends StatelessWidget {
+  const DayReviewNotices({super.key, required this.controller});
+  final DayReviewController? controller;
+  @override
+  Widget build(BuildContext c) {
+    final l = AppLocalizations.of(c), r = controller, p = P.of(c);
+    if (r == null || r.loading) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (r.loadFailed) ...[
+        Text(l?.activityLoadFailed ?? 'Could not load activities. Try again.',
+          key: const ValueKey('apk2-review-load-error'),
+          style: F.cap.copyWith(color: p.ink)),
+        reviewButton(c, 'apk2-review-retry', l?.homeTryAgain ?? 'Try again', r.load),
+      ],
+      if (r.followUpFailed)
+        Text(l?.dayReviewFollowUpFailed ??
+            'Decisions saved. Could not refresh or export every item.',
+            style: F.cap.copyWith(color: p.ink)),
     ]);
   }
 }
 
-class DayReviewTray extends StatelessWidget {
-  const DayReviewTray({super.key, this.controller, this.maxHeight = 420});
+/// A slim bar pinned under the list, present only while something is staged.
+class DayReviewSaveBar extends StatelessWidget {
+  const DayReviewSaveBar({super.key, required this.controller});
   final DayReviewController? controller;
-  /// The tray is as tall as its content, up to this; its items then scroll.
-  final double maxHeight;
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c), r = controller;
-    final l = AppLocalizations.of(c);
-    final page = r == null || r.pages == 0 ? 0 : r.page + 1;
-    final pages = r?.pages ?? 0;
-    final items = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (r?.saveFailed == true)
-          Text(l?.momentFollowUpSaveFailed ?? 'Could not save that answer. Try again.',
-            key: const ValueKey('apk2-review-save-error'),
-            style: F.cap.copyWith(color: p.ink)),
-        if (r == null || r.loading)
-          Text(l?.loadingActivitiesToReview ?? 'Reading activities to review',
-              style: F.cap.copyWith(color: p.ink2))
-        else if (r.loadFailed) ...[
-          Text(l?.activityLoadFailed ?? 'Could not load activities. Try again.',
-            key: const ValueKey('apk2-review-load-error'),
-            style: F.cap.copyWith(color: p.ink)),
-          reviewButton(c, 'apk2-review-retry', l?.homeTryAgain ?? 'Try again', r.load),
-        ] else if (r.ids.isEmpty)
-          Text(l?.activityNothing ?? 'Nothing to review',
-            key: const ValueKey('apk2-review-empty'),
-            style: F.body.copyWith(color: p.ink))
-        else
-          for (final id in r.pageIds)
-            Container(key: ValueKey('apk2-review-item:$id'),
-              padding: const EdgeInsets.symmetric(vertical: S.x2),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(r.title(c, id), style: F.body.copyWith(
-                      color: p.ink, fontWeight: FontWeight.w600)),
-                  Text(r.detail(c, id), style: F.cap.copyWith(color: p.ink2)),
-                  const SizedBox(height: S.x2),
-                  DayReviewActions(controller: r, id: id),
-                ])),
-        if (r?.followUpFailed == true)
-          Text(l?.dayReviewFollowUpFailed ??
-              'Decisions saved. Could not refresh or export every item.',
-              style: F.cap.copyWith(color: p.ink)),
-      ]);
-    final pager = Row(children: [
-      reviewButton(c, 'apk2-review-previous', l?.dayReviewPrevious ?? 'Previous page',
-        r != null && r.canEdit && r.page > 0 ? () => r.move(-1) : null,
-        icon: SizedBox(height: S.tap, child: Icon(LucideIcons.chevronLeft, color: p.ink))),
-      Expanded(child: Text(l?.dayReviewPage(page, pages) ?? '$page of $pages',
-        key: const ValueKey('apk2-review-page'), textAlign: TextAlign.center,
-        style: F.cap.copyWith(color: p.ink))),
-      reviewButton(c, 'apk2-review-next', l?.dayReviewNext ?? 'Next page',
-        r != null && r.canEdit && r.page + 1 < r.pages ? () => r.move(1) : null,
-        icon: SizedBox(height: S.tap, child: Icon(LucideIcons.chevronRight, color: p.ink))),
-    ]);
-    final save = reviewButton(c, 'apk2-review-save', l?.dayReviewSave ?? 'Save',
-      r != null && r.canEdit && r.hasChanges ? () => r.save(c) : null,
-      primary: true, glyph: LucideIcons.save);
+    final p = P.of(c), r = controller, l = AppLocalizations.of(c);
+    if (r == null || r.loading || !(r.hasChanges || r.busy)) {
+      return const SizedBox.shrink();
+    }
+    final n = r.stagedCount;
     return Container(
-      key: const ValueKey('apk2-review-tray'),
-      constraints: BoxConstraints(maxHeight: maxHeight),
+      key: const ValueKey('apk2-review-savebar'),
       decoration: BoxDecoration(color: p.card,
           border: Border(top: BorderSide(color: p.line)),
-          // Upward: the tray's top edge is the one that has to read as raised.
           boxShadow: [for (final s in p.el(3)) BoxShadow(color: s.color,
               blurRadius: s.blurRadius, offset: -s.offset)]),
-      padding: const EdgeInsets.fromLTRB(S.x4, S.x3, S.x4, S.x3),
-      child: Column(mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('${l?.dayReviewPending ?? 'To review'} · ${r?.ids.length ?? 0}',
-            key: const ValueKey('apk2-review-heading'),
-            style: F.over.copyWith(color: p.ink3)),
-          const SizedBox(height: S.x1),
-          Flexible(child: SingleChildScrollView(controller: r?.trayScroll,
-              child: items)),
-          pager,
-          save,
-        ]),
+      padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x2),
+      child: Row(children: [
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, children: [
+            Text(l?.dayReviewStaged(n) ?? '$n staged',
+              key: const ValueKey('apk2-review-staged'),
+              style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+            if (r.saveFailed)
+              Text(l?.momentFollowUpSaveFailed ??
+                  'Could not save that answer. Try again.',
+                key: const ValueKey('apk2-review-save-error'),
+                style: F.cap.copyWith(color: p.ink)),
+          ])),
+        const SizedBox(width: S.x3),
+        SizedBox(width: 140, child: reviewButton(c, 'apk2-review-save',
+          l?.dayReviewSave ?? 'Save',
+          r.canEdit && r.hasChanges ? () => r.save(c) : null,
+          primary: true, glyph: LucideIcons.save)),
+      ]),
     );
   }
 }
