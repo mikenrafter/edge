@@ -987,6 +987,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
     try {
       return await showDialog<bool>(context: context, builder: (c) => AlertDialog(
         key: const ValueKey('apk2-review-leave-dialog'),
+        // Title and body scroll together so large text cannot overflow.
+        scrollable: true,
         title: Text(l?.dayReviewLeaveTitle ?? 'Discard unsaved decisions?'),
         content: Text(l?.dayReviewLeaveBody ??
             'Your staged decisions have not been saved.'),
@@ -1017,14 +1019,23 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
   void _reveal(String id) {
     _highlightTimer?.cancel();
     setState(() => _highlight = id);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+    void scroll() {
       final row = _rowKeys[id]?.currentContext;
       if (row != null) {
         Scrollable.ensureVisible(row,
             duration: motion(context, Motion.slow), alignment: 0);
       }
-    });
+    }
+    // Rows are built eagerly, so a marker tap scrolls at once: an animation
+    // started from a post-frame callback gets no progress until the frame
+    // after, which leaves the row offscreen for a whole frame interval.
+    if (_rowKeys[id]?.currentContext != null) {
+      scroll();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) scroll();
+      });
+    }
     _highlightTimer = Timer(Motion.slow * 4, () {
       if (mounted) setState(() => _highlight = null);
     });

@@ -87,7 +87,6 @@ void main() {
   testWidgets('an answered item retains disabled Keep and Discard controls '
       'and speaks its reason exactly once', (t) async {
     final semantics = t.ensureSemantics();
-    addTearDown(semantics.dispose);
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     await r.mount(t);
@@ -105,6 +104,8 @@ void main() {
     await apk2Tap(t, discard);
     expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
     expect(await r.snapshot(t), before);
+    // Disposed in the body: the binding checks handles before teardowns run.
+    semantics.dispose();
   });
 
   testWidgets('a marked-moment draft keeps its label, time and typed note '

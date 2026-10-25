@@ -15,7 +15,6 @@ void main() {
   testWidgets('normal breakdown pages four pending items three at a time, '
       'with disabled boundary arrows and Save', (t) async {
     final semantics = t.ensureSemantics();
-    addTearDown(semantics.dispose);
     final r = await Apk2Rig.create(t);
     await r.mount(t);
     expect(apk2Key(apk2Tray), findsOneWidget);
@@ -41,12 +40,13 @@ void main() {
     expect(apk2SpokenCount(t, '1 of 2'), 0);
     await apk2Tap(t, apk2Key(apk2Previous));
     expect(apk2PageIds(), first);
+    // Disposed in the body: the binding checks handles before teardowns run.
+    semantics.dispose();
   });
 
   testWidgets('Keep and Discard leave the database untouched until Save '
       'commits both decisions and leaves unchosen items pending', (t) async {
     final semantics = t.ensureSemantics();
-    addTearDown(semantics.dispose);
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     await r.mount(t);
@@ -72,13 +72,14 @@ void main() {
     expect(after['moment_label'], before['moment_label']);
     expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
     expect(apk2PageIds(), {apk2NapB, apk2WorkoutB});
+    // Disposed in the body: the binding checks handles before teardowns run.
+    semantics.dispose();
   });
 
   for (final keep in [true, false]) {
     testWidgets('tapping a staged ${keep ? 'Keep' : 'Discard'} again undoes '
         'it and disables Save without writing', (t) async {
       final semantics = t.ensureSemantics();
-      addTearDown(semantics.dispose);
       final r = await Apk2Rig.create(t);
       final before = await r.snapshot(t);
       await r.mount(t);
@@ -91,13 +92,14 @@ void main() {
       expect(apk2Selected(t, choice), isFalse);
       expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
       expect(await r.snapshot(t), before);
+      // Disposed in the body: the binding checks handles before teardowns run.
+      semantics.dispose();
     });
   }
 
   testWidgets('keeping a workout creates one session at its detected times '
       'while discarding a nap credits no sleep', (t) async {
     final semantics = t.ensureSemantics();
-    addTearDown(semantics.dispose);
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     await r.mount(t);
@@ -117,12 +119,13 @@ void main() {
     expect(after['sleep_nap'], isEmpty);
     expect(await r.status(t, apk2NapB), ActivityReviewStatus.pending);
     expect(await r.status(t, apk2WorkoutB), ActivityReviewStatus.pending);
+    // Disposed in the body: the binding checks handles before teardowns run.
+    semantics.dispose();
   });
 
   testWidgets('paging preserves a choice; choosing the other action replaces '
       'it and Save applies only the replacement', (t) async {
     final semantics = t.ensureSemantics();
-    addTearDown(semantics.dispose);
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     await r.mount(t);
@@ -143,12 +146,13 @@ void main() {
     }
     expect((await r.snapshot(t))['sleep_nap'], isEmpty);
     expect((await r.snapshot(t))['sessions'], isEmpty);
+    // Disposed in the body: the binding checks handles before teardowns run.
+    semantics.dispose();
   });
 
   testWidgets('Back asks before losing changes; cancel preserves page and '
       'choice; confirming leaves without saving or restoring a stale draft', (t) async {
     final semantics = t.ensureSemantics();
-    addTearDown(semantics.dispose);
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     await r.mount(t);
@@ -180,12 +184,13 @@ void main() {
     await apk2Show(t, chosen);
     expect(apk2Selected(t, apk2Discard(chosen)), isFalse);
     expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    // Disposed in the body: the binding checks handles before teardowns run.
+    semantics.dispose();
   });
 
   testWidgets('a failure on the second decision rolls back the entire Save, '
       'keeps every choice, and permits a successful retry', (t) async {
     final semantics = t.ensureSemantics();
-    addTearDown(semantics.dispose);
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     // Fail AFTER one decision, whichever order the implementation chooses.
@@ -227,12 +232,13 @@ void main() {
     expect(labels.where((l) => l.hhmm == '09:15'), hasLength(1));
     expect(labels.singleWhere((l) => l.hhmm == '09:15').label, isNull);
     expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    // Disposed in the body: the binding checks handles before teardowns run.
+    semantics.dispose();
   });
 
   testWidgets('marked moments and detected naps and workouts share one '
       'paginated queue and one Save with no early writes', (t) async {
     final semantics = t.ensureSemantics();
-    addTearDown(semantics.dispose);
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
     await r.mount(t, marked: true);
@@ -262,12 +268,13 @@ void main() {
     expect(await r.status(t, apk2WorkoutA), ActivityReviewStatus.discarded);
     expect(apk2PageIds(), {apk2NapB, apk2WorkoutB, apk2MarkB});
     expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    // Disposed in the body: the binding checks handles before teardowns run.
+    semantics.dispose();
   });
 
   testWidgets('a queue read failure stays visible beside the day chart, '
       'does not claim empty, and Retry restores pending items', (t) async {
     final semantics = t.ensureSemantics();
-    addTearDown(semantics.dispose);
     final r = await Apk2Rig.create(t);
     r.repo.failQueueRead = true;
     await r.mount(t);
@@ -280,5 +287,7 @@ void main() {
     await apk2Tap(t, apk2Key(apk2Retry));
     expect(apk2Key(apk2LoadError), findsNothing);
     expect(apk2PageIds(), hasLength(3));
+    // Disposed in the body: the binding checks handles before teardowns run.
+    semantics.dispose();
   });
 }

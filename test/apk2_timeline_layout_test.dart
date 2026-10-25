@@ -95,7 +95,6 @@ void main() {
     testWidgets('at 360 pt and ${scale}x, tray paging, staged controls and '
         'the leave confirmation fit without overflow', (t) async {
       final semantics = t.ensureSemantics();
-      addTearDown(semantics.dispose);
       final errors = captureFlutterErrors();
       final r = await Apk2Rig.create(t);
       await r.mount(t, scale: scale);
@@ -117,12 +116,13 @@ void main() {
       expect(apk2Enabled(t, apk2Key(apk2Save)), isTrue);
       expect(errors, isEmpty);
       expect(t.takeException(), isNull);
+      // Disposed in the body: the binding checks handles before teardowns run.
+      semantics.dispose();
     });
 
     testWidgets('at 360 pt and ${scale}x, normal entry reserves an empty tray '
         'through loading and speaks the empty status once', (t) async {
       final semantics = t.ensureSemantics();
-      addTearDown(semantics.dispose);
       final errors = captureFlutterErrors();
       final r = await Apk2Rig.create(t, pending: false);
       final gate = Completer<List<ActivitySuggestion>>();
@@ -149,6 +149,8 @@ void main() {
       expect(t.getRect(apk2Key(apk2Chart)), beforeChart);
       expect(errors, isEmpty);
       expect(t.takeException(), isNull);
+      // Disposed in the body: the binding checks handles before teardowns run.
+      semantics.dispose();
     });
   }
 }
