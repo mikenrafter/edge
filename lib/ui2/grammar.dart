@@ -599,6 +599,8 @@ class ChartScrub extends StatefulWidget {
   final String label;
   final List<ChartKey> keys;
   final String? Function(double at)? time;
+  /// Time captions reserved across states, including before data arrives.
+  final List<String> reserveTimes;
   final bool gaps;
   final Widget child;
   final ChartScrubMode mode;
@@ -733,6 +735,7 @@ class ChartScrub extends StatefulWidget {
     required this.keys,
     required this.child,
     this.time,
+    this.reserveTimes = const [],
     this.gaps = false,
     this.mode = ChartScrubMode.line,
     this.step = .05,
@@ -879,6 +882,7 @@ class _ChartScrubState extends State<ChartScrub> {
         time: _resolve(v).time,
         scrubbed: _resolve(v).scrubbed,
         timeSpan: timeSpan(),
+        reserveTimes: widget.reserveTimes,
         restOlder: chartRestOlder(_resolve(null).cells));
     return LayoutBuilder(
       builder: (_, box) => Column(
@@ -923,8 +927,12 @@ class ChartKeyReadout extends StatelessWidget {
   /// the caption reserves the tallest of them and a scrub never reflows it.
   final List<String> timeSpan;
 
+  /// State-changing streams reserve these captions with real, hidden Texts
+  /// so bold text and accessibility spacing participate in their layout.
+  final List<String> reserveTimes;
+
   const ChartKeyReadout(
-      {super.key, required this.cells, this.time, this.scrubbed = false, this.stats = const [], this.restOlder, this.onOpen, this.timeSpan = const []});
+      {super.key, required this.cells, this.time, this.scrubbed = false, this.stats = const [], this.restOlder, this.onOpen, this.timeSpan = const [], this.reserveTimes = const []});
 
   factory ChartKeyReadout.of(ChartReadout r) =>
       ChartKeyReadout(cells: r.cells, time: r.time, scrubbed: r.scrubbed);
@@ -1014,6 +1022,18 @@ class ChartKeyReadout extends StatelessWidget {
     final latestText = l?.chartPanelLatest ?? 'LATEST';
     final selectedText = l?.chartPanelSelected ?? 'SELECTED';
     final style = F.over.copyWith(color: color, fontWeight: FontWeight.w700);
+    if (reserveTimes.isNotEmpty) {
+      return Stack(
+        key: timeKey,
+        children: [
+          for (final mode in [latestText, selectedText])
+            for (final at in reserveTimes)
+              _hiddenText('$mode · $at'.toUpperCase(), style),
+          Text('${scrubbed ? selectedText : latestText} · ${time ?? absent}'.toUpperCase(),
+              key: captionKey, style: style),
+        ],
+      );
+    }
     return LayoutBuilder(builder: (_, box) {
       // Reserve both mode captions at this text size. They wrap in full, and
       // switching LATEST to SELECTED cannot add a line to a clock readout.
@@ -1061,6 +1081,14 @@ class ChartKeyReadout extends StatelessWidget {
       );
     });
   }
+
+  Widget _hiddenText(String text, TextStyle style, {int? maxLines}) => Visibility(
+        visible: false,
+        maintainSize: true,
+        maintainAnimation: true,
+        maintainState: true,
+        child: Text(text, style: style, maxLines: maxLines),
+      );
 
   Widget _equalCells(BuildContext c, List<Widget> items) {
     final scale = math.max(1.0, MediaQuery.textScalerOf(c).scale(1));
@@ -1176,7 +1204,12 @@ class ChartKeyReadout extends StatelessWidget {
               ? Pressable(
                   onTap: onOpen,
                   semanticLabel: AppLocalizations.of(c)?.metricDetailOpenDay(time ?? '') ?? 'Open $time',
-                  child: value,
+                  // A real dash includes accessibility line spacing, even
+                  // when the current reading scales down to fit its width.
+                  child: reserveTimes.isEmpty ? value : Stack(children: [
+                    _hiddenText(absent, valueStyle, maxLines: 1),
+                    value,
+                  ]),
                 )
               : value,
         ),

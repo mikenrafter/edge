@@ -86,6 +86,13 @@ class LiveHrCard extends StatelessWidget {
       'The last $n readings, $lo to $hi bpm. ${saved ?? _notSavedEn}';
   static const _notSavedEn = 'The live stream is not saved.';
 
+  // Reserve the whole capped stream before the first beat, so neither a new
+  // reading nor a scrub can add caption lines at any accessibility setting.
+  static final _panelTimes = [
+    'Now',
+    for (var n = 1; n < AppState.liveHrTraceMax; n++) '$n readings ago',
+  ];
+
   /// ONE LAYOUT FOR EVERY STATE. The header slot, the 56 pt plot slot with its
   /// key row, and the caption slot are built the same way whether the card has
   /// no band, no beat, one beat or a chart; only what is drawn in them differs.
@@ -244,6 +251,7 @@ class LiveHrCard extends StatelessWidget {
               // The stream carries no timestamps, so the position is "how many
               // readings ago", counted from the newest.
               time: ago,
+              reserveTimes: _panelTimes,
               keys: keys,
               child: _PlotSlot(
                 reasons: reasons,
@@ -276,8 +284,11 @@ class LiveHrCard extends StatelessWidget {
                   ),
                   const SizedBox(height: S.x2),
                   ExcludeSemantics(
-                    child: ChartKeyReadout.of(
-                        ChartScrub.resolve(keys: keys, time: (_) => null)),
+                    child: ChartKeyReadout(
+                      cells: ChartScrub.resolve(keys: keys).cells,
+                      time: 'Now',
+                      reserveTimes: _panelTimes,
+                    ),
                   ),
                 ],
               ),

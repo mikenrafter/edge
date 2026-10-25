@@ -117,7 +117,9 @@ void main() {
     await t.pump();
     expect(find.byKey(ChartScrub.cursorKey), findsOneWidget);
     expect(find.text('8 steps'), findsOneWidget);
-    expect(find.text('hour 3'), findsOneWidget);
+    final caption = t.widget<Text>(
+        find.byKey(const ValueKey('chart-panel-caption')));
+    expect(caption.data!.toLowerCase(), 'selected · hour 3');
   });
 
   testWidgets('nearest mode (scatter/grid): no cursor line', (t) async {
