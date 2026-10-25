@@ -33,7 +33,7 @@ import 'advanced.dart';
 import 'ecg.dart' show EcgEntryCard;
 import 'findings_log.dart';
 import 'home_screen.dart';
-import 'investigate.dart';
+import 'beats.dart';
 import 'metric_catalogue.dart';
 import 'metric_detail.dart';
 import 'wellness_screen.dart';
@@ -1478,7 +1478,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                   : (l?.healthTimeFrequencyNonLinear ?? 'Detailed HRV measures'),
               C.green,
               preview: _hrvPreview(c, d),
-              onTap: () => go(c, const Investigate('hrv'))),
+              onTap: () => go(c, const Beats())),
         ),
 
       // The research charts, all behind one door.

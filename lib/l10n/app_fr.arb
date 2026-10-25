@@ -3508,5 +3508,8 @@
   "dayReviewSave": "Enregistrer",
   "dayReviewFollowUpFailed": "Décisions enregistrées. Certains éléments n’ont pas pu être actualisés ou exportés.",
   "dayReviewPage": "{page} sur {pages}",
-  "dayReviewNoReviewNeeded": "Aucune vérification nécessaire"
+  "dayReviewNoReviewNeeded": "Aucune vérification nécessaire",
+  "dayReviewPending": "À examiner",
+  "dayReviewMarkedMoment": "Moment marqué",
+  "homeBreakdownOpen": "Ouvrir"
 }

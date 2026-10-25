@@ -35,7 +35,6 @@ import '../profile/devices.dart' show DeviceFilter;
 import '../profile/profile.dart' show ProfileAvatar;
 import '../ui2.dart';
 import 'home_screen.dart';
-import 'investigate.dart';
 import 'metric_detail.dart';
 import 'naps.dart';
 import 'rough_night.dart';
@@ -926,14 +925,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       // ── 7 · ONE TAKEAWAY ──
       Section(l?.sleepDetailTonightSection ?? 'Tonight', _tonight(c, p, d),
           key: const ValueKey('card:tonight')),
-
-      const SizedBox(height: S.x5),
-      // The night this screen is steered to, not the newest one. Dropping it
-      // meant stepping back to Tuesday and then tapping Nerd stats landed
-      // on last night — the same numbers every time, whichever day you
-      // came from.
-      investigateRow(
-          c, () => go(c, Investigate('sleep', day: _day ?? d.day))),
     ];
   }
 

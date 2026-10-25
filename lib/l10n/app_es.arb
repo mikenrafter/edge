@@ -3526,5 +3526,8 @@
   "dayReviewSave": "Guardar",
   "dayReviewFollowUpFailed": "Decisiones guardadas. No se pudieron actualizar o exportar todos los elementos.",
   "dayReviewPage": "{page} de {pages}",
-  "dayReviewNoReviewNeeded": "No requiere revisión"
+  "dayReviewNoReviewNeeded": "No requiere revisión",
+  "dayReviewPending": "Por revisar",
+  "dayReviewMarkedMoment": "Momento marcado",
+  "homeBreakdownOpen": "Abrir"
 }

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../compute/nap_edits.dart';
 import '../../models/activity_suggestion.dart';
+import '../../state/app_state.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
 import '../ui2.dart';
 import 'home_screen.dart';
 import 'day_review.dart';
+import 'day_timeline.dart' show DayTimelineScreen;
+import 'moment_follow_up.dart' show pendingMomentReviews;
 
 /// Compatibility entry for older callers. All review lives in the breakdown.
 class DetectedActivitiesScreen extends StatelessWidget {
@@ -137,14 +141,21 @@ class ActivityProposalCard extends StatelessWidget {
   );
 }
 
+/// Home's review card: ALWAYS there. With something to review (activities,
+/// marked moments, assumed water) it reads "Review activities" and the count,
+/// in green, and opens the review. With nothing it is "Breakdown of your day"
+/// in grey and opens the plain breakdown. Same icon either way.
 class DetectedActivitiesCard extends StatefulWidget {
   const DetectedActivitiesCard(
-      {super.key, this.pendingCount, this.loadFailed = false});
+      {super.key, this.pendingCount, this.loadFailed = false, this.day});
   final int? pendingCount;
 
   /// The caller's own read of the count failed: show the retry text from the
   /// first paint rather than a second read that lands the card a frame late.
   final bool loadFailed;
+
+  /// The day the plain breakdown opens on; null is the newest.
+  final String? day;
   @override
   State<DetectedActivitiesCard> createState() => _DetectedActivitiesCardState();
 }
@@ -152,6 +163,7 @@ class DetectedActivitiesCard extends StatefulWidget {
 class _DetectedActivitiesCardState extends State<DetectedActivitiesCard>
     with RevisionReload {
   int? _count;
+  int _moments = 0;
   bool _failed = false;
   @override
   void initState() {
@@ -168,7 +180,14 @@ class _DetectedActivitiesCardState extends State<DetectedActivitiesCard>
 
   Future<void> _load() async {
     try {
-      if (widget.pendingCount != null || widget.loadFailed) return;
+      final settings = context.read<AppState>().gestureSettings;
+      final moments = await pendingMomentReviews(settings);
+      if (mounted && moments != _moments) setState(() => _moments = moments);
+    } on ProviderNotFoundException {
+      // No AppState (a golden): no moments to count.
+    }
+    try {
+      if (!mounted || widget.pendingCount != null || widget.loadFailed) return;
       final repo = repoOf(context);
       if (repo == null) return;
       final count = await repo.pendingActivityCount();
@@ -185,18 +204,28 @@ class _DetectedActivitiesCardState extends State<DetectedActivitiesCard>
 
   @override
   Widget build(BuildContext c) {
-    // nothing pending (or not loaded yet) = no card on home. a failed load
-    // isn't "nothing", so that still shows with the retry text.
-    final n = _count;
-    if (!_failed && (n == null || n <= 0)) return const SizedBox.shrink();
     final l = AppLocalizations.of(c);
+    final n = (_count ?? 0) + _moments;
+    if (!_failed && n <= 0) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: S.x3),
+        child: ActionCard(
+          l?.homeBreakdownTitle ?? 'Breakdown of your day',
+          l?.homeBreakdownSubtitle ?? 'Hour by hour',
+          l?.homeBreakdownOpen ?? 'Open',
+          LucideIcons.radar,
+          C.n500,
+          onTap: () => go(c, DayTimelineScreen(day: widget.day)),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: S.x3),
       child: ActionCard(
-        l?.activityReviewTitle ?? 'Detected activities',
+        l?.homeReviewActivities ?? 'Review activities',
         _failed
             ? (l?.activityLoadFailed ?? 'Could not load activities. Try again.')
-            : (l?.activityPending(n!) ?? '$n to review'),
+            : (l?.activityPending(n) ?? '$n to review'),
         l?.activityReview ?? 'Review',
         LucideIcons.radar,
         C.domHome,

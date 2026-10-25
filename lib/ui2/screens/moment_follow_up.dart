@@ -27,7 +27,6 @@ import '../../platform/tasker_moment_export.dart';
 import '../../gestures/symptom_description.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
-import '../../theme/theme_switcher.dart' show themedRoute;
 import '../ui2.dart';
 import '../activity/catalogue.dart';
 import 'home_screen.dart' show repoOf;
@@ -130,103 +129,20 @@ Widget? momentFollowUpCardFor({
             moments: moments, assumedWater: assumedWater, onAnswer: onAnswer)
         : null;
 
-/// Home's helper: null with no AppState above (a golden), like
-/// `_naturalWakeCard`.
-Widget? momentFollowUpCard(BuildContext c) {
+/// Marked moments plus assumed water glasses waiting for an answer, for the
+/// count on Home's review card. Zero while follow-ups are off; a failed read
+/// is zero too (the next read tries again) rather than a claim either way.
+Future<int> pendingMomentReviews(GestureSettings g) async {
+  if (!g.followUpMoments) return 0;
   try {
-    return _HomeMomentCard(settings: c.read<AppState>().gestureSettings);
-  } on ProviderNotFoundException {
-    return null;
-  }
-}
-
-/// Counts the pending moments for Home. Re-reads when the setting changes, when
-/// Home is built again and after the follow-up screen closes — never on a
-/// timer, and a read still running is not started twice.
-class _HomeMomentCard extends StatefulWidget {
-  const _HomeMomentCard({required this.settings});
-  final GestureSettings settings;
-
-  @override
-  State<_HomeMomentCard> createState() => _HomeMomentCardState();
-}
-
-class _HomeMomentCardState extends State<_HomeMomentCard> {
-  int _moments = 0, _water = 0;
-  bool _reading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.settings.addListener(_read);
-    _read();
-  }
-
-  @override
-  void didUpdateWidget(_HomeMomentCard old) {
-    super.didUpdateWidget(old);
-    if (old.settings != widget.settings) {
-      old.settings.removeListener(_read);
-      widget.settings.addListener(_read);
-    }
-    _read();
-  }
-
-  @override
-  void dispose() {
-    widget.settings.removeListener(_read);
-    super.dispose();
-  }
-
-  Future<void> _read() async {
-    // Home hides this card while follow-ups are off. Loading assumed water
-    // and the review queue then cannot produce anything Home can display.
-    if (!widget.settings.followUpMoments) {
-      if (mounted && (_moments != 0 || _water != 0)) {
-        setState(() { _moments = 0; _water = 0; });
-      }
-      return;
-    }
-    if (_reading) return;
-    _reading = true;
-    try {
-      final g = widget.settings;
-      final since = g.followUpMoments ? g.followUpMomentsSince : null;
-      final f = await MomentFollowUps.load(enabledSince: since);
-      if (!mounted || !widget.settings.followUpMoments) return;
-      // A started range with only its announcement left has no pending mark,
-      // but is still waiting for Save: it counts too.
-      final review = MomentReviewService.shared..reload();
-      final n = f.reviewCounts(DateTime.now(), review.queue);
-      if (mounted && (n.moments != _moments || n.assumedWater != _water)) {
-        setState(() {
-          _moments = n.moments;
-          _water = n.assumedWater;
-        });
-      }
-    } catch (_) {
-      // A read that failed shows no card; it does not claim there is nothing
-      // to answer, and the next read tries again.
-    } finally {
-      _reading = false;
-    }
-  }
-
-  @override
-  Widget build(BuildContext c) {
-    final on = widget.settings.followUpMoments;
-    return momentFollowUpCardFor(
-          enabled: on,
-          moments: _moments,
-          assumedWater: _water,
-          onAnswer: () async {
-            await Navigator.of(c).push(themedRoute<void>(
-                (_) => const MomentFollowUpScreen(),
-                name: 'MomentFollowUpScreen'));
-            unawaited(_read());
-          },
-        ) ??
-        const SizedBox.shrink();
+    final f = await MomentFollowUps.load(enabledSince: g.followUpMomentsSince);
+    // A started range with only its announcement left has no pending mark,
+    // but is still waiting for Save: it counts too.
+    final review = MomentReviewService.shared..reload();
+    final n = f.reviewCounts(DateTime.now(), review.queue);
+    return n.moments + n.assumedWater;
+  } catch (_) {
+    return 0;
   }
 }
 

@@ -3508,5 +3508,8 @@
   "dayReviewSave": "保存",
   "dayReviewFollowUpFailed": "决定已保存。部分项目未能刷新或导出。",
   "dayReviewPage": "第 {page} 页，共 {pages} 页",
-  "dayReviewNoReviewNeeded": "无需审核"
+  "dayReviewNoReviewNeeded": "无需审核",
+  "dayReviewPending": "待查看",
+  "dayReviewMarkedMoment": "已标记的时刻",
+  "homeBreakdownOpen": "打开"
 }

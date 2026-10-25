@@ -3543,6 +3543,10 @@ class BigButton extends StatelessWidget {
 
   /// Shows a small spinner in place of [icon] (work in progress).
   final bool busy;
+
+  /// The row-sized form: one tap target tall, for buttons that sit several to
+  /// a row (Keep / Discard / Edit) rather than commit a whole screen.
+  final bool dense;
   final VoidCallback? onTap;
   final VoidCallback? onPressStart;
   final VoidCallback? onPressEnd;
@@ -3555,6 +3559,7 @@ class BigButton extends StatelessWidget {
     this.color = C.green,
     this.soft = false,
     this.busy = false,
+    this.dense = false,
     this.onTap,
     this.onPressStart,
     this.onPressEnd,
@@ -3574,14 +3579,15 @@ class BigButton extends StatelessWidget {
       child: Container(
         // A minimum, never a fixed height — at accessibility text sizes the
         // label is taller than 52 and a fixed box would clip it.
-        constraints: const BoxConstraints(minHeight: 52),
+        constraints: BoxConstraints(minHeight: dense ? S.tap : 52),
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3),
+        padding: EdgeInsets.symmetric(
+            horizontal: dense ? S.x2 : S.x4, vertical: dense ? S.x2 : S.x3),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: soft ? p.wash(color) : p.fill(color),
           borderRadius: R.rMd,
-          boxShadow: soft ? null : p.el(2),
+          boxShadow: soft || dense ? null : p.el(2),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -3598,7 +3604,8 @@ class BigButton extends StatelessWidget {
             Flexible(
               child: Text(
                 label,
-                style: F.head.copyWith(color: ink),
+                style: (dense ? F.body.copyWith(fontWeight: FontWeight.w600) : F.head)
+                    .copyWith(color: ink),
                 textAlign: TextAlign.center,
                 maxLines: 2,
               ),
@@ -3977,9 +3984,27 @@ class ChartFrame extends StatelessWidget {
 
           // ── plot, or the honest absence of one ──
           if (empty != null)
-            ConstrainedBox(
-              constraints: BoxConstraints(minHeight: height),
-              child: Center(child: empty),
+            // A greyed sine wave stands where the curve would be, so the card
+            // keeps its shape. It is a placeholder, not data: it is excluded
+            // from semantics and nothing reads a value off it.
+            SizedBox(
+              height: height,
+              child: Stack(alignment: Alignment.center, children: [
+                Positioned.fill(
+                  child: ExcludeSemantics(
+                    child: CustomPaint(
+                        painter: _PlaceholderWave(p.ink3.withValues(alpha: .35))),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: S.x2, vertical: S.x1),
+                  decoration: BoxDecoration(
+                      color: p.card.withValues(alpha: .85),
+                      borderRadius: R.rSm),
+                  child: empty,
+                ),
+              ]),
             )
           else
             _annotated(
@@ -4268,6 +4293,34 @@ class _FrameKeys extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The placeholder drawn in an empty [ChartFrame]: two periods of a sine wave
+/// whose height is 60% of the plot's, centred. Not a series.
+class _PlaceholderWave extends CustomPainter {
+  final Color color;
+  const _PlaceholderWave(this.color);
+
+  @override
+  void paint(Canvas cv, Size s) {
+    if (s.width <= 0 || s.height <= 0) return;
+    final amp = s.height * .6 / 2;
+    final path = Path();
+    for (var x = 0.0; x <= s.width; x += 2) {
+      final y = s.height / 2 - amp * math.sin(x / s.width * 4 * math.pi);
+      x == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+    }
+    cv.drawPath(
+        path,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..strokeCap = StrokeCap.round);
+  }
+
+  @override
+  bool shouldRepaint(covariant _PlaceholderWave o) => o.color != color;
 }
 
 /// The horizontal rules behind a plot, at the same fractions [ChartFrame]

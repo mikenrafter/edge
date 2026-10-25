@@ -17770,5 +17770,8 @@
   "dayReviewFollowUpFailed": "Decisions saved. Could not refresh or export every item.",
   "dayReviewPage": "{page} of {pages}",
   "@dayReviewPage": {"placeholders": {"page": {"type": "int"}, "pages": {"type": "int"}}},
-  "dayReviewNoReviewNeeded": "No review needed"
+  "dayReviewNoReviewNeeded": "No review needed",
+  "dayReviewPending": "To review",
+  "dayReviewMarkedMoment": "Marked moment",
+  "homeBreakdownOpen": "Open"
 }

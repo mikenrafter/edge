@@ -8887,5 +8887,8 @@
   "dayReviewSave": "Сохранить",
   "dayReviewFollowUpFailed": "Решения сохранены. Не удалось обновить или экспортировать все записи.",
   "dayReviewPage": "{page} из {pages}",
-  "dayReviewNoReviewNeeded": "Проверка не требуется"
+  "dayReviewNoReviewNeeded": "Проверка не требуется",
+  "dayReviewPending": "Нужно проверить",
+  "dayReviewMarkedMoment": "Отмеченный момент",
+  "homeBreakdownOpen": "Открыть"
 }

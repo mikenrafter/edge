@@ -1939,7 +1939,6 @@ Map<String, Widget> _listCases() => {
         ('nights_in_baseline', '14'),
         ('artifact_share', '2.1%'),
       ]),
-      'investigate_row': Builder(builder: (c) => investigateRow(c, () {})),
       'no_data': const Surface(
           child: NoData(message: 'No nights recorded this week')),
       'moment_row': Builder(

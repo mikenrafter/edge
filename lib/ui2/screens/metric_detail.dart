@@ -1256,8 +1256,6 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
           fix: uiText(context, spec.suppressFix ?? ''),
           icon: spec.icon,
         ),
-        const SizedBox(height: S.x5),
-        investigateRow(c, () => go(c, Investigate(widget.metricKey))),
       ] else if (_paused) ...[
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
@@ -1305,12 +1303,6 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
           const SizedBox(height: S.x5),
           _StepGoalGauge(
               steps: null, goal: d.stepGoal, color: spec.color, onSaved: _load),
-        ],
-        // Not while the first read is out: the chart lands above it and would
-        // push the door down the screen. It arrives with the data instead.
-        if (!_loading) ...[
-          const SizedBox(height: S.x5),
-          investigateRow(c, () => go(c, Investigate(widget.metricKey))),
         ],
       ] else ...[
         _ranges(c, d, spec.color),
@@ -1385,7 +1377,6 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
               () => go(c, const DayStepsDetail())),
           const SizedBox(height: S.x3),
         ],
-        investigateRow(c, () => go(c, Investigate(widget.metricKey))),
       ],
     ]);
   }
@@ -1853,7 +1844,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                 time: prettyDay(_dayOfSlot(selected, series.length), AppLocalizations.of(panelContext)),
                 scrubbed: _pick != null,
                 restOlder: atRestOlder,
-                onOpen: v == null ? null : () => go(panelContext, _dayScreen(
+                // Tappable even for a day with no value yet: this is the one
+                // way into Nerd stats, so it is never switched off.
+                onOpen: () => go(panelContext, _dayScreen(
                     widget.metricKey, _dayOfSlot(selected, series.length))),
               );
             }),
@@ -1867,7 +1860,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
             // newest day and stopped. A slot with a value came out of
             // `metric_series`, which gets a row only on a day that DERIVED, so
             // a non-null slot is by construction a day this install can open —
-            // no membership check, and a null slot offers no door.
+            // no membership check. The panel keeps the door open on a null slot too.
             child: Scrubber(
               // Slot i sits at i/(len-1) — exactly where `minMaxRuns` plots it,
               // so the readout names the day under the finger rather than the
@@ -2563,24 +2556,6 @@ Widget detailLinkRow(BuildContext c, IconData icon, String title, String sub,
     ),
   );
 }
-
-/// The door into density 3 — the screen the user sees as "Nerd stats". Kept
-/// deliberately plain: it is a workbench entrance, not a feature, and it now
-/// reads as a companion to the picture above it rather than as the place the
-/// interesting numbers are hiding.
-///
-/// The identifier stays `investigateRow` to match `investigate.dart` and the
-/// `investigate_row` gallery key; only the string changed.
-Widget investigateRow(BuildContext c, VoidCallback onTap) => detailLinkRow(
-    c,
-    LucideIcons.cpu,
-    AppLocalizations.of(c)?.metricDetailNerdStatsTitle ?? 'Nerd stats',
-    // One line at 1x. A subtitle that wraps makes this row taller than every
-    // other `detailLinkRow` in the app, which is a layout change dressed up as
-    // a copy change — keep it at or under the old string's length.
-    AppLocalizations.of(c)?.metricDetailNerdStatsSub ??
-        'The figures behind the picture',
-    onTap);
 
 /// A two-column legend. Used by the hypnogram and the overnight stack.
 class Legend extends StatelessWidget {

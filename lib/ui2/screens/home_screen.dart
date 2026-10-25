@@ -87,8 +87,6 @@ import '../ui2.dart';
 import 'ai_briefing.dart' show AiBriefingScreen;
 import 'coach.dart';
 import 'detected_activities.dart';
-import 'day_timeline.dart' show DayTimelineScreen;
-import 'moment_follow_up.dart' show momentFollowUpCard;
 import 'metric_detail.dart';
 import 'natural_wake_card.dart';
 import 'snooze_card.dart';
@@ -1022,10 +1020,6 @@ class RingTrio extends StatelessWidget {
   /// states only it knows: first week, loading, calculating, failed.
   final RingHelp? help;
 
-  /// Text the strip must have room for in ANY state, so its height does not
-  /// change when it swaps (the first-week guidance, which is the longest).
-  final String? reserveHelp;
-
   const RingTrio(
       {super.key,
       required this.d,
@@ -1033,8 +1027,7 @@ class RingTrio extends StatelessWidget {
       this.now,
       this.since,
       this.holdText,
-      this.help,
-      this.reserveHelp});
+      this.help});
 
   /// Whether ANY of the three has something to draw. When none do, the screen
   /// owes the user one written absence, not three empty circles.
@@ -1069,6 +1062,38 @@ class RingTrio extends StatelessWidget {
     // ([overnightMetric]), so a ring with no night behind it is a gap row with
     // the reason in it — same place every other absence on this screen goes.
 
+    // THE CARD'S BOTTOM SLOT: up to two info rows, all in the one style the
+    // low-sleep rows set, and nothing at all (no reserved band) when there is
+    // nothing to say. Status notes are rows too: why a ring is empty, what is
+    // still being read or calculated, first-week guidance. The most useful two
+    // win, in this order.
+    final rows = <Widget>[
+      ?observation,
+      for (final r in gaps)
+        _HomeNoteRow(id: 'gap:${r.kind.name}', title: r.label,
+            text: presentationText(l, r.why ?? ''), onTap: _open(r.kind)),
+      for (final k in pressing)
+        _HomeWhyPanel(kind: k, data: d, onTap: _open(k)),
+      if (older != null)
+        _HomeOlderPanel(version: older, reason: d.strain.olderVersionReason,
+            onTap: _open(HomeRingKind.strain)),
+      if (note != null)
+        _HomeUpdateNote(line: note, onTap: _open(HomeRingKind.recovery)),
+    ];
+    // The screen's own status (reading, calculating, failed, guidance)
+    // speaks only when nothing more specific does.
+    final status = help;
+    if (rows.isEmpty && status != null && status.text.isNotEmpty) {
+      rows.add(_HomeNoteRow(id: 'status', text: status.text,
+          busy: status.busy, onTap: status.onTap));
+    }
+    final slot = [
+      for (final (i, row) in rows.take(2).indexed) ...[
+        SizedBox(height: i == 0 ? S.x3 : S.x2),
+        row,
+      ],
+    ];
+
     return Surface(
       elevation: 2,
       child: LayoutBuilder(builder: (c, box) => Column(children: [
@@ -1096,40 +1121,7 @@ class RingTrio extends StatelessWidget {
               ],
             ],
           ),
-        // THE HELP STRIP: one fixed-height slot under the rings, the same box
-        // first launch and loaded. Empty, it says what arrives when (or why a
-        // ring is empty); loaded, it is the card's "Why?" footer.
-        if (observation != null || pressing.isNotEmpty || older != null || note != null) ...[
-          const SizedBox(height: S.x3),
-          // The observation takes the first of the two pressing slots.
-          ?observation,
-          for (var i = 0; i < pressing.length; i++) ...[
-            if (i > 0 || observation != null) const SizedBox(height: S.x2),
-            _HomeWhyPanel(kind: pressing[i], data: d, onTap: _open(pressing[i])),
-          ],
-          if (note != null)
-            Padding(padding: EdgeInsets.only(top: pressing.isEmpty ? 0 : S.x2),
-                child: _HomeUpdateNote(line: note, onTap: _open(HomeRingKind.recovery))),
-          if (older != null)
-            Padding(padding: EdgeInsets.only(top: pressing.isEmpty && note == null ? 0 : S.x2), child: _HomeOlderPanel(version: older, reason: d.strain.olderVersionReason,
-                onTap: _open(HomeRingKind.strain)),
-            ),
-          // An absent ring's reason is never hidden by the rows above.
-          if (gaps.isNotEmpty) ...[
-            const SizedBox(height: S.x3),
-            _HelpStrip(text: [for (final r in gaps) '${r.label} · ${presentationText(l, r.why ?? '')}'].join('\n'),
-                onTap: _open(gaps.first.kind), busy: false, chevron: onOpen != null, reserve: const []),
-          ],
-        ] else if (help != null && help!.text.isNotEmpty) ...[
-          const SizedBox(height: S.x3),
-          _HelpStrip(text: help!.text, onTap: help!.onTap,
-              busy: help!.busy, chevron: help!.onTap != null,
-              reserve: reserveHelp == null ? const [] : [reserveHelp!]),
-        ] else if (gaps.isNotEmpty) ...[
-          const SizedBox(height: S.x3),
-          _HelpStrip(text: [for (final r in gaps) '${r.label} · ${presentationText(l, r.why ?? '')}'].join('\n'),
-              onTap: _open(gaps.first.kind), busy: false, chevron: onOpen != null, reserve: const []),
-        ],
+        ...slot,
       ])),
     );
   }
@@ -1315,6 +1307,41 @@ String _sleepWhy(HomeData d, AppLocalizations? l) {
   String hm(num m) => '${m ~/ 60}h ${m.round() % 60}m';
   return l?.homeWhySleepDetail(hm(asleep), hm(gap), hm(need)) ??
       '${hm(asleep)} asleep, ${hm(gap)} under your ${hm(need)} need.';
+}
+
+/// A status note in the pressing rows' style: a neutral icon, [title] over
+/// [text] (or [text] alone), a spinner for work still running, and a chevron
+/// when it opens something.
+class _HomeNoteRow extends StatelessWidget {
+  final String id, text;
+  final String? title;
+  final bool busy;
+  final VoidCallback? onTap;
+  const _HomeNoteRow({required this.id, required this.text, this.title,
+      this.busy = false, this.onTap});
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return _HomeInsetRow(key: ValueKey('home-note:$id'), onTap: onTap,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Container(key: ValueKey('home-note-icon:$id'), width: 32, height: 32,
+          decoration: BoxDecoration(color: p.ink3.withValues(alpha: .16), shape: BoxShape.circle),
+          child: busy
+              ? Padding(padding: const EdgeInsets.all(8),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: p.ink2))
+              : Icon(LucideIcons.info, size: 17, color: p.ink2)),
+        const SizedBox(width: S.x2),
+        Expanded(child: title == null
+            ? Text(text, style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
+                maxLines: 3, overflow: TextOverflow.ellipsis)
+            : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(title!, style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(text, style: F.cap.copyWith(color: p.ink2), maxLines: 2, overflow: TextOverflow.ellipsis),
+              ])),
+        if (onTap != null) Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
+      ]));
+  }
 }
 
 /// The recovery update note as a neutral row in the pressing style.
@@ -1770,75 +1797,6 @@ class RingHelp {
   const RingHelp.busy(this.text)
       : onTap = null,
         busy = true;
-}
-
-/// The fixed-height strip under the rings. Its height is the tallest of the
-/// texts it may ever hold ([reserve]) at the current width and text scale, and
-/// at least two lines, so swapping its text never moves what is under it.
-class _HelpStrip extends StatelessWidget {
-  final String text;
-  final VoidCallback? onTap;
-  final bool chevron;
-  final bool busy;
-  final List<String> reserve;
-  const _HelpStrip(
-      {required this.text,
-      required this.onTap,
-      required this.busy,
-      required this.chevron,
-      required this.reserve});
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    final style = F.cap.copyWith(color: p.ink2);
-    final scaler = MediaQuery.textScalerOf(c);
-    final dir = Directionality.of(c);
-    return LayoutBuilder(builder: (c, box) {
-      // Icon (15) and its gap, and the chevron slot, are always reserved so
-      // the text width is the same with or without the chevron.
-      final w = box.maxWidth - 15 - S.x2 - S.x2 - 15;
-      double h(String t) {
-        final tp = TextPainter(
-            text: TextSpan(text: t, style: style),
-            textDirection: dir,
-            textScaler: scaler)
-          ..layout(maxWidth: w);
-        final r = tp.height;
-        tp.dispose();
-        return r;
-      }
-
-      final two = h('A\nA');
-      final reserved = [two, for (final t in reserve) h(t)].reduce(math.max);
-      return Pressable(
-        onTap: onTap,
-        semanticLabel: text.isEmpty ? null : text,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: reserved),
-          child: busy
-              ? InlineLoading(status: text, compact: true)
-              : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  // No icon for an empty strip: the box stays, nothing is drawn.
-                  SizedBox(
-                      width: 15,
-                      child: text.isEmpty
-                          ? null
-                          : Icon(LucideIcons.info, size: 15, color: p.ink3)),
-                  const SizedBox(width: S.x2),
-                  Expanded(child: Text(text, style: style)),
-                  const SizedBox(width: S.x2),
-                  SizedBox(
-                      width: 15,
-                      child: chevron
-                          ? Icon(LucideIcons.chevronRight,
-                              size: 15, color: p.ink3)
-                          : null),
-                ]),
-        ),
-      );
-    });
-  }
 }
 
 class _RingColumn extends StatelessWidget {
@@ -3130,7 +3088,6 @@ class _HomeScreenState extends State<HomeScreen>
       ?_naturalWakeCard(c),
       // A pending main-alarm snooze, with the same "I'm up".
       ?snoozeCardFor(c),
-      ?momentFollowUpCard(c),
 
       // The day switcher keeps its slot (arrows dimmed) before there is a
       // second day, so the card is there from the first launch.
@@ -3169,7 +3126,6 @@ class _HomeScreenState extends State<HomeScreen>
           since: isToday ? _recordingsThrough : null,
           holdText: held,
           help: help,
-          reserveHelp: guidance,
           onOpen: (k) => go(
               c,
               switch (k) {
@@ -3191,13 +3147,10 @@ class _HomeScreenState extends State<HomeScreen>
           GestureFailureCard(store: failures),
       ],
       const SizedBox(height: S.x3),
-      if (!ImportFocus.active.value)
-        Pressable(
-          key: const ValueKey('apk1-review-activities'),
-          onTap: () => go(c, const DetectedActivitiesScreen()),
-          child: Text(l?.homeReviewActivities ?? 'Review activities',
-              style: F.body.copyWith(color: p.ink)),
-        ),
+      // Always there: "Review activities" with the count when something waits
+      // (activities, marked moments, assumed water), else "Breakdown of your
+      // day". It is the way into the day, so it has no second door below.
+      if (!ImportFocus.active.value) card('detected', _detectedActivities(d, _day)),
       // Community asks: eligible or not, never part of the first-launch layout.
       if (!bare) const CommunityNudge(key: ValueKey('card:nudge')),
 
@@ -3218,19 +3171,6 @@ class _HomeScreenState extends State<HomeScreen>
       if (isToday)
         card('plan',
             Section(l?.homeTodaysPlan ?? "Today's plan", _plan(c, p, d))),
-
-      // ── the way into the whole day ──
-      //
-      // A DOOR, NOT A CARD: it shows no number, previews no shape and makes no
-      // observation — it names a place and goes there.
-      const SizedBox(height: S.x5),
-      card(
-        'breakdown',
-        detailLinkRow(c, LucideIcons.chartGantt,
-            l?.homeBreakdownTitle ?? 'Breakdown of your day',
-            l?.homeBreakdownSubtitle ?? 'Hour by hour',
-            () => go(c, DayTimelineScreen(day: _day))),
-      ),
 
       // The coach, set up or not, on every ordinary or bare today. Not while
       // today is building: the figures landing above would push it down.
@@ -3256,6 +3196,17 @@ class _HomeScreenState extends State<HomeScreen>
         ),
     ]));
   }
+
+  /// "Review activities" / "Breakdown of your day", handed the count read with
+  /// the day so it is in its landed shape on the first paint. Keyed by what it
+  /// copies once, so a new count (a reload after a review) needs a new card.
+  static Widget _detectedActivities(HomeData d, String? day) =>
+      DetectedActivitiesCard(
+          key: ValueKey<(int?, bool, String?)>(
+              (d.pendingActivities, d.pendingActivitiesFailed, day)),
+          pendingCount: d.pendingActivities,
+          loadFailed: d.pendingActivitiesFailed,
+          day: day);
 
   /// The illness watch, on Home, at amber as well as red.
   ///

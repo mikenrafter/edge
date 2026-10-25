@@ -61,7 +61,6 @@ import '../../models/metric.dart';
 import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'home_screen.dart';
-import 'investigate.dart';
 import 'metric_detail.dart';
 
 // ═══════════════════ the data ═══════════════════
@@ -500,9 +499,6 @@ class _BeatsState extends State<Beats>
           _dc(c, d),
           const SizedBox(height: S.x5),
           _rhythm(c, d),
-          const SizedBox(height: S.x5),
-          investigateRow(c,
-              () => go(c, Investigate('hrv', day: _day ?? d.day))),
         ],
       ],
       // WHICH NIGHT, in the app's one day format. Every panel below describes

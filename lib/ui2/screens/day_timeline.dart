@@ -25,7 +25,6 @@ import '../../l10n/display_text.dart';
 
 import 'dart:convert' show jsonDecode;
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -928,12 +927,11 @@ class DayTimelineScreen extends StatefulWidget {
 }
 
 class _DayTimelineScreenState extends State<DayTimelineScreen>
-    implements ChartWindowListener, EdgeSwipeListener {
+    implements EdgeSwipeListener {
   DayReviewController? _review;
   final _rowKeys = <String, GlobalKey>{};
   final _listController = ScrollController();
   String? _highlight;
-  int? _chartStart, _chartEnd;
   Timer? _highlightTimer;
   bool _allowPop = false;
   bool _askingLeave = false;
@@ -956,7 +954,10 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     if (!_focused && focus != null && _review?.needsReview('activity:$focus') == true) {
       _focused = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _reveal('activity:$focus');
+        if (mounted) {
+          _review?.showInTray('activity:$focus');
+          _reveal('activity:$focus');
+        }
       });
     }
     if ((_review?.savedRevision ?? 0) != _savedRevision) {
@@ -979,19 +980,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
             ? context.read<AppState>().gestureSettings.followUpMomentsSince : null);
     _review!.addListener(_onReview);
     unawaited(_review!.load());
-  }
-
-  Future<void> _chooseMarker(List<({String id, Moment moment})> rows) async {
-    final id = await showModalBottomSheet<String>(context: context,
-      backgroundColor: P.of(context).card,
-      builder: (c) => SafeArea(child: ListView(shrinkWrap: true, children: [
-        for (final row in rows)
-          reviewButton(c, 'apk2-day-marker:${row.id}',
-            '${clockOfTs(row.moment.at)}, ${row.moment.title}',
-            () => Navigator.of(c).pop(row.id)),
-      ])),
-    );
-    if (mounted && id != null) _reveal(id);
   }
 
   Future<bool> _canLeave() async {
@@ -1033,10 +1021,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       if (mounted) Navigator.of(context).pop();
     });
   }
-
-  @override
-  void windowChanged(int start, int end) =>
-      setState(() { _chartStart = start; _chartEnd = end; });
 
   void _reveal(String id) {
     _highlightTimer?.cancel();
@@ -1153,8 +1137,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         if (_review?.day != d.day && d.day != null) _loadReview(d.day!);
         setState(() => (
           _d = d,
-          _chartStart = null,
-          _chartEnd = null,
           _candidates = candidates,
           _device = null,
           // Cleared WITH `_device`. Left behind, the bounded-history message
@@ -1177,8 +1159,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     if (id == null) {
       setState(() {
         _device = null;
-        _chartStart = null;
-        _chartEnd = null;
         _deviceBounded = false;
         _d = TimelineData(
           day: d!.day,
@@ -1209,8 +1189,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final bounded = c['bounded'] == true;
     setState(() {
       _device = id;
-      _chartStart = null;
-      _chartEnd = null;
       _deviceBounded = bounded;
       _d = TimelineData(
         day: d!.day,
@@ -1239,72 +1217,9 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       _device = null;
       _deviceBounded = false;
       _highlight = null;
-      _chartStart = null;
-      _chartEnd = null;
       _loading = true;
     });
     _load();
-  }
-
-  /// The pinned chart header: the HR chart (scrolling inside, so a short
-  /// viewport still shows its plot), its range control and the marker row. A
-  /// zoom window is never active without the control that resets it.
-  Widget _chartHeader(BuildContext c, TimelineData d,
-      List<({String id, Moment moment})> rows, {double? width, double? height}) {
-    final l = AppLocalizations.of(c);
-    final p = P.of(c);
-    return SizedBox(
-      key: const ValueKey('apk2-day-chart'), width: width, height: height,
-      child: Column(children: [
-        Expanded(child: d.graph.hasCurve
-            ? _DayGraphZoom(d.graph, fineDetail: _device == null,
-                owners: coverageFromJson(d.raw?['hr_owner']),
-                compact: true, onWindowChanged: this)
-            : SingleChildScrollView(child: Text(_loading
-                ? (l?.loadingDayTimeline ?? "Reading this day's timeline")
-                : (l?.dayTimelineNothingRecordedTitle ??
-                    'Nothing was recorded on this day'),
-                style: F.cap.copyWith(color: p.ink2)))),
-        SizedBox(height: S.tap, child: LayoutBuilder(builder: (c, box) {
-          final start = _chartStart ?? d.graph.dayStart;
-          final end = _chartEnd ?? (start == null || d.day == null ? null : localDayEndSec(d.day!));
-          final fitting = (box.maxWidth / S.tap).floor();
-          final columns = fitting < 1 ? 1 : fitting;
-          // One target per tap-sized time slot; the chooser retains
-          // every item when nearby or coincident marks share a slot.
-          final groups = <int, List<({String id, Moment moment})>>{};
-          for (final row in rows) {
-            if (start == null || end == null ||
-                (row.moment.at >= start && row.moment.at < end)) {
-              final fraction = start == null || end == null || end <= start
-                  ? 0.0 : (row.moment.at - start) / (end - start);
-              final column = (fraction * columns).floor().clamp(0, columns - 1);
-              (groups[column] ??= []).add(row);
-            }
-          }
-          return Stack(children: [
-            for (final entry in groups.entries)
-              Positioned(
-                left: columns <= 1 ? 0 : entry.key / (columns - 1) *
-                    (box.maxWidth - S.tap),
-                top: 0,
-                child: Pressable(
-                  key: ValueKey(entry.value.length == 1
-                      ? 'apk2-day-marker:${entry.value.first.id}'
-                      : 'apk2-day-marker-cluster:${entry.value.first.moment.at}'),
-                  semanticLabel: [for (final row in entry.value)
-                    '${clockOfTs(row.moment.at)}, ${row.moment.title}'].join('; '),
-                  onTap: () => entry.value.length == 1
-                      ? _reveal(entry.value.first.id) : unawaited(_chooseMarker(entry.value)),
-                  child: Badge(isLabelVisible: entry.value.length > 1,
-                    label: Text('${entry.value.length}'),
-                    child: Icon(entry.value.first.moment.icon, size: 18,
-                      color: p.on(entry.value.first.moment.color ?? C.domMind)))),
-              ),
-          ]);
-        })),
-      ]),
-    );
   }
 
   @override
@@ -1322,6 +1237,10 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final rows = <({String id, Moment moment})>[
       for (final row in byId.entries) (id: row.key, moment: row.value),
     ]..sort((a, b) => a.moment.at.compareTo(b.moment.at));
+    final reviewing = review?.reviewing == true;
+    final title = reviewing
+        ? '${l?.homeReviewActivities ?? 'Review activities'} · ${review!.ids.length}'
+        : (l?.dayTimelineTitle ?? 'Breakdown of your day');
     return PopScope(
       canPop: _allowPop || (review?.hasChanges != true && review?.busy != true),
       onPopInvokedWithResult: (didPop, result) {
@@ -1330,13 +1249,11 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       child: Scaffold(
         backgroundColor: p.bg,
         body: Stack(children: [
-        SafeArea(child: LayoutBuilder(builder: (c, box) {
-          final compact = box.maxHeight < 720;
-          // Fixed siblings of the list viewport are pinned at every offset.
-          // A short, wide screen puts the chart beside the list and tray; a
-          // short, narrow one gives the chart its floor and splits the rest.
-          final wide = compact && box.maxWidth > box.maxHeight * 1.5;
-          final list = Expanded(child: SingleChildScrollView(
+        SafeArea(child: LayoutBuilder(builder: (c, box) => Column(children: [
+          NavBar(title, onBack: _leave),
+          // The chart scrolls with the page, as it did before review existed.
+          // The tray is a sibling BELOW the list, so no row can sit behind it.
+          Expanded(child: SingleChildScrollView(
             key: const ValueKey('apk2-day-list'),
             controller: _listController,
             child: _VisibleDayListSemantics(controller: _listController,
@@ -1344,73 +1261,78 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                 ...dayNavRow(_day ?? d.day, d.days, _goDay),
-                if (_candidates.length >= 2)
-                  DeviceFilter(options: _candidates, selected: _device,
-                      onSelect: _selectDevice),
-                if (_deviceBounded)
-                  Text(l?.dayTimelineDeviceBounded ??
-                      'Per-device detail is kept for recent days only.',
-                      style: F.cap.copyWith(color: p.ink2)),
+                if (_loading) ...[
+                  const SizedBox(height: S.x4),
+                  InlineLoading(status: l?.loadingDayTimeline ??
+                      "Reading this day's timeline"),
+                ] else ...[
+                  if (_candidates.length >= 2)
+                    DeviceFilter(options: _candidates, selected: _device,
+                        onSelect: _selectDevice),
+                  if (_deviceBounded)
+                    Text(l?.dayTimelineDeviceBounded ??
+                        'Per-device detail is kept for recent days only.',
+                        style: F.cap.copyWith(color: p.ink2)),
+                  if (d.graph.hasCurve)
+                    KeyedSubtree(key: const ValueKey('apk2-day-chart'),
+                      child: _DayGraphZoom(d.graph,
+                          fineDetail: _device == null,
+                          owners: coverageFromJson(d.raw?['hr_owner']),
+                          annotations: dayAnnotations(d.moments),
+                          key: ValueKey(d.day)))
+                  else if (rows.isEmpty && d.notes.isEmpty)
+                    StatusCard(
+                      l?.dayTimelineNothingRecordedTitle ??
+                          'Nothing was recorded on this day',
+                      l?.dayTimelineNothingRecordedBody ??
+                          'Nothing recorded. The band was probably off.',
+                      icon: LucideIcons.circleSlash),
                   for (final row in rows)
                     Container(
                       key: _rowKeys.putIfAbsent(row.id, GlobalKey.new),
                       child: Container(
                         key: ValueKey('apk2-day-row:${row.id}'),
                         color: _highlight == row.id ? p.wash(C.domMind) : null,
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (_highlight == row.id)
-                              SizedBox(key: ValueKey('apk2-day-highlight:${row.id}')),
-                            // Stack time and text at large sizes; a scaled
-                            // clock column would leave no width for the note.
-                            Padding(padding: const EdgeInsets.symmetric(vertical: S.x3),
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(clockOfTs(row.moment.at),
-                                      style: F.n17.copyWith(color: p.ink3)),
-                                  Text(row.moment.title,
-                                      style: F.body.copyWith(color: p.ink)),
-                                  if (row.moment.detail.isNotEmpty)
-                                    Text(row.moment.detail,
-                                        style: F.cap.copyWith(color: p.ink2)),
-                                ])),
-                            DayReviewActions(controller: review, id: row.id,
-                                tray: false),
-                          ])),
+                        child: Pressable(
+                          // A pending row opens in the tray, which holds the
+                          // controls; any other row is only read.
+                          onTap: review?.needsReview(row.id) == true
+                              ? () => review!.showInTray(row.id) : null,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: S.x3),
+                            child: Row(crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Stack time and text at large sizes; a scaled
+                                // clock column would leave no width for the note.
+                                Expanded(child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(clockOfTs(row.moment.at),
+                                        style: F.n17.copyWith(color: p.ink3)),
+                                    Text(row.moment.title,
+                                        style: F.body.copyWith(color: p.ink)),
+                                    if (row.moment.detail.isNotEmpty)
+                                      Text(row.moment.detail,
+                                          style: F.cap.copyWith(color: p.ink2)),
+                                  ])),
+                                DayReviewRowState(controller: review, id: row.id),
+                              ])))),
                     ),
                   for (final note in d.notes) ...[
                     Text(note.title, style: F.body.copyWith(color: p.ink)),
                     Text(note.detail, style: F.cap.copyWith(color: p.ink2)),
                   ],
+                  const SizedBox(height: S.x4),
                   Text(l?.metricDetailPatternsNotCauses ??
                       'Patterns in your logs, not causes.',
                       style: F.over.copyWith(color: p.ink3)),
-                  // Lets even the last long note start below the chart.
-                  SizedBox(height: MediaQuery.sizeOf(c).height * .3),
+                  const SizedBox(height: S.x5),
+                ],
                 ]))),
-          ));
-          final tray = DayReviewTray(controller: review, compact: compact,
-              height: compact ? null : 330);
-          return Column(children: [
-          NavBar(l?.dayTimelineTitle ?? 'Breakdown of your day',
-              onBack: _leave),
-          // One tree for both shapes, so rotating keeps the list's scroll and
-          // the chart's zoom window rather than rebuilding them.
-          Expanded(child: Flex(
-            direction: wide ? Axis.horizontal : Axis.vertical,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-            _chartHeader(c, d, rows,
-                width: wide ? box.maxWidth * .5 : null,
-                height: wide ? null : compact
-                    ? math.max(_kChartHead, box.maxHeight * .36) : _kChartHead),
-            Expanded(child: Column(children: [
-              list,
-              compact ? Expanded(child: tray) : tray,
-            ])),
-          ])),
-        ]);
-        })),
+          )),
+          if (review?.trayShown == true)
+            DayReviewTray(controller: review, maxHeight: box.maxHeight * .4),
+        ]))),
         // Cupertino suppresses its route gesture while PopScope guards a
         // batch. Keep the leading-edge swipe as a request for confirmation.
         if (Theme.of(c).platform == TargetPlatform.iOS && !_allowPop &&
@@ -1483,9 +1405,7 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
     {bool zoomed = false,
     List<double?>? fine,
     String? footnote,
-    List<ChartAnnotation> annotations = const [],
-    GlobalKey? plotKey,
-    double height = 200}) {
+    List<ChartAnnotation> annotations = const []}) {
   if (!g.hasCurve && !zoomed) return null;
   final p = P.of(c);
   final l = AppLocalizations.of(c);
@@ -1563,7 +1483,7 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
     child: ChartFrame(
       title: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
       unit: 'bpm',
-      height: height,
+      height: 200,
       yAxis: axis,
       annotations: marks,
       // Three, and only three, because ChartFrame lays the first flush left,
@@ -1604,7 +1524,6 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
       // minute with movement but no heart rate shows the movement and a dash,
       // never a 0.
       child: ChartScrub(
-        key: plotKey,
         label: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
         gaps: gaps.isNotEmpty,
         time: time,
@@ -1673,15 +1592,6 @@ List<double?> perSecondHr(
   return out;
 }
 
-/// The pinned chart header's floor: the plot, the range control (48) and the
-/// marker row ([S.tap]) all stay on screen, however short the viewport.
-const double _kChartHead = 192;
-
-/// Told the chart's visible window (epoch seconds) when the user zooms or pans.
-abstract class ChartWindowListener {
-  void windowChanged(int start, int end);
-}
-
 /// The day chart plus a range control under it. The whole day is the stored
 /// per-minute curve, which is kept for every derived day. Zoomed to two hours
 /// or less it re-reads the band's per-second rows — those are pruned a few
@@ -1691,15 +1601,11 @@ class _DayGraphZoom extends StatefulWidget {
   const _DayGraphZoom(this.graph,
       {super.key,
       this.fineDetail = true,
-      this.compact = false,
-      this.onWindowChanged,
       this.owners = const [],
       this.annotations = const []});
 
   final DayGraph graph;
   final bool fineDetail;
-  final bool compact;
-  final ChartWindowListener? onWindowChanged;
 
   /// The day's HR ownership spans, empty on a one-device day.
   final List<OwnedSpan> owners;
@@ -1719,17 +1625,6 @@ class _ZoomState extends State<_DayGraphZoom> {
   /// Set once a fine read for the current range came back empty.
   bool _fineMissing = false;
   int _token = 0;
-
-  // The pinned header scrolls its card; the plot is what has to stay in view.
-  final _plot = GlobalKey();
-
-  void _showPlot() {
-    final at = _plot.currentContext;
-    if (mounted && at != null) {
-      Scrollable.ensureVisible(at,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
-    }
-  }
 
   @override
   void didUpdateWidget(_DayGraphZoom old) {
@@ -1785,7 +1680,6 @@ class _ZoomState extends State<_DayGraphZoom> {
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
-    final p = P.of(c);
     final n = widget.graph.slots;
     final (lo, hi) = _bounds();
     final zoomed = lo > 0 || hi < n;
@@ -1807,19 +1701,23 @@ class _ZoomState extends State<_DayGraphZoom> {
     final card = dayGraphCard(c, g,
         zoomed: zoomed,
         fine: _fine,
-        footnote: widget.compact ? null : note,
-        height: widget.compact ? 72 : 200,
-        annotations: widget.annotations,
-        plotKey: _plot);
+        footnote: note,
+        annotations: widget.annotations);
     if (card == null || n < 2) return card ?? const SizedBox.shrink();
-    final control = RangeSlider(
+    // Smaller thumbs and the theme's own colour: the same control as the app's
+    // other sliders, not a red bar.
+    final control = SliderTheme(
+      data: SliderTheme.of(c).copyWith(
+          rangeThumbShape:
+              const RoundRangeSliderThumbShape(enabledThumbRadius: 7),
+          overlayShape: const RoundSliderOverlayShape(overlayRadius: 18)),
+      child: RangeSlider(
       values: RangeValues(lo.toDouble(), hi.toDouble()),
       min: 0,
       max: n.toDouble(),
       // Quarter-hour steps: fine enough to land on a workout, coarse
       // enough that a thumb can hit a two-hour window.
       divisions: n ~/ 15 > 0 ? n ~/ 15 : null,
-      activeColor: p.on(C.red),
       labels: widget.graph.dayStart == null
           ? null
           : RangeLabels(
@@ -1837,22 +1735,9 @@ class _ZoomState extends State<_DayGraphZoom> {
           _fine = null;
           _fineMissing = false;
         });
-        final start = widget.graph.dayStart;
-        if (start != null) {
-          final (lo, hi) = _bounds();
-          widget.onWindowChanged?.windowChanged(start + lo * 60, start + hi * 60);
-        }
       },
       onChangeEnd: (_) => _readFine(),
-    );
-    // In the pinned header the card scrolls above a control that never does.
-    if (widget.compact) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showPlot());
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(child: SingleChildScrollView(child: card)),
-        control,
-      ]);
-    }
+    ));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [card, control],

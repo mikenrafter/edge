@@ -122,6 +122,11 @@ class DayReviewController extends ChangeNotifier {
   int page = 0, _generation = 0;
   bool get hasChanges => _choices.isNotEmpty;
   bool get canEdit => !loading && !loadFailed && !busy;
+  /// Review mode: something waits for an answer (staged or not).
+  bool get reviewing => ids.isNotEmpty;
+  /// Whether the tray has anything to say; false on a plain breakdown.
+  bool get trayShown => !loading &&
+      (reviewing || loadFailed || saveFailed || followUpFailed);
   List<String> get ids => [
     for (final s in _activities) 'activity:${s.id}',
     for (final m in _marks)
@@ -195,7 +200,20 @@ class DayReviewController extends ChangeNotifier {
     if (ReviewKey.isGlass(id)) return MomentChoice.water.localized(l);
     final draft = _drafts[id];
     return draft?.choice?.localized(l) ??
-        (l?.momentFollowUpTitle ?? 'Marked moments');
+        (l?.dayReviewMarkedMoment ?? 'Marked moment');
+  }
+  /// The line under a list row's title: the row already carries the clock, so
+  /// nothing here repeats a time it shows.
+  String listDetail(BuildContext c, String id) {
+    final l = AppLocalizations.of(c);
+    if (id.startsWith('activity:')) {
+      final s = _activities.singleWhere((s) => 'activity:${s.id}' == id);
+      final edit = _activityEdits[id];
+      final minutes = ((edit?.endTs ?? s.endTs) - (edit?.startTs ?? s.startTs)) ~/ 60;
+      return l?.activityLengthMinutes(minutes) ?? '$minutes min';
+    }
+    if (id.startsWith('range:') || ReviewKey.isGlass(id)) return '';
+    return _drafts[id]?.note ?? '';
   }
   String detail(BuildContext c, String id) {
     final l = AppLocalizations.of(c);
@@ -221,21 +239,21 @@ class DayReviewController extends ChangeNotifier {
       if (r.inProgress && r.startSec != null)
         (id: ReviewKey.range(r), moment: Moment(at: r.startSec!,
             title: r.choice.localized(AppLocalizations.of(c)),
-            detail: detail(c, ReviewKey.range(r)), icon: LucideIcons.link,
+            detail: '', icon: LucideIcons.link,
             color: C.domMind)),
     for (final s in _activities)
       (id: 'activity:${s.id}', moment: Moment(at: _activityEdits['activity:${s.id}']?.startTs ?? s.startTs,
-          title: title(c, 'activity:${s.id}'), detail: detail(c, 'activity:${s.id}'),
+          title: title(c, 'activity:${s.id}'), detail: listDetail(c, 'activity:${s.id}'),
           icon: s.kind == ActivityKind.nap ? LucideIcons.moon : LucideIcons.activity,
           color: C.domMove)),
     for (final m in _marks)
       (id: ReviewKey.moment(m), moment: Moment(at: m.sec,
-          title: title(c, ReviewKey.moment(m)), detail: detail(c, ReviewKey.moment(m)),
+          title: title(c, ReviewKey.moment(m)), detail: listDetail(c, ReviewKey.moment(m)),
           icon: LucideIcons.bookmark, color: C.domMind)),
     for (final g in _glasses)
       (id: ReviewKey.glass(g), moment: Moment(
           at: g.local.millisecondsSinceEpoch ~/ 1000,
-          title: title(c, ReviewKey.glass(g)), detail: g.hhmm,
+          title: title(c, ReviewKey.glass(g)), detail: '',
           icon: LucideIcons.droplet, color: C.blue)),
   ];
   void choose(String id, bool keep) {
@@ -268,6 +286,14 @@ class DayReviewController extends ChangeNotifier {
     }
     if (undo) { _choices.remove(id); } else { _choices[id] = keep; }
     saveFailed = false;
+    _changed();
+  }
+  /// Brings [id] up in the tray (a tap on its list row).
+  void showInTray(String id) {
+    final at = ids.indexOf(id);
+    if (at < 0) return;
+    page = at ~/ 3;
+    if (trayScroll.hasClients) trayScroll.jumpTo(0);
     _changed();
   }
   void move(int delta) {
@@ -463,61 +489,94 @@ class _DraftStore extends MomentReviewStore {
   Future<bool> save(MomentReviewQueue q) async { queue = q; return true; }
 }
 
-/// One semantics node per action, including disabled and selected state.
+/// One semantics node per action, including disabled and selected state. A
+/// labelled button is a dense [BigButton]: filled when [selected], soft
+/// otherwise, dimmed when it cannot be pressed. With [icon] it is bare (pager).
 Widget reviewButton(BuildContext c, String key, String label, VoidCallback? tap,
-    {bool selected = false, Widget? icon}) => Semantics(
+    {bool selected = false, Widget? icon, IconData? glyph,
+    Color color = C.blue, bool primary = false}) => Semantics(
   key: ValueKey(key), button: true, enabled: tap != null, selected: selected,
   label: label, onTap: tap, excludeSemantics: true,
-  child: Pressable(onTap: tap, child: Padding(
-    padding: const EdgeInsets.symmetric(horizontal: S.x2),
-    child: icon ?? Text(label, style: F.body.copyWith(
-        color: P.of(c).ink, fontWeight: selected ? FontWeight.w700 : FontWeight.w400)))),
+  child: icon != null
+      ? Pressable(onTap: tap, child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: S.x2), child: icon))
+      : Opacity(opacity: tap == null ? .4 : 1, child: BigButton(label,
+          dense: !primary, icon: glyph, color: color,
+          soft: !primary && !selected, onTap: tap)),
 );
 
-class DayReviewActions extends StatelessWidget {
-  const DayReviewActions({super.key, required this.controller,
-      required this.id, required this.tray});
+/// What a list row says about its review: still to do, or the staged answer.
+/// Nothing for a row that needs no review. The tray holds the controls.
+class DayReviewRowState extends StatelessWidget {
+  const DayReviewRowState({super.key, required this.controller, required this.id});
   final DayReviewController? controller;
   final String id;
-  final bool tray;
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c), r = controller;
-    final pending = r?.needsReview(id) == true;
-    final enabled = pending && r?.canEdit == true;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Wrap(spacing: S.x2, children: [
-        reviewButton(c, '${tray ? 'apk2-review-keep:' : 'apk2-day-keep:'}$id',
+    if (r == null || r.loading) return const SizedBox.shrink();
+    final keep = r.choice(id);
+    final pill = keep == true
+        ? Pill(l?.assumedWaterKeep ?? 'Keep', C.green, icon: LucideIcons.check)
+        : keep == false
+            ? Pill(l?.dayReviewDiscard ?? 'Discard', C.red, icon: LucideIcons.x)
+            : r.needsReview(id)
+                ? Pill(l?.dayReviewPending ?? 'To review', C.orange,
+                    icon: LucideIcons.circleDot)
+                : null;
+    if (pill == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(left: S.x3),
+      child: KeyedSubtree(key: ValueKey('apk2-day-state:$id'), child: pill));
+  }
+}
+
+/// The tray's controls for one item: Keep, Discard and Edit where they apply.
+class DayReviewActions extends StatelessWidget {
+  const DayReviewActions({super.key, required this.controller, required this.id});
+  final DayReviewController? controller;
+  final String id;
+  @override
+  Widget build(BuildContext c) {
+    final l = AppLocalizations.of(c), r = controller;
+    final enabled = r?.needsReview(id) == true && r?.canEdit == true;
+    final range = id.startsWith('range:');
+    final edit = !ReviewKey.isGlass(id) && !range;
+    Widget slot(Widget w) => Expanded(child: Padding(
+        padding: const EdgeInsets.only(right: S.x2), child: w));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        slot(reviewButton(c, 'apk2-review-keep:$id',
           l?.assumedWaterKeep ?? 'Keep', enabled ? () => r!.choose(id, true) : null,
-          selected: r?.choice(id) == true),
-        reviewButton(c, '${tray ? 'apk2-review-discard:' : 'apk2-day-discard:'}$id',
-          l?.dayReviewDiscard ?? 'Discard', enabled && !id.startsWith('range:')
-              ? () => r!.choose(id, false) : null,
-          selected: r?.choice(id) == false),
-        if (tray && pending && !ReviewKey.isGlass(id) && !id.startsWith('range:'))
-          reviewButton(c, 'day-review-label:$id', l?.activityEdit ?? 'Edit',
+          selected: r?.choice(id) == true, glyph: LucideIcons.check,
+          color: C.green)),
+        if (!range)
+          slot(reviewButton(c, 'apk2-review-discard:$id',
+            l?.dayReviewDiscard ?? 'Discard',
+            enabled ? () => r!.choose(id, false) : null,
+            selected: r?.choice(id) == false, glyph: LucideIcons.x,
+            color: C.red)),
+        if (edit)
+          slot(reviewButton(c, 'day-review-label:$id', l?.activityEdit ?? 'Edit',
               enabled ? () => id.startsWith('activity:')
-                  ? r!.editActivity(c, id) : r!.editMoment(c, id) : null),
+                  ? r!.editActivity(c, id) : r!.editMoment(c, id) : null,
+              glyph: LucideIcons.pencil)),
       ]),
-      if (!pending || r?.isStarted(id) == true)
-        Semantics(container: true, child: Text(r?.isStarted(id) == true
-              ? (l?.momentReviewResume ?? 'Saved so far. Press Save to finish this pair.')
-              : id.startsWith('moment:')
-              ? (l?.dayReviewAlreadyReviewed ?? 'Already reviewed')
-              : (l?.dayReviewNoReviewNeeded ?? 'No review needed'),
-          key: ValueKey('apk2-day-review-reason:$id'),
-          style: F.cap.copyWith(color: P.of(c).ink2))),
+      if (r?.isStarted(id) == true)
+        Padding(padding: const EdgeInsets.only(top: S.x1),
+          child: Text(l?.momentReviewResume ??
+              'Saved so far. Press Save to finish this pair.',
+            key: ValueKey('apk2-day-review-reason:$id'),
+            style: F.cap.copyWith(color: P.of(c).ink2))),
     ]);
   }
 }
 
 class DayReviewTray extends StatelessWidget {
-  const DayReviewTray({super.key, this.controller, this.height = 330,
-      this.compact = false});
+  const DayReviewTray({super.key, this.controller, this.maxHeight = 420});
   final DayReviewController? controller;
-  /// Null fills whatever space the parent gives it.
-  final double? height;
-  final bool compact;
+  /// The tray is as tall as its content, up to this; its items then scroll.
+  final double maxHeight;
   @override
   Widget build(BuildContext c) {
     final p = P.of(c), r = controller;
@@ -545,12 +604,14 @@ class DayReviewTray extends StatelessWidget {
         else
           for (final id in r.pageIds)
             Container(key: ValueKey('apk2-review-item:$id'),
-              padding: const EdgeInsets.symmetric(vertical: S.x1),
+              padding: const EdgeInsets.symmetric(vertical: S.x2),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(r.title(c, id), style: F.body.copyWith(color: p.ink)),
+                  Text(r.title(c, id), style: F.body.copyWith(
+                      color: p.ink, fontWeight: FontWeight.w600)),
                   Text(r.detail(c, id), style: F.cap.copyWith(color: p.ink2)),
-                  DayReviewActions(controller: r, id: id, tray: true),
+                  const SizedBox(height: S.x2),
+                  DayReviewActions(controller: r, id: id),
                 ])),
         if (r?.followUpFailed == true)
           Text(l?.dayReviewFollowUpFailed ??
@@ -560,29 +621,37 @@ class DayReviewTray extends StatelessWidget {
     final pager = Row(children: [
       reviewButton(c, 'apk2-review-previous', l?.dayReviewPrevious ?? 'Previous page',
         r != null && r.canEdit && r.page > 0 ? () => r.move(-1) : null,
-        icon: Icon(LucideIcons.chevronLeft, color: p.ink)),
+        icon: SizedBox(height: S.tap, child: Icon(LucideIcons.chevronLeft, color: p.ink))),
       Expanded(child: Text(l?.dayReviewPage(page, pages) ?? '$page of $pages',
         key: const ValueKey('apk2-review-page'), textAlign: TextAlign.center,
         style: F.cap.copyWith(color: p.ink))),
       reviewButton(c, 'apk2-review-next', l?.dayReviewNext ?? 'Next page',
         r != null && r.canEdit && r.page + 1 < r.pages ? () => r.move(1) : null,
-        icon: Icon(LucideIcons.chevronRight, color: p.ink)),
+        icon: SizedBox(height: S.tap, child: Icon(LucideIcons.chevronRight, color: p.ink))),
     ]);
     final save = reviewButton(c, 'apk2-review-save', l?.dayReviewSave ?? 'Save',
-      r != null && r.canEdit && r.hasChanges ? () => r.save(c) : null);
+      r != null && r.canEdit && r.hasChanges ? () => r.save(c) : null,
+      primary: true, glyph: LucideIcons.save);
     return Container(
-      key: const ValueKey('apk2-review-tray'), height: height,
+      key: const ValueKey('apk2-review-tray'),
+      constraints: BoxConstraints(maxHeight: maxHeight),
       decoration: BoxDecoration(color: p.card,
-          border: Border(top: BorderSide(color: p.line))),
-      padding: const EdgeInsets.symmetric(horizontal: S.x4),
-      child: compact
-          ? SingleChildScrollView(controller: r?.trayScroll,
-              child: Column(children: [items, pager, save]))
-          : Column(children: [
-              Expanded(child: SingleChildScrollView(controller: r?.trayScroll,
-                  child: items)),
-              pager, save,
-            ]),
+          border: Border(top: BorderSide(color: p.line)),
+          // Upward: the tray's top edge is the one that has to read as raised.
+          boxShadow: [for (final s in p.el(3)) BoxShadow(color: s.color,
+              blurRadius: s.blurRadius, offset: -s.offset)]),
+      padding: const EdgeInsets.fromLTRB(S.x4, S.x3, S.x4, S.x3),
+      child: Column(mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('${l?.dayReviewPending ?? 'To review'} · ${r?.ids.length ?? 0}',
+            key: const ValueKey('apk2-review-heading'),
+            style: F.over.copyWith(color: p.ink3)),
+          const SizedBox(height: S.x1),
+          Flexible(child: SingleChildScrollView(controller: r?.trayScroll,
+              child: items)),
+          pager,
+          save,
+        ]),
     );
   }
 }

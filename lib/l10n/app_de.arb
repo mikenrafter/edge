@@ -3614,5 +3614,8 @@
   "dayReviewSave": "Speichern",
   "dayReviewFollowUpFailed": "Entscheidungen gespeichert. Nicht alle Einträge konnten aktualisiert oder exportiert werden.",
   "dayReviewPage": "{page} von {pages}",
-  "dayReviewNoReviewNeeded": "Keine Prüfung erforderlich"
+  "dayReviewNoReviewNeeded": "Keine Prüfung erforderlich",
+  "dayReviewPending": "Zu prüfen",
+  "dayReviewMarkedMoment": "Markierter Moment",
+  "homeBreakdownOpen": "Öffnen"
 }
