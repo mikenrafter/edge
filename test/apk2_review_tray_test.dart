@@ -1,8 +1,10 @@
 // RED APK2: drive the real screens and read their real activity/moment stores.
 // No future production types or constructor parameters are referenced.
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
+import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/apk2_keys.dart';
 import 'support/apk2_review_harness.dart';
@@ -11,6 +13,33 @@ import 'support/pin_tz.dart';
 
 void main() {
   pinProcessTimeZone('America/Denver');
+
+  testWidgets('day change clears the old tray while the new timeline is loading', (t) async {
+    final semantics = t.ensureSemantics();
+    final r = await Apk2Rig.create(t);
+    final before = await r.snapshot(t);
+    final newer = await r.repo.getDayTimeline(apk2NewerDay);
+    final gate = Completer<Map<String, dynamic>>();
+    await r.mount(t);
+    await apk2Show(t, apk2NapA);
+    await apk2Tap(t, apk2Keep(apk2NapA));
+    r.repo.timelineGate = gate;
+    await apk2Tap(t, find.byWidgetPredicate((w) =>
+        w is Pressable && w.semanticLabel == 'Next day'));
+    await apk2Tap(t, apk2Key(apk2Leave));
+    expect(apk2PageIds(), isEmpty);
+    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    expect(apk2Keep(apk2NapA), findsNothing);
+    expect(apk2Row(apk2NapA), findsNothing);
+    await apk2Tap(t, apk2Key(apk2Save));
+    expect(await r.snapshot(t), before);
+    gate.complete(newer);
+    await settle(t);
+    expect(apk2PageIds(), isEmpty);
+    expect(apk2Enabled(t, apk2Key(apk2Save)), isFalse);
+    expect(await r.snapshot(t), before);
+    semantics.dispose();
+  });
 
   testWidgets('normal breakdown pages four pending items three at a time, '
       'with disabled boundary arrows and Save', (t) async {

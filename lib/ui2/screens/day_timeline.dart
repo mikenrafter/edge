@@ -936,6 +936,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   Timer? _highlightTimer;
   bool _allowPop = false;
   bool _askingLeave = false;
+  double _backDrag = 0;
 
   @override
   void dispose() {
@@ -978,6 +979,29 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
             ? context.read<AppState>().gestureSettings.followUpMomentsSince : null);
     _review!.addListener(_onReview);
     unawaited(_review!.load());
+  }
+
+  void _backDragStart(DragStartDetails details) => _backDrag = 0;
+  void _backDragUpdate(DragUpdateDetails details) {
+    _backDrag += (details.primaryDelta ?? 0) *
+        (Directionality.of(context) == TextDirection.rtl ? -1 : 1);
+  }
+  void _backDragEnd(DragEndDetails details) {
+    if (_backDrag >= MediaQuery.sizeOf(context).width * .2) unawaited(_leave());
+    _backDrag = 0;
+  }
+
+  Future<void> _chooseMarker(List<({String id, Moment moment})> rows) async {
+    final id = await showModalBottomSheet<String>(context: context,
+      backgroundColor: P.of(context).card,
+      builder: (c) => SafeArea(child: ListView(shrinkWrap: true, children: [
+        for (final row in rows)
+          reviewButton(c, 'apk2-day-marker:${row.id}',
+            '${clockOfTs(row.moment.at)}, ${row.moment.title}',
+            () => Navigator.of(c).pop(row.id)),
+      ])),
+    );
+    if (mounted && id != null) _reveal(id);
   }
 
   Future<bool> _canLeave() async {
@@ -1212,8 +1236,16 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     if (day == (_day ?? _d?.day) || !await _canLeave() || !mounted) return;
     await _review?.discardDraft();
     if (!mounted) return;
+    _review?.removeListener(_onReview);
+    _review?.dispose();
     setState(() {
+      _review = null;
       _day = day;
+      _d = TimelineData(day: day, days: _d?.days ?? const []);
+      _candidates = const [];
+      _device = null;
+      _deviceBounded = false;
+      _highlight = null;
       _chartStart = null;
       _chartEnd = null;
       _loading = true;
@@ -1227,11 +1259,14 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final l = AppLocalizations.of(c);
     final p = P.of(c);
     final review = _review;
-    final rows = <({String id, Moment moment})>[
+    final byId = <String, Moment>{
+      if (review != null)
+        for (final row in review.pendingRows(c)) row.id: row.moment,
       for (var i = 0; i < d.moments.length; i++)
-        (id: d.moments[i].identity ?? 'event:$i:${d.moments[i].at}',
-         moment: d.moments[i]),
-      if (review != null) ...review.pendingRows(c),
+        d.moments[i].identity ?? 'event:$i:${d.moments[i].at}': d.moments[i],
+    };
+    final rows = <({String id, Moment moment})>[
+      for (final row in byId.entries) (id: row.key, moment: row.value),
     ]..sort((a, b) => a.moment.at.compareTo(b.moment.at));
     return PopScope(
       canPop: _allowPop || (review?.hasChanges != true && review?.busy != true),
@@ -1240,14 +1275,18 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       },
       child: Scaffold(
         backgroundColor: p.bg,
-        body: SafeArea(child: Column(children: [
+        body: Stack(children: [
+        SafeArea(child: LayoutBuilder(builder: (c, box) {
+          final compact = box.maxHeight < 720;
+          return Column(children: [
           NavBar(l?.dayTimelineTitle ?? 'Breakdown of your day',
               onBack: _leave),
           // Fixed siblings of the list viewport are pinned at every offset.
           SizedBox(
-            key: const ValueKey('apk2-day-chart'), height: 210,
+            key: const ValueKey('apk2-day-chart'), height: compact ? S.tap : 210,
             child: Column(children: [
-              Expanded(child: SingleChildScrollView(child: Column(children: [
+              if (!compact)
+                Expanded(child: SingleChildScrollView(child: Column(children: [
                 if (d.graph.hasCurve)
                   _DayGraphZoom(d.graph, fineDetail: _device == null,
                       owners: coverageFromJson(d.raw?['hr_owner']),
@@ -1262,21 +1301,38 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
               SizedBox(height: S.tap, child: LayoutBuilder(builder: (c, box) {
                 final start = _chartStart ?? d.graph.dayStart;
                 final end = _chartEnd ?? (start == null || d.day == null ? null : localDayEndSec(d.day!));
+                final fitting = (box.maxWidth / S.tap).floor();
+                final columns = fitting < 1 ? 1 : fitting;
+                // One target per tap-sized time slot; the chooser retains
+                // every item when nearby or coincident marks share a slot.
+                final groups = <int, List<({String id, Moment moment})>>{};
+                for (final row in rows) {
+                  if (start == null || end == null ||
+                      (row.moment.at >= start && row.moment.at < end)) {
+                    final fraction = start == null || end == null || end <= start
+                        ? 0.0 : (row.moment.at - start) / (end - start);
+                    final column = (fraction * columns).floor().clamp(0, columns - 1);
+                    (groups[column] ??= []).add(row);
+                  }
+                }
                 return Stack(children: [
-                  for (final row in rows)
-                    if (start == null || end == null ||
-                        (row.moment.at >= start && row.moment.at < end))
+                  for (final entry in groups.entries)
                     Positioned(
-                      left: start == null || end == null || end <= start ? 0 :
-                          ((row.moment.at - start) / (end - start)).clamp(0, 1) *
-                              (box.maxWidth - S.tap),
+                      left: columns <= 1 ? 0 : entry.key / (columns - 1) *
+                          (box.maxWidth - S.tap),
                       top: 0,
                       child: Pressable(
-                        key: ValueKey('apk2-day-marker:${row.id}'),
-                        semanticLabel: '${clockOfTs(row.moment.at)}, ${row.moment.title}',
-                        onTap: () => _reveal(row.id),
-                        child: Icon(row.moment.icon, size: 18,
-                            color: p.on(row.moment.color ?? C.domMind))),
+                        key: ValueKey(entry.value.length == 1
+                            ? 'apk2-day-marker:${entry.value.first.id}'
+                            : 'apk2-day-marker-cluster:${entry.value.first.moment.at}'),
+                        semanticLabel: [for (final row in entry.value)
+                          '${clockOfTs(row.moment.at)}, ${row.moment.title}'].join('; '),
+                        onTap: () => entry.value.length == 1
+                            ? _reveal(entry.value.first.id) : unawaited(_chooseMarker(entry.value)),
+                        child: Badge(isLabelVisible: entry.value.length > 1,
+                          label: Text('${entry.value.length}'),
+                          child: Icon(entry.value.first.moment.icon, size: 18,
+                            color: p.on(entry.value.first.moment.color ?? C.domMind)))),
                     ),
                 ]);
               })),
@@ -1335,8 +1391,21 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                   SizedBox(height: MediaQuery.sizeOf(c).height * .3),
                 ]))),
           )),
-          DayReviewTray(controller: review),
-        ])),
+          DayReviewTray(controller: review, compact: compact,
+              height: compact ? box.maxHeight * .42 : 330),
+        ]);
+        })),
+        // Cupertino suppresses its route gesture while PopScope guards a
+        // batch. Keep the leading-edge swipe as a request for confirmation.
+        if (Theme.of(c).platform == TargetPlatform.iOS && !_allowPop &&
+            (review?.hasChanges == true || review?.busy == true))
+          PositionedDirectional(start: 0, top: 0, bottom: 0, width: 20,
+            child: GestureDetector(behavior: HitTestBehavior.translucent,
+              excludeFromSemantics: true,
+              onHorizontalDragStart: _backDragStart,
+              onHorizontalDragUpdate: _backDragUpdate,
+              onHorizontalDragEnd: _backDragEnd)),
+        ]),
       ),
     );
   }

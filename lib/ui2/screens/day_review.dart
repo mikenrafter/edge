@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../../data/day_label.dart';
+import '../../data/db.dart';
 import '../../data/assumed_water.dart';
 import '../activity/catalogue.dart' show activityByName;
 import 'detected_activities.dart' show NapProposalEditor;
@@ -107,6 +108,7 @@ class DayReviewController extends ChangeNotifier {
   final MomentReviewEditor? editor;
   List<ActivitySuggestion> _activities = [];
   List<PendingMoment> _marks = [];
+  List<PendingMoment> _pendingMarks = [];
   List<AssumedGlass> _glasses = [];
   final List<ReviewRange> _ranges = [];
   final Map<String, ActivityDecision> _activityEdits = {};
@@ -119,6 +121,7 @@ class DayReviewController extends ChangeNotifier {
   bool followUpFailed = false, busy = false, _disposed = false;
   int page = 0, _generation = 0;
   bool get hasChanges => _choices.isNotEmpty;
+  bool get canEdit => !loading && !loadFailed && !busy;
   List<String> get ids => [
     for (final s in _activities) 'activity:${s.id}',
     for (final m in _marks)
@@ -145,17 +148,27 @@ class DayReviewController extends ChangeNotifier {
     _changed();
     try {
       final activities = this.activities ?? await repo.pendingActivities();
-      // Supplied marks have already passed the follow-up setting/window policy.
+      // Supplied marks passed the setting/window policy, but their answered
+      // state may have changed since the entry opened.
       final now = editor?.now ?? DateTime.now();
       final f = moments == null || editor?.preloadedAssumed == null
           ? await MomentFollowUps.load(enabledSince: enabledSince, now: now) : null;
-      final marks = moments ?? f!.pending(now);
+      final dates = [for (final m in moments ?? const <PendingMoment>[]) m.date]..sort();
+      // An empty snapshot has no answered state to refresh. Activity-only
+      // review must not depend on a separate moment-label read.
+      final answered = dates.isEmpty ? const <String>{} : {
+        for (final l in await LocalDb.momentLabels(
+            sinceDate: dates.first)) l.key,
+      };
+      final marks = {for (final m in moments ?? f!.pending(now))
+        if (!answered.contains(m.key)) m.key: m}.values.toList();
       final glasses = editor?.preloadedAssumed ?? f!.pendingAssumed(now);
       if (_disposed || generation != _generation) return;
       _activities = activities.where((s) => _activityDay(s) == day).toList();
       _activityEdits.removeWhere((id, edit) => !_activities.any((s) =>
           'activity:${s.id}' == id && s.revision == edit.suggestion.revision));
       _marks = marks.where((m) => m.date == day).toList();
+      _pendingMarks = marks;
       _glasses = glasses.where((g) => g.date == day).toList();
       page = page.clamp(0, pages > 0 ? pages - 1 : 0);
     } catch (_) {
@@ -226,7 +239,7 @@ class DayReviewController extends ChangeNotifier {
           icon: LucideIcons.droplet, color: C.blue)),
   ];
   void choose(String id, bool keep) {
-    if (busy || !needsReview(id)) return;
+    if (!canEdit || !needsReview(id)) return;
     if (id.startsWith('range:')) {
       if (!keep) return;
       final r = _ranges.singleWhere((r) => ReviewKey.range(r) == id);
@@ -258,7 +271,7 @@ class DayReviewController extends ChangeNotifier {
     _changed();
   }
   void move(int delta) {
-    if (busy) return;
+    if (!canEdit) return;
     page = (page + delta).clamp(0, pages > 0 ? pages - 1 : 0);
     if (trayScroll.hasClients) trayScroll.jumpTo(0);
     _changed();
@@ -272,6 +285,7 @@ class DayReviewController extends ChangeNotifier {
     _choices.clear();
   }
   Future<void> editActivity(BuildContext c, String id) async {
+    if (!canEdit) return;
     final s = _activities.singleWhere((s) => 'activity:${s.id}' == id);
     ActivityDecision? edit;
     if (s.kind == ActivityKind.nap) {
@@ -298,19 +312,43 @@ class DayReviewController extends ChangeNotifier {
     _changed();
   }
   Future<void> editMoment(BuildContext c, String id) async {
+    if (!canEdit) return;
+    final paired = {for (final r in _ranges)
+      ...['moment:${r.startKey}', 'moment:${r.endKey}']};
+    final scope = {
+      for (final m in _pendingMarks) ReviewKey.moment(m),
+      for (final g in _glasses) ReviewKey.glass(g),
+      for (final r in _ranges) ...[ReviewKey.range(r),
+        'moment:${r.startKey}', 'moment:${r.endKey}'],
+    };
     final local = MomentReviewService(store: _DraftStore(MomentReviewQueue(
-        decisions: {for (final e in _drafts.entries)
-          if (ids.contains(e.key)) e.key: e.value}, ranges: List.of(_ranges))));
+        decisions: {for (final key in scope)
+          if ((ReviewKey.isMoment(key) || ReviewKey.isGlass(key)) &&
+              !paired.contains(key) &&
+              (_drafts.containsKey(key) || _choices.containsKey(key)))
+            key: _choices[key] == false
+                ? (ReviewKey.isGlass(key) ? const ReviewDecision.removeGlass() :
+                    const ReviewDecision.skip())
+                : _drafts[key] ?? (ReviewKey.isGlass(key)
+                    ? const ReviewDecision.keepGlass() :
+                    const ReviewDecision.label(MomentChoice.other))},
+        ranges: List.of(_ranges))));
     final workoutDrafts = _StagedWorkouts();
     try {
       final result = await Navigator.of(c).push<MomentReviewQueue>(
         MaterialPageRoute(builder: (_) => MomentReviewEditor(
-          preloaded: _marks, preloadedAssumed: _glasses, service: local,
+          preloaded: _pendingMarks, preloadedAssumed: _glasses, service: local,
           writer: editor?.writer ?? const MomentAnswerWriter(),
           now: editor?.now, stageOnly: true,
           stagedWorkouts: workoutDrafts,
-        )));
-      if (_disposed || result == null) return;
+        ))) ?? local.queue;
+      if (_disposed) return;
+      // Back hands the local queue to the batch too. Replacing its whole
+      // scope also carries Undo, including an entirely empty editor queue.
+      _drafts.removeWhere((key, _) => scope.contains(key));
+      _choices.removeWhere((key, _) => scope.contains(key));
+      _momentWorkouts.removeWhere((key, _) => scope.contains(key) &&
+          result.decisions[key]?.choice != MomentChoice.workout);
       _momentWorkouts.addAll(workoutDrafts.drafts);
       _ranges..clear()..addAll(result.ranges);
       for (final r in _ranges) {
@@ -328,7 +366,7 @@ class DayReviewController extends ChangeNotifier {
     }
   }
   Future<void> save(BuildContext c) async {
-    if (busy || !hasChanges) return;
+    if (!canEdit || !hasChanges) return;
     busy = true;
     saveFailed = false;
     _changed();
@@ -338,7 +376,7 @@ class DayReviewController extends ChangeNotifier {
         staged['moment:${r.endKey}'] == true).toList();
     final applied = <String, ReviewDecision>{};
     final marks = <MomentDecision>[];
-    for (final m in _marks) {
+    for (final m in _pendingMarks) {
       final id = ReviewKey.moment(m), keep = staged[ReviewKey.moment(m)];
       if (keep == null || selectedRanges.any((r) =>
           r.startKey == m.key || r.endKey == m.key)) {
@@ -373,8 +411,10 @@ class DayReviewController extends ChangeNotifier {
       followUpFailed = receipt.followUpFailed;
       _activities.removeWhere((s) => staged.containsKey('activity:${s.id}'));
       _marks.removeWhere((m) => staged.containsKey(ReviewKey.moment(m)));
+      _pendingMarks.removeWhere((m) => staged.containsKey(ReviewKey.moment(m)));
       _glasses.removeWhere((g) => staged.containsKey(ReviewKey.glass(g)));
       _ranges.removeWhere(selectedRanges.contains);
+      _drafts.removeWhere((key, _) => staged.containsKey(key));
       _choices.clear();
       savedRevision++;
       page = 0;
@@ -444,7 +484,7 @@ class DayReviewActions extends StatelessWidget {
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c), r = controller;
     final pending = r?.needsReview(id) == true;
-    final enabled = pending && r?.busy == false;
+    final enabled = pending && r?.canEdit == true;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Wrap(spacing: S.x2, children: [
         reviewButton(c, '${tray ? 'apk2-review-keep:' : 'apk2-day-keep:'}$id',
@@ -472,67 +512,76 @@ class DayReviewActions extends StatelessWidget {
 }
 
 class DayReviewTray extends StatelessWidget {
-  const DayReviewTray({super.key, this.controller});
+  const DayReviewTray({super.key, this.controller, this.height = 330,
+      this.compact = false});
   final DayReviewController? controller;
+  final double height;
+  final bool compact;
   @override
   Widget build(BuildContext c) {
     final p = P.of(c), r = controller;
     final l = AppLocalizations.of(c);
     final page = r == null || r.pages == 0 ? 0 : r.page + 1;
     final pages = r?.pages ?? 0;
+    final items = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (r?.saveFailed == true)
+          Text(l?.momentFollowUpSaveFailed ?? 'Could not save that answer. Try again.',
+            key: const ValueKey('apk2-review-save-error'),
+            style: F.cap.copyWith(color: p.ink)),
+        if (r == null || r.loading)
+          Text(l?.loadingActivitiesToReview ?? 'Reading activities to review',
+              style: F.cap.copyWith(color: p.ink2))
+        else if (r.loadFailed) ...[
+          Text(l?.activityLoadFailed ?? 'Could not load activities. Try again.',
+            key: const ValueKey('apk2-review-load-error'),
+            style: F.cap.copyWith(color: p.ink)),
+          reviewButton(c, 'apk2-review-retry', l?.homeTryAgain ?? 'Try again', r.load),
+        ] else if (r.ids.isEmpty)
+          Text(l?.activityNothing ?? 'Nothing to review',
+            key: const ValueKey('apk2-review-empty'),
+            style: F.body.copyWith(color: p.ink))
+        else
+          for (final id in r.pageIds)
+            Container(key: ValueKey('apk2-review-item:$id'),
+              padding: const EdgeInsets.symmetric(vertical: S.x1),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(r.title(c, id), style: F.body.copyWith(color: p.ink)),
+                  Text(r.detail(c, id), style: F.cap.copyWith(color: p.ink2)),
+                  DayReviewActions(controller: r, id: id, tray: true),
+                ])),
+        if (r?.followUpFailed == true)
+          Text(l?.dayReviewFollowUpFailed ??
+              'Decisions saved. Could not refresh or export every item.',
+              style: F.cap.copyWith(color: p.ink)),
+      ]);
+    final pager = Row(children: [
+      reviewButton(c, 'apk2-review-previous', l?.dayReviewPrevious ?? 'Previous page',
+        r != null && r.canEdit && r.page > 0 ? () => r.move(-1) : null,
+        icon: Icon(LucideIcons.chevronLeft, color: p.ink)),
+      Expanded(child: Text(l?.dayReviewPage(page, pages) ?? '$page of $pages',
+        key: const ValueKey('apk2-review-page'), textAlign: TextAlign.center,
+        style: F.cap.copyWith(color: p.ink))),
+      reviewButton(c, 'apk2-review-next', l?.dayReviewNext ?? 'Next page',
+        r != null && r.canEdit && r.page + 1 < r.pages ? () => r.move(1) : null,
+        icon: Icon(LucideIcons.chevronRight, color: p.ink)),
+    ]);
+    final save = reviewButton(c, 'apk2-review-save', l?.dayReviewSave ?? 'Save',
+      r != null && r.canEdit && r.hasChanges ? () => r.save(c) : null);
     return Container(
-      key: const ValueKey('apk2-review-tray'), height: 330,
+      key: const ValueKey('apk2-review-tray'), height: height,
       decoration: BoxDecoration(color: p.card,
           border: Border(top: BorderSide(color: p.line))),
       padding: const EdgeInsets.symmetric(horizontal: S.x4),
-      child: Column(children: [
-        Expanded(child: SingleChildScrollView(controller: r?.trayScroll, child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (r?.saveFailed == true)
-              Text(l?.momentFollowUpSaveFailed ?? 'Could not save that answer. Try again.',
-                key: const ValueKey('apk2-review-save-error'),
-                style: F.cap.copyWith(color: p.ink)),
-            if (r == null || r.loading)
-              Text(l?.loadingActivitiesToReview ?? 'Reading activities to review',
-                  style: F.cap.copyWith(color: p.ink2))
-            else if (r.loadFailed) ...[
-              Text(l?.activityLoadFailed ?? 'Could not load activities. Try again.',
-                key: const ValueKey('apk2-review-load-error'),
-                style: F.cap.copyWith(color: p.ink)),
-              reviewButton(c, 'apk2-review-retry', l?.homeTryAgain ?? 'Try again', r.load),
-            ] else if (r.ids.isEmpty)
-              Text(l?.activityNothing ?? 'Nothing to review',
-                key: const ValueKey('apk2-review-empty'),
-                style: F.body.copyWith(color: p.ink))
-            else
-              for (final id in r.pageIds)
-                Container(key: ValueKey('apk2-review-item:$id'),
-                  padding: const EdgeInsets.symmetric(vertical: S.x1),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(r.title(c, id), style: F.body.copyWith(color: p.ink)),
-                      Text(r.detail(c, id), style: F.cap.copyWith(color: p.ink2)),
-                      DayReviewActions(controller: r, id: id, tray: true),
-                    ])),
-            if (r?.followUpFailed == true)
-              Text(l?.dayReviewFollowUpFailed ??
-                  'Decisions saved. Could not refresh or export every item.',
-                  style: F.cap.copyWith(color: p.ink)),
-          ]))),
-        Row(children: [
-          reviewButton(c, 'apk2-review-previous', l?.dayReviewPrevious ?? 'Previous page',
-            r != null && !r.busy && r.page > 0 ? () => r.move(-1) : null,
-            icon: Icon(LucideIcons.chevronLeft, color: p.ink)),
-          Expanded(child: Text(l?.dayReviewPage(page, pages) ?? '$page of $pages',
-            key: const ValueKey('apk2-review-page'), textAlign: TextAlign.center,
-            style: F.cap.copyWith(color: p.ink))),
-          reviewButton(c, 'apk2-review-next', l?.dayReviewNext ?? 'Next page',
-            r != null && !r.busy && r.page + 1 < r.pages ? () => r.move(1) : null,
-            icon: Icon(LucideIcons.chevronRight, color: p.ink)),
-        ]),
-        reviewButton(c, 'apk2-review-save', l?.dayReviewSave ?? 'Save',
-          r != null && !r.busy && r.hasChanges ? () => r.save(c) : null),
-      ]),
+      child: compact
+          ? SingleChildScrollView(controller: r?.trayScroll,
+              child: Column(children: [items, pager, save]))
+          : Column(children: [
+              Expanded(child: SingleChildScrollView(controller: r?.trayScroll,
+                  child: items)),
+              pager, save,
+            ]),
     );
   }
 }

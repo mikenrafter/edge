@@ -99,6 +99,22 @@ Future<void> apk2Show(WidgetTester t, String id) async {
   expect(apk2Item(id), findsOneWidget, reason: '$id must be in this day queue');
 }
 
+/// Open a marker's chooser when its time slot contains several items.
+Future<Finder> apk2MarkerTarget(WidgetTester t, String id) async {
+  final target = apk2Key('$apk2MarkerPrefix$id');
+  if (target.evaluate().isNotEmpty) return target;
+  final clusters = find.byWidgetPredicate((w) => w.key is ValueKey<String> &&
+      (w.key! as ValueKey<String>).value.startsWith('apk2-day-marker-cluster:'));
+  final keys = [for (final e in clusters.evaluate()) e.widget.key!];
+  for (final key in keys) {
+    await apk2Tap(t, find.byKey(key));
+    if (target.evaluate().isNotEmpty) return target;
+    await t.binding.handlePopRoute();
+    await settle(t);
+  }
+  fail('No chart marker for $id');
+}
+
 /// Count occurrences across the actual semantics tree, including merged labels.
 /// Finder counts alone can miss a status repeated twice in one merged sentence.
 int apk2SpokenCount(WidgetTester t, String phrase) {
@@ -134,6 +150,7 @@ class Apk2Repository extends LocalRepositoryImpl {
   final ActivityStore store;
   bool failQueueRead = false;
   Completer<List<ActivitySuggestion>>? queueGate;
+  Completer<Map<String, dynamic>>? timelineGate;
 
   @override
   Future<List<ActivitySuggestion>> pendingActivities() async {
@@ -151,27 +168,30 @@ class Apk2Repository extends LocalRepositoryImpl {
   Future<Map<String, dynamic>> getTodayStored() async =>
       {'status': {'today_day': apk2NewerDay}};
   @override
-  Future<Map<String, dynamic>> getDayTimeline(String date) async => {
-    'date': date,
-    'day_start': DateTime.parse(date).millisecondsSinceEpoch ~/ 1000,
-    'day_end': DateTime(2026, 10, date == apk2Day ? 7 : 8)
-        .millisecondsSinceEpoch ~/ 1000,
-    'hr': [
-      for (var h = 0; h < 24; h++)
-        {'t': DateTime(2026, 10, date == apk2Day ? 6 : 7, h)
-            .millisecondsSinceEpoch ~/ 1000, 'v': 60 + h % 5},
-    ],
-    // Six distinct factual rows, plus two answered moments below = eight.
-    // Different event ids avoid the repeated-event collapsing policy.
-    'events': date == apk2Day ? [
-      {'event_id': 7, 'ts': apk2At(1)},
-      {'event_id': 8, 'ts': apk2At(2)},
-      {'event_id': 15, 'ts': apk2At(4)},
-      {'event_id': 21, 'ts': apk2At(5)},
-      {'event_id': 22, 'ts': apk2At(6)},
-      {'event_id': 57, 'ts': apk2At(7)},
-    ] : [],
-  };
+  Future<Map<String, dynamic>> getDayTimeline(String date) async {
+    if (date == apk2NewerDay && timelineGate != null) return timelineGate!.future;
+    return {
+      'date': date,
+      'day_start': DateTime.parse(date).millisecondsSinceEpoch ~/ 1000,
+      'day_end': DateTime(2026, 10, date == apk2Day ? 7 : 8)
+          .millisecondsSinceEpoch ~/ 1000,
+      'hr': [
+        for (var h = 0; h < 24; h++)
+          {'t': DateTime(2026, 10, date == apk2Day ? 6 : 7, h)
+              .millisecondsSinceEpoch ~/ 1000, 'v': 60 + h % 5},
+      ],
+      // Six distinct factual rows, plus two answered moments below = eight.
+      // Different event ids avoid the repeated-event collapsing policy.
+      'events': date == apk2Day ? [
+        {'event_id': 7, 'ts': apk2At(1)},
+        {'event_id': 8, 'ts': apk2At(2)},
+        {'event_id': 15, 'ts': apk2At(4)},
+        {'event_id': 21, 'ts': apk2At(5)},
+        {'event_id': 22, 'ts': apk2At(6)},
+        {'event_id': 57, 'ts': apk2At(7)},
+      ] : [],
+    };
+  }
   @override
   Future<Map<String, dynamic>> getDayWear(String date) async => {};
   @override
@@ -255,15 +275,16 @@ class Apk2Rig {
   }
 
   Future<void> mount(WidgetTester t, {Widget? entry, bool marked = false,
-      double scale = 1, MomentReviewService? service}) async {
-    t.view.physicalSize = const Size(1080, 2700); // 360 x 900 logical points.
+      double scale = 1, MomentReviewService? service, Widget? screen,
+      Size size = const Size(360, 900), TargetPlatform? platform}) async {
+    t.view.physicalSize = size * 3;
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);
     final theme = ThemeController.seed(AppThemeChoice.light, Brightness.light);
     addTearDown(theme.dispose);
     final momentService = service ?? MomentReviewService();
     if (service == null) addTearDown(momentService.dispose);
-    final child = marked ? MomentFollowUpScreen(
+    final child = screen ?? (marked ? MomentFollowUpScreen(
       preloaded: const [
         PendingMoment(date: apk2Day, hhmm: '09:15'),
         PendingMoment(date: apk2Day, hhmm: '10:05'),
@@ -273,7 +294,7 @@ class Apk2Rig {
       service: momentService,
       exporter: null,
       now: reviewNow,
-    ) : const DayTimelineScreen(day: apk2Day);
+    ) : const DayTimelineScreen(day: apk2Day));
     await t.pumpWidget(MultiProvider(
       providers: [
         ChangeNotifierProvider<AppState>.value(value: app),
@@ -281,7 +302,7 @@ class Apk2Rig {
       ],
       child: MaterialApp(
         navigatorKey: navigator,
-        theme: buildTheme(Brightness.light),
+        theme: buildTheme(Brightness.light).copyWith(platform: platform),
         builder: (c, child) => MediaQuery(
           data: MediaQuery.of(c).copyWith(
               textScaler: TextScaler.linear(scale), alwaysUse24HourFormat: true),

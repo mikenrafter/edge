@@ -144,6 +144,7 @@ void main() {
         matching: find.text('Possible nap')), findsOneWidget);
     expect(find.descendant(of: find.byKey(const ValueKey('apk2-review-tray')),
         matching: find.text('Possible workout')), findsOneWidget);
+    expect(find.byKey(const ValueKey('apk2-review-load-error')), findsNothing);
   });
 
   Finder key(String value) => find.byKey(ValueKey(value));
@@ -200,10 +201,18 @@ void main() {
     repo.fail = true;
     await tap(t, 'apk2-review-save');
     expect(repo.items, hasLength(2));
-    repo.fail = false;
+    expect(key('apk2-review-load-error'), findsOneWidget);
+    expect(t.widget<Semantics>(key('apk2-review-save')).properties.enabled, isFalse);
+    // A failed reload requires a successful read before Save can retry.
     await tap(t, 'apk2-review-save');
+    expect(repo.items, hasLength(2));
+    repo.fail = false;
+    await tap(t, 'apk2-review-retry');
+    expect(key('apk2-review-load-error'), findsNothing);
+    expect(t.widget<Semantics>(key('apk2-review-save')).properties.enabled, isTrue);
     await tap(t, 'apk2-review-save');
     expect(repo.items.single.id, 'nap');
+    expect(t.widget<Semantics>(key('apk2-review-save')).properties.enabled, isFalse);
   });
 
   testWidgets('home card stays up when the count fails to load', (t) async {

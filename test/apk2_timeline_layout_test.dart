@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
+import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/apk2_keys.dart';
 import 'support/apk2_review_harness.dart';
@@ -29,6 +30,93 @@ void _rowStartsInside(WidgetTester t, Finder item, Finder viewport) {
 
 void main() {
   pinProcessTimeZone('America/Denver');
+
+  testWidgets('coincident markers offer each item as a labelled tappable choice', (t) async {
+    final semantics = t.ensureSemantics();
+    final r = await Apk2Rig.create(t);
+    await t.runAsync(() => r.store.reconcile(ActivityKind.workout, [
+      {'id': 'apk2-coincident', 'start_ts': apk2At(9, 15),
+        'end_ts': apk2At(9, 45), 'sport': 'walking'},
+    ]));
+    await r.mount(t, marked: true);
+    const activity = 'activity:apk2-coincident';
+    final cluster = find.byWidgetPredicate((w) => w is Pressable &&
+        w.key is ValueKey<String> &&
+        (w.key! as ValueKey<String>).value.startsWith('apk2-day-marker-cluster:') &&
+        w.semanticLabel!.contains('09:15, Marked moments') &&
+        w.semanticLabel!.contains('09:15, Possible workout'));
+    for (final id in [apk2MarkA, activity]) {
+      expect(cluster.hitTestable(), findsOneWidget);
+      await apk2Tap(t, cluster);
+      final marker = apk2Key('$apk2MarkerPrefix$id');
+      expect(marker.hitTestable(), findsOneWidget);
+      final label = t.getSemantics(marker).getSemanticsData().label;
+      expect(label, contains('09:15'));
+      expect(label, contains(id == activity ? 'Possible workout' : 'Marked moments'));
+      await t.tap(marker);
+      await t.pump();
+      expect(apk2Key('$apk2HighlightPrefix$id'), findsOneWidget);
+      await t.pump(const Duration(milliseconds: 400));
+      _rowStartsInside(t, apk2Row(id), apk2Key(apk2List));
+      await t.pump(const Duration(seconds: 5));
+    }
+    semantics.dispose();
+  });
+
+  for (final size in [const Size(360, 480), const Size(640, 360)]) {
+    for (final scale in [1.0, 3.1]) {
+      testWidgets('short ${size.width}x${size.height} viewport at ${scale}x '
+          'keeps the list and scrolling tray usable', (t) async {
+        final semantics = t.ensureSemantics();
+        final errors = captureFlutterErrors();
+        final r = await Apk2Rig.create(t);
+        await r.mount(t, size: size, scale: scale);
+        final chart = t.getRect(apk2Key(apk2Chart));
+        final list = t.getRect(apk2Key(apk2List));
+        final tray = t.getRect(apk2Key(apk2Tray));
+        expect(list.height, greaterThanOrEqualTo(size.height * .2));
+        expect(chart.bottom, lessThanOrEqualTo(list.top));
+        expect(tray.top, greaterThanOrEqualTo(list.bottom));
+        expect(tray.bottom, lessThanOrEqualTo(size.height));
+        await apk2Show(t, apk2NapA);
+        await apk2Tap(t, apk2Keep(apk2NapA));
+        await apk2Tap(t, apk2Key(apk2Save));
+        expect(await r.status(t, apk2NapA), ActivityReviewStatus.confirmed);
+        final scroll = t.state<ScrollableState>(_listScroll());
+        await t.drag(apk2Key(apk2List), const Offset(0, -200));
+        await t.pumpAndSettle();
+        expect(scroll.position.pixels, greaterThan(0));
+        expect(t.getRect(apk2Key(apk2Chart)), chart);
+        expect(errors, isEmpty);
+        expect(t.takeException(), isNull);
+        semantics.dispose();
+      });
+    }
+  }
+
+  testWidgets('iOS edge swipe confirms staged choices and Stay preserves them', (t) async {
+    final semantics = t.ensureSemantics();
+    final r = await Apk2Rig.create(t);
+    final before = await r.snapshot(t);
+    await r.mount(t, platform: TargetPlatform.iOS);
+    await apk2Show(t, apk2NapA);
+    await apk2Tap(t, apk2Keep(apk2NapA));
+    await t.dragFrom(const Offset(1, 300), const Offset(280, 0));
+    await settle(t);
+    expect(apk2Key(apk2LeaveDialog), findsOneWidget);
+    await apk2Tap(t, apk2Key(apk2Stay));
+    expect(apk2Selected(t, apk2Keep(apk2NapA)), isTrue);
+    expect(apk2Enabled(t, apk2Key(apk2Save)), isTrue);
+    expect(await r.snapshot(t), before);
+    await t.dragFrom(const Offset(1, 300), const Offset(280, 0));
+    await settle(t);
+    expect(apk2Key(apk2LeaveDialog), findsOneWidget);
+    await apk2Tap(t, apk2Key(apk2Leave));
+    expect(find.text('Outside breakdown'), findsOneWidget);
+    expect(apk2Key(apk2Tray), findsNothing);
+    expect(await r.snapshot(t), before);
+    semantics.dispose();
+  });
 
   for (final scale in [1.0, 3.1]) {
     testWidgets('at 360 pt and ${scale}x, scrolling the list moves its rows '
@@ -72,7 +160,7 @@ void main() {
           t.getRect(target).overlaps(viewport);
       expect(initiallyVisible, isFalse,
           reason: 'the marker must scroll to a row outside the viewport');
-      final marker = apk2Key('$apk2MarkerPrefix$apk2Answered');
+      final marker = await apk2MarkerTarget(t, apk2Answered);
       expect(marker, findsOneWidget);
       expect(marker.hitTestable(), findsOneWidget);
       expect(apk2Key('$apk2HighlightPrefix$apk2Answered'), findsNothing);
