@@ -113,6 +113,27 @@ SleepStage? _stageOf(Object? raw) => switch (raw?.toString()) {
       _ => null,
     };
 
+/// Read boundaries at the requested instant; the painter's columns can miss
+/// short stages, including the final minute before wake.
+SleepStage? _stageAt(Map<String, Object?> night, int? t) {
+  final pts = night['hypnogram'];
+  if (t == null || pts is! List) return null;
+  int? first, last;
+  SleepStage? stage;
+  for (final e in pts) {
+    if (e is Map && e['t'] is num) {
+      final ts = (e['t'] as num).round();
+      first ??= ts;
+      last = ts;
+      if (ts <= t) stage = _stageOf(e['stage']);
+    }
+  }
+  if (first == null || last == null || last <= first || t < first || t > last) {
+    return null;
+  }
+  return stage;
+}
+
 /// 15-minute bands. The stager sees a wrist, so "you fell asleep in 7 minutes"
 /// is a precision nobody measured.
 String _solBand(BuildContext c, double m) {
@@ -1335,9 +1356,15 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             title: l?.sleepDetailThroughTheNight ?? 'Through the night',
             unit: l?.sleepDetailUnitStage ?? 'stage',
             height: lane * 4,
-            xLabels: const ['', ''],
+            // Real glyphs, not '': an empty label line rounds a pixel shorter
+            // at large text and would move everything under the axis.
+            xLabels: [
+              for (final k in ['onset_ts', 'wake_ts'])
+                n[k] is num ? clockOfTs((n[k] as num).round()) : '\u00A0',
+            ],
             child: const SizedBox.expand(),
           ),
+          _scrubPanel(c, p, d, n),
           const SizedBox(height: S.x2),
           _hintSlot(
               c,
@@ -1371,7 +1398,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           ],
           child: _labelledHypnogram(c, p, stages, n, lane, totals),
         ),
-        _scrubPanel(c, p, d, n, stages),
+        _scrubPanel(c, p, d, n),
         if (device != null) ..._deviceStaging(c, p, device),
         // Not our staging: say whose it is, wherever it is drawn.
         if (device == null && n['sleep_source'] == 'vendor_staged') ...[
@@ -1510,9 +1537,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           final l = AppLocalizations.of(c);
           final t0 = (n['onset_ts'] as num?)?.toInt();
           final t1 = (n['wake_ts'] as num?)?.toInt();
-          final st = stages.isEmpty
-              ? null
-              : stages[(v * (stages.length - 1)).round().clamp(0, stages.length - 1)];
+          final st = _stageAt(n, t0 == null || t1 == null || t1 <= t0
+              ? null : t0 + ((t1 - t0) * v).round());
           final at = (t0 == null || t1 == null || t1 <= t0)
               ? (l?.sleepDetailPercentThroughNight((v * 100).round()) ??
                   '${(v * 100).round()}% through the night')
@@ -1555,7 +1581,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// Both charts read the same instant, defaulting to wake. Fixed cells keep
   /// the inset's height when a stage or any one signal is unobserved.
   Widget _scrubPanel(BuildContext c, P p, SleepData d,
-      Map<String, dynamic> n, List<SleepStage?> stages) {
+      Map<String, dynamic> n) {
     final l = AppLocalizations.of(c);
     final t0 = (n['onset_ts'] as num?)?.toInt();
     final t1 = (n['wake_ts'] as num?)?.toInt();
@@ -1583,10 +1609,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       return bestGap > 900 ? null : best;
     }
 
-    final stage = stages.isEmpty
-        ? null
-        : stages[(at * (stages.length - 1)).round()];
-    final color = Hypnogram.pigment[stage] ?? p.ink3;
+    final stage = _stageAt(n, t);
+    final color = stage == null ? p.ink3 : p.on(Hypnogram.pigment[stage]!);
     final hr = signal('hr'), hrv = signal('hrv'), resp = signal('resp');
     final cells = [
       ChartCell(_capitalise(l?.sleepDetailUnitStage ?? 'stage'), color,
@@ -2425,7 +2449,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                       painter: NightStack(series, colors, axes: axes)),
                 ),
         ),
-        if (linked) _scrubPanel(c, p, d, n, d.stages),
+        if (linked) _scrubPanel(c, p, d, n),
       ]),
     );
   }

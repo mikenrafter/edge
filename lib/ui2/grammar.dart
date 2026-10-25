@@ -1022,7 +1022,9 @@ class ChartKeyReadout extends StatelessWidget {
     final l = AppLocalizations.of(c);
     final latestText = l?.chartPanelLatest ?? 'LATEST';
     final selectedText = l?.chartPanelSelected ?? 'SELECTED';
-    final style = F.over.copyWith(color: color, fontWeight: FontWeight.w700);
+    // Color follows the selected series; it cannot change caption geometry.
+    final measureStyle = F.over.copyWith(fontWeight: FontWeight.w700);
+    final style = measureStyle.copyWith(color: color);
     if (reserveTimes.isNotEmpty) {
       return Stack(
         key: timeKey,
@@ -1049,7 +1051,7 @@ class ChartKeyReadout extends StatelessWidget {
           for (final at in times) {
             captionMeasures++;
             final tp = TextPainter(
-              text: TextSpan(text: '$mode · $at'.toUpperCase(), style: style),
+              text: TextSpan(text: '$mode · $at'.toUpperCase(), style: measureStyle),
               textDirection: dir,
               textScaler: scaler,
             )..layout(maxWidth: box.maxWidth);
@@ -1061,7 +1063,7 @@ class ChartKeyReadout extends StatelessWidget {
       }
 
       final key = (
-        style, scaler, box.maxWidth, dir, '$latestText|$selectedText',
+        measureStyle, scaler, box.maxWidth, dir, '$latestText|$selectedText',
         Object.hashAll(timeSpan), timeSpan.length
       );
       var height = _captionHeights[key];

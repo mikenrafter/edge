@@ -581,4 +581,27 @@ void main() {
     expect(ChartKeyReadout.captionMeasures, before,
         reason: 'the span was measured once; selections reuse it');
   });
+
+  testWidgets('caption height caching still responds to text scale and span',
+      (t) async {
+    const long = 'Wednesday, 30 September, a reserved caption';
+    Widget readout(List<String> span) => ChartKeyReadout(
+      cells: const [ChartCell('Heart rate', _red, value: '60 bpm')],
+      time: 'Cache check',
+      timeSpan: span,
+    );
+    await _pump(t, readout(const ['Cache check', long]), h: 1600);
+    final caption = find.byKey(ChartKeyReadout.timeKey);
+    final smallHeight = t.getSize(caption).height;
+    var before = ChartKeyReadout.captionMeasures;
+    await _pump(t, readout(const ['Cache check', long]), scale: 2.7, h: 1600);
+    expect(ChartKeyReadout.captionMeasures, greaterThan(before));
+    expect(t.getSize(caption).height, greaterThan(smallHeight));
+    final tallHeight = t.getSize(caption).height;
+    before = ChartKeyReadout.captionMeasures;
+    await _pump(t, readout(const ['Cache check']), scale: 2.7, h: 1600);
+    expect(ChartKeyReadout.captionMeasures, greaterThan(before));
+    expect(t.getSize(caption).height, lessThan(tallHeight));
+    expect(t.takeException(), isNull);
+  });
 }
