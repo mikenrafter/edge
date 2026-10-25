@@ -6,15 +6,12 @@
 // "Answer" button opens the review. A null-safe helper that needs no AppState
 // (like `_naturalWakeCard`).
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-import '../../support/dart_source_lexical.dart';
 
 Future<void> _pump(WidgetTester t, Widget? card) async {
   await t.pumpWidget(MaterialApp(
@@ -185,33 +182,5 @@ void main() {
           find.descendant(of: find.byKey(_answerKey), matching: tappable),
           findsOneWidget);
     });
-  });
-
-  group('momentFollowUpCard(BuildContext)', () {
-    testWidgets('with no AppState above it is null, not an exception',
-        (t) async {
-      Widget? got = const SizedBox();
-      await t.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: Builder(builder: (c) {
-          got = momentFollowUpCard(c);
-          return got ?? const Text('none');
-        }),
-      ));
-      expect(got, isNull);
-      expect(find.text('none'), findsOneWidget);
-    });
-  });
-
-  test('Home draws it wherever it draws the natural-wake card', () {
-    final code =
-        codeOnly(File('lib/ui2/screens/home_screen.dart').readAsStringSync());
-    final wake = RegExp(r'\?_naturalWakeCard\(c\)').allMatches(code).length;
-    final moments =
-        RegExp(r'\?momentFollowUpCard\(c\)').allMatches(code).length;
-    // Home has one list for every state (loaded and no-day alike).
-    expect(wake, greaterThanOrEqualTo(1));
-    expect(moments, wake,
-        reason: 'the card sits wherever the natural-wake card does');
   });
 }

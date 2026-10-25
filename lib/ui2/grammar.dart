@@ -992,7 +992,8 @@ class NerdStatsLink extends StatelessWidget {
           }
         },
         semanticLabel: label,
-        child: Padding(
+        // The Pressable speaks the label; the visible text must not repeat it.
+        child: ExcludeSemantics(child: Padding(
           padding: const EdgeInsets.only(top: S.x2),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(LucideIcons.chartNoAxesColumn, size: 14, color: p.ink2),
@@ -1002,7 +1003,7 @@ class NerdStatsLink extends StatelessWidget {
                 style: F.cap.copyWith(
                     color: p.ink2, fontWeight: FontWeight.w600))),
           ]),
-        ),
+        )),
       ),
     );
   }

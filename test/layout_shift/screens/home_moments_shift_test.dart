@@ -1,5 +1,5 @@
-// Layout shift budget on Home when marked moments are waiting: the follow-up
-// card is read from the real database (LocalDb), so this file uses a real
+// Layout shift budget on Home when marked moments are waiting: Home's one
+// Review activities card counts them, read from the real database (LocalDb), so this file uses a real
 // sqflite_ffi database and lets it answer between fake-clock pumps.
 //
 // Time: every capture is stamped with the offset the test asked for. The test
@@ -107,7 +107,8 @@ void main() {
     await _framesWithDb(t, run);
     await _drainDb(t);
     await t.pump(const Duration(seconds: 5));
-    expect(find.byKey(const ValueKey('moment-follow-up-card')), findsNothing);
+    expect(find.text('Breakdown of your day'), findsOneWidget);
+    expect(find.text('Review activities'), findsNothing);
     run.expectNoErrors('home cold open, no moments');
   });
 
@@ -123,12 +124,12 @@ void main() {
     await _framesWithDb(t, run);
     await _drainDb(t);
     await t.pump(const Duration(seconds: 5));
-    expect(find.byKey(const ValueKey('moment-follow-up-card')), findsOneWidget,
-        reason: 'the seeded moments must put the card on Home');
+    expect(find.text('Review activities'), findsOneWidget,
+        reason: 'the seeded moments must turn the Home card into the review card');
     run.expectNoErrors('home cold open, with moments');
   });
 
-  testWidgets('Home: a sync lands while the moment card is visible', (t) async {
+  testWidgets('Home: a sync lands while the review card is visible', (t) async {
     phoneSurface(t);
     final repo = _SlowHomeRepo(_bundle(70, 8, 42), delayMs: 0);
     final app = AppState.forTesting()..repo = repo;
@@ -138,11 +139,8 @@ void main() {
     final run = ShiftRun(t);
     await t.pumpWidget(perfApp(app, const HomeScreen(hour: 9)));
     await settle(t,
-        until: () => find
-            .byKey(const ValueKey('moment-follow-up-card'))
-            .evaluate()
-            .isNotEmpty,
-        what: 'the moment card');
+        until: () => find.text('Review activities').evaluate().isNotEmpty,
+        what: 'the review card');
     await t.pump(const Duration(seconds: 1));
     run.now = 0;
     run.snap();
@@ -152,6 +150,6 @@ void main() {
     await _framesWithDb(t, run);
     await _drainDb(t);
     await t.pump(const Duration(seconds: 5));
-    run.expectNoErrors('home sync lands with moment card');
+    run.expectNoErrors('home sync lands with the review card');
   });
 }

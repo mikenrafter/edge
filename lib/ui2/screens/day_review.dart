@@ -1,6 +1,7 @@
 // The open breakdown owns staged decisions. Durable writes go
 // through the repository batch, serialized with the existing moment service.
 import 'dart:async';
+import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -445,7 +446,7 @@ class DayReviewController extends ChangeNotifier {
     saveFailed = false;
     _changed();
     final staged = Map.of(_choices);
-    final savedAtMs = DateTime.now().millisecondsSinceEpoch;
+    final savedAtMs = pc.clock.now().millisecondsSinceEpoch;
     final selectedRanges = _ranges.where((r) =>
         staged['moment:${r.startKey}'] == true &&
         staged['moment:${r.endKey}'] == true).toList();

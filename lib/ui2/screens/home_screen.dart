@@ -1067,24 +1067,28 @@ class RingTrio extends StatelessWidget {
     // nothing to say. Status notes are rows too: why a ring is empty, what is
     // still being read or calculated, first-week guidance. The most useful two
     // win, in this order.
+    // With nothing more specific to say, the screen's own status (reading,
+    // calculating, failed, "no data for this day", guidance) outranks the
+    // per-ring "no reading" reasons, as it did in the old help strip.
+    final status = help;
+    final onlyStatus = observation == null && pressing.isEmpty &&
+        older == null && note == null && status != null && status.text.isNotEmpty;
     final rows = <Widget>[
       ?observation,
+      if (!onlyStatus)
       for (final r in gaps)
         _HomeNoteRow(id: 'gap:${r.kind.name}', title: r.label,
             text: presentationText(l, r.why ?? ''), onTap: _open(r.kind)),
       for (final k in pressing)
         _HomeWhyPanel(kind: k, data: d, onTap: _open(k)),
+      if (note != null)
+        _HomeUpdateNote(line: note, onTap: _open(HomeRingKind.recovery)),
       if (older != null)
         _HomeOlderPanel(version: older, reason: d.strain.olderVersionReason,
             onTap: _open(HomeRingKind.strain)),
-      if (note != null)
-        _HomeUpdateNote(line: note, onTap: _open(HomeRingKind.recovery)),
     ];
-    // The screen's own status (reading, calculating, failed, guidance)
-    // speaks only when nothing more specific does.
-    final status = help;
-    if (rows.isEmpty && status != null && status.text.isNotEmpty) {
-      rows.add(_HomeNoteRow(id: 'status', text: status.text,
+    if (onlyStatus) {
+      rows.add(_HomeNoteRow(id: 'status', text: status!.text,
           busy: status.busy, onTap: status.onTap));
     }
     final slot = [

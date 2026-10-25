@@ -13,10 +13,6 @@ const apk1SettingsTab = 'apk1-settings-tab';
 /// APK1: the backed-up boolean UI preference. Absent means false.
 const apk1SettingsPref = 'ui.settings_as_tab';
 
-/// APK1: Home's reachable Review activities tap target, outside the removed
-/// prompt card. Keep it reachable when the pending-count read fails, too.
-const apk1ReviewActivities = 'apk1-review-activities';
-
 /// APK1: Sleep's visible selected-instant readout returned by _scrubCard.
 /// Present during/after a scrub, absent before selection and after scrolling
 /// from a chart without first selecting it.

@@ -1,6 +1,7 @@
-// Home rings card: every caption fits its reserved two lines at 360 and 390
-// pt, text scale 1.0, real fonts, and a ring column stays the same height
-// loaded as on first launch. No caption may be ellipsized.
+// Home rings card: every caption fits its two lines at 360 and 390 pt, text
+// scale 1.0, real fonts. The empty card reserves NO caption or numeral band
+// (the owner: no blank space in the card), so it is shorter than a loaded one.
+// No caption may be ellipsized.
 //
 // Every instant is injected (`RingTrio.now`); nothing reads the system clock.
 import 'package:flutter/material.dart';
@@ -192,7 +193,7 @@ void main() {
         });
 
         testWidgets(
-            '$lang x$scale ${w.toInt()} pt, ${e.key}: same layout and height as first launch',
+            '$lang x$scale ${w.toInt()} pt, ${e.key}: same layout as first launch, and the empty card holds no blank band',
             (t) async {
           await _pump(t, w, const HomeData(),
               locale: Locale(lang), scale: scale);
@@ -200,14 +201,14 @@ void main() {
           final empty = _trioHeight(t);
           await _pump(t, w, e.value, locale: Locale(lang), scale: scale);
           expect(_rows(t), emptyRows, reason: 'layout depends on the data');
-          expect(_trioHeight(t), empty,
-              reason: 'card height loaded vs empty (rows: $emptyRows)');
+          expect(_trioHeight(t), greaterThan(empty),
+              reason: 'empty reserves no caption band (rows: $emptyRows)');
         });
     }
   }
   }
 
-  testWidgets('en x1.4 360 pt: the stacked row layout, empty and loaded, equal height',
+  testWidgets('en x1.4 360 pt: the stacked row layout, empty and loaded, empty is shorter, no reserved band',
       (t) async {
     await _pump(t, 360, const HomeData(), scale: 1.4);
     expect(_rows(t), isTrue, reason: 'bigText uses rows');
@@ -215,7 +216,7 @@ void main() {
     await _pump(t, 360, _loaded['estimate, schedule, default target']!,
         scale: 1.4);
     expect(_rows(t), isTrue);
-    expect(_trioHeight(t), empty);
+    expect(_trioHeight(t), greaterThan(empty), reason: 'no reserved band');
     final cap = t.widget<Text>(_captions(t).last).data!;
     expect(cap, contains('default'));
     expect(cap, startsWith('on track'));
@@ -225,7 +226,7 @@ void main() {
   // ru numeral wraps to three lines): what the rings reserve must not depend
   // on the day's data.
   for (final lang in ['es', 'de', 'ru']) {
-    testWidgets('$lang x1.3 320 pt: rings are as tall loaded as empty',
+    testWidgets('$lang x1.3 320 pt: rings carry no reserved band: empty is shorter',
         (t) async {
       await _pump(t, 320, const HomeData(),
           locale: Locale(lang), scale: 1.3);
@@ -234,16 +235,17 @@ void main() {
       for (final e in _loaded.entries) {
         await _pump(t, 320, e.value, locale: Locale(lang), scale: 1.3);
         expect(_rows(t), isFalse);
-        expect(_trioHeight(t), empty, reason: '$lang ${e.key}: loaded vs empty');
+        expect(_trioHeight(t), greaterThan(empty),
+            reason: '$lang ${e.key}: empty reserves nothing');
       }
     });
   }
 
   // The big-text row layout (left-aligned, no line cap): a scored numeral can
-  // wrap where the empty dash does not, so the slot is reserved there too.
+  // wrap where the empty dash does not, .
   for (final lang in ['ru', 'en']) {
     for (final scale in [1.4, 2.0, 3.0]) {
-      testWidgets('$lang x$scale 320 pt: row layout, rings as tall loaded as empty',
+      testWidgets('$lang x$scale 320 pt: row layout, empty reserves no band',
           (t) async {
         await _pump(t, 320, const HomeData(), locale: Locale(lang), scale: scale);
         expect(_rows(t), isTrue);
@@ -251,8 +253,8 @@ void main() {
         for (final e in _loaded.entries) {
           await _pump(t, 320, e.value, locale: Locale(lang), scale: scale);
           expect(_rows(t), isTrue);
-          expect(_trioHeight(t), empty,
-              reason: '$lang x$scale ${e.key}: loaded vs empty');
+          expect(_trioHeight(t), greaterThan(empty),
+              reason: '$lang x$scale ${e.key}: empty reserves nothing');
         }
       });
     }

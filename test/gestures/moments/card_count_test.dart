@@ -1,5 +1,5 @@
-// The Home follow-up card counts assumed water glasses too (they need review).
-// It shows the two counts apart: "N marked moments" (pending marks plus started
+// Home's Review activities card counts assumed water glasses too (they need
+// review). The pure counts below keep the two apart: "N marked moments" (pending marks plus started
 // ranges that only owe their announcement) and "N assumed water" (glasses
 // waiting for keep / remove), from the same gates as the follow-up screen. The
 // two always add up to `reviewCount`.
@@ -18,6 +18,7 @@ import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
 import 'package:openstrap_edge/gestures/moment_review_queue.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
+import 'package:openstrap_edge/ui2/screens/detected_activities.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -152,69 +153,68 @@ void main() {
         ],
         child: MaterialApp(
           theme: buildTheme(Brightness.light),
-          home: Scaffold(body: Builder(builder: (c) => momentFollowUpCard(c)!)),
+          // Nothing else waits: only the assumed glass is counted.
+          home: const Scaffold(body: DetectedActivitiesCard(pendingCount: 0)),
         ),
       ));
     }
 
-    testWidgets('an assumed glass alone makes the card appear: an "assumed '
-        'water" line, and no marked-moments line', (t) async {
-      final app = AppState.forTesting();
-      addTearDown(app.dispose);
-      await t.runAsync(() async {
-        await app.gestureSettings.setFollowUpMoments(true,
-            now: DateTime.now().subtract(const Duration(hours: 1)));
-        await LocalDb.logAssumedWater(
-            date: todayLabel(),
-            atMin: DateTime.now().hour * 60 + DateTime.now().minute,
-            ml: 250,
-            loggedAtMs: 1);
-      });
-      await pumpCard(t, app);
-      final line = find.byKey(const ValueKey('moment-follow-up-water'));
-      for (var i = 0; i < 60 && line.evaluate().isEmpty; i++) {
-        await t.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 20)));
-        await t.pump();
-      }
-      expect(t.widget<Text>(line).data, '1 assumed water');
-      expect(find.byKey(const ValueKey('moment-follow-up-moments')),
-          findsNothing);
-      expect(find.textContaining('things to review'), findsNothing);
+    Future<void> logGlass(WidgetTester t, AppState app) => t.runAsync(() async {
+      await app.gestureSettings.setFollowUpMoments(true,
+          now: DateTime.now().subtract(const Duration(hours: 1)));
+      // Idempotent per (date, minute): another test's glass is reused.
+      await LocalDb.logAssumedWater(
+          date: todayLabel(),
+          atMin: DateTime.now().hour * 60 + DateTime.now().minute,
+          ml: 250,
+          loggedAtMs: 1);
     });
 
-    testWidgets('Answer opens the review screen', (t) async {
-      final app = AppState.forTesting();
-      addTearDown(app.dispose);
-      await t.runAsync(() async {
-        await app.gestureSettings.setFollowUpMoments(true,
-            now: DateTime.now().subtract(const Duration(hours: 1)));
-        // Idempotent per (date, minute): the previous test's glass is reused.
-        await LocalDb.logAssumedWater(
-            date: todayLabel(),
-            atMin: DateTime.now().hour * 60 + DateTime.now().minute,
-            ml: 250,
-            loggedAtMs: 1);
-      });
-      await pumpCard(t, app);
-      final answer = find.byKey(const ValueKey('moment-follow-up-answer'));
-      for (var i = 0; i < 60 && answer.evaluate().isEmpty; i++) {
+    Future<void> waitFor(WidgetTester t, Finder f) async {
+      for (var i = 0; i < 60 && f.evaluate().isEmpty; i++) {
         await t.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 20)));
         await t.pump();
       }
-      expect(answer, findsOneWidget);
-      await t.tap(answer);
+    }
+
+    testWidgets('an assumed glass alone makes Review activities say "1 to '
+        'review"', (t) async {
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      await logGlass(t, app);
+      await pumpCard(t, app);
+      await waitFor(t, find.text('1 to review'));
+      expect(find.text('Review activities'), findsOneWidget);
+      expect(find.text('1 to review'), findsOneWidget);
+      expect(find.text('Breakdown of your day'), findsNothing);
+    });
+
+    testWidgets('with follow-ups off, Home counts no marks or water: the '
+        'plain breakdown', (t) async {
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      await logGlass(t, app);
+      await t.runAsync(() => app.gestureSettings.setFollowUpMoments(false));
+      await pumpCard(t, app);
+      await t.pump();
+      expect(find.text('Review activities'), findsNothing);
+      expect(find.text('Breakdown of your day'), findsOneWidget);
+    });
+
+    testWidgets('tapping it opens the day breakdown in review mode', (t) async {
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      await logGlass(t, app);
+      await pumpCard(t, app);
+      final card = find.text('Review activities');
+      await waitFor(t, find.text('1 to review'));
+      await t.tap(card);
       await t.pump();
       await t.pump(const Duration(milliseconds: 400));
-      // Route loading includes real SQLite reads; wait through the shared
-      // SQL-aware helper instead of checking the old wrapper after one frame.
-      for (var i = 0; i < 60 && find.byType(DayTimelineScreen).evaluate().isEmpty; i++) {
-        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-        await t.pump();
-      }
+      // Route loading includes real SQLite reads; wait through them.
+      await waitFor(t, find.byType(DayTimelineScreen));
       expect(find.byType(DayTimelineScreen), findsOneWidget);
-      expect(find.byKey(const ValueKey('apk2-review-tray')), findsOneWidget);
     });
   });
 }

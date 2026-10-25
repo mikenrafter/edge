@@ -88,8 +88,23 @@ void main() {
     });
 
     test('two different band events in a row never merge', () {
-      final groups = groupRepeatedEvents(_moments([_ev(7, 0), _ev(8, 1)]));
+      // A double-tap and a charger event: unrelated, so two rows.
+      final groups = groupRepeatedEvents(_moments([_ev(14, 0), _ev(7, 1)]));
       expect(groups.map((g) => g.count), [1, 1]);
+    });
+
+    test('the charger and battery-pack events fold into ONE group, '
+        'whatever their ids', () {
+      // charger on, charger off, pack attached, pack removed (7, 8, 21, 22).
+      final groups = groupRepeatedEvents(
+          _moments([_ev(7, 0), _ev(8, 1), _ev(21, 2), _ev(22, 3)]));
+      expect(groups.map((g) => g.count), [4]);
+    });
+
+    test('a charger run ends at an unrelated event', () {
+      final groups = groupRepeatedEvents(
+          _moments([_ev(7, 0), _ev(8, 1), _ev(14, 2), _ev(7, 3)]));
+      expect(groups.map((g) => g.count), [2, 1, 1]);
     });
 
     test('moments without an event id never merge, even with equal titles',

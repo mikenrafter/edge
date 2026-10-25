@@ -1350,7 +1350,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         key: const ValueKey('card:night'),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           ChartFrame(
-            nerdStats: this,
             title: l?.sleepDetailThroughTheNight ?? 'Through the night',
             unit: l?.sleepDetailUnitStage ?? 'stage',
             height: lane * 4,
@@ -1384,8 +1383,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     return Surface(
       key: const ValueKey('card:night'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // The hypnogram's own scrub panel below carries the Nerd stats action;
+        // a second one here would put two on the card.
         ChartFrame(
-          nerdStats: this,
           title: l?.sleepDetailThroughTheNight ?? 'Through the night',
           unit: l?.sleepDetailUnitStage ?? 'stage',
           height: lane * 4,

@@ -1939,6 +1939,8 @@ Map<String, Widget> _listCases() => {
         ('nights_in_baseline', '14'),
         ('artifact_share', '2.1%'),
       ]),
+      // The small action every chart panel carries (the only way to Nerd stats).
+      'nerd_stats_link': Surface(child: NerdStatsLink(listener: _GalleryNerdStats())),
       'no_data': const Surface(
           child: NoData(message: 'No nights recorded this week')),
       'moment_row': Builder(
@@ -2905,3 +2907,9 @@ const EcgReading _ecgDemoReading = EcgReading(
   notes: null,
   createdAt: 1787823784000,
 );
+
+/// Nerd stats opens nothing in the gallery; the case shows the action.
+class _GalleryNerdStats implements NerdStatsListener {
+  @override
+  void openNerdStats() {}
+}

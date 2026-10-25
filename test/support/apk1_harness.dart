@@ -36,7 +36,7 @@ Metric apk1Metric(double value) =>
 
 /// Three competing reasons: equal-severity recovery and sleep, then strain.
 HomeData apk1Home({String? observation = 'red', String? observedDay = apk1Day,
-    bool bare = false, bool reviewFailed = false}) => HomeData(
+    bool bare = false, bool reviewFailed = false, int pending = 2}) => HomeData(
   dayId: apk1Day,
   readiness: bare ? Metric.empty : apk1Metric(20),
   sleepMin: bare ? Metric.empty : apk1Metric(300),
@@ -46,7 +46,7 @@ HomeData apk1Home({String? observation = 'red', String? observedDay = apk1Day,
   illnessState: observation,
   illnessDay: observedDay,
   illnessZ: 2.5,
-  pendingActivities: reviewFailed ? null : 2,
+  pendingActivities: reviewFailed ? null : pending,
   pendingActivitiesFailed: reviewFailed,
 );
 

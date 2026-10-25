@@ -153,6 +153,9 @@ class HomeRepo extends LocalRepository {
   Future<Map<String, dynamic>> getProfile() async => const {'name': 'Alex'};
   @override
   Future<List<String>> availableDays() async => [todayId];
+  // The real repository always answers; nothing is waiting for review here.
+  @override
+  Future<int> pendingActivityCount() async => 0;
 }
 
 // ── SleepDetail ─────────────────────────────────────────────────────────────

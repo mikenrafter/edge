@@ -48,6 +48,9 @@ class _Repo extends LocalRepository {
   Future<Map<String, dynamic>> getProfile() async => const {'name': 'Alex'};
   @override
   Future<List<String>> availableDays() async => [_today, _yesterday];
+  // Nothing waits for review, so Home's card reads "Breakdown of your day".
+  @override
+  Future<int> pendingActivityCount() async => 0;
 
   @override
   Future<Map<String, dynamic>> getDayOverview(String date) async =>

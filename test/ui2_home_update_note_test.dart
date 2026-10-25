@@ -5,7 +5,7 @@
 //   key home-update-note       the row (inset card2/rMd panel, tappable)
 //   key home-update-note-icon  circle, ink3 @ .16, LucideIcons.refreshCw
 //   title = the shared line, chevron, icon and chevron centred.
-// ORDER: why panels (max 2), then the update note, then the older row.
+// ORDER: why panels, then the update note, then the older row; two rows at most.
 // Shown whenever the shared line is non-empty. Taps open recovery. Spoken once.
 // Adds nothing above the rings: dials and labels sit where they did.
 import 'package:flutter/material.dart';
@@ -88,14 +88,31 @@ void main() {
     expect((t.getCenter(find.descendant(of: _row, matching: find.byIcon(LucideIcons.chevronRight))).dy - mid).abs(), lessThan(1));
   });
 
-  testWidgets('order: whys, then the update note, then the older row', (t) async {
+  final older = find.byKey(const ValueKey('home-older-row'));
+
+  testWidgets('the slot holds two rows at most: two whys leave no room for the note or the older row', (t) async {
     await _pump(t, _d(recovery: 10, twoWhys: true, older: true));
-    final why = [for (final k in ['recovery', 'sleep']) t.getTopLeft(find.byKey(ValueKey('home-why:$k'))).dy];
-    final note = t.getTopLeft(_row).dy;
-    final older = t.getTopLeft(find.byKey(const ValueKey('home-older-row'))).dy;
-    expect(why[0] < why[1], isTrue);
-    expect(why[1] < note, isTrue, reason: 'note below the whys');
-    expect(note < older, isTrue, reason: 'older row last');
+    final why = [for (final k in ['recovery', 'sleep']) find.byKey(ValueKey('home-why:$k'))];
+    expect(why[0], findsOneWidget);
+    expect(why[1], findsOneWidget);
+    expect(_row, findsNothing);
+    expect(older, findsNothing);
+  });
+
+  testWidgets('order: a why, then the update note (room for two)', (t) async {
+    await _pump(t, _d(recovery: 10, older: true));
+    expect(find.byKey(const ValueKey('home-why:recovery')), findsOneWidget);
+    expect(_row, findsOneWidget);
+    expect(t.getTopLeft(find.byKey(const ValueKey('home-why:recovery'))).dy,
+        lessThan(t.getTopLeft(_row).dy), reason: 'note below the why');
+    expect(older, findsNothing, reason: 'a third row has no slot');
+  });
+
+  testWidgets('order: the update note, then the older row', (t) async {
+    await _pump(t, _d(older: true));
+    expect(_row, findsOneWidget);
+    expect(older, findsOneWidget);
+    expect(t.getTopLeft(_row).dy, lessThan(t.getTopLeft(older).dy), reason: 'older row last');
   });
 
   testWidgets('spoken once', (t) async {
@@ -123,13 +140,14 @@ void main() {
           readinessUpdate: update ? {'from': 62, 'to': 58, 'at': _at} : null,
         );
     await _pump(t, d(update: false));
-    final reason = find.textContaining('Strain ·');
+    final reason = find.byKey(const ValueKey('home-note:gap:strain'));
     expect(reason, findsOneWidget, reason: 'baseline: the gap reason shows');
+    expect(find.descendant(of: reason, matching: find.text('Strain')), findsOneWidget);
     final before = [for (var i = 0; i < 3; i++) t.getRect(_dials.at(i))];
     await _pump(t, d(update: true));
     expect(_row, findsOneWidget);
     expect(reason, findsOneWidget, reason: 'the row sits alongside the reason');
-    expect(t.getTopLeft(_row).dy, lessThan(t.getTopLeft(reason).dy), reason: 'row, then the reason');
+    expect(t.getTopLeft(reason).dy, lessThan(t.getTopLeft(_row).dy), reason: 'the reason, then the note');
     expect([for (var i = 0; i < 3; i++) t.getRect(_dials.at(i))], before);
   });
 }

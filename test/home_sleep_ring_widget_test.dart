@@ -487,8 +487,11 @@ void main() {
       final app = AppState.forTesting();
       addTearDown(app.dispose);
       await pumpHome(t, app);
-      // An absence is a dash in the ring; the reason is in the help strip.
-      expect(find.textContaining('Sleep · No sleep scored yet'), findsOneWidget);
+      // An absence is a dash in the ring; the reason is a row under the rings.
+      final gap = find.byKey(const ValueKey('home-note:gap:sleep'));
+      expect(find.descendant(of: gap, matching: find.text('Sleep')), findsOneWidget);
+      expect(find.descendant(of: gap, matching: find.textContaining('No sleep scored yet')),
+          findsOneWidget);
     });
   });
 
@@ -731,8 +734,11 @@ void main() {
           learnedOnset: 1380,
         ),
       );
-      // An absence is a dash in the ring; the reason is in the help strip.
-      expect(find.textContaining('Sleep · No sleep scored yet'), findsOneWidget);
+      // An absence is a dash in the ring; the reason is a row under the rings.
+      final gap = find.byKey(const ValueKey('home-note:gap:sleep'));
+      expect(find.descendant(of: gap, matching: find.text('Sleep')), findsOneWidget);
+      expect(find.descendant(of: gap, matching: find.textContaining('No sleep scored yet')),
+          findsOneWidget);
       expect(find.textContaining('on track'), findsNothing);
       final ring = _sleepPainter(t) as Ring;
       expect(ring.v, 0);

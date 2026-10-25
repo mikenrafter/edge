@@ -140,10 +140,8 @@ void main() {
     repo.fail = false;
     await t.tap(find.text('Try again'));
     await t.pumpAndSettle();
-    expect(find.descendant(of: find.byKey(const ValueKey('apk2-review-tray')),
-        matching: find.text('Possible nap')), findsOneWidget);
-    expect(find.descendant(of: find.byKey(const ValueKey('apk2-review-tray')),
-        matching: find.text('Possible workout')), findsOneWidget);
+    expect(find.text('Possible nap'), findsOneWidget);
+    expect(find.text('Possible workout'), findsOneWidget);
     expect(find.byKey(const ValueKey('apk2-review-load-error')), findsNothing);
   });
 
@@ -164,7 +162,11 @@ void main() {
     expect(repo.items, hasLength(1));
     await tap(t, 'apk2-review-save');
     expect(repo.items, isEmpty);
-    expect(find.text('Nothing to review'), findsOneWidget);
+    expect(find.byKey(const ValueKey('apk2-review-save')), findsNothing);
+    for (final id in ['nap', 'workout']) {
+      expect(key('apk2-review-keep:activity:$id'), findsNothing,
+          reason: 'a saved item no longer waits for review');
+    }
   });
 
   testWidgets('cancelling a nap edit leaves it pending and stages nothing', (t) async {
@@ -174,8 +176,8 @@ void main() {
     Navigator.of(t.element(find.byType(NapProposalEditor))).pop();
     await t.pumpAndSettle();
     expect(repo.items, hasLength(2));
-    await tap(t, 'apk2-review-save');
-    expect(repo.items, hasLength(2));
+    expect(key('apk2-review-save'), findsNothing, reason: 'nothing is staged');
+    expect(key('apk2-review-keep:activity:nap'), findsOneWidget);
   });
 
   testWidgets('unknown workout stays Other; stale Save reloads the proposal for retry', (t) async {
@@ -212,12 +214,12 @@ void main() {
     expect(t.widget<Semantics>(key('apk2-review-save')).properties.enabled, isTrue);
     await tap(t, 'apk2-review-save');
     expect(repo.items.single.id, 'nap');
-    expect(t.widget<Semantics>(key('apk2-review-save')).properties.enabled, isFalse);
+    expect(key('apk2-review-save'), findsNothing, reason: 'nothing left staged');
   });
 
   testWidgets('home card stays up when the count fails to load', (t) async {
     await pump(t, fail: true, home: const Scaffold(body: DetectedActivitiesCard()));
-    expect(find.text('Detected activities'), findsOneWidget);
+    expect(find.text('Review activities'), findsOneWidget);
     expect(find.text('Could not load activities. Try again.'), findsOneWidget);
   });
 }

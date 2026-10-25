@@ -108,6 +108,11 @@ class _FakeRepo extends LocalRepository {
 // The coach chip's card (the briefing door in Today's plan wears the same icon).
 final _coachCard = find.byKey(const ValueKey('card:coach'));
 
+class _NerdStatsDoor implements NerdStatsListener {
+  @override
+  void openNerdStats() {}
+}
+
 void main() {
   // ── the artifact behind four screens ──
   group('crossDayStaleReason', () {
@@ -926,7 +931,7 @@ void main() {
   // screen, in either of the two places it appeared: the scaffold's overline
   // and the link row every detail screen ends with.
   group('Nerd stats naming', () {
-    testWidgets('the screen and its door both say Nerd stats', (t) async {
+    testWidgets('the screen and its door, the chart panel link, both say Nerd stats', (t) async {
       t.view.physicalSize = const Size(390 * 3, 3000 * 3);
       t.view.devicePixelRatio = 3;
       addTearDown(t.view.reset);
@@ -941,7 +946,7 @@ void main() {
       await t.pumpWidget(MaterialApp(
         theme: buildTheme(Brightness.light),
         home: Scaffold(
-          body: Builder(builder: (c) => investigateRow(c, () {})),
+          body: NerdStatsLink(listener: _NerdStatsDoor()),
         ),
       ));
       await t.pumpAndSettle();

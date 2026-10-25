@@ -473,7 +473,7 @@ void main() {
 
     testWidgets('adds no row: rings and the next card sit at the same y',
         (t) async {
-      final review = find.byKey(const ValueKey('apk1-review-activities'));
+      final review = find.byKey(const ValueKey('card:detected'));
       await _home(t, _data(computedAt: _at(16, 8)));
       final without = _ringPos(t);
       final cardH = t.getSize(_card).height;
@@ -536,12 +536,11 @@ void main() {
       expect(opened, [HomeRingKind.strain]);
     });
 
-    testWidgets('always below the whys: max 2 whys + 1 older row', (t) async {
+    testWidgets('the slot holds two rows at most: two whys leave no older row',
+        (t) async {
       await _rings(t, _olderAndTwo);
       expect(_whyOrder(t), ['recovery', 'sleep']);
-      expect(_olderRow, findsOneWidget);
-      final lastWhy = t.getBottomLeft(_why('sleep')).dy;
-      expect(t.getTopLeft(_olderRow).dy, greaterThanOrEqualTo(lastWhy));
+      expect(_olderRow, findsNothing, reason: 'a third row has no slot');
     });
 
     testWidgets('below a single why too', (t) async {
@@ -558,8 +557,8 @@ void main() {
       expect(_olderRow, findsOneWidget, reason: 'the row exists first');
       expect(spokenCount(t), 1, reason: 'row only, or mark only; never both');
       await _rings(t, _olderAndTwo);
-      expect(_olderRow, findsOneWidget);
-      expect(spokenCount(t), 1);
+      expect(_olderRow, findsNothing, reason: 'no slot beside two whys');
+      expect(spokenCount(t), 0, reason: 'the ring mark is visual; no row, no speech');
       await _rings(t, _healthy);
       expect(spokenCount(t), 0);
       h.dispose();

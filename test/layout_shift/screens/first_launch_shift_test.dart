@@ -119,7 +119,7 @@ void main() {
 
   // HOME RINGS. Owner decision 3 (ui-feedback-2026-10-22.md, DECIDED, 2026-10-22;
   // applied 2026-10-23): "CLS cost of varying count accepted". The ring card ends
-  // in 0, 1 or 2 why panels / an older row when loaded, and in the help strip
+  // in 0, 1 or 2 info rows when loaded, and in the status/gap rows
   // (first-week guidance, status, gap reasons) when empty. That is the same kind
   // of varying panel, so the card's HEIGHT may differ between the two states,
   // and the cards below follow it, by exactly that strip and nothing else.
@@ -129,24 +129,43 @@ void main() {
   const labels = ['RECOVERY', 'STRAIN', 'SLEEP'];
 
   // What the ring card shows, read off the live tree (frame capture has no
-  // private widget types): the dials, their labels and the help strip.
-  ({List<Rect> dials, List<Rect> labels, Rect? strip}) ringsNow(WidgetTester t) {
+  // private widget types): the dials, their labels and the bottom slot's rows.
+  ({List<Rect> dials, List<Rect> labels, Rect? strip, double unitsBottom}) ringsNow(WidgetTester t) {
     final ringsCard = find.byKey(const ValueKey('card:rings'));
     final dials = find.descendant(
         of: ringsCard,
         matching: find.byWidgetPredicate(
             (w) => w.runtimeType.toString() == '_Dial'));
+    // The bottom slot: the info rows, in whatever shape (note, why, update,
+    // older). Their union is the slot's extent.
     final strip = find.descendant(
         of: ringsCard,
-        matching: find.byWidgetPredicate(
-            (w) => w.runtimeType.toString() == '_HelpStrip'));
+        matching: find.byWidgetPredicate((w) {
+          final k = w.key;
+          if (k is! ValueKey<String>) return false;
+          final v = k.value;
+          return !v.contains('-icon') &&
+              (v.startsWith('home-note:') || v.startsWith('home-why:') ||
+                  v == 'home-update-note' || v == 'home-older-row');
+        }));
+    final units = find.descendant(
+        of: ringsCard,
+        matching: find.byWidgetPredicate((w) =>
+            w.runtimeType.toString() == '_RingColumn' ||
+            w.runtimeType.toString() == '_RingRow'));
+    final unitsBottom = [
+      for (var i = 0; i < units.evaluate().length; i++) t.getRect(units.at(i)).bottom
+    ].reduce((a, b) => a > b ? a : b);
     return (
+      unitsBottom: unitsBottom,
       dials: [for (var i = 0; i < dials.evaluate().length; i++) t.getRect(dials.at(i))],
       labels: [
         for (final l in labels)
           t.getRect(find.descendant(of: ringsCard, matching: find.text(l)).first)
       ],
-      strip: strip.evaluate().isEmpty ? null : t.getRect(strip.first),
+      strip: strip.evaluate().isEmpty ? null : [
+        for (var i = 0; i < strip.evaluate().length; i++) t.getRect(strip.at(i))
+      ].reduce((a, b) => a.expandToInclude(b)),
     );
   }
 
@@ -159,7 +178,7 @@ void main() {
           readiness: 70, overnightAt: todayAtMs(8, 42), activityAt: todayAtMs(8, 42)));
     addTearDown(loadedApp.dispose);
     addTearDown(empty.dispose);
-    late ({List<Rect> dials, List<Rect> labels, Rect? strip}) e, l;
+    late ({List<Rect> dials, List<Rect> labels, Rect? strip, double unitsBottom}) e, l;
     final ef = await settled(t, const HomeScreen(hour: 9), empty, (t) async => e = ringsNow(t));
     final lf = await settled(t, const HomeScreen(hour: 9), loadedApp, (t) async => l = ringsNow(t));
 
@@ -177,10 +196,18 @@ void main() {
     // The ONE exemption: the rings card's panel slot. Empty shows the help
     // strip (and the gap above it); a healthy loaded day shows nothing.
     expect(e.strip, isNotNull, reason: '$name: the empty state explains itself');
-    expect(l.strip, isNull, reason: '$name: a healthy loaded day has no strip');
-    final delta = e.strip!.height + S.x3;
-    expect(re.height - rl.height, closeTo(delta, 0.01),
-        reason: '$name: the card height differs by the strip (+ its gap) only');
+    expect(l.strip, isNull, reason: '$name: a healthy loaded day has no rows');
+    // Nothing is reserved: the card is its rings block, plus the rows (and
+    // the gap above them) when there are any, plus the same padding. The rings
+    // block itself differs (a loaded ring carries its caption), so the card
+    // height follows the data - by the rows and the captions, and nothing else.
+    double padding(({List<Rect> dials, List<Rect> labels, Rect? strip, double unitsBottom}) n,
+            ShiftRect card) =>
+        card.height - (n.unitsBottom - card.top) -
+            (n.strip == null ? 0 : n.strip!.height + S.x3);
+    expect(padding(e, re), closeTo(padding(l, rl), 0.01),
+        reason: '$name: no blank band beyond the rings block and the rows');
+    final delta = re.height - rl.height;
 
     // EVERYTHING else is held to the original test: take the rings delta out of
     // the empty frame (the rings card shrinks by it, whatever sits below moves
