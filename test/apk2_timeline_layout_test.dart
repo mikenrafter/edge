@@ -63,7 +63,22 @@ void main() {
     semantics.dispose();
   });
 
-  for (final size in [const Size(360, 480), const Size(640, 360)]) {
+  /// The chart itself and its range control, not just the box reserved for
+  /// them, are on screen inside the pinned header and can be hit.
+  void headerControlsReachable(WidgetTester t) {
+    final header = t.getRect(apk2Key(apk2Chart));
+    for (final f in [find.byType(ChartScrub), find.byType(RangeSlider)]) {
+      expect(f, findsOneWidget);
+      expect(f.hitTestable(), findsOneWidget);
+      final r = t.getRect(f);
+      expect(r.height, greaterThan(0));
+      expect(r.top, greaterThanOrEqualTo(header.top - 1));
+      expect(r.bottom, lessThanOrEqualTo(header.bottom + 1));
+    }
+  }
+
+  for (final size in [const Size(360, 480), const Size(360, 640),
+      const Size(640, 360)]) {
     for (final scale in [1.0, 3.1]) {
       testWidgets('short ${size.width}x${size.height} viewport at ${scale}x '
           'keeps the list and scrolling tray usable', (t) async {
@@ -74,8 +89,11 @@ void main() {
         final chart = t.getRect(apk2Key(apk2Chart));
         final list = t.getRect(apk2Key(apk2List));
         final tray = t.getRect(apk2Key(apk2Tray));
+        headerControlsReachable(t);
+        expect(t.getRect(find.byType(ChartScrub)).height, greaterThan(24));
         expect(list.height, greaterThanOrEqualTo(size.height * .2));
-        expect(chart.bottom, lessThanOrEqualTo(list.top));
+        // Stacked, or side by side on a short, wide screen.
+        expect(chart.bottom <= list.top || chart.right <= list.left, isTrue);
         expect(tray.top, greaterThanOrEqualTo(list.bottom));
         expect(tray.bottom, lessThanOrEqualTo(size.height));
         await apk2Show(t, apk2NapA);
@@ -93,6 +111,36 @@ void main() {
       });
     }
   }
+
+  testWidgets('a zoom window survives rotating into a short viewport with '
+      'its range control still reachable to widen it', (t) async {
+    final errors = captureFlutterErrors();
+    final r = await Apk2Rig.create(t);
+    await r.mount(t);
+    final slider = find.byType(RangeSlider);
+    // Clusters count too: how many marks the chart offers at all.
+    final marks = find.byWidgetPredicate((w) => w is Pressable &&
+        w.key is ValueKey<String> &&
+        (w.key! as ValueKey<String>).value.startsWith('apk2-day-marker'));
+    final whole = marks.evaluate().length;
+    expect(whole, greaterThan(2));
+    t.widget<RangeSlider>(slider).onChanged!(const RangeValues(540, 600));
+    await t.pumpAndSettle();
+    final zoomed = marks.evaluate().length;
+    expect(zoomed, lessThan(whole), reason: '09:00-10:00 hides most marks');
+    t.view.physicalSize = const Size(640, 360) * 3;
+    await t.pumpAndSettle();
+    headerControlsReachable(t);
+    final values = t.widget<RangeSlider>(slider).values;
+    expect((values.start, values.end), (540.0, 600.0));
+    expect(marks.evaluate().length, zoomed);
+    t.widget<RangeSlider>(slider).onChanged!(const RangeValues(0, 1440));
+    await t.pumpAndSettle();
+    expect(marks.evaluate().length, greaterThan(zoomed));
+    expect(marks.hitTestable(), findsWidgets);
+    expect(errors, isEmpty);
+    expect(t.takeException(), isNull);
+  });
 
   testWidgets('iOS edge swipe confirms staged choices and Stay preserves them', (t) async {
     final semantics = t.ensureSemantics();

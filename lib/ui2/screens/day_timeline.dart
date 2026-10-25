@@ -25,6 +25,7 @@ import '../../l10n/display_text.dart';
 
 import 'dart:convert' show jsonDecode;
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -1253,6 +1254,67 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     _load();
   }
 
+  /// The pinned chart header: the HR chart (scrolling inside, so a short
+  /// viewport still shows its plot), its range control and the marker row. A
+  /// zoom window is never active without the control that resets it.
+  Widget _chartHeader(BuildContext c, TimelineData d,
+      List<({String id, Moment moment})> rows, {double? width, double? height}) {
+    final l = AppLocalizations.of(c);
+    final p = P.of(c);
+    return SizedBox(
+      key: const ValueKey('apk2-day-chart'), width: width, height: height,
+      child: Column(children: [
+        Expanded(child: d.graph.hasCurve
+            ? _DayGraphZoom(d.graph, fineDetail: _device == null,
+                owners: coverageFromJson(d.raw?['hr_owner']),
+                compact: true, onWindowChanged: this)
+            : SingleChildScrollView(child: Text(_loading
+                ? (l?.loadingDayTimeline ?? "Reading this day's timeline")
+                : (l?.dayTimelineNothingRecordedTitle ??
+                    'Nothing was recorded on this day'),
+                style: F.cap.copyWith(color: p.ink2)))),
+        SizedBox(height: S.tap, child: LayoutBuilder(builder: (c, box) {
+          final start = _chartStart ?? d.graph.dayStart;
+          final end = _chartEnd ?? (start == null || d.day == null ? null : localDayEndSec(d.day!));
+          final fitting = (box.maxWidth / S.tap).floor();
+          final columns = fitting < 1 ? 1 : fitting;
+          // One target per tap-sized time slot; the chooser retains
+          // every item when nearby or coincident marks share a slot.
+          final groups = <int, List<({String id, Moment moment})>>{};
+          for (final row in rows) {
+            if (start == null || end == null ||
+                (row.moment.at >= start && row.moment.at < end)) {
+              final fraction = start == null || end == null || end <= start
+                  ? 0.0 : (row.moment.at - start) / (end - start);
+              final column = (fraction * columns).floor().clamp(0, columns - 1);
+              (groups[column] ??= []).add(row);
+            }
+          }
+          return Stack(children: [
+            for (final entry in groups.entries)
+              Positioned(
+                left: columns <= 1 ? 0 : entry.key / (columns - 1) *
+                    (box.maxWidth - S.tap),
+                top: 0,
+                child: Pressable(
+                  key: ValueKey(entry.value.length == 1
+                      ? 'apk2-day-marker:${entry.value.first.id}'
+                      : 'apk2-day-marker-cluster:${entry.value.first.moment.at}'),
+                  semanticLabel: [for (final row in entry.value)
+                    '${clockOfTs(row.moment.at)}, ${row.moment.title}'].join('; '),
+                  onTap: () => entry.value.length == 1
+                      ? _reveal(entry.value.first.id) : unawaited(_chooseMarker(entry.value)),
+                  child: Badge(isLabelVisible: entry.value.length > 1,
+                    label: Text('${entry.value.length}'),
+                    child: Icon(entry.value.first.moment.icon, size: 18,
+                      color: p.on(entry.value.first.moment.color ?? C.domMind)))),
+              ),
+          ]);
+        })),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext c) {
     final d = _d ?? const TimelineData();
@@ -1278,67 +1340,11 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         body: Stack(children: [
         SafeArea(child: LayoutBuilder(builder: (c, box) {
           final compact = box.maxHeight < 720;
-          return Column(children: [
-          NavBar(l?.dayTimelineTitle ?? 'Breakdown of your day',
-              onBack: _leave),
           // Fixed siblings of the list viewport are pinned at every offset.
-          SizedBox(
-            key: const ValueKey('apk2-day-chart'), height: compact ? S.tap : 210,
-            child: Column(children: [
-              if (!compact)
-                Expanded(child: SingleChildScrollView(child: Column(children: [
-                if (d.graph.hasCurve)
-                  _DayGraphZoom(d.graph, fineDetail: _device == null,
-                      owners: coverageFromJson(d.raw?['hr_owner']),
-                      compact: true, onWindowChanged: this)
-                else
-                  Text(_loading ? (l?.loadingDayTimeline ??
-                      "Reading this day's timeline") :
-                      (l?.dayTimelineNothingRecordedTitle ??
-                          'Nothing was recorded on this day'),
-                      style: F.cap.copyWith(color: p.ink2)),
-              ]))),
-              SizedBox(height: S.tap, child: LayoutBuilder(builder: (c, box) {
-                final start = _chartStart ?? d.graph.dayStart;
-                final end = _chartEnd ?? (start == null || d.day == null ? null : localDayEndSec(d.day!));
-                final fitting = (box.maxWidth / S.tap).floor();
-                final columns = fitting < 1 ? 1 : fitting;
-                // One target per tap-sized time slot; the chooser retains
-                // every item when nearby or coincident marks share a slot.
-                final groups = <int, List<({String id, Moment moment})>>{};
-                for (final row in rows) {
-                  if (start == null || end == null ||
-                      (row.moment.at >= start && row.moment.at < end)) {
-                    final fraction = start == null || end == null || end <= start
-                        ? 0.0 : (row.moment.at - start) / (end - start);
-                    final column = (fraction * columns).floor().clamp(0, columns - 1);
-                    (groups[column] ??= []).add(row);
-                  }
-                }
-                return Stack(children: [
-                  for (final entry in groups.entries)
-                    Positioned(
-                      left: columns <= 1 ? 0 : entry.key / (columns - 1) *
-                          (box.maxWidth - S.tap),
-                      top: 0,
-                      child: Pressable(
-                        key: ValueKey(entry.value.length == 1
-                            ? 'apk2-day-marker:${entry.value.first.id}'
-                            : 'apk2-day-marker-cluster:${entry.value.first.moment.at}'),
-                        semanticLabel: [for (final row in entry.value)
-                          '${clockOfTs(row.moment.at)}, ${row.moment.title}'].join('; '),
-                        onTap: () => entry.value.length == 1
-                            ? _reveal(entry.value.first.id) : unawaited(_chooseMarker(entry.value)),
-                        child: Badge(isLabelVisible: entry.value.length > 1,
-                          label: Text('${entry.value.length}'),
-                          child: Icon(entry.value.first.moment.icon, size: 18,
-                            color: p.on(entry.value.first.moment.color ?? C.domMind)))),
-                    ),
-                ]);
-              })),
-            ]),
-          ),
-          Expanded(child: SingleChildScrollView(
+          // A short, wide screen puts the chart beside the list and tray; a
+          // short, narrow one gives the chart its floor and splits the rest.
+          final wide = compact && box.maxWidth > box.maxHeight * 1.5;
+          final list = Expanded(child: SingleChildScrollView(
             key: const ValueKey('apk2-day-list'),
             controller: _listController,
             child: _VisibleDayListSemantics(controller: _listController,
@@ -1390,9 +1396,27 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                   // Lets even the last long note start below the chart.
                   SizedBox(height: MediaQuery.sizeOf(c).height * .3),
                 ]))),
-          )),
-          DayReviewTray(controller: review, compact: compact,
-              height: compact ? box.maxHeight * .42 : 330),
+          ));
+          final tray = DayReviewTray(controller: review, compact: compact,
+              height: compact ? null : 330);
+          return Column(children: [
+          NavBar(l?.dayTimelineTitle ?? 'Breakdown of your day',
+              onBack: _leave),
+          // One tree for both shapes, so rotating keeps the list's scroll and
+          // the chart's zoom window rather than rebuilding them.
+          Expanded(child: Flex(
+            direction: wide ? Axis.horizontal : Axis.vertical,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+            _chartHeader(c, d, rows,
+                width: wide ? box.maxWidth * .5 : null,
+                height: wide ? null : compact
+                    ? math.max(_kChartHead, box.maxHeight * .36) : _kChartHead),
+            Expanded(child: Column(children: [
+              list,
+              compact ? Expanded(child: tray) : tray,
+            ])),
+          ])),
         ]);
         })),
         // Cupertino suppresses its route gesture while PopScope guards a
@@ -1473,6 +1497,7 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
     List<double?>? fine,
     String? footnote,
     List<ChartAnnotation> annotations = const [],
+    GlobalKey? plotKey,
     double height = 200}) {
   if (!g.hasCurve && !zoomed) return null;
   final p = P.of(c);
@@ -1592,6 +1617,7 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
       // minute with movement but no heart rate shows the movement and a dash,
       // never a 0.
       child: ChartScrub(
+        key: plotKey,
         label: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
         gaps: gaps.isNotEmpty,
         time: time,
@@ -1660,6 +1686,10 @@ List<double?> perSecondHr(
   return out;
 }
 
+/// The pinned chart header's floor: the plot, the range control (48) and the
+/// marker row ([S.tap]) all stay on screen, however short the viewport.
+const double _kChartHead = 192;
+
 /// Told the chart's visible window (epoch seconds) when the user zooms or pans.
 abstract class ChartWindowListener {
   void windowChanged(int start, int end);
@@ -1702,6 +1732,17 @@ class _ZoomState extends State<_DayGraphZoom> {
   /// Set once a fine read for the current range came back empty.
   bool _fineMissing = false;
   int _token = 0;
+
+  // The pinned header scrolls its card; the plot is what has to stay in view.
+  final _plot = GlobalKey();
+
+  void _showPlot() {
+    final at = _plot.currentContext;
+    if (mounted && at != null) {
+      Scrollable.ensureVisible(at,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+    }
+  }
 
   @override
   void didUpdateWidget(_DayGraphZoom old) {
@@ -1781,46 +1822,53 @@ class _ZoomState extends State<_DayGraphZoom> {
         fine: _fine,
         footnote: widget.compact ? null : note,
         height: widget.compact ? 72 : 200,
-        annotations: widget.annotations);
+        annotations: widget.annotations,
+        plotKey: _plot);
     if (card == null || n < 2) return card ?? const SizedBox.shrink();
+    final control = RangeSlider(
+      values: RangeValues(lo.toDouble(), hi.toDouble()),
+      min: 0,
+      max: n.toDouble(),
+      // Quarter-hour steps: fine enough to land on a workout, coarse
+      // enough that a thumb can hit a two-hour window.
+      divisions: n ~/ 15 > 0 ? n ~/ 15 : null,
+      activeColor: p.on(C.red),
+      labels: widget.graph.dayStart == null
+          ? null
+          : RangeLabels(
+              clockOfTs(widget.graph.dayStart! + lo * 60),
+              clockOfTs(widget.graph.dayStart! + hi * 60),
+            ),
+      semanticFormatterCallback: (v) => widget.graph.dayStart == null
+          ? '${v.round()}'
+          : clockOfTs(widget.graph.dayStart! + v.round() * 60),
+      onChanged: (r) {
+        if (r.end - r.start < 15) return;
+        _token++;
+        setState(() {
+          _range = r;
+          _fine = null;
+          _fineMissing = false;
+        });
+        final start = widget.graph.dayStart;
+        if (start != null) {
+          final (lo, hi) = _bounds();
+          widget.onWindowChanged?.windowChanged(start + lo * 60, start + hi * 60);
+        }
+      },
+      onChangeEnd: (_) => _readFine(),
+    );
+    // In the pinned header the card scrolls above a control that never does.
+    if (widget.compact) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showPlot());
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: SingleChildScrollView(child: card)),
+        control,
+      ]);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        card,
-        RangeSlider(
-          values: RangeValues(lo.toDouble(), hi.toDouble()),
-          min: 0,
-          max: n.toDouble(),
-          // Quarter-hour steps: fine enough to land on a workout, coarse
-          // enough that a thumb can hit a two-hour window.
-          divisions: n ~/ 15 > 0 ? n ~/ 15 : null,
-          activeColor: p.on(C.red),
-          labels: widget.graph.dayStart == null
-              ? null
-              : RangeLabels(
-                  clockOfTs(widget.graph.dayStart! + lo * 60),
-                  clockOfTs(widget.graph.dayStart! + hi * 60),
-                ),
-          semanticFormatterCallback: (v) => widget.graph.dayStart == null
-              ? '${v.round()}'
-              : clockOfTs(widget.graph.dayStart! + v.round() * 60),
-          onChanged: (r) {
-            if (r.end - r.start < 15) return;
-            _token++;
-            setState(() {
-              _range = r;
-              _fine = null;
-              _fineMissing = false;
-            });
-            final start = widget.graph.dayStart;
-            if (start != null) {
-              final (lo, hi) = _bounds();
-              widget.onWindowChanged?.windowChanged(start + lo * 60, start + hi * 60);
-            }
-          },
-          onChangeEnd: (_) => _readFine(),
-        ),
-      ],
+      children: [card, control],
     );
   }
 }

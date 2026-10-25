@@ -515,7 +515,8 @@ class DayReviewTray extends StatelessWidget {
   const DayReviewTray({super.key, this.controller, this.height = 330,
       this.compact = false});
   final DayReviewController? controller;
-  final double height;
+  /// Null fills whatever space the parent gives it.
+  final double? height;
   final bool compact;
   @override
   Widget build(BuildContext c) {
