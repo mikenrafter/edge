@@ -139,8 +139,19 @@ Future<void> apk1ClearPrefs() async {
 Future<void> apk1Settle(WidgetTester t) => settle(t, n: 16);
 
 /// Keep clock-based day labels fixed across every awaited frame and gesture.
+/// The semantics handle is disposed inside the test body: addTearDown runs
+/// after the binding's active-handle check and would fail every test.
 void apk1Test(String name, Future<void> Function(WidgetTester) body) =>
-    testWidgets(name, (t) => withClock(Clock.fixed(apk1Now), () => body(t)));
+    testWidgets(name, (t) async {
+      try {
+        await withClock(Clock.fixed(apk1Now), () => body(t));
+      } finally {
+        _apk1Semantics?.dispose();
+        _apk1Semantics = null;
+      }
+    });
+
+SemanticsHandle? _apk1Semantics;
 
 /// Same providers and real tab builder as shellApp/perfApp; adds settings
 /// controllers and a route observer. [source] mounts a real link-owning screen
@@ -152,8 +163,7 @@ Future<AppState> apk1Mount(WidgetTester t, {
   Apk1Repo? repo,
 }) async {
   g123View(t, width: 360, height: height);
-  final semantics = t.ensureSemantics();
-  addTearDown(semantics.dispose);
+  _apk1Semantics ??= t.ensureSemantics();
   final app = AppState.forTesting()..repo = repo ?? Apk1Repo();
   addTearDown(app.dispose);
   await t.pumpWidget(MultiProvider(
