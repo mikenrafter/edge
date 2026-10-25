@@ -290,7 +290,6 @@ void main() {
     testWidgets('the static reason is spoken once, framed=$framed, at 3.1x',
         (t) async {
       final handle = t.ensureSemantics();
-      addTearDown(handle.dispose);
       final chart = _scrub(keys: [
         ChartKey.slots('Heart rate (bpm)', _red, _hr,
             (i, v) => '${v.round()} bpm', older: const [
@@ -309,6 +308,7 @@ void main() {
       expect(spokenOlder(t, 104), 1);
       expect(t.getRect(_panel()), rect);
       expect(t.takeException(), isNull);
+      handle.dispose();
     });
   }
 

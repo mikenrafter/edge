@@ -1631,9 +1631,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
         ],
         // A current latest point cannot explain an average that includes older
         // values. Keep that headline reason here; a shared reason is spoken
-        // only by the latest reading's strip inside the chart panel.
+        // only by the latest reading's strip inside the chart panel. A
+        // one-day window draws no chart, so no panel strip: say it here.
         OlderVersionStrip(id: 'headline', items: [
-          if (headlineVersion != latestVersion || headlineReason != latestReason)
+          if (win == 1 || headlineVersion != latestVersion || headlineReason != latestReason)
             (version: headlineVersion, reason: headlineReason),
         ]),
         if (d.sources.length >= 2) ...[
@@ -1828,6 +1829,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                       (version: selectedPoint!.olderVersion!, reason: selectedPoint.olderReason)),
                 ],
                 stats: statCells,
+                timeSpan: [
+                  for (var i = 0; i < series.length; i++)
+                    prettyDay(_dayOfSlot(i, series.length), AppLocalizations.of(panelContext)),
+                ],
                 time: prettyDay(_dayOfSlot(selected, series.length), AppLocalizations.of(panelContext)),
                 scrubbed: _pick != null,
                 restOlder: atRestOlder,

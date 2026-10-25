@@ -165,17 +165,16 @@ void main() {
     testWidgets('a current latest reading keeps the older headline reason',
         (t) async {
       final handle = t.ensureSemantics();
-      addTearDown(handle.dispose);
       await _rhr.open(t);
       expect(olderNote('headline'), findsOneWidget);
       expect(noteIn(panelOf(_rhr)), findsNothing);
       expect(spokenOlder(t, 104), 1);
+      handle.dispose();
     });
 
     testWidgets('distinct headline and latest reasons are both kept',
         (t) async {
       final handle = t.ensureSemantics();
-      addTearDown(handle.dispose);
       _phone(t, 390, 1800);
       final points = panelSeries(10, olderLatest: true);
       for (final point in points) {
@@ -205,6 +204,7 @@ void main() {
       expect(t.widget<Text>(olderNote('readout')).data, contains('height'));
       expect(spokenOlder(t, 103), 1);
       expect(spokenOlder(t, 104), 1);
+      handle.dispose();
     });
 
     testWidgets('the picked day no longer pops in as a separate card: the '

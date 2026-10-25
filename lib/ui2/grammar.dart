@@ -852,8 +852,12 @@ class ChartKeyReadout extends StatelessWidget {
   final List<({int? version, String? reason})>? restOlder;
   final VoidCallback? onOpen;
 
+  /// Every caption time the reader can scrub to. Day names differ in width, so
+  /// the caption reserves the tallest of them and a scrub never reflows it.
+  final List<String> timeSpan;
+
   const ChartKeyReadout(
-      {super.key, required this.cells, this.time, this.scrubbed = false, this.stats = const [], this.restOlder, this.onOpen});
+      {super.key, required this.cells, this.time, this.scrubbed = false, this.stats = const [], this.restOlder, this.onOpen, this.timeSpan = const []});
 
   factory ChartKeyReadout.of(ChartReadout r) =>
       ChartKeyReadout(cells: r.cells, time: r.time, scrubbed: r.scrubbed);
@@ -872,7 +876,9 @@ class ChartKeyReadout extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final recorded = cells.where((x) => x.color != null && x.hasValue).toList();
-    if (recorded.isEmpty || (!scrubbed && recorded.every((x) => x.value == null))) {
+    // The panel is always there once a series exists, so a chart with nothing
+    // to read yet (or a paused read) keeps its height and says "—".
+    if (recorded.isEmpty) {
       return const SizedBox.shrink();
     }
     final main = recorded.first;
@@ -939,13 +945,15 @@ class ChartKeyReadout extends StatelessWidget {
       // switching LATEST to SELECTED cannot add a line to a clock readout.
       var height = 0.0;
       for (final mode in [latestText, selectedText]) {
-        final tp = TextPainter(
-          text: TextSpan(text: '$mode · ${time ?? absent}'.toUpperCase(), style: style),
-          textDirection: Directionality.of(c),
-          textScaler: MediaQuery.textScalerOf(c),
-        )..layout(maxWidth: box.maxWidth);
-        height = math.max(height, tp.height);
-        tp.dispose();
+        for (final at in [time ?? absent, ...timeSpan]) {
+          final tp = TextPainter(
+            text: TextSpan(text: '$mode · $at'.toUpperCase(), style: style),
+            textDirection: Directionality.of(c),
+            textScaler: MediaQuery.textScalerOf(c),
+          )..layout(maxWidth: box.maxWidth);
+          height = math.max(height, tp.height);
+          tp.dispose();
+        }
       }
       return ConstrainedBox(
         key: timeKey,

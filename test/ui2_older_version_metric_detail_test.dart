@@ -47,7 +47,7 @@ void main() {
         await _pump(t, key, series(10, flagged: {0}));
         expect(olderMark('headline'), findsOneWidget);
         expect(find.textContaining(kNoteV104), findsWidgets);
-        expect(olderNote('readout'), findsOneWidget);
+        expect(olderNote('headline'), findsOneWidget);
         expect(find.bySemanticsLabel(kSpoken), findsWidgets);
         h.dispose();
       });
