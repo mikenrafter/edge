@@ -60,6 +60,8 @@ import '../profile/devices.dart'
 import '../profile/wearable_numbers.dart' show deviceScoreLabel, observationTitle;
 import '../ui2.dart';
 import 'investigate.dart' show Investigate;
+import 'log_workout.dart' show LogWorkout;
+import 'naps.dart' show NapsScreen;
 import 'home_screen.dart' show clockOfTs, go, repoOf;
 import 'metric_detail.dart' show dayNavRow, pickDay;
 
@@ -77,9 +79,19 @@ class Moment {
     this.annotationKind,
     this.annotationLabel,
     this.identity,
+    this.editRef,
+    this.eventGroup,
   });
 
   final String? identity;
+
+  /// What opens this row's own editor ('nap', 'session:ID'), or NULL when
+  /// the row has none. Only rows that can be edited carry one.
+  final String? editRef;
+
+  /// A family of band events folded together even when their ids differ (the
+  /// charger and battery pack). Null: fold only equal [eventId]s.
+  final String? eventGroup;
 
   /// What the chart annotation says when it is not the moment's [title] (the
   /// main sleep's "Main sleep 11:10 PM to 6:40 AM"). Null: use [title].
@@ -116,6 +128,7 @@ class Moment {
 class MomentGroup {
   const MomentGroup(this.moments);
   final List<Moment> moments;
+  bool get mixed => moments.any((m) => m.title != moments.first.title);
   int get count => moments.length;
   Moment get first => moments.first;
 }
@@ -123,12 +136,13 @@ class MomentGroup {
 /// Folds each run of consecutive moments sharing one non-null [Moment.eventId]
 /// into a single group. Pure; order is kept and nothing is dropped. A moment
 /// with no event id is always a group of one — equal titles are not identity.
+bool _sameRun(Moment a, Moment b) => a.eventId == b.eventId ||
+    (a.eventGroup != null && a.eventGroup == b.eventGroup);
+
 List<MomentGroup> groupRepeatedEvents(List<Moment> sorted) {
   final out = <List<Moment>>[];
   for (final m in sorted) {
-    if (out.isNotEmpty &&
-        m.eventId != null &&
-        out.last.last.eventId == m.eventId) {
+    if (out.isNotEmpty && m.eventId != null && _sameRun(out.last.last, m)) {
       out.last.add(m);
     } else {
       out.add([m]);
@@ -150,15 +164,32 @@ class DayNote {
 /// strap — bonds, flash writes, sync bookkeeping — and belongs on Devices, not
 /// in somebody's day.
 Map<int, (String, IconData)> _events(AppLocalizations? l) => {
-  7: (l?.dayTimelineChargerOn ?? 'On the charger', LucideIcons.batteryCharging),
-  8: (l?.dayTimelineChargerOff ?? 'Off the charger', LucideIcons.batteryFull),
+  7: (l?.dayTimelineChargerOn ?? 'On the charger', LucideIcons.plugZap),
+  8: (l?.dayTimelineChargerOff ?? 'Off the charger', LucideIcons.unplug),
   14: (l?.dayTimelineDoubleTap ?? 'You double-tapped the band', LucideIcons.hand),
   15: (l?.dayTimelineRestarted ?? 'The band restarted', LucideIcons.rotateCw),
   21: (l?.dayTimelineBatteryPackAttached ?? 'Battery pack attached',
-      LucideIcons.batteryCharging),
+      LucideIcons.batteryPlus),
   22: (l?.dayTimelineBatteryPackRemoved ?? 'Battery pack removed', LucideIcons.battery),
   57: (l?.dayTimelineAlarmWentOff ?? 'Alarm went off', LucideIcons.alarmClock),
 };
+
+/// Charger and battery-pack events fold into one collapsed line.
+const _chargerEvents = {7, 8, 21, 22};
+
+/// The row icon for a marked moment's answer. The chart's own marker uses the
+/// same glyph for water, so the list and the chart agree.
+IconData momentChoiceIcon(MomentChoice? c) => switch (c) {
+      MomentChoice.pillsMeds => LucideIcons.pill,
+      MomentChoice.nap => LucideIcons.bedDouble,
+      MomentChoice.caffeine => LucideIcons.coffee,
+      MomentChoice.alcohol => LucideIcons.wine,
+      MomentChoice.meal => LucideIcons.utensils,
+      MomentChoice.workout => LucideIcons.dumbbell,
+      MomentChoice.symptom => LucideIcons.heartPulse,
+      MomentChoice.water => LucideIcons.glassWater,
+      MomentChoice.other || null => LucideIcons.bookmark,
+    };
 
 /// An off-wrist gap shorter than this is a dropout, not an event in a day.
 /// Listing every one of them would bury the four that mean something under
@@ -252,6 +283,8 @@ List<Moment> dayMoments({
       icon: LucideIcons.bedDouble,
       color: C.indigo,
       annotationKind: AnnotationKind.nap,
+      identity: 'nap:$on',
+      editRef: 'nap',
     ));
   }
 
@@ -261,6 +294,8 @@ List<Moment> dayMoments({
     if (on == null) continue;
     final type = s['type']?.toString();
     final act = activityByName(type);
+    final sid = s['id']?.toString();
+    final sidOk = sid != null && sid.isNotEmpty ? sid : null;
     final bits = <String>[
       _span(on, asInt(s['end_ts'])),
       if (s['duration_min'] != null) _dur(s['duration_min'] as num?, l),
@@ -275,6 +310,8 @@ List<Moment> dayMoments({
       icon: act?.icon ?? LucideIcons.dumbbell,
       color: act?.color ?? C.orange,
       annotationKind: AnnotationKind.workout,
+      identity: sidOk == null ? null : 'session:$sidOk',
+      editRef: sidOk == null ? null : 'session:$sidOk|${type ?? ''}',
     ));
   }
 
@@ -336,6 +373,7 @@ List<Moment> dayMoments({
       detail: '',
       icon: def.$2,
       eventId: id,
+      eventGroup: _chargerEvents.contains(id) ? 'charger' : null,
     ));
   }
 
@@ -439,8 +477,8 @@ List<Moment> dayMoments({
       title: described?.describe(l) ?? choice.localized(l),
       // The row carries the clock; the detail is only the wearer's note.
       detail: note != null && note.isNotEmpty ? note : '',
-      icon: LucideIcons.bookmark,
-      color: C.domMind,
+      icon: momentChoiceIcon(choice),
+      color: choice == MomentChoice.water ? C.sky : C.domMind,
       annotationKind: switch (choice) {
         MomentChoice.water => AnnotationKind.water,
         MomentChoice.symptom => AnnotationKind.symptom,
@@ -471,22 +509,28 @@ List<Moment> dayMoments({
 /// [dayMoments] as chart annotations (domain: epoch seconds). Only moments with
 /// an [Moment.annotationKind] become one; a moment with an end later than its
 /// start is a range, anything else a point. Ids are unique and stable.
-List<ChartAnnotation> dayAnnotations(List<Moment> moments) {
+List<ChartAnnotation> dayAnnotations(List<Moment> moments) =>
+    [for (final e in annotatedMoments(moments)) e.$1];
+
+/// Each chart annotation with the moment it was made from, in the same order
+/// and with the same ids as [dayAnnotations]. A tap on a marker names an id;
+/// this says WHICH row that was, even when two rows share a time.
+List<(ChartAnnotation, Moment)> annotatedMoments(List<Moment> moments) {
   final used = <String, int>{};
-  final out = <ChartAnnotation>[];
+  final out = <(ChartAnnotation, Moment)>[];
   for (final m in moments) {
     final kind = m.annotationKind;
     if (kind == null) continue;
     final base = '${kind.name}:${m.at}';
     final n = used.update(base, (v) => v + 1, ifAbsent: () => 0);
     final end = m.until;
-    out.add(ChartAnnotation(
+    out.add((ChartAnnotation(
       id: n == 0 ? base : '$base#$n',
       kind: kind,
       at: m.at.toDouble(),
       until: end != null && end > m.at ? end.toDouble() : null,
       label: m.annotationLabel ?? m.title,
-    ));
+    ), m));
   }
   return out;
 }
@@ -926,7 +970,8 @@ class DayTimelineScreen extends StatefulWidget {
 }
 
 class _DayTimelineScreenState extends State<DayTimelineScreen>
-    implements EdgeSwipeListener, AnnotationListener, NerdStatsListener {
+    implements EdgeSwipeListener, AnnotationListener, NerdStatsListener,
+        DayRowEditListener {
   DayReviewController? _review;
   final _rowKeys = <String, GlobalKey>{};
   final _listController = ScrollController();
@@ -1025,21 +1070,43 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   void openNerdStats() =>
       go(context, Investigate('resting_hr', day: _day ?? _d?.day));
 
-  /// A chart marker tap scrolls the list to the row at the marker's time.
+  /// A chart marker tap scrolls the list to the very row the marker was made
+  /// from (two rows can share a minute).
   @override
   void annotationTapped(String id) {
     final moments = _d?.moments ?? const <Moment>[];
-    final at = dayAnnotations(moments).where((a) => a.id == id)
-        .map((a) => a.at.round()).firstOrNull;
-    if (at == null) return;
-    final byId = <String, Moment>{
-      if (_review != null)
-        for (final row in _review!.pendingRows(context)) row.id: row.moment,
-      for (var i = 0; i < moments.length; i++)
-        moments[i].identity ?? 'event:$i:${moments[i].at}': moments[i],
-    };
-    final row = byId.entries.where((e) => e.value.at == at).firstOrNull;
-    if (row != null) _reveal(row.key);
+    final hit = annotatedMoments(moments)
+        .where((e) => e.$1.id == id).map((e) => e.$2).firstOrNull;
+    if (hit == null) return;
+    final i = moments.indexWhere((m) => identical(m, hit));
+    final own = hit.identity ?? 'event:$i:${hit.at}';
+    if (_rowKeys.containsKey(own)) return _reveal(own);
+    // A pending review row at the same instant stands in for it.
+    final pending = _review?.pendingRows(context)
+        .where((r) => r.moment.at == hit.at).firstOrNull;
+    _reveal(pending?.id ?? own);
+  }
+
+  /// Opens the editor of a saved row (a nap, a workout) and reloads after.
+  @override
+  Future<void> openRowEditor(Moment m) async {
+    final ref = m.editRef, day = _day ?? _d?.day;
+    if (ref == null || day == null) return;
+    if (ref == 'nap') {
+      await go(context, NapsScreen(day: day));
+    } else if (ref.startsWith('session:')) {
+      final parts = ref.substring(8).split('|');
+      final l = AppLocalizations.of(context);
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => LogWorkout(
+              sessionId: parts.first,
+              start: DateTime.fromMillisecondsSinceEpoch(m.at * 1000),
+              end: DateTime.fromMillisecondsSinceEpoch(
+                  (m.until ?? m.at) * 1000),
+              activity: parts.length > 1 ? activityByName(parts[1]) : null,
+              title: l?.workoutFixTimes ?? 'Fix the times')));
+    }
+    if (mounted && widget.data == null) unawaited(_load());
   }
 
   void _reveal(String id) {
@@ -1242,6 +1309,35 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     _load();
   }
 
+  /// The old list display: one [MomentRow] per line, runs of the same band
+  /// event (and the charger family) folded into a collapsed [MomentGroupRow].
+  /// A row's buttons sit under it.
+  List<Widget> _dayRows(List<({String id, Moment moment})> rows,
+      DayReviewController? review) {
+    final p = P.of(context);
+    final out = <Widget>[];
+    var at = 0;
+    for (final g in groupRepeatedEvents([for (final r in rows) r.moment])) {
+      final row = rows[at];
+      at += g.count;
+      if (g.count > 1) {
+        out.add(MomentGroupRow(g));
+        continue;
+      }
+      out.add(Container(
+        key: _rowKeys.putIfAbsent(row.id, GlobalKey.new),
+        child: Container(
+          key: ValueKey('apk2-day-row:${row.id}'),
+          color: _highlight == row.id ? p.wash(C.domMind) : null,
+          child: MomentRow(row.moment,
+              below: DayReviewActions(controller: review, id: row.id,
+                  moment: row.moment, editor: this)),
+        ),
+      ));
+    }
+    return out;
+  }
+
   @override
   Widget build(BuildContext c) {
     final d = _d ?? const TimelineData();
@@ -1310,36 +1406,21 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                       l?.dayTimelineNothingRecordedBody ??
                           'Nothing recorded. The band was probably off.',
                       icon: LucideIcons.circleSlash),
-                  for (final row in rows)
-                    Container(
-                      key: _rowKeys.putIfAbsent(row.id, GlobalKey.new),
-                      child: Container(
-                        key: ValueKey('apk2-day-row:${row.id}'),
-                        color: _highlight == row.id ? p.wash(C.domMind) : null,
-                        child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: S.x3),
-                            child: Row(crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Stack time and text at large sizes; a scaled
-                                // clock column would leave no width for the note.
-                                Expanded(child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(clockOfTs(row.moment.at),
-                                        style: F.n17.copyWith(color: p.ink3)),
-                                    Text(row.moment.title,
-                                        style: F.body.copyWith(color: p.ink)),
-                                    if (row.moment.detail.isNotEmpty)
-                                      Text(row.moment.detail,
-                                          style: F.cap.copyWith(color: p.ink2)),
-                                    DayReviewActions(controller: review, id: row.id),
-                                  ])),
-                              ]))),
-                    ),
-                  for (final note in d.notes) ...[
-                    Text(note.title, style: F.body.copyWith(color: p.ink)),
-                    Text(note.detail, style: F.cap.copyWith(color: p.ink2)),
-                  ],
+                  if (rows.isNotEmpty)
+                    Section(
+                      l?.dayTimelineWhatHappenedSection ?? 'What happened',
+                      Surface(
+                        pad: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x2),
+                        child: Column(children: _dayRows(rows, review)),
+                      ),
+                    )
+                  else if (d.moments.isEmpty && d.notes.isNotEmpty)
+                    StatusCard(
+                      l?.dayTimelineNoTimeTitle ?? 'Entries without a time',
+                      l?.dayTimelineNoTimeBody ??
+                          'What was logged for it is below.',
+                      icon: LucideIcons.clock),
+                  if (d.notes.isNotEmpty) alsoLoggedSection(c, d.notes),
                   const SizedBox(height: S.x4),
                   Text(l?.metricDetailPatternsNotCauses ??
                       'Patterns in your logs, not causes.',
@@ -1821,40 +1902,7 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
             ),
           ),
         ),
-      if (d.notes.isNotEmpty)
-        Section(
-          l?.dayTimelineAlsoLoggedSection ?? 'Also logged on this day',
-          Surface(
-            pad: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x2),
-            child: Column(
-              children: [
-                for (final n in d.notes)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: S.x3),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(n.icon, size: 17, color: p.ink3),
-                        const SizedBox(width: S.x3),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(n.title,
-                                  style: F.body.copyWith(color: p.ink)),
-                              if (n.detail.isNotEmpty)
-                                Text(n.detail,
-                                    style: F.cap.copyWith(color: p.ink2)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
+      if (d.notes.isNotEmpty) alsoLoggedSection(c, d.notes),
     ],
     const SizedBox(height: S.x4),
     Text(
@@ -1865,17 +1913,58 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
   ];
 }
 
+/// The "Also logged on this day" section: entries that carry no time.
+Widget alsoLoggedSection(BuildContext c, List<DayNote> notes) {
+  final p = P.of(c);
+  final l = AppLocalizations.of(c);
+  return Section(
+    l?.dayTimelineAlsoLoggedSection ?? 'Also logged on this day',
+    Surface(
+      pad: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x2),
+      child: Column(
+        children: [
+          for (final n in notes)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: S.x3),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(n.icon, size: 17, color: p.ink3),
+                  const SizedBox(width: S.x3),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(n.title, style: F.body.copyWith(color: p.ink)),
+                        if (n.detail.isNotEmpty)
+                          Text(n.detail,
+                              style: F.cap.copyWith(color: p.ink2)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
 /// One line of the day. The time is the left column and everything aligns to
 /// it, because the ONE thing this page is ordered by should be the one thing
 /// you can scan.
 class MomentRow extends StatelessWidget {
-  const MomentRow(this.m, {super.key});
+  const MomentRow(this.m, {super.key, this.below});
   final Moment m;
+
+  /// Under the line, outside its (excluded) semantics: the row's buttons.
+  final Widget? below;
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return Semantics(
+    final row = Semantics(
       label: '${clockOfTs(m.at)}, ${m.title}. ${m.detail}',
       excludeSemantics: true,
       child: Padding(
@@ -1915,6 +2004,10 @@ class MomentRow extends StatelessWidget {
         ),
       ),
     );
+    if (below == null) return row;
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [row, below!]);
   }
 }
 
@@ -1950,6 +2043,7 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    final l = AppLocalizations.of(c);
     final g = widget.group, f = g.first;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1963,7 +2057,11 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
               Expanded(
                 child: MomentRow(Moment(
                   at: f.at,
-                  title: '${f.title} · ${g.count} times',
+                  title: g.mixed
+                      ? (l?.dayTimelineBandEventsGroup(g.count) ??
+                          'Charger and battery · ${g.count} events')
+                      : (l?.dayTimelineRepeatedGroup(f.title, g.count) ??
+                          '${f.title} · ${g.count} times'),
                   icon: f.icon,
                   color: f.color,
                 )),
@@ -1985,7 +2083,11 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
               runSpacing: S.x1,
               children: [
                 for (final m in g.moments)
-                  Text(clockOfTs(m.at), style: F.n17.copyWith(color: p.ink3)),
+                  Text(
+                      g.mixed
+                          ? '${clockOfTs(m.at)}  ${m.title}'
+                          : clockOfTs(m.at),
+                      style: F.n17.copyWith(color: p.ink3)),
               ],
             ),
           ),

@@ -1636,7 +1636,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         container: true,
         label: '$mode · ${time ?? ChartKeyReadout.absent}, '
             '${cells.map((x) => '${x.label} ${x.value ?? ChartKeyReadout.absent}').join(', ')}',
-        child: ExcludeSemantics(child: ChartKeyReadout(
+        // Not wrapped in ExcludeSemantics: the readout already hides its own
+        // cells, and the Nerd stats action must stay reachable.
+        child: ChartKeyReadout(
           nerdStats: this,
           cells: cells,
           time: time,
@@ -1647,7 +1649,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
               clockOfTs(t1),
             ],
           ],
-        )),
+        ),
       ),
     );
   }

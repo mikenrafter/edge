@@ -3619,5 +3619,9 @@
   "dayReviewMarkedMoment": "Markierter Moment",
   "homeBreakdownOpen": "Öffnen",
   "dayReviewStaged": "{count} vorgemerkt",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineBandEventsGroup": "Ladegerät und Akku · {count} Ereignisse",
+  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineRepeatedGroup": "{title} · {count}-mal",
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
 }

@@ -3513,5 +3513,9 @@
   "dayReviewMarkedMoment": "Moment marqué",
   "homeBreakdownOpen": "Ouvrir",
   "dayReviewStaged": "{count} en attente",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineBandEventsGroup": "Chargeur et batterie · {count} événements",
+  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineRepeatedGroup": "{title} · {count} fois",
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
 }

@@ -960,11 +960,20 @@ abstract interface class NerdStatsListener {
   void openNerdStats();
 }
 
+/// A [NerdStatsListener] whose Nerd stats follow the scrubbed day: [slot] is
+/// the selected position of [slots] day slots, oldest first, today last.
+abstract interface class NerdStatsDayListener implements NerdStatsListener {
+  void openNerdStatsAt(int slot, int slots);
+}
+
 /// The small secondary "Nerd stats" action inside a chart panel. Always
 /// tappable, whether or not the chart has data.
 class NerdStatsLink extends StatelessWidget {
-  const NerdStatsLink({super.key, required this.listener});
+  const NerdStatsLink({super.key, required this.listener, this.slot = -1, this.slots = 0});
   final NerdStatsListener listener;
+
+  /// The scrubbed slot (of [slots]), or -1 when none is selected.
+  final int slot, slots;
   static const linkKey = ValueKey('chart-panel-nerd-stats');
   @override
   Widget build(BuildContext c) {
@@ -974,7 +983,14 @@ class NerdStatsLink extends StatelessWidget {
       alignment: Alignment.centerRight,
       child: Pressable(
         key: linkKey,
-        onTap: listener.openNerdStats,
+        onTap: () {
+          final at = listener;
+          if (slot >= 0 && at is NerdStatsDayListener) {
+            at.openNerdStatsAt(slot, slots);
+          } else {
+            at.openNerdStats();
+          }
+        },
         semanticLabel: label,
         child: Padding(
           padding: const EdgeInsets.only(top: S.x2),
@@ -1049,6 +1065,7 @@ class ChartKeyReadout extends StatelessWidget {
           ? const SizedBox.shrink()
           : NerdStatsLink(listener: nerdStats!);
     }
+    final slot = scrubbed && time != null ? timeSpan.indexOf(time!) : -1;
     final main = recorded.first;
     final single = recorded.length == 1;
     final mainColor = main.color!;
@@ -1105,7 +1122,8 @@ class ChartKeyReadout extends StatelessWidget {
             ),
           ),
           OlderVersionStrip(id: 'readout', items: older),
-          if (nerdStats != null) NerdStatsLink(listener: nerdStats!),
+          if (nerdStats != null)
+            NerdStatsLink(listener: nerdStats!, slot: slot, slots: timeSpan.length),
         ],
       ),
     );

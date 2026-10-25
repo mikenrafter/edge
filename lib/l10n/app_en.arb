@@ -17775,5 +17775,9 @@
   "dayReviewMarkedMoment": "Marked moment",
   "homeBreakdownOpen": "Open",
   "dayReviewStaged": "{count} staged",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineBandEventsGroup": "Charger and battery · {count} events",
+  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineRepeatedGroup": "{title} · {count} times",
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
 }

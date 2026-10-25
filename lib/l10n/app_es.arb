@@ -3531,5 +3531,9 @@
   "dayReviewMarkedMoment": "Momento marcado",
   "homeBreakdownOpen": "Abrir",
   "dayReviewStaged": "{count} preparados",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineBandEventsGroup": "Cargador y batería · {count} eventos",
+  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineRepeatedGroup": "{title} · {count} veces",
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
 }

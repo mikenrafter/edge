@@ -477,11 +477,19 @@ class HealthScreen extends StatefulWidget {
   State<HealthScreen> createState() => _HealthScreenState();
 }
 
-class _HealthScreenState extends State<HealthScreen> with RevisionReload implements NerdStatsListener {
+class _HealthScreenState extends State<HealthScreen> with RevisionReload implements NerdStatsDayListener {
 
   /// The panels' Nerd stats action.
   @override
   void openNerdStats() => go(context, Investigate('hrv'));
+
+  /// The scrubbed day's figures, not the newest day's.
+  @override
+  void openNerdStatsAt(int slot, int slots) {
+    final n = DateTime.now();
+    go(context, Investigate('hrv',
+        day: dayLabelOf(DateTime(n.year, n.month, n.day - (slots - 1 - slot)))));
+  }
 
   // EXPLORE SITS SECOND, not last. Five chips do not fit a 390 pt frame at 1×:
   // the fifth is clipped by the edge, and a half-visible chip is exactly the

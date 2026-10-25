@@ -182,11 +182,19 @@ class ReadinessDetail extends StatefulWidget {
   State<ReadinessDetail> createState() => _ReadinessDetailState();
 }
 
-class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload implements NerdStatsListener {
+class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload implements NerdStatsDayListener {
 
   /// The panels' Nerd stats action.
   @override
   void openNerdStats() => go(context, Investigate('readiness'));
+
+  /// The scrubbed day's figures, not the newest day's.
+  @override
+  void openNerdStatsAt(int slot, int slots) {
+    final n = DateTime.now();
+    go(context, Investigate('readiness',
+        day: dayLabelOf(DateTime(n.year, n.month, n.day - (slots - 1 - slot)))));
+  }
 
   ReadinessData? _d;
   bool _loading = true;

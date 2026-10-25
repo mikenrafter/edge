@@ -794,6 +794,20 @@ class MetricDetail extends StatefulWidget {
   State<MetricDetail> createState() => _MetricDetailState();
 }
 
+/// The Worn chart's Nerd stats action: the wear figures, for the scrubbed day.
+class _WearNerdStats implements NerdStatsDayListener {
+  const _WearNerdStats(this.context);
+  final BuildContext context;
+  @override
+  void openNerdStats() => go(context, const Investigate('wear'));
+  @override
+  void openNerdStatsAt(int slot, int slots) {
+    final n = pkg_clock.clock.now();
+    go(context, Investigate('wear',
+        day: dayLabelOf(DateTime(n.year, n.month, n.day - (slots - 1 - slot)))));
+  }
+}
+
 class _MetricDetailState extends State<MetricDetail> with RevisionReload, PausedReadReload<MetricDetail> implements NerdStatsListener {
 
   /// The panel's Nerd stats action: this metric's figures for the day the
@@ -812,7 +826,11 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
   /// reader, since its Nerd stats action must stay reachable.
   Widget _emptyPanel(BuildContext c, MetricSpec spec) => ChartKeyReadout(
       cells: [ChartCell(uiText(c, spec.title), P.of(c).on(spec.color))],
-      nerdStats: this);
+      nerdStats: this,
+      // The day's own detail stays reachable with no data: the newest day.
+      onOpen: _hasDayScreen(widget.metricKey)
+          ? () => go(c, _dayScreen(widget.metricKey, _dayOfSlot(0, 1)))
+          : null);
 
   // The caption times of one window, built once per window and locale: a scrub
   // rebuilds the panel on every pointer move and a year is 365 dates.
@@ -1274,7 +1292,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
           fix: uiText(context, spec.suppressFix ?? ''),
           icon: spec.icon,
         ),
-        NerdStatsLink(listener: this),
+        const SizedBox(height: S.x3),
+        _emptyPanel(c, spec),
       ] else if (_paused) ...[
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
@@ -1991,6 +2010,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
               child: ChartFrame(
                 title: l?.metricDetailWornChartTitle ?? 'Worn',
                 unit: l?.metricDetailHoursADayUnit ?? 'h a day',
+                nerdStats: _WearNerdStats(c),
                 height: 56,
                 yAxis: axis,
                 series: hrs,

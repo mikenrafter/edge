@@ -3513,5 +3513,9 @@
   "dayReviewMarkedMoment": "已标记的时刻",
   "homeBreakdownOpen": "打开",
   "dayReviewStaged": "已暂存 {count} 项",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineBandEventsGroup": "充电器与电池 · {count} 次事件",
+  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineRepeatedGroup": "{title} · {count} 次",
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
 }

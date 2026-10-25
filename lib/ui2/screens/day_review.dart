@@ -239,17 +239,19 @@ class DayReviewController extends ChangeNotifier {
     for (final s in _activities)
       (id: 'activity:${s.id}', moment: Moment(at: _activityEdits['activity:${s.id}']?.startTs ?? s.startTs,
           title: title(c, 'activity:${s.id}'), detail: listDetail(c, 'activity:${s.id}'),
-          icon: s.kind == ActivityKind.nap ? LucideIcons.moon : LucideIcons.activity,
+          icon: s.kind == ActivityKind.nap ? LucideIcons.bedDouble
+              : (activityByName(s.sport)?.icon ?? LucideIcons.dumbbell),
           color: C.domMove)),
     for (final m in _marks)
       (id: ReviewKey.moment(m), moment: Moment(at: m.sec,
           title: title(c, ReviewKey.moment(m)), detail: listDetail(c, ReviewKey.moment(m)),
-          icon: LucideIcons.bookmark, color: C.domMind)),
+          icon: momentChoiceIcon(_drafts[ReviewKey.moment(m)]?.choice),
+          color: C.domMind)),
     for (final g in _glasses)
       (id: ReviewKey.glass(g), moment: Moment(
           at: g.local.millisecondsSinceEpoch ~/ 1000,
           title: title(c, ReviewKey.glass(g)), detail: '',
-          icon: LucideIcons.droplet, color: C.blue)),
+          icon: LucideIcons.droplet, color: C.sky)),
   ];
   void choose(String id, bool keep) {
     if (!canEdit || !needsReview(id)) return;
@@ -481,41 +483,60 @@ Widget reviewButton(BuildContext c, String key, String label, VoidCallback? tap,
       soft: !primary && !selected, onTap: tap)),
 );
 
-/// Under a pending list row: its Keep / Discard / Edit buttons, the staged
-/// answer shown as the selected button. Nothing for a row that needs no review.
+/// Opens the editor of a saved day row (a nap, a workout).
+abstract interface class DayRowEditListener {
+  Future<void> openRowEditor(Moment m);
+}
+
+/// Under a list row, ONE compact line of buttons in three fixed slots:
+/// [Keep] [Discard] [Edit]. Keep and Discard exist only while the row waits
+/// for review (the staged answer shows as the selected button); Edit is there
+/// whenever the row has an editor, reviewed or not, so a row keeps its height
+/// when its review state changes. A row with nothing to press has no line.
 class DayReviewActions extends StatelessWidget {
-  const DayReviewActions({super.key, required this.controller, required this.id});
+  const DayReviewActions({super.key, required this.controller, required this.id,
+      required this.moment, this.editor});
   final DayReviewController? controller;
   final String id;
+  final Moment moment;
+  final DayRowEditListener? editor;
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c), r = controller;
-    if (r == null || r.loading || !r.needsReview(id)) return const SizedBox.shrink();
-    final enabled = r.canEdit;
+    final pending = r != null && !r.loading && r.needsReview(id);
     final range = id.startsWith('range:');
-    final edit = !ReviewKey.isGlass(id) && !range;
-    Widget slot(Widget w) => Expanded(child: Padding(
-        padding: const EdgeInsets.only(right: S.x2), child: w));
-    return Padding(padding: const EdgeInsets.only(top: S.x2),
+    final pendingEdit = pending && !ReviewKey.isGlass(id) && !range;
+    final savedEdit = !pending && moment.editRef != null && editor != null;
+    if (!pending && !savedEdit) return const SizedBox.shrink();
+    final enabled = r?.canEdit ?? true;
+    Widget slot(Widget? w, {bool last = false}) => Expanded(child: Padding(
+        padding: EdgeInsets.only(right: last ? 0 : S.x2),
+        child: w ?? const SizedBox.shrink()));
+    return Padding(padding: const EdgeInsets.only(bottom: S.x2),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
-        slot(reviewButton(c, 'apk2-review-keep:$id',
+        slot(pending ? reviewButton(c, 'apk2-review-keep:$id',
           l?.assumedWaterKeep ?? 'Keep', enabled ? () => r.choose(id, true) : null,
           selected: r.choice(id) == true, glyph: LucideIcons.check,
-          color: C.green)),
-        if (!range)
-          slot(reviewButton(c, 'apk2-review-discard:$id',
+          color: C.green) : null),
+        slot(pending && !range ? reviewButton(c, 'apk2-review-discard:$id',
             l?.dayReviewDiscard ?? 'Discard',
             enabled ? () => r.choose(id, false) : null,
             selected: r.choice(id) == false, glyph: LucideIcons.x,
-            color: C.red)),
-        if (edit)
-          slot(reviewButton(c, 'day-review-label:$id', l?.activityEdit ?? 'Edit',
-              enabled ? () => id.startsWith('activity:')
-                  ? r.editActivity(c, id) : r.editMoment(c, id) : null,
-              glyph: LucideIcons.pencil)),
+            color: C.red) : null),
+        slot(pendingEdit
+            ? reviewButton(c, 'day-review-label:$id', l?.activityEdit ?? 'Edit',
+                enabled ? () => id.startsWith('activity:')
+                    ? r.editActivity(c, id) : r.editMoment(c, id) : null,
+                glyph: LucideIcons.pencil)
+            : savedEdit
+                ? reviewButton(c, 'day-row-edit:$id',
+                    l?.activityEdit ?? 'Edit',
+                    () => editor!.openRowEditor(moment),
+                    glyph: LucideIcons.pencil)
+                : null, last: true),
       ]),
-      if (r.isStarted(id))
+      if (pending && r.isStarted(id))
         Padding(padding: const EdgeInsets.only(top: S.x1),
           child: Text(l?.momentReviewResume ??
               'Saved so far. Press Save to finish this pair.',

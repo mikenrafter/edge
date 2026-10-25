@@ -3513,5 +3513,9 @@
   "dayReviewMarkedMoment": "चिह्नित क्षण",
   "homeBreakdownOpen": "खोलें",
   "dayReviewStaged": "{count} तैयार",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineBandEventsGroup": "चार्जर और बैटरी · {count} घटनाएँ",
+  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineRepeatedGroup": "{title} · {count} बार",
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
 }

@@ -8892,5 +8892,9 @@
   "dayReviewMarkedMoment": "Отмеченный момент",
   "homeBreakdownOpen": "Открыть",
   "dayReviewStaged": "{count} выбрано",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}}
+  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineBandEventsGroup": "Зарядка и батарея · событий: {count}",
+  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "dayTimelineRepeatedGroup": "{title} · раз: {count}",
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
 }
