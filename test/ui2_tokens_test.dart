@@ -195,6 +195,9 @@ const _notComponents = {
   // wrapper and a 1 px line under ScreenTitle); nothing to look at. Pumped
   // in test/layout_shift/probe_shared_slot_test.dart and the tabs test.
   'SharedSlot', 'ContentTopMarker',
+  // An invisible leading-edge gesture strip; nothing to look at. Pumped in
+  // test/apk2_timeline_layout_test.dart (the iOS swipe asks before leaving).
+  'EdgeSwipeBack',
   // Device lab panel bound to a live AlarmSlotProbeRunner, which arms real
   // band alarms; every state it draws is pumped in
   // alarm_slot_probe_panel_test.dart with a fake runner.

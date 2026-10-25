@@ -397,12 +397,16 @@ class _ScrubDragRecognizer extends HorizontalDragGestureRecognizer {
 /// Cupertino drops its own back swipe while a [PopScope] refuses the pop, so a
 /// screen guarding unsaved work would lose the gesture entirely. This strip
 /// keeps it: a swipe from the leading edge past a fifth of the screen calls
-/// [onSwipe], which asks before leaving. Not announced; the back button and
-/// the system back already say the same thing.
+/// [EdgeSwipeListener.onEdgeSwipe], which asks before leaving. Not announced;
+/// the back button and the system back already say the same thing.
+abstract interface class EdgeSwipeListener {
+  void onEdgeSwipe();
+}
+
 class EdgeSwipeBack extends StatefulWidget {
-  final VoidCallback onSwipe;
+  final EdgeSwipeListener listener;
   final double width;
-  const EdgeSwipeBack({super.key, required this.onSwipe, this.width = 20});
+  const EdgeSwipeBack({super.key, required this.listener, this.width = 20});
 
   @override
   State<EdgeSwipeBack> createState() => _EdgeSwipeBackState();
@@ -424,7 +428,7 @@ class _EdgeSwipeBackState extends State<EdgeSwipeBack> {
           onHorizontalDragUpdate: (d) => _dx += (d.primaryDelta ?? 0) *
               (Directionality.of(c) == TextDirection.rtl ? -1 : 1),
           onHorizontalDragEnd: (_) {
-            if (_dx >= MediaQuery.sizeOf(c).width * .2) widget.onSwipe();
+            if (_dx >= MediaQuery.sizeOf(c).width * .2) widget.listener.onEdgeSwipe();
             _dx = 0;
           },
         ),

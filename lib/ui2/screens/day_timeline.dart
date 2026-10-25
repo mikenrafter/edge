@@ -928,7 +928,7 @@ class DayTimelineScreen extends StatefulWidget {
 }
 
 class _DayTimelineScreenState extends State<DayTimelineScreen>
-    implements ChartWindowListener {
+    implements ChartWindowListener, EdgeSwipeListener {
   DayReviewController? _review;
   final _rowKeys = <String, GlobalKey>{};
   final _listController = ScrollController();
@@ -1020,6 +1020,9 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       _askingLeave = false;
     }
   }
+
+  @override
+  void onEdgeSwipe() => unawaited(_leave());
 
   Future<void> _leave() async {
     if (!await _canLeave() || !mounted) return;
@@ -1412,7 +1415,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         // batch. Keep the leading-edge swipe as a request for confirmation.
         if (Theme.of(c).platform == TargetPlatform.iOS && !_allowPop &&
             (review?.hasChanges == true || review?.busy == true))
-          EdgeSwipeBack(onSwipe: () => unawaited(_leave())),
+          EdgeSwipeBack(listener: this),
         ]),
       ),
     );
