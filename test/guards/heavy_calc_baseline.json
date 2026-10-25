@@ -5275,20 +5275,6 @@
     {
       "rule": "unresolvedInvocation",
       "file": "data/local_repository_impl.dart",
-      "symbol": "LocalRepositoryImpl.confirmActivity",
-      "element": "onActivitiesChanged?.call()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "LocalRepositoryImpl.discardActivity",
-      "element": "onActivitiesChanged?.call()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl.getCycle",
       "element": "getProfileMap()",
       "count": 1

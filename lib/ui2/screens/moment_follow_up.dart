@@ -256,6 +256,11 @@ class MomentFollowUpScreen extends StatelessWidget {
       exporter: exporter, stageOnly: true));
 }
 
+/// Receives the workout window staged for a marked moment (stage-only mode).
+abstract class StagedWorkoutSink {
+  void stagedWorkout(PendingMoment moment, WorkoutDraft draft);
+}
+
 class MomentReviewEditor extends StatefulWidget {
   const MomentReviewEditor({
     super.key,
@@ -268,11 +273,11 @@ class MomentReviewEditor extends StatefulWidget {
     this.rangeWriter,
     this.exporter,
     this.stageOnly = false,
-    this.onStagedWorkout,
+    this.stagedWorkouts,
   });
 
   final bool stageOnly;
-  final void Function(PendingMoment, WorkoutDraft)? onStagedWorkout;
+  final StagedWorkoutSink? stagedWorkouts;
 
   /// Injected in tests; null reads them from the database.
   final List<PendingMoment>? preloaded;
@@ -487,7 +492,7 @@ class _MomentReviewEditorState extends State<MomentReviewEditor> {
           builder: (_) => LogWorkout(start: w.start, end: w.end, now: widget.now,
               stageOnly: true)));
       if (!mounted || draft == null) return;
-      widget.onStagedWorkout?.call(m, draft);
+      widget.stagedWorkouts?.stagedWorkout(m, draft);
       _queueMoment(m, const ReviewDecision.label(MomentChoice.workout));
       return;
     }

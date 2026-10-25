@@ -17,6 +17,11 @@ import 'moment_review_apply.dart';
 import 'moment_review_queue.dart';
 import 'moment_review_store.dart';
 
+/// One atomic write of a whole day's decisions, run inside [MomentReviewService.commitDay].
+abstract class DayCommit<T> {
+  Future<T> commit();
+}
+
 class MomentReviewService extends ChangeNotifier {
   MomentReviewService({this.store = const MomentReviewStore()}) {
     _queue = store.load();
@@ -118,10 +123,10 @@ class MomentReviewService extends ChangeNotifier {
 
   /// Serializes a day batch with direct answers and the legacy range writer.
   /// Drafts are removed only after the complete transaction succeeds.
-  Future<T> commitDay<T>(Future<T> Function() commit,
+  Future<T> commitDay<T>(DayCommit<T> job,
       Set<String> applied) => _exclusive(() async {
     final snapshot = _queue;
-    final result = await commit();
+    final result = await job.commit();
     var q = _queue;
     for (final key in applied) {
       if (q.decisionFor(key) == snapshot.decisionFor(key)) q = q.without(key);

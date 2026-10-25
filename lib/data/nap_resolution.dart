@@ -33,6 +33,12 @@ abstract class MainSleepExtendedListener {
   Future<void> mainSleepExtended(String day);
 }
 
+/// Told after an activity suggestion was answered, so the pending count and
+/// queue are re-read.
+abstract class ActivitiesChangedListener {
+  Future<void> activitiesChanged();
+}
+
 /// The one place that decides which sleep blocks a nap at [s]..[e] reaches.
 class NapResolver {
   /// [grow] after checking the input is a 5 min..6 h nap.

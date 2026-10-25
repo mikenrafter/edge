@@ -138,7 +138,8 @@ import '../gps/gps_source.dart';
 import '../gps/route_tracker.dart';
 import '../gps/screen_wake.dart';
 import '../data/local_repository_impl.dart';
-import '../data/nap_resolution.dart' show MainSleepExtendedListener;
+import '../data/nap_resolution.dart'
+    show ActivitiesChangedListener, MainSleepExtendedListener;
 import '../data/bundle_store.dart';
 import '../notify/battery_forecast.dart';
 import '../notify/buzz_sequence.dart';
@@ -3036,7 +3037,7 @@ class AppState extends ChangeNotifier {
     final impl = LocalRepositoryImpl(
       getProfileMap: () => user,
       saveProfileFields: updateProfile,
-      onActivitiesChanged: refreshActivityReviews,
+      activitiesListener: _ActivitiesRefresh(this),
       mainSleepListener: _NapExtendsSleep(this),
     );
     repo = impl;
@@ -8569,6 +8570,13 @@ class _TrackedAlarmWriter implements AlarmBandWriter {
 }
 
 /// A kept nap that extended a main sleep re-derives that night like a sleep edit.
+class _ActivitiesRefresh implements ActivitiesChangedListener {
+  _ActivitiesRefresh(this.app);
+  final AppState app;
+  @override
+  Future<void> activitiesChanged() => app.refreshActivityReviews();
+}
+
 class _NapExtendsSleep implements MainSleepExtendedListener {
   _NapExtendsSleep(this.app);
   final AppState app;

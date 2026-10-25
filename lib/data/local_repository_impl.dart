@@ -72,7 +72,7 @@ class LocalRepositoryImpl extends LocalRepository {
   LocalRepositoryImpl({
     required this.getProfileMap,
     this.saveProfileFields,
-    this.onActivitiesChanged,
+    this.activitiesListener,
     this.mainSleepListener,
   });
 
@@ -90,7 +90,8 @@ class LocalRepositoryImpl extends LocalRepository {
   final Future<Map<String, dynamic>> Function(Map<String, dynamic>)?
   saveProfileFields;
 
-  final Future<void> Function()? onActivitiesChanged;
+  /// Told after the pending-activity queue changed, so its owner re-reads it.
+  final ActivitiesChangedListener? activitiesListener;
 
   /// Told the day_id of a main sleep a kept nap extended (its override is
   /// already written); `AppState` re-derives that night, as a sleep edit does.
@@ -120,7 +121,7 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<void> discardActivity(ActivitySuggestion suggestion) async {
     await ActivityStore(await LocalDb.instance).discard(suggestion);
-    await onActivitiesChanged?.call();
+    await activitiesListener?.activitiesChanged();
   }
 
   @override
@@ -144,7 +145,7 @@ class LocalRepositoryImpl extends LocalRepository {
       final main = res?.extended.where((b) => b.kind == 'main_sleep').lastOrNull;
       if (main != null) await mainSleepListener?.mainSleepExtended(main.day);
     }
-    await onActivitiesChanged?.call();
+    await activitiesListener?.activitiesChanged();
   }
 
   @override
@@ -274,7 +275,7 @@ class LocalRepositoryImpl extends LocalRepository {
                 start: DateTime.fromMillisecondsSinceEpoch(r.startSec! * 1000),
                 end: DateTime.fromMillisecondsSinceEpoch(r.endSec! * 1000)),
       ]);
-      await onActivitiesChanged?.call();
+      await activitiesListener?.activitiesChanged();
     } catch (_) {
       followUpFailed = true;
     }

@@ -21,7 +21,7 @@ import '../ui2.dart';
 import 'day_timeline.dart';
 import 'home_screen.dart' show repoOf, clockOfTs;
 import 'log_workout.dart' show bumpInsights, LogWorkout, WorkoutDraft;
-import 'moment_follow_up.dart' show MomentReviewEditor;
+import 'moment_follow_up.dart' show MomentReviewEditor, StagedWorkoutSink;
 
 String _activityDay(ActivitySuggestion s) => dayLabelOf(
     DateTime.fromMillisecondsSinceEpoch(s.startTs * 1000));
@@ -301,18 +301,17 @@ class DayReviewController extends ChangeNotifier {
     final local = MomentReviewService(store: _DraftStore(MomentReviewQueue(
         decisions: {for (final e in _drafts.entries)
           if (ids.contains(e.key)) e.key: e.value}, ranges: List.of(_ranges))));
-    final workoutDrafts = <String, WorkoutDraft>{};
+    final workoutDrafts = _StagedWorkouts();
     try {
       final result = await Navigator.of(c).push<MomentReviewQueue>(
         MaterialPageRoute(builder: (_) => MomentReviewEditor(
           preloaded: _marks, preloadedAssumed: _glasses, service: local,
           writer: editor?.writer ?? const MomentAnswerWriter(),
           now: editor?.now, stageOnly: true,
-          onStagedWorkout: (moment, window) =>
-              workoutDrafts[ReviewKey.moment(moment)] = window,
+          stagedWorkouts: workoutDrafts,
         )));
       if (_disposed || result == null) return;
-      _momentWorkouts.addAll(workoutDrafts);
+      _momentWorkouts.addAll(workoutDrafts.drafts);
       _ranges..clear()..addAll(result.ranges);
       for (final r in _ranges) {
         _choices['moment:${r.startKey}'] = true;
@@ -351,7 +350,7 @@ class DayReviewController extends ChangeNotifier {
       marks.add(MomentDecision(m, decision));
     }
     try {
-      final receipt = await service.commitDay(() => repo.saveDayReview(
+      final receipt = await service.commitDay(_SaveDay(repo,
         activities: [for (final s in _activities)
           if (staged['activity:${s.id}'] case final keep?)
             keep ? (_activityEdits['activity:${s.id}'] ?? ActivityDecision(s,
@@ -391,6 +390,28 @@ class DayReviewController extends ChangeNotifier {
       _changed();
     }
   }
+}
+
+/// The day's staged decisions as one repository write, for commitDay.
+class _SaveDay implements DayCommit<DayReviewReceipt> {
+  _SaveDay(this.repo, {required this.activities, required this.moments,
+      required this.ranges, required this.workouts, required this.glasses});
+  final LocalRepository repo;
+  final List<ActivityDecision> activities;
+  final List<MomentDecision> moments;
+  final List<ReviewRange> ranges;
+  final List<MomentWorkoutDecision> workouts;
+  final Map<AssumedGlass, bool> glasses;
+  @override
+  Future<DayReviewReceipt> commit() => repo.saveDayReview(activities: activities,
+      moments: moments, ranges: ranges, workouts: workouts, glasses: glasses);
+}
+
+class _StagedWorkouts implements StagedWorkoutSink {
+  final drafts = <String, WorkoutDraft>{};
+  @override
+  void stagedWorkout(PendingMoment moment, WorkoutDraft draft) =>
+      drafts[ReviewKey.moment(moment)] = draft;
 }
 
 class _DraftStore extends MomentReviewStore {

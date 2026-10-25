@@ -926,7 +926,8 @@ class DayTimelineScreen extends StatefulWidget {
   State<DayTimelineScreen> createState() => _DayTimelineScreenState();
 }
 
-class _DayTimelineScreenState extends State<DayTimelineScreen> {
+class _DayTimelineScreenState extends State<DayTimelineScreen>
+    implements ChartWindowListener {
   DayReviewController? _review;
   final _rowKeys = <String, GlobalKey>{};
   final _listController = ScrollController();
@@ -1015,6 +1016,10 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
       if (mounted) Navigator.of(context).pop();
     });
   }
+
+  @override
+  void windowChanged(int start, int end) =>
+      setState(() { _chartStart = start; _chartEnd = end; });
 
   void _reveal(String id) {
     _highlightTimer?.cancel();
@@ -1246,9 +1251,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
                 if (d.graph.hasCurve)
                   _DayGraphZoom(d.graph, fineDetail: _device == null,
                       owners: coverageFromJson(d.raw?['hr_owner']),
-                      compact: true, onWindowChanged: (bounds) {
-                        setState(() { _chartStart = bounds.$1; _chartEnd = bounds.$2; });
-                      })
+                      compact: true, onWindowChanged: this)
                 else
                   Text(_loading ? (l?.loadingDayTimeline ??
                       "Reading this day's timeline") :
@@ -1588,6 +1591,11 @@ List<double?> perSecondHr(
   return out;
 }
 
+/// Told the chart's visible window (epoch seconds) when the user zooms or pans.
+abstract class ChartWindowListener {
+  void windowChanged(int start, int end);
+}
+
 /// The day chart plus a range control under it. The whole day is the stored
 /// per-minute curve, which is kept for every derived day. Zoomed to two hours
 /// or less it re-reads the band's per-second rows — those are pruned a few
@@ -1605,7 +1613,7 @@ class _DayGraphZoom extends StatefulWidget {
   final DayGraph graph;
   final bool fineDetail;
   final bool compact;
-  final ValueChanged<(int, int)>? onWindowChanged;
+  final ChartWindowListener? onWindowChanged;
 
   /// The day's HR ownership spans, empty on a one-device day.
   final List<OwnedSpan> owners;
@@ -1738,7 +1746,7 @@ class _ZoomState extends State<_DayGraphZoom> {
             final start = widget.graph.dayStart;
             if (start != null) {
               final (lo, hi) = _bounds();
-              widget.onWindowChanged?.call((start + lo * 60, start + hi * 60));
+              widget.onWindowChanged?.windowChanged(start + lo * 60, start + hi * 60);
             }
           },
           onChangeEnd: (_) => _readFine(),
