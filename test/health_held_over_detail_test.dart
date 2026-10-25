@@ -183,7 +183,20 @@ void main() {
       expect(_inDetail(MetricDetail, find.text('Nothing recorded today')),
           findsNothing,
           reason: 'the row showed a value; the detail cannot say there is none');
-      expect(_inDetail(MetricDetail, find.text(nightPretty)), findsWidgets,
+      // The day now reads in the scrub panel's caption (upper-cased).
+      final caption = find.descendant(
+          of: find.byType(MetricDetail),
+          matching: find.byKey(const ValueKey('chart-panel-caption')));
+      expect(caption, findsWidgets);
+      expect(
+          [
+            for (final e in caption.evaluate())
+              for (final txt in find
+                  .descendant(of: find.byWidget(e.widget), matching: find.byType(RichText))
+                  .evaluate())
+                (txt.widget as RichText).text.toPlainText().toLowerCase()
+          ].any((s) => s.contains(nightPretty.toLowerCase())),
+          isTrue,
           reason: 'the selected day is the tapped night');
       expect(_inDetail(MetricDetail, find.textContaining(value)), findsWidgets,
           reason: 'with its value');
