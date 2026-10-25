@@ -1222,7 +1222,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           : const <DeviceOption>[];
       if (mounted && token == _loadToken) {
         if (_review?.day != d.day && d.day != null) _loadReview(d.day!);
-        _review?.clearSettled();
+        _review?.reconcileSettled(d.moments);
         setState(() => (
           _d = d,
           _candidates = candidates,
@@ -1235,9 +1235,16 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         ));
       }
     } catch (_) {
-      if (mounted && token == _loadToken) setState(() => _loading = false);
+      if (mounted && token == _loadToken) {
+        // A saved row still waits for its stored twin: say so and offer a retry.
+        if (_review?.hasSettled == true) _review!.markReloadFailed(true);
+        setState(() => _loading = false);
+      }
     }
   }
+
+  @override
+  Future<void> reloadDay() => _load();
 
   Future<void> _selectDevice(String? id) async {
     final token = ++_deviceToken;
@@ -1359,9 +1366,14 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       for (var i = 0; i < d.moments.length; i++)
         d.moments[i].identity ?? 'event:$i:${d.moments[i].at}': d.moments[i],
     };
-    final rows = <({String id, Moment moment})>[
+    // Equal times keep the order they arrived in (the sort alone is not stable).
+    final arrived = [
       for (final row in byId.entries) (id: row.key, moment: row.value),
-    ]..sort((a, b) => a.moment.at.compareTo(b.moment.at));
+    ];
+    final ranked = [for (var i = 0; i < arrived.length; i++) (i: i, row: arrived[i])]
+      ..sort((a, b) => a.row.moment.at != b.row.moment.at
+          ? a.row.moment.at.compareTo(b.row.moment.at) : a.i.compareTo(b.i));
+    final rows = [for (final e in ranked) e.row];
     final reviewing = review?.reviewing == true;
     final title = reviewing
         ? '${l?.homeReviewActivities ?? 'Review activities'} · ${review!.ids.length}'
@@ -1386,7 +1398,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                 ...dayNavRow(_day ?? d.day, d.days, _goDay),
-                DayReviewNotices(controller: review),
+                DayReviewNotices(controller: review, reloader: this),
                 if (_loading) ...[
                   const SizedBox(height: S.x4),
                   InlineLoading(status: l?.loadingDayTimeline ??

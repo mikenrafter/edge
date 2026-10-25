@@ -118,8 +118,40 @@ class DayReviewController extends ChangeNotifier {
   /// place) until the reload brings the stored rows, so nothing moves.
   final Map<String, Moment> _settled = {};
   bool isSettled(String id) => _settled.containsKey(id);
+  /// The time span and kind of each settled activity, to find its stored row.
+  final Map<String, ({bool nap, int start, int end})> _settledSpan = {};
+  /// A stable position per row id, so a row keeps its place in the list when
+  /// its state changes (a settled row stays where it was among its peers).
+  final Map<String, int> _order = {};
+  bool get hasSettled => _settled.isNotEmpty;
+  /// The screen could not reload the day after a Save.
+  bool reloadFailed = false;
+  void markReloadFailed(bool failed) {
+    if (reloadFailed == failed) return;
+    reloadFailed = failed;
+    _changed();
+  }
   /// Called by the screen in the same frame that shows the reloaded rows.
-  void clearSettled() => _settled.clear();
+  /// A settled activity stays until the reloaded rows hold its replacement
+  /// (same kind, overlapping time); a settled moment or glass is stored
+  /// before the reload, so it goes.
+  void reconcileSettled(List<Moment> loaded) {
+    reloadFailed = false;
+    _settled.removeWhere((id, _) {
+      final span = _settledSpan[id];
+      if (span == null) return true;
+      final found = loaded.any((m) {
+        final ref = m.editRef;
+        if (ref == null || (span.nap ? ref != 'nap' : !ref.startsWith('session:'))) {
+          return false;
+        }
+        return m.at <= span.end && (m.until ?? m.at) >= span.start;
+      });
+      if (found) _settledSpan.remove(id);
+      return found;
+    });
+    _settledSpan.removeWhere((id, _) => !_settled.containsKey(id));
+  }
   int savedRevision = 0;
   final Map<String, ReviewDecision> _drafts = {};
   bool loading = true, loadFailed = false, saveFailed = false;
@@ -235,7 +267,14 @@ class DayReviewController extends ChangeNotifier {
     final m = _marks.singleWhere((m) => ReviewKey.moment(m) == id);
     return [m.hhmm, ?_drafts[id]?.note].join(' · ');
   }
-  List<({String id, Moment moment})> pendingRows(BuildContext c) => [
+  List<({String id, Moment moment})> pendingRows(BuildContext c) {
+    final rows = _pendingRows(c);
+    for (final r in rows) { _order.putIfAbsent(r.id, () => _order.length); }
+    _order.removeWhere((id, _) => !rows.any((r) => r.id == id) &&
+        !_settled.containsKey(id));
+    return rows..sort((a, b) => _order[a.id]!.compareTo(_order[b.id]!));
+  }
+  List<({String id, Moment moment})> _pendingRows(BuildContext c) => [
     for (final r in _ranges)
       if (r.inProgress && r.startSec != null)
         (id: ReviewKey.range(r), moment: Moment(at: r.startSec!,
@@ -431,6 +470,12 @@ class DayReviewController extends ChangeNotifier {
         if (e.value && row != null && !e.key.startsWith('range:') &&
             (applied.containsKey(e.key) || !ReviewKey.isMoment(e.key))) {
           _settled[e.key] = row;
+          final s = _activities.where((s) => 'activity:${s.id}' == e.key).firstOrNull;
+          if (s != null) {
+            final edit = _activityEdits[e.key];
+            _settledSpan[e.key] = (nap: s.kind == ActivityKind.nap,
+                start: edit?.startTs ?? s.startTs, end: edit?.endTs ?? s.endTs);
+          }
         }
       }
       _activities.removeWhere((s) => staged.containsKey('activity:${s.id}'));
@@ -501,6 +546,8 @@ Widget reviewButton(BuildContext c, String key, String label, VoidCallback? tap,
 /// Opens the editor of a saved day row (a nap, a workout).
 abstract interface class DayRowEditListener {
   Future<void> openRowEditor(Moment m);
+  /// Reads the day again (after a Save whose reload failed).
+  Future<void> reloadDay();
 }
 
 /// Under a list row, ONE compact line of buttons in three fixed slots:
@@ -559,8 +606,10 @@ class DayReviewActions extends StatelessWidget {
                 : settled
                     // Saved a moment ago: the editor opens once the stored
                     // row is back, and the line keeps its height meanwhile.
+                    // If that reload failed, pressing Edit tries it again.
                     ? reviewButton(c, 'day-row-edit:$id',
-                        l?.activityEdit ?? 'Edit', null,
+                        l?.activityEdit ?? 'Edit',
+                        r!.reloadFailed && editor != null ? editor!.reloadDay : null,
                         glyph: LucideIcons.pencil)
                     : null, last: true),
       ]),
@@ -576,18 +625,20 @@ class DayReviewActions extends StatelessWidget {
 
 /// Load, save and follow-up problems, at the top of the list.
 class DayReviewNotices extends StatelessWidget {
-  const DayReviewNotices({super.key, required this.controller});
+  const DayReviewNotices({super.key, required this.controller, this.reloader});
   final DayReviewController? controller;
+  final DayRowEditListener? reloader;
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c), r = controller, p = P.of(c);
     if (r == null || r.loading) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (r.loadFailed) ...[
+      if (r.loadFailed || r.reloadFailed) ...[
         Text(l?.activityLoadFailed ?? 'Could not load activities. Try again.',
           key: const ValueKey('apk2-review-load-error'),
           style: F.cap.copyWith(color: p.ink)),
-        reviewButton(c, 'apk2-review-retry', l?.homeTryAgain ?? 'Try again', r.load),
+        reviewButton(c, 'apk2-review-retry', l?.homeTryAgain ?? 'Try again',
+            r.loadFailed ? r.load : reloader?.reloadDay),
       ],
       if (r.followUpFailed)
         Text(l?.dayReviewFollowUpFailed ??
