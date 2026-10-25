@@ -1050,7 +1050,6 @@ class RingTrio extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
     final l = AppLocalizations.of(c);
     final at = now ?? pc.clock.now();
     final rings = [for (final k in HomeRingKind.values) _ringOf(k, d, l, at)];
@@ -3256,43 +3255,6 @@ class _HomeScreenState extends State<HomeScreen>
               initialCells: d.wearable?.cells ?? const {}),
         ),
     ]));
-  }
-
-  /// "As of <time>" under the rings while a pass is recalculating their day:
-  /// recovery and sleep say when the overnight row was computed, strain and
-  /// activity when today's was. See [AsOfHold] for why it outlasts the pass by
-  /// one reload.
-  static Widget _homeAsOf(BuildContext c, HomeData d) {
-    Widget label(BuildContext c, DateTime at) => Padding(
-        padding: const EdgeInsets.only(top: S.x2), child: AsOfLabel(at: at));
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      AsOfHold(
-        shown: d,
-        builder: label,
-        suppressStaleHold: d.activityAt == d.overnightAt &&
-            d.activityDay == d.overnightDay,
-        day: d.overnightDay,
-        computedAt: d.overnightAt,
-        asOf: (recalc) => asOfFor(
-            shownDay: d.overnightDay,
-            computedAt: d.overnightAt,
-            recalc: recalc),
-      ),
-      AsOfHold(
-        shown: d,
-        builder: label,
-        day: d.activityDay,
-        computedAt: d.activityAt,
-        // One line when both rows were computed together.
-        asOf: (recalc) => d.activityAt == d.overnightAt &&
-                d.activityDay == d.overnightDay
-            ? null
-            : asOfFor(
-                shownDay: d.activityDay,
-                computedAt: d.activityAt,
-                recalc: recalc),
-      ),
-    ]);
   }
 
   /// The illness watch, on Home, at amber as well as red.
