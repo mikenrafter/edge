@@ -480,4 +480,56 @@ void main() {
           isTrue);
     });
   });
+
+  for (final framed in [false, true]) {
+    testWidgets('the caption never changes height across a scrub when its '
+        'text differs in width, framed=$framed, at 3.1x', (t) async {
+      final chart = ChartScrub(
+        label: 'Rhythm',
+        time: (at) => at > .9 ? 'This week' : 'Week of Mon 19 Oct',
+        keys: [
+          ChartKey.slots(
+              'Heart rate (bpm)', _red, _hr, (i, v) => '${v.round()} bpm'),
+        ],
+        child: CustomPaint(size: Size.infinite, painter: LineChart(_hr, _red)),
+      );
+      await _pump(
+          t,
+          framed
+              ? ChartFrame(title: 'Rhythm', unit: 'bpm', child: chart)
+              : chart,
+          scale: 3.1,
+          h: 2200);
+      expect(_caption(t), contains('THIS WEEK'));
+      final rect = t.getRect(_panel());
+      final plot = t.getRect(find.byType(Scrubber));
+      await t.tapAt(Offset(plot.left + 4, plot.center.dy));
+      await t.pump();
+      expect(_caption(t), contains('WEEK OF MON 19 OCT'));
+      expect(t.getRect(_panel()), rect);
+      expect(t.takeException(), isNull);
+    });
+  }
+
+  testWidgets('the secondary stats are spoken once; the main value is left '
+      'to the slider', (t) async {
+    final handle = t.ensureSemantics();
+    await _pump(
+        t,
+        Builder(
+            builder: (c) => const ChartKeyReadout(
+                  cells: [ChartCell('Resting heart rate', _red, value: '53 bpm')],
+                  stats: [
+                    ChartCell('7-day avg', _red, value: '53 bpm'),
+                    ChartCell('vs avg', _red, value: '+1 bpm'),
+                    ChartCell('Missing', _red),
+                  ],
+                  time: 'Sat 24 Oct',
+                )),
+        h: 600);
+    expect(find.bySemanticsLabel('7-day avg 53 bpm'), findsOneWidget);
+    expect(find.bySemanticsLabel('vs avg +1 bpm'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('Resting heart rate')), findsNothing);
+    handle.dispose();
+  });
 }

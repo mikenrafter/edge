@@ -1232,13 +1232,14 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
               message: l?.dayTimelineZoomNoHr ?? 'No heart rate in this stretch')
           : null,
       // The keys this chart is read by, in the order they are read: the
-      // movement stat, the heart rate, and (only when the day has a hole in it)
+      // heart rate (the titled metric: it owns the panel's caption colour),
+      // the movement stat, and (only when the day has a hole in it)
       // "Not recorded", which ChartScrub appends. Workout names its shaded
       // stretch and appears only when the day has one. The night is not a key:
       // it is the main-sleep annotation above the plot.
       legend: [
-        if (hasMovement) (_movementLabel, moveInk),
         (_hrLabel, hrInk),
+        if (hasMovement) (_movementLabel, moveInk),
         if (g.work.isNotEmpty) (workoutLabel, workout),
       ],
       series: curve,
@@ -1251,10 +1252,10 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
         gaps: gaps.isNotEmpty,
         time: time,
         keys: [
+          lane(_hrLabel, hrInk, curve, (v) => '${v.round()} bpm'),
           if (hasMovement)
             lane(_movementLabel, moveInk, g.movement,
                 (v) => '${(v * 100).round()}%'),
-          lane(_hrLabel, hrInk, curve, (v) => '${v.round()} bpm'),
           if (g.work.isNotEmpty) shade(workoutLabel, workout, g.work),
         ],
         child: Stack(children: [

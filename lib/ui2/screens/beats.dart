@@ -670,8 +670,28 @@ class _BeatsState extends State<Beats>
             footnote: l?.beatsBandFootnote ??
                 'Bar height is our confidence. The mark is the value. Blank '
                     'means too few clean beats.',
-            child: _NightBand(d.bins, axis,
-                color: p.on(C.green), empty: p.line),
+            // The shared readout: the half-hour block under the finger, its
+            // value, and "Not recorded" for a block that abstained.
+            child: ChartScrub(
+              label: l?.beatsRmssdTitle ?? 'HRV in half-hour blocks',
+              gaps: hasChartGaps([[for (final b in d.bins) b.v]]),
+              time: (at) {
+                final bin = d.bins[
+                    ChartScrub.slotAt(d.bins.length, at, bars: true)];
+                final origin = d.originMs;
+                if (origin == null) return metricValue('min', bin.startSec / 60);
+                final t = DateTime.fromMillisecondsSinceEpoch(
+                    origin + bin.startSec * 1000);
+                return formatMinuteOfDay(t.hour * 60 + t.minute);
+              },
+              keys: [
+                ChartKey.slots('HRV (ms)', p.on(C.green),
+                    [for (final b in d.bins) b.v],
+                    (i, v) => '${metricValue('ms', v)} ms', bars: true),
+              ],
+              child: _NightBand(d.bins, axis,
+                  color: p.on(C.green), empty: p.line),
+            ),
           ),
           if (d.firstThirdMs != null && d.lastThirdMs != null) ...[
             const SizedBox(height: S.x4),

@@ -207,6 +207,40 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('a difference that rounds to zero has no sign', (t) async {
+      _phone(t, 390, 1800);
+      // 60 selected against a 7-day average of 60.14.
+      final points = [
+        for (var back = 9; back >= 0; back--) cp(back, back == 0 ? 61 : 60)
+      ];
+      final d = await MetricData.load(
+          OlderRepo(charts: {specOf('resting_hr').chartKey: points}),
+          'resting_hr',
+          journal: false);
+      await t.pumpWidget(
+          _scaled(1, Scaffold(body: MetricDetail('resting_hr', data: d))));
+      await t.pumpAndSettle();
+      await t.tap(find.text('7 days'));
+      await t.pumpAndSettle();
+      await _rhr.scrubBack(t, 3);
+      final texts = [
+        for (final x in t.widgetList<Text>(find.descendant(
+            of: statsIn(panelOf(_rhr)), matching: find.byType(Text))))
+          (x.data ?? '').replaceAll(RegExp(r'\s+'), ' ')
+      ];
+      expect(texts, contains('0 bpm'));
+      expect(texts.where((s) => s.contains('−0') || s.contains('+0')), isEmpty);
+    });
+
+    testWidgets('the 7-day avg and vs avg are spoken', (t) async {
+      final handle = t.ensureSemantics();
+      await _rhr.open(t);
+      expect(find.bySemanticsLabel(RegExp(r'^7-day avg 53 bpm$')),
+          findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp(r'^vs avg ')), findsOneWidget);
+      handle.dispose();
+    });
+
     testWidgets('the picked day no longer pops in as a separate card: the '
         'scroll extent does not change on a scrub', (t) async {
       await _rhr.open(t);

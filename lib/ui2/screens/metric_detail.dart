@@ -795,6 +795,20 @@ class MetricDetail extends StatefulWidget {
 }
 
 class _MetricDetailState extends State<MetricDetail> with RevisionReload, PausedReadReload<MetricDetail> {
+
+  // The caption times of one window, built once per window and locale: a scrub
+  // rebuilds the panel on every pointer move and a year is 365 dates.
+  List<String>? _captionSpan;
+  String? _captionSpanKey;
+  List<String> _captionDays(int n, AppLocalizations? l) {
+    final key = '$n|${l?.localeName}|${_dayOfSlot(0, n)}';
+    if (_captionSpanKey != key) {
+      _captionSpanKey = key;
+      _captionSpan = [for (var i = 0; i < n; i++) prettyDay(_dayOfSlot(i, n), l)];
+    }
+    return _captionSpan!;
+  }
+
   // Today is its own window, not the left edge of the 7-day one. Asking "what
   // is it right now" and "what has it been lately" are different questions,
   // and a range list that starts at 7 days made the first one unanswerable.
@@ -1817,7 +1831,13 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
               final statCells = <ChartCell>[
                 ChartCell(AppLocalizations.of(panelContext)?.chartPanelSevenDayAvg ?? '7-day avg', p.ink3, value: fmtValue(avg)),
                 ChartCell(AppLocalizations.of(panelContext)?.chartPanelVsAvg ?? 'vs avg', p.ink3,
-                    value: diff == null ? null : '${diff < 0 ? '−' : '+'}${fmtValue(diff.abs())}'),
+                    // The sign follows the DISPLAYED difference: a gap that
+                    // rounds to zero is "0 bpm", not "−0 bpm".
+                    value: diff == null
+                        ? null
+                        : !RegExp(r'[1-9]').hasMatch(_fmt(spec, diff.abs()))
+                            ? fmtValue(0)
+                            : '${diff < 0 ? '−' : '+'}${fmtValue(diff.abs())}'),
               ];
               final atRestOlder = [
                 (version: latestPoint?.olderVersion, reason: latestPoint?.olderReason),
@@ -1829,10 +1849,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                       (version: selectedPoint!.olderVersion!, reason: selectedPoint.olderReason)),
                 ],
                 stats: statCells,
-                timeSpan: [
-                  for (var i = 0; i < series.length; i++)
-                    prettyDay(_dayOfSlot(i, series.length), AppLocalizations.of(panelContext)),
-                ],
+                timeSpan: _captionDays(series.length, AppLocalizations.of(panelContext)),
                 time: prettyDay(_dayOfSlot(selected, series.length), AppLocalizations.of(panelContext)),
                 scrubbed: _pick != null,
                 restOlder: atRestOlder,

@@ -440,9 +440,10 @@ void _graphTests() {
           '${(w.key as ValueKey).value}'.startsWith('chart-key-cell:')),
           findsNWidgets(3));
       final order = [
+        // Heart rate leads: it is the titled metric and owns the caption.
         for (final k in [
-          'Movement (% of time moving)',
           'Heart rate (bpm)',
+          'Movement (% of time moving)',
           'Not recorded'
         ])
           t.getTopLeft(find.byKey(ValueKey('chart-key-cell:$k'))).dx

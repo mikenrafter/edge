@@ -352,4 +352,29 @@ void main() {
     expect(frame.series, hasLength(17));
     expect(frame.series[11], isNull);
   });
+
+  testWidgets('the half-hour HRV band has the shared scrub panel', (t) async {
+    await _pump(t, _night());
+    final frame = find.byWidgetPredicate(
+        (w) => w is ChartFrame && w.title == 'HRV in half-hour blocks');
+    final panel = find.descendant(
+        of: frame, matching: find.byKey(ChartKeyReadout.panelKey));
+    expect(panel, findsOneWidget);
+    String caption() => t
+        .widget<Text>(find.descendant(
+            of: panel, matching: find.byKey(ChartKeyReadout.captionKey)))
+        .data!;
+    expect(caption(), startsWith('LATEST'));
+    // The last block (v = 30 + 16 * 1.5 = 54).
+    expect(find.descendant(of: panel, matching: find.textContaining('54')),
+        findsWidgets);
+    final plot = t.getRect(find.descendant(
+        of: frame, matching: find.byType(ChartScrub)));
+    // Bin 11 abstained: it is "Not recorded" while the finger is on it.
+    await t.tapAt(Offset(plot.left + plot.width * 11.5 / 17, plot.center.dy));
+    await t.pump();
+    expect(caption(), startsWith('SELECTED'));
+    expect(find.descendant(of: panel, matching: find.text('Here')),
+        findsOneWidget);
+  });
 }

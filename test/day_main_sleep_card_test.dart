@@ -612,4 +612,43 @@ void main() {
       expect(ChartAnnotationLane.labelHeight, 16);
     });
   });
+
+  testWidgets('Heart rate leads the legend and the keys, so it owns the '
+      'panel caption', (t) async {
+    t.view.physicalSize = const Size(1170, 6000);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(
+      theme: buildTheme(Brightness.light),
+      home: Scaffold(
+        body: Builder(
+          builder: (c) => SingleChildScrollView(
+            child: dayGraphCard(
+                    c,
+                    DayGraph(
+                        hr: _curve(1440),
+                        movement: [for (var i = 0; i < 1440; i++) .3],
+                        dayStart: _start)) ??
+                const SizedBox(),
+          ),
+        ),
+      ),
+    ));
+    await t.pumpAndSettle();
+    final frame = t.widget<ChartFrame>(find.byType(ChartFrame));
+    expect(frame.legend.first.$1, startsWith('Heart rate'));
+    final scrub = t.widget<ChartScrub>(find.byType(ChartScrub));
+    expect(scrub.keys.first.label, startsWith('Heart rate'));
+    final panel = t.widget<Container>(find.byKey(ChartKeyReadout.panelKey));
+    expect(panel, isNotNull);
+    final cap = t.widget<Text>(find.byKey(ChartKeyReadout.captionKey));
+    expect(cap.style!.color, scrub.keys.first.color,
+        reason: 'the caption takes the heart-rate colour, not Movement\'s');
+    final hr = t.getTopLeft(find.byKey(const ValueKey(
+        'chart-key-cell:Heart rate (bpm)')));
+    final mv = t.getTopLeft(find.byKey(const ValueKey(
+        'chart-key-cell:Movement (% of time moving)')));
+    expect(hr.dy < mv.dy || (hr.dy == mv.dy && hr.dx < mv.dx), isTrue,
+        reason: 'heart rate is read first');
+  });
 }

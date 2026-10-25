@@ -729,6 +729,24 @@ class _ChartScrubState extends State<ChartScrub> {
   /// What the row says with nothing scrubbed.
   ChartReadout resolveRest() => _resolve(null);
 
+  /// Every caption the time callback can produce across the plot, so the
+  /// panel reserves its tallest caption and a scrub never reflows it. Sampled
+  /// once per widget (the parent rebuilding replaces it), not per pointer move.
+  List<String>? _span;
+  List<String> timeSpan() {
+    final t = widget.time;
+    if (t == null) return const [];
+    return _span ??= {
+      for (var i = 0; i <= 200; i++) ?t(i / 200),
+    }.toList();
+  }
+
+  @override
+  void didUpdateWidget(ChartScrub old) {
+    super.didUpdateWidget(old);
+    _span = null;
+  }
+
   ChartReadout _resolve(double? at) => ChartScrub.resolve(
       keys: widget.keys, time: widget.time, gaps: widget.gaps, at: at);
 
@@ -819,6 +837,7 @@ class _ChartScrubState extends State<ChartScrub> {
         cells: _resolve(v).cells,
         time: _resolve(v).time,
         scrubbed: _resolve(v).scrubbed,
+        timeSpan: timeSpan(),
         restOlder: chartRestOlder(_resolve(null).cells));
     return LayoutBuilder(
       builder: (_, box) => Column(
@@ -851,6 +870,8 @@ class ChartKeyReadout extends StatelessWidget {
   final List<ChartCell> stats;
   final List<({int? version, String? reason})>? restOlder;
   final VoidCallback? onOpen;
+
+  static final _captionHeights = <Object, double>{};
 
   /// Every caption time the reader can scrub to. Day names differ in width, so
   /// the caption reserves the tallest of them and a scrub never reflows it.
@@ -886,12 +907,19 @@ class ChartKeyReadout extends StatelessWidget {
     final mainColor = main.color!;
     final older = restOlder ?? (scrubbed ? [] : chartRestOlder(cells));
     final items = <Widget>[
+      // The slider speaks the series values; the secondary stats are spoken
+      // here, once, as "label value".
       for (final cell in cells)
-        _cell(c, p, cell, big: single && identical(cell, main)),
+        ExcludeSemantics(child: _cell(c, p, cell, big: single && identical(cell, main))),
       for (final stat in stats)
         KeyedSubtree(
           key: ValueKey('chart-panel-stat:${stat.label}'),
-          child: _cell(c, p, stat),
+          child: stat.value == null
+              ? ExcludeSemantics(child: _cell(c, p, stat))
+              : Semantics(
+                  container: true,
+                  label: '${stat.label} ${stat.value}',
+                  child: ExcludeSemantics(child: _cell(c, p, stat))),
         ),
     ];
     return Container(
@@ -919,15 +947,15 @@ class ChartKeyReadout extends StatelessWidget {
             onTap: onOpen,
             label: onOpen == null ? null :
                 (AppLocalizations.of(c)?.metricDetailOpenDay(time ?? '') ?? 'Open $time'),
-            child: ExcludeSemantics(child: Column(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _caption(c, mainColor),
+                ExcludeSemantics(child: _caption(c, mainColor)),
                 const SizedBox(height: S.x1),
                 _equalCells(c, items),
               ],
-            )),
+            ),
           ),
           OlderVersionStrip(id: 'readout', items: older),
         ],
@@ -943,17 +971,30 @@ class ChartKeyReadout extends StatelessWidget {
     return LayoutBuilder(builder: (_, box) {
       // Reserve both mode captions at this text size. They wrap in full, and
       // switching LATEST to SELECTED cannot add a line to a clock readout.
-      var height = 0.0;
-      for (final mode in [latestText, selectedText]) {
-        for (final at in [time ?? absent, ...timeSpan]) {
-          final tp = TextPainter(
-            text: TextSpan(text: '$mode · $at'.toUpperCase(), style: style),
-            textDirection: Directionality.of(c),
-            textScaler: MediaQuery.textScalerOf(c),
-          )..layout(maxWidth: box.maxWidth);
-          height = math.max(height, tp.height);
-          tp.dispose();
+      // Measured once per (span, width, style, scale, language): a scrub
+      // rebuilds this on every pointer move, and a year has 365 captions.
+      final scaler = MediaQuery.textScalerOf(c);
+      final dir = Directionality.of(c);
+      final key = (
+        style, scaler, box.maxWidth, dir, '$latestText|$selectedText',
+        time ?? absent, Object.hashAll(timeSpan), timeSpan.length
+      );
+      var height = _captionHeights[key] ?? -1.0;
+      if (height < 0) {
+        height = 0.0;
+        for (final mode in [latestText, selectedText]) {
+          for (final at in {time ?? absent, ...timeSpan}) {
+            final tp = TextPainter(
+              text: TextSpan(text: '$mode · $at'.toUpperCase(), style: style),
+              textDirection: dir,
+              textScaler: scaler,
+            )..layout(maxWidth: box.maxWidth);
+            height = math.max(height, tp.height);
+            tp.dispose();
+          }
         }
+        if (_captionHeights.length > 64) _captionHeights.clear();
+        _captionHeights[key] = height;
       }
       return ConstrainedBox(
         key: timeKey,
@@ -1124,6 +1165,7 @@ class _ChartHub extends ChangeNotifier {
 
   /// The at-rest readout, whatever the finger is doing.
   ChartReadout? readRest() => _owner?.resolveRest();
+  List<String> readTimeSpan() => _owner?.timeSpan() ?? const [];
 
   void attach(_ChartScrubState owner, ChartReadout Function(double? at) resolve,
       double? position) {
@@ -4025,12 +4067,14 @@ class _FrameKeys extends StatelessWidget {
           cells.addAll(r.cells.where((x) => !used.contains(x)));
           final baseRow = extra == null
               ? ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed,
+                  timeSpan: hub.readTimeSpan(),
                   restOlder: chartRestOlder(hub.readRest()?.cells ?? cells))
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ChartKeyReadout(cells: cells, time: r.time, scrubbed: r.scrubbed,
+                        timeSpan: hub.readTimeSpan(),
                         restOlder: chartRestOlder(hub.readRest()?.cells ?? cells)),
                     const SizedBox(height: S.x1),
                     ExcludeSemantics(child: extra!),
