@@ -937,7 +937,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   Timer? _highlightTimer;
   bool _allowPop = false;
   bool _askingLeave = false;
-  double _backDrag = 0;
 
   @override
   void dispose() {
@@ -980,16 +979,6 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
             ? context.read<AppState>().gestureSettings.followUpMomentsSince : null);
     _review!.addListener(_onReview);
     unawaited(_review!.load());
-  }
-
-  void _backDragStart(DragStartDetails details) => _backDrag = 0;
-  void _backDragUpdate(DragUpdateDetails details) {
-    _backDrag += (details.primaryDelta ?? 0) *
-        (Directionality.of(context) == TextDirection.rtl ? -1 : 1);
-  }
-  void _backDragEnd(DragEndDetails details) {
-    if (_backDrag >= MediaQuery.sizeOf(context).width * .2) unawaited(_leave());
-    _backDrag = 0;
   }
 
   Future<void> _chooseMarker(List<({String id, Moment moment})> rows) async {
@@ -1423,12 +1412,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         // batch. Keep the leading-edge swipe as a request for confirmation.
         if (Theme.of(c).platform == TargetPlatform.iOS && !_allowPop &&
             (review?.hasChanges == true || review?.busy == true))
-          PositionedDirectional(start: 0, top: 0, bottom: 0, width: 20,
-            child: GestureDetector(behavior: HitTestBehavior.translucent,
-              excludeFromSemantics: true,
-              onHorizontalDragStart: _backDragStart,
-              onHorizontalDragUpdate: _backDragUpdate,
-              onHorizontalDragEnd: _backDragEnd)),
+          EdgeSwipeBack(onSwipe: () => unawaited(_leave())),
         ]),
       ),
     );

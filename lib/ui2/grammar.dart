@@ -392,6 +392,45 @@ class _ScrubDragRecognizer extends HorizontalDragGestureRecognizer {
       _pending.dx.abs() > 1.5 * _pending.dy.abs();
 }
 
+/// ── EDGESWIPEBACK ── the leading-edge back swipe, as a request ─────────────
+///
+/// Cupertino drops its own back swipe while a [PopScope] refuses the pop, so a
+/// screen guarding unsaved work would lose the gesture entirely. This strip
+/// keeps it: a swipe from the leading edge past a fifth of the screen calls
+/// [onSwipe], which asks before leaving. Not announced; the back button and
+/// the system back already say the same thing.
+class EdgeSwipeBack extends StatefulWidget {
+  final VoidCallback onSwipe;
+  final double width;
+  const EdgeSwipeBack({super.key, required this.onSwipe, this.width = 20});
+
+  @override
+  State<EdgeSwipeBack> createState() => _EdgeSwipeBackState();
+}
+
+class _EdgeSwipeBackState extends State<EdgeSwipeBack> {
+  double _dx = 0;
+
+  @override
+  Widget build(BuildContext c) => PositionedDirectional(
+        start: 0,
+        top: 0,
+        bottom: 0,
+        width: widget.width,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          excludeFromSemantics: true,
+          onHorizontalDragStart: (_) => _dx = 0,
+          onHorizontalDragUpdate: (d) => _dx += (d.primaryDelta ?? 0) *
+              (Directionality.of(c) == TextDirection.rtl ? -1 : 1),
+          onHorizontalDragEnd: (_) {
+            if (_dx >= MediaQuery.sizeOf(c).width * .2) widget.onSwipe();
+            _dx = 0;
+          },
+        ),
+      );
+}
+
 /// ── CHARTSCRUB ── every chart is scrubbable ──────────────────────────────
 ///
 /// One wrapper over any chart painter: a tap or a drag places a cursor that
