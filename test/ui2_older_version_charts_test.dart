@@ -40,7 +40,7 @@ void main() {
     Future<void> scrubToday(WidgetTester t) async {
       final strip = find.byWidgetPredicate(
           (w) => w is ChartScrub && w.label == specOf('strain').title);
-      final r = t.getRect(strip);
+      final r = t.getRect(find.descendant(of: strip, matching: find.byType(Scrubber)));
       await t.tapAt(Offset(r.right - 3, r.center.dy));
       await t.pump();
     }
@@ -71,7 +71,7 @@ void main() {
       await host(t, series(30, flagged: {3}));
       final strip = find.byWidgetPredicate(
           (w) => w is ChartScrub && w.label == specOf('strain').title);
-      final r = t.getRect(strip);
+      final r = t.getRect(find.descendant(of: strip, matching: find.byType(Scrubber)));
       for (var slot = 0; slot < 30; slot++) {
         for (final off in [.02, .5, .98]) {
           await t.tapAt(Offset(r.left + r.width * (slot + off) / 30, r.center.dy));
@@ -110,7 +110,7 @@ void main() {
       expect(olderMark('readout'), findsOneWidget);
       final strip = find.byWidgetPredicate(
           (w) => w is ChartScrub && w.label == specOf('strain').title);
-      final r = t.getRect(strip);
+      final r = t.getRect(find.descendant(of: strip, matching: find.byType(Scrubber)));
       await t.tapAt(Offset(r.right - 3 - r.width / 30, r.center.dy));
       await t.pump();
       expect(olderMark('readout'), findsNothing, reason: 'the gap day');

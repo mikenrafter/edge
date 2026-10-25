@@ -124,7 +124,9 @@ final _grid = PanelRig(
     await t.pumpAndSettle();
   },
   scrubBack: (t, back) async {
-    final r = t.getRect(_gridScrub());
+    // The plot only: the ChartScrub rect also holds the taller panel below.
+    final r = t.getRect(
+        find.descendant(of: _gridScrub(), matching: find.byType(Scrubber)));
     await t.tapAt(Offset(r.left + r.width * (29 - back + .5) / 30, r.center.dy));
     await t.pump();
   },

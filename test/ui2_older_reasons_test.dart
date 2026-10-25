@@ -44,8 +44,10 @@ void main() {
     }
 
     Future<void> scrubBack(WidgetTester t, int back) async {
-      final r = t.getRect(find.byWidgetPredicate(
-          (w) => w is ChartScrub && w.label == specOf('strain').title));
+      final r = t.getRect(find.descendant(
+          of: find.byWidgetPredicate(
+              (w) => w is ChartScrub && w.label == specOf('strain').title),
+          matching: find.byType(Scrubber)));
       await t.tapAt(Offset(r.left + r.width * (29 - back + .5) / 30, r.center.dy));
       await t.pump();
     }

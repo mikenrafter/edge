@@ -91,7 +91,8 @@ void main() {
       await apk1Settle(t);
       // _picked's public semantic door exists today; do not depend on a
       // proposed tab-jump controller or a future widget class.
-      final link = find.byWidgetPredicate((w) => w is Surface &&
+      // The scrub panel's big value cell is the open action (ChartKeyReadout.onOpen).
+      final link = find.byWidgetPredicate((w) => w is Pressable &&
           (w.semanticLabel ?? '').startsWith('Open ') && w.onTap != null);
       await _jump(t, link, routes);
       expect(repo.openedNights, contains('2026-10-03'),

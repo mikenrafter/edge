@@ -193,8 +193,10 @@ void main() {
       400,
       _scrub(),
       (t) async {
-        final box = t.getTopLeft(find.byType(ChartScrub));
-        await t.tapAt(box + const Offset(340 * 0.25, 80));
+        // Scrub only answers on the plot; the panel below it is not part of it.
+        final plot = find.descendant(
+            of: find.byType(ChartScrub), matching: find.byType(Scrubber));
+        await t.tapAt(t.getTopLeft(plot) + const Offset(340 * 0.25, 30));
       },
     ),
   };

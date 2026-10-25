@@ -373,6 +373,10 @@ void main() {
                   w.value.trim() == '—' &&
                   w.cta.trim().isNotEmpty) ||
               w is RingTrio ||
+              // The chart scrub panel is always present and shows "—" for a
+              // value the chart has none of (owner-approved design); its
+              // LATEST / SELECTED caption names the reading it stands for.
+              w is ChartKeyReadout ||
               (w.key is ValueKey &&
                   skeleton.contains((w.key as ValueKey).value))) {
             ok = true;
