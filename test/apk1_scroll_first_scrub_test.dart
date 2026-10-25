@@ -50,20 +50,34 @@ Future<ScrollPosition> _mount(WidgetTester t, String chart, double scale,
   return scroll;
 }
 
+// The panel's caption reads "SELECTED · <time>" once a chart is scrubbed.
+final _selectedCaption = find.byWidgetPredicate((w) =>
+    w.key == ChartKeyReadout.captionKey &&
+    switch (w) {
+      Text(:final data, :final textSpan) =>
+        (data ?? textSpan?.toPlainText() ?? '').toUpperCase(),
+      RichText(:final text) => text.toPlainText().toUpperCase(),
+      _ => '',
+    }.startsWith('SELECTED'));
+
 void _selectedOnce(WidgetTester t, String chart) {
   final scrubber = t.widget<Scrubber>(_plot(chart));
   expect(scrubber.value, isNotNull);
   expect(_selection(chart), findsOneWidget,
       reason: 'scrubbing must produce a visible selected-instant readout');
   if (chart == _charts.first) {
-    expect(find.descendant(of: _selection(chart),
-        matching: find.text(ChartKeyReadout.selected)), findsOneWidget);
+    expect(find.descendant(of: _selection(chart), matching: _selectedCaption),
+        findsOneWidget);
     expect(find.descendant(of: _selection(chart),
         matching: find.textContaining(' ms')), findsOneWidget);
   } else {
-    expect(find.descendant(of: _selection(chart),
-        matching: find.text('No signal recorded at this moment.')), findsOneWidget,
-        reason: 'a selected stage must not fabricate absent overnight HR/HRV');
+    expect(find.descendant(of: _selection(chart), matching: _selectedCaption),
+        findsOneWidget);
+    for (final unit in [' bpm', ' ms']) {
+      expect(find.descendant(of: _selection(chart),
+          matching: find.textContaining(unit)), findsNothing,
+          reason: 'a selected stage must not fabricate absent overnight HR/HRV');
+    }
   }
   final spoken = scrubber.describe(scrubber.value!);
   expect(spoken, isNotEmpty);
