@@ -147,7 +147,7 @@ void main() {
     await _pump(t, d(update: true));
     expect(_row, findsOneWidget);
     expect(reason, findsOneWidget, reason: 'the row sits alongside the reason');
-    expect(t.getTopLeft(reason).dy, lessThan(t.getTopLeft(_row).dy), reason: 'the reason, then the note');
+    expect(t.getTopLeft(_row).dy, lessThan(t.getTopLeft(reason).dy), reason: 'the note, then the reason');
     expect([for (var i = 0; i < 3; i++) t.getRect(_dials.at(i))], before);
   });
 }

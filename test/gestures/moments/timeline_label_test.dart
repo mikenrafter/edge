@@ -47,7 +47,9 @@ void main() {
     expect(m[0].title, contains('Pills & meds'));
     expect(m[1].title, contains('Other'));
     expect(m[1].detail, contains('felt dizzy'));
-    expect(m[0].detail, contains('08:00'));
+    // The row carries the clock; the detail is only the note, never the time.
+    expect(m[0].detail, isNot(contains('08:00')));
+    expect(m[0].detail, isEmpty);
   });
 
   test('a skipped moment has no line', () {

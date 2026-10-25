@@ -80,7 +80,8 @@ void main() {
       final moments = dayMoments(timeline: {
         'events': [
           {'event_id': 8, 'ts': _ts(14, 42)},
-          {'event_id': 7, 'ts': _ts(14, 47)},
+          // Not a charger event: two charger events in a row fold into a group.
+          {'event_id': 14, 'ts': _ts(14, 47)},
         ],
       });
       await t.pumpWidget(_app(Builder(

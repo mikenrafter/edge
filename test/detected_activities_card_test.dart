@@ -9,16 +9,20 @@ Future<void> _pump(WidgetTester t, int count) => t.pumpWidget(MaterialApp(
     ));
 
 void main() {
-  testWidgets('home shows no detected-activities card when nothing is pending',
+  testWidgets('with nothing pending the one card is the plain Breakdown of your day',
       (t) async {
     await _pump(t, 0);
-    expect(find.text('Detected activities'), findsNothing);
+    expect(find.text('Review activities'), findsNothing);
+    expect(find.text('Breakdown of your day'), findsOneWidget);
     expect(find.text('Nothing to review'), findsNothing);
   });
 
-  testWidgets('the card shows when something is pending', (t) async {
+  testWidgets('the card reads Review activities with the count when something is pending',
+      (t) async {
     await _pump(t, 3);
-    expect(find.text('Detected activities'), findsOneWidget);
+    expect(find.text('Review activities'), findsOneWidget);
+    expect(find.text('3 to review'), findsOneWidget);
+    expect(find.text('Breakdown of your day'), findsNothing);
   });
 
   // Home's own read of the count threw: the retry text is there on the very

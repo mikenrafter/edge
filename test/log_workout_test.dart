@@ -85,12 +85,12 @@ void main() {
   group('day breakdown workout review', () {
     testWidgets('draws the bout and its whole window with staged actions', (t) async {
       await _review(t, [_sug()]);
-      final tray = find.byKey(const ValueKey('apk2-review-tray'));
-      expect(find.text('Breakdown of your day'), findsOneWidget);
-      expect(find.descendant(of: tray, matching: find.text('Possible workout')), findsOneWidget);
-      expect(find.descendant(of: tray, matching: find.textContaining('6:30 PM')), findsOneWidget);
-      expect(find.descendant(of: tray, matching: find.textContaining('7:31 PM')), findsOneWidget);
-      expect(find.descendant(of: tray, matching: find.textContaining('61 min')), findsOneWidget);
+      final row = find.byKey(const ValueKey('apk2-day-row:activity:a'));
+      expect(find.text('Review activities · 1'), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.text('Possible workout')), findsOneWidget);
+      // The row carries the start clock once; the detail is the length.
+      expect(find.descendant(of: row, matching: find.textContaining('6:30 PM')), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.textContaining('61 min')), findsOneWidget);
       expect(find.byKey(const ValueKey('apk2-review-keep:activity:a')), findsOneWidget);
       expect(find.byKey(const ValueKey('apk2-review-discard:activity:a')), findsOneWidget);
       expect(find.byKey(const ValueKey('day-review-label:activity:a')), findsOneWidget);
@@ -99,7 +99,9 @@ void main() {
 
     testWidgets('an empty review says so, without inventing a measurement', (t) async {
       await _review(t, []);
-      expect(find.text('Nothing to review'), findsOneWidget);
+      expect(find.text('Breakdown of your day'), findsOneWidget);
+      expect(find.byKey(const ValueKey('apk2-review-keep:activity:a')), findsNothing);
+      expect(find.byKey(const ValueKey('apk2-review-savebar')), findsNothing);
       expect(find.text('—'), findsNothing);
     });
 
@@ -108,16 +110,18 @@ void main() {
       expect(find.byKey(const ValueKey('apk2-review-keep:activity:a')), findsOneWidget);
       expect(find.byKey(const ValueKey('apk2-review-keep:activity:b')), findsOneWidget);
       expect(find.text('Nothing to review'), findsNothing);
-      expect(find.byKey(const ValueKey('apk2-day-highlight:activity:gone')), findsNothing);
+      expect(find.byKey(const ValueKey('apk2-day-row:activity:gone')), findsNothing);
     });
 
     testWidgets('notification highlights its bout and keeps other pending items', (t) async {
       await _review(t, [_sug(), _sug(id: 'b')], focusId: 'b');
-      expect(find.byKey(const ValueKey('apk2-day-highlight:activity:b')), findsOneWidget);
+      // The revealed row is tinted; the other is not.
+      bool tinted(String id) => t.widget<Container>(
+          find.byKey(ValueKey('apk2-day-row:activity:$id'))).color != null;
+      expect(tinted('b'), isTrue);
+      expect(tinted('a'), isFalse);
       expect(find.byKey(const ValueKey('apk2-review-keep:activity:a')), findsOneWidget);
       expect(find.byKey(const ValueKey('apk2-review-keep:activity:b')), findsOneWidget);
-      await t.pump(const Duration(seconds: 5));
-      expect(find.byKey(const ValueKey('apk2-day-highlight:activity:b')), findsNothing);
     });
 
     testWidgets('review fits at 2x text', (t) async {

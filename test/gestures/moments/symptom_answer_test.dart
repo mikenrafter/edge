@@ -295,7 +295,8 @@ void main() {
       );
       expect(m, hasLength(1));
       expect(m.single.title, contains('moderate pain in my knees (left)'));
-      expect(m.single.detail, contains('10:15'));
+      expect(m.single.detail, isNot(contains('10:15')),
+          reason: 'the row already shows the clock');
     });
 
     test('a symptom label with no stored description (answered before this '

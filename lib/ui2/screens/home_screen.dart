@@ -1075,14 +1075,15 @@ class RingTrio extends StatelessWidget {
         older == null && note == null && status != null && status.text.isNotEmpty;
     final rows = <Widget>[
       ?observation,
+      for (final k in pressing)
+        _HomeWhyPanel(kind: k, data: d, onTap: _open(k)),
+      // A changed number is explained before an absent ring's reason.
+      if (note != null)
+        _HomeUpdateNote(line: note, onTap: _open(HomeRingKind.recovery)),
       if (!onlyStatus)
       for (final r in gaps)
         _HomeNoteRow(id: 'gap:${r.kind.name}', title: r.label,
             text: presentationText(l, r.why ?? ''), onTap: _open(r.kind)),
-      for (final k in pressing)
-        _HomeWhyPanel(kind: k, data: d, onTap: _open(k)),
-      if (note != null)
-        _HomeUpdateNote(line: note, onTap: _open(HomeRingKind.recovery)),
       if (older != null)
         _HomeOlderPanel(version: older, reason: d.strain.olderVersionReason,
             onTap: _open(HomeRingKind.strain)),
@@ -1326,14 +1327,16 @@ class _HomeNoteRow extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    // Work still running is the house InlineLoading, in the same inset row.
+    if (busy) {
+      return _HomeInsetRow(key: ValueKey('home-note:$id'), onTap: onTap,
+          child: InlineLoading(status: text, compact: true));
+    }
     return _HomeInsetRow(key: ValueKey('home-note:$id'), onTap: onTap,
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         Container(key: ValueKey('home-note-icon:$id'), width: 32, height: 32,
           decoration: BoxDecoration(color: p.ink3.withValues(alpha: .16), shape: BoxShape.circle),
-          child: busy
-              ? Padding(padding: const EdgeInsets.all(8),
-                  child: CircularProgressIndicator(strokeWidth: 2, color: p.ink2))
-              : Icon(LucideIcons.info, size: 17, color: p.ink2)),
+          child: Icon(LucideIcons.info, size: 17, color: p.ink2)),
         const SizedBox(width: S.x2),
         Expanded(child: title == null
             ? Text(text, style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
