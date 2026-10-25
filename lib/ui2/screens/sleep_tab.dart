@@ -11,6 +11,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../profile/alarm.dart';
+import '../profile/profile.dart' show SettingsAccordion;
 import '../ui2.dart';
 import 'circadian_detail.dart';
 import 'metric_detail.dart' show detailLinkRow;
@@ -29,13 +30,16 @@ class SleepTab extends StatelessWidget {
       day: request?.date,
       embedded: true,
       footer: [
-        Section(
+        SettingsAccordion(
           l?.sleepTabPlanTitle ?? 'Your sleep plan',
-          const WellnessScreen(sleepPlanOnly: true),
+          id: 'sleep_plan',
+          children: const [WellnessScreen(sleepPlanOnly: true)],
         ),
-        Section(
+        SettingsAccordion(
           l?.sleepTabMoreTitle ?? 'Alarm and body clock',
-          Column(children: [
+          id: 'sleep_more',
+          children: [
+            Column(children: [
             detailLinkRow(
                 c,
                 LucideIcons.alarmClock,
@@ -54,6 +58,7 @@ class SleepTab extends StatelessWidget {
                 () => Navigator.of(c).push(MaterialPageRoute<void>(
                     builder: (_) => const CircadianDetail()))),
           ]),
+          ],
         ),
       ],
     );

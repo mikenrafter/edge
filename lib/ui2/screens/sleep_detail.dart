@@ -32,7 +32,7 @@ import '../../state/prefs.dart';
 import '../../state/recalc_state.dart';
 import '../../models/metric.dart';
 import '../profile/devices.dart' show DeviceFilter;
-import '../profile/profile.dart' show ProfileAvatar;
+import '../profile/profile.dart' show ProfileAvatar, SettingsAccordion;
 import '../ui2.dart';
 import 'investigate.dart' show Investigate;
 import 'home_screen.dart';
@@ -720,6 +720,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         ..._nightControls(d, recalc: false),
         _answer(c, p, d, d.night),
         const SizedBox(height: S.x3),
+        _nightAccordion(c, [
         _night(c, p, d, d.night,
             reason: windowCard != null
                 ? null
@@ -760,6 +761,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         // day, off overnight, or a rejected night — so this door to the naps
         // screen does not live inside the window card.
         ..._napsButton(c, l, d.day),
+        ]),
         ..._sections(c, p, d, d.night),
       ]);
     }
@@ -781,6 +783,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
       // ── 2 · THE NIGHT ITSELF ──
       const SizedBox(height: S.x3),
+      _nightAccordion(c, [
       // Ours, or any paired device's own staging of the same night — shown
       // side by side as alternatives, never merged.
       if (d.deviceNights.isNotEmpty) ...[
@@ -812,9 +815,27 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       // ── 2b · WHOSE WINDOW IS THIS ──
       ...?_windowCard(c, p, d, n),
       ..._napsButton(c, l, d.day),
+      ]),
 
       ..._sections(c, p, d, n),
     ]);
+  }
+
+  /// One remembered accordion for a section: the app's own [SettingsAccordion]
+  /// (open by default, state kept per [id]) around the section's existing
+  /// content. Only the person's tap on its header changes its height.
+  Widget _accordion(String title, String id, Widget child, {Key? key}) =>
+      SettingsAccordion(title, id: 'sleep_$id', key: key, children: [InsideCard(child: child)]);
+
+  /// The night, its device staging, the window card and the naps door, as one
+  /// section under the night's own title.
+  Widget _nightAccordion(BuildContext c, List<Widget> body) {
+    final l = AppLocalizations.of(c);
+    return _accordion(
+        l?.sleepDetailThroughTheNight ?? 'Through the night',
+        'night',
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body),
+        key: const ValueKey('section:night'));
   }
 
   /// The window card's place when there are no saved times: the title and the
@@ -891,19 +912,21 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final unusual = _unusual(c, p, d, n);
     return [
       // ── 3 · WHAT IT WAS MADE OF ──
-      Section(l?.sleepDetailStagesSection ?? 'Stages', _stages(c, p, n),
+      _accordion(l?.sleepDetailStagesSection ?? 'Stages', 'stages',
+          _stages(c, p, n),
           key: const ValueKey('card:stages')),
 
       // ── 4 · AGAINST THE USER'S OWN NIGHTS ──
       if (_versusUsual(c, p, d, n) case final versus?)
-        Section(l?.sleepDetailVersusUsualSection ?? 'Against your usual', versus,
+        _accordion(l?.sleepDetailVersusUsualSection ?? 'Against your usual',
+            'versus', versus,
             key: const ValueKey('card:versus')),
 
       // ── 5 · WHAT STOOD OUT ──
       // Named after the night the nav bar is already showing. "Unusual last
       // night — Nothing stood out." is a present-tense all-clear, and it was
       // printed over a night that could be days old.
-      Section(
+      _accordion(
           (daysBehind(_noonOf(d.day)) ?? 0) <= 0
               ? (l?.sleepDetailUnusualLastNight ?? 'Unusual last night')
               : (l?.sleepDetailUnusualOnDay(prettyDay(d.day, l)) ??
@@ -911,6 +934,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           // Too few nights to have looked: say so, in the card's place, rather
           // than dropping the section (which moved everything under it) or
           // reassuring from no evidence.
+          'unusual',
           unusual ??
               StatusCard(
                 l?.sleepDetailNotEnoughNightsTitle ??
@@ -924,12 +948,13 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           key: const ValueKey('card:unusual')),
 
       // ── 6 · THE SIGNALS UNDERNEATH ──
-      Section(l?.sleepDetailOvernightSection ?? 'Overnight signals',
-          _overnight(c, p, d),
+      _accordion(l?.sleepDetailOvernightSection ?? 'Overnight signals',
+          'overnight', _overnight(c, p, d),
           key: const ValueKey('card:overnight')),
 
       // ── 7 · ONE TAKEAWAY ──
-      Section(l?.sleepDetailTonightSection ?? 'Tonight', _tonight(c, p, d),
+      _accordion(l?.sleepDetailTonightSection ?? 'Tonight', 'tonight',
+          _tonight(c, p, d),
           key: const ValueKey('card:tonight')),
     ];
   }

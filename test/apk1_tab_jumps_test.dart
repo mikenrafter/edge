@@ -65,6 +65,11 @@ void main() {
       await apk1Mount(t, routes: routes, scale: scale, initial: ShellDomain.sleep);
       // Real WellnessScreen(sleepPlanOnly: true) inside the real SleepTab.
       final link = find.text('See what last night cost you');
+      // The plan reads its data only while built, and the lazy list drops it
+      // once it scrolls off: bring its accordion header into view and let the
+      // read land before walking to the link.
+      await apk1Reveal(t, find.text('Your sleep plan'));
+      await apk1Settle(t);
       await apk1Reveal(t, link);
       await _jump(t, link, routes);
     });

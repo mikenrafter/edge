@@ -1467,6 +1467,18 @@ class Surface extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    // Inside an accordion's card: no second card, and no second side margin.
+    if (InsideCard.of(c)) {
+      return Pressable(
+        onTap: onTap,
+        semanticLabel: semanticLabel,
+        child: Container(
+          width: double.infinity,
+          padding: pad.copyWith(left: 0, right: 0),
+          child: child,
+        ),
+      );
+    }
     return Pressable(
       onTap: onTap,
       semanticLabel: semanticLabel,
@@ -1482,6 +1494,16 @@ class Surface extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Marks a subtree that already sits on a card (an accordion body): a [Surface]
+/// in it draws its content flat, without a second card or side margin.
+class InsideCard extends InheritedWidget {
+  const InsideCard({super.key, required super.child});
+  static bool of(BuildContext c) =>
+      c.dependOnInheritedWidgetOfExactType<InsideCard>() != null;
+  @override
+  bool updateShouldNotify(InsideCard old) => false;
 }
 
 /// Full-width section. Whitespace separates concepts, not borders.
