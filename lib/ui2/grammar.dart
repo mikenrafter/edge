@@ -325,16 +325,22 @@ class Scrubber extends StatelessWidget {
           }
           // Decide dominance before accepting the arena: a diagonal move can
           // cross horizontal slop while still belonging to the page scroll.
+          // Raw recognizers don't inherit the device's touch slop the way
+          // GestureDetector does, so hand it over explicitly.
+          final gs = MediaQuery.maybeGestureSettingsOf(c);
           return RawGestureDetector(
             behavior: HitTestBehavior.opaque,
             gestures: {
               TapGestureRecognizer: GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
                 () => TapGestureRecognizer(),
-                (r) => r..onTapUp = (e) => set(e.localPosition),
+                (r) => r
+                  ..gestureSettings = gs
+                  ..onTapUp = (e) => set(e.localPosition),
               ),
               _ScrubDragRecognizer: GestureRecognizerFactoryWithHandlers<_ScrubDragRecognizer>(
                 () => _ScrubDragRecognizer(),
                 (r) {
+                  r.gestureSettings = gs;
                   r.dragStartBehavior = DragStartBehavior.down;
                   r.onlyAcceptDragOnThreshold = true;
                   r.onStart = (e) => set(e.localPosition);
@@ -346,6 +352,7 @@ class Scrubber extends StatelessWidget {
               LongPressGestureRecognizer: GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
                 () => LongPressGestureRecognizer(),
                 (r) {
+                  r.gestureSettings = gs;
                   r.onLongPressStart = (e) => set(e.localPosition);
                   r.onLongPressMoveUpdate = (e) => set(e.localPosition);
                   r.onLongPressEnd = (_) => end();
