@@ -38,7 +38,7 @@ import '../models/chart_point.dart' show ChartOlder;
 import 'grammar.dart' show Pressable;
 import 'theme.dart';
 
-/// What an annotation is. One icon and one colour per kind.
+/// Annotation families provide the default glyph and colour.
 enum AnnotationKind {
   wake,
   water,
@@ -109,23 +109,35 @@ class ChartAnnotation {
     required this.at,
     required this.label,
     this.until,
+    this.icon,
+    this.groupId,
+    this.wakeKind,
   });
   final String id;
   final AnnotationKind kind;
   final double at;
   final double? until;
   final String label;
+  /// Optional event-specific glyph within a shared annotation family.
+  final IconData? icon;
+
+  /// Wake epoch, retained when the chart projection becomes a list row.
+  final int? groupId;
+  final WakeNightEventKind? wakeKind;
 }
 
-/// Shared observed-wake markers, on the absolute epoch-second axis.
-List<ChartAnnotation> wakeAnnotations(WakeNightTimeline night,
-    {AppLocalizations? l}) => [
-  for (final (i, e) in night.events.indexed)
-    ChartAnnotation(
-      id: 'wake:${e.at.millisecondsSinceEpoch}:${e.kind.name}:$i',
-      kind: AnnotationKind.wake,
-      at: e.at.millisecondsSinceEpoch / 1000,
-      label: switch (e.kind) {
+/// One glyph per observed wake kind, shared by chart and list projections.
+IconData wakeEventIcon(WakeNightEventKind kind) => switch (kind) {
+  WakeNightEventKind.natural || WakeNightEventKind.repeat => LucideIcons.moon,
+  WakeNightEventKind.gradual => LucideIcons.vibrate,
+  WakeNightEventKind.alarm => LucideIcons.alarmClock,
+  WakeNightEventKind.snooze => LucideIcons.alarmClockMinus,
+  WakeNightEventKind.snoozeStop => LucideIcons.alarmClockOff,
+  WakeNightEventKind.ack => LucideIcons.sunrise,
+};
+
+String wakeEventLabel(WakeNightEvent e, AppLocalizations? l) {
+  final label = switch (e.kind) {
         WakeNightEventKind.natural || WakeNightEventKind.repeat =>
           l?.wakeJournalNatural ?? 'Natural wake',
         WakeNightEventKind.gradual => l?.wakeJournalGradual ?? 'Gradual wake',
@@ -134,7 +146,27 @@ List<ChartAnnotation> wakeAnnotations(WakeNightTimeline night,
         WakeNightEventKind.snoozeStop =>
           l?.wakeJournalSnoozeStopped ?? 'Snooze stopped',
         WakeNightEventKind.ack => l?.wakeJournalImUp ?? "I'm up",
-      },
+      };
+  final count = e.count ?? 1;
+  return count > 1
+      ? (l?.wakeJournalCount(label, count) ?? '$label ×$count')
+      : label;
+}
+
+/// Shared observed-wake markers, on the absolute epoch-second axis.
+List<ChartAnnotation> wakeAnnotations(
+  WakeNightTimeline night, {
+  AppLocalizations? l,
+}) => [
+  for (final (i, e) in night.collapsedEvents.indexed)
+    ChartAnnotation(
+      id: 'wake:${e.at.millisecondsSinceEpoch}:${e.kind.name}:$i',
+      kind: AnnotationKind.wake,
+      at: e.at.millisecondsSinceEpoch / 1000,
+      icon: wakeEventIcon(e.kind),
+      wakeKind: e.kind,
+      groupId: e.wakeEpochSec ?? night.firstFireAt?.millisecondsSinceEpoch,
+      label: wakeEventLabel(e, l),
     ),
 ];
 
@@ -193,7 +225,7 @@ class PlacedAnnotation {
   final AnnotationKind kind;
   final String label;
 
-  /// Where the dashed line is: the displayed item's true position.
+  /// The displayed item's true position. Cluster lines mark its outer bounds.
   final double x;
 
   /// Left edge of the icon box after collision nudging. The line stays at [x].
@@ -255,12 +287,13 @@ class AnnotationLayout {
     required this.focusedId,
     required this.labelText,
     this.labelSlot = AnnotationLabelSlot.topStart,
+    this.geometryGroups = const [],
   });
 
   /// Icons, left to right. Their footprints never overlap and stay in bounds.
   final List<PlacedAnnotation> items;
 
-  /// One per range that is visible at all, whether or not it got an icon.
+  /// Visible duration ranges and thin-event cluster spans, even without icons.
   final List<ShadedRange> shades;
 
   /// Ids that are in the plot but could not get any icon (the chart is too
@@ -275,6 +308,9 @@ class AnnotationLayout {
   /// sleeps on the chart the default is the first by x, then oldest, then id.
   final String? labelText;
   final AnnotationLabelSlot labelSlot;
+
+  /// Clusters before icon space limits, so losing an icon never loses geometry.
+  final List<List<String>> geometryGroups;
 }
 
 // ── layout ──────────────────────────────────────────────────────────────────
@@ -402,6 +438,20 @@ AnnotationLayout layoutAnnotations({
   // every other icon, the focused one included (a focused item keeps the fixed
   // label slot whether or not its icon survives). Among the rest the focused
   // one goes last. Their ids are reported, and a range keeps its shade.
+  final geometryGroups = [
+    for (final i in icons) [for (final v in i.members) v.a.id],
+  ];
+  final pointSpans = [
+    for (final i in icons)
+      if (i.members.length > 1 && i.members.last.x > i.members.first.x)
+        ShadedRange(
+          id: 'cluster:${i.members.first.a.id}',
+          kind: i.members.first.a.kind,
+          left: i.members.first.x,
+          right: i.members.last.x,
+          focused: i.members.any((m) => m.a.id == focusedId),
+        ),
+  ];
   final unplaced = <String>[];
   bool holdsFocus(_Icon i) => i.members.any((m) => m.a.id == focusedId);
   bool holdsNight(_Icon i) =>
@@ -431,7 +481,9 @@ AnnotationLayout layoutAnnotations({
   ];
   return AnnotationLayout(
     items: placed,
+    geometryGroups: geometryGroups,
     shades: [
+      ...pointSpans,
       for (final v in vis)
         if (v.isRange)
           ShadedRange(
@@ -628,6 +680,9 @@ List<ChartAnnotation> dailyAnnotations(
     out.add(ChartAnnotation(
       id: a.id,
       kind: a.kind,
+      icon: a.icon,
+      groupId: a.groupId,
+      wakeKind: a.wakeKind,
       at: s.toDouble(),
       until: e != null && e > s ? e.toDouble() : null,
       label: a.label,
@@ -729,7 +784,9 @@ class AnnotationLinesPainter extends CustomPainter {
 /// One kind's glyph at the lane's icon size. [bold] is the focused look: a
 /// filled disc and a ring instead of a tint. The footprint never changes.
 class AnnotationIcon extends StatelessWidget {
-  const AnnotationIcon({super.key, required this.kind, required this.bold});
+  const AnnotationIcon({super.key, required this.kind, required this.bold,
+    this.icon});
+  final IconData? icon;
   final AnnotationKind kind;
   final bool bold;
 
@@ -748,7 +805,8 @@ class AnnotationIcon extends StatelessWidget {
           border: Border.all(color: ink, width: bold ? 2 : 0),
         ),
         child: Center(
-          child: Icon(annotationIcon(kind),
+          child: Icon(
+            icon ?? annotationIcon(kind),
               size: bold ? 15 : 13, color: bold ? p.inkOnFill : ink),
         ),
       ),
@@ -859,40 +917,17 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
       var layout = layoutFor(_pin ?? picked);
       if (_pin != null && layout.focusedId != _pin) layout = layoutFor(picked);
 
-      final lines = <AnnotationLine>[];
-      final shadeFor = {for (final s in layout.shades) s.id: s};
-      for (final s in layout.shades) {
-        // Both ends of a range are dashed lines; a cut end is not an end.
-        final c = p.on(annotationColor(s.kind));
-        if (s.endsInside) {
-          lines.add(AnnotationLine(
-              id: '${s.id}:end',
-              x: s.right,
-              color: c,
-              bold: s.focused,
-              strokeWidth: s.focused ? 2 : 1));
-        }
-      }
-      for (final i in layout.items) {
-        final s = shadeFor[i.id];
-        if (i.isRange && s != null && !s.startsInside) continue;
-        lines.add(AnnotationLine(
-            id: i.id,
-            x: i.x,
-            color: p.on(annotationColor(i.kind)),
-            bold: i.focused,
-            strokeWidth: i.focused ? 2 : 1));
-      }
-      // Items with a shade but no icon still get their edges.
-      for (final s in layout.shades) {
-        if (layout.items.any((i) => i.id == s.id) || !s.startsInside) continue;
-        lines.add(AnnotationLine(
-            id: s.id,
-            x: s.left,
-            color: p.on(annotationColor(s.kind)),
-            bold: s.focused,
-            strokeWidth: s.focused ? 2 : 1));
-      }
+      final geometry = annotationGeometry(
+          annotations: set.items, scale: scale, focusId: layout.focusedId);
+      final lines = [
+        for (final line in geometry.lines)
+          AnnotationLine(
+              id: line.id,
+              x: line.x,
+              color: p.on(line.color),
+              bold: line.bold,
+              strokeWidth: line.strokeWidth),
+      ];
 
       final byId = {for (final a in set.items) a.id: a};
       final said = [
@@ -915,7 +950,7 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
       }
 
       final children = <Widget>[
-        for (final s in layout.shades)
+        for (final s in geometry.shades)
           Positioned(
             left: s.left,
             width: math.max(s.right - s.left, 1),
@@ -973,6 +1008,7 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
               child: AnnotationIcon(
                   key: ChartAnnotationLane.iconKey(i.id),
                   kind: i.kind,
+                  icon: byId[i.id]?.icon,
                   bold: i.focused),
             ),
           ),
@@ -1026,4 +1062,81 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
       );
     });
   }
+}
+
+/// Plot geometry is independent of icon nudging and survives lost icons.
+({List<AnnotationLine> lines, List<ShadedRange> shades}) annotationGeometry({
+  required List<ChartAnnotation> annotations,
+  required AnnotationScale scale,
+  String? focusId,
+}) {
+  final layout = layoutAnnotations(
+    annotations: annotations,
+    scale: scale,
+    focusId: focusId,
+  );
+  final visible = _visible(annotations, scale)..sort(_byX);
+  final groups = <List<_Vis>>[];
+  var edge = double.negativeInfinity;
+  for (final v in visible) {
+    if (groups.isEmpty || v.x - edge >= scale.iconWidth) groups.add([]);
+    groups.last.add(v);
+    edge = math.max(edge, v.right ?? v.x);
+  }
+  final lines = <AnnotationLine>[];
+  void line(_Vis v, double x, {bool end = false, bool alternate = false}) {
+    final color = annotationColor(v.a.kind);
+    lines.add(
+      AnnotationLine(
+        id: '${v.a.id}${end ? ':end' : ''}',
+        x: x,
+        color: alternate ? (color == C.purple ? C.orange : C.purple) : color,
+        bold: v.a.id == focusId,
+        strokeWidth: v.a.id == focusId ? 2 : 1,
+      ),
+    );
+  }
+
+  for (final group in groups) {
+    final ranges = group.where((v) => v.isRange).toList();
+    final points = group.where((v) => !v.isRange).toList();
+    if (ranges.isNotEmpty) {
+      // All duration ranges survive crowding, independently of icon placement.
+      for (final v in ranges) {
+        if (v.startsInside) line(v, v.x);
+        if (v.endsInside) line(v, v.right!, end: true);
+      }
+      final left = ranges.map((v) => v.x).reduce(math.min);
+      final right = ranges.map((v) => v.right!).reduce(math.max);
+      final before = points.where((v) => v.x < left).firstOrNull;
+      final after = points.where((v) => v.x > right).lastOrNull;
+      if (before != null) line(before, before.x);
+      if (after != null) line(after, after.x);
+    }
+  }
+  // Point geometry uses exactly the clusters chosen by icon layout, including
+  // its widening pass. Range neighbours above use their outer true positions.
+  final rangedIds = {
+    for (final group in groups)
+      if (group.any((v) => v.isRange))
+        for (final v in group) v.a.id,
+  };
+  final byId = {for (final v in visible) v.a.id: v};
+  for (final ids in layout.geometryGroups) {
+    final points = [
+      for (final id in ids)
+        if (!rangedIds.contains(id) && byId[id] != null) byId[id]!,
+    ];
+    if (points.isEmpty) continue;
+    line(points.first, points.first.x);
+    if (points.length > 1) {
+      line(
+        points.last,
+        points.last.x,
+        end: true,
+        alternate: points.first.a.kind == points.last.a.kind,
+      );
+    }
+  }
+  return (lines: lines, shades: layout.shades);
 }

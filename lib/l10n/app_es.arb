@@ -3543,5 +3543,10 @@
   "wakeDreamFromDream": "De un sueño",
   "wakeDreamNormally": "Normalmente",
   "wakeDreamSkip": "Omitir",
-  "wakeJournalTimeToWakeUnknown": "Tiempo para despertar: —"
+  "wakeJournalTimeToWakeUnknown": "Tiempo para despertar: —",
+  "sleepWakeZoom": "Ampliar eventos al despertar",
+  "sleepWakeZoomDescription": "Amplía el final del gráfico de sueño cuando los eventos están muy juntos",
+  "wakeJournalCount": "{event} ×{count}",
+  "wakeJournalGroup": "Despertar {start}–{end} · {minutes} min para levantarte",
+  "wakeJournalGroupName": "Despertar"
 }

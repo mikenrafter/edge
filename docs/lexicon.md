@@ -42,7 +42,7 @@ in the same change that introduces it (AGENTS.md §6).
 
 ## Charts
 - **Annotation** — an icon plus a dashed line (point) or a shaded span (range) drawn on a chart.
-- **Cluster** — overlapping annotations drawn as `+n`; tapping steps through them.
+- **Cluster** — overlapping annotations sharing an icon and a `+n` count; tapping steps through their labels. Thin events retain their first and last time positions with shading between them. Duration ranges retain their edges, with at most one extra line on either side.
 - **Main sleep** — the night's annotation on the day chart (`AnnotationKind.mainSleep`): the longest valid sleep entry of the day, a range from onset to wake. It has priority: never in a `+n`, the last icon given up, and its label is the chart's default label while nothing is focused. A nap is not main sleep.
 - **Algo mark** — an annotation where the algorithm version changed; never clustered.
 
@@ -79,3 +79,6 @@ in the same change that introduces it (AGENTS.md §6).
 - **Dream response**: the wearer's `dream` or `normal` answer on the wake's first acknowledgement. Its preceding wake path has priority Natural, then delivered Gradual, then backup alarm. Skip writes nothing; an unknown path stays absent.
 - **Wake outcome**: the observed interval, snooze count and optional dream response joined to the matching canonical main-sleep day. Recovery comes from that day's readiness; main-sleep TST comes only from sleep accounting. Missing values stay absent.
 - **Natural wake tuning**: a product policy that adjusts the stable-run trigger offset and window lead once per canonical sleep night after seven complete nights. `DbWakeJournal` owns durable parameters and atomically records each applied change with a reason. Dream context weights Natural answers at 1 and other wake paths at .25; it is not stage accuracy. Alcohol nights are excluded, while cannabis alone does not exclude a night.
+
+- **Wake-up group**: one wake epoch shown as a collapsed row, with its observed clock span and time to wake. Opening it shows one row per kind; Natural repeats and snoozes carry counts at their first delivery. Raw journal events stay intact.
+- **Wake-up zoom**: the optional sleep-chart view of a dense end-of-night wake cluster. It labels both window bounds and changes only the displayed time window. The preference defaults on and is owned by `Prefs`.

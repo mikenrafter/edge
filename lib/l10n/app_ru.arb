@@ -8904,5 +8904,10 @@
   "wakeDreamFromDream": "После сновидения",
   "wakeDreamNormally": "Обычно",
   "wakeDreamSkip": "Пропустить",
-  "wakeJournalTimeToWakeUnknown": "Время пробуждения: —"
+  "wakeJournalTimeToWakeUnknown": "Время пробуждения: —",
+  "sleepWakeZoom": "Увеличивать события пробуждения",
+  "sleepWakeZoomDescription": "Увеличивать конец графика сна, когда события пробуждения расположены близко",
+  "wakeJournalCount": "{event} ×{count}",
+  "wakeJournalGroup": "Пробуждение {start}–{end} · {minutes} мин до подъёма",
+  "wakeJournalGroupName": "Пробуждение"
 }

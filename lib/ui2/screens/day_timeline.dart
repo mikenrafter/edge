@@ -82,7 +82,12 @@ class Moment {
     this.identity,
     this.editRef,
     this.eventGroup,
+    this.wakeGroup,
+    this.wakeKind,
   });
+
+  final int? wakeGroup;
+  final WakeNightEventKind? wakeKind;
 
   final String? identity;
 
@@ -124,26 +129,38 @@ class Moment {
   final int? eventId;
 }
 
-/// A run of consecutive moments that are the same band event.
+/// One wake epoch, or a run of consecutive matching band events.
 @immutable
 class MomentGroup {
   const MomentGroup(this.moments);
   final List<Moment> moments;
+  bool get isWake => first.annotationKind == AnnotationKind.wake;
   bool get mixed => moments.any((m) => m.title != moments.first.title);
   int get count => moments.length;
   Moment get first => moments.first;
 }
 
 /// Folds each run of consecutive moments sharing one non-null [Moment.eventId]
-/// into a single group. Pure; order is kept and nothing is dropped. A moment
-/// with no event id is always a group of one — equal titles are not identity.
+/// into a single group. Wake events group by epoch across intervening moments.
+/// Other moments without event ids stay separate. Group order follows the first
+/// member, and every moment is retained. Equal titles are not identity.
 bool _sameRun(Moment a, Moment b) => a.eventId == b.eventId ||
     (a.eventGroup != null && a.eventGroup == b.eventGroup);
 
 List<MomentGroup> groupRepeatedEvents(List<Moment> sorted) {
   final out = <List<Moment>>[];
+  final wakes = <int?, List<Moment>>{};
   for (final m in sorted) {
-    if (out.isNotEmpty && m.eventId != null && _sameRun(out.last.last, m)) {
+    if (m.annotationKind == AnnotationKind.wake) {
+      final group = wakes[m.wakeGroup];
+      if (group == null) {
+        final fresh = <Moment>[m];
+        wakes[m.wakeGroup] = fresh;
+        out.add(fresh);
+      } else {
+        group.add(m);
+      }
+    } else if (out.isNotEmpty && m.eventId != null && _sameRun(out.last.last, m)) {
       out.last.add(m);
     } else {
       out.add([m]);
@@ -508,7 +525,9 @@ List<Moment> dayMoments({
     out.add(Moment(
       at: a.at.toInt(),
       title: a.label,
-      icon: annotationIcon(a.kind),
+      icon: a.icon ?? annotationIcon(a.kind),
+      wakeGroup: a.groupId,
+      wakeKind: a.wakeKind,
       color: annotationColor(a.kind),
       annotationKind: a.kind,
       identity: a.id,
@@ -542,6 +561,9 @@ List<(ChartAnnotation, Moment)> annotatedMoments(List<Moment> moments) {
       at: m.at.toDouble(),
       until: end != null && end > m.at ? end.toDouble() : null,
       label: m.annotationLabel ?? m.title,
+      icon: m.icon,
+      groupId: m.wakeGroup,
+      wakeKind: m.wakeKind,
     ), m));
   }
   return out;
@@ -1103,8 +1125,13 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
     final hit = annotatedMoments(moments)
         .where((e) => e.$1.id == id).map((e) => e.$2).firstOrNull;
     if (hit == null) return;
-    final i = moments.indexWhere((m) => identical(m, hit));
-    final own = hit.identity ?? 'event:$i:${hit.at}';
+    final group = groupRepeatedEvents(moments)
+        .where((g) => g.moments.contains(hit)).first;
+    final target = group.isWake ? group.first : hit;
+    final i = moments.indexWhere((m) => identical(m, target));
+    final own = target.identity ?? 'event:$i:${target.at}';
+    final groupState = _rowKeys[own]?.currentState;
+    if (groupState is _MomentGroupRowState) groupState.expand();
     if (_rowKeys.containsKey(own)) return _reveal(own);
     // A pending review row at the same instant stands in for it.
     final pending = _review?.pendingRows(context)
@@ -1351,12 +1378,10 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       DayReviewController? review) {
     final p = P.of(context);
     final out = <Widget>[];
-    var at = 0;
     for (final g in groupRepeatedEvents([for (final r in rows) r.moment])) {
-      final row = rows[at];
-      at += g.count;
-      if (g.count > 1) {
-        out.add(MomentGroupRow(g));
+      final row = rows.firstWhere((r) => identical(r.moment, g.first));
+      if (g.count > 1 || g.isWake) {
+        out.add(MomentGroupRow(g, key: _rowKeys.putIfAbsent(row.id, GlobalKey.new)));
         continue;
       }
       out.add(Container(
@@ -1951,7 +1976,7 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
             child: Column(
               children: [
                 for (final g in groupRepeatedEvents(d.moments))
-                  g.count > 1 ? MomentGroupRow(g) : MomentRow(g.first),
+                  g.count > 1 || g.isWake ? MomentGroupRow(g) : MomentRow(g.first),
               ],
             ),
           ),
@@ -2093,12 +2118,44 @@ class MomentGroupRow extends StatefulWidget {
 
 class _MomentGroupRowState extends State<MomentGroupRow> {
   bool _open = false;
+  void expand() {
+    if (!_open) setState(() => _open = true);
+  }
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final g = widget.group, f = g.first;
+    final ack = g.moments
+        .where((m) => m.wakeKind == WakeNightEventKind.ack)
+        .firstOrNull;
+    final fire = g.moments
+        .where(
+          (m) =>
+              m.wakeKind == WakeNightEventKind.natural ||
+              m.wakeKind == WakeNightEventKind.gradual ||
+              m.wakeKind == WakeNightEventKind.alarm,
+        )
+        .firstOrNull;
+    final end = ack?.at ?? g.moments.last.at;
+    final minutes = ack == null || fire == null || ack.at < fire.at
+        ? null
+        : (ack.at - fire.at) ~/ 60;
+    final groupTitle = g.isWake
+        ? (minutes == null
+              ? '${l?.wakeJournalGroupName ?? 'Wake-up'} ${clockOfTs(f.at)}–${clockOfTs(end)} · ${l?.wakeJournalTimeToWakeUnknown ?? 'Time to wake: —'}'
+              : (l?.wakeJournalGroup(
+                      clockOfTs(f.at),
+                      clockOfTs(end),
+                      minutes,
+                    ) ??
+                    'Wake-up ${clockOfTs(f.at)}–${clockOfTs(end)} · $minutes min to wake'))
+        : g.mixed
+        ? (l?.dayTimelineBandEventsGroup(g.count) ??
+              'Charger and battery · ${g.count} events')
+        : (l?.dayTimelineRepeatedGroup(f.title, g.count) ??
+              '${f.title} · ${g.count} times');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2111,11 +2168,7 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
               Expanded(
                 child: MomentRow(Moment(
                   at: f.at,
-                  title: g.mixed
-                      ? (l?.dayTimelineBandEventsGroup(g.count) ??
-                          'Charger and battery · ${g.count} events')
-                      : (l?.dayTimelineRepeatedGroup(f.title, g.count) ??
-                          '${f.title} · ${g.count} times'),
+                  title: groupTitle,
                   icon: f.icon,
                   color: f.color,
                 )),
@@ -2125,7 +2178,12 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
             ],
           ),
         ),
-        if (_open)
+        if (_open && g.isWake)
+          Padding(
+            padding: const EdgeInsets.only(left: S.x4),
+            child: Column(children: [for (final m in g.moments) MomentRow(m)]),
+          ),
+        if (_open && !g.isWake)
           // The individual times sit under the title column, in the row's own
           // clock style, so an opened group reads as more of the same row.
           Padding(

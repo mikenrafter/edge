@@ -112,6 +112,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Settings as tab'],
     ['Units'],
     ['Appearance'],
+    ['Zoom wake-up events'],
     ['Time format'],
     ['Pull down to sync'],
     ['Expected sleep schedule'],

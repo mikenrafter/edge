@@ -3631,5 +3631,10 @@
   "wakeDreamFromDream": "Aus einem Traum",
   "wakeDreamNormally": "Normal",
   "wakeDreamSkip": "Überspringen",
-  "wakeJournalTimeToWakeUnknown": "Zeit bis zum Aufwachen: —"
+  "wakeJournalTimeToWakeUnknown": "Zeit bis zum Aufwachen: —",
+  "sleepWakeZoom": "Weckereignisse vergrößern",
+  "sleepWakeZoomDescription": "Das Ende der Schlafkurve bei dicht liegenden Weckereignissen vergrößern",
+  "wakeJournalCount": "{event} ×{count}",
+  "wakeJournalGroup": "Aufwachen {start}–{end} · {minutes} Min. bis zum Aufstehen",
+  "wakeJournalGroupName": "Aufwachen"
 }

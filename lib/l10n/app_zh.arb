@@ -3525,5 +3525,10 @@
   "wakeDreamFromDream": "从梦中醒来",
   "wakeDreamNormally": "正常醒来",
   "wakeDreamSkip": "跳过",
-  "wakeJournalTimeToWakeUnknown": "唤醒用时：—"
+  "wakeJournalTimeToWakeUnknown": "唤醒用时：—",
+  "sleepWakeZoom": "放大唤醒事件",
+  "sleepWakeZoomDescription": "唤醒事件密集时放大睡眠图表末段",
+  "wakeJournalCount": "{event} ×{count}",
+  "wakeJournalGroup": "唤醒 {start}–{end} · 起床用时 {minutes} 分钟",
+  "wakeJournalGroupName": "唤醒"
 }

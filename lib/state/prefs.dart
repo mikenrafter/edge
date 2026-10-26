@@ -27,6 +27,15 @@ class Prefs {
 
   static SharedPreferences? _sp;
 
+  static const sleepWakeZoom = 'ui.sleep_wake_zoom';
+  static bool get sleepWakeZoomOn => getBool(sleepWakeZoom, true);
+  static final sleepWakeZoomRevision = ValueNotifier<int>(0);
+  static void setSleepWakeZoom(bool on) {
+    if (sleepWakeZoomOn == on) return;
+    setBool(sleepWakeZoom, on);
+    sleepWakeZoomRevision.value++;
+  }
+
   /// Load + cache the SharedPreferences instance. Call once before runApp.
   /// Idempotent and best-effort — failures leave reads on their defaults.
   static Future<void> ensureLoaded() async {

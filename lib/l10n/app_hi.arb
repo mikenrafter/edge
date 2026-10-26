@@ -3525,5 +3525,10 @@
   "wakeDreamFromDream": "सपने से",
   "wakeDreamNormally": "सामान्य रूप से",
   "wakeDreamSkip": "छोड़ें",
-  "wakeJournalTimeToWakeUnknown": "जागने में लगा समय: —"
+  "wakeJournalTimeToWakeUnknown": "जागने में लगा समय: —",
+  "sleepWakeZoom": "जागने की घटनाएँ ज़ूम करें",
+  "sleepWakeZoomDescription": "जागने की घटनाएँ पास-पास होने पर नींद के चार्ट का अंतिम भाग ज़ूम करें",
+  "wakeJournalCount": "{event} ×{count}",
+  "wakeJournalGroup": "जागना {start}–{end} · उठने में {minutes} मिनट",
+  "wakeJournalGroupName": "जागना"
 }

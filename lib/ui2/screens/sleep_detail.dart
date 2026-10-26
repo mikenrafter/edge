@@ -310,7 +310,8 @@ class SleepData {
   /// Each paired device's own staging of this night (`getDeviceNights`).
   final List<Map<String, Object?>> deviceNights;
 
-  static List<SleepStage?> stagesOf(Map<String, Object?> night, {int? domainEnd}) {
+  static List<SleepStage?> stagesOf(Map<String, Object?> night, {int? domainStart,
+    int? domainEnd}) {
     final pts = night['hypnogram'];
     if (pts is! List || pts.length < 2) return const [];
     final ts = <int>[], st = <SleepStage?>[];
@@ -321,12 +322,13 @@ class SleepData {
       }
     }
     if (ts.length < 2) return const [];
-    final t0 = ts.first, t1 = domainEnd ?? ts.last;
+    final t0 = domainStart ?? ts.first, t1 = domainEnd ?? ts.last;
     if (t1 <= t0) return const [];
     const cols = 240;
     return [
       for (var i = 0; i < cols; i++)
-        t0 + ((t1 - t0) * i / cols).round() > ts.last
+        (t0 + ((t1 - t0) * i / cols).round() > ts.last ||
+                t0 + ((t1 - t0) * i / cols).round() < ts.first)
             ? null : st[_indexAt(ts, t0 + ((t1 - t0) * i / cols).round())],
     ];
   }
@@ -533,7 +535,32 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   bool _paused = false;
   String? _day;
   bool _saving = false; // an override write + its forced re-derive is in flight
-  double? _scrub; // 0..1 across the night
+  double? _scrub; // Epoch seconds shared by full-night and zoomed charts.
+
+  double? _scrubFraction(Map<String, dynamic> n) {
+    final start = (n['onset_ts'] as num?)?.toDouble();
+    final end = (n['wake_ts'] as num?)?.toDouble();
+    final at = _scrub;
+    if (at == null ||
+        start == null ||
+        end == null ||
+        end <= start ||
+        at < start ||
+        at > end) {
+      return null;
+    }
+    return (at - start) / (end - start);
+  }
+
+  void _selectScrub(double? fraction, Map<String, dynamic> n) {
+    final start = (n['onset_ts'] as num?)?.toDouble();
+    final end = (n['wake_ts'] as num?)?.toDouble();
+    setState(
+      () => _scrub = fraction == null || start == null || end == null
+          ? null
+          : start + (end - start) * fraction,
+    );
+  }
 
   /// Whose staging the hypnogram shows: null for ours, else a device id from
   /// [SleepData.deviceNights].
@@ -552,6 +579,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   void initState() {
     super.initState();
     watchPausedRead();
+    Prefs.sleepWakeZoomRevision.addListener(_zoomChanged);
     _day = widget.day;
     if (widget.data != null) {
       _d = widget.data;
@@ -584,8 +612,16 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     if (widget.data == null && (_day == null || _day == todayLabel())) _load();
   }
 
+  void _zoomChanged() {
+    if (mounted) setState(() => _scrub = null);
+  }
+
   @override
-  void dispose() { stopWatchingPausedRead(); super.dispose(); }
+  void dispose() {
+    Prefs.sleepWakeZoomRevision.removeListener(_zoomChanged);
+    stopWatchingPausedRead();
+    super.dispose();
+  }
 
   // `_rough` bakes `AppLocalizations` strings into `knows`/`moved` at load
   // time (see `loadRoughNight`), so a language switch while this screen is
@@ -1378,15 +1414,29 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     // Snoozes can follow detected sleep. Extend only the chart's axis and leave
     // that stretch unmeasured; never stretch a recorded stage into it.
     if (end != recordedEnd) n = {...n, 'wake_ts': end};
-    final annotations = onset != null && end != null && end > onset
-        ? AnnotationSet(items: marks, domainStart: onset.toDouble(),
+    var start = onset;
+    if (Prefs.sleepWakeZoomOn && onset != null && end != null && end > onset &&
+        marks.length > 1) {
+      final plotWidth = math.max(1.0, MediaQuery.sizeOf(c).width - 160);
+      final ordered = [...marks]..sort((a, b) => a.at.compareTo(b.at));
+      final dense = [
+        for (var i = 1; i < ordered.length; i++)
+          (ordered[i].at - ordered[i - 1].at) * plotWidth / (end - onset),
+      ].any((gap) => gap < ChartAnnotationLane.iconSize);
+      // Keep every wake mark and ten minutes of context before its first fire.
+      if (dense) start = math.max(onset, ordered.first.at.floor() - 600);
+    }
+    if (start != onset) n = {...n, 'onset_ts': start};
+    final annotations = start != null && end != null && end > start
+        ? AnnotationSet(items: marks, domainStart: start.toDouble(),
             domainEnd: end.toDouble()) : null;
     final interval = Text(d.wakeTimeline.timeToWake == null
         ? (l?.wakeJournalTimeToWakeUnknown ?? 'Time to wake: —')
         : (l?.wakeJournalTimeToWake(d.wakeTimeline.timeToWake!.inMinutes) ??
             'Time to wake: ${d.wakeTimeline.timeToWake!.inMinutes} min'),
         style: F.cap.copyWith(color: p.ink2));
-    final stages = SleepData.stagesOf(device ?? d.night, domainEnd: end);
+    final stages = SleepData.stagesOf(device ?? d.night,
+      domainStart: start, domainEnd: end);
     if (stages.isEmpty) {
       // The same card with the chart's box left empty, so no night (or a night
       // whose staging failed) does not change the card's size or place. The
@@ -1582,8 +1632,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   Widget _hypnogram(BuildContext c, P p, List<SleepStage?> stages,
           Map<String, dynamic> n, double height) =>
       Scrubber(
-        value: _scrub,
-        onChanged: (v) => setState(() => _scrub = v),
+        value: _scrubFraction(n),
+        onChanged: (v) => _selectScrub(v, n),
         label: AppLocalizations.of(c)?.sleepDetailHypnogramLabel ?? 'Hypnogram',
         describe: (v) {
           final l = AppLocalizations.of(c);
@@ -1618,11 +1668,11 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                           painter: Hypnogram(st, p, t: animate(c, 1))),
                 ),
             ]),
-            if (_scrub != null)
+            if (_scrubFraction(n) != null)
               // Aligned by fraction rather than by a measured offset, so the
               // cursor needs no width from the layout.
               Align(
-                alignment: Alignment(_scrub! * 2 - 1, 0),
+                alignment: Alignment(_scrubFraction(n)! * 2 - 1, 0),
                 child: SizedBox(width: 2, height: double.infinity,
                     child: ColoredBox(color: p.ink)),
               ),
@@ -1637,10 +1687,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final l = AppLocalizations.of(c);
     final t0 = (n['onset_ts'] as num?)?.toInt();
     final t1 = (n['wake_ts'] as num?)?.toInt();
-    final at = _scrub ?? 1.0;
     final t = t0 == null || t1 == null || t1 <= t0
         ? null
-        : t0 + ((t1 - t0) * at).round();
+        : _scrub?.round() ?? t1;
 
     num? signal(String key) {
       if (t == null) return null;
@@ -1804,7 +1853,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             : Stack(clipBehavior: Clip.none, children: [
                 Positioned(left: 0, right: 0, top: header, bottom: 0,
                     child: _hypnogram(c, p, stages, n, lane * 4)),
-                ChartAnnotationLane(set: set!, cursor: _scrub,
+                ChartAnnotationLane(set: set!, cursor: _scrubFraction(n),
                     plotHeight: lane * 4),
               ])),
         if (withTotals) ...[
@@ -2487,15 +2536,15 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           // bucket reads "—".
           child: linked
               ? Scrubber(
-                  value: _scrub,
-                  onChanged: (v) => setState(() => _scrub = v),
+                  value: _scrubFraction(n),
+                  onChanged: (v) => _selectScrub(v, n),
                   label: loc?.sleepDetailThroughTheNight ?? 'Through the night',
                   describe: (v) => clockOfTs(
                       t0 + ((t1 - t0) * v).round()),
                   child: CustomPaint(
                       size: Size.infinite,
                       painter: NightStack(series, colors,
-                          axes: axes, selectedX: _scrub, cursor: p.ink)),
+                          axes: axes, selectedX: _scrubFraction(n), cursor: p.ink)),
                 )
               : ChartScrub(
                   label: loc?.sleepDetailThroughTheNight ?? 'Through the night',

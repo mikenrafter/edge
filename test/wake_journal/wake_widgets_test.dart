@@ -7,10 +7,10 @@ import 'package:openstrap_edge/wake/wake_timeline.dart';
 import 'fixtures.dart';
 
 const markerLabels = [
-  'Natural wake',
+  'Natural wake ×3',
   'Gradual wake',
   'Alarm',
-  'Snooze',
+  'Snooze ×2',
   'Snooze stopped',
   "I'm up",
 ];
@@ -73,34 +73,31 @@ Future<void> pumpWakePage(WidgetTester t, Widget page) async {
 
 void main() {
   test(
-    'day annotation projection retains each wake point, including both snoozes and repeats',
+    'day annotation projection collapses repeat buzzes and snoozes at first fire',
     () {
       final moments = dayMoments(
         timeline: chartDay(),
         wakeTimeline: renderedNight(),
       );
       final marks = dayAnnotations(moments);
-      expect(marks.map((m) => m.label), [
-        'Natural wake',
-        'Natural wake',
-        'Natural wake',
-        'Gradual wake',
-        'Alarm',
-        'Snooze',
-        'Snooze',
-        'Snooze stopped',
-        "I'm up",
-      ]);
+      expect(marks.map((m) => m.label), markerLabels);
       expect(
         marks.map((m) => m.at),
-        eventMinutes.map((m) => atMinute(m).millisecondsSinceEpoch / 1000),
+        [
+          -20,
+          -15,
+          0,
+          1,
+          8,
+          8,
+        ].map((m) => atMinute(m).millisecondsSinceEpoch / 1000),
       );
       expect(
         marks.map((m) => m.kind.name).toSet(),
         {'wake'},
         reason: 'one wake marker group is sufficient',
       );
-      expect(marks.map((m) => m.id).toSet(), hasLength(9));
+      expect(marks.map((m) => m.id).toSet(), hasLength(6));
     },
   );
 
@@ -108,6 +105,8 @@ void main() {
     t,
   ) async {
     await pumpWakePage(t, dayFixture());
+    await t.tap(find.textContaining('Wake-up '));
+    await t.pumpAndSettle();
     for (final label in markerLabels) {
       expect(find.text(label), findsWidgets, reason: label);
     }
@@ -129,7 +128,7 @@ void main() {
           .expand((l) => l.set.items)
           .toList();
       expect(marks.map((a) => a.label), containsAll(markerLabels));
-      expect(marks.where((a) => a.label == 'Snooze'), hasLength(2));
+      expect(marks.where((a) => a.label == 'Snooze ×2'), hasLength(1));
     },
   );
 

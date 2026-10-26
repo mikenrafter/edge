@@ -18,11 +18,13 @@ class WakeNightEvent {
     required this.at,
     this.count,
     this.reason,
+    this.wakeEpochSec,
   });
   final WakeNightEventKind kind;
   final DateTime at;
   final int? count;
   final String? reason;
+  final int? wakeEpochSec;
 }
 
 class WakeBandAlarm {
@@ -46,6 +48,42 @@ class WakeNightTimeline {
     this.dream,
   });
   final List<WakeNightEvent> events;
+
+  /// Display projection only. The observed history remains available in [events].
+  List<WakeNightEvent> get collapsedEvents {
+    final groups = <(int?, WakeNightEventKind), List<WakeNightEvent>>{};
+    for (final e in events) {
+      final kind = e.kind == WakeNightEventKind.repeat
+          ? WakeNightEventKind.natural
+          : e.kind;
+      groups.putIfAbsent((e.wakeEpochSec, kind), () => []).add(e);
+    }
+    final out = <WakeNightEvent>[];
+    for (final entry in groups.entries) {
+      final observations = entry.value..sort((a, b) => a.at.compareTo(b.at));
+      final first = observations.first;
+      final kind =
+          entry.key.$2 == WakeNightEventKind.natural &&
+              !observations.any((e) => e.kind == WakeNightEventKind.natural)
+          ? WakeNightEventKind.repeat
+          : entry.key.$2;
+      out.add(
+        WakeNightEvent(
+          kind: kind,
+          at: first.at,
+          wakeEpochSec: first.wakeEpochSec,
+          reason: first.reason,
+          count: observations.length,
+        ),
+      );
+    }
+    // Stable insertion order resolves simultaneous stop/ack observations.
+    out.sort((a, b) {
+      final time = a.at.compareTo(b.at);
+      return time != 0 ? time : a.kind.index.compareTo(b.kind.index);
+    });
+    return List.unmodifiable(out);
+  }
   final DateTime? firstFireAt, ackAt;
   final Duration? timeToWake;
   final int snoozeCount;
@@ -76,6 +114,7 @@ class WakeNightTimeline {
       candidates.add(
         WakeNightEvent(
           kind: kind,
+          wakeEpochSec: wakeEpochSec,
           at: DateTime.fromMillisecondsSinceEpoch(e.atMs, isUtc: true),
           count: (e.data['count'] as num?)?.toInt(),
           reason: e.data['reason'] as String?,
@@ -85,7 +124,8 @@ class WakeNightTimeline {
     for (final alarm in bandAlarms) {
       if (alarm.wakeEpochSec == wakeEpochSec && alarm.code == 57) {
         candidates.add(
-          WakeNightEvent(kind: WakeNightEventKind.alarm, at: alarm.at),
+          WakeNightEvent(kind: WakeNightEventKind.alarm, at: alarm.at,
+            wakeEpochSec: wakeEpochSec),
         );
       }
     }

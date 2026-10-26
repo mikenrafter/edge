@@ -237,6 +237,10 @@ class _MoreSettingsState extends State<MoreSettings> {
       onGallery: () => goto(c, const GalleryScreen()),
       units: units.system.label,
       appearance: theme.choice.label,
+      sleepWakeZoom: Prefs.sleepWakeZoomOn,
+      onToggleSleepWakeZoom: () => setState(() {
+        Prefs.setSleepWakeZoom(!Prefs.sleepWakeZoomOn);
+      }),
       clockFormat: clock.format,
       cycleTracking: app.cycleTrackingEnabled,
       appIcon: _icon,
@@ -573,6 +577,8 @@ Future<void> editExpectedSleepSchedule(BuildContext context, AppState app) async
 
 class MoreSettingsView extends StatelessWidget {
   final bool embedded, settingsAsTab;
+  final bool sleepWakeZoom;
+  final VoidCallback? onToggleSleepWakeZoom;
   final VoidCallback? onToggleSettingsAsTab;
   final String units, appearance;
 
@@ -675,6 +681,8 @@ class MoreSettingsView extends StatelessWidget {
     super.key,
     this.embedded = false,
     this.settingsAsTab = false,
+    this.sleepWakeZoom = true,
+    this.onToggleSleepWakeZoom,
     this.onToggleSettingsAsTab,
     this.units = 'Metric',
     this.appearance = 'System',
@@ -780,6 +788,12 @@ class MoreSettingsView extends StatelessWidget {
                   SetRow(LucideIcons.sun, C.yellow,
                       l?.settingsAppearanceRowTitle ?? 'Appearance',
                       value: appearance, onTap: onCycleAppearance),
+                  SetRow(LucideIcons.zoomIn, C.indigo,
+                      l?.sleepWakeZoom ?? 'Zoom wake-up events',
+                      sub: l?.sleepWakeZoomDescription ??
+                          'Zoom the end of the sleep chart when wake-up events are crowded',
+                      value: sleepWakeZoom ? on : off,
+                      onTap: onToggleSleepWakeZoom),
                   SetRow(LucideIcons.clock, C.teal,
                       l?.settingsClockFormatRowTitle ?? 'Time format',
                       value: switch (clockFormat) {

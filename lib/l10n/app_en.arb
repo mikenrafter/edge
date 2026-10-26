@@ -17793,5 +17793,12 @@
         "type": "int"
       }
     }
-  }
+  },
+  "sleepWakeZoom": "Zoom wake-up events",
+  "sleepWakeZoomDescription": "Zoom the end of the sleep chart when wake-up events are crowded",
+  "wakeJournalCount": "{event} ×{count}",
+  "@wakeJournalCount": {"placeholders": {"event": {"type": "String"}, "count": {"type": "int"}}},
+  "wakeJournalGroup": "Wake-up {start}–{end} · {minutes} min to wake",
+  "@wakeJournalGroup": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}, "minutes": {"type": "int"}}},
+  "wakeJournalGroupName": "Wake-up"
 }
