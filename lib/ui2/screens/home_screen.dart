@@ -347,10 +347,23 @@ bool? deviceConnectedOf(BuildContext c) {
 /// size). The reading is the strap's last report, so it is shown only while
 /// connected; with no level yet (or no link) it is the connection alone, never
 /// a placeholder. Null with no AppState above.
-/// The Natural Wake "I'm up" card; null with no AppState above (a golden).
+/// The Natural Wake "I'm up" card and its following gap; neither takes space
+/// while idle. Null with no AppState above (a golden).
 Widget? _naturalWakeCard(BuildContext c) {
   try {
-    return NaturalWakeBuzzingCard(wake: c.read<AppState>().wake);
+    final wake = c.read<AppState>().wake;
+    return ValueListenableBuilder<bool>(
+      valueListenable: wake.naturalBuzzing,
+      builder: (c, buzzing, _) => buzzing
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: S.x3),
+              child: KeyedSubtree(
+                key: const ValueKey('card:wake'),
+                child: NaturalWakeBuzzingCard(wake: wake),
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
   } on ProviderNotFoundException {
     return null;
   }
@@ -2999,14 +3012,12 @@ class _HomeScreenState extends State<HomeScreen>
       const SizedBox(height: S.x5),
       // ── conditional cards, UNDER the header ──
       //
-      // They come and go (a rebuilt database, a buzzing alarm, a snooze, a
-      // marked moment, an illness watch). The header is the same box in every
-      // state, so none of them may sit above it: that moved the title and the
-      // first content against every other tab, and left the first card flush
+      // A rebuilt database or a pending main-alarm snooze can come and go.
+      // The header is the same box in every state, so neither may sit above
+      // it: that moved the title and first content against every other tab,
+      // and left the first card flush
       // against the safe area.
       ?rebuilt,
-      // Natural Wake is buzzing and waiting for "I'm up".
-      ?_naturalWakeCard(c),
       // A pending main-alarm snooze, with the same "I'm up".
       ?snoozeCardFor(c),
 
@@ -3068,6 +3079,9 @@ class _HomeScreenState extends State<HomeScreen>
           GestureFailureCard(store: failures),
       ],
       const SizedBox(height: S.x3),
+      // Natural Wake waits for "I'm up" directly above the activity review.
+      // Home owns the following gap; an idle card contributes no space.
+      ?_naturalWakeCard(c),
       // Always there: "Review activities" with the count when something waits
       // (activities, marked moments, assumed water), else "Breakdown of your
       // day". It is the way into the day, so it has no second door below.

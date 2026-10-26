@@ -19,28 +19,25 @@ class NaturalWakeBuzzingCard extends StatelessWidget {
         builder: (c, buzzing, _) {
           if (!buzzing) return const SizedBox.shrink();
           final p = P.of(c);
-          return Padding(
-            padding: const EdgeInsets.only(top: S.x3),
-            child: Surface(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Natural Wake is buzzing',
-                      key: const ValueKey('natural-wake-buzzing'),
-                      style: F.t2.copyWith(color: p.ink)),
-                  const SizedBox(height: S.x1),
-                  Text('or double-tap the band',
-                      style: F.cap.copyWith(color: p.ink2)),
-                  const SizedBox(height: S.x3),
-                  BigButton(
-                    "I'm up",
-                    key: const ValueKey('natural-wake-im-up'),
-                    icon: LucideIcons.sunrise,
-                    // The native alarm at T is not cancelled.
-                    onTap: () => wake.acknowledgeWake(cancelNative: false),
-                  ),
-                ],
-              ),
+          return Surface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Natural Wake is buzzing',
+                    key: const ValueKey('natural-wake-buzzing'),
+                    style: F.t2.copyWith(color: p.ink)),
+                const SizedBox(height: S.x1),
+                Text('or double-tap the band',
+                    style: F.cap.copyWith(color: p.ink2)),
+                const SizedBox(height: S.x3),
+                BigButton(
+                  "I'm up",
+                  key: const ValueKey('natural-wake-im-up'),
+                  icon: LucideIcons.sunrise,
+                  // The native alarm at T is not cancelled.
+                  onTap: () => wake.acknowledgeWake(cancelNative: false),
+                ),
+              ],
             ),
           );
         },
