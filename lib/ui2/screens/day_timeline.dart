@@ -553,7 +553,7 @@ List<(ChartAnnotation, Moment)> annotatedMoments(List<Moment> moments) {
     final kind = m.annotationKind;
     if (kind == null) continue;
     final base = '${kind.name}:${m.at}';
-    final n = used.update(base, (v) => v + 1, ifAbsent: () => 0);
+    final n = used[base] = (used[base] ?? -1) + 1;
     final end = m.until;
     out.add((ChartAnnotation(
       id: n == 0 ? base : '$base#$n',

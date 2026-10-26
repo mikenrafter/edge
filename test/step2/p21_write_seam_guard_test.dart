@@ -122,8 +122,6 @@ const _pinnedDynamicWriters = <String, String>{
       'SCHEMA: CREATE TABLE raw_archive',
   'lib/import/whoop_import.dart WhoopImporter._importResolvedCsvs':
       'NOT SQL: Map.update(key, fn, ifAbsent:)',
-  'lib/ui2/screens/day_timeline.dart dayAnnotations':
-      'NOT SQL: Map.update(key, fn, ifAbsent:)',
   'lib/coach/coach_engine.dart CoachEngine._updateIndex':
       'NOT SQL: List.insert(0, meta)',
   'lib/state/app_state.dart AppState._log':
