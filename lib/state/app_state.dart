@@ -35,6 +35,7 @@ import '../ble/adapters/_registry.dart' show kBleHrs, kPolarPmd, kWhoopGen4;
 import '../ble/adapters/host.dart' show BandHost;
 import '../ble/adapters/whoop_gen4.dart' show WhoopFramedAdapter;
 import '../ble/android_background.dart';
+import '../wake/gradual_wake.dart';
 import '../wake/wake_settings.dart';
 import '../wake/wake_stores.dart';
 import '../ble/band_buzzer.dart';
@@ -205,6 +206,26 @@ class AppState extends ChangeNotifier {
     _wakeSettings = settings;
     notifyListeners();
     if (isConnected) unawaited(_refreshHighFreqWakeWindow());
+  }
+
+  int? get activeWakeEpoch {
+    final epoch = alarmEpoch;
+    if (epoch == null || !_wakeSettings.gradualEnabled ||
+        _wakeAcknowledgedEpoch == epoch ||
+        GradualWake.entryFor(epoch, _schedule) == null) return null;
+    final at = clock.now();
+    final end = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
+    final start = end.subtract(Duration(minutes: _wakeSettings.gradualWindowMinutes));
+    return !at.isBefore(start) && at.isBefore(end) ? epoch : null;
+  }
+
+  late final _gradualWake = GradualWake(now: () => clock.now(),
+      store: const DbWakeStateStore(), buzzer: () => bandBuzzer);
+
+  Future<void> acknowledgeWake(int epoch) async {
+    _wakeAcknowledgedEpoch = epoch;
+    notifyListeners();
+    await _gradualWake.acknowledge(epoch);
   }
 
   @visibleForTesting
@@ -4540,11 +4561,17 @@ class AppState extends ChangeNotifier {
     try {
       if (!isConnected) return;
       final epoch = alarmEpoch;
-      if (epoch == null || epoch == _smartWakeFiredForEpoch) return;
+      if (epoch == null || _wakeAcknowledgedEpoch == epoch) return;
+      await _gradualWake.tick(epoch: epoch, settings: _wakeSettings,
+          canDeliver: () => isConnected && alarmEpoch == epoch &&
+              _wakeSettings.gradualEnabled &&
+              GradualWake.entryFor(epoch, _schedule) != null);
+      // Each mode runs independently, including when both are enabled.
+      if (epoch == _smartWakeFiredForEpoch) return;
       final armed = armedSmartWakeWindow(
           epoch: epoch, schedule: _schedule, settings: _wakeSettings);
       if (armed == null) return;
-      final now = DateTime.now();
+      final now = clock.now();
       if (!inSmartWakeWindow(
           windowEnd: armed.windowEnd, minutes: armed.minutes, now: now)) {
         return;

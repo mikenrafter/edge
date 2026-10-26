@@ -21,6 +21,36 @@ class DbWakeStateStore {
     }
   }
 
+  // Natural, Gradual and acknowledgement share one occurrence. Merge inside
+  // a transaction so one mode cannot overwrite another mode's checkpoint.
+  Future<T> update<T>(int epoch, T Function(Map<String, Object?>) change) async {
+    final db = await LocalDb.instance;
+    return db.transaction((txn) async {
+      final rows = await txn.query('wake_meta', columns: ['value'],
+          where: 'key = ?', whereArgs: ['run_state']);
+      Map<String, Object?> run = {};
+      if (rows.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rows.single['value'] as String);
+          if (decoded is Map<String, dynamic> && decoded['epoch'] == epoch) {
+            run = decoded;
+          }
+        } on FormatException { /* Start a new checkpoint for corrupt JSON. */ }
+      }
+      run['epoch'] = epoch;
+      for (final key in ['gradualNext', 'naturalNextMs']) {
+        if (run[key] is! int) run[key] = 0;
+      }
+      for (final key in ['acknowledged', 'naturalFired']) {
+        if (run[key] is! bool) run[key] = false;
+      }
+      final result = change(run);
+      await txn.insert('wake_meta', {'key': 'run_state', 'value': jsonEncode(run)},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      return result;
+    });
+  }
+
   Future<void> save(Map<String, Object?> state) async {
     final value = jsonEncode(state);
     final db = await LocalDb.instance;
