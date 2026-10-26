@@ -420,6 +420,7 @@ class LocalDb {
     // candidate a finalized day re-stages from once its raw is gone.
     'wake_confirmation',
     'wake_meta',
+    'wake_trace',
     'wake_evidence',
     'sleep_session_candidates',
     // A ring's own hypnogram. Nothing here can re-derive it.
@@ -1340,7 +1341,7 @@ class LocalDb {
 
   /// `wake_meta` is a tiny key/value table (upgrade-explanation state, the
   /// persisted orchestrator run state). `wake_trace` is the per-wake decision
-  /// trace, pruned by [appendWakeTrace].
+  /// trace and durable wake journal; only diagnostics expire on append.
   static Future<void> _createWakeTables(Database db) => _ldbPrivCreateWakeTables(db);
 
   /// Smart Wake -> Natural Wake, ONCE (marker `wake_split_v1`). A day that had
@@ -1372,8 +1373,17 @@ class LocalDb {
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  /// Append one decision-trace row, pruning wakes older than 14 days (by the
-  /// absolute wake epoch, so a DST or zone change cannot shift the cutoff).
+  /// Kinds that can carry observed wake events or user answers. Keep the whole
+  /// kind, including legacy status rows, so retention never has to interpret
+  /// old JSON to decide whether the only copy of an event can be deleted.
+  /// These rows survive indefinitely and merge through backup and salvage.
+  static const wakeJournalKinds = {
+    'natural', 'natural_haptic', 'natural_repeat', 'gradual', 'fallback',
+    'snooze', 'snooze_stop', 'ack', 'tune',
+  };
+
+  /// Append one trace row. Only diagnostics expire after 14 elapsed days;
+  /// journal-bearing kinds have no age or row-count retention cap.
   static Future<void> appendWakeTrace({
     required int wakeEpochSec,
     required int atMs,
@@ -5171,6 +5181,31 @@ class LocalDb {
     });
   }
 
+  /// Matching main-sleep context, using the same served version as screens.
+  /// The three-hour post-sleep allowance covers the bounded snooze chain;
+  /// an open sleep window expires after 18 hours. No calendar-day arithmetic.
+  /// Project only the needed JSON scalars, keeping payload decode off the UI.
+  static Future<Map<String, Object?>?> wakeOutcomeContext(int wakeEpochSec) async {
+    return readerRun((db) async {
+      final rows = await db.rawQuery("""
+        WITH nights AS (
+          SELECT r.day_id,
+            COALESCE(json_extract(r.window_json, '\$.value.onset_ms'),
+              json_extract(r.window_json, '\$.onset_ms')) AS onset,
+            COALESCE(json_extract(r.window_json, '\$.value.offset_ms'),
+              json_extract(r.window_json, '\$.offset_ms')) AS offset,
+            json_extract(r.payload_json, '\$.scalars.readiness') AS recovery,
+            json_extract(r.payload_json, '\$.sleep.accounting.value.tst_sec') AS tst_sec
+          FROM day_result r $_servedDayJoin WHERE r.skipped = 0
+        )
+        SELECT day_id, recovery, tst_sec FROM nights
+        WHERE onset <= ? AND ? <= COALESCE(offset + 10800000, onset + 64800000)
+        ORDER BY onset DESC LIMIT 1
+      """, [wakeEpochSec * 1000, wakeEpochSec * 1000]);
+      return rows.isEmpty ? null : rows.first;
+    });
+  }
+
   /// One day's stored `window_json` (see [sleepWindowRows]), or null.
   static Future<String?> sleepWindowJsonFor(String dayId) async {
     final db = await instance;
@@ -5576,8 +5611,10 @@ class LocalDb {
       // wake settings (snooze, the Smart Wake upgrade acknowledgement) and
       // the wake events noted for a sleep block. The orchestrator's run state
       // and an in-flight snooze are NOT carried (see _wakeMetaTransientKeys).
+      // wake_trace carries journal-bearing kinds only, merged by event identity.
       'wake_confirmation',
       'wake_meta',
+      'wake_trace',
       'wake_evidence',
       // The durable per-night candidate: once a night's raw is pruned this is
       // the only thing a finalized day re-stages from.

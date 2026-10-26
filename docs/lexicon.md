@@ -68,3 +68,13 @@ in the same change that introduces it (AGENTS.md §6).
 - **Animation chain** — animation spans sharing a chain id, played back to back to hold attention instead of a delay.
 - **Settle time** — ms from an interaction until the screen last changed (move, resize, recolour, appear, disappear); scored as load time. Still changing when observation ends = unsettled, full cost.
 - **Flashbang** — a bright frame before the app's own background; the launch window is never brighter than #222.
+
+## Wake journal
+
+- **Wake epoch**: the absolute alarm occurrence, stored as epoch seconds. It groups the observed events for one wake, including early Natural and Gradual delivery.
+- **Wake journal**: durable wake events, answers and tuning history in `wake_trace`. `DbWakeJournal` owns answer writes and outcome reads. `DbSnoozeStore` atomically writes pending snooze state with its journal transition. Journal-bearing kinds survive diagnostic pruning and backup restore; foreign run state stays excluded.
+- **Observed night**: `WakeNightTimeline`, the ordered events for one wake epoch. The planned `WakeTimeline` remains the alarm schedule. Non-firing decisions, armed status and failed deliveries do not establish an observed fire.
+- **Time to wake**: elapsed time from the first observed Natural, Gradual or backup fire to the first "I'm up" acknowledgement. Missing bounds or an acknowledgement before the fire leave it unknown.
+- **Snooze transition**: a snooze with its original wake epoch, event time and count, or a terminal `snooze_stop`. Stop reasons are `dismissed`, `im_up`, `limit` at the three-hour scheduling bound, and `timeout` for an expired chain, including one found on restart.
+- **Dream response**: the wearer's `dream` or `normal` answer on the wake's first acknowledgement. Its preceding wake path has priority Natural, then delivered Gradual, then backup alarm. Skip writes nothing; an unknown path stays absent.
+- **Wake outcome**: the observed interval, snooze count and optional dream response joined to the matching canonical main-sleep day. Recovery comes from that day's readiness; main-sleep TST comes only from sleep accounting. Missing values stay absent.

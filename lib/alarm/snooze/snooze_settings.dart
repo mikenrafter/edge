@@ -9,6 +9,8 @@
 
 import 'dart:convert';
 
+import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
+
 import '../../data/db.dart';
 import 'snooze_schedule.dart';
 
@@ -258,9 +260,54 @@ abstract interface class SnoozeStore {
   Future<void> saveWindow(SnoozeWindow? w);
 }
 
-/// [SnoozeStore] over `LocalDb.wakeMetaGet/Set`.
-class DbSnoozeStore implements SnoozeStore {
+/// Optional durable transition seam. The DB owner writes pending state and its
+/// journal event together; memory-only stores need no database dependency.
+abstract interface class SnoozeJournalStore {
+  /// Storage exceptions propagate. A failed write changes neither pending
+  /// state nor history. The controller keeps its alarm safety loop running.
+  Future<void> saveJournalTransition({
+    required DateTime fireAt,
+    required DateTime at,
+    required int count,
+    required SnoozeState? state,
+    String? stopReason,
+  });
+}
+
+/// Owns snooze settings and pending state in wake_meta. Durable transitions
+/// also write the wake journal in the same transaction.
+class DbSnoozeStore implements SnoozeStore, SnoozeJournalStore {
   const DbSnoozeStore();
+
+  @override
+  Future<void> saveJournalTransition({
+    required DateTime fireAt,
+    required DateTime at,
+    required int count,
+    required SnoozeState? state,
+    String? stopReason,
+  }) async {
+    final db = await LocalDb.instance;
+    await db.transaction((txn) async {
+      await txn.insert('wake_meta', {
+        'key': kSnoozeStateKey,
+        'value': jsonEncode(state?.toJson()),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert('wake_meta', {
+        'key': kSnoozeWindowKey,
+        'value': 'null',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert('wake_trace', {
+        'wake_epoch': fireAt.millisecondsSinceEpoch ~/ 1000,
+        'at_ms': at.millisecondsSinceEpoch,
+        'kind': stopReason == null ? 'snooze' : 'snooze_stop',
+        'data_json': jsonEncode({
+          'count': count,
+          'reason': ?stopReason,
+        }),
+      });
+    });
+  }
 
   @override
   Future<SnoozeSettings> loadSettings() async {

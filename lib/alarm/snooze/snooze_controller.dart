@@ -307,6 +307,36 @@ class SnoozeController {
     }
   }
 
+  Future<void> _saveTransition(
+    SnoozeState? state, {
+    required DateTime? fire,
+    required DateTime at,
+    required int count,
+    String? reason,
+  }) async {
+    final journal =
+        store is SnoozeJournalStore ? store as SnoozeJournalStore : null;
+    if (journal == null || fire == null) {
+      await _save(state);
+      await _clearWindow();
+      return;
+    }
+    try {
+      await journal.saveJournalTransition(
+        fireAt: fire,
+        at: at,
+        count: count,
+        state: state,
+        stopReason: reason,
+      );
+      _windowStored = false;
+    } catch (e) {
+      // Journal storage must not prevent the alarm safety loop from running.
+      // The failed transaction keeps the previously durable pending state.
+      _log('saving the snooze transition failed: $e');
+    }
+  }
+
   Future<void> _saveWindow(SnoozeWindow? w) async {
     try {
       await store.saveWindow(w);
@@ -505,51 +535,60 @@ class SnoozeController {
       case AlarmStopDecision.snooze:
         await _setSnooze(anchor);
       case AlarmStopDecision.confirmedAwake:
-        if (l != null && l.reAlarm) {
-          await _cancelSnooze();
-        } else {
-          // Already up: nothing to buzz, nothing to snooze.
-          _gen++;
+        if (l == null && _state == null) {
+          // An already-confirmed expiry never opened a snooze chain.
+          ++_gen;
           _cancelTimers();
-          _listen = null;
           _fireAt = null;
           _publish();
-          final had = _state != null;
-          _state = null;
-          if (had) await _save(null);
-          await _clearWindow();
+          return;
         }
+        await _cancelSnooze(cue: l != null && l.reAlarm);
     }
   }
 
   /// Ends everything: the wearer is dismissing the alarm.
-  Future<void> _dismiss(DateTime at) async {
+  Future<void> _dismiss(DateTime at, {String reason = 'dismissed'}) async {
+    final fire = _fireAt;
+    final count = _state?.count ?? 0;
     final g = ++_gen;
     _cancelTimers();
     _listen = null;
     _fireAt = null;
-    final hadState = _state != null;
     _state = null;
     _publish();
-    if (hadState) await _save(null);
-    await _clearWindow();
+    await _saveTransition(
+      null,
+      fire: fire,
+      at: at,
+      count: count,
+      reason: reason,
+    );
     await _evidence(at);
     if (!_alive(g)) return;
     _cue(kAlarmDismissConfirmKey);
   }
 
   /// A wake was confirmed while a snooze or re-alarm was pending.
-  Future<void> _cancelSnooze() async {
+  Future<void> _cancelSnooze({bool cue = true}) async {
+    final fire = _fireAt;
+    final count = _state?.count ?? 0;
+    final at = now();
     final g = ++_gen;
     _cancelTimers();
     _listen = null;
     _fireAt = null;
     _state = null;
     _publish();
-    await _save(null);
-    await _clearWindow();
+    await _saveTransition(
+      null,
+      fire: fire,
+      at: at,
+      count: count,
+      reason: 'im_up',
+    );
     if (!_alive(g)) return;
-    _cue(kAlarmSnoozeCancelledKey);
+    if (cue) _cue(kAlarmSnoozeCancelledKey);
   }
 
   /// Sets the next snooze: count + 1, due [SnoozeSettings.snoozeFor] after
@@ -565,9 +604,11 @@ class SnoozeController {
         !anchor.add(s.snoozeFor).isBefore(fire.add(kSnoozeMaxAge))) {
       // Nothing may be scheduled (a timer, a stored due time, an OS
       // notification) at or past the bound: the chain ends here.
-      _log('the next snooze would fall due $kSnoozeMaxAge or more after the '
-          'alarm fired: the chain ends.');
-      await endSilently();
+      _log(
+        'the next snooze would fall due $kSnoozeMaxAge or more after the '
+        'alarm fired: the chain ends.',
+      );
+      await endSilently(reason: 'limit');
       return;
     }
     final st = SnoozeState(
@@ -579,8 +620,7 @@ class SnoozeController {
     final left = st.reAlarmAt.difference(now());
     final due = left <= Duration.zero;
     if (!due) _snoozeTimer = scheduler(left, () => _fire(_snoozedStep));
-    await _save(st);
-    await _clearWindow();
+    await _saveTransition(st, fire: fire, at: now(), count: st.count);
     if (!_alive(g)) return;
     if (due) {
       _log('the snooze is already due: re-alarming now.');
@@ -595,6 +635,10 @@ class SnoozeController {
   /// The keep-alive tick (every ~30 s) and the backstop for the timers.
   Future<void> tick() async {
     if (_disposed) return;
+    if (_chainExpired()) {
+      await endSilently(reason: 'timeout');
+      return;
+    }
     final l = _listen;
     if (l != null) {
       await _evaluate(l);
@@ -634,7 +678,7 @@ class SnoozeController {
   Future<void> _startReAlarm(SnoozeState st) async {
     if (_chainExpired()) {
       _log('the chain is older than $kSnoozeMaxAge: ended, no re-alarm.');
-      await endSilently();
+      await endSilently(reason: 'timeout');
       return;
     }
     final g = ++_gen;
@@ -679,25 +723,37 @@ class SnoozeController {
   /// Ends a window, a snooze or a re-alarm with no cue and no evidence (the
   /// wearer cancelled the alarm, unpaired, or switched snooze off): timers
   /// cancelled, the stored state and window cleared.
-  Future<void> endSilently() async {
+  Future<void> endSilently({String reason = 'dismissed'}) async {
     if (_disposed) return;
+    final fire = _fireAt;
+    final count = _state?.count ?? 0;
+    final at = now();
     ++_gen;
     _cancelTimers();
     _listen = null;
     _startingGen = null;
     _fireAt = null;
-    final had = _state != null;
     _state = null;
     _publish();
-    if (had) await _save(null);
-    await _clearWindow();
+    if (fire != null) {
+      await _saveTransition(
+        null,
+        fire: fire,
+        at: at,
+        count: count,
+        reason: reason,
+      );
+    } else {
+      await _save(null);
+      await _clearWindow();
+    }
   }
 
   /// "I'm up": dismisses a window, a snooze or a re-alarm.
   Future<void> imUp() async {
     if (_disposed) return;
     if (_listen == null && _state == null) return;
-    await _dismiss(now());
+    await _dismiss(now(), reason: 'im_up');
   }
 
   /// Load what was pending after a restart: a snooze, or a dismiss window that
@@ -729,14 +785,23 @@ class SnoozeController {
         !st.reAlarmAt.isBefore(st.fireAt!.add(kSnoozeMaxAge));
     if (ref != null &&
         (_tooOld(ref) || pastBound || _notKnownFire(persistedFire))) {
-      _log('dropped a stale ${st != null ? 'snooze' : 'dismiss window'} '
-          '(fire ${(persistedFire ?? ref).toIso8601String()}): too old, or not '
-          'the alarm known now.');
-      if (st != null) await _save(null);
-      if (w != null) {
-        _windowStored = true;
-        await _saveWindow(null);
-      }
+      _log(
+        'dropped a stale ${st != null ? 'snooze' : 'dismiss window'} '
+        '(fire ${(persistedFire ?? ref).toIso8601String()}): too old, or not '
+        'the alarm known now.',
+      );
+      _windowStored = w != null;
+      await _saveTransition(
+        null,
+        fire: persistedFire ?? ref,
+        at: now(),
+        count: st?.count ?? 0,
+        reason: _tooOld(ref)
+            ? 'timeout'
+            : pastBound
+            ? 'limit'
+            : 'dismissed',
+      );
       _restoredChainOver();
       return;
     }
@@ -787,8 +852,7 @@ class SnoozeController {
     _windowStored = true;
     if (await _probe()) {
       if (!_alive(g)) return;
-      _fireAt = null;
-      await _saveWindow(null);
+      await _cancelSnooze(cue: false);
       _restoredChainOver();
       return;
     }

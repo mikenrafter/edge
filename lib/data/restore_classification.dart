@@ -4,6 +4,8 @@
 // (test/backup/wake_ledger_tables_restore_test.dart) fails when a table is in
 // neither, so a new table cannot silently fall out of export -> import.
 //
+// wake_trace is restored with a row policy: journal-bearing kinds merge by
+// event content, local acknowledgements win, and foreign diagnostics are skipped.
 // Same shape as kPrefsNotBackedUp (backup_extras.dart).
 
 /// Table name -> why a restore leaves it alone.
@@ -30,8 +32,6 @@ const Map<String, String> kTablesNotRestored = {
   'raw_records': 'replay/debug ledger; decoded_onehz, decoded_rr and '
       'raw_archive carry its content',
   'sync_quarantine': 'payloads this phone could not ingest; not user data',
-  'wake_trace': 'diagnostic trace of this phone\'s alarm runs; row ids are '
-      'local allocation order and it is pruned on append',
   // Written onto the exported COPY by the extras path, not restored as rows.
   'backup_prefs': 'restored by restoreBackupExtras, not by the table merge',
   'backup_files': 'restored by restoreBackupExtras, not by the table merge',

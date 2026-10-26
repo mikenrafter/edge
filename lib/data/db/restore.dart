@@ -1690,6 +1690,26 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     LocalDb._wakeMetaTransientKeys.contains(row['key'])) {
                   continue;
                 }
+                if (t == 'wake_trace') {
+                  // Foreign row IDs are allocation order, never event identity.
+                  // Insert directly so another row on this page sees it too.
+                  // A local acknowledgement also keeps its local dream answer.
+                  if (!LocalDb.wakeJournalKinds.contains(row['kind'])) continue;
+                  final ack = row['kind'] == 'ack';
+                  final existing = await txn.query(t,
+                    columns: ['id'],
+                    where: ack
+                        ? 'wake_epoch = ? AND kind = ?'
+                        : 'wake_epoch = ? AND kind = ? AND at_ms = ? AND data_json = ?',
+                    whereArgs: [row['wake_epoch'], row['kind'],
+                      if (!ack) ...[row['at_ms'], row['data_json']]],
+                    limit: 1);
+                  if (existing.isNotEmpty) continue;
+                  row.remove('id');
+                  await txn.insert(t, row);
+                  copied++;
+                  continue;
+                }
                 if (t == 'spectral_archive') {
                   // Never REPLACE: part numbers are local allocation order, so
                   // a matching key says nothing about matching bytes. Reconcile

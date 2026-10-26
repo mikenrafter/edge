@@ -100,7 +100,9 @@ Future<void> _ldbAppendWakeTrace({required int wakeEpochSec, required int atMs, 
         'data_json': dataJson,
       });
       await txn.delete('wake_trace',
-          where: 'wake_epoch < ?', whereArgs: [wakeEpochSec - 14 * 86400]);
+          where: 'wake_epoch < ? AND kind NOT IN '
+              '(${List.filled(LocalDb.wakeJournalKinds.length, '?').join(',')})',
+          whereArgs: [wakeEpochSec - 14 * 86400, ...LocalDb.wakeJournalKinds]);
     });
   }
 

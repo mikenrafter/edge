@@ -988,10 +988,10 @@ class WakeOrchestrator {
           break;
         }
         res.ok ? delivered++ : notDelivered++;
-        // Rows on a change only: a band that is away for an hour must not
-        // write a row every few seconds.
+        // Every delivered repeat is a journal event. Repeated failures stay
+        // coalesced so an absent band does not fill the diagnostic log.
         final sig = '${res.ok}|${res.suppressionReason}|${res.error}';
-        if (sig != lastSig) {
+        if (res.ok || sig != lastSig) {
           lastSig = sig;
           await _trace(sec, 'natural_repeat', {
             'phase': 'result',
