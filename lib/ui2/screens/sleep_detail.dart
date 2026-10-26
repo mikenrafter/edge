@@ -521,6 +521,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
 
   @override
   Widget build(BuildContext c) {
+    final l = AppLocalizations.of(c);
     final disclaimer = Container(
       padding: const EdgeInsets.all(8),
       color: Colors.amber.withOpacity(0.1),
@@ -531,7 +532,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
       ),
     );
     final d = _d ?? const SleepData();
-    final l = AppLocalizations.of(c);
     final title = l?.sleepDetailNavTitle ?? 'Sleep';
 
     if (_loading && _d == null) {

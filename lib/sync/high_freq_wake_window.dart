@@ -23,7 +23,7 @@ class HighFreqWakePlan {
   /// compute the lease duration for `BandPromptRequest.smartWake`.
   Duration? get effectiveLease {
     if (targetWake == null) return null;
-    final start = preSyncAt ?? targetWake!.subtract(lease);
+    final start = preSyncAt ?? targetWake!.subtract(HighFreqWakeWindow.lease);
     return targetWake!.difference(start);
   }
 
