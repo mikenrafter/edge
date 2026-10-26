@@ -111,6 +111,22 @@ void main() {
     expect(app.alarmEpoch, epoch);
   }));
 
+  test('backup import reloads live schedule and global settings', () => clock.run(() async {
+    final db = await LocalDb.instance;
+    final backup = '${dir.path}/wake-settings.db';
+    await db.execute('VACUUM INTO ?', [backup]);
+    app.device.connection = 'disconnected';
+    await app.setWakeSettings(const WakeSettings());
+    await LocalDb.setAlarmScheduleDay(weekday: end.weekday - 1,
+        hour: 8, minute: 15, enabled: true);
+    await app.debugReloadAlarmSchedule();
+    await app.importEdgeBackup(backup);
+    expect(app.wakeSettings.naturalEnabled, true);
+    expect(app.wakeSettings.gradualEnabled, true);
+    final slot = app.alarmSchedule.singleWhere((e) => e.enabled);
+    expect((slot.hour, slot.minute), (7, 0));
+  }));
+
   test('Gradual off does not suppress Natural', () => clock.run(() async {
     await settingsStore.save(const WakeSettings(naturalEnabled: true));
     await app.debugReloadAlarmSchedule();

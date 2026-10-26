@@ -800,6 +800,7 @@ class AppState extends ChangeNotifier {
         'a format this build cannot read; not imported',
       );
     }
+    await _loadAlarmSchedule();
     // Imported rows include derived day_result/metric_series → refresh rollups.
     try {
       await refreshActivityReviews();
