@@ -35,6 +35,8 @@ import '../ble/adapters/_registry.dart' show kBleHrs, kPolarPmd, kWhoopGen4;
 import '../ble/adapters/host.dart' show BandHost;
 import '../ble/adapters/whoop_gen4.dart' show WhoopFramedAdapter;
 import '../ble/android_background.dart';
+import '../wake/wake_settings.dart';
+import '../wake/wake_stores.dart';
 import '../ble/band_buzzer.dart';
 import '../ble/default_band_buzzer.dart';
 import '../ble/ble_engine.dart';
@@ -193,6 +195,20 @@ class AppState extends ChangeNotifier {
   BandBuzzer get bandBuzzer => _bandBuzzer ??= DefaultBandBuzzer(
       transport: engine, now: clock.now, delay: Future<void>.delayed);
   set bandBuzzer(BandBuzzer value) => _bandBuzzer = value;
+
+  WakeSettings _wakeSettings = const WakeSettings();
+  WakeSettings get wakeSettings => _wakeSettings;
+  int? _wakeAcknowledgedEpoch;
+
+  Future<void> setWakeSettings(WakeSettings settings) async {
+    await const DbWakeSettingsStore().save(settings);
+    _wakeSettings = settings;
+    notifyListeners();
+    if (isConnected) unawaited(_refreshHighFreqWakeWindow());
+  }
+
+  @visibleForTesting
+  Future<void> debugReloadAlarmSchedule() => _loadAlarmSchedule();
 
   late final BleEngine engine;
 
@@ -4294,6 +4310,12 @@ class AppState extends ChangeNotifier {
       final rows = await LocalDb.alarmScheduleRows();
       _schedule = fillDefaultAlarmSchedule(
           [for (final r in rows) AlarmScheduleEntry.fromRow(r)]);
+      _wakeSettings = await const DbWakeSettingsStore().load();
+      final run = await const DbWakeStateStore().load();
+      _wakeAcknowledgedEpoch = run?['acknowledged'] == true
+          ? (run?['epoch'] as int?) : null;
+      _smartWakeFiredForEpoch = run?['naturalFired'] == true
+          ? (run?['epoch'] as int?) : null;
     } catch (e) {
       _log('[alarm] schedule load failed: $e');
     }
@@ -4519,7 +4541,8 @@ class AppState extends ChangeNotifier {
       if (!isConnected) return;
       final epoch = alarmEpoch;
       if (epoch == null || epoch == _smartWakeFiredForEpoch) return;
-      final armed = armedSmartWakeWindow(epoch: epoch, schedule: _schedule);
+      final armed = armedSmartWakeWindow(
+          epoch: epoch, schedule: _schedule, settings: _wakeSettings);
       if (armed == null) return;
       final now = DateTime.now();
       if (!inSmartWakeWindow(
@@ -5030,7 +5053,8 @@ class AppState extends ChangeNotifier {
   Future<void> _refreshHighFreqWakeWindowOnce() async {
     if (!engine.isConnected) return;
     try {
-      final armed = armedSmartWakeWindow(epoch: alarmEpoch, schedule: _schedule);
+      final armed = armedSmartWakeWindow(
+          epoch: alarmEpoch, schedule: _schedule, settings: _wakeSettings);
       final plan = await HighFreqWakeWindow.planNow(
         scheduledWindowEnd: armed?.windowEnd,
         scheduledWindowMinutes: armed?.minutes ?? 0,

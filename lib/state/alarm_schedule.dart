@@ -8,6 +8,7 @@
 // (1=Mon..7=Sun), which every conversion below still goes through explicitly.
 
 import '../ble/ble_engine.dart';
+import '../wake/wake_settings.dart';
 import '../ble/ble_state.dart' show AlarmConfirmation;
 
 /// One weekday's slot in the schedule. Immutable — callers build a new one to
@@ -95,27 +96,20 @@ bool inSmartWakeWindow({
   return !now.isBefore(start) && now.isBefore(windowEnd);
 }
 
-/// The currently-armed alarm's smart-wake window, or null when there's no
-/// armed [epoch] or that weekday's slot has smart wake off
-/// (`smartWindowMinutes <= 0`) — both cases mean "no window" to every caller,
-/// same as [inSmartWakeWindow] returning false for `minutes <= 0`.
-///
-/// Extracted so `AppState._checkSmartWake` and
-/// `HighFreqWakeWindow`'s callers share one lookup instead of each doing
-/// their own weekday-entry matching.
+/// The global Natural window for an enabled weekday's currently armed alarm.
+/// Legacy weekday windows remain in storage for migration and old backups.
 ({DateTime windowEnd, int minutes})? armedSmartWakeWindow({
   required int? epoch,
   required List<AlarmScheduleEntry> schedule,
+  WakeSettings settings = const WakeSettings(),
 }) {
-  if (epoch == null) return null;
-  final windowEnd = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
-  final entry = schedule.firstWhere(
-    (e) => e.weekday == windowEnd.weekday - 1,
-    orElse: () =>
-        AlarmScheduleEntry(weekday: 0, hour: 0, minute: 0, enabled: false),
-  );
-  if (entry.smartWindowMinutes <= 0) return null;
-  return (windowEnd: windowEnd, minutes: entry.smartWindowMinutes);
+  if (epoch == null || !settings.naturalEnabled) return null;
+  final end = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
+  if (!schedule.any((e) => e.enabled && e.weekday == end.weekday - 1 &&
+      e.hour == end.hour && e.minute == end.minute)) {
+    return null;
+  }
+  return (windowEnd: end, minutes: settings.naturalWindowMinutes);
 }
 
 /// The default slot for a weekday nobody has configured yet: 07:00, off. A

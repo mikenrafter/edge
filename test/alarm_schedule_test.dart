@@ -8,6 +8,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:openstrap_edge/state/alarm_schedule.dart';
+import 'package:openstrap_edge/wake/wake_settings.dart';
 
 void main() {
   group('fillDefaultAlarmSchedule', () {
@@ -295,28 +296,32 @@ void main() {
       );
     });
 
-    test('weekday entry with smartWindowMinutes 0 (the default) → null', () {
+    test('Natural off ignores a positive legacy weekday window', () {
       // 2026-08-19 is a Wednesday → DateTime.weekday 3 → column 2.
       final at = DateTime(2026, 8, 19, 6, 30);
       final epoch = at.millisecondsSinceEpoch ~/ 1000;
       expect(
         armedSmartWakeWindow(
-            epoch: epoch, schedule: fillDefaultAlarmSchedule(const [])),
+            epoch: epoch, schedule: fillDefaultAlarmSchedule(const [
+              AlarmScheduleEntry(weekday: 2, hour: 6, minute: 30,
+                  enabled: true, smartWindowMinutes: 45),
+            ])),
         isNull,
       );
     });
 
-    test('configured weekday returns its windowEnd + smartWindowMinutes', () {
+    test('configured weekday uses global Natural window despite legacy zero', () {
       final at = DateTime(2026, 8, 19, 6, 30);
       final epoch = at.millisecondsSinceEpoch ~/ 1000;
       final schedule = fillDefaultAlarmSchedule(const [
         AlarmScheduleEntry(
-            weekday: 2, hour: 6, minute: 30, enabled: true, smartWindowMinutes: 20),
+            weekday: 2, hour: 6, minute: 30, enabled: true, smartWindowMinutes: 0),
       ]);
-      final result = armedSmartWakeWindow(epoch: epoch, schedule: schedule);
+      final result = armedSmartWakeWindow(epoch: epoch, schedule: schedule,
+          settings: const WakeSettings(naturalEnabled: true, naturalWindowMinutes: 45));
       expect(result, isNotNull);
       expect(result!.windowEnd, at);
-      expect(result.minutes, 20);
+      expect(result.minutes, 45);
     });
   });
 

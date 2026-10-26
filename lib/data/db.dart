@@ -43,6 +43,7 @@ import '../ble/adapters/_registry.dart' show kAdapterSignals;
 import '../ble/adapters/adapter.dart' show NeutralSample;
 import '../ble/adapters/signals.dart' show InputSignal;
 import '../import/import_container.dart';
+import '../wake/wake_settings.dart';
 import 'coverage_resolver.dart' show CoverageInterval;
 import 'day_label.dart';
 import 'activity_store.dart';
@@ -261,6 +262,8 @@ class LocalDb {
     // primary row is skipped by the merge, as on a restore.
     'device',
     // Hand-entered. The only copy that exists anywhere.
+    'alarm_schedule',
+    'wake_meta',
     'journal',
     'journal_metric',
     'journal_field_def',
@@ -473,7 +476,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 58;
+  static const int schemaVersion = 61;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -593,7 +596,7 @@ class LocalDb {
         await _createWorkoutRoute(db);
         await _createNotifFired(db);
         await _createNotifSlots(db);
-        await _createAlarmSchedule(db);
+        await _createWakeStorage(db);
         await _ensureCoachViews(db);
       },
       onUpgrade: (db, oldV, newV) async {
@@ -1230,6 +1233,9 @@ class LocalDb {
           // A band's own hypnogram (`vendor_staged`). New table only.
           await _createVendorSleepEpoch(db);
         }
+        // #628 claims schema 60; wake storage uses 61 to avoid that conflict.
+        // Reconcile its rung separately when #628 lands beneath this branch.
+        if (oldV < 61) await _createWakeStorage(db);
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1318,7 +1324,7 @@ class LocalDb {
     await _ensureDayResultPartialColumn(db);
     await _createNotifFired(db);
     await _createNotifSlots(db);
-    await _createAlarmSchedule(db);
+    await _createWakeStorage(db);
     // CREATE TABLE IF NOT EXISTS on the every-open repair path, no schema
     // version bump needed — additive, no backfill (see _createImportedWorkout
     // just above for the same reasoning).
@@ -1933,6 +1939,30 @@ class LocalDb {
         PRIMARY KEY (weekday)
       )
     ''');
+  }
+
+  static Future<void> _createWakeStorage(Database db) async {
+    await _createAlarmSchedule(db);
+    await _addColumnIfMissing(db, 'alarm_schedule', 'smart_window_minutes',
+        'INTEGER NOT NULL DEFAULT 0');
+    await db.execute('''CREATE TABLE IF NOT EXISTS wake_meta (
+      key TEXT PRIMARY KEY, value TEXT NOT NULL
+    )''');
+    final existing = await db.query('wake_meta', columns: ['key'],
+        where: 'key = ?', whereArgs: ['settings']);
+    if (existing.isNotEmpty) return;
+    final legacy = Sqflite.firstIntValue(await db.rawQuery(
+        'SELECT MAX(smart_window_minutes) FROM alarm_schedule '
+        'WHERE enabled = 1 AND smart_window_minutes > 0'));
+    // The legacy picker used 15-minute steps. Preserve its largest enabled
+    // window once; Gradual always starts off.
+    final settings = WakeSettings(
+        naturalEnabled: legacy != null,
+        naturalWindowMinutes: legacy == null ? 30 :
+            ((legacy / 15).round() * 15).clamp(15, 120));
+    await db.insert('wake_meta', {'key': 'settings',
+        'value': jsonEncode(settings.toJson())},
+        conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   /// Every configured weekday row, in no particular order — callers that care
@@ -9956,6 +9986,8 @@ class LocalDb {
       // banked. They were also simply MISSING here until now — nutrition,
       // medication, strength sets, symptoms and routes did not survive a
       // backup/restore round trip at all, the same omission `wipeAll` documents.
+      'alarm_schedule',
+      'wake_meta',
       'journal',
       'journal_metric',
       'journal_field_def',
@@ -10158,7 +10190,8 @@ class LocalDb {
           final isArchive = t == SubstrateArchive.table;
           final pageSize = isArchive ? 8 : 2000;
           const rowidKey = '_rowid';
-          var lastRowid = 0;
+          // Monday's weekday INTEGER PRIMARY KEY aliases rowid 0.
+          var lastRowid = t == 'alarm_schedule' ? -1 : 0;
           final projection = isArchive
               ? SubstrateArchive.metaColumns.join(', ')
               : '*';
@@ -10320,6 +10353,8 @@ class LocalDb {
                     if (cols.contains(e.key)) e.key: e.value,
                 };
                 if (row.isEmpty) continue;
+                // A foreign run must never replace or resume a local occurrence.
+                if (t == 'wake_meta' && row['key'] == 'run_state') continue;
                 if (t == 'sleep_nap' || t == 'sessions') {
                   var keepLocalDecision = false;
                   final link = t == 'sleep_nap'
@@ -10509,9 +10544,10 @@ class LocalDb {
                 batch.insert(
                   t,
                   row,
-                  // A device with its own finalized history keeps its own
-                  // baselines (the frozen movement floor among them).
-                  conflictAlgorithm: t == 'baselines' &&
+                  // Imported global settings replace local settings; run_state is
+                  // filtered above. Other metadata keeps local precedence.
+                  conflictAlgorithm: (t == 'wake_meta' && row['key'] != 'settings') ||
+                          t == 'baselines' &&
                           (row['key'] == 'sleep_user_profile'
                               ? SleepProfilePolicy.foldedDays(
                                           row['payload_json'] as String?)

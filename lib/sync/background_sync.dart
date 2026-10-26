@@ -39,6 +39,7 @@ import '../ecg/ecg_transport.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../state/alarm_schedule.dart';
+import '../wake/wake_stores.dart';
 import 'band_ownership.dart';
 import 'high_freq_wake_window.dart';
 import 'reset_gate.dart';
@@ -219,6 +220,7 @@ Future<void> prepareHeadlessLink(BleEngine engine, PairedDevice paired) async {
   final armedWindow = armedSmartWakeWindow(
     epoch: preSyncPrefs.getInt('alarm_epoch'),
     schedule: preSyncSchedule,
+    settings: await const DbWakeSettingsStore().load(),
   );
   final plan = await HighFreqWakeWindow.planNow(
     scheduledWindowEnd: armedWindow?.windowEnd,

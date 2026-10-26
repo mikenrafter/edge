@@ -139,8 +139,9 @@ class HighFreqWakeWindow {
     if (scheduledWindowEnd != null &&
         scheduledWindowMinutes > 0 &&
         habitualPlan?.shouldEnable != true) {
-      final scheduledStart = scheduledWindowEnd.subtract(lease);
-      final preSyncAt = scheduledWindowEnd.subtract(lease + preSyncLead);
+      final window = Duration(minutes: scheduledWindowMinutes);
+      final scheduledStart = scheduledWindowEnd.subtract(window > lease ? window : lease);
+      final preSyncAt = scheduledStart.subtract(preSyncLead);
       if (!now.isBefore(preSyncAt) && now.isBefore(scheduledWindowEnd)) {
         return HighFreqWakePlan(
           shouldEnable: true,
