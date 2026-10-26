@@ -210,13 +210,62 @@ class AppState extends ChangeNotifier {
 
   int? get activeWakeEpoch {
     final epoch = alarmEpoch;
-    if (epoch == null || !_wakeSettings.gradualEnabled ||
-        _wakeAcknowledgedEpoch == epoch ||
-        GradualWake.entryFor(epoch, _schedule) == null) return null;
+    if (epoch == null || _wakeAcknowledgedEpoch == epoch ||
+        GradualWake.entryFor(epoch, _schedule) == null) {
+      return null;
+    }
+    if (naturalWakeBuzzing) return epoch;
+    if (!_wakeSettings.gradualEnabled) return null;
     final at = clock.now();
     final end = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
     final start = end.subtract(Duration(minutes: _wakeSettings.gradualWindowMinutes));
     return !at.isBefore(start) && at.isBefore(end) ? epoch : null;
+  }
+
+  bool get naturalWakeBuzzing {
+    final epoch = alarmEpoch;
+    return epoch != null && epoch == _smartWakeFiredForEpoch &&
+        _naturalWakeEligible(epoch);
+  }
+
+  bool _naturalWakeEligible(int epoch) => !_disposed &&
+      alarmEpoch == epoch && _wakeAcknowledgedEpoch != epoch &&
+      _wakeSettings.naturalEnabled &&
+      GradualWake.entryFor(epoch, _schedule) != null &&
+      clock.now().isBefore(DateTime.fromMillisecondsSinceEpoch(epoch * 1000));
+
+  BandBuzzer? _naturalPlaying;
+
+  Future<void> _playNaturalWake(int epoch, {bool firstFire = false}) async {
+    if (!isConnected || !_naturalWakeEligible(epoch)) return;
+    final play = await const DbWakeStateStore().update(epoch, (run) {
+      final at = clock.now().millisecondsSinceEpoch;
+      if (run['acknowledged'] == true ||
+          (!firstFire && run['naturalFired'] != true) ||
+          at < (run['naturalNextMs'] as int)) {
+        return false;
+      }
+      // Persist the fire and consume this repeat before the BLE write.
+      run['naturalFired'] = true;
+      run['naturalNextMs'] = at + const Duration(seconds: 30).inMilliseconds;
+      return true;
+    });
+    if (!play) return;
+    _smartWakeFiredForEpoch = epoch;
+    notifyListeners();
+    if (!isConnected || !_naturalWakeEligible(epoch)) return;
+    final port = bandBuzzer;
+    _naturalPlaying = port;
+    try {
+      await port.play(BandBuzzRequest(
+        id: 'natural:$epoch:${clock.now().millisecondsSinceEpoch}',
+        scope: 'natural:$epoch',
+        expiresAt: DateTime.fromMillisecondsSinceEpoch(epoch * 1000),
+        kind: BandBuzzKind.alarm, stepIndex: 0, stepCount: 1, pulses: 1,
+      ));
+    } finally {
+      _naturalPlaying = null;
+    }
   }
 
   late final _gradualWake = GradualWake(now: () => clock.now(),
@@ -224,6 +273,8 @@ class AppState extends ChangeNotifier {
 
   Future<void> acknowledgeWake(int epoch) async {
     _wakeAcknowledgedEpoch = epoch;
+    _naturalPlaying?.stop('natural:$epoch');
+    bandBuzzer.stop('natural:$epoch');
     notifyListeners();
     await _gradualWake.acknowledge(epoch);
   }
@@ -1813,6 +1864,12 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    final epoch = alarmEpoch;
+    if (epoch != null) {
+      _naturalPlaying?.stop('natural:$epoch');
+      _bandBuzzer?.stop('natural:$epoch');
+      _gradualWake.cancel(epoch);
+    }
     _deriveCoordinator.cancelActivityReviewRetry();
     if (IosShortcutSync.foregroundSync == syncForShortcut) {
       IosShortcutSync.foregroundSync = null;
@@ -4463,10 +4520,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// The armed epoch (unix sec) a Smart Wake Window early-fire already ran
-  /// for, so a re-arm of the SAME occurrence on every 30 s tick does not buzz
-  /// the band again on every tick once light sleep is first seen.
+  /// Loaded from run_state so a restart resumes repeats without re-detecting.
   int? _smartWakeFiredForEpoch;
+  bool _checkingWake = false;
 
   /// The journal-derived confounder profile for the current wake window,
   /// computed once when the window opens and cached for its duration.
@@ -4550,7 +4606,7 @@ class AppState extends ChangeNotifier {
   /// the engine's existing 30 s keep-alive tick, not a new timer.
   ///
   /// SAFETY: this method can only ever cause an EARLY extra buzz
-  /// (`engine.runAlarm()`, RUN_ALARM — haptics only, it does not touch
+  /// (through BandBuzzer, haptics only, it does not touch
   /// SET_ALARM). It never calls `setAlarm`, `disableAlarm`, or anything else
   /// that could change or clear the armed fallback epoch, in any branch,
   /// including every early `return` below and the catch clause. The band's
@@ -4558,16 +4614,25 @@ class AppState extends ChangeNotifier {
   /// keeps firing at [alarmEpoch] exactly as scheduled, on the band's own
   /// clock, whether this method ever runs, throws, or finds nothing at all.
   Future<void> _checkSmartWake() async {
+    if (_checkingWake || _disposed) return;
+    _checkingWake = true;
     try {
       if (!isConnected) return;
       final epoch = alarmEpoch;
       if (epoch == null || _wakeAcknowledgedEpoch == epoch) return;
-      await _gradualWake.tick(epoch: epoch, settings: _wakeSettings,
-          canDeliver: () => isConnected && alarmEpoch == epoch &&
-              _wakeSettings.gradualEnabled &&
-              GradualWake.entryFor(epoch, _schedule) != null);
+      try {
+        await _gradualWake.tick(epoch: epoch, settings: _wakeSettings,
+            canDeliver: () => !_disposed && isConnected && alarmEpoch == epoch &&
+                _wakeSettings.gradualEnabled &&
+                GradualWake.entryFor(epoch, _schedule) != null);
+      } catch (e) {
+        _log('[wake] gradual delivery failed: $e');
+      }
       // Each mode runs independently, including when both are enabled.
-      if (epoch == _smartWakeFiredForEpoch) return;
+      if (epoch == _smartWakeFiredForEpoch) {
+        await _playNaturalWake(epoch);
+        return;
+      }
       final armed = armedSmartWakeWindow(
           epoch: epoch, schedule: _schedule, settings: _wakeSettings);
       if (armed == null) return;
@@ -4651,19 +4716,12 @@ class AppState extends ChangeNotifier {
         baselineHr: baselineHr,
       );
       if (!detected) return;
-      _smartWakeFiredForEpoch = epoch; // set BEFORE the write — see below
-      // Marked fired before the write goes out on purpose: a write that
-      // throws must not retry every 30 s for the rest of the window (that
-      // would just be repeated buzzing), and the untouched fallback arm
-      // still covers a write that genuinely failed.
-      await bandBuzzer.play(BandBuzzRequest(
-        id: 'natural:$epoch:first', scope: 'natural:$epoch',
-        expiresAt: armed.windowEnd, kind: BandBuzzKind.alarm,
-        stepIndex: 0, stepCount: 1, pulses: 1,
-      ));
+      await _playNaturalWake(epoch, firstFire: true);
       _log('[smart-wake] light sleep detected inside the window — early buzz.');
     } catch (e) {
       _log('[smart-wake] check failed (fallback alarm is unaffected): $e');
+    } finally {
+      _checkingWake = false;
     }
   }
 
