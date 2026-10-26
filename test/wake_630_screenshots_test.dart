@@ -5,10 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
+import 'package:openstrap_edge/models/metric.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
+import 'package:openstrap_edge/ui2/screens/home_screen.dart';
 import 'package:openstrap_edge/ui2/screens/wake_card.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
@@ -24,6 +28,21 @@ const _boundary = ValueKey('wake-shot');
 final _now = DateTime(2026, 10, 25, 22);
 final _alarm = DateTime(2026, 10, 26, 7);
 
+const _data = HomeData(
+  name: 'Alex',
+  readiness: Metric(value: 80, confidence: .9, tier: MetricTier.high),
+  strain: Metric(value: 5, confidence: .9, tier: MetricTier.high),
+  sleepMin: Metric(value: 450, confidence: .9, tier: MetricTier.high),
+  sleepNeedMin: Metric(value: 480, confidence: .9, tier: MetricTier.high),
+  rhr: Metric(value: 52, confidence: .9, tier: MetricTier.high),
+  steps: Metric(value: 1800, confidence: .9, tier: MetricTier.high),
+);
+
+class _ReviewRepo extends LocalRepository {
+  @override
+  Future<int> pendingActivityCount() async => 2;
+}
+
 Widget _shell(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -35,7 +54,11 @@ void main() {
   late Directory dir;
   setUpAll(loadFonts);
   setUp(() async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'nudge.discord.dismissed': true,
+      'nudge.donate.dismissed': true,
+    });
+    await Prefs.ensureLoaded();
     BleEngine.resetBandClaimForTest();
     dir = await openWakeDb();
   });
@@ -68,16 +91,18 @@ void main() {
     });
   }
 
+  for (final screen in [false, true]) {
   for (final natural in [false, true]) {
-    testWidgets('home wake card ${natural ? 'natural' : 'gradual'}', (t) async {
+    testWidgets('home wake ${screen ? 'screen' : 'card'} ${natural ? 'natural' : 'gradual'}', (t) async {
       t.view.devicePixelRatio = 1;
-      t.view.physicalSize = const Size(412, 200);
+      t.view.physicalSize = Size(412, screen ? 915 : 200);
       addTearDown(t.view.reset);
       final app = AppState(initialize: false);
       final end = DateTime(2026, 10, 25, 7);
       final epoch = end.millisecondsSinceEpoch ~/ 1000;
       final clock = WakeClock(end.subtract(const Duration(minutes: 20)));
       app.bandBuzzer = WakeTransport(clock).buzzer();
+      app.repo = _ReviewRepo();
       app.device.alarmEpoch = epoch;
       await t.runAsync(() async {
         await LocalDb.setAlarmScheduleDay(weekday: end.weekday - 1,
@@ -92,17 +117,24 @@ void main() {
       try {
         await clock.run(() async {
           await t.pumpWidget(ChangeNotifierProvider<AppState>.value(value: app,
-              child: _shell(const Scaffold(body: Padding(
-                  padding: EdgeInsets.all(S.x4),
-                  child: Align(alignment: Alignment.topCenter, child: WakeCard()))))));
-          await t.pumpAndSettle();
+              child: _shell(screen
+                  ? Scaffold(body: HomeScreen(data: _data, hour: 6,
+                      now: end.subtract(const Duration(minutes: 20))))
+                  : const Scaffold(body: Padding(
+                      padding: EdgeInsets.all(S.x4),
+                      child: Align(alignment: Alignment.topCenter,
+                          child: WakeCard()))))));
+          await t.pump();
+          await t.pump(const Duration(milliseconds: 100));
+          expect(find.text("I'm up"), findsOneWidget);
           await expectLater(find.byKey(_boundary), matchesGoldenFile(
-              'goldens/wake_630_home_${natural ? 'natural' : 'gradual'}.png'));
+              'goldens/wake_630_home_${screen ? 'screen_' : ''}${natural ? 'natural' : 'gradual'}.png'));
         });
       } finally {
         await t.pumpWidget(const SizedBox());
         app.dispose();
       }
     });
+  }
   }
 }
