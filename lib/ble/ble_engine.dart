@@ -51,6 +51,7 @@ import '../sync/sync_policy.dart';
 import 'adapters/_registry.dart';
 import 'android_native_name.dart';
 import 'ble_state.dart';
+import 'band_buzzer.dart';
 
 part 'transport.dart';
 
@@ -970,7 +971,7 @@ class _FbpGattOps implements GattBootstrapOps {
   }
 }
 
-class BleEngine {
+class BleEngine implements BandBuzzTransport {
   final SampleSink onRecord;
   final StateSink onState;
   final LogSink? log;
@@ -8527,14 +8528,18 @@ class BleEngine {
   /// Maverick `0x13` short pulse as Find-band. Do NOT STOP_HAPTICS first —
   /// on gen5 that can race and swallow the buzz.
   Future<void> runAlarm() async {
+    await runAlarmChecked();
+  }
+
+  @override
+  Future<bool> runAlarmChecked() {
     if (_session?.band.isGen5 ?? false) {
-      await _send(
+      return _send(
         Cmd.runHapticPatternMaverick,
         AlarmPayloads.gen5MaverickBuzz(),
       );
-      return;
     }
-    await _send(Cmd.runAlarm, AlarmPayloads.runNow);
+    return _send(Cmd.runAlarm, AlarmPayloads.runNow);
   }
 
   /// Cancel the on-device alarm (DISABLE_ALARM = 0x45). gen4 body `[0x01]`
@@ -8607,14 +8612,23 @@ class BleEngine {
     final c = (_session?.entry ?? kWhoopGen4).commands;
     return _send(c.hello, c.helloBody);
   }
-  Future<void> buzz() => buzzPattern(hapticShortPulse);
+  Future<void> buzz() async {
+    await buzzChecked();
+  }
+
+  @override
+  Future<bool> buzzChecked() => _buzzPatternChecked(hapticShortPulse);
 
   /// Play a haptic buzz. gen5 ("Maverick") has a DIFFERENT buzz opcode and
   /// payload shape than gen4 (`Cmd.runHapticPatternMaverick`, 12-byte body —
   /// see `cmdBuzzGen5Maverick` in protocol/commands.dart) — [pattern] is
   /// honoured only on gen4; a gen5 link always plays the strap's fixed
   /// `[47, 152]` waveform pair (the only Maverick buzz byte-verified so far).
-  Future<void> buzzPattern(int pattern) {
+  Future<void> buzzPattern(int pattern) async {
+    await _buzzPatternChecked(pattern);
+  }
+
+  Future<bool> _buzzPatternChecked(int pattern) {
     if (_session?.band.isGen5 ?? false) {
       return _send(
         Cmd.runHapticPatternMaverick,

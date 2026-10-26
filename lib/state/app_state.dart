@@ -15,6 +15,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
@@ -34,6 +35,8 @@ import '../ble/adapters/_registry.dart' show kBleHrs, kPolarPmd, kWhoopGen4;
 import '../ble/adapters/host.dart' show BandHost;
 import '../ble/adapters/whoop_gen4.dart' show WhoopFramedAdapter;
 import '../ble/android_background.dart';
+import '../ble/band_buzzer.dart';
+import '../ble/default_band_buzzer.dart';
 import '../ble/ble_engine.dart';
 import '../ble/hrs_link.dart';
 import '../ble/polar_pmd_link.dart';
@@ -186,6 +189,11 @@ bool recoveryNightSettled({
 }
 
 class AppState extends ChangeNotifier {
+  BandBuzzer? _bandBuzzer;
+  BandBuzzer get bandBuzzer => _bandBuzzer ??= DefaultBandBuzzer(
+      transport: engine, now: clock.now, delay: Future<void>.delayed);
+  set bandBuzzer(BandBuzzer value) => _bandBuzzer = value;
+
   late final BleEngine engine;
 
   /// The real constructor's [_init] future, so [checkPendingSiriRoute] can
@@ -1513,7 +1521,8 @@ class AppState extends ChangeNotifier {
     navRequest.value = t.tab;
   }
 
-  AppState() {
+  // Tests keep callback wiring but skip service startup.
+  AppState({bool initialize = true}) {
     final views = WidgetsBinding.instance.platformDispatcher.views;
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     final isHeadless = views.isEmpty || 
@@ -1642,6 +1651,7 @@ class AppState extends ChangeNotifier {
       saveProfileFields: updateProfile,
       onActivitiesChanged: refreshActivityReviews,
     );
+    if (!initialize) return;
     // iOS BGProcessing/BGAppRefresh wakes while the FOREGROUND app owns the band
     // skip the headless BLE path (it would fight FBP for the peripheral) — route
     // them to a catch-up pull over the existing live connection instead.
@@ -4596,7 +4606,11 @@ class AppState extends ChangeNotifier {
       // throws must not retry every 30 s for the rest of the window (that
       // would just be repeated buzzing), and the untouched fallback arm
       // still covers a write that genuinely failed.
-      await engine.runAlarm();
+      await bandBuzzer.play(BandBuzzRequest(
+        id: 'natural:$epoch:first', scope: 'natural:$epoch',
+        expiresAt: armed.windowEnd, kind: BandBuzzKind.alarm,
+        stepIndex: 0, stepCount: 1, pulses: 1,
+      ));
       _log('[smart-wake] light sleep detected inside the window — early buzz.');
     } catch (e) {
       _log('[smart-wake] check failed (fallback alarm is unaffected): $e');
