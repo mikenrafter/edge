@@ -40,6 +40,7 @@ import '../../data/coverage_resolver.dart' show OwnedSpan, coverageFromJson, spa
 import '../../data/day_label.dart' show localDayEndSec;
 import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
 import '../../data/db.dart';
+import '../../wake/wake_timeline.dart';
 import '../../data/journal_fields.dart';
 import '../../data/local_repository.dart';
 import '../../data/med_store.dart';
@@ -222,6 +223,7 @@ List<Moment> dayMoments({
   List<StoredSymptom> symptoms = const [],
   List<AssumedGlass> assumedWater = const [],
   AppLocalizations? l,
+  WakeNightTimeline wakeTimeline = const WakeNightTimeline(), // P2 RED
 }) {
   final out = <Moment>[];
   int? asInt(Object? v) => (v as num?)?.toInt();

@@ -58,6 +58,8 @@
 //     neither it nor these setters but its draft (lib/state/alarm_draft.dart).
 
 import 'package:flutter/foundation.dart';
+import 'wake_journal.dart';
+import 'wake_outcome.dart';
 
 import '../state/alarm_schedule.dart';
 import '../state/feature_flags.dart';
@@ -72,6 +74,8 @@ class WakeController extends ChangeNotifier {
     required Future<void> Function(WakeUpgradeState state) saveUpgradeState,
     required Future<WakeAckOutcome> Function(bool cancelNative) acknowledgeWake,
     required Future<List<WakeTraceEntry>> Function(DateTime wakeAt) traceFor,
+    this.journal = const DbWakeJournal(), // P2 RED: not called yet.
+    this.journalNow = DateTime.now,
     bool Function()? naturalEnabled,
   })  : _naturalEnabled = naturalEnabled ??
             (() => FeatureFlags.isOn(FeatureFlag.naturalWake)),
@@ -81,6 +85,12 @@ class WakeController extends ChangeNotifier {
         _saveUpgradeState = saveUpgradeState,
         _acknowledgeWake = acknowledgeWake,
         _traceFor = traceFor;
+
+  final DbWakeJournal journal;
+  final DateTime Function() journalNow;
+
+  // P2 RED: notification seam for every actual wake path, not wired yet.
+  void noteWakeAwaitingAck(int wakeEpochSec, WakePath path) {}
 
   final bool Function() _naturalEnabled;
   final List<AlarmScheduleEntry> Function() _schedule;

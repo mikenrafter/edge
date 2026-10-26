@@ -1,3 +1,4 @@
+import '../../wake/wake_timeline.dart';
 import '../../l10n/display_text.dart';
 // SLEEP — one question, answered in three seconds, then revealed by scrolling.
 //
@@ -245,6 +246,7 @@ String _capitalise(String s) =>
     s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
 class SleepData {
+  final WakeNightTimeline wakeTimeline; // P2 RED: not drawn yet.
   final String? day;
 
   /// Every day this install has derived, newest first — what [DayNav] steers
@@ -278,6 +280,7 @@ class SleepData {
   final bool refreshPending;
 
   const SleepData({
+    this.wakeTimeline = const WakeNightTimeline(),
     this.day,
     this.days = const [],
     this.night = const {},

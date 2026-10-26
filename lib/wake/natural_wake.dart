@@ -40,6 +40,8 @@ import 'dart:math' as math;
 
 import 'package:openstrap_analytics/onehz.dart';
 
+import 'natural_wake_tuning.dart';
+
 import '../state/control_operations.dart' show ExpectedSleepSchedule;
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
@@ -177,8 +179,10 @@ class NaturalDecisionInput {
     required this.lateness,
     this.userActive = false,
     this.sleepOnset,
+    this.tuning = const NaturalWakeParameters(), // P2 RED: not read yet.
   });
 
+  final NaturalWakeParameters tuning;
   final DateTime now;
   final DateTime wakeAt;
   final int windowMinutes;
