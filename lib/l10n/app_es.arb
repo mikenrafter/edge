@@ -3548,5 +3548,6 @@
   "sleepWakeZoomDescription": "Amplía el final del gráfico de sueño cuando los eventos están muy juntos",
   "wakeJournalCount": "{event} ×{count}",
   "wakeJournalGroup": "Despertar {start}–{end} · {minutes} min para levantarte",
-  "wakeJournalGroupName": "Despertar"
+  "wakeJournalGroupName": "Despertar",
+  "sleepDetailMedicalDisclaimer": "Algoritmo de investigación experimental. No es un dispositivo médico. Consulte a un médico si tiene trastornos del sueño."
 }

@@ -507,6 +507,21 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// The pushed screen's scaffold, or the tab's own header and footer.
   Widget _frame(BuildContext c, String title, List<Widget> body,
       {String sub = ''}) {
+    final l = AppLocalizations.of(c);
+    // Keep the research warning visible in every state and outside remembered
+    // accordions, including the Sleep tab's embedded detail.
+    body = [
+      Padding(
+        padding: const EdgeInsets.only(bottom: S.x3),
+        child: Text(
+          l?.sleepDetailMedicalDisclaimer ??
+              'Experimental research algorithm. Not a medical device. '
+                  'Consult a physician for sleep disorders.',
+          style: F.body.copyWith(color: P.of(c).ink2),
+        ),
+      ),
+      ...body,
+    ];
     if (!widget.embedded) return detailScaffold(c, title, body, sub: sub);
     final p = P.of(c);
     return RefreshIndicator(

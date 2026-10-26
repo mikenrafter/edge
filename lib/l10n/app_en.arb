@@ -17800,5 +17800,9 @@
   "@wakeJournalCount": {"placeholders": {"event": {"type": "String"}, "count": {"type": "int"}}},
   "wakeJournalGroup": "Wake-up {start}–{end} · {minutes} min to wake",
   "@wakeJournalGroup": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}, "minutes": {"type": "int"}}},
-  "wakeJournalGroupName": "Wake-up"
+  "wakeJournalGroupName": "Wake-up",
+  "sleepDetailMedicalDisclaimer": "Experimental research algorithm. Not a medical device. Consult a physician for sleep disorders.",
+  "@sleepDetailMedicalDisclaimer": {
+    "description": "Non-medical research disclaimer shown in every sleep detail state."
+  }
 }

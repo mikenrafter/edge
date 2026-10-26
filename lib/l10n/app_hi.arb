@@ -3530,5 +3530,6 @@
   "sleepWakeZoomDescription": "जागने की घटनाएँ पास-पास होने पर नींद के चार्ट का अंतिम भाग ज़ूम करें",
   "wakeJournalCount": "{event} ×{count}",
   "wakeJournalGroup": "जागना {start}–{end} · उठने में {minutes} मिनट",
-  "wakeJournalGroupName": "जागना"
+  "wakeJournalGroupName": "जागना",
+  "sleepDetailMedicalDisclaimer": "प्रयोगात्मक शोध एल्गोरिदम। यह चिकित्सा उपकरण नहीं है। नींद संबंधी विकारों के लिए चिकित्सक से परामर्श लें।"
 }

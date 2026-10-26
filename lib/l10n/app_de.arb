@@ -3636,5 +3636,6 @@
   "sleepWakeZoomDescription": "Das Ende der Schlafkurve bei dicht liegenden Weckereignissen vergrößern",
   "wakeJournalCount": "{event} ×{count}",
   "wakeJournalGroup": "Aufwachen {start}–{end} · {minutes} Min. bis zum Aufstehen",
-  "wakeJournalGroupName": "Aufwachen"
+  "wakeJournalGroupName": "Aufwachen",
+  "sleepDetailMedicalDisclaimer": "Experimenteller Forschungsalgorithmus. Kein Medizinprodukt. Wenden Sie sich bei Schlafstörungen an eine Ärztin oder einen Arzt."
 }

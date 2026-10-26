@@ -3530,5 +3530,6 @@
   "sleepWakeZoomDescription": "唤醒事件密集时放大睡眠图表末段",
   "wakeJournalCount": "{event} ×{count}",
   "wakeJournalGroup": "唤醒 {start}–{end} · 起床用时 {minutes} 分钟",
-  "wakeJournalGroupName": "唤醒"
+  "wakeJournalGroupName": "唤醒",
+  "sleepDetailMedicalDisclaimer": "实验性研究算法。非医疗器械。如有睡眠障碍，请咨询医生。"
 }

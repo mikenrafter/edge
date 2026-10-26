@@ -8909,5 +8909,6 @@
   "sleepWakeZoomDescription": "Увеличивать конец графика сна, когда события пробуждения расположены близко",
   "wakeJournalCount": "{event} ×{count}",
   "wakeJournalGroup": "Пробуждение {start}–{end} · {minutes} мин до подъёма",
-  "wakeJournalGroupName": "Пробуждение"
+  "wakeJournalGroupName": "Пробуждение",
+  "sleepDetailMedicalDisclaimer": "Экспериментальный исследовательский алгоритм. Не является медицинским устройством. При нарушениях сна обратитесь к врачу."
 }
