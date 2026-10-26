@@ -179,7 +179,7 @@ class NaturalDecisionInput {
     required this.lateness,
     this.userActive = false,
     this.sleepOnset,
-    this.tuning = const NaturalWakeParameters(), // P2 RED: not read yet.
+    this.tuning = const NaturalWakeParameters(),
   });
 
   final NaturalWakeParameters tuning;
@@ -254,7 +254,8 @@ abstract final class NaturalWakePlanner {
 
     if (i.windowMinutes <= 0) return no(NaturalReason.off);
     if (!i.now.isBefore(i.wakeAt)) return no(NaturalReason.windowClosed);
-    if (i.now.isBefore(windowStart(i.wakeAt, i.windowMinutes))) {
+    if (i.now.isBefore(windowStart(i.wakeAt,
+        i.windowMinutes + i.tuning.windowLeadMinutes.clamp(-10, 10)))) {
       return no(NaturalReason.beforeWindow);
     }
     if (sleptLessThan(onset: i.sleepOnset, now: i.now)) {
@@ -305,7 +306,8 @@ abstract final class NaturalWakePlanner {
     if (!kNaturalEligibleStages.contains(o.stage)) {
       return no(NaturalReason.noRemCandidate, current: true);
     }
-    if (o.runSec < kNaturalRemTriggerRunSec) {
+    if (o.runSec < kNaturalRemTriggerRunSec +
+        i.tuning.triggerRunOffsetSec.clamp(-60, 60)) {
       return no(NaturalReason.remNotStable, current: true);
     }
     if (o.confidence < kNaturalMinConfidence) {

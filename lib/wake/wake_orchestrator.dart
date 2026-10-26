@@ -44,6 +44,7 @@ import '../notify/buzz_sequence.dart';
 import '../state/control_operations.dart' show ExpectedSleepSchedule;
 import '../sync/headless_gate.dart';
 import 'natural_wake.dart';
+import 'natural_wake_tuning.dart';
 import 'wake_settings.dart';
 
 /// [HeadlessSyncGate] owner for background wake ticks.
@@ -314,6 +315,11 @@ abstract interface class WakeTraceStore {
 abstract interface class WakeStateStore {
   Future<Map<String, Object?>?> load();
   Future<void> save(Map<String, Object?> state);
+}
+
+/// Durable stores can supply tuning without coupling the planner to SQLite.
+abstract interface class NaturalWakeParameterStore {
+  Future<NaturalWakeParameters> naturalParameters();
 }
 
 /// Test doubles; production uses the DB-backed stores in wake_stores.dart.
@@ -762,9 +768,15 @@ class WakeOrchestrator {
     DateTime? scheduledFor,
     Duration? repeatBound,
   ) async {
-    final n = plan.naturalMinutes;
+    if (plan.naturalMinutes <= 0) return (null, false);
+    final store = stateStore;
+    var tuning = const NaturalWakeParameters();
+    if (store is NaturalWakeParameterStore) {
+      tuning = await (store as NaturalWakeParameterStore)
+          .naturalParameters().timeout(opTimeout);
+    }
+    final n = plan.naturalMinutes + tuning.windowLeadMinutes.clamp(-10, 10);
     final sec = plan.wakeSec;
-    if (n <= 0) return (null, false);
 
     Future<void> log(NaturalReason reason, Map<String, Object?> extra,
         {bool force = false}) async {
@@ -787,7 +799,8 @@ class WakeOrchestrator {
     final onset = _onsetFor(plan, now);
     if (NaturalWakePlanner.sleptLessThan(onset: onset, now: now)) {
       final d = NaturalWakePlanner.decide(
-          _input(plan, run, now, null, Duration.zero, onset: onset));
+          _input(plan, run, now, null, Duration.zero, onset: onset,
+              tuning: tuning));
       await log(d.reason, {'sleptMin': now.difference(onset!).inMinutes});
       return (d.reason, false);
     }
@@ -863,7 +876,7 @@ class WakeOrchestrator {
         ? const NaturalDecision(NaturalReason.samplesUnavailable)
         : NaturalWakePlanner.decide(_input(
             plan, run, now, obs, lateness, onset: onset,
-            userActive: userActive));
+            userActive: userActive, tuning: tuning));
     final detail = <String, Object?>{
       if (decision.viaUserActivity) 'basis': 'userActive',
       'samples': decision.samplesCurrent == null
@@ -1059,7 +1072,8 @@ class WakeOrchestrator {
 
   NaturalDecisionInput _input(WakePlanInput plan, _Run run, DateTime now,
           NaturalObservation? obs, Duration lateness,
-          {bool userActive = false, DateTime? onset}) =>
+          {bool userActive = false, DateTime? onset,
+          NaturalWakeParameters tuning = const NaturalWakeParameters()}) =>
       NaturalDecisionInput(
         now: now,
         wakeAt: plan.wakeAt,
@@ -1071,6 +1085,7 @@ class WakeOrchestrator {
         lateness: lateness,
         userActive: userActive,
         sleepOnset: onset,
+        tuning: tuning,
       );
 
   DateTime? _onsetFor(WakePlanInput plan, DateTime now) =>

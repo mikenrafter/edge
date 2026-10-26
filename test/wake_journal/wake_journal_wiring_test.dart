@@ -7,6 +7,7 @@ import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/wake/wake_journal.dart';
 import 'package:openstrap_edge/wake/wake_orchestrator.dart';
+import 'package:openstrap_edge/wake/wake_outcome.dart';
 import 'package:openstrap_edge/wake/wake_stores.dart';
 import '../backup/backup_support.dart';
 import '../support/wake_fakes.dart';
@@ -225,6 +226,49 @@ void main() {
       )).where((e) => e.kind == 'tune').map((e) => e.data['reason']),
       ['natural_dream_fast'],
     );
+  });
+
+  test('saving the optional answer learns once after durable acknowledgement', () async {
+    for (var d = -6; d <= 0; d++) {
+      await seedNight(d);
+    }
+    final db = await LocalDb.instance;
+    await db.update('wake_trace', {'data_json': '{}'},
+        where: "wake_epoch = ? AND kind = 'ack'", whereArgs: [epoch]);
+    const journal = DbWakeJournal();
+    final before = await journal.tuneFor(epoch);
+    expect(before.reason, 'missing_answer');
+    expect(before.applied, isFalse);
+    await journal.answerDream(wakeEpochSec: epoch, at: atMinute(-19),
+        answer: DreamAnswer.dream);
+    final learned = await journal.parameters();
+    expect(learned.triggerRunOffsetSec, -15);
+    expect(learned.windowLeadMinutes, 1);
+    expect(learned.lastLearnedEpoch, epoch);
+    // First answer wins and replay must not add another nightly step.
+    await journal.answerDream(wakeEpochSec: epoch, at: atMinute(-18),
+        answer: DreamAnswer.normal);
+    final after = await journal.parameters();
+    expect(after.triggerRunOffsetSec, -15);
+    expect(after.windowLeadMinutes, 1);
+    expect((await journal.forEpoch(epoch)).dream?.answer, DreamAnswer.dream);
+    final tune = (await const DbWakeTraceStore().forWake(epoch))
+        .where((e) => e.kind == 'tune');
+    expect(tune.map((e) => e.data['reason']), ['natural_dream_fast']);
+  });
+
+  test('a missing target cannot apply an older answered night', () async {
+    for (var d = -6; d <= 0; d++) {
+      await seedNight(d);
+    }
+    const journal = DbWakeJournal();
+    final missing = await journal.tuneFor(epoch + 600);
+    expect(missing.reason, 'missing_outcome');
+    expect(missing.applied, isFalse);
+    expect((await journal.parameters()).lastLearnedEpoch, isNull);
+    final actual = await journal.tuneFor(epoch);
+    expect(actual.reason, 'natural_dream_fast');
+    expect(actual.parameters.triggerRunOffsetSec, -15);
   });
 
   test(

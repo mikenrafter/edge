@@ -5185,8 +5185,9 @@ class LocalDb {
   /// The three-hour post-sleep allowance covers the bounded snooze chain;
   /// an open sleep window expires after 18 hours. No calendar-day arithmetic.
   /// Project only the needed JSON scalars, keeping payload decode off the UI.
-  static Future<Map<String, Object?>?> wakeOutcomeContext(int wakeEpochSec) async {
-    return readerRun((db) async {
+  static Future<Map<String, Object?>?> wakeOutcomeContext(int wakeEpochSec,
+      {DatabaseExecutor? executor}) async {
+    Future<Map<String, Object?>?> read(DatabaseExecutor db) async {
       final rows = await db.rawQuery("""
         WITH nights AS (
           SELECT r.day_id,
@@ -5203,7 +5204,8 @@ class LocalDb {
         ORDER BY onset DESC LIMIT 1
       """, [wakeEpochSec * 1000, wakeEpochSec * 1000]);
       return rows.isEmpty ? null : rows.first;
-    });
+    }
+    return executor == null ? readerRun(read) : read(executor);
   }
 
   /// One day's stored `window_json` (see [sleepWindowRows]), or null.

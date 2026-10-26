@@ -1,4 +1,4 @@
-// P2 RED signatures only. Pure policy; no mutable state owner.
+// Pure product policy; DbWakeJournal owns the durable parameters.
 import 'wake_outcome.dart';
 
 // Proposed product bounds, not physiological cutoffs: offset [-60,60] s,
@@ -17,7 +17,7 @@ class NaturalTuningDecision {
   const NaturalTuningDecision({
     this.parameters = const NaturalWakeParameters(),
     this.applied = false,
-    this.reason = 'red_stub',
+    this.reason = 'no_outcomes',
     this.eligibleNights = 0,
     this.expectEarlyRem = true,
     this.dreamContextScore,
@@ -37,5 +37,92 @@ abstract final class NaturalWakeTuning {
     List<WakeNightOutcome> history, {
     NaturalWakeParameters current = const NaturalWakeParameters(),
     WakeSubstance? tonightSubstance,
-  }) => const NaturalTuningDecision();
+  }) {
+    // The first occurrence represents each canonical sleep day. Later alarms
+    // that day cannot add evidence or turn a replay into another nightly step.
+    final ordered = [...history]
+      ..sort((a, b) => a.wakeEpochSec.compareTo(b.wakeEpochSec));
+    final nights = <String, WakeNightOutcome>{};
+    for (final night in ordered) {
+      nights.putIfAbsent(night.dayId, () => night);
+    }
+    bool complete(WakeNightOutcome n) =>
+        n.timeToWake != null &&
+        !n.timeToWake!.isNegative &&
+        n.snoozeCount != null &&
+        n.snoozeCount! >= 0 &&
+        n.substance != WakeSubstance.alcohol;
+    final eligible = nights.values.where(complete).toList();
+    var weight = 0.0, dreams = 0.0;
+    for (final night in eligible) {
+      final answer = night.dream;
+      if (answer == null) continue;
+      final w = answer.path == WakePath.natural ? 1.0 : .25;
+      weight += w;
+      if (answer.answer == DreamAnswer.dream) dreams += w;
+    }
+    NaturalTuningDecision result(
+      String reason, {
+      NaturalWakeParameters? parameters,
+      bool applied = false,
+    }) => NaturalTuningDecision(
+      parameters: parameters ?? current,
+      applied: applied,
+      reason: reason,
+      eligibleNights: eligible.length,
+      expectEarlyRem: tonightSubstance != WakeSubstance.alcohol,
+      dreamContextScore: weight == 0 ? null : dreams / weight,
+    );
+    if (nights.isEmpty) return result('no_outcomes');
+    final latest = nights.values.last;
+    if (!complete(latest)) return result('ineligible_outcome');
+    if (eligible.length < 7) return result('insufficient_nights');
+    final learned = current.lastLearnedEpoch;
+    if (learned != null &&
+        (latest.wakeEpochSec <= learned ||
+            ordered.any(
+              (n) => n.wakeEpochSec == learned && n.dayId == latest.dayId,
+            ))) {
+      return result('already_learned');
+    }
+    final answer = latest.dream;
+    if (answer == null) return result('missing_answer');
+    if (answer.path != WakePath.natural) return result('non_natural');
+    final recovery = latest.recovery;
+    final tst = latest.mainSleepTst;
+    if (recovery == null ||
+        !recovery.isFinite ||
+        recovery < 50 ||
+        tst == null ||
+        tst < const Duration(hours: 6)) {
+      return result('recovery_or_sleep_hold');
+    }
+    final easy =
+        answer.answer == DreamAnswer.dream &&
+        latest.timeToWake! <= const Duration(minutes: 2) &&
+        latest.snoozeCount == 0;
+    final hard =
+        answer.answer == DreamAnswer.normal &&
+        (latest.timeToWake! >= const Duration(minutes: 10) ||
+            latest.snoozeCount! >= 2);
+    if (!easy && !hard) return result('no_adjustment');
+    final trigger = (current.triggerRunOffsetSec + (easy ? -15 : 15)).clamp(
+      -60,
+      60,
+    );
+    final lead = (current.windowLeadMinutes + (easy ? 1 : -1)).clamp(-10, 10);
+    if (trigger == current.triggerRunOffsetSec &&
+        lead == current.windowLeadMinutes) {
+      return result('at_bounds');
+    }
+    return result(
+      easy ? 'natural_dream_fast' : 'natural_normal_slow',
+      applied: true,
+      parameters: NaturalWakeParameters(
+        triggerRunOffsetSec: trigger,
+        windowLeadMinutes: lead,
+        lastLearnedEpoch: latest.wakeEpochSec,
+      ),
+    );
+  }
 }

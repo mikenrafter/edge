@@ -8,6 +8,8 @@ import 'dart:convert';
 import '../data/day_label.dart';
 import '../data/db.dart';
 import 'wake_confirmation.dart';
+import 'natural_wake_tuning.dart';
+import 'wake_journal.dart';
 import 'wake_orchestrator.dart';
 import 'wake_settings.dart';
 
@@ -15,8 +17,12 @@ import 'wake_settings.dart';
 const String kWakeUpgradeKey = 'upgrade_explanation';
 const String kWakeRunStateKey = 'run_state';
 
-class DbWakeStateStore implements WakeStateStore {
+class DbWakeStateStore implements WakeStateStore, NaturalWakeParameterStore {
   const DbWakeStateStore();
+
+  @override
+  Future<NaturalWakeParameters> naturalParameters() =>
+      const DbWakeJournal().parameters();
 
   /// Corrupt or missing state reads as absent: the orchestrator starts fresh
   /// (costing a warm-up) instead of failing a wake.

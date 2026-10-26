@@ -1,7 +1,8 @@
-// DbWakeJournal owns durable wake answers and outcome reads. SQLite
-// transactions serialize answer writes across all instances of this owner.
+// DbWakeJournal owns durable wake answers, tuning parameters and outcome reads.
+// SQLite transactions serialize answers and tuning across owner instances.
 // Storage errors propagate to the caller; a skipped question writes nothing.
 import 'dart:convert';
+import 'package:sqflite/sqflite.dart';
 
 import '../data/db.dart';
 import 'natural_wake_tuning.dart';
@@ -67,12 +68,26 @@ class DbWakeJournal {
         whereArgs: [ack['id']],
       );
     });
+    // The optional answer must be durable before learning. An acknowledgement
+    // without an answer still contributes its timing on future evaluations.
+    await tuneFor(wakeEpochSec);
   }
 
-  Future<WakeNightTimeline> forEpoch(int wakeEpochSec) async {
+  Future<WakeNightTimeline> forEpoch(int wakeEpochSec) async =>
+      _forEpoch(await LocalDb.instance, wakeEpochSec);
+
+  Future<WakeNightTimeline> _forEpoch(
+    DatabaseExecutor db,
+    int wakeEpochSec,
+  ) async {
     // Journal reads deliberately bypass the diagnostic store's 400-row cap.
-    final rows = await LocalDb.wakeTraceRows(wakeEpochSec);
-    final alarms = await (await LocalDb.instance).query(
+    final rows = await db.query(
+      'wake_trace',
+      where: 'wake_epoch = ?',
+      whereArgs: [wakeEpochSec],
+      orderBy: 'at_ms ASC, id ASC',
+    );
+    final alarms = await db.query(
       'band_events',
       columns: ['ts'],
       where: 'device_id = ? AND event_id = 57 AND ts = ?',
@@ -144,8 +159,13 @@ class DbWakeJournal {
     );
   }
 
-  Future<List<WakeNightOutcome>> outcomes() async {
-    final db = await LocalDb.instance;
+  Future<List<WakeNightOutcome>> outcomes() async =>
+      _outcomes(await LocalDb.instance);
+
+  Future<List<WakeNightOutcome>> _outcomes(
+    DatabaseExecutor db, {
+    int? throughEpoch,
+  }) async {
     final epochs = await db.rawQuery(
       'SELECT DISTINCT wake_epoch FROM wake_trace '
       'UNION SELECT ts AS wake_epoch FROM band_events '
@@ -154,11 +174,12 @@ class DbWakeJournal {
     final history = <WakeNightOutcome>[];
     for (final r in epochs) {
       final epoch = r['wake_epoch'] as int;
-      final context = await LocalDb.wakeOutcomeContext(epoch);
+      if (throughEpoch != null && epoch > throughEpoch) continue;
+      final context = await LocalDb.wakeOutcomeContext(epoch, executor: db);
       // A canonical main-sleep day is required; never invent one from the
       // phone's current date or borrow a nearby day's recovery.
       if (context == null) continue;
-      final night = await forEpoch(epoch);
+      final night = await _forEpoch(db, epoch);
       if (night.events.isEmpty) continue;
       final recovery = context['recovery'];
       final tst = context['tst_sec'];
@@ -181,12 +202,57 @@ class DbWakeJournal {
     return history;
   }
 
-  // Phase 3 owns policy application and its atomic tune-row write.
-  Future<NaturalTuningDecision> tuneFor(int wakeEpochSec) async =>
-      const NaturalTuningDecision();
+  /// SQLite serializes policy reads and both writes across owner instances.
+  /// Storage errors propagate; neither parameters nor trace advance on failure.
+  Future<NaturalTuningDecision> tuneFor(int wakeEpochSec) async {
+    final db = await LocalDb.instance;
+    return db.transaction((txn) async {
+      final current = await _parameters(txn);
+      final history = await _outcomes(txn, throughEpoch: wakeEpochSec);
+      // A missing target cannot cause an older night's outcome to be applied.
+      final decision = history.any((n) => n.wakeEpochSec == wakeEpochSec)
+          ? NaturalWakeTuning.evaluate(history, current: current)
+          : NaturalTuningDecision(
+              parameters: current,
+              reason: 'missing_outcome',
+            );
+      if (!decision.applied) return decision;
+      final p = decision.parameters;
+      final values = <String, Object?>{
+        'triggerRunOffsetSec': p.triggerRunOffsetSec,
+        'windowLeadMinutes': p.windowLeadMinutes,
+        'lastLearnedEpoch': p.lastLearnedEpoch,
+      };
+      await txn.insert('wake_meta', {
+        'key': 'natural_wake_parameters',
+        'value': jsonEncode(values),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert('wake_trace', {
+        'wake_epoch': wakeEpochSec,
+        'at_ms': DateTime.now().millisecondsSinceEpoch,
+        'kind': 'tune',
+        'data_json': jsonEncode({
+          ...values,
+          'reason': decision.reason,
+          'eligibleNights': decision.eligibleNights,
+        }),
+      });
+      return decision;
+    });
+  }
 
-  Future<NaturalWakeParameters> parameters() async {
-    final data = _map(await LocalDb.wakeMetaGet('natural_wake_parameters'));
+  Future<NaturalWakeParameters> parameters() async =>
+      _parameters(await LocalDb.instance);
+
+  Future<NaturalWakeParameters> _parameters(DatabaseExecutor db) async {
+    final rows = await db.query(
+      'wake_meta',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: ['natural_wake_parameters'],
+      limit: 1,
+    );
+    final data = _map(rows.firstOrNull?['value']);
     return NaturalWakeParameters(
       triggerRunOffsetSec: (data['triggerRunOffsetSec'] as num?)?.toInt() ?? 0,
       windowLeadMinutes: (data['windowLeadMinutes'] as num?)?.toInt() ?? 0,
