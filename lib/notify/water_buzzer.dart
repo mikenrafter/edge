@@ -13,8 +13,10 @@
 // minute.
 
 import 'dart:async';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'alert_dispatcher.dart';
+import 'reminder_sleep_gate.dart';
 import 'alert_rule.dart';
 import 'notification_prefs.dart';
 
@@ -24,6 +26,8 @@ class WaterBuzzer {
     required this.isConnected,
     AlertDispatcher? dispatcher,
     this.onSlot,
+    this.sleep,
+    this.onSuppressed,
   }) : _legacyTransport = dispatcher == null,
        dispatcher =
            dispatcher ??
@@ -36,6 +40,9 @@ class WaterBuzzer {
              isConnected: isConnected,
              ledger: MemoryAlertDeliveryLedger(),
            );
+
+  final ReminderSleepGate Function()? sleep;
+  final void Function(SuppressedReminderSlot)? onSuppressed;
 
   final bool _legacyTransport;
   bool _disposed = false;
@@ -120,6 +127,13 @@ class WaterBuzzer {
       }
     }
     _reschedule(); // arm the next slot
+  }
+
+  /// Drives the existing timer callback at an observed slot without wall time.
+  @visibleForTesting
+  Future<void> debugFireSlot(DateTime slot) {
+    _sourceTime = slot;
+    return _fire();
   }
 
   void dispose() {

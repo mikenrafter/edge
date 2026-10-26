@@ -36,6 +36,7 @@ import '../data/med_store.dart';
 import '../state/clock_format.dart' show formatClockMinute;
 import '../data/water_units.dart';
 import 'fired_keys.dart';
+import 'reminder_sleep_gate.dart';
 import 'alert_dispatcher.dart';
 import 'notification_event.dart';
 import 'notification_prefs.dart';
@@ -313,6 +314,7 @@ class NotificationCenter {
     List<MedDef>? medDefs,
     Map<String, Map<int, Map<String, Object?>>> medDosesToday = const {},
     bool armedTonight = false,
+    ReminderSleepGate? sleep,
   }) => _synchronized(
     () => _scheduleStandingReminders(
       prefs,
@@ -681,7 +683,8 @@ class NotificationCenter {
   /// applied HERE. Same shape as the check-in: cap to half an hour before
   /// quiet opens, and refuse outright if the slot would still land inside
   /// the protected window.
-  static int? windDownSlot(NotificationPrefs prefs, double? bedtimeMinOfDay) {
+  static int? windDownSlot(NotificationPrefs prefs, double? bedtimeMinOfDay,
+      {ReminderSleepGate? sleep}) {
     if (!prefs.windDownEnabled || bedtimeMinOfDay == null) return null;
     // Wrap across midnight, staying non-negative (Dart % can go negative for
     // negative operands only when the modulus is... it cannot here — but the
@@ -805,7 +808,8 @@ class NotificationCenter {
   /// Gated on `waterEnabled` alone, not on `remindersEnabled` — that switch is
   /// the weekly lookback's off switch, and hanging the buzz off it is how this
   /// shipped once already with no reachable way to turn it on.
-  static List<int> waterSlotMinutes(NotificationPrefs prefs) {
+  static List<int> waterSlotMinutes(NotificationPrefs prefs,
+      {ReminderSleepGate? sleep}) {
     if (!prefs.waterEnabled) return const [];
 
     final interval = prefs.waterIntervalMin.clamp(
@@ -913,6 +917,7 @@ class NotificationCenter {
     double? bedtimeMinOfDay, {
     required bool doneToday,
     required DateTime now,
+    ReminderSleepGate? sleep,
   }) {
     final t = checkInMinute(prefs, bedtimeMinOfDay);
     if (t == null) return null;
@@ -925,7 +930,8 @@ class NotificationCenter {
   /// hours on, or null when that lands outside the day or inside quiet hours.
   /// The OS fires it with no Dart running, so [NotificationPrefs.shouldFireOs]
   /// never sees it — quiet hours are applied here, as for [windDownSlot].
-  static DateTime? stillnessNudgeAt(NotificationPrefs prefs, DateTime now) {
+  static DateTime? stillnessNudgeAt(NotificationPrefs prefs, DateTime now,
+      {ReminderSleepGate? sleep}) {
     final at = now.add(const Duration(hours: 2));
     if (at.hour < 9 || at.hour >= 21) return null; // outside daytime
     if (prefs.inQuietHours(at.hour * 60 + at.minute)) return null;

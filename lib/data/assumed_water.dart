@@ -11,6 +11,7 @@
 import 'package:sqflite/sqflite.dart' show Transaction;
 import '../notify/notification_center.dart';
 import '../notify/notification_prefs.dart';
+import '../notify/reminder_sleep_gate.dart';
 import '../state/units_controller.dart' show UnitSystem;
 import 'day_label.dart';
 import 'db.dart';
@@ -74,7 +75,10 @@ class AssumedWater {
   /// on every local day from [lookbackDays] ago to today whose wall-clock time is
   /// not before the toggle's `waterAssumeSinceMs` and not after [now]. Empty when
   /// the reminder or the toggle is off, or when no turn-on time is known.
-  static List<DateTime> dueSlots(NotificationPrefs prefs, {required DateTime now}) {
+  static List<DateTime> dueSlots(NotificationPrefs prefs, {
+    required DateTime now,
+    ReminderSleepGate? sleep, // P3 RED: ignored until GREEN.
+  }) {
     if (!prefs.waterAssumeDrank || !prefs.waterEnabled) return const [];
     final sinceMs = prefs.waterAssumeSinceMs;
     if (sinceMs == null) return const []; // never guess when it was switched on
@@ -105,6 +109,8 @@ class AssumedWater {
     NotificationPrefs prefs, {
     required DateTime now,
     required UnitSystem system,
+    ReminderSleepGate? sleep,
+    void Function(SuppressedReminderSlot)? onSuppressed,
   }) async {
     final due = dueSlots(prefs, now: now);
     if (due.isEmpty) return 0;
