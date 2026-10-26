@@ -8892,5 +8892,17 @@
   "dayTimelineBandEventsGroup": "Зарядка и батарея · событий: {count}",
   "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
   "dayTimelineRepeatedGroup": "{title} · раз: {count}",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "wakeJournalNatural": "Естественное пробуждение",
+  "wakeJournalGradual": "Постепенное пробуждение",
+  "wakeJournalAlarm": "Будильник",
+  "wakeJournalSnooze": "Отложить",
+  "wakeJournalSnoozeStopped": "Повтор отключён",
+  "wakeJournalImUp": "Я встал",
+  "wakeJournalTimeToWake": "Время пробуждения: {minutes} мин",
+  "wakeDreamQuestion": "Как вы проснулись?",
+  "wakeDreamFromDream": "После сновидения",
+  "wakeDreamNormally": "Обычно",
+  "wakeDreamSkip": "Пропустить",
+  "wakeJournalTimeToWakeUnknown": "Время пробуждения: —"
 }

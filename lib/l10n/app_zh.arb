@@ -3513,5 +3513,17 @@
   "dayTimelineBandEventsGroup": "充电器与电池 · {count} 次事件",
   "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
   "dayTimelineRepeatedGroup": "{title} · {count} 次",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "wakeJournalNatural": "自然唤醒",
+  "wakeJournalGradual": "渐进唤醒",
+  "wakeJournalAlarm": "闹钟",
+  "wakeJournalSnooze": "贪睡",
+  "wakeJournalSnoozeStopped": "贪睡已停止",
+  "wakeJournalImUp": "我起床了",
+  "wakeJournalTimeToWake": "唤醒用时：{minutes} 分钟",
+  "wakeDreamQuestion": "你是怎么醒来的？",
+  "wakeDreamFromDream": "从梦中醒来",
+  "wakeDreamNormally": "正常醒来",
+  "wakeDreamSkip": "跳过",
+  "wakeJournalTimeToWakeUnknown": "唤醒用时：—"
 }

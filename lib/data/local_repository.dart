@@ -13,6 +13,7 @@
 // nothing above this file references HTTP, JWT, or a backend URL anymore.
 
 import '../models/activity_suggestion.dart';
+import '../wake/wake_timeline.dart';
 import '../gestures/moment_review_queue.dart';
 import '../compute/manual_session.dart' show SessionSpan;
 import '../gps/route_models.dart';
@@ -78,6 +79,10 @@ typedef WearableDay = ({
 typedef DeclinedDay = ({String reason, int? keptAlgoVersion, int decidedAtMs});
 
 abstract class LocalRepository {
+  /// Observed wake events associated with the stored main-sleep day.
+  Future<WakeNightTimeline> getWakeTimeline(String day) async =>
+      const WakeNightTimeline();
+
   /// All decisions commit together or throw without writing any of them.
   Future<DayReviewReceipt> saveDayReview({
     required List<ActivityDecision> activities,

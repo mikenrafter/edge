@@ -3513,5 +3513,17 @@
   "dayTimelineBandEventsGroup": "चार्जर और बैटरी · {count} घटनाएँ",
   "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
   "dayTimelineRepeatedGroup": "{title} · {count} बार",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "wakeJournalNatural": "स्वाभाविक जागना",
+  "wakeJournalGradual": "धीरे-धीरे जागना",
+  "wakeJournalAlarm": "अलार्म",
+  "wakeJournalSnooze": "स्नूज़",
+  "wakeJournalSnoozeStopped": "स्नूज़ बंद",
+  "wakeJournalImUp": "मैं उठ गया हूँ",
+  "wakeJournalTimeToWake": "जागने में लगा समय: {minutes} मिनट",
+  "wakeDreamQuestion": "आप कैसे जागे?",
+  "wakeDreamFromDream": "सपने से",
+  "wakeDreamNormally": "सामान्य रूप से",
+  "wakeDreamSkip": "छोड़ें",
+  "wakeJournalTimeToWakeUnknown": "जागने में लगा समय: —"
 }

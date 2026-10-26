@@ -3619,5 +3619,17 @@
   "dayTimelineBandEventsGroup": "Ladegerät und Akku · {count} Ereignisse",
   "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
   "dayTimelineRepeatedGroup": "{title} · {count}-mal",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "wakeJournalNatural": "Natürliches Aufwachen",
+  "wakeJournalGradual": "Sanftes Aufwachen",
+  "wakeJournalAlarm": "Wecker",
+  "wakeJournalSnooze": "Schlummern",
+  "wakeJournalSnoozeStopped": "Schlummern beendet",
+  "wakeJournalImUp": "Ich bin wach",
+  "wakeJournalTimeToWake": "Zeit bis zum Aufwachen: {minutes} Min.",
+  "wakeDreamQuestion": "Wie bist du aufgewacht?",
+  "wakeDreamFromDream": "Aus einem Traum",
+  "wakeDreamNormally": "Normal",
+  "wakeDreamSkip": "Überspringen",
+  "wakeJournalTimeToWakeUnknown": "Zeit bis zum Aufwachen: —"
 }

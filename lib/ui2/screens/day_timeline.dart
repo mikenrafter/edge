@@ -223,7 +223,7 @@ List<Moment> dayMoments({
   List<StoredSymptom> symptoms = const [],
   List<AssumedGlass> assumedWater = const [],
   AppLocalizations? l,
-  WakeNightTimeline wakeTimeline = const WakeNightTimeline(), // P2 RED
+  WakeNightTimeline wakeTimeline = const WakeNightTimeline(),
 }) {
   final out = <Moment>[];
   int? asInt(Object? v) => (v as num?)?.toInt();
@@ -504,6 +504,16 @@ List<Moment> dayMoments({
     ));
   }
 
+  for (final a in wakeAnnotations(wakeTimeline, l: l)) {
+    out.add(Moment(
+      at: a.at.toInt(),
+      title: a.label,
+      icon: annotationIcon(a.kind),
+      color: annotationColor(a.kind),
+      annotationKind: a.kind,
+      identity: a.id,
+    ));
+  }
   out.sort((a, b) => a.at.compareTo(b.at));
   return out;
 }
@@ -894,6 +904,7 @@ class TimelineData {
       raw: timeline,
       moments: dayMoments(
         timeline: timeline,
+        wakeTimeline: await repo.getWakeTimeline(day),
         wear: wear,
         meals: [for (final m in meals) m.sanitised],
         doses: taken,

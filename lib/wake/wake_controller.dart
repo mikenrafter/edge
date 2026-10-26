@@ -74,7 +74,7 @@ class WakeController extends ChangeNotifier {
     required Future<void> Function(WakeUpgradeState state) saveUpgradeState,
     required Future<WakeAckOutcome> Function(bool cancelNative) acknowledgeWake,
     required Future<List<WakeTraceEntry>> Function(DateTime wakeAt) traceFor,
-    this.journal = const DbWakeJournal(), // P2 RED: not called yet.
+    this.journal = const DbWakeJournal(),
     this.journalNow = DateTime.now,
     bool Function()? naturalEnabled,
   })  : _naturalEnabled = naturalEnabled ??
@@ -89,8 +89,26 @@ class WakeController extends ChangeNotifier {
   final DbWakeJournal journal;
   final DateTime Function() journalNow;
 
-  // P2 RED: notification seam for every actual wake path, not wired yet.
-  void noteWakeAwaitingAck(int wakeEpochSec, WakePath path) {}
+  // This controller owns the visible pending occurrence. A late result from
+  // an older acknowledgement must not dismiss a newer wake.
+  int? _awaitingEpoch, _acknowledgedEpoch;
+  WakePath? _awaitingPath;
+  int? get awaitingWakeEpoch => _awaitingEpoch;
+  WakePath? get awaitingWakePath => _awaitingPath;
+
+  void noteWakeAwaitingAck(int wakeEpochSec, WakePath path) {
+    if (_disposed || _acknowledgedEpoch == wakeEpochSec) return;
+    if (_awaitingEpoch == wakeEpochSec &&
+        _awaitingPath != null && _awaitingPath!.index <= path.index) {
+      return;
+    }
+    _awaitingEpoch = wakeEpochSec;
+    _awaitingPath = path;
+    notifyListeners();
+  }
+
+  Future<void> answerDream(int epoch, DreamAnswer? answer) => journal.answerDream(
+      wakeEpochSec: epoch, at: journalNow(), answer: answer);
 
   final bool Function() _naturalEnabled;
   final List<AlarmScheduleEntry> Function() _schedule;
@@ -234,8 +252,14 @@ class WakeController extends ChangeNotifier {
 
   /// An explicit "I'm up". See the file header.
   Future<WakeAckOutcome> acknowledgeWake({bool cancelNative = false}) async {
+    final epoch = _awaitingEpoch;
     final out = await _acknowledgeWake(cancelNative);
-    notifyListeners();
+    if (epoch != null && epoch == _awaitingEpoch) {
+      _acknowledgedEpoch = epoch;
+      _awaitingEpoch = null;
+      _awaitingPath = null;
+    }
+    if (!_disposed) notifyListeners();
     return out;
   }
 

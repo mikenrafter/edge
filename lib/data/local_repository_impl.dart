@@ -13,6 +13,8 @@
 // Honesty: a metric whose value is absent stays absent ("—"); we never fabricate.
 // Profile-gated metrics are null when the profile field is missing.
 
+import '../wake/wake_journal.dart';
+import '../wake/wake_timeline.dart';
 import '../compute/findings.dart' show servedReadiness;
 import '../compute/inputs/canonical.dart'
     show
@@ -65,6 +67,10 @@ import '../util/heavy.dart';
 import '../util/worker_audit.dart';
 
 class LocalRepositoryImpl extends LocalRepository {
+  @override
+  Future<WakeNightTimeline> getWakeTimeline(String day) =>
+      const DbWakeJournal().forDay(day);
+
   /// Compatibility name for the derive publisher; this only evicts the shared
   /// BundleStore cache and is never part of read correctness.
   static void invalidateBundleMemo() => BundleStore.shared.invalidateAll();

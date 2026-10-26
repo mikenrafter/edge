@@ -108,6 +108,7 @@ import '../haptics/builtin_patterns.dart'
     show alarmSequenceFromNotes, kAlarmReAlarmKey, systemPatternId;
 import '../wake/wake_confirmation.dart';
 import '../wake/wake_controller.dart';
+import '../wake/wake_outcome.dart';
 import '../wake/wake_orchestrator.dart';
 import '../wake/wake_settings.dart';
 import '../wake/wake_stores.dart';
@@ -6498,6 +6499,7 @@ class AppState extends ChangeNotifier {
     loadUpgradeState: loadWakeUpgradeState,
     saveUpgradeState: saveWakeUpgradeState,
     acknowledgeWake: _acknowledgeWake,
+    journalNow: _wakeNow,
     traceFor: (t) => const DbWakeTraceStore()
         .forWake(t.millisecondsSinceEpoch ~/ 1000),
   )..addListener(notifyListeners);
@@ -6509,6 +6511,7 @@ class AppState extends ChangeNotifier {
 
   late final WakeOrchestrator _wakeOrchestrator = WakeOrchestrator(
     observer: debugWakeObserver,
+    now: _wakeNow,
     env: CallbackWakeEnv(
       isConnected: () => isConnected,
       loadSamples: loadWakeSamples,
@@ -6575,6 +6578,10 @@ class AppState extends ChangeNotifier {
       eventId: r.eventId,
       sourceTime: r.sourceTime,
     );
+    if (o.targets.isNotEmpty) {
+      wake.noteWakeAwaitingAck(r.wakeAt.millisecondsSinceEpoch ~/ 1000,
+          natural ? WakePath.natural : WakePath.gradual);
+    }
     return WakeHapticResult(
         delivered: o.targets, suppressionReason: o.suppressionReason);
   }
@@ -6620,7 +6627,21 @@ class AppState extends ChangeNotifier {
   }
 
   Future<WakeAckOutcome> _acknowledgeWake(bool cancelNative) async {
+    final epoch = wake.awaitingWakeEpoch;
     final plan = _currentWakePlan();
+    await _snooze?.imUp();
+    if (epoch != null && plan?.wakeSec != epoch) {
+      // The native fire may already have armed tomorrow. Never acknowledge or
+      // cancel that future occurrence in response to this morning's button.
+      _wakeOrchestrator.dismissNaturalRepeat();
+      await const DbWakeTraceStore().append(WakeTraceEntry(
+        wakeEpochSec: epoch, atMs: _wakeNow().millisecondsSinceEpoch,
+        kind: 'ack', data: {'cancelNative': false},
+      ));
+      unawaited(_noteWake(WakeEvidenceKind.alarmAcknowledged, _wakeNow()));
+      return const WakeAckOutcome(nativeCancelRequested: false,
+          nativeCancelled: false, fallbackArmed: false);
+    }
     if (plan == null) {
       // A repeat already running must still stop (the alarm was disarmed).
       _wakeOrchestrator.dismissNaturalRepeat();
@@ -6982,6 +7003,10 @@ class AppState extends ChangeNotifier {
     final st = _snooze?.status.value;
     if (st == null) return;
     if (st.phase != SnoozePhase.idle) {
+      final fire = _snooze?.fireAt;
+      if (fire != null) {
+        wake.noteWakeAwaitingAck(fire.millisecondsSinceEpoch ~/ 1000, WakePath.alarm);
+      }
       _guardEngaged = true;
     } else if (_guardEngaged) {
       _guardEngaged = false;
@@ -7855,6 +7880,13 @@ class AppState extends ChangeNotifier {
       if (!phone.isAfter(received.add(const Duration(minutes: 5)))) {
         unawaited(_noteWake(WakeEvidenceKind.alarmFired, phone));
         _noteNativeFire(phone, received, unset);
+        // History replay is evidence, but only a current fire asks for input.
+        if (id == AlarmConfirmation.kEvtStrapExecuted &&
+            !_alarm.predatesArm(id, ts) &&
+            received.difference(phone) <= kSnoozeAlarmWindow) {
+          wake.noteWakeAwaitingAck(
+              phone.millisecondsSinceEpoch ~/ 1000, WakePath.alarm);
+        }
       }
     }
     if (_alarm.predatesArm(id, ts)) {

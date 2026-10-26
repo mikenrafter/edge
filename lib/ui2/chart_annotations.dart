@@ -31,6 +31,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../l10n/app_localizations.dart';
+import '../wake/wake_timeline.dart';
 import '../data/day_label.dart' show dayLabelOf;
 import '../models/chart_point.dart' show ChartOlder;
 import 'grammar.dart' show Pressable;
@@ -38,6 +40,7 @@ import 'theme.dart';
 
 /// What an annotation is. One icon and one colour per kind.
 enum AnnotationKind {
+  wake,
   water,
   assumedWater,
   moment,
@@ -62,6 +65,7 @@ enum AnnotationKind {
 
 /// The glyph for [k]. Unique per kind.
 IconData annotationIcon(AnnotationKind k) => switch (k) {
+      AnnotationKind.wake => LucideIcons.sunrise,
       AnnotationKind.water => LucideIcons.glassWater,
       AnnotationKind.assumedWater => LucideIcons.droplet,
       AnnotationKind.moment => LucideIcons.bookmark,
@@ -76,6 +80,7 @@ IconData annotationIcon(AnnotationKind k) => switch (k) {
 
 /// The pigment for [k]. Unique per kind; a range's shade is this at low alpha.
 Color annotationColor(AnnotationKind k) => switch (k) {
+      AnnotationKind.wake => C.green,
       AnnotationKind.water => C.sky,
       AnnotationKind.assumedWater => C.blueSoft,
       AnnotationKind.moment => C.teal,
@@ -111,6 +116,27 @@ class ChartAnnotation {
   final double? until;
   final String label;
 }
+
+/// Shared observed-wake markers, on the absolute epoch-second axis.
+List<ChartAnnotation> wakeAnnotations(WakeNightTimeline night,
+    {AppLocalizations? l}) => [
+  for (final (i, e) in night.events.indexed)
+    ChartAnnotation(
+      id: 'wake:${e.at.millisecondsSinceEpoch}:${e.kind.name}:$i',
+      kind: AnnotationKind.wake,
+      at: e.at.millisecondsSinceEpoch / 1000,
+      label: switch (e.kind) {
+        WakeNightEventKind.natural || WakeNightEventKind.repeat =>
+          l?.wakeJournalNatural ?? 'Natural wake',
+        WakeNightEventKind.gradual => l?.wakeJournalGradual ?? 'Gradual wake',
+        WakeNightEventKind.alarm => l?.wakeJournalAlarm ?? 'Alarm',
+        WakeNightEventKind.snooze => l?.wakeJournalSnooze ?? 'Snooze',
+        WakeNightEventKind.snoozeStop =>
+          l?.wakeJournalSnoozeStopped ?? 'Snooze stopped',
+        WakeNightEventKind.ack => l?.wakeJournalImUp ?? "I'm up",
+      },
+    ),
+];
 
 /// Domain-to-pixel scale of one chart plus the footprint of one icon.
 @immutable

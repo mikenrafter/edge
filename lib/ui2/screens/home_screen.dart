@@ -90,6 +90,7 @@ import 'detected_activities.dart';
 import 'metric_detail.dart';
 import 'natural_wake_card.dart';
 import 'snooze_card.dart';
+import '../../alarm/snooze/snooze_controller.dart' show SnoozePhase;
 import 'readiness_detail.dart';
 import 'sleep_detail.dart';
 import 'sleep_tab.dart';
@@ -351,10 +352,13 @@ bool? deviceConnectedOf(BuildContext c) {
 /// while idle. Null with no AppState above (a golden).
 Widget? _naturalWakeCard(BuildContext c) {
   try {
-    final wake = c.read<AppState>().wake;
-    return ValueListenableBuilder<bool>(
-      valueListenable: wake.naturalBuzzing,
-      builder: (c, buzzing, _) => buzzing
+    final app = c.read<AppState>();
+    final wake = app.wake;
+    return ListenableBuilder(
+      listenable: Listenable.merge([wake, wake.naturalBuzzing, app.snooze.status]),
+      builder: (c, _) => ((wake.naturalBuzzing.value || wake.awaitingWakeEpoch != null) &&
+          app.snooze.status.value.phase != SnoozePhase.snoozed &&
+          app.snooze.status.value.phase != SnoozePhase.reAlarming)
           ? Padding(
               padding: const EdgeInsets.only(bottom: S.x3),
               child: KeyedSubtree(

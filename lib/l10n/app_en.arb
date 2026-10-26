@@ -17774,5 +17774,24 @@
   "dayTimelineBandEventsGroup": "Charger and battery · {count} events",
   "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
   "dayTimelineRepeatedGroup": "{title} · {count} times",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "wakeJournalNatural": "Natural wake",
+  "wakeJournalGradual": "Gradual wake",
+  "wakeJournalAlarm": "Alarm",
+  "wakeJournalSnooze": "Snooze",
+  "wakeJournalSnoozeStopped": "Snooze stopped",
+  "wakeJournalImUp": "I'm up",
+  "wakeJournalTimeToWake": "Time to wake: {minutes} min",
+  "wakeDreamQuestion": "How did you wake up?",
+  "wakeDreamFromDream": "From a dream",
+  "wakeDreamNormally": "Normally",
+  "wakeDreamSkip": "Skip",
+  "wakeJournalTimeToWakeUnknown": "Time to wake: —",
+  "@wakeJournalTimeToWake": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  }
 }

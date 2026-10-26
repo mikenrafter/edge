@@ -246,7 +246,7 @@ String _capitalise(String s) =>
     s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
 class SleepData {
-  final WakeNightTimeline wakeTimeline; // P2 RED: not drawn yet.
+  final WakeNightTimeline wakeTimeline;
   final String? day;
 
   /// Every day this install has derived, newest first — what [DayNav] steers
@@ -310,7 +310,7 @@ class SleepData {
   /// Each paired device's own staging of this night (`getDeviceNights`).
   final List<Map<String, Object?>> deviceNights;
 
-  static List<SleepStage?> stagesOf(Map<String, Object?> night) {
+  static List<SleepStage?> stagesOf(Map<String, Object?> night, {int? domainEnd}) {
     final pts = night['hypnogram'];
     if (pts is! List || pts.length < 2) return const [];
     final ts = <int>[], st = <SleepStage?>[];
@@ -321,12 +321,13 @@ class SleepData {
       }
     }
     if (ts.length < 2) return const [];
-    final t0 = ts.first, t1 = ts.last;
+    final t0 = ts.first, t1 = domainEnd ?? ts.last;
     if (t1 <= t0) return const [];
     const cols = 240;
     return [
       for (var i = 0; i < cols; i++)
-        st[_indexAt(ts, t0 + ((t1 - t0) * i / cols).round())],
+        t0 + ((t1 - t0) * i / cols).round() > ts.last
+            ? null : st[_indexAt(ts, t0 + ((t1 - t0) * i / cols).round())],
     ];
   }
 
@@ -451,6 +452,7 @@ class SleepData {
       day: day,
       days: days,
       night: night,
+      wakeTimeline: await repo.getWakeTimeline(day),
       timeline: timeline,
       need: envMetric(needEnv, needSec == null ? null : needSec / 60, unit: 'min'),
       debt: envMetric(debtEnv, debtH == null ? null : debtH * 60, unit: 'min'),
@@ -1366,7 +1368,25 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   Widget _night(BuildContext c, P p, SleepData d, Map<String, dynamic> n,
       {Map<String, dynamic>? device, String? reason}) {
     final l = AppLocalizations.of(c);
-    final stages = device == null ? d.stages : SleepData.stagesOf(device);
+    final marks = wakeAnnotations(d.wakeTimeline, l: l);
+    final onset = (n['onset_ts'] as num?)?.toInt();
+    final recordedEnd = (n['wake_ts'] as num?)?.toInt();
+    var end = recordedEnd;
+    for (final mark in marks) {
+      if (end != null && mark.at > end) end = mark.at.ceil();
+    }
+    // Snoozes can follow detected sleep. Extend only the chart's axis and leave
+    // that stretch unmeasured; never stretch a recorded stage into it.
+    if (end != recordedEnd) n = {...n, 'wake_ts': end};
+    final annotations = onset != null && end != null && end > onset
+        ? AnnotationSet(items: marks, domainStart: onset.toDouble(),
+            domainEnd: end.toDouble()) : null;
+    final interval = Text(d.wakeTimeline.timeToWake == null
+        ? (l?.wakeJournalTimeToWakeUnknown ?? 'Time to wake: —')
+        : (l?.wakeJournalTimeToWake(d.wakeTimeline.timeToWake!.inMinutes) ??
+            'Time to wake: ${d.wakeTimeline.timeToWake!.inMinutes} min'),
+        style: F.cap.copyWith(color: p.ink2));
+    final stages = SleepData.stagesOf(device ?? d.night, domainEnd: end);
     if (stages.isEmpty) {
       // The same card with the chart's box left empty, so no night (or a night
       // whose staging failed) does not change the card's size or place. The
@@ -1387,8 +1407,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
               for (final k in ['onset_ts', 'wake_ts'])
                 n[k] is num ? clockOfTs((n[k] as num).round()) : '\u00A0',
             ],
+            annotations: annotations,
             child: const SizedBox.expand(),
           ),
+          interval,
           _scrubPanel(c, p, d, n),
           const SizedBox(height: S.x2),
           _hintSlot(
@@ -1416,15 +1438,18 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         ChartFrame(
           title: l?.sleepDetailThroughTheNight ?? 'Through the night',
           unit: l?.sleepDetailUnitStage ?? 'stage',
-          height: lane * 4,
+          height: lane * 4 + (marks.isEmpty ? 0 : ChartAnnotationLane.headerFor(
+              MediaQuery.textScalerOf(c), Directionality.of(c))),
           xLabels: [
             clockOfTs(t0),
             if (t0 != null && t1 != null && t1 > t0)
               clockOfTs(t0 + (t1 - t0) ~/ 2),
             clockOfTs(t1),
           ],
-          child: _labelledHypnogram(c, p, stages, n, lane, totals),
+          child: _labelledHypnogram(c, p, stages, n, lane, totals,
+              annotations: annotations),
         ),
+        interval,
         _scrubPanel(c, p, d, n),
         if (device != null) ..._deviceStaging(c, p, device),
         // Not our staging: say whose it is, wherever it is drawn.
@@ -1703,7 +1728,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   static const _nameShare = .3, _minPlotShare = .55;
 
   Widget _labelledHypnogram(BuildContext c, P p, List<SleepStage?> stages,
-      Map<String, dynamic> n, double lane, Map<SleepStage, String> totals) {
+      Map<String, dynamic> n, double lane, Map<SleepStage, String> totals,
+      {AnnotationSet? annotations}) {
     final l = AppLocalizations.of(c);
     final ink = Hypnogram.cols(p);
     final scaler = MediaQuery.textScalerOf(c);
@@ -1757,6 +1783,11 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
     return LayoutBuilder(builder: (c, box) {
       final w = box.maxWidth;
+      final set = annotations;
+      final header = set == null || set.items.isEmpty ? 0.0
+          : ChartAnnotationLane.headerFor(scaler, dir);
+      Widget inset(Widget child) => Padding(
+          padding: EdgeInsets.only(top: header), child: child);
       final nameW = math.min(
           widest(SleepStage.values.map(name), nameStyle), w * _nameShare);
       final totW = widest(totals.values, F.over);
@@ -1765,9 +1796,17 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           w - nameW - totW - 2 * S.x2 >= w * _minPlotShare;
       return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // Spoken by the totals column, or by the scrubber's own readout.
-        ExcludeSemantics(child: column(name, nameW, coloured: true)),
+        ExcludeSemantics(child: inset(column(name, nameW, coloured: true))),
         const SizedBox(width: S.x2),
-        Expanded(child: _hypnogram(c, p, stages, n, lane * 4)),
+        // Markers share the plot's width, excluding the stage-name and totals
+        // columns. Using the whole card would shift every marker off its time.
+        Expanded(child: header == 0 ? _hypnogram(c, p, stages, n, lane * 4)
+            : Stack(clipBehavior: Clip.none, children: [
+                Positioned(left: 0, right: 0, top: header, bottom: 0,
+                    child: _hypnogram(c, p, stages, n, lane * 4)),
+                ChartAnnotationLane(set: set!, cursor: _scrub,
+                    plotHeight: lane * 4),
+              ])),
         if (withTotals) ...[
           const SizedBox(width: S.x2),
           Semantics(
@@ -1776,7 +1815,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                 if (totals[s] case final t?) '${s.label(l)} $t',
             ].join(', '),
             child: ExcludeSemantics(
-                child: column((s) => totals[s] ?? '', totW, right: true)),
+                child: inset(column((s) => totals[s] ?? '', totW, right: true))),
           ),
         ],
       ]);

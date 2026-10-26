@@ -54,6 +54,11 @@ void main() {
     return w;
   }
 
+  // I'm up keeps stopping the wake and saving in real I/O after the tap; let
+  // that finish before teardown closes the database.
+  Future<void> drain(WidgetTester t) =>
+      t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
+
   Future<void> tapImUp(WidgetTester t) async {
     expect(find.byKey(const ValueKey('natural-wake-im-up')), findsOneWidget);
     await t.tap(find.byKey(const ValueKey('natural-wake-im-up')));
@@ -130,6 +135,7 @@ void main() {
     w.noteNaturalRepeat(true);
     await t.pump();
     await tapImUp(t);
+    await drain(t);
   });
 
   testWidgets(
@@ -146,6 +152,7 @@ void main() {
         ),
       );
       await tapImUp(t);
+      await drain(t);
     },
   );
 
@@ -177,5 +184,6 @@ void main() {
     });
     await t.pumpAndSettle();
     expect(find.text('How did you wake up?'), findsOneWidget);
+    await drain(t);
   });
 }

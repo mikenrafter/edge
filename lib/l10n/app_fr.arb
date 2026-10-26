@@ -3513,5 +3513,17 @@
   "dayTimelineBandEventsGroup": "Chargeur et batterie · {count} événements",
   "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
   "dayTimelineRepeatedGroup": "{title} · {count} fois",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}}
+  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "wakeJournalNatural": "Réveil naturel",
+  "wakeJournalGradual": "Réveil progressif",
+  "wakeJournalAlarm": "Alarme",
+  "wakeJournalSnooze": "Rappel",
+  "wakeJournalSnoozeStopped": "Rappel arrêté",
+  "wakeJournalImUp": "Je suis debout",
+  "wakeJournalTimeToWake": "Temps pour se réveiller : {minutes} min",
+  "wakeDreamQuestion": "Comment vous êtes-vous réveillé ?",
+  "wakeDreamFromDream": "D’un rêve",
+  "wakeDreamNormally": "Normalement",
+  "wakeDreamSkip": "Passer",
+  "wakeJournalTimeToWakeUnknown": "Temps pour se réveiller : —"
 }

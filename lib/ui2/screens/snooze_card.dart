@@ -14,6 +14,7 @@ import '../../alarm/snooze/snooze_controller.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
+import 'wake_dream_question.dart';
 
 class SnoozeCard extends StatelessWidget {
   const SnoozeCard({super.key, required this.status, required this.onImUp});
@@ -76,8 +77,9 @@ class SnoozeCard extends StatelessWidget {
 /// at both of Home's list sites.
 Widget? snoozeCardFor(BuildContext c) {
   try {
-    final snooze = c.read<AppState>().snooze;
-    return SnoozeCard(status: snooze.status, onImUp: snooze.imUp);
+    final app = c.read<AppState>();
+    return SnoozeCard(status: app.snooze.status,
+        onImUp: () => acknowledgeWakeAndAsk(c, app.wake));
   } on ProviderNotFoundException {
     return null;
   }

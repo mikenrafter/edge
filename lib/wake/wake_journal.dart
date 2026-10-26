@@ -100,6 +100,50 @@ class DbWakeJournal {
     );
   }
 
+  /// Read only epochs within this stored main-sleep window. The canonical
+  /// day association wins when adjacent windows overlap; phone zone is unused.
+  Future<WakeNightTimeline> forDay(String dayId) async {
+    final stored = _map(await LocalDb.sleepWindowJsonFor(dayId));
+    final window = stored['value'] is Map
+        ? (stored['value'] as Map).cast<String, Object?>()
+        : stored;
+    final onset = window['onset_ms'];
+    final offset = window['offset_ms'];
+    if (onset is! num) return const WakeNightTimeline();
+    final end =
+        offset is num ? offset.toInt() + 10800000 : onset.toInt() + 64800000;
+    final fromSec = (onset / 1000).ceil(), throughSec = (end / 1000).floor();
+    final rows = await (await LocalDb.instance).rawQuery(
+      'SELECT DISTINCT wake_epoch FROM wake_trace '
+      'WHERE wake_epoch BETWEEN ? AND ? '
+      'UNION SELECT ts AS wake_epoch FROM band_events '
+      "WHERE device_id = '' AND event_id = 57 AND ts BETWEEN ? AND ? "
+      'ORDER BY wake_epoch',
+      [fromSec, throughSec, fromSec, throughSec],
+    );
+    final nights = <WakeNightTimeline>[];
+    for (final row in rows) {
+      final epoch = row['wake_epoch'] as int;
+      if ((await LocalDb.wakeOutcomeContext(epoch))?['day_id'] == dayId) {
+        nights.add(await forEpoch(epoch));
+      }
+    }
+    final events = [for (final night in nights) ...night.events]
+      ..sort((a, b) => a.at.compareTo(b.at));
+    final fired = nights.where((n) => n.firstFireAt != null).toList()
+      ..sort((a, b) => a.firstFireAt!.compareTo(b.firstFireAt!));
+    final primary = fired.firstOrNull ?? nights.firstOrNull;
+    // Display every epoch's events, but never pair a fire with another epoch's
+    // acknowledgement to manufacture a duration.
+    return WakeNightTimeline(
+      events: events,
+      firstFireAt: primary?.firstFireAt,
+      ackAt: primary?.ackAt,
+      timeToWake: primary?.timeToWake,
+      snoozeCount: nights.fold(0, (sum, n) => sum + n.snoozeCount),
+    );
+  }
+
   Future<List<WakeNightOutcome>> outcomes() async {
     final db = await LocalDb.instance;
     final epochs = await db.rawQuery(
