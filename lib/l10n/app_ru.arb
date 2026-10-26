@@ -7515,5 +7515,23 @@
         "type": "String"
       }
     }
-  }
+  },
+  "alarmGradualTitle": "Постепенное пробуждение",
+  "alarmGradualWindow": "Период пробуждения",
+  "alarmGradualCadence": "Интервал",
+  "alarmGradualRamp": "С нарастанием",
+  "alarmGradualSteady": "Равномерно",
+  "alarmGradualPhoneRequired": "Телефон должен быть подключён, а Edge — работать.",
+  "alarmGradualBandUnchanged": "Будильник браслета на время подъёма остаётся без изменений.",
+  "wakeImUp": "Я уже встал",
+  "alarmGradualPattern": "Шаблон",
+  "wakeGradualBuzzing": "Постепенное пробуждение вибрирует",
+  "alarmGradualWindowMinutes": "{minutes} мин",
+  "alarmGradualCadenceMinutes": "{minutes} мин",
+  "alarmWakeTitle": "Пробуждение",
+  "alarmWakeAllDays": "Применяется ко всем дням с включённым будильником.",
+  "alarmNaturalTitle": "Естественное пробуждение",
+  "alarmNaturalWindow": "Окно естественного пробуждения",
+  "wakeNaturalBuzzing": "Естественное пробуждение вибрирует",
+  "alarmNaturalExplanation": "Естественное пробуждение оценивает пульс и движения, затем повторяет вибрацию, пока вы не нажмёте «Я уже встал» или не наступит время подъёма."
 }

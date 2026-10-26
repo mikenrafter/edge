@@ -73,6 +73,7 @@ import '../ui2.dart';
 import 'ai_briefing.dart' show AiBriefingScreen;
 import 'coach.dart';
 import 'detected_activities.dart';
+import 'wake_card.dart';
 import 'day_timeline.dart' show DayTimelineScreen;
 import 'metric_detail.dart';
 import 'readiness_detail.dart';
@@ -1749,6 +1750,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
           Align(alignment: Alignment.centerLeft, child: battery),
         ],
         const SizedBox(height: S.x3),
+        const WakeCard(),
         const DetectedActivitiesCard(),
         if (_loading)
           const Center(child: CircularProgressIndicator())
@@ -1884,6 +1886,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       ),
 
       if (bare) ...[
+        const WakeCard(),
         const DetectedActivitiesCard(),
       ],
       ...dayNavRow(_day ?? d.dayId, _days, _goDay),
@@ -1986,6 +1989,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
           }),
 
         const SizedBox(height: S.x3),
+        const WakeCard(),
         const DetectedActivitiesCard(),
         const CommunityNudge(),
 

@@ -30,10 +30,10 @@ import 'package:provider/provider.dart';
 
 import '../../data/day_label.dart' show calendarDaysBetween;
 import '../../l10n/app_localizations.dart';
-import '../../l10n/display_text.dart';
 import '../../state/alarm_schedule.dart';
 import '../../state/app_state.dart';
 import '../../state/clock_format.dart' show formatClock;
+import '../../wake/wake_settings.dart';
 import '../screens/home_screen.dart' show go, weekdayShortName;
 import '../screens/metric_detail.dart' show detailLinkRow;
 import '../ui2.dart';
@@ -199,8 +199,8 @@ class AlarmScreen extends StatelessWidget {
           app.setScheduleDay(weekday: weekday, enabled: enabled),
       onSetDayTime: (weekday, hour, minute) =>
           app.setScheduleDay(weekday: weekday, hour: hour, minute: minute),
-      onSetSmartWindow: (weekday, minutes) =>
-          app.setScheduleDay(weekday: weekday, smartWindowMinutes: minutes),
+      wakeSettings: app.wakeSettings,
+      onSetWakeSettings: app.setWakeSettings,
       onTest: app.testAlarmBuzz,
       onCancel: app.disableAlarm,
     );
@@ -230,7 +230,8 @@ class AlarmScreenView extends StatelessWidget {
   final Future<void> Function(int weekday, bool enabled)? onToggleDay;
   final Future<void> Function(int weekday, int hour, int minute)?
       onSetDayTime;
-  final Future<void> Function(int weekday, int minutes)? onSetSmartWindow;
+  final WakeSettings wakeSettings;
+  final Future<void> Function(WakeSettings settings)? onSetWakeSettings;
   final Future<void> Function()? onTest, onCancel;
 
   const AlarmScreenView({
@@ -243,7 +244,8 @@ class AlarmScreenView extends StatelessWidget {
     this.schedule = const [],
     this.onToggleDay,
     this.onSetDayTime,
-    this.onSetSmartWindow,
+    this.wakeSettings = const WakeSettings(),
+    this.onSetWakeSettings,
     this.onTest,
     this.onCancel,
   });
@@ -303,6 +305,8 @@ class AlarmScreenView extends StatelessWidget {
                   ],
                   const SizedBox(height: S.x4),
                 ],
+                _wakeSection(c),
+                const SizedBox(height: S.x3),
                 if (!connected)
                   StatusCard(
                     l?.alarmNotConnectedTitle ?? 'The band is not connected',
@@ -329,12 +333,6 @@ class AlarmScreenView extends StatelessWidget {
                             value: _hhmmOf(day.hour, day.minute),
                             chevron: false,
                             onTap: () => _pickDayTime(c, day)),
-                        SetRow(LucideIcons.moon, C.purple, 'Smart wake',
-                            value: day.smartWindowMinutes == 0
-                                ? (l?.stateOff ?? 'Off')
-                                : '${day.smartWindowMinutes} min early',
-                            chevron: false,
-                            onTap: () => _pickSmartWindow(c, day)),
                       ],
                     ],
                   ]),
@@ -376,54 +374,94 @@ class AlarmScreenView extends StatelessWidget {
         AppLocalizations.of(c)?.alarmSentToBand ?? 'Alarm sent to the band');
   }
 
-  /// Off, or how many minutes before [day]'s wake time the band may buzz
-  /// early once light sleep is detected. Capped at 45 min — the standard
-  /// window size other wearables with this feature use — and [day]'s
-  /// hour:minute NEVER changes: it stays the hard fallback, armed on the
-  /// band exactly as before.
-  Future<void> _pickSmartWindow(BuildContext c, AlarmScheduleEntry day) async {
-    final picked = await showDialog<int>(
+  Widget _wakeSection(BuildContext c) {
+    final l = AppLocalizations.of(c);
+    final p = P.of(c);
+    final settings = wakeSettings;
+    return settingsGroup(c, l?.alarmWakeTitle ?? 'Wake', [
+      SetRow(LucideIcons.moon, C.purple, l?.alarmNaturalTitle ?? 'Natural wake',
+          value: settings.naturalEnabled ? (l?.stateOn ?? 'On') : (l?.stateOff ?? 'Off'),
+          chevron: false,
+          onTap: () => _saveWake(c, settings.copyWith(naturalEnabled: !settings.naturalEnabled))),
+      if (settings.naturalEnabled)
+        SetRow(LucideIcons.clock, C.blue, l?.alarmNaturalWindow ?? 'Natural window',
+            value: l?.alarmGradualWindowMinutes(settings.naturalWindowMinutes)
+                ?? '${settings.naturalWindowMinutes} min',
+            onTap: () => _pickWakeOption(c, l?.alarmNaturalWindow ?? 'Natural window',
+                [for (var m = 15; m <= 120; m += 15)
+                  (m, l?.alarmGradualWindowMinutes(m) ?? '$m min')],
+                (m) => _saveWake(c, settings.copyWith(naturalWindowMinutes: m)))),
+      SetRow(LucideIcons.vibrate, C.orange, l?.alarmGradualTitle ?? 'Gradual wake',
+          value: settings.gradualEnabled ? (l?.stateOn ?? 'On') : (l?.stateOff ?? 'Off'),
+          chevron: false,
+          onTap: () => _saveWake(c, settings.copyWith(gradualEnabled: !settings.gradualEnabled))),
+      if (settings.gradualEnabled) ...[
+        SetRow(LucideIcons.clock, C.blue, l?.alarmGradualWindow ?? 'Gradual window',
+            value: l?.alarmGradualWindowMinutes(settings.gradualWindowMinutes)
+                ?? '${settings.gradualWindowMinutes} min',
+            onTap: () => _pickWakeOption(c, l?.alarmGradualWindow ?? 'Gradual window',
+                [for (var m = 15; m <= 120; m += 15)
+                  (m, l?.alarmGradualWindowMinutes(m) ?? '$m min')],
+                (m) => _saveWake(c, settings.copyWith(gradualWindowMinutes: m)))),
+        SetRow(LucideIcons.timer, C.blue, l?.alarmGradualCadence ?? 'Cadence',
+            value: l?.alarmGradualCadenceMinutes(settings.gradualCadenceSec ~/ 60)
+                ?? '${settings.gradualCadenceSec ~/ 60} min',
+            onTap: () => _pickWakeOption(c, l?.alarmGradualCadence ?? 'Cadence',
+                [for (var m = 1; m <= 15; m++)
+                  (m, l?.alarmGradualCadenceMinutes(m) ?? '$m min')],
+                (m) => _saveWake(c, settings.copyWith(gradualCadenceSec: m * 60)))),
+        SetRow(LucideIcons.vibrate, C.orange, l?.alarmGradualPattern ?? 'Pattern',
+            value: settings.gradualPattern == GradualPattern.ramp
+                ? (l?.alarmGradualRamp ?? 'Ramp') : (l?.alarmGradualSteady ?? 'Steady'),
+            onTap: () => _pickWakeOption(c, l?.alarmGradualPattern ?? 'Pattern', [
+              (GradualPattern.ramp, l?.alarmGradualRamp ?? 'Ramp'),
+              (GradualPattern.steady, l?.alarmGradualSteady ?? 'Steady'),
+            ], (pattern) => _saveWake(c, settings.copyWith(gradualPattern: pattern)))),
+      ],
+      Padding(padding: const EdgeInsets.all(S.x3), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(l?.alarmWakeAllDays ?? 'Applies to every enabled alarm day.',
+              style: F.cap.copyWith(color: p.ink2)),
+          const SizedBox(height: S.x2),
+          Text(l?.alarmGradualPhoneRequired ?? 'Needs your phone connected and running Edge.',
+              style: F.cap.copyWith(color: p.ink2)),
+          const SizedBox(height: S.x2),
+          Text(l?.alarmGradualBandUnchanged ?? 'Your band alarm at the wake time is unchanged.',
+              style: F.cap.copyWith(color: p.ink2)),
+          const SizedBox(height: S.x2),
+          Text(l?.alarmNaturalExplanation ??
+              'Natural wake estimates from heart rate and movement, then repeats until you tap "I’m up" or the wake time.',
+              style: F.cap.copyWith(color: p.ink2)),
+        ],
+      )),
+    ]);
+  }
+
+  Future<void> _saveWake(BuildContext c, WakeSettings settings) => _run(c,
+      onSetWakeSettings == null ? null : () => onSetWakeSettings!(settings), null);
+
+  Future<void> _pickWakeOption<T>(BuildContext c, String title,
+      List<(T, String)> options, Future<void> Function(T) save) async {
+    final picked = await showDialog<T>(
       context: c,
-      builder: (ctx) => SimpleDialog(
-        title: Text(uiText(ctx, 'Smart wake window')),
-        children: [0, 15, 30, 45]
-            .map(
-              (m) => SimpleDialogOption(
-                onPressed: () => Navigator.pop(ctx, m),
-                child: Text(
-                  m == 0
-                      ? uiText(ctx, 'Off')
-                      : AppLocalizations.of(
-                              ctx,
-                            )?.supplementSmartWindowMinutes(m) ??
-                            '$m min before wake time',
-                ),
-              ),
-            )
-            .toList(),
-      ),
+      builder: (ctx) => SimpleDialog(title: Text(title), children: [
+        for (final (value, label) in options)
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, value),
+              child: Text(label)),
+      ]),
     );
     if (picked == null || !c.mounted) return;
-    await _run(
-      c,
-      () => onSetSmartWindow!(day.weekday, picked),
-      picked == 0
-          ? uiText(c, 'Smart wake off')
-          : uiText(
-              c,
-              'Smart wake on — the band still buzzes at the wake time either way',
-            ),
-    );
+    await save(picked);
   }
 
   /// Run a band/schedule write and report what happened. Every one of these
   /// throws when the band is not connected, and silence would read as success.
   static Future<void> _run(
-      BuildContext c, Future<void> Function()? action, String ok) async {
+      BuildContext c, Future<void> Function()? action, String? ok) async {
     if (action == null) return;
     try {
       await action();
-      if (c.mounted) _say(c, ok);
+      if (c.mounted && ok != null) _say(c, ok);
     } catch (e) {
       if (c.mounted) _say(c, '$e'.replaceFirst('Exception: ', ''));
     }

@@ -15759,5 +15759,37 @@
   "sleepDetailMedicalDisclaimer": "Experimental research algorithm. Not a medical device. Consult a physician for sleep disorders.",
   "@sleepDetailMedicalDisclaimer": {
     "description": "Disclaimer shown on the sleep detail screen."
-  }
+  },
+  "alarmGradualTitle": "Gradual wake",
+  "alarmGradualWindow": "Gradual window",
+  "alarmGradualCadence": "Cadence",
+  "alarmGradualRamp": "Ramp",
+  "alarmGradualSteady": "Steady",
+  "alarmGradualPhoneRequired": "Needs your phone connected and running Edge.",
+  "alarmGradualBandUnchanged": "Your band alarm at the wake time is unchanged.",
+  "wakeImUp": "I'm up",
+  "alarmGradualPattern": "Pattern",
+  "wakeGradualBuzzing": "Gradual wake is buzzing",
+  "alarmGradualWindowMinutes": "{minutes} min",
+  "alarmGradualCadenceMinutes": "{minutes} min",
+  "@alarmGradualWindowMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "@alarmGradualCadenceMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "alarmWakeTitle": "Wake",
+  "alarmWakeAllDays": "Applies to every enabled alarm day.",
+  "alarmNaturalTitle": "Natural wake",
+  "alarmNaturalWindow": "Natural window",
+  "wakeNaturalBuzzing": "Natural wake is buzzing",
+  "alarmNaturalExplanation": "Natural wake estimates from heart rate and movement, then repeats until you tap \"I’m up\" or the wake time."
 }
