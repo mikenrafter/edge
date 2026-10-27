@@ -186,11 +186,7 @@ class _NutritionScreenState extends State<NutritionScreen>
   /// step down off the last glass lands on a logged ZERO ("none today"), and a
   /// step down from zero clears the field, because absence and zero are
   /// different answers.
-  /// One write at a time. `_stepWater` reads the day, then awaits, then writes
-  /// it back — and `postJournalMetrics` replaces the whole day — so two taps
-  /// during that await both read the same map and the second write silently
-  /// eats the first tap. Same guard the wellness screen already uses for its
-  /// journal fields.
+  /// Ignore repeat taps while the atomic water write and reload are in flight.
   bool _writingWater = false;
 
   Future<void> _stepWater(int dir) async {
@@ -201,37 +197,15 @@ class _NutritionScreenState extends State<NutritionScreen>
     final step = WaterUnits.stepMl(waterSystemOf(context, listen: false));
     _writingWater = true;
     try {
-      // Inside the try, not before it: the READ can throw too, and with the
-      // guard already set that left both buttons dead until the screen was
-      // rebuilt — the flag outliving the operation it was protecting.
-      //
-      // Step from what is stored for today, not from `_waterMl`: that is the
-      // last load's figure, and on a tab left open past midnight it is still
-      // yesterday's total, so the first tap wrote yesterday + 250 ml to today.
-      //
-      // Drop the key rather than omitting it from a spread: `putJournalMetrics`
-      // clears the day and re-inserts what it is handed, so leaving `water_ml`
-      // out is what "no answer today" looks like on disk — and spreading the
-      // old map back in is exactly what made this un-clearable.
+      // The storage owner reads the current total inside its transaction;
+      // this screen's last displayed value may belong to the previous day.
       final date = _date;
-      final fields = {...await repo.getJournalMetrics(date)};
-      final v = fields.remove('water_ml')?.value;
-      final spec = _waterSpec;
-      double? next;
-      if (dir > 0) {
-        next = ((v ?? 0) + step).clamp(0, spec.max).toDouble();
-      } else {
-        final down = (v ?? 0) - step;
-        next = down <= 0 ? (v == null || v == 0 ? null : 0.0) : down;
-      }
+      final now = DateTime.now();
+      final next = await repo.changeWater(date, dir * step,
+          atMinuteOfDay: now.hour * 60 + now.minute);
       if (mounted) {
-        setState(() {
-          _waterMl = next;
-          _waterDate = date;
-        });
+        setState(() { _waterMl = next; _waterDate = date; });
       }
-      if (next != null) fields['water_ml'] = JournalMetricValue(next);
-      await repo.postJournalMetrics(date, fields);
       await _load();
     } finally {
       // Cleared unconditionally; the setState is only for the repaint. Gating

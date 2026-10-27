@@ -79,7 +79,12 @@ class NotificationCenter {
                 : 'autoDetect',
           _ => classOf(e) == NotifClass.alarm ? 'alarm' : e.category.name,
         };
-    final minuteOfDay = DateTime.now().hour * 60 + DateTime.now().minute;
+    final now = DateTime.now();
+    if (const {'water', 'movement', 'windDown', 'checkIn'}.contains(id) &&
+        (await ReminderSleepGate.load(now: now)).reasonAt(prefs, now) != null) {
+      return false;
+    }
+    final minuteOfDay = now.hour * 60 + now.minute;
     final explicitAction = ruleId != null &&
         const {'zone', 'breath', 'tasker', 'wake', 'relay'}.contains(ruleId);
     // FeatureFlag.alertDispatcher OFF: the pre-dispatcher delivery. Phone only,
@@ -324,6 +329,7 @@ class NotificationCenter {
       medDefs: medDefs,
       medDosesToday: medDosesToday,
       armedTonight: armedTonight,
+      sleep: sleep,
     ),
   );
 
@@ -335,7 +341,9 @@ class NotificationCenter {
     List<MedDef>? medDefs,
     Map<String, Map<int, Map<String, Object?>>> medDosesToday = const {},
     bool armedTonight = false,
+    ReminderSleepGate? sleep,
   }) async {
+    final gate = sleep ?? await ReminderSleepGate.load(now: DateTime.now());
     final svc = NotificationService.instance;
     await svc.cancel(NotificationService.idWeeklyRecap);
     // The night-check is decided fresh on every call (armedTonight is always a
@@ -345,7 +353,7 @@ class NotificationCenter {
     // Wind-down follows the standing rule — cancel what this call cannot put
     // back, and only that. A null slot (switch off, or no LEARNED bedtime yet)
     // cancels; a real slot is armed below.
-    final windDownMin = windDownSlot(prefs, bedtimeMinOfDay);
+    final windDownMin = windDownSlot(prefs, bedtimeMinOfDay, sleep: gate);
     if (windDownMin == null || !prefs.phoneDeliveryEnabled('windDown')) {
       await svc.cancel(NotificationService.idWindDown);
     }
@@ -358,7 +366,11 @@ class NotificationCenter {
     // unrelated toggle. Cancelling then would drop tonight's prompt, and
     // re-arming would risk asking for a day already answered, so neither
     // happens and the next foreground pass (which does know) decides.
-    if (!prefs.phoneDeliveryEnabled('checkIn') || checkInDoneToday != null) {
+    final pendingCheckIn = checkInSlot(prefs, bedtimeMinOfDay,
+        doneToday: false, now: DateTime.now());
+    final checkInProtected = pendingCheckIn != null &&
+        gate.reasonAt(prefs, pendingCheckIn) != null;
+    if (!prefs.phoneDeliveryEnabled('checkIn') || checkInDoneToday != null || checkInProtected) {
       await svc.cancel(NotificationService.idCheckIn);
     }
     // The medication band is cancelled when the switch is OFF — that is where
@@ -395,14 +407,15 @@ class NotificationCenter {
     //
     // The one cancel that IS correct here is the user's own switch: this is
     // where a movement nudge that was just turned off actually goes away.
-    if (!prefs.phoneDeliveryEnabled('movement')) {
+    if (!prefs.phoneDeliveryEnabled('movement') ||
+        gate.reasonAt(prefs, DateTime.now()) != null) {
       await svc.cancel(NotificationService.idStillness);
     }
     for (var i = 0; i < NotificationService.maxWaterSlots; i++) {
       await svc.cancel(NotificationService.idWaterBase + i);
     }
     final water = prefs.phoneDeliveryEnabled('water')
-        ? waterSlotMinutes(prefs)
+        ? waterSlotMinutes(prefs, sleep: gate)
         : <int>[];
     final wantWeekly =
         prefs.phoneDeliveryEnabled('reminders') && weeklyFinding != null;
@@ -414,6 +427,7 @@ class NotificationCenter {
             bedtimeMinOfDay,
             doneToday: checkInDoneToday,
             now: now,
+            sleep: gate,
           );
     final meds = medPromptSlots(
       prefs,
@@ -438,8 +452,8 @@ class NotificationCenter {
     // instants below are wall-clock. A phone that flew somewhere would otherwise
     // keep arming Sunday 18:00 in the zone the app first launched in.
     await svc.ensureTimezone();
-    await _armWaterSlots(svc, water, prefs);
-    if (wantWeekly) await _armWeeklyLookback(svc, weeklyFinding);
+    await _armWaterSlots(svc, water, prefs, gate);
+    if (wantWeekly && gate.reasonAt(prefs, svc.nextWeeklyInstant(recapWeekday, recapHour, recapMinute)) == null) await _armWeeklyLookback(svc, weeklyFinding);
     if (windDownMin != null && prefs.phoneDeliveryEnabled('windDown')) {
       await _armWindDown(svc, windDownMin, bedtimeMinOfDay!);
     }
@@ -458,7 +472,8 @@ class NotificationCenter {
       nowMin: freshNow.hour * 60 + freshNow.minute,
     );
     if (freshNightCheck != null &&
-        prefs.phoneDeliveryEnabled('alarmNightCheck')) {
+        prefs.phoneDeliveryEnabled('alarmNightCheck') &&
+        gate.reasonAt(prefs, svc.nextDailyInstant(alarmNightCheckHour, 0)) == null) {
       await _armAlarmNightCheck(svc, freshNightCheck);
     }
   }
@@ -593,7 +608,8 @@ class NotificationCenter {
     );
   }
 
-  /// One daily-repeating notification per hydration slot.
+  /// Upcoming one-shots fit the OS id band. Refresh cancels and replaces them
+  /// when new sleep becomes known; an old repeat must not outlive that evidence.
   ///
   /// The strap buzz (WaterBuzzer) fires off the SAME [slots] list, so the two
   /// land at the same wall-clock minute — but the buzz needs a live BLE link
@@ -608,6 +624,7 @@ class NotificationCenter {
     NotificationService svc,
     List<int> slots,
     NotificationPrefs prefs,
+    ReminderSleepGate sleep,
   ) async {
     UnitSystem system;
     try {
@@ -616,39 +633,39 @@ class NotificationCenter {
       system = UnitSystem.metric; // no preference store (a headless run)
     }
     final body = waterReminderBody(prefs, system: system);
-    for (var i = 0; i < slots.length; i++) {
-      await svc.scheduleDaily(
-        id: NotificationService.idWaterBase + i,
+    final upcoming = [for (final minute in slots)
+      svc.nextDailyInstant(minute ~/ 60, minute % 60)]
+      ..sort((a, b) => a.compareTo(b));
+    var i = 0;
+    for (final at in upcoming) {
+      if (sleep.reasonAt(prefs, at) != null) continue;
+      if (i >= NotificationService.maxWaterSlots) break;
+      await svc.scheduleOnce(
+        id: NotificationService.idWaterBase + i++,
         category: NotifCategory.reminders,
         title: 'Water',
         body: body,
-        hour: slots[i] ~/ 60,
-        minute: slots[i] % 60,
+        at: at,
         route: kRouteWater,
       );
     }
   }
 
-  /// The daily wind-down nudge, as a repeating slot before the learned bedtime.
+  /// One upcoming wind-down slot, refreshed with sleep eligibility.
   ///
-  /// A daily REPEAT is right here (unlike the weekly lookback's one-shot):
-  /// the body names a TIME, not one week's facts, so it stays true every day.
-  /// No skip-today: a user who opts in mid-evening should get TONIGHT's
-  /// reminder if the slot is still ahead — `nextInstanceOf` already resolves
-  /// to the next occurrence strictly after now, and same-id re-scheduling
-  /// replaces rather than stacks.
+  /// A later sleep observation can cancel this occurrence. Refresh replaces
+  /// the same id, so rescheduling never stacks wind-down notifications.
   Future<void> _armWindDown(
     NotificationService svc,
     int minuteOfDay,
     double bedtimeMinOfDay,
   ) async {
-    await svc.scheduleDaily(
+    await svc.scheduleOnce(
       id: NotificationService.idWindDown,
       category: NotifCategory.reminders,
       title: 'Wind down',
       body: windDownBody(bedtimeMinOfDay),
-      hour: minuteOfDay ~/ 60,
-      minute: minuteOfDay % 60,
+      at: svc.nextDailyInstant(minuteOfDay ~/ 60, minuteOfDay % 60),
       route: kRouteBreathing,
     );
   }
@@ -696,6 +713,12 @@ class NotificationCenter {
       if (t > cap) t = cap;
     }
     if (prefs.inQuietHours(t)) return null;
+    if (sleep != null) {
+      final now = DateTime.now();
+      var target = DateTime(now.year, now.month, now.day, t ~/ 60, t % 60);
+      if (!target.isAfter(now)) target = DateTime(now.year, now.month, now.day + 1, t ~/ 60, t % 60);
+      if (sleep.reasonAt(prefs, target) != null) return null;
+    }
     return t;
   }
 
@@ -794,52 +817,37 @@ class NotificationCenter {
         : 'Tap to log a glass ($glass).';
   }
 
-  // Default waking window when quiet hours are off (so we never buzz at 3am).
+  // Cadence anchor retained for same-day quiet windows. With quiet hours off,
+  // the full local day is available and sleep evidence filters each slot.
   static const int _waterDayStartMin = 8 * 60; // 08:00
   static const int _waterDayEndMin = 22 * 60; // 22:00
 
-  /// The wall-clock fire times (minutes-from-midnight, ascending) for the water
-  /// reminder — one per slot across the waking window, spaced by the (clamped)
-  /// interval, capped at [NotificationService.maxWaterSlots]. Empty when the
-  /// reminder is off. PURE, and the ONE source both consumers read: the
-  /// strap-buzz timer in AppState and [_armWaterSlots] above. That is the whole
-  /// reason the buzz and the notification cannot drift apart.
-  ///
-  /// Gated on `waterEnabled` alone, not on `remindersEnabled` — that switch is
-  /// the weekly lookback's off switch, and hanging the buzz off it is how this
-  /// shipped once already with no reachable way to turn it on.
+  /// Recurring water slots after quiet hours and expected sleep filtering.
+  /// Detected periods require an actual date; the OS scheduler checks each
+  /// upcoming instant separately. Filtering never shifts the cadence.
   static List<int> waterSlotMinutes(NotificationPrefs prefs,
-      {ReminderSleepGate? sleep}) {
+      {ReminderSleepGate? sleep, DateTime? day}) {
+    final d = (day ?? DateTime.now()).toLocal();
+    final gate = day == null ? ReminderSleepGate(schedule: sleep?.schedule) : sleep ?? const ReminderSleepGate();
+    return [for (final m in waterCadenceMinutes(prefs))
+      if (gate.reasonAt(prefs, DateTime(d.year, d.month, d.day, m ~/ 60, m % 60)) == null) m];
+  }
+
+  static List<int> waterCadenceMinutes(NotificationPrefs prefs) {
     if (!prefs.waterEnabled) return const [];
-
     final interval = prefs.waterIntervalMin.clamp(
-      NotificationPrefs.waterIntervalMinAllowed,
-      NotificationPrefs.waterIntervalMaxAllowed,
-    );
-
-    // Waking window = outside quiet hours when enabled, else the daytime default.
-    // quietEnd is wake-up; quietStart is bedtime. Fall back to 08:00–22:00 if the
-    // window is degenerate (start <= end, or quiet hours disabled).
-    var startMin = _waterDayStartMin, endMin = _waterDayEndMin;
+      NotificationPrefs.waterIntervalMinAllowed, NotificationPrefs.waterIntervalMaxAllowed);
+    var startMin = prefs.quietEnabled ? _waterDayStartMin : 0;
+    var endMin = prefs.quietEnabled ? _waterDayEndMin : 1440;
     if (prefs.quietEnabled && prefs.quietStartMin > prefs.quietEndMin) {
-      startMin = prefs.quietEndMin; // wake
-      endMin = prefs.quietStartMin; // bed
+      startMin = prefs.quietEndMin;
+      endMin = prefs.quietStartMin;
     }
     if (endMin - startMin < interval) {
-      // Window too short for even one spaced slot — fire once mid-window.
       startMin = (startMin + endMin) ~/ 2;
       endMin = startMin + 1;
     }
-
-    final slots = <int>[];
-    for (
-      var t = startMin;
-      t < endMin && slots.length < NotificationService.maxWaterSlots;
-      t += interval
-    ) {
-      slots.add(t);
-    }
-    return slots;
+    return [for (var t = startMin; t < endMin; t += interval) t];
   }
 
   // ── the daily check-in ──────────────────────────────────────────────────
@@ -922,8 +930,10 @@ class NotificationCenter {
     final t = checkInMinute(prefs, bedtimeMinOfDay);
     if (t == null) return null;
     final today = !doneToday && t > now.hour * 60 + now.minute;
-    return DateTime(
+    final target = DateTime(
         now.year, now.month, now.day + (today ? 0 : 1), t ~/ 60, t % 60);
+    if (sleep?.reasonAt(prefs, target) != null) return null;
+    return target;
   }
 
   /// When the "time to move" one-shot fires for movement seen at [now]: two
@@ -934,7 +944,7 @@ class NotificationCenter {
       {ReminderSleepGate? sleep}) {
     final at = now.add(const Duration(hours: 2));
     if (at.hour < 9 || at.hour >= 21) return null; // outside daytime
-    if (prefs.inQuietHours(at.hour * 60 + at.minute)) return null;
+    if ((sleep ?? const ReminderSleepGate()).reasonAt(prefs, at) != null) return null;
     return at;
   }
 
@@ -1024,7 +1034,9 @@ class NotificationCenter {
     double? bedtimeMinOfDay,
     required bool journalDoneToday,
     String? sweepHeadline,
+    ReminderSleepGate? sleep,
   }) async {
+    final gate = sleep ?? await ReminderSleepGate.load(now: DateTime.now());
     final svc = NotificationService.instance;
     await svc.cancel(NotificationService.idMorningBrief);
     await svc.cancel(NotificationService.idEveningBrief);
@@ -1052,12 +1064,14 @@ class NotificationCenter {
       // happen on. Nothing is armed instead — this re-runs on the next
       // foreground pass, which is where the finding is recomputed anyway.
       if (s.hour * 60 + s.minute <= nowMin) continue;
+      final at = svc.nextDailyInstant(s.hour, s.minute);
+      if (gate.reasonAt(prefs, at) != null) continue;
       await svc.scheduleOnce(
         id: s.id,
         category: NotifCategory.reminders,
         title: s.title,
         body: s.body,
-        at: svc.nextDailyInstant(s.hour, s.minute),
+        at: at,
         route: s.route,
       );
     }

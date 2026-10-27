@@ -38,6 +38,7 @@ import '../../compute/inputs/measurement_inputs.dart'
 import '../../compute/profile.dart' show bmiOf;
 import '../../data/coverage_resolver.dart' show OwnedSpan, coverageFromJson, spanAt;
 import '../../data/day_label.dart' show localDayEndSec;
+import '../../data/water_moment.dart';
 import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
 import '../../data/db.dart';
 import '../../wake/wake_timeline.dart';
@@ -239,6 +240,7 @@ List<Moment> dayMoments({
   List<MomentLabel> momentLabels = const [],
   List<StoredSymptom> symptoms = const [],
   List<AssumedGlass> assumedWater = const [],
+  List<WaterMoment> waterMoments = const [],
   AppLocalizations? l,
   WakeNightTimeline wakeTimeline = const WakeNightTimeline(),
 }) {
@@ -508,6 +510,12 @@ List<Moment> dayMoments({
 
   // "Assume I drank water" glasses. A removed one is a tombstone — it records
   // that the slot was handled, not that anything happened — so it is not shown.
+  for (final g in waterMoments) {
+    out.add(Moment(at: g.local.millisecondsSinceEpoch ~/ 1000,
+      identity: 'water:${g.id}', title: MomentChoice.water.localized(l),
+      detail: '', icon: LucideIcons.droplet, color: C.sky,
+      annotationKind: AnnotationKind.water));
+  }
   for (final g in assumedWater) {
     if (g.state == AssumedState.removed) continue;
     final at = g.local.millisecondsSinceEpoch ~/ 1000;
@@ -934,6 +942,8 @@ class TimelineData {
         fields: fields,
         momentLabels: momentLabels,
         symptoms: symptoms,
+        assumedWater: await LocalDb.assumedWater(date: day),
+        waterMoments: await WaterMomentStore.forDay(day),
         l: l,
       ),
       notes: [

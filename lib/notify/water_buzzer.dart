@@ -8,7 +8,7 @@
 // each hydration slot and buzzes ONLY if the band is connected. A missed buzz
 // costs nothing, because the notification is what actually reminds.
 //
-// Slot times come verbatim from NotificationCenter.waterSlotMinutes(), the same
+// Slot times come verbatim from NotificationCenter.waterCadenceMinutes(), the same
 // list the notification is armed from, so the two land at the same wall-clock
 // minute.
 
@@ -64,7 +64,7 @@ class WaterBuzzer {
   List<int> _slots = const []; // minutes-from-midnight, ascending
 
   /// (Re)configure from the current prefs. Idempotent — cancels and re-arms.
-  /// Pass `NotificationCenter.waterSlotMinutes(prefs)` as [slotMinutes].
+  /// Pass `NotificationCenter.waterCadenceMinutes(prefs)` as [slotMinutes].
   void configure({required bool enabled, required List<int> slotMinutes}) {
     _enabled = enabled;
     _slots = List<int>.from(slotMinutes)..sort();
@@ -97,6 +97,23 @@ class WaterBuzzer {
 
   Future<void> _fire() async {
     final sourceTime = _sourceTime ?? DateTime.now();
+    try {
+      if (_disposed || !_enabled) return;
+      final prefs = await NotificationPrefs.load();
+      final source = sleep;
+      final gate = source == null
+          ? await ReminderSleepGate.load(now: sourceTime)
+          : await Future<ReminderSleepGate>.sync(source);
+      final reason = gate.reasonAt(prefs, sourceTime);
+      if (reason != null) {
+        reportSuppressedReminder(onSuppressed, sourceTime, reason);
+        _reschedule();
+        return;
+      }
+    } catch (_) {
+      _reschedule();
+      return;
+    } // Unknown eligibility cannot authorize a buzz.
     if (_enabled) {
       try {
         await onSlot?.call(sourceTime);

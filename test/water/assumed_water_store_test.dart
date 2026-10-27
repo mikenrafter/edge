@@ -15,6 +15,7 @@
 //   * Catch-up looks back [AssumedWater.lookbackDays] (7) local days.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -50,7 +51,7 @@ Future<bool> _log(int atMin,
         {String date = _day, double ml = 250, int at = 1}) =>
     LocalDb.logAssumedWater(date: date, atMin: atMin, ml: ml, loggedAtMs: at);
 
-/// 08:00 .. 20:00 every 2 h (seven slots), quiet hours off, toggle on since
+/// Full local day every 2 h, quiet hours off, toggle on since
 /// [since].
 NotificationPrefs _prefs(DateTime since, {bool assume = true, bool water = true}) =>
     NotificationPrefs(
@@ -75,7 +76,7 @@ void main() {
       await databaseFactory.deleteDatabase(await _path(n));
     }
   });
-  setUp(() => _fresh(created));
+  setUp(() async { SharedPreferences.setMockInitialValues({}); await _fresh(created); });
 
   group('logging one assumed glass', () {
     test('adds the glass to the slot\'s day at the slot\'s minute and marks it '
@@ -318,10 +319,10 @@ void main() {
         () {
       final due = AssumedWater.dueSlots(_prefs(DateTime(2026, 10, 5, 20, 30)),
           now: DateTime(2026, 10, 7, 9, 0));
-      // 20:30 on the 5th is after the 20:00 slot and before the next 08:00.
-      expect(due.where((d) => d.day == 5), isEmpty);
-      expect(due.where((d) => d.day == 6), hasLength(7));
-      expect(due.where((d) => d.day == 7), [DateTime(2026, 10, 7, 8, 0)]);
+      // Quiet hours off preserves the 22:00 and overnight slots.
+      expect(due.where((d) => d.day == 5), [DateTime(2026, 10, 5, 22)]);
+      expect(due.where((d) => d.day == 6), hasLength(12));
+      expect(due.where((d) => d.day == 7), [for (final h in [0, 2, 4, 6, 8]) DateTime(2026, 10, 7, h)]);
     });
 
     test('never looks back further than the lookback window', () {
@@ -355,6 +356,8 @@ void main() {
       final since = DateTime(2026, 10, 7, 0, 0);
       final every4h = _prefs(since).copyWith(waterIntervalMin: 240);
       expect(AssumedWater.dueSlots(every4h, now: now), [
+        DateTime(2026, 10, 7, 0, 0),
+        DateTime(2026, 10, 7, 4, 0),
         DateTime(2026, 10, 7, 8, 0),
         DateTime(2026, 10, 7, 12, 0),
       ]);
@@ -426,10 +429,10 @@ void main() {
           _prefs(DateTime(2026, 10, 5, 20, 30)),
           now: DateTime(2026, 10, 7, 9, 0),
           system: UnitSystem.metric);
-      expect(n, 8);
-      expect(await _total('2026-10-05'), isNull);
-      expect(await _total('2026-10-06'), 1750);
-      expect(await _total('2026-10-07'), 250);
+      expect(n, 18);
+      expect(await _total('2026-10-05'), 250);
+      expect(await _total('2026-10-06'), 3000);
+      expect(await _total('2026-10-07'), 1250);
     });
 
     test('the glass is the unit system\'s step (imperial: exact 8 fl oz)',

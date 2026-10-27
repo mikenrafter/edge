@@ -841,12 +841,13 @@ Future<List<AssumedGlass>> _ldbAssumedWater({required String? date, required Str
     ];
   }
 
-Future<bool> _ldbRemoveAssumedWater(AssumedGlass g, {Transaction? transaction}) async {
+Future<bool> _ldbRemoveAssumedWater(AssumedGlass g, {Transaction? transaction, bool onlyUnreviewed = false}) async {
     Future<bool> write(Transaction txn) async {
       final rows = await txn.query('assumed_water',
           where: 'date = ? AND at_min = ?', whereArgs: [g.date, g.atMin], limit: 1);
       if (rows.isEmpty ||
-          rows.first['state'] == AssumedState.removed.name) {
+          rows.first['state'] == AssumedState.removed.name ||
+          (onlyUnreviewed && rows.first['state'] != AssumedState.assumed.name)) {
         return false;
       }
       final ml = (rows.first['ml'] as num).toDouble();
@@ -942,6 +943,7 @@ Future<void> _ldbPutJournalMetrics(String date, Map<String, JournalMetricValue> 
     final db = await LocalDb.instance;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
+      await WaterMomentStore.recordTotalChange(txn, date, fields['water_ml']);
       await txn.delete('journal_metric', where: 'date = ?', whereArgs: [date]);
       for (final e in fields.entries) {
         await txn.insert('journal_metric', {

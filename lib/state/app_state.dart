@@ -189,6 +189,7 @@ import '../notify/notification_service.dart';
 import '../notify/tap_router.dart';
 import '../settings/settings_repository.dart';
 import '../notify/water_buzzer.dart';
+import '../notify/reminder_sleep_gate.dart';
 import '../data/assumed_water.dart';
 import 'units_controller.dart' show UnitsController;
 import '../sync/background_sync.dart' show checkSyncStaleness;
@@ -294,7 +295,7 @@ class _WhoopCopyProgress implements WhoopImportProgressSink {
   }
 }
 
-class AppState extends ChangeNotifier {
+class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   late final BleEngine engine;
 
   /// The running import's progress; the importer sets it, null when no import runs.
@@ -476,6 +477,7 @@ class AppState extends ChangeNotifier {
     telemetryConsent: () => telemetryConsent,
     healthShareConsent: () => healthShareConsent,
     maybeReclaimDiskSpace: _maybeReclaimDiskSpace,
+    reminderSleep: this,
   );
 
   /// The scheduler that decides when a derive pass runs (owned by the
@@ -3328,18 +3330,38 @@ class AppState extends ChangeNotifier {
   void debugFeedEngineState(String deviceId, DeviceState s) =>
       _onEngineState(deviceId, s);
 
+  @override
+  Future<void> refreshReminderSleep() async {
+    if (_disposed || ImportFocus.active.value) return;
+    try {
+      final now = DateTime.now();
+      final prefs = await NotificationPrefs.load();
+      final sleep = await ReminderSleepGate.load(now: now);
+      final due = _stillnessDueAt;
+      if (sleep.reasonAt(prefs, now) != null ||
+          (due != null && sleep.reasonAt(prefs, due) != null)) {
+        await NotificationService.instance.cancel(NotificationService.idStillness);
+        _stillnessDueAt = null;
+      }
+      await armWaterReminder(prefs);
+      await _ensureRemindersScheduled();
+      if (!_disposed) bumpInsights(); // withdrawal can change totals without logging a new slot
+    } catch (_) { /* Retried on the next publication or foreground refresh. */ }
+  }
+
   /// (Re)arm the strap-buzz timer for the water reminder from the current
   /// notification prefs. Call at launch and whenever the toggle changes (the
   /// Notifications screen passes [prefs] so we skip a reload). Timers don't
   /// persist, so launch is not optional.
   Future<void> armWaterReminder([NotificationPrefs? prefs]) async {
     final p = prefs ?? await NotificationPrefs.load();
+    final sleep = await ReminderSleepGate.load(now: DateTime.now());
     _waterBuzzer.configure(
       enabled: p.waterEnabled,
-      slotMinutes: NotificationCenter.waterSlotMinutes(p),
+      slotMinutes: NotificationCenter.waterCadenceMinutes(p),
     );
     // Launch and every change of the toggle: log the slots a dead app missed.
-    await catchUpAssumedWater(prefs: p);
+    await catchUpAssumedWater(prefs: p, sleep: sleep);
   }
 
   /// "Assume I drank water": logs every reminder slot due so far that has not
@@ -3349,14 +3371,14 @@ class AppState extends ChangeNotifier {
   /// with the toggle off it writes nothing. Best-effort: a failed write is
   /// retried by the next run, so it never throws. Returns how many glasses were
   /// newly logged.
-  Future<int> catchUpAssumedWater({NotificationPrefs? prefs, DateTime? now}) async {
+  Future<int> catchUpAssumedWater({NotificationPrefs? prefs, DateTime? now, ReminderSleepGate? sleep}) async {
     try {
       final p = prefs ?? await NotificationPrefs.load();
-      if (!p.waterAssumeDrank) return 0;
       final n = await AssumedWater.catchUp(
         p,
         now: now ?? DateTime.now(),
         system: await UnitsController.savedSystem(),
+        sleep: sleep,
       );
       if (n > 0) bumpInsights(); // live Nutrition / Journal re-read the day
       return n;
@@ -3729,6 +3751,7 @@ class AppState extends ChangeNotifier {
   // uninterrupted, for the full 2h window, and it fires from the OS wall-clock
   // even while the app is closed.
   int _lastStillnessScheduleMs = 0;
+  DateTime? _stillnessDueAt;
   Future<void> _rescheduleStillnessNudge(int nowMs) async {
     // Throttle: _ingestLiveMags can call this many times a second while the
     // user is actively moving — the 2h nudge window doesn't need OS-scheduler
@@ -3746,7 +3769,9 @@ class AppState extends ChangeNotifier {
       if (!prefs.phoneDeliveryEnabled('movement')) return;
       await NotificationService.instance.cancel(NotificationService.idStillness);
       final at = NotificationCenter.stillnessNudgeAt(
-          prefs, DateTime.fromMillisecondsSinceEpoch(nowMs));
+          prefs, DateTime.fromMillisecondsSinceEpoch(nowMs),
+          sleep: await ReminderSleepGate.load(now: DateTime.fromMillisecondsSinceEpoch(nowMs)));
+      _stillnessDueAt = at;
       if (at == null) return;
       await NotificationService.instance.scheduleOnce(
         id: NotificationService.idStillness,
@@ -3867,6 +3892,7 @@ class AppState extends ChangeNotifier {
   Future<void> setExpectedSleepSchedule(ExpectedSleepSchedule next) async {
     await sleepOperations.saveSchedule(next.toJson());
     sleepOperations.schedule = next;
+    await refreshReminderSleep();
     await _refreshHighFreqWakeWindow();
     notifyListeners();
   }

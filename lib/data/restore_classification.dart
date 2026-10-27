@@ -6,6 +6,8 @@
 //
 // wake_trace is restored with a row policy: journal-bearing kinds merge by
 // event content, local acknowledgements win, and foreign diagnostics are skipped.
+// water_moment is durable user history and merges by its stable UUID through
+// LocalDb._restoreTables, including two explicit glasses in one minute.
 // Same shape as kPrefsNotBackedUp (backup_extras.dart).
 
 /// Table name -> why a restore leaves it alone.

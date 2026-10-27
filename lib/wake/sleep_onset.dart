@@ -42,7 +42,7 @@ DateTime? detectedSleepOnset({
   DateTime? bestOnset;
   DateTime? bestEnd;
   for (final raw in windows) {
-    final w = _windowOf(raw);
+    final w = storedSleepWindowOf(raw);
     if (w == null) continue;
     final onset = DateTime.fromMillisecondsSinceEpoch(w.onsetMs.round());
     if (!onset.isBefore(now) || !onset.isBefore(wakeAt)) continue;
@@ -80,13 +80,13 @@ Future<DateTime?> loadDetectedSleepOnset(DateTime wakeAt,
   }
 }
 
-class _Window {
-  const _Window(this.onsetMs, this.offsetMs);
+class StoredSleepWindow {
+  const StoredSleepWindow(this.onsetMs, this.offsetMs);
   final double onsetMs;
   final double? offsetMs;
 }
 
-_Window? _windowOf(Object? raw) {
+StoredSleepWindow? storedSleepWindowOf(Object? raw) {
   Object? decoded = raw;
   if (raw is String) {
     if (raw.isEmpty) return null;
@@ -107,5 +107,5 @@ _Window? _windowOf(Object? raw) {
   if (map == null) return null;
   final on = map['onset_ms'], off = map['offset_ms'];
   if (on is! num || !on.isFinite || on <= 0) return null;
-  return _Window(on.toDouble(), off is num && off.isFinite ? off.toDouble() : null);
+  return StoredSleepWindow(on.toDouble(), off is num && off.isFinite ? off.toDouble() : null);
 }

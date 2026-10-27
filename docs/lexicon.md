@@ -99,3 +99,10 @@ in the same change that introduces it (AGENTS.md §6).
   sets use stable bit-set numbers. Each track needs seven complete nights.
   Unknown journal context never trains a track. Alcohol intake changes learning
   context even when it precedes the live detector's late-intake cutoff.
+- **Water moment**: one explicitly logged glass with its own identifier, local
+  date and clock minute. Two glasses in one minute remain two moments. A daily
+  water total is an aggregate and does not establish a glass's timestamp.
+- **Reminder sleep eligibility**: the shared decision for a reminder's target
+  instant, checked against quiet hours, expected sleep and recorded sleep.
+  Suppression diagnostics use that order when causes overlap. Interval starts
+  are included and ends are excluded. Missing evidence remains unknown.

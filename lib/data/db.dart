@@ -56,6 +56,7 @@ import 'day_checkpoint.dart';
 export 'day_checkpoint.dart' show DayCheckpoint;
 import '../gestures/symptom_description.dart';
 import 'assumed_water.dart';
+import 'water_moment.dart';
 import 'day_label.dart';
 import 'activity_store.dart';
 import 'nap_resolution.dart';
@@ -414,6 +415,7 @@ class LocalDb {
     'symptom_entry',
     'moment_label',
     'assumed_water',
+    'water_moment',
     'notif_fired',
     'notif_slots',
     // The wearer's confirmed nights and wake settings, and the per-night
@@ -698,7 +700,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 79;
+  static const int schemaVersion = 80;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -5152,6 +5154,13 @@ class LocalDb {
     });
   }
 
+  /// Small SQL projections of detected naps for reminder eligibility. Nap
+  /// starts/ends are absolute epoch seconds; no guessed schedule or duration.
+  static Future<List<Map<String, Object?>>> reminderNapWindows(String since) => readerRun((db) => db.rawQuery(
+    "SELECT json_extract(n.value, '\$.start') AS start, json_extract(n.value, '\$.end') AS end "
+    "FROM day_result r $_servedDayJoin JOIN json_each(r.payload_json, '\$.naps.value') n "
+    "WHERE r.skipped = 0 AND r.day_id >= ? ORDER BY r.day_id DESC LIMIT 160", [since]));
+
   /// [sleepWindowRows] for one [day]: `{day_id, window_json, rev}`, or null
   /// when the day has no served, non-skipped row (now).
   static Future<Map<String, dynamic>?> sleepWindowRow(String day) async {
@@ -5594,6 +5603,7 @@ class LocalDb {
       'symptom_entry',
       'moment_label',
       'assumed_water',
+      'water_moment',
       'notif_fired',
       'notif_slots',
       // Vendor-computed, typed-in and imported scalars. In the hand-entered
@@ -5719,6 +5729,7 @@ class LocalDb {
     'symptom_entry',
     'moment_label',
     'assumed_water',
+    'water_moment',
     'notif_fired',
     // Local wins: a new phone's own settings, confirmations, ledger rows and
     // notification slots are not replaced by a backup's.
@@ -6749,7 +6760,7 @@ class LocalDb {
   /// a logged zero) and tombstone it, in ONE transaction. False, changing
   /// nothing, when it is already removed. The subtracted amount is the ROW's
   /// `ml`, not the caller's copy, so a stale screen cannot take back too much.
-  static Future<bool> removeAssumedWater(AssumedGlass g, {Transaction? transaction}) => _ldbRemoveAssumedWater(g, transaction: transaction);
+  static Future<bool> removeAssumedWater(AssumedGlass g, {Transaction? transaction, bool onlyUnreviewed = false}) => _ldbRemoveAssumedWater(g, transaction: transaction, onlyUnreviewed: onlyUnreviewed);
 
   /// The part of [date]'s water total that is assumed (state assumed or kept,
   /// never above the day's total); 0 when none.

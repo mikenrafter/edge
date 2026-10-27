@@ -71,32 +71,49 @@ class AssumedWater {
   /// How far back a missed slot is still caught up, in local calendar days.
   static const int lookbackDays = 7;
 
-  /// The slots due at [now]: every water slot (NotificationCenter.waterSlotMinutes)
+  /// The slots due at [now]: every water slot (NotificationCenter.waterCadenceMinutes)
   /// on every local day from [lookbackDays] ago to today whose wall-clock time is
   /// not before the toggle's `waterAssumeSinceMs` and not after [now]. Empty when
   /// the reminder or the toggle is off, or when no turn-on time is known.
-  static List<DateTime> dueSlots(NotificationPrefs prefs, {
+  static List<DateTime> dueSlots(
+    NotificationPrefs prefs, {
     required DateTime now,
-    ReminderSleepGate? sleep, // P3 RED: ignored until GREEN.
+    ReminderSleepGate? sleep,
+    void Function(SuppressedReminderSlot)? onSuppressed,
   }) {
     if (!prefs.waterAssumeDrank || !prefs.waterEnabled) return const [];
     final sinceMs = prefs.waterAssumeSinceMs;
     if (sinceMs == null) return const []; // never guess when it was switched on
-    final slots = NotificationCenter.waterSlotMinutes(prefs);
+    final slots = NotificationCenter.waterCadenceMinutes(prefs);
     if (slots.isEmpty) return const [];
+    final gate = sleep ?? const ReminderSleepGate();
     final n = now.toLocal();
     final since = DateTime.fromMillisecondsSinceEpoch(sinceMs);
     // Same wall minute, [lookbackDays] calendar days back (DST-safe: built from
     // calendar fields, never from a 24 h multiple).
-    final cutoff = DateTime(n.year, n.month, n.day - lookbackDays, n.hour, n.minute);
+    final cutoff = DateTime(
+      n.year,
+      n.month,
+      n.day - lookbackDays,
+      n.hour,
+      n.minute,
+    );
     final from = since.isAfter(cutoff) ? since : cutoff;
     final out = <DateTime>[];
-    for (var day = DateTime(from.year, from.month, from.day);
-        !day.isAfter(DateTime(n.year, n.month, n.day));
-        day = DateTime(day.year, day.month, day.day + 1)) {
+    for (
+      var day = DateTime(from.year, from.month, from.day);
+      !day.isAfter(DateTime(n.year, n.month, n.day));
+      day = DateTime(day.year, day.month, day.day + 1)
+    ) {
       for (final m in slots) {
         final at = DateTime(day.year, day.month, day.day, m ~/ 60, m % 60);
-        if (!at.isBefore(from) && !at.isAfter(n)) out.add(at);
+        if (at.isBefore(from) || at.isAfter(n)) continue;
+        final reason = gate.reasonAt(prefs, at);
+        if (reason == null) {
+          out.add(at);
+        } else {
+          reportSuppressedReminder(onSuppressed, at, reason);
+        }
       }
     }
     return out;
@@ -112,11 +129,35 @@ class AssumedWater {
     ReminderSleepGate? sleep,
     void Function(SuppressedReminderSlot)? onSuppressed,
   }) async {
-    final due = dueSlots(prefs, now: now);
+    final gate = sleep ?? await ReminderSleepGate.load(now: now);
+    final local = now.toLocal();
+    final since = dayLabelOf(
+      DateTime(local.year, local.month, local.day - lookbackDays),
+    );
+    // Withdraw only unreviewed guesses. Kept glasses remain explicit decisions.
+    for (final g in await LocalDb.assumedWater(sinceDate: since)) {
+      if (g.state != AssumedState.assumed) continue;
+      final reason = gate.reasonAt(prefs, g.local);
+      if (reason == null) continue;
+      await LocalDb.removeAssumedWater(g, onlyUnreviewed: true);
+      reportSuppressedReminder(onSuppressed, g.local, reason);
+    }
+    // Enumerate the original cadence so every rejected slot has a diagnostic.
+    final due = dueSlots(
+      prefs,
+      now: now,
+      sleep: gate,
+      onSuppressed: onSuppressed,
+    );
     if (due.isEmpty) return 0;
     final ml = WaterUnits.stepMl(system);
     var logged = 0;
     for (final slot in due) {
+      final reason = gate.reasonAt(prefs, slot);
+      if (reason != null) {
+        reportSuppressedReminder(onSuppressed, slot, reason);
+        continue;
+      }
       final fresh = await LocalDb.logAssumedWater(
         date: dayLabelOf(slot),
         atMin: slot.hour * 60 + slot.minute,

@@ -1040,6 +1040,10 @@ Future<Database> _ldbPrivOpen() async {
           // day_manifest (design 06 1e): one empty table, no backfill.
           await createDayManifest(db);
         }
+        if (oldV < 80) {
+          // Empty additive table, no historical timestamp inference/backfill.
+          await WaterMomentStore.create(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
@@ -1163,6 +1167,7 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._createWakeEvidence(db);
     await LocalDb._createMomentLabel(db);
     await LocalDb._createAssumedWater(db);
+    await WaterMomentStore.create(db);
     await LocalDb._createSymptomEntry(db);
     await LocalDb._createSampleArchive(db);
     await LocalDb._createSampleStatus(db);

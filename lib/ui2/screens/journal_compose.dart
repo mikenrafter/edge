@@ -142,7 +142,9 @@ class _JournalComposeState extends State<JournalCompose>
       } else {
         _values[key] = JournalMetricValue(
           v,
-          atMinuteOfDay: _values[key]?.atMinuteOfDay,
+          atMinuteOfDay: key == 'water_ml'
+              ? DateTime.now().hour * 60 + DateTime.now().minute
+              : _values[key]?.atMinuteOfDay,
         );
       }
     });

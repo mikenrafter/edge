@@ -1,6 +1,12 @@
+import 'dart:convert';
+import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/assumed_water.dart';
+import 'package:openstrap_edge/state/app_state.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../backup/backup_support.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:openstrap_edge/notify/alert_dispatcher.dart';
 import 'package:openstrap_edge/notify/alert_rule.dart';
@@ -28,9 +34,15 @@ NotificationPrefs bandPrefs({required bool quiet}) => NotificationPrefs(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  late BackupEnv dbEnv;
+  setUpAll(() async {
+    dbEnv = await BackupEnv.create('reminder_sleep_context.db');
+  });
+  tearDownAll(() => dbEnv.dispose());
   final calls = <MethodCall>[];
   const channel = MethodChannel('dexterous.com/flutter/local_notifications');
-  setUp(() {
+  setUp(() async {
+    await dbEnv.wipe();
     SharedPreferences.setMockInitialValues({});
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     AndroidFlutterLocalNotificationsPlugin.registerWith();
@@ -283,4 +295,48 @@ void main() {
       expect(buzzes, 0);
     },
   );
+  test('saving expected sleep through AppState refreshes actual pending OS slots', () async {
+    await const NotificationPrefs(waterEnabled: true).save();
+    final app = AppState.forTesting();
+    addTearDown(app.dispose);
+    await app.setExpectedSleepSchedule(nocturnal.schedule!);
+    final water = calls.where((c) => c.method == 'zonedSchedule' &&
+        (c.arguments as Map)['title'] == 'Water').map((c) {
+      final at = DateTime.parse((c.arguments as Map)['scheduledDateTime'] as String);
+      return at.hour * 60 + at.minute;
+    }).toList()..sort();
+    expect(water, [420, 1020, 1140, 1260]);
+    expect(calls.where((c) => c.method == 'cancel').length,
+        greaterThanOrEqualTo(NotificationService.maxWaterSlots));
+  });
+  test('published open sleep refresh withdraws assumptions and cancels OS water', () async {
+    final now = DateTime.now();
+    final onset = now.subtract(const Duration(hours: 3));
+    final slot = now.subtract(const Duration(hours: 2));
+    final day = dayLabelOf(slot);
+    await NotificationPrefs(waterEnabled: true, waterAssumeDrank: true,
+        quietEnabled: false, waterAssumeSinceMs: onset.millisecondsSinceEpoch).save();
+    await LocalDb.logAssumedWater(date: day, atMin: slot.hour * 60 + slot.minute,
+        ml: 250, loggedAtMs: 1);
+    await LocalDb.putDayResult(dayId: dayLabelOf(now), algoVersion: 117,
+        payloadJson: '{}', windowJson: jsonEncode({'value': {'onset_ms': onset.millisecondsSinceEpoch}}));
+    final app = AppState.forTesting();
+    addTearDown(app.dispose);
+    await app.refreshReminderSleep();
+    expect((await LocalDb.assumedWater(date: day, includeRemoved: true)).single.state,
+        AssumedState.removed);
+    expect((await LocalDb.journalMetricsForDay(day))['water_ml'], isNull);
+    expect(calls.where((c) => c.method == 'zonedSchedule' &&
+        (c.arguments as Map)['title'] == 'Water'), isEmpty);
+  });
+
+  test('unknown review status still cancels a check-in protected by sleep', () async {
+    await NotificationCenter.instance.scheduleStandingReminders(
+      const NotificationPrefs(checkInEnabled: true, quietEnabled: false),
+      sleep: const ReminderSleepGate(schedule: ExpectedSleepSchedule(onsetMinute: 1080, wakeMinute: 1380)),
+    );
+    expect(calls.where((c) => c.method == 'cancel' &&
+        (c.arguments as Map)['id'] == NotificationService.idCheckIn), hasLength(1));
+  });
+
 }

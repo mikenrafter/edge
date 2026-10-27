@@ -1686,6 +1686,8 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
               // beats, never the other band's for the same second.
               final highestBeat = <(Object?, Object?), int>{};
               for (final row in rows) {
+                // water_moment uses a stable TEXT id, so the generic REPLACE
+                // merge is repeatable without collapsing equal clock minutes.
                 if (t == 'wake_meta' &&
                     LocalDb._wakeMetaTransientKeys.contains(row['key'])) {
                   continue;

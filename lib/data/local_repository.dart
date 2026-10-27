@@ -424,8 +424,11 @@ abstract class LocalRepository {
   Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) =>
       throw UnimplementedError('re-layer: getJournalMetrics');
 
-  /// Replace one day's numeric fields. A field absent from [fields] is cleared
-  /// for that day — the map IS the day, not a patch on it.
+  /// Atomically change water and its timestamped moments. Storage errors propagate.
+  Future<double?> changeWater(String date, double delta, {required int atMinuteOfDay}) =>
+      throw UnsupportedError('water logging requires a writer');
+
+  /// Replace one day's numeric fields. Omitted fields are cleared.
   Future<void> postJournalMetrics(
     String date,
     Map<String, JournalMetricValue> fields,

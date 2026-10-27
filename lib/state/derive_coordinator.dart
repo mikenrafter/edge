@@ -65,6 +65,10 @@ final class _CoordinatorPublishGateEffects implements PublishGateEffects {
   void publishLog(String line) => developer.log(line, name: 'publish');
 }
 
+abstract interface class ReminderSleepRefresher {
+  Future<void> refreshReminderSleep();
+}
+
 class DeriveCoordinator {
   DeriveCoordinator({
     required DerivationEngine Function() engine,
@@ -83,6 +87,7 @@ class DeriveCoordinator {
     required Future<void> Function() maybeReclaimDiskSpace,
     PeriodicCalculationPolicy? calculationPolicy,
     PublishGate? publishGate,
+    this.reminderSleep,
   })  : _engine = engine,
         _profileOf = profile,
         _log = log,
@@ -102,6 +107,7 @@ class DeriveCoordinator {
 
   // The engine is resolved on use: AppState builds it lazily (it reads the
   // `_background` flag both of its constructors have set by then).
+  final ReminderSleepRefresher? reminderSleep;
   final DerivationEngine Function() _engine;
   DerivationEngine get _derive => _engine();
 
@@ -133,7 +139,10 @@ class DeriveCoordinator {
   PublishGate get publishGate => _publishGate;
 
   /// P2.3 stub: request a publish and wait until the gate is idle.
-  Future<void> publishNow() => publishGate.publishAndWait();
+  Future<void> publishNow() async {
+    await publishGate.publishAndWait();
+    await reminderSleep?.refreshReminderSleep();
+  }
 
   // The host is gone, or this coordinator has been disposed (which, under
   // AppState, only ever happens after the host flag is set).
@@ -330,7 +339,10 @@ class DeriveCoordinator {
   );
 
   void _publishDay() {
-    if (!_disposed) publishGate.request();
+    if (!_disposed) {
+      publishGate.request();
+      unawaited(reminderSleep?.refreshReminderSleep() ?? Future<void>.value());
+    }
   }
 
   /// First usable render: revision bump -> the Home commit that consumed it.

@@ -13,6 +13,8 @@
 //   * The reminder text names the glass in the user's unit through the shared
 //     formatter and, with the toggle on, says the glass is assumed.
 
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_edge/notify/reminder_sleep_gate.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,6 +28,8 @@ import 'package:openstrap_edge/ui2/profile/settings.dart';
 import '../support/settings_sections.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() { SharedPreferences.setMockInitialValues({'notif_quiet_enabled': false}); });
   group('the pref', () {
     test('defaults OFF with no turn-on time', () {
       const p = NotificationPrefs();
@@ -200,6 +204,7 @@ void main() {
         final slots = <DateTime>[];
         var buzzed = 0;
         final b = WaterBuzzer(
+          sleep: () => const ReminderSleepGate(),
           buzz: () async => buzzed++,
           isConnected: () => false,
           onSlot: (s) async => slots.add(s),
@@ -218,6 +223,7 @@ void main() {
       fakeAsync((async) {
         var calls = 0;
         final b = WaterBuzzer(
+          sleep: () => const ReminderSleepGate(),
           buzz: () async {},
           isConnected: () => false,
           onSlot: (_) async => calls++,
@@ -233,6 +239,7 @@ void main() {
       fakeAsync((async) {
         var calls = 0;
         final b = WaterBuzzer(
+          sleep: () => const ReminderSleepGate(),
           buzz: () async {},
           isConnected: () => false,
           onSlot: (_) async {

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import '../backup/backup_support.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/data/assumed_water.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
@@ -15,6 +16,12 @@ const quietOff = NotificationPrefs(waterEnabled: true, quietEnabled: false);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  late BackupEnv dbEnv;
+  setUpAll(() async {
+    dbEnv = await BackupEnv.create('reminder_sleep_context.db');
+  });
+  tearDownAll(() => dbEnv.dispose());
+  setUp(() => dbEnv.wipe());
   test(
     'validation runs in UTC',
     () => expect(Platform.environment['TZ'], 'UTC'),

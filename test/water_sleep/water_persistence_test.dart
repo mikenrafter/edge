@@ -349,4 +349,108 @@ void main() {
       );
     },
   );
+  test(
+    'explicit same-minute moments survive repeated backup restore',
+    () async {
+      await repo.changeWater(day, 250, atMinuteOfDay: 1035);
+      await repo.changeWater(day, 250, atMinuteOfDay: 1035);
+      final backup = await LocalDb.exportCopy(extras: BackupExtras.none);
+      try {
+        final db = await LocalDb.instance;
+        await db.delete('water_moment');
+        await db.delete('journal_metric');
+        await LocalDb.importFromDbFile(backup);
+        await LocalDb.importFromDbFile(backup);
+        await LocalDb.close();
+        expect(
+          (await LocalDb.journalMetricsForDay(day))['water_ml']!.value,
+          500,
+        );
+        expect(await waterTimes(), [sec(17, 15), sec(17, 15)]);
+      } finally {
+        await File(backup).delete();
+      }
+    },
+  );
+  test(
+    'concurrent water taps commit both moments and preserve other fields',
+    () async {
+      await repo.postJournalMetrics(day, {
+        'caffeine_mg': const JournalMetricValue(100),
+      });
+      await Future.wait([
+        repo.changeWater(day, 250, atMinuteOfDay: 1035),
+        repo.changeWater(day, 250, atMinuteOfDay: 1035),
+      ]);
+      final fields = await repo.getJournalMetrics(day);
+      expect(fields['water_ml']!.value, 500);
+      expect(fields['caffeine_mg']!.value, 100);
+      expect(await waterTimes(), [sec(17, 15), sec(17, 15)]);
+    },
+  );
+  test(
+    'schema 79 migration and same-version repair preserve totals without backfill',
+    () async {
+      await repo.postJournalMetrics(day, {
+        'water_ml': const JournalMetricValue(250),
+      });
+      var db = await LocalDb.instance;
+      await db.execute('DROP TABLE water_moment');
+      await db.execute('PRAGMA user_version = 79');
+      await LocalDb.close();
+      db = await LocalDb.instance;
+      expect(
+        (await db.rawQuery('PRAGMA user_version')).single.values.single,
+        80,
+      );
+      expect((await repo.getJournalMetrics(day))['water_ml']!.value, 250);
+      expect(await waterTimes(), isEmpty);
+      await db.execute('DROP TABLE water_moment');
+      await LocalDb.close();
+      expect(await waterTimes(), isEmpty);
+      await repo.changeWater(day, 250, atMinuteOfDay: 1110);
+      expect(await waterTimes(), [sec(18, 30)]);
+      expect((await repo.getJournalMetrics(day))['water_ml']!.value, 500);
+    },
+  );
+  test('stored detected nap suppresses only the measured interval', () async {
+    await LocalDb.putDayResult(
+      dayId: day,
+      algoVersion: 1,
+      windowJson: '{}',
+      payloadJson: jsonEncode({
+        'naps': {
+          'value': [
+            {'start': sec(18), 'end': sec(19)},
+          ],
+        },
+      }),
+    );
+    final gate = await ReminderSleepGate.load(now: at(20));
+    const prefs = NotificationPrefs(quietEnabled: false);
+    expect(gate.reasonAt(prefs, at(18)), ReminderSuppression.asleep);
+    expect(gate.reasonAt(prefs, at(19)), isNull);
+  });
+  test(
+    'withdrawal cannot subtract a glass kept after the caller read it',
+    () async {
+      await LocalDb.logAssumedWater(
+        date: day,
+        atMin: 600,
+        ml: 250,
+        loggedAtMs: 1,
+      );
+      final stale = (await LocalDb.assumedWater(date: day)).single;
+      await LocalDb.keepAssumedWater(stale);
+      expect(
+        await LocalDb.removeAssumedWater(stale, onlyUnreviewed: true),
+        isFalse,
+      );
+      expect((await repo.getJournalMetrics(day))['water_ml']!.value, 250);
+      expect(
+        (await LocalDb.assumedWater(date: day)).single.state,
+        AssumedState.kept,
+      );
+    },
+  );
 }

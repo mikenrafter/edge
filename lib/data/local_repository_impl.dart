@@ -28,6 +28,7 @@ import '../models/activity_suggestion.dart';
 import 'activity_store.dart';
 import 'day_review.dart';
 import 'assumed_water.dart';
+import 'water_moment.dart';
 import '../gestures/moment_follow_ups.dart';
 import '../gestures/moment_review_queue.dart';
 import '../gestures/moment_review_apply.dart';
@@ -4432,6 +4433,12 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) async {
     _focusCheck('getJournalMetrics');
     return LocalDb.journalMetricsForDay(date);
+  }
+
+  @override
+  Future<double?> changeWater(String date, double delta, {required int atMinuteOfDay}) {
+    _focusCheck('changeWater');
+    return WaterMomentStore.change(date, delta, atMinuteOfDay);
   }
 
   @override

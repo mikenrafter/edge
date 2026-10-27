@@ -40,6 +40,15 @@ class _Repo extends LocalRepository {
   Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) async =>
       journal;
   @override
+  Future<double?> changeWater(String date, double delta, {required int atMinuteOfDay}) async {
+    final old = journal['water_ml']?.value;
+    final next = delta < 0 && (old ?? 0) <= 0 ? null : ((old ?? 0) + delta).clamp(0.0, _water.max).toDouble();
+    final fields = {...journal}..remove('water_ml');
+    if (next != null) fields['water_ml'] = JournalMetricValue(next, atMinuteOfDay: atMinuteOfDay);
+    await postJournalMetrics(date, fields);
+    return next;
+  }
+  @override
   Future<void> postJournalMetrics(
       String date, Map<String, JournalMetricValue> fields) async {
     posted.add(Map.of(fields));

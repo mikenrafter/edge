@@ -48,6 +48,7 @@ import '../wake/wake_settings.dart' show gateNaturalWake;
 import '../wake/wake_confirmation.dart';
 import '../wake/wake_stores.dart'
     show DbWakeConfirmationStore, loadWakeUpgradeState;
+import '../notify/reminder_sleep_refresh.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../state/alarm_schedule.dart';
@@ -367,6 +368,9 @@ Future<void> headlessDeriveAfterSync() async {
   } else {
     _bgLog('[bgsync] automatic derive held by Maximum battery mode.');
   }
+  try { await refreshHeadlessReminderSleep(); } catch (e) {
+    _bgLog('[bgsync] reminder refresh deferred: $e');
+  }
 }
 
 /// The headless half of "a confirmation finalizes the night". When a note made
@@ -390,6 +394,7 @@ Future<bool> headlessDeriveConfirmedWakeDay(int moment) async {
     await (await newHeadlessDerivationEngine(
       (l) => _bgLog('[bgsync-derive] $l'),
     )).runDays(await loadHeadlessProfile(), {day}, force: true);
+    await refreshHeadlessReminderSleep();
     return true;
   } catch (e) {
     _bgLog('[bgsync] wake-day derive skipped: $e');

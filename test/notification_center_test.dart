@@ -287,7 +287,7 @@ void main() {
   });
 
   group('water interval is pickable', () {
-    // 08:00–22:00 waking window, quiet hours off.
+    // With quiet hours off the cadence covers the full local day.
     const base = NotificationPrefs(waterEnabled: true, quietEnabled: false);
     test('every offered choice reaches the slots and changes the count', () {
       final counts = {
@@ -308,7 +308,7 @@ void main() {
     test('spacing is the picked interval', () {
       final s = NotificationCenter.waterSlotMinutes(
           base.copyWith(waterIntervalMin: 90));
-      expect(s.first, equals(8 * 60));
+      expect(s.first, equals(0));
       expect(s[1] - s[0], equals(90));
     });
     test('off means no slots whatever the interval', () {
