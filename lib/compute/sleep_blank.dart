@@ -17,6 +17,8 @@ import 'dart:convert';
 /// NOT here, on purpose: daytime facts (`strain`, `trimp`, `steps`, `calories*`,
 /// `active_min`, `worn_min`, `hr_ceiling_bpm`, `nap_min`, `stress`, `dyn_p90`).
 const Set<String> kSleepDerivedMetricKeys = {
+  'hr_min_night',
+  'rmssd_mean_night',
   'rhr',
   'rhr_nocturnal',
   'rmssd',

@@ -250,6 +250,7 @@ List<List<int>> nightZoneOffsets(
     s.deviceFamily,
     (s.deviceIds.toList()..sort()),
     input.dayId,
+    input.method.name,
     ov == null ? null : [ov.dayId, ov.onsetSec, ov.offsetSec, ov.source],
     [
       for (final p in _effectivePriorSleep(input))

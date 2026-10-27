@@ -123,6 +123,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Storage'],
     ['Export, backup, import'],
     ['Calculations'], // the power mode
+    ['Experimental sleep staging (HMM)'],
     ['Write to Apple Health'],
     ['Contribute my health data'],
     ['Crash reports'],

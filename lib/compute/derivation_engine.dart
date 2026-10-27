@@ -57,6 +57,7 @@ import '../data/series_codec.dart';
 import '../data/sample_archive.dart' show SampleArchiver;
 import '../notify/fired_keys.dart';
 import '../state/locale_controller.dart' show LocaleController;
+import '../state/prefs.dart' show Prefs;
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../notify/tap_router.dart' show activitySuggestionRoute;
@@ -1969,7 +1970,11 @@ part 'engine/settled.dart';
 // change. EpochRows keeps staging labels unchanged by the row refactor; the
 // separate RR/spectral changes can affect staging features. Re-derive stored
 // days under the new pin; old checkpoints are refused by version/pin gates.
-const int kAlgoVersion = 116;
+// 117: experimental offline #628 staging and independently measured nightly
+// HR p10 / mean epoch RMSSD in payload_json. Cardio remains the default and
+// its stages/accounting are unchanged. Default persisted output gains nullable
+// baseline scalars and method provenance, so finalized days need a new version.
+const int kAlgoVersion = 117;
 class DerivationEngine {
   DerivationEngine({
     this.log,

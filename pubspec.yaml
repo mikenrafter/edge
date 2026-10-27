@@ -619,7 +619,9 @@ dependencies:
       # non-finite guards and irregular-screen gap handling (kAlgoVersion 116).
       # EpochRows/EpochRowsMemo preserve staging labels; checkpoint formats
       # advance, with hrvTime jitter-evidence perf fixes and citations.
-      ref: 6a2a9fc7392b03103ab0b371b0449c28cca104f7
+      # port/628-hmm: experimental HMM staging (edge #628) and measured night
+      # baselines (HR p10, mean epoch RMSSD); cardio default unchanged (kAlgoVersion 117).
+      ref: 1255e9ddbeb23c2e8b7174e960ef220d796c46a1
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8

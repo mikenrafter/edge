@@ -268,6 +268,8 @@ class PreparedDerivationPayload {
 
 class SleepSessionCandidate {
   final String dayId;
+  /// Selected offline method; vendor stage provenance remains in sleepJson.
+  final ana.StagingMethod method;
   final double confidence;
   final List<String> flags;
   final Map<String, dynamic> sleepJson;
@@ -285,6 +287,7 @@ class SleepSessionCandidate {
 
   const SleepSessionCandidate({
     required this.dayId,
+    this.method = ana.StagingMethod.cardio,
     required this.confidence,
     required this.flags,
     required this.sleepJson,
@@ -300,6 +303,7 @@ class SleepSessionCandidate {
 
   Map<String, dynamic> toJson() => {
     'day_id': dayId,
+    'staging_method': method.name,
     'confidence': confidence,
     'flags': flags,
     'sleep_json': sleepJson,
@@ -316,6 +320,9 @@ class SleepSessionCandidate {
         ((m[k] as List?) ?? const []).map((e) => e.toString()).toList();
     return SleepSessionCandidate(
       dayId: m['day_id']?.toString() ?? '',
+      method: ana.StagingMethod.values.firstWhere(
+        (method) => method.name == m['staging_method'],
+        orElse: () => ana.StagingMethod.cardio),
       confidence: (m['confidence'] as num?)?.toDouble() ?? 0,
       flags: strs('flags'),
       sleepJson: ((m['sleep_json'] as Map?) ?? const {}).cast<String, dynamic>(),
@@ -328,7 +335,10 @@ class SleepSessionCandidate {
     );
   }
 
-  static SleepSessionCandidate absent(String dayId) => SleepSessionCandidate(
+  static SleepSessionCandidate absent(String dayId, {
+    ana.StagingMethod method = ana.StagingMethod.cardio,
+  }) => SleepSessionCandidate(
+    method: method,
     dayId: dayId,
     confidence: 0,
     flags: const ['NO_SLEEP_DETECTED'],
@@ -509,9 +519,8 @@ void derivationPrepareWorker(SendPort mainSendPort) {
 }
 
 /// One decoded page + its beats through the accumulator, the way the worker
-/// feeds it. Exists so the page seam — the `beat_ts_ms` coalesce and the
-/// frame/beat union — is testable without spinning an isolate.
-@visibleForTesting
+/// feeds it. The offline comparison tool uses the same page adapter, including
+/// its beat timestamp coalescing and frame/beat union, inside its worker.
 Substrate substrateFromDecodedPage(
   List<Map<String, dynamic>> frames,
   List<Map<String, dynamic>> rrRows,
@@ -540,6 +549,7 @@ Substrate substrateFromDecodedPage(
 @visibleForTesting
 PreparedDerivationPayload prepareDerivationPayload(
   Substrate sub, {
+  ana.StagingMethod method = ana.StagingMethod.cardio,
   String? targetDay,
   SleepWindowOverride? override,
   List<({int startSec, int endSec, String dayKey})> priorSleep = const [],
@@ -554,6 +564,7 @@ PreparedDerivationPayload prepareDerivationPayload(
   final days = <PreparedDerivationDay>[];
   for (final day in calendarDays(
     sub,
+    method: method,
     override: override,
     priorSleep: priorSleep,
     vendorNights: vendorNights,
@@ -613,6 +624,7 @@ PreparedDerivationPayload prepareDerivationPayload(
 
 SleepSessionCandidate prepareSleepSessionCandidate(
   Substrate sub, {
+  ana.StagingMethod method = ana.StagingMethod.cardio,
   required String targetDay,
   SleepWindowOverride? override,
   List<({int startSec, int endSec, String dayKey})> priorSleep = const [],
@@ -647,6 +659,7 @@ SleepSessionCandidate prepareSleepSessionCandidate(
         final win = seg.window;
         if (seg.present && win != null) {
           return SleepSessionCandidate(
+            method: method,
             dayId: targetDay,
             confidence: seg.confidence,
             flags: const [],
@@ -677,16 +690,18 @@ SleepSessionCandidate prepareSleepSessionCandidate(
       ? sub
       : sub.slice(sub.tsSec.first, upTo);
   final payload = prepareDerivationPayload(staged,
-      targetDay: targetDay,
+      method: method,
+    targetDay: targetDay,
       override: override,
       priorSleep: priorSleep,
       vendorNights: claimed,
       rowCache: rowCache,
       skipUnusedDays: skipUnusedDays,
       recordTargetOnly: recordTargetOnly);
-  if (payload.days.isEmpty) return SleepSessionCandidate.absent(targetDay);
+  if (payload.days.isEmpty) return SleepSessionCandidate.absent(targetDay, method: method);
   final day = payload.days.first;
   return SleepSessionCandidate(
+    method: method,
     dayId: day.date,
     confidence: day.confidence,
     flags: day.flags,

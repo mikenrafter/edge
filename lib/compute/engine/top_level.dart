@@ -247,7 +247,10 @@ part of '../derivation_engine.dart';
 // EpochRows preserves staging labels; checkpoint formats advance. Output
 // changes are covered by kAlgoVersion 116; jitter-evidence perf and citations
 // are also included.
-const String kAnalyticsPin = '6a2a9fc7392b03103ab0b371b0449c28cca104f7';
+// REPIN @ 1255e9d (port/628-hmm): opt-in offline HMM staging and measured
+// nightly HR p10 / mean epoch RMSSD. Cardio remains the default. Edge stores
+// nullable night baselines and staging provenance under kAlgoVersion 117.
+const String kAnalyticsPin = '1255e9ddbeb23c2e8b7174e960ef220d796c46a1';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

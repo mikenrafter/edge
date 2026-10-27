@@ -3549,5 +3549,7 @@
   "wakeJournalCount": "{event} ×{count}",
   "wakeJournalGroup": "Despertar {start}–{end} · {minutes} min para levantarte",
   "wakeJournalGroupName": "Despertar",
-  "sleepDetailMedicalDisclaimer": "Algoritmo de investigación experimental. No es un dispositivo médico. Consulte a un médico si tiene trastornos del sueño."
+  "sleepDetailMedicalDisclaimer": "Algoritmo de investigación experimental. No es un dispositivo médico. Consulte a un médico si tiene trastornos del sueño.",
+  "experimentalSleepHmm": "Fases del sueño experimentales (HMM)",
+  "experimentalSleepHmmDescription": "Método de investigación para cálculos futuros. No es consejo médico. Las noches finalizadas no cambian; vuelve a analizar una noche para aplicarlo."
 }

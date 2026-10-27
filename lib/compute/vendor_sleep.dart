@@ -188,7 +188,10 @@ ana.SleepSegmentation vendorStagedSegmentation(
 ) {
   final win = forced.window;
   if (win == null || win.onsetMs == null) return forced;
-  return _staged(win, forced.stages4.length, n, forced.confidence);
+  return _staged(win, forced.stages4.length, n, forced.confidence,
+    hrMinNight: forced.hrMinNight,
+    rmssdMeanNight: forced.rmssdMeanNight,
+  );
 }
 
 /// [n] alone as the night, for an UNCLAIMED one ([vendorNightUnclaimed]): the
@@ -218,7 +221,10 @@ ana.SleepSegmentation _staged(
   int inBed,
   VendorNight n,
   double confidence,
-) {
+{
+  double? hrMinNight,
+  double? rmssdMeanNight,
+}) {
   final start = win.onsetMs! ~/ 1000;
   final s4 = List<String>.filled(inBed, 'unobserved');
   for (final e in n.epochs) {
@@ -270,6 +276,8 @@ ana.SleepSegmentation _staged(
   final reported = vendorStagesReported(n.source);
   final seesWake = reported.contains('wake');
   return ana.SleepSegmentation(
+    hrMinNight: hrMinNight,
+    rmssdMeanNight: rmssdMeanNight,
     window: win,
     stages: [
       for (final s in s4)

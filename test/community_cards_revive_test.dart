@@ -356,10 +356,16 @@ void main() {
       unawaited(nav.push(MaterialPageRoute<void>(
           builder: (_) => const MoreSettings())));
       await settle(t, n: 10);
-      await t.ensureVisible(find.text(_label));
+      // Added settings can push Developer outside the ListView's build cache.
+      // Scroll the Settings route to build the row before trying to tap it.
+      await t.scrollUntilVisible(find.text(_label), 300,
+          scrollable: find.descendant(
+              of: find.byType(MoreSettings), matching: find.byType(Scrollable)));
       await t.pump();
+      final wasOn = Prefs.reviveCommunityCardsOn;
       await t.tap(find.text(_label));
       await t.pump();
+      expect(Prefs.reviveCommunityCardsOn, !wasOn);
       nav.pop();
       await settle(t, n: 10);
     }

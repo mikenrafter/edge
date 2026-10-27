@@ -190,6 +190,9 @@ extension _EnginePrepare on DerivationEngine {
     // A user sleep override is the source of truth — never serve the cached auto
     // candidate, and don't cache the override result (so a later edit / clear is
     // not shadowed by a stale artifact). The auto path keeps its finalized cache.
+    // Headless derivation has no UI startup to warm the preference cache.
+    await Prefs.ensureLoaded();
+    final method = Prefs.sleepStagingMethod;
     final overrideRow = await LocalDb.getSleepOverride(dayId);
     final override = overrideRow == null
         ? null
@@ -227,6 +230,7 @@ extension _EnginePrepare on DerivationEngine {
             // device may have had its flag turned off or lost the active
             // slot since (rule R6), and then nothing of it may remain.
             if (cachedNight != null &&
+                cachedNight.method == method &&
                 !DerivationEngine._deviceStaged(cachedNight)) {
               return cachedNight;
             }
@@ -378,6 +382,7 @@ extension _EnginePrepare on DerivationEngine {
         if (c.overlaps(rowsLo, rowsHi)) c,
     ];
     final input = SleepStagingInput(
+      method: method,
       dayId: dayId,
       searchSub: searchSub,
       override: override,
@@ -515,7 +520,8 @@ extension _EnginePrepare on DerivationEngine {
           // HR rows from the evening before were pruned.
           final sourceGone = DerivationEngine._deviceStaged(prev) &&
               (prev.deviceId == null || prev.deviceId != candidate.deviceId);
-          if (!sourceGone && DerivationEngine.keepsBankedNight(prev, candidate)) {
+          if (!sourceGone && prev.method == method &&
+              DerivationEngine.keepsBankedNight(prev, candidate)) {
             _log('derive $dayId: kept the banked night '
                 '(${DerivationEngine._tstSec(prev)} s) over this pass\'s '
                 '${DerivationEngine._tstSec(candidate)} s — less substrate, not a shorter night');

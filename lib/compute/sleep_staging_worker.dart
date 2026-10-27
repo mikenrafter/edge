@@ -47,9 +47,11 @@ class SleepStagingInput {
     required this.rowsHiSec,
     required this.nowSec,
     this.vendorNights = const [],
+  this.method = ana.StagingMethod.cardio,
   });
 
   final String dayId;
+  final ana.StagingMethod method;
   final Substrate searchSub;
   final SleepWindowOverride? override;
   final List<({int startSec, int endSec, String dayKey})> priorSleep;
@@ -143,6 +145,7 @@ SleepStagingResult stageSleepCandidateHeavy(
       loSec: input.rowsLoSec, hiSec: input.rowsHiSec + 1);
   final candidate = prepareSleepSessionCandidate(
     input.searchSub,
+    method: input.method,
     targetDay: input.dayId,
     override: input.override,
     priorSleep: input.priorSleep,
@@ -159,7 +162,8 @@ SleepStagingResult stageSleepCandidateHeavy(
   // the stager's evidence where the band recorded, as wide as the window
   // where it did not. Detected nights are left exactly as they were.
   final ov = input.override;
-  final ranges = ov == null || userBlanksNight(ov.source)
+  final ranges = input.method != ana.StagingMethod.cardio ||
+          ov == null || userBlanksNight(ov.source)
       ? null
       : userWindowStageRangesHeavy(input.searchSub,
           onsetSec: ov.onsetSec, offsetSec: ov.offsetSec, rowCache: rowCache);
@@ -167,6 +171,7 @@ SleepStagingResult stageSleepCandidateHeavy(
       ? candidate
       : SleepSessionCandidate(
           dayId: candidate.dayId,
+          method: candidate.method,
           confidence: candidate.confidence,
           flags: candidate.flags,
           sleepJson: {...candidate.sleepJson, 'stage_ranges': ranges},

@@ -3637,5 +3637,7 @@
   "wakeJournalCount": "{event} ×{count}",
   "wakeJournalGroup": "Aufwachen {start}–{end} · {minutes} Min. bis zum Aufstehen",
   "wakeJournalGroupName": "Aufwachen",
-  "sleepDetailMedicalDisclaimer": "Experimenteller Forschungsalgorithmus. Kein Medizinprodukt. Wenden Sie sich bei Schlafstörungen an eine Ärztin oder einen Arzt."
+  "sleepDetailMedicalDisclaimer": "Experimenteller Forschungsalgorithmus. Kein Medizinprodukt. Wenden Sie sich bei Schlafstörungen an eine Ärztin oder einen Arzt.",
+  "experimentalSleepHmm": "Experimentelle Schlafphasenerkennung (HMM)",
+  "experimentalSleepHmmDescription": "Forschungsmethode für künftige Berechnungen. Keine medizinische Beratung. Abgeschlossene Nächte bleiben unverändert; analysiere eine Nacht erneut, um sie anzuwenden."
 }

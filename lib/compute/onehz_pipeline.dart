@@ -659,6 +659,11 @@ Map<String, dynamic> deriveDayBundle(
   final rrCov = rrCoverage(d.sleepRrMs, d.sleepRrTsMs);
 
   final hasSleep = (d.sleepJson['tst_sec']) != null;
+  double? measuredNightBaseline(String key) {
+    final raw = d.sleepJson[key];
+    final value = raw is num ? raw.toDouble() : null;
+    return value != null && value.isFinite ? value : null;
+  }
 
   // ── SLEEP: everything from the SINGLE-SOURCE segmentation ──────────────────
   final sleepWinJson = (d.sleepJson['window'] as Map?)?.cast<String, dynamic>();
@@ -1548,6 +1553,11 @@ Map<String, dynamic> deriveDayBundle(
   // serve-seam-expected envelopes (window/accounting/stager .value sub-maps) but
   // every figure traces to the one segmentation result (no second estimator).
   final sleep = <String, dynamic>{
+    'staging_method': d.sleepSource == 'vendor_staged'
+        ? 'vendor_staged' : d.sleepJson['staging_method'],
+    'staging_note': d.sleepSource == 'vendor_staged'
+        ? 'Device-reported sleep stages; not a medical diagnosis.'
+        : d.sleepJson['staging_note'],
     'window': _envelope(
       hasSleep ? sleepWinJson : null,
       confidence: sleepConf,
@@ -1988,6 +1998,10 @@ Map<String, dynamic> deriveDayBundle(
     },
     'readiness_absent_diag': ?readinessAbsentDiag,
     'scalars': {
+      // Independently measured analytics baseline metadata, with no fallback
+      // to resting HR or the readiness HRV estimator.
+      'hr_min_night': measuredNightBaseline('hr_min_night'),
+      'rmssd_mean_night': measuredNightBaseline('rmssd_mean_night'),
       // ONE resting HR. It is nocturnal or it is absent — `rhr` and
       // `rhr_nocturnal` are now the same number, and the second key survives
       // only so the strain recompute keeps reading a key that was never wrong

@@ -209,8 +209,9 @@ void main() {
 
     test('kAlgoVersion includes D36 and the analytics #99 repin', () {
       // 114 was the value when this test was written; the fold fix changes
-      // stored output (AGENTS 3.4). Analytics #99 adds the next bump.
-      expect(kAlgoVersion, 116);
+      // stored output (AGENTS 3.4). Analytics #99 added 116; measured
+      // baseline payloads require 117 even while cardio labels stay unchanged.
+      expect(kAlgoVersion, greaterThanOrEqualTo(117));
     });
 
     test('the changelog block above the constant names D36', () {

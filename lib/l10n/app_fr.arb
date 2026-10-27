@@ -3531,5 +3531,7 @@
   "wakeJournalCount": "{event} ×{count}",
   "wakeJournalGroup": "Réveil {start}–{end} · {minutes} min pour se lever",
   "wakeJournalGroupName": "Réveil",
-  "sleepDetailMedicalDisclaimer": "Algorithme de recherche expérimental. Ceci n’est pas un dispositif médical. Consultez un médecin en cas de troubles du sommeil."
+  "sleepDetailMedicalDisclaimer": "Algorithme de recherche expérimental. Ceci n’est pas un dispositif médical. Consultez un médecin en cas de troubles du sommeil.",
+  "experimentalSleepHmm": "Stades de sommeil expérimentaux (HMM)",
+  "experimentalSleepHmmDescription": "Méthode de recherche pour les prochains calculs. Ne constitue pas un avis médical. Les nuits finalisées restent inchangées ; réanalysez une nuit pour l’appliquer."
 }

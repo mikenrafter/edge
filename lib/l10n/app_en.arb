@@ -17804,5 +17804,13 @@
   "sleepDetailMedicalDisclaimer": "Experimental research algorithm. Not a medical device. Consult a physician for sleep disorders.",
   "@sleepDetailMedicalDisclaimer": {
     "description": "Non-medical research disclaimer shown in every sleep detail state."
+  },
+  "experimentalSleepHmm": "Experimental sleep staging (HMM)",
+  "experimentalSleepHmmDescription": "Research method for future calculations. Not medical advice. Saved finalized nights stay unchanged; reanalyse a night to apply it.",
+  "@experimentalSleepHmm": {
+    "description": "Opt-in experimental offline HMM sleep staging setting."
+  },
+  "@experimentalSleepHmmDescription": {
+    "description": "Explains research status and finalized-night behavior."
   }
 }

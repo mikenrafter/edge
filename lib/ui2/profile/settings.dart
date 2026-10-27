@@ -237,6 +237,10 @@ class _MoreSettingsState extends State<MoreSettings> {
       onGallery: () => goto(c, const GalleryScreen()),
       units: units.system.label,
       appearance: theme.choice.label,
+      experimentalSleepHmm: Prefs.experimentalSleepHmm,
+      onToggleExperimentalSleepHmm: () => setState(() {
+        Prefs.setExperimentalSleepHmm(!Prefs.experimentalSleepHmm);
+      }),
       sleepWakeZoom: Prefs.sleepWakeZoomOn,
       onToggleSleepWakeZoom: () => setState(() {
         Prefs.setSleepWakeZoom(!Prefs.sleepWakeZoomOn);
@@ -578,6 +582,8 @@ Future<void> editExpectedSleepSchedule(BuildContext context, AppState app) async
 class MoreSettingsView extends StatelessWidget {
   final bool embedded, settingsAsTab;
   final bool sleepWakeZoom;
+  final bool experimentalSleepHmm;
+  final VoidCallback? onToggleExperimentalSleepHmm;
   final VoidCallback? onToggleSleepWakeZoom;
   final VoidCallback? onToggleSettingsAsTab;
   final String units, appearance;
@@ -681,6 +687,8 @@ class MoreSettingsView extends StatelessWidget {
     super.key,
     this.embedded = false,
     this.settingsAsTab = false,
+    this.experimentalSleepHmm = false,
+    this.onToggleExperimentalSleepHmm,
     this.sleepWakeZoom = true,
     this.onToggleSleepWakeZoom,
     this.onToggleSettingsAsTab,
@@ -904,6 +912,14 @@ class MoreSettingsView extends StatelessWidget {
                       key: const ValueKey('calc-power-row'),
                       value: calcPowerLabels[calcPowerMode]!,
                       onTap: onPickCalcPowerMode),
+                  SetRow(LucideIcons.flaskConical, C.indigo,
+                      l?.experimentalSleepHmm ?? 'Experimental sleep staging (HMM)',
+                      key: const ValueKey('experimental-sleep-hmm'),
+                      sub: l?.experimentalSleepHmmDescription ??
+                          'Research method for future calculations. Not medical advice. '
+                          'Saved finalized nights stay unchanged; reanalyse a night to apply it.',
+                      value: experimentalSleepHmm ? on : off,
+                      onTap: onToggleExperimentalSleepHmm),
                   // The row P1 was missing. Everything behind it — the
                   // permission request, the retry/backoff, the four gates —
                   // was already written and simply had no way to be switched

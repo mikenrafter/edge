@@ -13,6 +13,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import '../compute/calc_power_policy.dart' show CalcPowerMode;
 import '../data/db/input_revision_store.dart' show bumpInputRev;
@@ -26,6 +27,17 @@ class Prefs {
   Prefs._();
 
   static SharedPreferences? _sp;
+
+  static const _experimentalSleepHmmKey = 'compute.experimental_sleep_hmm';
+
+  /// Opt-in offline research staging. It never rewrites a frozen day by itself.
+  static bool get experimentalSleepHmm =>
+      getBool(_experimentalSleepHmmKey, false);
+  static void setExperimentalSleepHmm(bool on) =>
+      setBool(_experimentalSleepHmmKey, on);
+  static ana.StagingMethod get sleepStagingMethod => experimentalSleepHmm
+      ? ana.StagingMethod.hmm628
+      : ana.StagingMethod.cardio;
 
   static const sleepWakeZoom = 'ui.sleep_wake_zoom';
   static bool get sleepWakeZoomOn => getBool(sleepWakeZoom, true);

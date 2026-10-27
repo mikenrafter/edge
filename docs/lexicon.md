@@ -82,3 +82,8 @@ in the same change that introduces it (AGENTS.md §6).
 
 - **Wake-up group**: one wake epoch shown as a collapsed row, with its observed clock span and time to wake. Opening it shows one row per kind; Natural repeats and snoozes carry counts at their first delivery. Raw journal events stay intact.
 - **Wake-up zoom**: the optional sleep-chart view of a dense end-of-night wake cluster. It labels both window bounds and changes only the displayed time window. The preference defaults on and is owned by `Prefs`.
+
+## Sleep staging
+
+- **Experimental sleep staging (HMM)**: the opt-in offline hidden Markov model identified as `StagingMethod.hmm628`. It estimates wake, light, deep and REM from measured epochs, preserves unobserved gaps and never supplies Natural wake decisions. It is not validated against polysomnography and is not a medical device.
+- **Measured nightly baselines**: `hr_min_night`, the upstream 10th-percentile HR order statistic, and `rmssd_mean_night`, the mean measured epoch RMSSD, within the first 120 elapsed minutes of the selected session. Analytics owns their calculation for every staging method; absent measurements stay null.

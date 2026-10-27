@@ -261,6 +261,42 @@ Object? _comparable(Object? v) => switch (v) {
       _ => v,
     };
 
+/// Phase 2 adds measured baseline/provenance fields and moves revision 116 to
+/// 117. Keep the committed cardio goldens as the reference for EVERY existing
+/// value; the new payload contract is independently pinned by the p2 tests.
+/// This projection is deliberately revision-specific, so a later algorithm
+/// change cannot silently inherit this exception.
+Map<String, dynamic> _cardio116Projection(Map<String, dynamic> snapshot) {
+  expect(kAlgoVersion, 117);
+  final out = (jsonDecode(jsonEncode(snapshot)) as Map).cast<String, dynamic>();
+  for (final table in ['day_result', 'metric_series_version', 'wake_day_features']) {
+    for (final row in out[table] as List) {
+      expect(row['algo_version'], 117);
+      row['algo_version'] = 116;
+    }
+  }
+  for (final row in out['day_result'] as List) {
+    final payload = row['payload_json'] as Map<String, dynamic>;
+    final scalars = payload['scalars'] as Map;
+    for (final key in ['hr_min_night', 'rmssd_mean_night']) {
+      expect(scalars.containsKey(key), isTrue);
+      final value = scalars.remove(key);
+      expect(value == null || value is num && value.isFinite, isTrue);
+    }
+    final sleep = payload['sleep'] as Map;
+    expect(sleep['staging_method'], anyOf('cardio', isNull));
+    expect(sleep.containsKey('staging_method'), isTrue);
+    expect(sleep.containsKey('staging_note'), isTrue);
+    sleep.remove('staging_method');
+    sleep.remove('staging_note');
+    // Repack only the projected payload with the same codec. On macOS the
+    // original byte hash remains a check of all pre-existing payload fields.
+    final stored = SeriesCodec.encodePayloadJson(jsonEncode(payload));
+    row['payload_sha256'] = sha256.convert(utf8.encode(stored)).toString();
+  }
+  return out;
+}
+
 /// The first path where [a] and [b] differ, with both values, or null. A
 /// whole-snapshot string diff is megabytes, and CI truncates it.
 String? _firstDiff(Object? a, Object? b, String path) {
@@ -367,7 +403,7 @@ void main() {
         expect(file.existsSync(), isTrue,
             reason: '${file.path} is missing; see the header.');
         final golden = jsonDecode(file.readAsStringSync());
-        expect(_firstDiff(_comparable(snap), _comparable(golden), r'$'),
+        expect(_firstDiff(_comparable(_cardio116Projection(snap)), _comparable(golden), r'$'),
             isNull,
             reason: 'WHOOP output must stay identical. Do NOT '
                 'regenerate this golden to make a change pass.');

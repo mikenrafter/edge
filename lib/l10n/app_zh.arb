@@ -3531,5 +3531,7 @@
   "wakeJournalCount": "{event} ×{count}",
   "wakeJournalGroup": "唤醒 {start}–{end} · 起床用时 {minutes} 分钟",
   "wakeJournalGroupName": "唤醒",
-  "sleepDetailMedicalDisclaimer": "实验性研究算法。非医疗器械。如有睡眠障碍，请咨询医生。"
+  "sleepDetailMedicalDisclaimer": "实验性研究算法。非医疗器械。如有睡眠障碍，请咨询医生。",
+  "experimentalSleepHmm": "实验性睡眠分期（HMM）",
+  "experimentalSleepHmmDescription": "用于后续计算的研究方法，不提供医疗建议。已定稿的夜间记录保持不变；请重新分析某一晚以应用此方法。"
 }

@@ -274,13 +274,15 @@ void main() {
         'empty-input repin, not this artifact\'s', () {
       // Upstream's numbering since the catch-up (merge log D4), plus our one
       // bump atop upstream 113 (D27 revised): 114, then 115 (D36, the fold
-      // fix), then 116 (analytics #99). Nothing in this artifact bumped it.
-      expect(kAlgoVersion, 116);
+      // fix), then 116 (analytics #99), then 117 (phase 2: opt-in HMM,
+      // measured night baselines and staging provenance, analytics 1255e9d).
+      // Nothing in this artifact bumped it.
+      expect(kAlgoVersion, 117);
     });
 
     test('the analytics pin carries minuteEnergy (7334289 and its '
-        'descendants 65c8901, aa67997, bf1be19, 0fc5768, bf79e84, db02896, 972f0b2, 07d6af0, 914bb6a, e6dd526, integration 1add367, 07f7126, ddb61f7)', () {
-      expect(kAnalyticsPin, '6a2a9fc7392b03103ab0b371b0449c28cca104f7');
+        'descendants 65c8901, aa67997, bf1be19, 0fc5768, bf79e84, db02896, 972f0b2, 07d6af0, 914bb6a, e6dd526, integration 1add367, 07f7126, ddb61f7, 6a2a9fc, 1255e9d)', () {
+      expect(kAnalyticsPin, '1255e9ddbeb23c2e8b7174e960ef220d796c46a1');
     });
   });
 }

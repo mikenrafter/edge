@@ -3531,5 +3531,7 @@
   "wakeJournalCount": "{event} ×{count}",
   "wakeJournalGroup": "जागना {start}–{end} · उठने में {minutes} मिनट",
   "wakeJournalGroupName": "जागना",
-  "sleepDetailMedicalDisclaimer": "प्रयोगात्मक शोध एल्गोरिदम। यह चिकित्सा उपकरण नहीं है। नींद संबंधी विकारों के लिए चिकित्सक से परामर्श लें।"
+  "sleepDetailMedicalDisclaimer": "प्रयोगात्मक शोध एल्गोरिदम। यह चिकित्सा उपकरण नहीं है। नींद संबंधी विकारों के लिए चिकित्सक से परामर्श लें।",
+  "experimentalSleepHmm": "प्रयोगात्मक नींद चरण विश्लेषण (HMM)",
+  "experimentalSleepHmmDescription": "आगे की गणनाओं के लिए शोध विधि। यह चिकित्सीय सलाह नहीं है। अंतिम रूप से सहेजी गई रातें नहीं बदलतीं; इसे लागू करने के लिए रात का फिर से विश्लेषण करें।"
 }

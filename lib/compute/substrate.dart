@@ -1333,6 +1333,7 @@ int debugSegmentedDayCount = 0;
 /// gains rows, a skipped day just adds none.
 List<PhysioDay> calendarDays(
   Substrate sub, {
+  ana.StagingMethod method = ana.StagingMethod.cardio,
   SleepWindowOverride? override,
   int Function(int epochSec)? tzOffsetAt,
   List<({int startSec, int endSec, String dayKey})> priorSleep = const [],
@@ -1444,6 +1445,13 @@ List<PhysioDay> calendarDays(
       final hrBaseline = base.length >= 60 ? base : null;
       final accelSlice = accel.sublist(loS, hiS);
       final hrSlice = hr.sublist(loS, hiS);
+      // Zero HR is unavailable; hrValidAt distinguishes an explicit refusal
+      // from a generation that carries no validity flag. skinContact=0 alone
+      // cannot distinguish absent contact telemetry from a measured loss.
+      final contactLost = [
+        for (var i = loS; i < hiS; i++)
+          hr[i] <= 0 || sub.hrValidAt(i) == false,
+      ];
       // RR beats within the search slice (absolute ms) for RMSSD-based staging.
       final s0 = sub.tsSec[loS.clamp(0, sub.length - 1)] * 1000;
       final s1 = sub.tsSec[(hiS - 1).clamp(0, sub.length - 1)] * 1000;
@@ -1471,6 +1479,8 @@ List<PhysioDay> calendarDays(
         s = ana.segmentSleep(
           accelSlice,
           hrSlice,
+          method: method,
+          contactLost: contactLost,
           hrBaseline: hrBaseline,
           rrMs: rrMsSeg,
           rrTsMs: rrTsSeg,
@@ -1495,6 +1505,8 @@ List<PhysioDay> calendarDays(
           s = ana.segmentSleep(
             accelSlice,
             hrSlice,
+            method: method,
+            contactLost: contactLost,
             hrBaseline: hrBaseline,
             rrMs: rrMsSeg,
             rrTsMs: rrTsSeg,
@@ -1526,6 +1538,8 @@ List<PhysioDay> calendarDays(
             final s2 = ana.segmentSleep(
               accelSlice,
               hrSlice,
+              method: method,
+              contactLost: contactLost,
               hrBaseline: hrBaseline,
               rrMs: rrMsSeg,
               rrTsMs: rrTsSeg,
@@ -1557,6 +1571,8 @@ List<PhysioDay> calendarDays(
             final forced = ana.segmentSleep(
               accelSlice,
               hrSlice,
+              method: method,
+              contactLost: contactLost,
               hrBaseline: hrBaseline,
               rrMs: rrMsSeg,
               rrTsMs: rrTsSeg,
