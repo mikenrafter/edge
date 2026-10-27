@@ -1048,6 +1048,10 @@ Future<Database> _ldbPrivOpen() async {
           // Per-moment caffeine amounts; no allocation of historic daily totals.
           await LocalDb._createMomentLabel(db);
         }
+        if (oldV < 82) {
+          // Definitions only; the view projects existing history without a backfill.
+          await createTrackTables(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
@@ -1170,6 +1174,7 @@ Future<void> _ldbPrivRepairOpenSchema(Database db) async {
     await LocalDb._createWakeConfirmation(db);
     await LocalDb._createWakeEvidence(db);
     await LocalDb._createMomentLabel(db);
+    await createTrackTables(db);
     await LocalDb._createAssumedWater(db);
     await WaterMomentStore.create(db);
     await LocalDb._createSymptomEntry(db);

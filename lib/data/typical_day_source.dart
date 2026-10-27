@@ -23,8 +23,9 @@ Future<CaffeineTimingSummary> loadTypicalCaffeine(LocalRepository repo,
   final from = DateTime(at.year, at.month, at.day - 49);
   final to = DateTime(at.year, at.month, at.day + 1);
   final db = await LocalDb.instance;
-  final moments = await db.query('moment_label',
-    where: "date >= ? AND date <= ? AND label = 'caffeine'",
+  final moments = await db.query('track_event_feed',
+    columns: ['date', 'at_ms', 'amount', 'unit'],
+    where: "date >= ? AND date <= ? AND track_id = 'caffeine' AND source_kind <> 'journal'",
     whereArgs: [dayLabelOf(from), dayLabelOf(to)]);
   final totals = await db.query('journal_metric',
     where: "date >= ? AND date <= ? AND field = 'caffeine_mg'",
@@ -77,11 +78,17 @@ CaffeineTimingSummary typicalCaffeineHeavy(TypicalCaffeineInput input) {
     final sums = <String, double>{};
     for (final m in input.moments) {
       final date = m['date'] as String;
-      final at = momentLocalTime(date, m['hhmm'] as String);
+      final at = m['at_ms'] is num
+          ? DateTime.fromMillisecondsSinceEpoch((m['at_ms'] as num).toInt())
+          : m['hhmm'] is String ? momentLocalTime(date, m['hhmm'] as String) : null;
+      if (at == null && date.compareTo(dayLabelOf(residualFrom)) >= 0 &&
+          date.compareTo(dayLabelOf(bed)) <= 0) {
+        complete = false;
+      }
       if (at == null || at.isBefore(residualFrom) || at.isAfter(bed)) continue;
       final inWake = !at.isBefore(wake);
       if (inWake && (first == null || at.isBefore(first))) first = at;
-      final mg = number(m['caffeine_mg']);
+      final mg = m['unit'] != null && m['unit'] != 'mg' ? null : number(m.containsKey('amount') ? m['amount'] : m['caffeine_mg']);
       if (mg == null || mg <= 0) { complete = false; continue; }
       residualDoses.add(CaffeineDose(at: at, mg: mg));
       if (inWake) doses.add(CaffeineDose(at: at, mg: mg));
@@ -90,7 +97,7 @@ CaffeineTimingSummary typicalCaffeineHeavy(TypicalCaffeineInput input) {
     // accounted for by explicit dose moments support a residual estimate.
     for (final m in input.moments) {
       final date = m['date'] as String;
-      sums[date] = (sums[date] ?? 0) + (number(m['caffeine_mg']) ?? 0);
+      sums[date] = (sums[date] ?? 0) + (m['unit'] != null && m['unit'] != 'mg' ? 0 : number(m.containsKey('amount') ? m['amount'] : m['caffeine_mg']) ?? 0);
     }
     for (final t in input.totals) {
       final date = t['date'] as String;

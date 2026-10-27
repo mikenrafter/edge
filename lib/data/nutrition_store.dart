@@ -485,6 +485,55 @@ class NutritionDb {
     await db.update('food_entry', row, where: 'id = ?', whereArgs: [e.id]);
   }
 
+  /// Edit only the occasion fields Tracks owns; retain its recorded nutrients.
+  static Future<void> logTrack(
+    Database db, {
+    required String id,
+    required String date,
+    required int? atTs,
+    required double? quantity,
+    String? meal,
+    String? unit,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((tx) async {
+      final old = await tx.query(
+        'food_entry',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (old.isEmpty) {
+        await tx.insert(
+          'food_entry',
+          FoodEntry(
+            id: id,
+            date: date,
+            atTs: atTs,
+            meal: meal ?? 'snack',
+            label: 'Meal',
+            quantity: quantity,
+            unit: unit ?? '',
+          ).toRow(now),
+        );
+      } else {
+        await tx.update(
+          'food_entry',
+          {
+            'date': date,
+            'at_ts': atTs,
+            'quantity': quantity,
+            'unit': ?unit,
+            'meal': ?meal,
+            'updated_at': now,
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
+    });
+  }
+
   static Future<void> delete(Database db, String id) =>
       db.delete('food_entry', where: 'id = ?', whereArgs: [id]);
 

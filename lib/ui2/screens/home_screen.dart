@@ -89,6 +89,7 @@ import 'coach.dart';
 import 'detected_activities.dart';
 import 'metric_detail.dart';
 import 'natural_wake_card.dart';
+import 'track_log.dart';
 import 'snooze_card.dart';
 import '../../alarm/snooze/snooze_controller.dart' show SnoozePhase;
 import 'readiness_detail.dart';
@@ -2561,7 +2562,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with RevisionReload, WidgetsBindingObserver, PausedReadReload<HomeScreen> {
+    with RevisionReload, WidgetsBindingObserver, PausedReadReload<HomeScreen>
+    implements TrackLogObserver {
+  @override
+  Future<void> trackLogged() => _load();
   HomeData? _d;
   DateTime? _recordingsThrough;
   bool _loading = true;
@@ -3090,6 +3094,7 @@ class _HomeScreenState extends State<HomeScreen>
       // (activities, marked moments, assumed water), else "Breakdown of your
       // day". It is the way into the day, so it has no second door below.
       if (!ImportFocus.active.value) card('detected', _detectedActivities(d, _day)),
+      if (!ImportFocus.active.value) TrackQuickLog(date: _day ?? d.dayId, observer: this),
       // Community asks: eligible or not, never part of the first-launch layout.
       if (!bare) const CommunityNudge(key: ValueKey('card:nudge')),
 

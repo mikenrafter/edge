@@ -79,6 +79,8 @@ import 'sample_lock.dart' show SampleLock;
 import 'live_coverage_policy.dart';
 import 'step_calibration.dart';
 import 'med_store.dart';
+import 'tracks_schema.dart';
+import 'track_model.dart';
 import 'moment_label.dart';
 import '../ecg/ecg_models.dart' show EcgReading;
 import '../ecg/ecg_result.dart' show ecgJoinTargetId;
@@ -398,6 +400,9 @@ class LocalDb {
     'journal',
     'journal_metric',
     'journal_field_def',
+    'track_definition',
+    'track_setup_history',
+    'track_event',
     'lab_result',
     'lab_marker_def',
     'strength_set',
@@ -700,7 +705,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 81;
+  static const int schemaVersion = 82;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1938,6 +1943,205 @@ class LocalDb {
     final db = await instance;
     await db.insert('moment_label', _momentLabelRow(l),
         conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  static Future<int?> _trackLastMinute(
+    Transaction tx,
+    String date,
+    String track, {
+    num? total,
+  }) async {
+    final rows = await tx.rawQuery(
+      "SELECT SUM(amount) AS dose, MAX(CAST(strftime('%H', at_ms / 1000, 'unixepoch', 'localtime') AS INTEGER) * 60 + CAST(strftime('%M', at_ms / 1000, 'unixepoch', 'localtime') AS INTEGER)) AS minute FROM track_event_feed WHERE date = ? AND track_id = ? AND source_kind <> 'journal' AND (unit IS NULL OR unit = ?)",
+      [date, track, track == 'caffeine' ? 'mg' : 'units'],
+    );
+    final explicit = (rows.single['minute'] as num?)?.toInt();
+    final field = track == 'caffeine' ? 'caffeine_mg' : 'alcohol_units';
+    final aggregate = await tx.query(
+      'journal_metric',
+      where: 'date = ? AND field = ?',
+      whereArgs: [date, field],
+      limit: 1,
+    );
+    if (aggregate.isEmpty) return explicit;
+    final prior = (aggregate.single['at_min'] as num?)?.toInt();
+    final residual =
+        (total ?? aggregate.single['value'] as num).toDouble() -
+        ((rows.single['dose'] as num?)?.toDouble() ?? 0);
+    // A daily last-entry time belongs to the residual aggregate too. Preserve
+    // it only while some untimed remainder remains; never allocate it a dose.
+    if (residual > 0 && prior != null && (explicit == null || prior > explicit)) {
+      return prior;
+    }
+    return explicit;
+  }
+
+  static double _trackDoseAmount(Map<String, Object?> event) {
+    final standard = event['track_id'] == 'caffeine' ? 'mg' : 'units';
+    if (event['unit'] != null && event['unit'] != standard) return 0;
+    return (event['amount'] as num?)?.toDouble() ?? 0;
+  }
+
+  /// Track dose rows are canonical; the journal total is their compatibility
+  /// aggregate. The delta and row commit together, so retries do not add twice.
+  static Future<void> writeTrackSubstance(
+    TrackEvent event, {
+    bool delete = false,
+  }) async {
+    final db = await instance;
+    await db.transaction((tx) async {
+      final old = await tx.query(
+        'track_event',
+        where:
+            'id = ? OR '
+            '(track_id = ? AND source_kind = ? AND source_id = ?)',
+        whereArgs: [event.id, event.trackId, event.sourceKind, event.sourceId],
+      );
+      Future<void> adjust(String date, String track, double amount) async {
+        final field = track == 'caffeine' ? 'caffeine_mg' : 'alcohol_units';
+        final prior = await tx.query(
+          'journal_metric',
+          where: 'date = ? AND field = ?',
+          whereArgs: [date, field],
+          limit: 1,
+        );
+        if (amount == 0 && prior.isEmpty) return;
+        final total =
+            ((prior.isEmpty ? 0 : prior.single['value'] as num).toDouble() +
+                    amount)
+                .clamp(0.0, double.infinity);
+        if (total == 0) {
+          await tx.delete(
+            'journal_metric',
+            where: 'date = ? AND field = ?',
+            whereArgs: [date, field],
+          );
+        } else {
+          await tx.insert('journal_metric', {
+            'date': date,
+            'field': field,
+            'value': total,
+            'at_min': await _trackLastMinute(tx, date, track, total: total),
+            'updated_at': DateTime.now().millisecondsSinceEpoch,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+
+      final changes = <(String, String), double>{};
+      for (final row in old) {
+        if (row['track_id'] == 'caffeine' || row['track_id'] == 'alcohol') {
+          final key = (row['date'] as String, row['track_id'] as String);
+          changes[key] =
+              (changes[key] ?? 0) - _trackDoseAmount(row);
+        }
+        await tx.delete('track_event', where: 'id = ?', whereArgs: [row['id']]);
+      }
+      if (!delete) {
+        await tx.insert('track_event', event.toJson());
+        final key = (event.date, event.trackId);
+        changes[key] = (changes[key] ?? 0) + _trackDoseAmount(event.toJson());
+      }
+      for (final change in changes.entries) {
+        await adjust(change.key.$1, change.key.$2, change.value);
+      }
+    });
+  }
+
+  /// Tracks changes a confirmed caffeine amount at its owner. Keep the daily
+  /// aggregate aligned by the delta; other recorded moments remain untouched.
+  static Future<void> editTrackMoment(
+    String sourceId, {
+    double? amount,
+    bool delete = false,
+  }) async {
+    final date = sourceId.substring(0, 10), hhmm = sourceId.substring(11);
+    final db = await instance;
+    await db.transaction((tx) async {
+      final rows = await tx.query(
+        'moment_label',
+        where: 'date = ? AND hhmm = ?',
+        whereArgs: [date, hhmm],
+        limit: 1,
+      );
+      if (rows.isEmpty) return;
+      final row = rows.single;
+      if (row['label'] == 'caffeine') {
+        final oldAmount = (row['caffeine_mg'] as num?)?.toDouble() ?? 0;
+        final change = (delete ? 0 : amount ?? 0) - oldAmount;
+        await tx.rawUpdate(
+          'UPDATE journal_metric SET value = MAX(0, value + ?), updated_at = ? '
+          "WHERE date = ? AND field = 'caffeine_mg'",
+          [change, DateTime.now().millisecondsSinceEpoch, date],
+        );
+      }
+      if (delete) {
+        await tx.delete(
+          'moment_label',
+          where: 'date = ? AND hhmm = ?',
+          whereArgs: [date, hhmm],
+        );
+      } else if (row['label'] == 'caffeine') {
+        await tx.update(
+          'moment_label',
+          {'caffeine_mg': amount},
+          where: 'date = ? AND hhmm = ?',
+          whereArgs: [date, hhmm],
+        );
+      }
+      if (row['label'] == 'caffeine') {
+        await tx.update(
+          'journal_metric',
+          {'at_min': await _trackLastMinute(tx, date, 'caffeine')},
+          where: 'date = ? AND field = ?',
+          whereArgs: [date, 'caffeine_mg'],
+        );
+      }
+    });
+  }
+
+  /// The journal owns its aggregate. A Track edit sets the untimed remainder,
+  /// preserving all explicit timed caffeine doses in the same transaction.
+  static Future<void> editTrackJournal(
+    String sourceId,
+    double? residual,
+  ) async {
+    final date = sourceId.substring(0, 10), field = sourceId.substring(11);
+    if (!['caffeine_mg', 'alcohol_units'].contains(field)) {
+      throw ArgumentError('journal_field');
+    }
+    final db = await instance;
+    await db.transaction((tx) async {
+      final timed = field == 'caffeine_mg'
+          ? await tx.rawQuery(
+              "SELECT COALESCE(SUM(caffeine_mg), 0) AS value FROM moment_label WHERE date = ? AND label = 'caffeine'",
+              [date],
+            )
+          : <Map<String, Object?>>[];
+      final track = field == 'caffeine_mg' ? 'caffeine' : 'alcohol';
+      final logged = await tx.rawQuery(
+        'SELECT COALESCE(SUM(amount), 0) AS value FROM track_event WHERE date = ? AND track_id = ? AND (unit IS NULL OR unit = ?)',
+        [date, track, track == 'caffeine' ? 'mg' : 'units'],
+      );
+      final total =
+          (residual ?? 0) +
+          (timed.isEmpty ? 0 : (timed.single['value'] as num).toDouble()) +
+          (logged.single['value'] as num).toDouble();
+      if (total == 0 && residual == null) {
+        await tx.delete(
+          'journal_metric',
+          where: 'date = ? AND field = ?',
+          whereArgs: [date, field],
+        );
+      } else {
+        await tx.insert('journal_metric', {
+          'date': date,
+          'field': field,
+          'value': total,
+          'at_min': await _trackLastMinute(tx, date, track, total: total),
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
   }
 
   /// Answers, optionally narrowed to one [date] or from [sinceDate] on, in
@@ -5589,6 +5793,9 @@ class LocalDb {
       'journal',
       'journal_metric',
       'journal_field_def',
+      'track_definition',
+      'track_setup_history',
+      'track_event',
       'lab_result',
       'lab_marker_def',
       'strength_set',

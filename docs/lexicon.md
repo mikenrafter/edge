@@ -121,3 +121,17 @@ in the same change that introduces it (AGENTS.md §6).
 - **Meal candidate**: an unvalidated awake, low-motion HR-rise interval offered
   in Review activities. Only the wearer's confirmation creates a meal moment;
   a candidate never supplies food amounts or nutrition.
+
+## Tracks
+
+- **Track**: an editable activity, consumed substance or condition definition,
+  with roles, affected systems, optional kinetics and logging history.
+- **Sub-activity**: a named variant within a track, with optional kinetics
+  overrides. Variants share the track's future learning.
+- **Track event**: a recorded occurrence with an optional amount and instant.
+  Existing workout, medication, nutrition and moment records keep their own
+  owners; the Tracks feed reads them without copying them.
+- **Setup history**: inclusive local date ranges when the wearer did or did not
+  do an activity. No unadjusted data means that track state is their baseline.
+- **Kinetics lock**: a per-field choice that prevents future learning from
+  changing that value. Unknown values remain absent.

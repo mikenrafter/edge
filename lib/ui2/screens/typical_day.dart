@@ -12,6 +12,7 @@ import '../../sync/high_freq_wake_window.dart' show loadSavedExpectedSleepSchedu
 import '../profile/alarm.dart';
 import '../ui2.dart';
 import 'circadian_detail.dart';
+import 'tracks_screen.dart';
 import 'home_screen.dart';
 import 'metric_detail.dart' show detailScaffold;
 
@@ -100,6 +101,8 @@ class _TypicalDayScreenState extends State<TypicalDayScreen> {
         TextButton(onPressed: _load, child: Text(l?.typicalRetry ?? 'Try again')),
       ] else if (d == null) const Center(child: CircularProgressIndicator())
       else ...[
+        TextButton(onPressed: () => go(context, const TracksScreen()),
+          child: Text(l?.tracksTitle ?? 'Tracks')),
         TextButton(onPressed: () => go(context, const AlarmScreen()),
           child: Text(l?.alarmNavTitle ?? 'Alarm')),
         Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

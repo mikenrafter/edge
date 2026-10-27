@@ -33,6 +33,7 @@ import '../ui2.dart';
 import 'coach.dart' show coachReady;
 import 'home_screen.dart' show unitsOf;
 import 'custom_journal_field_sheet.dart';
+import 'track_log.dart';
 import 'metric_detail.dart' show detailScaffold;
 
 class JournalCompose extends StatefulWidget {
@@ -46,7 +47,7 @@ class JournalCompose extends StatefulWidget {
 }
 
 class _JournalComposeState extends State<JournalCompose>
-    with PausedReadReload<JournalCompose> {
+    with PausedReadReload<JournalCompose> implements TrackLogObserver {
   late final String _date = widget.date ?? todayLabel();
   final _note = TextEditingController();
 
@@ -133,6 +134,31 @@ class _JournalComposeState extends State<JournalCompose>
       _loading = false;
       _paused = false;
     });
+  }
+
+  @override
+  Future<void> trackLogged() async {
+    final repo = context.read<AppState>().repo;
+    if (repo == null) return;
+    try {
+      final fresh = await repo.getJournalMetrics(_date);
+      if (!mounted) return;
+      setState(() {
+        // A timed log can update a daily total. Keep edits already made in this
+        // form, including any made while this read was in flight.
+        for (final key in {..._loadedValues.keys, ..._values.keys, ...fresh.keys}) {
+          if (_values[key] == _loadedValues[key]) {
+            final value = fresh[key];
+            if (value == null) { _values.remove(key); } else { _values[key] = value; }
+          }
+        }
+        _loadedValues = {...fresh};
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        AppLocalizations.of(context)?.tracksFailed ?? 'Could not read tracks. Try again.')));
+    }
   }
 
   void _set(String key, double? v) {
@@ -349,6 +375,7 @@ class _JournalComposeState extends State<JournalCompose>
                             child: Text(pausedSavingText(c),
                                 style: F.cap.copyWith(color: p.ink3)),
                           ),
+                        TrackQuickLog(date: _date, observer: this),
                         MoodPicker(
                           value: _values['mood']?.value.round(),
                           onChanged: (v) => _set('mood', v?.toDouble()),

@@ -20,6 +20,9 @@ void main() {
     for (final upgrade in [true, false]) {
       await LocalDb.close();
       final legacy = await databaseFactory.openDatabase(path);
+      // Reconstruct the old schema before removing the dose column. The
+      // newer Tracks view depends on that column and did not exist then.
+      await legacy.execute('DROP VIEW IF EXISTS track_event_feed');
       await legacy.execute('ALTER TABLE moment_label DROP COLUMN caffeine_mg');
       if (upgrade) await legacy.execute('PRAGMA user_version = 80');
       await legacy.close();

@@ -378,6 +378,52 @@ class MedDb {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// The medication owner applies names/units edited from the Tracks hub.
+  static Future<void> editTrackDefinition(
+    DatabaseExecutor tx, {
+    required String key,
+    required String name,
+    required String unit,
+    required bool enabled,
+  }) async {
+    final count = await tx.update(
+      'med_def',
+      {'label': name, 'dose_unit': unit, 'active': enabled ? 1 : 0},
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+    if (count == 0) throw ArgumentError('medication');
+  }
+
+  /// Tracks logs a taken slot through the medication owner, preserving its note.
+  static Future<void> logTrack(
+    Database db, {
+    required String medKey,
+    required String date,
+    required int slotMin,
+    required int atMs,
+    double? amount,
+  }) async {
+    await db.transaction((tx) async {
+      final prior = await tx.query(
+        'med_dose',
+        where: 'med_key = ? AND date = ? AND slot_min = ?',
+        whereArgs: [medKey, date, slotMin],
+        limit: 1,
+      );
+      await tx.insert('med_dose', {
+        'med_key': medKey,
+        'date': date,
+        'slot_min': slotMin,
+        'taken_ts': atMs ~/ 1000,
+        'skipped': 0,
+        'dose_value': amount,
+        'note': prior.isEmpty ? '' : prior.first['note'],
+        'updated_at': atMs,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  }
+
   /// Adherence over the trailing [days] days ending today.
   static Future<({int taken, int of})> adherenceWindow(
     Database db, {

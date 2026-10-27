@@ -5,6 +5,7 @@ import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/moment_label.dart';
 import 'package:openstrap_edge/data/typical_day_source.dart';
+import 'package:openstrap_edge/data/tracks_store.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
 import 'backup/backup_support.dart';
 
@@ -54,6 +55,28 @@ void main() {
     expect((await LocalDb.momentLabels(date: '2026-10-02')).single.caffeineMg, 80);
     expect((await loadTypicalCaffeine(repo, now: DateTime(2026,10,2,18))).latestResidualMg,
       closeTo(65, 1e-9));
+
+    final tracks = TracksStore(await LocalDb.instance);
+    await tracks.log(TrackEvent(id: 'track-cup', trackId: 'caffeine', date: '2026-10-02',
+      atMs: DateTime(2026,10,2,3).millisecondsSinceEpoch, amount: 80, subActivityId: 'tea'));
+    // Separate confirmed 80 mg dose at 03:00 adds 40 mg at 08:00 once.
+    expect((await loadTypicalCaffeine(repo, now: DateTime(2026,10,2,18))).latestResidualMg,
+      closeTo(105, 1e-9));
+    await tracks.deleteEvent((await tracks.events(trackId: 'caffeine')).singleWhere((e) => e.sourceKind == 'manual'));
+    expect((await loadTypicalCaffeine(repo, now: DateTime(2026,10,2,18))).latestResidualMg,
+      closeTo(65, 1e-9));
+    await tracks.log(TrackEvent(id: 'unknown-cup', trackId: 'caffeine', date: '2026-10-02',
+      atMs: DateTime(2026,10,2,4).millisecondsSinceEpoch));
+    expect((await loadTypicalCaffeine(repo, now: DateTime(2026,10,2,18))).latestResidualMg, isNull);
+    await tracks.deleteEvent((await tracks.events(trackId: 'caffeine')).singleWhere((e) => e.sourceKind == 'manual'));
+
+    final caffeine = (await tracks.definitions()).singleWhere((d) => d.id == 'caffeine');
+    await tracks.saveDefinition(TrackDefinition.fromJson({...caffeine.toJson(), 'unit': 'cups'}));
+    await tracks.log(TrackEvent(id: 'cups', trackId: 'caffeine', date: '2026-10-02',
+      atMs: DateTime(2026,10,2,4).millisecondsSinceEpoch, amount: 1));
+    // Unknown milligrams in a cups log cannot leave a confident numeric residual.
+    expect((await loadTypicalCaffeine(repo, now: DateTime(2026,10,2,18))).latestResidualMg, isNull);
+    await tracks.deleteEvent((await tracks.events(trackId: 'caffeine')).singleWhere((e) => e.sourceKind == 'manual'));
 
     // A historic total with a timed label has no known per-dose amount.
     await LocalDb.putMomentLabel(const MomentLabel(date:'2026-10-01', hhmm:'20:00',

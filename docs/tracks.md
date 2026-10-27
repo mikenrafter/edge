@@ -10,6 +10,13 @@ nutrition entries and confirmed moments without copying records. Track logging
 for a linked source delegates to its owner. Stable source identities make retries
 idempotent and edits/deletions immediately visible from both directions.
 
+New caffeine and alcohol dose events keep exact instants and sub-activities.
+Their journal aggregate changes in the same transaction as the event. The feed
+subtracts recorded doses before exposing a daily remainder. Each manual event
+keeps the unit used when logged, so editing a definition cannot reinterpret an
+old amount. Only mg and alcohol units contribute to their matching journal
+fields. A caffeine dose in an unknown unit cannot support a bedtime mg estimate.
+
 Preset kinetics are editable starting values. Each field stores a nullable value
 and a lock separately. Missing values stay unknown. Source notes distinguish a
 measured peak from onset, retain reported ranges, and identify research gaps.

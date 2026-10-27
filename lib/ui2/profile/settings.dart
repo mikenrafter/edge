@@ -47,8 +47,9 @@ import '../../telemetry/health_uploader.dart';
 import '../../theme/theme_controller.dart';
 import '../activity/zones.dart' show ZonesDetail;
 import '../screens/coach.dart' show CoachSetup, coachSubtitle;
+import '../screens/tracks_screen.dart';
 import '../screens/explorer.dart' show ExplorerScreen;
-import '../screens/home_screen.dart' show deviceBatteryOf;
+import '../screens/home_screen.dart' show deviceBatteryOf, go;
 import '../ui2.dart';
 import 'alarm.dart';
 import 'band_notifications.dart';
@@ -772,6 +773,10 @@ class MoreSettingsView extends StatelessWidget {
                 // come first and Community sits just above Connections.
                 // Hardware keeps the id `settings_band` it was saved under as
                 // "Band", so a section somebody folded stays folded.
+                SetRow(LucideIcons.slidersHorizontal, C.teal,
+                    l?.tracksTitle ?? 'Tracks',
+                    sub: l?.tracksSubtitle ?? 'Your activities, timing and context',
+                    onTap: () => go(c, const TracksScreen())),
                 SettingsAccordion('You & preferences',
                     id: 'settings_preferences',
                     children: [
