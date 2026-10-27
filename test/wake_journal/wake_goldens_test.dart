@@ -47,7 +47,7 @@ void main() {
       child: TextButton(
         onPressed: () => showDialog<void>(context: c,
             builder: (_) => WakeDreamQuestionDialog(
-                onAnswer: (_) async {}, onSkip: () {})),
+                onDream: () {}, onNormal: () {}, onSkip: () {})),
         child: const Text('open'),
       ),
     ))), height: 500);

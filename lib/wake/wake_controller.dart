@@ -57,6 +57,7 @@
 //     old row and for programmatic callers (Siri); the alarm screen uses
 //     neither it nor these setters but its draft (lib/state/alarm_draft.dart).
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'wake_journal.dart';
 import 'wake_outcome.dart';
@@ -77,7 +78,8 @@ class WakeController extends ChangeNotifier {
     this.journal = const DbWakeJournal(),
     this.journalNow = DateTime.now,
     bool Function()? naturalEnabled,
-  })  : _naturalEnabled = naturalEnabled ??
+  })  : _journalClock = Clock(journalNow),
+        _naturalEnabled = naturalEnabled ??
             (() => FeatureFlags.isOn(FeatureFlag.naturalWake)),
         _schedule = schedule,
         _saveEntry = saveEntry,
@@ -88,6 +90,8 @@ class WakeController extends ChangeNotifier {
 
   final DbWakeJournal journal;
   final DateTime Function() journalNow;
+  // Read the injected source when answering, through a resolved clock method.
+  final Clock _journalClock;
 
   // This controller owns the visible pending occurrence. A late result from
   // an older acknowledgement must not dismiss a newer wake.
@@ -108,7 +112,7 @@ class WakeController extends ChangeNotifier {
   }
 
   Future<void> answerDream(int epoch, DreamAnswer? answer) => journal.answerDream(
-      wakeEpochSec: epoch, at: journalNow(), answer: answer);
+      wakeEpochSec: epoch, at: _journalClock.now(), answer: answer);
 
   final bool Function() _naturalEnabled;
   final List<AlarmScheduleEntry> Function() _schedule;

@@ -12,7 +12,6 @@ Future<void> acknowledgeWakeAndAsk(
 ) async {
   final epoch = wake.awaitingWakeEpoch;
   final navigator = Navigator.of(context);
-  final l = AppLocalizations.of(context);
   // Start stopping now, independently of the optional question. Answers wait
   // for the durable ack, while SQLite latency never delays the question.
   final ack = wake.acknowledgeWake(cancelNative: false);
@@ -22,14 +21,19 @@ Future<void> acknowledgeWakeAndAsk(
   }
   await showDialog<void>(
     context: navigator.context,
-    builder: (c) => WakeDreamQuestionDialog(
-      onAnswer: (answer) async {
+    builder: (c) {
+      Future<void> answer(DreamAnswer answer) async {
         final saving = ack.then((_) => wake.answerDream(epoch, answer));
         Navigator.of(c).pop();
         await saving;
-      },
-      onSkip: () => Navigator.of(c).pop(),
-    ),
+      }
+
+      return WakeDreamQuestionDialog(
+        onDream: () => answer(DreamAnswer.dream),
+        onNormal: () => answer(DreamAnswer.normal),
+        onSkip: () => Navigator.of(c).pop(),
+      );
+    },
   );
   await ack;
 }
@@ -38,10 +42,12 @@ Future<void> acknowledgeWakeAndAsk(
 class WakeDreamQuestionDialog extends StatelessWidget {
   const WakeDreamQuestionDialog({
     super.key,
-    required this.onAnswer,
+    required this.onDream,
+    required this.onNormal,
     required this.onSkip,
   });
-  final Future<void> Function(DreamAnswer answer) onAnswer;
+  final VoidCallback onDream;
+  final VoidCallback onNormal;
   final VoidCallback onSkip;
 
   @override
@@ -51,11 +57,11 @@ class WakeDreamQuestionDialog extends StatelessWidget {
       title: Text(l?.wakeDreamQuestion ?? 'How did you wake up?'),
       actions: [
         TextButton(
-          onPressed: () => onAnswer(DreamAnswer.dream),
+          onPressed: onDream,
           child: Text(l?.wakeDreamFromDream ?? 'From a dream'),
         ),
         TextButton(
-          onPressed: () => onAnswer(DreamAnswer.normal),
+          onPressed: onNormal,
           child: Text(l?.wakeDreamNormally ?? 'Normally'),
         ),
         TextButton(

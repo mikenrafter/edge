@@ -86,7 +86,8 @@ void main() {
     await t.pumpAndSettle();
     final lane = t.widget<ChartAnnotationLane>(find.byType(ChartAnnotationLane));
     expect(lane.set.domainEnd, (epoch + 8 * 60).toDouble());
-    expect(lane.set.items.where((e) => e.label == 'Snooze'), hasLength(2));
+    // Both snoozes collapse into one marker that keeps their count.
+    expect(lane.set.items.where((e) => e.label == 'Snooze ×2'), hasLength(1));
     expect(night['wake_ts'], epoch);
     expect(find.text('Time to wake: 28 min'), findsOneWidget);
   });

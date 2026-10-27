@@ -80,6 +80,7 @@
 
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../gestures/pattern_transcript.dart';
@@ -189,9 +190,11 @@ class SnoozeController {
     this.log,
     this.knownFire,
     this.onRestoredChainOver,
-  });
+  }) : _clock = Clock(now);
 
   final DateTime Function() now;
+  // A concrete clock method lets the heavy-work guard resolve journal stamps.
+  final Clock _clock;
   final SnoozeHapticPlay play;
 
   /// The double wake confirmation exists for THIS alarm's sleep. The caller
@@ -573,7 +576,7 @@ class SnoozeController {
   Future<void> _cancelSnooze({bool cue = true}) async {
     final fire = _fireAt;
     final count = _state?.count ?? 0;
-    final at = now();
+    final at = _clock.now();
     final g = ++_gen;
     _cancelTimers();
     _listen = null;
@@ -620,7 +623,7 @@ class SnoozeController {
     final left = st.reAlarmAt.difference(now());
     final due = left <= Duration.zero;
     if (!due) _snoozeTimer = scheduler(left, () => _fire(_snoozedStep));
-    await _saveTransition(st, fire: fire, at: now(), count: st.count);
+    await _saveTransition(st, fire: fire, at: _clock.now(), count: st.count);
     if (!_alive(g)) return;
     if (due) {
       _log('the snooze is already due: re-alarming now.');
@@ -727,7 +730,7 @@ class SnoozeController {
     if (_disposed) return;
     final fire = _fireAt;
     final count = _state?.count ?? 0;
-    final at = now();
+    final at = _clock.now();
     ++_gen;
     _cancelTimers();
     _listen = null;
@@ -794,7 +797,7 @@ class SnoozeController {
       await _saveTransition(
         null,
         fire: persistedFire ?? ref,
-        at: now(),
+        at: _clock.now(),
         count: st?.count ?? 0,
         reason: _tooOld(ref)
             ? 'timeout'
