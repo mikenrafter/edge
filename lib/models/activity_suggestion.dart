@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-enum ActivityKind { nap, workout, meal }
+enum ActivityKind { nap, workout, meal, track }
 
 enum ActivityReviewStatus { pending, confirmed, discarded, superseded }
 
@@ -23,6 +23,9 @@ class ActivitySuggestion {
   final Map<String, dynamic> details;
   int get durationMin => ((endTs - startTs) / 60).round();
   String? get sport => details['sport'] as String?;
+  String? get trackId => details['track_id'] as String?;
+  /// A minimum-count question: it carries no observed time and no quantity.
+  bool get isPrompt => details['prompt'] == true;
 
   factory ActivitySuggestion.fromRow(Map<String, dynamic> row) =>
       ActivitySuggestion(

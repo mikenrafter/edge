@@ -12,6 +12,7 @@ import '../models/activity_suggestion.dart';
 import 'day_label.dart';
 import 'db.dart' show LocalDb;
 import 'nap_resolution.dart';
+import 'track_activity.dart';
 import 'db/input_read_tracker.dart';
 
 /// The single persistence seam for proposals and review decisions. Computing a
@@ -167,7 +168,8 @@ class ActivityStore {
     return (await get(suggestion.id))?.status == ActivityReviewStatus.pending;
   }
 
-  /// Returns only genuinely NEW pending proposals, for one-time notification.
+  /// Returns only genuinely NEW pending proposals, for one-time notification
+  /// (track candidates also report a changed window).
   Future<List<ActivitySuggestion>> reconcile(
     ActivityKind kind,
     List<Map<String, dynamic>> candidates,
@@ -182,18 +184,30 @@ class ActivityStore {
         final start = ((c['start_ts'] ?? c['start']) as num).toInt();
         final end = ((c['end_ts'] ?? c['end']) as num).toInt();
         if (end <= start) continue;
+        // Track candidates of different tracks never merge, and a minimum-count
+        // question never merges with an observed candidate of the same track.
+        final isTrack = kind == ActivityKind.track;
         final matches = await tx.query(
           'activity_suggestions',
           where:
               "kind = ? AND detection_start < ? AND detection_end > ? "
-              "AND NOT (status = 'superseded' AND linked_id IS NOT NULL)",
-          whereArgs: [kind.name, end, start],
+              "AND NOT (status = 'superseded' AND linked_id IS NOT NULL)"
+              "${isTrack ? " AND json_extract(details_json, '\$.track_id') = ? "
+                  "AND COALESCE(json_extract(details_json, '\$.prompt'), 0) = ?" : ''}",
+          whereArgs: [
+            kind.name,
+            end,
+            start,
+            if (isTrack) ...[c['track_id'], c['prompt'] == true ? 1 : 0],
+          ],
           orderBy: 'created_at ASC, id ASC',
         );
         // A decided interval wins over every re-detection, including a merger
         // that now covers both a decided and a still-pending fragment.
         final decided = matches.where((m) => m['status'] != 'pending').toList();
-        final saved = await _overlapsSleep(tx, start, end);
+        // A track candidate is evidence from the sleep itself, so overlapping
+        // recorded sleep must not suppress it.
+        final saved = !isTrack && await _overlapsSleep(tx, start, end);
         if (decided.isNotEmpty || saved) {
           for (final m in matches) {
             await tx.update(
@@ -212,7 +226,10 @@ class ActivityStore {
         if (matches.isEmpty && start < cutoff) continue;
         final now = DateTime.now().millisecondsSinceEpoch;
         final id = matches.isEmpty
-            ? (c['id'] as String? ?? '${kind.name}:$start')
+            ? (c['id'] as String? ??
+                  (isTrack
+                      ? 'track:${c['track_id']}:$start'
+                      : '${kind.name}:$start'))
             : matches.first['id'] as String;
         final details = jsonEncode(c);
         if (matches.isEmpty) {
@@ -272,6 +289,13 @@ class ActivityStore {
             where: 'id = ?',
             whereArgs: [id],
           );
+          // A track candidate whose evidence window moved is reported again so
+          // the caller can refresh what it shows; the revision already changed.
+          if (isTrack && changed) {
+            created.add(ActivitySuggestion.fromRow(
+              (await tx.query('activity_suggestions', where: 'id = ?', whereArgs: [id])).single,
+            ));
+          }
           for (final duplicate in matches.skip(1)) {
             await tx.update(
               'activity_suggestions',
@@ -367,6 +391,9 @@ class ActivityStore {
           whereArgs: [expected.id],
         );
         await _changed(tx, row['day_id'] as String);
+        if (expected.kind == ActivityKind.track && expected.isPrompt) {
+          await TrackActivity.answerNo(tx, expected, row['day_id'] as String);
+        }
       }
     return transaction == null ? db.transaction(write) : write(transaction);
   }
@@ -423,7 +450,7 @@ class ActivityStore {
     if (startTs <= 0 || endTs <= startTs) {
       throw const ActivityReviewException('Choose a positive time window.');
     }
-    if (endTs > now ~/ 1000) {
+    if (endTs > now ~/ 1000 && !expected.isPrompt) {
       throw const ActivityReviewException('The end time is in the future.');
     }
     final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(startTs * 1000));
@@ -443,6 +470,9 @@ class ActivityStore {
       // and identity intact; confirming a candidate adds no invented nutrition.
       await writer.answer(moment, MomentChoice.meal);
       linked = '$day $hhmm';
+    } else if (expected.kind == ActivityKind.track) {
+      linked = await TrackActivity.confirm(tx, expected,
+          dayId: row['day_id'] as String, startTs: startTs, nowMs: now);
     } else if (expected.kind == ActivityKind.workout) {
       final overlap = await _overlappingSessions(tx, startTs, endTs);
       final invalid = validateManualWindow(

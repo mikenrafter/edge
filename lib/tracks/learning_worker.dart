@@ -20,6 +20,7 @@ class TrackLearningInput {
     required this.states,
     required this.days,
     required this.worker,
+    this.experiments = const [],
   });
   final List<Map<String, Object?>> definitions,
       events,
@@ -27,7 +28,7 @@ class TrackLearningInput {
       absences,
       states,
       days;
-  final List<Map<String, Object?>> medications;
+  final List<Map<String, Object?>> medications, experiments;
   final WorkerInputs worker;
 }
 
@@ -87,7 +88,25 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
       }
     }
     final age = Duration(milliseconds: input.worker.nowEpochMs - started);
-    final own = estimates.where((e) => e.trackId == track.id).toList();
+    // A running randomized experiment owns its track's estimation: nothing
+    // observational fills in for days the experiment has not yet resolved.
+    final today = dayLabelOf(now);
+    final inExperiment = input.experiments.any(
+      (r) =>
+          r['track_id'] == track.id &&
+          (r['start_date'] as String).compareTo(today) <= 0 &&
+          (r['end_date'] as String).compareTo(today) >= 0,
+    );
+    final own = inExperiment
+        ? [
+            for (final system in track.systems)
+              TrackEffectEstimate(
+                trackId: track.id,
+                system: system,
+                reason: 'experiment_learning',
+              ),
+          ]
+        : estimates.where((e) => e.trackId == track.id).toList();
     final reason = age < policy.globalMinimum
         ? 'global_learning'
         : own.isEmpty

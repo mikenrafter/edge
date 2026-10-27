@@ -5469,9 +5469,33 @@ class DerivationEngine {
     // Its failure must not prevent notifications or retention housekeeping.
     try { await TracksStore(await LocalDb.instance).refreshLearning(); }
     catch (e) { _log('track learning held: $e'); }
+    try { await _emitExperimentReminders(); }
+    catch (e) { _log('experiment reminders held: $e'); }
     return changed;
   }
 
+
+  /// Morning reminder for today's assigned experiment day. NotificationCenter's
+  /// preference and fire-once gates decide; the key is stable per day, so
+  /// repeated passes cannot nag. Assignment never counts as adherence.
+  Future<void> _emitExperimentReminders() async {
+    final date = todayLabel();
+    final reminders = await TracksStore(await LocalDb.instance)
+        .experimentReminders(date: date);
+    for (final r in reminders) {
+      final name = r['track_name'] as String;
+      final doIt = r['do'] == true;
+      await NotificationCenter.instance.emit(NotificationEvent(
+        dedupeKey: r['dedupe_key'] as String,
+        category: NotifCategory.reminders,
+        priority: NotifPriority.normal,
+        title: doIt ? 'Experiment: do "$name" today' : 'Experiment: skip "$name" today',
+        body: 'Your randomized experiment assigned today. Log it, or confirm none, so it counts.',
+        date: date,
+        route: r['route'] as String,
+      ), allowPermissionPrompt: false);
+    }
+  }
 
   /// How many times the cross-day bundle was actually computed (not reused).
   int _crossDayComputed = 0;

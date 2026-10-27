@@ -33,6 +33,7 @@ import 'ui2/profile/settings.dart' show MoreSettings;
 import 'ui2/screens/ai_briefing.dart';
 import 'ui2/screens/calm_breathing.dart';
 import 'ui2/screens/what_changed.dart';
+import 'ui2/screens/tracks_screen.dart';
 import 'ui2/screens/health_screen.dart';
 import 'ui2/screens/home_screen.dart';
 import 'ui2/screens/journal_compose.dart';
@@ -488,6 +489,7 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
       // live session bar with its finish control is pinned to the shell there
       // — so screenForRoute stays null for it.
       kRouteWorkoutIdle => ShellDomain.activity,
+      kRouteTracksExperiment => ShellDomain.activity,
       // Battery and band alerts. Profile is pushed over Today.
       kRouteProfile => ShellDomain.today,
       // The alarm safety notifications and the alarm-fired note: the alarm
@@ -528,6 +530,7 @@ Widget? screenForRoute(String route) => switch (routePath(route)) {
       // The medication reminder lands on the checklist itself: Wellness is a
       // pushed page now, so the sub-tab is a constructor argument.
       kRouteMeds => const WellnessScreen(initialTab: WellnessScreen.medsTab),
+      kRouteTracksExperiment => const TracksScreen(),
       // The detected bout, with the three answers to it: log it, adjust the
       // times first, or say it never happened. PUSHED by `_consume`, so every
       // tap builds a fresh one and the id reaches it.

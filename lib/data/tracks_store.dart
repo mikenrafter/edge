@@ -2,11 +2,16 @@
 // transactions serialize its writes. Linked records delegate to their owner.
 // Invalid writes throw ArgumentError; database/owner failures propagate.
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'package:sqflite/sqflite.dart';
+import '../models/activity_suggestion.dart';
+import '../tracks/detection.dart';
+import '../tracks/experiment.dart';
 import '../tracks/learning_worker.dart';
 import '../util/worker_init.dart';
 import '../util/worker_audit.dart';
 import '../util/worker_entries.dart' show Dispatcher;
+import 'activity_store.dart';
 import 'db.dart';
 import '../compute/manual_session.dart'
     show validateManualWindow, ManualWindowException, SessionSpan;
@@ -18,6 +23,8 @@ import 'nutrition_store.dart';
 import 'track_model.dart';
 export 'track_model.dart';
 part 'tracks_learning_store.dart';
+part 'tracks_detection_store.dart';
+part 'tracks_experiment_store.dart';
 
 class TracksStore {
   TracksStore(this.db);
@@ -26,6 +33,34 @@ class TracksStore {
       _refreshLearning(asOf: asOf);
   Future<void> confirmNone(String trackId, String date) =>
       _confirmNone(trackId, date);
+
+  /// Review candidates and "did you ...?" questions for [date] from observed
+  /// [windows]; see TracksDetectionStore. Returns `candidates` (new review
+  /// activities) and `prompts` (open minimum-count questions).
+  Future<Map<String, Object?>> refreshDetections({
+    required String date,
+    required List<Map<String, Object?>> windows,
+    DateTime? asOf,
+  }) => _refreshDetections(date: date, windows: windows, asOf: asOf);
+
+  Future<Map<String, Object?>> startExperiment({
+    required String trackId,
+    required String startDate,
+    required int weeks,
+    int? seed,
+  }) => _startExperiment(
+    trackId: trackId,
+    startDate: startDate,
+    weeks: weeks,
+    seed: seed,
+  );
+  Future<List<Map<String, Object?>>> experiments({String? trackId}) =>
+      _experiments(trackId: trackId);
+  Future<Map<String, Object?>> experimentReport(String id, {DateTime? asOf}) =>
+      _experimentReport(id, asOf: asOf);
+  Future<List<Map<String, Object?>>> experimentReminders({
+    required String date,
+  }) => _experimentReminders(date: date);
 
   Future<List<TrackDefinition>> definitions({bool enabledOnly = false}) async {
     final rows = await db.query('track_definition', orderBy: 'id');

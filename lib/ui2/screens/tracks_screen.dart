@@ -10,6 +10,7 @@ import 'home_screen.dart' show go;
 import 'metric_detail.dart' show detailScaffold;
 import 'nutrition_screen.dart';
 import 'track_editor.dart';
+import 'track_experiment.dart';
 import 'track_log.dart';
 import 'tracks_text.dart';
 import 'wellness_screen.dart';
@@ -253,6 +254,8 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
   late TrackDefinition _track = widget.track;
   List<TrackEvent>? _events;
   Map<String, Object?>? _learning;
+  Map<String, Object?>? _experiment;
+  bool _experimentRunning = false;
   bool _failed = false, _busy = false;
   @override
   void initState() {
@@ -267,8 +270,15 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
       final definition = (await widget.store.definitions()).firstWhere(
         (d) => d.id == _track.id,
       );
+      final experiments = await widget.store.experiments(trackId: _track.id);
+      final latest = experiments.isEmpty ? null : experiments.last;
+      final running = latest != null &&
+          (await widget.store.experimentReport(latest['id'] as String))['status'] ==
+              'running';
       if (mounted) {
         setState(() {
+          _experiment = latest;
+          _experimentRunning = running;
           _events = events;
           _track = definition;
           _learning = learning[_track.id];
@@ -287,6 +297,29 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
       ),
     );
     if (edited != null && mounted) setState(() => _track = edited);
+    if (mounted) await _load();
+  }
+
+  Future<void> _experimentStart() async {
+    final started = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) =>
+            ExperimentSetupScreen(store: widget.store, track: _track),
+      ),
+    );
+    if (started == true && mounted) await _load();
+  }
+
+  Future<void> _experimentOpen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ExperimentScreen(
+          store: widget.store,
+          track: _track,
+          experimentId: _experiment!['id'] as String,
+        ),
+      ),
+    );
     if (mounted) await _load();
   }
 
@@ -369,6 +402,27 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
             child: Text(text('QuickLog')),
           ),
           OutlinedButton(onPressed: _edit, child: Text(text('Edit'))),
+        ],
+      ),
+      Wrap(
+        spacing: S.x2,
+        children: [
+          if (_experiment != null && _experimentRunning)
+            OutlinedButton(
+              onPressed: _experimentOpen,
+              child: Text(text('ExperimentView')),
+            )
+          else ...[
+            OutlinedButton(
+              onPressed: _experimentStart,
+              child: Text(text('ExperimentStart')),
+            ),
+            if (_experiment != null)
+              TextButton(
+                onPressed: _experimentOpen,
+                child: Text(text('ExperimentViewLast')),
+              ),
+          ],
         ],
       ),
       const SizedBox(height: S.x3),

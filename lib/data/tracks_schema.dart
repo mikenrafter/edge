@@ -46,6 +46,18 @@ Future<void> createTrackTables(Database db) async {
     'CREATE TABLE IF NOT EXISTS track_absence ('
     'track_id TEXT NOT NULL, date TEXT NOT NULL, PRIMARY KEY(track_id, date))',
   );
+  await db.execute(
+    'CREATE TABLE IF NOT EXISTS track_experiment ('
+    'id TEXT PRIMARY KEY, track_id TEXT NOT NULL, start_date TEXT NOT NULL, '
+    'end_date TEXT NOT NULL, weeks INTEGER NOT NULL, seed INTEGER NOT NULL, '
+    'created_ms INTEGER NOT NULL)',
+  );
+  await db.execute(
+    'CREATE TABLE IF NOT EXISTS track_experiment_day ('
+    'experiment_id TEXT NOT NULL, date TEXT NOT NULL, '
+    'do_it INTEGER NOT NULL CHECK (do_it IN (0,1)), '
+    'PRIMARY KEY(experiment_id, date))',
+  );
   // Seed only missing definitions; reopening never overwrites a wearer edit.
   final batch = db.batch();
   for (final preset in trackPresetPayloads.entries) {

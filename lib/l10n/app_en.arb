@@ -18018,5 +18018,89 @@
         "type": "String"
       }
     }
+  },
+  "activityPossibleTrack": "Possible: {track}",
+  "@activityPossibleTrack": {
+    "placeholders": {
+      "track": {
+        "type": "String"
+      }
+    }
+  },
+  "activityTrackDidYou": "Did you have or do “{track}” today?",
+  "@activityTrackDidYou": {
+    "placeholders": {
+      "track": {
+        "type": "String"
+      }
+    }
+  },
+  "activityTrackPromptNote": "Yes adds an entry with no time or amount. No records that none happened today.",
+  "activityTrackNote": "A hint from your body signals, not a diagnosis. Confirming adds an entry with no amount.",
+  "activityTrackYes": "Yes",
+  "activityTrackNo": "No",
+  "activityTrackNotHappened": "Did not happen",
+  "activityTrackEvidenceSleep": "Early sleep heart rate rose while HRV fell compared with your baseline.",
+  "activityTrackEvidenceRestingHr": "Resting heart rate rose well above your baseline without movement.",
+  "activityTrackEvidenceLearned": "Matches the pattern learned from your logged days.",
+  "activityEditTrackTime": "Edit time",
+  "tracksExperimentStart": "Start an experiment",
+  "tracksExperimentView": "View experiment",
+  "tracksExperimentViewLast": "View last experiment",
+  "tracksExperimentSetup": "Experiment setup",
+  "tracksExperimentTitle": "Experiment",
+  "tracksExperimentExplain": "The app randomly assigns each day to do it or skip it, in balanced pairs, and reminds you each morning. Log it on do days and confirm none on skip days; only confirmed days count. At the end it reports the effect with its uncertainty.",
+  "tracksExperimentBegin": "Begin experiment",
+  "tracksExperimentFailed": "Could not start. Another experiment may already cover these days.",
+  "tracksExperimentRunning": "Running",
+  "tracksExperimentCompleted": "Completed",
+  "tracksExperimentPending": "The effect, with its uncertainty, is reported when the experiment ends.",
+  "tracksExperimentEffectHeading": "Effect with uncertainty",
+  "tracksExperimentLowAdherence": "Too few assigned days were confirmed to report an effect.",
+  "tracksExperimentLowData": "Not enough nights on both kinds of day to report an effect.",
+  "tracksExperimentDo": "Do it",
+  "tracksExperimentSkip": "Skip it",
+  "tracksExperimentLearning": "Experiment running: only its days count",
+  "tracksExperimentWeeks": "{count} weeks",
+  "@tracksExperimentWeeks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tracksExperimentAdherence": "{followed} of {total} assigned days confirmed",
+  "@tracksExperimentAdherence": {
+    "placeholders": {
+      "followed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "tracksExperimentEffect": "{system}: {effect} (95% interval {lower} to {upper}); {nDo} do days, {nSkip} skip days",
+  "@tracksExperimentEffect": {
+    "placeholders": {
+      "system": {
+        "type": "String"
+      },
+      "effect": {
+        "type": "String"
+      },
+      "lower": {
+        "type": "String"
+      },
+      "upper": {
+        "type": "String"
+      },
+      "nDo": {
+        "type": "int"
+      },
+      "nSkip": {
+        "type": "int"
+      }
+    }
   }
 }

@@ -39,6 +39,7 @@ extension TracksLearningStore on TracksStore {
         events: await tx.query('track_event_feed', orderBy: 'date, at_ms'),
         history: await tx.query('track_setup_history'),
         absences: await tx.query('track_absence'),
+        experiments: await tx.query('track_experiment', orderBy: 'id'),
         states: await tx.query('track_learning'),
         days: await tx.rawQuery(
           'SELECT d.* FROM day_result d WHERE finalized = 1 AND partial = 0 AND skipped = 0 '
@@ -81,6 +82,10 @@ extension TracksLearningStore on TracksStore {
           !_sameRows(freshEvents, snapshot.events) ||
           !_sameRows(freshStates, snapshot.states) ||
           !_sameRows(await tx.query('track_absence'), snapshot.absences) ||
+          !_sameRows(
+            await tx.query('track_experiment', orderBy: 'id'),
+            snapshot.experiments,
+          ) ||
           !_sameRows(await tx.query('track_setup_history'), snapshot.history)) {
         return false;
       }

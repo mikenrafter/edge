@@ -246,6 +246,12 @@ class DayReviewController extends ChangeNotifier {
     }
     if (id.startsWith('activity:')) {
       final s = _activities.singleWhere((s) => 'activity:${s.id}' == id);
+      final trackName = s.details['track_name'] as String? ?? s.trackId ?? '';
+      if (s.kind == ActivityKind.track) {
+        return s.isPrompt
+            ? (l?.activityTrackDidYou(trackName) ?? 'Did you have or do "$trackName" today?')
+            : (l?.activityPossibleTrack(trackName) ?? 'Possible: $trackName');
+      }
       return s.kind == ActivityKind.meal
           ? (l?.activityPossibleMeal ?? 'Possible meal') : s.kind == ActivityKind.nap
           ? (l?.activityPossibleNap ?? 'Possible nap')
@@ -262,6 +268,8 @@ class DayReviewController extends ChangeNotifier {
     final l = AppLocalizations.of(c);
     if (id.startsWith('activity:')) {
       final s = _activities.singleWhere((s) => 'activity:${s.id}' == id);
+      // A question has no observed span to describe.
+      if (s.kind == ActivityKind.track && s.isPrompt) return '';
       final edit = _activityEdits[id];
       final minutes = ((edit?.endTs ?? s.endTs) - (edit?.startTs ?? s.startTs)) ~/ 60;
       return l?.activityLengthMinutes(minutes) ?? '$minutes min';
@@ -277,6 +285,7 @@ class DayReviewController extends ChangeNotifier {
     }
     if (id.startsWith('activity:')) {
       final s = _activities.singleWhere((s) => 'activity:${s.id}' == id);
+      if (s.kind == ActivityKind.track && s.isPrompt) return '';
       final edit = _activityEdits[id];
       final minutes = ((edit?.endTs ?? s.endTs) - (edit?.startTs ?? s.startTs)) ~/ 60;
       return '${clockOfTs(edit?.startTs ?? s.startTs)} – ${clockOfTs(edit?.endTs ?? s.endTs)} · '
@@ -305,7 +314,9 @@ class DayReviewController extends ChangeNotifier {
     for (final s in _activities)
       (id: 'activity:${s.id}', moment: Moment(at: _activityEdits['activity:${s.id}']?.startTs ?? s.startTs,
           title: title(c, 'activity:${s.id}'), detail: listDetail(c, 'activity:${s.id}'),
-          icon: s.kind == ActivityKind.meal ? LucideIcons.utensils :
+          icon: s.kind == ActivityKind.track
+              ? (s.isPrompt ? LucideIcons.circleHelp : LucideIcons.tag) :
+              s.kind == ActivityKind.meal ? LucideIcons.utensils :
               s.kind == ActivityKind.nap ? LucideIcons.bedDouble
               : (activityByName(s.sport)?.icon ?? LucideIcons.dumbbell),
           color: C.domMove)),
@@ -365,12 +376,15 @@ class DayReviewController extends ChangeNotifier {
     if (!canEdit) return;
     final s = _activities.singleWhere((s) => 'activity:${s.id}' == id);
     ActivityDecision? edit;
-    if (s.kind == ActivityKind.meal) {
+    if (s.kind == ActivityKind.track && s.isPrompt) return; // nothing to edit
+    if (s.kind == ActivityKind.meal || s.kind == ActivityKind.track) {
       final prior = _activityEdits[id];
       final at = DateTime.fromMillisecondsSinceEpoch((prior?.startTs ?? s.startTs) * 1000);
       final time = await showTimePicker(context: c,
           initialTime: TimeOfDay.fromDateTime(at),
-          helpText: AppLocalizations.of(c)?.activityEditMealTime ?? 'Edit meal time');
+          helpText: s.kind == ActivityKind.track
+              ? (AppLocalizations.of(c)?.activityEditTrackTime ?? 'Edit time')
+              : AppLocalizations.of(c)?.activityEditMealTime ?? 'Edit meal time');
       if (time != null) {
         final start = DateTime(at.year, at.month, at.day, time.hour, time.minute)
             .millisecondsSinceEpoch ~/ 1000;
@@ -508,7 +522,8 @@ class DayReviewController extends ChangeNotifier {
           final s = _activities.where((s) => 'activity:${s.id}' == e.key).firstOrNull;
           // A meal moment is stored in the Save transaction and appears on
           // the immediate reload; it has no derived nap/session to wait for.
-          if (s != null && s.kind != ActivityKind.meal) {
+          if (s != null && s.kind != ActivityKind.meal &&
+              s.kind != ActivityKind.track) {
             final edit = _activityEdits[e.key];
             _settledSpan[e.key] = (nap: s.kind == ActivityKind.nap,
                 start: edit?.startTs ?? s.startTs, end: edit?.endTs ?? s.endTs,

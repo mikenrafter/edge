@@ -111,6 +111,37 @@ String tracksText(BuildContext context, String key) {
           "Enter a duration greater than zero to create this workout or nap.",
     'LearningPending' => l?.tracksLearningPending ?? "Learning pending",
     'Unlock' => l?.tracksUnlock ?? 'Unlock value',
+    'ExperimentStart' => l?.tracksExperimentStart ?? 'Start an experiment',
+    'ExperimentView' => l?.tracksExperimentView ?? 'View experiment',
+    'ExperimentViewLast' =>
+      l?.tracksExperimentViewLast ?? 'View last experiment',
+    'ExperimentSetup' => l?.tracksExperimentSetup ?? 'Experiment setup',
+    'ExperimentTitle' => l?.tracksExperimentTitle ?? 'Experiment',
+    'ExperimentExplain' =>
+      l?.tracksExperimentExplain ??
+          'The app randomly assigns each day to do it or skip it, in balanced pairs, and reminds you each morning. Log it on do days and confirm none on skip days; only confirmed days count. At the end it reports the effect with its uncertainty.',
+    'ExperimentBegin' => l?.tracksExperimentBegin ?? 'Begin experiment',
+    'ExperimentFailed' =>
+      l?.tracksExperimentFailed ??
+          'Could not start. Another experiment may already cover these days.',
+    'ExperimentRunning' => l?.tracksExperimentRunning ?? 'Running',
+    'ExperimentCompleted' => l?.tracksExperimentCompleted ?? 'Completed',
+    'ExperimentPending' =>
+      l?.tracksExperimentPending ??
+          'The effect, with its uncertainty, is reported when the experiment ends.',
+    'ExperimentEffectHeading' =>
+      l?.tracksExperimentEffectHeading ?? 'Effect with uncertainty',
+    'ExperimentLowAdherence' =>
+      l?.tracksExperimentLowAdherence ??
+          'Too few assigned days were confirmed to report an effect.',
+    'ExperimentLowData' =>
+      l?.tracksExperimentLowData ??
+          'Not enough nights on both kinds of day to report an effect.',
+    'ExperimentDo' => l?.tracksExperimentDo ?? 'Do it',
+    'ExperimentSkip' => l?.tracksExperimentSkip ?? 'Skip it',
+    'ExperimentLearning' =>
+      l?.tracksExperimentLearning ??
+          'Experiment running: only its days count',
     _ => key,
   };
 }
@@ -150,6 +181,29 @@ String trackLearningText(BuildContext context, String? reason) =>
       'estimated' || 'supported' => 'LearningReady',
       'logging_incomplete' => 'LoggingIncomplete',
       'coverage' => 'CoverageHold',
+      'experiment_learning' => 'ExperimentLearning',
       null => 'LearningPending',
       _ => 'LearningNeedData',
     });
+
+String experimentWeeksText(BuildContext context, int weeks) =>
+    AppLocalizations.of(context)?.tracksExperimentWeeks(weeks) ?? '$weeks weeks';
+
+String experimentAdherenceText(BuildContext context, int followed, int total) =>
+    AppLocalizations.of(context)?.tracksExperimentAdherence(followed, total) ??
+    '$followed of $total assigned days confirmed';
+
+/// Difference of means (do minus skip) with its 95% interval and arm sizes.
+String experimentEffectText(BuildContext context, String system, Map effect) {
+  String n(Object? v) => (v as num).toStringAsFixed(1);
+  return AppLocalizations.of(context)?.tracksExperimentEffect(
+        system,
+        n(effect['effect']),
+        n(effect['lower']),
+        n(effect['upper']),
+        effect['n_do'] as int,
+        effect['n_dont'] as int,
+      ) ??
+      '$system: ${n(effect['effect'])} (95% ${n(effect['lower'])} to ${n(effect['upper'])}), '
+          '${effect['n_do']} do days, ${effect['n_dont']} skip days';
+}

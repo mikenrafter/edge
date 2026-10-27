@@ -143,7 +143,8 @@ class LocalRepositoryImpl extends LocalRepository {
         validateAgainstId: 'suggestion:${suggestion.id}',
         sessionId: 'suggestion:${suggestion.id}', suggestion: suggestion);
       await HealthExporter.exportWorkoutId('suggestion:${suggestion.id}');
-    } else if (suggestion.kind == ActivityKind.meal) {
+    } else if (suggestion.kind == ActivityKind.meal ||
+        suggestion.kind == ActivityKind.track) {
       await ActivityStore(await LocalDb.instance).confirm(suggestion,
           startTs: start, endTs: end,
           edited: start != suggestion.startTs || end != suggestion.endTs);

@@ -30,6 +30,11 @@ String activitySuggestionRoute(String id, String kind) => Uri(
 
 const String kRouteWorkoutSuggestion = '/workouts/suggestion';
 
+/// The morning reminder of a randomized track experiment. Route-keyed like the
+/// other sanctioned prompts: reminders-at-normal stays closed to everything
+/// else. Lands on the Tracks hub, where the experiment is one tap away.
+const String kRouteTracksExperiment = '/tracks/experiment';
+
 /// The sedentary/movement nudges ("time to move", the desk-posture check).
 ///
 /// A DEDICATED PATH, not the plain `/today`, and that is load-bearing: the
@@ -153,6 +158,7 @@ const Map<String, int> _screenRoutes = {
   // request at all, and the shell then falls back to the tab index.
   kRouteMeds: 0,
   kRouteWorkoutSuggestion: 0,
+  kRouteTracksExperiment: 0,
   kRouteDetectedActivities: 0,
   kRouteProfile: 0,
   kRouteRecap: 2, // Heart, i.e. Health — domainForRoute decides anyway

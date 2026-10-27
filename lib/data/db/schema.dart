@@ -1056,6 +1056,10 @@ Future<Database> _ldbPrivOpen() async {
           // Empty learning state, audit and explicit absence tables.
           await createTrackTables(db);
         }
+        if (oldV < 84) {
+          // Empty experiment tables; assignments are written only on request.
+          await createTrackTables(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);

@@ -46,6 +46,10 @@ class ActivityProposalCard extends StatelessWidget {
     final p = P.of(c);
     final nap = suggestion.kind == ActivityKind.nap;
     final meal = suggestion.kind == ActivityKind.meal;
+    final track = suggestion.kind == ActivityKind.track;
+    final prompt = track && suggestion.isPrompt;
+    final trackName = suggestion.details['track_name'] as String? ??
+        suggestion.trackId ?? '';
     final accent = nap ? C.domHealth : C.domMove;
     final start = DateTime.fromMillisecondsSinceEpoch(
       suggestion.startTs * 1000,
@@ -61,14 +65,22 @@ class ActivityProposalCard extends StatelessWidget {
           Row(
             children: [
               Icon(
-                nap ? LucideIcons.moon : meal ? LucideIcons.utensils : LucideIcons.activity,
+                nap ? LucideIcons.moon : meal ? LucideIcons.utensils
+                    : prompt ? LucideIcons.circleHelp
+                    : track ? LucideIcons.tag : LucideIcons.activity,
                 color: p.on(accent),
                 size: 20,
               ),
               const SizedBox(width: S.x2),
               Expanded(
                 child: Text(
-                  meal ? (l?.activityPossibleMeal ?? 'Possible meal') : nap
+                  prompt
+                      ? (l?.activityTrackDidYou(trackName) ??
+                          'Did you have or do "$trackName" today?')
+                      : track
+                      ? (l?.activityPossibleTrack(trackName) ??
+                          'Possible: $trackName')
+                      : meal ? (l?.activityPossibleMeal ?? 'Possible meal') : nap
                       ? (l?.activityPossibleNap ?? 'Possible nap')
                       : (l?.activityPossibleWorkout ?? 'Possible workout'),
                   style: F.head.copyWith(color: p.ink),
@@ -79,26 +91,51 @@ class ActivityProposalCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: S.x2),
-          Text(
-            '${when(start)} – ${when(end)}',
-            style: F.body.copyWith(color: p.ink2),
-          ),
-          Text(
-            l?.activityLengthMinutes(suggestion.durationMin) ??
-                '${suggestion.durationMin} min',
-            style: F.cap.copyWith(color: p.ink3),
-          ),
+          // A minimum-count question has no observed time to show.
+          if (!prompt) ...[
+            Text(
+              '${when(start)} – ${when(end)}',
+              style: F.body.copyWith(color: p.ink2),
+            ),
+            Text(
+              l?.activityLengthMinutes(suggestion.durationMin) ??
+                  '${suggestion.durationMin} min',
+              style: F.cap.copyWith(color: p.ink3),
+            ),
+          ],
+          if (track && !prompt)
+            Text(
+              _trackEvidence(l, suggestion),
+              style: F.cap.copyWith(color: p.ink3),
+            ),
+          if (track)
+            Text(
+              prompt
+                  ? (l?.activityTrackPromptNote ??
+                      'Yes adds an entry with no time or amount. No records that none happened today.')
+                  : (l?.activityTrackNote ??
+                      'A hint from your body signals, not a diagnosis. Confirming adds an entry with no amount.'),
+              style: F.cap.copyWith(color: p.ink3),
+            ),
           const SizedBox(height: S.x3),
           Wrap(
             spacing: S.x4,
             runSpacing: S.x2,
             children: [
-              _action(c, l?.activityConfirm ?? 'Confirm', onConfirm, accent),
-              // The workout editor is where the sport is picked, so it says
-              // that; a nap only has times to edit.
               _action(
                 c,
-                nap || meal
+                prompt
+                    ? (l?.activityTrackYes ?? 'Yes')
+                    : (l?.activityConfirm ?? 'Confirm'),
+                onConfirm,
+                accent,
+              ),
+              // The workout editor is where the sport is picked, so it says
+              // that; a nap only has times to edit.
+              if (!prompt)
+              _action(
+                c,
+                nap || meal || track
                     ? (l?.activityEdit ?? 'Edit')
                     : (l?.activityChangeSport ?? 'Change sport'),
                 onEdit,
@@ -109,7 +146,11 @@ class ActivityProposalCard extends StatelessWidget {
               // A discard is kept by window and wins over every re-detection.
               _action(
                 c,
-                meal ? (l?.activityNotAMeal ?? 'Not a meal') : nap
+                prompt
+                    ? (l?.activityTrackNo ?? 'No')
+                    : track
+                    ? (l?.activityTrackNotHappened ?? 'Did not happen')
+                    : meal ? (l?.activityNotAMeal ?? 'Not a meal') : nap
                     ? (l?.napsNotANapLabel ?? 'Not a nap')
                     : (l?.activityNotAWorkout ?? 'Not a workout'),
                 onDiscard,
@@ -120,6 +161,20 @@ class ActivityProposalCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// The stored English text wins when present; otherwise the code is localized.
+  static String _trackEvidence(AppLocalizations? l, ActivitySuggestion s) {
+    final text = s.details['evidence'];
+    if (text is String && text.isNotEmpty) return text;
+    return switch (s.details['evidence_kind']) {
+      'early_sleep_hr_hrv' => l?.activityTrackEvidenceSleep ??
+          'Early sleep heart rate rose while HRV fell compared with your baseline.',
+      'resting_hr_jump' => l?.activityTrackEvidenceRestingHr ??
+          'Resting heart rate rose well above your baseline without movement.',
+      _ => l?.activityTrackEvidenceLearned ??
+          'Matches the pattern learned from your logged days.',
+    };
   }
 
   Widget _action(

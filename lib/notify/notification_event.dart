@@ -100,6 +100,12 @@ NotifClass? classOf(NotificationEvent e) => switch (e.category) {
           when e.priority == NotifPriority.normal &&
               routePath(e.route ?? '') == kRouteMovement =>
         NotifClass.prompt,
+      // The wearer started the experiment and asked for its reminders; the
+      // route names the one event allowed to claim reminders-at-normal.
+      NotifCategory.reminders
+          when e.priority == NotifPriority.normal &&
+              routePath(e.route ?? '') == kRouteTracksExperiment =>
+        NotifClass.prompt,
       // Same mechanism, two more route-keyed sanctions. The recovery-ready
       // morning note (its channel was where deleted nudges went, so the ROUTE
       // — not the category — is what re-opens) and the step-goal achievement.
