@@ -42,6 +42,7 @@ import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/compute/crossday_pipeline.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
@@ -261,17 +262,18 @@ Object? _comparable(Object? v) => switch (v) {
       _ => v,
     };
 
-/// Phase 2 adds measured baseline/provenance fields and moves revision 116 to
-/// 117. Keep the committed cardio goldens as the reference for EVERY existing
-/// value; the new payload contract is independently pinned by the p2 tests.
+/// Phase 2 adds measured baseline/provenance fields after revision 116.
+/// Revision 118 adds meal review proposals, without changing existing metrics.
+/// Keep the committed cardio goldens as the reference for every existing value;
+/// the new payload and meal contracts have their own behavior tests.
 /// This projection is deliberately revision-specific, so a later algorithm
 /// change cannot silently inherit this exception.
 Map<String, dynamic> _cardio116Projection(Map<String, dynamic> snapshot) {
-  expect(kAlgoVersion, 117);
+  expect(kAlgoVersion, 118);
   final out = (jsonDecode(jsonEncode(snapshot)) as Map).cast<String, dynamic>();
   for (final table in ['day_result', 'metric_series_version', 'wake_day_features']) {
     for (final row in out[table] as List) {
-      expect(row['algo_version'], 117);
+      expect(row['algo_version'], 118);
       row['algo_version'] = 116;
     }
   }
@@ -323,6 +325,9 @@ String? _firstDiff(Object? a, Object? b, String path) {
 }
 
 void main() {
+  // Meal-time priors are a device preference; a fresh fixture has none.
+  // Install the plugin's memory store so this pure compute fixture needs no UI.
+  SharedPreferences.setMockInitialValues({});
   final zone = _zoneKey();
   final truth = [for (final d in _days) SyntheticDay(d)];
   _addNap(truth[1]);

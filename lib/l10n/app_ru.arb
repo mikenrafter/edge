@@ -8830,38 +8830,62 @@
   },
   "@homeWhyRecoveryDrivers": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"},
-      "b": {"type": "String"},
-      "zb": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      },
+      "zb": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryDriver": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPlain": {
     "placeholders": {
-      "score": {"type": "int"}
+      "score": {
+        "type": "int"
+      }
     }
   },
   "@homeWhyStrainBody": {
     "placeholders": {
-      "strain": {"type": "String"},
-      "range": {"type": "String"}
+      "strain": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingTwo": {
     "placeholders": {
-      "a": {"type": "String"},
-      "b": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingOne": {
     "placeholders": {
-      "a": {"type": "String"}
+      "a": {
+        "type": "String"
+      }
     }
   },
   "homeSinceTime": "с {time}",
@@ -8888,11 +8912,32 @@
   "dayReviewMarkedMoment": "Отмеченный момент",
   "homeBreakdownOpen": "Открыть",
   "dayReviewStaged": "{count} выбрано",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "@dayReviewStaged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineBandEventsGroup": "Зарядка и батарея · событий: {count}",
-  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "@dayTimelineBandEventsGroup": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineRepeatedGroup": "{title} · раз: {count}",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "@dayTimelineRepeatedGroup": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "wakeJournalNatural": "Естественное пробуждение",
   "wakeJournalGradual": "Постепенное пробуждение",
   "wakeJournalAlarm": "Будильник",
@@ -8912,5 +8957,34 @@
   "wakeJournalGroupName": "Пробуждение",
   "sleepDetailMedicalDisclaimer": "Экспериментальный исследовательский алгоритм. Не является медицинским устройством. При нарушениях сна обратитесь к врачу.",
   "experimentalSleepHmm": "Экспериментальные стадии сна (HMM)",
-  "experimentalSleepHmmDescription": "Исследовательский метод для будущих расчётов. Не медицинская рекомендация. Завершённые ночи не меняются; повторите анализ ночи, чтобы применить метод."
+  "experimentalSleepHmmDescription": "Исследовательский метод для будущих расчётов. Не медицинская рекомендация. Завершённые ночи не меняются; повторите анализ ночи, чтобы применить метод.",
+  "typicalDayTitle": "Обычный день",
+  "typicalEnergy": "Энергия / бодрость",
+  "typicalForecastNote": "Прогноз формы по наблюдаемому сну и вашим биологическим часам. Недоступные часы остаются пустыми; это не измерение энергии.",
+  "typicalNoCurve": "Недостаточно свежих данных сна для кривой.",
+  "typicalQuiet": "Тихие часы",
+  "typicalSleep": "Ожидаемый сон",
+  "typicalMeals": "Обычное время больших приёмов пищи",
+  "typicalNoneSet": "Не задано",
+  "typicalEditMeals": "Изменить время еды",
+  "typicalCaffeine": "Время кофеина",
+  "typicalPattern": "Ваша картина на сегодня, {n} дней",
+  "typicalCaffeineLimits": "Только первый записанный кофеин. Для каждого сравнения нужны 14 парных дней с вариацией. Связи не доказывают причин. Пропущенные наблюдения остаются пустыми.",
+  "typicalDip": "Пробуждение → первый кофеин / прогноз спада днём",
+  "typicalNaps": "Пробуждение → первый кофеин / минуты дремоты",
+  "typicalRhr": "Пробуждение → первый кофеин / пульс покоя",
+  "typicalLatency": "Кофеин ко сну / время засыпания",
+  "typicalTst": "Кофеин ко сну / общий сон",
+  "typicalTooFew": "Пока слишком мало записанных дней для сравнения.",
+  "typicalResidual": "Последний остаток ко сну по записанным дозам: {mg} мг",
+  "typicalDoseLimits": "Модель с периодом полувыведения 5 ч, не измерение. Старые суточные суммы не задают дозы. При неполных дозах остаток не оценивается. Прогноз спада зависит лишь от сна; кофеин не меняет прогноз.",
+  "typicalLoadFailed": "Не удалось прочитать ваш день. Повторите попытку.",
+  "typicalSaveFailed": "Не удалось сохранить. Повторите попытку.",
+  "typicalRetry": "Повторить",
+  "typicalAddTime": "Добавить время",
+  "typicalRemove": "Удалить",
+  "typicalSave": "Сохранить",
+  "activityPossibleMeal": "Возможный приём пищи",
+  "activityNotAMeal": "Это не приём пищи",
+  "activityEditMealTime": "Изменить время приёма пищи"
 }

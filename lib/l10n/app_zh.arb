@@ -3451,38 +3451,62 @@
   },
   "@homeWhyRecoveryDrivers": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"},
-      "b": {"type": "String"},
-      "zb": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      },
+      "zb": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryDriver": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPlain": {
     "placeholders": {
-      "score": {"type": "int"}
+      "score": {
+        "type": "int"
+      }
     }
   },
   "@homeWhyStrainBody": {
     "placeholders": {
-      "strain": {"type": "String"},
-      "range": {"type": "String"}
+      "strain": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingTwo": {
     "placeholders": {
-      "a": {"type": "String"},
-      "b": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingOne": {
     "placeholders": {
-      "a": {"type": "String"}
+      "a": {
+        "type": "String"
+      }
     }
   },
   "homeSinceTime": "自 {time}",
@@ -3509,11 +3533,32 @@
   "dayReviewMarkedMoment": "已标记的时刻",
   "homeBreakdownOpen": "打开",
   "dayReviewStaged": "已暂存 {count} 项",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "@dayReviewStaged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineBandEventsGroup": "充电器与电池 · {count} 次事件",
-  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "@dayTimelineBandEventsGroup": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineRepeatedGroup": "{title} · {count} 次",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "@dayTimelineRepeatedGroup": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "wakeJournalNatural": "自然唤醒",
   "wakeJournalGradual": "渐进唤醒",
   "wakeJournalAlarm": "闹钟",
@@ -3533,5 +3578,34 @@
   "wakeJournalGroupName": "唤醒",
   "sleepDetailMedicalDisclaimer": "实验性研究算法。非医疗器械。如有睡眠障碍，请咨询医生。",
   "experimentalSleepHmm": "实验性睡眠分期（HMM）",
-  "experimentalSleepHmmDescription": "用于后续计算的研究方法，不提供医疗建议。已定稿的夜间记录保持不变；请重新分析某一晚以应用此方法。"
+  "experimentalSleepHmmDescription": "用于后续计算的研究方法，不提供医疗建议。已定稿的夜间记录保持不变；请重新分析某一晚以应用此方法。",
+  "typicalDayTitle": "典型一天",
+  "typicalEnergy": "精力 / 清醒度",
+  "typicalForecastNote": "根据已观察的睡眠和生物钟预测形态。无数据的时段留空；这不是精力测量。",
+  "typicalNoCurve": "近期睡眠数据不足，无法绘制曲线。",
+  "typicalQuiet": "勿扰时段",
+  "typicalSleep": "预期睡眠",
+  "typicalMeals": "通常大餐时间",
+  "typicalNoneSet": "尚未设置",
+  "typicalEditMeals": "编辑用餐时间",
+  "typicalCaffeine": "咖啡因时间",
+  "typicalPattern": "你目前的规律，{n} 天",
+  "typicalCaffeineLimits": "仅使用首次记录的咖啡因。每项比较需要至少 14 个有变化的配对日。关联不代表因果。缺失观察保持空白。",
+  "typicalDip": "醒来 → 首次咖啡因 / 预测午后低谷",
+  "typicalNaps": "醒来 → 首次咖啡因 / 已记录小睡分钟",
+  "typicalRhr": "醒来 → 首次咖啡因 / 静息心率",
+  "typicalLatency": "就寝时咖啡因 / 入睡潜伏期",
+  "typicalTst": "就寝时咖啡因 / 总睡眠",
+  "typicalTooFew": "记录天数太少，暂时无法比较。",
+  "typicalResidual": "根据记录剂量估计的最近就寝时残留：{mg} 毫克",
+  "typicalDoseLimits": "半衰期为 5 小时的模型，并非测量。旧每日总量无法确定单次剂量。不完整剂量记录无法估算残留。预测低谷仅依据睡眠；咖啡因不会改变预测。",
+  "typicalLoadFailed": "无法读取你的一天，请重试。",
+  "typicalSaveFailed": "无法保存，请重试。",
+  "typicalRetry": "重试",
+  "typicalAddTime": "添加时间",
+  "typicalRemove": "移除",
+  "typicalSave": "保存",
+  "activityPossibleMeal": "可能的用餐",
+  "activityNotAMeal": "不是用餐",
+  "activityEditMealTime": "编辑用餐时间"
 }

@@ -1338,7 +1338,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           }
           final cols = await destCols(t);
           if (cols.isEmpty) continue; // table absent in THIS build
-          final sourceHasActivityDecisions = (t == 'sleep_nap' || t == 'sessions') &&
+          final sourceHasActivityDecisions = (t == 'sleep_nap' || t == 'sessions' || t == 'moment_label') &&
               (await src.query('sqlite_master', columns: ['name'],
                 where: "type = 'table' AND name = 'activity_suggestions'"))
                   .isNotEmpty;
@@ -1418,9 +1418,10 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
             // Read only the owners for this page; older backups have no ledger.
             final activityOwners = <String, List<String>>{};
             if (sourceHasActivityDecisions) {
-              final kind = t == 'sleep_nap' ? 'nap' : 'workout';
+              final kind = t == 'sleep_nap' ? 'nap' : t == 'moment_label' ? 'meal' : 'workout';
               final links = [for (final r in page)
-                t == 'sleep_nap' ? '${r['day_id']}:${r['start_ts']}' : r['id'] as String];
+                t == 'sleep_nap' ? '${r['day_id']}:${r['start_ts']}' :
+                    t == 'moment_label' ? '${r['date']} ${r['hhmm']}' : r['id'] as String];
               for (final chunk in LocalDb._sqlVarChunks(links)) {
                 final owners = await src.query('activity_suggestions',
                   columns: ['id', 'linked_id'],
@@ -1500,10 +1501,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                     if (cols.contains(e.key)) e.key: e.value,
                 };
                 if (row.isEmpty) continue;
-                if (t == 'sleep_nap' || t == 'sessions') {
+                if (t == 'sleep_nap' || t == 'sessions' || t == 'moment_label') {
                   var keepLocalDecision = false;
                   final link = t == 'sleep_nap'
-                      ? '${row['day_id']}:${row['start_ts']}' : row['id'];
+                      ? '${row['day_id']}:${row['start_ts']}' : t == 'moment_label'
+                          ? '${row['date']} ${row['hhmm']}' : row['id'];
                   final owners = activityOwners[link];
                   for (final chunk in LocalDb._sqlVarChunks(owners ?? <String>[])) {
                     final decided = await txn.query('activity_suggestions',

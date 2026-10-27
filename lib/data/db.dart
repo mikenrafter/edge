@@ -700,7 +700,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 80;
+  static const int schemaVersion = 81;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1913,17 +1913,22 @@ class LocalDb {
   /// `moment_label`: the wearer's answer to one marked moment, keyed on the
   /// same local (date, hhmm) as the journal's `moment HH:mm` tag. A NULL label
   /// is a skip. Additive and idempotent.
-  static Future<void> _createMomentLabel(Database db) => db.execute(
+  static Future<void> _createMomentLabel(Database db) async {
+    await db.execute(
         'CREATE TABLE IF NOT EXISTS moment_label ('
         'date TEXT NOT NULL, hhmm TEXT NOT NULL, label TEXT, note TEXT, '
-        'answered_at INTEGER NOT NULL, PRIMARY KEY (date, hhmm))',
+        'answered_at INTEGER NOT NULL, caffeine_mg REAL, PRIMARY KEY (date, hhmm))',
       );
+    // Historic totals cannot be allocated to individual clock moments.
+    await _addColumnIfMissing(db, 'moment_label', 'caffeine_mg', 'REAL');
+  }
 
   static Map<String, Object?> _momentLabelRow(MomentLabel l) => {
         'date': l.date,
         'hhmm': l.hhmm,
         'label': l.label,
         'note': l.note,
+        'caffeine_mg': l.caffeineMg,
         'answered_at': l.answeredAtMs,
       };
 

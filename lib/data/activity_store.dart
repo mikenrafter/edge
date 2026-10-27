@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import '../gestures/moment_follow_ups.dart';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../compute/manual_session.dart';
@@ -418,13 +420,30 @@ class ActivityStore {
     final row = await _check(tx, expected, 'confirmed');
     if (row == null) return null;
     final now = DateTime.now().millisecondsSinceEpoch;
+    if (startTs <= 0 || endTs <= startTs) {
+      throw const ActivityReviewException('Choose a positive time window.');
+    }
     if (endTs > now ~/ 1000) {
       throw const ActivityReviewException('The end time is in the future.');
     }
     final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(startTs * 1000));
     String linked;
     NapResolution? resolution;
-    if (expected.kind == ActivityKind.workout) {
+    if (expected.kind == ActivityKind.meal) {
+      final local = DateTime.fromMillisecondsSinceEpoch(startTs * 1000);
+      final hhmm = '${local.hour.toString().padLeft(2, '0')}:'
+          '${local.minute.toString().padLeft(2, '0')}';
+      final writer = MomentAnswerWriter(transaction: tx);
+      final label = await writer.labelOf(day, hhmm);
+      final moment = PendingMoment(date: day, hhmm: hhmm, epochSec: startTs);
+      if (await writer.isAnswered(moment) && label != 'meal') {
+        throw const ActivityReviewException('That moment already has another answer.');
+      }
+      // Food entries are already timestamped independently. Keep their amounts
+      // and identity intact; confirming a candidate adds no invented nutrition.
+      await writer.answer(moment, MomentChoice.meal);
+      linked = '$day $hhmm';
+    } else if (expected.kind == ActivityKind.workout) {
       final overlap = await _overlappingSessions(tx, startTs, endTs);
       final invalid = validateManualWindow(
         startSec: startTs,

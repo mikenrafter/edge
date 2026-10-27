@@ -24,6 +24,8 @@ import '../data/db/group_row_store.dart' show captureInputStampBestEffort, captu
 import '../data/db/input_read_tracker.dart';
 import '../data/db/input_revision_store.dart' show observeInputZone, inputRevSnapshot;
 import 'accepted_naps.dart' show composeAcceptedNaps;
+import 'meal_candidates.dart';
+import '../data/typical_day_model.dart' show TypicalMealTimes;
 import '../models/activity_suggestion.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -1974,7 +1976,10 @@ part 'engine/settled.dart';
 // HR p10 / mean epoch RMSSD in payload_json. Cardio remains the default and
 // its stages/accounting are unchanged. Default persisted output gains nullable
 // baseline scalars and method provenance, so finalized days need a new version.
-const int kAlgoVersion = 117;
+// 118: awake low-motion HR rises produce meal candidates for review. Sleep,
+// naps, workouts, off-wrist and charge spans are excluded; the wearer must
+// confirm before any meal moment exists. No sibling re-pin is involved.
+const int kAlgoVersion = 118;
 class DerivationEngine {
   DerivationEngine({
     this.log,
@@ -8365,6 +8370,13 @@ class DerivationEngine {
     required Substrate daySub,
     required String date,
     required int dayStartSec,
+    int? dataNowSec,
+    List<List<int>>? wristOffSpans,
+    List<List<int>>? chargingSpans,
+    List<NapEdit>? napEdits,
+    List<Map<String, dynamic>>? savedSessions,
+    int tonightSleepOnsetSec = 0,
+    int tonightSleepOffsetSec = 0,
   }) =>
       _DayBlocksInput(
         calculationState: DayCalculationState(),
@@ -8400,7 +8412,8 @@ class DerivationEngine {
         ],
         dynFloorG: 0.02,
         dynHistoryDays: 9,
-        savedSessions: [
+        typicalMealMinutes: const [720],
+        savedSessions: savedSessions ?? [
           {
             'id': 's1',
             'start_ts': dayStartSec + 600,
@@ -8412,17 +8425,17 @@ class DerivationEngine {
             'created_at': dayStartSec,
           }
         ],
-        napEdits: const [
+        napEdits: napEdits ?? const [
           NapEdit(
             kind: NapEditKind.added,
             startSec: 1760000900,
             endSec: 1760001200,
           ),
         ],
-        wristOffSpans: const [
+        wristOffSpans: wristOffSpans ?? const [
           [1760000100, 1760000160]
         ],
-        chargingSpans: const [
+        chargingSpans: chargingSpans ?? const [
           [1760000200, 1760000260]
         ],
         blankedSpans: const [
@@ -8433,7 +8446,9 @@ class DerivationEngine {
         date: date,
         dayStartSec: dayStartSec,
         dayEndSec: dayStartSec + 86400,
-        dataNowSec: dayStartSec + 1800,
+        dataNowSec: dataNowSec ?? dayStartSec + 1800,
+        tonightSleepOnsetSec: tonightSleepOnsetSec,
+        tonightSleepOffsetSec: tonightSleepOffsetSec,
       );
 
   /// A short digest of the fields [dayBlocksInputForTest] populates, for the
@@ -8752,6 +8767,8 @@ class DerivationEngine {
       dataNowSec: inp.dataNowSec,
     );
     bundlePatch['workout_suggestions'] = wc.boutJson;
+    final mealSuggestions = _mealCandidatesHeavy(inp, napPeriods ?? const [],
+        napSuggestions, [...wc.boutJson, ...wc.suggestionsToPersist]);
     if (wc.hrrBpm != null) scMap['hrr_bpm'] = wc.hrrBpm;
     if (wc.hrrTauS != null) scMap['hrr_tau_s'] = wc.hrrTauS;
     final ceilingComputed =
@@ -8838,7 +8855,56 @@ class DerivationEngine {
       ),
       suggestionsToPersist: wc.suggestionsToPersist,
       napSuggestions: napSuggestions,
+      mealSuggestions: mealSuggestions,
       sessionHrrWrites: wc.sessionHrrWrites,
+    );
+  }
+
+  /// Only the registered day-block worker calls this substrate-sized pass.
+  @heavy
+  static List<Map<String, dynamic>> _mealCandidatesHeavy(_DayBlocksInput inp,
+      List<Map<String, dynamic>> naps, List<Map<String, dynamic>> napSuggestions,
+      List<Map<String, dynamic>> workouts) {
+    final sub = inp.daySub;
+    final hr = <int, (double, int)>{};
+    for (var i = 0; i < sub.length; i++) {
+      final t = sub.tsSec[i];
+      if (t < inp.dayStartSec || t >= inp.dayEndSec || sub.hr[i] <= 0) continue;
+      final minute = t ~/ 60;
+      final previous = hr[minute] ?? (0.0, 0);
+      hr[minute] = (previous.$1 + sub.hr[i], previous.$2 + 1);
+    }
+    final motion = {for (final m in _motionMinutes(sub,
+        state: inp.calculationState, mode: inp.calculationMode))
+      if (m.nSamples >= 30) m.tsMinStartMs.toInt() ~/ 60000: m.dynAmp};
+    final samples = <MealSample>[];
+    for (final e in hr.entries) {
+      if (e.value.$2 < 30) continue;
+      final at = DateTime.fromMillisecondsSinceEpoch(e.key * 60000);
+      samples.add(MealSample(ts: e.key * 60, hr: e.value.$1 / e.value.$2,
+          motion: motion[e.key], minuteOfDay: at.hour * 60 + at.minute));
+    }
+    MealExclusion? span(Map<String, dynamic> r) {
+      final start = (r['start_ts'] ?? r['start'] ?? r['startSec'] ?? r['onset_ts']) as num?;
+      final end = (r['end_ts'] ?? r['end'] ?? r['endSec'] ?? r['wake_ts']) as num?;
+      return start == null ? null : MealExclusion(start.toInt(),
+          end?.toInt() ?? inp.dataNowSec);
+    }
+    return detectMealCandidatesHeavy(samples,
+      typicalMealMinutes: inp.typicalMealMinutes,
+      sleep: [
+        if (inp.offsetSec > inp.onsetSec)
+          MealExclusion(inp.onsetSec, inp.napExcludeEndSec ?? inp.offsetSec),
+        if (inp.tonightSleepOnsetSec > 0)
+          MealExclusion(inp.tonightSleepOnsetSec,
+              inp.tonightSleepOffsetSec > inp.tonightSleepOnsetSec
+                  ? inp.tonightSleepOffsetSec : inp.dataNowSec),
+        for (final r in [...naps, ...napSuggestions]) ?span(r),
+        for (final r in [...inp.wristOffSpans, ...inp.chargingSpans,
+            ...inp.blankedSpans]) if (r.length >= 2) MealExclusion(r[0], r[1]),
+      ],
+      workouts: [for (final r in [...inp.savedSessions, ...workouts])
+        ?span(r)],
     );
   }
 

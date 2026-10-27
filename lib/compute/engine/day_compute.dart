@@ -633,6 +633,7 @@ extension _EngineDayCompute on DerivationEngine {
         quietHrrHistory: history.valuesBefore('quiet_hrr', day.date,
             family: DerivationEngine._baselineFamily('quiet_hrr', daySub.deviceFamily)),
         savedSessions: savedSessions,
+        typicalMealMinutes: await TypicalMealTimes.load(),
         wristOffSpans: wristOffSpans,
         chargingSpans: chargingSpans,
         blankedSpans: blankedSpans,
@@ -785,11 +786,18 @@ extension _EngineDayCompute on DerivationEngine {
               ActivityKind.workout, blocks.suggestionsToPersist),
         if (!batchReference)
           ...await activityStore.reconcile(ActivityKind.nap, blocks.napSuggestions),
+        if (!batchReference)
+          ...await activityStore.reconcile(ActivityKind.meal, blocks.mealSuggestions),
       ];
       for (final suggestion in newSuggestions) {
         // The rows are already banked; a failed prompt must not mark the day partial.
         try {
-          if (forceFinalize || !await activityStore.mayNotifyNew(suggestion)) continue;
+          // Meal candidates belong in review. The existing alert preferences
+          // opt into nap/workout prompts and do not authorize meal alerts.
+          if (suggestion.kind == ActivityKind.meal || forceFinalize ||
+              !await activityStore.mayNotifyNew(suggestion)) {
+            continue;
+          }
           final nap = suggestion.kind == ActivityKind.nap;
           await NotificationCenter.instance.emit(NotificationEvent(
             dedupeKey: '${day.date}:activity:${suggestion.id}',

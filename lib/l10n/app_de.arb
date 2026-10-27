@@ -3557,38 +3557,62 @@
   },
   "@homeWhyRecoveryDrivers": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"},
-      "b": {"type": "String"},
-      "zb": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      },
+      "zb": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryDriver": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPlain": {
     "placeholders": {
-      "score": {"type": "int"}
+      "score": {
+        "type": "int"
+      }
     }
   },
   "@homeWhyStrainBody": {
     "placeholders": {
-      "strain": {"type": "String"},
-      "range": {"type": "String"}
+      "strain": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingTwo": {
     "placeholders": {
-      "a": {"type": "String"},
-      "b": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingOne": {
     "placeholders": {
-      "a": {"type": "String"}
+      "a": {
+        "type": "String"
+      }
     }
   },
   "homeSinceTime": "seit {time}",
@@ -3615,11 +3639,32 @@
   "dayReviewMarkedMoment": "Markierter Moment",
   "homeBreakdownOpen": "Öffnen",
   "dayReviewStaged": "{count} vorgemerkt",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "@dayReviewStaged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineBandEventsGroup": "Ladegerät und Akku · {count} Ereignisse",
-  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "@dayTimelineBandEventsGroup": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineRepeatedGroup": "{title} · {count}-mal",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "@dayTimelineRepeatedGroup": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "wakeJournalNatural": "Natürliches Aufwachen",
   "wakeJournalGradual": "Sanftes Aufwachen",
   "wakeJournalAlarm": "Wecker",
@@ -3639,5 +3684,34 @@
   "wakeJournalGroupName": "Aufwachen",
   "sleepDetailMedicalDisclaimer": "Experimenteller Forschungsalgorithmus. Kein Medizinprodukt. Wenden Sie sich bei Schlafstörungen an eine Ärztin oder einen Arzt.",
   "experimentalSleepHmm": "Experimentelle Schlafphasenerkennung (HMM)",
-  "experimentalSleepHmmDescription": "Forschungsmethode für künftige Berechnungen. Keine medizinische Beratung. Abgeschlossene Nächte bleiben unverändert; analysiere eine Nacht erneut, um sie anzuwenden."
+  "experimentalSleepHmmDescription": "Forschungsmethode für künftige Berechnungen. Keine medizinische Beratung. Abgeschlossene Nächte bleiben unverändert; analysiere eine Nacht erneut, um sie anzuwenden.",
+  "typicalDayTitle": "Typischer Tag",
+  "typicalEnergy": "Energie / Wachheit",
+  "typicalForecastNote": "Eine Formprognose aus deinem beobachteten Schlaf und deiner inneren Uhr. Nicht verfügbare Stunden bleiben leer; keine Energiemessung.",
+  "typicalNoCurve": "Zu wenige aktuelle Schlafdaten für eine Kurve.",
+  "typicalQuiet": "Ruhezeiten",
+  "typicalSleep": "Erwarteter Schlaf",
+  "typicalMeals": "Übliche große Mahlzeiten",
+  "typicalNoneSet": "Keine festgelegt",
+  "typicalEditMeals": "Essenszeiten bearbeiten",
+  "typicalCaffeine": "Koffeinzeitpunkt",
+  "typicalPattern": "Dein bisheriges Muster, {n} Tage",
+  "typicalCaffeineLimits": "Nur das erste protokollierte Koffein. Jeder Vergleich benötigt 14 gepaarte Tage mit Variation. Zusammenhänge zeigen keine Ursachen. Fehlende Beobachtungen bleiben leer.",
+  "typicalDip": "Aufwachen → erstes Koffein / vorhergesagtes Nachmittagstief",
+  "typicalNaps": "Aufwachen → erstes Koffein / Nickerchenminuten",
+  "typicalRhr": "Aufwachen → erstes Koffein / Ruhepuls",
+  "typicalLatency": "Koffein beim Zubettgehen / Einschlafdauer",
+  "typicalTst": "Koffein beim Zubettgehen / Gesamtschlaf",
+  "typicalTooFew": "Noch zu wenige protokollierte Tage für einen Vergleich.",
+  "typicalResidual": "Letzter Rest beim Zubettgehen aus protokollierten Dosen: {mg} mg",
+  "typicalDoseLimits": "Modell mit 5 h Halbwertszeit, keine Messung. Alte Tagessummen ergeben keine Einzeldosen. Unvollständige Dosen erlauben keine Restschätzung. Das vorhergesagte Tief nutzt nur Schlaf; Koffein ändert die Prognose nicht.",
+  "typicalLoadFailed": "Dein Tag konnte nicht gelesen werden. Erneut versuchen.",
+  "typicalSaveFailed": "Speichern fehlgeschlagen. Erneut versuchen.",
+  "typicalRetry": "Erneut versuchen",
+  "typicalAddTime": "Zeit hinzufügen",
+  "typicalRemove": "Entfernen",
+  "typicalSave": "Speichern",
+  "activityPossibleMeal": "Mögliche Mahlzeit",
+  "activityNotAMeal": "Keine Mahlzeit",
+  "activityEditMealTime": "Essenszeit bearbeiten"
 }

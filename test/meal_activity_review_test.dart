@@ -147,4 +147,45 @@ void main() {
       await copy.close();
     }
   });
+  test('invalid edited bounds roll back the decision and moment', () async {
+    final p = await proposal();
+    for (final bounds in [(_start + 1, _start), (_start, _start),
+        (-1, _start)]) {
+      await expectLater(repo.confirmActivity(p,
+          startTs: bounds.$1, endTs: bounds.$2),
+          throwsA(isA<ActivityReviewException>()));
+      expect((await store.get(p.id))!.status, ActivityReviewStatus.pending);
+      expect(await LocalDb.momentLabels(date: _day), isEmpty);
+    }
+  });
+
+  for (final decision in ['discarded', 'edited']) {
+    test('restore keeps local $decision meal decision and only its moment', () async {
+      final p = await proposal();
+      final pending = await LocalDb.exportCopy();
+      await repo.confirmActivity(p);
+      final confirmed = await LocalDb.exportCopy();
+      await env.wipe();
+      await LocalDb.importFromDbFile(pending);
+      db = await LocalDb.instance;
+      store = ActivityStore(db);
+      if (decision == 'discarded') {
+        await repo.discardActivity(p);
+      } else {
+        await repo.confirmActivity(p, startTs: _start + 300,
+            endTs: _start + 1800);
+      }
+      for (var attempt = 0; attempt < 2; attempt++) {
+        await LocalDb.importFromDbFile(confirmed);
+        expect((await store.get(p.id))!.status, decision == 'discarded'
+            ? ActivityReviewStatus.discarded : ActivityReviewStatus.confirmed);
+        if (decision == 'discarded') {
+          expect(await LocalDb.momentLabels(date: _day), isEmpty);
+        } else {
+          await assertMealOnly(minute: 725);
+        }
+      }
+    });
+  }
+
 }

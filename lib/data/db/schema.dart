@@ -1044,6 +1044,10 @@ Future<Database> _ldbPrivOpen() async {
           // Empty additive table, no historical timestamp inference/backfill.
           await WaterMomentStore.create(db);
         }
+        if (oldV < 81) {
+          // Per-moment caffeine amounts; no allocation of historic daily totals.
+          await LocalDb._createMomentLabel(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);

@@ -12,47 +12,47 @@ List<MealSample> meal({int at = 12 * 60, int duration = 25,
 
 void main() {
   test('sustained low-motion awake rise proposes once, at the rise', () {
-    final rows = detectMealCandidates(meal());
+    final rows = detectMealCandidatesHeavy(meal());
     expect(rows, hasLength(1));
     expect(rows.single['start_ts'], 12 * 3600);
     expect(rows.single['end_ts'], (12 * 60 + 25) * 60);
   });
 
   test('empty, short, absent HR and absent motion do not invent meals', () {
-    expect(detectMealCandidates([]), isEmpty);
-    expect(detectMealCandidates(meal(duration: 19)), isEmpty);
-    expect(detectMealCandidates(meal(motion: null)), isEmpty);
-    expect(detectMealCandidates([
+    expect(detectMealCandidatesHeavy([]), isEmpty);
+    expect(detectMealCandidatesHeavy(meal(duration: 19)), isEmpty);
+    expect(detectMealCandidatesHeavy(meal(motion: null)), isEmpty);
+    expect(detectMealCandidatesHeavy([
       for (final s in meal()) MealSample(ts: s.ts, hr: null,
           motion: s.motion, minuteOfDay: s.minuteOfDay),
     ]), isEmpty);
-    expect(detectMealCandidates(meal(rise: 62)), isEmpty);
-    expect(detectMealCandidates(meal(motion: 0.2)), isEmpty);
+    expect(detectMealCandidatesHeavy(meal(rise: 62)), isEmpty);
+    expect(detectMealCandidatesHeavy(meal(motion: 0.2)), isEmpty);
   });
 
   test('sleep, workouts and recording gaps cannot form a candidate', () {
     final span = MealExclusion(12 * 3600, 13 * 3600);
-    expect(detectMealCandidates(meal(), sleep: [span]), isEmpty);
-    expect(detectMealCandidates(meal(), workouts: [span]), isEmpty);
+    expect(detectMealCandidatesHeavy(meal(), sleep: [span]), isEmpty);
+    expect(detectMealCandidatesHeavy(meal(), workouts: [span]), isEmpty);
     // Ten minutes on either side of a ten-minute gap is not sustained 20 min.
     final gapped = meal(duration: 30).where((s) =>
         s.ts < (12 * 60 + 10) * 60 || s.ts >= (12 * 60 + 20) * 60).toList();
-    expect(detectMealCandidates(gapped), isEmpty);
+    expect(detectMealCandidatesHeavy(gapped), isEmpty);
   });
 
   test('nighttime candidates abstain and meal-time prior cannot create a rise', () {
-    expect(detectMealCandidates(meal(at: 2 * 60)), isEmpty);
-    expect(detectMealCandidates(meal(rise: 60),
+    expect(detectMealCandidatesHeavy(meal(at: 2 * 60)), isEmpty);
+    expect(detectMealCandidatesHeavy(meal(rise: 60),
         typicalMealMinutes: [12 * 60]), isEmpty);
   });
 
   test('meal-time prior ranks supported candidates under daily cap', () {
     final samples = [...meal(at: 10 * 60), ...meal(at: 14 * 60)];
-    final rows = detectMealCandidates(samples,
+    final rows = detectMealCandidatesHeavy(samples,
         typicalMealMinutes: [14 * 60], maxPerDay: 1);
     expect(rows, hasLength(1));
     expect(rows.single['start_ts'], 14 * 3600);
-    expect(detectMealCandidates(samples, maxPerDay: 0), isEmpty);
+    expect(detectMealCandidatesHeavy(samples, maxPerDay: 0), isEmpty);
   });
 
   test('shipped default caps at ten per day and never duplicates a bout', () {
@@ -67,7 +67,7 @@ void main() {
         }
       }
     }
-    final rows = detectMealCandidates(samples);
+    final rows = detectMealCandidatesHeavy(samples);
     expect(rows, hasLength(20));
     expect(rows.map((r) => r['start_ts']).toSet(), hasLength(20));
   });

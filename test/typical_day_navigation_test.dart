@@ -15,7 +15,9 @@ void main() {
     expect(entry, findsOneWidget);
     await t.ensureVisible(entry);
     await t.tap(entry);
-    await settle(t);
+    // Wait for the actual database-backed load, not a fixed frame budget.
+    await settle(t, until: () => find.text('Typical large meals').evaluate().isNotEmpty,
+        what: 'Typical day load');
     expect(find.text('Typical day'), findsWidgets);
     expect(find.text('Typical large meals'), findsOneWidget);
     expect(find.textContaining('Caffeine'), findsWidgets);

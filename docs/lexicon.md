@@ -106,3 +106,18 @@ in the same change that introduces it (AGENTS.md §6).
   instant, checked against quiet hours, expected sleep and recorded sleep.
   Suppression diagnostics use that order when causes overlap. Interval starts
   are included and ends are excluded. Missing evidence remains unknown.
+
+## Typical day
+
+- **Typical day**: the local 24-hour view of the existing alertness forecast,
+  saved quiet and sleep windows, and the wearer's optional large-meal times.
+- **First recorded caffeine**: the earliest explicitly timed caffeine moment
+  inside an observed wake-to-next-sleep interval. A daily total's latest clock
+  time does not establish it.
+- **Bedtime caffeine residual**: the modeled remaining mg from explicit timed
+  doses at the next observed sleep onset, using a fixed five-hour half-life.
+  Incomplete amounts remain unknown.
+
+- **Meal candidate**: an unvalidated awake, low-motion HR-rise interval offered
+  in Review activities. Only the wearer's confirmation creates a meal moment;
+  a candidate never supplies food amounts or nutrition.

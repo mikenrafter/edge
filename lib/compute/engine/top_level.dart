@@ -1314,6 +1314,7 @@ class _DayBlocksInput {
   final List<double> quietHrrHistory;
 
   final List<Map<String, dynamic>> savedSessions;
+  final List<int> typicalMealMinutes;
 
   /// The user's nap edits for this day, replayed over the detector's output.
   final List<NapEdit> napEdits;
@@ -1376,6 +1377,7 @@ class _DayBlocksInput {
     required this.dynHistoryDays,
     this.quietHrrHistory = const [],
     required this.savedSessions,
+    this.typicalMealMinutes = const [],
     this.napEdits = const [],
     required this.wristOffSpans,
     required this.chargingSpans,
@@ -1396,6 +1398,7 @@ class _DayBlocksInput {
 /// isolate; [wake] is persisted; candidates are reconciled and session HRR
 /// writes are applied by the database-owning caller.
 class _DayBlocksOutput {
+  final List<Map<String, dynamic>> mealSuggestions;
   final List<Map<String, dynamic>> napSuggestions;
   final DayCalculationState calculationState;
 
@@ -1415,6 +1418,7 @@ class _DayBlocksOutput {
     required this.ceilingComputed,
     required this.bundlePatch,
     this.napSuggestions = const [],
+    this.mealSuggestions = const [],
     required this.seriesPatch,
     required this.scalarPatch,
     required this.wake,

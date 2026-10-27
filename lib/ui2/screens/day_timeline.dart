@@ -50,6 +50,7 @@ import '../../models/activity_suggestion.dart';
 import '../../gestures/moment_follow_ups.dart';
 import '../../gestures/moment_review_service.dart';
 import 'day_review.dart';
+import 'typical_day.dart';
 import 'moment_follow_up.dart' show MomentReviewEditor;
 import '../../gestures/symptom_description.dart' show StoredSymptom;
 import '../../data/nutrition_store.dart';
@@ -398,12 +399,21 @@ List<Moment> dayMoments({
     ));
   }
 
+  // A confirmed meal moment can describe an existing timed food entry. Join
+  // only the same clock minute: nearby times are not evidence of one meal.
+  final mealLabels = {for (final label in momentLabels)
+    if (label.label == 'meal' && label.atSec != null)
+      label.atSec! ~/ 60: label};
+  final joinedMealLabels = <String>{};
   for (final m in meals) {
     final t = m.atTs;
     if (t == null) continue;
     final kcal = m.kcal;
+    final label = mealLabels[t ~/ 60];
+    final joined = label != null && joinedMealLabels.add(label.key);
     out.add(Moment(
       at: t,
+      identity: joined ? 'moment:${label.key}' : null,
       title: m.label.isEmpty ? localizedText(l, m.meal) : m.label,
       detail: [
         clockOfTs(t),
@@ -411,10 +421,11 @@ List<Moment> dayMoments({
         // A bare occasion is complete as a log. It just has no energy on it,
         // and printing "0 kcal" for one is the fabrication this app refuses.
         if (kcal != null) '${kcal.round()} kcal',
+        if (joined && label.note?.isNotEmpty == true) label.note!,
       ].join(' · '),
       icon: LucideIcons.utensils,
       color: C.domFood,
-      annotationKind: AnnotationKind.journal,
+      annotationKind: joined ? AnnotationKind.moment : AnnotationKind.journal,
     ));
   }
 
@@ -484,6 +495,7 @@ List<Moment> dayMoments({
   // to show, and a label this build does not know is not turned into text.
   final symptomAt = {for (final y in symptoms) y.key: y};
   for (final m in momentLabels) {
+    if (joinedMealLabels.contains(m.key)) continue;
     final choice = MomentChoice.fromId(m.label);
     final at = m.atSec;
     if (choice == null || at == null) continue;
@@ -1466,6 +1478,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                 ...dayNavRow(_day ?? d.day, d.days, _goDay),
+                TextButton(onPressed: () => go(c, const TypicalDayScreen()),
+                  child: Text(l?.typicalDayTitle ?? 'Typical day')),
                 DayReviewNotices(controller: review, reloader: this),
                 if (_loading) ...[
                   const SizedBox(height: S.x4),

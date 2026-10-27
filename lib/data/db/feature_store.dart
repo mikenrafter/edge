@@ -522,6 +522,7 @@ Future<List<MomentLabel>> _ldbMomentLabels({required String? date, required Stri
           hhmm: r['hhmm'] as String,
           label: r['label'] as String?,
           note: r['note'] as String?,
+          caffeineMg: (r['caffeine_mg'] as num?)?.toDouble(),
           answeredAtMs: (r['answered_at'] as num).toInt(),
         ),
     ];
@@ -538,7 +539,11 @@ Future<bool> _ldbAnswerMoment(MomentLabel l, {required String? metricField, requ
           whereArgs: [l.date, l.hhmm],
           limit: 1);
       if (have.isNotEmpty) return false;
-      await txn.insert('moment_label', LocalDb._momentLabelRow(l));
+      await txn.insert('moment_label', {
+        ...LocalDb._momentLabelRow(l),
+        if (l.label == 'caffeine' && metricField == 'caffeine_mg')
+          'caffeine_mg': metricValue,
+      });
       if (metricField != null && metricValue != null) {
         final atMin = int.parse(l.hhmm.substring(0, 2)) * 60 +
             int.parse(l.hhmm.substring(3, 5));

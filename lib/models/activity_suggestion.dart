@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-enum ActivityKind { nap, workout }
+enum ActivityKind { nap, workout, meal }
 
 enum ActivityReviewStatus { pending, confirmed, discarded, superseded }
 

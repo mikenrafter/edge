@@ -3469,38 +3469,62 @@
   },
   "@homeWhyRecoveryDrivers": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"},
-      "b": {"type": "String"},
-      "zb": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      },
+      "zb": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryDriver": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPlain": {
     "placeholders": {
-      "score": {"type": "int"}
+      "score": {
+        "type": "int"
+      }
     }
   },
   "@homeWhyStrainBody": {
     "placeholders": {
-      "strain": {"type": "String"},
-      "range": {"type": "String"}
+      "strain": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingTwo": {
     "placeholders": {
-      "a": {"type": "String"},
-      "b": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingOne": {
     "placeholders": {
-      "a": {"type": "String"}
+      "a": {
+        "type": "String"
+      }
     }
   },
   "homeSinceTime": "desde {time}",
@@ -3527,11 +3551,32 @@
   "dayReviewMarkedMoment": "Momento marcado",
   "homeBreakdownOpen": "Abrir",
   "dayReviewStaged": "{count} preparados",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "@dayReviewStaged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineBandEventsGroup": "Cargador y batería · {count} eventos",
-  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "@dayTimelineBandEventsGroup": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineRepeatedGroup": "{title} · {count} veces",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "@dayTimelineRepeatedGroup": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "wakeJournalNatural": "Despertar natural",
   "wakeJournalGradual": "Despertar gradual",
   "wakeJournalAlarm": "Alarma",
@@ -3551,5 +3596,34 @@
   "wakeJournalGroupName": "Despertar",
   "sleepDetailMedicalDisclaimer": "Algoritmo de investigación experimental. No es un dispositivo médico. Consulte a un médico si tiene trastornos del sueño.",
   "experimentalSleepHmm": "Fases del sueño experimentales (HMM)",
-  "experimentalSleepHmmDescription": "Método de investigación para cálculos futuros. No es consejo médico. Las noches finalizadas no cambian; vuelve a analizar una noche para aplicarlo."
+  "experimentalSleepHmmDescription": "Método de investigación para cálculos futuros. No es consejo médico. Las noches finalizadas no cambian; vuelve a analizar una noche para aplicarlo.",
+  "typicalDayTitle": "Día típico",
+  "typicalEnergy": "Energía / alerta",
+  "typicalForecastNote": "Una previsión de forma a partir de tu sueño observado y reloj biológico. Las horas sin datos quedan vacías; no es una medición de energía.",
+  "typicalNoCurve": "Faltan datos recientes de sueño para una curva.",
+  "typicalQuiet": "Horas de silencio",
+  "typicalSleep": "Sueño esperado",
+  "typicalMeals": "Comidas grandes habituales",
+  "typicalNoneSet": "Sin definir",
+  "typicalEditMeals": "Editar horas de comidas",
+  "typicalCaffeine": "Horario de cafeína",
+  "typicalPattern": "Tu patrón hasta ahora, {n} días",
+  "typicalCaffeineLimits": "Solo la primera cafeína registrada. Cada comparación necesita 14 días emparejados con variación. Las asociaciones no indican causas. Las observaciones ausentes quedan vacías.",
+  "typicalDip": "Despertar → primera cafeína / bajón previsto de la tarde",
+  "typicalNaps": "Despertar → primera cafeína / minutos de siesta registrados",
+  "typicalRhr": "Despertar → primera cafeína / FC en reposo",
+  "typicalLatency": "Cafeína al acostarte / latencia del sueño",
+  "typicalTst": "Cafeína al acostarte / sueño total",
+  "typicalTooFew": "Aún hay pocos días registrados para comparar.",
+  "typicalResidual": "Último residuo al acostarte de dosis registradas: {mg} mg",
+  "typicalDoseLimits": "Modelo con semivida de 5 h, no una medición. Los totales diarios antiguos no identifican dosis. Los registros incompletos no permiten estimar residuos. El bajón previsto usa solo el sueño; la cafeína no cambia la previsión.",
+  "typicalLoadFailed": "No se pudo leer tu día. Inténtalo de nuevo.",
+  "typicalSaveFailed": "No se pudo guardar. Inténtalo de nuevo.",
+  "typicalRetry": "Reintentar",
+  "typicalAddTime": "Añadir hora",
+  "typicalRemove": "Eliminar",
+  "typicalSave": "Guardar",
+  "activityPossibleMeal": "Posible comida",
+  "activityNotAMeal": "No fue una comida",
+  "activityEditMealTime": "Editar hora de la comida"
 }

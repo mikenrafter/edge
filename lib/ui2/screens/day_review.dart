@@ -246,7 +246,8 @@ class DayReviewController extends ChangeNotifier {
     }
     if (id.startsWith('activity:')) {
       final s = _activities.singleWhere((s) => 'activity:${s.id}' == id);
-      return s.kind == ActivityKind.nap
+      return s.kind == ActivityKind.meal
+          ? (l?.activityPossibleMeal ?? 'Possible meal') : s.kind == ActivityKind.nap
           ? (l?.activityPossibleNap ?? 'Possible nap')
           : (l?.activityPossibleWorkout ?? 'Possible workout');
     }
@@ -304,7 +305,8 @@ class DayReviewController extends ChangeNotifier {
     for (final s in _activities)
       (id: 'activity:${s.id}', moment: Moment(at: _activityEdits['activity:${s.id}']?.startTs ?? s.startTs,
           title: title(c, 'activity:${s.id}'), detail: listDetail(c, 'activity:${s.id}'),
-          icon: s.kind == ActivityKind.nap ? LucideIcons.bedDouble
+          icon: s.kind == ActivityKind.meal ? LucideIcons.utensils :
+              s.kind == ActivityKind.nap ? LucideIcons.bedDouble
               : (activityByName(s.sport)?.icon ?? LucideIcons.dumbbell),
           color: C.domMove)),
     for (final m in _marks)
@@ -363,7 +365,19 @@ class DayReviewController extends ChangeNotifier {
     if (!canEdit) return;
     final s = _activities.singleWhere((s) => 'activity:${s.id}' == id);
     ActivityDecision? edit;
-    if (s.kind == ActivityKind.nap) {
+    if (s.kind == ActivityKind.meal) {
+      final prior = _activityEdits[id];
+      final at = DateTime.fromMillisecondsSinceEpoch((prior?.startTs ?? s.startTs) * 1000);
+      final time = await showTimePicker(context: c,
+          initialTime: TimeOfDay.fromDateTime(at),
+          helpText: AppLocalizations.of(c)?.activityEditMealTime ?? 'Edit meal time');
+      if (time != null) {
+        final start = DateTime(at.year, at.month, at.day, time.hour, time.minute)
+            .millisecondsSinceEpoch ~/ 1000;
+        edit = ActivityDecision(s, keep: true, startTs: start,
+            endTs: start + s.endTs - s.startTs);
+      }
+    } else if (s.kind == ActivityKind.nap) {
       final window = await Navigator.of(c).push<(int, int)>(MaterialPageRoute(
           builder: (_) => NapProposalEditor(suggestion: s, stageOnly: true)));
       if (window != null) {
@@ -492,7 +506,9 @@ class DayReviewController extends ChangeNotifier {
             (applied.containsKey(e.key) || !ReviewKey.isMoment(e.key))) {
           _settled[e.key] = row;
           final s = _activities.where((s) => 'activity:${s.id}' == e.key).firstOrNull;
-          if (s != null) {
+          // A meal moment is stored in the Save transaction and appears on
+          // the immediate reload; it has no derived nap/session to wait for.
+          if (s != null && s.kind != ActivityKind.meal) {
             final edit = _activityEdits[e.key];
             _settledSpan[e.key] = (nap: s.kind == ActivityKind.nap,
                 start: edit?.startTs ?? s.startTs, end: edit?.endTs ?? s.endTs,

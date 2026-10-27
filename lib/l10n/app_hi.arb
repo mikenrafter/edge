@@ -3451,38 +3451,62 @@
   },
   "@homeWhyRecoveryDrivers": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"},
-      "b": {"type": "String"},
-      "zb": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      },
+      "zb": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryDriver": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPlain": {
     "placeholders": {
-      "score": {"type": "int"}
+      "score": {
+        "type": "int"
+      }
     }
   },
   "@homeWhyStrainBody": {
     "placeholders": {
-      "strain": {"type": "String"},
-      "range": {"type": "String"}
+      "strain": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingTwo": {
     "placeholders": {
-      "a": {"type": "String"},
-      "b": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingOne": {
     "placeholders": {
-      "a": {"type": "String"}
+      "a": {
+        "type": "String"
+      }
     }
   },
   "homeSinceTime": "{time} से",
@@ -3509,11 +3533,32 @@
   "dayReviewMarkedMoment": "चिह्नित क्षण",
   "homeBreakdownOpen": "खोलें",
   "dayReviewStaged": "{count} तैयार",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "@dayReviewStaged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineBandEventsGroup": "चार्जर और बैटरी · {count} घटनाएँ",
-  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "@dayTimelineBandEventsGroup": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineRepeatedGroup": "{title} · {count} बार",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "@dayTimelineRepeatedGroup": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "wakeJournalNatural": "स्वाभाविक जागना",
   "wakeJournalGradual": "धीरे-धीरे जागना",
   "wakeJournalAlarm": "अलार्म",
@@ -3533,5 +3578,34 @@
   "wakeJournalGroupName": "जागना",
   "sleepDetailMedicalDisclaimer": "प्रयोगात्मक शोध एल्गोरिदम। यह चिकित्सा उपकरण नहीं है। नींद संबंधी विकारों के लिए चिकित्सक से परामर्श लें।",
   "experimentalSleepHmm": "प्रयोगात्मक नींद चरण विश्लेषण (HMM)",
-  "experimentalSleepHmmDescription": "आगे की गणनाओं के लिए शोध विधि। यह चिकित्सीय सलाह नहीं है। अंतिम रूप से सहेजी गई रातें नहीं बदलतीं; इसे लागू करने के लिए रात का फिर से विश्लेषण करें।"
+  "experimentalSleepHmmDescription": "आगे की गणनाओं के लिए शोध विधि। यह चिकित्सीय सलाह नहीं है। अंतिम रूप से सहेजी गई रातें नहीं बदलतीं; इसे लागू करने के लिए रात का फिर से विश्लेषण करें।",
+  "typicalDayTitle": "सामान्य दिन",
+  "typicalEnergy": "ऊर्जा / सतर्कता",
+  "typicalForecastNote": "आपकी देखी गई नींद और जैविक घड़ी से आकार का पूर्वानुमान। अनुपलब्ध घंटे खाली रहते हैं; यह ऊर्जा का माप नहीं है।",
+  "typicalNoCurve": "वक्र के लिए हाल की नींद का पर्याप्त डेटा नहीं है।",
+  "typicalQuiet": "शांत समय",
+  "typicalSleep": "अपेक्षित नींद",
+  "typicalMeals": "सामान्य बड़े भोजन",
+  "typicalNoneSet": "तय नहीं",
+  "typicalEditMeals": "भोजन का समय बदलें",
+  "typicalCaffeine": "कैफीन का समय",
+  "typicalPattern": "अब तक आपका पैटर्न, {n} दिन",
+  "typicalCaffeineLimits": "केवल पहली दर्ज कैफीन। हर तुलना के लिए बदलाव वाले 14 युग्मित दिन चाहिए। संबंध कारण नहीं बताते। अनुपलब्ध अवलोकन खाली रहते हैं।",
+  "typicalDip": "जागना → पहली कैफीन / दोपहर की अनुमानित गिरावट",
+  "typicalNaps": "जागना → पहली कैफीन / दर्ज झपकी के मिनट",
+  "typicalRhr": "जागना → पहली कैफीन / विश्राम हृदय दर",
+  "typicalLatency": "सोते समय कैफीन / नींद आने में समय",
+  "typicalTst": "सोते समय कैफीन / कुल नींद",
+  "typicalTooFew": "तुलना के लिए अभी बहुत कम दर्ज दिन हैं।",
+  "typicalResidual": "दर्ज खुराकों से सोते समय नवीनतम अवशेष: {mg} mg",
+  "typicalDoseLimits": "5 घंटे की अर्ध-आयु वाला मॉडल, माप नहीं। पुराने दैनिक योग अलग खुराक नहीं बताते। अधूरी खुराकों से अवशेष का अनुमान नहीं मिलता। अनुमानित गिरावट केवल नींद पर आधारित है; कैफीन पूर्वानुमान नहीं बदलती।",
+  "typicalLoadFailed": "आपका दिन पढ़ नहीं पाए। फिर कोशिश करें।",
+  "typicalSaveFailed": "सहेज नहीं पाए। फिर कोशिश करें।",
+  "typicalRetry": "फिर कोशिश करें",
+  "typicalAddTime": "समय जोड़ें",
+  "typicalRemove": "हटाएँ",
+  "typicalSave": "सहेजें",
+  "activityPossibleMeal": "संभावित भोजन",
+  "activityNotAMeal": "यह भोजन नहीं था",
+  "activityEditMealTime": "भोजन का समय बदलें"
 }

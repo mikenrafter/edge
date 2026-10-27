@@ -31,6 +31,7 @@ import 'package:openstrap_edge/compute/day_tail_fold.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/inputs/wearable_substrate_heavy.dart';
 import 'package:openstrap_edge/data/session_windows_heavy.dart';
+import 'package:openstrap_edge/data/typical_day_source.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/sleep_staging_worker.dart';
@@ -67,6 +68,36 @@ Future<void> _sameInWorker<T>(T Function() call, {Object? Function(T)? json}) as
 }
 
 final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
+  'typicalCaffeineHeavy': (
+    roundTrip: () async {
+      int ts(int day, int hour) =>
+          DateTime(2026, 10, day, hour).millisecondsSinceEpoch ~/ 1000;
+      final input = TypicalCaffeineInput([
+        {'date': '2026-10-01', 'sleep': {'wake_ts': ts(1, 16), 'duration_min': 480}},
+        {'date': '2026-10-02', 'sleep': {'onset_ts': ts(2, 8),
+          'wake_ts': ts(2, 16), 'duration_min': 480, 'sol_min': 12},
+          'heart': {'resting_hr': 55}},
+      ], [
+        {'date': '2026-10-01', 'hhmm': '22:00', 'caffeine_mg': 100},
+        {'date': '2026-10-02', 'hhmm': '03:00', 'caffeine_mg': 80},
+      ], [
+        {'date': '2026-10-01', 'value': 100},
+        {'date': '2026-10-02', 'value': 80},
+      ], const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'));
+      await expectIsolateRoundTrip<TypicalCaffeineInput>(input,
+          project: (i) => [i.days, i.moments, i.totals, i.worker.zoneId]);
+      final result = await Isolate.run(() => typicalCaffeineHeavy(input));
+      expect(result.dayCount, 1);
+      // 100 mg ten hours before bed -> 25; 80 mg five hours before -> 40.
+      expect(result.latestResidualMg, closeTo(65, 1e-9));
+      expect(result.pairedCounts['latency'], 1);
+      await _sameInWorker(() => typicalCaffeineHeavy(input), json: (s) => [
+        s.dayCount, s.enoughDays, s.latestResidualMg, s.pairedCounts,
+        s.wakeDelayVsDip, s.wakeDelayVsNap, s.wakeDelayVsRestingHr,
+        s.residualVsLatency, s.residualVsTotalSleep,
+      ]);
+    },
+  ),
   'legacyWakeHeavy': (
     roundTrip: () async {
       const now = 12 * 3600000;

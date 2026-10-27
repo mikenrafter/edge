@@ -401,7 +401,7 @@ void main() {
       db = await LocalDb.instance;
       expect(
         (await db.rawQuery('PRAGMA user_version')).single.values.single,
-        80,
+        LocalDb.schemaVersion,
       );
       expect((await repo.getJournalMetrics(day))['water_ml']!.value, 250);
       expect(await waterTimes(), isEmpty);

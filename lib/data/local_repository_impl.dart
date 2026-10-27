@@ -143,6 +143,10 @@ class LocalRepositoryImpl extends LocalRepository {
         validateAgainstId: 'suggestion:${suggestion.id}',
         sessionId: 'suggestion:${suggestion.id}', suggestion: suggestion);
       await HealthExporter.exportWorkoutId('suggestion:${suggestion.id}');
+    } else if (suggestion.kind == ActivityKind.meal) {
+      await ActivityStore(await LocalDb.instance).confirm(suggestion,
+          startTs: start, endTs: end,
+          edited: start != suggestion.startTs || end != suggestion.endTs);
     } else {
       final res = await ActivityStore(await LocalDb.instance).confirm(suggestion,
         startTs: start, endTs: end,
@@ -1689,6 +1693,7 @@ class LocalRepositoryImpl extends LocalRepository {
       'sleep_source': sleepSource,
       'duration_min': (tst / 60).round(),
       'in_bed_min': spt == null ? null : (spt / 60).round(),
+      'sol_min': _scalar(b, 'sol_min'),
       'awake_min': waso == null ? null : (waso / 60).round(),
       'efficiency': effPct == null ? null : effPct / 100.0, // screen wants 0..1
       'onset_ts': sec('onset_ms'),

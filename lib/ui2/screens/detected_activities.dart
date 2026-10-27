@@ -45,6 +45,7 @@ class ActivityProposalCard extends StatelessWidget {
     final l = AppLocalizations.of(c);
     final p = P.of(c);
     final nap = suggestion.kind == ActivityKind.nap;
+    final meal = suggestion.kind == ActivityKind.meal;
     final accent = nap ? C.domHealth : C.domMove;
     final start = DateTime.fromMillisecondsSinceEpoch(
       suggestion.startTs * 1000,
@@ -60,14 +61,14 @@ class ActivityProposalCard extends StatelessWidget {
           Row(
             children: [
               Icon(
-                nap ? LucideIcons.moon : LucideIcons.activity,
+                nap ? LucideIcons.moon : meal ? LucideIcons.utensils : LucideIcons.activity,
                 color: p.on(accent),
                 size: 20,
               ),
               const SizedBox(width: S.x2),
               Expanded(
                 child: Text(
-                  nap
+                  meal ? (l?.activityPossibleMeal ?? 'Possible meal') : nap
                       ? (l?.activityPossibleNap ?? 'Possible nap')
                       : (l?.activityPossibleWorkout ?? 'Possible workout'),
                   style: F.head.copyWith(color: p.ink),
@@ -97,7 +98,7 @@ class ActivityProposalCard extends StatelessWidget {
               // that; a nap only has times to edit.
               _action(
                 c,
-                nap
+                nap || meal
                     ? (l?.activityEdit ?? 'Edit')
                     : (l?.activityChangeSport ?? 'Change sport'),
                 onEdit,
@@ -108,7 +109,7 @@ class ActivityProposalCard extends StatelessWidget {
               // A discard is kept by window and wins over every re-detection.
               _action(
                 c,
-                nap
+                meal ? (l?.activityNotAMeal ?? 'Not a meal') : nap
                     ? (l?.napsNotANapLabel ?? 'Not a nap')
                     : (l?.activityNotAWorkout ?? 'Not a workout'),
                 onDiscard,

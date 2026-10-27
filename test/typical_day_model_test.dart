@@ -26,12 +26,12 @@ void main() {
   test('residual caffeine uses five-hour half-life and only earlier doses', () {
     final bed = DateTime.utc(2026, 10, 1, 22);
     // 100 mg ten hours earlier -> 25; 80 mg five hours earlier -> 40.
-    expect(residualCaffeineMg([
+    expect(residualCaffeineMgHeavy([
       CaffeineDose(at: DateTime.utc(2026, 10, 1, 12), mg: 100),
       CaffeineDose(at: DateTime.utc(2026, 10, 1, 17), mg: 80),
       CaffeineDose(at: DateTime.utc(2026, 10, 1, 23), mg: 100),
     ], bed), closeTo(65, 1e-9));
-    expect(residualCaffeineMg([], bed), 0);
+    expect(residualCaffeineMgHeavy([], bed), 0);
   });
 
   List<CaffeineDay> history(int n, {bool missingSleep = false}) => [
@@ -48,7 +48,7 @@ void main() {
   ];
 
   test('few days report the observed count and abstain on every comparison', () {
-    final s = caffeineTimingSummary(history(3));
+    final s = caffeineTimingSummaryHeavy(history(3));
     expect(s.dayCount, 3);
     expect(s.enoughDays, isFalse);
     expect([s.wakeDelayVsDip, s.wakeDelayVsNap, s.wakeDelayVsRestingHr,
@@ -56,7 +56,7 @@ void main() {
   });
 
   test('timing comparisons use first dose and observed paired outcomes', () {
-    final s = caffeineTimingSummary(history(21));
+    final s = caffeineTimingSummaryHeavy(history(21));
     expect(s.dayCount, 21);
     expect(s.enoughDays, isTrue);
     // First-dose delays and these outcomes rise linearly together.
@@ -69,11 +69,11 @@ void main() {
   });
 
   test('missing sleep and wake times never borrow another metric', () {
-    final s = caffeineTimingSummary(history(21, missingSleep: true));
+    final s = caffeineTimingSummaryHeavy(history(21, missingSleep: true));
     expect(s.wakeDelayVsDip, closeTo(1, 1e-9));
     expect(s.residualVsLatency, isNull);
     expect(s.residualVsTotalSleep, isNull);
-    final noWake = caffeineTimingSummary([
+    final noWake = caffeineTimingSummaryHeavy([
       for (var i = 0; i < 21; i++) CaffeineDay(dayId: 'day$i',
         bedAt: DateTime.utc(2026, 10, i + 1, 22),
         doses: [CaffeineDose(at: DateTime.utc(2026, 10, i + 1, 9), mg: 100)],
@@ -86,10 +86,10 @@ void main() {
 
   test('duplicate days and constant observations cannot invent evidence', () {
     final d = history(1).single;
-    final s = caffeineTimingSummary(List.filled(30, d));
+    final s = caffeineTimingSummaryHeavy(List.filled(30, d));
     expect(s.dayCount, 1);
     expect(s.enoughDays, isFalse);
-    final same = caffeineTimingSummary([
+    final same = caffeineTimingSummaryHeavy([
       for (var i = 0; i < 21; i++) CaffeineDay(dayId: 'day$i',
         wakeAt: DateTime.utc(2026, 10, i + 1, 7),
         bedAt: DateTime.utc(2026, 10, i + 1, 22),
@@ -98,6 +98,51 @@ void main() {
     ]);
     expect(same.wakeDelayVsDip, isNull);
     expect(same.residualVsLatency, isNull);
+  });
+
+  test('an incomplete newest day never shows an older bedtime residual', () {
+    final older = history(1).single;
+    final latest = CaffeineDay(dayId: '2026-10-02',
+      wakeAt: DateTime.utc(2026, 10, 2, 7),
+      bedAt: DateTime.utc(2026, 10, 2, 22),
+      firstRecordedAt: DateTime.utc(2026, 10, 2, 9),
+      dosesComplete: false);
+    expect(caffeineTimingSummaryHeavy([older]).latestResidualMg, 12.5);
+    final summary = caffeineTimingSummaryHeavy([latest, older]);
+    expect(summary.dayCount, 2);
+    expect(summary.latestResidualMg, isNull);
+    expect(summary.pairedCounts['latency'], 1);
+  });
+
+  test('each outcome needs fourteen pairs and invalid amounts abstain', () {
+    final days = history(13);
+    days.add(CaffeineDay(dayId: '2026-10-14',
+      wakeAt: DateTime.utc(2026, 10, 14, 7),
+      bedAt: DateTime.utc(2026, 10, 14, 22),
+      firstRecordedAt: DateTime.utc(2026, 10, 14, 10),
+      doses: [CaffeineDose(at: DateTime.utc(2026, 10, 14, 10), mg: double.nan)],
+      napsMinutes: 30, sleepLatencyMinutes: 30));
+    final summary = caffeineTimingSummaryHeavy(days);
+    expect(summary.dayCount, 14);
+    expect(summary.pairedCounts['nap'], 14);
+    expect(summary.wakeDelayVsNap, isNotNull);
+    expect(summary.pairedCounts['dip'], 13);
+    expect(summary.wakeDelayVsDip, isNull);
+    expect(summary.pairedCounts['latency'], 13);
+    expect(summary.residualVsLatency, isNull);
+    expect(summary.latestResidualMg, isNull);
+  });
+
+  test('rank comparisons follow a nonlinear ordered personal pattern', () {
+    final summary = caffeineTimingSummaryHeavy([
+      for (var i = 0; i < 14; i++) CaffeineDay(dayId: 'day$i',
+        wakeAt: DateTime.utc(2026, 10, i + 1, 7),
+        doses: [CaffeineDose(at: DateTime.utc(2026, 10, i + 1, 7, i + 1), mg: 100)],
+        napsMinutes: (i * i).toDouble()),
+    ]);
+    // Both observations have identical ordering, despite the quadratic scale.
+    expect(summary.wakeDelayVsNap, closeTo(1, 1e-9));
+    expect(summary.pairedCounts['nap'], 14);
   });
 
   test('typical large meals persist locally, normalize, and survive restore', () async {

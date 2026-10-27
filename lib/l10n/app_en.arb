@@ -17714,38 +17714,62 @@
   },
   "@homeWhyRecoveryDrivers": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"},
-      "b": {"type": "String"},
-      "zb": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      },
+      "zb": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryDriver": {
     "placeholders": {
-      "a": {"type": "String"},
-      "za": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "za": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPlain": {
     "placeholders": {
-      "score": {"type": "int"}
+      "score": {
+        "type": "int"
+      }
     }
   },
   "@homeWhyStrainBody": {
     "placeholders": {
-      "strain": {"type": "String"},
-      "range": {"type": "String"}
+      "strain": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingTwo": {
     "placeholders": {
-      "a": {"type": "String"},
-      "b": {"type": "String"}
+      "a": {
+        "type": "String"
+      },
+      "b": {
+        "type": "String"
+      }
     }
   },
   "@homeWhyRecoveryPullingOne": {
     "placeholders": {
-      "a": {"type": "String"}
+      "a": {
+        "type": "String"
+      }
     }
   },
   "homeSinceTime": "since {time}",
@@ -17770,11 +17794,32 @@
   "dayReviewMarkedMoment": "Marked moment",
   "homeBreakdownOpen": "Open",
   "dayReviewStaged": "{count} staged",
-  "@dayReviewStaged": {"placeholders": {"count": {"type": "int"}}},
+  "@dayReviewStaged": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineBandEventsGroup": "Charger and battery · {count} events",
-  "@dayTimelineBandEventsGroup": {"placeholders": {"count": {"type": "int"}}},
+  "@dayTimelineBandEventsGroup": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "dayTimelineRepeatedGroup": "{title} · {count} times",
-  "@dayTimelineRepeatedGroup": {"placeholders": {"title": {"type": "String"}, "count": {"type": "int"}}},
+  "@dayTimelineRepeatedGroup": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "wakeJournalNatural": "Natural wake",
   "wakeJournalGradual": "Gradual wake",
   "wakeJournalAlarm": "Alarm",
@@ -17797,9 +17842,30 @@
   "sleepWakeZoom": "Zoom wake-up events",
   "sleepWakeZoomDescription": "Zoom the end of the sleep chart when wake-up events are crowded",
   "wakeJournalCount": "{event} ×{count}",
-  "@wakeJournalCount": {"placeholders": {"event": {"type": "String"}, "count": {"type": "int"}}},
+  "@wakeJournalCount": {
+    "placeholders": {
+      "event": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "wakeJournalGroup": "Wake-up {start}–{end} · {minutes} min to wake",
-  "@wakeJournalGroup": {"placeholders": {"start": {"type": "String"}, "end": {"type": "String"}, "minutes": {"type": "int"}}},
+  "@wakeJournalGroup": {
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
   "wakeJournalGroupName": "Wake-up",
   "sleepDetailMedicalDisclaimer": "Experimental research algorithm. Not a medical device. Consult a physician for sleep disorders.",
   "@sleepDetailMedicalDisclaimer": {
@@ -17812,5 +17878,48 @@
   },
   "@experimentalSleepHmmDescription": {
     "description": "Explains research status and finalized-night behavior."
-  }
+  },
+  "typicalDayTitle": "Typical day",
+  "typicalEnergy": "Energy / alertness",
+  "typicalForecastNote": "A shape forecast from your observed sleep and body clock. Unavailable hours stay blank; it is not an energy measurement.",
+  "typicalNoCurve": "Not enough recent sleep data for a curve.",
+  "typicalQuiet": "Quiet hours",
+  "typicalSleep": "Expected sleep",
+  "typicalMeals": "Typical large meals",
+  "typicalNoneSet": "None set",
+  "typicalEditMeals": "Edit meal times",
+  "typicalCaffeine": "Caffeine timing",
+  "typicalPattern": "Your pattern so far, {n} days",
+  "typicalCaffeineLimits": "First recorded caffeine only. Each comparison needs 14 paired days with variation. Associations do not show causes. Missing observations stay blank.",
+  "typicalDip": "Wake → first caffeine / predicted afternoon dip",
+  "typicalNaps": "Wake → first caffeine / recorded nap minutes",
+  "typicalRhr": "Wake → first caffeine / resting HR",
+  "typicalLatency": "Bedtime caffeine / sleep latency",
+  "typicalTst": "Bedtime caffeine / total sleep",
+  "typicalTooFew": "Too few recorded days to compare yet.",
+  "typicalResidual": "Latest bedtime residual from recorded doses: {mg} mg",
+  "typicalDoseLimits": "A model with a 5 h half-life, not a measurement. Old daily totals cannot identify individual doses. Incomplete dose records cannot estimate a residual. The predicted dip uses sleep only; caffeine does not change the forecast.",
+  "typicalLoadFailed": "Could not read your day. Try again.",
+  "typicalSaveFailed": "Could not save. Try again.",
+  "typicalRetry": "Try again",
+  "typicalAddTime": "Add time",
+  "typicalRemove": "Remove",
+  "typicalSave": "Save",
+  "@typicalPattern": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "@typicalResidual": {
+    "placeholders": {
+      "mg": {
+        "type": "String"
+      }
+    }
+  },
+  "activityPossibleMeal": "Possible meal",
+  "activityNotAMeal": "Not a meal",
+  "activityEditMealTime": "Edit meal time"
 }

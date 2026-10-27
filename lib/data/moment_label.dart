@@ -14,6 +14,7 @@ class MomentLabel {
     required this.hhmm,
     this.label,
     this.note,
+    this.caffeineMg,
     required this.answeredAtMs,
   });
 
@@ -28,6 +29,9 @@ class MomentLabel {
 
   /// The optional free-text note ("Other"), null when none.
   final String? note;
+
+  /// Explicit amount recorded for this moment; historic daily totals stay null.
+  final double? caffeineMg;
 
   /// Epoch ms the answer was given.
   final int answeredAtMs;
