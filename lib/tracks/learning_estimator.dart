@@ -266,17 +266,25 @@ List<_NightPair> _matchedPairs(
   List<TrackDefinition> tracks,
 ) {
   final valid = rows.where((r) => r.features[track.id]?.dose != null).toList();
+  // CLAIM(baseline-reference): with "this track is my baseline" the reference
+  // is the habitual dose (most frequent, earliest on ties), so nights with less
+  // than habit pair as deviations below it and later abstinence cannot become
+  // the reference [S4; track_effect_estimator_test].
   var referenceDose = 0.0;
   if (track.noUnadjustedData && valid.isNotEmpty) {
-    referenceDose = valid
-        .map((r) => r.features[track.id]!.dose!)
-        .reduce(math.min);
+    final counts = <double, int>{};
+    for (final r in valid) {
+      counts.update(r.features[track.id]!.dose!, (n) => n + 1, ifAbsent: () => 1);
+    }
+    referenceDose = counts.entries
+        .reduce((best, e) => e.value > best.value ? e : best)
+        .key;
   }
   final controls = valid
       .where((r) => r.features[track.id]!.dose == referenceDose)
       .toList();
   final exposed = valid
-      .where((r) => r.features[track.id]!.dose! > referenceDose)
+      .where((r) => r.features[track.id]!.dose! != referenceDose)
       .toList();
   final used = <int>{};
   final pairs = <_NightPair>[];
@@ -305,7 +313,13 @@ List<_NightPair> _matchedPairs(
     }
     if (best != null) {
       used.add(best.night.at.millisecondsSinceEpoch);
-      pairs.add(_NightPair(row, best));
+      // ↳ CLAIM(baseline-reference): the pair's "exposed" side is always the
+      // higher dose, so a night below the reference keeps the effect's sign.
+      pairs.add(
+        row.features[track.id]!.dose! > referenceDose
+            ? _NightPair(row, best)
+            : _NightPair(best, row),
+      );
     }
   }
   return pairs;

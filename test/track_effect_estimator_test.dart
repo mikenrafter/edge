@@ -719,4 +719,73 @@ void main() {
     ], bedtime, historyComplete: true);
     expect(slow.effectiveResidual, isNull);
   });
+
+  // WHY S4: with "this track is my baseline" the reference was the minimum
+  // observed dose, so 14 late abstinence nights replaced the habitual 100 mg
+  // reference and the 150-vs-100 contrast was no longer estimated.
+  // proves: CLAIM(baseline-reference)
+  test('baseline reference stays habitual after later abstinence nights', () {
+    TrackEvent dose(TrackNight n, double amount) => TrackEvent(
+      id: 'd-${n.at.millisecondsSinceEpoch}',
+      trackId: 'a',
+      date: '2025-01-01',
+      amount: amount,
+      atMs: n.at.subtract(const Duration(hours: 6)).millisecondsSinceEpoch,
+    );
+    TrackNight withEvents(TrackNight n, double amount) => TrackNight(
+      at: n.at,
+      bedtimeMinute: n.bedtimeMinute,
+      sleepDebtHours: n.sleepDebtHours,
+      load: n.load,
+      outcomes: n.outcomes,
+      baselines: n.baselines,
+      negativeControls: n.negativeControls,
+      completeTrackIds: {'a'},
+      events: [dose(n, amount)],
+    );
+    // Habitual 100 mg weeks vs 150 mg weeks differ by exactly 8 sleep units.
+    final base = cohort();
+    final nights = [
+      for (final n in base) withEvents(n, n.events.isEmpty ? 100 : 150),
+    ];
+    final tail = [
+      for (var i = 0; i < 14; i++)
+        withEvents(
+          TrackNight(
+            at: base.last.at.add(Duration(days: i + 1)),
+            bedtimeMinute: 1320,
+            sleepDebtHours: 0,
+            load: 0,
+            outcomes: const {'sleep': 50},
+            baselines: const {'sleep': 50},
+            negativeControls: const {'sleep': 50},
+          ),
+          0,
+        ),
+    ];
+    final tracked = TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      systems: const ['sleep'],
+      noUnadjustedData: true,
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+      }),
+    );
+    final result = estimate([...nights, ...tail], tracks: [tracked]);
+    expect(result.reason, 'estimated');
+    // 56 pairs, contrast 8, shrinkage 56 / (56 + 8) = .875 -> 7.
+    expect(result.effect, closeTo(7, 1e-6));
+    // Deviation below the reference: habitual 100 mg weeks (earliest, so the
+    // reference) against 50 mg weeks that sleep 8 units better -> -8 per
+    // +50 mg, shrunk to -7. The sign shows the higher dose is the exposed side.
+    final below = estimate(
+      [for (final n in base) withEvents(n, n.events.isEmpty ? 100 : 50)],
+      tracks: [tracked],
+    );
+    expect(below.reason, 'estimated');
+    expect(below.effect, closeTo(-7, 1e-6));
+  });
 }
