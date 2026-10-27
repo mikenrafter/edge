@@ -15,6 +15,7 @@ TrackDefinition track(
   systems: systems,
   kinetics: TrackKinetics({
     'half_life_hours': TrackKineticField(value: halfLife),
+    'onset_hours': TrackKineticField(value: 0),
   }),
 );
 
@@ -139,6 +140,7 @@ TrackDefinition historyTrack({
   systems: const ['sleep'],
   kinetics: TrackKinetics({
     'half_life_hours': const TrackKineticField(value: 6),
+    'onset_hours': const TrackKineticField(value: 0),
     'tolerance_days': TrackKineticField(
       value: tolerance,
       locked: locked == 'tolerance_days',
@@ -704,6 +706,7 @@ void main() {
       unit: 'cups',
       kinetics: const TrackKinetics({
         'half_life_hours': TrackKineticField(value: 6),
+        'onset_hours': TrackKineticField(value: 0),
         'tolerance_days': TrackKineticField(value: 1),
         'withdrawal_days': TrackKineticField(value: 1),
       }),
@@ -787,5 +790,41 @@ void main() {
     );
     expect(below.reason, 'estimated');
     expect(below.effect, closeTo(-7, 1e-6));
+  });
+
+  // WHY S5: the default caffeine preset has onset null; it was read as 0 h, so a
+  // numeric residual was reported with no kinetics behind it.
+  // proves: CLAIM(onset-unknown)
+  test('unknown onset leaves residual absent while dose stays known', () {
+    final bedtime = DateTime.utc(2025, 1, 2, 22);
+    final events = [
+      TrackEvent(
+        id: 'a',
+        trackId: 'a',
+        date: '2025-01-02',
+        amount: 100,
+        atMs: bedtime
+            .subtract(const Duration(hours: 6))
+            .millisecondsSinceEpoch,
+      ),
+    ];
+    TrackDefinition withOnset(double? onset) => TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      kinetics: TrackKinetics({
+        'half_life_hours': const TrackKineticField(value: 6),
+        'onset_hours': TrackKineticField(value: onset),
+      }),
+    );
+    final unknown = estimator.features(withOnset(null), events, bedtime);
+    expect(unknown.dose, 100);
+    expect(unknown.residualMg, isNull);
+    // Positive control: a known 1 h onset keeps 100 * 0.5^(6/6) = 50.
+    expect(
+      estimator.features(withOnset(1), events, bedtime).residualMg,
+      closeTo(50, 1e-10),
+    );
   });
 }

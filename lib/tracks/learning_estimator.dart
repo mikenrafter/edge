@@ -61,8 +61,15 @@ class TrackEffectEstimator {
         }
       }
       final halfLife = kinetics.fields['half_life_hours']?.value;
-      final onset = kinetics.fields['onset_hours']?.value ?? 0;
-      if (halfLife == null || !halfLife.isFinite || halfLife <= 0) {
+      final onset = kinetics.fields['onset_hours']?.value;
+      // CLAIM(onset-unknown): an unknown onset leaves residual exposure
+      // unknown; it is never read as zero [S5; track_effect_estimator_test].
+      if (halfLife == null ||
+          !halfLife.isFinite ||
+          halfLife <= 0 ||
+          onset == null ||
+          !onset.isFinite ||
+          onset < 0) {
         unknownResidual = true;
       } else if (hours >= onset) {
         residual += amount * math.pow(.5, hours / halfLife);
