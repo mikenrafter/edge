@@ -534,7 +534,10 @@ class NutritionDb {
     });
   }
 
-  static Future<void> delete(Database db, String id) =>
+  static Future<void> delete(Database db, String id) => removeEntry(db, id);
+
+  /// The one food_entry delete; [delete] and the tracks feed both route here.
+  static Future<void> removeEntry(Database db, String id) =>
       db.delete('food_entry', where: 'id = ?', whereArgs: [id]);
 
   static Future<List<FoodEntry>> entriesForDay(Database db, String date) async {

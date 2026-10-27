@@ -365,7 +365,7 @@ class TracksStore {
       case 'session':
         await LocalDb.deleteSession(event.sourceId);
       case 'food':
-        await NutritionDb.delete(db, event.sourceId);
+        await NutritionDb.removeEntry(db, event.sourceId);
       case 'med':
         final parts = event.sourceId.split(':');
         await MedDb.mark(
