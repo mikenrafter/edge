@@ -200,14 +200,14 @@ void main() {
   });
 
   test(
-    'alcohol cannot satisfy warm-up and suppresses early-REM expectations tonight',
+    'alcohol warm-up is independent and suppresses early-REM expectations tonight',
     () {
       // Ebrahim 2013, doi:10.1111/acer.12006: first-half REM suppressed/delayed.
       final d = NaturalWakeTuning.evaluate([
         ...good(6),
         outcome(6, substance: WakeSubstance.alcohol),
       ], tonightSubstance: WakeSubstance.alcohol);
-      expect(d.eligibleNights, 6);
+      expect(d.eligibleNights, 1);
       expect(d.expectEarlyRem, isFalse);
       expectParameters(d, 0, 0);
       expect(d.applied, isFalse);
@@ -221,7 +221,7 @@ void main() {
         ...good(7),
         outcome(7, substance: WakeSubstance.alcohol),
       ]);
-      expect(d.eligibleNights, 7);
+      expect(d.eligibleNights, 1);
       expect(d.applied, isFalse);
       expectParameters(d, 0, 0);
     },

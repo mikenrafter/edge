@@ -248,11 +248,12 @@ void main() {
       for (var s = 40; s > 0; s--) {
         r.env.store(base - s * 1000);
       }
-      final newest = base - 1000;
       await r.tick(plan);
       r.clock.advance(const Duration(seconds: 30));
       await r.tick(plan);
-      expect(r.env.sampleRanges.last.$1.millisecondsSinceEpoch, newest.round());
+      expect(r.env.sampleRanges.last.$1, r.clock.now.subtract(const Duration(hours: 3)));
+      expect(r.observer.requests.last.hr, isEmpty);
+      expect(r.observer.requests.last.gateHr, hasLength(40));
       expect(r.observer.requests.last.priorState, {'v': 1, 'calls': 1});
     });
   });

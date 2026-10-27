@@ -93,3 +93,9 @@ in the same change that introduces it (AGENTS.md §6).
 - **Wake evidence**: timestamped HR and movement summaries calculated by analytics. Insufficient measurements remain absent and cannot approve autonomous early delivery.
 - **Confounder profile**: Edge's journal-derived thresholds for one sleep occurrence. Presets combine by maximum thresholds and durations, minimum movement ceilings, and shared condition flags.
 - **Wake night context**: the journal profile cached by `WakeNightContext` for one occurrence, saved schedule and journal revision. Read failures return default policy with neutral diagnostics.
+
+- **Natural learning track**: bounded Natural wake parameters learned only from
+  nights with the same recorded active confounder set. Track 0 is clean; other
+  sets use stable bit-set numbers. Each track needs seven complete nights.
+  Unknown journal context never trains a track. Alcohol intake changes learning
+  context even when it precedes the live detector's late-intake cutoff.

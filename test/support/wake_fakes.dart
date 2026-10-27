@@ -60,6 +60,7 @@ NaturalObservation absentObs(String reason, {double? evidenceAgeMs = 30000}) =>
 /// state really round-trips through the state store.
 class ScriptedObserver implements NaturalStageObserver {
   NaturalObservation next = remObs();
+  NaturalGateEvidence? evidence = const NaturalGateEvidence(baseline: 50, recentHr: 56, motion: .01, trending: false);
   Object? failWith;
   final List<NaturalObserveRequest> requests = [];
 
@@ -73,6 +74,7 @@ class ScriptedObserver implements NaturalStageObserver {
     if (failWith != null) throw failWith!;
     return NaturalObserveResult(
       observation: next,
+      evidence: evidence,
       nextState: {'v': 1, 'calls': requests.length},
     );
   }

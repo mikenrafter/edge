@@ -8,21 +8,61 @@ import 'dart:convert';
 import '../data/day_label.dart';
 import '../data/db.dart';
 import 'wake_confirmation.dart';
+import 'wake_controller.dart' show NaturalWakeLeadReader;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../sync/high_freq_wake_window.dart' show loadSavedExpectedSleepSchedule;
 import 'natural_wake_tuning.dart';
 import 'wake_journal.dart';
+import 'wake_night_context.dart';
+import 'wake_night_context_db.dart';
+import '../state/control_operations.dart';
 import 'wake_orchestrator.dart';
 import 'wake_settings.dart';
+
+class DbNaturalWakeLeadReader implements NaturalWakeLeadReader {
+  const DbNaturalWakeLeadReader();
+  @override
+  Future<int> leadFor(DateTime wakeAt) async => loadNaturalWakeLead(
+    wakeAt,
+    loadSavedExpectedSleepSchedule(await SharedPreferences.getInstance()),
+  );
+}
+
+Future<int> loadNaturalWakeLead(
+  DateTime wakeAt,
+  ExpectedSleepSchedule? schedule,
+) async {
+  final context = await sharedWakeNightContext.load(wakeAt, schedule);
+  if (context.diagnostic != 'context_ready') return 0;
+  return (await const DbWakeJournal().parameters(
+    track: context.profile.track,
+  )).windowLeadMinutes.clamp(-10, 10);
+}
 
 /// `wake_meta` keys.
 const String kWakeUpgradeKey = 'upgrade_explanation';
 const String kWakeRunStateKey = 'run_state';
 
-class DbWakeStateStore implements WakeStateStore, NaturalWakeParameterStore {
+class DbWakeStateStore
+    implements
+        WakeStateStore,
+        NaturalWakeParameterStore,
+        NaturalWakeContextStore {
   const DbWakeStateStore();
 
   @override
-  Future<NaturalWakeParameters> naturalParameters() =>
-      const DbWakeJournal().parameters();
+  Future<NaturalWakeParameters> naturalParameters({int track = 0}) =>
+      const DbWakeJournal().parameters(track: track);
+
+  @override
+  Future<WakeNightValue> nightContext(
+    DateTime wakeAt,
+    ExpectedSleepSchedule? schedule,
+  ) => sharedWakeNightContext.load(wakeAt, schedule);
+
+  @override
+  Future<List<Map<String, Object?>>> baselineNights() =>
+      LocalDb.recentDayResults(8);
 
   /// Corrupt or missing state reads as absent: the orchestrator starts fresh
   /// (costing a warm-up) instead of failing a wake.
@@ -53,31 +93,32 @@ class DbWakeTraceStore implements WakeTraceStore {
 
   @override
   Future<void> append(WakeTraceEntry e) => LocalDb.appendWakeTrace(
-        wakeEpochSec: e.wakeEpochSec,
-        atMs: e.atMs,
-        kind: e.kind,
-        dataJson: jsonEncode(e.data),
-      );
+    wakeEpochSec: e.wakeEpochSec,
+    atMs: e.atMs,
+    kind: e.kind,
+    dataJson: jsonEncode(e.data),
+  );
 
   @override
-  Future<List<WakeTraceEntry>> forWake(int wakeEpochSec) async =>
-      _entries(await LocalDb.wakeTraceRows(wakeEpochSec,
-          limit: kWakeTraceReadLimit));
+  Future<List<WakeTraceEntry>> forWake(int wakeEpochSec) async => _entries(
+    await LocalDb.wakeTraceRows(wakeEpochSec, limit: kWakeTraceReadLimit),
+  );
 
   /// The newest [limit] rows across every wake, oldest first (the dev-log
   /// export; the orchestrator itself only ever reads one wake).
-  Future<List<WakeTraceEntry>> recent({int limit = kWakeTraceReadLimit}) async =>
-      _entries(await LocalDb.wakeTraceRecent(limit: limit));
+  Future<List<WakeTraceEntry>> recent({
+    int limit = kWakeTraceReadLimit,
+  }) async => _entries(await LocalDb.wakeTraceRecent(limit: limit));
 
   static List<WakeTraceEntry> _entries(List<Map<String, Object?>> rows) => [
-        for (final r in rows)
-          WakeTraceEntry(
-            wakeEpochSec: (r['wake_epoch'] as num).toInt(),
-            atMs: (r['at_ms'] as num).toInt(),
-            kind: r['kind'] as String,
-            data: _decode(r['data_json'] as String),
-          ),
-      ];
+    for (final r in rows)
+      WakeTraceEntry(
+        wakeEpochSec: (r['wake_epoch'] as num).toInt(),
+        atMs: (r['at_ms'] as num).toInt(),
+        kind: r['kind'] as String,
+        data: _decode(r['data_json'] as String),
+      ),
+  ];
 
   static Map<String, Object?> _decode(String raw) {
     try {
@@ -98,8 +139,8 @@ Future<WakeUpgradeState> loadWakeUpgradeState() async =>
 
 Future<void> saveWakeUpgradeState(WakeUpgradeState state) =>
     state == WakeUpgradeState.none
-        ? Future.value()
-        : LocalDb.wakeMetaSet(kWakeUpgradeKey, state.name);
+    ? Future.value()
+    : LocalDb.wakeMetaSet(kWakeUpgradeKey, state.name);
 
 /// HR/accel/RR from the high-frequency collection store (`decoded_onehz`,
 /// `decoded_rr`) for [from, to). The live high-rate streams (0x28/0x2B/0x33)
@@ -145,7 +186,7 @@ const Duration kOpenWakeBlockMaxAge = Duration(hours: 18);
 /// [confirmWake] writes `LocalDb.putWakeConfirmation` under that block's day.
 class DbWakeConfirmationStore implements WakeConfirmationStore {
   DbWakeConfirmationStore({DateTime Function()? now})
-      : _now = now ?? DateTime.now;
+    : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
 
@@ -218,14 +259,18 @@ class DbWakeConfirmationStore implements WakeConfirmationStore {
     final b = await _block();
     if (b == null) return;
     await LocalDb.putWakeEvidence(
-        onsetSec: b.onsetSec, kind: kind.name, atSec: sec);
+      onsetSec: b.onsetSec,
+      kind: kind.name,
+      atSec: sec,
+    );
   }
 
   @override
   Future<void> confirmWake(int sec, {required WakeEvidenceKind basis}) async {
     final b = await _block();
     await LocalDb.putWakeConfirmation(
-      dayId: b?.dayId ??
+      dayId:
+          b?.dayId ??
           dayLabelOf(DateTime.fromMillisecondsSinceEpoch(sec * 1000)),
       atSec: sec,
       basis: _basisWire(basis),
@@ -233,11 +278,11 @@ class DbWakeConfirmationStore implements WakeConfirmationStore {
   }
 
   static String _basisWire(WakeEvidenceKind k) => switch (k) {
-        WakeEvidenceKind.bandMovement => 'movement',
-        WakeEvidenceKind.alarmFired => 'alarm_fired',
-        WakeEvidenceKind.alarmAcknowledged => 'alarm_acknowledged',
-        WakeEvidenceKind.naturalWake => 'natural_wake',
-        // An open is never the evidence that completes it (it only pairs).
-        WakeEvidenceKind.appOpened => 'app_opened',
-      };
+    WakeEvidenceKind.bandMovement => 'movement',
+    WakeEvidenceKind.alarmFired => 'alarm_fired',
+    WakeEvidenceKind.alarmAcknowledged => 'alarm_acknowledged',
+    WakeEvidenceKind.naturalWake => 'natural_wake',
+    // An open is never the evidence that completes it (it only pairs).
+    WakeEvidenceKind.appOpened => 'app_opened',
+  };
 }

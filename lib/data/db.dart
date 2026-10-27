@@ -5199,7 +5199,7 @@ class LocalDb {
             json_extract(r.payload_json, '\$.sleep.accounting.value.tst_sec') AS tst_sec
           FROM day_result r $_servedDayJoin WHERE r.skipped = 0
         )
-        SELECT day_id, recovery, tst_sec FROM nights
+        SELECT day_id, onset, offset, recovery, tst_sec FROM nights
         WHERE onset <= ? AND ? <= COALESCE(offset + 10800000, onset + 64800000)
         ORDER BY onset DESC LIMIT 1
       """, [wakeEpochSec * 1000, wakeEpochSec * 1000]);

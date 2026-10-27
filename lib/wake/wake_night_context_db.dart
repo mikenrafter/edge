@@ -10,6 +10,8 @@ import '../util/worker_init.dart';
 import 'wake_confounders.dart';
 import 'wake_night_context.dart';
 
+final sharedWakeNightContext = WakeNightContext(const DbWakeNightSource());
+
 class DbWakeNightSource implements WakeNightSource {
   const DbWakeNightSource();
 
@@ -83,8 +85,24 @@ class WakeProfileInput {
 ConfounderProfile wakeProfileHeavy(WakeProfileInput input) {
   WorkerInit.ensure(input.worker);
   assertWorker();
+  return profileFromJournalRows(
+    input.journal,
+    input.metrics,
+    input.bedtimeMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(input.bedtimeMs!),
+  );
+}
+
+// Bounded to the sleep occurrence's journal dates. Both live policy and outcome
+// learning use this decoder so context cannot diverge between the two paths.
+ConfounderProfile profileFromJournalRows(
+  List<Map<String, Object?>> journal,
+  List<Map<String, Object?>> metrics,
+  DateTime? bedtime,
+) {
   final days = <String, WakeJournalDay>{};
-  for (final row in input.journal) {
+  for (final row in journal) {
     final date = row['date'] as String;
     final tags = jsonDecode(row['tags_json'] as String);
     if (tags is! List || tags.any((v) => v is! String)) {
@@ -96,7 +114,7 @@ ConfounderProfile wakeProfileHeavy(WakeProfileInput input) {
       {},
     );
   }
-  for (final row in input.metrics) {
+  for (final row in metrics) {
     final date = row['date'] as String;
     final day = days.putIfAbsent(
       date,
@@ -107,10 +125,5 @@ ConfounderProfile wakeProfileHeavy(WakeProfileInput input) {
       atMinuteOfDay: (row['at_min'] as num?)?.toInt(),
     );
   }
-  return wakeConfounders(
-    days.values.toList(),
-    expectedBedtime: input.bedtimeMs == null
-        ? null
-        : DateTime.fromMillisecondsSinceEpoch(input.bedtimeMs!),
-  );
+  return wakeConfounders(days.values.toList(), expectedBedtime: bedtime);
 }

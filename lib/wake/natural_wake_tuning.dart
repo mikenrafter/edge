@@ -30,13 +30,14 @@ class NaturalTuningDecision {
 }
 
 abstract final class NaturalWakeTuning {
-  // Alcohol nights must be excluded from updates and early-REM expectations.
+  // Alcohol nights learn their own track, with no early-REM expectation.
   // Ebrahim et al. 2013, doi:10.1111/acer.12006: first-half REM is suppressed
   // and delayed; see edge.research/substance-research/SYNTHESIS.md.
   static NaturalTuningDecision evaluate(
     List<WakeNightOutcome> history, {
     NaturalWakeParameters current = const NaturalWakeParameters(),
     WakeSubstance? tonightSubstance,
+    int? track,
   }) {
     // The first occurrence represents each canonical sleep day. Later alarms
     // that day cannot add evidence or turn a replay into another nightly step.
@@ -46,13 +47,20 @@ abstract final class NaturalWakeTuning {
     for (final night in ordered) {
       nights.putIfAbsent(night.dayId, () => night);
     }
+    final selectedTrack =
+        track ??
+        (tonightSubstance == WakeSubstance.alcohol
+            ? 1
+            : nights.values.lastOrNull?.track ?? 0);
+    final selected = nights.values
+        .where((n) => n.contextKnown && n.track == selectedTrack)
+        .toList();
     bool complete(WakeNightOutcome n) =>
         n.timeToWake != null &&
         !n.timeToWake!.isNegative &&
         n.snoozeCount != null &&
-        n.snoozeCount! >= 0 &&
-        n.substance != WakeSubstance.alcohol;
-    final eligible = nights.values.where(complete).toList();
+        n.snoozeCount! >= 0;
+    final eligible = selected.where(complete).toList();
     var weight = 0.0, dreams = 0.0;
     for (final night in eligible) {
       final answer = night.dream;
@@ -70,11 +78,11 @@ abstract final class NaturalWakeTuning {
       applied: applied,
       reason: reason,
       eligibleNights: eligible.length,
-      expectEarlyRem: tonightSubstance != WakeSubstance.alcohol,
+      expectEarlyRem: (selectedTrack & 1) == 0,
       dreamContextScore: weight == 0 ? null : dreams / weight,
     );
-    if (nights.isEmpty) return result('no_outcomes');
-    final latest = nights.values.last;
+    if (selected.isEmpty) return result('no_outcomes');
+    final latest = selected.last;
     if (!complete(latest)) return result('ineligible_outcome');
     if (eligible.length < 7) return result('insufficient_nights');
     final learned = current.lastLearnedEpoch;

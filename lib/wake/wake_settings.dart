@@ -9,6 +9,8 @@
 // every configuration (neither, Natural, Gradual, both); nothing here can move
 // or remove it.
 
+import 'dart:math' as math;
+
 import '../notify/buzz_sequence.dart';
 import '../state/feature_flags.dart';
 
@@ -30,7 +32,10 @@ bool isValidWakeWindow(int minutes) =>
 int normalizeWakeWindow(int minutes) {
   if (minutes <= 0) return 0;
   final steps = (minutes / kWakeWindowStepMinutes).round();
-  final clamped = steps.clamp(1, kWakeWindowMaxMinutes ~/ kWakeWindowStepMinutes);
+  final clamped = steps.clamp(
+    1,
+    kWakeWindowMaxMinutes ~/ kWakeWindowStepMinutes,
+  );
   return clamped * kWakeWindowStepMinutes;
 }
 
@@ -86,8 +91,8 @@ enum WakeUpgradeState { none, pending, acknowledged }
 /// flag; tests pass it.
 WakeUpgradeState gateNaturalWake(WakeUpgradeState s, {bool? enabled}) =>
     (enabled ?? FeatureFlags.isOn(FeatureFlag.naturalWake))
-        ? s
-        : WakeUpgradeState.pending;
+    ? s
+    : WakeUpgradeState.pending;
 
 // ── collection lead ─────────────────────────────────────────────────────────
 
@@ -101,9 +106,11 @@ const int kNaturalCollectionMarginMinutes = 10;
 /// How long before T high-frequency collection must be running so a stage
 /// history exists by T-N: the window itself, plus warm-up, plus margin.
 Duration naturalCollectionLead(int naturalMinutes) => Duration(
-    minutes: naturalMinutes +
-        kNaturalWarmupMinutes +
-        kNaturalCollectionMarginMinutes);
+  minutes: math.max(
+    135,
+    naturalMinutes + kNaturalWarmupMinutes + kNaturalCollectionMarginMinutes,
+  ),
+);
 
 // ── timeline ────────────────────────────────────────────────────────────────
 
@@ -133,22 +140,27 @@ class WakeTimelinePart {
 /// minutes, not N wall-clock minutes); T itself is the absolute instant the
 /// local alarm schedule resolved to.
 class WakeTimeline {
-  const WakeTimeline._(
-      this.wakeAt, this.naturalMinutes, this.gradualMinutes);
+  const WakeTimeline._(this.wakeAt, this.naturalMinutes, this.gradualMinutes);
 
   factory WakeTimeline.compute({
     required DateTime wakeAt,
     required int naturalMinutes,
     required int gradualMinutes,
-  }) =>
-      WakeTimeline._(wakeAt, naturalMinutes, gradualMinutes);
+    int naturalLeadMinutes = 0,
+  }) => WakeTimeline._(
+    wakeAt,
+    naturalMinutes > 0 ? naturalMinutes + naturalLeadMinutes.clamp(-10, 10) : 0,
+    gradualMinutes,
+  );
 
   final DateTime wakeAt;
   final int naturalMinutes;
   final int gradualMinutes;
 
   WakeConfiguration get configuration => wakeConfigurationOf(
-      naturalMinutes: naturalMinutes, gradualMinutes: gradualMinutes);
+    naturalMinutes: naturalMinutes,
+    gradualMinutes: gradualMinutes,
+  );
 
   DateTime? get naturalStart => naturalMinutes > 0
       ? wakeAt.subtract(Duration(minutes: naturalMinutes))
@@ -165,27 +177,34 @@ class WakeTimeline {
     final out = <WakeTimelinePart>[
       if (collectionStart != null)
         WakeTimelinePart(
-            id: 'collection',
-            at: collectionStart!,
-            until: wakeAt,
-            bandNative: false,
-            requiresPhone: true),
+          id: 'collection',
+          at: collectionStart!,
+          until: wakeAt,
+          bandNative: false,
+          requiresPhone: true,
+        ),
       if (naturalStart != null)
         WakeTimelinePart(
-            id: 'natural',
-            at: naturalStart!,
-            until: wakeAt,
-            bandNative: false,
-            requiresPhone: true),
+          id: 'natural',
+          at: naturalStart!,
+          until: wakeAt,
+          bandNative: false,
+          requiresPhone: true,
+        ),
       if (gradualStart != null)
         WakeTimelinePart(
-            id: 'gradual',
-            at: gradualStart!,
-            until: wakeAt,
-            bandNative: false,
-            requiresPhone: true),
+          id: 'gradual',
+          at: gradualStart!,
+          until: wakeAt,
+          bandNative: false,
+          requiresPhone: true,
+        ),
       WakeTimelinePart(
-          id: 'fallback', at: wakeAt, bandNative: true, requiresPhone: false),
+        id: 'fallback',
+        at: wakeAt,
+        bandNative: true,
+        requiresPhone: false,
+      ),
     ];
     out.sort((a, b) => a.at.compareTo(b.at));
     return out;
@@ -224,7 +243,8 @@ abstract final class GradualWakeSchedule {
           i,
           start.add(Duration(seconds: i * cadenceSec)),
           BuzzSequence([
-            for (var b = 0; b < _buzzesFor(pattern, i, count); b++) b * _buzzGapMs,
+            for (var b = 0; b < _buzzesFor(pattern, i, count); b++)
+              b * _buzzGapMs,
           ]),
         ),
     ];
@@ -232,6 +252,6 @@ abstract final class GradualWakeSchedule {
 
   static int _buzzesFor(GradualPattern pattern, int index, int count) =>
       pattern == GradualPattern.steady
-          ? 1
-          : 1 + (index * (_maxBuzzes - 1)) ~/ count;
+      ? 1
+      : 1 + (index * (_maxBuzzes - 1)) ~/ count;
 }

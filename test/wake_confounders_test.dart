@@ -149,7 +149,9 @@ void main() {
       const JournalMetricValue(1, atMinuteOfDay: 1440),
       const JournalMetricValue(1, atMinuteOfDay: 1321),
     ]) {
-      expect(p({}, {'alcohol_units': value}), const ConfounderProfile());
+      expect(p({}, {'alcohol_units': value}), value.atMinuteOfDay == null
+          ? const ConfounderProfile(learningAlcohol: true)
+          : const ConfounderProfile());
     }
     expect(
       p({}, {'caffeine_mg': const JournalMetricValue(200)}),

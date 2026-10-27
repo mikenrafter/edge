@@ -21,6 +21,7 @@ NaturalDecision decide({
     now: atMinute(minute),
     wakeAt: alarmAt,
     windowMinutes: window,
+    evidence: const NaturalGateEvidence(baseline: 50, recentHr: 56, motion: .01, trending: false),
     observation: NaturalObservation(
       stage: stage,
       runSec: run,

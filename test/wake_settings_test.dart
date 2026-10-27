@@ -96,9 +96,9 @@ void main() {
             wakeAt: t, naturalMinutes: n, gradualMinutes: 0);
         expect(tl.naturalStart, t.subtract(Duration(minutes: n)));
         expect(tl.collectionStart,
-            t.subtract(Duration(minutes: n + kNaturalWarmupMinutes + kNaturalCollectionMarginMinutes)));
+            t.subtract(Duration(minutes: (n + kNaturalWarmupMinutes + kNaturalCollectionMarginMinutes).clamp(135, 10000))));
         expect(naturalCollectionLead(n).inMinutes,
-            n + kNaturalWarmupMinutes + kNaturalCollectionMarginMinutes);
+            (n + kNaturalWarmupMinutes + kNaturalCollectionMarginMinutes).clamp(135, 10000));
         expect(tl.gradualStart, isNull);
       }
     });

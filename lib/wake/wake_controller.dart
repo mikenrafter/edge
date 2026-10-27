@@ -67,7 +67,12 @@ import '../state/feature_flags.dart';
 import 'wake_orchestrator.dart';
 import 'wake_settings.dart';
 
-class WakeController extends ChangeNotifier {
+abstract interface class NaturalWakeLeadReader {
+  Future<int> leadFor(DateTime wakeAt);
+}
+
+class WakeController extends ChangeNotifier
+    implements NaturalWakePolicyListener {
   WakeController({
     required List<AlarmScheduleEntry> Function() schedule,
     required Future<void> Function(AlarmScheduleEntry entry) saveEntry,
@@ -77,16 +82,30 @@ class WakeController extends ChangeNotifier {
     required Future<List<WakeTraceEntry>> Function(DateTime wakeAt) traceFor,
     this.journal = const DbWakeJournal(),
     this.journalNow = DateTime.now,
+    this.loadNaturalLead,
     bool Function()? naturalEnabled,
-  })  : _journalClock = Clock(journalNow),
-        _naturalEnabled = naturalEnabled ??
-            (() => FeatureFlags.isOn(FeatureFlag.naturalWake)),
-        _schedule = schedule,
-        _saveEntry = saveEntry,
-        _loadUpgradeState = loadUpgradeState,
-        _saveUpgradeState = saveUpgradeState,
-        _acknowledgeWake = acknowledgeWake,
-        _traceFor = traceFor;
+  }) : _journalClock = Clock(journalNow),
+       _naturalEnabled =
+           naturalEnabled ?? (() => FeatureFlags.isOn(FeatureFlag.naturalWake)),
+       _schedule = schedule,
+       _saveEntry = saveEntry,
+       _loadUpgradeState = loadUpgradeState,
+       _saveUpgradeState = saveUpgradeState,
+       _acknowledgeWake = acknowledgeWake,
+       _traceFor = traceFor;
+
+  final NaturalWakeLeadReader? loadNaturalLead;
+  final Map<int, int> _timelineLeads = {};
+  @override
+  void noteNaturalLead(DateTime wakeAt, int lead) {
+    if (_disposed) return;
+    final key = wakeAt.millisecondsSinceEpoch;
+    if (_timelineLeads[key] == lead) return;
+    // Seven preview occurrences plus the active occurrence are sufficient.
+    if (_timelineLeads.length > 14) _timelineLeads.clear();
+    _timelineLeads[key] = lead;
+    notifyListeners();
+  }
 
   final DbWakeJournal journal;
   final DateTime Function() journalNow;
@@ -103,7 +122,8 @@ class WakeController extends ChangeNotifier {
   void noteWakeAwaitingAck(int wakeEpochSec, WakePath path) {
     if (_disposed || _acknowledgedEpoch == wakeEpochSec) return;
     if (_awaitingEpoch == wakeEpochSec &&
-        _awaitingPath != null && _awaitingPath!.index <= path.index) {
+        _awaitingPath != null &&
+        _awaitingPath!.index <= path.index) {
       return;
     }
     _awaitingEpoch = wakeEpochSec;
@@ -111,8 +131,12 @@ class WakeController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> answerDream(int epoch, DreamAnswer? answer) => journal.answerDream(
-      wakeEpochSec: epoch, at: _journalClock.now(), answer: answer);
+  Future<void> answerDream(int epoch, DreamAnswer? answer) =>
+      journal.answerDream(
+        wakeEpochSec: epoch,
+        at: _journalClock.now(),
+        answer: answer,
+      );
 
   final bool Function() _naturalEnabled;
   final List<AlarmScheduleEntry> Function() _schedule;
@@ -158,7 +182,28 @@ class WakeController extends ChangeNotifier {
   /// Re-read persisted state. Call after the schedule is (re)loaded.
   Future<void> reload() async {
     _upgrade = await _loadUpgradeState();
-    notifyListeners();
+    final load = loadNaturalLead;
+    if (load != null) {
+      final now = _journalClock.now().toLocal();
+      for (var weekday = 0; weekday < 7; weekday++) {
+        final entry = _entry(weekday);
+        final delta = (entry.weekday - (now.weekday - 1) + 7) % 7;
+        final at = DateTime(
+          now.year,
+          now.month,
+          now.day + delta,
+          entry.hour,
+          entry.minute,
+        );
+        final wakeAt = at.isAfter(now)
+            ? at
+            : DateTime(at.year, at.month, at.day + 7, entry.hour, entry.minute);
+        final lead = await load.leadFor(wakeAt);
+        if (_disposed) return;
+        _timelineLeads[wakeAt.millisecondsSinceEpoch] = lead;
+      }
+    }
+    if (!_disposed) notifyListeners();
   }
 
   // ── reading ──────────────────────────────────────────────────────────────
@@ -193,8 +238,9 @@ class WakeController extends ChangeNotifier {
   int gradualCadenceSeconds(int weekday) => _entry(weekday).gradualCadenceSec;
 
   WakeConfiguration configurationFor(int weekday) => wakeConfigurationOf(
-      naturalMinutes: naturalActive(weekday) ? naturalWindowMinutes(weekday) : 0,
-      gradualMinutes: gradualWindowMinutes(weekday));
+    naturalMinutes: naturalActive(weekday) ? naturalWindowMinutes(weekday) : 0,
+    gradualMinutes: gradualWindowMinutes(weekday),
+  );
 
   /// The exact schedule for the alarm resolving to [wakeAt] (an absolute
   /// instant; its LOCAL weekday picks the configured day).
@@ -206,6 +252,7 @@ class WakeController extends ChangeNotifier {
     if (entry != null) {
       return WakeTimeline.compute(
         wakeAt: wakeAt,
+        naturalLeadMinutes: _timelineLeads[wakeAt.millisecondsSinceEpoch] ?? 0,
         naturalMinutes: upgradeExplanationPending || !naturalEnabled
             ? 0
             : entry.naturalWindowMinutes,
@@ -215,7 +262,10 @@ class WakeController extends ChangeNotifier {
     final weekday = wakeAt.toLocal().weekday - 1;
     return WakeTimeline.compute(
       wakeAt: wakeAt,
-      naturalMinutes: naturalActive(weekday) ? naturalWindowMinutes(weekday) : 0,
+      naturalLeadMinutes: _timelineLeads[wakeAt.millisecondsSinceEpoch] ?? 0,
+      naturalMinutes: naturalActive(weekday)
+          ? naturalWindowMinutes(weekday)
+          : 0,
       gradualMinutes: gradualWindowMinutes(weekday),
     );
   }
@@ -235,9 +285,12 @@ class WakeController extends ChangeNotifier {
 
   Future<void> setGradualCadenceSeconds(int weekday, int seconds) {
     if (!isValidGradualCadence(seconds)) {
-      throw ArgumentError.value(seconds, 'seconds',
-          'cadence is $kGradualCadenceMinSec..$kGradualCadenceMaxSec s in '
-          '${kGradualCadenceStepSec}s steps');
+      throw ArgumentError.value(
+        seconds,
+        'seconds',
+        'cadence is $kGradualCadenceMinSec..$kGradualCadenceMaxSec s in '
+            '${kGradualCadenceStepSec}s steps',
+      );
     }
     return _update(weekday, gradualCadenceSec: seconds);
   }
@@ -277,9 +330,12 @@ class WakeController extends ChangeNotifier {
 
   static int _window(int minutes) {
     if (!isValidWakeWindow(minutes)) {
-      throw ArgumentError.value(minutes, 'minutes',
-          '0 (off) or $kWakeWindowStepMinutes..$kWakeWindowMaxMinutes in '
-          '$kWakeWindowStepMinutes-minute steps');
+      throw ArgumentError.value(
+        minutes,
+        'minutes',
+        '0 (off) or $kWakeWindowStepMinutes..$kWakeWindowMaxMinutes in '
+            '$kWakeWindowStepMinutes-minute steps',
+      );
     }
     return minutes;
   }

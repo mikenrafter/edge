@@ -14,13 +14,22 @@ class WakeJournalDay {
 class ConfounderProfile {
   final double hrArousalBpm, motionCeilingG;
   final int protectionMinutes, trendWindowMinutes;
-  final bool alcohol, stress, sick, lateMeal;
+  final bool learningAlcohol,
+      alcohol,
+      caffeine,
+      stress,
+      sick,
+      lateMeal,
+      workout;
   const ConfounderProfile({
     this.hrArousalBpm = 4,
     this.motionCeilingG = .08,
     this.protectionMinutes = 5,
     this.trendWindowMinutes = 3,
+    this.learningAlcohol = false,
     this.alcohol = false,
+    this.caffeine = false,
+    this.workout = false,
     this.stress = false,
     this.sick = false,
     this.lateMeal = false,
@@ -31,6 +40,14 @@ class ConfounderProfile {
   static const identity = ConfounderProfile();
   double get trendThresholdFactor =>
       (stress || sick ? .5 : 1) * (lateMeal ? 1.5 : 1);
+  // Stable active-set identity. Persisted and displayed only as a number.
+  int get track =>
+      (alcohol || learningAlcohol ? 1 : 0) |
+      (caffeine ? 2 : 0) |
+      (lateMeal ? 4 : 0) |
+      (stress ? 8 : 0) |
+      (sick ? 16 : 0) |
+      (workout ? 32 : 0);
   bool get disableEarlyDelivery => alcohol && stress;
   // Product of max/min semilattices and boolean OR. Derive multipliers only
   // after combination: stress+sick tightens once, independent of grouping.
@@ -39,7 +56,10 @@ class ConfounderProfile {
     motionCeilingG: math.min(motionCeilingG, other.motionCeilingG),
     protectionMinutes: math.max(protectionMinutes, other.protectionMinutes),
     trendWindowMinutes: math.max(trendWindowMinutes, other.trendWindowMinutes),
+    learningAlcohol: learningAlcohol || other.learningAlcohol,
     alcohol: alcohol || other.alcohol,
+    caffeine: caffeine || other.caffeine,
+    workout: workout || other.workout,
     stress: stress || other.stress,
     sick: sick || other.sick,
     lateMeal: lateMeal || other.lateMeal,
@@ -51,7 +71,10 @@ class ConfounderProfile {
       motionCeilingG == other.motionCeilingG &&
       protectionMinutes == other.protectionMinutes &&
       trendWindowMinutes == other.trendWindowMinutes &&
+      learningAlcohol == other.learningAlcohol &&
       alcohol == other.alcohol &&
+      caffeine == other.caffeine &&
+      workout == other.workout &&
       stress == other.stress &&
       sick == other.sick &&
       lateMeal == other.lateMeal;
@@ -61,7 +84,10 @@ class ConfounderProfile {
     motionCeilingG,
     protectionMinutes,
     trendWindowMinutes,
+    learningAlcohol,
     alcohol,
+    caffeine,
+    workout,
     stress,
     sick,
     lateMeal,
@@ -111,6 +137,26 @@ ConfounderProfile wakeConfounders(
           !at.isAfter(bed);
     }
 
+    final units = day.metrics['alcohol_units']?.value;
+    final minute = day.metrics['alcohol_units']?.atMinuteOfDay;
+    final intake = minute == null
+        ? null
+        : DateTime(
+            day.date.year,
+            day.date.month,
+            day.date.day,
+            minute ~/ 60,
+            minute % 60,
+          );
+    final beforeBed =
+        expectedBedtime == null ||
+        intake == null ||
+        !intake.isAfter(expectedBedtime);
+    if (beforeBed &&
+        (day.tags.contains('alcohol') ||
+            (units != null && units.isFinite && units > 0))) {
+      result = result.combine(const ConfounderProfile(learningAlcohol: true));
+    }
     if (active('alcohol_units', double.minPositive, 2, 20 * 60)) {
       result = result.combine(
         const ConfounderProfile(
@@ -121,7 +167,9 @@ ConfounderProfile wakeConfounders(
       );
     }
     if (active('caffeine_mg', 200, 6, 16 * 60)) {
-      result = result.combine(const ConfounderProfile(hrArousalBpm: 6));
+      result = result.combine(
+        const ConfounderProfile(caffeine: true, hrArousalBpm: 6),
+      );
     }
   }
   if (tags.contains('stress') || stressRating) {
@@ -141,7 +189,11 @@ ConfounderProfile wakeConfounders(
   }
   if (tags.contains('workout') && !tags.contains('rest day')) {
     result = result.combine(
-      const ConfounderProfile(protectionMinutes: 10, trendWindowMinutes: 5),
+      const ConfounderProfile(
+        workout: true,
+        protectionMinutes: 10,
+        trendWindowMinutes: 5,
+      ),
     );
   }
   return result;

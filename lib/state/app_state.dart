@@ -6501,6 +6501,7 @@ class AppState extends ChangeNotifier {
     saveUpgradeState: saveWakeUpgradeState,
     acknowledgeWake: _acknowledgeWake,
     journalNow: _wakeNow,
+    loadNaturalLead: const DbNaturalWakeLeadReader(),
     traceFor: (t) => const DbWakeTraceStore()
         .forWake(t.millisecondsSinceEpoch ~/ 1000),
   )..addListener(notifyListeners);
@@ -6512,6 +6513,7 @@ class AppState extends ChangeNotifier {
 
   late final WakeOrchestrator _wakeOrchestrator = WakeOrchestrator(
     observer: debugWakeObserver,
+    onNaturalPolicy: wake,
     now: _wakeNow,
     env: CallbackWakeEnv(
       isConnected: () => isConnected,
@@ -7474,7 +7476,7 @@ class AppState extends ChangeNotifier {
     final epoch = wakeAt.millisecondsSinceEpoch ~/ 1000;
     if (_wakeCollectionDoneEpoch == epoch) return;
     final now = DateTime.now();
-    final from = wakeAt.subtract(naturalCollectionLead(planned.minutes));
+    final from = wakeAt.subtract(naturalCollectionLead(planned.minutes + 10));
     if (now.isBefore(from) || !now.isBefore(wakeAt)) return;
     final until = engine.highFreqUntil;
     // Only a wake-window lease (61 s prompts) collects for the stager. The iOS

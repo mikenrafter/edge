@@ -41,6 +41,8 @@ import 'dart:math' as math;
 import 'package:openstrap_analytics/onehz.dart';
 
 import 'natural_wake_tuning.dart';
+import 'wake_confounders.dart';
+import '../state/smart_wake.dart' show precedingNightBaselineHeavy;
 
 import '../state/control_operations.dart' show ExpectedSleepSchedule;
 import '../util/heavy.dart';
@@ -127,14 +129,14 @@ class NaturalObservation {
       );
 
   Map<String, Object?> toJson() => {
-        'stage': stage,
-        'confidence': confidence,
-        'evidenceAgeMs': evidenceAgeMs,
-        'abstention': abstention,
-        'runSec': runSec,
-        'epochStartMs': epochStartMs,
-        'note': note,
-      };
+    'stage': stage,
+    'confidence': confidence,
+    'evidenceAgeMs': evidenceAgeMs,
+    'abstention': abstention,
+    'runSec': runSec,
+    'epochStartMs': epochStartMs,
+    'note': note,
+  };
 }
 
 // ── decision ────────────────────────────────────────────────────────────────
@@ -165,6 +167,12 @@ enum NaturalReason {
   noRemCandidate,
   remNotStable,
   lowConfidence,
+  policyHold,
+  physiologyUnavailable,
+  hrArousalHold,
+  motionCeilingHold,
+  motionTrendHold,
+  lateWindowHold,
 }
 
 class NaturalDecisionInput {
@@ -178,10 +186,14 @@ class NaturalDecisionInput {
     required this.acknowledged,
     required this.lateness,
     this.userActive = false,
+    this.profile = const ConfounderProfile(),
+    this.evidence,
     this.sleepOnset,
     this.tuning = const NaturalWakeParameters(),
   });
 
+  final ConfounderProfile profile;
+  final NaturalGateEvidence? evidence;
   final NaturalWakeParameters tuning;
   final DateTime now;
   final DateTime wakeAt;
@@ -205,8 +217,11 @@ class NaturalDecisionInput {
 }
 
 class NaturalDecision {
-  const NaturalDecision(this.reason,
-      {this.samplesCurrent, this.viaUserActivity = false});
+  const NaturalDecision(
+    this.reason, {
+    this.samplesCurrent,
+    this.viaUserActivity = false,
+  });
   final NaturalReason reason;
 
   /// The fire came from the user's own activity, not from a stage.
@@ -231,18 +246,22 @@ abstract final class NaturalWakePlanner {
     required DateTime? onset,
     required DateTime now,
     Duration min = kMinSleepBeforeEarlyWake,
-  }) =>
-      onset != null && !onset.isAfter(now) && now.difference(onset) < min;
+  }) => onset != null && !onset.isAfter(now) && now.difference(onset) < min;
 
   /// The onset of the sleep in progress at [now]: the saved schedule's onset
   /// for the night whose sleep window contains [now], else null. Never a guess
   /// outside that window (an afternoon alarm with an overnight schedule has no
   /// schedule onset).
-  static DateTime? scheduleOnsetAt(ExpectedSleepSchedule? expected, DateTime now) {
+  static DateTime? scheduleOnsetAt(
+    ExpectedSleepSchedule? expected,
+    DateTime now,
+  ) {
     if (expected == null) return null;
     final local = now.toLocal();
     for (final d in [-1, 0, 1]) {
-      final w = expected.windowFor(DateTime(local.year, local.month, local.day + d));
+      final w = expected.windowFor(
+        DateTime(local.year, local.month, local.day + d),
+      );
       if (!now.isBefore(w.$1) && now.isBefore(w.$2)) return w.$1;
     }
     return null;
@@ -254,8 +273,12 @@ abstract final class NaturalWakePlanner {
 
     if (i.windowMinutes <= 0) return no(NaturalReason.off);
     if (!i.now.isBefore(i.wakeAt)) return no(NaturalReason.windowClosed);
-    if (i.now.isBefore(windowStart(i.wakeAt,
-        i.windowMinutes + i.tuning.windowLeadMinutes.clamp(-10, 10)))) {
+    if (i.now.isBefore(
+      windowStart(
+        i.wakeAt,
+        i.windowMinutes + i.tuning.windowLeadMinutes.clamp(-10, 10),
+      ),
+    )) {
       return no(NaturalReason.beforeWindow);
     }
     if (sleptLessThan(onset: i.sleepOnset, now: i.now)) {
@@ -271,6 +294,7 @@ abstract final class NaturalWakePlanner {
     }
     // Awake because they are using the phone and the wrist moved with it. This
     // needs no stage, so an observer that abstained or failed cannot hide it.
+    if (i.profile.disableEarlyDelivery) return no(NaturalReason.policyHold);
     if (i.userActive) {
       return const NaturalDecision(NaturalReason.fire, viaUserActivity: true);
     }
@@ -278,26 +302,24 @@ abstract final class NaturalWakePlanner {
     if (o == null) return no(NaturalReason.observerFailed);
 
     final age = o.evidenceAgeMs;
-    final current = o.abstention != 'staleEvidence' &&
+    final current =
+        o.abstention != 'staleEvidence' &&
         o.abstention != 'noEvidence' &&
         age != null &&
         age <= kNaturalMaxEvidenceAgeMs;
 
     if (o.stage == 'absent') {
-      return no(
-        switch (o.abstention) {
-          'staleEvidence' => NaturalReason.samplesStale,
-          'noEvidence' => NaturalReason.noEvidence,
-          'offWrist' => NaturalReason.offWrist,
-          'missingHr' => NaturalReason.missingHr,
-          'missingAccel' => NaturalReason.missingAccel,
-          'lowCoverage' => NaturalReason.lowCoverage,
-          'warmup' => NaturalReason.warmup,
-          'clockRegressed' => NaturalReason.clockRegressed,
-          _ => NaturalReason.abstained,
-        },
-        current: current,
-      );
+      return no(switch (o.abstention) {
+        'staleEvidence' => NaturalReason.samplesStale,
+        'noEvidence' => NaturalReason.noEvidence,
+        'offWrist' => NaturalReason.offWrist,
+        'missingHr' => NaturalReason.missingHr,
+        'missingAccel' => NaturalReason.missingAccel,
+        'lowCoverage' => NaturalReason.lowCoverage,
+        'warmup' => NaturalReason.warmup,
+        'clockRegressed' => NaturalReason.clockRegressed,
+        _ => NaturalReason.abstained,
+      }, current: current);
     }
     if (!current) return no(NaturalReason.samplesStale, current: false);
     // Light or deep sleep (the stager's nrem) is the only thing that holds the
@@ -306,13 +328,36 @@ abstract final class NaturalWakePlanner {
     if (!kNaturalEligibleStages.contains(o.stage)) {
       return no(NaturalReason.noRemCandidate, current: true);
     }
-    if (o.runSec < kNaturalRemTriggerRunSec +
-        i.tuning.triggerRunOffsetSec.clamp(-60, 60)) {
+    if (o.runSec <
+        kNaturalRemTriggerRunSec +
+            i.tuning.triggerRunOffsetSec.clamp(-60, 60)) {
       return no(NaturalReason.remNotStable, current: true);
     }
     if (o.confidence < kNaturalMinConfidence) {
       return no(NaturalReason.lowConfidence, current: true);
     }
+    final e = i.evidence;
+    if (e == null ||
+        e.baseline == null ||
+        e.recentHr == null ||
+        e.motion == null ||
+        e.trending == null) {
+      return no(NaturalReason.physiologyUnavailable, current: true);
+    }
+    // Explicit hold; with the same baseline the +4 bpm arousal floor also
+    // excludes HR within 2 bpm. Keep it independent of future threshold tuning.
+    if (i.wakeAt.difference(i.now).inMilliseconds <=
+            i.profile.protectionMinutes * 60000 &&
+        (e.recentHr! - e.baseline!).abs() <= 2) {
+      return no(NaturalReason.lateWindowHold, current: true);
+    }
+    if (e.recentHr! < e.baseline! + i.profile.hrArousalBpm) {
+      return no(NaturalReason.hrArousalHold, current: true);
+    }
+    if (e.motion! >= i.profile.motionCeilingG) {
+      return no(NaturalReason.motionCeilingHold, current: true);
+    }
+    if (e.trending!) return no(NaturalReason.motionTrendHold, current: true);
     return const NaturalDecision(NaturalReason.fire, samplesCurrent: true);
   }
 
@@ -338,7 +383,9 @@ abstract final class NaturalWakePlanner {
     final rows = [...accel]..sort((a, b) => a[0].compareTo(b[0]));
     final half = kUserMotionHalfWindow.inMilliseconds;
     for (final t in interactions) {
-      if (t.isAfter(now) || now.difference(t) > kUserInteractionFreshness) continue;
+      if (t.isAfter(now) || now.difference(t) > kUserInteractionFreshness) {
+        continue;
+      }
       final at = t.millisecondsSinceEpoch;
       var steps = 0;
       for (var k = 1; k < rows.length; k++) {
@@ -354,6 +401,18 @@ abstract final class NaturalWakePlanner {
   }
 }
 
+/// Shared analytics measurements, never a stage promotion.
+class NaturalGateEvidence {
+  const NaturalGateEvidence({
+    this.baseline,
+    this.recentHr,
+    this.motion,
+    this.trending,
+  });
+  final double? baseline, recentHr, motion;
+  final bool? trending;
+}
+
 // ── observer (off the UI isolate) ───────────────────────────────────────────
 
 /// Plain-data input to one observation. Columns:
@@ -367,9 +426,18 @@ class NaturalObserveRequest {
     required this.accel,
     required this.rr,
     this.priorState,
+    this.gateHr = const [],
+    this.gateAccel = const [],
+    this.nights = const [],
+    this.historyBeforeMs,
+    this.profile = const ConfounderProfile(),
     this.chunkSec = 600,
   });
 
+  final List<List<double>> gateHr, gateAccel;
+  final List<Map<String, Object?>> nights;
+  final int? historyBeforeMs;
+  final ConfounderProfile profile;
   final double nowMs;
   final List<List<double>> hr;
   final List<List<double>> accel;
@@ -382,7 +450,12 @@ class NaturalObserveRequest {
 }
 
 class NaturalObserveResult {
-  const NaturalObserveResult({required this.observation, required this.nextState});
+  const NaturalObserveResult({
+    required this.observation,
+    required this.nextState,
+    this.evidence,
+  });
+  final NaturalGateEvidence? evidence;
   final NaturalObservation observation;
 
   /// JSON-ready `CausalStagerState`; pass back as the next `priorState`.
@@ -414,9 +487,8 @@ NaturalObserveResult observeNaturalSync(NaturalObserveRequest r) {
 
   final hr = [for (final s in r.hr) HrSample(s[0], s[1])]
     ..sort((a, b) => a.tsMs.compareTo(b.tsMs));
-  final accel = [
-    for (final s in r.accel) AccelSample(s[0], s[1], s[2], s[3]),
-  ]..sort((a, b) => a.tsMs.compareTo(b.tsMs));
+  final accel = [for (final s in r.accel) AccelSample(s[0], s[1], s[2], s[3])]
+    ..sort((a, b) => a.tsMs.compareTo(b.tsMs));
   final rrOrder = [for (var i = 0; i < r.rr.length; i++) i]
     ..sort((a, b) => r.rr[a][0].compareTo(r.rr[b][0]));
   final rrTs = [for (final i in rrOrder) r.rr[i][0]];
@@ -468,6 +540,29 @@ NaturalObserveResult observeNaturalSync(NaturalObserveRequest r) {
     from = end;
   }
   return NaturalObserveResult(
+    evidence: NaturalGateEvidence(
+      baseline: wakeHrBaseline(
+        r.gateHr,
+        r.nowMs.toInt(),
+        nightMin: precedingNightBaselineHeavy(
+          r.nights,
+          r.historyBeforeMs ?? r.nowMs.toInt() - 3 * 3600000,
+        ),
+      ).bpm,
+      recentHr: wakeRecentHr(r.gateHr, r.nowMs.toInt()),
+      motion: wakeRecentEnmo(r.gateAccel, r.nowMs.toInt()),
+      trending: wakeEnmoTrend(
+        r.gateAccel,
+        r.nowMs.toInt(),
+        windowMinutes: r.profile.trendWindowMinutes,
+        threshold:
+            math.max(
+              .02,
+              .5 * (wakeBaselineEnmo(r.gateAccel, r.nowMs.toInt()) ?? 0),
+            ) *
+            r.profile.trendThresholdFactor,
+      ),
+    ),
     observation: NaturalObservation.fromStager(last),
     nextState: Map<String, Object?>.from(state.toJson()),
   );

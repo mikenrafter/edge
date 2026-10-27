@@ -26,6 +26,8 @@ class WakeNightOutcome {
     this.recovery,
     this.mainSleepTst,
     this.substance,
+    this.confounderTrack = 0,
+    this.contextKnown = true,
   });
   // Canonical main-sleep day identity; several alarm epochs can share it.
   final String dayId;
@@ -36,4 +38,8 @@ class WakeNightOutcome {
   final double? recovery;
   final Duration? mainSleepTst;
   final WakeSubstance? substance;
+  final int confounderTrack;
+  final bool contextKnown;
+  int get track =>
+      confounderTrack | (substance == WakeSubstance.alcohol ? 1 : 0);
 }

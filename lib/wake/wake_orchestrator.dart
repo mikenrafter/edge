@@ -45,6 +45,8 @@ import '../state/control_operations.dart' show ExpectedSleepSchedule;
 import '../sync/headless_gate.dart';
 import 'natural_wake.dart';
 import 'natural_wake_tuning.dart';
+import 'wake_confounders.dart';
+import 'wake_night_context.dart';
 import 'wake_settings.dart';
 
 /// [HeadlessSyncGate] owner for background wake ticks.
@@ -319,7 +321,12 @@ abstract interface class WakeStateStore {
 
 /// Durable stores can supply tuning without coupling the planner to SQLite.
 abstract interface class NaturalWakeParameterStore {
-  Future<NaturalWakeParameters> naturalParameters();
+  Future<NaturalWakeParameters> naturalParameters({int track = 0});
+}
+
+abstract interface class NaturalWakeContextStore {
+  Future<WakeNightValue> nightContext(DateTime wakeAt, ExpectedSleepSchedule? schedule);
+  Future<List<Map<String, Object?>>> baselineNights();
 }
 
 /// Test doubles; production uses the DB-backed stores in wake_stores.dart.
@@ -409,6 +416,10 @@ class _Run {
 
 // ── orchestrator ────────────────────────────────────────────────────────────
 
+abstract interface class NaturalWakePolicyListener {
+  void noteNaturalLead(DateTime wakeAt, int lead);
+}
+
 class WakeOrchestrator {
   WakeOrchestrator({
     required this.env,
@@ -418,6 +429,7 @@ class WakeOrchestrator {
     DateTime Function()? now,
     this.opTimeout = const Duration(seconds: 30),
     this.onTraceChanged,
+    this.onNaturalPolicy,
     this.onNaturalFired,
     this.repeatNatural = false,
     this.onNaturalRepeatChanged,
@@ -427,6 +439,7 @@ class WakeOrchestrator {
         _now = now ?? DateTime.now,
         _repeatDelay = repeatDelay ?? Future<void>.delayed;
 
+  final NaturalWakePolicyListener? onNaturalPolicy;
   final WakeEnv env;
   final NaturalStageObserver observer;
   final WakeStateStore stateStore;
@@ -770,12 +783,22 @@ class WakeOrchestrator {
   ) async {
     if (plan.naturalMinutes <= 0) return (null, false);
     final store = stateStore;
+    var profile = const ConfounderProfile();
+    var contextStatus = 'context_unavailable';
+    var nights = <Map<String, Object?>>[];
+    if (store is NaturalWakeContextStore) {
+      final context = await (store as NaturalWakeContextStore).nightContext(plan.wakeAt, plan.expectedSchedule).timeout(opTimeout);
+      profile = context.profile;
+      contextStatus = context.diagnostic;
+      nights = await (store as NaturalWakeContextStore).baselineNights().timeout(opTimeout);
+    }
     var tuning = const NaturalWakeParameters();
     if (store is NaturalWakeParameterStore) {
       tuning = await (store as NaturalWakeParameterStore)
-          .naturalParameters().timeout(opTimeout);
+          .naturalParameters(track: profile.track).timeout(opTimeout);
     }
     final n = plan.naturalMinutes + tuning.windowLeadMinutes.clamp(-10, 10);
+    onNaturalPolicy?.noteNaturalLead(plan.wakeAt, tuning.windowLeadMinutes);
     final sec = plan.wakeSec;
 
     Future<void> log(NaturalReason reason, Map<String, Object?> extra,
@@ -814,6 +837,7 @@ class WakeOrchestrator {
     // Feed the stager only while a link exists: without one nothing new is
     // arriving and the haptic could not be sent anyway.
     NaturalObservation? obs;
+    NaturalGateEvidence? evidence;
     var samplesFailed = false;
     if (env.connected) {
       final fromMs = run.lastFedMs ??
@@ -822,7 +846,7 @@ class WakeOrchestrator {
       WakeSamples? samples;
       try {
         samples = await env
-            .samples(DateTime.fromMillisecondsSinceEpoch(fromMs.round()), now)
+            .samples(now.subtract(const Duration(hours: 3)), now)
             .timeout(opTimeout);
       } catch (e) {
         samplesFailed = true;
@@ -837,7 +861,7 @@ class WakeOrchestrator {
         // second comes back again) were already fed and are dropped here.
         final mark = run.lastFedMs;
         List<List<double>> fresh(List<List<double>> rows) =>
-            mark == null ? rows : [for (final r in rows) if (r[0] > mark) r];
+            [for (final r in rows) if (r[0] >= fromMs && (mark == null || r[0] > mark)) r];
         final hr = fresh(samples.hr);
         final accel = fresh(samples.accel);
         final rr = fresh(samples.rr);
@@ -855,9 +879,13 @@ class WakeOrchestrator {
                 accel: accel,
                 rr: rr,
                 priorState: run.stager,
+                gateHr: samples.hr, gateAccel: samples.accel,
+                nights: nights, profile: profile,
+                historyBeforeMs: onset?.millisecondsSinceEpoch,
               ))
               .timeout(opTimeout * 2);
           obs = result.observation;
+          evidence = result.evidence;
           run.stager = result.nextState;
           if (newest != null) run.lastFedMs = newest;
         } catch (e) {
@@ -876,12 +904,14 @@ class WakeOrchestrator {
         ? const NaturalDecision(NaturalReason.samplesUnavailable)
         : NaturalWakePlanner.decide(_input(
             plan, run, now, obs, lateness, onset: onset,
-            userActive: userActive, tuning: tuning));
+            userActive: userActive, tuning: tuning, profile: profile, evidence: evidence));
     final detail = <String, Object?>{
       if (decision.viaUserActivity) 'basis': 'userActive',
       'samples': decision.samplesCurrent == null
           ? null
           : (decision.samplesCurrent! ? 'current' : 'stale'),
+      'context': contextStatus,
+      'track': 'track ${profile.track}',
       'stage': obs?.stage,
       'confidence': obs?.confidence,
       'runSec': obs?.runSec,
@@ -902,6 +932,8 @@ class WakeOrchestrator {
     await _trace(sec, 'natural_haptic', {
       'phase': 'request',
       'eventId': eventId,
+      'context': contextStatus,
+      'track': 'track ${profile.track}',
       'stage': obs?.stage,
       'confidence': obs?.confidence,
       'runSec': obs?.runSec,
@@ -1073,7 +1105,9 @@ class WakeOrchestrator {
   NaturalDecisionInput _input(WakePlanInput plan, _Run run, DateTime now,
           NaturalObservation? obs, Duration lateness,
           {bool userActive = false, DateTime? onset,
-          NaturalWakeParameters tuning = const NaturalWakeParameters()}) =>
+          NaturalWakeParameters tuning = const NaturalWakeParameters(),
+          ConfounderProfile profile = const ConfounderProfile(),
+          NaturalGateEvidence? evidence}) =>
       NaturalDecisionInput(
         now: now,
         wakeAt: plan.wakeAt,
@@ -1086,6 +1120,7 @@ class WakeOrchestrator {
         userActive: userActive,
         sleepOnset: onset,
         tuning: tuning,
+        profile: profile, evidence: evidence,
       );
 
   DateTime? _onsetFor(WakePlanInput plan, DateTime now) =>

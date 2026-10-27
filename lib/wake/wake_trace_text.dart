@@ -41,6 +41,12 @@ String naturalReasonText(String reason) => switch (reason) {
   'samplesStale' => 'the newest band data was too old to trust',
   'noRemCandidate' => 'you looked to be in light or deep sleep',
   'remNotStable' => 'a REM or awake stage had not lasted long enough yet',
+  'policyHold' => 'the current wake policy kept the early buzz quiet',
+  'physiologyUnavailable' => 'there was not enough recent physiology to buzz safely',
+  'hrArousalHold' => 'heart rate did not support an early buzz',
+  'motionCeilingHold' => 'recent movement was too high for an early buzz',
+  'motionTrendHold' => 'recent movement was not stable enough',
+  'lateWindowHold' => 'the late-window safety check kept it quiet',
   'lowConfidence' => 'the REM estimate was not confident enough',
   _ => 'it stayed quiet for a reason this version cannot describe',
 };

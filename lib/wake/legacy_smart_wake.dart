@@ -13,7 +13,7 @@ import 'wake_night_context_db.dart';
 
 class LegacySmartWake {
   final WakeNightContext context;
-  LegacySmartWake() : context = WakeNightContext(const DbWakeNightSource());
+  LegacySmartWake() : context = sharedWakeNightContext;
 
   Future<bool> detected(
     DateTime now,

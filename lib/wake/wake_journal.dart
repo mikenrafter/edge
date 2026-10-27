@@ -5,6 +5,9 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 
 import '../data/db.dart';
+import '../data/day_label.dart';
+import 'wake_night_context_db.dart' show profileFromJournalRows;
+import 'wake_confounders.dart';
 import 'natural_wake_tuning.dart';
 import 'wake_orchestrator.dart' show WakeTraceEntry;
 import 'wake_outcome.dart';
@@ -125,8 +128,9 @@ class DbWakeJournal {
     final onset = window['onset_ms'];
     final offset = window['offset_ms'];
     if (onset is! num) return const WakeNightTimeline();
-    final end =
-        offset is num ? offset.toInt() + 10800000 : onset.toInt() + 64800000;
+    final end = offset is num
+        ? offset.toInt() + 10800000
+        : onset.toInt() + 64800000;
     final fromSec = (onset / 1000).ceil(), throughSec = (end / 1000).floor();
     final rows = await (await LocalDb.instance).rawQuery(
       'SELECT DISTINCT wake_epoch FROM wake_trace '
@@ -181,11 +185,38 @@ class DbWakeJournal {
       if (context == null) continue;
       final night = await _forEpoch(db, epoch);
       if (night.events.isEmpty) continue;
+      final onset = DateTime.fromMillisecondsSinceEpoch(
+        (context['onset'] as num).toInt(),
+      );
+      final lead = onset.subtract(const Duration(hours: 6));
+      final from = dayLabelOf(lead), to = dayLabelOf(onset);
+      var known = true;
+      var profile = const ConfounderProfile();
+      var alcohol = false;
+      try {
+        final js = await db.query(
+          'journal',
+          where: 'date>=? AND date<=?',
+          whereArgs: [from, to],
+        );
+        final ms = await db.query(
+          'journal_metric',
+          where: 'date>=? AND date<=?',
+          whereArgs: [from, to],
+        );
+        profile = profileFromJournalRows(js, ms, onset);
+        alcohol = profile.learningAlcohol || profile.alcohol;
+      } catch (_) {
+        known = false;
+      }
       final recovery = context['recovery'];
       final tst = context['tst_sec'];
       history.add(
         WakeNightOutcome(
           dayId: context['day_id'] as String,
+          confounderTrack: profile.track | (alcohol ? 1 : 0),
+          contextKnown: known,
+          substance: alcohol ? WakeSubstance.alcohol : null,
           wakeEpochSec: epoch,
           timeToWake: night.timeToWake,
           snoozeCount: night.snoozeCount,
@@ -207,11 +238,15 @@ class DbWakeJournal {
   Future<NaturalTuningDecision> tuneFor(int wakeEpochSec) async {
     final db = await LocalDb.instance;
     return db.transaction((txn) async {
-      final current = await _parameters(txn);
       final history = await _outcomes(txn, throughEpoch: wakeEpochSec);
+      final target = history
+          .where((n) => n.wakeEpochSec == wakeEpochSec)
+          .firstOrNull;
+      final track = target?.track ?? 0;
+      final current = await _parameters(txn, track: track);
       // A missing target cannot cause an older night's outcome to be applied.
-      final decision = history.any((n) => n.wakeEpochSec == wakeEpochSec)
-          ? NaturalWakeTuning.evaluate(history, current: current)
+      final decision = target != null && target.contextKnown
+          ? NaturalWakeTuning.evaluate(history, current: current, track: track)
           : NaturalTuningDecision(
               parameters: current,
               reason: 'missing_outcome',
@@ -224,7 +259,7 @@ class DbWakeJournal {
         'lastLearnedEpoch': p.lastLearnedEpoch,
       };
       await txn.insert('wake_meta', {
-        'key': 'natural_wake_parameters',
+        'key': _parameterKey(track),
         'value': jsonEncode(values),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       await txn.insert('wake_trace', {
@@ -233,6 +268,7 @@ class DbWakeJournal {
         'kind': 'tune',
         'data_json': jsonEncode({
           ...values,
+          'track': 'track $track',
           'reason': decision.reason,
           'eligibleNights': decision.eligibleNights,
         }),
@@ -241,15 +277,22 @@ class DbWakeJournal {
     });
   }
 
-  Future<NaturalWakeParameters> parameters() async =>
-      _parameters(await LocalDb.instance);
+  Future<NaturalWakeParameters> parameters({int track = 0}) async =>
+      _parameters(await LocalDb.instance, track: track);
 
-  Future<NaturalWakeParameters> _parameters(DatabaseExecutor db) async {
+  static String _parameterKey(int track) => track == 0
+      ? 'natural_wake_parameters'
+      : 'natural_wake_parameters_track_$track';
+
+  Future<NaturalWakeParameters> _parameters(
+    DatabaseExecutor db, {
+    int track = 0,
+  }) async {
     final rows = await db.query(
       'wake_meta',
       columns: ['value'],
       where: 'key = ?',
-      whereArgs: ['natural_wake_parameters'],
+      whereArgs: [_parameterKey(track)],
       limit: 1,
     );
     final data = _map(rows.firstOrNull?['value']);

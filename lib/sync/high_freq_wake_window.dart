@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/db.dart';
 import '../state/control_operations.dart' show ExpectedSleepSchedule;
+import '../wake/wake_stores.dart' show loadNaturalWakeLead;
 import '../wake/wake_settings.dart' show naturalCollectionLead;
 
 /// The saved expected sleep schedule, read straight from preferences so a
@@ -70,12 +71,16 @@ class HighFreqWakeWindow {
     int scheduledWindowMinutes = 0,
     ExpectedSleepSchedule? expectedSchedule,
   }) async {
+    var effectiveWindow = scheduledWindowMinutes;
+    if (scheduledWindowEnd != null && scheduledWindowMinutes > 0) {
+      effectiveWindow += await loadNaturalWakeLead(scheduledWindowEnd, expectedSchedule);
+    }
     final rows = await LocalDb.recentDayResults(historyDays);
     return planFromRows(
       rows,
       now ?? DateTime.now(),
       scheduledWindowEnd: scheduledWindowEnd,
-      scheduledWindowMinutes: scheduledWindowMinutes,
+      scheduledWindowMinutes: effectiveWindow,
       expectedSchedule: expectedSchedule,
     );
   }
