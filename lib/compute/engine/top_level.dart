@@ -250,7 +250,8 @@ part of '../derivation_engine.dart';
 // REPIN @ 1255e9d (port/628-hmm): opt-in offline HMM staging and measured
 // nightly HR p10 / mean epoch RMSSD. Cardio remains the default. Edge stores
 // nullable night baselines and staging provenance under kAlgoVersion 117.
-const String kAnalyticsPin = '1255e9ddbeb23c2e8b7174e960ef220d796c46a1';
+// Phase 3: shared live wake evidence, no stored output change; kAlgoVersion 117.
+const String kAnalyticsPin = '8bd648748e38f5864214f0b719e069678bd905f8';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

@@ -87,3 +87,9 @@ in the same change that introduces it (AGENTS.md §6).
 
 - **Experimental sleep staging (HMM)**: the opt-in offline hidden Markov model identified as `StagingMethod.hmm628`. It estimates wake, light, deep and REM from measured epochs, preserves unobserved gaps and never supplies Natural wake decisions. It is not validated against polysomnography and is not a medical device.
 - **Measured nightly baselines**: `hr_min_night`, the upstream 10th-percentile HR order statistic, and `rmssd_mean_night`, the mean measured epoch RMSSD, within the first 120 elapsed minutes of the selected session. Analytics owns their calculation for every staging method; absent measurements stay null.
+
+## Live wake evidence
+
+- **Wake evidence**: timestamped HR and movement summaries calculated by analytics. Insufficient measurements remain absent and cannot approve autonomous early delivery.
+- **Confounder profile**: Edge's journal-derived thresholds for one sleep occurrence. Presets combine by maximum thresholds and durations, minimum movement ceilings, and shared condition flags.
+- **Wake night context**: the journal profile cached by `WakeNightContext` for one occurrence, saved schedule and journal revision. Read failures return default policy with neutral diagnostics.

@@ -70,6 +70,8 @@ class UnresolvedOk {
 /// another package; those closures stay in the guard baseline until each
 /// reader becomes a persisted artifact.
 const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#legacyWakeHeavy, dispatcher:Dispatcher.run,reason:'legacy wake: shared timestamped evidence; initialised worker with row-map round trip'),
+  WorkerEntry(#wakeProfileHeavy, dispatcher:Dispatcher.run,reason:'occurrence journal decoding and profile; initialised worker with row-map round trip'),
   WorkerEntry(
     #deriveDayBundle,
     dispatcher: Dispatcher.cancellable,

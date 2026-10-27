@@ -1,51 +1,26 @@
-// Smart Wake Window — the "is right now, inside an already-chosen wake
-// window, a reasonable moment to buzz" check.
-//
-// This is deliberately NOT sleep staging. Real staging
-// (analytics/lib/src/onehz/sleep/cardio_stager.dart) needs a whole night to
-// build its own baselines and only runs offline, after the fact. This runs
-// live, every keep-alive tick, on whatever `decoded_onehz` already has.
-//
-// ponytail: a single-window HR-arousal + no-big-movement heuristic. Ceiling:
-// no REM/deep distinction, no wake rejection beyond the motion cap, and it
-// says nothing at all (returns false) when either window is thin. Upgrade
-// path: once there is a live per-epoch feed, run cardioStager's actual
-// classifier here instead of this heuristic.
-//
-// Safety note (this is the load-bearing part): nothing in this file, or in
-// any caller of it, ever disarms or reschedules the band's own SET_ALARM.
-// This can only ever trigger an EARLY extra buzz (see AppState._checkSmartWake
-// / engine.runAlarm); the real fallback alarm the band is already holding
-// fires at the window's end regardless of what this heuristic decides, on
-// the band's own clock, independent of the phone's BLE link, the app process,
-// or this file existing at all.
-
+// Legacy Smart Wake's gate. Analytics owns signal calculations; Edge owns
+// policy and alarm delivery. This never changes the band's fallback alarm.
+import 'dart:convert';
 import 'dart:math' as math;
 
-/// One second of the signal this reads: HR (bpm) + the raw accel vector
-/// `decoded_onehz` already stores (roughly unit-magnitude at rest, in g).
+import 'package:openstrap_analytics/onehz.dart' as ana;
+import '../util/heavy.dart';
+import '../wake/wake_confounders.dart';
+
 class SmartWakeSample {
   final double hr;
   final double ax, ay, az;
   const SmartWakeSample(this.hr, this.ax, this.ay, this.az);
-
   factory SmartWakeSample.fromRow(Map<String, Object?> row) => SmartWakeSample(
-        (row['hr'] as num).toDouble(),
-        (row['ax'] as num).toDouble(),
-        (row['ay'] as num).toDouble(),
-        (row['az'] as num).toDouble(),
-      );
+    (row['hr'] as num).toDouble(),
+    (row['ax'] as num).toDouble(),
+    (row['ay'] as num).toDouble(),
+    (row['az'] as num).toDouble(),
+  );
 }
 
-/// True when the last few minutes show a textbook lightening-sleep signature
-/// — heart rate elevated above tonight's own resting baseline — WITHOUT the
-/// hard movement that would mean the person is already awake and moving.
-///
-/// Never guesses on a thin window: returns false whenever [baseline] or
-/// [recent] is shorter than its minimum sample count, which is the same as
-/// "no light sleep detected" — the caller's fallback path (fire at window end
-/// regardless) is what actually protects the user, not this function
-/// returning true.
+// Retained timestamp-free API for compatibility with existing callers/tests.
+// Production legacy delivery uses the timestamped shared evidence below.
 bool likelyLightSleep({
   required List<SmartWakeSample> baseline,
   required List<SmartWakeSample> recent,
@@ -75,4 +50,130 @@ double _median(List<double> xs) {
   return sorted.length.isOdd
       ? sorted[mid]
       : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+bool lateWakeProtection({
+  required int nowMs,
+  required int endMs,
+  required double baselineHr,
+  required double recentHr,
+  int minutes = 5,
+}) =>
+    endMs > nowMs &&
+    endMs - nowMs <= minutes * 60000 &&
+    (recentHr - baselineHr).abs() <= 2;
+
+/// Engineering thresholds, see docs/wake-port-evidence.md. Missing or thin
+/// evidence vetoes early delivery. The historical baseline is independent of
+/// current baseline coverage; recent HR and motion still need their own floor.
+@heavy
+bool evaluateLegacyWakeHeavy(
+  int nowMs,
+  int endMs,
+  List<Map<String, Object?>> rows,
+  List<Map<String, Object?>> nights,
+  ConfounderProfile profile, {
+  double? nightMin,
+  int? historyBeforeMs,
+}) {
+  if (profile.disableEarlyDelivery || nowMs >= endMs) return false;
+  final hr = <List<double>>[], accel = <List<double>>[];
+  for (final r in rows) {
+    final ts = (r['rec_ts'] as num).toDouble() * 1000;
+    final h = r['hr'] as num?;
+    if (h != null) hr.add([ts, h.toDouble()]);
+    final x = r['ax'] as num?, y = r['ay'] as num?, z = r['az'] as num?;
+    if (x != null && y != null && z != null) {
+      accel.add([ts, x.toDouble(), y.toDouble(), z.toDouble()]);
+    }
+  }
+  final historical =
+      nightMin ??
+      precedingNightBaselineHeavy(
+        nights,
+        historyBeforeMs ?? nowMs - 3 * 3600000,
+      );
+  final baseline = ana.wakeHrBaseline(hr, nowMs, nightMin: historical).bpm;
+  final recent = ana.wakeRecentHr(hr, nowMs);
+  final motion = ana.wakeRecentEnmo(accel, nowMs);
+  if (baseline == null || recent == null || motion == null) return false;
+  if (lateWakeProtection(
+    nowMs: nowMs,
+    endMs: endMs,
+    baselineHr: baseline,
+    recentHr: recent,
+    minutes: profile.protectionMinutes,
+  )) {
+    return false;
+  }
+  if (recent < baseline + profile.hrArousalBpm ||
+      motion >= profile.motionCeilingG) {
+    return false;
+  }
+  final baselineMotion = ana.wakeBaselineEnmo(accel, nowMs);
+  final threshold =
+      math.max(.02, .5 * (baselineMotion ?? 0)) * profile.trendThresholdFactor;
+  return ana.wakeEnmoTrend(
+        accel,
+        nowMs,
+        windowMinutes: profile.trendWindowMinutes,
+        threshold: threshold,
+      ) ==
+      false;
+}
+
+/// Select by completed main-sleep time, not a calendar label. Engineering
+/// freshness cap: preceding completion must be within 72 h of this onset.
+/// A partial, skipped, provisional or unsupported/imported payload cannot
+/// establish a measured baseline. A newer invalid night does not shadow a
+/// usable preceding completed night within the cap.
+@heavy
+double? precedingNightBaselineHeavy(
+  List<Map<String, Object?>> nights,
+  int beforeMs,
+) {
+  int? latest;
+  double? selected;
+  for (final row in nights) {
+    if (row['skipped'] != 0 ||
+        row['partial'] != 0 ||
+        row['finalized'] != 1 ||
+        (row['source'] != null && row['source'] != 'band')) {
+      continue;
+    }
+    try {
+      final rawWindow = jsonDecode(row['window_json'] as String);
+      if (rawWindow is! Map<String, dynamic>) continue;
+      final window = rawWindow['value'] is Map<String, dynamic>
+          ? rawWindow['value'] as Map<String, dynamic>
+          : rawWindow;
+      final on = (window['onset_ms'] as num?)?.toInt();
+      final off = (window['offset_ms'] as num?)?.toInt();
+      if (on == null ||
+          off == null ||
+          off <= on ||
+          off > beforeMs ||
+          beforeMs - off > 72 * 3600000 ||
+          (latest != null && off <= latest)) {
+        continue;
+      }
+      final payload = jsonDecode(row['payload_json'] as String);
+      if (payload is! Map<String, dynamic> ||
+          payload['imported'] == true ||
+          (payload['source'] != null && payload['source'] != 'band')) {
+        continue;
+      }
+      final scalars = payload['scalars'];
+      if (scalars is! Map<String, dynamic>) continue;
+      final value = (scalars['hr_min_night'] as num?)?.toDouble();
+      if (value == null || !value.isFinite || value <= 30 || value >= 200) {
+        continue;
+      }
+      latest = off;
+      selected = value;
+    } catch (_) {
+      /* Unsupported historical evidence is absent. */
+    }
+  }
+  return selected;
 }

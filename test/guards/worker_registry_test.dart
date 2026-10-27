@@ -13,6 +13,8 @@ import 'package:openstrap_edge/util/worker_entries.dart';
 
 /// Substring of `Symbol.toString()` -> expected dispatcher.
 const kExpected = <String, Dispatcher>{
+  'legacyWakeHeavy': Dispatcher.run,
+  'wakeProfileHeavy': Dispatcher.run,
   'deriveDayBundle': Dispatcher.cancellable,
   'buildCrossDayBundle': Dispatcher.cancellable,
   'auditBatchDay': Dispatcher.cancellable,

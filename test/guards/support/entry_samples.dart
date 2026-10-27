@@ -45,6 +45,9 @@ import 'package:openstrap_edge/ecg/ecg_export.dart';
 import 'package:openstrap_edge/util/worker_init.dart';
 import 'package:openstrap_edge/import/backup_crypto.dart';
 import 'package:openstrap_edge/wake/natural_wake.dart';
+import 'package:openstrap_edge/wake/legacy_smart_wake.dart';
+import 'package:openstrap_edge/wake/wake_confounders.dart';
+import 'package:openstrap_edge/wake/wake_night_context_db.dart';
 
 import '../../support/day_stream_fixture.dart';
 import '../../support/incremental_day_fixture.dart';
@@ -64,6 +67,73 @@ Future<void> _sameInWorker<T>(T Function() call, {Object? Function(T)? json}) as
 }
 
 final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
+  'legacyWakeHeavy': (
+    roundTrip: () async {
+      const now = 12 * 3600000;
+      const worker = WorkerInputs(
+        nowEpochMs: now,
+        zoneId: 'UTC',
+        localeTag: 'en',
+      );
+      final input = LegacyWakeInput(
+        worker,
+        now + 600000,
+        [
+          for (var s = 0; s < 300; s++)
+            <String, Object?>{
+              'rec_ts': now ~/ 1000 - 300 + s,
+              'hr': 54,
+              'ax': 0.0,
+              'ay': 0.0,
+              'az': 1.0,
+            },
+        ],
+        [
+          {
+            'finalized': 1,
+            'partial': 0,
+            'skipped': 0,
+            'window_json': '{"value":{"onset_ms":-36000000,"offset_ms":0}}',
+            'payload_json': '{"scalars":{"hr_min_night":50}}',
+          },
+        ],
+        const ConfounderProfile(),
+        now - 3 * 3600000,
+      );
+      expect(await Isolate.run(() => legacyWakeHeavy(input)), isTrue);
+      await _sameInWorker(() => legacyWakeHeavy(input));
+    },
+  ),
+  'wakeProfileHeavy': (
+    roundTrip: () async {
+      final input = WakeProfileInput(
+        [
+          {'date': '2026-10-25', 'tags_json': '["stress","sick","late meal"]'},
+        ],
+        [
+          {
+            'date': '2026-10-25',
+            'field': 'alcohol_units',
+            'value': 2,
+            'at_min': 1260,
+          },
+        ],
+        DateTime(2026, 10, 25, 22).millisecondsSinceEpoch,
+        const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'),
+      );
+      await _sameInWorker(
+        () => wakeProfileHeavy(input),
+        json: (p) => [
+          p.hrArousalBpm,
+          p.motionCeilingG,
+          p.protectionMinutes,
+          p.trendWindowMinutes,
+          p.trendThresholdFactor,
+          p.disableEarlyDelivery,
+        ],
+      );
+    },
+  ),
   'deriveDayBundle': (
     roundTrip: () async {
       final input = copyDay(incrementalDay());

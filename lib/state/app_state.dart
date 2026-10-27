@@ -92,7 +92,7 @@ import 'gesture_controller.dart';
 import 'live_stream_controller.dart';
 import 'sync_controller.dart';
 import 'workout_controller.dart';
-import 'smart_wake.dart';
+import '../wake/legacy_smart_wake.dart';
 import '../wake/natural_wake.dart'
     show
         NaturalStageObserver,
@@ -889,6 +889,7 @@ class AppState extends ChangeNotifier {
     // taps' own estimate.
     bandQueueWait: kBandQueueWait,
     sequenceTimeout: haptics.sequenceTimeout,
+    now: _wakeNow,
     isConnected: () => engine.isConnected,
     supportedTargetsAtDelivery: () => capabilities.bandAlertTargets,
     supportedBandModes: const {
@@ -7500,29 +7501,22 @@ class AppState extends ChangeNotifier {
   /// The pre-split Smart Wake heuristic (state/smart_wake.dart), kept ONLY for
   /// users whose upgrade explanation is pending. Same safety argument as
   /// before: it can only add an early buzz and never touches the arm.
+  final _legacySmartWake = LegacySmartWake();
+  @visibleForTesting
+  Future<void> debugCheckLegacySmartWake(DateTime end) => _checkLegacySmartWake(end);
+
   Future<void> _checkLegacySmartWake(DateTime windowEnd) async {
     final epoch = windowEnd.millisecondsSinceEpoch ~/ 1000;
     if (epoch == _smartWakeFiredForEpoch) return;
     final armed = armedSmartWakeWindow(epoch: epoch, schedule: _schedule);
     if (armed == null) return;
-    final now = DateTime.now();
+    final now = _wakeNow();
     if (!inSmartWakeWindow(
         windowEnd: armed.windowEnd, minutes: armed.minutes, now: now)) {
       return;
     }
-    final recentRows = await LocalDb.onehzHrAccelBetween(
-      now.subtract(const Duration(minutes: 3)).millisecondsSinceEpoch ~/ 1000,
-      now.millisecondsSinceEpoch ~/ 1000,
-    );
-    final baselineRows = await LocalDb.onehzHrAccelBetween(
-      now.subtract(const Duration(minutes: 93)).millisecondsSinceEpoch ~/ 1000,
-      now.subtract(const Duration(minutes: 3)).millisecondsSinceEpoch ~/ 1000,
-    );
-    final detected = likelyLightSleep(
-      baseline: [for (final r in baselineRows) SmartWakeSample.fromRow(r)],
-      recent: [for (final r in recentRows) SmartWakeSample.fromRow(r)],
-    );
-    if (!detected) return;
+    final detected = await _legacySmartWake.detected(now,windowEnd,sleepOperations.schedule);
+    if (!detected || epoch == _smartWakeFiredForEpoch) return;
     _smartWakeFiredForEpoch = epoch; // set BEFORE the write
     await _dispatchBandAlert('wake',
         deliver: (rhythm, runAlarm) =>

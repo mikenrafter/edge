@@ -621,7 +621,9 @@ dependencies:
       # advance, with hrvTime jitter-evidence perf fixes and citations.
       # port/628-hmm: experimental HMM staging (edge #628) and measured night
       # baselines (HR p10, mean epoch RMSSD); cardio default unchanged (kAlgoVersion 117).
-      ref: 1255e9ddbeb23c2e8b7174e960ef220d796c46a1
+      # Phase 3 adds live wake evidence only. Stored analytics output is unchanged;
+      # kAlgoVersion stays 117. See docs/wake-port-evidence.md.
+      ref: 8bd648748e38f5864214f0b719e069678bd905f8
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
