@@ -130,15 +130,47 @@ class WakeProfileInput {
 ConfounderProfile wakeProfileHeavy(WakeProfileInput input) {
   WorkerInit.ensure(input.worker);
   assertWorker();
+  // CLAIM(preset-gate): a journal aggregate adjusts thresholds only while its
+  // preset track definition is enabled and has the own_sleep role and sleep
+  // system; a missing definition means the unedited preset [S2;
+  // sendable_wakeProfileHeavy_test].
+  final gated = _gatedJournalFields(input);
   final preset = profileFromJournalRows(
     input.journal,
-    input.metrics,
+    [
+      for (final m in input.metrics)
+        // ↳ CLAIM(preset-gate)
+        if (!gated.contains(m['field'])) m,
+    ],
     input.bedtimeMs == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(input.bedtimeMs!),
   );
   if (input.bedtimeMs == null) return preset;
   return preset.combine(trackContextHeavy(input));
+}
+
+const _journalFieldTrack = {
+  'caffeine_mg': 'caffeine',
+  'alcohol_units': 'alcohol',
+};
+
+Set<String> _gatedJournalFields(WakeProfileInput input) {
+  final byId = {
+    for (final d in decodeTrackDefinitionsHeavy(
+      input.definitions,
+      input.medications,
+    ))
+      d.id: d,
+  };
+  return {
+    for (final e in _journalFieldTrack.entries)
+      if (byId[e.value] case final d?
+          when !d.enabled ||
+              !d.roles.contains('own_sleep') ||
+              !d.systems.contains('sleep'))
+        e.key,
+  };
 }
 
 @heavy

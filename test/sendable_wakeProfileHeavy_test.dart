@@ -70,4 +70,47 @@ void main() {
       expect(result.hrArousalBpm, 4);
     },
   );
+  // WHY S2: a caffeine journal aggregate raised hrArousalBpm even after the
+  // user disabled the caffeine track or removed its sleep system/role.
+  // proves: CLAIM(preset-gate)
+  for (final edit in <String, Map<String, Object?>>{
+    'disabled': {'enabled': false},
+    'no sleep system': {'systems': <String>[]},
+    'no own_sleep role': {'roles': <String>[]},
+    'untouched (control)': <String, Object?>{},
+  }.entries) {
+    test('caffeine journal aggregate respects edited track: ${edit.key}', () async {
+      final control = edit.value.isEmpty;
+      final input = WakeProfileInput(
+        [],
+        [
+          {
+            'date': '2026-10-26',
+            'field': 'caffeine_mg',
+            'value': 300,
+            'at_min': 20 * 60,
+          },
+        ],
+        DateTime(2026, 10, 26, 22).millisecondsSinceEpoch,
+        const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'),
+        definitions: [
+          {
+            'id': 'caffeine',
+            'payload_json': jsonEncode({
+              'id': 'caffeine',
+              'name': 'Caffeine',
+              'kind': 'consumed',
+              'roles': ['own_sleep'],
+              'systems': ['sleep'],
+              'enabled': true,
+              ...edit.value,
+            }),
+          },
+        ],
+      );
+      final result = await Isolate.run(() => wakeProfileHeavy(input));
+      expect(result.caffeine, control);
+      expect(result.hrArousalBpm, control ? 6 : 4);
+    });
+  }
 }
