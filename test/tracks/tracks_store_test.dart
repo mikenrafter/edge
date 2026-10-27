@@ -731,4 +731,29 @@ void main() {
     expect(event.amount, 2);
     expect(event.unit, 'bowls');
   });
+
+  test('medication quick log fills the nearest open scheduled slot', () async {
+    // WHY S1: an 08:05 intake of an 08:00-scheduled dose was stored at slot
+    // 08:05, leaving 08:00 missed and the 08:05 row invisible to the med screen.
+    final db = await LocalDb.instance;
+    await MedDb.putDef(
+      db,
+      const MedDef(
+        key: 'pill',
+        label: 'Pill',
+        schedule: [MedSchedule(8 * 60, [])],
+      ),
+    );
+    await store.log(
+      const TrackEvent(
+        id: 'a',
+        trackId: 'med:pill',
+        date: '2026-10-01',
+        atMs: 1790841900000, // 2026-10-01 08:05 UTC (TZ=UTC)
+      ),
+    );
+    final rows = await db.query('med_dose');
+    expect(rows.map((r) => r['slot_min']), [8 * 60]);
+    expect(rows.single['taken_ts'], 1790841900);
+  });
 }

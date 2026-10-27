@@ -395,16 +395,52 @@ class MedDb {
     if (count == 0) throw ArgumentError('medication');
   }
 
+  // CLAIM(med-slot-pick): an intake without an explicit slot fills the nearest
+  // scheduled, not-yet-taken slot of that day; only a med with no open slot
+  // that day records an ad-hoc row at the intake minute [S1; tracks_store_test].
+  static Future<int> _slotForIntake(
+    DatabaseExecutor tx,
+    String medKey,
+    String date,
+    int atMs,
+  ) async {
+    final at = DateTime.fromMillisecondsSinceEpoch(atMs);
+    final intakeMin = at.hour * 60 + at.minute;
+    final defRows = await tx.query(
+      'med_def',
+      where: 'key = ?',
+      whereArgs: [medKey],
+      limit: 1,
+    );
+    if (defRows.isEmpty) return intakeMin;
+    final taken = {
+      for (final r in await tx.query(
+        'med_dose',
+        where: 'med_key = ? AND date = ? AND taken_ts IS NOT NULL',
+        whereArgs: [medKey, date],
+      ))
+        (r['slot_min'] as num).toInt(),
+    };
+    final day = DateTime(at.year, at.month, at.day);
+    final open = [
+      for (final s in MedDef.fromRow(defRows.first).schedule)
+        if (s.onDay(day) && !taken.contains(s.minuteOfDay)) s.minuteOfDay,
+    ]..sort((a, b) => (a - intakeMin).abs().compareTo((b - intakeMin).abs()));
+    return open.isEmpty ? intakeMin : open.first;
+  }
+
   /// Tracks logs a taken slot through the medication owner, preserving its note.
   static Future<void> logTrack(
     Database db, {
     required String medKey,
     required String date,
-    required int slotMin,
+    int? explicitSlotMin,
     required int atMs,
     double? amount,
   }) async {
     await db.transaction((tx) async {
+      final slotMin =
+          explicitSlotMin ?? await _slotForIntake(tx, medKey, date, atMs);
       final prior = await tx.query(
         'med_dose',
         where: 'med_key = ? AND date = ? AND slot_min = ?',
