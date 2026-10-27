@@ -60,6 +60,31 @@ class ObservedTracksStore extends TracksStore {
   }) => _observe(() => super.saveDefinition(definition, history: history));
   @override
   Future<void> log(TrackEvent event) => _observe(() => super.log(event));
+  @override
+  Future<Map<String, Object?>> startExperiment({
+    required String trackId,
+    required String startDate,
+    required int weeks,
+    int? seed,
+  }) => _observe(
+    () => super.startExperiment(
+      trackId: trackId,
+      startDate: startDate,
+      weeks: weeks,
+      seed: seed,
+    ),
+  );
+  @override
+  Future<List<Map<String, Object?>>> experiments({String? trackId}) =>
+      _observe(() => super.experiments(trackId: trackId));
+  @override
+  Future<Map<String, Object?>> experimentReport(String id, {DateTime? asOf}) =>
+      _observe(
+        () => super.experimentReport(
+          id,
+          asOf: asOf ?? DateTime.utc(2026, 10, 27, 12),
+        ),
+      );
 }
 
 const tracksBoundary = ValueKey('tracks-golden');
