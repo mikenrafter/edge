@@ -324,6 +324,10 @@ abstract interface class NaturalWakeParameterStore {
   Future<NaturalWakeParameters> naturalParameters({int track = 0});
 }
 
+abstract interface class NaturalWakeUserParameterStore {
+  Future<NaturalWakeParameters> userNaturalParameters(ConfounderProfile profile);
+}
+
 abstract interface class NaturalWakeContextStore {
   Future<WakeNightValue> nightContext(DateTime wakeAt, ExpectedSleepSchedule? schedule);
   Future<List<Map<String, Object?>>> baselineNights();
@@ -796,6 +800,9 @@ class WakeOrchestrator {
     if (store is NaturalWakeParameterStore) {
       tuning = await (store as NaturalWakeParameterStore)
           .naturalParameters(track: profile.track).timeout(opTimeout);
+      if (store is NaturalWakeUserParameterStore) {
+        tuning = await (store as NaturalWakeUserParameterStore).userNaturalParameters(profile).timeout(opTimeout);
+      }
     }
     final n = plan.naturalMinutes + tuning.windowLeadMinutes.clamp(-10, 10);
     onNaturalPolicy?.noteNaturalLead(plan.wakeAt, tuning.windowLeadMinutes);
@@ -912,6 +919,7 @@ class WakeOrchestrator {
           : (decision.samplesCurrent! ? 'current' : 'stale'),
       'context': contextStatus,
       'track': 'track ${profile.track}',
+      if (profile.adjustedFor.isNotEmpty) 'adjustedFor': profile.adjustedFor.toList()..sort(),
       'stage': obs?.stage,
       'confidence': obs?.confidence,
       'runSec': obs?.runSec,
@@ -934,6 +942,7 @@ class WakeOrchestrator {
       'eventId': eventId,
       'context': contextStatus,
       'track': 'track ${profile.track}',
+      if (profile.adjustedFor.isNotEmpty) 'adjustedFor': profile.adjustedFor.toList()..sort(),
       'stage': obs?.stage,
       'confidence': obs?.confidence,
       'runSec': obs?.runSec,

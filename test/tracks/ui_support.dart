@@ -29,6 +29,15 @@ class ObservedTracksStore extends TracksStore {
   }
 
   @override
+  Future<Map<String, Map<String, Object?>>> refreshLearning({DateTime? asOf}) =>
+      _observe(
+        () =>
+            super.refreshLearning(asOf: asOf ?? DateTime.utc(2026, 10, 27, 12)),
+      );
+  @override
+  Future<void> confirmNone(String trackId, String date) =>
+      _observe(() => super.confirmNone(trackId, date));
+  @override
   Future<List<TrackDefinition>> definitions({bool enabledOnly = false}) =>
       _observe(() => super.definitions(enabledOnly: enabledOnly));
   @override

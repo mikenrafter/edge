@@ -1,7 +1,12 @@
 // TracksStore owns definitions, setup history and manual events. SQLite
 // transactions serialize its writes. Linked records delegate to their owner.
 // Invalid writes throw ArgumentError; database/owner failures propagate.
+import 'dart:isolate';
 import 'package:sqflite/sqflite.dart';
+import '../tracks/learning_worker.dart';
+import '../util/worker_init.dart';
+import '../util/worker_audit.dart';
+import '../util/worker_entries.dart' show Dispatcher;
 import 'db.dart';
 import '../compute/manual_session.dart'
     show validateManualWindow, ManualWindowException, SessionSpan;
@@ -12,10 +17,15 @@ import 'med_store.dart';
 import 'nutrition_store.dart';
 import 'track_model.dart';
 export 'track_model.dart';
+part 'tracks_learning_store.dart';
 
 class TracksStore {
   TracksStore(this.db);
   final Database db;
+  Future<Map<String, Map<String, Object?>>> refreshLearning({DateTime? asOf}) =>
+      _refreshLearning(asOf: asOf);
+  Future<void> confirmNone(String trackId, String date) =>
+      _confirmNone(trackId, date);
 
   Future<List<TrackDefinition>> definitions({bool enabledOnly = false}) async {
     final rows = await db.query('track_definition', orderBy: 'id');
@@ -69,6 +79,14 @@ class TracksStore {
     if (error != null) throw ArgumentError(error);
     if (history != null) _validateHistory(definition.id, history);
     final payload = definition.toJson();
+    if (definition.loggingComplete &&
+        definition.loggingCompleteSinceMs == null) {
+      payload['logging_complete_since_ms'] =
+          DateTime.now().millisecondsSinceEpoch;
+    }
+    if (!definition.loggingComplete) {
+      payload['logging_complete_since_ms'] = null;
+    }
     if (definition.id.startsWith('med:')) {
       // Names and units are read from MedDb; only track config lives here.
       payload.remove('name');

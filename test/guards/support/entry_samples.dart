@@ -15,6 +15,7 @@
 // declared argument/result SHAPES, and their behaviour is covered by the tests
 // of the library that owns them.
 
+import 'package:openstrap_edge/tracks/learning_worker.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -55,12 +56,13 @@ import '../../support/incremental_day_fixture.dart';
 import '../../support/sample_heavy_fixtures.dart';
 import 'sendability.dart';
 
-typedef EntrySample = ({
-  Future<void> Function() roundTrip,
-});
+typedef EntrySample = ({Future<void> Function() roundTrip});
 
 /// Worker answer == direct answer, both compared as JSON.
-Future<void> _sameInWorker<T>(T Function() call, {Object? Function(T)? json}) async {
+Future<void> _sameInWorker<T>(
+  T Function() call, {
+  Object? Function(T)? json,
+}) async {
   final j = json ?? (T v) => v;
   final direct = jsonEncode(j(call()));
   final inWorker = jsonEncode(j(await Isolate.run(call)));
@@ -72,30 +74,56 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
     roundTrip: () async {
       int ts(int day, int hour) =>
           DateTime(2026, 10, day, hour).millisecondsSinceEpoch ~/ 1000;
-      final input = TypicalCaffeineInput([
-        {'date': '2026-10-01', 'sleep': {'wake_ts': ts(1, 16), 'duration_min': 480}},
-        {'date': '2026-10-02', 'sleep': {'onset_ts': ts(2, 8),
-          'wake_ts': ts(2, 16), 'duration_min': 480, 'sol_min': 12},
-          'heart': {'resting_hr': 55}},
-      ], [
-        {'date': '2026-10-01', 'hhmm': '22:00', 'caffeine_mg': 100},
-        {'date': '2026-10-02', 'hhmm': '03:00', 'caffeine_mg': 80},
-      ], [
-        {'date': '2026-10-01', 'value': 100},
-        {'date': '2026-10-02', 'value': 80},
-      ], const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'));
-      await expectIsolateRoundTrip<TypicalCaffeineInput>(input,
-          project: (i) => [i.days, i.moments, i.totals, i.worker.zoneId]);
+      final input = TypicalCaffeineInput(
+        [
+          {
+            'date': '2026-10-01',
+            'sleep': {'wake_ts': ts(1, 16), 'duration_min': 480},
+          },
+          {
+            'date': '2026-10-02',
+            'sleep': {
+              'onset_ts': ts(2, 8),
+              'wake_ts': ts(2, 16),
+              'duration_min': 480,
+              'sol_min': 12,
+            },
+            'heart': {'resting_hr': 55},
+          },
+        ],
+        [
+          {'date': '2026-10-01', 'hhmm': '22:00', 'caffeine_mg': 100},
+          {'date': '2026-10-02', 'hhmm': '03:00', 'caffeine_mg': 80},
+        ],
+        [
+          {'date': '2026-10-01', 'value': 100},
+          {'date': '2026-10-02', 'value': 80},
+        ],
+        const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'),
+      );
+      await expectIsolateRoundTrip<TypicalCaffeineInput>(
+        input,
+        project: (i) => [i.days, i.moments, i.totals, i.worker.zoneId],
+      );
       final result = await Isolate.run(() => typicalCaffeineHeavy(input));
       expect(result.dayCount, 1);
       // 100 mg ten hours before bed -> 25; 80 mg five hours before -> 40.
       expect(result.latestResidualMg, closeTo(65, 1e-9));
       expect(result.pairedCounts['latency'], 1);
-      await _sameInWorker(() => typicalCaffeineHeavy(input), json: (s) => [
-        s.dayCount, s.enoughDays, s.latestResidualMg, s.pairedCounts,
-        s.wakeDelayVsDip, s.wakeDelayVsNap, s.wakeDelayVsRestingHr,
-        s.residualVsLatency, s.residualVsTotalSleep,
-      ]);
+      await _sameInWorker(
+        () => typicalCaffeineHeavy(input),
+        json: (s) => [
+          s.dayCount,
+          s.enoughDays,
+          s.latestResidualMg,
+          s.pairedCounts,
+          s.wakeDelayVsDip,
+          s.wakeDelayVsNap,
+          s.wakeDelayVsRestingHr,
+          s.residualVsLatency,
+          s.residualVsTotalSleep,
+        ],
+      );
     },
   ),
   'legacyWakeHeavy': (
@@ -133,6 +161,25 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       );
       expect(await Isolate.run(() => legacyWakeHeavy(input)), isTrue);
       await _sameInWorker(() => legacyWakeHeavy(input));
+    },
+  ),
+  'trackLearningHeavy': (
+    roundTrip: () async {
+      const input = TrackLearningInput(
+        definitions: [],
+        events: [],
+        history: [],
+        absences: [],
+        states: [],
+        days: [],
+        worker: WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'),
+      );
+      final result = await Isolate.run(() => trackLearningHeavy(input));
+      expect(result.toJson(), {'updates': [], 'summaries': {}});
+      await _sameInWorker(
+        () => trackLearningHeavy(input),
+        json: (r) => r.toJson(),
+      );
     },
   ),
   'wakeProfileHeavy': (
@@ -176,10 +223,18 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
     roundTrip: () async {
       final input = copyDay(incrementalDay());
       final inputs = WorkerInputs(
-          nowEpochMs: 1760000000000, zoneId: 'UTC', localeTag: 'en');
-      await _sameInWorker(() => auditBatchDay(
-              inputs, AuditBatchInput(copyDay(input)), CalculationMode.forced),
-          json: (AuditBatchResult r) => r.bundle);
+        nowEpochMs: 1760000000000,
+        zoneId: 'UTC',
+        localeTag: 'en',
+      );
+      await _sameInWorker(
+        () => auditBatchDay(
+          inputs,
+          AuditBatchInput(copyDay(input)),
+          CalculationMode.forced,
+        ),
+        json: (AuditBatchResult r) => r.bundle,
+      );
     },
   ),
   'stageSleepCandidateHeavy': (
@@ -187,7 +242,11 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       // An empty substrate stages to the absent candidate; the @SendableShape
       // round trip of a real night is in
       // test/sendable_stageSleepCandidateHeavy_test.dart.
-      const inputs = WorkerInputs(nowEpochMs: 1, zoneId: 'UTC', localeTag: 'en');
+      const inputs = WorkerInputs(
+        nowEpochMs: 1,
+        zoneId: 'UTC',
+        localeTag: 'en',
+      );
       final input = SleepStagingInput(
         dayId: '2026-06-27',
         searchSub: Substrate.empty,
@@ -201,9 +260,14 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
         rowsHiSec: 1,
         nowSec: 1,
       );
-      await _sameInWorker(() => stageSleepCandidateHeavy(inputs, input),
-          json: (SleepStagingResult r) =>
-              [r.candidateJson, r.observationJson, r.rowsJson?.toList()]);
+      await _sameInWorker(
+        () => stageSleepCandidateHeavy(inputs, input),
+        json: (SleepStagingResult r) => [
+          r.candidateJson,
+          r.observationJson,
+          r.rowsJson?.toList(),
+        ],
+      );
     },
   ),
   'buildCrossDayBundle': (
@@ -216,17 +280,17 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
   'foldDayCheckpoint': (
     roundTrip: () async {
       Uint8List? fold() => foldDayCheckpoint(
-            base: null,
-            alreadyFolded: 0,
-            ts: [for (var i = 0; i < 120; i++) 1760000000 + i],
-            hr: [for (var i = 0; i < 120; i++) 60 + i % 5],
-            ax: List<double>.filled(120, 0),
-            ay: List<double>.filled(120, 0),
-            az: List<double>.filled(120, 1),
-            stepCounter: [for (var i = 0; i < 120; i++) i],
-            age: 35,
-            stepModulus: 65536,
-          );
+        base: null,
+        alreadyFolded: 0,
+        ts: [for (var i = 0; i < 120; i++) 1760000000 + i],
+        hr: [for (var i = 0; i < 120; i++) 60 + i % 5],
+        ax: List<double>.filled(120, 0),
+        ay: List<double>.filled(120, 0),
+        az: List<double>.filled(120, 1),
+        stepCounter: [for (var i = 0; i < 120; i++) i],
+        age: 35,
+        stepModulus: 65536,
+      );
       final blob = fold();
       if (blob != null) await expectIsolateRoundTrip<Uint8List>(blob);
       await _sameInWorker(fold, json: (Uint8List? b) => b?.toList());
@@ -238,8 +302,9 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       // persisted envelopes, curves and the tail out. The @SendableShape round
       // trip itself is in test/sendable_foldDayTailHeavy_test.dart.
       final input = DayTailInput(
-        checkpoint:
-            encodeDayResumeState(DayResumeState(curves: DayCurveStates(cut: 0.02))),
+        checkpoint: encodeDayResumeState(
+          DayResumeState(curves: DayCurveStates(cut: 0.02)),
+        ),
         tailRr: const [812.0, 805.0, 790.0],
         tailTs: const [1760000001000.0, 1760000002000.0, 1760000003000.0],
         accTs: const [1760000000, 1760000001, 1760000002, 1760000003],
@@ -249,22 +314,28 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
         onsetSec: 1760000000,
         offsetSec: 1760003600,
       );
-      const inputs = WorkerInputs(nowEpochMs: 1, zoneId: 'UTC', localeTag: 'en');
-      await _sameInWorker(() => foldDayTailHeavy(inputs, input),
-          json: (DayTailResult? r) => r == null
-              ? null
-              : [r.irregular, r.hrv, r.resp, r.daytime, r.tailRr, r.tailTs]);
+      const inputs = WorkerInputs(
+        nowEpochMs: 1,
+        zoneId: 'UTC',
+        localeTag: 'en',
+      );
+      await _sameInWorker(
+        () => foldDayTailHeavy(inputs, input),
+        json: (DayTailResult? r) => r == null
+            ? null
+            : [r.irregular, r.hrv, r.resp, r.daytime, r.tailRr, r.tailTs],
+      );
     },
   ),
   'kcalMinutesForDayHeavy': (
     roundTrip: () async {
       Map<String, dynamic>? kcal() => DerivationEngine.kcalMinutesForDayHeavy(
-            daySub: Substrate.empty,
-            profile: const Profile(),
-            nocturnalRhr: null,
-            sleepOnsetSec: 0,
-            sleepOffsetSec: 0,
-          );
+        daySub: Substrate.empty,
+        profile: const Profile(),
+        nocturnalRhr: null,
+        sleepOnsetSec: 0,
+        sleepOffsetSec: 0,
+      );
       await _sameInWorker(kcal);
     },
   ),
@@ -300,10 +371,12 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
 
       final port = ReceivePort();
       addTearDown(port.close);
-      await expectIsolateRoundTrip<(SendPort, Object, SendPort?, int)>(
-        (port.sendPort, input, null, 0),
-        project: (r) => DerivationEngine.dayBlocksInputSummaryForTest(r.$2),
-      );
+      await expectIsolateRoundTrip<(SendPort, Object, SendPort?, int)>((
+        port.sendPort,
+        input,
+        null,
+        0,
+      ), project: (r) => DerivationEngine.dayBlocksInputSummaryForTest(r.$2));
 
       // And through the entry itself, on its real spawn path: the input goes in,
       // a _DayBlocksOutput comes back.
@@ -320,15 +393,20 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
   '_spotCheckComputeHeavy': (
     roundTrip: () async {
       await expectIsolateRoundTrip<List<String>>(['00', '01']);
-      await expectIsolateRoundTrip<Map<String, dynamic>>(
-          {'n_beats': 3, 'confidence': 0.5, 'mean_hr': null});
+      await expectIsolateRoundTrip<Map<String, dynamic>>({
+        'n_beats': 3,
+        'confidence': 0.5,
+        'mean_hr': null,
+      });
     },
   ),
   '_breathingCoherenceComputeHeavy': (
     roundTrip: () async {
       await expectIsolateRoundTrip<(List<String>, double?)>((['00'], 0.1));
-      await expectIsolateRoundTrip<Map<String, dynamic>>(
-          {'coherence': 0.4, 'present': true});
+      await expectIsolateRoundTrip<Map<String, dynamic>>({
+        'coherence': 0.4,
+        'present': true,
+      });
     },
   ),
   'ecgFormatPageHeavy': (
@@ -337,7 +415,13 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       // the text of the page out. The @SendableShape round trip itself is in
       // test/ecg_transparency/sendable_ecgFormatPageHeavy_test.dart.
       final rows = <Map<String, Object?>>[
-        {'id': 'x', 'start_ts': 1, 'status': 'mystery', 'rms_uv': 1.5, 'v': null},
+        {
+          'id': 'x',
+          'start_ts': 1,
+          'status': 'mystery',
+          'rms_uv': 1.5,
+          'v': null,
+        },
       ];
       final page = EcgRawPage(rows, [
         [
@@ -349,7 +433,11 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
           },
         ],
       ]);
-      const inputs = WorkerInputs(nowEpochMs: 1, zoneId: 'UTC', localeTag: 'en');
+      const inputs = WorkerInputs(
+        nowEpochMs: 1,
+        zoneId: 'UTC',
+        localeTag: 'en',
+      );
       await _sameInWorker(() => ecgFormatPageHeavy(inputs, page));
     },
   ),
@@ -389,8 +477,9 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
         ],
       );
       await _sameInWorker(
-          () => wearableSubstrateHeavy(wearableWorkerInputs, input),
-          json: (WearableSubstrateResult r) => r.substrate);
+        () => wearableSubstrateHeavy(wearableWorkerInputs, input),
+        json: (WearableSubstrateResult r) => r.substrate,
+      );
     },
   ),
   'unionCutHeavy': (
@@ -412,15 +501,19 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
         meta: const [],
       );
       final input = UnionCutInput(
-          kind: UnionCutKind.window,
-          loads: [load],
-          ownership: const {},
-          multiOwner: false,
-          a: 1000,
-          b: 1500);
-      await _sameInWorker(() => unionCutHeavy(unionCutWorkerInputs, input),
-          json: (UnionCutResult r) =>
-              [for (final l in r.loads) l == null ? null : [l.from, l.to, l.samples]]);
+        kind: UnionCutKind.window,
+        loads: [load],
+        ownership: const {},
+        multiOwner: false,
+        a: 1000,
+        b: 1500,
+      );
+      await _sameInWorker(
+        () => unionCutHeavy(unionCutWorkerInputs, input),
+        json: (UnionCutResult r) => [
+          for (final l in r.loads) l == null ? null : [l.from, l.to, l.samples],
+        ],
+      );
     },
   ),
   'sessionWindowsHeavy': (
@@ -438,8 +531,12 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
         minHrFloor: 30,
       );
       await _sameInWorker(
-          () => sessionWindowsHeavy(sessionWindowsWorkerInputs, input),
-          json: (SessionWindowsResult r) => {'stats': r.stats, 'samples': r.samples});
+        () => sessionWindowsHeavy(sessionWindowsWorkerInputs, input),
+        json: (SessionWindowsResult r) => {
+          'stats': r.stats,
+          'samples': r.samples,
+        },
+      );
     },
   ),
   'decodeDayPayloadsHeavy': (
@@ -462,20 +559,27 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
   ),
   '_writeZipHeavy': (
     roundTrip: () async {
-      await expectIsolateRoundTrip<(String, List<List<String>>, String)>(
-        ('/tmp/out.zip', [
-          ['name', '/tmp/in']
-        ], '{}'),
-      );
+      await expectIsolateRoundTrip<(String, List<List<String>>, String)>((
+        '/tmp/out.zip',
+        [
+          ['name', '/tmp/in'],
+        ],
+        '{}',
+      ));
     },
   ),
   'observeNaturalSync': (
     roundTrip: () async {
       final req = NaturalObserveRequest(
-          nowMs: 1790000000000, hr: const [], accel: const [], rr: const []);
-      await _sameInWorker(() => observeNaturalSync(req),
-          json: (NaturalObserveResult r) =>
-              [r.observation.toJson(), r.nextState]);
+        nowMs: 1790000000000,
+        hr: const [],
+        accel: const [],
+        rr: const [],
+      );
+      await _sameInWorker(
+        () => observeNaturalSync(req),
+        json: (NaturalObserveResult r) => [r.observation.toJson(), r.nextState],
+      );
     },
   ),
   'encryptBackupFile': (
@@ -485,7 +589,8 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       final src = File('${tmp.path}/in')..writeAsBytesSync([1, 2, 3, 4]);
       final dest = File('${tmp.path}/out.osbk');
       await Isolate.run(
-          () => encryptBackupFile(src, dest, 'pw', iterations: 1000));
+        () => encryptBackupFile(src, dest, 'pw', iterations: 1000),
+      );
       expect(dest.existsSync(), isTrue);
       expect(dest.readAsBytesSync(), isNot(contains(isNull)));
     },
@@ -498,20 +603,23 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       final input = sampleEncodeInput();
       await expectIsolateRoundTrip<SampleEncodeInput>(input);
       await _sameInWorker(
-          () => encodeSampleSignalsHeavy(sampleHeavyInputs, input),
-          json: (Map<String, SampleEncodedPart> r) => [
-                for (final e in r.entries)
-                  [e.key, e.value.blob.toList(), e.value.nValid]
-              ]);
+        () => encodeSampleSignalsHeavy(sampleHeavyInputs, input),
+        json: (Map<String, SampleEncodedPart> r) => [
+          for (final e in r.entries)
+            [e.key, e.value.blob.toList(), e.value.nValid],
+        ],
+      );
     },
   ),
   'carveSamplePartHeavy': (
     roundTrip: () async {
       final input = sampleCarveInput();
       await expectIsolateRoundTrip<SampleCarveInput>(input);
-      await _sameInWorker(() => carveSamplePartHeavy(sampleHeavyInputs, input),
-          json: (SampleCarved? c) =>
-              c == null ? null : [c.blob.toList(), c.nValid, c.rmsErr, c.maxErr]);
+      await _sameInWorker(
+        () => carveSamplePartHeavy(sampleHeavyInputs, input),
+        json: (SampleCarved? c) =>
+            c == null ? null : [c.blob.toList(), c.nValid, c.rmsErr, c.maxErr],
+      );
     },
   ),
   'reconstructSamplePartsHeavy': (
@@ -519,9 +627,12 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       final input = sampleReconstructInput();
       await expectIsolateRoundTrip<SampleReconstructInput>(input);
       await _sameInWorker(
-          () => reconstructSamplePartsHeavy(sampleHeavyInputs, input),
-          json: (({int originSec, List<double?> samples}) r) =>
-              [r.originSec, r.samples]);
+        () => reconstructSamplePartsHeavy(sampleHeavyInputs, input),
+        json: (({int originSec, List<double?> samples}) r) => [
+          r.originSec,
+          r.samples,
+        ],
+      );
     },
   ),
   'decryptBackupFile': (

@@ -17931,7 +17931,7 @@
   "tracksRemove": "Remove",
   "tracksRetry": "Try again",
   "tracksFailed": "Could not save or read tracks. Try again.",
-  "tracksLearning": "Learning is not active yet. Values stay as entered.",
+  "tracksLearning": "Values stay fixed through the global and field learning periods. Later changes are small and logged.",
   "tracksNever": "Nothing logged yet",
   "tracksLast": "Last logged",
   "tracksDisabled": "Off",
@@ -18002,5 +18002,21 @@
   "tracksDuration": "Duration, minutes",
   "tracksDurationRequired": "Enter a duration greater than zero to create this workout or nap.",
   "tracksLearningPending": "Learning pending",
-  "tracksUnlock": "Unlock value"
+  "tracksUnlock": "Unlock value",
+  "tracksLogEveryTime": "I log every time",
+  "tracksNoneToday": "None today?",
+  "tracksGlobalLearning": "Observing · first 28 days",
+  "tracksCannotSeparate": "Can't separate yet",
+  "tracksLearningReady": "Learning from matched nights",
+  "tracksLoggingIncomplete": "Confirm logging to compare nights",
+  "tracksCoverageHold": "Waiting for better recording coverage",
+  "tracksLearningNeedData": "Waiting for comparable nights",
+  "tracksAdjustedFor": "Adjusted for: {tracks}",
+  "@tracksAdjustedFor": {
+    "placeholders": {
+      "tracks": {
+        "type": "String"
+      }
+    }
+  }
 }

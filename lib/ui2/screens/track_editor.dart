@@ -85,6 +85,8 @@ class _TrackEditorState extends State<TrackEditor> {
         detectionMax: max,
         noUnadjustedData: _noClean,
         enabled: _enabled,
+        loggingComplete: _initial.loggingComplete,
+        loggingCompleteSinceMs: _initial.loggingCompleteSinceMs,
         sources: _initial.sources,
       );
       if (definition.validationError != null) {

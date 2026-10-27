@@ -92,6 +92,8 @@ class TrackDefinition {
     this.detectionMax = 10,
     this.noUnadjustedData = false,
     this.enabled = true,
+    this.loggingComplete = false,
+    this.loggingCompleteSinceMs,
     this.sources = const [],
   });
   final String id, name, icon, kind, unit;
@@ -99,7 +101,8 @@ class TrackDefinition {
   final List<TrackSubActivity> subActivities;
   final List<String> roles, systems, sources;
   final int detectionMin, detectionMax;
-  final bool noUnadjustedData, enabled;
+  final bool noUnadjustedData, enabled, loggingComplete;
+  final int? loggingCompleteSinceMs;
   factory TrackDefinition.fromJson(Map<String, dynamic> j) => TrackDefinition(
     id: j['id'] as String,
     name: j['name'] as String,
@@ -120,6 +123,8 @@ class TrackDefinition {
     detectionMax: (j['detection_max'] as num?)?.toInt() ?? 10,
     noUnadjustedData: j['no_unadjusted_data'] == true,
     enabled: j['enabled'] != false,
+    loggingComplete: j['logging_complete'] == true,
+    loggingCompleteSinceMs: (j['logging_complete_since_ms'] as num?)?.toInt(),
   );
   Map<String, Object?> toJson() => {
     'id': id,
@@ -136,6 +141,8 @@ class TrackDefinition {
     'detection_max': detectionMax,
     'no_unadjusted_data': noUnadjustedData,
     'enabled': enabled,
+    'logging_complete': loggingComplete,
+    'logging_complete_since_ms': loggingCompleteSinceMs,
   };
   String? get validationError {
     if (id.isEmpty || name.trim().isEmpty) return 'name';

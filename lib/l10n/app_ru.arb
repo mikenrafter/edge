@@ -8996,7 +8996,7 @@
   "tracksRemove": "Удалить",
   "tracksRetry": "Повторить",
   "tracksFailed": "Не удалось сохранить или прочитать треки. Повторите.",
-  "tracksLearning": "Обучение пока не включено. Введённые значения сохраняются.",
+  "tracksLearning": "Значения фиксированы в течение общего и отдельных периодов обучения. Последующие изменения малы и записываются.",
   "tracksNever": "Пока нет записей",
   "tracksLast": "Последняя запись",
   "tracksDisabled": "Выключено",
@@ -9067,5 +9067,14 @@
   "tracksDuration": "Длительность, минуты",
   "tracksDurationRequired": "Введите длительность больше нуля, чтобы создать тренировку или дневной сон.",
   "tracksLearningPending": "Обучение ожидается",
-  "tracksUnlock": "Разблокировать значение"
+  "tracksUnlock": "Разблокировать значение",
+  "tracksLogEveryTime": "Я записываю каждый раз",
+  "tracksNoneToday": "Сегодня ничего?",
+  "tracksGlobalLearning": "Наблюдение · первые 28 дней",
+  "tracksCannotSeparate": "Пока нельзя разделить",
+  "tracksLearningReady": "Обучение по сопоставимым ночам",
+  "tracksLoggingIncomplete": "Подтвердите полноту записей для сравнения",
+  "tracksCoverageHold": "Ожидание более полных записей",
+  "tracksLearningNeedData": "Ожидание сопоставимых ночей",
+  "tracksAdjustedFor": "Adjusted for: {tracks}"
 }

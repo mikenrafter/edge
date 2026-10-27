@@ -541,6 +541,9 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       await deleteByIn(txn, 'journal', 'date', sorted);
       await deleteByIn(txn, 'journal_metric', 'date', sorted);
       await deleteByIn(txn, 'track_event', 'date', sorted);
+      await deleteByIn(txn, 'track_absence', 'date', sorted);
+      await deleteByIn(txn, 'track_learning_log', 'date', sorted);
+      await txn.delete('track_learning'); // Rebuild aggregates after deleting evidence.
       await deleteByIn(txn, 'cycle_log', 'date', sorted);
       await deleteByIn(txn, 'notifications', 'date', sorted);
       await deleteByIn(txn, 'sleep_session_candidates', 'day_id', sorted);

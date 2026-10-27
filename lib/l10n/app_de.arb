@@ -3723,7 +3723,7 @@
   "tracksRemove": "Entfernen",
   "tracksRetry": "Erneut versuchen",
   "tracksFailed": "Tracks konnten nicht gespeichert oder gelesen werden. Erneut versuchen.",
-  "tracksLearning": "Lernen ist noch nicht aktiv. Eingegebene Werte bleiben erhalten.",
+  "tracksLearning": "Werte bleiben während der allgemeinen und feldbezogenen Lernphasen unverändert. Spätere Änderungen sind klein und werden protokolliert.",
   "tracksNever": "Noch kein Eintrag",
   "tracksLast": "Zuletzt eingetragen",
   "tracksDisabled": "Aus",
@@ -3794,5 +3794,14 @@
   "tracksDuration": "Dauer, Minuten",
   "tracksDurationRequired": "Gib eine Dauer über null ein, um dieses Training oder Nickerchen anzulegen.",
   "tracksLearningPending": "Lernen ausstehend",
-  "tracksUnlock": "Wert entsperren"
+  "tracksUnlock": "Wert entsperren",
+  "tracksLogEveryTime": "Ich protokolliere jedes Mal",
+  "tracksNoneToday": "Heute nichts?",
+  "tracksGlobalLearning": "Beobachtung · erste 28 Tage",
+  "tracksCannotSeparate": "Noch nicht trennbar",
+  "tracksLearningReady": "Lernen aus vergleichbaren Nächten",
+  "tracksLoggingIncomplete": "Protokollierung bestätigen, um Nächte zu vergleichen",
+  "tracksCoverageHold": "Warten auf vollständigere Aufzeichnungen",
+  "tracksLearningNeedData": "Warten auf vergleichbare Nächte",
+  "tracksAdjustedFor": "Adjusted for: {tracks}"
 }

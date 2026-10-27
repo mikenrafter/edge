@@ -1052,6 +1052,10 @@ Future<Database> _ldbPrivOpen() async {
           // Definitions only; the view projects existing history without a backfill.
           await createTrackTables(db);
         }
+        if (oldV < 83) {
+          // Empty learning state, audit and explicit absence tables.
+          await createTrackTables(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);

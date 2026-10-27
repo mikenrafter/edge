@@ -46,8 +46,10 @@ class WakeNightTimeline {
     this.timeToWake,
     this.snoozeCount = 0,
     this.dream,
+    this.adjustedFor = const {},
   });
   final List<WakeNightEvent> events;
+  final Set<String> adjustedFor;
 
   /// Display projection only. The observed history remains available in [events].
   List<WakeNightEvent> get collapsedEvents {
@@ -169,6 +171,10 @@ class WakeNightTimeline {
           : ack.difference(firstFire),
       snoozeCount: snoozes,
       dream: dream,
+      adjustedFor: {for (final e in trace)
+        if (e.wakeEpochSec == wakeEpochSec && e.kind == 'natural')
+          for (final label in e.data['adjustedFor'] as List? ?? const [])
+            if (label is String) label},
     );
   }
 }

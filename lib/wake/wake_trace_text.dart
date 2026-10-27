@@ -42,7 +42,8 @@ String naturalReasonText(String reason) => switch (reason) {
   'noRemCandidate' => 'you looked to be in light or deep sleep',
   'remNotStable' => 'a REM or awake stage had not lasted long enough yet',
   'policyHold' => 'the current wake policy kept the early buzz quiet',
-  'physiologyUnavailable' => 'there was not enough recent physiology to buzz safely',
+  'physiologyUnavailable' =>
+    'there was not enough recent physiology to buzz safely',
   'hrArousalHold' => 'heart rate did not support an early buzz',
   'motionCeilingHold' => 'recent movement was too high for an early buzz',
   'motionTrendHold' => 'recent movement was not stable enough',
@@ -67,6 +68,12 @@ List<String> describeWakeTrace(List<WakeTraceEntry> trace) {
   final natural = last('natural');
   if (natural != null) {
     out.add('Natural Wake: ${naturalReasonText('${natural.data['reason']}')}');
+  }
+  final adjusted = natural?.data['adjustedFor'];
+  if (adjusted is List &&
+      adjusted.every((v) => v is String) &&
+      adjusted.isNotEmpty) {
+    out.add('Adjusted for: ${adjusted.join(', ')}');
   }
   final haptic = last(
     'natural_haptic',

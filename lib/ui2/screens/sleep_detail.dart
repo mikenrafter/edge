@@ -1445,11 +1445,17 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final annotations = start != null && end != null && end > start
         ? AnnotationSet(items: marks, domainStart: start.toDouble(),
             domainEnd: end.toDouble()) : null;
-    final interval = Text(d.wakeTimeline.timeToWake == null
-        ? (l?.wakeJournalTimeToWakeUnknown ?? 'Time to wake: —')
-        : (l?.wakeJournalTimeToWake(d.wakeTimeline.timeToWake!.inMinutes) ??
-            'Time to wake: ${d.wakeTimeline.timeToWake!.inMinutes} min'),
-        style: F.cap.copyWith(color: p.ink2));
+    final interval = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(d.wakeTimeline.timeToWake == null
+          ? (l?.wakeJournalTimeToWakeUnknown ?? 'Time to wake: —')
+          : (l?.wakeJournalTimeToWake(d.wakeTimeline.timeToWake!.inMinutes) ??
+              'Time to wake: ${d.wakeTimeline.timeToWake!.inMinutes} min'),
+          style: F.cap.copyWith(color: p.ink2)),
+      if (d.wakeTimeline.adjustedFor.isNotEmpty)
+        Text(l?.tracksAdjustedFor((d.wakeTimeline.adjustedFor.toList()..sort()).join(', ')) ??
+            'Adjusted for: ${(d.wakeTimeline.adjustedFor.toList()..sort()).join(', ')}',
+            key: const ValueKey('sleep-track-adjustments'), style: F.cap.copyWith(color: p.ink2)),
+    ]);
     final stages = SleepData.stagesOf(device ?? d.night,
       domainStart: start, domainEnd: end);
     if (stages.isEmpty) {

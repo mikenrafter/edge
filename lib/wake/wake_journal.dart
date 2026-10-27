@@ -6,7 +6,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../data/db.dart';
 import '../data/day_label.dart';
-import 'wake_night_context_db.dart' show profileFromJournalRows;
+import 'wake_night_context_db.dart' show loadWakeProfile;
 import 'wake_confounders.dart';
 import 'natural_wake_tuning.dart';
 import 'wake_orchestrator.dart' show WakeTraceEntry;
@@ -156,6 +156,7 @@ class DbWakeJournal {
     // acknowledgement to manufacture a duration.
     return WakeNightTimeline(
       events: events,
+      adjustedFor: {for (final n in nights) ...n.adjustedFor},
       firstFireAt: primary?.firstFireAt,
       ackAt: primary?.ackAt,
       timeToWake: primary?.timeToWake,
@@ -189,22 +190,17 @@ class DbWakeJournal {
         (context['onset'] as num).toInt(),
       );
       final lead = onset.subtract(const Duration(hours: 6));
-      final from = dayLabelOf(lead), to = dayLabelOf(onset);
+      final from = dayLabelOf(lead);
       var known = true;
       var profile = const ConfounderProfile();
       var alcohol = false;
       try {
-        final js = await db.query(
-          'journal',
-          where: 'date>=? AND date<=?',
-          whereArgs: [from, to],
+        profile = await loadWakeProfile(
+          db,
+          DateTime.parse(from),
+          DateTime(onset.year, onset.month, onset.day + 1),
+          onset,
         );
-        final ms = await db.query(
-          'journal_metric',
-          where: 'date>=? AND date<=?',
-          whereArgs: [from, to],
-        );
-        profile = profileFromJournalRows(js, ms, onset);
         alcohol = profile.learningAlcohol || profile.alcohol;
       } catch (_) {
         known = false;
@@ -216,6 +212,7 @@ class DbWakeJournal {
           dayId: context['day_id'] as String,
           confounderTrack: profile.track | (alcohol ? 1 : 0),
           contextKnown: known,
+          userTrackIds: profile.userTrackIds,
           substance: alcohol ? WakeSubstance.alcohol : null,
           wakeEpochSec: epoch,
           timeToWake: night.timeToWake,
@@ -245,12 +242,59 @@ class DbWakeJournal {
       final track = target?.track ?? 0;
       final current = await _parameters(txn, track: track);
       // A missing target cannot cause an older night's outcome to be applied.
-      final decision = target != null && target.contextKnown
+      final decision =
+          target != null && target.contextKnown && target.userTrackIds.isEmpty
           ? NaturalWakeTuning.evaluate(history, current: current, track: track)
           : NaturalTuningDecision(
               parameters: current,
               reason: 'missing_outcome',
             );
+      if (target != null && target.contextKnown) {
+        for (final id in target.userTrackIds) {
+          final key = _userParameterKey(id, target.userTrackIds, target.track);
+          final rows = await txn.query(
+            'wake_meta',
+            where: 'key = ?',
+            whereArgs: [key],
+          );
+          final data = _map(rows.firstOrNull?['value']);
+          final userCurrent = NaturalWakeParameters(
+            triggerRunOffsetSec:
+                (data['triggerRunOffsetSec'] as num?)?.toInt() ?? 0,
+            windowLeadMinutes:
+                (data['windowLeadMinutes'] as num?)?.toInt() ?? 0,
+            lastLearnedEpoch: (data['lastLearnedEpoch'] as num?)?.toInt(),
+          );
+          final user = NaturalWakeTuning.evaluate(
+            history,
+            current: userCurrent,
+            userTrackId: id,
+            userContext: target.userTrackIds,
+            track: target.track,
+          );
+          if (!user.applied) continue;
+          final values = {
+            'triggerRunOffsetSec': user.parameters.triggerRunOffsetSec,
+            'windowLeadMinutes': user.parameters.windowLeadMinutes,
+            'lastLearnedEpoch': user.parameters.lastLearnedEpoch,
+          };
+          await txn.insert('wake_meta', {
+            'key': key,
+            'value': jsonEncode(values),
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+          await txn.insert('wake_trace', {
+            'wake_epoch': wakeEpochSec,
+            'at_ms': wakeEpochSec * 1000,
+            'kind': 'tune',
+            'data_json': jsonEncode({
+              ...values,
+              'userTrackId': id,
+              'reason': user.reason,
+              'eligibleNights': user.eligibleNights,
+            }),
+          });
+        }
+      }
       if (!decision.applied) return decision;
       final p = decision.parameters;
       final values = <String, Object?>{
@@ -279,6 +323,40 @@ class DbWakeJournal {
 
   Future<NaturalWakeParameters> parameters({int track = 0}) async =>
       _parameters(await LocalDb.instance, track: track);
+
+  Future<NaturalWakeParameters> parametersForProfile(
+    ConfounderProfile profile,
+  ) async {
+    var result = await parameters(track: profile.track);
+    final db = await LocalDb.instance;
+    for (final id in profile.userTrackIds) {
+      final rows = await db.query(
+        'wake_meta',
+        columns: ['value'],
+        where: 'key = ?',
+        whereArgs: [_userParameterKey(id, profile.userTrackIds, profile.track)],
+      );
+      final data = _map(rows.firstOrNull?['value']);
+      result = result.combine(
+        NaturalWakeParameters(
+          triggerRunOffsetSec:
+              (data['triggerRunOffsetSec'] as num?)?.toInt() ?? 0,
+          windowLeadMinutes: (data['windowLeadMinutes'] as num?)?.toInt() ?? 0,
+        ),
+      );
+    }
+    return NaturalWakeParameters(
+      triggerRunOffsetSec: result.triggerRunOffsetSec.clamp(-60, 60),
+      windowLeadMinutes: result.windowLeadMinutes.clamp(-10, 10),
+    );
+  }
+
+  static String _userParameterKey(String id, Set<String> context, int track) {
+    final base = 'natural_wake_user_${Uri.encodeComponent(id)}';
+    if (context.length == 1 && track == 0) return base;
+    final ids = context.toList()..sort();
+    return '${base}_context_${Uri.encodeComponent(jsonEncode([track, ids]))}';
+  }
 
   static String _parameterKey(int track) => track == 0
       ? 'natural_wake_parameters'

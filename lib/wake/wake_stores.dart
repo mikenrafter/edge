@@ -1,3 +1,4 @@
+import 'wake_confounders.dart';
 // wake_stores.dart — the SQLite-backed stores behind the wake orchestrator:
 // the persisted run state, the decision trace, and the Smart Wake upgrade
 // state. The orchestrator itself only sees the interfaces in
@@ -34,8 +35,8 @@ Future<int> loadNaturalWakeLead(
 ) async {
   final context = await sharedWakeNightContext.load(wakeAt, schedule);
   if (context.diagnostic != 'context_ready') return 0;
-  return (await const DbWakeJournal().parameters(
-    track: context.profile.track,
+  return (await const DbWakeJournal().parametersForProfile(
+    context.profile,
   )).windowLeadMinutes.clamp(-10, 10);
 }
 
@@ -47,12 +48,18 @@ class DbWakeStateStore
     implements
         WakeStateStore,
         NaturalWakeParameterStore,
+        NaturalWakeUserParameterStore,
         NaturalWakeContextStore {
   const DbWakeStateStore();
 
   @override
   Future<NaturalWakeParameters> naturalParameters({int track = 0}) =>
       const DbWakeJournal().parameters(track: track);
+
+  @override
+  Future<NaturalWakeParameters> userNaturalParameters(
+    ConfounderProfile profile,
+  ) => const DbWakeJournal().parametersForProfile(profile);
 
   @override
   Future<WakeNightValue> nightContext(

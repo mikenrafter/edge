@@ -3617,7 +3617,7 @@
   "tracksRemove": "移除",
   "tracksRetry": "重试",
   "tracksFailed": "无法保存或读取追踪，请重试。",
-  "tracksLearning": "学习尚未启用，数值保持为输入值。",
+  "tracksLearning": "在全局和各字段学习期间数值保持固定。之后的调整幅度很小，并会记录。",
   "tracksNever": "尚无记录",
   "tracksLast": "上次记录",
   "tracksDisabled": "关闭",
@@ -3688,5 +3688,14 @@
   "tracksDuration": "时长，分钟",
   "tracksDurationRequired": "请输入大于零的时长以创建锻炼或小睡记录。",
   "tracksLearningPending": "等待学习",
-  "tracksUnlock": "解锁数值"
+  "tracksUnlock": "解锁数值",
+  "tracksLogEveryTime": "我每次都记录",
+  "tracksNoneToday": "今天没有？",
+  "tracksGlobalLearning": "观察中 · 前28天",
+  "tracksCannotSeparate": "暂时无法区分",
+  "tracksLearningReady": "从可比夜晚中学习",
+  "tracksLoggingIncomplete": "确认记录完整性以比较夜晚",
+  "tracksCoverageHold": "等待更完整的记录",
+  "tracksLearningNeedData": "等待可比较的夜晚",
+  "tracksAdjustedFor": "Adjusted for: {tracks}"
 }

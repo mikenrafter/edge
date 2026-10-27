@@ -96,7 +96,9 @@ in the same change that introduces it (AGENTS.md §6).
 
 - **Natural learning track**: bounded Natural wake parameters learned only from
   nights with the same recorded active confounder set. Track 0 is clean; other
-  sets use stable bit-set numbers. Each track needs seven complete nights.
+  preset sets use stable bit-set numbers. User sets also include sorted track
+  identities. Each track needs seven complete nights; user tracks first observe
+  for at least 28 days and cannot borrow nights from a different active set.
   Unknown journal context never trains a track. Alcohol intake changes learning
   context even when it precedes the live detector's late-intake cutoff.
 - **Water moment**: one explicitly logged glass with its own identifier, local
@@ -127,11 +129,18 @@ in the same change that introduces it (AGENTS.md §6).
 - **Track**: an editable activity, consumed substance or condition definition,
   with roles, affected systems, optional kinetics and logging history.
 - **Sub-activity**: a named variant within a track, with optional kinetics
-  overrides. Variants share the track's future learning.
+  overrides. Variants share the track's learning.
 - **Track event**: a recorded occurrence with an optional amount and instant.
   Existing workout, medication, nutrition and moment records keep their own
   owners; the Tracks feed reads them without copying them.
 - **Setup history**: inclusive local date ranges when the wearer did or did not
   do an activity. No unadjusted data means that track state is their baseline.
-- **Kinetics lock**: a per-field choice that prevents future learning from
+- **Kinetics lock**: a per-field choice that prevents automatic learning from
   changing that value. Unknown values remain absent.
+
+- **Matched night**: a comparison with similar bedtime, sleep debt, load,
+  weekday and prior rolling baseline, with known logging and enough recording
+  coverage. An association that cannot separate overlapping tracks stays absent.
+- **Learning period**: the global observation floor followed by each field's
+  kinetics-derived gate. Period adjustments and kinetic steps are bounded and
+  recorded in the learning audit.

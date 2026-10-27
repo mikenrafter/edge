@@ -1,10 +1,13 @@
 // SQLite adapter for WakeNightContext. Decoding and policy run in its worker.
 import 'dart:convert';
 import 'dart:isolate';
+import 'package:sqflite/sqflite.dart';
 
 import '../data/db.dart';
 import '../data/day_label.dart';
 import '../data/journal_fields.dart';
+import '../data/track_model.dart';
+import '../data/track_snapshot.dart';
 import '../util/heavy.dart';
 import '../util/worker_init.dart';
 import 'wake_confounders.dart';
@@ -29,7 +32,20 @@ class DbWakeNightSource implements WakeNightSource {
       "SELECT group_concat(v, '|') AS rev FROM (SELECT quote(date)||quote(field)||quote(value)||quote(at_min)||quote(updated_at) AS v FROM journal_metric WHERE date>=? AND date<? ORDER BY date,field)",
       args,
     );
-    return '${j.single['rev']}/${m.single['rev']}';
+    final t = await db.rawQuery(
+      "SELECT group_concat(v, '|') AS rev FROM (SELECT quote(id)||quote(payload_json) AS v FROM track_definition ORDER BY id)",
+    );
+    final e = await db.rawQuery(
+      "SELECT group_concat(v, '|') AS rev FROM (SELECT quote(id)||quote(at_ms)||quote(amount)||quote(sub_activity_id)||quote(unit) AS v FROM track_event_feed WHERE date>=? AND date<? ORDER BY id)",
+      args,
+    );
+    final h = await db.rawQuery(
+      "SELECT group_concat(quote(id)||quote(start_date)||quote(end_date)||quote(done), '|') AS rev FROM track_setup_history",
+    );
+    final med = await db.rawQuery(
+      "SELECT group_concat(v, '|') AS rev FROM (SELECT quote(key)||quote(label)||quote(dose_unit)||quote(active) AS v FROM med_def ORDER BY key)",
+    );
+    return '${j.single['rev']}/${m.single['rev']}/${t.single['rev']}/${e.single['rev']}/${h.single['rev']}/${med.single['rev']}';
   }
 
   @override
@@ -38,32 +54,56 @@ class DbWakeNightSource implements WakeNightSource {
     DateTime to,
     DateTime? expectedBedtime,
   ) async {
-    final db = await LocalDb.instance;
-    final args = [dayLabelOf(from), dayLabelOf(to)];
-    final journal = await db.query(
-      'journal',
-      columns: ['date', 'tags_json'],
-      where: 'date>=? AND date<?',
-      whereArgs: args,
-    );
-    final metrics = await db.query(
-      'journal_metric',
-      columns: ['date', 'field', 'value', 'at_min'],
-      where: 'date>=? AND date<?',
-      whereArgs: args,
-    );
-    final input = WakeProfileInput(
-      journal,
-      metrics,
-      expectedBedtime?.millisecondsSinceEpoch,
-      WorkerInputs(
-        nowEpochMs: from.millisecondsSinceEpoch,
-        zoneId: 'UTC',
-        localeTag: 'en',
-      ),
-    );
-    return Isolate.run(() => wakeProfileHeavy(input));
+    return loadWakeProfile(await LocalDb.instance, from, to, expectedBedtime);
   }
+}
+
+Future<ConfounderProfile> loadWakeProfile(
+  DatabaseExecutor db,
+  DateTime from,
+  DateTime to,
+  DateTime? bedtime,
+) async {
+  final args = [dayLabelOf(from), dayLabelOf(to)];
+  final journal = await db.query(
+    'journal',
+    columns: ['date', 'tags_json'],
+    where: 'date>=? AND date<?',
+    whereArgs: args,
+  );
+  final metrics = await db.query(
+    'journal_metric',
+    columns: ['date', 'field', 'value', 'at_min'],
+    where: 'date>=? AND date<?',
+    whereArgs: args,
+  );
+  final definitions = await db.query('track_definition');
+  final medications = await db.query('med_def');
+  final events = await db.query(
+    'track_event_feed',
+    where: 'date>=? AND date<?',
+    whereArgs: args,
+  );
+  final history = await db.query(
+    'track_setup_history',
+    where: 'start_date<? AND end_date>=?',
+    whereArgs: [args[1], args[0]],
+  );
+  final input = WakeProfileInput(
+    journal,
+    metrics,
+    bedtime?.millisecondsSinceEpoch,
+    WorkerInputs(
+      nowEpochMs: from.millisecondsSinceEpoch,
+      zoneId: 'UTC',
+      localeTag: 'en',
+    ),
+    definitions: definitions,
+    medications: medications,
+    events: events,
+    history: history,
+  );
+  return Isolate.run(() => wakeProfileHeavy(input));
 }
 
 @SendableShape(
@@ -71,27 +111,80 @@ class DbWakeNightSource implements WakeNightSource {
 )
 class WakeProfileInput {
   final List<Map<String, Object?>> journal, metrics;
+  final List<Map<String, Object?>> definitions, events, history, medications;
   final int? bedtimeMs;
   final WorkerInputs worker;
   const WakeProfileInput(
     this.journal,
     this.metrics,
     this.bedtimeMs,
-    this.worker,
-  );
+    this.worker, {
+    this.definitions = const [],
+    this.medications = const [],
+    this.events = const [],
+    this.history = const [],
+  });
 }
 
 @heavy
 ConfounderProfile wakeProfileHeavy(WakeProfileInput input) {
   WorkerInit.ensure(input.worker);
   assertWorker();
-  return profileFromJournalRows(
+  final preset = profileFromJournalRows(
     input.journal,
     input.metrics,
     input.bedtimeMs == null
         ? null
         : DateTime.fromMillisecondsSinceEpoch(input.bedtimeMs!),
   );
+  if (input.bedtimeMs == null) return preset;
+  return preset.combine(trackContextHeavy(input));
+}
+
+@heavy
+ConfounderProfile trackContextHeavy(WakeProfileInput input) {
+  final bedtime = input.bedtimeMs!;
+  final date = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(bedtime));
+  final events = [for (final r in input.events) TrackEvent.fromJson(r)];
+  var result = ConfounderProfile.identity;
+  for (final d in decodeTrackDefinitionsHeavy(
+    input.definitions,
+    input.medications,
+  )) {
+    if (!d.enabled ||
+        !d.roles.contains('own_sleep') ||
+        !d.systems.contains('sleep')) {
+      continue;
+    }
+    final active = events
+        .where(
+          (e) =>
+              e.trackId == d.id &&
+              e.atMs != null &&
+              e.atMs! <= bedtime &&
+              bedtime - e.atMs! <= const Duration(hours: 24).inMilliseconds,
+        )
+        .toList();
+    final knownDone = input.history.any(
+      (h) =>
+          h['track_id'] == d.id &&
+          h['done'] == 1 &&
+          (h['start_date'] as String).compareTo(date) <= 0 &&
+          (h['end_date'] as String).compareTo(date) >= 0,
+    );
+    if (active.isEmpty && !knownDone) continue;
+    active.sort((a, b) => b.atMs!.compareTo(a.atMs!));
+    final lead = active.isEmpty
+        ? null
+        : (bedtime - active.first.atMs!) / 3600000;
+    final label = lead == null
+        ? d.name
+        : '${d.name} ${lead == lead.roundToDouble() ? lead.toInt() : lead.toStringAsFixed(1)} h before bed';
+    result = result.combine(
+      ConfounderProfile(userTrackIds: {d.id}, adjustedFor: {label}),
+    );
+  }
+  return result;
 }
 
 // Bounded to the sleep occurrence's journal dates. Both live policy and outcome

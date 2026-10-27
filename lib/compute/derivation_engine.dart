@@ -20,6 +20,7 @@
 // metric_series each time.
 
 import '../data/activity_store.dart';
+import '../data/tracks_store.dart';
 import '../data/db/group_row_store.dart' show captureInputStampBestEffort, captureMetricSeriesRevs, stampNotLaterThan;
 import '../data/db/input_read_tracker.dart';
 import '../data/db/input_revision_store.dart' show observeInputZone, inputRevSnapshot;
@@ -5462,8 +5463,14 @@ class DerivationEngine {
     return builtFor is String && builtFor.isNotEmpty && builtFor == today;
   }
 
-  Future<bool> _runCrossDay(Profile profile) =>
-      perf.stage('crossday', () => _runCrossDayUntimed(profile));
+  Future<bool> _runCrossDay(Profile profile) async {
+    final changed = await perf.stage('crossday', () => _runCrossDayUntimed(profile));
+    // Learning follows persisted nights in every foreground/background pass.
+    // Its failure must not prevent notifications or retention housekeeping.
+    try { await TracksStore(await LocalDb.instance).refreshLearning(); }
+    catch (e) { _log('track learning held: $e'); }
+    return changed;
+  }
 
 
   /// How many times the cross-day bundle was actually computed (not reused).
@@ -5473,7 +5480,7 @@ class DerivationEngine {
   int get debugCrossDayComputed => _crossDayComputed;
 
   @visibleForTesting
-  Future<void> runCrossDayForTest(Profile profile) => _runCrossDayUntimed(profile);
+  Future<void> runCrossDayForTest(Profile profile) => _runCrossDay(profile);
 
   @visibleForTesting
   Future<List<Map<String, dynamic>>> refreshCrossDayInputForTest() =>

@@ -2,6 +2,7 @@
 // source sections retain ownership of linked records.
 import 'package:flutter/material.dart';
 import '../../data/db.dart';
+import '../../data/day_label.dart';
 import '../../data/tracks_store.dart';
 import '../../state/clock_format.dart';
 import '../ui2.dart';
@@ -25,6 +26,7 @@ class _TracksScreenState extends State<TracksScreen> {
   TracksStore? _store;
   List<TrackDefinition>? _tracks;
   Map<String, TrackEvent> _lastEvents = const {};
+  Map<String, Map<String, Object?>> _learning = const {};
   bool _failed = false;
   @override
   void initState() {
@@ -36,12 +38,14 @@ class _TracksScreenState extends State<TracksScreen> {
     if (mounted) setState(() => _failed = false);
     try {
       final store = widget.store ?? TracksStore(await LocalDb.instance);
+      final learning = await store.refreshLearning();
       final tracks = await store.definitions();
       final events = await store.lastEvents();
       if (!mounted) return;
       setState(() {
         _store = store;
         _tracks = tracks;
+        _learning = learning;
         _lastEvents = events;
       });
     } catch (_) {
@@ -105,6 +109,7 @@ class _TracksScreenState extends State<TracksScreen> {
         _TrackCard(
           track: track,
           last: _lastEvents[track.id],
+          learning: _learning[track.id],
           onTap: () => _open(track),
         ),
         const SizedBox(height: S.x2),
@@ -140,7 +145,13 @@ class _TracksScreenState extends State<TracksScreen> {
 }
 
 class _TrackCard extends StatelessWidget {
-  const _TrackCard({required this.track, this.last, required this.onTap});
+  const _TrackCard({
+    required this.track,
+    this.last,
+    this.learning,
+    required this.onTap,
+  });
+  final Map<String, Object?>? learning;
   final TrackDefinition track;
   final TrackEvent? last;
   final VoidCallback onTap;
@@ -175,7 +186,10 @@ class _TrackCard extends StatelessWidget {
                   ),
               ],
             ),
-            Text(tracksText(context, 'LearningPending'), style: F.cap),
+            Text(
+              trackLearningText(context, learning?['reason'] as String?),
+              style: F.cap,
+            ),
             Text(
               last == null
                   ? tracksText(context, 'Never')
@@ -238,6 +252,7 @@ class TrackDetailScreen extends StatefulWidget {
 class _TrackDetailScreenState extends State<TrackDetailScreen> {
   late TrackDefinition _track = widget.track;
   List<TrackEvent>? _events;
+  Map<String, Object?>? _learning;
   bool _failed = false, _busy = false;
   @override
   void initState() {
@@ -247,10 +262,16 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
 
   Future<void> _load() async {
     try {
+      final learning = await widget.store.refreshLearning();
       final events = await widget.store.events(trackId: _track.id);
+      final definition = (await widget.store.definitions()).firstWhere(
+        (d) => d.id == _track.id,
+      );
       if (mounted) {
         setState(() {
           _events = events;
+          _track = definition;
+          _learning = learning[_track.id];
           _failed = false;
         });
       }
@@ -286,7 +307,52 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
   Widget build(BuildContext context) {
     String text(String key) => tracksText(context, key);
     return detailScaffold(context, _track.name, [
-      Text(text('Learning')),
+      Text(
+        trackLearningText(context, _learning?['reason'] as String?),
+        key: const ValueKey('track-learning-status'),
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(text('LogEveryTime')),
+        value: _track.loggingComplete,
+        onChanged: _busy
+            ? null
+            : (value) async {
+                setState(() => _busy = true);
+                try {
+                  final updated = TrackDefinition.fromJson({
+                    ..._track.toJson(),
+                    'logging_complete': value,
+                    'logging_complete_since_ms': value
+                        ? DateTime.now().millisecondsSinceEpoch
+                        : null,
+                  });
+                  await widget.store.saveDefinition(updated);
+                  if (mounted) setState(() => _track = updated);
+                  await _load();
+                } catch (_) {
+                  if (mounted) setState(() => _failed = true);
+                } finally {
+                  if (mounted) setState(() => _busy = false);
+                }
+              },
+      ),
+      TextButton(
+        onPressed: _busy
+            ? null
+            : () async {
+                setState(() => _busy = true);
+                try {
+                  await widget.store.confirmNone(_track.id, todayLabel());
+                  await _load();
+                } catch (_) {
+                  if (mounted) setState(() => _failed = true);
+                } finally {
+                  if (mounted) setState(() => _busy = false);
+                }
+              },
+        child: Text(text('NoneToday')),
+      ),
       Wrap(
         spacing: S.x2,
         children: [

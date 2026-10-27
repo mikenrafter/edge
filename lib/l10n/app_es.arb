@@ -3635,7 +3635,7 @@
   "tracksRemove": "Eliminar",
   "tracksRetry": "Reintentar",
   "tracksFailed": "No se pudieron guardar o leer los registros. Reinténtalo.",
-  "tracksLearning": "El aprendizaje aún no está activo. Los valores se conservan.",
+  "tracksLearning": "Los valores se mantienen durante los periodos de aprendizaje global y por campo. Los cambios posteriores son pequeños y quedan registrados.",
   "tracksNever": "Aún sin registros",
   "tracksLast": "Último registro",
   "tracksDisabled": "Desactivado",
@@ -3706,5 +3706,14 @@
   "tracksDuration": "Duración, minutos",
   "tracksDurationRequired": "Introduce una duración mayor que cero para crear el entrenamiento o la siesta.",
   "tracksLearningPending": "Aprendizaje pendiente",
-  "tracksUnlock": "Desbloquear valor"
+  "tracksUnlock": "Desbloquear valor",
+  "tracksLogEveryTime": "Lo registro siempre",
+  "tracksNoneToday": "¿Nada hoy?",
+  "tracksGlobalLearning": "Observando · primeros 28 días",
+  "tracksCannotSeparate": "Aún no se pueden separar",
+  "tracksLearningReady": "Aprendiendo de noches comparables",
+  "tracksLoggingIncomplete": "Confirma el registro para comparar noches",
+  "tracksCoverageHold": "Esperando mejor cobertura de registro",
+  "tracksLearningNeedData": "Esperando noches comparables",
+  "tracksAdjustedFor": "Adjusted for: {tracks}"
 }

@@ -3617,7 +3617,7 @@
   "tracksRemove": "हटाएँ",
   "tracksRetry": "फिर कोशिश करें",
   "tracksFailed": "ट्रैक पढ़ या सहेज नहीं सके। फिर कोशिश करें।",
-  "tracksLearning": "सीखना अभी शुरू नहीं है। दर्ज मान बने रहेंगे।",
+  "tracksLearning": "सामान्य और प्रत्येक फ़ील्ड की सीखने की अवधि में मान स्थिर रहते हैं। बाद के छोटे बदलाव दर्ज किए जाते हैं।",
   "tracksNever": "अभी कुछ दर्ज नहीं",
   "tracksLast": "अंतिम प्रविष्टि",
   "tracksDisabled": "बंद",
@@ -3688,5 +3688,14 @@
   "tracksDuration": "अवधि, मिनट",
   "tracksDurationRequired": "यह कसरत या झपकी बनाने के लिए शून्य से अधिक अवधि दर्ज करें।",
   "tracksLearningPending": "सीखना बाकी है",
-  "tracksUnlock": "मान अनलॉक करें"
+  "tracksUnlock": "मान अनलॉक करें",
+  "tracksLogEveryTime": "मैं हर बार दर्ज करता हूँ",
+  "tracksNoneToday": "आज कुछ नहीं?",
+  "tracksGlobalLearning": "अवलोकन · पहले 28 दिन",
+  "tracksCannotSeparate": "अभी अलग नहीं कर सकते",
+  "tracksLearningReady": "तुलनीय रातों से सीखना",
+  "tracksLoggingIncomplete": "रातों की तुलना के लिए लॉग की पुष्टि करें",
+  "tracksCoverageHold": "बेहतर रिकॉर्डिंग कवरेज की प्रतीक्षा",
+  "tracksLearningNeedData": "तुलनीय रातों की प्रतीक्षा",
+  "tracksAdjustedFor": "Adjusted for: {tracks}"
 }

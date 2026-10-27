@@ -3617,7 +3617,7 @@
   "tracksRemove": "Supprimer",
   "tracksRetry": "Réessayer",
   "tracksFailed": "Impossible de lire ou enregistrer les suivis. Réessayez.",
-  "tracksLearning": "L’apprentissage n’est pas encore actif. Les valeurs saisies sont conservées.",
+  "tracksLearning": "Les valeurs restent fixes pendant les périodes d’apprentissage globale et par champ. Les changements suivants sont petits et consignés.",
   "tracksNever": "Aucune entrée",
   "tracksLast": "Dernière entrée",
   "tracksDisabled": "Désactivé",
@@ -3688,5 +3688,14 @@
   "tracksDuration": "Durée, minutes",
   "tracksDurationRequired": "Saisissez une durée supérieure à zéro pour créer cet entraînement ou cette sieste.",
   "tracksLearningPending": "Apprentissage en attente",
-  "tracksUnlock": "Déverrouiller la valeur"
+  "tracksUnlock": "Déverrouiller la valeur",
+  "tracksLogEveryTime": "Je note chaque fois",
+  "tracksNoneToday": "Rien aujourd’hui ?",
+  "tracksGlobalLearning": "Observation · 28 premiers jours",
+  "tracksCannotSeparate": "Pas encore dissociable",
+  "tracksLearningReady": "Apprentissage avec des nuits comparables",
+  "tracksLoggingIncomplete": "Confirmez le suivi pour comparer les nuits",
+  "tracksCoverageHold": "En attente de meilleurs enregistrements",
+  "tracksLearningNeedData": "En attente de nuits comparables",
+  "tracksAdjustedFor": "Adjusted for: {tracks}"
 }

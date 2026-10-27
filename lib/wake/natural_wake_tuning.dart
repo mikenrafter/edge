@@ -11,6 +11,20 @@ class NaturalWakeParameters {
   });
   final int triggerRunOffsetSec, windowLeadMinutes;
   final int? lastLearnedEpoch;
+  // Keep the strongest learned offset once per field. Absolute magnitude orders
+  // signed offsets; positive wins ties. Zero is identity, so overlap cannot
+  // multiply a nudge learned from the same set of nights.
+  NaturalWakeParameters combine(NaturalWakeParameters other) {
+    int strongest(int a, int b) =>
+        a.abs() == b.abs() ? (a > b ? a : b) : (a.abs() > b.abs() ? a : b);
+    return NaturalWakeParameters(
+      triggerRunOffsetSec: strongest(
+        triggerRunOffsetSec,
+        other.triggerRunOffsetSec,
+      ),
+      windowLeadMinutes: strongest(windowLeadMinutes, other.windowLeadMinutes),
+    );
+  }
 }
 
 class NaturalTuningDecision {
@@ -38,6 +52,8 @@ abstract final class NaturalWakeTuning {
     NaturalWakeParameters current = const NaturalWakeParameters(),
     WakeSubstance? tonightSubstance,
     int? track,
+    String? userTrackId,
+    Set<String>? userContext,
   }) {
     // The first occurrence represents each canonical sleep day. Later alarms
     // that day cannot add evidence or turn a replay into another nightly step.
@@ -52,8 +68,21 @@ abstract final class NaturalWakeTuning {
         (tonightSubstance == WakeSubstance.alcohol
             ? 1
             : nights.values.lastOrNull?.track ?? 0);
+    final context =
+        userContext ??
+        nights.values.lastOrNull?.userTrackIds ??
+        const <String>{};
     final selected = nights.values
-        .where((n) => n.contextKnown && n.track == selectedTrack)
+        .where(
+          (n) =>
+              n.contextKnown &&
+              (userTrackId == null
+                  ? n.track == selectedTrack && n.userTrackIds.isEmpty
+                  : n.track == selectedTrack &&
+                        n.userTrackIds.contains(userTrackId) &&
+                        n.userTrackIds.length == context.length &&
+                        n.userTrackIds.containsAll(context)),
+        )
         .toList();
     bool complete(WakeNightOutcome n) =>
         n.timeToWake != null &&
@@ -84,6 +113,11 @@ abstract final class NaturalWakeTuning {
     if (selected.isEmpty) return result('no_outcomes');
     final latest = selected.last;
     if (!complete(latest)) return result('ineligible_outcome');
+    if (userTrackId != null &&
+        latest.wakeEpochSec - selected.first.wakeEpochSec <
+            const Duration(days: 28).inSeconds) {
+      return result('global_learning');
+    }
     if (eligible.length < 7) return result('insufficient_nights');
     final learned = current.lastLearnedEpoch;
     if (learned != null &&

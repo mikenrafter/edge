@@ -10,7 +10,9 @@ class WakeJournalDay {
   const WakeJournalDay(this.date, this.tags, this.metrics);
 }
 
-@sendable
+@SendableShape(
+  'Immutable scalar fields and string sets; sendable_wakeProfileHeavy_test',
+)
 class ConfounderProfile {
   final double hrArousalBpm, motionCeilingG;
   final int protectionMinutes, trendWindowMinutes;
@@ -21,7 +23,10 @@ class ConfounderProfile {
       sick,
       lateMeal,
       workout;
+  final Set<String> userTrackIds, adjustedFor;
   const ConfounderProfile({
+    this.userTrackIds = const {},
+    this.adjustedFor = const {},
     this.hrArousalBpm = 4,
     this.motionCeilingG = .08,
     this.protectionMinutes = 5,
@@ -56,6 +61,8 @@ class ConfounderProfile {
     motionCeilingG: math.min(motionCeilingG, other.motionCeilingG),
     protectionMinutes: math.max(protectionMinutes, other.protectionMinutes),
     trendWindowMinutes: math.max(trendWindowMinutes, other.trendWindowMinutes),
+    userTrackIds: {...userTrackIds, ...other.userTrackIds},
+    adjustedFor: {...adjustedFor, ...other.adjustedFor},
     learningAlcohol: learningAlcohol || other.learningAlcohol,
     alcohol: alcohol || other.alcohol,
     caffeine: caffeine || other.caffeine,
@@ -67,6 +74,10 @@ class ConfounderProfile {
   @override
   bool operator ==(Object other) =>
       other is ConfounderProfile &&
+      userTrackIds.length == other.userTrackIds.length &&
+      userTrackIds.containsAll(other.userTrackIds) &&
+      adjustedFor.length == other.adjustedFor.length &&
+      adjustedFor.containsAll(other.adjustedFor) &&
       hrArousalBpm == other.hrArousalBpm &&
       motionCeilingG == other.motionCeilingG &&
       protectionMinutes == other.protectionMinutes &&
@@ -80,6 +91,8 @@ class ConfounderProfile {
       lateMeal == other.lateMeal;
   @override
   int get hashCode => Object.hash(
+    Object.hashAllUnordered(userTrackIds),
+    Object.hashAllUnordered(adjustedFor),
     hrArousalBpm,
     motionCeilingG,
     protectionMinutes,

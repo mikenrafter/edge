@@ -7,6 +7,10 @@ import 'package:openstrap_edge/data/tracks_store.dart';
 import 'package:openstrap_edge/ui2/screens/track_editor.dart';
 import 'package:openstrap_edge/ui2/screens/track_log.dart';
 import 'package:openstrap_edge/ui2/screens/tracks_screen.dart';
+import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
+import 'package:openstrap_edge/wake/wake_timeline.dart';
+import 'package:openstrap_edge/wake/wake_orchestrator.dart';
+import '../wake_journal/wake_widgets_test.dart' show sleepFixture;
 import '../backup/backup_support.dart';
 import '../support/bundled_fonts.dart';
 import 'ui_support.dart';
@@ -47,6 +51,69 @@ void main() {
     );
   }, tags: ['golden']);
 
+  testWidgets('Track learning status golden', (t) async {
+    final caffeine = (await t.runAsync(
+      store.definitions,
+    ))!.firstWhere((d) => d.id == 'caffeine');
+    await t.runAsync(
+      () => store.saveDefinition(
+        TrackDefinition.fromJson({
+          ...caffeine.toJson(),
+          'logging_complete': true,
+          'logging_complete_since_ms': DateTime.utc(
+            2026,
+            10,
+            27,
+          ).millisecondsSinceEpoch,
+        }),
+      ),
+    );
+    final saved = (await t.runAsync(
+      store.definitions,
+    ))!.firstWhere((d) => d.id == 'caffeine');
+    await mountTracks(t, TrackDetailScreen(store: store, track: saved));
+    await settleTracks(t, store);
+    expect(find.text('I log every time'), findsOneWidget);
+    expect(t.takeException(), isNull);
+    await expectLater(
+      find.byKey(tracksBoundary),
+      matchesGoldenFile('goldens/track_learning.png'),
+    );
+  }, tags: ['golden']);
+  testWidgets('Sleep track adjustments golden', (t) async {
+    final fixture = sleepFixture();
+    final timeline = WakeNightTimeline.forEpoch(
+      wakeEpochSec: 1,
+      trace: [
+        const WakeTraceEntry(
+          wakeEpochSec: 1,
+          atMs: 1,
+          kind: 'natural',
+          data: {
+            'reason': 'fire',
+            'adjustedFor': ['Caffeine 6 h before bed'],
+          },
+        ),
+      ],
+    );
+    await mountTracks(
+      t,
+      SleepDetail(
+        data: SleepData(
+          day: fixture.day,
+          night: fixture.night,
+          wakeTimeline: timeline,
+        ),
+      ),
+    );
+    await settleTracks(t, store);
+    expect(find.text('Adjusted for: Caffeine 6 h before bed'), findsOneWidget);
+    expect(t.takeException(), isNull);
+    await expectLater(
+      find.byKey(tracksBoundary),
+      matchesGoldenFile('goldens/track_sleep_adjustments.png'),
+    );
+  }, tags: ['golden']);
   testWidgets('Track editor golden', (t) async {
     final caffeine = (await t.runAsync(
       () => store.definitions(),

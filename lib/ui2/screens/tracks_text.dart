@@ -5,6 +5,18 @@ import '../../l10n/app_localizations.dart';
 String tracksText(BuildContext context, String key) {
   final l = AppLocalizations.of(context);
   return switch (key) {
+    'LearningNeedData' =>
+      l?.tracksLearningNeedData ?? "Waiting for comparable nights",
+    'CoverageHold' =>
+      l?.tracksCoverageHold ?? "Waiting for better recording coverage",
+    'LoggingIncomplete' =>
+      l?.tracksLoggingIncomplete ?? "Confirm logging to compare nights",
+    'LearningReady' => l?.tracksLearningReady ?? "Learning from matched nights",
+    'CannotSeparate' => l?.tracksCannotSeparate ?? "Can't separate yet",
+    'GlobalLearning' =>
+      l?.tracksGlobalLearning ?? "Observing \u00b7 first 28 days",
+    'NoneToday' => l?.tracksNoneToday ?? "None today?",
+    'LogEveryTime' => l?.tracksLogEveryTime ?? "I log every time",
     'Title' => l?.tracksTitle ?? "Tracks",
     'Subtitle' => l?.tracksSubtitle ?? "Your activities, timing and context",
     'QuickLog' => l?.tracksQuickLog ?? "Log a track",
@@ -130,3 +142,14 @@ const trackKineticLabels = <String, String>{
   'tolerance_days': 'Tolerance',
   'withdrawal_days': 'Withdrawal',
 };
+
+String trackLearningText(BuildContext context, String? reason) =>
+    tracksText(context, switch (reason) {
+      'global_learning' => 'GlobalLearning',
+      'cannot_separate' => 'CannotSeparate',
+      'estimated' || 'supported' => 'LearningReady',
+      'logging_incomplete' => 'LoggingIncomplete',
+      'coverage' => 'CoverageHold',
+      null => 'LearningPending',
+      _ => 'LearningNeedData',
+    });
