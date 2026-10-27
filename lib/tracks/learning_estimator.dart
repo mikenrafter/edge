@@ -35,8 +35,9 @@ class TrackEffectEstimator {
       final hours =
           (bedtime.millisecondsSinceEpoch - at) / Duration.millisecondsPerHour;
       if (hours < 0 || hours > 48) continue;
-      final amount = event.amount;
-      if (amount == null || !amount.isFinite || amount < 0) {
+      // ↳ CLAIM(unit-abstain)
+      final amount = _amountInTrackUnit(track, event);
+      if (amount == null) {
         unknownDose = true;
         unknownResidual = true;
         continue;
@@ -232,6 +233,19 @@ class TrackEffectEstimator {
       kineticTargets: _validatedKineticTargets(track, system, pairs, this),
     );
   }
+}
+
+// CLAIM(unit-abstain): an event amount enters dose fitting only when its unit
+// equals the track's current unit (empty means unstated, taken as compatible);
+// any other unit is an unsupported conversion and leaves the amount unknown
+// [S3; track_effect_estimator_test].
+double? _amountInTrackUnit(TrackDefinition track, TrackEvent event) {
+  final amount = event.amount;
+  if (amount == null || !amount.isFinite || amount < 0) return null;
+  final unit = event.unit?.trim().toLowerCase() ?? '';
+  final expected = track.unit.trim().toLowerCase();
+  if (unit.isNotEmpty && expected.isNotEmpty && unit != expected) return null;
+  return amount;
 }
 
 class _LearningRow {

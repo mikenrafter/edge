@@ -657,4 +657,66 @@ void main() {
       }
     },
   );
+
+  // WHY S3: after caffeine changed from mg to cups, 100 historical mg and 2 new
+  // cups were summed into one dose scale (dose 102). proves: CLAIM(unit-abstain)
+  test('amounts in another unit than the track abstain instead of summing', () {
+    final bedtime = DateTime.utc(2025, 1, 2, 22);
+    TrackEvent event(String id, double amount, String? unit, int hoursBefore) =>
+        TrackEvent(
+          id: id,
+          trackId: 'a',
+          date: '2025-01-02',
+          amount: amount,
+          unit: unit,
+          atMs: bedtime
+              .subtract(Duration(hours: hoursBefore))
+              .millisecondsSinceEpoch,
+        );
+    final cups = TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      unit: 'cups',
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+      }),
+    );
+    final mixed = estimator.features(cups, [
+      event('old', 100, 'mg', 8),
+      event('new', 2, 'cups', 2),
+    ], bedtime);
+    expect(mixed.dose, isNull);
+    expect(mixed.residualMg, isNull);
+    // Positive control: same-unit (and unstated-unit) amounts still add.
+    final same = estimator.features(cups, [
+      event('a1', 1, 'cups', 8),
+      event('a2', 2, null, 2),
+    ], bedtime);
+    expect(same.dose, 3);
+    // The slow-history window applies the same rule to a 10-day-old mg dose.
+    final slowTrack = TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      unit: 'cups',
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+        'tolerance_days': TrackKineticField(value: 1),
+        'withdrawal_days': TrackKineticField(value: 1),
+      }),
+    );
+    final slowSame = estimator.features(slowTrack, [
+      event('old', 1, 'cups', 24 * 5),
+      event('new', 2, 'cups', 2),
+    ], bedtime, historyComplete: true);
+    expect(slowSame.effectiveResidual, isNotNull, reason: 'positive control');
+    final slow = estimator.features(slowTrack, [
+      event('old', 100, 'mg', 24 * 5),
+      event('new', 2, 'cups', 2),
+    ], bedtime, historyComplete: true);
+    expect(slow.effectiveResidual, isNull);
+  });
 }

@@ -66,8 +66,9 @@ _HistoryExposure? _historyExposure(
         timestamp > bedtime.millisecondsSinceEpoch) {
       continue;
     }
-    final amount = event.amount;
-    if (amount == null || !amount.isFinite || amount < 0) return null;
+    // ↳ CLAIM(unit-abstain)
+    final amount = _amountInTrackUnit(track, event);
+    if (amount == null) return null;
     final date = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(timestamp));
     doses[date] = (doses[date] ?? 0) + amount;
   }
