@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:sqflite/sqflite.dart';
 import '../models/activity_suggestion.dart';
 import '../tracks/detection.dart';
+import '../tracks/detection_windows.dart';
 import '../tracks/experiment.dart';
 import '../tracks/learning_worker.dart';
 import '../util/worker_init.dart';
@@ -42,6 +43,32 @@ class TracksStore {
     required List<Map<String, Object?>> windows,
     DateTime? asOf,
   }) => _refreshDetections(date: date, windows: windows, asOf: asOf);
+
+  /// [refreshDetections] fed by a derived day's stored curves; see
+  /// TracksDetectionStore. Also returns `abstained` (typed reasons).
+  Future<Map<String, Object?>> refreshFromDerivedDay({
+    required String date,
+    required List<Object?> hrCurve,
+    required List<Object?> hrvTimeline,
+    required List<Object?> activityCurve,
+    required int sleepOnsetSec,
+    required int sleepOffsetSec,
+    required List<double> rhrHistory,
+    required List<double> rmssdHistory,
+    required bool dayComplete,
+    DateTime? asOf,
+  }) => _refreshFromDerivedDay(
+    date: date,
+    hrCurve: hrCurve,
+    hrvTimeline: hrvTimeline,
+    activityCurve: activityCurve,
+    sleepOnsetSec: sleepOnsetSec,
+    sleepOffsetSec: sleepOffsetSec,
+    rhrHistory: rhrHistory,
+    rmssdHistory: rmssdHistory,
+    dayComplete: dayComplete,
+    asOf: asOf,
+  );
 
   Future<Map<String, Object?>> startExperiment({
     required String trackId,

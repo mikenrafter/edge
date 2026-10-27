@@ -53,6 +53,10 @@ class LearnedSignature {
   final double effect;
 }
 
+/// Why a detector with the right window still said nothing. Abstaining is a
+/// typed answer, not a quiet fall-through to another signal.
+enum DetectionAbstain { noHrvSeries, noBaseline }
+
 class TrackDetectors {
   const TrackDetectors();
   static const minCoverage = .5;
@@ -89,6 +93,24 @@ class TrackDetectors {
     return hr - base >= alcoholHrRise && rmssd <= baseRmssd * alcoholRmssdRatio
         ? 'early_sleep_hr_hrv'
         : null;
+  }
+
+  /// Why [alcohol] cannot judge an early-sleep window that is otherwise usable,
+  /// or null when it can (it then matches or does not). A heart-rate rise alone
+  /// is never enough, so a missing HRV series is a stated abstention.
+  DetectionAbstain? alcoholAbstain(DetectionWindow w, Set<String> systems) {
+    if (!systems.containsAll(const ['hr', 'hrv']) ||
+        w.phase != 'early_sleep' ||
+        !_usable(w) ||
+        w.hr == null) {
+      return null;
+    }
+    if (w.rmssd == null) return DetectionAbstain.noHrvSeries;
+    final baseRmssd = w.baselineRmssd;
+    if (w.baselineHr == null || baseRmssd == null || baseRmssd <= 0) {
+      return DetectionAbstain.noBaseline;
+    }
+    return null;
   }
 
   /// A resting heart-rate jump with measured low motion.

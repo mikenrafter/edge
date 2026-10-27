@@ -69,6 +69,7 @@ extension TracksDetectionStore on TracksStore {
     required String date,
     required List<Map<String, Object?>> windows,
     DateTime? asOf,
+    bool askMinimum = true,
   }) async {
     if (!TracksStore._validDay(date)) throw ArgumentError('date');
     final nowMs = (asOf ?? DateTime.now()).millisecondsSinceEpoch;
@@ -87,6 +88,7 @@ extension TracksDetectionStore on TracksStore {
         if (t.roles.contains('detectable')) t,
     ];
     final candidates = <ActivitySuggestion>[];
+    final abstained = <Map<String, Object?>>[];
     final promptTracks = <String>{};
     final day = DateTime.parse(date);
     final dayStart = DateTime(day.year, day.month, day.day);
@@ -97,10 +99,22 @@ extension TracksDetectionStore on TracksStore {
           ? const <LearnedSignature>[]
           : await _learnedSignatures(track, nowMs);
       final systems = track.systems.toSet();
+      var lastEnd = 0;
       for (final window in today) {
         if (count >= track.detectionMax) break;
+        // Back-to-back windows are one event, not one per window.
+        if (window.startTs <= lastEnd) continue;
         final reason = _reasonFor(track.id, window, systems, learned);
-        if (reason == null) continue;
+        if (reason == null) {
+          final why = track.id == 'alcohol'
+              ? _detectors.alcoholAbstain(window, systems)
+              : null;
+          if (why != null) {
+            abstained.add({'track_id': track.id, 'reason': why.name});
+          }
+          continue;
+        }
+        lastEnd = window.endTs;
         final made = await store.reconcile(ActivityKind.track, [
           {
             'id': 'track:${track.id}:${window.startTs}',
@@ -115,7 +129,7 @@ extension TracksDetectionStore on TracksStore {
         candidates.addAll(made);
         count = await _countCandidates(track.id, date);
       }
-      if (track.detectionMin <= 0) continue;
+      if (!askMinimum || track.detectionMin <= 0) continue;
       final logged = Sqflite.firstIntValue(
             await db.rawQuery(
               'SELECT COUNT(*) FROM track_event_feed '
@@ -159,6 +173,7 @@ extension TracksDetectionStore on TracksStore {
         },
       ]);
     }
+    if (!askMinimum) return {'candidates': candidates, 'prompts': <Map<String, Object?>>[], 'abstained': abstained};
     // A question the wearer answered (or the data now settles) leaves review.
     final pending = await db.query(
       'activity_suggestions',
@@ -195,6 +210,59 @@ extension TracksDetectionStore on TracksStore {
         await ActivityStore.markDayChanged(tx, date);
       });
     }
-    return {'candidates': candidates, 'prompts': prompts};
+    return {'candidates': candidates, 'prompts': prompts, 'abstained': abstained};
+  }
+
+  /// The running app's entry: windows come from the derived day's own curves,
+  /// then go through the same gates as supplied windows. A night that began on
+  /// the previous evening belongs to that day, so its windows are filed there
+  /// (no question is asked for a day that is not [date]). The minimum-count
+  /// question waits for [dayComplete]: a day still in progress is not short.
+  Future<Map<String, Object?>> _refreshFromDerivedDay({
+    required String date,
+    required List<Object?> hrCurve,
+    required List<Object?> hrvTimeline,
+    required List<Object?> activityCurve,
+    required int sleepOnsetSec,
+    required int sleepOffsetSec,
+    required List<double> rhrHistory,
+    required List<double> rmssdHistory,
+    required bool dayComplete,
+    DateTime? asOf,
+  }) async {
+    final windows = TrackDetectionWindows.build(
+      hrCurve: hrCurve,
+      hrvTimeline: hrvTimeline,
+      activityCurve: activityCurve,
+      sleepOnsetSec: sleepOnsetSec,
+      sleepOffsetSec: sleepOffsetSec,
+      rhrHistory: rhrHistory,
+      rmssdHistory: rmssdHistory,
+    );
+    final byDay = <String, List<Map<String, Object?>>>{};
+    for (final w in windows) {
+      final start = DateTime.fromMillisecondsSinceEpoch(
+        (w['start_ts']! as int) * 1000,
+      );
+      (byDay[dayLabelOf(start)] ??= []).add(w);
+    }
+    byDay.putIfAbsent(date, () => []);
+    final merged = <String, Object?>{
+      'candidates': <ActivitySuggestion>[],
+      'prompts': <Map<String, Object?>>[],
+      'abstained': <Map<String, Object?>>[],
+    };
+    for (final e in byDay.entries) {
+      final r = await _refreshDetections(
+        date: e.key,
+        windows: e.value,
+        asOf: asOf,
+        askMinimum: e.key == date && dayComplete,
+      );
+      for (final k in merged.keys) {
+        (merged[k]! as List).addAll(r[k]! as List);
+      }
+    }
+    return merged;
   }
 }

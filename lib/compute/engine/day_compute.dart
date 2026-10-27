@@ -813,6 +813,7 @@ extension _EngineDayCompute on DerivationEngine {
 
       if (!batchReference) {
         await _persistWakeDayFeatures(dayId: day.date, wake: blocks.wake);
+        await _refreshTrackDetections(day, daySub, bundle, history, dataNowSec);
       }
     } catch (e, st) {
       secondHalfOk = false;
@@ -1307,6 +1308,37 @@ extension _EngineDayCompute on DerivationEngine {
       ));
     } catch (e) {
       _log('checkpoint ${day.date} not refreshed: $e');
+    }
+  }
+  /// Track candidates for review, built from this day's stored curves. Held
+  /// behind its own catch: a detection failure never marks the day partial,
+  /// and a candidate is only ever a question for the wearer, so a held pass
+  /// costs nothing but the question (it is asked again on the next derive).
+  Future<void> _refreshTrackDetections(
+    PreparedDerivationDay day,
+    Substrate daySub,
+    Map<String, dynamic> bundle,
+    _BaselineHistoryCache history,
+    int dataNowSec,
+  ) async {
+    try {
+      List<Object?> curve(Object? v) => v is List ? v : const [];
+      final series = bundle['series'];
+      List<double> before(String key) => history.valuesBefore(key, day.date,
+          family: DerivationEngine._baselineFamily(key, daySub.deviceFamily));
+      await TracksStore(await LocalDb.instance).refreshFromDerivedDay(
+        date: day.date,
+        hrCurve: curve(series is Map ? series['hr_curve'] : null),
+        hrvTimeline: curve(series is Map ? series['hrv_timeline'] : null),
+        activityCurve: curve(bundle['activity_curve']),
+        sleepOnsetSec: day.sleepOnsetSec,
+        sleepOffsetSec: day.sleepOffsetSec,
+        rhrHistory: before('rhr'),
+        rmssdHistory: before('rmssd'),
+        dayComplete: dataNowSec >= day.endSec,
+      );
+    } catch (e) {
+      _log('track detection held for ${day.date}: $e');
     }
   }
 }
