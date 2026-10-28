@@ -380,4 +380,23 @@ void main() {
       startsWith('Each interval covers one system at 95%. With 3 systems compared'),
     );
   });
+
+  // why: owner decision on review T6. The result screen of a long-washout track
+  // repeats the caveat with its washout days.
+  // proves: CLAIM(washout-caveat)
+  testWidgets('experiment screen of a long-washout track shows the caveat', (t) async {
+    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    final started = (await t.runAsync(
+      () => store.startExperiment(trackId: 'caffeine', startDate: '2026-10-25', weeks: 2, seed: 17),
+    ))!;
+    await mountTracks(
+      t,
+      ExperimentScreen(store: store, track: caffeine, experimentId: started['id'] as String),
+      height: 3000,
+    );
+    await settleTracks(t, store);
+    expect(find.byKey(const ValueKey('experiment-washout-result')), findsOneWidget);
+    expect(find.textContaining('9.0 days'), findsOneWidget);
+    expect(find.textContaining('biased toward zero'), findsOneWidget);
+  });
 }

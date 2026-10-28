@@ -23,10 +23,6 @@ extension TracksExperimentStore on TracksStore {
     if (ExperimentableTrack.from(track.single) == null) {
       throw const ExperimentRefused(ExperimentRefusal.prescribed);
     }
-    // ↳ CLAIM(washout-vs-block)
-    if (experimentWashoutExceedsBlock(track.single)) {
-      throw const ExperimentRefused(ExperimentRefusal.washout);
-    }
     final end = endDate(startDate, weeks);
     final chosen = seed ?? math.Random().nextInt(0x7fffffff);
     final assignments = assignExperimentDays(weeks * 7, chosen);
@@ -192,12 +188,17 @@ extension TracksExperimentStore on TracksStore {
     final trackId = e['track_id'] as String;
     final start = e['start_date'] as String, end = e['end_date'] as String;
     final now = asOf ?? clock.now();
+    final definition = (await definitions()).where((d) => d.id == trackId).firstOrNull;
     final report = <String, Object?>{
       'id': id,
       'track_id': trackId,
       'start_date': start,
       'end_date': end,
       'effects': <String, Object?>{},
+      // ↳ CLAIM(washout-caveat): every screen can say the comparison carries
+      // earlier doses and is biased toward zero.
+      if (definition != null && experimentWashoutExceedsBlock(definition))
+        'washout_days': experimentWashoutDays(definition),
     };
     if (end != endDate(start, e['weeks'] as int)) {
       return {...report, 'status': 'stopped'};

@@ -191,17 +191,18 @@ void main() {
     );
   }, tags: ['golden']);
 
-  // why: review T6. A long-washout track shows why it cannot be randomized and
-  // its Begin is disabled. Reviewed by eye at generation (2026-10-27).
-  // proves: CLAIM(washout-vs-block)
-  testWidgets('long-washout track explains and disables Begin', (t) async {
+  // why: owner decision on review T6. A long-washout track says its comparison is
+  // biased toward zero, and can still begin. Reviewed by eye at generation (2026-10-27).
+  // proves: CLAIM(washout-caveat)
+  testWidgets('long-washout track explains the caveat and still offers Begin', (t) async {
     final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
     await mountTracks(t, ExperimentSetupScreen(store: store, track: caffeine), height: 700);
     await settleTracks(t, store);
     expect(find.byKey(const ValueKey('experiment-washout')), findsOneWidget);
     expect(find.textContaining('9.0 days'), findsOneWidget);
+    expect(find.textContaining('biased toward zero'), findsOneWidget);
     final begin = t.widget<FilledButton>(find.widgetWithText(FilledButton, 'Begin experiment'));
-    expect(begin.onPressed, isNull);
+    expect(begin.onPressed, isNotNull);
     await expectLater(
       find.byKey(tracksBoundary),
       matchesGoldenFile('goldens/track_experiment_washout.png'),

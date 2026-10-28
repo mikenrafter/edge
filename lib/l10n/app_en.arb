@@ -18074,7 +18074,7 @@
   "tracksPrescribed": "Prescribed by a clinician",
   "tracksPrescribedNote": "The app never asks you to skip a prescribed treatment.",
   "tracksExperimentPrescribed": "Prescribed treatments are never randomized; the app will not ask you to skip one. Talk to your clinician about changes.",
-  "tracksExperimentWashout": "This track takes about {days} days to wear off (five half-lives, or its withdrawal period). Experiment days alternate every day, so a skip day would still carry the last dose and the result would be biased. Experiments are not offered for it.",
+  "tracksExperimentWashout": "This track takes about {days} days to wear off (five half-lives, or its withdrawal period). Experiment days alternate every day, so a skip day still carries earlier doses and withdrawal effects, and the comparison is biased toward zero. You can still run it; read the result with that in mind.",
   "@tracksExperimentWashout": {
     "placeholders": {
       "days": {
@@ -18130,6 +18130,14 @@
     "placeholders": {
       "count": {
         "type": "int"
+      }
+    }
+  },
+  "tracksExperimentWashoutResult": "Caveat: this track takes about {days} days to wear off, so skip days include carry-over and withdrawal effects and the effect shown is biased toward zero.",
+  "@tracksExperimentWashoutResult": {
+    "placeholders": {
+      "days": {
+        "type": "String"
       }
     }
   }

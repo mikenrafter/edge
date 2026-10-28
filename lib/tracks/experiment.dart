@@ -7,7 +7,7 @@ import '../data/track_model.dart';
 const experimentWeeks = [2, 3, 4];
 
 /// Why an experiment was refused; match it exhaustively.
-enum ExperimentRefusal { prescribed, washout }
+enum ExperimentRefusal { prescribed }
 
 class ExperimentRefused implements Exception {
   const ExperimentRefused(this.reason);
@@ -35,9 +35,11 @@ class ExperimentableTrack {
 /// Days a track needs to clear: the larger of five half-lives (the "several
 /// half-lives" of the learning policy, learning.dart `minimumFor`) and its
 /// withdrawal period, over the track and every sub-activity.
-// CLAIM(washout-vs-block): blocks are two adjacent days, so a skip day is only
+// CLAIM(washout-caveat): blocks are two adjacent days, so a skip day is only
 // about one day after a do day; a longer washout leaves it exposed and biases
-// the effect toward zero [review T6; experiment_effect_test.dart].
+// the effect toward zero. The experiment is ALLOWED and says so (setup screen
+// and result carry the days) [review T6, owner decision 2026-10-27;
+// experiment_effect_test.dart].
 double experimentWashoutDays(TrackDefinition track) {
   var days = 0.0;
   for (final kinetics in [track.kinetics, ...track.subActivities.map((s) => s.kinetics)]) {

@@ -468,20 +468,25 @@ void main() {
     expect(ExperimentableTrack.from(TrackDefinition.fromJson(base)), isNotNull);
   });
 
-  // why: review T6. The cannabis preset has withdrawal_days 28: every skip day
-  // after a do day would still be exposed, biasing the effect toward zero.
-  // proves: CLAIM(washout-vs-block)
-  test('a track whose washout exceeds one day is refused with the washout reason', () async {
-    await expectLater(
-      store.startExperiment(trackId: 'cannabis', startDate: '2026-09-01', weeks: 2, seed: 17),
-      throwsA(isA<ExperimentRefused>().having((e) => e.reason, 'reason', ExperimentRefusal.washout)),
-    );
-    expect(await db.query('track_experiment'), isEmpty);
-    // The caffeine preset: 5 half-lives = 25 h and a 9 day withdrawal.
-    await expectLater(
-      store.startExperiment(trackId: 'caffeine', startDate: '2026-09-01', weeks: 2, seed: 17),
-      throwsA(isA<ExperimentRefused>()),
-    );
+  // why: owner decision 2026-10-27 on review T6. A long-washout track (cannabis
+  // withdrawal 28 d; caffeine 5 half-lives = 25 h and a 9 d withdrawal) may
+  // start, and the report carries the computed washout days so every screen can
+  // say the comparison includes carry-over and is biased toward zero.
+  // proves: CLAIM(washout-caveat)
+  test('a long-washout track starts and its report carries the washout days', () async {
+    final cannabis = await store.startExperiment(
+      trackId: 'cannabis', startDate: '2026-09-01', weeks: 2, seed: 17);
+    expect((await store.experimentReport(cannabis['id'] as String, asOf: DateTime(2026, 9, 3)))['washout_days'], 28);
+    final caffeine = await store.startExperiment(
+      trackId: 'caffeine', startDate: '2026-10-01', weeks: 2, seed: 17);
+    final report = await store.experimentReport(caffeine['id'] as String, asOf: DateTime(2026, 10, 20));
+    expect(report['washout_days'], 9);
+    expect(report['status'], 'completed', reason: 'the caveat does not block a result');
+  });
+
+  test('a track that clears within a day has no caveat field', () async {
+    final experiment = await start();
+    expect((await report(experiment, DateTime(2026, 9, 3))).containsKey('washout_days'), isFalse);
   });
 
   test('a short-lived track still starts', () async {
