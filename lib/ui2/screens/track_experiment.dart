@@ -108,6 +108,7 @@ class ExperimentScreen extends StatefulWidget {
 
 class _ExperimentScreenState extends State<ExperimentScreen> {
   Map<String, Object?>? _experiment, _report;
+  Map<String, bool> _answers = const {};
   bool _failed = false;
   @override
   void initState() {
@@ -120,13 +121,25 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
       final all = await widget.store.experiments(trackId: widget.track.id);
       final experiment = all.firstWhere((e) => e['id'] == widget.experimentId);
       final report = await widget.store.experimentReport(widget.experimentId);
+      final answers = await widget.store.experimentAnswers(widget.experimentId);
       if (mounted) {
         setState(() {
           _experiment = experiment;
           _report = report;
+          _answers = answers;
           _failed = false;
         });
       }
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  // ↳ CLAIM(backfill-answers)
+  Future<void> _answer(String date, bool didIt) async {
+    try {
+      await widget.store.answerExperimentDay(widget.experimentId, date, didIt: didIt);
+      await _load();
     } catch (_) {
       if (mounted) setState(() => _failed = true);
     }
@@ -208,10 +221,39 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
           )
         else
           for (final day in (experiment['assignments'] as List).cast<Map>())
-          Text(
-            '${day['date']} · '
-            '${day['do'] == true ? text('ExperimentDo') : text('ExperimentSkip')}',
-          ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${day['date']} · '
+                  '${day['do'] == true ? text('ExperimentDo') : text('ExperimentSkip')}',
+                ),
+                // Past and current assigned days can be answered later, while
+                // the experiment still runs.
+                if (running &&
+                    (day['date'] as String).compareTo(
+                          report?['as_of_date'] as String? ?? todayLabel(),
+                        ) <=
+                        0)
+                  Wrap(
+                    spacing: S.x2,
+                    children: [
+                      ChoiceChip(
+                        key: ValueKey('xp-did-${day['date']}'),
+                        label: Text(text('ExperimentDid')),
+                        selected: _answers[day['date']] == true,
+                        onSelected: (_) => _answer(day['date'] as String, true),
+                      ),
+                      ChoiceChip(
+                        key: ValueKey('xp-didnt-${day['date']}'),
+                        label: Text(text('ExperimentDidnt')),
+                        selected: _answers[day['date']] == false,
+                        onSelected: (_) => _answer(day['date'] as String, false),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
       ],
     ]);
   }

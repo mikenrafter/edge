@@ -64,6 +64,59 @@ extension TracksExperimentStore on TracksStore {
     );
   }
 
+  static String _answerEventId(String id, String date) => 'xp:$id:$date';
+
+  // CLAIM(backfill-answers): each past assigned date can be answered from the
+  // experiment screen, so a skip day recorded on a later day still counts
+  // [review T7; tracks_experiments_t3_test.dart].
+  Future<void> _answerExperimentDay(String id, String date, {required bool didIt}) async {
+    final rows = await db.query('track_experiment', where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) throw ArgumentError('experiment');
+    final trackId = rows.single['track_id'] as String;
+    final assigned = await db.query(
+      'track_experiment_day',
+      where: 'experiment_id = ? AND date = ?',
+      whereArgs: [id, date],
+    );
+    final today = dayLabelOf(clock.now());
+    if (assigned.isEmpty || date.compareTo(today) > 0) throw ArgumentError('date');
+    final lastNight = dayLabelBefore(rows.single['end_date'] as String, -1)!;
+    if (today.compareTo(lastNight) > 0) throw StateError('experiment_finished');
+    final eventId = _answerEventId(id, date);
+    final existing = (await events(trackId: trackId, date: date))
+        .where((e) => e.id == eventId)
+        .firstOrNull;
+    if (didIt) {
+      await db.delete('track_absence', where: 'track_id = ? AND date = ?', whereArgs: [trackId, date]);
+      if (existing == null) {
+        await log(TrackEvent(id: eventId, trackId: trackId, date: date));
+      }
+    } else {
+      if (existing != null) await deleteEvent(existing);
+      await confirmNone(trackId, date);
+    }
+  }
+
+  Future<Map<String, bool>> _experimentAnswers(String id) async {
+    final rows = await db.query('track_experiment', where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) throw ArgumentError('experiment');
+    final trackId = rows.single['track_id'] as String;
+    final start = rows.single['start_date'] as String, end = rows.single['end_date'] as String;
+    return {
+      for (final r in await db.rawQuery(
+        'SELECT DISTINCT date FROM track_event_feed WHERE track_id = ? AND date BETWEEN ? AND ?',
+        [trackId, start, end],
+      ))
+        r['date'] as String: true,
+      for (final r in await db.query(
+        'track_absence',
+        where: 'track_id = ? AND date BETWEEN ? AND ?',
+        whereArgs: [trackId, start, end],
+      ))
+        r['date'] as String: false,
+    };
+  }
+
   /// A stopped experiment keeps its rows, with `end_date` moved to yesterday
   /// and later assignments deleted, so it is recognisable as stopped by
   /// `end_date != endDate(start_date, weeks)`. One that has not yet had a full
@@ -151,7 +204,7 @@ extension TracksExperimentStore on TracksStore {
     }
     // The final night is part of the experiment; nothing is concluded early.
     if (dayLabelOf(now).compareTo(end) <= 0) {
-      return {...report, 'status': 'running'};
+      return {...report, 'status': 'running', 'as_of_date': dayLabelOf(now)};
     }
     // CLAIM(last-night-before-complete): the last assigned night is day_id
     // end+1; on that morning wait for it to be finalized, and conclude anyway
@@ -165,7 +218,7 @@ extension TracksExperimentStore on TracksStore {
           whereArgs: [lastNightDay],
           limit: 1,
         )).isEmpty) {
-      return {...report, 'status': 'running'};
+      return {...report, 'status': 'running', 'as_of_date': dayLabelOf(now)};
     }
     final assigned = (e['assignments'] as List).cast<Map>();
     final logged = {

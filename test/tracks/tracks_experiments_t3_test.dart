@@ -662,4 +662,66 @@ void main() {
     final effect = (done['effects'] as Map)['hr'] as Map;
     expect((effect['n_do'] as int) + (effect['n_dont'] as int), 14);
   });
+
+  // why: review T7. A skip day counts only with an explicit absence, and the
+  // only way to record one was "None today" for TODAY. A wearer who skipped on
+  // Tuesday and opens the app on Wednesday could never count Tuesday; missing a
+  // third of the skip days already makes an experiment insufficient. Answers for
+  // every past assigned date, entered later, must count.
+  // proves: CLAIM(backfill-answers)
+  test('every past assigned date can be answered later and then counts', () async {
+    final experiment = await start();
+    await observations(experiment, adherence: false);
+    await withClock(Clock.fixed(DateTime(2026, 9, 14, 22)), () async {
+      for (final day in assignments(experiment)) {
+        await store.answerExperimentDay(
+          experiment['id'] as String,
+          day['date'] as String,
+          didIt: day['do'] == true,
+        );
+      }
+    });
+    final result = await report(experiment, DateTime(2026, 10, 1));
+    expect(result['status'], 'completed');
+    expect(result['adherence'], {'assigned': 14, 'followed': 14});
+    final effect = (result['effects'] as Map)['hr'] as Map;
+    expect(effect['n_do'], 7);
+    expect(effect['n_dont'], 7);
+  });
+
+  test('an answer can be changed, and contradicting a real log is refused', () async {
+    final experiment = await start();
+    final id = experiment['id'] as String;
+    final date = assignments(experiment).first['date'] as String;
+    await withClock(Clock.fixed(DateTime(2026, 9, 5, 9)), () async {
+      await store.answerExperimentDay(id, date, didIt: false);
+      expect(await store.experimentAnswers(id), {date: false});
+      await store.answerExperimentDay(id, date, didIt: true);
+      expect(await store.experimentAnswers(id), {date: true});
+      expect(await db.query('track_absence'), isEmpty);
+      await store.answerExperimentDay(id, date, didIt: false);
+      expect(await store.experimentAnswers(id), {date: false});
+      expect(await store.events(trackId: 'custom'), isEmpty);
+      // A real, separately logged occurrence cannot be answered "didn't".
+      final other = assignments(experiment)[1]['date'] as String;
+      await store.log(TrackEvent(id: 'real', trackId: 'custom', date: other, amount: 5));
+      await expectLater(store.answerExperimentDay(id, other, didIt: false), throwsStateError);
+      // Future dates and dates outside the experiment are refused.
+      await expectLater(store.answerExperimentDay(id, '2026-09-09', didIt: true), throwsArgumentError);
+      await expectLater(store.answerExperimentDay(id, '2026-08-01', didIt: true), throwsArgumentError);
+    });
+    await withClock(Clock.fixed(DateTime(2026, 9, 16)), () async {
+      await expectLater(store.answerExperimentDay(id, date, didIt: true), throwsStateError);
+    });
+  });
+
+  test('"did it" works for a substance track with an unknown dose', () async {
+    final experiment = await store.startExperiment(
+      trackId: 'alcohol', startDate: '2026-09-01', weeks: 2, seed: 17);
+    final date = (experiment['assignments'] as List).cast<Map>().first['date'] as String;
+    await withClock(Clock.fixed(DateTime(2026, 9, 2, 9)), () async {
+      await store.answerExperimentDay(experiment['id'] as String, date, didIt: true);
+    });
+    expect((await store.events(trackId: 'alcohol')).single.date, date);
+  });
 }

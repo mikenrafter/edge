@@ -302,11 +302,10 @@ void main() {
   // proves: CLAIM(stop-ends-reminders)
   testWidgets('a running experiment can be stopped from its screen', (t) async {
     final sauna = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
-    final now = DateTime.now();
     final started = (await t.runAsync(
       () => store.startExperiment(
         trackId: 'sauna',
-        startDate: dayLabelOf(DateTime(now.year, now.month, now.day - 2)),
+        startDate: '2026-10-25',
         weeks: 2,
         seed: 17,
       ),
@@ -326,5 +325,30 @@ void main() {
     await settleTracks(t, store);
     expect(find.textContaining('Stopped'), findsWidgets);
     expect(find.byKey(const ValueKey('experiment-stop')), findsNothing);
+  });
+
+  // why: review T7. The experiment screen answers any past assigned date, so a
+  // skip day remembered the next day still counts.
+  // proves: CLAIM(backfill-answers)
+  testWidgets('the experiment screen answers a past assigned date', (t) async {
+    final sauna = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
+    final started = (await t.runAsync(
+      () => store.startExperiment(trackId: 'sauna', startDate: '2026-10-25', weeks: 2, seed: 17),
+    ))!;
+    final id = started['id'] as String;
+    await mountTracks(
+      t,
+      ExperimentScreen(store: store, track: sauna, experimentId: id),
+      height: 5000,
+    );
+    await settleTracks(t, store);
+    await t.tap(find.byKey(const ValueKey('xp-didnt-2026-10-25')));
+    await settleTracks(t, store);
+    expect((await t.runAsync(() => store.experimentAnswers(id)))!, {'2026-10-25': false});
+    expect(t.widget<ChoiceChip>(find.byKey(const ValueKey('xp-didnt-2026-10-25'))).selected, isTrue);
+    await t.tap(find.byKey(const ValueKey('xp-did-2026-10-25')));
+    await settleTracks(t, store);
+    expect((await t.runAsync(() => store.experimentAnswers(id)))!, {'2026-10-25': true});
+    expect((await t.runAsync(() => store.events(trackId: 'sauna')))!.single.date, '2026-10-25');
   });
 }

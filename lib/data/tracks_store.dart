@@ -58,6 +58,17 @@ class TracksStore {
   Future<List<Map<String, Object?>>> experiments({String? trackId}) =>
       _experiments(trackId: trackId);
 
+  /// Records what the wearer did on an assigned [date] of experiment [id]:
+  /// [didIt] logs it, otherwise confirms none. Only dates up to today, and only
+  /// until the day after the experiment ends. ArgumentError for an unknown
+  /// experiment or a date outside it, StateError('experiment_finished') late,
+  /// StateError('already_logged') for a "didn't" that contradicts a log.
+  Future<void> answerExperimentDay(String id, String date, {required bool didIt}) =>
+      _answerExperimentDay(id, date, didIt: didIt);
+
+  /// Date -> whether the wearer said they did it, for answered dates only.
+  Future<Map<String, bool>> experimentAnswers(String id) => _experimentAnswers(id);
+
   /// Ends a running experiment at yesterday (see TracksExperimentStore).
   /// ArgumentError for an unknown id, StateError('experiment_finished') once
   /// its last day has passed.

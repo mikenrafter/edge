@@ -128,6 +128,8 @@ String tracksText(BuildContext context, String key) {
     'ExperimentStoppedNote' =>
       l?.tracksExperimentStoppedNote ??
           'You stopped this experiment early, so no effect is reported and no more reminders are sent.',
+    'ExperimentDid' => l?.tracksExperimentDid ?? 'I did it',
+    'ExperimentDidnt' => l?.tracksExperimentDidnt ?? 'I did not',
     'ExperimentSetup' => l?.tracksExperimentSetup ?? 'Experiment setup',
     'ExperimentTitle' => l?.tracksExperimentTitle ?? 'Experiment',
     'ExperimentExplain' =>

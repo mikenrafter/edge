@@ -18116,5 +18116,7 @@
   },
   "tracksExperimentStop": "Stop experiment",
   "tracksExperimentStopped": "Stopped",
-  "tracksExperimentStoppedNote": "You stopped this experiment early, so no effect is reported and no more reminders are sent."
+  "tracksExperimentStoppedNote": "You stopped this experiment early, so no effect is reported and no more reminders are sent.",
+  "tracksExperimentDid": "I did it",
+  "tracksExperimentDidnt": "I did not"
 }

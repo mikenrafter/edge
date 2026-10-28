@@ -1,12 +1,16 @@
 // Observes real SQLite operations so widget tests await completion without clocks
 // or sleeps. Every operation still runs through the production TracksStore.
 import 'dart:async';
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+
+/// The same instant the other observed reads use, so day arithmetic is fixed.
+final _fixedNow = Clock.fixed(DateTime(2026, 10, 27, 12));
 
 class ObservedTracksStore extends TracksStore {
   ObservedTracksStore(super.db);
@@ -75,8 +79,19 @@ class ObservedTracksStore extends TracksStore {
     ),
   );
   @override
+  Future<void> answerExperimentDay(String id, String date, {required bool didIt}) =>
+      _observe(
+        () => withClock(
+          _fixedNow,
+          () => super.answerExperimentDay(id, date, didIt: didIt),
+        ),
+      );
+  @override
+  Future<Map<String, bool>> experimentAnswers(String id) =>
+      _observe(() => super.experimentAnswers(id));
+  @override
   Future<void> stopExperiment(String id) =>
-      _observe(() => super.stopExperiment(id));
+      _observe(() => withClock(_fixedNow, () => super.stopExperiment(id)));
   @override
   Future<List<Map<String, Object?>>> experiments({String? trackId}) =>
       _observe(() => super.experiments(trackId: trackId));
