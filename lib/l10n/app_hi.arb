@@ -3699,8 +3699,6 @@
   "tracksLearningNeedData": "तुलनीय रातों की प्रतीक्षा",
   "tracksAdjustedFor": "Adjusted for: {tracks}",
   "activityPossibleTrack": "संभावित: {track}",
-  "activityTrackDidYou": "क्या आज आपने “{track}” किया या लिया?",
-  "activityTrackPromptNote": "हाँ बिना समय या मात्रा के एक प्रविष्टि जोड़ता है। नहीं दर्ज करता है कि आज ऐसा कुछ नहीं हुआ।",
   "activityTrackNote": "आपके शरीर के संकेतों से मिला सुझाव, निदान नहीं। पुष्टि करने पर बिना मात्रा की एक प्रविष्टि जुड़ती है। इसके पीछे की सीमाएँ मान्य नहीं की गई हैं।",
   "activityTrackYes": "हाँ",
   "activityTrackNo": "नहीं",
@@ -3727,6 +3725,5 @@
   "tracksExperimentSkip": "छोड़ें",
   "tracksExperimentLearning": "प्रयोग चल रहा है: केवल उसके दिन गिने जाते हैं",
   "tracksExperimentWeeks": "{count} सप्ताह",
-  "tracksExperimentAdherence": "{total} में से {followed} तय दिनों की पुष्टि हुई",
-  "tracksExperimentEffect": "{system}: {effect} (95% अंतराल {lower} से {upper}); {nDo} करने वाले दिन, {nSkip} छोड़ने वाले दिन"
+  "tracksExperimentAdherence": "{total} में से {followed} तय दिनों की पुष्टि हुई"
 }

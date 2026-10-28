@@ -91,6 +91,7 @@ class TrackDefinition {
     this.detectionMin = 0,
     this.detectionMax = 10,
     this.noUnadjustedData = false,
+    this.prescribed = false,
     this.enabled = true,
     this.loggingComplete = false,
     this.loggingCompleteSinceMs,
@@ -102,6 +103,11 @@ class TrackDefinition {
   final List<String> roles, systems, sources;
   final int detectionMin, detectionMax;
   final bool noUnadjustedData, enabled, loggingComplete;
+
+  /// The wearer was told to do this by a clinician. Stored in payload_json
+  /// (no DDL); a `med:` track is prescribed regardless of the flag.
+  final bool prescribed;
+  bool get isPrescribed => prescribed || id.startsWith('med:');
   final int? loggingCompleteSinceMs;
   factory TrackDefinition.fromJson(Map<String, dynamic> j) => TrackDefinition(
     id: j['id'] as String,
@@ -122,6 +128,7 @@ class TrackDefinition {
     detectionMin: (j['detection_min'] as num?)?.toInt() ?? 0,
     detectionMax: (j['detection_max'] as num?)?.toInt() ?? 10,
     noUnadjustedData: j['no_unadjusted_data'] == true,
+    prescribed: j['prescribed'] == true,
     enabled: j['enabled'] != false,
     loggingComplete: j['logging_complete'] == true,
     loggingCompleteSinceMs: (j['logging_complete_since_ms'] as num?)?.toInt(),
@@ -140,6 +147,7 @@ class TrackDefinition {
     'detection_min': detectionMin,
     'detection_max': detectionMax,
     'no_unadjusted_data': noUnadjustedData,
+    'prescribed': prescribed,
     'enabled': enabled,
     'logging_complete': loggingComplete,
     'logging_complete_since_ms': loggingCompleteSinceMs,

@@ -90,6 +90,11 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     final age = Duration(milliseconds: input.worker.nowEpochMs - started);
     // A running randomized experiment owns its track's estimation: nothing
     // observational fills in for days the experiment has not yet resolved.
+    // CLAIM(experiment-precedence-is-abstention): "experiment days take
+    // precedence in estimation" means exactly this abstention while the
+    // experiment runs. An experiment's result is reported on its own screen and
+    // does NOT feed the learned effect; afterwards its nights are ordinary
+    // observational nights [review T18; plan note in fix-t3-report.md].
     final today = dayLabelOf(now);
     final inExperiment = input.experiments.any(
       (r) =>
@@ -144,7 +149,9 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     final periods = (state['periods_us'] as Map? ?? {}).cast<String, dynamic>();
     final logs = <Map<String, Object?>>[];
     final canStep = saved?['last_step_date'] != date;
-    if (canStep && age >= policy.globalMinimum) {
+    // ↳ CLAIM(experiment-precedence-is-abstention): the abstention is not weak
+    // evidence, so no period adapts and no audit row is written (review T9).
+    if (canStep && !inExperiment && age >= policy.globalMinimum) {
       for (final field in trackKineticKeys) {
         if (fields[field]?.locked == true) continue;
         final oldPeriod = periods[field] as int?;

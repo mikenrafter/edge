@@ -9078,8 +9078,6 @@
   "tracksLearningNeedData": "Ожидание сопоставимых ночей",
   "tracksAdjustedFor": "Adjusted for: {tracks}",
   "activityPossibleTrack": "Возможно: {track}",
-  "activityTrackDidYou": "Было ли у вас сегодня «{track}» или вы это делали?",
-  "activityTrackPromptNote": "«Да» добавляет запись без времени и количества. «Нет» фиксирует, что сегодня этого не было.",
   "activityTrackNote": "Подсказка по сигналам вашего тела, не диагноз. Подтверждение добавляет запись без количества. Пороговые значения не проверены.",
   "activityTrackYes": "Да",
   "activityTrackNo": "Нет",
@@ -9106,6 +9104,5 @@
   "tracksExperimentSkip": "Пропустить",
   "tracksExperimentLearning": "Идёт эксперимент: считаются только его дни",
   "tracksExperimentWeeks": "{count} нед.",
-  "tracksExperimentAdherence": "Подтверждено {followed} из {total} назначенных дней",
-  "tracksExperimentEffect": "{system}: {effect} (95%-й интервал от {lower} до {upper}); дней «делать»: {nDo}, дней «пропустить»: {nSkip}"
+  "tracksExperimentAdherence": "Подтверждено {followed} из {total} назначенных дней"
 }

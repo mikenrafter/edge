@@ -3805,8 +3805,6 @@
   "tracksLearningNeedData": "Warten auf vergleichbare Nächte",
   "tracksAdjustedFor": "Adjusted for: {tracks}",
   "activityPossibleTrack": "Möglich: {track}",
-  "activityTrackDidYou": "Hast du heute „{track}“ gehabt oder gemacht?",
-  "activityTrackPromptNote": "Ja fügt einen Eintrag ohne Uhrzeit und Menge hinzu. Nein hält fest, dass heute nichts war.",
   "activityTrackNote": "Ein Hinweis aus deinen Körpersignalen, keine Diagnose. Bestätigen fügt einen Eintrag ohne Menge hinzu. Die zugrunde liegenden Schwellenwerte sind nicht validiert.",
   "activityTrackYes": "Ja",
   "activityTrackNo": "Nein",
@@ -3833,6 +3831,5 @@
   "tracksExperimentSkip": "Auslassen",
   "tracksExperimentLearning": "Experiment läuft: nur seine Tage zählen",
   "tracksExperimentWeeks": "{count} Wochen",
-  "tracksExperimentAdherence": "{followed} von {total} zugewiesenen Tagen bestätigt",
-  "tracksExperimentEffect": "{system}: {effect} (95-%-Intervall {lower} bis {upper}); {nDo} Tun-Tage, {nSkip} Auslass-Tage"
+  "tracksExperimentAdherence": "{followed} von {total} zugewiesenen Tagen bestätigt"
 }

@@ -19,6 +19,14 @@ extension TracksExperimentStore on TracksStore {
     if (!TracksStore._validDay(startDate)) throw ArgumentError('date');
     final track = (await definitions()).where((d) => d.id == trackId);
     if (track.isEmpty || !track.single.enabled) throw ArgumentError('track');
+    // ↳ CLAIM(never-ask-skip-prescribed)
+    if (ExperimentableTrack.from(track.single) == null) {
+      throw const ExperimentRefused(ExperimentRefusal.prescribed);
+    }
+    // ↳ CLAIM(washout-vs-block)
+    if (experimentWashoutExceedsBlock(track.single)) {
+      throw const ExperimentRefused(ExperimentRefusal.washout);
+    }
     final end = endDate(startDate, weeks);
     final chosen = seed ?? math.Random().nextInt(0x7fffffff);
     final assignments = assignExperimentDays(weeks * 7, chosen);
@@ -40,7 +48,7 @@ extension TracksExperimentStore on TracksStore {
         'end_date': end,
         'weeks': weeks,
         'seed': chosen,
-        'created_ms': DateTime.now().millisecondsSinceEpoch,
+        'created_ms': clock.now().millisecondsSinceEpoch,
       });
       final first = DateTime.parse(startDate);
       for (var i = 0; i < assignments.length; i++) {
@@ -54,6 +62,94 @@ extension TracksExperimentStore on TracksStore {
     return (await _experiments(trackId: trackId)).firstWhere(
       (e) => e['id'] == id,
     );
+  }
+
+  static String _answerEventId(String id, String date) => 'xp:$id:$date';
+
+  // CLAIM(backfill-answers): each past assigned date can be answered from the
+  // experiment screen, so a skip day recorded on a later day still counts
+  // [review T7; tracks_experiments_t3_test.dart].
+  Future<void> _answerExperimentDay(String id, String date, {required bool didIt}) async {
+    final rows = await db.query('track_experiment', where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) throw ArgumentError('experiment');
+    final trackId = rows.single['track_id'] as String;
+    final assigned = await db.query(
+      'track_experiment_day',
+      where: 'experiment_id = ? AND date = ?',
+      whereArgs: [id, date],
+    );
+    final today = dayLabelOf(clock.now());
+    if (assigned.isEmpty || date.compareTo(today) > 0) throw ArgumentError('date');
+    final lastNight = dayLabelBefore(rows.single['end_date'] as String, -1)!;
+    if (today.compareTo(lastNight) > 0) throw StateError('experiment_finished');
+    final eventId = _answerEventId(id, date);
+    final existing = (await events(trackId: trackId, date: date))
+        .where((e) => e.id == eventId)
+        .firstOrNull;
+    if (didIt) {
+      await db.delete('track_absence', where: 'track_id = ? AND date = ?', whereArgs: [trackId, date]);
+      if (existing == null) {
+        await log(TrackEvent(id: eventId, trackId: trackId, date: date));
+      }
+    } else {
+      if (existing != null) await deleteEvent(existing);
+      await confirmNone(trackId, date);
+    }
+  }
+
+  Future<Map<String, bool>> _experimentAnswers(String id) async {
+    final rows = await db.query('track_experiment', where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) throw ArgumentError('experiment');
+    final trackId = rows.single['track_id'] as String;
+    final start = rows.single['start_date'] as String, end = rows.single['end_date'] as String;
+    return {
+      for (final r in await db.rawQuery(
+        'SELECT DISTINCT date FROM track_event_feed WHERE track_id = ? AND date BETWEEN ? AND ?',
+        [trackId, start, end],
+      ))
+        r['date'] as String: true,
+      for (final r in await db.query(
+        'track_absence',
+        where: 'track_id = ? AND date BETWEEN ? AND ?',
+        whereArgs: [trackId, start, end],
+      ))
+        r['date'] as String: false,
+    };
+  }
+
+  /// A stopped experiment keeps its rows, with `end_date` moved to yesterday
+  /// and later assignments deleted, so it is recognisable as stopped by
+  /// `end_date != endDate(start_date, weeks)`. One that has not yet had a full
+  /// day is removed. No schema change.
+  // CLAIM(stop-ends-reminders): after a stop no assignment is left on or after
+  // today, so no reminder is produced; the range is free [tracks_experiments_t3_test].
+  Future<void> _stopExperiment(String id) async {
+    final rows = await db.query('track_experiment', where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) throw ArgumentError('experiment');
+    final today = dayLabelOf(clock.now());
+    final start = rows.single['start_date'] as String;
+    final end = rows.single['end_date'] as String;
+    if (end.compareTo(today) < 0) throw StateError('experiment_finished');
+    final now = clock.now();
+    final yesterday = dayLabelOf(DateTime(now.year, now.month, now.day - 1));
+    await db.transaction((tx) async {
+      if (start.compareTo(yesterday) > 0) {
+        await tx.delete('track_experiment_day', where: 'experiment_id = ?', whereArgs: [id]);
+        await tx.delete('track_experiment', where: 'id = ?', whereArgs: [id]);
+        return;
+      }
+      await tx.delete(
+        'track_experiment_day',
+        where: 'experiment_id = ? AND date > ?',
+        whereArgs: [id, yesterday],
+      );
+      await tx.update(
+        'track_experiment',
+        {'end_date': yesterday},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   Future<List<Map<String, Object?>>> _experiments({String? trackId}) async {
@@ -95,7 +191,7 @@ extension TracksExperimentStore on TracksStore {
     final e = experiment.single;
     final trackId = e['track_id'] as String;
     final start = e['start_date'] as String, end = e['end_date'] as String;
-    final now = asOf ?? DateTime.now();
+    final now = asOf ?? clock.now();
     final report = <String, Object?>{
       'id': id,
       'track_id': trackId,
@@ -103,9 +199,26 @@ extension TracksExperimentStore on TracksStore {
       'end_date': end,
       'effects': <String, Object?>{},
     };
+    if (end != endDate(start, e['weeks'] as int)) {
+      return {...report, 'status': 'stopped'};
+    }
     // The final night is part of the experiment; nothing is concluded early.
     if (dayLabelOf(now).compareTo(end) <= 0) {
-      return {...report, 'status': 'running'};
+      return {...report, 'status': 'running', 'as_of_date': dayLabelOf(now)};
+    }
+    // CLAIM(last-night-before-complete): the last assigned night is day_id
+    // end+1; on that morning wait for it to be finalized, and conclude anyway
+    // once a grace day has passed [review T14; tracks_experiments_t3_test.dart].
+    final lastNightDay = dayLabelBefore(end, -1)!;
+    if (dayLabelOf(now) == lastNightDay &&
+        (await db.query(
+          'day_result',
+          columns: ['day_id'],
+          where: 'day_id = ? AND finalized = 1 AND partial = 0 AND skipped = 0',
+          whereArgs: [lastNightDay],
+          limit: 1,
+        )).isEmpty) {
+      return {...report, 'status': 'running', 'as_of_date': dayLabelOf(now)};
     }
     final assigned = (e['assignments'] as List).cast<Map>();
     final logged = {
@@ -142,7 +255,8 @@ extension TracksExperimentStore on TracksStore {
     ];
     final first = DateTime.parse(start);
     final nights = await db.rawQuery(
-      'SELECT COALESCE(json_extract(d.window_json, \'\$.value.onset_ms\'), '
+      'SELECT d.day_id AS day_id, '
+      'COALESCE(json_extract(d.window_json, \'\$.value.onset_ms\'), '
       'json_extract(d.window_json, \'\$.onset_ms\')) AS onset, '
       'COALESCE(json_extract(d.window_json, \'\$.value.offset_ms\'), '
       'json_extract(d.window_json, \'\$.offset_ms\')) AS offset, '
@@ -158,9 +272,11 @@ extension TracksExperimentStore on TracksStore {
       'AND d.skipped = 0 AND d.day_id BETWEEN ? AND ? '
       'AND d.algo_version = (SELECT MAX(n.algo_version) FROM day_result n '
       'WHERE n.day_id = d.day_id)',
+      // The night after assigned date D is filed under D+1, so the range is
+      // [start+1, end+1].
       [
-        start,
-        dayLabelOf(DateTime(first.year, first.month, first.day + 7 * (e['weeks'] as int) + 1)),
+        dayLabelOf(DateTime(first.year, first.month, first.day + 1)),
+        dayLabelOf(DateTime(first.year, first.month, first.day + 7 * (e['weeks'] as int))),
       ],
     );
     final doValues = <String, List<double>>{}, skipValues = <String, List<double>>{};
@@ -169,9 +285,12 @@ extension TracksExperimentStore on TracksStore {
       if (onset == null || offset == null || offset > now.millisecondsSinceEpoch) {
         continue;
       }
-      final date = dayLabelOf(
-        DateTime.fromMillisecondsSinceEpoch(onset.toInt()),
-      );
+      // CLAIM(night-by-wake-day): the derive files a sleep under the local date
+      // it ENDS on [substrate.dart "The main sleep that ENDS in this calendar
+      // day"], so the night after assigned date D is day_id D+1 and a date owns
+      // at most one night (day_id is unique per algo_version) [tracks_experiments_t3_test].
+      // ↳ CLAIM(night-by-wake-day)
+      final date = dayLabelBefore(night['day_id'] as String, 1);
       final arm = followed[date];
       if (arm == null) continue;
       for (final system in systems) {
@@ -208,11 +327,17 @@ extension TracksExperimentStore on TracksStore {
     // where only registered worker entries may dispatch.
     final rows = await db.rawQuery(
       'SELECT x.id, x.track_id, d.do_it, '
-      "COALESCE(m.label, json_extract(t.payload_json, '\$.name')) AS name "
+      "json_extract(t.payload_json, '\$.name') AS name "
       'FROM track_experiment x '
       'JOIN track_experiment_day d ON d.experiment_id = x.id '
-      'LEFT JOIN track_definition t ON t.id = x.track_id '
-      "LEFT JOIN med_def m ON 'med:' || m.key = x.track_id WHERE d.date = ?",
+      'JOIN track_definition t ON t.id = x.track_id '
+      // ↳ CLAIM(never-ask-skip-prescribed): read the LIVE definition, so a
+      // medication, a restored experiment and a track marked prescribed after
+      // the start all stay silent.
+      "WHERE d.date = ? AND x.track_id NOT LIKE 'med:%' "
+      "AND COALESCE(json_extract(t.payload_json, '\$.prescribed'), 0) = 0 "
+      // ↳ CLAIM(stop-ends-reminders): "deleting" a track only disables it.
+      "AND COALESCE(json_extract(t.payload_json, '\$.enabled'), 1) != 0",
       [date],
     );
     return [

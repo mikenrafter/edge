@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/med_store.dart';
+import 'package:openstrap_edge/data/tracks_store.dart';
 import 'package:openstrap_edge/ui2/screens/track_editor.dart';
+import 'package:openstrap_edge/ui2/screens/track_experiment.dart';
 import 'package:openstrap_edge/ui2/screens/track_log.dart';
 import 'package:openstrap_edge/ui2/screens/tracks_screen.dart';
+import 'package:openstrap_edge/ui2/screens/tracks_text.dart';
 import '../backup/backup_support.dart';
 import '../support/bundled_fonts.dart';
 import 'ui_support.dart';
@@ -184,4 +189,195 @@ void main() {
       expect(find.byKey(ValueKey('track-card-${custom.id}')), findsOneWidget);
     },
   );
+
+  // why: owner decision 2026-10-27 on review T1. A prescribed track still shows
+  // "Start an experiment", but the setup screen only explains and has no Begin.
+  // proves: CLAIM(never-ask-skip-prescribed)
+  testWidgets('medication setup explains and offers no Begin; a custom track begins', (
+    t,
+  ) async {
+    await t.runAsync(() async {
+      await MedDb.putDef(
+        await LocalDb.instance,
+        const MedDef(key: 'metformin', label: 'Metformin', doseValue: 500, doseUnit: 'mg'),
+      );
+    });
+    final defs = (await t.runAsync(() => store.definitions()))!;
+    final med = defs.firstWhere((d) => d.id == 'med:metformin');
+    await mountTracks(t, TrackDetailScreen(store: store, track: med));
+    await settleTracks(t, store);
+    expect(find.text('Start an experiment'), findsOneWidget);
+    await t.ensureVisible(find.text('Start an experiment'));
+    await t.tap(find.text('Start an experiment'));
+    await settleTracks(t, store);
+    expect(find.byKey(const ValueKey('experiment-prescribed')), findsOneWidget);
+    expect(find.textContaining('never randomized'), findsOneWidget);
+    expect(find.text('Begin experiment'), findsNothing);
+    expect(find.text('2 weeks'), findsNothing);
+  });
+
+  testWidgets('a custom track setup still offers Begin', (t) async {
+    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
+    await mountTracks(t, TrackDetailScreen(store: store, track: caffeine));
+    await settleTracks(t, store);
+    await t.ensureVisible(find.text('Start an experiment'));
+    await t.tap(find.text('Start an experiment'));
+    await settleTracks(t, store);
+    expect(find.text('Begin experiment'), findsOneWidget);
+    expect(find.byKey(const ValueKey('experiment-prescribed')), findsNothing);
+  });
+
+  // why: owner decision 2026-10-27. Marking a custom track prescribed from the
+  // editor persists the flag; a medication shows it checked and locked.
+  testWidgets('editor Prescribed checkbox persists', (t) async {
+    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
+    await mountTracks(t, TrackEditor(store: store, initial: caffeine), height: 2400);
+    await settleTracks(t, store);
+    final box = find.byKey(const ValueKey('track-prescribed'));
+    expect(t.widget<CheckboxListTile>(box).value, isFalse);
+    await t.tap(box);
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('track-save')));
+    await settleTracks(t, store);
+    final saved = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
+    expect(saved.prescribed, isTrue);
+  });
+
+  testWidgets('medication editor shows Prescribed checked and locked', (t) async {
+    await t.runAsync(() async {
+      await MedDb.putDef(
+        await LocalDb.instance,
+        const MedDef(key: 'metformin', label: 'Metformin', doseValue: 500, doseUnit: 'mg'),
+      );
+    });
+    final med = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'med:metformin');
+    await mountTracks(t, TrackEditor(store: store, initial: med), height: 2400);
+    await settleTracks(t, store);
+    final medBox = t.widget<CheckboxListTile>(find.byKey(const ValueKey('track-prescribed')));
+    expect(medBox.value, isTrue);
+    expect(medBox.onChanged, isNull);
+  });
+
+  // why: a track that became prescribed after its experiment started must show
+  // no "Skip it" text on the experiment screen.
+  // proves: CLAIM(never-ask-skip-prescribed)
+  testWidgets('experiment screen of a now-prescribed track lists no skip days', (t) async {
+    final custom = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
+    final started = (await t.runAsync(
+      () => store.startExperiment(trackId: 'sauna', startDate: todayLabel(), weeks: 2, seed: 17),
+    ))!;
+    await mountTracks(
+      t,
+      ExperimentScreen(
+        store: store,
+        track: TrackDefinition.fromJson({...custom.toJson(), 'prescribed': true}),
+        experimentId: started['id'] as String,
+      ),
+      height: 2400,
+    );
+    await settleTracks(t, store);
+    expect(find.text('Skip it'), findsNothing);
+    expect(find.byKey(const ValueKey('experiment-prescribed')), findsOneWidget);
+  });
+
+  testWidgets('experiment screen of an ordinary track lists skip days', (t) async {
+    final custom = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
+    final started = (await t.runAsync(
+      () => store.startExperiment(trackId: 'sauna', startDate: todayLabel(), weeks: 2, seed: 17),
+    ))!;
+    await mountTracks(
+      t,
+      ExperimentScreen(
+        store: store,
+        track: custom,
+        experimentId: started['id'] as String,
+      ),
+      height: 2400,
+    );
+    await settleTracks(t, store);
+    expect(find.textContaining('Skip it'), findsWidgets);
+  });
+
+  // why: review T8. The wearer can stop a running experiment from its screen;
+  // the detail screen then offers a new one and keeps the stopped one viewable.
+  // proves: CLAIM(stop-ends-reminders)
+  testWidgets('a running experiment can be stopped from its screen', (t) async {
+    final sauna = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
+    final started = (await t.runAsync(
+      () => store.startExperiment(
+        trackId: 'sauna',
+        startDate: '2026-10-25',
+        weeks: 2,
+        seed: 17,
+      ),
+    ))!;
+    await mountTracks(t, TrackDetailScreen(store: store, track: sauna), height: 2400);
+    await settleTracks(t, store);
+    await t.ensureVisible(find.text('View experiment'));
+    await t.tap(find.text('View experiment'));
+    await settleTracks(t, store);
+    await t.tap(find.byKey(const ValueKey('experiment-stop')));
+    await settleTracks(t, store);
+    expect(find.text('Start an experiment'), findsOneWidget);
+    final report = (await t.runAsync(() => store.experimentReport(started['id'] as String)))!;
+    expect(report['status'], 'stopped');
+    await t.ensureVisible(find.text('View last experiment'));
+    await t.tap(find.text('View last experiment'));
+    await settleTracks(t, store);
+    expect(find.textContaining('Stopped'), findsWidgets);
+    expect(find.byKey(const ValueKey('experiment-stop')), findsNothing);
+  });
+
+  // why: review T7. The experiment screen answers any past assigned date, so a
+  // skip day remembered the next day still counts.
+  // proves: CLAIM(backfill-answers)
+  testWidgets('the experiment screen answers a past assigned date', (t) async {
+    final sauna = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
+    final started = (await t.runAsync(
+      () => store.startExperiment(trackId: 'sauna', startDate: '2026-10-25', weeks: 2, seed: 17),
+    ))!;
+    final id = started['id'] as String;
+    await mountTracks(
+      t,
+      ExperimentScreen(store: store, track: sauna, experimentId: id),
+      height: 5000,
+    );
+    await settleTracks(t, store);
+    await t.tap(find.byKey(const ValueKey('xp-didnt-2026-10-25')));
+    await settleTracks(t, store);
+    expect((await t.runAsync(() => store.experimentAnswers(id)))!, {'2026-10-25': false});
+    expect(t.widget<ChoiceChip>(find.byKey(const ValueKey('xp-didnt-2026-10-25'))).selected, isTrue);
+    await t.tap(find.byKey(const ValueKey('xp-did-2026-10-25')));
+    await settleTracks(t, store);
+    expect((await t.runAsync(() => store.experimentAnswers(id)))!, {'2026-10-25': true});
+    expect((await t.runAsync(() => store.events(trackId: 'sauna')))!.single.date, '2026-10-25');
+  });
+
+  // why: review T19. The effect line states the unit and the direction (do
+  // minus skip) per system, with an explicit sign; several systems get one
+  // multiplicity note. Hand-checked strings, not recomputed from the code.
+  // proves: CLAIM(effects-multiplicity)
+  testWidgets('effect text carries unit, direction and a multiplicity note', (t) async {
+    late BuildContext context;
+    await mountTracks(t, Builder(builder: (c) {
+      context = c;
+      return const SizedBox();
+    }));
+    await t.pump();
+    const effect = {'effect': 8.04, 'lower': 2.0, 'upper': 14.0, 'n_do': 7, 'n_dont': 6};
+    expect(
+      experimentEffectText(context, 'sleep', 'Sleep', effect),
+      'Sleep: +8.0 min (do minus skip; 95% interval 2.0 to 14.0 min); 7 do days, 6 skip days',
+    );
+    expect(
+      experimentEffectText(context, 'hr', 'Heart rate', {...effect, 'effect': -9.0, 'lower': -12.0, 'upper': -6.0}),
+      'Heart rate: -9.0 bpm (do minus skip; 95% interval -12.0 to -6.0 bpm); 7 do days, 6 skip days',
+    );
+    expect(experimentEffectText(context, 'skin_temp', 'Skin temperature', effect), contains('°C'));
+    expect(experimentEffectText(context, 'respiration', 'Respiration', effect), contains('breaths/min'));
+    expect(
+      experimentMultiplicityText(context, 3),
+      startsWith('Each interval covers one system at 95%. With 3 systems compared'),
+    );
+  });
 }

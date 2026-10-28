@@ -115,6 +115,21 @@ String tracksText(BuildContext context, String key) {
     'ExperimentView' => l?.tracksExperimentView ?? 'View experiment',
     'ExperimentViewLast' =>
       l?.tracksExperimentViewLast ?? 'View last experiment',
+    'Prescribed' =>
+      l?.tracksPrescribed ?? 'Prescribed by a clinician',
+    'PrescribedNote' =>
+      l?.tracksPrescribedNote ??
+          'The app never asks you to skip a prescribed treatment.',
+    'ExperimentPrescribed' =>
+      l?.tracksExperimentPrescribed ??
+          'Prescribed treatments are never randomized; the app will not ask you to skip one. Talk to your clinician about changes.',
+    'ExperimentStop' => l?.tracksExperimentStop ?? 'Stop experiment',
+    'ExperimentStopped' => l?.tracksExperimentStopped ?? 'Stopped',
+    'ExperimentStoppedNote' =>
+      l?.tracksExperimentStoppedNote ??
+          'You stopped this experiment early, so no effect is reported and no more reminders are sent.',
+    'ExperimentDid' => l?.tracksExperimentDid ?? 'I did it',
+    'ExperimentDidnt' => l?.tracksExperimentDidnt ?? 'I did not',
     'ExperimentSetup' => l?.tracksExperimentSetup ?? 'Experiment setup',
     'ExperimentTitle' => l?.tracksExperimentTitle ?? 'Experiment',
     'ExperimentExplain' =>
@@ -193,17 +208,53 @@ String experimentAdherenceText(BuildContext context, int followed, int total) =>
     AppLocalizations.of(context)?.tracksExperimentAdherence(followed, total) ??
     '$followed of $total assigned days confirmed';
 
-/// Difference of means (do minus skip) with its 95% interval and arm sizes.
-String experimentEffectText(BuildContext context, String system, Map effect) {
+/// Unit of each system's stored nightly outcome (see _experimentReport):
+/// sleep is total sleep time in minutes, hr is resting bpm, hrv is RMSSD ms.
+const experimentUnits = <String, String>{
+  'sleep': 'min',
+  'hr': 'bpm',
+  'hrv': 'ms',
+  'stress': 'points',
+  'skin_temp': '°C',
+  'workout_intensity': 'points',
+  'recovery': 'points',
+  'respiration': 'breaths/min',
+};
+
+/// Difference of means, do minus skip, in the system's unit, with its 95%
+/// interval and arm sizes.
+String experimentEffectText(
+  BuildContext context,
+  String systemKey,
+  String system,
+  Map effect,
+) {
   String n(Object? v) => (v as num).toStringAsFixed(1);
-  return AppLocalizations.of(context)?.tracksExperimentEffect(
+  final unit = experimentUnits[systemKey] ?? '';
+  String signed(Object? v) => (v as num) > 0 ? '+${n(v)}' : n(v);
+  return AppLocalizations.of(context)?.tracksExperimentEffectLine(
         system,
-        n(effect['effect']),
+        signed(effect['effect']),
+        unit,
         n(effect['lower']),
         n(effect['upper']),
         effect['n_do'] as int,
         effect['n_dont'] as int,
       ) ??
-      '$system: ${n(effect['effect'])} (95% ${n(effect['lower'])} to ${n(effect['upper'])}), '
+      '$system: ${signed(effect['effect'])} $unit (do minus skip; 95% interval ${n(effect['lower'])} to ${n(effect['upper'])} $unit); '
           '${effect['n_do']} do days, ${effect['n_dont']} skip days';
+}
+
+/// One line saying that several 95% intervals were reported side by side.
+String experimentMultiplicityText(BuildContext context, int count) =>
+    AppLocalizations.of(context)?.tracksExperimentMultiplicity(count) ??
+    'Each interval covers one system at 95%. With $count systems compared, about one in twenty intervals would miss by chance alone, so treat one that only just excludes zero with caution.';
+
+/// Why a long-washout track cannot be randomized in two-day blocks.
+String experimentWashoutText(BuildContext context, double days) {
+  final shown = days.toStringAsFixed(1);
+  return AppLocalizations.of(context)?.tracksExperimentWashout(shown) ??
+      'This track takes about $shown days to wear off (five half-lives, or its withdrawal period). '
+          'Experiment days alternate every day, so a skip day would still carry the last dose and the result would be biased. '
+          'Experiments are not offered for it.';
 }

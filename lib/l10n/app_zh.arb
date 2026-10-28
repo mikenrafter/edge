@@ -3699,8 +3699,6 @@
   "tracksLearningNeedData": "等待可比较的夜晚",
   "tracksAdjustedFor": "Adjusted for: {tracks}",
   "activityPossibleTrack": "可能：{track}",
-  "activityTrackDidYou": "你今天有没有“{track}”？",
-  "activityTrackPromptNote": "选“是”会添加一条没有时间和数量的记录；选“否”会记录今天没有发生。",
   "activityTrackNote": "这是身体信号给出的提示，不是诊断。确认后会添加一条没有数量的记录。 其判定阈值尚未经过验证。",
   "activityTrackYes": "是",
   "activityTrackNo": "否",
@@ -3727,6 +3725,5 @@
   "tracksExperimentSkip": "不做",
   "tracksExperimentLearning": "实验进行中：只计入其安排的日子",
   "tracksExperimentWeeks": "{count} 周",
-  "tracksExperimentAdherence": "已确认 {followed}/{total} 个安排日",
-  "tracksExperimentEffect": "{system}：{effect}（95% 区间 {lower} 至 {upper}）；做 {nDo} 天，不做 {nSkip} 天"
+  "tracksExperimentAdherence": "已确认 {followed}/{total} 个安排日"
 }

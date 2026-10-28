@@ -4,6 +4,8 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:openstrap_edge/ui2/screens/detected_activities.dart';
+import 'package:openstrap_edge/ui2/screens/track_editor.dart';
+import 'package:openstrap_edge/ui2/screens/track_experiment.dart';
 import 'package:openstrap_edge/ui2/screens/tracks_screen.dart';
 
 import '../backup/backup_support.dart';
@@ -34,8 +36,10 @@ void main() {
   ActivitySuggestion suggestion({bool prompt = false}) => ActivitySuggestion(
     id: prompt ? 'track:prompt' : 'track:alcohol',
     kind: ActivityKind.values.byName('track'),
-    startTs: DateTime.utc(2026, 10, 1, 1).millisecondsSinceEpoch ~/ 1000,
-    endTs: DateTime.utc(2026, 10, 1, 3).millisecondsSinceEpoch ~/ 1000,
+    // Local times, so the card shows the same dates in every zone. The prompt
+    // is for a past day (Sep 30) and must name it, not say "today".
+    startTs: (prompt ? DateTime(2026, 9, 30) : DateTime(2026, 10, 1, 1)).millisecondsSinceEpoch ~/ 1000,
+    endTs: (prompt ? DateTime(2026, 10, 1) : DateTime(2026, 10, 1, 3)).millisecondsSinceEpoch ~/ 1000,
     revision: 0,
     details: {
       'track_id': 'alcohol',
@@ -95,6 +99,9 @@ void main() {
         height: 700,
       );
       expect(find.textContaining('Did you'), findsOneWidget);
+      // why: review T19. The title names the prompt's own day.
+      expect(find.textContaining('on Wed, Sep 30'), findsOneWidget);
+      expect(find.textContaining('today'), findsNothing);
       expect(find.textContaining('Possible'), findsNothing);
       expect(find.textContaining('120 min'), findsNothing);
       expect(t.takeException(), isNull);
@@ -158,4 +165,46 @@ void main() {
     },
     tags: ['golden'],
   );
+
+  // why: owner decision 2026-10-27. What a prescribed track shows instead of the
+  // setup: an explanation, no Begin. Reviewed by eye at generation (2026-10-27).
+  testWidgets('prescribed track experiment explanation has no Begin', (t) async {
+    final prescribed = TrackDefinition.fromJson({...track.toJson(), 'prescribed': true});
+    await mountTracks(t, ExperimentSetupScreen(store: store, track: prescribed), height: 500);
+    await settleTracks(t, store);
+    expect(find.textContaining('never randomized'), findsOneWidget);
+    expect(find.text('Begin experiment'), findsNothing);
+    await expectLater(
+      find.byKey(tracksBoundary),
+      matchesGoldenFile('goldens/track_experiment_prescribed.png'),
+    );
+  }, tags: ['golden']);
+
+  testWidgets('editor shows the Prescribed checkbox checked', (t) async {
+    final prescribed = TrackDefinition.fromJson({...track.toJson(), 'prescribed': true});
+    await mountTracks(t, TrackEditor(store: store, initial: prescribed), height: 900);
+    await settleTracks(t, store);
+    expect(t.widget<CheckboxListTile>(find.byKey(const ValueKey('track-prescribed'))).value, isTrue);
+    await expectLater(
+      find.byKey(tracksBoundary),
+      matchesGoldenFile('goldens/track_editor_prescribed.png'),
+    );
+  }, tags: ['golden']);
+
+  // why: review T6. A long-washout track shows why it cannot be randomized and
+  // its Begin is disabled. Reviewed by eye at generation (2026-10-27).
+  // proves: CLAIM(washout-vs-block)
+  testWidgets('long-washout track explains and disables Begin', (t) async {
+    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    await mountTracks(t, ExperimentSetupScreen(store: store, track: caffeine), height: 700);
+    await settleTracks(t, store);
+    expect(find.byKey(const ValueKey('experiment-washout')), findsOneWidget);
+    expect(find.textContaining('9.0 days'), findsOneWidget);
+    final begin = t.widget<FilledButton>(find.widgetWithText(FilledButton, 'Begin experiment'));
+    expect(begin.onPressed, isNull);
+    await expectLater(
+      find.byKey(tracksBoundary),
+      matchesGoldenFile('goldens/track_experiment_washout.png'),
+    );
+  }, tags: ['golden']);
 }

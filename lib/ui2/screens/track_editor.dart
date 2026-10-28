@@ -32,7 +32,9 @@ class _TrackEditorState extends State<TrackEditor> {
   late final _roles = {..._initial.roles}, _systems = {..._initial.systems};
   late String _min = '${_initial.detectionMin}',
       _max = '${_initial.detectionMax}';
-  late bool _noClean = _initial.noUnadjustedData, _enabled = _initial.enabled;
+  late bool _noClean = _initial.noUnadjustedData,
+      _enabled = _initial.enabled,
+      _prescribed = _initial.prescribed;
   List<TrackRangeDraft>? _history;
   final _customSystem = TextEditingController();
   bool _failed = false, _saving = false;
@@ -84,6 +86,7 @@ class _TrackEditorState extends State<TrackEditor> {
         detectionMin: min,
         detectionMax: max,
         noUnadjustedData: _noClean,
+        prescribed: _prescribed,
         enabled: _enabled,
         loggingComplete: _initial.loggingComplete,
         loggingCompleteSinceMs: _initial.loggingCompleteSinceMs,
@@ -212,6 +215,18 @@ class _TrackEditorState extends State<TrackEditor> {
                   title: Text(text('Enabled')),
                   value: _enabled,
                   onChanged: (value) => setState(() => _enabled = value),
+                ),
+                // ↳ CLAIM(never-ask-skip-prescribed): the flag that keeps a track
+                // out of randomized experiments; a medication is always on.
+                CheckboxListTile(
+                  key: const ValueKey('track-prescribed'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(text('Prescribed')),
+                  subtitle: Text(text('PrescribedNote'), style: F.cap),
+                  value: _prescribed || _initial.id.startsWith('med:'),
+                  onChanged: _initial.id.startsWith('med:')
+                      ? null
+                      : (value) => setState(() => _prescribed = value == true),
                 ),
                 _section(text('Kinetics'), [
                   Text(text('KineticsNote'), style: F.cap),

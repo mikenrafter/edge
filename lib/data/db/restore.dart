@@ -555,6 +555,12 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       await deleteByIn(txn, 'track_event', 'date', sorted);
       await deleteByIn(txn, 'track_absence', 'date', sorted);
       await deleteByIn(txn, 'track_experiment_day', 'date', sorted);
+      // An experiment with no days left would still block its range and hold
+      // learning in abstention (review T15).
+      await txn.execute(
+        'DELETE FROM track_experiment WHERE NOT EXISTS '
+        '(SELECT 1 FROM track_experiment_day d WHERE d.experiment_id = track_experiment.id)',
+      );
       await deleteByIn(txn, 'track_learning_log', 'date', sorted);
       await txn.delete('track_learning'); // Rebuild aggregates after deleting evidence.
       await deleteByIn(txn, 'cycle_log', 'date', sorted);
@@ -1932,6 +1938,12 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       await LocalDb._retagAllGesturePackets(db);
     }
     ImportPerf.phase('retag_and_rewind', cleanupWatch, run: perfId);
+    // One running experiment per track (review T16): a restored experiment
+    // overlapping a local one would send two, possibly opposite, reminders.
+    if (had('track_experiment')) {
+      final dropped = await _ldbReconcileOverlappingExperiments(db);
+      if (dropped > 0) counts['_track_experiment_overlap_dropped'] = dropped;
+    }
     // Last, so it can never be mistaken for a table row count by anything that
     // walks this map in order.
     final days = importedDays;
@@ -1942,3 +1954,32 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     return counts;
   }
 
+/// Keeps, per track, the earliest-created experiment of every overlapping
+/// group (ties by id) and deletes the others with their days. Returns how
+/// many experiments were dropped.
+// CLAIM(one-experiment-per-track): after a restore no two experiments of a
+// track overlap [review T16; tracks_experiments_t3_test.dart].
+Future<int> _ldbReconcileOverlappingExperiments(DatabaseExecutor db) async {
+  final rows = await db.rawQuery(
+    'SELECT id, track_id, start_date, end_date FROM track_experiment '
+    'ORDER BY created_ms, id',
+  );
+  final kept = <String, List<Map<String, Object?>>>{};
+  var dropped = 0;
+  for (final row in rows) {
+    final mine = kept.putIfAbsent(row['track_id'] as String, () => []);
+    final clash = mine.any(
+      (k) =>
+          (k['start_date'] as String).compareTo(row['end_date'] as String) <= 0 &&
+          (k['end_date'] as String).compareTo(row['start_date'] as String) >= 0,
+    );
+    if (!clash) {
+      mine.add(row);
+      continue;
+    }
+    await db.execute('DELETE FROM track_experiment_day WHERE experiment_id = ?', [row['id']]);
+    await db.execute('DELETE FROM track_experiment WHERE id = ?', [row['id']]);
+    dropped++;
+  }
+  return dropped;
+  }

@@ -18027,15 +18027,6 @@
       }
     }
   },
-  "activityTrackDidYou": "Did you have or do “{track}” today?",
-  "@activityTrackDidYou": {
-    "placeholders": {
-      "track": {
-        "type": "String"
-      }
-    }
-  },
-  "activityTrackPromptNote": "Yes adds an entry with no time or amount. No records that none happened today.",
   "activityTrackNote": "A hint from your body signals, not a diagnosis. Confirming adds an entry with no amount. The thresholds behind it are unvalidated.",
   "activityTrackYes": "Yes",
   "activityTrackNo": "No",
@@ -18080,13 +18071,44 @@
       }
     }
   },
-  "tracksExperimentEffect": "{system}: {effect} (95% interval {lower} to {upper}); {nDo} do days, {nSkip} skip days",
-  "@tracksExperimentEffect": {
+  "tracksPrescribed": "Prescribed by a clinician",
+  "tracksPrescribedNote": "The app never asks you to skip a prescribed treatment.",
+  "tracksExperimentPrescribed": "Prescribed treatments are never randomized; the app will not ask you to skip one. Talk to your clinician about changes.",
+  "tracksExperimentWashout": "This track takes about {days} days to wear off (five half-lives, or its withdrawal period). Experiment days alternate every day, so a skip day would still carry the last dose and the result would be biased. Experiments are not offered for it.",
+  "@tracksExperimentWashout": {
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "tracksExperimentStop": "Stop experiment",
+  "tracksExperimentStopped": "Stopped",
+  "tracksExperimentStoppedNote": "You stopped this experiment early, so no effect is reported and no more reminders are sent.",
+  "tracksExperimentDid": "I did it",
+  "tracksExperimentDidnt": "I did not",
+  "activityTrackDidYouOn": "Did you have or do “{track}” on {date}?",
+  "@activityTrackDidYouOn": {
+    "placeholders": {
+      "track": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "activityTrackPromptNoteDay": "Yes adds an entry with no time or amount for that day. No records that none happened that day.",
+  "tracksExperimentEffectLine": "{system}: {effect} {unit} (do minus skip; 95% interval {lower} to {upper} {unit}); {nDo} do days, {nSkip} skip days",
+  "@tracksExperimentEffectLine": {
     "placeholders": {
       "system": {
         "type": "String"
       },
       "effect": {
+        "type": "String"
+      },
+      "unit": {
         "type": "String"
       },
       "lower": {
@@ -18099,6 +18121,14 @@
         "type": "int"
       },
       "nSkip": {
+        "type": "int"
+      }
+    }
+  },
+  "tracksExperimentMultiplicity": "Each interval covers one system at 95%. With {count} systems compared, about one in twenty intervals would miss by chance alone, so treat one that only just excludes zero with caution.",
+  "@tracksExperimentMultiplicity": {
+    "placeholders": {
+      "count": {
         "type": "int"
       }
     }

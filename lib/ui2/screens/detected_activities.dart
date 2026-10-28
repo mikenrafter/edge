@@ -75,8 +75,11 @@ class ActivityProposalCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   prompt
-                      ? (l?.activityTrackDidYou(trackName) ??
-                          'Did you have or do "$trackName" today?')
+                      ? (l?.activityTrackDidYouOn(
+                              trackName,
+                              material.formatMediumDate(start),
+                            ) ??
+                          'Did you have or do "$trackName" on ${material.formatMediumDate(start)}?')
                       : track
                       ? (l?.activityPossibleTrack(trackName) ??
                           'Possible: $trackName')
@@ -111,8 +114,8 @@ class ActivityProposalCard extends StatelessWidget {
           if (track)
             Text(
               prompt
-                  ? (l?.activityTrackPromptNote ??
-                      'Yes adds an entry with no time or amount. No records that none happened today.')
+                  ? (l?.activityTrackPromptNoteDay ??
+                      'Yes adds an entry with no time or amount for that day. No records that none happened that day.')
                   : (l?.activityTrackNote ??
                       'A hint from your body signals, not a diagnosis. Confirming adds an entry with no amount. The thresholds behind it are unvalidated.'),
               style: F.cap.copyWith(color: p.ink3),
