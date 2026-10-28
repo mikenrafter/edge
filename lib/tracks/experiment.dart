@@ -32,6 +32,27 @@ class ExperimentableTrack {
       definition.isPrescribed ? null : ExperimentableTrack._(definition);
 }
 
+/// Days a track needs to clear: the larger of five half-lives (the "several
+/// half-lives" of the learning policy, learning.dart `minimumFor`) and its
+/// withdrawal period, over the track and every sub-activity.
+// CLAIM(washout-vs-block): blocks are two adjacent days, so a skip day is only
+// about one day after a do day; a longer washout leaves it exposed and biases
+// the effect toward zero [review T6; experiment_effect_test.dart].
+double experimentWashoutDays(TrackDefinition track) {
+  var days = 0.0;
+  for (final kinetics in [track.kinetics, ...track.subActivities.map((s) => s.kinetics)]) {
+    final halfLife = kinetics.fields['half_life_hours']?.value ?? 0;
+    final withdrawal = kinetics.fields['withdrawal_days']?.value ?? 0;
+    days = math.max(days, math.max(halfLife * 5 / 24, withdrawal));
+  }
+  return days;
+}
+
+/// True when [experimentWashoutDays] is longer than one day (the gap between
+/// a do day and the skip day beside it).
+bool experimentWashoutExceedsBlock(TrackDefinition track) =>
+    experimentWashoutDays(track) > 1 + 1e-9;
+
 /// Systems with a stored nightly outcome the report can compare.
 const experimentSystems = {
   'sleep',

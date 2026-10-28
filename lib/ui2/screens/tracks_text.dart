@@ -215,3 +215,12 @@ String experimentEffectText(BuildContext context, String system, Map effect) {
       '$system: ${n(effect['effect'])} (95% ${n(effect['lower'])} to ${n(effect['upper'])}), '
           '${effect['n_do']} do days, ${effect['n_dont']} skip days';
 }
+
+/// Why a long-washout track cannot be randomized in two-day blocks.
+String experimentWashoutText(BuildContext context, double days) {
+  final shown = days.toStringAsFixed(1);
+  return AppLocalizations.of(context)?.tracksExperimentWashout(shown) ??
+      'This track takes about $shown days to wear off (five half-lives, or its withdrawal period). '
+          'Experiment days alternate every day, so a skip day would still carry the last dose and the result would be biased. '
+          'Experiments are not offered for it.';
+}

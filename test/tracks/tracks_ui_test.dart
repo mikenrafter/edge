@@ -216,7 +216,7 @@ void main() {
   });
 
   testWidgets('a custom track setup still offers Begin', (t) async {
-    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
     await mountTracks(t, TrackDetailScreen(store: store, track: caffeine));
     await settleTracks(t, store);
     await t.ensureVisible(find.text('Start an experiment'));
@@ -228,8 +228,8 @@ void main() {
 
   // why: owner decision 2026-10-27. Marking a custom track prescribed from the
   // editor persists the flag; a medication shows it checked and locked.
-  testWidgets('editor Prescribed checkbox persists; medication is locked on', (t) async {
-    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+  testWidgets('editor Prescribed checkbox persists', (t) async {
+    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
     await mountTracks(t, TrackEditor(store: store, initial: caffeine), height: 2400);
     await settleTracks(t, store);
     final box = find.byKey(const ValueKey('track-prescribed'));
@@ -238,7 +238,7 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.byKey(const ValueKey('track-save')));
     await settleTracks(t, store);
-    final saved = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    final saved = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
     expect(saved.prescribed, isTrue);
   });
 
@@ -261,9 +261,9 @@ void main() {
   // no "Skip it" text on the experiment screen.
   // proves: CLAIM(never-ask-skip-prescribed)
   testWidgets('experiment screen of a now-prescribed track lists no skip days', (t) async {
-    final custom = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    final custom = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
     final started = (await t.runAsync(
-      () => store.startExperiment(trackId: 'caffeine', startDate: todayLabel(), weeks: 2, seed: 17),
+      () => store.startExperiment(trackId: 'sauna', startDate: todayLabel(), weeks: 2, seed: 17),
     ))!;
     await mountTracks(
       t,
@@ -280,9 +280,9 @@ void main() {
   });
 
   testWidgets('experiment screen of an ordinary track lists skip days', (t) async {
-    final custom = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    final custom = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
     final started = (await t.runAsync(
-      () => store.startExperiment(trackId: 'caffeine', startDate: todayLabel(), weeks: 2, seed: 17),
+      () => store.startExperiment(trackId: 'sauna', startDate: todayLabel(), weeks: 2, seed: 17),
     ))!;
     await mountTracks(
       t,

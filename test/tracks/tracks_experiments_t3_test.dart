@@ -447,4 +447,31 @@ void main() {
     expect(ExperimentableTrack.from(TrackDefinition.fromJson({...base, 'prescribed': true})), isNull);
     expect(ExperimentableTrack.from(TrackDefinition.fromJson(base)), isNotNull);
   });
+
+  // why: review T6. The cannabis preset has withdrawal_days 28: every skip day
+  // after a do day would still be exposed, biasing the effect toward zero.
+  // proves: CLAIM(washout-vs-block)
+  test('a track whose washout exceeds one day is refused with the washout reason', () async {
+    await expectLater(
+      store.startExperiment(trackId: 'cannabis', startDate: '2026-09-01', weeks: 2, seed: 17),
+      throwsA(isA<ExperimentRefused>().having((e) => e.reason, 'reason', ExperimentRefusal.washout)),
+    );
+    expect(await db.query('track_experiment'), isEmpty);
+    // The caffeine preset: 5 half-lives = 25 h and a 9 day withdrawal.
+    await expectLater(
+      store.startExperiment(trackId: 'caffeine', startDate: '2026-09-01', weeks: 2, seed: 17),
+      throwsA(isA<ExperimentRefused>()),
+    );
+  });
+
+  test('a short-lived track still starts', () async {
+    final current = (await store.definitions()).firstWhere((d) => d.id == 'custom');
+    await store.saveDefinition(
+      TrackDefinition.fromJson({
+        ...current.toJson(),
+        'kinetics': {'half_life_hours': {'value': 2.0, 'locked': false}},
+      }),
+    );
+    expect((await start()).containsKey('id'), isTrue);
+  });
 }

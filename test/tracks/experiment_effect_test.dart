@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/track_model.dart';
 import 'package:openstrap_edge/tracks/experiment.dart';
 
 // Reference values are independent of the code under test: the two-sided 95%
@@ -84,5 +85,52 @@ void main() {
     expect(experimentEffect([1, 2], [1, 2, 3]), isNull);
     expect(experimentEffect([1, 2, 3], [1, 2]), isNull);
     expect(experimentEffect([], []), isNull);
+  });
+
+  // why: review T6. Blocks are two adjacent days, so a "skip" day right after a
+  // "do" day is only ~1 day clear. A track whose washout is longer than that
+  // would leave every skip day exposed. Washout = max(5 half-lives,
+  // withdrawal_days), the same "several half-lives" the learning policy uses
+  // (learning.dart minimumFor: half_life_hours * 5).
+  // proves: CLAIM(washout-vs-block)
+  group('washout', () {
+    TrackDefinition track({double? halfLifeHours, double? withdrawalDays, Map<String, Object?>? sub}) =>
+        TrackDefinition.fromJson({
+          'id': 't',
+          'name': 'T',
+          'icon': 'track',
+          'kind': 'consumed',
+          'kinetics': {
+            'half_life_hours': {'value': halfLifeHours, 'locked': false},
+            'withdrawal_days': {'value': withdrawalDays, 'locked': false},
+          },
+          'sub_activities': [
+            if (sub != null) {'id': 's', 'name': 'S', 'kinetics': sub},
+          ],
+        });
+
+    test('is the larger of five half-lives and the withdrawal period, in days', () {
+      expect(experimentWashoutDays(track()), 0);
+      expect(experimentWashoutDays(track(halfLifeHours: 4.8)), closeTo(1.0, 1e-12)); // 4.8*5/24
+      expect(experimentWashoutDays(track(halfLifeHours: 5)), closeTo(25 / 24, 1e-12));
+      expect(experimentWashoutDays(track(halfLifeHours: 5, withdrawalDays: 9)), 9);
+      expect(experimentWashoutDays(track(halfLifeHours: 48, withdrawalDays: 1)), 10);
+    });
+
+    test('a sub-activity with a longer half-life counts', () {
+      final t = track(
+        halfLifeHours: 1,
+        sub: {'half_life_hours': {'value': 24, 'locked': false}},
+      );
+      expect(experimentWashoutDays(t), 5);
+    });
+
+    test('one day exactly is allowed; anything longer is not', () {
+      expect(ExperimentableTrack.from(track(halfLifeHours: 4.8)), isNotNull);
+      expect(experimentWashoutExceedsBlock(track(halfLifeHours: 4.8)), isFalse);
+      expect(experimentWashoutExceedsBlock(track(withdrawalDays: 1)), isFalse);
+      expect(experimentWashoutExceedsBlock(track(halfLifeHours: 5)), isTrue);
+      expect(experimentWashoutExceedsBlock(track(withdrawalDays: 28)), isTrue);
+    });
   });
 }

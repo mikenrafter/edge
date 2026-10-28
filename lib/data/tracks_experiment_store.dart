@@ -23,6 +23,10 @@ extension TracksExperimentStore on TracksStore {
     if (ExperimentableTrack.from(track.single) == null) {
       throw const ExperimentRefused(ExperimentRefusal.prescribed);
     }
+    // ↳ CLAIM(washout-vs-block)
+    if (experimentWashoutExceedsBlock(track.single)) {
+      throw const ExperimentRefused(ExperimentRefusal.washout);
+    }
     final end = endDate(startDate, weeks);
     final chosen = seed ?? math.Random().nextInt(0x7fffffff);
     final assignments = assignExperimentDays(weeks * 7, chosen);

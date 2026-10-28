@@ -57,6 +57,7 @@ class _ExperimentSetupScreenState extends State<ExperimentSetupScreen> {
         ),
       ]);
     }
+    final washedOut = experimentWashoutExceedsBlock(widget.track);
     return detailScaffold(context, text('ExperimentSetup'), [
       Text(widget.track.name, style: F.head),
       const SizedBox(height: S.x2),
@@ -74,9 +75,17 @@ class _ExperimentSetupScreenState extends State<ExperimentSetupScreen> {
         ],
       ),
       const SizedBox(height: S.x3),
+      // ↳ CLAIM(washout-vs-block): say why, and do not offer a biased run.
+      if (washedOut) ...[
+        Text(
+          experimentWashoutText(context, experimentWashoutDays(widget.track)),
+          key: const ValueKey('experiment-washout'),
+        ),
+        const SizedBox(height: S.x3),
+      ],
       if (_failed) Text(text('ExperimentFailed')),
       FilledButton(
-        onPressed: _busy ? null : _begin,
+        onPressed: _busy || washedOut ? null : _begin,
         child: Text(text('ExperimentBegin')),
       ),
     ]);
