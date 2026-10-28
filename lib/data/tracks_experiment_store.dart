@@ -60,6 +60,8 @@ extension TracksExperimentStore on TracksStore {
     );
   }
 
+  static const _mappedToSection = {'late_workout', 'naps', 'late_meal'};
+
   static String _answerEventId(String id, String date) => 'xp:$id:$date';
 
   // CLAIM(backfill-answers): each past assigned date can be answered from the
@@ -85,7 +87,20 @@ extension TracksExperimentStore on TracksStore {
     if (didIt) {
       await db.delete('track_absence', where: 'track_id = ? AND date = ?', whereArgs: [trackId, date]);
       if (existing == null) {
-        await log(TrackEvent(id: eventId, trackId: trackId, date: date));
+        final answer = TrackEvent(id: eventId, trackId: trackId, date: date);
+        if (_mappedToSection.contains(trackId)) {
+          // ↳ CLAIM(did-it-without-inventing): these tracks mirror the workout,
+          // nap and food sections, whose logging needs a time or an amount and
+          // would invent a session, nap or meal. The answer is an explicit
+          // untimed entry on the track itself.
+          await db.insert(
+            'track_event',
+            answer.toJson(),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        } else {
+          await log(answer);
+        }
       }
     } else {
       if (existing != null) await deleteEvent(existing);

@@ -832,4 +832,36 @@ void main() {
     );
     expect(await startAt('2026-09-01', track: 'other'), isA<Map>(), reason: 'a different track');
   });
+
+  // why: review R2-9. late_workout and naps are mapped to the workout and nap
+  // sections, whose logging requires a start time and duration, so the
+  // untimed "I did it" always failed for them. The answer is recorded as an
+  // explicit untimed adherence entry on the track, never as an invented
+  // session or nap; the report counts it as followed, and it can be changed.
+  // proves: CLAIM(did-it-without-inventing)
+  for (final trackId in ['late_workout', 'naps', 'late_meal']) {
+    test('"I did it" on $trackId records adherence without inventing an occurrence', () async {
+      final experiment = await store.startExperiment(
+        trackId: trackId, startDate: '2026-09-01', weeks: 2, seed: 17);
+      final id = experiment['id'] as String;
+      final doDate = (experiment['assignments'] as List).cast<Map>().firstWhere((d) => d['do'] == true)['date'] as String;
+      await withClock(Clock.fixed(DateTime(2026, 9, 14, 22)), () async {
+        await store.answerExperimentDay(id, doDate, didIt: true);
+        expect(await store.experimentAnswers(id), {doDate: true});
+        final events = await store.events(trackId: trackId, date: doDate);
+        expect(events, hasLength(1));
+        expect(events.single.atMs, isNull);
+        expect(events.single.amount, isNull);
+        // Answering again changes nothing; "didn't" removes it.
+        await store.answerExperimentDay(id, doDate, didIt: true);
+        expect(await store.events(trackId: trackId, date: doDate), hasLength(1));
+        await store.answerExperimentDay(id, doDate, didIt: false);
+        expect(await store.experimentAnswers(id), {doDate: false});
+        expect(await store.events(trackId: trackId, date: doDate), isEmpty);
+      });
+      expect(await db.query('sessions'), isEmpty, reason: 'no session was invented');
+      expect(await db.query('sleep_nap'), isEmpty, reason: 'no nap was invented');
+      expect(await db.query('food_entry'), isEmpty, reason: 'no meal was invented');
+    });
+  }
 }
