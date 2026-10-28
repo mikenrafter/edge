@@ -2,7 +2,29 @@
 // Assignment is an invitation, never evidence that the wearer followed it.
 import 'dart:math' as math;
 
+import '../data/track_model.dart';
+
 const experimentWeeks = [2, 3, 4];
+
+/// Why an experiment was refused. [reason] is `medication` or `washout`.
+class ExperimentRefused implements Exception {
+  const ExperimentRefused(this.reason);
+  final String reason;
+  @override
+  String toString() => 'ExperimentRefused($reason)';
+}
+
+/// A track that may be randomized. There is no public constructor: a
+/// medication cannot be wrapped, so no caller can ask the app to tell a
+/// wearer to skip a prescribed drug.
+// CLAIM(no-med-experiment): every medication is a `med:` track and `from`
+// returns null for all of them [review T1; tracks_experiments_t3_test.dart].
+class ExperimentableTrack {
+  const ExperimentableTrack._(this.definition);
+  final TrackDefinition definition;
+  static ExperimentableTrack? from(TrackDefinition definition) =>
+      definition.id.startsWith('med:') ? null : ExperimentableTrack._(definition);
+}
 
 /// Systems with a stored nightly outcome the report can compare.
 const experimentSystems = {

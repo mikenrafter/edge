@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../../data/day_label.dart';
 import '../../data/tracks_store.dart';
+import '../../tracks/experiment.dart';
 import '../ui2.dart';
 import 'metric_detail.dart' show detailScaffold;
 import 'tracks_text.dart';
@@ -14,7 +15,7 @@ class ExperimentSetupScreen extends StatefulWidget {
     required this.track,
   });
   final TracksStore store;
-  final TrackDefinition track;
+  final ExperimentableTrack track;
   @override
   State<ExperimentSetupScreen> createState() => _ExperimentSetupScreenState();
 }
@@ -30,7 +31,7 @@ class _ExperimentSetupScreenState extends State<ExperimentSetupScreen> {
     });
     try {
       await widget.store.startExperiment(
-        trackId: widget.track.id,
+        trackId: widget.track.definition.id,
         startDate: todayLabel(),
         weeks: _weeks,
       );
@@ -46,7 +47,7 @@ class _ExperimentSetupScreenState extends State<ExperimentSetupScreen> {
   Widget build(BuildContext context) {
     String text(String key) => tracksText(context, key);
     return detailScaffold(context, text('ExperimentSetup'), [
-      Text(widget.track.name, style: F.head),
+      Text(widget.track.definition.name, style: F.head),
       const SizedBox(height: S.x2),
       Text(text('ExperimentExplain')),
       const SizedBox(height: S.x3),

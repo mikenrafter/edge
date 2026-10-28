@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/med_store.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
+import 'package:openstrap_edge/tracks/experiment.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../backup/backup_support.dart';
@@ -281,4 +283,71 @@ void main() {
       );
     },
   );
+
+  // why: review T1 (patient safety). A randomized "skip" day on a prescribed
+  // drug would tell the wearer to withhold it. Fails if a med: track can start
+  // an experiment, or if a stored one still produces a reminder.
+  // proves: CLAIM(no-med-experiment)
+  test('a medication track can never start an experiment', () async {
+    await MedDb.putDef(
+      db,
+      const MedDef(key: 'metformin', label: 'Metformin', doseValue: 500, doseUnit: 'mg'),
+    );
+    expect(
+      (await store.definitions()).any((d) => d.id == 'med:metformin'),
+      isTrue,
+      reason: 'the medication is a visible, enabled track',
+    );
+    await expectLater(
+      store.startExperiment(
+        trackId: 'med:metformin',
+        startDate: '2026-09-01',
+        weeks: 2,
+        seed: 17,
+      ),
+      throwsA(
+        isA<ExperimentRefused>().having((e) => e.reason, 'reason', 'medication'),
+      ),
+    );
+    expect(await db.query('track_experiment'), isEmpty);
+    expect(await db.query('track_experiment_day'), isEmpty);
+  });
+
+  test('a medication experiment row already stored sends no reminder', () async {
+    await MedDb.putDef(
+      db,
+      const MedDef(key: 'metformin', label: 'Metformin', doseValue: 500, doseUnit: 'mg'),
+    );
+    // A restored backup could carry one: the reminder query is the last gate.
+    await db.insert('track_experiment', {
+      'id': 'xp-med',
+      'track_id': 'med:metformin',
+      'start_date': '2026-09-01',
+      'end_date': '2026-09-14',
+      'weeks': 2,
+      'seed': 1,
+      'created_ms': 1,
+    });
+    await db.insert('track_experiment_day', {
+      'experiment_id': 'xp-med',
+      'date': '2026-09-01',
+      'do_it': 0,
+    });
+    expect(await store.experimentReminders(date: '2026-09-01'), isEmpty);
+  });
+
+  test('ExperimentableTrack cannot be built from a medication', () {
+    expect(
+      ExperimentableTrack.from(
+        const TrackDefinition(id: 'med:x', name: 'X', icon: 'pill', kind: 'consumed'),
+      ),
+      isNull,
+    );
+    expect(
+      ExperimentableTrack.from(
+        const TrackDefinition(id: 'custom', name: 'W', icon: 'track', kind: 'activity'),
+      ),
+      isNotNull,
+    );
+  });
 }

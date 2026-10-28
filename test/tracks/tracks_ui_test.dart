@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/med_store.dart';
 import 'package:openstrap_edge/ui2/screens/track_editor.dart';
 import 'package:openstrap_edge/ui2/screens/track_log.dart';
 import 'package:openstrap_edge/ui2/screens/tracks_screen.dart';
@@ -184,4 +185,27 @@ void main() {
       expect(find.byKey(ValueKey('track-card-${custom.id}')), findsOneWidget);
     },
   );
+
+  // why: review T1. The detail screen of a medication must not offer an
+  // experiment, while any other track still does.
+  // proves: CLAIM(no-med-experiment)
+  testWidgets('medication detail hides Start an experiment; a custom track shows it', (
+    t,
+  ) async {
+    await t.runAsync(() async {
+      await MedDb.putDef(
+        await LocalDb.instance,
+        const MedDef(key: 'metformin', label: 'Metformin', doseValue: 500, doseUnit: 'mg'),
+      );
+    });
+    final defs = (await t.runAsync(() => store.definitions()))!;
+    final med = defs.firstWhere((d) => d.id == 'med:metformin');
+    await mountTracks(t, TrackDetailScreen(store: store, track: med));
+    await settleTracks(t, store);
+    expect(find.text('Start an experiment'), findsNothing);
+    final caffeine = defs.firstWhere((d) => d.id == 'caffeine');
+    await mountTracks(t, TrackDetailScreen(key: const ValueKey('c'), store: store, track: caffeine));
+    await settleTracks(t, store);
+    expect(find.text('Start an experiment'), findsOneWidget);
+  });
 }

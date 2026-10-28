@@ -19,6 +19,10 @@ extension TracksExperimentStore on TracksStore {
     if (!TracksStore._validDay(startDate)) throw ArgumentError('date');
     final track = (await definitions()).where((d) => d.id == trackId);
     if (track.isEmpty || !track.single.enabled) throw ArgumentError('track');
+    // ↳ CLAIM(no-med-experiment)
+    if (ExperimentableTrack.from(track.single) == null) {
+      throw const ExperimentRefused('medication');
+    }
     final end = endDate(startDate, weeks);
     final chosen = seed ?? math.Random().nextInt(0x7fffffff);
     final assignments = assignExperimentDays(weeks * 7, chosen);
@@ -208,11 +212,12 @@ extension TracksExperimentStore on TracksStore {
     // where only registered worker entries may dispatch.
     final rows = await db.rawQuery(
       'SELECT x.id, x.track_id, d.do_it, '
-      "COALESCE(m.label, json_extract(t.payload_json, '\$.name')) AS name "
+      "json_extract(t.payload_json, '\$.name') AS name "
       'FROM track_experiment x '
       'JOIN track_experiment_day d ON d.experiment_id = x.id '
       'LEFT JOIN track_definition t ON t.id = x.track_id '
-      "LEFT JOIN med_def m ON 'med:' || m.key = x.track_id WHERE d.date = ?",
+      // ↳ CLAIM(no-med-experiment): a stored medication experiment stays silent.
+      "WHERE d.date = ? AND x.track_id NOT LIKE 'med:%'",
       [date],
     );
     return [
