@@ -254,7 +254,7 @@ class TrackEffectEstimator {
   }
 }
 
-double _residualWindowHours(TrackDefinition track) {
+double _longestHalfLife(TrackDefinition track) {
   var halfLife = 0.0;
   for (final k in [
     track.kinetics,
@@ -263,8 +263,11 @@ double _residualWindowHours(TrackDefinition track) {
     final value = k.fields['half_life_hours']?.value;
     if (value != null && value.isFinite && value > halfLife) halfLife = value;
   }
-  return math.min(math.max(48.0, halfLife * 7), 730.0 * 24);
+  return halfLife;
 }
+
+double _residualWindowHours(TrackDefinition track) =>
+    math.min(math.max(48.0, _longestHalfLife(track) * 7), 730.0 * 24);
 
 // CLAIM(unit-abstain): an event amount enters dose fitting only when its unit
 // equals the track's current unit (empty means unstated, taken as compatible);

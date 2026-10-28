@@ -4,12 +4,17 @@ part of 'learning.dart';
 /// Ten entered day scales provide warm-up for candidate fits. Each fit also
 /// verifies sensitivity to the unknown initial state is below 1e-6. This
 /// engineering model does not claim a measured population washout.
+// CLAIM(history-window-covers-residual): this window (loaded events and the
+// completeness check) is at least ten longest half-lives, track or
+// sub-activity override, so it always covers the residual window of seven
+// [R2-1; track_effect_estimator_test].
 Duration trackHistoryWindow(TrackDefinition track) {
   double value(String key) => track.kinetics.fields[key]?.value ?? 0;
   final hours = math.max(
     48.0,
     math.max(
-      value('half_life_hours') * 10,
+      // ↳ CLAIM(history-window-covers-residual)
+      _longestHalfLife(track) * 10,
       math.max(value('tolerance_days'), value('withdrawal_days')) * 24 * 10,
     ),
   );

@@ -951,4 +951,36 @@ void main() {
     expect(result.reason, 'estimated');
     expect(result.kineticTargets['half_life_hours'], 3);
   });
+
+  // WHY R2-1: parent half-life 6 h with a 100 h sub-activity override got a 60 h
+  // history window, yet its residual needs 700 h; the worker marked a too-short
+  // history complete and a 72 h-old dose read as residual 0.
+  // proves: CLAIM(history-window-covers-residual)
+  test('history window covers the longest sub-activity half-life', () {
+    final overridden = TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+        'onset_hours': TrackKineticField(value: 0),
+      }),
+      subActivities: [
+        TrackSubActivity(
+          id: 'slow',
+          name: 'slow',
+          kinetics: const TrackKinetics({
+            'half_life_hours': TrackKineticField(value: 100),
+          }),
+        ),
+      ],
+    );
+    expect(
+      trackHistoryWindow(overridden),
+      greaterThanOrEqualTo(const Duration(hours: 700)),
+    );
+    // Positive control: no override keeps the short window (10 x 6 h = 60 h).
+    expect(trackHistoryWindow(track('a')), const Duration(hours: 60));
+  });
 }
