@@ -123,6 +123,7 @@ extension TracksDetectionStore on TracksStore {
             'start_ts': window.startTs,
             'end_ts': window.endTs,
             'evidence_kind': reason,
+            'phase': window.phase,
             'signals': window.evidence(),
           },
         ]);

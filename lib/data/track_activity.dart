@@ -25,7 +25,16 @@ class TrackActivity {
       throw const ActivityReviewException('That track is no longer available.');
     }
     final id = 'suggestion:${expected.id}';
-    final at = expected.isPrompt ? null : startTs * 1000;
+    // Evidence read from sleep explains THAT night: its use came before the
+    // night began, so an unedited time is logged a second before the window
+    // (the learner counts only events at or before the night's onset, and an
+    // occurrence at the onset itself has no lead time). A time the wearer
+    // chose is kept as chosen.
+    final beforeNight = expected.details['phase'] == 'early_sleep' &&
+        startTs == expected.startTs;
+    final at = expected.isPrompt
+        ? null
+        : (beforeNight ? startTs - 1 : startTs) * 1000;
     await tx.insert('track_event', {
       'id': id,
       'track_id': trackId,
