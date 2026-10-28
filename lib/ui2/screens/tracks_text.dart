@@ -89,6 +89,11 @@ String tracksText(BuildContext context, String key) {
     'From' => l?.tracksFrom ?? "From",
     'Until' => l?.tracksUntil ?? "Through",
     'Amount' => l?.tracksAmount ?? "Amount, optional",
+    'AddDaily' => l?.tracksAddDaily ?? "Taken daily",
+    'Ongoing' => l?.tracksOngoing ?? "No end date (ongoing)",
+    'OngoingShort' => l?.tracksOngoingShort ?? "ongoing",
+    'Around' => l?.tracksAround ?? "Around (optional, HH:mm)",
+    'AmountPerDay' => l?.tracksAmountPerDay ?? "Amount per day, optional",
     'Date' => l?.tracksDate ?? "Date",
     'Time' => l?.tracksTime ?? "Time",
     'Subactivity' => l?.tracksSubactivity ?? "Sub-activity, optional",
@@ -164,6 +169,23 @@ String tracksText(BuildContext context, String key) {
           'Experiment running: only its days count',
     _ => key,
   };
+}
+
+/// "Daily since Mar 1", "Daily Mar 1 \u2013 Mar 20" or "Not taken Jan 1 \u2013 Feb 28".
+String tracksPeriodTitle(
+  BuildContext context, {
+  required bool done,
+  required String from,
+  String? to,
+}) {
+  final l = AppLocalizations.of(context);
+  if (!done) {
+    return l?.tracksNotTaken(from, to ?? from) ??
+        'Not taken $from \u2013 ${to ?? from}';
+  }
+  return to == null
+      ? l?.tracksDailySince(from) ?? 'Daily since $from'
+      : l?.tracksDailyRange(from, to) ?? 'Daily $from \u2013 $to';
 }
 
 const trackRoleLabels = <String, String>{

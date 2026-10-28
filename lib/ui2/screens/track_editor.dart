@@ -1,4 +1,5 @@
 // TrackEditor owns its unsaved form and history. Saving replaces both atomically.
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import '../../data/day_label.dart';
 import '../../data/tracks_store.dart';
@@ -106,7 +107,7 @@ class _TrackEditorState extends State<TrackEditor> {
     try {
       await widget.store.saveDefinition(
         definition,
-        history: [for (final r in _history!) r.read(_initial.id)],
+        history: [for (final r in _history!) r.read(_initial.id, _unit.trim())],
       );
       if (mounted) Navigator.of(context).pop(definition);
     } on ArgumentError {
@@ -118,19 +119,24 @@ class _TrackEditorState extends State<TrackEditor> {
     }
   }
 
-  void _addRange() {
-    final id = 'range:${DateTime.now().microsecondsSinceEpoch}';
-    final date = todayLabel();
+  void _addRange({bool daily = false}) {
+    final now = clock.now();
+    final date = todayLabel(now);
     setState(
       () => _history!.add(
         TrackRangeDraft(
-          TrackSetupRange(
-            id: id,
-            trackId: _initial.id,
-            startDate: date,
-            endDate: date,
-            done: true,
-          ),
+          daily
+              ? DoneRange(
+                  id: 'range:${now.microsecondsSinceEpoch}',
+                  trackId: _initial.id,
+                  startDate: date,
+                )
+              : DoneRange(
+                  id: 'range:${now.microsecondsSinceEpoch}',
+                  trackId: _initial.id,
+                  startDate: date,
+                  untilDate: date,
+                ),
         ),
       ),
     );
@@ -368,12 +374,18 @@ class _TrackEditorState extends State<TrackEditor> {
                     TrackHistoryRange(
                       key: ValueKey(range.id),
                       draft: range,
+                      trackUnit: _unit.trim(),
                       onRemove: () => setState(() => _history!.remove(range)),
                     ),
                   TextButton(
                     key: const ValueKey('track-add-history'),
                     onPressed: _addRange,
                     child: Text(text('AddRange')),
+                  ),
+                  TextButton(
+                    key: const ValueKey('track-add-daily'),
+                    onPressed: () => _addRange(daily: true),
+                    child: Text(text('AddDaily')),
                   ),
                 ]),
                 if (_initial.sources.isNotEmpty)

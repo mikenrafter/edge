@@ -176,6 +176,9 @@ void main() {
       reason: 'nothing was saved',
     );
     expect(find.byKey(const ValueKey('track-save')), findsOneWidget);
+    // The message sits at the top of the lazily built list.
+    await t.drag(find.byType(Scrollable).first, const Offset(0, 4000));
+    await t.pumpAndSettle();
     expect(find.byKey(const ValueKey('track-form-error')), findsOneWidget);
   }));
 
@@ -215,7 +218,9 @@ void main() {
         ),
       ]),
     );
-    await openEditor(t, height: 1000);
+    await openEditor(t, height: 1400);
+    // Fold the (default open) kinetics section so the periods fill the view.
+    await _expand(t, 'Timing and kinetics');
     expect(find.text('Daily since Mar 1 · ~08:00 · 50 mg'), findsOneWidget);
     expect(t.takeException(), isNull);
     await expectLater(

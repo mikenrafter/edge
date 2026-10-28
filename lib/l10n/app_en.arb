@@ -18142,5 +18142,40 @@
     }
   },
   "tracksFromExperiment": "From your experiment: its randomized result is used instead of the day-to-day estimate.",
-  "tracksUseObservational": "Use my day-to-day data instead"
+  "tracksUseObservational": "Use my day-to-day data instead",
+  "tracksAddDaily": "Taken daily",
+  "tracksOngoing": "No end date (ongoing)",
+  "tracksOngoingShort": "ongoing",
+  "tracksAround": "Around (optional, HH:mm)",
+  "tracksAmountPerDay": "Amount per day, optional",
+  "tracksDailySince": "Daily since {from}",
+  "@tracksDailySince": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      }
+    }
+  },
+  "tracksDailyRange": "Daily {from} \u2013 {to}",
+  "@tracksDailyRange": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "tracksNotTaken": "Not taken {from} \u2013 {to}",
+  "@tracksNotTaken": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  }
 }
