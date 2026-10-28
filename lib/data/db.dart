@@ -1950,17 +1950,35 @@ class LocalDb {
         conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
+  /// Dose sum and latest dose minute of one day's recorded (non-journal) doses
+  /// in the track's standard unit.
+  static Future<({double dose, int? minute})> _trackDoseSummary(
+    Transaction tx,
+    String date,
+    String track,
+  ) async {
+    final rows = await tx.rawQuery(
+      "SELECT SUM(amount) AS dose, MAX(CAST(strftime('%H', at_ms / 1000, 'unixepoch', 'localtime') AS INTEGER) * 60 + CAST(strftime('%M', at_ms / 1000, 'unixepoch', 'localtime') AS INTEGER)) AS minute FROM track_event_feed WHERE date = ? AND track_id = ? AND source_kind <> 'journal' AND (unit IS NULL OR unit = ?)",
+      [date, track, track == 'caffeine' ? 'mg' : 'units'],
+    );
+    return (
+      dose: (rows.single['dose'] as num?)?.toDouble() ?? 0,
+      minute: (rows.single['minute'] as num?)?.toInt(),
+    );
+  }
+
+  /// [derivedMinute] is the latest dose minute before the write in progress.
+  /// An aggregate time equal to it came from a dose, not from the journal
+  /// remainder, so it is not carried onto the remainder.
   static Future<int?> _trackLastMinute(
     Transaction tx,
     String date,
     String track, {
     num? total,
+    int? derivedMinute,
   }) async {
-    final rows = await tx.rawQuery(
-      "SELECT SUM(amount) AS dose, MAX(CAST(strftime('%H', at_ms / 1000, 'unixepoch', 'localtime') AS INTEGER) * 60 + CAST(strftime('%M', at_ms / 1000, 'unixepoch', 'localtime') AS INTEGER)) AS minute FROM track_event_feed WHERE date = ? AND track_id = ? AND source_kind <> 'journal' AND (unit IS NULL OR unit = ?)",
-      [date, track, track == 'caffeine' ? 'mg' : 'units'],
-    );
-    final explicit = (rows.single['minute'] as num?)?.toInt();
+    final summary = await _trackDoseSummary(tx, date, track);
+    final explicit = summary.minute;
     final field = track == 'caffeine' ? 'caffeine_mg' : 'alcohol_units';
     final aggregate = await tx.query(
       'journal_metric',
@@ -1969,10 +1987,10 @@ class LocalDb {
       limit: 1,
     );
     if (aggregate.isEmpty) return explicit;
-    final prior = (aggregate.single['at_min'] as num?)?.toInt();
+    var prior = (aggregate.single['at_min'] as num?)?.toInt();
+    if (prior != null && prior == derivedMinute) prior = null;
     final residual =
-        (total ?? aggregate.single['value'] as num).toDouble() -
-        ((rows.single['dose'] as num?)?.toDouble() ?? 0);
+        (total ?? aggregate.single['value'] as num).toDouble() - summary.dose;
     // A daily last-entry time belongs to the residual aggregate too. Preserve
     // it only while some untimed remainder remains; never allocate it a dose.
     if (residual > 0 && prior != null && (explicit == null || prior > explicit)) {
@@ -2002,20 +2020,43 @@ class LocalDb {
             '(track_id = ? AND source_kind = ? AND source_id = ?)',
         whereArgs: [event.id, event.trackId, event.sourceKind, event.sourceId],
       );
-      Future<void> adjust(String date, String track, double amount) async {
+      // CLAIM(substance-reconcile): the daily journal total equals the
+      // canonical dose sum plus the journal-only remainder (prior total minus
+      // prior dose sum, never negative); a remainder keeps only its own time,
+      // not the removed dose's [S7, S8; tracks_store_test].
+      final before = <(String, String), ({double dose, int? minute})>{};
+      Future<void> remember(String date, String track) async {
+        before[(date, track)] ??= await _trackDoseSummary(tx, date, track);
+      }
+
+      for (final row in old) {
+        if (row['track_id'] == 'caffeine' || row['track_id'] == 'alcohol') {
+          await remember(row['date'] as String, row['track_id'] as String);
+        }
+      }
+      if (!delete) await remember(event.date, event.trackId);
+      for (final row in old) {
+        await tx.delete('track_event', where: 'id = ?', whereArgs: [row['id']]);
+      }
+      if (!delete) await tx.insert('track_event', event.toJson());
+      for (final entry in before.entries) {
+        final (date, track) = entry.key;
         final field = track == 'caffeine' ? 'caffeine_mg' : 'alcohol_units';
+        final after = await _trackDoseSummary(tx, date, track);
+        if (after.dose == entry.value.dose) continue;
         final prior = await tx.query(
           'journal_metric',
           where: 'date = ? AND field = ?',
           whereArgs: [date, field],
           limit: 1,
         );
-        if (amount == 0 && prior.isEmpty) return;
-        final total =
-            ((prior.isEmpty ? 0 : prior.single['value'] as num).toDouble() +
-                    amount)
-                .clamp(0.0, double.infinity);
-        if (total == 0) {
+        final priorTotal = prior.isEmpty
+            ? 0.0
+            : (prior.single['value'] as num).toDouble();
+        // ↳ CLAIM(substance-reconcile)
+        final remainder = priorTotal - entry.value.dose;
+        final total = after.dose + (remainder > 0 ? remainder : 0.0);
+        if (total <= 0) {
           await tx.delete(
             'journal_metric',
             where: 'date = ? AND field = ?',
@@ -2026,28 +2067,16 @@ class LocalDb {
             'date': date,
             'field': field,
             'value': total,
-            'at_min': await _trackLastMinute(tx, date, track, total: total),
+            'at_min': await _trackLastMinute(
+              tx,
+              date,
+              track,
+              total: total,
+              derivedMinute: entry.value.minute,
+            ),
             'updated_at': DateTime.now().millisecondsSinceEpoch,
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
-      }
-
-      final changes = <(String, String), double>{};
-      for (final row in old) {
-        if (row['track_id'] == 'caffeine' || row['track_id'] == 'alcohol') {
-          final key = (row['date'] as String, row['track_id'] as String);
-          changes[key] =
-              (changes[key] ?? 0) - _trackDoseAmount(row);
-        }
-        await tx.delete('track_event', where: 'id = ?', whereArgs: [row['id']]);
-      }
-      if (!delete) {
-        await tx.insert('track_event', event.toJson());
-        final key = (event.date, event.trackId);
-        changes[key] = (changes[key] ?? 0) + _trackDoseAmount(event.toJson());
-      }
-      for (final change in changes.entries) {
-        await adjust(change.key.$1, change.key.$2, change.value);
       }
     });
   }
