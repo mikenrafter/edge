@@ -350,6 +350,15 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         await copyRows('journal', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('journal_metric', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('cycle_log', where: 'date = ?', whereArgs: [dayId]);
+        // Track rows ride with their day (the journal totals above already do,
+        // and without the timed doses they would restore as untimed remainders).
+        await copyRows('track_event', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('track_absence', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows(
+          'track_setup_history',
+          where: 'start_date <= ? AND end_date >= ?',
+          whereArgs: [dayId, dayId],
+        );
         await copyRows('notifications', where: 'date = ?', whereArgs: [dayId]);
         await copyRows(
           'sleep_session_candidates',
@@ -375,6 +384,9 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
       // `custom_magnesium` with no label, no unit and no idea what scale they
       // are on — the values survive the export and their meaning does not.
       await copyRows('journal_field_def');
+      // Track definitions are not day-scoped either; events and setup history
+      // above refer to them by id.
+      await copyRows('track_definition');
       await copyRows('activity_review_meta');
       // An old day's substrate lives in the archive, not the live tables:
       // exported as archive buckets cut to exactly these days, still
