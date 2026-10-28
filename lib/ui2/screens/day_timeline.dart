@@ -51,7 +51,7 @@ import '../../gestures/moment_follow_ups.dart';
 import '../../gestures/moment_review_service.dart';
 import 'day_review.dart';
 import 'typical_day.dart';
-import 'moment_follow_up.dart' show MomentReviewEditor;
+import 'moment_follow_up.dart' show MomentAnswerEditScreen, MomentReviewEditor;
 import '../../gestures/symptom_description.dart' show StoredSymptom;
 import '../../data/nutrition_store.dart';
 import '../../l10n/app_localizations.dart';
@@ -63,7 +63,7 @@ import '../profile/devices.dart'
 import '../profile/wearable_numbers.dart' show deviceScoreLabel, observationTitle;
 import '../ui2.dart';
 import 'investigate.dart' show Investigate;
-import 'log_workout.dart' show LogWorkout;
+import 'log_workout.dart' show LogWorkout, bumpInsights;
 import 'naps.dart' show NapsScreen;
 import 'home_screen.dart' show clockOfTs, go, repoOf;
 import 'metric_detail.dart' show dayNavRow, pickDay;
@@ -93,8 +93,8 @@ class Moment {
 
   final String? identity;
 
-  /// What opens this row's own editor ('nap', 'session:ID'), or NULL when
-  /// the row has none. Only rows that can be edited carry one.
+  /// What opens this row's own editor ('nap', 'session:ID', 'moment:DATE HH:mm'
+  /// for an answered marked moment), or NULL when the row has none. Only rows that can be edited carry one.
   final String? editRef;
 
   /// A family of band events folded together even when their ids differ (the
@@ -507,6 +507,8 @@ List<Moment> dayMoments({
     out.add(Moment(
       at: at,
       identity: 'moment:${m.key}',
+      // The answer can be changed: its row carries an Edit (CLS-1).
+      editRef: 'moment:${m.key}',
       title: described?.describe(l) ?? choice.localized(l),
       // The row carries the clock; the detail is only the wearer's note.
       detail: note != null && note.isNotEmpty ? note : '',
@@ -1166,7 +1168,27 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   Future<void> openRowEditor(Moment m) async {
     final ref = m.editRef, day = _day ?? _d?.day;
     if (ref == null || day == null) return;
-    if (ref == 'nap') {
+    if (ref.startsWith('moment:')) {
+      final key = ref.substring(7);
+      // The stored answer as it is now, not the row as it was drawn: the editor
+      // refuses to overwrite an answer that moved on.
+      final saved = (await LocalDb.momentLabels(date: day))
+          .where((x) => x.key == key)
+          .firstOrNull;
+      if (saved != null && mounted) {
+        final symptom = saved.label == MomentChoice.symptom.id
+            ? (await LocalDb.symptomEntries(date: day))
+                .where((x) => x.key == key)
+                .firstOrNull
+            : null;
+        if (!mounted) return;
+        final changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute<bool>(
+                builder: (_) =>
+                    MomentAnswerEditScreen(saved: saved, symptom: symptom)));
+        if (changed == true && mounted) bumpInsights(context);
+      }
+    } else if (ref == 'nap') {
       await go(context, NapsScreen(day: day));
     } else if (ref.startsWith('session:')) {
       final parts = ref.substring(8).split('|');

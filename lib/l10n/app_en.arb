@@ -15588,6 +15588,30 @@
   "@momentFollowUpLabelOnly": {
     "description": "Button that stores only the Workout label for the moment"
   },
+  "momentEditTitle": "Edit marked moment",
+  "@momentEditTitle": {
+    "description": "Title of the screen that changes the saved answer of a marked moment"
+  },
+  "momentEditSave": "Save change",
+  "@momentEditSave": {
+    "description": "Button that saves the changed answer of a marked moment"
+  },
+  "momentEditChangedElsewhere": "This answer was changed somewhere else. Close this and open it again.",
+  "@momentEditChangedElsewhere": {
+    "description": "Shown when the answer being edited was changed from another screen meanwhile; nothing is saved"
+  },
+  "momentEditNotFound": "This answer is no longer saved.",
+  "@momentEditNotFound": {
+    "description": "Shown when the answer being edited was deleted meanwhile; nothing is saved"
+  },
+  "momentEditAmountNotKept": "This answer was saved before its amount was kept, so changing it could leave the wrong total in your journal. Nothing was changed.",
+  "@momentEditAmountNotKept": {
+    "description": "Shown when an older caffeine, alcohol or water answer cannot be changed because the amount it added to the day was never stored"
+  },
+  "momentEditFailed": "Could not save that change. Nothing was changed. Try again.",
+  "@momentEditFailed": {
+    "description": "Error shown when changing the saved answer of a marked moment failed"
+  },
   "momentFollowUpSaveFailed": "Could not save that answer. Try again.",
   "@momentFollowUpSaveFailed": {
     "description": "Error shown when an answer to a marked moment could not be saved"

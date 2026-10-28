@@ -119,7 +119,7 @@ void main() {
     testWidgets('a moment still waiting for its answer has no saved-answer Edit',
         (t) async {
       final r = await Apk2Rig.create(t);
-      await r.mount(t);
+      await r.mount(t, marked: true);
       for (final id in [apk2MarkA, apk2MarkB]) {
         await apk2Show(t, id);
         expect(apk2Key(_edit(id)), findsNothing, reason: id);
@@ -288,7 +288,8 @@ void main() {
       expect(apk2Key('moment-edit-screen'), findsOneWidget);
       expect(apk2Key('moment-edit-error'), findsOneWidget);
       expect(find.descendant(of: apk2Key('moment-edit-error'),
-          matching: find.textContaining('changed')), findsOneWidget);
+          matching: find.textContaining('changed'), matchRoot: true),
+          findsOneWidget);
       expect(await r.snapshot(t), afterOther);
     });
 
@@ -302,7 +303,8 @@ void main() {
       await apk2Tap(t, apk2Key('moment-edit-save'));
       expect(apk2Key('moment-edit-screen'), findsOneWidget);
       expect(find.descendant(of: apk2Key('moment-edit-error'),
-          matching: find.textContaining('amount')), findsOneWidget);
+          matching: find.textContaining('amount'), matchRoot: true),
+          findsOneWidget);
       expect(await r.snapshot(t), before);
     });
   });

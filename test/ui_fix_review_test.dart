@@ -99,7 +99,8 @@ void main() {
     });
   });
 
-  testWidgets('rows that need no review have no buttons at all', (t) async {
+  testWidgets('rows that need no review have no Keep or Discard; an answered '
+      'moment\'s only button is its Edit (CLS-1)', (t) async {
     final r = await Apk2Rig.create(t);
     await r.mount(t);
     final pending = apk2PageIds();
@@ -107,8 +108,16 @@ void main() {
     expect(others, isNotEmpty);
     expect(others, containsAll([apk2Answered, apk2Meal]));
     for (final id in others) {
-      expect(find.descendant(of: apk2Row(id), matching: find.byType(Pressable)),
-          findsNothing, reason: '$id carries a button');
+      final buttons = find.descendant(
+          of: apk2Row(id), matching: find.byType(Pressable));
+      if (id.startsWith('moment:')) {
+        // An answered marked moment: exactly its Edit, nothing else.
+        expect(buttons, findsOneWidget, reason: '$id carries only its Edit');
+        expect(find.descendant(of: apk2Row(id),
+            matching: apk2Key('day-row-edit:$id')), findsOneWidget);
+      } else {
+        expect(buttons, findsNothing, reason: '$id carries a button');
+      }
     }
     expect(find.text('No review needed'), findsNothing);
     expect(find.text('Already reviewed'), findsNothing);

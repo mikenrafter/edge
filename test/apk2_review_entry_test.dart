@@ -229,7 +229,7 @@ void main() {
   });
 
   testWidgets('an answered item has no Keep, Discard or reason line, '
-      'and the list offers nothing to press on it', (t) async {
+      'and the only thing to press on it is its Edit (CLS-1)', (t) async {
     final semantics = t.ensureSemantics();
     final r = await Apk2Rig.create(t);
     final before = await r.snapshot(t);
@@ -239,7 +239,9 @@ void main() {
     expect(apk2Discard(apk2Answered), findsNothing);
     expect(apk2Key('day-review-label:$apk2Answered'), findsNothing);
     expect(find.descendant(of: apk2Row(apk2Answered),
-        matching: find.byType(Pressable)), findsNothing);
+        matching: find.byType(Pressable)), findsOneWidget);
+    expect(find.descendant(of: apk2Row(apk2Answered),
+        matching: apk2Key('day-row-edit:$apk2Answered')), findsOneWidget);
     expect(find.text('Already reviewed'), findsNothing);
     expect(find.text('No review needed'), findsNothing);
     expect(apk2Key(apk2Save), findsNothing);

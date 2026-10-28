@@ -15,7 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../../compute/manual_session.dart';
 import '../../data/assumed_water.dart';
-import '../../data/moment_label.dart' show momentLocalTime;
+import '../../data/moment_label.dart';
 import '../../data/journal_fields.dart' show kJournalFieldsByKey;
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/moment_follow_ups.dart';
@@ -840,7 +840,13 @@ class _MomentRow extends StatelessWidget {
     required this.onPair,
     required this.onLogWorkout,
     required this.onLabelWorkout,
+    this.editing = false,
   });
+
+  /// Editing a SAVED answer ([MomentAnswerEditScreen]): the chips and the
+  /// forms are the same, but nothing is queued, skipped, paired or logged
+  /// here; the screen owns the one Save.
+  final bool editing;
 
   final PendingMoment moment;
   final MomentChoice? open;
@@ -878,7 +884,7 @@ class _MomentRow extends StatelessWidget {
     final l = AppLocalizations.of(c);
     final k = moment.key;
     final choice = open;
-    final spec = choice?.journalField == null
+    final spec = choice?.journalField == null || choice == MomentChoice.water
         ? null
         : kJournalFieldsByKey[choice!.journalField];
     final queued = rangeText ?? pending;
@@ -895,6 +901,7 @@ class _MomentRow extends StatelessWidget {
               child: Pill(ch.localized(l), choice == ch ? C.domMind : C.blue),
             ),
         ]),
+        if (!editing) ...[
         // Everything the tap changes sits BELOW the chips, so the chips the
         // user just pressed never move. The status line and its Undo keep
         // their height whether or not anything is queued (an invisible
@@ -954,6 +961,7 @@ class _MomentRow extends StatelessWidget {
             ),
           ),
         ]),
+        ],
         if (resumeNote)
           Padding(
             key: ValueKey('moment-range-resume:$k'),
@@ -1013,7 +1021,7 @@ class _MomentRow extends StatelessWidget {
               draft: draft!,
               onChanged: onDraft),
         ],
-        if (choice != null && choice != MomentChoice.workout) ...[
+        if (!editing && choice != null && choice != MomentChoice.workout) ...[
           const SizedBox(height: S.x3),
           BigButton(l?.momentReviewQueueIt ?? 'Queue this answer',
               key: ValueKey('moment-save:$k'),
@@ -1021,7 +1029,7 @@ class _MomentRow extends StatelessWidget {
               color: C.domMind,
               onTap: busy || locked ? null : () => onSave(choice)),
         ],
-        if (choice == MomentChoice.workout) ...[
+        if (!editing && choice == MomentChoice.workout) ...[
           const SizedBox(height: S.x3),
           BigButton(l?.momentFollowUpLogWorkout ?? 'Log a workout at this time',
               key: ValueKey('moment-log-workout:$k'),
@@ -1034,7 +1042,7 @@ class _MomentRow extends StatelessWidget {
               soft: true,
               onTap: busy || locked ? null : onLabelWorkout),
         ],
-        if (canPair) ...[
+        if (!editing && canPair) ...[
           const SizedBox(height: S.x2),
           BigButton(l?.momentReviewPair ?? 'Pair with another mark…',
               key: ValueKey('moment-pair:$k'),
@@ -1059,6 +1067,229 @@ class _MomentRow extends StatelessWidget {
             child: Text(pairError!, style: F.cap.copyWith(color: p.ink2)),
           ),
       ]),
+    );
+  }
+}
+
+/// The moment editor opened on a SAVED answer (CLS-1): the same chips, amount,
+/// note and symptom fields as the review editor, filled in from [saved] (and
+/// [symptom], its description). Save replaces the answer through
+/// [MomentAnswerWriter.change]; a refusal stays on this screen with its reason
+/// and writes nothing. Skip, pairing and "Log a workout" are not offered: an
+/// edit changes an answer, it does not skip it, pair it or create a session.
+/// Pops `true` when the answer was changed.
+class MomentAnswerEditScreen extends StatefulWidget {
+  const MomentAnswerEditScreen({
+    super.key,
+    required this.saved,
+    this.symptom,
+    this.writer = const MomentAnswerWriter(),
+    this.now,
+  });
+
+  final MomentLabel saved;
+
+  /// The description stored for a symptom answer, null for any other.
+  final StoredSymptom? symptom;
+  final MomentAnswerWriter writer;
+  final DateTime? now;
+
+  @override
+  State<MomentAnswerEditScreen> createState() => _MomentAnswerEditScreenState();
+}
+
+class _MomentAnswerEditScreenState extends State<MomentAnswerEditScreen> {
+  late MomentChoice? _choice = MomentChoice.fromId(widget.saved.label);
+  final _text = TextEditingController();
+  _SymptomDraft? _draft;
+  bool _busy = false, _amountError = false;
+  MomentAnswerChange? _refused;
+
+  PendingMoment get _moment =>
+      PendingMoment(date: widget.saved.date, hhmm: widget.saved.hhmm);
+
+  @override
+  void initState() {
+    super.initState();
+    _fill(_choice);
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _draft?.dispose();
+    super.dispose();
+  }
+
+  static String _plain(double v) =>
+      v == v.roundToDouble() ? v.round().toString() : '$v';
+
+  /// Fills the form for [c]: from the saved answer when [c] is still the saved
+  /// label, empty when the wearer picked another.
+  void _fill(MomentChoice? c) {
+    _text.clear();
+    _draft?.dispose();
+    _draft = null;
+    final same = c != null && c.id == widget.saved.label;
+    if (c == MomentChoice.symptom) {
+      _draft = _SymptomDraft();
+      final d = widget.symptom?.description;
+      if (same && d != null) _draft!.load(d);
+    } else if (c == MomentChoice.other) {
+      if (same) _text.text = widget.saved.note ?? '';
+    } else if (c?.journalField != null && c != MomentChoice.water && same) {
+      final v = c == MomentChoice.caffeine
+          ? widget.saved.caffeineMg
+          : widget.saved.metricValue;
+      if (v != null && v > 0) _text.text = _plain(v);
+    }
+  }
+
+  void _pick(MomentChoice c) {
+    if (c == _choice) return;
+    setState(() {
+      _choice = c;
+      _amountError = false;
+      _refused = null;
+      _fill(c);
+    });
+  }
+
+  bool get _complete =>
+      _choice != null &&
+      (_choice != MomentChoice.symptom || _draft?.build() != null);
+
+  Future<void> _save() async {
+    final c = _choice;
+    if (c == null || _busy || !_complete) return;
+    double? value;
+    String? note;
+    SymptomDescription? symptom;
+    if (c == MomentChoice.symptom) {
+      symptom = _draft!.build();
+    } else if (c == MomentChoice.other) {
+      final raw = _text.text.trim();
+      note = raw.isEmpty ? null : raw;
+    } else if (c.journalField != null && c != MomentChoice.water) {
+      // A number only when one was typed; the same limits as answering.
+      final raw = _text.text.trim();
+      value = double.tryParse(raw.replaceAll(',', '.'));
+      final max = kJournalFieldsByKey[c.journalField]?.max;
+      if (value != null &&
+          (!value.isFinite || value <= 0 || (max != null && value > max))) {
+        setState(() => _amountError = true);
+        return;
+      }
+    }
+    setState(() {
+      _busy = true;
+      _amountError = false;
+      _refused = null;
+    });
+    MomentAnswerChange result;
+    try {
+      result = await widget.writer.change(widget.saved, c,
+          value: value, note: note, symptom: symptom, now: widget.now);
+    } catch (error) {
+      result = MomentChangeFailed(MomentChangeFailure.storage, error);
+    }
+    if (!mounted) return;
+    if (result is MomentChanged) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _refused = result;
+    });
+  }
+
+  String? _message(AppLocalizations? l) => switch (_refused) {
+        null || MomentChanged() => null,
+        MomentNotFound() =>
+          l?.momentEditNotFound ?? 'This answer is no longer saved.',
+        MomentStale() => l?.momentEditChangedElsewhere ??
+            'This answer was changed somewhere else. Close this and open it again.',
+        MomentChangeFailed(:final reason) => switch (reason) {
+            MomentChangeFailure.priorAmountUnknown =>
+              l?.momentEditAmountNotKept ??
+                  'This answer was saved before its amount was kept, so '
+                      'changing it could leave the wrong total in your journal. '
+                      'Nothing was changed.',
+            MomentChangeFailure.storage => l?.momentEditFailed ??
+                'Could not save that change. Nothing was changed. Try again.',
+          },
+      };
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final message = _message(l);
+    return Scaffold(
+      key: const ValueKey('moment-edit-screen'),
+      backgroundColor: p.bg,
+      body: SafeArea(
+        child: Column(children: [
+          NavBar(l?.momentEditTitle ?? 'Edit marked moment',
+              onBack: () => Navigator.of(c).maybePop()),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),
+              children: [
+                _MomentRow(
+                  key: ValueKey('moment-follow-up:${_moment.key}'),
+                  moment: _moment,
+                  open: _choice,
+                  controller: _text,
+                  draft: _draft,
+                  onDraft: () => setState(() {}),
+                  busy: _busy,
+                  pending: null,
+                  rangeText: null,
+                  failure: null,
+                  pairError: null,
+                  canPair: false,
+                  ambiguousNote: false,
+                  amountError: _amountError,
+                  resumeNote: false,
+                  canUndo: false,
+                  locked: false,
+                  onChoose: _pick,
+                  onSave: (_) {},
+                  onSkip: () {},
+                  onUndo: () {},
+                  onPair: () {},
+                  onLogWorkout: () {},
+                  onLabelWorkout: () {},
+                  editing: true,
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (message != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: S.x2),
+                    child: Text(message,
+                        key: const ValueKey('moment-edit-error'),
+                        style: F.cap.copyWith(color: p.ink)),
+                  ),
+                BigButton(l?.momentEditSave ?? 'Save change',
+                    key: const ValueKey('moment-edit-save'),
+                    icon: LucideIcons.check,
+                    color: C.domMind,
+                    onTap: _busy || !_complete ? null : _save),
+              ],
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }
@@ -1327,6 +1558,17 @@ class _SymptomDraft {
       areaOther: a == SymptomArea.other ? ao : null,
       note: n.isEmpty ? null : n,
     );
+  }
+
+  /// Fills the draft from a saved description (the editor opens on it).
+  void load(SymptomDescription d) {
+    severity = d.severity;
+    side = d.side;
+    kind = d.kind;
+    area = d.area;
+    kindOther.text = d.kindOther ?? '';
+    areaOther.text = d.areaOther ?? '';
+    note.text = d.note ?? '';
   }
 
   void dispose() {
