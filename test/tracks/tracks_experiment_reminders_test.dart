@@ -402,6 +402,40 @@ void main() {
     expect(cancelledIds(), isEmpty);
   });
 
+  // why: review R4-3. With the pending list unavailable, delivery checks were
+  // skipped and markers cleared, so an 08:05 refresh after the 08:00 reminder
+  // fired armed another at 08:30. Existing intentions and markers are kept.
+  // proves: CLAIM(reminder-intent-kept)
+  test('fired, then the pending list fails: no repeat is armed and the marker stays', () async {
+    await startAt(morning);
+    final today = pending.entries.firstWhere((e) => e.value.day == 26 && e.value.hour == 8).key;
+    pending.remove(today); // fired
+    pendingUnknown = true;
+    calls.clear();
+    await refresh(DateTime(2026, 10, 26, 8, 5));
+    expect(armed(), isEmpty, reason: 'no guess, no 08:30 repeat');
+    expect(
+      await db.query('compute_freshness', where: "key = 'experiment_reminder:2026-10-26'"),
+      hasLength(1),
+      reason: 'the intention is kept',
+    );
+    pendingUnknown = false;
+    await refresh(DateTime(2026, 10, 26, 8, 10));
+    expect(armed(), isEmpty);
+    expect(held().where((d) => d.day == 26), isEmpty, reason: 'once the list is back it is delivered');
+  });
+
+  test('with the list unavailable a stop still cancels, and kept reminders are untouched', () async {
+    final experiment = await startAt(morning);
+    pendingUnknown = true;
+    calls.clear();
+    await refresh(DateTime(2026, 10, 26, 7));
+    expect(armed(), isEmpty);
+    expect(held(), hasLength(14));
+    await withClock(Clock.fixed(DateTime(2026, 10, 26, 9)), () => store.stopExperiment(experiment['id'] as String));
+    expect(held(), isEmpty);
+  });
+
   // why: review R3-3 / R2-8. iOS keeps 64 pending notifications in total. The
   // experiment band takes only what is left after the higher classes (alarm >
   // medication > wind-down/check-in > water > experiment) and the slots held

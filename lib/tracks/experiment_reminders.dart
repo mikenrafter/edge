@@ -152,6 +152,12 @@ class ExperimentReminders {
               await _write(date, 'delivered', marker.at, marker.id);
               continue;
             }
+          } else if (!suppressed) {
+            // ↳ CLAIM(reminder-intent-kept): the OS will not say what is pending
+            // (fired? cancelled?): keep what we armed and its marker, never
+            // re-arm on a guess [review R4-3].
+            wanted[date] = (at: marker.at, id: marker.id, route: route, armed: true);
+            continue;
           }
         }
         final at = instantFor(date, prefs, gate, now);
@@ -182,7 +188,7 @@ class ExperimentReminders {
     await svc.ensureTimezone();
     for (final date in ordered.take(budget)) {
       final slot = wanted[date]!;
-      if (slot.armed && pending != null) continue;
+      if (slot.armed) continue;
       final ok = await svc.scheduleOnce(
         id: slot.id,
         category: NotifCategory.reminders,
