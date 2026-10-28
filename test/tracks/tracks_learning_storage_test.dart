@@ -287,4 +287,40 @@ void main() {
     await store.refreshLearning(asOf: now.add(const Duration(days: 1)));
     expect((await state())['reference_dose'], 100);
   });
+
+  // WHY R4-4 / T3 R3-6: deleting any day cleared every track_learning row, so
+  // an established baseline reference (unrecoverable after rollover) and a
+  // wearer's experiment release were lost; the next refresh could re-establish
+  // abstinence as the reference and reactivate an old experiment result.
+  // proves: CLAIM(learning-keep)
+  test('deleting an unrelated day keeps non-rebuildable learning state', () async {
+    final env = await BackupEnv.create('tracks_learning_keep_r44.db');
+    addTearDown(env.dispose);
+    final db = await LocalDb.instance;
+    await db.insert('track_learning', {
+      'track_id': 'kept',
+      'started_ms': 5,
+      'state_json': jsonEncode({
+        'reference_dose': 100,
+        'experiment_released': {'hr': 'exp1'},
+        'statistics': {'hr': {'count': 3}},
+        'effects': [],
+      }),
+      'last_step_date': '2026-10-01',
+    });
+    await db.insert('track_learning', {
+      'track_id': 'rebuildable',
+      'started_ms': 5,
+      'state_json': jsonEncode({'statistics': {'hr': {'count': 3}}}),
+      'last_step_date': '2026-10-01',
+    });
+    await LocalDb.deleteDays({'2020-01-01'});
+    final rows = await db.query('track_learning');
+    expect(rows.map((r) => r['track_id']), ['kept']);
+    expect(jsonDecode(rows.single['state_json'] as String), {
+      'reference_dose': 100,
+      'experiment_released': {'hr': 'exp1'},
+    });
+    expect(rows.single['last_step_date'], isNull);
+  });
 }
