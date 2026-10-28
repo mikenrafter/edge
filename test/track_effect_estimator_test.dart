@@ -753,8 +753,8 @@ void main() {
     final nights = [
       for (final n in base) withEvents(n, n.events.isEmpty ? 100 : 150),
     ];
-    final tail = [
-      for (var i = 0; i < 14; i++)
+    List<TrackNight> abstinence(int count) => [
+      for (var i = 0; i < count; i++)
         withEvents(
           TrackNight(
             at: base.last.at.add(Duration(days: i + 1)),
@@ -768,6 +768,7 @@ void main() {
           0,
         ),
     ];
+    final tail = abstinence(14);
     final tracked = TrackDefinition(
       id: 'a',
       name: 'a',
@@ -783,6 +784,12 @@ void main() {
     expect(result.reason, 'estimated');
     // 56 pairs, contrast 8, shrinkage 56 / (56 + 8) = .875 -> 7.
     expect(result.effect, closeTo(7, 1e-6));
+    // WHY R2-3: the reference was recomputed on every estimate; once abstinence
+    // nights (120) outnumbered habitual ones (56) it became 0 and the effect
+    // fell to about 3.45. The established reference must not move.
+    final outnumbered = estimate([...nights, ...abstinence(120)], tracks: [tracked]);
+    expect(outnumbered.reason, 'estimated');
+    expect(outnumbered.effect, closeTo(7, 1e-6));
     // Deviation below the reference: habitual 100 mg weeks (earliest, so the
     // reference) against 50 mg weeks that sleep 8 units better -> -8 per
     // +50 mg, shrunk to -7. The sign shows the higher dose is the exposed side.

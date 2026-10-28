@@ -191,7 +191,13 @@ class TrackEffectEstimator {
             ),
         }),
     ];
-    final pairs = _matchedPairs(track, system, rows, relevant);
+    final pairs = _matchedPairs(
+      track,
+      system,
+      rows,
+      relevant,
+      establishedNights: minimumPairs * 2,
+    );
     if (pairs.length < minimumPairs) {
       final confounded = relevant.any(
         (t) =>
@@ -313,17 +319,19 @@ List<_NightPair> _matchedPairs(
   TrackDefinition track,
   String system,
   List<_LearningRow> rows,
-  List<TrackDefinition> tracks,
-) {
+  List<TrackDefinition> tracks, {
+  required int establishedNights,
+}) {
   final valid = rows.where((r) => r.features[track.id]?.dose != null).toList();
   // CLAIM(baseline-reference): with "this track is my baseline" the reference
-  // is the habitual dose (most frequent, earliest on ties), so nights with less
-  // than habit pair as deviations below it and later abstinence cannot become
-  // the reference [S4; track_effect_estimator_test].
+  // is the habitual dose of the first [establishedNights] valid nights (most
+  // frequent, earliest on ties). Appending later nights never moves it, so
+  // abstinence that outnumbers habit cannot become the reference, and nights
+  // below it pair as deviations [S4, R2-3; track_effect_estimator_test].
   var referenceDose = 0.0;
   if (track.noUnadjustedData && valid.isNotEmpty) {
     final counts = <double, int>{};
-    for (final r in valid) {
+    for (final r in valid.take(establishedNights)) {
       counts.update(r.features[track.id]!.dose!, (n) => n + 1, ifAbsent: () => 1);
     }
     referenceDose = counts.entries
