@@ -24,6 +24,7 @@ class TrackLearningInput {
     required this.worker,
     this.experiments = const [],
     this.experimentResults = const [],
+    this.unknownDays = const [],
   });
   final List<Map<String, Object?>> definitions,
       events,
@@ -32,6 +33,9 @@ class TrackLearningInput {
       states,
       days;
   final List<Map<String, Object?>> medications, experiments;
+
+  /// Red-phase stub: `{date}` rows of days whose logs were deleted.
+  final List<Map<String, Object?>> unknownDays;
 
   /// The latest completed experiment's effect per track x system:
   /// {experiment_id, track_id, system, effect, lower, upper, n_do, n_dont}.

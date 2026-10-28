@@ -252,7 +252,7 @@ void main() {
       await LocalDb.instance;
       await LocalDb.importFromDbFile(days);
       expect(await (await LocalDb.instance).query('track_setup_history'), [
-        _row('ongoing@2026-10-26', '2026-10-26', '2026-10-26',
+        _row('ongoing@d:2026-10-26..2026-10-26', '2026-10-26', '2026-10-26',
             minute: 495, amount: 2.5, unit: 'mg'),
       ]);
     });
@@ -268,8 +268,8 @@ void main() {
       expect(
         await (await LocalDb.instance).query('track_setup_history', orderBy: 'start_date'),
         [
-          _row('ongoing@2026-10-22', '2026-10-22', '2026-10-23', minute: 495, amount: 2.5, unit: 'mg'),
-          _row('ongoing@2026-10-26', '2026-10-26', '2026-10-26', minute: 495, amount: 2.5, unit: 'mg'),
+          _row('ongoing@d:2026-10-22..2026-10-23', '2026-10-22', '2026-10-23', minute: 495, amount: 2.5, unit: 'mg'),
+          _row('ongoing@d:2026-10-26..2026-10-26', '2026-10-26', '2026-10-26', minute: 495, amount: 2.5, unit: 'mg'),
         ],
       );
     });
@@ -394,12 +394,121 @@ void main() {
       expect(
         await db.query('track_setup_history', orderBy: 'start_date'),
         [
-          _row('stopped', '2026-09-01', '2026-09-14', done: 0),
-          _row('stopped@2026-09-16', '2026-09-16', '2026-09-30', done: 0),
-          _row('ongoing', '2026-10-20', '2026-10-25', minute: 495, amount: 2.5, unit: 'mg'),
-          _row('ongoing@2026-10-27', '2026-10-27', '9999-12-31', minute: 495, amount: 2.5, unit: 'mg'),
+          _row('stopped@n:2026-09-01..2026-09-14', '2026-09-01', '2026-09-14', done: 0),
+          _row('stopped@n:2026-09-16..2026-09-30', '2026-09-16', '2026-09-30', done: 0),
+          _row('ongoing@d:2026-10-20..2026-10-25', '2026-10-20', '2026-10-25', minute: 495, amount: 2.5, unit: 'mg'),
+          _row('ongoing@d:2026-10-27..9999-12-31', '2026-10-27', '9999-12-31', minute: 495, amount: 2.5, unit: 'mg'),
         ],
       );
+    });
+
+    // why (review R2-1): a clipped export of an ongoing period's first day used
+    // to keep the period's id, so a restore REPLACEd the whole period with one
+    // day. Now the piece has its own id and the full period survives.
+    test('re-importing a first-day export keeps the full period beside the piece', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_setup_history', ongoing);
+      await env.seedData();
+      final days = await LocalDb.exportDaysDb({'2026-10-20'});
+      await db.delete('track_setup_history');
+      await db.insert('track_setup_history', ongoing);
+      await LocalDb.importFromDbFile(days);
+      final rows = await (await LocalDb.instance).query('track_setup_history', orderBy: 'id');
+      expect(rows.map((r) => (r['id'], r['start_date'], r['end_date'])), [
+        ('ongoing', '2026-10-20', '9999-12-31'),
+        ('ongoing@d:2026-10-20..2026-10-20', '2026-10-20', '2026-10-20'),
+      ]);
+    });
+
+    // why (review R2-1): deleteDays must not overwrite an unrelated restored row
+    // that happens to carry a piece-style id (here a not-done carve-out).
+    test('deleteDays does not overwrite a restored carve-out with a piece-style id', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_setup_history', ongoing);
+      final carve = _row('ongoing@2026-10-27', '2026-10-27', '2026-10-28', done: 0);
+      await db.insert('track_setup_history', carve);
+      await LocalDb.deleteDays({'2026-10-26'});
+      final rows = await db.query('track_setup_history', orderBy: 'start_date');
+      expect(rows.where((r) => r['id'] == 'ongoing@2026-10-27').single, carve);
+      expect(rows.map((r) => r['id']), contains('ongoing@d:2026-10-27..9999-12-31'));
+    });
+
+    // why (review R2-2), end to end through the real store and worker: with "I
+    // log every time" on, deleting 05-02 used to leave the later nights eligible
+    // (missing logs read as dose 0). The deleted day is now unknown, so nothing
+    // after it that sees it is counted. Control: before the delete 3 nights count.
+    test('deleteDays leaves nights near the deleted day out of learning', () async {
+      final db = await LocalDb.instance;
+      final store = TracksStore(db);
+      await store.saveDefinition(
+        TrackDefinition(
+          id: 'custom',
+          name: 'Custom',
+          icon: 'track',
+          kind: 'consumed',
+          unit: 'mg',
+          systems: const ['hr'],
+          loggingComplete: true,
+          loggingCompleteSinceMs: 0,
+          kinetics: const TrackKinetics({
+            'half_life_hours': TrackKineticField(value: 5),
+            'onset_hours': TrackKineticField(value: 1),
+          }),
+        ),
+      );
+      for (var i = 0; i < 3; i++) {
+        final onset = DateTime(2026, 5, 1 + i, 22);
+        await store.log(
+          TrackEvent(
+            id: 'event:$i',
+            trackId: 'custom',
+            date: '2026-05-0${i + 1}',
+            atMs: DateTime(2026, 5, 1 + i, 20).millisecondsSinceEpoch,
+            amount: 10,
+          ),
+        );
+        await db.insert('day_result', {
+          'day_id': '2026-05-0${i + 2}',
+          'algo_version': 118,
+          'computed_at': 1,
+          'finalized': 1,
+          'partial': 0,
+          'window_json': jsonEncode({
+            'value': {
+              'onset_ms': onset.millisecondsSinceEpoch,
+              'offset_ms': onset.add(const Duration(hours: 8)).millisecondsSinceEpoch,
+            },
+          }),
+          'payload_json': jsonEncode({'scalars': {'rhr': 58 + i * 2}}),
+        });
+      }
+      final now = DateTime.utc(2026, 10, 27, 12);
+      int counted(Map<String, Map<String, Object?>> s) =>
+          (((s['custom']!['statistics'] as Map)['hr']) as Map)['count'] as int;
+      expect(counted(await store.refreshLearning(asOf: now)), 3, reason: 'control');
+      await LocalDb.deleteDays({'2026-05-02'});
+      expect(
+        counted(await store.refreshLearning(asOf: now)),
+        0,
+        reason: 'the nights whose windows contain the deleted day are unknown',
+      );
+    });
+
+    test('a full backup carries the deleted-day markers', () async {
+      final db = await LocalDb.instance;
+      await LocalDb.deleteDays({'2026-05-02'});
+      expect((await db.query('track_unknown_day')).map((r) => r['date']), ['2026-05-02']);
+      await env.seedData();
+      final backup = await LocalDb.exportCopy();
+      await env.wipe();
+      await LocalDb.instance;
+      await LocalDb.importFromDbFile(backup);
+      expect(
+        (await (await LocalDb.instance).query('track_unknown_day')).map((r) => r['date']),
+        ['2026-05-02'],
+      );
+      expect(LocalDb.restoreTablesForTest, contains('track_unknown_day'));
+      expect(LocalDb.salvageTablesForTest, contains('track_unknown_day'));
     });
 
     test('deleteDays on days no period covers leaves history untouched', () async {

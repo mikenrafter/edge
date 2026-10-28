@@ -97,3 +97,7 @@ TrackSetupRange _piece(
     ),
   };
 }
+
+/// Red-phase stub.
+List<TrackSetupRange> mergeAgreeingOverlaps(Iterable<TrackSetupRange> ranges) =>
+    throw UnimplementedError('mergeAgreeingOverlaps');

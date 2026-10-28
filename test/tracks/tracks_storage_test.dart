@@ -285,7 +285,7 @@ void main() {
       (await after.query('track_setup_history')).map(
         (r) => (r['id'], r['start_date'], r['end_date']),
       ),
-      [('h-in@2026-10-26', '2026-10-26', '2026-10-26')],
+      [('h-in@d:2026-10-26..2026-10-26', '2026-10-26', '2026-10-26')],
     );
   });
 

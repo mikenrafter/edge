@@ -615,8 +615,10 @@ void main() {
       required List<TrackSetupRange> ranges,
       List<TrackEvent> events = const [],
       List<Map<String, Object?>> absences = const [],
+      List<Map<String, Object?>> unknownDays = const [],
       TrackDefinition? track,
     }) => TrackLearningInput(
+      unknownDays: unknownDays,
       definitions: [
         {'id': 'a', 'payload_json': jsonEncode((track ?? _track()).toJson())},
       ],
@@ -657,9 +659,17 @@ void main() {
       List<TrackSetupRange> ranges, {
       List<TrackEvent> events = const [],
       List<Map<String, Object?>> absences = const [],
+      List<Map<String, Object?>> unknownDays = const [],
+      TrackDefinition? track,
     }) {
-      final i = input(ranges: ranges, events: events, absences: absences);
-      return trackNightsHeavy(i, [_track()], [
+      final i = input(
+        ranges: ranges,
+        events: events,
+        absences: absences,
+        unknownDays: unknownDays,
+        track: track,
+      );
+      return trackNightsHeavy(i, [track ?? _track()], [
         for (final r in i.events) TrackEvent.fromJson(r),
       ], ranges).single;
     }
@@ -724,6 +734,50 @@ void main() {
         _notDone('2026-10-24', '2026-10-25'),
       ]);
       expect(synthetic(n), {'history:a:2026-10-23'});
+      expect(n.completeTrackIds, {'a'});
+    });
+
+    // why (review R2-2): deleteDays removes a day's logs, so the day is UNKNOWN,
+    // even for a track whose "I log every time" pledge covers it (the pledge
+    // would read the missing logs as dose 0). The marker overrides pledge,
+    // period and absence completeness for every night whose 48 h window or slow
+    // history window contains the date. Positive controls: the same night is
+    // complete without the marker. proves: CLAIM(deleted-day-unknown)
+    test('a deleted day voids the pledge and period completeness for nearby nights', () {
+      final pledged = TrackDefinition.fromJson({
+        ..._track().toJson(),
+        'logging_complete': true,
+        'logging_complete_since_ms': DateTime(2026, 1, 1).millisecondsSinceEpoch,
+      });
+      final unknown = [
+        {'date': '2026-10-24'},
+      ];
+      expect(night([], track: pledged).completeTrackIds, {'a'}, reason: 'control: pledge');
+      expect(
+        night([_done('2026-10-01')], track: _track()).completeTrackIds,
+        {'a'},
+        reason: 'control: period',
+      );
+      for (final (label, ranges, track) in [
+        ('pledge', <TrackSetupRange>[], pledged),
+        ('period', [_done('2026-10-01')], _track()),
+        ('pledge and period', [_done('2026-10-01')], pledged),
+      ]) {
+        final n = night(ranges, track: track, unknownDays: unknown);
+        expect(n.completeTrackIds, isEmpty, reason: label);
+        expect(n.completeHistoryTrackIds, isEmpty, reason: '$label (slow history)');
+      }
+    });
+
+    test('a deleted day far outside both windows changes nothing', () {
+      final pledged = TrackDefinition.fromJson({
+        ..._track().toJson(),
+        'logging_complete': true,
+        'logging_complete_since_ms': DateTime(2026, 1, 1).millisecondsSinceEpoch,
+      });
+      final n = night([], track: pledged, unknownDays: [
+        {'date': '2026-06-01'},
+      ]);
       expect(n.completeTrackIds, {'a'});
     });
 

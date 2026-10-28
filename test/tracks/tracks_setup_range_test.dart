@@ -298,6 +298,38 @@ void main() {
       expect(await store.history('reading'), isEmpty);
     });
 
+    // why (review R2-3): re-importing a middle-day export leaves an agreeing
+    // piece beside its period. The editor reads history() and resubmits it, and
+    // overlap validation would reject its own save. Agreeing overlaps read as one
+    // period (so the save works); conflicting ones are kept. proves: CLAIM(range-overlap)
+    test('an agreeing piece inside a period reads as one and the editor can save', () async {
+      final db = await LocalDb.instance;
+      for (final row in [
+        doneRange('full', '2026-03-01', null, minute: 480, amount: const DailyAmount(50, 'mg')),
+        doneRange('piece@d:2026-03-10..2026-03-10', '2026-03-10', '2026-03-10', minute: 480, amount: const DailyAmount(50, 'mg')),
+      ]) {
+        await db.insert('track_setup_history', row.toJson());
+      }
+      final read = await store.history('reading');
+      expect(read.map((r) => r.id), ['full']);
+      await store.saveHistory('reading', read);
+      expect((await store.history('reading')).map((r) => r.id), ['full']);
+      expect(await db.query('track_setup_history'), hasLength(1));
+    });
+
+    test('a conflicting overlap is kept and still blocks the save', () async {
+      final db = await LocalDb.instance;
+      for (final row in [
+        doneRange('full', '2026-03-01', null, minute: 480),
+        doneRange('other', '2026-03-10', '2026-03-10', minute: 600),
+      ]) {
+        await db.insert('track_setup_history', row.toJson());
+      }
+      final read = await store.history('reading');
+      expect(read.map((r) => r.id).toSet(), {'full', 'other'});
+      await expectLater(store.saveHistory('reading', read), throwsArgumentError);
+    });
+
     test('the stored placeholder end satisfies the table CHECK', () async {
       await store.saveHistory('reading', [doneRange('a', '2026-03-01', null)]);
       final row = (await (await LocalDb.instance).query(
