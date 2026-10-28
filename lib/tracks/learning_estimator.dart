@@ -24,6 +24,11 @@ class TrackEffectEstimator {
     // unknown [S6; track_effect_estimator_test]. Dose and lag keep 48 h.
     final windowHours = _residualWindowHours(track);
     if (windowHours > 48 && !historyComplete) unknownResidual = true;
+    // ↳ CLAIM(unit-abstain): a unitless track still cannot mix explicit units.
+    if (_explicitUnitsConflict(track, events)) {
+      unknownDose = true;
+      unknownResidual = true;
+    }
     for (final event in events) {
       if (event.trackId != track.id) continue;
       final at = event.atMs;
@@ -270,8 +275,9 @@ double _residualWindowHours(TrackDefinition track) =>
     math.min(math.max(48.0, _longestHalfLife(track) * 7), 730.0 * 24);
 
 // CLAIM(unit-abstain): an event amount enters dose fitting only when its unit
-// equals the track's current unit (empty means unstated, taken as compatible);
-// any other unit is an unsupported conversion and leaves the amount unknown
+// equals the track's current unit (an event without a unit is taken as the
+// track's); with no track unit, all explicit event units must agree; any other
+// unit is an unsupported conversion and leaves the amount unknown
 // [S3; track_effect_estimator_test].
 double? _amountInTrackUnit(TrackDefinition track, TrackEvent event) {
   final amount = event.amount;
@@ -280,6 +286,16 @@ double? _amountInTrackUnit(TrackDefinition track, TrackEvent event) {
   final expected = track.unit.trim().toLowerCase();
   if (unit.isNotEmpty && expected.isNotEmpty && unit != expected) return null;
   return amount;
+}
+
+bool _explicitUnitsConflict(TrackDefinition track, List<TrackEvent> events) {
+  if (track.unit.trim().isNotEmpty) return false;
+  final units = {
+    for (final e in events)
+      if (e.trackId == track.id && (e.unit?.trim().isNotEmpty ?? false))
+        e.unit!.trim().toLowerCase(),
+  };
+  return units.length > 1;
 }
 
 class _LearningRow {

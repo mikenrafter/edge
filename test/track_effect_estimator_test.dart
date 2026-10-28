@@ -983,4 +983,34 @@ void main() {
     // Positive control: no override keeps the short window (10 x 6 h = 60 h).
     expect(trackHistoryWindow(track('a')), const Duration(hours: 60));
   });
+
+  // WHY R2-2: with an empty definition unit the unit check was skipped, so 100 mg
+  // and 2 cups summed to dose 102. proves: CLAIM(unit-abstain)
+  test('a unitless track abstains on events in different explicit units', () {
+    final bedtime = DateTime.utc(2025, 1, 2, 22);
+    TrackEvent event(String id, double amount, String? unit, int hoursBefore) =>
+        TrackEvent(
+          id: id,
+          trackId: 'a',
+          date: '2025-01-02',
+          amount: amount,
+          unit: unit,
+          atMs: bedtime
+              .subtract(Duration(hours: hoursBefore))
+              .millisecondsSinceEpoch,
+        );
+    final mixed = estimator.features(track('a'), [
+      event('x', 100, 'mg', 8),
+      event('y', 2, 'cups', 2),
+    ], bedtime);
+    expect(mixed.dose, isNull);
+    expect(mixed.residualMg, isNull);
+    // Positive control: one consistent explicit unit (or none) still adds.
+    final same = estimator.features(track('a'), [
+      event('x', 100, 'mg', 8),
+      event('y', 2, 'MG', 2),
+      event('z', 1, null, 3),
+    ], bedtime);
+    expect(same.dose, 103);
+  });
 }
