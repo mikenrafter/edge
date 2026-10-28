@@ -74,13 +74,21 @@ String _shift(String day, int by) {
   return dayLabelOf(DateTime(parsed.year, parsed.month, parsed.day + by));
 }
 
+// CLAIM(range-piece-id) [review R2-1]: a piece that changes coverage gets the id
+// `<id>@<d|n>:<start>..<end>` (kind and both ends), so pieces with different
+// coverage never share an id and never take the id of the period they were cut
+// from; an INSERT OR REPLACE by id can only replace an identical piece. An
+// uncut period keeps its id.
 TrackSetupRange _piece(
   TrackSetupRange range,
   String start,
   String end, {
   bool bounded = false,
 }) {
-  final id = start == range.startDate ? range.id : '${range.id}@$start';
+  final same = start == range.startDate && end == range.endDate;
+  final id = same
+      ? range.id
+      : '${range.id}@${range is DoneRange ? 'd' : 'n'}:$start..$end';
   return switch (range) {
     DoneRange() => DoneRange(
       id: id,

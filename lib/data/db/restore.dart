@@ -637,7 +637,7 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
         await txn.insert(
           'track_setup_history',
           piece.toJson(),
-          conflictAlgorithm: ConflictAlgorithm.replace,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
         );
       }
       await deleteByIn(txn, 'track_experiment_day', 'date', sorted);
