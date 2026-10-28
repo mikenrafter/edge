@@ -610,7 +610,19 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
         '(SELECT 1 FROM track_experiment_day d WHERE d.experiment_id = track_experiment.id)',
       );
       await deleteByIn(txn, 'track_learning_log', 'date', sorted);
-      await txn.delete('track_learning'); // Rebuild aggregates after deleting evidence.
+      // CLAIM(learning-keep): rebuildable aggregates (statistics, effects,
+      // periods) are dropped with the evidence, but state that cannot be
+      // reconstructed once its nights leave the read window survives: the
+      // established baseline reference and the wearer's experiment release
+      // [R4-4, T3 R3-6; tracks_learning_storage_test]. json_patch drops the
+      // null (absent) keys.
+      await txn.execute(
+        'UPDATE track_learning SET last_step_date = NULL, '
+        "state_json = json_patch('{}', json_object("
+        "'reference_dose', json_extract(state_json, '\$.reference_dose'), "
+        "'experiment_released', json(json_extract(state_json, '\$.experiment_released'))))",
+      );
+      await txn.execute("DELETE FROM track_learning WHERE state_json = '{}'");
       await deleteByIn(txn, 'cycle_log', 'date', sorted);
       await deleteByIn(txn, 'notifications', 'date', sorted);
       await deleteByIn(txn, 'sleep_session_candidates', 'day_id', sorted);

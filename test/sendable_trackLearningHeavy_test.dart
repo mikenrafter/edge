@@ -378,4 +378,61 @@ void main() {
     final input = _input(now: _bedtime.add(const Duration(hours: 1)));
     expect(trackNightsHeavy(input, [_track], [], []), isEmpty);
   });
+
+  // WHY R3-1 (worker sequence): in one learning pass a successful half-life
+  // step was followed by a held onset step; the held step returned the caller's
+  // own field map, which the worker cleared, so the pass persisted a definition
+  // without its kinetics (including locked fields).
+  // proves: CLAIM(held-step-keeps-fields) through the worker's own pass loop
+  test('a successful step followed by a held step keeps every kinetic field', () {
+    final track = TrackDefinition(
+      id: 'a',
+      name: 'A',
+      icon: 'track',
+      kind: 'consumed',
+      systems: const ['sleep'],
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+        // Onset 400 h needs 2000 h (83 days) of observation: held at 60 days.
+        'onset_hours': TrackKineticField(value: 400),
+        'tolerance_days': TrackKineticField(value: 2, locked: true),
+        'withdrawal_days': TrackKineticField(value: 9, locked: true),
+      }),
+    );
+    final fields = {...track.kinetics.fields};
+    final logs = <Map<String, Object?>>[];
+    stepKineticFields(
+      policy: const TrackLearningPolicy(),
+      track: track,
+      own: const [
+        TrackEffectEstimate(
+          trackId: 'a',
+          system: 'sleep',
+          reason: 'estimated',
+          effect: 1,
+          kineticTargets: {'half_life_hours': 3, 'onset_hours': 200},
+        ),
+      ],
+      periods: {},
+      date: '2026-10-27',
+      age: const Duration(days: 60),
+      fields: fields,
+      subActivities: track.subActivities,
+      logs: logs,
+    );
+    // Half-life moves 1% toward 3: 6 -> 5.94 (the successful step).
+    expect(fields['half_life_hours']!.value, closeTo(5.94, 1e-12));
+    // The held onset step and the locked fields are untouched, not emptied.
+    expect(fields['onset_hours']!.value, 400);
+    expect(fields['tolerance_days']!.locked, isTrue);
+    expect(fields['tolerance_days']!.value, 2);
+    expect(fields['withdrawal_days']!.value, 9);
+    expect(fields.keys.toSet(), track.kinetics.fields.keys.toSet());
+    expect(
+      logs.where((l) => !(l['field'] as String).endsWith(':minimum')).map(
+        (l) => l['field'],
+      ),
+      ['half_life_hours'],
+    );
+  });
 }

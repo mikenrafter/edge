@@ -913,4 +913,24 @@ void main() {
     final after = (await caffeineTotal())!;
     expect((after.value, after.atMinuteOfDay), (50, 18 * 60));
   });
+
+  // WHY R4-2: saving an unrelated journal field cleared the remainder time of
+  // unchanged caffeine, so deleting the dose lost 18:00.
+  // proves: CLAIM(remainder-time-fresh)
+  test('an unrelated journal save keeps the stored remainder time', () async {
+    await LocalDb.putJournalMetrics('2026-10-01', {
+      'caffeine_mg': const JournalMetricValue(50, atMinuteOfDay: 18 * 60),
+    });
+    await store.log(caffeineDose('late', 30, atMs: 1790892000000));
+    final current = await LocalDb.journalMetricsForDay('2026-10-01');
+    await LocalDb.putJournalMetrics('2026-10-01', {
+      ...current,
+      'mood': const JournalMetricValue(7),
+    });
+    await store.deleteEvent(
+      (await store.events(trackId: 'caffeine')).singleWhere((e) => e.id == 'late'),
+    );
+    final after = (await caffeineTotal())!;
+    expect((after.value, after.atMinuteOfDay), (50, 18 * 60));
+  });
 }
