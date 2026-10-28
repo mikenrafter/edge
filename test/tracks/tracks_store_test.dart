@@ -17,6 +17,11 @@ void main() {
     store = TracksStore(await LocalDb.instance);
   });
   tearDown(() async => env.dispose());
+  // Local wall-clock instants on 2026-10-01: the substance tests assert times
+  // of day, which must not depend on the zone the runner uses.
+  int atLocal(int hour, [int minute = 0]) =>
+      DateTime(2026, 10, 1, hour, minute).millisecondsSinceEpoch;
+
   TrackDefinition custom({int min = 0, int max = 10}) =>
       TrackDefinition.fromJson({
         'id': 'reading',
@@ -405,19 +410,19 @@ void main() {
   test(
     'substance dose identity preserves same-minute logs and journal aggregate on retries/edits/deletes',
     () async {
-      const first = TrackEvent(
+      final first = TrackEvent(
         id: 'cup1',
         trackId: 'caffeine',
         date: '2026-10-01',
-        atMs: 1790845200123,
+        atMs: atLocal(9) + 123,
         amount: 100,
         subActivityId: 'coffee',
       );
-      const second = TrackEvent(
+      final second = TrackEvent(
         id: 'cup2',
         trackId: 'caffeine',
         date: '2026-10-01',
-        atMs: 1790845220456,
+        atMs: atLocal(9) + 20456,
         amount: 80,
         subActivityId: 'tea',
       );
@@ -432,7 +437,7 @@ void main() {
       );
       var events = await store.events(trackId: 'caffeine');
       expect(events, hasLength(2));
-      expect(events.map((e) => e.atMs).toSet(), {1790845200123, 1790845220456});
+      expect(events.map((e) => e.atMs).toSet(), {atLocal(9) + 123, atLocal(9) + 20456});
       expect(events.map((e) => e.subActivityId).toSet(), {'coffee', 'tea'});
       expect(
         (await LocalDb.journalMetricsForDay(
@@ -513,11 +518,11 @@ void main() {
         ),
       );
       await store.log(
-        const TrackEvent(
+        TrackEvent(
           id: 'later-cup',
           trackId: 'caffeine',
           date: '2026-10-01',
-          atMs: 1790859600000,
+          atMs: atLocal(13),
           amount: 80,
         ),
       );
@@ -612,11 +617,11 @@ void main() {
         'caffeine_mg': const JournalMetricValue(100, atMinuteOfDay: 1200),
       });
       await store.log(
-        const TrackEvent(
+        TrackEvent(
           id: 'morning',
           trackId: 'caffeine',
           date: '2026-10-01',
-          atMs: 1790845200000,
+          atMs: atLocal(9),
           amount: 80,
         ),
       );
@@ -745,16 +750,16 @@ void main() {
       ),
     );
     await store.log(
-      const TrackEvent(
+      TrackEvent(
         id: 'a',
         trackId: 'med:pill',
         date: '2026-10-01',
-        atMs: 1790841900000, // 2026-10-01 08:05 UTC (TZ=UTC)
+        atMs: atLocal(8, 5), // local 08:05
       ),
     );
     final rows = await db.query('med_dose');
     expect(rows.map((r) => r['slot_min']), [8 * 60]);
-    expect(rows.single['taken_ts'], 1790841900);
+    expect(rows.single['taken_ts'], atLocal(8, 5) ~/ 1000);
   });
 
   TrackEvent caffeineDose(String id, double amount, {int? atMs}) => TrackEvent(
@@ -792,7 +797,7 @@ void main() {
     await LocalDb.putJournalMetrics('2026-10-01', {
       'caffeine_mg': const JournalMetricValue(50),
     });
-    await store.log(caffeineDose('late', 30, atMs: 1790892000000)); // 22:00 UTC
+    await store.log(caffeineDose('late', 30, atMs: atLocal(22))); // local 22:00
     expect((await caffeineTotal())!.atMinuteOfDay, 22 * 60);
     await store.deleteEvent(
       (await store.events(trackId: 'caffeine')).singleWhere((e) => e.id == 'late'),
@@ -814,11 +819,11 @@ void main() {
         schedule: [MedSchedule(8 * 60, []), MedSchedule(20 * 60, [])],
       ),
     );
-    const dose = TrackEvent(
+    final dose = TrackEvent(
       id: 'same',
       trackId: 'med:pill2',
       date: '2026-10-01',
-      atMs: 1790841900000, // 08:05 UTC
+      atMs: atLocal(8, 5), // local 08:05
     );
     await store.log(dose);
     await store.log(dose);
@@ -828,11 +833,11 @@ void main() {
     );
     // A different intake at another time still takes the next open slot.
     await store.log(
-      const TrackEvent(
+      TrackEvent(
         id: 'second',
         trackId: 'med:pill2',
         date: '2026-10-01',
-        atMs: 1790841900000 + 3600000,
+        atMs: atLocal(9, 5),
       ),
     );
     expect(
@@ -846,16 +851,16 @@ void main() {
   // dose after the journal total was set to 0 left the total at 0.
   // proves: CLAIM(substance-reconcile)
   test('equal dose sums still reconcile amount and time (retry is a no-op)', () async {
-    await store.log(caffeineDose('m', 250, atMs: 1790848800000)); // 10:00 UTC
+    await store.log(caffeineDose('m', 250, atMs: atLocal(10))); // local 10:00
     expect((await caffeineTotal())!.atMinuteOfDay, 10 * 60);
-    await store.log(caffeineDose('m', 250, atMs: 1790892000000)); // 22:00 UTC
+    await store.log(caffeineDose('m', 250, atMs: atLocal(22))); // local 22:00
     expect((await caffeineTotal())!.atMinuteOfDay, 22 * 60);
     await LocalDb.putJournalMetrics('2026-10-01', {
       'caffeine_mg': const JournalMetricValue(0),
     });
     // A changed amount with the same sum elsewhere still rewrites the total;
     // an identical retry stays a no-op (see "lower edited daily total" test).
-    await store.log(caffeineDose('m', 260, atMs: 1790892000000));
+    await store.log(caffeineDose('m', 260, atMs: atLocal(22)));
     expect((await caffeineTotal())!.value, 260);
   });
 
@@ -865,7 +870,7 @@ void main() {
     await LocalDb.putJournalMetrics('2026-10-01', {
       'caffeine_mg': const JournalMetricValue(50, atMinuteOfDay: 18 * 60),
     });
-    await store.log(caffeineDose('late', 30, atMs: 1790892000000));
+    await store.log(caffeineDose('late', 30, atMs: atLocal(22)));
     final withDose = (await caffeineTotal())!;
     expect((withDose.value, withDose.atMinuteOfDay), (80, 22 * 60));
     await store.deleteEvent(
@@ -882,7 +887,7 @@ void main() {
     await LocalDb.putJournalMetrics('2026-10-01', {
       'caffeine_mg': const JournalMetricValue(50, atMinuteOfDay: 18 * 60),
     });
-    await store.log(caffeineDose('late', 30, atMs: 1790892000000));
+    await store.log(caffeineDose('late', 30, atMs: atLocal(22)));
     await LocalDb.putJournalMetrics('2026-10-01', {
       'caffeine_mg': const JournalMetricValue(80),
     });
@@ -900,7 +905,7 @@ void main() {
     await LocalDb.putJournalMetrics('2026-10-01', {
       'caffeine_mg': const JournalMetricValue(50, atMinuteOfDay: 18 * 60),
     });
-    await store.log(caffeineDose('late', 30, atMs: 1790892000000));
+    await store.log(caffeineDose('late', 30, atMs: atLocal(22)));
     await env.seedData();
     final days = await LocalDb.exportDaysDb({'2026-10-01'});
     await env.wipe();
