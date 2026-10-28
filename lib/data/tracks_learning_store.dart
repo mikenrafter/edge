@@ -119,22 +119,25 @@ extension TracksLearningStore on TracksStore {
     return applied ? result.summaries : {};
   }
 
-  /// The latest COMPLETED experiment per track (by end date) with its effect
-  /// for each system. Stopped, running and unreportable experiments give none.
+  /// The latest eligible COMPLETED result per track x system. Stopped, running
+  /// and unreportable experiments give none.
   Future<List<Map<String, Object?>>> _completedExperimentResults(DateTime now) async {
-    final latest = <String, String>{};
-    for (final row in await db.query('track_experiment', orderBy: 'end_date, id')) {
-      latest[row['track_id'] as String] = row['id'] as String;
-    }
+    // Newest first, so the first ELIGIBLE (completed, reportable) result for a
+    // track x system wins. A newer running, future, stopped or unreportable
+    // experiment never hides an older completed result [review R3-1].
+    final rows = await db.query('track_experiment', orderBy: 'end_date DESC, id DESC');
+    final seen = <String>{};
     final out = <Map<String, Object?>>[];
-    for (final entry in latest.entries) {
-      final report = await _experimentReport(entry.value, asOf: now);
+    for (final row in rows) {
+      final trackId = row['track_id'] as String;
+      final report = await _experimentReport(row['id'] as String, asOf: now);
       if (report['status'] != 'completed') continue;
       for (final e in (report['effects'] as Map).entries) {
+        if (!seen.add('$trackId|${e.key}')) continue;
         final effect = e.value as Map;
         out.add({
-          'experiment_id': entry.value,
-          'track_id': entry.key,
+          'experiment_id': row['id'],
+          'track_id': trackId,
           'system': e.key,
           'effect': effect['effect'],
           'lower': effect['lower'],
@@ -160,10 +163,10 @@ extension TracksLearningStore on TracksStore {
       "'\$.experiment_released', json_patch("
       "COALESCE(json_extract(state_json, '\$.experiment_released'), '{}'), "
       '(SELECT json_group_object(json_extract(e.value, \'\$.system\'), '
-      "json_extract(e.value, '\$.experiment_id')) FROM json_each(state_json, '\$.effects') e "
+      "json_extract(e.value, '\$.experiment_id')) FROM json_each(state_json, '\$.displayed_effects') e "
       "WHERE json_extract(e.value, '\$.reason') = 'from_experiment'))) "
       'WHERE track_id = ? AND EXISTS (SELECT 1 FROM json_each(state_json, '
-      "'\$.effects') e WHERE json_extract(e.value, '\$.reason') = 'from_experiment')",
+      "'\$.displayed_effects') e WHERE json_extract(e.value, '\$.reason') = 'from_experiment')",
       [trackId],
     );
   }

@@ -56,7 +56,7 @@ void main() {
     expect(effect['experiment_id'], isNotNull);
     expect(summary['custom']!['reason'], 'from_experiment');
     final persisted = jsonDecode((await db.query('track_learning', where: 'track_id = ?', whereArgs: ['custom'])).single['state_json'] as String) as Map;
-    expect(((persisted['effects'] as List).single as Map)['effect'], closeTo(8, 1e-9));
+    expect(((persisted['displayed_effects'] as List).single as Map)['effect'], closeTo(8, 1e-9));
   });
 
   test('a newer completed experiment replaces the older result', () async {
@@ -93,5 +93,65 @@ void main() {
   test('releasing with nothing from an experiment is a no-op; unknown track refuses', () async {
     await store.releaseExperimentPrecedence('custom');
     await expectLater(store.releaseExperimentPrecedence('nope'), throwsArgumentError);
+  });
+
+  Future<Map> persistedState() async => jsonDecode(
+    (await db.query('track_learning', where: 'track_id = ?', whereArgs: ['custom'])).single['state_json'] as String,
+  ) as Map;
+
+  // why: review R3-1 (blocker). The latest experiment ROW was taken before
+  // checking completion, so a newer running, future or stopped experiment
+  // erased the previous completed result without any release by the wearer.
+  // The latest ELIGIBLE (completed) result is preferred.
+  // proves: CLAIM(experiment-precedence)
+  test('a newer running, future or stopped experiment does not remove the completed result', () async {
+    await runExperiment('2026-09-01', 8, 17); // completed
+    final asOf = DateTime(2026, 9, 20, 12);
+    // Newer, stopped: runs 09-16.. and is stopped on 09-18.
+    final stopped = await store.startExperiment(trackId: 'custom', startDate: '2026-09-16', weeks: 2, seed: 3);
+    await withClock(Clock.fixed(DateTime(2026, 9, 18, 9)), () => store.stopExperiment(stopped['id'] as String));
+    // Newer, running at asOf, and newer still, in the future.
+    await store.startExperiment(trackId: 'custom', startDate: '2026-09-19', weeks: 2, seed: 5);
+    await store.startExperiment(trackId: 'custom', startDate: '2026-12-01', weeks: 2, seed: 9);
+    final effect = hrEffect(await store.refreshLearning(asOf: DateTime(2026, 9, 20, 12)));
+    expect(effect['reason'], anyOf('from_experiment', 'experiment_learning'),
+        reason: 'the running experiment abstains while it runs');
+    // After the running one ends unreportable (no adherence), the older completed
+    // result is still the one shown.
+    final later = hrEffect(await store.refreshLearning(asOf: DateTime(2026, 10, 20, 12)));
+    expect(later['reason'], 'from_experiment');
+    expect(later['effect'], closeTo(8, 1e-9));
+    expect(asOf.isBefore(DateTime(2026, 10, 20)), isTrue);
+  });
+
+  test('a newer completed experiment that cannot report leaves the older one in place', () async {
+    await runExperiment('2026-09-01', 8, 17);
+    // Completed by the calendar but no followed days: insufficient adherence.
+    await store.startExperiment(trackId: 'custom', startDate: '2026-10-01', weeks: 2, seed: 5);
+    final effect = hrEffect(await store.refreshLearning(asOf: DateTime(2026, 10, 25, 12)));
+    expect(effect['reason'], 'from_experiment');
+    expect(effect['effect'], closeTo(8, 1e-9));
+  });
+
+  // why: review R3-5. Displaying an experiment effect must not overwrite the
+  // observational estimates that custom detection reads from `effects`
+  // (TrackDetectors.stable needs reason `estimated` plus an adjusted p). They
+  // live in `effects`; the shown ones in `displayed_effects`.
+  // proves: CLAIM(experiment-precedence)
+  test('observational effects stay in the state; the shown ones are kept apart', () async {
+    await runExperiment('2026-09-01', 8, 17);
+    final asOf = DateTime(2026, 9, 20, 12);
+    final shown = hrEffect(await store.refreshLearning(asOf: asOf));
+    expect(shown['reason'], 'from_experiment');
+    final state = await persistedState();
+    final observational = (state['effects'] as List).cast<Map>().single;
+    expect(observational['reason'], isNot('from_experiment'));
+    expect(observational['experiment_id'], isNull);
+    expect(((state['displayed_effects'] as List).single as Map)['reason'], 'from_experiment');
+    // Releasing shows exactly what was kept observationally.
+    await store.releaseExperimentPrecedence('custom');
+    final after = hrEffect(await store.refreshLearning(asOf: asOf));
+    expect(after['reason'], observational['reason']);
+    expect(after['effect'], observational['effect']);
   });
 }
