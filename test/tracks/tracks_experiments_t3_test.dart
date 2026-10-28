@@ -65,15 +65,18 @@ void main() {
     Map experiment, {
     bool adherence = true,
     DateTime Function(String date)? onsetOf,
+    bool Function(int index)? adhereAt,
+    bool Function(int index)? nightAt,
   }) async {
-    var doIndex = 0, dontIndex = 0;
+    var doIndex = 0, dontIndex = 0, index = -1;
     for (final day in assignments(experiment)) {
+      index++;
       final date = day['date'] as String;
       final at = (onsetOf ?? eveningOnset)(date);
       final done = day['do'] as bool;
       final d = DateTime.parse(date);
       final wakeDay = dayLabelOf(DateTime(d.year, d.month, d.day + 1));
-      if (adherence) {
+      if (adherence && (adhereAt?.call(index) ?? true)) {
         if (done) {
           await store.log(
             TrackEvent(
@@ -91,6 +94,7 @@ void main() {
       // Every arm has observations [x-1,x,x+1,...], so uncertainty must be
       // finite and positive; every do outcome remains above every don't.
       final noise = ((done ? doIndex++ : dontIndex++) % 3) - 1;
+      if (!(nightAt?.call(index) ?? true)) continue;
       await db.insert('day_result', {
         'day_id': wakeDay,
         'algo_version': 118,
@@ -738,5 +742,89 @@ void main() {
       await store.answerExperimentDay(experiment['id'] as String, date, didIt: true);
     });
     expect((await store.events(trackId: 'alcohol')).single.date, date);
+  });
+
+  // why: review T12. The interval assertions in the completed-report test would
+  // pass with a z quantile; the numbers are pinned in experiment_effect_test.
+  // These pin the store's own rules: the three-night floor per arm, the 70%
+  // adherence boundary, a skip day with a log, and which starts may overlap.
+  List<int> indexesOf(Map experiment, bool done) => [
+    for (var i = 0; i < assignments(experiment).length; i++)
+      if (assignments(experiment)[i]['do'] == done) i,
+  ];
+
+  test('an arm with fewer than three nights gives insufficient_data; three is enough', () async {
+    final experiment = await start();
+    final doIdx = indexesOf(experiment, true), skipIdx = indexesOf(experiment, false);
+    // 2 do nights, 5 skip nights, everyone adherent.
+    var keep = {...doIdx.take(2), ...skipIdx.take(5)};
+    await observations(experiment, nightAt: keep.contains);
+    final thin = await report(experiment, DateTime(2026, 10, 1));
+    expect(thin['status'], 'completed');
+    expect(thin['reason'], 'insufficient_data');
+    expect(thin['effects'], isEmpty);
+    // Exactly 3 and 3 reports an effect.
+    await db.delete('day_result');
+    keep = {...doIdx.take(3), ...skipIdx.take(3)};
+    await observations(experiment, adherence: false, nightAt: keep.contains);
+    final enough = await report(experiment, DateTime(2026, 10, 1));
+    expect(enough['reason'], isNull);
+    final effect = (enough['effects'] as Map)['hr'] as Map;
+    expect((effect['n_do'], effect['n_dont']), (3, 3));
+  });
+
+  test('adherence needs 70% of assigned days: 10 of 14 passes, 9 does not', () async {
+    final experiment = await start();
+    await observations(experiment, adhereAt: (i) => i < 10);
+    final pass = await report(experiment, DateTime(2026, 10, 1));
+    expect(pass['adherence'], {'assigned': 14, 'followed': 10});
+    expect(pass['reason'], isNot('insufficient_adherence'));
+    // Drop one answered day: 9 of 14 = 64% fails.
+    final answered = assignments(experiment)[9];
+    if (answered['do'] == true) {
+      await db.delete('track_event');
+    } else {
+      await db.delete('track_absence', where: 'date = ?', whereArgs: [answered['date']]);
+    }
+    final fail = await report(experiment, DateTime(2026, 10, 1));
+    if (answered['do'] == true) {
+      expect((fail['adherence'] as Map)['followed'], lessThan(10));
+    } else {
+      expect(fail['adherence'], {'assigned': 14, 'followed': 9});
+    }
+    expect(fail['reason'], 'insufficient_adherence');
+  });
+
+  test('a skip day that also has a log is not followed and its night is excluded', () async {
+    final experiment = await start();
+    await observations(experiment);
+    final skipDate = assignments(experiment).firstWhere((d) => d['do'] == false)['date'] as String;
+    await store.log(TrackEvent(id: 'slip', trackId: 'custom', date: skipDate, amount: 10));
+    final result = await report(experiment, DateTime(2026, 10, 1));
+    expect(result['adherence'], {'assigned': 14, 'followed': 13});
+    final effect = (result['effects'] as Map)['hr'] as Map;
+    expect((effect['n_do'], effect['n_dont']), (7, 6));
+  });
+
+  test('overlapping starts are refused, back-to-back and other-track starts are allowed', () async {
+    await start(); // 2026-09-01 .. 2026-09-14
+    Future<Object?> startAt(String date, {int weeks = 2, String track = 'custom'}) async {
+      try {
+        return await store.startExperiment(trackId: track, startDate: date, weeks: weeks, seed: 3);
+      } on StateError catch (e) {
+        return e;
+      }
+    }
+
+    expect(await startAt('2026-09-14'), isA<StateError>(), reason: 'shares the last day');
+    expect(await startAt('2026-08-25'), isA<StateError>(), reason: 'ends inside the first');
+    expect(await startAt('2026-08-20', weeks: 4), isA<StateError>(), reason: 'spans the first (08-20 to 09-16)');
+    expect(await startAt('2026-08-19'), isA<StateError>(), reason: 'ends on the first day (08-19 to 09-01)');
+    expect(await startAt('2026-09-15'), isA<Map>(), reason: 'back to back');
+    expect(await startAt('2026-08-18'), isA<Map>(), reason: 'ends the day before');
+    await store.saveDefinition(
+      const TrackDefinition(id: 'other', name: 'Other', icon: 'track', kind: 'activity', systems: ['hr']),
+    );
+    expect(await startAt('2026-09-01', track: 'other'), isA<Map>(), reason: 'a different track');
   });
 }
