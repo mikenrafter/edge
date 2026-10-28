@@ -592,4 +592,36 @@ void main() {
     await store.saveDefinition(TrackDefinition.fromJson({...current.toJson(), 'enabled': true}));
     expect(await store.experimentReminders(date: date), hasLength(1));
   });
+
+  // why: review T9. During an experiment the estimates are abstentions, so
+  // "no supported effect" is true by construction. Treating it as weak evidence
+  // lengthened every field's minimum period 1% per day and logged
+  // need_more_evidence_period for what is an experiment-imposed pause.
+  // Control: the same state one refresh after the experiment does adapt.
+  test('a running experiment leaves learning periods and the audit log unchanged', () async {
+    final current = (await store.definitions()).firstWhere((d) => d.id == 'custom');
+    await store.saveDefinition(
+      TrackDefinition.fromJson({
+        ...current.toJson(),
+        'kinetics': {'half_life_hours': {'value': 2.0, 'locked': false}},
+      }),
+    );
+    await db.insert('track_learning', {
+      'track_id': 'custom',
+      'started_ms': DateTime.utc(2026, 1, 1).millisecondsSinceEpoch,
+      'last_step_date': '2026-08-31',
+      'state_json': jsonEncode({'effects': []}),
+    });
+    await start(); // 2026-09-01 .. 2026-09-14
+    await store.refreshLearning(asOf: DateTime.utc(2026, 9, 5));
+    Future<Map> state() async => jsonDecode(
+      (await db.query('track_learning', where: 'track_id = ?', whereArgs: ['custom']))
+          .single['state_json'] as String,
+    ) as Map;
+    expect((await state())['periods_us'] ?? {}, isEmpty);
+    expect(await db.query('track_learning_log'), isEmpty);
+    await store.refreshLearning(asOf: DateTime.utc(2026, 10, 1));
+    expect((await state())['periods_us'] as Map, isNotEmpty, reason: 'control: adapts outside an experiment');
+    expect(await db.query('track_learning_log'), isNotEmpty);
+  });
 }
