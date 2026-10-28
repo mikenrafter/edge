@@ -53,6 +53,40 @@ extension TracksDetectionStore on TracksStore {
 
   static const _explainHours = 12;
 
+  /// Enabled tracks carrying the `detectable` role, read straight from SQL.
+  /// This runs inside the background derive, where only registered worker
+  /// entries may dispatch, so it must not go through the JSON payload lane
+  /// that [definitions] uses. Only the fields detection reads are filled.
+  Future<List<TrackDefinition>> _detectableTracks() async {
+    final rows = await db.rawQuery(
+      "SELECT id, json_extract(payload_json, '\$.name') AS name, "
+      "json_extract(payload_json, '\$.detection_min') AS dmin, "
+      "json_extract(payload_json, '\$.detection_max') AS dmax, "
+      "(SELECT group_concat(value, ',') FROM "
+      "json_each(payload_json, '\$.systems')) AS systems "
+      'FROM track_definition '
+      "WHERE COALESCE(json_extract(payload_json, '\$.enabled'), 1) != 0 "
+      "AND EXISTS (SELECT 1 FROM json_each(payload_json, '\$.roles') "
+      "WHERE value = 'detectable') ORDER BY id",
+    );
+    return [
+      for (final r in rows)
+        TrackDefinition(
+          id: r['id'] as String,
+          name: (r['name'] as String?) ?? r['id'] as String,
+          icon: 'track',
+          kind: 'activity',
+          roles: const ['detectable'],
+          systems: ((r['systems'] as String?) ?? '')
+              .split(',')
+              .where((v) => v.isNotEmpty)
+              .toList(),
+          detectionMin: (r['dmin'] as num?)?.toInt() ?? 0,
+          detectionMax: (r['dmax'] as num?)?.toInt() ?? 10,
+        ),
+    ];
+  }
+
   /// The stable T2 effects for the track's selected systems, or none.
   Future<List<LearnedSignature>> _learnedSignatures(
     TrackDefinition track,
@@ -118,10 +152,7 @@ extension TracksDetectionStore on TracksStore {
           w,
     ];
     final store = ActivityStore(db);
-    final tracks = [
-      for (final t in await definitions(enabledOnly: true))
-        if (t.roles.contains('detectable')) t,
-    ];
+    final tracks = await _detectableTracks();
     final candidates = <ActivitySuggestion>[];
     final abstained = <Map<String, Object?>>[];
     final moved = <ActivitySuggestion>[];
