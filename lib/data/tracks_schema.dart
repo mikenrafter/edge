@@ -11,8 +11,32 @@ Future<void> createTrackTables(Database db) async {
     'CREATE TABLE IF NOT EXISTS track_setup_history ('
     'id TEXT PRIMARY KEY, track_id TEXT NOT NULL, start_date TEXT NOT NULL, '
     'end_date TEXT NOT NULL, done INTEGER NOT NULL CHECK (done IN (0,1)), '
+    'approx_minute INTEGER, amount REAL, amount_unit TEXT, '
     'CHECK (start_date <= end_date))',
   );
+  // v85 (P8a): a taken-daily period's optional local minute, amount and the
+  // unit it was entered in. Additive and nullable; old rows keep NULL (unknown).
+  // The "done only" rule lives in TrackSetupRange (CLAIM(range-invariants)),
+  // not in SQL, so a fresh and a migrated table have the same constraints.
+  final historyColumns = {
+    for (final column in await db.rawQuery(
+      'PRAGMA table_info(track_setup_history)',
+    ))
+      column['name'] as String,
+  };
+  if (!historyColumns.contains('approx_minute')) {
+    await db.execute(
+      'ALTER TABLE track_setup_history ADD COLUMN approx_minute INTEGER',
+    );
+  }
+  if (!historyColumns.contains('amount')) {
+    await db.execute('ALTER TABLE track_setup_history ADD COLUMN amount REAL');
+  }
+  if (!historyColumns.contains('amount_unit')) {
+    await db.execute(
+      'ALTER TABLE track_setup_history ADD COLUMN amount_unit TEXT',
+    );
+  }
   await db.execute(
     'CREATE INDEX IF NOT EXISTS idx_track_history '
     'ON track_setup_history(track_id, start_date)',

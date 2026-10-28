@@ -1060,6 +1060,10 @@ Future<Database> _ldbPrivOpen() async {
           // Empty experiment tables; assignments are written only on request.
           await createTrackTables(db);
         }
+        if (oldV < 85) {
+          // Nullable taken-daily columns on track_setup_history; no backfill.
+          await createTrackTables(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);

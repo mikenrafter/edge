@@ -165,6 +165,10 @@ void main() {
             'start_date': '2026-09-01',
             'end_date': '2026-09-30',
             'done': 1,
+            // v85 columns: NULL (unknown) for rows written without intake.
+            'approx_minute': null,
+            'amount': null,
+            'amount_unit': null,
           },
           {
             'id': 'history-no',
@@ -172,6 +176,10 @@ void main() {
             'start_date': '2026-10-01',
             'end_date': '2026-10-05',
             'done': 0,
+            // v85 columns: NULL (unknown) for rows written without intake.
+            'approx_minute': null,
+            'amount': null,
+            'amount_unit': null,
           },
         ],
       );

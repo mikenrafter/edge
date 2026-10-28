@@ -173,29 +173,88 @@ class TrackDefinition {
   }
 }
 
-/// The stored `end_date` of a range with no end ("since X").
-// CLAIM(ongoing-sentinel): see the green implementation; red-phase stub.
+/// The stored `end_date` of a period with no end ("since X").
+// CLAIM(ongoing-sentinel): an ongoing period is stored with end_date =
+// 9999-12-31, so the table CHECK (start_date <= end_date) stays true and every
+// reader that tests `start <= day <= end` (learning, wake profile, the
+// selected-day export, overlap validation) treats it as covering every later
+// day with no extra branch [tracks_setup_range_test; tracks_history_schema_test].
+// Only DoneRange can be ongoing; code outside this file asks `ongoing`, never
+// compares against the literal.
 const String kOngoingEndDate = '9999-12-31';
 
-/// `TrackEvent.sourceKind` of an in-memory exposure synthesized from a range.
+/// `TrackEvent.sourceKind` of an in-memory exposure synthesized from a period.
+/// Such an event is never written to track_event and never shown.
 const String kRangeExposureSource = 'history';
 
-/// An amount in the unit the track had when the wearer entered it.
+/// An amount per day in the unit the track had when the wearer entered it
+/// ('' for a unitless track). The unit travels with the number so a later unit
+/// change abstains instead of silently rescaling.
 final class DailyAmount {
   const DailyAmount(this.value, this.unit);
   final double value;
   final String unit;
 }
 
-/// What a taken-daily period says about each day (all of it optional).
+/// What a taken-daily period says about each day. Both parts are optional;
+/// null means unknown, never zero.
 final class DailyIntake {
   const DailyIntake({this.approxMinute, this.amount});
+
+  /// Local wall-clock minute of the day, 0..1439.
   final int? approxMinute;
   final DailyAmount? amount;
+
+  /// The first invalid field's stored name, or null.
+  String? get validationError {
+    final minute = approxMinute;
+    if (minute != null && (minute < 0 || minute >= 1440)) {
+      return 'approx_minute';
+    }
+    final a = amount;
+    if (a != null && (!a.value.isFinite || a.value <= 0)) return 'amount';
+    return null;
+  }
+
+  /// Parse, don't validate: a stored value that cannot be right reads as
+  /// unknown, so learning never trusts a clamped or zero stand-in.
+  factory DailyIntake.fromJson(Map<String, dynamic> j) {
+    final rawMinute = j['approx_minute'];
+    final minute =
+        rawMinute is num &&
+            rawMinute.isFinite &&
+            rawMinute == rawMinute.truncate()
+        ? rawMinute.toInt()
+        : null;
+    final rawAmount = j['amount'], rawUnit = j['amount_unit'];
+    final value = rawAmount is num ? rawAmount.toDouble() : null;
+    return DailyIntake(
+      approxMinute: minute != null && minute >= 0 && minute < 1440
+          ? minute
+          : null,
+      amount: value != null && value.isFinite && value > 0 && rawUnit is String
+          ? DailyAmount(value, rawUnit)
+          : null,
+    );
+  }
 }
 
+/// A date range of the setup history. Sealed: a period either was done (and
+/// may then carry an intake and have no end) or was not (and carries neither),
+/// so the invalid mixes cannot be built.
+/// Mating parts: TracksStore (validates and persists), tracks_schema.dart (the
+/// columns), learning_worker.dart / range_exposure.dart (reads).
+// CLAIM(range-invariants): a NotDoneRange has no intake and no open end by
+// construction; a stored row that says otherwise reads as plain not-done
+// [tracks_setup_range_test].
+// CLAIM(range-columns): the stored row is exactly id, track_id, start_date,
+// end_date, done, approx_minute, amount, amount_unit; the last three are NULL
+// unless done = 1 [tracks_setup_range_test, tracks_history_schema_test].
 sealed class TrackSetupRange {
   const TrackSetupRange._(this.id, this.trackId, this.startDate);
+
+  /// The five-field form every pre-P8a caller used. An ongoing end is only
+  /// meaningful for a done range.
   factory TrackSetupRange({
     required String id,
     required String trackId,
@@ -216,23 +275,36 @@ sealed class TrackSetupRange {
           endDate: endDate,
         );
   final String id, trackId, startDate;
+
+  /// The stored end; [kOngoingEndDate] for an ongoing period.
   String get endDate;
   bool get done;
-  String? get validationError => null;
-  factory TrackSetupRange.fromJson(Map<String, dynamic> j) => TrackSetupRange(
-    id: j['id'] as String,
-    trackId: j['track_id'] as String,
-    startDate: j['start_date'] as String,
-    endDate: j['end_date'] as String,
-    done: j['done'] == true || j['done'] == 1,
-  );
-  Map<String, Object?> toJson() => {
-    'id': id,
-    'track_id': trackId,
-    'start_date': startDate,
-    'end_date': endDate,
-    'done': done ? 1 : 0,
-  };
+
+  /// The first invalid intake field's name, or null. Dates are validated by
+  /// TracksStore, which owns the calendar rules.
+  String? get validationError;
+  factory TrackSetupRange.fromJson(Map<String, dynamic> j) {
+    final done = j['done'] == true || j['done'] == 1;
+    final id = j['id'] as String,
+        trackId = j['track_id'] as String,
+        start = j['start_date'] as String,
+        end = j['end_date'] as String;
+    return done
+        ? DoneRange(
+            id: id,
+            trackId: trackId,
+            startDate: start,
+            untilDate: end == kOngoingEndDate ? null : end,
+            intake: DailyIntake.fromJson(j),
+          )
+        : NotDoneRange(
+            id: id,
+            trackId: trackId,
+            startDate: start,
+            endDate: end,
+          );
+  }
+  Map<String, Object?> toJson();
 }
 
 final class NotDoneRange extends TrackSetupRange {
@@ -246,6 +318,19 @@ final class NotDoneRange extends TrackSetupRange {
   final String endDate;
   @override
   bool get done => false;
+  @override
+  String? get validationError => null;
+  @override
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'track_id': trackId,
+    'start_date': startDate,
+    'end_date': endDate,
+    'done': 0,
+    'approx_minute': null,
+    'amount': null,
+    'amount_unit': null,
+  };
 }
 
 final class DoneRange extends TrackSetupRange {
@@ -257,7 +342,7 @@ final class DoneRange extends TrackSetupRange {
     this.intake = const DailyIntake(),
   }) : super._(id, trackId, startDate);
 
-  /// Null means ongoing.
+  /// The last day, or null for an ongoing period.
   final String? untilDate;
   final DailyIntake intake;
   bool get ongoing => untilDate == null;
@@ -265,6 +350,19 @@ final class DoneRange extends TrackSetupRange {
   String get endDate => untilDate ?? kOngoingEndDate;
   @override
   bool get done => true;
+  @override
+  String? get validationError => intake.validationError;
+  @override
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'track_id': trackId,
+    'start_date': startDate,
+    'end_date': endDate,
+    'done': 1,
+    'approx_minute': intake.approxMinute,
+    'amount': intake.amount?.value,
+    'amount_unit': intake.amount?.unit,
+  };
 }
 
 class TrackEvent {

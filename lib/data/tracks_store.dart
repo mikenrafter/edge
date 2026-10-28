@@ -248,6 +248,7 @@ class TracksStore {
           !_validDay(range.startDate) ||
           !_validDay(range.endDate) ||
           range.startDate.compareTo(range.endDate) > 0 ||
+          range.validationError != null ||
           (previousEnd != null &&
               range.startDate.compareTo(previousEnd) <= 0)) {
         throw ArgumentError('history');
