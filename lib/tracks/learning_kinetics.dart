@@ -89,6 +89,29 @@ Map<String, double> _validatedKineticTargets(
   return targets;
 }
 
+// CLAIM(sub-override-scale): a learned change to a track-level kinetic field
+// scales every unlocked sub-activity override of that field by the same ratio,
+// so overrides neither stay frozen nor hide the parent's fit; locked or unset
+// sub-activity fields are untouched [S11; track_effect_estimator_test].
+List<TrackSubActivity> scaleSubActivityKinetics(
+  List<TrackSubActivity> subs,
+  String field,
+  double ratio,
+) => [
+  for (final sub in subs)
+    TrackSubActivity(
+      id: sub.id,
+      name: sub.name,
+      kinetics: TrackKinetics({
+        for (final e in sub.kinetics.fields.entries)
+          e.key:
+              e.key == field && e.value.value != null && !e.value.locked
+              ? TrackKineticField(value: e.value.value! * ratio)
+              : e.value,
+      }),
+    ),
+];
+
 TrackDefinition _withKinetic(TrackDefinition t, String key, double value) =>
     TrackDefinition(
       id: t.id,
@@ -96,7 +119,12 @@ TrackDefinition _withKinetic(TrackDefinition t, String key, double value) =>
       icon: t.icon,
       kind: t.kind,
       systems: t.systems,
-      subActivities: t.subActivities,
+      // ↳ CLAIM(sub-override-scale)
+      subActivities: scaleSubActivityKinetics(
+        t.subActivities,
+        key,
+        value / t.kinetics.fields[key]!.value!,
+      ),
       kinetics: TrackKinetics({
         ...t.kinetics.fields,
         key: TrackKineticField(value: value),

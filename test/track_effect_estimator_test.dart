@@ -856,4 +856,80 @@ void main() {
     // Positive control: a short half-life needs no history and still drops it.
     expect(estimator.features(track('a'), events, bedtime).residualMg, 0);
   });
+
+  // WHY S11: a sub-activity half-life override (every dose here uses it) hid the
+  // parent's fit and was never itself learned. proves: CLAIM(sub-override-scale)
+  test('sub-activity overrides scale with the parent and enter the fit', () {
+    TrackKinetics kinetics(double hl, {bool locked = false}) => TrackKinetics({
+      'half_life_hours': TrackKineticField(value: hl, locked: locked),
+    });
+    final subs = [
+      TrackSubActivity(id: 'free', name: 'free', kinetics: kinetics(8)),
+      TrackSubActivity(
+        id: 'pinned',
+        name: 'pinned',
+        kinetics: kinetics(8, locked: true),
+      ),
+      const TrackSubActivity(id: 'inherits', name: 'inherits'),
+    ];
+    final scaled = scaleSubActivityKinetics(subs, 'half_life_hours', .5);
+    expect(scaled[0].kinetics.fields['half_life_hours']!.value, 4);
+    expect(scaled[1].kinetics.fields['half_life_hours']!.value, 8);
+    expect(scaled[2].kinetics.fields.containsKey('half_life_hours'), isFalse);
+
+    // Ground truth: every dose has a 3 h half-life, set by the only
+    // sub-activity's override. The user entered override 6 h under parent 6 h.
+    // Scaling both by .5 reaches the truth (override 3, parent 3). Before the
+    // fix candidates changed the unused parent only, so the loss stayed flat.
+    final nights = List.generate(224, (i) {
+      final exposed = (i ~/ 7).isOdd;
+      final at = DateTime.utc(2025, 1, 1, 22).add(Duration(days: i));
+      final dose = [80.0, 100.0, 140.0, 200.0][i % 4];
+      final hours = [1, 3, 5, 8, 10][i % 5];
+      return TrackNight(
+        at: at,
+        bedtimeMinute: 1320,
+        sleepDebtHours: 0,
+        load: 0,
+        baselines: const {'sleep': 50},
+        outcomes: {'sleep': 50 + (exposed ? dose * pow(.5, hours / 3) * .1 : 0)},
+        completeTrackIds: const {'a'},
+        negativeControls: const {'sleep': 50},
+        events: [
+          if (exposed)
+            TrackEvent(
+              id: 'a-$i',
+              trackId: 'a',
+              date: '2025-01-01',
+              amount: dose,
+              subActivityId: 'only',
+              atMs: at.subtract(Duration(hours: hours)).millisecondsSinceEpoch,
+            ),
+        ],
+      );
+    });
+    final overridden = TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      systems: const ['sleep'],
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+        'onset_hours': TrackKineticField(value: 0),
+      }),
+      subActivities: [
+        TrackSubActivity(
+          id: 'only',
+          name: 'only',
+          kinetics: const TrackKinetics({
+            'half_life_hours': TrackKineticField(value: 6),
+          }),
+        ),
+      ],
+    );
+    final result = estimate(nights, tracks: [overridden]);
+    expect(result.reason, 'estimated');
+    expect(result.kineticTargets['half_life_hours'], 3);
+  });
 }
