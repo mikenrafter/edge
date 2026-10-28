@@ -153,6 +153,20 @@ extension TracksExperimentStore on TracksStore {
     if (dayLabelOf(now).compareTo(end) <= 0) {
       return {...report, 'status': 'running'};
     }
+    // CLAIM(last-night-before-complete): the last assigned night is day_id
+    // end+1; on that morning wait for it to be finalized, and conclude anyway
+    // once a grace day has passed [review T14; tracks_experiments_t3_test.dart].
+    final lastNightDay = dayLabelBefore(end, -1)!;
+    if (dayLabelOf(now) == lastNightDay &&
+        (await db.query(
+          'day_result',
+          columns: ['day_id'],
+          where: 'day_id = ? AND finalized = 1 AND partial = 0 AND skipped = 0',
+          whereArgs: [lastNightDay],
+          limit: 1,
+        )).isEmpty) {
+      return {...report, 'status': 'running'};
+    }
     final assigned = (e['assignments'] as List).cast<Map>();
     final logged = {
       for (final r in await db.rawQuery(

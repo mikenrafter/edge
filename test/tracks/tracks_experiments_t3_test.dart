@@ -624,4 +624,42 @@ void main() {
     expect((await state())['periods_us'] as Map, isNotEmpty, reason: 'control: adapts outside an experiment');
     expect(await db.query('track_learning_log'), isNotEmpty);
   });
+
+  // why: review T14. The last assigned night (date `end`) is filed under
+  // end+1 and is only finalized after the wearer wakes. Opening the app at 07:00
+  // on end+1 showed "Completed" with an effect missing that night, which then
+  // changed silently. Stay running until the night is finalized, or until a
+  // grace day (end+2) has passed.
+  // proves: CLAIM(last-night-before-complete)
+  test('the experiment waits for its last night, with a one day grace', () async {
+    final experiment = await start(); // 2026-09-01 .. 2026-09-14, last night day_id 2026-09-15
+    await observations(experiment);
+    await db.delete('day_result', where: 'day_id = ?', whereArgs: ['2026-09-15']);
+    final morning = DateTime(2026, 9, 15, 7);
+    expect((await report(experiment, morning))['status'], 'running');
+    expect((await report(experiment, DateTime(2026, 9, 14, 23)))['status'], 'running');
+    final grace = await report(experiment, DateTime(2026, 9, 16, 7));
+    expect(grace['status'], 'completed');
+    expect(((grace['effects'] as Map)['hr'] as Map)['n_do'] + ((grace['effects'] as Map)['hr'] as Map)['n_dont'], 13);
+    // Once the night is finalized the same morning completes, with all 14.
+    final at = eveningOnset('2026-09-14');
+    await db.insert('day_result', {
+      'day_id': '2026-09-15',
+      'algo_version': 118,
+      'computed_at': 1,
+      'finalized': 1,
+      'partial': 0,
+      'window_json': jsonEncode({
+        'value': {
+          'onset_ms': at.millisecondsSinceEpoch,
+          'offset_ms': at.add(const Duration(hours: 8)).millisecondsSinceEpoch,
+        },
+      }),
+      'payload_json': jsonEncode({'scalars': {'rhr': 60}}),
+    });
+    final done = await report(experiment, DateTime(2026, 9, 15, 10));
+    expect(done['status'], 'completed');
+    final effect = (done['effects'] as Map)['hr'] as Map;
+    expect((effect['n_do'] as int) + (effect['n_dont'] as int), 14);
+  });
 }
