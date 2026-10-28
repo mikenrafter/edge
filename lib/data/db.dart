@@ -1952,6 +1952,22 @@ class LocalDb {
 
   /// Dose sum and latest dose minute of one day's recorded (non-journal) doses
   /// in the track's standard unit.
+  /// Drops the stored remainder time of [date] (one [track], or both). Every
+  /// journal write or delete of the aggregate calls this, so the key never
+  /// outlives the journal's own idea of the remainder.
+  // CLAIM(remainder-time-fresh): the wake_meta remainder key is written only by
+  // writeTrackSubstance and cleared by every other journal_metric writer
+  // [R3-2; tracks_store_test].
+  static Future<void> _clearRemainderMinute(
+    DatabaseExecutor tx,
+    String date, [
+    String? track,
+  ]) => tx.delete(
+    'wake_meta',
+    where: 'key LIKE ?',
+    whereArgs: ['substance_remainder_min:$date:${track ?? '%'}'],
+  );
+
   static Future<({double dose, int? minute})> _trackDoseSummary(
     Transaction tx,
     String date,
@@ -2197,6 +2213,8 @@ class LocalDb {
           (residual ?? 0) +
           (timed.isEmpty ? 0 : (timed.single['value'] as num).toDouble()) +
           (logged.single['value'] as num).toDouble();
+      // ↳ CLAIM(remainder-time-fresh)
+      await _clearRemainderMinute(tx, date, track);
       if (total == 0 && residual == null) {
         await tx.delete(
           'journal_metric',

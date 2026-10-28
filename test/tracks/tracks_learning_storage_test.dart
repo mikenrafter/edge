@@ -3,6 +3,7 @@ import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import '../backup/backup_support.dart';
 
@@ -211,5 +212,79 @@ void main() {
       orderBy: 'field',
     )).map((r) => r['field']);
     expect(fields, ['half_life_hours', 'onset_hours']);
+  });
+
+  // WHY R3-3: the habitual reference was re-derived from whatever nights the
+  // refresh read (latest 730), so it could drift after rollover. The refresh
+  // must persist it in track_learning.state_json once established, and keep it
+  // when the established nights are gone from the read window.
+  // proves: CLAIM(baseline-reference) through the production read seam
+  test('refresh persists the established baseline reference and keeps it after rollover', () async {
+    final env = await BackupEnv.create('tracks_learning_reference_r33.db');
+    addTearDown(env.dispose);
+    final db = await LocalDb.instance;
+    final store = TracksStore(db);
+    await store.saveDefinition(
+      const TrackDefinition(
+        id: 'custom',
+        name: 'Custom',
+        icon: 'track',
+        kind: 'consumed',
+        systems: ['hr'],
+        noUnadjustedData: true,
+        loggingComplete: true,
+        loggingCompleteSinceMs: 0,
+        kinetics: TrackKinetics({
+          'half_life_hours': TrackKineticField(value: 5),
+          'onset_hours': TrackKineticField(value: 1),
+        }),
+      ),
+    );
+    Future<void> night(int i, double dose) async {
+      final onset = DateTime.utc(2026, 5, 1 + i, 22);
+      await store.log(
+        TrackEvent(
+          id: 'event:$i',
+          trackId: 'custom',
+          date: dayLabelOf(onset),
+          atMs: onset.subtract(const Duration(hours: 2)).millisecondsSinceEpoch,
+          amount: dose,
+        ),
+      );
+      await db.insert('day_result', {
+        'day_id': dayLabelOf(onset.add(const Duration(days: 1))),
+        'algo_version': 118,
+        'computed_at': 1,
+        'finalized': 1,
+        'partial': 0,
+        'window_json': jsonEncode({
+          'value': {
+            'onset_ms': onset.millisecondsSinceEpoch,
+            'offset_ms': onset.add(const Duration(hours: 8)).millisecondsSinceEpoch,
+          },
+        }),
+        'payload_json': jsonEncode({
+          'scalars': {'rhr': 58 + i % 5},
+          'coverage': {'rr_coverage': 1},
+        }),
+      });
+    }
+    for (var i = 0; i < 30; i++) {
+      await night(i, 100);
+    }
+    final now = DateTime.utc(2026, 10, 27, 12);
+    await store.refreshLearning(asOf: now);
+    Future<Map> state() async => jsonDecode(
+      (await db.query('track_learning', where: "track_id = 'custom'"))
+          .single['state_json'] as String,
+    ) as Map;
+    expect((await state())['reference_dose'], 100);
+    // Rollover: the established nights leave the window, abstinence follows.
+    await db.delete('day_result', where: "day_id < '2026-05-25'");
+    for (var i = 30; i < 60; i++) {
+      await night(i, 0);
+    }
+    await store.refreshLearning(asOf: now.add(const Duration(days: 1)));
+    expect((await state())['reference_dose'], 100);
   });
 }

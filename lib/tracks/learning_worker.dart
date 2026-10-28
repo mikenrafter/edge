@@ -55,10 +55,18 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     for (final row in input.history) TrackSetupRange.fromJson(row),
   ];
   final nights = trackNightsHeavy(input, tracks, events, ranges);
+  // ↳ CLAIM(baseline-reference): established references come back from state.
+  final references = <String, double>{
+    for (final row in input.states)
+      if ((jsonDecode(row['state_json'] as String) as Map)['reference_dose']
+          case final num reference)
+        row['track_id'] as String: reference.toDouble(),
+  };
   final estimates = const TrackEffectEstimator().estimate(
     tracks: tracks,
     nights: nights,
     asOf: now,
+    references: references,
   );
   const policy = TrackLearningPolicy();
   final updates = <Map<String, Object?>>[],
@@ -216,9 +224,9 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
           reason: 'time_ordered_matched_fit',
           learnedMinimum: adapted,
         );
-        fields
-          ..clear()
-          ..addAll(applied.fields);
+        // Only ever adds or updates keys; never clear (a held step returns
+        // the same values and clearing would empty the map) [R3-1].
+        fields.addAll(applied.fields);
         subActivities = applied.subActivities;
         logs.addAll(applied.logs);
       }
@@ -226,7 +234,11 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     final changed = logs.any(
       (r) => !(r['field'] as String).endsWith(':minimum'),
     );
+    final reference =
+        own.map((e) => e.referenceDose).nonNulls.firstOrNull ??
+        references[track.id];
     final nextState = {
+      if (reference != null) 'reference_dose': reference,
       'periods_us': periods,
       'statistics': stats,
       'effects': [

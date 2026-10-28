@@ -874,4 +874,43 @@ void main() {
     final after = (await caffeineTotal())!;
     expect((after.value, after.atMinuteOfDay), (50, 18 * 60));
   });
+
+  // WHY R3-2: clearing the journal timestamp (total kept at 80) did not clear the
+  // stored remainder time, so deleting the dose resurrected 18:00.
+  // proves: CLAIM(remainder-time-fresh)
+  test('a journal edit invalidates the stored remainder time', () async {
+    await LocalDb.putJournalMetrics('2026-10-01', {
+      'caffeine_mg': const JournalMetricValue(50, atMinuteOfDay: 18 * 60),
+    });
+    await store.log(caffeineDose('late', 30, atMs: 1790892000000));
+    await LocalDb.putJournalMetrics('2026-10-01', {
+      'caffeine_mg': const JournalMetricValue(80),
+    });
+    await store.deleteEvent(
+      (await store.events(trackId: 'caffeine')).singleWhere((e) => e.id == 'late'),
+    );
+    final after = (await caffeineTotal())!;
+    expect((after.value, after.atMinuteOfDay), (50, null));
+  });
+
+  // WHY R3-5: the selected-day export left out the stored remainder time, so
+  // after restore deleting the 22:00 dose left the 50 mg untimed.
+  // proves: export/restore parity of CLAIM(remainder-time)
+  test('selected-day export keeps the remainder time across restore', () async {
+    await LocalDb.putJournalMetrics('2026-10-01', {
+      'caffeine_mg': const JournalMetricValue(50, atMinuteOfDay: 18 * 60),
+    });
+    await store.log(caffeineDose('late', 30, atMs: 1790892000000));
+    await env.seedData();
+    final days = await LocalDb.exportDaysDb({'2026-10-01'});
+    await env.wipe();
+    await LocalDb.instance;
+    await LocalDb.importFromDbFile(days);
+    final restored = TracksStore(await LocalDb.instance);
+    await restored.deleteEvent(
+      (await restored.events(trackId: 'caffeine')).singleWhere((e) => e.id == 'late'),
+    );
+    final after = (await caffeineTotal())!;
+    expect((after.value, after.atMinuteOfDay), (50, 18 * 60));
+  });
 }

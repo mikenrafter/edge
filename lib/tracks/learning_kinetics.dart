@@ -143,7 +143,9 @@ KineticApplication applyKineticTarget({
   required String reason,
   Duration? learnedMinimum,
 }) {
-  KineticApplication unchanged() => KineticApplication(fields, subActivities, const []);
+  // A fresh map every time: callers may mutate or reuse their own [fields].
+  KineticApplication unchanged() =>
+      KineticApplication({...fields}, subActivities, const []);
   final parent = track.kinetics.fields[field];
   if (parent?.value == null) return unchanged();
   final parentLocked = parent!.locked;

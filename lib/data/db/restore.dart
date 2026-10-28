@@ -361,6 +361,16 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         );
         // The canonical owners behind track_event_feed rows: medication doses,
         // caffeine moments and meals.
+        // The journal remainder's own time (see writeTrackSubstance) travels with
+        // its day. ↳ CLAIM(remainder-time)
+        await copyRows(
+          'wake_meta',
+          where: 'key IN (?, ?)',
+          whereArgs: [
+            'substance_remainder_min:$dayId:caffeine',
+            'substance_remainder_min:$dayId:alcohol',
+          ],
+        );
         await copyRows('med_dose', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('moment_label', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('food_entry', where: 'date = ?', whereArgs: [dayId]);
@@ -583,6 +593,13 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       await deleteByIn(txn, 'metric_method', 'date', sorted);
       await deleteByIn(txn, 'journal', 'date', sorted);
       await deleteByIn(txn, 'journal_metric', 'date', sorted);
+      // ↳ CLAIM(remainder-time-fresh)
+      await deleteByIn(txn, 'wake_meta', 'key', [
+        for (final d in sorted) ...[
+          'substance_remainder_min:$d:caffeine',
+          'substance_remainder_min:$d:alcohol',
+        ],
+      ]);
       await deleteByIn(txn, 'track_event', 'date', sorted);
       await deleteByIn(txn, 'track_absence', 'date', sorted);
       await deleteByIn(txn, 'track_experiment_day', 'date', sorted);

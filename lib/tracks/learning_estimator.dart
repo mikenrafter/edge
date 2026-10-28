@@ -25,8 +25,10 @@ class TrackEffectEstimator {
     final windowHours = _residualWindowHours(track);
     if (windowHours > 48 && !historyComplete) unknownResidual = true;
     // ↳ CLAIM(unit-abstain): a unitless track still cannot mix explicit units.
-    if (_explicitUnitsConflict(track, events)) {
-      unknownDose = true;
+    // Checked inside each feature's own window (R3-4): an old event outside
+    // the 48 h dose window cannot blank a recent dose.
+    if (_explicitUnitsConflict(track, events, bedtime, 48)) unknownDose = true;
+    if (_explicitUnitsConflict(track, events, bedtime, windowHours)) {
       unknownResidual = true;
     }
     for (final event in events) {
@@ -118,6 +120,7 @@ class TrackEffectEstimator {
     required List<TrackNight> nights,
     required DateTime asOf,
     Map<String, double> priors = const {},
+    Map<String, double> references = const {},
   }) {
     final active = tracks.where((t) => t.enabled).toList();
     final ordered = {
@@ -135,6 +138,7 @@ class TrackEffectEstimator {
             ordered,
             math.max(1, family),
             priors['${track.id}:$system'] ?? 0,
+            references[track.id],
           ),
     ];
   }
@@ -145,8 +149,10 @@ class TrackEffectEstimator {
     List<TrackDefinition> tracks,
     List<TrackNight> nights,
     int family,
-    double prior,
-  ) {
+    double prior, [
+    double? storedReference,
+  ]) {
+    double? established = storedReference;
     TrackEffectEstimate absent(
       String reason, {
       int pairs = 0,
@@ -159,6 +165,7 @@ class TrackEffectEstimator {
       matchedPairs: pairs,
       shuffleP: p,
       adjustedP: adjusted,
+      referenceDose: established,
     );
     final withOutcome = nights
         .where((n) => n.outcomes[system]?.isFinite == true)
@@ -191,12 +198,22 @@ class TrackEffectEstimator {
             ),
         }),
     ];
+    final habitual = track.noUnadjustedData
+        ? _habitualDose(track, rows, minimumPairs * 2)
+        : null;
+    // CLAIM(baseline-reference): once enough nights exist the habitual dose is
+    // established, returned for persistence, and from then on read back from
+    // learning state, so nights leaving the read window never move it [S4,
+    // R2-3, R3-3; tracks_learning_storage_test].
+    if (established == null && habitual != null && habitual.established) {
+      established = habitual.dose;
+    }
     final pairs = _matchedPairs(
       track,
       system,
       rows,
       relevant,
-      establishedNights: minimumPairs * 2,
+      referenceDose: established ?? habitual?.dose ?? 0.0,
     );
     if (pairs.length < minimumPairs) {
       final confounded = relevant.any(
@@ -261,6 +278,7 @@ class TrackEffectEstimator {
       adjustedP: adjusted,
       coefficients: model?.coefficients ?? {},
       kineticTargets: _validatedKineticTargets(track, system, pairs, this),
+      referenceDose: established,
     );
   }
 }
@@ -294,11 +312,22 @@ double? _amountInTrackUnit(TrackDefinition track, TrackEvent event) {
   return amount;
 }
 
-bool _explicitUnitsConflict(TrackDefinition track, List<TrackEvent> events) {
+bool _explicitUnitsConflict(
+  TrackDefinition track,
+  List<TrackEvent> events,
+  DateTime bedtime,
+  double windowHours,
+) {
   if (track.unit.trim().isNotEmpty) return false;
   final units = {
     for (final e in events)
-      if (e.trackId == track.id && (e.unit?.trim().isNotEmpty ?? false))
+      if (e.trackId == track.id &&
+          e.atMs != null &&
+          (e.unit?.trim().isNotEmpty ?? false) &&
+          (bedtime.millisecondsSinceEpoch - e.atMs!) /
+                  Duration.millisecondsPerHour <=
+              windowHours &&
+          e.atMs! <= bedtime.millisecondsSinceEpoch)
         e.unit!.trim().toLowerCase(),
   };
   return units.length > 1;
@@ -315,29 +344,35 @@ class _NightPair {
   final _LearningRow exposed, control;
 }
 
+({double dose, bool established})? _habitualDose(
+  TrackDefinition track,
+  List<_LearningRow> rows,
+  int establishedNights,
+) {
+  final valid = rows
+      .where((r) => r.features[track.id]?.dose != null)
+      .take(establishedNights)
+      .toList();
+  if (valid.isEmpty) return null;
+  final counts = <double, int>{};
+  for (final r in valid) {
+    counts.update(r.features[track.id]!.dose!, (n) => n + 1, ifAbsent: () => 1);
+  }
+  final dose = counts.entries
+      .reduce((best, e) => e.value > best.value ? e : best)
+      .key;
+  return (dose: dose, established: valid.length >= establishedNights);
+}
+
 List<_NightPair> _matchedPairs(
   TrackDefinition track,
   String system,
   List<_LearningRow> rows,
   List<TrackDefinition> tracks, {
-  required int establishedNights,
+  required double referenceDose,
 }) {
   final valid = rows.where((r) => r.features[track.id]?.dose != null).toList();
-  // CLAIM(baseline-reference): with "this track is my baseline" the reference
-  // is the habitual dose of the first [establishedNights] valid nights (most
-  // frequent, earliest on ties). Appending later nights never moves it, so
-  // abstinence that outnumbers habit cannot become the reference, and nights
-  // below it pair as deviations [S4, R2-3; track_effect_estimator_test].
-  var referenceDose = 0.0;
-  if (track.noUnadjustedData && valid.isNotEmpty) {
-    final counts = <double, int>{};
-    for (final r in valid.take(establishedNights)) {
-      counts.update(r.features[track.id]!.dose!, (n) => n + 1, ifAbsent: () => 1);
-    }
-    referenceDose = counts.entries
-        .reduce((best, e) => e.value > best.value ? e : best)
-        .key;
-  }
+  // ↳ CLAIM(baseline-reference)
   final controls = valid
       .where((r) => r.features[track.id]!.dose == referenceDose)
       .toList();

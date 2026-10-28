@@ -790,6 +790,22 @@ void main() {
     final outnumbered = estimate([...nights, ...abstinence(120)], tracks: [tracked]);
     expect(outnumbered.reason, 'estimated');
     expect(outnumbered.effect, closeTo(7, 1e-6));
+    // WHY R3-3: production reads only the latest 730 nights, so established
+    // nights leave the window. The reference is therefore returned for
+    // persistence and read back, never re-derived from a rolled window.
+    TrackEffectEstimate refOf(List<TrackNight> window, {double? stored}) =>
+        estimator
+            .estimate(
+              tracks: [tracked],
+              nights: window,
+              asOf: cutoff,
+              references: {if (stored != null) 'a': stored},
+            )
+            .first;
+    expect(refOf([...nights, ...abstinence(120)]).referenceDose, 100);
+    final rolled = [...nights.skip(7), ...abstinence(120)];
+    expect(refOf(rolled).referenceDose, 150, reason: 'rolled window alone drifts');
+    expect(refOf(rolled, stored: 100).referenceDose, 100);
     // Deviation below the reference: habitual 100 mg weeks (earliest, so the
     // reference) against 50 mg weeks that sleep 8 units better -> -8 per
     // +50 mg, shrunk to -7. The sign shows the higher dose is the exposed side.
@@ -1070,5 +1086,62 @@ void main() {
       'half_life_hours',
       'half_life_hours@only',
     ]);
+  });
+
+  // WHY R3-1: a held proposal returned the caller's own map; the worker cleared
+  // that map and re-added it, emptying every kinetic field after an earlier
+  // successful step in the same pass. The worker now only calls addAll.
+  test('a held step returns a copy, so a prior step in the pass survives', () {
+    final t = track('a');
+    final fields = {
+      ...t.kinetics.fields,
+      'tolerance_days': const TrackKineticField(value: 2, locked: true),
+    };
+    final held = applyKineticTarget(
+      policy: const TrackLearningPolicy(),
+      track: t,
+      fields: fields,
+      subActivities: t.subActivities,
+      field: 'half_life_hours',
+      age: const Duration(days: 1), // under the 28 day global minimum: held
+      target: 3,
+      date: '2026-10-27',
+      reason: 'time_ordered_matched_fit',
+    );
+    expect(held.logs, isEmpty);
+    expect(identical(held.fields, fields), isFalse);
+    fields
+      ..clear()
+      ..addAll(held.fields);
+    expect(fields['tolerance_days']!.locked, isTrue);
+    expect(fields.length, greaterThan(1));
+  });
+
+  // WHY R3-4: a cups event 55 h old (outside the 48 h dose window) made a recent
+  // 100 mg dose unknown on a unitless track. proves: CLAIM(unit-abstain)
+  test('unit conflicts are judged inside each feature window', () {
+    final bedtime = DateTime.utc(2025, 1, 4, 22);
+    TrackEvent event(String id, double amount, String unit, int hoursBefore) =>
+        TrackEvent(
+          id: id,
+          trackId: 'a',
+          date: '2025-01-04',
+          amount: amount,
+          unit: unit,
+          atMs: bedtime
+              .subtract(Duration(hours: hoursBefore))
+              .millisecondsSinceEpoch,
+        );
+    final f = estimator.features(track('a'), [
+      event('old', 2, 'cups', 55),
+      event('recent', 100, 'mg', 5),
+    ], bedtime);
+    expect(f.dose, 100);
+    // Positive control: the conflict inside 48 h still abstains.
+    final inside = estimator.features(track('a'), [
+      event('old', 2, 'cups', 30),
+      event('recent', 100, 'mg', 5),
+    ], bedtime);
+    expect(inside.dose, isNull);
   });
 }
