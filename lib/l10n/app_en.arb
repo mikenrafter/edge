@@ -7918,6 +7918,27 @@
   "@sleepDetailStagedByRing": {
     "description": "Chip on a night whose window and stages came from the user's ring rather than our own detection."
   },
+  "sleepDetailStagingExperimental": "Experimental sleep-stage estimate. Not validated against a clinical sleep study. Not for medical decisions.",
+  "@sleepDetailStagingExperimental": {
+    "description": "Note under the hypnogram when the stages came from the opt-in experimental sleep-staging model."
+  },
+  "sleepDetailStagingFallback": "The experimental model showed little stage variation, so the default estimate is shown.",
+  "@sleepDetailStagingFallback": {
+    "description": "Note under the hypnogram when the experimental model's whole night was replaced by the default estimate."
+  },
+  "sleepDetailStagingFallbackPartial": "The experimental model showed little stage variation for {minutes} min of this night; the default estimate is shown there.",
+  "@sleepDetailStagingFallbackPartial": {
+    "description": "Note under the hypnogram when only part of the night was replaced by the default estimate.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "sleepDetailStagingFallbackGeneric": "The default estimate is shown for this night instead of the experimental model.",
+  "@sleepDetailStagingFallbackGeneric": {
+    "description": "Note under the hypnogram when the default estimate replaced the experimental model for a reason this version does not recognise."
+  },
   "sleepDetailWindowAuto": "This window was staged from the signals",
   "@sleepDetailWindowAuto": {
     "description": "Label when the sleep window was auto-staged from the signals."

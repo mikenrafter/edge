@@ -1558,6 +1558,18 @@ Map<String, dynamic> deriveDayBundle(
     'staging_note': d.sleepSource == 'vendor_staged'
         ? 'Device-reported sleep stages; not a medical diagnosis.'
         : d.sleepJson['staging_note'],
+    // What actually produced the stages when the experimental model was asked
+    // (analytics provenance, forwarded as is: edge adds no second guard). Cardio
+    // nights carry none of it, so their stored output stays byte-identical.
+    if (d.sleepSource != 'vendor_staged' &&
+        d.sleepJson['staging_method'] is String &&
+        d.sleepJson['staging_method'] != 'cardio')
+      for (final k in const [
+        'staging_effective_method',
+        'staging_fallback',
+        'staging_fallback_sec',
+      ])
+        if (d.sleepJson[k] != null) k: d.sleepJson[k],
     'window': _envelope(
       hasSleep ? sleepWinJson : null,
       confidence: sleepConf,

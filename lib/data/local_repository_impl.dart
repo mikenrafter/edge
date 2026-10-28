@@ -24,6 +24,7 @@ import '../compute/inputs/canonical.dart'
         withoutWearableEstimates;
 import '../ble/adapters/_registry.dart' show kBandRegistry;
 import '../compute/quiet_level.dart';
+import '../compute/staging_provenance.dart';
 import '../models/activity_suggestion.dart';
 import 'activity_store.dart';
 import 'day_review.dart';
@@ -1709,6 +1710,10 @@ class LocalRepositoryImpl extends LocalRepository {
       // minutes, as wide as the time the band did not record. Absent on a
       // detected night.
       'stage_ranges': ?_stageRanges(b),
+      // What produced the stages when the experimental model was asked (and
+      // why it fell back); absent keys stay absent, so an older night is shown
+      // as before.
+      ...stagingProvenanceOf(_sub(b, 'sleep')),
       'stages_beta': true,
       // The 4-class stager is a low-confidence wrist ESTIMATE; Deep especially is
       // an unvalidated overlay. The screen badges the whole stage block honestly.

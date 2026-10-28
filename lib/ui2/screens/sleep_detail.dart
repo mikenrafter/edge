@@ -22,6 +22,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:provider/provider.dart';
 
+import '../../compute/staging_provenance.dart' show kStagingFallbackDegenerate;
 import '../../compute/vendor_sleep.dart' show vendorStagesReported;
 import '../../data/day_label.dart';
 import '../../data/local_repository.dart';
@@ -1546,8 +1547,44 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           const SizedBox(height: S.x2),
           Text(shape, style: F.over.copyWith(color: p.ink3, height: 1.5)),
         ],
+        if (device == null)
+          for (final (i, line) in _stagingNotes(l, n).indexed) ...[
+            const SizedBox(height: S.x2),
+            Text(line,
+                key: ValueKey('sleep-staging-note-$i'),
+                style: F.over.copyWith(color: p.ink3, height: 1.5)),
+          ],
       ]),
     );
+  }
+
+  /// What to say about how the night's stages were produced. Only the opt-in
+  /// experimental model has anything to say: that it is not validated, and,
+  /// when the default estimate replaced it, why. A reason this build does not
+  /// know is said generically; the estimate itself is never hidden.
+  List<String> _stagingNotes(AppLocalizations? l, Map<String, dynamic> n) {
+    if (n['staging_method'] != 'hmm628') return const [];
+    final fallback = n['staging_fallback'];
+    final sec = n['staging_fallback_sec'];
+    return [
+      l?.sleepDetailStagingExperimental ??
+          'Experimental sleep-stage estimate. Not validated against a clinical '
+              'sleep study. Not for medical decisions.',
+      if (fallback is String)
+        if (fallback != kStagingFallbackDegenerate)
+          l?.sleepDetailStagingFallbackGeneric ??
+              'The default estimate is shown for this night instead of the '
+                  'experimental model.'
+        else if (n['staging_effective_method'] == 'mixed' && sec is num)
+          l?.sleepDetailStagingFallbackPartial((sec / 60).round()) ??
+              'The experimental model showed little stage variation for '
+                  '${(sec / 60).round()} min of this night; the default '
+                  'estimate is shown there.'
+        else
+          l?.sleepDetailStagingFallback ??
+              'The experimental model showed little stage variation, so the '
+                  'default estimate is shown.',
+    ];
   }
 
   /// What a device's own staging says, in its words: whose it is, its stage
