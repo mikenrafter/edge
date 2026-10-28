@@ -3,12 +3,14 @@
 // TracksStore.experimentReminders (the one query, with its own
 // running/stopped filter). Sleep is respected exactly as for the other
 // reminders: quiet hours, expected sleep and detected sleep (ReminderSleepGate).
+import 'dart:convert';
 import 'package:clock/clock.dart';
 import '../data/day_label.dart';
 import '../data/db.dart';
 import '../data/tracks_store.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_prefs.dart';
+import '../notify/notification_service.dart';
 import '../notify/reminder_sleep_gate.dart';
 
 class ExperimentReminders {
@@ -19,9 +21,22 @@ class ExperimentReminders {
   /// for the day rather than one in the afternoon.
   static const firstMinute = 8 * 60, lastMinute = 12 * 60, stepMinutes = 30;
 
-  /// Days looked ahead (today included), so a few missed app opens still
-  /// leave the next mornings armed.
-  static const horizonDays = 3;
+  /// Days looked ahead (today included): the whole band, so one foreground
+  /// pass arms every remaining assignment of a 4 week experiment and an app left
+  /// closed (headless sync cannot re-arm) still reminds on every day.
+  // CLAIM(reminders-arm-all): horizon = the OS band = the longest experiment
+  // [review R2-8; tracks_experiment_reminders_test.dart].
+  static const horizonDays = NotificationService.maxExperimentSlots;
+
+  /// Install-local record of the instant armed for [date]. A day whose armed
+  /// instant has passed is DELIVERED and is never armed again.
+  // CLAIM(reminder-delivered-guard) [review R2-7; tracks_experiment_reminders_test.dart]
+  static String _armedKey(String date) => 'experiment_reminder:$date';
+
+  static Future<DateTime?> _armedAt(String date) async {
+    final raw = await LocalDb.computeFreshnessStringField(_armedKey(date), r'$.at');
+    return raw == null ? null : DateTime.tryParse(raw);
+  }
 
   static DateTime? instantFor(
     String date,
@@ -56,10 +71,17 @@ class ExperimentReminders {
       final date = dayLabelOf(DateTime(now.year, now.month, now.day + d));
       final due = await store.experimentReminders(date: date);
       if (due.isEmpty) continue;
+      // ↳ CLAIM(reminder-delivered-guard)
+      final armedBefore = await _armedAt(date);
+      if (armedBefore != null && !armedBefore.isAfter(now)) continue;
       final at = instantFor(date, prefs, gate, now);
       if (at == null) continue;
       // One interruption per day, however many experiments are assigned.
       slots.add((at: at, route: due.first['route'] as String));
+      await LocalDb.putComputeFreshness(
+        _armedKey(date),
+        jsonEncode({'at': at.toIso8601String()}),
+      );
     }
     await center.armExperimentReminders(slots);
   }

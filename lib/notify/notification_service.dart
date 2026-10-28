@@ -146,7 +146,7 @@ class NotificationService {
   /// [ExperimentReminders.refresh] and cleared the moment no experiment has an
   /// assignment ahead (ended, stopped, or the track was turned off).
   static const int idExperimentBase = 2400;
-  static const int maxExperimentSlots = 8;
+  static const int maxExperimentSlots = 28; // a 4 week experiment, one per day
 
   /// Slot band [idWaterBase .. idWaterBase + maxWaterSlots) — one daily-repeating
   /// OS notification per hydration slot, armed by
