@@ -21,7 +21,7 @@ extension TracksExperimentStore on TracksStore {
     if (track.isEmpty || !track.single.enabled) throw ArgumentError('track');
     // ↳ CLAIM(no-med-experiment)
     if (ExperimentableTrack.from(track.single) == null) {
-      throw const ExperimentRefused('medication');
+      throw const ExperimentRefused(ExperimentRefusal.medication);
     }
     final end = endDate(startDate, weeks);
     final chosen = seed ?? math.Random().nextInt(0x7fffffff);
@@ -146,7 +146,8 @@ extension TracksExperimentStore on TracksStore {
     ];
     final first = DateTime.parse(start);
     final nights = await db.rawQuery(
-      'SELECT COALESCE(json_extract(d.window_json, \'\$.value.onset_ms\'), '
+      'SELECT d.day_id AS day_id, '
+      'COALESCE(json_extract(d.window_json, \'\$.value.onset_ms\'), '
       'json_extract(d.window_json, \'\$.onset_ms\')) AS onset, '
       'COALESCE(json_extract(d.window_json, \'\$.value.offset_ms\'), '
       'json_extract(d.window_json, \'\$.offset_ms\')) AS offset, '
@@ -162,9 +163,11 @@ extension TracksExperimentStore on TracksStore {
       'AND d.skipped = 0 AND d.day_id BETWEEN ? AND ? '
       'AND d.algo_version = (SELECT MAX(n.algo_version) FROM day_result n '
       'WHERE n.day_id = d.day_id)',
+      // The night after assigned date D is filed under D+1, so the range is
+      // [start+1, end+1].
       [
-        start,
-        dayLabelOf(DateTime(first.year, first.month, first.day + 7 * (e['weeks'] as int) + 1)),
+        dayLabelOf(DateTime(first.year, first.month, first.day + 1)),
+        dayLabelOf(DateTime(first.year, first.month, first.day + 7 * (e['weeks'] as int))),
       ],
     );
     final doValues = <String, List<double>>{}, skipValues = <String, List<double>>{};
@@ -173,9 +176,12 @@ extension TracksExperimentStore on TracksStore {
       if (onset == null || offset == null || offset > now.millisecondsSinceEpoch) {
         continue;
       }
-      final date = dayLabelOf(
-        DateTime.fromMillisecondsSinceEpoch(onset.toInt()),
-      );
+      // CLAIM(night-by-wake-day): the derive files a sleep under the local date
+      // it ENDS on [substrate.dart "The main sleep that ENDS in this calendar
+      // day"], so the night after assigned date D is day_id D+1 and a date owns
+      // at most one night (day_id is unique per algo_version) [tracks_experiments_t3_test].
+      // ↳ CLAIM(night-by-wake-day)
+      final date = dayLabelBefore(night['day_id'] as String, 1);
       final arm = followed[date];
       if (arm == null) continue;
       for (final system in systems) {

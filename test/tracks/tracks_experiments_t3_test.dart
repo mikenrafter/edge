@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/med_store.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
@@ -46,12 +47,31 @@ void main() {
       await (store as dynamic).experimentReport(experiment['id'], asOf: asOf)
           as Map;
 
-  Future<void> observations(Map experiment, {bool adherence = true}) async {
+  // The night after assigned date D has day_id D+1: the derive files a sleep
+  // under the local date it ENDS on [lib/compute/substrate.dart "The main
+  // sleep that ENDS in this calendar day"]. [onsetOf] gives the local onset.
+  DateTime eveningOnset(String date) {
+    final d = DateTime.parse(date);
+    return DateTime(d.year, d.month, d.day, 22);
+  }
+
+  DateTime pastMidnightOnset(String date) {
+    final d = DateTime.parse(date);
+    return DateTime(d.year, d.month, d.day + 1, 0, 30);
+  }
+
+  Future<void> observations(
+    Map experiment, {
+    bool adherence = true,
+    DateTime Function(String date)? onsetOf,
+  }) async {
     var doIndex = 0, dontIndex = 0;
     for (final day in assignments(experiment)) {
       final date = day['date'] as String;
-      final at = DateTime.parse('${date}T22:00:00Z');
+      final at = (onsetOf ?? eveningOnset)(date);
       final done = day['do'] as bool;
+      final d = DateTime.parse(date);
+      final wakeDay = dayLabelOf(DateTime(d.year, d.month, d.day + 1));
       if (adherence) {
         if (done) {
           await store.log(
@@ -59,9 +79,7 @@ void main() {
               id: 'adherence:$date',
               trackId: 'custom',
               date: date,
-              atMs: at
-                  .subtract(const Duration(hours: 2))
-                  .millisecondsSinceEpoch,
+              atMs: DateTime(d.year, d.month, d.day, 20).millisecondsSinceEpoch,
               amount: 20,
             ),
           );
@@ -73,7 +91,7 @@ void main() {
       // finite and positive; every do outcome remains above every don't.
       final noise = ((done ? doIndex++ : dontIndex++) % 3) - 1;
       await db.insert('day_result', {
-        'day_id': date,
+        'day_id': wakeDay,
         'algo_version': 118,
         'computed_at': 1,
         'finalized': 1,
@@ -194,6 +212,44 @@ void main() {
     },
   );
 
+  // why: review T2. A night that starts after midnight belongs to the evening
+  // before (the derive's day_id is the wake day). Attributing by the onset's
+  // calendar date shifts every such night onto the next assigned date, so the
+  // effect would be mixed between arms. The same data with a 22:00 onset must
+  // give the identical result. Run under TZ=UTC and TZ=America/Denver.
+  // proves: CLAIM(night-by-wake-day)
+  test('a night starting at 00:30 belongs to the evening before', () async {
+    final experiment = await start(weeks: 4);
+    await observations(experiment, onsetOf: pastMidnightOnset);
+    final result = await report(experiment, DateTime(2026, 10, 1));
+    final effect = (result['effects'] as Map)['hr'] as Map;
+    expect(effect['n_do'], 14);
+    expect(effect['n_dont'], 14);
+    expect(effect['effect'], closeTo(8, 1e-9));
+  });
+
+  // why: review T2. One night per assigned date and none for a date whose night
+  // is missing: a missing night is dropped, never borrowed from a neighbour.
+  test('each assigned date takes only its own night', () async {
+    final experiment = await start(weeks: 4);
+    await observations(experiment);
+    final doDates = [
+      for (final d in assignments(experiment))
+        if (d['do'] == true) d['date'] as String,
+    ];
+    // Remove the night after the first do date: n_do must drop by exactly one.
+    final first = DateTime.parse(doDates.first);
+    await db.delete(
+      'day_result',
+      where: 'day_id = ?',
+      whereArgs: [dayLabelOf(DateTime(first.year, first.month, first.day + 1))],
+    );
+    final result = await report(experiment, DateTime(2026, 10, 1));
+    final effect = (result['effects'] as Map)['hr'] as Map;
+    expect(effect['n_do'], 13);
+    expect(effect['n_dont'], 14);
+  });
+
   test(
     'reminder descriptors identify the assigned day without logging adherence',
     () async {
@@ -306,7 +362,7 @@ void main() {
         seed: 17,
       ),
       throwsA(
-        isA<ExperimentRefused>().having((e) => e.reason, 'reason', 'medication'),
+        isA<ExperimentRefused>().having((e) => e.reason, 'reason', ExperimentRefusal.medication),
       ),
     );
     expect(await db.query('track_experiment'), isEmpty);

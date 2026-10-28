@@ -6,12 +6,14 @@ import '../data/track_model.dart';
 
 const experimentWeeks = [2, 3, 4];
 
-/// Why an experiment was refused. [reason] is `medication` or `washout`.
+/// Why an experiment was refused; match it exhaustively.
+enum ExperimentRefusal { medication, washout }
+
 class ExperimentRefused implements Exception {
   const ExperimentRefused(this.reason);
-  final String reason;
+  final ExperimentRefusal reason;
   @override
-  String toString() => 'ExperimentRefused($reason)';
+  String toString() => 'ExperimentRefused(${reason.name})';
 }
 
 /// A track that may be randomized. There is no public constructor: a
