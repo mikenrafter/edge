@@ -474,4 +474,19 @@ void main() {
     );
     expect((await start()).containsKey('id'), isTrue);
   });
+
+  // why: review T15. Deleting every day of an experiment must not leave a
+  // zero-assignment parent that blocks new experiments and holds learning in
+  // abstention. A partial delete keeps the experiment.
+  test('deleteDays removes an experiment left with no days, not a partial one', () async {
+    final experiment = await start();
+    final dates = [for (final d in assignments(experiment)) d['date'] as String];
+    await LocalDb.deleteDays({dates.first});
+    expect(await db.query('track_experiment'), hasLength(1));
+    expect(await db.query('track_experiment_day'), hasLength(dates.length - 1));
+    await LocalDb.deleteDays(dates.toSet());
+    expect(await db.query('track_experiment_day'), isEmpty);
+    expect(await db.query('track_experiment'), isEmpty);
+    expect((await start()).containsKey('id'), isTrue, reason: 'the range is free again');
+  });
 }

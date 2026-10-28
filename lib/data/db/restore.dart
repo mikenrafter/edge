@@ -543,6 +543,12 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       await deleteByIn(txn, 'track_event', 'date', sorted);
       await deleteByIn(txn, 'track_absence', 'date', sorted);
       await deleteByIn(txn, 'track_experiment_day', 'date', sorted);
+      // An experiment with no days left would still block its range and hold
+      // learning in abstention (review T15).
+      await txn.execute(
+        'DELETE FROM track_experiment WHERE NOT EXISTS '
+        '(SELECT 1 FROM track_experiment_day d WHERE d.experiment_id = track_experiment.id)',
+      );
       await deleteByIn(txn, 'track_learning_log', 'date', sorted);
       await txn.delete('track_learning'); // Rebuild aggregates after deleting evidence.
       await deleteByIn(txn, 'cycle_log', 'date', sorted);
