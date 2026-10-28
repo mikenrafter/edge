@@ -218,7 +218,23 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
       'periods_us': periods,
       'statistics': stats,
       if (released.isNotEmpty) 'experiment_released': released,
+      // OBSERVATIONAL estimates stay here: custom detection reads them
+      // (TrackDetectors.stable needs reason `estimated` and an adjusted p), so
+      // showing an experiment's effect must not replace them [review R3-5].
       'effects': [
+        for (final e in own)
+          {
+            'system': e.system,
+            'effect': e.effect,
+            'reason': e.reason,
+            'matched_pairs': e.matchedPairs,
+            'shuffle_p': e.shuffleP,
+            'adjusted_p': e.adjustedP,
+          },
+      ],
+      // What is SHOWN: the observational list with preferred experiment
+      // results substituted.
+      'displayed_effects': [
         for (final e in shown)
           {
             'system': e.system,
@@ -249,6 +265,7 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
       'days': age.inDays,
       'minimum_days': policy.globalMinimum.inDays,
       ...nextState,
+      'effects': nextState['displayed_effects'],
     };
   }
   return TrackLearningResult(updates, summaries);
