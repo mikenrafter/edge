@@ -1,12 +1,15 @@
 // P8a item 1, storage side: schema v85 adds the daily-intake columns to
 // track_setup_history. Additive migration, full backup restore, rebuild
 // salvage, selected-day export and deleteDays must all carry or keep them.
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/tracks_store.dart';
+import 'package:openstrap_edge/wake/wake_night_context_db.dart';
 import '../backup/backup_support.dart';
 
 // The shipped v84 shape of the table, copied from git (tracks_schema.dart at
@@ -26,9 +29,10 @@ Map<String, Object?> _row(
   int? minute,
   double? amount,
   String? unit,
+  String trackId = 'med:x',
 }) => {
   'id': id,
-  'track_id': 'med:x',
+  'track_id': trackId,
   'start_date': start,
   'end_date': end,
   'done': done,
@@ -247,6 +251,113 @@ void main() {
       expect(await (await LocalDb.instance).query('track_setup_history'), [
         ongoing,
       ]);
+    });
+
+    // why: the wake profile reads setup history by SQL range. "Since March"
+    // must still cover tonight, and a period that ended must not.
+    // proves: CLAIM(ongoing-sentinel)
+    test('an ongoing done period reaches tonight\'s wake profile; an ended one does not', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_definition', {
+        'id': 'reading',
+        'payload_json': jsonEncode({
+          'id': 'reading',
+          'name': 'Reading',
+          'kind': 'activity',
+          'roles': ['own_sleep'],
+          'systems': ['sleep'],
+        }),
+      });
+      Future<Set<String>> tonight() async => (await loadWakeProfile(
+        db,
+        DateTime(2026, 10, 26),
+        DateTime(2026, 10, 27),
+        DateTime(2026, 10, 26, 23),
+      )).userTrackIds;
+      await db.insert(
+        'track_setup_history',
+        _row('ended', '2026-03-01', '2026-09-30', trackId: 'reading'),
+      );
+      expect(await tonight(), isEmpty, reason: 'the period ended before tonight');
+      await db.insert(
+        'track_setup_history',
+        _row('since', '2026-10-01', '9999-12-31', trackId: 'reading'),
+      );
+      expect(await tonight(), {'reading'});
+    });
+
+    // why: end to end through the real store, isolate and SQLite: the period
+    // feeds learning (three nights are counted as exposed with a dose inside
+    // 24 h), yet NOTHING is written to track_event and nothing shows in the
+    // event feed or the log list. Without the range the same nights count 0.
+    // proves: CLAIM(range-exposure), "never persisted, never shown"
+    test('a period feeds learning but never becomes a stored or listed event', () async {
+      final db = await LocalDb.instance;
+      final store = TracksStore(db);
+      await store.saveDefinition(
+        TrackDefinition(
+          id: 'custom',
+          name: 'Custom',
+          icon: 'track',
+          kind: 'consumed',
+          unit: 'mg',
+          systems: const ['hr'],
+          kinetics: const TrackKinetics({
+            'half_life_hours': TrackKineticField(value: 5),
+            'onset_hours': TrackKineticField(value: 1),
+          }),
+        ),
+      );
+      for (var i = 0; i < 3; i++) {
+        final onset = DateTime(2026, 5, 1 + i, 22);
+        await db.insert('day_result', {
+          'day_id': '2026-05-0${i + 2}',
+          'algo_version': 118,
+          'computed_at': 1,
+          'finalized': 1,
+          'partial': 0,
+          'window_json': jsonEncode({
+            'value': {
+              'onset_ms': onset.millisecondsSinceEpoch,
+              'offset_ms': onset
+                  .add(const Duration(hours: 8))
+                  .millisecondsSinceEpoch,
+            },
+          }),
+          'payload_json': jsonEncode({
+            'scalars': {'rhr': 58 + i * 2},
+          }),
+        });
+      }
+      final now = DateTime.utc(2026, 10, 27, 12);
+      Map statisticsOf(Map<String, Map<String, Object?>> summary) =>
+          ((summary['custom']!['statistics'] as Map)['hr'] as Map);
+      expect(
+        statisticsOf(await store.refreshLearning(asOf: now))['count'],
+        0,
+        reason: 'control: without a period no night has a dose or completeness',
+      );
+      await store.saveHistory('custom', [
+        DoneRange(
+          id: 'daily',
+          trackId: 'custom',
+          startDate: '2026-04-01',
+          intake: const DailyIntake(
+            approxMinute: 480,
+            amount: DailyAmount(50, 'mg'),
+          ),
+        ),
+      ]);
+      final stats = statisticsOf(await store.refreshLearning(asOf: now));
+      // hand: rhr 58, 60, 62 -> mean 60
+      expect(stats['count'], 3);
+      expect(stats['mean'], 60.0);
+      expect(await db.query('track_event'), isEmpty);
+      expect(
+        await db.query('track_event_feed', where: "track_id = 'custom'"),
+        isEmpty,
+      );
+      expect(await store.events(trackId: 'custom'), isEmpty);
     });
 
     // why: CLAIM(learning-keep) family. Setup history is not per-day evidence;
