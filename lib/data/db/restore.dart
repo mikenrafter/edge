@@ -583,6 +583,13 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       await deleteByIn(txn, 'metric_method', 'date', sorted);
       await deleteByIn(txn, 'journal', 'date', sorted);
       await deleteByIn(txn, 'journal_metric', 'date', sorted);
+      // ↳ CLAIM(remainder-time-fresh)
+      await deleteByIn(txn, 'wake_meta', 'key', [
+        for (final d in sorted) ...[
+          'substance_remainder_min:$d:caffeine',
+          'substance_remainder_min:$d:alcohol',
+        ],
+      ]);
       await deleteByIn(txn, 'track_event', 'date', sorted);
       await deleteByIn(txn, 'track_absence', 'date', sorted);
       await deleteByIn(txn, 'track_experiment_day', 'date', sorted);

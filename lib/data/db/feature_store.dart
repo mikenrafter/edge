@@ -950,6 +950,8 @@ Future<void> _ldbPutJournalMetrics(String date, Map<String, JournalMetricValue> 
     await db.transaction((txn) async {
       await WaterMomentStore.recordTotalChange(txn, date, fields['water_ml']);
       await txn.delete('journal_metric', where: 'date = ?', whereArgs: [date]);
+      // ↳ CLAIM(remainder-time-fresh)
+      await LocalDb._clearRemainderMinute(txn, date);
       for (final e in fields.entries) {
         await txn.insert('journal_metric', {
           'date': date,
