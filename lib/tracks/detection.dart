@@ -15,9 +15,13 @@ class DetectionWindow {
     this.baselineRmssd,
     this.motion,
     this.coverage,
+    this.date,
   });
   final int startTs, endTs;
   final String phase;
+
+  /// The date this window counts toward (a night: the evening it began).
+  final String? date;
   final double? hr, rmssd, baselineHr, baselineRmssd, motion, coverage;
 
   static double? _num(Object? v) => v is num && v.isFinite ? v.toDouble() : null;
@@ -35,6 +39,7 @@ class DetectionWindow {
       baselineRmssd: _num(m['baseline_rmssd']),
       motion: _num(m['motion']),
       coverage: _num(m['coverage']),
+      date: m['date'] as String?,
     );
   }
 

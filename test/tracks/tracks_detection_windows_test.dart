@@ -24,7 +24,14 @@ List<Map<String, Object?>> build({
   int? offset,
   List<double>? rhr,
   List<double>? rmssd,
+  int? dayStart,
+  int? dayEnd,
+  List<(int, int)> excluded = const [],
 }) => TrackDetectionWindows.build(
+  date: '2026-10-01',
+  dayStartSec: dayStart ?? day,
+  dayEndSec: dayEnd ?? day + 86400,
+  excludedSpans: excluded,
   hrCurve: hr ?? const [],
   hrvTimeline: hrv ?? const [],
   activityCurve: activity ?? const [],
@@ -177,6 +184,52 @@ void main() {
         () {
       final windows = build(hr: hr).where((m) => m['phase'] == 'awake');
       expect(windows.every((m) => m['motion'] == null), isTrue);
+    });
+  });
+
+  group('ownership and exclusions', () {
+    test('windows carry the date they count toward; a night counts toward the evening',
+        () {
+      final w = build(
+        hr: [...hrBetween(at(0, 30), at(3, 30), 68), ...hrBetween(at(9), at(10), 70)],
+        onset: at(0, 30),
+        offset: at(8),
+      );
+      expect(only(w, 'early_sleep')['date'], '2026-09-30');
+      expect(only(w, 'awake')['date'], '2026-10-01');
+    });
+
+    test('tonight\'s known sleep and naps are not awake time', () {
+      final windows = build(
+        hr: [...hrBetween(at(9), at(14), 70), ...hrBetween(at(14), at(15), 95)],
+        activity: still(at(9), at(15)),
+        excluded: [(at(14), at(15))],
+      ).where((m) => m['phase'] == 'awake');
+      expect(windows.map((m) => m['start_ts']), isNot(contains(at(14))));
+      expect(windows.every((m) => (m['hr'] as double) < 80), isTrue);
+    });
+
+    test('half-hour offset: buckets start at the local day and never before', () {
+      // Asia/Kolkata 2026-10-02 00:00 local = 2026-10-01 18:30 UTC.
+      final start = at(18, 30);
+      final windows = build(
+        hr: hrBetween(at(18), at(22), 70),
+        activity: still(at(18), at(22)),
+        dayStart: start,
+        dayEnd: start + 86400,
+      ).where((m) => m['phase'] == 'awake').toList();
+      expect(windows.first['start_ts'], start);
+      expect(windows.every((m) => (m['start_ts'] as int) >= start), isTrue);
+      expect(windows.map((m) => (m['start_ts'] as int) - start),
+          everyElement(predicate<int>((v) => v % 3600 == 0)));
+    });
+
+    test('a window never runs past the end of the local day', () {
+      final windows = build(
+        hr: hrBetween(at(22), at(26), 70),
+        dayEnd: at(24),
+      ).where((m) => m['phase'] == 'awake');
+      expect(windows.every((m) => (m['end_ts'] as int) <= at(24)), isTrue);
     });
   });
 }

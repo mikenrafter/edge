@@ -11,6 +11,7 @@
 // under the first hours of sleep; that biases the HR half toward a match and
 // is why alcohol also needs the RMSSD drop.
 import 'dart:math' as math;
+import '../data/day_label.dart';
 
 class TrackDetectionWindows {
   const TrackDetectionWindows._();
@@ -46,7 +47,18 @@ class TrackDetectionWindows {
     return finite.length >= minBaselineNights ? _median(finite) : null;
   }
 
+  /// [date] is the derived (wake) day; [dayStartSec]/[dayEndSec] are its LOCAL
+  /// midnights, so awake hours are local hours and never spill into the
+  /// neighbouring day (half-hour zones included). [excludedSpans] are every
+  /// canonical sleep interval of the day (main sleep, tonight's onset, accepted
+  /// naps): none of it is awake time. Every window carries the date it counts
+  /// toward as `date`: awake = [date]; a night counts toward the evening it
+  /// began, the day before [date], whatever the clock said at its onset.
   static List<Map<String, Object?>> build({
+    required String date,
+    required int dayStartSec,
+    required int dayEndSec,
+    List<(int, int)> excludedSpans = const [],
     required List<Object?> hrCurve,
     required List<Object?> hrvTimeline,
     required List<Object?> activityCurve,
@@ -71,6 +83,7 @@ class TrackDetectionWindows {
         'start_ts': sleepOnsetSec,
         'end_ts': end,
         'phase': 'early_sleep',
+        'date': dayLabelBefore(date, 1),
         'hr': _mean(hrIn),
         'rmssd': _mean(hrvIn),
         'baseline_hr': _baseline(rhrHistory),
@@ -80,28 +93,29 @@ class TrackDetectionWindows {
       });
     }
 
-    final first = hr.isEmpty ? null : hr.map((p) => p.$1).reduce(math.min);
-    final last = hr.isEmpty ? null : hr.map((p) => p.$1).reduce(math.max);
     final awake = <Map<String, Object?>>[];
-    if (first != null && last != null) {
-      for (var s = first - first % awakeSeconds; s <= last; s += awakeSeconds) {
-        final e = s + awakeSeconds;
-        if (slept && s < sleepOffsetSec && e > sleepOnsetSec) continue;
-        final hrIn = [for (final p in hr) if (p.$1 >= s && p.$1 < e) p.$2];
-        if (hrIn.isEmpty) continue;
-        final motionIn = [for (final p in motion) if (p.$1 >= s && p.$1 < e) p.$2];
-        awake.add({
-          'start_ts': s,
-          'end_ts': e,
-          'phase': 'awake',
-          'hr': _mean(hrIn),
-          'rmssd': null,
-          'baseline_hr': null,
-          'baseline_rmssd': null,
-          'motion': _mean(motionIn),
-          'coverage': math.min(1.0, hrIn.length * 60 / awakeSeconds),
-        });
-      }
+    final sleeping = [
+      if (slept) (sleepOnsetSec, sleepOffsetSec),
+      ...excludedSpans,
+    ];
+    for (var s = dayStartSec; s < dayEndSec; s += awakeSeconds) {
+      final e = math.min(s + awakeSeconds, dayEndSec);
+      if (sleeping.any((x) => s < x.$2 && e > x.$1)) continue;
+      final hrIn = [for (final p in hr) if (p.$1 >= s && p.$1 < e) p.$2];
+      if (hrIn.isEmpty) continue;
+      final motionIn = [for (final p in motion) if (p.$1 >= s && p.$1 < e) p.$2];
+      awake.add({
+        'start_ts': s,
+        'end_ts': e,
+        'phase': 'awake',
+        'date': date,
+        'hr': _mean(hrIn),
+        'rmssd': null,
+        'baseline_hr': null,
+        'baseline_rmssd': null,
+        'motion': _mean(motionIn),
+        'coverage': math.min(1.0, hrIn.length * 60 / (e - s)),
+      });
     }
     final resting = [
       for (final w in awake)

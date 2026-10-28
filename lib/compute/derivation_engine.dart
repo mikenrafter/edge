@@ -8776,6 +8776,16 @@ class DerivationEngine {
     bundlePatch['workout_suggestions'] = wc.boutJson;
     final mealSuggestions = _mealCandidatesHeavy(inp, napPeriods ?? const [],
         napSuggestions, [...wc.boutJson, ...wc.suggestionsToPersist]);
+    final sleepHrMinutes = _sleepHrMinutesHeavy(sleepSub);
+    final napSpans = <List<int>>[
+      for (final r in napPeriods ?? const <Map<String, dynamic>>[])
+        if ((r['start_ts'] ?? r['start'] ?? r['startSec'] ?? r['onset_ts']) is num &&
+            (r['end_ts'] ?? r['end'] ?? r['endSec'] ?? r['wake_ts']) is num)
+          [
+            ((r['start_ts'] ?? r['start'] ?? r['startSec'] ?? r['onset_ts']) as num).toInt(),
+            ((r['end_ts'] ?? r['end'] ?? r['endSec'] ?? r['wake_ts']) as num).toInt(),
+          ],
+    ];
     if (wc.hrrBpm != null) scMap['hrr_bpm'] = wc.hrrBpm;
     if (wc.hrrTauS != null) scMap['hrr_tau_s'] = wc.hrrTauS;
     final ceilingComputed =
@@ -8863,8 +8873,27 @@ class DerivationEngine {
       suggestionsToPersist: wc.suggestionsToPersist,
       napSuggestions: napSuggestions,
       mealSuggestions: mealSuggestions,
+      sleepHrMinutes: sleepHrMinutes,
+      napSpans: napSpans,
       sessionHrrWrites: wc.sessionHrrWrites,
     );
+  }
+
+  /// Per-minute mean heart rate of the whole sleep window ([{t, v}], epoch
+  /// seconds), previous evening included. `series.hr_curve` is the calendar
+  /// day only, so a night that began before midnight needs this for its early
+  /// hours. Not stored: it feeds track detection only.
+  @heavy
+  static List<Map<String, num>> _sleepHrMinutesHeavy(Substrate s) {
+    final sum = <int, double>{}, n = <int, int>{};
+    for (var i = 0; i < s.length; i++) {
+      if (s.hr[i] <= 0) continue;
+      final m = s.tsSec[i] ~/ 60;
+      sum[m] = (sum[m] ?? 0) + s.hr[i];
+      n[m] = (n[m] ?? 0) + 1;
+    }
+    final keys = sum.keys.toList()..sort();
+    return [for (final k in keys) {'t': k * 60, 'v': sum[k]! / n[k]!}];
   }
 
   /// Only the registered day-block worker calls this substrate-sized pass.

@@ -10,7 +10,8 @@ extension TracksDetectionStore on TracksStore {
       Sqflite.firstIntValue(
         await db.rawQuery(
           "SELECT COUNT(*) FROM activity_suggestions WHERE kind = 'track' "
-          "AND day_id = ? AND status IN ('pending', 'confirmed', 'discarded') "
+          "AND COALESCE(json_extract(details_json, '\$.exposure_date'), day_id) = ? "
+          "AND status IN ('pending', 'confirmed', 'discarded') "
           "AND json_extract(details_json, '\$.track_id') = ? "
           "AND COALESCE(json_extract(details_json, '\$.prompt'), 0) = 0",
           [date, trackId],
@@ -52,6 +53,36 @@ extension TracksDetectionStore on TracksStore {
   }
 
   static const _explainHours = 12;
+
+  /// A pending candidate that a logged occurrence now explains leaves review:
+  /// left confirmable it would add a second event for the same occurrence.
+  Future<void> _supersedeExplained(String trackId, String date) async {
+    final rows = await db.rawQuery(
+      "SELECT id, start_ts, end_ts, day_id FROM activity_suggestions "
+      "WHERE kind = 'track' AND status = 'pending' "
+      "AND json_extract(details_json, '\$.track_id') = ? "
+      "AND COALESCE(json_extract(details_json, '\$.prompt'), 0) = 0 "
+      "AND COALESCE(json_extract(details_json, '\$.exposure_date'), day_id) = ?",
+      [trackId, date],
+    );
+    for (final row in rows) {
+      final window = DetectionWindow(
+        startTs: row['start_ts'] as int,
+        endTs: row['end_ts'] as int,
+        phase: '',
+      );
+      if (!await _explainedByLog(trackId, date, window)) continue;
+      await db.transaction((tx) async {
+        await tx.update(
+          'activity_suggestions',
+          {'status': 'superseded'},
+          where: "id = ? AND status = 'pending'",
+          whereArgs: [row['id']],
+        );
+        await ActivityStore.markDayChanged(tx, row['day_id'] as String);
+      });
+    }
+  }
 
   /// Enabled tracks carrying the `detectable` role, read straight from SQL.
   /// This runs inside the background derive, where only registered worker
@@ -147,7 +178,8 @@ extension TracksDetectionStore on TracksStore {
     ]..sort((a, b) => a.startTs.compareTo(b.startTs));
     final today = [
       for (final w in observed)
-        if (dayLabelOf(DateTime.fromMillisecondsSinceEpoch(w.startTs * 1000)) ==
+        if ((w.date ??
+                dayLabelOf(DateTime.fromMillisecondsSinceEpoch(w.startTs * 1000))) ==
             date)
           w,
     ];
@@ -167,34 +199,56 @@ extension TracksDetectionStore on TracksStore {
           ? const <LearnedSignature>[]
           : await _learnedSignatures(track, nowMs);
       final systems = track.systems.toSet();
-      var lastEnd = 0;
+      await _supersedeExplained(track.id, date);
+      // Qualifying windows, then back-to-back ones merged into one occurrence
+      // (three consecutive hours are one event, not first and third).
+      final qualified = <({DetectionWindow window, String reason})>[];
       for (final window in today) {
-        if (count >= track.detectionMax) break;
-        // Back-to-back windows are one event, not one per window.
-        if (window.startTs <= lastEnd) continue;
         // An occurrence the wearer already logged explains the window; a
         // second entry for it would double the day's count.
         if (await _explainedByLog(track.id, date, window)) continue;
         final reason = _reasonFor(track.id, window, systems, learned);
-        if (reason == null) {
-          final why = track.id == 'alcohol'
-              ? _detectors.alcoholAbstain(window, systems)
-              : null;
-          if (why != null) {
-            abstained.add({'track_id': track.id, 'reason': why.name});
-          }
+        if (reason != null) {
+          qualified.add((window: window, reason: reason));
           continue;
         }
-        lastEnd = window.endTs;
+        final why = track.id == 'alcohol'
+            ? _detectors.alcoholAbstain(window, systems)
+            : null;
+        if (why != null) {
+          abstained.add({'track_id': track.id, 'reason': why.name});
+        }
+      }
+      final occurrences = <({DetectionWindow window, String reason, int end})>[];
+      for (final q in qualified) {
+        if (occurrences.isNotEmpty && q.window.startTs <= occurrences.last.end) {
+          final last = occurrences.removeLast();
+          occurrences.add((
+            window: last.window,
+            reason: last.reason,
+            end: math.max(last.end, q.window.endTs),
+          ));
+        } else {
+          occurrences.add((
+            window: q.window,
+            reason: q.reason,
+            end: q.window.endTs,
+          ));
+        }
+      }
+      for (final o in occurrences) {
+        if (count >= track.detectionMax) break;
+        final window = o.window;
         final made = await store.reconcile(ActivityKind.track, [
           {
             'id': 'track:${track.id}:${window.startTs}',
             'track_id': track.id,
             'track_name': track.name,
             'start_ts': window.startTs,
-            'end_ts': window.endTs,
-            'evidence_kind': reason,
+            'end_ts': o.end,
+            'evidence_kind': o.reason,
             'phase': window.phase,
+            'exposure_date': ?window.date,
             'validation': 'unvalidated',
             'signals': window.evidence(),
           },
@@ -222,7 +276,8 @@ extension TracksDetectionStore on TracksStore {
       final pendingCandidates = Sqflite.firstIntValue(
             await db.rawQuery(
               "SELECT COUNT(*) FROM activity_suggestions WHERE kind = 'track' "
-              "AND day_id = ? AND status = 'pending' "
+              "AND COALESCE(json_extract(details_json, '\$.exposure_date'), day_id) = ? "
+              "AND status = 'pending' "
               "AND json_extract(details_json, '\$.track_id') = ? "
               "AND COALESCE(json_extract(details_json, '\$.prompt'), 0) = 0",
               [date, track.id],
@@ -301,9 +356,16 @@ extension TracksDetectionStore on TracksStore {
     required List<double> rhrHistory,
     required List<double> rmssdHistory,
     required bool dayComplete,
+    List<(int, int)> excludedSpans = const [],
     DateTime? asOf,
   }) async {
+    if (!TracksStore._validDay(date)) throw ArgumentError('date');
+    final d = DateTime.parse(date);
     final windows = TrackDetectionWindows.build(
+      date: date,
+      dayStartSec: DateTime(d.year, d.month, d.day).millisecondsSinceEpoch ~/ 1000,
+      dayEndSec: DateTime(d.year, d.month, d.day + 1).millisecondsSinceEpoch ~/ 1000,
+      excludedSpans: excludedSpans,
       hrCurve: hrCurve,
       hrvTimeline: hrvTimeline,
       activityCurve: activityCurve,
@@ -314,10 +376,7 @@ extension TracksDetectionStore on TracksStore {
     );
     final byDay = <String, List<Map<String, Object?>>>{};
     for (final w in windows) {
-      final start = DateTime.fromMillisecondsSinceEpoch(
-        (w['start_ts']! as int) * 1000,
-      );
-      (byDay[dayLabelOf(start)] ??= []).add(w);
+      (byDay[w['date']! as String] ??= []).add(w);
     }
     byDay.putIfAbsent(date, () => []);
     final merged = <String, Object?>{

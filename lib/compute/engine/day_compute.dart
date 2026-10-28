@@ -813,7 +813,7 @@ extension _EngineDayCompute on DerivationEngine {
 
       if (!batchReference) {
         await _persistWakeDayFeatures(dayId: day.date, wake: blocks.wake);
-        await _refreshTrackDetections(day, daySub, bundle, history, dataNowSec);
+        await _refreshTrackDetections(day, daySub, bundle, history, dataNowSec, blocks);
       }
     } catch (e, st) {
       secondHalfOk = false;
@@ -1320,6 +1320,7 @@ extension _EngineDayCompute on DerivationEngine {
     Map<String, dynamic> bundle,
     _BaselineHistoryCache history,
     int dataNowSec,
+    _DayBlocksOutput blocks,
   ) async {
     try {
       List<Object?> curve(Object? v) => v is List ? v : const [];
@@ -1328,7 +1329,13 @@ extension _EngineDayCompute on DerivationEngine {
           family: DerivationEngine._baselineFamily(key, daySub.deviceFamily));
       await TracksStore(await LocalDb.instance).refreshFromDerivedDay(
         date: day.date,
-        hrCurve: curve(series is Map ? series['hr_curve'] : null),
+        // The calendar day's curve plus the whole sleep window's minutes: a
+        // night that began the previous evening has no day curve for its first
+        // hours. The day curve wins where both have a minute.
+        hrCurve: _mergeHrMinutes(
+          curve(series is Map ? series['hr_curve'] : null),
+          blocks.sleepHrMinutes,
+        ),
         hrvTimeline: curve(series is Map ? series['hrv_timeline'] : null),
         activityCurve: curve(bundle['activity_curve']),
         sleepOnsetSec: day.sleepOnsetSec,
@@ -1336,9 +1343,33 @@ extension _EngineDayCompute on DerivationEngine {
         rhrHistory: before('rhr'),
         rmssdHistory: before('rmssd'),
         dayComplete: dataNowSec >= day.endSec,
+        // Every canonical sleep interval is not awake time: tonight's onset
+        // (already known) and the accepted naps.
+        excludedSpans: [
+          if (day.tonightSleepOffsetSec > day.tonightSleepOnsetSec)
+            (day.tonightSleepOnsetSec, day.tonightSleepOffsetSec)
+          else if (day.tonightSleepOnsetSec > 0)
+            (day.tonightSleepOnsetSec, dataNowSec),
+          for (final n in blocks.napSpans) (n[0], n[1]),
+        ],
       );
     } catch (e) {
       _log('track detection held for ${day.date}: $e');
     }
+  }
+
+  static List<Object?> _mergeHrMinutes(
+    List<Object?> dayCurve,
+    List<Map<String, num>> sleepMinutes,
+  ) {
+    final have = <int>{
+      for (final p in dayCurve)
+        if (p is Map && p['t'] is num) (p['t'] as num).toInt(),
+    };
+    return [
+      ...dayCurve,
+      for (final p in sleepMinutes)
+        if (!have.contains(p['t']!.toInt())) p,
+    ];
   }
 }

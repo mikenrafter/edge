@@ -38,9 +38,14 @@ class TrackActivity {
     await tx.insert('track_event', {
       'id': id,
       'track_id': trackId,
+      // A night counts toward the evening it began (what the experiment's
+      // assignments and the daily counts use), not the calendar date of an
+      // onset after midnight.
       'date': at == null
           ? dayId
-          : dayLabelOf(DateTime.fromMillisecondsSinceEpoch(at)),
+          : (beforeNight && expected.details['exposure_date'] is String
+              ? expected.details['exposure_date'] as String
+              : dayLabelOf(DateTime.fromMillisecondsSinceEpoch(at))),
       'at_ms': at,
       'amount': null,
       'sub_activity_id': null,

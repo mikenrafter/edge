@@ -57,6 +57,7 @@ class TracksStore {
     required List<double> rhrHistory,
     required List<double> rmssdHistory,
     required bool dayComplete,
+    List<(int, int)> excludedSpans = const [],
     DateTime? asOf,
   }) => _refreshFromDerivedDay(
     date: date,
@@ -68,6 +69,7 @@ class TracksStore {
     rhrHistory: rhrHistory,
     rmssdHistory: rmssdHistory,
     dayComplete: dayComplete,
+    excludedSpans: excludedSpans,
     asOf: asOf,
   );
 

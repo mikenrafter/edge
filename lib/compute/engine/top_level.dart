@@ -1400,6 +1400,11 @@ class _DayBlocksInput {
 class _DayBlocksOutput {
   final List<Map<String, dynamic>> mealSuggestions;
   final List<Map<String, dynamic>> napSuggestions;
+
+  /// Per-minute sleep-window HR and the day's known nap spans, for track
+  /// detection (not stored).
+  final List<Map<String, num>> sleepHrMinutes;
+  final List<List<int>> napSpans;
   final DayCalculationState calculationState;
 
   /// Finished sessions whose observed ceiling was scanned this pass, by id.
@@ -1419,6 +1424,8 @@ class _DayBlocksOutput {
     required this.bundlePatch,
     this.napSuggestions = const [],
     this.mealSuggestions = const [],
+    this.sleepHrMinutes = const [],
+    this.napSpans = const [],
     required this.seriesPatch,
     required this.scalarPatch,
     required this.wake,
