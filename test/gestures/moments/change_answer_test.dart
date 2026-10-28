@@ -409,6 +409,43 @@ void main() {
       expect((await feed('moment:$_date:10:15'))!['amount'], isNull);
     });
 
+    test('R3-1: saving the Tracks remainder unchanged keeps its time through a '
+        'later answer change', () async {
+      await LocalDb.putJournalMetrics(_date,
+          const {'alcohol_units': JournalMetricValue(1, atMinuteOfDay: 480)});
+      await _writer.answer(_m, MomentChoice.alcohol, value: 2, now: _t1);
+      await LocalDb.editTrackJournal('$_date:alcohol_units', 1);
+      expect(await _total('alcohol_units'), 3);
+      await _change(_m, MomentChoice.other, note: 'x');
+      expect(await _total('alcohol_units'), 1);
+      expect(await _atMin('alcohol_units'), 480);
+    });
+
+    test('R3-2: a corrupt stored amount never reaches a total: the Tracks '
+        'remainder edit and the feed remainder ignore it', () async {
+      final db = await LocalDb.instance;
+      await db.rawInsert(
+          'INSERT INTO moment_label (date, hhmm, label, metric_value, answered_at) '
+          "VALUES ('$_date', '10:15', 'alcohol', -5, 1)");
+      await db.insert('journal_metric', {
+        'date': _date, 'field': 'alcohol_units', 'value': 2.0, 'at_min': 480,
+        'updated_at': 1,
+      });
+      expect((await feed('journal:$_date:alcohol_units'))!['amount'], 2,
+          reason: 'the feed remainder is the whole total, not 2 - (-5)');
+      await LocalDb.editTrackJournal('$_date:alcohol_units', 1);
+      expect(await _total('alcohol_units'), 1);
+    });
+
+    test('R3-3: text stored in the amount column reads as unknown instead of '
+        'breaking the list', () async {
+      final db = await LocalDb.instance;
+      await db.rawInsert(
+          'INSERT INTO moment_label (date, hhmm, label, metric_value, answered_at) '
+          "VALUES ('$_date', '10:15', 'alcohol', 'abc', 1)");
+      expect((await _saved(_m)).metricValue, isNull);
+    });
+
     test('R2-4: saving an unchanged water answer keeps its clipped '
         'contribution after the total was corrected', () async {
       await LocalDb.putJournalMetrics(
