@@ -94,13 +94,22 @@ class TrackEffectEstimator {
         residual += amount * math.pow(.5, hours / halfLife);
       }
     }
-    final history = historyComplete
+    final slowWindow = historyWindow ?? trackHistoryWindow(track);
+    // ↳ CLAIM(unit-abstain): the slow history is judged over its own, longer
+    // window; a conflict there blanks only the slow features [R4-1].
+    final slowUnitsConflict = _explicitUnitsConflict(
+      track,
+      events,
+      bedtime,
+      slowWindow.inMicroseconds / Duration.microsecondsPerHour,
+    );
+    final history = historyComplete && !slowUnitsConflict
         ? _historyExposure(
             track,
             events,
             bedtime,
             unknownResidual ? null : residual,
-            historyWindow ?? trackHistoryWindow(track),
+            slowWindow,
           )
         : null;
     return TrackExposureFeatures(

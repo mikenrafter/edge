@@ -193,76 +193,17 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     // ↳ the abstention is not weak
     // evidence, so no period adapts and no audit row is written (review T9).
     if (canStep && !inExperiment && age >= policy.globalMinimum) {
-      for (final field in trackKineticKeys) {
-        if (fields[field]?.locked == true &&
-            !hasUnlockedOverride(subActivities, field)) {
-          continue;
-        }
-        final oldPeriod = periods[field] as int?;
-        final intrinsic = policy
-            .minimumFor(field, track.kinetics)
-            .inMicroseconds;
-        final period = policy.minimumFor(
-          field,
-          track.kinetics,
-          learnedMinimum: Duration(microseconds: oldPeriod ?? intrinsic),
-        );
-        // Weak evidence lengthens observation; stable evidence gradually brings
-        // it back toward the kinetics floor. Neither can bypass the floor.
-        final supported = own.any((e) => e.effect != null);
-        final adapted = policy.minimumFor(
-          field,
-          track.kinetics,
-          learnedMinimum: Duration(
-            microseconds: (period.inMicroseconds * (supported ? .99 : 1.01))
-                .round(),
-          ),
-        );
-        periods[field] = adapted.inMicroseconds;
-        if (adapted != period) {
-          logs.add({
-            'track_id': track.id,
-            'date': date,
-            'field': '$field:minimum',
-            'before_value': period.inMicroseconds.toDouble(),
-            'after_value': adapted.inMicroseconds.toDouble(),
-            'reason': supported
-                ? 'stable_evidence_period'
-                : 'need_more_evidence_period',
-          });
-        }
-        final targets = own
-            .where(
-              (e) => e.effect != null && e.kineticTargets.containsKey(field),
-            )
-            .toList();
-        if (targets.isEmpty) continue;
-        // Conflicting system fits do not change a shared kinetic field.
-        final target = targets.first.kineticTargets[field]!;
-        if (targets.any(
-          (e) => (e.kineticTargets[field]! - target).abs() > target.abs() * .1,
-        )) {
-          continue;
-        }
-        // ↳ CLAIM(override-independent)
-        final applied = applyKineticTarget(
-          policy: policy,
-          track: track,
-          fields: fields,
-          subActivities: subActivities,
-          field: field,
-          age: age,
-          target: target,
-          date: date,
-          reason: 'time_ordered_matched_fit',
-          learnedMinimum: adapted,
-        );
-        // Only ever adds or updates keys; never clear (a held step returns
-        // the same values and clearing would empty the map) [R3-1].
-        fields.addAll(applied.fields);
-        subActivities = applied.subActivities;
-        logs.addAll(applied.logs);
-      }
+      subActivities = stepKineticFields(
+        policy: policy,
+        track: track,
+        own: own,
+        periods: periods,
+        date: date,
+        age: age,
+        fields: fields,
+        subActivities: subActivities,
+        logs: logs,
+      );
     }
     final changed = logs.any(
       (r) => !(r['field'] as String).endsWith(':minimum'),
@@ -522,4 +463,93 @@ List<TrackNight> trackNightsHeavy(
     observations.add((endMs: offset.toInt(), outcomes: outcomes));
   }
   return nights;
+}
+
+// The per-field kinetic pass of one learning step. Mutates [periods], [fields]
+// and [logs]; returns the sub-activities after any scaled overrides. Public so
+// the worker sequence (a successful step followed by a held one) is testable.
+// CLAIM(held-step-keeps-fields): a held proposal never alters [fields] [R3-1;
+// sendable_trackLearningHeavy_test].
+List<TrackSubActivity> stepKineticFields({
+  required TrackLearningPolicy policy,
+  required TrackDefinition track,
+  required List<TrackEffectEstimate> own,
+  required Map<String, dynamic> periods,
+  required String date,
+  required Duration age,
+  required Map<String, TrackKineticField> fields,
+  required List<TrackSubActivity> subActivities,
+  required List<Map<String, Object?>> logs,
+}) {
+  for (final field in trackKineticKeys) {
+    if (fields[field]?.locked == true &&
+        !hasUnlockedOverride(subActivities, field)) {
+      continue;
+    }
+    final oldPeriod = periods[field] as int?;
+    final intrinsic = policy
+        .minimumFor(field, track.kinetics)
+        .inMicroseconds;
+    final period = policy.minimumFor(
+      field,
+      track.kinetics,
+      learnedMinimum: Duration(microseconds: oldPeriod ?? intrinsic),
+    );
+    // Weak evidence lengthens observation; stable evidence gradually brings
+    // it back toward the kinetics floor. Neither can bypass the floor.
+    final supported = own.any((e) => e.effect != null);
+    final adapted = policy.minimumFor(
+      field,
+      track.kinetics,
+      learnedMinimum: Duration(
+        microseconds: (period.inMicroseconds * (supported ? .99 : 1.01))
+            .round(),
+      ),
+    );
+    periods[field] = adapted.inMicroseconds;
+    if (adapted != period) {
+      logs.add({
+        'track_id': track.id,
+        'date': date,
+        'field': '$field:minimum',
+        'before_value': period.inMicroseconds.toDouble(),
+        'after_value': adapted.inMicroseconds.toDouble(),
+        'reason': supported
+            ? 'stable_evidence_period'
+            : 'need_more_evidence_period',
+      });
+    }
+    final targets = own
+        .where(
+          (e) => e.effect != null && e.kineticTargets.containsKey(field),
+        )
+        .toList();
+    if (targets.isEmpty) continue;
+    // Conflicting system fits do not change a shared kinetic field.
+    final target = targets.first.kineticTargets[field]!;
+    if (targets.any(
+      (e) => (e.kineticTargets[field]! - target).abs() > target.abs() * .1,
+    )) {
+      continue;
+    }
+    // ↳ CLAIM(override-independent)
+    final applied = applyKineticTarget(
+      policy: policy,
+      track: track,
+      fields: fields,
+      subActivities: subActivities,
+      field: field,
+      age: age,
+      target: target,
+      date: date,
+      reason: 'time_ordered_matched_fit',
+      learnedMinimum: adapted,
+    );
+    // Only ever adds or updates keys; never clear (a held step returns
+    // the same values and clearing would empty the map) [R3-1].
+    fields.addAll(applied.fields);
+    subActivities = applied.subActivities;
+    logs.addAll(applied.logs);
+  }
+  return subActivities;
 }
