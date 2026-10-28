@@ -1990,33 +1990,6 @@ class LocalDb {
     );
   }
 
-  static Future<int?> _trackLastMinute(
-    Transaction tx,
-    String date,
-    String track, {
-    num? total,
-  }) async {
-    final summary = await _trackDoseSummary(tx, date, track);
-    final explicit = summary.minute;
-    final field = track == 'caffeine' ? 'caffeine_mg' : 'alcohol_units';
-    final aggregate = await tx.query(
-      'journal_metric',
-      where: 'date = ? AND field = ?',
-      whereArgs: [date, field],
-      limit: 1,
-    );
-    if (aggregate.isEmpty) return explicit;
-    final prior = (aggregate.single['at_min'] as num?)?.toInt();
-    final residual =
-        (total ?? aggregate.single['value'] as num).toDouble() - summary.dose;
-    // A daily last-entry time belongs to the residual aggregate too. Preserve
-    // it only while some untimed remainder remains; never allocate it a dose.
-    if (residual > 0 && prior != null && (explicit == null || prior > explicit)) {
-      return prior;
-    }
-    return explicit;
-  }
-
   static double _trackDoseAmount(Map<String, Object?> event) {
     final standard = event['track_id'] == 'caffeine' ? 'mg' : 'units';
     if (event['unit'] != null && event['unit'] != standard) return 0;
@@ -2266,7 +2239,9 @@ class LocalDb {
           'date': date,
           'field': field,
           'value': total,
-          'at_min': await _trackLastMinute(tx, date, track, total: total),
+          // A changed remainder has no time of its own: the aggregate time is
+          // the latest canonical dose, never the previous aggregate's time.
+          'at_min': summary.minute,
           'updated_at': DateTime.now().millisecondsSinceEpoch,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }

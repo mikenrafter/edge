@@ -77,7 +77,8 @@ String validAmountSql(String column) =>
 double? momentAmountFromRow(Object? v) {
   if (v is! num) return null;
   final d = v.toDouble();
-  return d.isFinite && d >= 0 ? d : null;
+  // Same bounds as validAmountSql: finite, at least zero, below 1e300.
+  return d.isFinite && d >= 0 && d < 1e300 ? d : null;
 }
 
 /// The LOCAL wall-clock DateTime of a `YYYY-MM-DD` + `HH:mm` pair, or null when
