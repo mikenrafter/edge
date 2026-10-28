@@ -827,4 +827,33 @@ void main() {
       closeTo(50, 1e-10),
     );
   });
+
+  // WHY S6: a dose 72 h before bed with a 100 h half-life (61% left) fell past
+  // the fixed 48 h cutoff and reported residual 0.
+  // proves: CLAIM(residual-window)
+  test('long half-life residual outlives 48 h or abstains without history', () {
+    final bedtime = DateTime.utc(2025, 1, 5, 22);
+    final events = [
+      TrackEvent(
+        id: 'old',
+        trackId: 'a',
+        date: '2025-01-02',
+        amount: 100,
+        atMs: bedtime
+            .subtract(const Duration(hours: 72))
+            .millisecondsSinceEpoch,
+      ),
+    ];
+    final longLived = track('a', halfLife: 100);
+    // 100 * 0.5^(72/100) = 60.7 mg (hand: 2^-0.72 = 0.6071).
+    expect(
+      estimator
+          .features(longLived, events, bedtime, historyComplete: true)
+          .residualMg,
+      closeTo(60.71, 0.01),
+    );
+    expect(estimator.features(longLived, events, bedtime).residualMg, isNull);
+    // Positive control: a short half-life needs no history and still drops it.
+    expect(estimator.features(track('a'), events, bedtime).residualMg, 0);
+  });
 }

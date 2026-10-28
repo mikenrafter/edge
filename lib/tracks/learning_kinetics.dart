@@ -122,14 +122,18 @@ double? _kineticValidationLoss(
       candidate,
       pair.exposed.night.events,
       pair.exposed.night.at,
-      historyComplete: history,
+      historyComplete: pair.exposed.night.completeHistoryTrackIds.contains(
+        candidate.id,
+      ),
       historyWindow: window,
     );
     final b = estimator.features(
       candidate,
       pair.control.night.events,
       pair.control.night.at,
-      historyComplete: history,
+      historyComplete: pair.control.night.completeHistoryTrackIds.contains(
+        candidate.id,
+      ),
       historyWindow: window,
     );
     if (a.residualMg == null || b.residualMg == null) return null;
