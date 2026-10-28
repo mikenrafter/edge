@@ -2075,74 +2075,94 @@ class LocalDb {
       if (!delete) await tx.insert('track_event', event.toJson());
       for (final entry in before.entries) {
         final (date, track) = entry.key;
-        final field = track == 'caffeine' ? 'caffeine_mg' : 'alcohol_units';
-        final after = await _trackDoseSummary(tx, date, track);
-        final prior = await tx.query(
-          'journal_metric',
-          where: 'date = ? AND field = ?',
-          whereArgs: [date, field],
-          limit: 1,
-        );
-        final priorTotal = prior.isEmpty
-            ? 0.0
-            : (prior.single['value'] as num).toDouble();
-        // CLAIM(remainder-time): the journal-only remainder keeps its own time
-        // in wake_meta (never in the dose-derived aggregate time), so removing
-        // the latest dose restores the remainder's time, or none if it never
-        // had one [R2-5, R2-6; tracks_store_test]. No dose-sum shortcut: an
-        // equal sum can still need a new amount or time.
-        final timeKey = 'substance_remainder_min:$date:$track';
-        final stored = await tx.query(
-          'wake_meta',
-          where: 'key = ?',
-          whereArgs: [timeKey],
-          limit: 1,
-        );
-        final priorMinute = prior.isEmpty
-            ? null
-            : (prior.single['at_min'] as num?)?.toInt();
-        final int? remainderMinute = stored.isNotEmpty
-            ? int.tryParse(stored.single['value'] as String)
-            : (priorMinute != null && priorMinute != entry.value.minute
-                  ? priorMinute
-                  : null);
-        // ↳ CLAIM(substance-reconcile)
-        final remainder = priorTotal - entry.value.dose;
-        final total = after.dose + (remainder > 0 ? remainder : 0.0);
-        if (total <= 0) {
-          await tx.delete(
-            'journal_metric',
-            where: 'date = ? AND field = ?',
-            whereArgs: [date, field],
-          );
-        } else {
-          // ↳ CLAIM(remainder-time)
-          final keepMinute = remainder > 0 ? remainderMinute : null;
-          final latest = after.minute;
-          await tx.insert('journal_metric', {
-            'date': date,
-            'field': field,
-            'value': total,
-            'at_min': keepMinute == null
-                ? latest
-                : (latest == null || keepMinute > latest ? keepMinute : latest),
-            'updated_at': DateTime.now().millisecondsSinceEpoch,
-          }, conflictAlgorithm: ConflictAlgorithm.replace);
-          if (keepMinute != null) {
-            await tx.insert('wake_meta', {
-              'key': timeKey,
-              'value': '$keepMinute',
-            }, conflictAlgorithm: ConflictAlgorithm.replace);
-            continue;
-          }
-        }
-        await tx.delete('wake_meta', where: 'key = ?', whereArgs: [timeKey]);
+        await _reconcileSubstance(tx, date, track, entry.value);
       }
     });
   }
 
-  /// Tracks changes a confirmed caffeine amount at its owner. Keep the daily
-  /// aggregate aligned by the delta; other recorded moments remain untouched.
+  /// The ONE reconciliation of a substance's daily journal total after its
+  /// canonical doses changed ([before] is [_trackDoseSummary] taken BEFORE the
+  /// change, in the same transaction): total = the doses now + the journal-only
+  /// remainder (the prior total minus the prior doses, never negative); the
+  /// remainder keeps only its own time. Track events, Tracks edits and answer
+  /// changes all go through here, so none does delta arithmetic on a total the
+  /// user may have lowered.
+  static Future<void> _reconcileSubstance(
+    Transaction tx,
+    String date,
+    String track,
+    ({double dose, int? minute}) before,
+  ) async {
+    final field = track == 'caffeine' ? 'caffeine_mg' : 'alcohol_units';
+    final after = await _trackDoseSummary(tx, date, track);
+    final prior = await tx.query(
+      'journal_metric',
+      where: 'date = ? AND field = ?',
+      whereArgs: [date, field],
+      limit: 1,
+    );
+    final priorTotal = prior.isEmpty
+        ? 0.0
+        : (prior.single['value'] as num).toDouble();
+    // CLAIM(remainder-time): the journal-only remainder keeps its own time
+    // in wake_meta (never in the dose-derived aggregate time), so removing
+    // the latest dose restores the remainder's time, or none if it never
+    // had one [R2-5, R2-6; tracks_store_test]. No dose-sum shortcut: an
+    // equal sum can still need a new amount or time.
+    final timeKey = 'substance_remainder_min:$date:$track';
+    final stored = await tx.query(
+      'wake_meta',
+      where: 'key = ?',
+      whereArgs: [timeKey],
+      limit: 1,
+    );
+    final priorMinute = prior.isEmpty
+        ? null
+        : (prior.single['at_min'] as num?)?.toInt();
+    final int? remainderMinute = stored.isNotEmpty
+        ? int.tryParse(stored.single['value'] as String)
+        : (priorMinute != null && priorMinute != before.minute
+              ? priorMinute
+              : null);
+    // ↳ CLAIM(substance-reconcile)
+    final remainder = priorTotal - before.dose;
+    final total = after.dose + (remainder > 0 ? remainder : 0.0);
+    if (total <= 0) {
+      await tx.delete(
+        'journal_metric',
+        where: 'date = ? AND field = ?',
+        whereArgs: [date, field],
+      );
+    } else {
+      // ↳ CLAIM(remainder-time)
+      final keepMinute = remainder > 0 ? remainderMinute : null;
+      final latest = after.minute;
+      await tx.insert('journal_metric', {
+        'date': date,
+        'field': field,
+        'value': total,
+        'at_min': keepMinute == null
+            ? latest
+            : (latest == null || keepMinute > latest ? keepMinute : latest),
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      if (keepMinute != null) {
+        await tx.insert('wake_meta', {
+          'key': timeKey,
+          'value': '$keepMinute',
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        return;
+      }
+    }
+    await tx.delete('wake_meta', where: 'key = ?', whereArgs: [timeKey]);
+  }
+
+  /// Tracks changes a confirmed caffeine or alcohol amount at its owner (or
+  /// deletes the moment). The amount lives in `caffeine_mg` (caffeine) and
+  /// `metric_value` (both), and the daily total is reconciled from the doses
+  /// ([_reconcileSubstance]), so Tracks, answer changes and the journal agree.
+  /// An alcohol answer saved before its amount was kept (NULL `metric_value`)
+  /// has no known dose: its amount is left alone, as before.
   static Future<void> editTrackMoment(
     String sourceId, {
     double? amount,
@@ -2159,37 +2179,34 @@ class LocalDb {
       );
       if (rows.isEmpty) return;
       final row = rows.single;
-      if (row['label'] == 'caffeine') {
-        final oldAmount = (row['caffeine_mg'] as num?)?.toDouble() ?? 0;
-        final change = (delete ? 0 : amount ?? 0) - oldAmount;
-        await tx.rawUpdate(
-          'UPDATE journal_metric SET value = MAX(0, value + ?), updated_at = ? '
-          "WHERE date = ? AND field = 'caffeine_mg'",
-          [change, DateTime.now().millisecondsSinceEpoch, date],
-        );
-      }
+      final label = row['label'] as String?;
+      final track = switch (label) {
+        'caffeine' => 'caffeine',
+        'alcohol' => 'alcohol',
+        _ => null,
+      };
+      final known = label == 'caffeine' || row['metric_value'] != null;
+      final before = track == null || !(known || delete)
+          ? null
+          : await _trackDoseSummary(tx, date, track);
       if (delete) {
         await tx.delete(
           'moment_label',
           where: 'date = ? AND hhmm = ?',
           whereArgs: [date, hhmm],
         );
-      } else if (row['label'] == 'caffeine') {
+      } else if (track != null && known) {
         await tx.update(
           'moment_label',
-          {'caffeine_mg': amount},
+          {
+            if (label == 'caffeine') 'caffeine_mg': amount,
+            'metric_value': amount ?? 0.0,
+          },
           where: 'date = ? AND hhmm = ?',
           whereArgs: [date, hhmm],
         );
       }
-      if (row['label'] == 'caffeine') {
-        await tx.update(
-          'journal_metric',
-          {'at_min': await _trackLastMinute(tx, date, 'caffeine')},
-          where: 'date = ? AND field = ?',
-          whereArgs: [date, 'caffeine_mg'],
-        );
-      }
+      if (before != null) await _reconcileSubstance(tx, date, track!, before);
     });
   }
 

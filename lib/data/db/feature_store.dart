@@ -601,30 +601,28 @@ Future<void> _ldbPrivTakeBackDose(Transaction txn, String date, String field, do
     }
   }
 
-/// After a dose was taken back from [field], its stored time must not keep
-/// naming the removed moment. The later of what still stands: a time that is
-/// not the removed moment's own, and the minute of the day's other recorded
-/// doses (caffeine and alcohol have them in the track feed). Neither: unknown
-/// (null), never the removed moment's minute.
-Future<void> _ldbPrivFixDoseMinute(Transaction txn, String date, String field, int removedMin) async {
+/// After a water answer was taken back, the day's water time must not keep
+/// naming the removed moment: the later of a time that is not its own and the
+/// latest SURVIVING water record (another answer, or a timestamped glass).
+Future<void> _ldbPrivFixWaterMinute(Transaction txn, String date, int removedMin) async {
     final row = await txn.query('journal_metric',
-        where: 'date = ? AND field = ?', whereArgs: [date, field], limit: 1);
+        where: 'date = ? AND field = ?', whereArgs: [date, 'water_ml'], limit: 1);
     if (row.isEmpty) return;
     final at = (row.first['at_min'] as num?)?.toInt();
-    final track = switch (field) {
-      'caffeine_mg' => 'caffeine',
-      'alcohol_units' => 'alcohol',
-      _ => null,
-    };
-    final explicit =
-        track == null ? null : (await LocalDb._trackDoseSummary(txn, date, track)).minute;
+    final surviving = await txn.rawQuery(
+        'SELECT MAX(m) AS m FROM ('
+        "SELECT CAST(substr(hhmm, 1, 2) AS INTEGER) * 60 + CAST(substr(hhmm, 4, 2) AS INTEGER) AS m "
+        "FROM moment_label WHERE date = ? AND label = 'water' "
+        'UNION ALL SELECT at_min AS m FROM water_moment WHERE date = ?)',
+        [date, date]);
+    final explicit = (surviving.single['m'] as num?)?.toInt();
     final kept = at == removedMin ? null : at;
     final best = kept == null
         ? explicit
         : (explicit == null || kept > explicit ? kept : explicit);
     if (best == at) return;
     await txn.update('journal_metric', {'at_min': best},
-        where: 'date = ? AND field = ?', whereArgs: [date, field]);
+        where: 'date = ? AND field = ?', whereArgs: [date, 'water_ml']);
   }
 
 /// Replaces the saved answer [before] with [after] (see
@@ -677,14 +675,33 @@ Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, 
             : stored.answeredAtMs + 1;
 
         // Nothing above wrote. From here on, one failure rolls it all back.
+        // The two substances (caffeine, alcohol) are reconciled from their
+        // canonical doses by the ONE shared seam, so no delta arithmetic is
+        // done on a journal total the wearer may have lowered. Water has no
+        // canonical dose record, so it is taken back and added.
+        String? substance(String? field) => switch (field) {
+              'caffeine_mg' => 'caffeine',
+              'alcohol_units' => 'alcohol',
+              _ => null,
+            };
+        final tracks = {
+          for (final t in [substance(priorField), substance(newField)])
+            if (t != null) t,
+        };
+        final doseBefore = {
+          for (final t in tracks) t: await LocalDb._trackDoseSummary(txn, date, t),
+        };
         await txn.delete('symptom_entry',
             where: 'date = ? AND hhmm = ?', whereArgs: [date, hhmm]);
-        if (priorField != null) {
-          await _ldbPrivTakeBackDose(txn, date, priorField, priorAmount!, stamp);
+        if (priorField == 'water_ml') {
+          await _ldbPrivTakeBackDose(txn, date, priorField!, priorAmount!, stamp);
         }
-        final added = metricField != null && metricValue != null
-            ? await _ldbPrivAddDose(txn, date, hhmm, metricField, metricValue, metricMax, stamp)
-            : 0.0;
+        var added = 0.0;
+        if (newField == 'water_ml' && metricField != null && metricValue != null) {
+          added = await _ldbPrivAddDose(txn, date, hhmm, metricField, metricValue, metricMax, stamp);
+        } else if (substance(newField) != null) {
+          added = metricField != null ? metricValue ?? 0.0 : 0.0;
+        }
         final caffeineMg = after.label == 'caffeine' && metricField == 'caffeine_mg'
             ? metricValue
             : null;
@@ -699,21 +716,12 @@ Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, 
             },
             where: 'date = ? AND hhmm = ?',
             whereArgs: [date, hhmm]);
-        // A dose taken back and not re-added leaves a time that named this
-        // moment; fix it now the label row (the track feed reads it) is final.
-        if (priorField != null && !(priorField == newField && added != 0)) {
-          await _ldbPrivFixDoseMinute(txn, date, priorField, moment);
+        for (final t in tracks) {
+          await LocalDb._reconcileSubstance(txn, date, t, doseBefore[t]!);
         }
-        // CLAIM(remainder-time-fresh): every journal write of the aggregate
-        // clears the stored remainder time of its substance.
-        // ↳ CLAIM(remainder-time-fresh)
-        for (final field in {priorField, newField}) {
-          final track = switch (field) {
-            'caffeine_mg' => 'caffeine',
-            'alcohol_units' => 'alcohol',
-            _ => null,
-          };
-          if (track != null) await LocalDb._clearRemainderMinute(txn, date, track);
+        // Water's time must not keep naming the removed moment.
+        if (priorField == 'water_ml' && !(newField == 'water_ml' && added != 0)) {
+          await _ldbPrivFixWaterMinute(txn, date, moment);
         }
         if (symptom != null) {
           await txn.insert('symptom_entry', LocalDb._symptomRow(symptom),

@@ -107,18 +107,20 @@ Future<void> createTrackTables(Database db) async {
     SELECT 'journal:' || j.date || ':' || j.field,
       CASE j.field WHEN 'caffeine_mg' THEN 'caffeine' ELSE 'alcohol' END,
       j.date, NULL,
-      j.value - CASE WHEN j.field = 'caffeine_mg' THEN COALESCE((
-        SELECT SUM(m.caffeine_mg) FROM moment_label m
-        WHERE m.date = j.date AND m.label = 'caffeine'), 0) ELSE 0 END
+      j.value - COALESCE((
+        SELECT SUM(CASE j.field WHEN 'caffeine_mg' THEN m.caffeine_mg ELSE m.metric_value END)
+        FROM moment_label m WHERE m.date = j.date
+        AND m.label = CASE j.field WHEN 'caffeine_mg' THEN 'caffeine' ELSE 'alcohol' END), 0)
         - COALESCE((SELECT SUM(t.amount) FROM track_event t WHERE t.date = j.date AND
           t.track_id = CASE j.field WHEN 'caffeine_mg' THEN 'caffeine' ELSE 'alcohol' END
           AND (t.unit IS NULL OR t.unit = CASE j.field WHEN 'caffeine_mg' THEN 'mg' ELSE 'units' END)), 0),
       NULL, 'journal', j.date || ':' || j.field, CASE j.field WHEN 'caffeine_mg' THEN 'mg' ELSE 'units' END
       FROM journal_metric j
       WHERE j.field IN ('caffeine_mg', 'alcohol_units') AND j.value >
-        CASE WHEN j.field = 'caffeine_mg' THEN COALESCE((
-          SELECT SUM(m.caffeine_mg) FROM moment_label m
-          WHERE m.date = j.date AND m.label = 'caffeine'), 0) ELSE 0 END
+        COALESCE((
+          SELECT SUM(CASE j.field WHEN 'caffeine_mg' THEN m.caffeine_mg ELSE m.metric_value END)
+          FROM moment_label m WHERE m.date = j.date
+          AND m.label = CASE j.field WHEN 'caffeine_mg' THEN 'caffeine' ELSE 'alcohol' END), 0)
         + COALESCE((SELECT SUM(t.amount) FROM track_event t WHERE t.date = j.date AND
           t.track_id = CASE j.field WHEN 'caffeine_mg' THEN 'caffeine' ELSE 'alcohol' END
           AND (t.unit IS NULL OR t.unit = CASE j.field WHEN 'caffeine_mg' THEN 'mg' ELSE 'units' END)), 0)
@@ -127,7 +129,7 @@ Future<void> createTrackTables(Database db) async {
       CASE m.label WHEN 'meal' THEN 'late_meal' WHEN 'nap' THEN 'naps'
         WHEN 'workout' THEN 'late_workout' ELSE m.label END,
       m.date, CAST(strftime('%s', m.date || ' ' || m.hhmm || ':00', 'utc') AS INTEGER) * 1000,
-      CASE WHEN m.label = 'caffeine' THEN m.caffeine_mg ELSE NULL END,
+      CASE m.label WHEN 'caffeine' THEN m.caffeine_mg WHEN 'alcohol' THEN m.metric_value ELSE NULL END,
       NULL, 'moment', m.date || ':' || m.hhmm, CASE m.label WHEN 'caffeine' THEN 'mg' WHEN 'alcohol' THEN 'units' ELSE '' END
       FROM moment_label m
       WHERE m.label IN ('caffeine', 'meal', 'alcohol', 'cannabis', 'nicotine',

@@ -266,6 +266,88 @@ void main() {
     });
   });
 
+  group('review CLS1-C1/C2/C5: one reconciliation seam for substances', () {
+    // why: Tracks edits and answer changes must both keep journal total =
+    // canonical doses + the journal-only remainder (CLAIM(substance-reconcile)),
+    // never delta arithmetic on a total the user may have lowered.
+    test('C1: an amount edited in Tracks then again keeps metric_value, so a '
+        'later change does not add the old amount back', () async {
+      await _writer.answer(_m, MomentChoice.caffeine, value: 80, now: _t1);
+      await LocalDb.editTrackMoment('$_date:10:15', amount: 120);
+      expect((await _all('moment_label')).single['metric_value'], 120);
+      await LocalDb.editTrackMoment('$_date:10:15', amount: 160);
+      expect(await _total('caffeine_mg'), 160);
+      expect((await _saved(_m)).metricValue, 160);
+      final r = await _change(_m, MomentChoice.caffeine, value: 40);
+      expect(r, isA<MomentChanged>());
+      expect(await _total('caffeine_mg'), 40);
+    });
+
+    test('C2: a total the user lowered below the canonical doses is rebuilt '
+        'from the doses, so Journal and Tracks agree', () async {
+      await _writer.answer(_m, MomentChoice.caffeine, value: 80, now: _t1);
+      await _writer.answer(_m2, MomentChoice.caffeine, value: 100, now: _t1);
+      await LocalDb.putJournalMetrics(_date,
+          const {'caffeine_mg': JournalMetricValue(50, atMinuteOfDay: 940)});
+      await _change(_m, MomentChoice.caffeine, value: 120);
+      // 100 + 120 canonical doses, no remainder.
+      expect(await _total('caffeine_mg'), 220);
+      final feed = await (await LocalDb.instance).rawQuery(
+          "SELECT SUM(amount) AS a FROM track_event_feed WHERE track_id = "
+          "'caffeine' AND date = ?", [_date]);
+      expect(feed.single['a'], 220);
+    });
+
+    test('C5: an unchanged answer keeps the remainder\'s own time, so removing '
+        'the moment later restores it', () async {
+      await _writer.answer(_m, MomentChoice.caffeine, value: 80, now: _t1);
+      final db = await LocalDb.instance;
+      await db.update('journal_metric', {'value': 180.0, 'at_min': 615});
+      await db.insert('wake_meta',
+          {'key': 'substance_remainder_min:$_date:caffeine', 'value': '480'});
+      await _change(_m, MomentChoice.caffeine, value: 80);
+      expect(await _total('caffeine_mg'), 180);
+      expect(await _atMin('caffeine_mg'), 615);
+      await LocalDb.editTrackMoment('$_date:10:15', delete: true);
+      expect(await _total('caffeine_mg'), 100);
+      expect(await _atMin('caffeine_mg'), 480,
+          reason: 'the remainder keeps the time it had');
+    });
+  });
+
+  group('review CLS1-C6/C7', () {
+    test('C6: changing the latest water answer keeps the time of a surviving '
+        'one', () async {
+      await _writer.answer(_m, MomentChoice.water, now: _t1);
+      await _writer.answer(
+          const PendingMoment(date: _date, hhmm: '08:00'), MomentChoice.water,
+          now: _t1);
+      expect(await _atMin('water_ml'), 615);
+      await _change(_m, MomentChoice.caffeine, value: 50);
+      expect(await _atMin('water_ml'), 480);
+    });
+
+    test('C7: an alcohol answer\'s amount is the moment\'s amount in the track '
+        'feed, and no untimed remainder is left for it', () async {
+      await _writer.answer(_m, MomentChoice.alcohol, value: 2, now: _t1);
+      final db = await LocalDb.instance;
+      final moment = await db.rawQuery(
+          "SELECT amount FROM track_event_feed WHERE id = 'moment:$_date:10:15'");
+      expect(moment.single['amount'], 2);
+      final rem = await db.rawQuery(
+          "SELECT 1 FROM track_event_feed WHERE id = 'journal:$_date:alcohol_units'");
+      expect(rem, isEmpty);
+      await _change(_m, MomentChoice.alcohol, value: 3);
+      expect((await db.rawQuery(
+          "SELECT amount FROM track_event_feed WHERE id = 'moment:$_date:10:15'"))
+          .single['amount'], 3);
+      expect(await _total('alcohol_units'), 3);
+      expect(await db.rawQuery(
+          "SELECT 1 FROM track_event_feed WHERE id = 'journal:$_date:alcohol_units'"),
+          isEmpty);
+    });
+  });
+
   group('symptoms: exactly one entry per moment', () {
     test('symptom -> other deletes the symptom entry', () async {
       await _writer.answerSymptom(_m, _knee, now: _t1);
