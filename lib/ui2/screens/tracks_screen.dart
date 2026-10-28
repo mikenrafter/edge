@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../../data/db.dart';
 import '../../data/day_label.dart';
 import '../../data/tracks_store.dart';
-import '../../tracks/experiment.dart';
 import '../../state/clock_format.dart';
 import '../ui2.dart';
 import 'home_screen.dart' show go;
@@ -302,12 +301,10 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
   }
 
   Future<void> _experimentStart() async {
-    final experimentable = ExperimentableTrack.from(_track);
-    if (experimentable == null) return;
     final started = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) =>
-            ExperimentSetupScreen(store: widget.store, track: experimentable),
+            ExperimentSetupScreen(store: widget.store, track: _track),
       ),
     );
     if (started == true && mounted) await _load();
@@ -416,12 +413,10 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
               child: Text(text('ExperimentView')),
             )
           else ...[
-            // ↳ CLAIM(no-med-experiment): no start button for a medication.
-            if (ExperimentableTrack.from(_track) != null)
-              OutlinedButton(
-                onPressed: _experimentStart,
-                child: Text(text('ExperimentStart')),
-              ),
+            OutlinedButton(
+              onPressed: _experimentStart,
+              child: Text(text('ExperimentStart')),
+            ),
             if (_experiment != null)
               TextButton(
                 onPressed: _experimentOpen,

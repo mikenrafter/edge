@@ -18102,5 +18102,8 @@
         "type": "int"
       }
     }
-  }
+  },
+  "tracksPrescribed": "Prescribed by a clinician",
+  "tracksPrescribedNote": "The app never asks you to skip a prescribed treatment.",
+  "tracksExperimentPrescribed": "Prescribed treatments are never randomized; the app will not ask you to skip one. Talk to your clinician about changes."
 }

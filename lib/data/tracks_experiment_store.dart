@@ -19,9 +19,9 @@ extension TracksExperimentStore on TracksStore {
     if (!TracksStore._validDay(startDate)) throw ArgumentError('date');
     final track = (await definitions()).where((d) => d.id == trackId);
     if (track.isEmpty || !track.single.enabled) throw ArgumentError('track');
-    // ↳ CLAIM(no-med-experiment)
+    // ↳ CLAIM(never-ask-skip-prescribed)
     if (ExperimentableTrack.from(track.single) == null) {
-      throw const ExperimentRefused(ExperimentRefusal.medication);
+      throw const ExperimentRefused(ExperimentRefusal.prescribed);
     }
     final end = endDate(startDate, weeks);
     final chosen = seed ?? math.Random().nextInt(0x7fffffff);
@@ -221,9 +221,12 @@ extension TracksExperimentStore on TracksStore {
       "json_extract(t.payload_json, '\$.name') AS name "
       'FROM track_experiment x '
       'JOIN track_experiment_day d ON d.experiment_id = x.id '
-      'LEFT JOIN track_definition t ON t.id = x.track_id '
-      // ↳ CLAIM(no-med-experiment): a stored medication experiment stays silent.
-      "WHERE d.date = ? AND x.track_id NOT LIKE 'med:%'",
+      'JOIN track_definition t ON t.id = x.track_id '
+      // ↳ CLAIM(never-ask-skip-prescribed): read the LIVE definition, so a
+      // medication, a restored experiment and a track marked prescribed after
+      // the start all stay silent.
+      "WHERE d.date = ? AND x.track_id NOT LIKE 'med:%' "
+      "AND COALESCE(json_extract(t.payload_json, '\$.prescribed'), 0) = 0",
       [date],
     );
     return [

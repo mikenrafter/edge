@@ -115,6 +115,14 @@ String tracksText(BuildContext context, String key) {
     'ExperimentView' => l?.tracksExperimentView ?? 'View experiment',
     'ExperimentViewLast' =>
       l?.tracksExperimentViewLast ?? 'View last experiment',
+    'Prescribed' =>
+      l?.tracksPrescribed ?? 'Prescribed by a clinician',
+    'PrescribedNote' =>
+      l?.tracksPrescribedNote ??
+          'The app never asks you to skip a prescribed treatment.',
+    'ExperimentPrescribed' =>
+      l?.tracksExperimentPrescribed ??
+          'Prescribed treatments are never randomized; the app will not ask you to skip one. Talk to your clinician about changes.',
     'ExperimentSetup' => l?.tracksExperimentSetup ?? 'Experiment setup',
     'ExperimentTitle' => l?.tracksExperimentTitle ?? 'Experiment',
     'ExperimentExplain' =>

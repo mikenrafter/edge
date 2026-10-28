@@ -7,7 +7,7 @@ import '../data/track_model.dart';
 const experimentWeeks = [2, 3, 4];
 
 /// Why an experiment was refused; match it exhaustively.
-enum ExperimentRefusal { medication, washout }
+enum ExperimentRefusal { prescribed, washout }
 
 class ExperimentRefused implements Exception {
   const ExperimentRefused(this.reason);
@@ -17,15 +17,19 @@ class ExperimentRefused implements Exception {
 }
 
 /// A track that may be randomized. There is no public constructor: a
-/// medication cannot be wrapped, so no caller can ask the app to tell a
-/// wearer to skip a prescribed drug.
-// CLAIM(no-med-experiment): every medication is a `med:` track and `from`
-// returns null for all of them [review T1; tracks_experiments_t3_test.dart].
+/// prescribed track (a `med:` track, or one the wearer marked prescribed)
+/// cannot be wrapped, so no caller can ask the wearer to skip a prescribed
+/// treatment.
+// CLAIM(never-ask-skip-prescribed): the app never tells the wearer to skip a
+// prescribed track. `from` returns null for it; the start refuses; the
+// reminder query and the experiment screen read the live definition, so a
+// stored, restored or later-prescribed experiment stays silent
+// [owner decision 2026-10-27; tracks_experiments_t3_test.dart].
 class ExperimentableTrack {
   const ExperimentableTrack._(this.definition);
   final TrackDefinition definition;
   static ExperimentableTrack? from(TrackDefinition definition) =>
-      definition.id.startsWith('med:') ? null : ExperimentableTrack._(definition);
+      definition.isPrescribed ? null : ExperimentableTrack._(definition);
 }
 
 /// Systems with a stored nightly outcome the report can compare.

@@ -340,15 +340,23 @@ void main() {
     },
   );
 
-  // why: review T1 (patient safety). A randomized "skip" day on a prescribed
-  // drug would tell the wearer to withhold it. Fails if a med: track can start
-  // an experiment, or if a stored one still produces a reminder.
-  // proves: CLAIM(no-med-experiment)
-  test('a medication track can never start an experiment', () async {
-    await MedDb.putDef(
-      db,
-      const MedDef(key: 'metformin', label: 'Metformin', doseValue: 500, doseUnit: 'mg'),
+  // why: review T1 + owner decision 2026-10-27. A randomized "skip" day on a
+  // prescribed treatment would tell the wearer to withhold it. A medication and
+  // a track marked prescribed both refuse; neither is blocked from logging.
+  // proves: CLAIM(never-ask-skip-prescribed)
+  Future<void> addMedication() => MedDb.putDef(
+    db,
+    const MedDef(key: 'metformin', label: 'Metformin', doseValue: 500, doseUnit: 'mg'),
+  );
+  Future<void> setPrescribed(bool value) async {
+    final current = (await store.definitions()).firstWhere((d) => d.id == 'custom');
+    await store.saveDefinition(
+      TrackDefinition.fromJson({...current.toJson(), 'prescribed': value}),
     );
+  }
+
+  test('a medication track can never start an experiment', () async {
+    await addMedication();
     expect(
       (await store.definitions()).any((d) => d.id == 'med:metformin'),
       isTrue,
@@ -362,7 +370,7 @@ void main() {
         seed: 17,
       ),
       throwsA(
-        isA<ExperimentRefused>().having((e) => e.reason, 'reason', ExperimentRefusal.medication),
+        isA<ExperimentRefused>().having((e) => e.reason, 'reason', ExperimentRefusal.prescribed),
       ),
     );
     expect(await db.query('track_experiment'), isEmpty);
@@ -370,10 +378,7 @@ void main() {
   });
 
   test('a medication experiment row already stored sends no reminder', () async {
-    await MedDb.putDef(
-      db,
-      const MedDef(key: 'metformin', label: 'Metformin', doseValue: 500, doseUnit: 'mg'),
-    );
+    await addMedication();
     // A restored backup could carry one: the reminder query is the last gate.
     await db.insert('track_experiment', {
       'id': 'xp-med',
@@ -392,18 +397,54 @@ void main() {
     expect(await store.experimentReminders(date: '2026-09-01'), isEmpty);
   });
 
-  test('ExperimentableTrack cannot be built from a medication', () {
-    expect(
-      ExperimentableTrack.from(
-        const TrackDefinition(id: 'med:x', name: 'X', icon: 'pill', kind: 'consumed'),
-      ),
-      isNull,
+  test('a prescribed custom track refuses, and the flag round-trips', () async {
+    await setPrescribed(true);
+    final saved = (await store.definitions()).firstWhere((d) => d.id == 'custom');
+    expect(saved.prescribed, isTrue);
+    expect(saved.toJson()['prescribed'], isTrue);
+    await expectLater(
+      store.startExperiment(trackId: 'custom', startDate: '2026-09-01', weeks: 2, seed: 17),
+      throwsA(isA<ExperimentRefused>()),
     );
-    expect(
-      ExperimentableTrack.from(
-        const TrackDefinition(id: 'custom', name: 'W', icon: 'track', kind: 'activity'),
-      ),
-      isNotNull,
-    );
+    await setPrescribed(false);
+    expect((await start()).containsKey('id'), isTrue, reason: 'unflagged tracks still start');
+  });
+
+  test('marking a track prescribed mid-experiment silences every reminder', () async {
+    final experiment = await start();
+    final skipDay = assignments(experiment).firstWhere((d) => d['do'] == false)['date'] as String;
+    final doDay = assignments(experiment).firstWhere((d) => d['do'] == true)['date'] as String;
+    expect(await store.experimentReminders(date: skipDay), hasLength(1));
+    await setPrescribed(true);
+    expect(await store.experimentReminders(date: skipDay), isEmpty);
+    expect(await store.experimentReminders(date: doDay), isEmpty);
+    await setPrescribed(false);
+    expect(await store.experimentReminders(date: skipDay), hasLength(1));
+  });
+
+  test('a restored experiment for a prescribed custom track sends no reminder', () async {
+    await setPrescribed(true);
+    await db.insert('track_experiment', {
+      'id': 'xp-restored',
+      'track_id': 'custom',
+      'start_date': '2026-09-01',
+      'end_date': '2026-09-14',
+      'weeks': 2,
+      'seed': 2,
+      'created_ms': 1,
+    });
+    await db.insert('track_experiment_day', {
+      'experiment_id': 'xp-restored',
+      'date': '2026-09-01',
+      'do_it': 0,
+    });
+    expect(await store.experimentReminders(date: '2026-09-01'), isEmpty);
+  });
+
+  test('ExperimentableTrack cannot be built from a prescribed track', () {
+    const base = {'id': 'x', 'name': 'X', 'icon': 'track', 'kind': 'activity'};
+    expect(ExperimentableTrack.from(TrackDefinition.fromJson({...base, 'id': 'med:x'})), isNull);
+    expect(ExperimentableTrack.from(TrackDefinition.fromJson({...base, 'prescribed': true})), isNull);
+    expect(ExperimentableTrack.from(TrackDefinition.fromJson(base)), isNotNull);
   });
 }

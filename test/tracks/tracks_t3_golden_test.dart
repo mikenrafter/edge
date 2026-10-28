@@ -4,6 +4,8 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:openstrap_edge/ui2/screens/detected_activities.dart';
+import 'package:openstrap_edge/ui2/screens/track_editor.dart';
+import 'package:openstrap_edge/ui2/screens/track_experiment.dart';
 import 'package:openstrap_edge/ui2/screens/tracks_screen.dart';
 
 import '../backup/backup_support.dart';
@@ -158,4 +160,29 @@ void main() {
     },
     tags: ['golden'],
   );
+
+  // why: owner decision 2026-10-27. What a prescribed track shows instead of the
+  // setup: an explanation, no Begin. Reviewed by eye at generation (2026-10-27).
+  testWidgets('prescribed track experiment explanation has no Begin', (t) async {
+    final prescribed = TrackDefinition.fromJson({...track.toJson(), 'prescribed': true});
+    await mountTracks(t, ExperimentSetupScreen(store: store, track: prescribed), height: 500);
+    await settleTracks(t, store);
+    expect(find.textContaining('never randomized'), findsOneWidget);
+    expect(find.text('Begin experiment'), findsNothing);
+    await expectLater(
+      find.byKey(tracksBoundary),
+      matchesGoldenFile('goldens/track_experiment_prescribed.png'),
+    );
+  }, tags: ['golden']);
+
+  testWidgets('editor shows the Prescribed checkbox checked', (t) async {
+    final prescribed = TrackDefinition.fromJson({...track.toJson(), 'prescribed': true});
+    await mountTracks(t, TrackEditor(store: store, initial: prescribed), height: 900);
+    await settleTracks(t, store);
+    expect(t.widget<CheckboxListTile>(find.byKey(const ValueKey('track-prescribed'))).value, isTrue);
+    await expectLater(
+      find.byKey(tracksBoundary),
+      matchesGoldenFile('goldens/track_editor_prescribed.png'),
+    );
+  }, tags: ['golden']);
 }

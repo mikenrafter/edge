@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/med_store.dart';
+import 'package:openstrap_edge/data/tracks_store.dart';
 import 'package:openstrap_edge/ui2/screens/track_editor.dart';
+import 'package:openstrap_edge/ui2/screens/track_experiment.dart';
 import 'package:openstrap_edge/ui2/screens/track_log.dart';
 import 'package:openstrap_edge/ui2/screens/tracks_screen.dart';
 import '../backup/backup_support.dart';
@@ -186,10 +189,10 @@ void main() {
     },
   );
 
-  // why: review T1. The detail screen of a medication must not offer an
-  // experiment, while any other track still does.
-  // proves: CLAIM(no-med-experiment)
-  testWidgets('medication detail hides Start an experiment; a custom track shows it', (
+  // why: owner decision 2026-10-27 on review T1. A prescribed track still shows
+  // "Start an experiment", but the setup screen only explains and has no Begin.
+  // proves: CLAIM(never-ask-skip-prescribed)
+  testWidgets('medication setup explains and offers no Begin; a custom track begins', (
     t,
   ) async {
     await t.runAsync(() async {
@@ -202,10 +205,95 @@ void main() {
     final med = defs.firstWhere((d) => d.id == 'med:metformin');
     await mountTracks(t, TrackDetailScreen(store: store, track: med));
     await settleTracks(t, store);
-    expect(find.text('Start an experiment'), findsNothing);
-    final caffeine = defs.firstWhere((d) => d.id == 'caffeine');
-    await mountTracks(t, TrackDetailScreen(key: const ValueKey('c'), store: store, track: caffeine));
-    await settleTracks(t, store);
     expect(find.text('Start an experiment'), findsOneWidget);
+    await t.ensureVisible(find.text('Start an experiment'));
+    await t.tap(find.text('Start an experiment'));
+    await settleTracks(t, store);
+    expect(find.byKey(const ValueKey('experiment-prescribed')), findsOneWidget);
+    expect(find.textContaining('never randomized'), findsOneWidget);
+    expect(find.text('Begin experiment'), findsNothing);
+    expect(find.text('2 weeks'), findsNothing);
+  });
+
+  testWidgets('a custom track setup still offers Begin', (t) async {
+    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    await mountTracks(t, TrackDetailScreen(store: store, track: caffeine));
+    await settleTracks(t, store);
+    await t.ensureVisible(find.text('Start an experiment'));
+    await t.tap(find.text('Start an experiment'));
+    await settleTracks(t, store);
+    expect(find.text('Begin experiment'), findsOneWidget);
+    expect(find.byKey(const ValueKey('experiment-prescribed')), findsNothing);
+  });
+
+  // why: owner decision 2026-10-27. Marking a custom track prescribed from the
+  // editor persists the flag; a medication shows it checked and locked.
+  testWidgets('editor Prescribed checkbox persists; medication is locked on', (t) async {
+    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    await mountTracks(t, TrackEditor(store: store, initial: caffeine), height: 2400);
+    await settleTracks(t, store);
+    final box = find.byKey(const ValueKey('track-prescribed'));
+    expect(t.widget<CheckboxListTile>(box).value, isFalse);
+    await t.tap(box);
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('track-save')));
+    await settleTracks(t, store);
+    final saved = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    expect(saved.prescribed, isTrue);
+  });
+
+  testWidgets('medication editor shows Prescribed checked and locked', (t) async {
+    await t.runAsync(() async {
+      await MedDb.putDef(
+        await LocalDb.instance,
+        const MedDef(key: 'metformin', label: 'Metformin', doseValue: 500, doseUnit: 'mg'),
+      );
+    });
+    final med = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'med:metformin');
+    await mountTracks(t, TrackEditor(store: store, initial: med), height: 2400);
+    await settleTracks(t, store);
+    final medBox = t.widget<CheckboxListTile>(find.byKey(const ValueKey('track-prescribed')));
+    expect(medBox.value, isTrue);
+    expect(medBox.onChanged, isNull);
+  });
+
+  // why: a track that became prescribed after its experiment started must show
+  // no "Skip it" text on the experiment screen.
+  // proves: CLAIM(never-ask-skip-prescribed)
+  testWidgets('experiment screen of a now-prescribed track lists no skip days', (t) async {
+    final custom = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    final started = (await t.runAsync(
+      () => store.startExperiment(trackId: 'caffeine', startDate: todayLabel(), weeks: 2, seed: 17),
+    ))!;
+    await mountTracks(
+      t,
+      ExperimentScreen(
+        store: store,
+        track: TrackDefinition.fromJson({...custom.toJson(), 'prescribed': true}),
+        experimentId: started['id'] as String,
+      ),
+      height: 2400,
+    );
+    await settleTracks(t, store);
+    expect(find.text('Skip it'), findsNothing);
+    expect(find.byKey(const ValueKey('experiment-prescribed')), findsOneWidget);
+  });
+
+  testWidgets('experiment screen of an ordinary track lists skip days', (t) async {
+    final custom = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    final started = (await t.runAsync(
+      () => store.startExperiment(trackId: 'caffeine', startDate: todayLabel(), weeks: 2, seed: 17),
+    ))!;
+    await mountTracks(
+      t,
+      ExperimentScreen(
+        store: store,
+        track: custom,
+        experimentId: started['id'] as String,
+      ),
+      height: 2400,
+    );
+    await settleTracks(t, store);
+    expect(find.textContaining('Skip it'), findsWidgets);
   });
 }

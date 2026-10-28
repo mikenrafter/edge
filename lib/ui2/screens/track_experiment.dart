@@ -15,7 +15,7 @@ class ExperimentSetupScreen extends StatefulWidget {
     required this.track,
   });
   final TracksStore store;
-  final ExperimentableTrack track;
+  final TrackDefinition track;
   @override
   State<ExperimentSetupScreen> createState() => _ExperimentSetupScreenState();
 }
@@ -31,7 +31,7 @@ class _ExperimentSetupScreenState extends State<ExperimentSetupScreen> {
     });
     try {
       await widget.store.startExperiment(
-        trackId: widget.track.definition.id,
+        trackId: widget.track.id,
         startDate: todayLabel(),
         weeks: _weeks,
       );
@@ -46,8 +46,19 @@ class _ExperimentSetupScreenState extends State<ExperimentSetupScreen> {
   @override
   Widget build(BuildContext context) {
     String text(String key) => tracksText(context, key);
+    // ↳ CLAIM(never-ask-skip-prescribed): no Begin for a prescribed track.
+    if (ExperimentableTrack.from(widget.track) == null) {
+      return detailScaffold(context, text('ExperimentSetup'), [
+        Text(widget.track.name, style: F.head),
+        const SizedBox(height: S.x2),
+        Text(
+          text('ExperimentPrescribed'),
+          key: const ValueKey('experiment-prescribed'),
+        ),
+      ]);
+    }
     return detailScaffold(context, text('ExperimentSetup'), [
-      Text(widget.track.definition.name, style: F.head),
+      Text(widget.track.name, style: F.head),
       const SizedBox(height: S.x2),
       Text(text('ExperimentExplain')),
       const SizedBox(height: S.x3),
@@ -162,7 +173,15 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
             ),
         ],
         const SizedBox(height: S.x3),
-        for (final day in (experiment['assignments'] as List).cast<Map>())
+        // ↳ CLAIM(never-ask-skip-prescribed): a track that became prescribed
+        // after the start shows no do/skip days.
+        if (ExperimentableTrack.from(widget.track) == null)
+          Text(
+            text('ExperimentPrescribed'),
+            key: const ValueKey('experiment-prescribed'),
+          )
+        else
+          for (final day in (experiment['assignments'] as List).cast<Map>())
           Text(
             '${day['date']} · '
             '${day['do'] == true ? text('ExperimentDo') : text('ExperimentSkip')}',
