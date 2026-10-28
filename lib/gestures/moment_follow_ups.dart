@@ -422,6 +422,21 @@ class MomentAnswerWriter {
     return saved ? MomentAnswerResult.saved : MomentAnswerResult.alreadyAnswered;
   }
 
+  /// Replaces the saved answer [saved] with [choice] (and [value], [note] or
+  /// [symptom], validated exactly as in [answer] / [answerSymptom]). The write
+  /// is `LocalDb.changeMomentAnswer`: one transaction that takes back what the
+  /// old answer added and adds what the new one does. RED stub.
+  Future<MomentAnswerChange> change(
+    MomentLabel saved,
+    MomentChoice choice, {
+    double? value,
+    String? note,
+    SymptomDescription? symptom,
+    DateTime? now,
+  }) async {
+    throw UnimplementedError('MomentAnswerWriter.change');
+  }
+
   static Future<UnitSystem> _savedSystem() async {
     try {
       return await UnitsController.savedSystem();

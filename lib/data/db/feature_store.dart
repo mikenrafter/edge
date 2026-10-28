@@ -572,6 +572,10 @@ Future<bool> _ldbAnswerMoment(MomentLabel l, {required String? metricField, requ
         ? (await LocalDb.instance).transaction(write) : write(transaction);
   }
 
+Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, required MomentLabel after, required String? metricField, required double? metricValue, required double? metricMax, required StoredSymptom? symptom}) async {
+    throw UnimplementedError('changeMomentAnswer');
+  }
+
 Future<void> _ldbPutWakeEvidence({required int onsetSec, required String kind, required int atSec}) async {
     final db = await LocalDb.instance;
     await db.transaction((txn) async {

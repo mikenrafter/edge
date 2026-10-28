@@ -2253,6 +2253,21 @@ class LocalDb {
     Transaction? transaction,
   }) => _ldbAnswerMoment(l, metricField: metricField, metricValue: metricValue, metricMax: metricMax, transaction: transaction);
 
+  /// Replaces the saved answer [before] with [after] in ONE transaction: the
+  /// `moment_label` row, the dose it added to its journal field (taken back,
+  /// then the new dose added), and its `symptom_entry` row. The track feed
+  /// (`track_event_feed`) is a view over those rows, so it follows.
+  /// Stale (the row is no longer [before]), not found, refused or failed: the
+  /// database is unchanged. See [MomentAnswerChange].
+  static Future<MomentAnswerChange> changeMomentAnswer({
+    required MomentLabel before,
+    required MomentLabel after,
+    String? metricField,
+    double? metricValue,
+    double? metricMax,
+    StoredSymptom? symptom,
+  }) => _ldbChangeMomentAnswer(before: before, after: after, metricField: metricField, metricValue: metricValue, metricMax: metricMax, symptom: symptom);
+
   /// How long a block's evidence is kept after the block began (days).
   static const int _wakeEvidenceKeepDays = 7;
 
