@@ -52,8 +52,12 @@ void main() {
         systems: ['hr'],
       ),
     );
+    // The app's listener: every start, stop and track save re-arms the schedule.
+    TracksStore.scheduleListener = const ExperimentReminderListener();
+    calls.clear();
   });
   tearDown(() async {
+    TracksStore.scheduleListener = null;
     debugDefaultTargetPlatformOverride = null;
     NotificationService.instance.debugProbePermission = null;
     NotificationService.instance.debugRequestPermission = null;
@@ -63,12 +67,20 @@ void main() {
     await env.dispose();
   });
 
-  Future<void> startToday() => store.startExperiment(
-    trackId: 'custom',
-    startDate: '2026-10-26',
-    weeks: 2,
-    seed: 17,
-  );
+  // The listener re-arms on start; these tests drive refresh() themselves, so
+  // forget the start's own scheduling calls.
+  Future<void> startToday() async {
+    await withClock(
+      Clock.fixed(morning),
+      () => store.startExperiment(
+        trackId: 'custom',
+        startDate: '2026-10-26',
+        weeks: 2,
+        seed: 17,
+      ),
+    );
+    calls.clear();
+  }
 
   Future<void> refresh(
     DateTime now, {
@@ -166,7 +178,9 @@ void main() {
   // foreground pass must arm every remaining assignment, up to the band size.
   // proves: CLAIM(reminders-arm-all)
   test('a four week experiment is fully armed by one pass, app closed afterwards', () async {
-    await store.startExperiment(trackId: 'custom', startDate: '2026-10-26', weeks: 4, seed: 17);
+    await withClock(Clock.fixed(morning), () => store.startExperiment(
+      trackId: 'custom', startDate: '2026-10-26', weeks: 4, seed: 17));
+    calls.clear();
     await refresh(morning);
     final slots = armed();
     expect(slots, hasLength(28));
@@ -205,5 +219,75 @@ void main() {
     await refresh(DateTime(2026, 10, 26, 7));
     final first = when(armed().first);
     expect((first.day, first.hour, first.minute), (26, 8, 0));
+  });
+
+  // why: review T8 / R2-2. Starting after the foreground pass left nothing armed;
+  // stopping, disabling or marking a track prescribed and then closing the app
+  // left armed slots firing. Every such change re-arms through the one
+  // scheduler, and the stale slots are cancelled at the plugin channel.
+  // proves: CLAIM(reminders-follow-state)
+  Set<int> cancelledIds() => {
+    for (final c in calls)
+      if (c.method == 'cancel') ((c.arguments as Map?)?['id'] ?? c.arguments) as int,
+  };
+  final band = {
+    for (var i = 0; i < NotificationService.maxExperimentSlots; i++)
+      NotificationService.idExperimentBase + i,
+  };
+
+  Future<T> at<T>(DateTime now, Future<T> Function() run) =>
+      withClock(Clock.fixed(now), run);
+
+  test('starting an experiment arms it without waiting for another pass', () async {
+    await at(morning, () => store.startExperiment(
+      trackId: 'custom', startDate: '2026-10-26', weeks: 2, seed: 17));
+    expect(armed(), hasLength(14));
+  });
+
+  test('stopping cancels the armed band and arms nothing', () async {
+    final experiment = await at(morning, () => store.startExperiment(
+      trackId: 'custom', startDate: '2026-10-26', weeks: 2, seed: 17));
+    expect(armed(), isNotEmpty);
+    calls.clear();
+    await at(DateTime(2026, 10, 27, 9), () => store.stopExperiment(experiment['id'] as String));
+    expect(armed(), isEmpty);
+    expect(cancelledIds(), containsAll(band));
+  });
+
+  test('disabling or marking the track prescribed cancels the band', () async {
+    await at(morning, () => store.startExperiment(
+      trackId: 'custom', startDate: '2026-10-26', weeks: 2, seed: 17));
+    for (final change in <Map<String, Object?>>[
+      {'enabled': false},
+      {'prescribed': true},
+    ]) {
+      final current = (await store.definitions()).firstWhere((d) => d.id == 'custom');
+      calls.clear();
+      await at(morning, () => store.saveDefinition(TrackDefinition.fromJson({...current.toJson(), ...change})));
+      expect(armed(), isEmpty, reason: '$change');
+      expect(cancelledIds(), containsAll(band), reason: '$change');
+      calls.clear();
+      await at(morning, () => store.saveDefinition(TrackDefinition.fromJson({
+        ...current.toJson(),
+        'enabled': true,
+        'prescribed': false,
+      })));
+      expect(armed(), isNotEmpty, reason: 'back on: $change');
+    }
+  });
+
+  test('deleting a track (archiving it) cancels the band', () async {
+    await at(morning, () => store.startExperiment(
+      trackId: 'custom', startDate: '2026-10-26', weeks: 2, seed: 17));
+    calls.clear();
+    await at(morning, () => store.deleteDefinition('custom'));
+    expect(armed(), isEmpty);
+    expect(cancelledIds(), containsAll(band));
+  });
+
+  test('refreshAfterChange never throws and clears when nothing runs', () async {
+    await at(morning, () => ExperimentReminders.refreshAfterChange(
+      prefs: const NotificationPrefs(), sleep: const ReminderSleepGate()));
+    expect(cancelledIds(), containsAll(band));
   });
 }

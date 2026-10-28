@@ -189,6 +189,7 @@ import '../notify/notification_service.dart';
 import '../notify/tap_router.dart';
 import '../settings/settings_repository.dart';
 import '../notify/water_buzzer.dart';
+import '../data/tracks_store.dart' show TracksStore;
 import '../tracks/experiment_reminders.dart';
 import '../notify/reminder_sleep_gate.dart';
 import '../data/assumed_water.dart';
@@ -2944,6 +2945,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   CommitSyncBatchSink get debugCommitSyncBatch => _commitSyncBatch;
 
   AppState() {
+    TracksStore.scheduleListener = const ExperimentReminderListener();
     final views = WidgetsBinding.instance.platformDispatcher.views;
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     final isHeadless = views.isEmpty ||

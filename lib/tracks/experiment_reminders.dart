@@ -85,4 +85,27 @@ class ExperimentReminders {
     }
     await center.armExperimentReminders(slots);
   }
+
+  /// Re-arms after a change the foreground pass has not seen: an experiment
+  /// started or stopped, a track disabled, deleted or marked prescribed, a
+  /// restore. Never throws.
+  // CLAIM(reminders-follow-state): every such change goes through the one
+  // scheduler, so stale slots are cancelled and new ones armed at once
+  // [review T8, R2-2; tracks_experiment_reminders_test.dart].
+  static Future<void> refreshAfterChange({
+    NotificationPrefs? prefs,
+    ReminderSleepGate? sleep,
+  }) async {
+    try {
+      await refresh(prefs ?? await NotificationPrefs.load(), sleep: sleep);
+    } catch (_) {}
+  }
+}
+
+/// The app's listener: re-arms the OS schedule after a relevant change.
+class ExperimentReminderListener implements ExperimentScheduleListener {
+  const ExperimentReminderListener();
+  @override
+  Future<void> experimentScheduleChanged() =>
+      ExperimentReminders.refreshAfterChange();
 }
