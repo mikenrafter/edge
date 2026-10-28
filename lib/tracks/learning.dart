@@ -79,12 +79,13 @@ class TrackLearningPolicy {
     required double target,
     required String reason,
     Duration? learnedMinimum,
+    bool ignoreLock = false,
   }) {
     final current = track.kinetics.fields[field];
     TrackLearningStep hold(String why) =>
         TrackLearningStep(current?.value, false, why);
     if (age < globalMinimum) return hold('global_learning');
-    if (current?.locked == true) return hold('locked');
+    if (current?.locked == true && !ignoreLock) return hold('locked');
     final value = current?.value;
     if (value == null) return hold('unknown_kinetics');
     if (age <

@@ -885,7 +885,10 @@ void main() {
 
   // WHY S11: a sub-activity half-life override (every dose here uses it) hid the
   // parent's fit and was never itself learned. proves: CLAIM(sub-override-scale)
-  test('sub-activity overrides scale with the parent and enter the fit', () {
+  // WHY R2-10: locking the parent half-life removed the kinetic target even
+  // though the sub-activity override stayed unlocked. proves: CLAIM(override-independent)
+  for (final parentLocked in [false, true])
+  test('sub-activity overrides scale with the parent and enter the fit (parent locked: $parentLocked)', () {
     TrackKinetics kinetics(double hl, {bool locked = false}) => TrackKinetics({
       'half_life_hours': TrackKineticField(value: hl, locked: locked),
     });
@@ -940,9 +943,9 @@ void main() {
       icon: 'track',
       kind: 'consumed',
       systems: const ['sleep'],
-      kinetics: const TrackKinetics({
-        'half_life_hours': TrackKineticField(value: 6),
-        'onset_hours': TrackKineticField(value: 0),
+      kinetics: TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6, locked: parentLocked),
+        'onset_hours': const TrackKineticField(value: 0),
       }),
       subActivities: [
         TrackSubActivity(
@@ -1019,5 +1022,53 @@ void main() {
       event('z', 1, null, 3),
     ], bedtime);
     expect(same.dose, 103);
+  });
+
+  test('a locked parent freezes only itself; unlocked overrides take the step', () {
+    TrackDefinition build({required bool parentLocked}) => TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      systems: const ['sleep'],
+      kinetics: TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6, locked: parentLocked),
+      }),
+      subActivities: [
+        TrackSubActivity(
+          id: 'only',
+          name: 'only',
+          kinetics: const TrackKinetics({
+            'half_life_hours': TrackKineticField(value: 8),
+          }),
+        ),
+      ],
+    );
+    KineticApplication apply(TrackDefinition t) => applyKineticTarget(
+      policy: const TrackLearningPolicy(),
+      track: t,
+      fields: {...t.kinetics.fields},
+      subActivities: t.subActivities,
+      field: 'half_life_hours',
+      age: const Duration(days: 400),
+      target: 3,
+      date: '2026-10-27',
+      reason: 'time_ordered_matched_fit',
+    );
+    // Half-life moves at most 1% per step: parent 6 -> 5.94, ratio .99.
+    final locked = apply(build(parentLocked: true));
+    expect(locked.fields['half_life_hours']!.value, 6);
+    expect(locked.fields['half_life_hours']!.locked, isTrue);
+    expect(
+      locked.subActivities.single.kinetics.fields['half_life_hours']!.value,
+      closeTo(8 * .99, 1e-12),
+    );
+    expect(locked.logs.map((l) => l['field']), ['half_life_hours@only']);
+    final open = apply(build(parentLocked: false));
+    expect(open.fields['half_life_hours']!.value, closeTo(5.94, 1e-12));
+    expect(open.logs.map((l) => l['field']), [
+      'half_life_hours',
+      'half_life_hours@only',
+    ]);
   });
 }

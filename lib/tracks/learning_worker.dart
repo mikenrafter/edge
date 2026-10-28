@@ -146,7 +146,10 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     final canStep = saved?['last_step_date'] != date;
     if (canStep && age >= policy.globalMinimum) {
       for (final field in trackKineticKeys) {
-        if (fields[field]?.locked == true) continue;
+        if (fields[field]?.locked == true &&
+            !hasUnlockedOverride(subActivities, field)) {
+          continue;
+        }
         final oldPeriod = periods[field] as int?;
         final intrinsic = policy
             .minimumFor(field, track.kinetics)
@@ -193,44 +196,24 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
         )) {
           continue;
         }
-        final step = policy.step(
+        // ↳ CLAIM(override-independent)
+        final applied = applyKineticTarget(
+          policy: policy,
           track: track,
+          fields: fields,
+          subActivities: subActivities,
           field: field,
           age: age,
           target: target,
-          learnedMinimum: adapted,
+          date: date,
           reason: 'time_ordered_matched_fit',
+          learnedMinimum: adapted,
         );
-        if (!step.changed) continue;
-        fields[field] = TrackKineticField(value: step.value, locked: false);
-        logs.add({
-          'track_id': track.id,
-          'date': date,
-          'field': field,
-          'before_value': track.kinetics.fields[field]?.value,
-          'after_value': step.value,
-          'reason': step.reason,
-        });
-        // ↳ CLAIM(sub-override-scale): audited like the parent step.
-        final scaled = scaleSubActivityKinetics(
-          subActivities,
-          field,
-          step.value! / track.kinetics.fields[field]!.value!,
-        );
-        for (var i = 0; i < scaled.length; i++) {
-          final before = subActivities[i].kinetics.fields[field]?.value;
-          final after = scaled[i].kinetics.fields[field]?.value;
-          if (before == after) continue;
-          logs.add({
-            'track_id': track.id,
-            'date': date,
-            'field': '$field@${scaled[i].id}',
-            'before_value': before,
-            'after_value': after,
-            'reason': step.reason,
-          });
-        }
-        subActivities = scaled;
+        fields
+          ..clear()
+          ..addAll(applied.fields);
+        subActivities = applied.subActivities;
+        logs.addAll(applied.logs);
       }
     }
     final changed = logs.any(
