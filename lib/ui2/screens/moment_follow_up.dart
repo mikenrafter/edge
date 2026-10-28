@@ -1175,8 +1175,11 @@ class _MomentAnswerEditScreenState extends State<MomentAnswerEditScreen> {
       final raw = _text.text.trim();
       value = double.tryParse(raw.replaceAll(',', '.'));
       final max = kJournalFieldsByKey[c.journalField]?.max;
-      if (value != null &&
-          (!value.isFinite || value <= 0 || (max != null && value > max))) {
+      // Only an intentionally empty field means "no amount"; text that is not a
+      // number is refused, never dropped (it would remove the old dose).
+      if ((raw.isNotEmpty && value == null) ||
+          (value != null &&
+              (!value.isFinite || value <= 0 || (max != null && value > max)))) {
         setState(() => _amountError = true);
         return;
       }
