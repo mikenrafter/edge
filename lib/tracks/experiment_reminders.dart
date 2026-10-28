@@ -3,15 +3,45 @@
 // TracksStore.experimentReminders (the one query, with its own
 // running/stopped filter). Sleep is respected exactly as for the other
 // reminders: quiet hours, expected sleep and detected sleep (ReminderSleepGate).
+//
+// STATE, per assigned date, install-local (compute_freshness key
+// `experiment_reminder:<date>`; JSON {state, at, id}):
+//   pending   armed successfully at `at` under notification id `id`;
+//   delivered `at` passed and the OS no longer holds `id`: it fired;
+//   (none)    never armed, or its intention was cancelled (marker removed).
+// "Delivered" is read from the OS pending list, not inferred from the clock: a
+// slow inexact notification that is still pending is kept, never re-armed.
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:clock/clock.dart';
 import '../data/day_label.dart';
 import '../data/db.dart';
 import '../data/tracks_store.dart';
 import '../notify/notification_center.dart';
+import '../notify/notification_event.dart';
 import '../notify/notification_prefs.dart';
 import '../notify/notification_service.dart';
 import '../notify/reminder_sleep_gate.dart';
+
+/// Slots left for experiments in the shared pending budget.
+///
+/// PRIORITY (highest first): alarm > medication > wind-down / check-in > water
+/// > experiment > other. Higher classes are armed before experiments in each
+/// scheduling pass; experiments take what remains, after holding back the slots
+/// of higher-priority singletons that are not pending right now.
+// CLAIM(notification-budget): experiments never use a slot a higher class
+// needs, and fill the rest nearest-first [review R3-3;
+// tracks_experiment_reminders_test.dart "shared budget"].
+int experimentBudget({
+  required int cap,
+  required Set<int> pending,
+}) {
+  final others = pending.where((id) => !NotificationService.isExperimentSlot(id)).length;
+  final held = NotificationService.higherPrioritySingletons
+      .where((id) => !pending.contains(id))
+      .length;
+  return math.max(0, math.min(NotificationService.maxExperimentSlots, cap - others - held));
+}
 
 class ExperimentReminders {
   const ExperimentReminders._();
@@ -21,22 +51,43 @@ class ExperimentReminders {
   /// for the day rather than one in the afternoon.
   static const firstMinute = 8 * 60, lastMinute = 12 * 60, stepMinutes = 30;
 
-  /// Days looked ahead (today included): the whole band, so one foreground
-  /// pass arms every remaining assignment of a 4 week experiment and an app left
-  /// closed (headless sync cannot re-arm) still reminds on every day.
-  // CLAIM(reminders-arm-all): horizon = the OS band = the longest experiment
-  // [review R2-8; tracks_experiment_reminders_test.dart].
+  /// Days looked ahead (today included): the longest experiment, so one
+  /// foreground pass fills every slot the budget allows.
   static const horizonDays = NotificationService.maxExperimentSlots;
 
-  /// Install-local record of the instant armed for [date]. A day whose armed
-  /// instant has passed is DELIVERED and is never armed again.
-  // CLAIM(reminder-delivered-guard) [review R2-7; tracks_experiment_reminders_test.dart]
-  static String _armedKey(String date) => 'experiment_reminder:$date';
-
-  static Future<DateTime?> _armedAt(String date) async {
-    final raw = await LocalDb.computeFreshnessStringField(_armedKey(date), r'$.at');
-    return raw == null ? null : DateTime.tryParse(raw);
+  /// A stable id per date inside the band: consecutive days never collide, and
+  /// a kept reminder keeps its id from pass to pass.
+  static int idFor(String date) {
+    final d = DateTime.parse(date);
+    final ordinal = DateTime.utc(d.year, d.month, d.day).difference(DateTime.utc(2020)).inDays;
+    return NotificationService.idExperimentBase + ordinal % NotificationService.maxExperimentSlots;
   }
+
+  static String _key(String date) => 'experiment_reminder:$date';
+
+  static Future<({String state, DateTime at, int id})?> _read(String date) async {
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery(
+      "SELECT json_extract(payload_json, '\$.state') AS s, "
+      "json_extract(payload_json, '\$.at') AS a, "
+      "json_extract(payload_json, '\$.id') AS i "
+      'FROM compute_freshness WHERE key = ?',
+      [_key(date)],
+    );
+    if (rows.isEmpty) return null;
+    final at = DateTime.tryParse('${rows.first['a']}');
+    final id = rows.first['i'];
+    if (at == null || id is! int || rows.first['s'] is! String) return null;
+    return (state: rows.first['s'] as String, at: at, id: id);
+  }
+
+  static Future<void> _write(String date, String state, DateTime at, int id) =>
+      LocalDb.putComputeFreshness(
+        _key(date),
+        jsonEncode({'state': state, 'at': at.toIso8601String(), 'id': id}),
+      );
+
+  static Future<void> _clear(String date) => LocalDb.deleteComputeFreshness(_key(date));
 
   static DateTime? instantFor(
     String date,
@@ -53,45 +104,96 @@ class ExperimentReminders {
     return null;
   }
 
-  /// Re-arms the band from the stored assignments. Safe to call on every
-  /// foreground pass: it always rewrites the whole band.
+  /// Brings the OS schedule in line with the stored assignments. Safe on every
+  /// foreground pass. The whole read, validate, cancel and arm sequence runs
+  /// under the scheduling lock.
+  // CLAIM(reminders-serialized): one pass at a time, shared with the other
+  // scheduling passes [review R3-7; tracks_experiment_reminders_test.dart].
   static Future<void> refresh(
     NotificationPrefs prefs, {
     ReminderSleepGate? sleep,
-  }) async {
+  }) => NotificationCenter.instance.runScheduling(() => _plan(prefs, sleep));
+
+  static Future<void> _plan(NotificationPrefs prefs, ReminderSleepGate? sleep) async {
     final now = clock.now();
-    final center = NotificationCenter.instance;
-    if (!prefs.phoneDeliveryEnabled('reminders')) {
-      return center.armExperimentReminders(const []);
+    final svc = NotificationService.instance;
+    final pending = await svc.pendingIds();
+    final bandIds = {
+      for (var i = 0; i < NotificationService.maxExperimentSlots; i++)
+        NotificationService.idExperimentBase + i,
+    };
+    final wanted = <String, ({DateTime at, int id, String route, bool armed})>{};
+    if (prefs.phoneDeliveryEnabled('reminders')) {
+      final gate = sleep ?? await ReminderSleepGate.load(now: now);
+      final store = TracksStore(await LocalDb.instance);
+      for (var d = 0; d < horizonDays; d++) {
+        final date = dayLabelOf(DateTime(now.year, now.month, now.day + d));
+        final due = await store.experimentReminders(date: date);
+        if (due.isEmpty) continue;
+        final route = due.first['route'] as String;
+        final marker = await _read(date);
+        if (marker != null && marker.state == 'delivered') continue;
+        if (marker != null && pending != null) {
+          // ↳ CLAIM(reminder-delivered-guard): still pending (even past its
+          // time, an inexact one can be late): keep it. Gone and past: fired.
+          if (pending.contains(marker.id)) {
+            wanted[date] = (at: marker.at, id: marker.id, route: route, armed: true);
+            continue;
+          }
+          if (!marker.at.isAfter(now)) {
+            await _write(date, 'delivered', marker.at, marker.id);
+            continue;
+          }
+        }
+        final at = instantFor(date, prefs, gate, now);
+        if (at == null) continue;
+        wanted[date] = (at: at, id: idFor(date), route: route, armed: false);
+      }
     }
-    final gate = sleep ?? await ReminderSleepGate.load(now: now);
-    final store = TracksStore(await LocalDb.instance);
-    final slots = <({DateTime at, String route})>[];
+    // The shared budget: nearest dates first.
+    final budget = pending == null
+        ? math.min(NotificationService.maxExperimentSlots, svc.pendingCap)
+        : experimentBudget(cap: svc.pendingCap, pending: pending);
+    final ordered = wanted.keys.toList()..sort();
+    final keep = ordered.take(budget).toSet();
+    final keptIds = {for (final d in keep) if (wanted[d]!.armed) wanted[d]!.id};
+    // Cancel what is pending but not kept; with the pending list unknown,
+    // clear the whole band and re-arm.
+    for (final id in bandIds) {
+      if (keptIds.contains(id)) continue;
+      if (pending == null || pending.contains(id)) await svc.cancel(id);
+    }
+    // Cancelled intentions leave no marker, so re-enabling later re-arms.
     for (var d = 0; d < horizonDays; d++) {
       final date = dayLabelOf(DateTime(now.year, now.month, now.day + d));
-      final due = await store.experimentReminders(date: date);
-      if (due.isEmpty) continue;
-      // ↳ CLAIM(reminder-delivered-guard)
-      final armedBefore = await _armedAt(date);
-      if (armedBefore != null && !armedBefore.isAfter(now)) continue;
-      final at = instantFor(date, prefs, gate, now);
-      if (at == null) continue;
-      // One interruption per day, however many experiments are assigned.
-      slots.add((at: at, route: due.first['route'] as String));
-      await LocalDb.putComputeFreshness(
-        _armedKey(date),
-        jsonEncode({'at': at.toIso8601String()}),
-      );
+      if (keep.contains(date) && wanted[date]!.armed) continue;
+      final marker = await _read(date);
+      if (marker != null && marker.state == 'pending') await _clear(date);
     }
-    await center.armExperimentReminders(slots);
+    await svc.ensureTimezone();
+    for (final date in ordered.take(budget)) {
+      final slot = wanted[date]!;
+      if (slot.armed && pending != null) continue;
+      final ok = await svc.scheduleOnce(
+        id: slot.id,
+        category: NotifCategory.reminders,
+        // No track name and no arm: this lands on a lock screen. The screen
+        // behind the tap says what today's assignment is.
+        title: 'Experiment day',
+        body: 'Today has an assignment in your experiment.',
+        at: slot.at,
+        route: slot.route,
+      );
+      // ↳ CLAIM(reminder-delivered-guard): a marker only for an armed slot.
+      if (ok) await _write(date, 'pending', slot.at, slot.id);
+    }
   }
 
   /// Re-arms after a change the foreground pass has not seen: an experiment
   /// started or stopped, a track disabled, deleted or marked prescribed, a
   /// restore. Never throws.
   // CLAIM(reminders-follow-state): every such change goes through the one
-  // scheduler, so stale slots are cancelled and new ones armed at once
-  // [review T8, R2-2; tracks_experiment_reminders_test.dart].
+  // scheduler [review T8, R2-2; tracks_experiment_reminders_test.dart].
   static Future<void> refreshAfterChange({
     NotificationPrefs? prefs,
     ReminderSleepGate? sleep,

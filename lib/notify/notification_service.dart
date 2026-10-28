@@ -227,6 +227,47 @@ class NotificationService {
   static bool isMedSlot(int id) =>
       id >= idMedsBase && id < idMedsBase + maxMedSlots;
 
+  /// The ids of every notification the OS still holds for this app, or null
+  /// when the platform will not say. A scheduled id that is no longer here has
+  /// fired (or been cancelled): the only honest "delivered" signal.
+  Future<Set<int>?> pendingIds() async {
+    try {
+      return {
+        for (final r in await _plugin.pendingNotificationRequests()) r.id,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Most local notifications the OS keeps pending for the app: iOS documents
+  /// 64 and keeps the soonest; Android has no practical cap, so a generous one.
+  int get pendingCap =>
+      debugPendingCap ??
+      (defaultTargetPlatform == TargetPlatform.iOS
+          ? pendingCapIos
+          : pendingCapAndroid);
+
+  /// Tests only: pretend the OS cap is this (the plugin needs the Android
+  /// platform in tests, so the iOS cap is simulated).
+  @visibleForTesting
+  int? debugPendingCap;
+  static const int pendingCapIos = 64, pendingCapAndroid = 200;
+
+  /// Scheduled singletons that outrank the experiment band and may be armed
+  /// later by their own pass or event (alarm night check, snooze backstop,
+  /// wind-down, check-in, briefs, weekly recap). Their slots are held back from
+  /// experiments while they are not pending.
+  static const Set<int> higherPrioritySingletons = {
+    idAlarmNightCheck,
+    idSnoozeBackstop,
+    idWindDown,
+    idCheckIn,
+    idMorningBrief,
+    idEveningBrief,
+    idWeeklyRecap,
+  };
+
   /// Whether [id] is one of the experiment reminder slots.
   static bool isExperimentSlot(int id) =>
       id >= idExperimentBase && id < idExperimentBase + maxExperimentSlots;
@@ -580,7 +621,7 @@ class NotificationService {
   /// This is how the weekly lookback is armed — once, for a week that actually
   /// found something. (It also still carries the "time to move" nudge's call,
   /// which [schedulableIds] now refuses.)
-  Future<void> scheduleOnce({
+  Future<bool> scheduleOnce({
     required int id,
     required NotifCategory category,
     required String title,
@@ -590,8 +631,8 @@ class NotificationService {
     bool exact = false,
   }) async {
     try {
-      if (!_maySchedule(id)) return;
-      if (!await ensurePermission(allowPrompt: false)) return;
+      if (!_maySchedule(id)) return false;
+      if (!await ensurePermission(allowPrompt: false)) return false;
       final when = tz.TZDateTime.from(at, tz.local);
       // [exact]: exactAllowWhileIdle when Android lets this app set exact
       // alarms (an inexact one can arrive minutes late with Dart suspended),
@@ -610,7 +651,10 @@ class NotificationService {
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: route,
       );
-    } catch (_) {}
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Whether Android lets this app schedule EXACT alarms right now (the
