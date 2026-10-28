@@ -41,9 +41,12 @@ class TrackActivity {
       // A night counts toward the evening it began (what the experiment's
       // assignments and the daily counts use), not the calendar date of an
       // onset after midnight.
+      // The owning date is stored on the candidate and copied here whatever
+      // time the wearer chose: editing 00:30 to 00:20 must not move the
+      // occurrence to another assignment.
       'date': at == null
           ? dayId
-          : (beforeNight && expected.details['exposure_date'] is String
+          : (expected.details['exposure_date'] is String
               ? expected.details['exposure_date'] as String
               : dayLabelOf(DateTime.fromMillisecondsSinceEpoch(at))),
       'at_ms': at,

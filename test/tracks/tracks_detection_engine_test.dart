@@ -154,4 +154,75 @@ void main() {
     expect(rows.single['details_json'], contains('"track_id":"alcohol"'));
     expect(rows.single['details_json'], contains('"exposure_date":"2026-05-09"'));
   });
+
+  // R2-6: tonight's sleep and a known nap are not awake time. They are low
+  // heart-rate hours; counted as resting daytime they would drag the day's
+  // baseline down and turn ordinary awake hours into a "jump" (cannabis).
+  test('tonight sleep and a manual nap are excluded from awake windows', () async {
+    final db = await LocalDb.instance;
+    await db.update('activity_review_meta', {'activated_at': 0});
+    await db.delete('activity_suggestions');
+    await TracksStore(db).saveDefinition(
+      const TrackDefinition(
+        id: 'cannabis',
+        name: 'Cannabis',
+        icon: 'leaf',
+        kind: 'consumed',
+        roles: ['detectable'],
+        systems: ['hr'],
+      ),
+    );
+    int at(int day, int h) => DateTime(2026, 6, day, h).millisecondsSinceEpoch ~/ 1000;
+    final start = at(1, 12), end = at(2, 10);
+    final nightOnset = at(1, 22), nightWake = at(2, 7);
+    final napStart = at(1, 12), napEnd = at(1, 15);
+    final n = end - start;
+    final ts = [for (var i = 0; i < n; i++) start + i];
+    bool asleep(int t) => t >= nightOnset && t < nightWake;
+    bool napping(int t) => t >= napStart && t < napEnd;
+    await db.insert('sleep_nap', {
+      'day_id': '2026-06-01',
+      'created_at': 1,
+      'start_ts': napStart,
+      'end_ts': napEnd,
+      'source': 'manual',
+    });
+    final rrTs = <double>[], rr = <double>[];
+    var clock = nightOnset * 1000.0;
+    var flip = false;
+    while (clock < nightWake * 1000) {
+      final v = 1000.0 + (flip ? 60 : 0);
+      flip = !flip;
+      clock += v;
+      rrTs.add(clock);
+      rr.add(v);
+    }
+    final sub = Substrate(
+      tsSec: ts,
+      hr: [for (final t in ts) asleep(t) ? 52 : (napping(t) ? 50 : 88)],
+      rrTsMs: rrTs,
+      rrMs: rr,
+      ax: List.filled(n, 0),
+      ay: List.filled(n, 0),
+      // Awake: a brief tilt about 3% of the time. Asleep and napping: still.
+      az: [
+        for (final t in ts)
+          (asleep(t) || napping(t))
+              ? 1.0
+              : (t >= nightWake || t >= at(1, 20)
+                  ? 1.0 + 0.3 * ((t % 7) / 7)
+                  : (t % 60 < 2 ? 1.3 : 1.0)),
+      ],
+      spo2Red: List.filled(n, 0),
+      spo2Ir: List.filled(n, 0),
+      skinTemp: List.filled(n, 3000),
+      skinContact: List.filled(n, 0),
+      deviceFamily: 'gen4',
+    );
+    await DerivationEngine().deriveImportedDays(sub, const Profile(), {'2026-06-01', '2026-06-02'});
+    final row = await LocalDb.dayResult('2026-06-01');
+    expect(row, isNotNull);
+    final rows = await db.query('activity_suggestions', where: "kind = 'track'");
+    expect(rows, isEmpty);
+  });
 }

@@ -10,7 +10,7 @@ import '../backup/backup_support.dart';
 // A derived day goes in (its stored curves and baseline history), the review
 // list comes out. Nothing here supplies a pre-built window.
 const date = '2026-10-01';
-final day = DateTime.utc(2026, 10, 1).millisecondsSinceEpoch ~/ 1000;
+final day = DateTime(2026, 10, 1).millisecondsSinceEpoch ~/ 1000;
 int at(int hour, [int minute = 0]) => day + hour * 3600 + minute * 60;
 
 List<Map<String, num>> run(int from, int to, num v, int step) => [

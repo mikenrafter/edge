@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
@@ -69,7 +70,9 @@ void main() {
         TrackEvent(
           id: 'manual-1',
           trackId: 'alcohol',
-          date: '2026-09-30',
+          date: dayLabelOf(
+            DateTime.fromMillisecondsSinceEpoch((onset - 4 * 3600) * 1000),
+          ),
           atMs: (onset - 4 * 3600) * 1000,
           amount: 2,
         ),
