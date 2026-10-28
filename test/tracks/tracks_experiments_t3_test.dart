@@ -205,10 +205,10 @@ void main() {
     () async {
       final experiment = await start();
       await observations(experiment, adherence: false);
-      final running = await report(experiment, DateTime.utc(2026, 9, 5));
+      final running = await report(experiment, DateTime(2026, 9, 5, 12));
       expect(running['status'], 'running');
       expect((running['effects'] as Map?)?['hr'], isNull);
-      final complete = await report(experiment, DateTime.utc(2026, 9, 16));
+      final complete = await report(experiment, DateTime(2026, 9, 16, 12));
       expect(complete['reason'], 'insufficient_adherence');
       expect((complete['effects'] as Map?)?['hr'], isNull);
     },
@@ -219,7 +219,7 @@ void main() {
     () async {
       final experiment = await start(weeks: 4);
       await observations(experiment);
-      final result = await report(experiment, DateTime.utc(2026, 10, 1));
+      final result = await report(experiment, DateTime(2026, 10, 1, 12));
       expect(result['status'], 'completed');
       final effect = (result['effects'] as Map)['hr'] as Map;
       expect(effect['n_do'], 14);
@@ -228,7 +228,7 @@ void main() {
       expect(effect['effect'], closeTo(8, 1e-9));
       expect(effect['lower'], allOf(isA<num>(), lessThan(8), greaterThan(0)));
       expect(effect['upper'], allOf(isA<num>(), greaterThan(8), lessThan(16)));
-      expect(await report(experiment, DateTime.utc(2026, 10, 2)), result);
+      expect(await report(experiment, DateTime(2026, 10, 2, 12)), result);
     },
   );
 
@@ -314,7 +314,7 @@ void main() {
       // These older observed days are deliberately outside the assignment
       // window. They must not fill missing experiment adherence or outcomes.
       for (var i = 0; i < 28; i++) {
-        final at = DateTime.utc(2026, 8, 1 + i, 22);
+        final at = DateTime(2026, 8, 1 + i, 22);
         final date = at.toIso8601String().substring(0, 10);
         await store.confirmNone('custom', date);
         await db.insert('day_result', {
@@ -338,7 +338,7 @@ void main() {
       }
       await start();
       final summary = (await store.refreshLearning(
-        asOf: DateTime.utc(2026, 9, 5),
+        asOf: DateTime(2026, 9, 5, 12),
       ))['custom']!;
       final effect = (summary['effects'] as List).single as Map;
       expect(effect['reason'], 'experiment_learning');
@@ -632,14 +632,14 @@ void main() {
       'state_json': jsonEncode({'effects': []}),
     });
     await start(); // 2026-09-01 .. 2026-09-14
-    await store.refreshLearning(asOf: DateTime.utc(2026, 9, 5));
+    await store.refreshLearning(asOf: DateTime(2026, 9, 5, 12));
     Future<Map> state() async => jsonDecode(
       (await db.query('track_learning', where: 'track_id = ?', whereArgs: ['custom']))
           .single['state_json'] as String,
     ) as Map;
     expect((await state())['periods_us'] ?? {}, isEmpty);
     expect(await db.query('track_learning_log'), isEmpty);
-    await store.refreshLearning(asOf: DateTime.utc(2026, 10, 1));
+    await store.refreshLearning(asOf: DateTime(2026, 10, 1, 12));
     expect((await state())['periods_us'] as Map, isNotEmpty, reason: 'control: adapts outside an experiment');
     expect(await db.query('track_learning_log'), isNotEmpty);
   });

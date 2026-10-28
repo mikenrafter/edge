@@ -12,8 +12,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../backup/backup_support.dart';
 
 const detectionDay = '2026-10-01';
-final detectionStart =
-    DateTime.utc(2026, 10, 1, 1).millisecondsSinceEpoch ~/ 1000;
+// A LOCAL time: detection days are local calendar dates, so the fixture must
+// not depend on the zone the runner happens to use (review T21).
+final detectionStart = DateTime(2026, 10, 1, 1).millisecondsSinceEpoch ~/ 1000;
 
 // Evidence values are explicit, independent of whatever defaults the detector
 // ships. Neither an elevated HR alone nor missing RMSSD supports alcohol.
@@ -436,5 +437,22 @@ void main() {
     final past = await openPrompt('2026-09-30');
     await repo.confirmActivity(past);
     expect((await tracks.events(trackId: 'alcohol', date: '2026-09-30')).single.atMs, isNull);
+  });
+
+  // why: review T21. Every fixture sat at 01:00 UTC, so no test touched the
+  // local-day boundary. A window that starts at 23:50 local on Sep 30 and ends
+  // at 00:20 on Oct 1 belongs to the day it STARTS on, whatever the zone.
+  test('a window crossing local midnight belongs to the day it starts on', () async {
+    await detectable('alcohol');
+    final start = DateTime(2026, 9, 30, 23, 50).millisecondsSinceEpoch ~/ 1000;
+    final crossing = {
+      ...detectionWindow(),
+      'start_ts': start,
+      'end_ts': start + 30 * 60,
+    };
+    expect(candidates(await detect([crossing], date: '2026-10-01')), isEmpty);
+    final onStartDay = candidates(await detect([crossing], date: '2026-09-30'));
+    expect(onStartDay, hasLength(1));
+    expect(onStartDay.single.startTs, start);
   });
 }
