@@ -113,9 +113,15 @@ void main() {
     // Newer, running at asOf, and newer still, in the future.
     await store.startExperiment(trackId: 'custom', startDate: '2026-09-19', weeks: 2, seed: 5);
     await store.startExperiment(trackId: 'custom', startDate: '2026-12-01', weeks: 2, seed: 9);
-    final effect = hrEffect(await store.refreshLearning(asOf: DateTime(2026, 9, 20, 12)));
-    expect(effect['reason'], anyOf('from_experiment', 'experiment_learning'),
-        reason: 'the running experiment abstains while it runs');
+    final effect = hrEffect(await store.refreshLearning(asOf: asOf));
+    // R4-1: while the newer experiment runs, the older completed result is still
+    // the displayed effect, exactly; only the observational list abstains (the
+    // kinetic-learning pause is kept).
+    expect(effect['reason'], 'from_experiment');
+    expect(effect['effect'], closeTo(8, 1e-9));
+    final during = await persistedState();
+    expect(((during['effects'] as List).single as Map)['reason'], 'experiment_learning');
+    expect(((during['effects'] as List).single as Map)['effect'], isNull);
     // After the running one ends unreportable (no adherence), the older completed
     // result is still the one shown.
     final later = hrEffect(await store.refreshLearning(asOf: DateTime(2026, 10, 20, 12)));

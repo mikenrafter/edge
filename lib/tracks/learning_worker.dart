@@ -140,8 +140,8 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     final released = (state['experiment_released'] as Map? ?? {}).cast<String, dynamic>();
     final preferred = {
       for (final r in input.experimentResults)
+        // R4-1: a running newer experiment does not hide the completed result.
         if (r['track_id'] == track.id &&
-            !inExperiment &&
             released[r['system']] != r['experiment_id'])
           r['system'] as String: TrackEffectEstimate(
             trackId: track.id,
