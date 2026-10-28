@@ -413,14 +413,21 @@ class MedDb {
       limit: 1,
     );
     if (defRows.isEmpty) return intakeMin;
-    final taken = {
-      for (final r in await tx.query(
-        'med_dose',
-        where: 'med_key = ? AND date = ? AND taken_ts IS NOT NULL',
-        whereArgs: [medKey, date],
-      ))
-        (r['slot_min'] as num).toInt(),
-    };
+    final takenRows = await tx.query(
+      'med_dose',
+      where: 'med_key = ? AND date = ? AND taken_ts IS NOT NULL',
+      whereArgs: [medKey, date],
+    );
+    // CLAIM(med-slot-retry): a retried submission carries the same intake
+    // second, and that second already sits on the slot it filled; reuse it
+    // rather than spending another open slot [R2-4; tracks_store_test].
+    for (final r in takenRows) {
+      // ↳ CLAIM(med-slot-retry)
+      if ((r['taken_ts'] as num).toInt() == atMs ~/ 1000) {
+        return (r['slot_min'] as num).toInt();
+      }
+    }
+    final taken = {for (final r in takenRows) (r['slot_min'] as num).toInt()};
     final day = DateTime(at.year, at.month, at.day);
     final open = [
       for (final s in MedDef.fromRow(defRows.first).schedule)

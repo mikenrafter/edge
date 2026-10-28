@@ -801,4 +801,43 @@ void main() {
     expect(after.value, 50);
     expect(after.atMinuteOfDay, isNull);
   });
+
+  // WHY R2-4: submitting the same 08:05 quick log twice marked both the 08:00
+  // and 20:00 slots taken. proves: CLAIM(med-slot-retry)
+  test('retrying a medication quick log reuses its slot', () async {
+    final db = await LocalDb.instance;
+    await MedDb.putDef(
+      db,
+      const MedDef(
+        key: 'pill2',
+        label: 'Pill',
+        schedule: [MedSchedule(8 * 60, []), MedSchedule(20 * 60, [])],
+      ),
+    );
+    const dose = TrackEvent(
+      id: 'same',
+      trackId: 'med:pill2',
+      date: '2026-10-01',
+      atMs: 1790841900000, // 08:05 UTC
+    );
+    await store.log(dose);
+    await store.log(dose);
+    expect(
+      (await db.query('med_dose', orderBy: 'slot_min')).map((r) => r['slot_min']),
+      [8 * 60],
+    );
+    // A different intake at another time still takes the next open slot.
+    await store.log(
+      const TrackEvent(
+        id: 'second',
+        trackId: 'med:pill2',
+        date: '2026-10-01',
+        atMs: 1790841900000 + 3600000,
+      ),
+    );
+    expect(
+      (await db.query('med_dose', orderBy: 'slot_min')).map((r) => r['slot_min']),
+      [8 * 60, 20 * 60],
+    );
+  });
 }
