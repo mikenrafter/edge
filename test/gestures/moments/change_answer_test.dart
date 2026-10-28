@@ -348,6 +348,89 @@ void main() {
     });
   });
 
+  group('review CLS1-R2', () {
+    const m3 = PendingMoment(date: _date, hhmm: '17:00');
+    Future<Map<String, Object?>?> feed(String id) async =>
+        (await (await LocalDb.instance)
+                .rawQuery('SELECT * FROM track_event_feed WHERE id = ?', [id]))
+            .firstOrNull;
+
+    test('R2-2: an alcohol answer with no amount exposes NULL, not 0 units, '
+        'whether the amount was omitted or cleared', () async {
+      await _writer.answer(_m, MomentChoice.alcohol, now: _t1);
+      expect((await feed('moment:$_date:10:15'))!['amount'], isNull,
+          reason: 'omitted');
+      await _writer.answer(_m2, MomentChoice.alcohol, value: 2, now: _t1);
+      expect((await feed('moment:$_date:15:40'))!['amount'], 2);
+      await _change(_m2, MomentChoice.alcohol);
+      expect((await feed('moment:$_date:15:40'))!['amount'], isNull,
+          reason: 'cleared');
+    });
+
+    test('R2-3: a first answer after the total was lowered rebuilds from the '
+        'doses, and a later edit agrees', () async {
+      await _writer.answer(_m, MomentChoice.caffeine, value: 80, now: _t1);
+      await _writer.answer(_m2, MomentChoice.caffeine, value: 100, now: _t1);
+      await LocalDb.putJournalMetrics(_date,
+          const {'caffeine_mg': JournalMetricValue(50, atMinuteOfDay: 940)});
+      await _writer.answer(m3, MomentChoice.caffeine, value: 40, now: _t1);
+      expect(await _total('caffeine_mg'), 220);
+      await _change(m3, MomentChoice.caffeine, value: 60);
+      expect(await _total('caffeine_mg'), 240);
+    });
+
+    test('R2-3: a first answer keeps the remainder\'s earlier time', () async {
+      await LocalDb.putJournalMetrics(_date,
+          const {'caffeine_mg': JournalMetricValue(100, atMinuteOfDay: 480)});
+      await _writer.answer(_m, MomentChoice.caffeine, value: 80, now: _t1);
+      expect(await _atMin('caffeine_mg'), 615);
+      await LocalDb.editTrackMoment('$_date:10:15', delete: true);
+      expect(await _total('caffeine_mg'), 100);
+      expect(await _atMin('caffeine_mg'), 480);
+    });
+
+    test('R2-4: saving an unchanged water answer keeps its clipped '
+        'contribution after the total was corrected', () async {
+      await LocalDb.putJournalMetrics(
+          _date, const {'water_ml': JournalMetricValue(5900)});
+      await _writer.answer(_m, MomentChoice.water, now: _t1);
+      await LocalDb.putJournalMetrics(_date,
+          const {'water_ml': JournalMetricValue(5000, atMinuteOfDay: 615)});
+      await _change(_m, MomentChoice.water);
+      expect(await _total('water_ml'), 5000);
+      expect((await _saved(_m)).metricValue, 100);
+    });
+
+    test('R2-5: a kept assumed glass is a surviving water record', () async {
+      final db = await LocalDb.instance;
+      await db.insert('assumed_water', {
+        'date': _date, 'at_min': 480, 'ml': 250.0, 'state': 'kept',
+        'logged_at': 1,
+      });
+      // Straight into the table: putJournalMetrics would also record a
+      // water_moment glass, hiding that the assumed glass is not looked at.
+      await db.insert('journal_metric', {
+        'date': _date, 'field': 'water_ml', 'value': 250.0, 'at_min': 480,
+        'updated_at': 1,
+      });
+      await _writer.answer(_m, MomentChoice.water, now: _t1);
+      expect(await _atMin('water_ml'), 615);
+      await _change(_m, MomentChoice.caffeine, value: 50);
+      expect(await _atMin('water_ml'), 480);
+    });
+
+    test('R2-5: a removed assumed glass is not', () async {
+      final db = await LocalDb.instance;
+      await db.insert('assumed_water', {
+        'date': _date, 'at_min': 480, 'ml': 250.0, 'state': 'removed',
+        'logged_at': 1,
+      });
+      await _writer.answer(_m, MomentChoice.water, now: _t1);
+      await _change(_m, MomentChoice.caffeine, value: 50);
+      expect(await _atMin('water_ml'), isNull);
+    });
+  });
+
   group('symptoms: exactly one entry per moment', () {
     test('symptom -> other deletes the symptom entry', () async {
       await _writer.answerSymptom(_m, _knee, now: _t1);

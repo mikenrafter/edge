@@ -267,6 +267,38 @@ void main() {
     });
   });
 
+  group('review CLS1-R2-1: the joined meal row keeps the height too', () {
+    testWidgets('an Other note -> Meal beside a long food entry', (t) async {
+      final r = await _rig(t);
+      await _seed(t, () async {
+        await _writer.answer(const PendingMoment(date: apk2Day, hhmm: '11:45'),
+            MomentChoice.other,
+            note: 'felt hungry again earlier than usual today', now: reviewNow);
+        await NutritionDb.put(
+            await LocalDb.instance,
+            FoodEntry(
+                id: 'long-lunch',
+                date: apk2Day,
+                meal: 'lunch',
+                label: 'Slow cooked chickpea and spinach stew with brown rice '
+                    'and a lemon yoghurt dressing',
+                atTs: apk2At(11, 45) + 15,
+                kcal: 640));
+      });
+      await r.mount(t, size: const Size(320, 900));
+      const id = 'moment:$apk2Day 11:45';
+      await apk2Show(t, id);
+      final before = t.getSize(apk2Row(id)).height;
+      await _open(t, id);
+      await apk2Tap(t, apk2Key('moment-choice:$apk2Day 11:45:meal'));
+      await apk2Tap(t, apk2Key('moment-edit-save'));
+      await apk2Show(t, id);
+      expect(find.descendant(of: apk2Row(id), matching: find.textContaining('Slow cooked')),
+          findsOneWidget, reason: 'the row is now the joined food row');
+      expect(t.getSize(apk2Row(id)).height, before);
+    });
+  });
+
   group('review CLS1-C8: a typed amount is never silently dropped', () {
     for (final bad in ['1..2', 'abc', '2 mg']) {
       testWidgets('"$bad" is refused with a reason and writes nothing',
