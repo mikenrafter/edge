@@ -32,6 +32,8 @@ import 'package:openstrap_analytics/onehz.dart';
 // instead of two that can drift.
 import 'inputs/garmin_inputs.dart'
     show isWearableFamily, kHrCadenceSec, kOneHzRunGapSec;
+import 'staging_provenance.dart'
+    show kStagingProvenanceKeys, sleepJsonForStorage;
 import 'hr_max.dart'
     show
         estimatedMaxHr,
@@ -1561,15 +1563,10 @@ Map<String, dynamic> deriveDayBundle(
     // What actually produced the stages when the experimental model was asked
     // (analytics provenance, forwarded as is: edge adds no second guard). Cardio
     // nights carry none of it, so their stored output stays byte-identical.
-    if (d.sleepSource != 'vendor_staged' &&
-        d.sleepJson['staging_method'] is String &&
-        d.sleepJson['staging_method'] != 'cardio')
-      for (final k in const [
-        'staging_effective_method',
-        'staging_fallback',
-        'staging_fallback_sec',
-      ])
-        if (d.sleepJson[k] != null) k: d.sleepJson[k],
+    if (d.sleepSource != 'vendor_staged')
+      for (final e in sleepJsonForStorage(d.sleepJson).entries)
+        if (kStagingProvenanceKeys.contains(e.key) && e.value != null)
+          e.key: e.value,
     'window': _envelope(
       hasSleep ? sleepWinJson : null,
       confidence: sleepConf,

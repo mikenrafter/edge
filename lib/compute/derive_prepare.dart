@@ -9,6 +9,7 @@ import '../data/coverage_resolver.dart';
 import '../data/day_checkpoint.dart';
 import 'groups/input_stamp.dart';
 import 'day_checkpoint_policy.dart' show kRevBucketSec;
+import 'staging_provenance.dart' show sleepJsonForStorage;
 import 'substrate.dart';
 import 'substrate_retention.dart';
 import 'vendor_sleep.dart';
@@ -167,7 +168,7 @@ class PreparedDerivationDay {
     'end_sec': endSec,
     'confidence': confidence,
     'flags': flags,
-    'sleep_json': sleepJson,
+    'sleep_json': sleepJsonForStorage(sleepJson),
     'hypno_stages': hypnoStages,
     'sleep_onset_sec': sleepOnsetSec,
     'sleep_offset_sec': sleepOffsetSec,
@@ -306,7 +307,7 @@ class SleepSessionCandidate {
     'staging_method': method.name,
     'confidence': confidence,
     'flags': flags,
-    'sleep_json': sleepJson,
+    'sleep_json': sleepJsonForStorage(sleepJson),
     'hypno_stages': hypnoStages,
     'sleep_onset_sec': sleepOnsetSec,
     'sleep_offset_sec': sleepOffsetSec,

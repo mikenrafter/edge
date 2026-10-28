@@ -113,6 +113,57 @@ void main() {
     expect(find.text('Through the night'), findsWidgets);
   });
 
+  const someKnown =
+      'The experimental model showed little stage variation for part of this '
+      'night; the default estimate is shown there.';
+  const someGeneric =
+      'For part of this night, the default estimate is shown instead of the '
+      'experimental model.';
+  const uncertain =
+      'The default estimate may be shown for some or all of this night '
+      'instead of the experimental model.';
+
+  testWidgets('mixed with malformed seconds: partial wording, no duration',
+      (t) async {
+    await _open(t, {
+      'staging_method': 'hmm628',
+      'staging_effective_method': 'mixed',
+      'staging_fallback': 'hmm628_degenerate',
+    });
+    expect(find.text(someKnown), findsOneWidget);
+    expect(find.text(_allDefault), findsNothing);
+    expect(find.textContaining(' min of this night'), findsNothing);
+  });
+
+  testWidgets('mixed with an unknown reason: partial generic wording',
+      (t) async {
+    await _open(t, {
+      'staging_method': 'hmm628',
+      'staging_effective_method': 'mixed',
+      'staging_fallback': 'hmm628_from_the_future',
+      'staging_fallback_sec': 14219,
+    });
+    expect(find.text(someGeneric), findsOneWidget);
+    expect(find.text(_generic), findsNothing);
+    expect(find.text(_allDefault), findsNothing);
+  });
+
+  for (final effective in <Object?>[null, 'v9', 'hmm628']) {
+    testWidgets('unknown scope ($effective) claims neither whole nor part',
+        (t) async {
+      await _open(t, {
+        'staging_method': 'hmm628',
+        'staging_effective_method': ?effective,
+        'staging_fallback': 'hmm628_degenerate',
+        'staging_fallback_sec': 14219,
+      });
+      expect(find.text(uncertain), findsOneWidget);
+      expect(find.text(_allDefault), findsNothing);
+      expect(find.text(someKnown), findsNothing);
+      expect(find.text(_claim), findsOneWidget);
+    });
+  }
+
   testWidgets('an older payload without the keys displays as before',
       (t) async {
     await _open(t, const {});

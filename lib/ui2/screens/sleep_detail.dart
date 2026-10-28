@@ -1570,20 +1570,34 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       l?.sleepDetailStagingExperimental ??
           'Experimental sleep-stage estimate. Not validated against a clinical '
               'sleep study. Not for medical decisions.',
+      // Scope first (how much of the night), then the reason.
       if (fallback is String)
-        if (fallback != kStagingFallbackDegenerate)
-          l?.sleepDetailStagingFallbackGeneric ??
-              'The default estimate is shown for this night instead of the '
-                  'experimental model.'
-        else if (n['staging_effective_method'] == 'mixed' && sec is num)
-          l?.sleepDetailStagingFallbackPartial((sec / 60).round()) ??
-              'The experimental model showed little stage variation for '
-                  '${(sec / 60).round()} min of this night; the default '
-                  'estimate is shown there.'
-        else
-          l?.sleepDetailStagingFallback ??
-              'The experimental model showed little stage variation, so the '
-                  'default estimate is shown.',
+        switch (n['staging_effective_method']) {
+          'cardio' => fallback == kStagingFallbackDegenerate
+              ? l?.sleepDetailStagingFallback ??
+                  'The experimental model showed little stage variation, so '
+                      'the default estimate is shown.'
+              : l?.sleepDetailStagingFallbackGeneric ??
+                  'The default estimate is shown for this night instead of '
+                      'the experimental model.',
+          'mixed' => fallback != kStagingFallbackDegenerate
+              ? l?.sleepDetailStagingFallbackSomeGeneric ??
+                  'For part of this night, the default estimate is shown '
+                      'instead of the experimental model.'
+              : sec is num
+                  ? l?.sleepDetailStagingFallbackPartial((sec / 60).round()) ??
+                      'The experimental model showed little stage variation '
+                          'for ${(sec / 60).round()} min of this night; the '
+                          'default estimate is shown there.'
+                  : l?.sleepDetailStagingFallbackSome ??
+                      'The experimental model showed little stage variation '
+                          'for part of this night; the default estimate is '
+                          'shown there.',
+          // Missing or unknown scope: claim neither the whole night nor a part.
+          _ => l?.sleepDetailStagingFallbackUncertain ??
+              'The default estimate may be shown for some or all of this '
+                  'night instead of the experimental model.',
+        },
     ];
   }
 

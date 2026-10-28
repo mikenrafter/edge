@@ -25,3 +25,24 @@ Map<String, Object> stagingProvenanceOf(Map<String, dynamic>? sleep) {
       'staging_fallback_sec': sec.round(),
   };
 }
+
+/// The three keys analytics adds for the experimental model.
+const List<String> kStagingProvenanceKeys = [
+  'staging_effective_method',
+  'staging_fallback',
+  'staging_fallback_sec',
+];
+
+/// [sleepJson] as it is STORED. A night that did not ask for the experimental
+/// model keeps exactly what it stored before the HMM fix (no provenance keys),
+/// in every stored form: the day payload and the staged-night candidate share
+/// this one filter. Returns [sleepJson] itself when nothing needs removing.
+Map<String, dynamic> sleepJsonForStorage(Map<String, dynamic> sleepJson) {
+  final requested = sleepJson['staging_method'];
+  if (requested is String && requested != 'cardio') return sleepJson;
+  if (!kStagingProvenanceKeys.any(sleepJson.containsKey)) return sleepJson;
+  return {
+    for (final e in sleepJson.entries)
+      if (!kStagingProvenanceKeys.contains(e.key)) e.key: e.value,
+  };
+}

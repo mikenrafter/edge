@@ -7939,6 +7939,18 @@
   "@sleepDetailStagingFallbackGeneric": {
     "description": "Note under the hypnogram when the default estimate replaced the experimental model for a reason this version does not recognise."
   },
+  "sleepDetailStagingFallbackSome": "The experimental model showed little stage variation for part of this night; the default estimate is shown there.",
+  "@sleepDetailStagingFallbackSome": {
+    "description": "Note under the hypnogram when part of the night was replaced by the default estimate and the length is not known."
+  },
+  "sleepDetailStagingFallbackSomeGeneric": "For part of this night, the default estimate is shown instead of the experimental model.",
+  "@sleepDetailStagingFallbackSomeGeneric": {
+    "description": "Note under the hypnogram when part of the night was replaced by the default estimate for a reason this version does not recognise."
+  },
+  "sleepDetailStagingFallbackUncertain": "The default estimate may be shown for some or all of this night instead of the experimental model.",
+  "@sleepDetailStagingFallbackUncertain": {
+    "description": "Note under the hypnogram when the default estimate replaced the experimental model but how much of the night is not known."
+  },
   "sleepDetailWindowAuto": "This window was staged from the signals",
   "@sleepDetailWindowAuto": {
     "description": "Label when the sleep window was auto-staged from the signals."
