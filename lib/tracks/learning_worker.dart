@@ -216,9 +216,9 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
           reason: 'time_ordered_matched_fit',
           learnedMinimum: adapted,
         );
-        fields
-          ..clear()
-          ..addAll(applied.fields);
+        // Only ever adds or updates keys; never clear (a held step returns
+        // the same values and clearing would empty the map) [R3-1].
+        fields.addAll(applied.fields);
         subActivities = applied.subActivities;
         logs.addAll(applied.logs);
       }

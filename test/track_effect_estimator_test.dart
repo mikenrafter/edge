@@ -1071,4 +1071,33 @@ void main() {
       'half_life_hours@only',
     ]);
   });
+
+  // WHY R3-1: a held proposal returned the caller's own map; the worker cleared
+  // that map and re-added it, emptying every kinetic field after an earlier
+  // successful step in the same pass. The worker now only calls addAll.
+  test('a held step returns a copy, so a prior step in the pass survives', () {
+    final t = track('a');
+    final fields = {
+      ...t.kinetics.fields,
+      'tolerance_days': const TrackKineticField(value: 2, locked: true),
+    };
+    final held = applyKineticTarget(
+      policy: const TrackLearningPolicy(),
+      track: t,
+      fields: fields,
+      subActivities: t.subActivities,
+      field: 'half_life_hours',
+      age: const Duration(days: 1), // under the 28 day global minimum: held
+      target: 3,
+      date: '2026-10-27',
+      reason: 'time_ordered_matched_fit',
+    );
+    expect(held.logs, isEmpty);
+    expect(identical(held.fields, fields), isFalse);
+    fields
+      ..clear()
+      ..addAll(held.fields);
+    expect(fields['tolerance_days']!.locked, isTrue);
+    expect(fields.length, greaterThan(1));
+  });
 }
