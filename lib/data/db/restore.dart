@@ -354,6 +354,10 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         // and without the timed doses they would restore as untimed remainders).
         await copyRows('track_event', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('track_absence', where: 'date = ?', whereArgs: [dayId]);
+        // CLAIM(deleted-day-unknown) [review R3-2]: a selected day's unknown marker
+        // travels with it, or a restored pre-delete period would make the
+        // deleted day nominal again.
+        await copyRows('track_unknown_day', where: 'date = ?', whereArgs: [dayId]);
         // The canonical owners behind track_event_feed rows: medication doses,
         // caffeine moments and meals.
         // The journal remainder's own time (see writeTrackSubstance) travels with
