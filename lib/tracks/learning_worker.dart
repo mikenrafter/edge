@@ -9,6 +9,7 @@ import '../util/heavy.dart';
 import '../util/worker_audit.dart';
 import '../util/worker_init.dart';
 import 'learning.dart';
+import 'range_exposure.dart';
 
 @SendableShape('SQLite primitive maps; sendable_trackLearningHeavy_test')
 class TrackLearningInput {
@@ -288,6 +289,14 @@ List<TrackNight> trackNightsHeavy(
   Map<String, double>? previous;
   final durationHours = <double>[], freeDurationHours = <double>[];
   final observations = <({int endMs, Map<String, double> outcomes})>[];
+  final exposures = RangeExposures(
+    ranges: ranges,
+    realEvents: events,
+    absences: [
+      for (final a in input.absences)
+        (trackId: a['track_id'] as String, date: a['date'] as String),
+    ],
+  );
   for (final row in rows) {
     final payload = map(jsonDecode(row['payload_json'] as String));
     final envelope = map(jsonDecode(row['window_json'] as String? ?? '{}'));
@@ -401,20 +410,12 @@ List<TrackNight> trackNightsHeavy(
       ) {
         final date = dayLabelOf(day);
         if (!confirmedDate(date)) confirmedHistory = false;
-        if (ranges.any(
-              (r) =>
-                  r.trackId == d.id &&
-                  r.done &&
-                  r.startDate.compareTo(date) <= 0 &&
-                  r.endDate.compareTo(date) >= 0,
-            ) &&
-            !nightEvents.any((e) => e.trackId == d.id && e.date == date)) {
-          // Setup history establishes use, never a dose or time. These markers
-          // preserve unknown exposure for both acute and slow learning.
-          nightEvents.add(
-            TrackEvent(id: 'history:${d.id}:$date', trackId: d.id, date: date),
-          );
-        }
+        // A taken-daily period stands in for the log of each day it covers:
+        // its time, amount and unit if given, otherwise an unknown-dose marker.
+        // Real logs, "none today" and not-done periods win (RangeExposures).
+        // ↳ CLAIM(range-exposure)
+        final exposure = exposures.on(d.id, date);
+        if (exposure != null) nightEvents.add(exposure);
       }
       fullHistory = fullHistory || confirmedHistory;
       if (fullHistory) historyComplete.add(d.id);

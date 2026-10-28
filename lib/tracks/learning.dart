@@ -148,10 +148,15 @@ class TrackExposureFeatures {
     this.presenceOnly = false,
   });
 
-  /// Red-phase stub: true when exposure is known to have happened but its
-  /// amount is not (on/off contrast only).
+  /// True when the exposure is known to have happened in the last 24 h but its
+  /// amount is not (a taken-daily period without an amount): on/off contrast
+  /// only, with [dose], [residualMg] and [timingHours] null so no dose term is
+  /// ever fitted [CLAIM(range-presence)].
   final bool presenceOnly;
-  double? get exposureLevel => dose;
+
+  /// The level the matched comparison sorts nights by: the dose when known,
+  /// else 1 for a presence-only night. Null when unknown.
+  double? get exposureLevel => dose ?? (presenceOnly ? 1.0 : null);
   final double? dose, residualMg, timingHours, nextNightDose;
   final double? effectiveResidual, withdrawalPressure;
   final int? exposureRunDays, abstinenceDays;

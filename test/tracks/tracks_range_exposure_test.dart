@@ -304,6 +304,31 @@ void main() {
       expect(_estimator.features(_track(), ok, bedtime).dose, 50);
     });
 
+    // why: on a unitless track every explicit unit must agree (R3-4). An untimed
+    // range exposure still adds its amount to the dose, so its unit counts.
+    // proves: CLAIM(unit-abstain)
+    test('an untimed range unit conflicting with a logged unit abstains', () {
+      final unitless = _track(unit: '');
+      final range = synthetic(
+        _done('2026-03-01', minute: null, amount: const DailyAmount(50, 'mg')),
+        ['2026-03-10'],
+      );
+      final cups = TrackEvent(
+        id: 'cups',
+        trackId: 'a',
+        date: '2026-03-10',
+        atMs: DateTime(2026, 3, 10, 16).millisecondsSinceEpoch,
+        amount: 2,
+        unit: 'cups',
+      );
+      expect(_estimator.features(unitless, range, bedtime).dose, 50);
+      expect(
+        _estimator.features(unitless, [...range, cups], bedtime).dose,
+        isNull,
+        reason: '50 mg and 2 cups must not be summed',
+      );
+    });
+
     // why: no time means the residual cannot be placed (CLAIM(onset-unknown)
     // family), but the day's amount is still the day's dose. The evening-date
     // rule (the date of the instant six hours before bedtime) is the one
@@ -330,6 +355,11 @@ void main() {
         late,
       );
       expect(f.dose, 50, reason: 'only 03-10 counts; 100 would double count');
+      expect(
+        f.nextNightDose,
+        0,
+        reason: '03-10 is the evening date (dose), so nothing is yet the lag',
+      );
       expect(f.residualMg, isNull);
     });
 
@@ -449,6 +479,46 @@ void main() {
       expect(e.effect, closeTo(7.0, 1e-9));
       expect(e.coefficients, isEmpty, reason: 'no dose fitting without an amount');
       expect(e.kineticTargets, isEmpty);
+    });
+
+    // why: a persisted habitual reference (CLAIM(baseline-reference)) is a dose
+    // in the track's own scale. A presence night (level 1) must not be ordered
+    // against it; with a 100 mg reference these nights are unknown, so no pair
+    // forms. Nights logged at exactly 100 mg are the controls that would
+    // otherwise pair with them.
+    test('a presence night is not compared with a persisted mg reference', () {
+      final baseline = TrackDefinition.fromJson({
+        ..._track().toJson(),
+        'no_unadjusted_data': true,
+      });
+      final presence = cohort(minute: 960);
+      final nights = [
+        for (final n in presence)
+          if (n.outcomes['sleep'] == 58.0)
+            n
+          else
+            TrackNight(
+              at: n.at,
+              bedtimeMinute: n.bedtimeMinute,
+              sleepDebtHours: n.sleepDebtHours,
+              load: n.load,
+              baselines: n.baselines,
+              outcomes: n.outcomes,
+              completeTrackIds: n.completeTrackIds,
+              negativeControls: n.negativeControls,
+              events: [_realLog(_label(n.at), 16, 100)],
+            ),
+      ];
+      final e = _estimator
+          .estimate(
+            tracks: [baseline],
+            nights: nights,
+            asOf: DateTime(2025, 6, 1),
+            references: const {'a': 100},
+          )
+          .single;
+      expect(e.matchedPairs, 0);
+      expect(e.reason, isNot('estimated'));
     });
 
     test('no amount and no time is the same contrast', () {

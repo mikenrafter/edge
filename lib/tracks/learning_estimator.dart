@@ -18,6 +18,13 @@ class TrackEffectEstimator {
   }) {
     var dose = 0.0, residual = 0.0, lag = 0.0, weightedHours = 0.0;
     var unknownDose = false, unknownResidual = false;
+    // Range exposures (kRangeExposureSource), see CLAIM(range-presence) and
+    // CLAIM(range-untimed-dose): presence = an amountless exposure inside the
+    // 24 h dose window; unknownLag = an amountless one in the 24-48 h window;
+    // unknownTiming = an untimed amount, whose hour is not known.
+    var presenceSeen = false, unknownLag = false, unknownTiming = false;
+    final eveningDate = dayLabelOf(bedtime.subtract(const Duration(hours: 6)));
+    final previousEveningDate = _previousDay(eveningDate);
     // CLAIM(residual-window): residual exposure is summed over seven half-lives
     // (under 1% left per dose), never a fixed 48 h; a window beyond the 48 h
     // exposure record needs the track's complete history or the residual stays
@@ -34,6 +41,7 @@ class TrackEffectEstimator {
     for (final event in events) {
       if (event.trackId != track.id) continue;
       final at = event.atMs;
+      final fromRange = event.sourceKind == kRangeExposureSource;
       if (at == null) {
         final firstDate = dayLabelOf(
           bedtime.subtract(Duration(minutes: (windowHours * 60).ceil())),
@@ -41,18 +49,55 @@ class TrackEffectEstimator {
         if (event.date.compareTo(firstDate) >= 0 &&
             event.date.compareTo(dayLabelOf(bedtime)) <= 0) {
           unknownResidual = true;
-          if (event.date.compareTo(dayLabelOf(
-                bedtime.subtract(const Duration(hours: 48)),
-              )) >=
-              0) {
-            unknownDose = true;
+          final inDoseDates =
+              event.date.compareTo(
+                dayLabelOf(bedtime.subtract(const Duration(hours: 48))),
+              ) >=
+              0;
+          if (!fromRange) {
+            if (inDoseDates) unknownDose = true;
+            continue;
           }
+          // ↳ CLAIM(range-untimed-dose): a period asserts the same intake
+          // every day, so an untimed day still has a dose by its date.
+          final amount = event.amount == null
+              ? null
+              : _amountInTrackUnit(track, event);
+          if (event.amount != null && amount == null) {
+            if (inDoseDates) unknownDose = true;
+          } else if (event.date == eveningDate) {
+            if (amount == null) {
+              presenceSeen = true;
+            } else {
+              dose += amount;
+              unknownTiming = true;
+            }
+          } else if (event.date == previousEveningDate) {
+            if (amount == null) {
+              unknownLag = true;
+            } else {
+              lag += amount;
+            }
+          }
+          // A later date is after bedtime; an earlier one is out of the dose
+          // windows. Neither is a dose, and the residual is already unknown.
         }
         continue;
       }
       final hours =
           (bedtime.millisecondsSinceEpoch - at) / Duration.millisecondsPerHour;
       if (hours < 0 || hours > windowHours) continue;
+      if (fromRange && event.amount == null) {
+        // ↳ CLAIM(range-presence): taken, but no amount, so no dose or
+        // residual number; only whether it happened.
+        unknownResidual = true;
+        if (hours <= 24) {
+          presenceSeen = true;
+        } else if (hours <= 48) {
+          unknownLag = true;
+        }
+        continue;
+      }
       // ↳ CLAIM(unit-abstain)
       final amount = _amountInTrackUnit(track, event);
       if (amount == null) {
@@ -94,6 +139,13 @@ class TrackEffectEstimator {
         residual += amount * math.pow(.5, hours / halfLife);
       }
     }
+    // CLAIM(range-presence): presence (level 1) and a real amount are different
+    // scales, so a window holding both is unknown, never 1 + 80. Presence-only
+    // nights report no dose, residual or timing (no dose fitting); the contrast
+    // reads exposureLevel instead [tracks_range_exposure_test].
+    if (presenceSeen && dose > 0) unknownDose = true;
+    if ((presenceSeen || unknownLag) && lag > 0) unknownLag = true;
+    final presenceOnly = presenceSeen && !unknownDose;
     final slowWindow = historyWindow ?? trackHistoryWindow(track);
     // ↳ CLAIM(unit-abstain): the slow history is judged over its own, longer
     // window; a conflict there blanks only the slow features [R4-1].
@@ -113,10 +165,13 @@ class TrackEffectEstimator {
           )
         : null;
     return TrackExposureFeatures(
-      dose: unknownDose ? null : dose,
+      dose: unknownDose || presenceOnly ? null : dose,
       residualMg: unknownResidual ? null : residual,
-      timingHours: unknownDose || dose == 0 ? null : weightedHours / dose,
-      nextNightDose: unknownDose ? null : lag,
+      timingHours: unknownDose || unknownTiming || presenceOnly || dose == 0
+          ? null
+          : weightedHours / dose,
+      nextNightDose: unknownDose || unknownLag ? null : lag,
+      presenceOnly: presenceOnly,
       effectiveResidual: history?.effectiveResidual,
       withdrawalPressure: history?.withdrawalPressure,
       exposureRunDays: history?.exposureRunDays,
@@ -232,8 +287,8 @@ class TrackEffectEstimator {
             t.id != track.id &&
             rows.every(
               (r) =>
-                  ((r.features[track.id]?.dose ?? 0) > 0) ==
-                  ((r.features[t.id]?.dose ?? 0) > 0),
+                  ((r.features[track.id]?.exposureLevel ?? 0) > 0) ==
+                  ((r.features[t.id]?.exposureLevel ?? 0) > 0),
             ),
       );
       return absent(
@@ -330,18 +385,30 @@ bool _explicitUnitsConflict(
   double windowHours,
 ) {
   if (track.unit.trim().isNotEmpty) return false;
+  final firstDate = dayLabelOf(
+    bedtime.subtract(Duration(minutes: (windowHours * 60).ceil())),
+  );
   final units = {
     for (final e in events)
       if (e.trackId == track.id &&
-          e.atMs != null &&
           (e.unit?.trim().isNotEmpty ?? false) &&
-          (bedtime.millisecondsSinceEpoch - e.atMs!) /
-                  Duration.millisecondsPerHour <=
-              windowHours &&
-          e.atMs! <= bedtime.millisecondsSinceEpoch)
+          (e.atMs != null
+              ? (bedtime.millisecondsSinceEpoch - e.atMs!) /
+                        Duration.millisecondsPerHour <=
+                    windowHours &&
+                e.atMs! <= bedtime.millisecondsSinceEpoch
+              // An untimed range exposure still adds its amount to a dose.
+              : e.sourceKind == kRangeExposureSource &&
+                    e.date.compareTo(firstDate) >= 0 &&
+                    e.date.compareTo(dayLabelOf(bedtime)) <= 0))
         e.unit!.trim().toLowerCase(),
   };
   return units.length > 1;
+}
+
+String _previousDay(String date) {
+  final day = DateTime.parse(date);
+  return dayLabelOf(DateTime(day.year, day.month, day.day - 1));
 }
 
 class _LearningRow {
@@ -382,14 +449,19 @@ List<_NightPair> _matchedPairs(
   List<TrackDefinition> tracks, {
   required double referenceDose,
 }) {
-  final valid = rows.where((r) => r.features[track.id]?.dose != null).toList();
+  // ↳ CLAIM(range-presence): a presence-only night is level 1 against a
+  // reference of 0. Against any other reference (a persisted mg dose) the scales
+  // differ, so such a night is unknown instead of "below" or "above" it.
+  double? level(_LearningRow r) {
+    final f = r.features[track.id];
+    if (f == null) return null;
+    return f.dose ?? (referenceDose == 0 ? f.exposureLevel : null);
+  }
+
+  final valid = rows.where((r) => level(r) != null).toList();
   // ↳ CLAIM(baseline-reference)
-  final controls = valid
-      .where((r) => r.features[track.id]!.dose == referenceDose)
-      .toList();
-  final exposed = valid
-      .where((r) => r.features[track.id]!.dose! != referenceDose)
-      .toList();
+  final controls = valid.where((r) => level(r) == referenceDose).toList();
+  final exposed = valid.where((r) => level(r)! != referenceDose).toList();
   final used = <int>{};
   final pairs = <_NightPair>[];
   for (final row in exposed) {
@@ -420,7 +492,7 @@ List<_NightPair> _matchedPairs(
       // ↳ CLAIM(baseline-reference): the pair's "exposed" side is always the
       // higher dose, so a night below the reference keeps the effect's sign.
       pairs.add(
-        row.features[track.id]!.dose! > referenceDose
+        level(row)! > referenceDose
             ? _NightPair(row, best)
             : _NightPair(best, row),
       );
