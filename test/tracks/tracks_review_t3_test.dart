@@ -1,13 +1,10 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/data/day_review.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
-import 'package:openstrap_edge/tracks/detection.dart';
-import 'package:openstrap_edge/tracks/learning.dart';
 import 'package:openstrap_edge/tracks/learning_worker.dart';
 import 'package:openstrap_edge/util/worker_init.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -38,14 +35,12 @@ void main() {
   late BackupEnv env;
   late Database db;
   late TracksStore tracks;
-  late ActivityStore activities;
   late LocalRepositoryImpl repo;
   setUp(() async {
     env = await BackupEnv.create('tracks_review_t3_fix.db');
     db = await LocalDb.instance;
     await db.update('activity_review_meta', {'activated_at': 0});
     tracks = TracksStore(db);
-    activities = ActivityStore(db);
     repo = LocalRepositoryImpl(getProfileMap: () => {});
     for (final d in await tracks.definitions()) {
       await tracks.saveDefinition(
