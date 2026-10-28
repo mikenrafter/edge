@@ -1164,4 +1164,36 @@ void main() {
     expect(withStale.effect, plain.effect);
     expect(withStale.referenceDose, isNull);
   });
+
+  // WHY R4-1: on a unitless track a cups event 55 h ago (outside the 48 h and
+  // residual windows, inside the 240 h history) was mixed with recent mg doses
+  // into numeric slow-exposure values. proves: CLAIM(unit-abstain)
+  test('slow history abstains on a unit conflict while acute features stay', () {
+    final bedtime = DateTime.utc(2025, 1, 6, 22);
+    TrackEvent event(String id, double amount, String unit, int hoursBefore) =>
+        TrackEvent(
+          id: id,
+          trackId: 'a',
+          date: '2025-01-06',
+          amount: amount,
+          unit: unit,
+          atMs: bedtime
+              .subtract(Duration(hours: hoursBefore))
+              .millisecondsSinceEpoch,
+        );
+    final slow = historyTrack(tolerance: 1, withdrawal: 1);
+    final mgOnly = [
+      event('a', 100, 'mg', 100),
+      event('b', 100, 'mg', 5),
+    ];
+    final control = estimator.features(slow, mgOnly, bedtime, historyComplete: true);
+    expect(control.effectiveResidual, isNotNull, reason: 'positive control');
+    final mixed = estimator.features(slow, [
+      event('old', 2, 'cups', 100),
+      event('b', 100, 'mg', 5),
+    ], bedtime, historyComplete: true);
+    expect(mixed.effectiveResidual, isNull);
+    expect(mixed.withdrawalPressure, isNull);
+    expect(mixed.dose, 100, reason: 'acute features stay valid');
+  });
 }
