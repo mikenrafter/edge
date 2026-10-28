@@ -361,6 +361,16 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         );
         // The canonical owners behind track_event_feed rows: medication doses,
         // caffeine moments and meals.
+        // The journal remainder's own time (see writeTrackSubstance) travels with
+        // its day. ↳ CLAIM(remainder-time)
+        await copyRows(
+          'wake_meta',
+          where: 'key IN (?, ?)',
+          whereArgs: [
+            'substance_remainder_min:$dayId:caffeine',
+            'substance_remainder_min:$dayId:alcohol',
+          ],
+        );
         await copyRows('med_dose', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('moment_label', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('food_entry', where: 'date = ?', whereArgs: [dayId]);
