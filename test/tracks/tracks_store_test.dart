@@ -840,4 +840,38 @@ void main() {
       [8 * 60, 20 * 60],
     );
   });
+
+  // WHY R2-5: moving a 250 mg dose from 10:00 to 22:00 left the journal time at
+  // 10:00 (equal dose sums skipped reconciliation), and retrying an unchanged
+  // dose after the journal total was set to 0 left the total at 0.
+  // proves: CLAIM(substance-reconcile)
+  test('equal dose sums still reconcile amount and time (retry is a no-op)', () async {
+    await store.log(caffeineDose('m', 250, atMs: 1790848800000)); // 10:00 UTC
+    expect((await caffeineTotal())!.atMinuteOfDay, 10 * 60);
+    await store.log(caffeineDose('m', 250, atMs: 1790892000000)); // 22:00 UTC
+    expect((await caffeineTotal())!.atMinuteOfDay, 22 * 60);
+    await LocalDb.putJournalMetrics('2026-10-01', {
+      'caffeine_mg': const JournalMetricValue(0),
+    });
+    // A changed amount with the same sum elsewhere still rewrites the total;
+    // an identical retry stays a no-op (see "lower edited daily total" test).
+    await store.log(caffeineDose('m', 260, atMs: 1790892000000));
+    expect((await caffeineTotal())!.value, 260);
+  });
+
+  // WHY R2-6: a journal-only 50 mg at 18:00 became untimed once a 22:00 dose was
+  // added and removed. proves: CLAIM(remainder-time)
+  test('a timed remainder keeps its own time after a later dose is removed', () async {
+    await LocalDb.putJournalMetrics('2026-10-01', {
+      'caffeine_mg': const JournalMetricValue(50, atMinuteOfDay: 18 * 60),
+    });
+    await store.log(caffeineDose('late', 30, atMs: 1790892000000));
+    final withDose = (await caffeineTotal())!;
+    expect((withDose.value, withDose.atMinuteOfDay), (80, 22 * 60));
+    await store.deleteEvent(
+      (await store.events(trackId: 'caffeine')).singleWhere((e) => e.id == 'late'),
+    );
+    final after = (await caffeineTotal())!;
+    expect((after.value, after.atMinuteOfDay), (50, 18 * 60));
+  });
 }

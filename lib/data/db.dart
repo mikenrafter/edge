@@ -1967,15 +1967,11 @@ class LocalDb {
     );
   }
 
-  /// [derivedMinute] is the latest dose minute before the write in progress.
-  /// An aggregate time equal to it came from a dose, not from the journal
-  /// remainder, so it is not carried onto the remainder.
   static Future<int?> _trackLastMinute(
     Transaction tx,
     String date,
     String track, {
     num? total,
-    int? derivedMinute,
   }) async {
     final summary = await _trackDoseSummary(tx, date, track);
     final explicit = summary.minute;
@@ -1987,8 +1983,7 @@ class LocalDb {
       limit: 1,
     );
     if (aggregate.isEmpty) return explicit;
-    var prior = (aggregate.single['at_min'] as num?)?.toInt();
-    if (prior != null && prior == derivedMinute) prior = null;
+    final prior = (aggregate.single['at_min'] as num?)?.toInt();
     final residual =
         (total ?? aggregate.single['value'] as num).toDouble() - summary.dose;
     // A daily last-entry time belongs to the residual aggregate too. Preserve
@@ -2020,6 +2015,22 @@ class LocalDb {
             '(track_id = ? AND source_kind = ? AND source_id = ?)',
         whereArgs: [event.id, event.trackId, event.sourceKind, event.sourceId],
       );
+      // A byte-identical retry changes nothing, so a journal total the user
+      // lowered meanwhile stays (idempotent; pinned by tracks_store_test
+      // "lower edited daily total cannot make retry add again").
+      if (!delete && old.length == 1) {
+        final row = old.single, next = event.toJson();
+        if (const [
+          'track_id',
+          'date',
+          'at_ms',
+          'amount',
+          'unit',
+          'sub_activity_id',
+        ].every((k) => row[k] == next[k])) {
+          return;
+        }
+      }
       // CLAIM(substance-reconcile): the daily journal total equals the
       // canonical dose sum plus the journal-only remainder (prior total minus
       // prior dose sum, never negative); a remainder keeps only its own time,
@@ -2043,7 +2054,6 @@ class LocalDb {
         final (date, track) = entry.key;
         final field = track == 'caffeine' ? 'caffeine_mg' : 'alcohol_units';
         final after = await _trackDoseSummary(tx, date, track);
-        if (after.dose == entry.value.dose) continue;
         final prior = await tx.query(
           'journal_metric',
           where: 'date = ? AND field = ?',
@@ -2053,6 +2063,26 @@ class LocalDb {
         final priorTotal = prior.isEmpty
             ? 0.0
             : (prior.single['value'] as num).toDouble();
+        // CLAIM(remainder-time): the journal-only remainder keeps its own time
+        // in wake_meta (never in the dose-derived aggregate time), so removing
+        // the latest dose restores the remainder's time, or none if it never
+        // had one [R2-5, R2-6; tracks_store_test]. No dose-sum shortcut: an
+        // equal sum can still need a new amount or time.
+        final timeKey = 'substance_remainder_min:$date:$track';
+        final stored = await tx.query(
+          'wake_meta',
+          where: 'key = ?',
+          whereArgs: [timeKey],
+          limit: 1,
+        );
+        final priorMinute = prior.isEmpty
+            ? null
+            : (prior.single['at_min'] as num?)?.toInt();
+        final int? remainderMinute = stored.isNotEmpty
+            ? int.tryParse(stored.single['value'] as String)
+            : (priorMinute != null && priorMinute != entry.value.minute
+                  ? priorMinute
+                  : null);
         // ↳ CLAIM(substance-reconcile)
         final remainder = priorTotal - entry.value.dose;
         final total = after.dose + (remainder > 0 ? remainder : 0.0);
@@ -2063,20 +2093,27 @@ class LocalDb {
             whereArgs: [date, field],
           );
         } else {
+          // ↳ CLAIM(remainder-time)
+          final keepMinute = remainder > 0 ? remainderMinute : null;
+          final latest = after.minute;
           await tx.insert('journal_metric', {
             'date': date,
             'field': field,
             'value': total,
-            'at_min': await _trackLastMinute(
-              tx,
-              date,
-              track,
-              total: total,
-              derivedMinute: entry.value.minute,
-            ),
+            'at_min': keepMinute == null
+                ? latest
+                : (latest == null || keepMinute > latest ? keepMinute : latest),
             'updated_at': DateTime.now().millisecondsSinceEpoch,
           }, conflictAlgorithm: ConflictAlgorithm.replace);
+          if (keepMinute != null) {
+            await tx.insert('wake_meta', {
+              'key': timeKey,
+              'value': '$keepMinute',
+            }, conflictAlgorithm: ConflictAlgorithm.replace);
+            continue;
+          }
         }
+        await tx.delete('wake_meta', where: 'key = ?', whereArgs: [timeKey]);
       }
     });
   }
