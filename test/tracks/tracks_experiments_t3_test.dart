@@ -489,4 +489,51 @@ void main() {
     expect(await db.query('track_experiment'), isEmpty);
     expect((await start()).containsKey('id'), isTrue, reason: 'the range is free again');
   });
+
+  // why: review T16. A restore merges experiments by id, which contains the
+  // seed, so a backup's experiment for the same track and an overlapping range
+  // would sit beside the local one: two sets of reminders, possibly opposite
+  // for the same day. The earliest-created experiment of an overlapping group
+  // is kept (with its days); other tracks and disjoint ranges are untouched,
+  // and the drop is reported in the import counts.
+  test('restore keeps one experiment among overlapping ones for a track', () async {
+    Future<void> put(String id, String track, String from, int days, int created) async {
+      final first = DateTime.parse(from);
+      await db.insert('track_experiment', {
+        'id': id,
+        'track_id': track,
+        'start_date': from,
+        'end_date': dayLabelOf(DateTime(first.year, first.month, first.day + days - 1)),
+        'weeks': days ~/ 7,
+        'seed': 1,
+        'created_ms': created,
+      });
+      for (var i = 0; i < days; i++) {
+        await db.insert('track_experiment_day', {
+          'experiment_id': id,
+          'date': dayLabelOf(DateTime(first.year, first.month, first.day + i)),
+          'do_it': i.isEven ? 1 : 0,
+        });
+      }
+    }
+
+    // Backup: A (09-01..09-14, older), plus a disjoint C (10-01..10-14) and
+    // an other-track D on the same dates as A.
+    await put('xp-a', 'custom', '2026-09-01', 14, 100);
+    await put('xp-c', 'custom', '2026-10-01', 14, 120);
+    await put('xp-d', 'other', '2026-09-01', 14, 130);
+    final path = await LocalDb.exportCopy();
+    await env.wipe();
+    db = await LocalDb.instance;
+    store = TracksStore(db);
+    // Local: B overlaps A (09-08..09-21), created later.
+    await put('xp-b', 'custom', '2026-09-08', 14, 200);
+    final counts = await LocalDb.importFromDbFile(path);
+    db = await LocalDb.instance;
+    final ids = [for (final r in await db.query('track_experiment', orderBy: 'id')) r['id']];
+    expect(ids, ['xp-a', 'xp-c', 'xp-d']);
+    expect(await db.query('track_experiment_day', where: 'experiment_id = ?', whereArgs: ['xp-b']), isEmpty);
+    expect(await db.query('track_experiment_day', where: 'experiment_id = ?', whereArgs: ['xp-a']), hasLength(14));
+    expect(counts['_track_experiment_overlap_dropped'], 1);
+  });
 }
