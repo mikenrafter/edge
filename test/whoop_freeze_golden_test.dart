@@ -264,16 +264,18 @@ Object? _comparable(Object? v) => switch (v) {
 
 /// Phase 2 adds measured baseline/provenance fields after revision 116.
 /// Revision 118 adds meal review proposals, without changing existing metrics.
+/// Revision 119 (HMM staging fix) leaves cardio output unchanged: this same
+/// projection must still hold, with no new key in a cardio night's payload.
 /// Keep the committed cardio goldens as the reference for every existing value;
 /// the new payload and meal contracts have their own behavior tests.
 /// This projection is deliberately revision-specific, so a later algorithm
 /// change cannot silently inherit this exception.
 Map<String, dynamic> _cardio116Projection(Map<String, dynamic> snapshot) {
-  expect(kAlgoVersion, 118);
+  expect(kAlgoVersion, 119);
   final out = (jsonDecode(jsonEncode(snapshot)) as Map).cast<String, dynamic>();
   for (final table in ['day_result', 'metric_series_version', 'wake_day_features']) {
     for (final row in out[table] as List) {
-      expect(row['algo_version'], 118);
+      expect(row['algo_version'], 119);
       row['algo_version'] = 116;
     }
   }

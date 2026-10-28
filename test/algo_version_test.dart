@@ -32,9 +32,9 @@ void main() {
     return out;
   }
 
-  test('kAlgoVersion is 118', () {
-    expect(kAlgoVersion, 118);
-    expect(int.parse(m.group(1)!), 118);
+  test('kAlgoVersion is 119', () {
+    expect(kAlgoVersion, 119);
+    expect(int.parse(m.group(1)!), 119);
   });
 
   test('the 114 entry is kept: names its base and the decisions it covers', () {
@@ -77,13 +77,33 @@ void main() {
   });
 
   // WHY: every bump keeps a changelog entry above the constant (invariant 4);
-  // 117 (#628 staging, night baselines) and 118 (meal candidates) followed 116.
-  test('117 and 118 entries follow, and 118 closes the changelog', () {
+  // 117 (#628 staging, night baselines), 118 (meal candidates) and 119 (HMM
+  // staging fix) followed 116.
+  test('117 and 118 entries follow, and 118 precedes 119', () {
     final b = block();
     final at117 = b.lastIndexWhere((l) => l.startsWith('// 117:'));
     final at118 = b.lastIndexWhere((l) => l.startsWith('// 118:'));
     expect(at117, greaterThan(b.lastIndexWhere((l) => l.startsWith('// 116:'))));
     expect(at118, greaterThan(at117));
-    expect(b.lastIndexWhere((l) => RegExp(r'^// \d+:').hasMatch(l)), at118);
+    expect(b.lastIndexWhere((l) => RegExp(r'^// \d+:').hasMatch(l)),
+        greaterThan(at118));
+  });
+
+  test('the 119 entry names the HMM fix, says cardio is unchanged, and closes '
+      'the changelog', () {
+    final b = block();
+    final at119 = b.lastIndexWhere((l) => l.startsWith('// 119:'));
+    final at118 = b.lastIndexWhere((l) => l.startsWith('// 118:'));
+    expect(at119, greaterThan(at118));
+    expect(b.lastIndexWhere((l) => RegExp(r'^// \d+:').hasMatch(l)), at119);
+    final entry = b.sublist(at119).join('\n');
+    expect(entry, contains('d876c427'));
+    expect(entry, contains('HMM'));
+    for (final key in ['staging_effective_method', 'staging_fallback',
+      'staging_fallback_sec']) {
+      expect(entry, contains(key));
+    }
+    expect(entry, contains('Cardio output'));
+    expect(entry, contains('unchanged'));
   });
 }

@@ -1980,7 +1980,16 @@ part 'engine/settled.dart';
 // 118: awake low-motion HR rises produce meal candidates for review. Sleep,
 // naps, workouts, off-wrist and charge spans are excluded; the wearer must
 // confirm before any meal moment exists. No sibling re-pin is involved.
-const int kAlgoVersion = 118;
+// 119: analytics d876c427, the experimental HMM sleep-staging fix. The decoder
+// takes its baselines from the whole session, leaves artifact epochs
+// unobserved, gates wake on movement density, and falls back to the cardio
+// stager when its output is degenerate. The night's sleep section gains
+// staging_effective_method, staging_fallback and staging_fallback_sec for
+// experimental nights only; staging_method stays the requested method. The
+// sleep view says the HMM estimate is experimental and not validated, and why
+// a fallback was used. Opted-in nights re-derive. Cardio output (stages,
+// accounting, stored payload and published night baselines) is unchanged.
+const int kAlgoVersion = 119;
 class DerivationEngine {
   DerivationEngine({
     this.log,
