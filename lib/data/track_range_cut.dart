@@ -159,3 +159,9 @@ bool _agree(TrackSetupRange a, TrackSetupRange b) => switch ((a, b)) {
   (NotDoneRange(), NotDoneRange()) => true,
   _ => false,
 };
+
+/// Red-phase stub.
+List<TrackSetupRange> rangesToAdd({
+  required Iterable<TrackSetupRange> local,
+  required Iterable<TrackSetupRange> incoming,
+}) => throw UnimplementedError('rangesToAdd');

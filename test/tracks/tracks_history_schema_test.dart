@@ -9,6 +9,9 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
+import 'package:openstrap_edge/tracks/learning.dart';
+import 'package:openstrap_edge/tracks/learning_worker.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
 import 'package:openstrap_edge/wake/wake_night_context_db.dart';
 import '../backup/backup_support.dart';
 
@@ -419,22 +422,60 @@ void main() {
       );
     });
 
-    // why (review R2-1): a clipped export of an ongoing period's first day used
-    // to keep the period's id, so a restore REPLACEd the whole period with one
-    // day. Now the piece has its own id and the full period survives.
-    test('re-importing a first-day export keeps the full period beside the piece', () async {
+    // why (review R2-1, R3-1): restore never REPLACEs a setup row by id and never
+    // shrinks local coverage. Re-importing a first-day export beside the full
+    // period is a no-op (the day is already covered by an agreeing period).
+    test('importing a piece the local period already covers changes nothing', () async {
       final db = await LocalDb.instance;
       await db.insert('track_setup_history', ongoing);
       await env.seedData();
       final days = await LocalDb.exportDaysDb({'2026-10-20'});
-      await db.delete('track_setup_history');
-      await db.insert('track_setup_history', ongoing);
       await LocalDb.importFromDbFile(days);
-      final rows = await (await LocalDb.instance).query('track_setup_history', orderBy: 'id');
-      expect(rows.map((r) => (r['id'], r['start_date'], r['end_date'])), [
-        ('ongoing', '2026-10-20', '9999-12-31'),
-        ('ongoing@d:2026-10-20..2026-10-20', '2026-10-20', '2026-10-20'),
-      ]);
+      expect(await (await LocalDb.instance).query('track_setup_history'), [ongoing]);
+    });
+
+    test('importing the same file twice is idempotent', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_setup_history', ongoing);
+      await env.seedData();
+      final days = await LocalDb.exportDaysDb({'2026-10-22', '2026-10-23', '2026-10-26'});
+      await env.wipe();
+      await LocalDb.instance;
+      await LocalDb.importFromDbFile(days);
+      final first = await (await LocalDb.instance).query('track_setup_history', orderBy: 'start_date');
+      expect(first, hasLength(2));
+      await LocalDb.importFromDbFile(days);
+      expect(await (await LocalDb.instance).query('track_setup_history', orderBy: 'start_date'), first);
+    });
+
+    // Sol's exact case: exports of Oct 20-22 and Oct 22-25 merge on read, the
+    // editor saves the union, and re-importing the shorter export must not take
+    // Oct 23-25 away.
+    test('merge, save, re-import never loses coverage', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_setup_history', ongoing);
+      await env.seedData();
+      final first = await LocalDb.exportDaysDb({'2026-10-20', '2026-10-21', '2026-10-22'});
+      final second = await LocalDb.exportDaysDb({'2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25'});
+      await env.wipe();
+      final fresh = await LocalDb.instance;
+      await LocalDb.importFromDbFile(first);
+      await LocalDb.importFromDbFile(second);
+      final store = TracksStore(fresh);
+      final merged = await store.history('med:x');
+      expect(
+        merged.map((r) => (r.startDate, r.endDate)),
+        [('2026-10-20', '2026-10-25')],
+        reason: 'agreeing pieces read as one period',
+      );
+      await store.saveHistory('med:x', merged); // the editor saves the union
+      await LocalDb.importFromDbFile(first); // ... then the shorter file again
+      final after = await store.history('med:x');
+      expect(
+        after.map((r) => (r.startDate, r.endDate)),
+        [('2026-10-20', '2026-10-25')],
+        reason: 'Oct 23-25 must survive the re-import',
+      );
     });
 
     // why (review R2-1): deleteDays must not overwrite an unrelated restored row
@@ -509,6 +550,70 @@ void main() {
         0,
         reason: 'the nights whose windows contain the deleted day are unknown',
       );
+    });
+
+    // why (review R3-2): a selected-day export carries the unknown-day markers of
+    // its selected dates (like events and absences), and the restored marker
+    // keeps a pledged night ineligible through the worker.
+    test('selected-day export carries the unknown-day marker and eligibility survives', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_unknown_day', {'date': '2026-10-24'});
+      await db.insert('track_unknown_day', {'date': '2026-09-01'});
+      await env.seedData();
+      final days = await LocalDb.exportDaysDb({'2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25'});
+      await env.wipe();
+      await LocalDb.instance;
+      await LocalDb.importFromDbFile(days);
+      final restored = await (await LocalDb.instance).query('track_unknown_day');
+      expect(restored.map((r) => r['date']), ['2026-10-24'], reason: 'only selected dates travel');
+      final bedtime = DateTime(2026, 10, 25, 22);
+      final pledged = TrackDefinition(
+        id: 'a',
+        name: 'A',
+        icon: 'track',
+        kind: 'consumed',
+        systems: const ['sleep'],
+        loggingComplete: true,
+        loggingCompleteSinceMs: DateTime(2026, 1, 1).millisecondsSinceEpoch,
+        kinetics: const TrackKinetics({'half_life_hours': TrackKineticField(value: 6)}),
+      );
+      TrackNight night(List<Map<String, Object?>> unknown) {
+        final input = TrackLearningInput(
+          definitions: [
+            {'id': 'a', 'payload_json': jsonEncode(pledged.toJson())},
+          ],
+          events: const [],
+          history: const [],
+          absences: const [],
+          unknownDays: unknown,
+          states: const [],
+          days: [
+            {
+              'day_id': '2026-10-26',
+              'window_json': jsonEncode({
+                'value': {
+                  'onset_ms': bedtime.millisecondsSinceEpoch,
+                  'offset_ms': bedtime.add(const Duration(hours: 8)).millisecondsSinceEpoch,
+                },
+              }),
+              'payload_json': jsonEncode({
+                'scalars': {'rhr': 55},
+                'sleep': {'accounting': {'value': {'tst_sec': 7 * 3600}}},
+                'coverage': {'rr_coverage': .95},
+              }),
+            },
+          ],
+          worker: WorkerInputs(
+            nowEpochMs: DateTime(2026, 10, 27).millisecondsSinceEpoch,
+            zoneId: 'UTC',
+            localeTag: 'en',
+          ),
+        );
+        return trackNightsHeavy(input, [pledged], const [], const []).single;
+      }
+
+      expect(night(const []).completeTrackIds, {'a'}, reason: 'control: no marker, pledge makes it eligible');
+      expect(night(restored).completeTrackIds, isEmpty);
     });
 
     test('a full backup carries the deleted-day markers', () async {

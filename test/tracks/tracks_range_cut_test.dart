@@ -184,4 +184,79 @@ void main() {
       expect(out, hasLength(2));
     });
   });
+
+  // why (review R3-1): restore must never REPLACE a setup row by id. Incoming
+  // periods are compared by COVERAGE with the local rows of the same track:
+  // dates an agreeing local period already covers are no-ops, the rest become
+  // new rows, and conflicting local rows do not count as coverage (both are
+  // kept; learning abstains on those dates, CLAIM(range-overlap)).
+  // proves: CLAIM(range-restore-coverage)
+  group('rangesToAdd (restore by coverage)', () {
+    List<(String, String, String?)> add(List<TrackSetupRange> local, List<TrackSetupRange> incoming) =>
+        _shape(rangesToAdd(local: local, incoming: incoming));
+
+    test('into an empty database every period arrives, ids kept when free', () {
+      expect(add([], [_done('2026-10-20', '2026-10-22', id: 'x')]), [('x', '2026-10-20', '2026-10-22')]);
+    });
+
+    test('dates an agreeing local period covers are no-ops', () {
+      expect(add([_done('2026-10-20', null, id: 'full')], [_done('2026-10-22', '2026-10-25', id: 'p')]), isEmpty);
+      expect(add([_done('2026-10-20', '2026-10-25', id: 'full')], [_done('2026-10-20', '2026-10-25', id: 'full')]), isEmpty);
+    });
+
+    test('only the uncovered dates are added, as new rows', () {
+      final out = rangesToAdd(
+        local: [_done('2026-10-20', '2026-10-22', id: 'a')],
+        incoming: [_done('2026-10-22', '2026-10-25', id: 'b')],
+      );
+      expect(_shape(out), [('b', '2026-10-23', '2026-10-25')]);
+      expect((out.single as DoneRange).intake.amount!.value, 50);
+    });
+
+    test('a gap in the middle and an ongoing tail are both found', () {
+      final out = add(
+        [_done('2026-10-22', '2026-10-23', id: 'a')],
+        [_done('2026-10-20', null, id: 'b')],
+      );
+      expect(out.map((r) => (r.$2, r.$3)), [('2026-10-20', '2026-10-21'), ('2026-10-24', null)]);
+    });
+
+    test('an id that is already local is never reused', () {
+      final out = rangesToAdd(
+        local: [_done('2026-10-20', '2026-10-21', id: 'same')],
+        incoming: [_done('2026-11-01', '2026-11-02', id: 'same')],
+      );
+      expect(out.single.id, isNot('same'));
+      expect(out.single.startDate, '2026-11-01');
+    });
+
+    test('a conflicting local period is not coverage: both are kept', () {
+      final other = DoneRange(
+        id: 'l',
+        trackId: 't',
+        startDate: '2026-10-20',
+        untilDate: '2026-10-30',
+        intake: const DailyIntake(approxMinute: 600),
+      );
+      expect(add([other], [_done('2026-10-22', '2026-10-23', id: 'b')]), [('b', '2026-10-22', '2026-10-23')]);
+      final notDone = const NotDoneRange(id: 'n', trackId: 't', startDate: '2026-10-20', endDate: '2026-10-30');
+      expect(add([notDone], [_done('2026-10-22', '2026-10-23', id: 'b')]), [('b', '2026-10-22', '2026-10-23')]);
+    });
+
+    test('periods of another track are not coverage', () {
+      final other = DoneRange(id: 'o', trackId: 'other', startDate: '2026-10-01', intake: const DailyIntake(approxMinute: 480, amount: DailyAmount(50, 'mg')));
+      expect(add([other], [_done('2026-10-22', '2026-10-23', id: 'b')]), [('b', '2026-10-22', '2026-10-23')]);
+    });
+
+    test('overlapping agreeing incoming periods do not duplicate each other', () {
+      final out = add([], [_done('2026-10-20', '2026-10-22', id: 'a'), _done('2026-10-21', '2026-10-24', id: 'b')]);
+      expect(out, [('a', '2026-10-20', '2026-10-22'), ('b', '2026-10-23', '2026-10-24')]);
+    });
+
+    test('running it twice adds nothing the second time', () {
+      final incoming = [_done('2026-10-20', '2026-10-22', id: 'a'), _done('2026-10-24', null, id: 'b')];
+      final first = rangesToAdd(local: [], incoming: incoming);
+      expect(rangesToAdd(local: first, incoming: incoming), isEmpty);
+    });
+  });
 }
