@@ -8,6 +8,7 @@ import 'package:openstrap_edge/ui2/screens/track_editor.dart';
 import 'package:openstrap_edge/ui2/screens/track_experiment.dart';
 import 'package:openstrap_edge/ui2/screens/track_log.dart';
 import 'package:openstrap_edge/ui2/screens/tracks_screen.dart';
+import 'package:openstrap_edge/ui2/screens/tracks_text.dart';
 import '../backup/backup_support.dart';
 import '../support/bundled_fonts.dart';
 import 'ui_support.dart';
@@ -350,5 +351,33 @@ void main() {
     await settleTracks(t, store);
     expect((await t.runAsync(() => store.experimentAnswers(id)))!, {'2026-10-25': true});
     expect((await t.runAsync(() => store.events(trackId: 'sauna')))!.single.date, '2026-10-25');
+  });
+
+  // why: review T19. The effect line states the unit and the direction (do
+  // minus skip) per system, with an explicit sign; several systems get one
+  // multiplicity note. Hand-checked strings, not recomputed from the code.
+  // proves: CLAIM(effects-multiplicity)
+  testWidgets('effect text carries unit, direction and a multiplicity note', (t) async {
+    late BuildContext context;
+    await mountTracks(t, Builder(builder: (c) {
+      context = c;
+      return const SizedBox();
+    }));
+    await t.pump();
+    const effect = {'effect': 8.04, 'lower': 2.0, 'upper': 14.0, 'n_do': 7, 'n_dont': 6};
+    expect(
+      experimentEffectText(context, 'sleep', 'Sleep', effect),
+      'Sleep: +8.0 min (do minus skip; 95% interval 2.0 to 14.0 min); 7 do days, 6 skip days',
+    );
+    expect(
+      experimentEffectText(context, 'hr', 'Heart rate', {...effect, 'effect': -9.0, 'lower': -12.0, 'upper': -6.0}),
+      'Heart rate: -9.0 bpm (do minus skip; 95% interval -12.0 to -6.0 bpm); 7 do days, 6 skip days',
+    );
+    expect(experimentEffectText(context, 'skin_temp', 'Skin temperature', effect), contains('°C'));
+    expect(experimentEffectText(context, 'respiration', 'Respiration', effect), contains('breaths/min'));
+    expect(
+      experimentMultiplicityText(context, 3),
+      startsWith('Each interval covers one system at 95%. With 3 systems compared'),
+    );
   });
 }

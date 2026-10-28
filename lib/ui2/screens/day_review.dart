@@ -239,6 +239,14 @@ class DayReviewController extends ChangeNotifier {
     }
   }
 
+  // The prompt asks about its own day, not "today" (review T19).
+  String _promptTitle(BuildContext c, AppLocalizations? l, String trackName, ActivitySuggestion s) {
+    final date = MaterialLocalizations.of(c)
+        .formatMediumDate(DateTime.fromMillisecondsSinceEpoch(s.startTs * 1000));
+    return l?.activityTrackDidYouOn(trackName, date) ??
+        'Did you have or do "$trackName" on $date?';
+  }
+
   String title(BuildContext c, String id) {
     final l = AppLocalizations.of(c);
     if (id.startsWith('range:')) {
@@ -249,7 +257,7 @@ class DayReviewController extends ChangeNotifier {
       final trackName = s.details['track_name'] as String? ?? s.trackId ?? '';
       if (s.kind == ActivityKind.track) {
         return s.isPrompt
-            ? (l?.activityTrackDidYou(trackName) ?? 'Did you have or do "$trackName" today?')
+            ? _promptTitle(c, l, trackName, s)
             : (l?.activityPossibleTrack(trackName) ?? 'Possible: $trackName');
       }
       return s.kind == ActivityKind.meal

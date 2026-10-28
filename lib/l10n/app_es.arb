@@ -3717,8 +3717,6 @@
   "tracksLearningNeedData": "Esperando noches comparables",
   "tracksAdjustedFor": "Adjusted for: {tracks}",
   "activityPossibleTrack": "Posible: {track}",
-  "activityTrackDidYou": "¿Hoy tuviste o hiciste «{track}»?",
-  "activityTrackPromptNote": "Sí añade una entrada sin hora ni cantidad. No registra que hoy no ocurrió.",
   "activityTrackNote": "Una pista de las señales de tu cuerpo, no un diagnóstico. Confirmar añade una entrada sin cantidad.",
   "activityTrackYes": "Sí",
   "activityTrackNo": "No",
@@ -3745,6 +3743,5 @@
   "tracksExperimentSkip": "Saltarlo",
   "tracksExperimentLearning": "Experimento en curso: solo cuentan sus días",
   "tracksExperimentWeeks": "{count} semanas",
-  "tracksExperimentAdherence": "{followed} de {total} días asignados confirmados",
-  "tracksExperimentEffect": "{system}: {effect} (intervalo del 95 % {lower} a {upper}); {nDo} días de hacerlo, {nSkip} días de saltarlo"
+  "tracksExperimentAdherence": "{followed} de {total} días asignados confirmados"
 }

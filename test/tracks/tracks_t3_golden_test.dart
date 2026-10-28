@@ -36,8 +36,10 @@ void main() {
   ActivitySuggestion suggestion({bool prompt = false}) => ActivitySuggestion(
     id: prompt ? 'track:prompt' : 'track:alcohol',
     kind: ActivityKind.values.byName('track'),
-    startTs: DateTime.utc(2026, 10, 1, 1).millisecondsSinceEpoch ~/ 1000,
-    endTs: DateTime.utc(2026, 10, 1, 3).millisecondsSinceEpoch ~/ 1000,
+    // Local times, so the card shows the same dates in every zone. The prompt
+    // is for a past day (Sep 30) and must name it, not say "today".
+    startTs: (prompt ? DateTime(2026, 9, 30) : DateTime(2026, 10, 1, 1)).millisecondsSinceEpoch ~/ 1000,
+    endTs: (prompt ? DateTime(2026, 10, 1) : DateTime(2026, 10, 1, 3)).millisecondsSinceEpoch ~/ 1000,
     revision: 0,
     details: {
       'track_id': 'alcohol',
@@ -97,6 +99,9 @@ void main() {
         height: 700,
       );
       expect(find.textContaining('Did you'), findsOneWidget);
+      // why: review T19. The title names the prompt's own day.
+      expect(find.textContaining('on Wed, Sep 30'), findsOneWidget);
+      expect(find.textContaining('today'), findsNothing);
       expect(find.textContaining('Possible'), findsNothing);
       expect(find.textContaining('120 min'), findsNothing);
       expect(t.takeException(), isNull);

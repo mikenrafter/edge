@@ -202,10 +202,18 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
                     : 'ExperimentLowData',
               ),
             ),
+          // ↳ CLAIM(effects-multiplicity): several intervals, one note.
+          if (effects.length > 1)
+            Text(
+              experimentMultiplicityText(context, effects.length),
+              key: const ValueKey('experiment-multiplicity'),
+              style: F.cap,
+            ),
           for (final entry in effects.entries)
             Text(
               experimentEffectText(
                 context,
+                entry.key,
                 tracksText(context, trackSystemLabels[entry.key] ?? entry.key),
                 entry.value,
               ),
@@ -232,7 +240,7 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
                 // the experiment still runs.
                 if (running &&
                     (day['date'] as String).compareTo(
-                          report?['as_of_date'] as String? ?? todayLabel(),
+                          report['as_of_date'] as String? ?? todayLabel(),
                         ) <=
                         0)
                   Wrap(
