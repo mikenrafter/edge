@@ -1731,6 +1731,35 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   copied++;
                   continue;
                 }
+                if (t == 'track_learning_log') {
+                  // CLAIM(audit-identity): audit rows merge by what they say
+                  // (track, day, field, before, after, reason), never by their
+                  // local AUTOINCREMENT id, so a foreign row cannot replace a
+                  // local entry and a repeated import adds nothing [S10;
+                  // tracks_learning_storage_test].
+                  final existing = await txn.query(
+                    t,
+                    columns: ['id'],
+                    where:
+                        'track_id = ? AND date = ? AND field = ? AND reason = ? '
+                        'AND before_value IS ? AND after_value IS ?',
+                    whereArgs: [
+                      row['track_id'],
+                      row['date'],
+                      row['field'],
+                      row['reason'],
+                      row['before_value'],
+                      row['after_value'],
+                    ],
+                    limit: 1,
+                  );
+                  if (existing.isNotEmpty) continue;
+                  // ↳ CLAIM(audit-identity)
+                  row.remove('id');
+                  await txn.insert(t, row);
+                  copied++;
+                  continue;
+                }
                 if (t == 'spectral_archive') {
                   // Never REPLACE: part numbers are local allocation order, so
                   // a matching key says nothing about matching bytes. Reconcile

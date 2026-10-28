@@ -180,4 +180,36 @@ void main() {
       );
     },
   );
+
+  // WHY S10: audit rows entered the generic REPLACE merge by AUTOINCREMENT id,
+  // so an unrelated backup row with id 1 overwrote the local entry.
+  // proves: CLAIM(audit-identity)
+  test('restoring a backup merges audit rows by identity, not by local id', () async {
+    final env = await BackupEnv.create('tracks_learning_audit_s10.db');
+    addTearDown(env.dispose);
+    Map<String, Object?> entry(String field, num after) => {
+      'track_id': 'caffeine',
+      'date': '2026-10-27',
+      'field': field,
+      'before_value': 5,
+      'after_value': after,
+      'reason': 'matched_observations',
+    };
+    var db = await LocalDb.instance;
+    await db.insert('track_learning_log', entry('half_life_hours', 5.1));
+    await env.seedData();
+    final backup = await LocalDb.exportCopy();
+    await env.wipe();
+    db = await LocalDb.instance;
+    // A different local entry now owns id 1.
+    await db.insert('track_learning_log', entry('onset_hours', 1));
+    expect((await db.query('track_learning_log')).single['id'], 1);
+    await LocalDb.importFromDbFile(backup);
+    await LocalDb.importFromDbFile(backup); // repeat import adds nothing
+    final fields = (await (await LocalDb.instance).query(
+      'track_learning_log',
+      orderBy: 'field',
+    )).map((r) => r['field']);
+    expect(fields, ['half_life_hours', 'onset_hours']);
+  });
 }
