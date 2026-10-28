@@ -124,6 +124,7 @@ extension TracksDetectionStore on TracksStore {
     ];
     final candidates = <ActivitySuggestion>[];
     final abstained = <Map<String, Object?>>[];
+    final moved = <ActivitySuggestion>[];
     final promptTracks = <String>{};
     final day = DateTime.parse(date);
     final dayStart = DateTime(day.year, day.month, day.day);
@@ -165,7 +166,7 @@ extension TracksDetectionStore on TracksStore {
             'phase': window.phase,
             'signals': window.evidence(),
           },
-        ]);
+        ], moved: moved);
         candidates.addAll(made);
         count = await _countCandidates(track.id, date) + logged;
       }
@@ -213,7 +214,7 @@ extension TracksDetectionStore on TracksStore {
         },
       ]);
     }
-    if (!askMinimum) return {'candidates': candidates, 'prompts': <Map<String, Object?>>[], 'abstained': abstained};
+    if (!askMinimum) return {'candidates': candidates, 'prompts': <Map<String, Object?>>[], 'abstained': abstained, 'moved': moved};
     // A question the wearer answered (or the data now settles) leaves review.
     final pending = await db.query(
       'activity_suggestions',
@@ -250,7 +251,7 @@ extension TracksDetectionStore on TracksStore {
         await ActivityStore.markDayChanged(tx, date);
       });
     }
-    return {'candidates': candidates, 'prompts': prompts, 'abstained': abstained};
+    return {'candidates': candidates, 'prompts': prompts, 'abstained': abstained, 'moved': moved};
   }
 
   /// The running app's entry: windows come from the derived day's own curves,
@@ -291,6 +292,7 @@ extension TracksDetectionStore on TracksStore {
       'candidates': <ActivitySuggestion>[],
       'prompts': <Map<String, Object?>>[],
       'abstained': <Map<String, Object?>>[],
+      'moved': <ActivitySuggestion>[],
     };
     for (final e in byDay.entries) {
       final r = await _refreshDetections(

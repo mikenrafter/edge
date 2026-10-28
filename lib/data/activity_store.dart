@@ -168,12 +168,15 @@ class ActivityStore {
     return (await get(suggestion.id))?.status == ActivityReviewStatus.pending;
   }
 
-  /// Returns only genuinely NEW pending proposals, for one-time notification
-  /// (track candidates also report a changed window).
+  /// Returns only genuinely NEW pending proposals, for one-time notification.
+  /// Without [moved], a track candidate whose window changed is also returned
+  /// (older callers). With it, those go into [moved] and the result is new
+  /// proposals only, so a caller that notifies on the result notifies once.
   Future<List<ActivitySuggestion>> reconcile(
     ActivityKind kind,
-    List<Map<String, dynamic>> candidates,
-  ) async {
+    List<Map<String, dynamic>> candidates, {
+    List<ActivitySuggestion>? moved,
+  }) async {
     await migrateLegacy();
     return db.transaction((tx) async {
       final cutoff =
@@ -292,7 +295,7 @@ class ActivityStore {
           // A track candidate whose evidence window moved is reported again so
           // the caller can refresh what it shows; the revision already changed.
           if (isTrack && changed) {
-            created.add(ActivitySuggestion.fromRow(
+            (moved ?? created).add(ActivitySuggestion.fromRow(
               (await tx.query('activity_suggestions', where: 'id = ?', whereArgs: [id])).single,
             ));
           }
