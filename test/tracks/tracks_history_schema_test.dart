@@ -232,10 +232,13 @@ void main() {
       expect(await rebuilt.query('track_setup_history'), [ongoing]);
     });
 
-    // why: S9 again. A selected-day export carries the ranges that cover the
-    // day. An ongoing range covers every later day, so it must ride along with
-    // its intake; one that starts after the day must not.
-    test('selected-day export carries an ongoing range and its intake', () async {
+    // why: S9 again, tightened by review P8a-P2. A selected-day export cannot
+    // carry the real logs, absences and not-done overrides of days it did not
+    // select, so it carries only the SELECTED days of each period (clipped,
+    // never ongoing). The restored dates outside the selection stay unstated
+    // instead of becoming nominal doses. An ongoing period that starts after
+    // the day is not carried.
+    test('selected-day export clips a period to the selected days', () async {
       final db = await LocalDb.instance;
       await db.insert('track_setup_history', ongoing);
       await db.insert(
@@ -249,8 +252,26 @@ void main() {
       await LocalDb.instance;
       await LocalDb.importFromDbFile(days);
       expect(await (await LocalDb.instance).query('track_setup_history'), [
-        ongoing,
+        _row('ongoing@2026-10-26', '2026-10-26', '2026-10-26',
+            minute: 495, amount: 2.5, unit: 'mg'),
       ]);
+    });
+
+    test('two selected runs of one period come back as two clipped rows', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_setup_history', ongoing);
+      await env.seedData();
+      final days = await LocalDb.exportDaysDb({'2026-10-22', '2026-10-23', '2026-10-26'});
+      await env.wipe();
+      await LocalDb.instance;
+      await LocalDb.importFromDbFile(days);
+      expect(
+        await (await LocalDb.instance).query('track_setup_history', orderBy: 'start_date'),
+        [
+          _row('ongoing@2026-10-22', '2026-10-22', '2026-10-23', minute: 495, amount: 2.5, unit: 'mg'),
+          _row('ongoing@2026-10-26', '2026-10-26', '2026-10-26', minute: 495, amount: 2.5, unit: 'mg'),
+        ],
+      );
     });
 
     // why: the wake profile reads setup history by SQL range. "Since March"
@@ -360,18 +381,33 @@ void main() {
       expect(await store.events(trackId: 'custom'), isEmpty);
     });
 
-    // why: CLAIM(learning-keep) family. Setup history is not per-day evidence;
-    // deleting days must not erase a range (or its intake), which nothing can
-    // rebuild.
-    test('deleteDays leaves setup history, intake included', () async {
+    // why: review P8a-P3. deleteDays removes a day's real logs and absences,
+    // which were the overrides of the period. If the period kept covering the
+    // day, learning would invent the nominal dose there. So the deleted days
+    // leave the period (they become unstated, i.e. unknown) while every other
+    // day, and the intake, stays.
+    test('deleteDays removes the deleted days from periods and keeps the rest', () async {
       final db = await LocalDb.instance;
       await db.insert('track_setup_history', ongoing);
       await db.insert('track_setup_history', notDone);
       await LocalDb.deleteDays({'2026-10-26', '2026-09-15'});
       expect(
         await db.query('track_setup_history', orderBy: 'start_date'),
-        [notDone, ongoing],
+        [
+          _row('stopped', '2026-09-01', '2026-09-14', done: 0),
+          _row('stopped@2026-09-16', '2026-09-16', '2026-09-30', done: 0),
+          _row('ongoing', '2026-10-20', '2026-10-25', minute: 495, amount: 2.5, unit: 'mg'),
+          _row('ongoing@2026-10-27', '2026-10-27', '9999-12-31', minute: 495, amount: 2.5, unit: 'mg'),
+        ],
       );
+    });
+
+    test('deleteDays on days no period covers leaves history untouched', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_setup_history', ongoing);
+      await db.insert('track_setup_history', notDone);
+      await LocalDb.deleteDays({'2026-10-19', '2026-08-01'});
+      expect(await db.query('track_setup_history', orderBy: 'start_date'), [notDone, ongoing]);
     });
   });
 }

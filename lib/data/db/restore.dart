@@ -354,11 +354,6 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         // and without the timed doses they would restore as untimed remainders).
         await copyRows('track_event', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('track_absence', where: 'date = ?', whereArgs: [dayId]);
-        await copyRows(
-          'track_setup_history',
-          where: 'start_date <= ? AND end_date >= ?',
-          whereArgs: [dayId, dayId],
-        );
         // The canonical owners behind track_event_feed rows: medication doses,
         // caffeine moments and meals.
         // The journal remainder's own time (see writeTrackSubstance) travels with
@@ -399,6 +394,24 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
       // `custom_magnesium` with no label, no unit and no idea what scale they
       // are on — the values survive the export and their meaning does not.
       await copyRows('journal_field_def');
+      // CLAIM(range-cut): setup periods ride clipped to the selected days (the
+      // overrides of the other days stay behind), see track_range_cut.dart.
+      final spanning = await src.query(
+        'track_setup_history',
+        where: 'start_date <= ? AND end_date >= ?',
+        whereArgs: [sorted.last, sorted.first],
+      );
+      await out.transaction((txn) async {
+        for (final piece in rangesOnDays([
+          for (final row in spanning) TrackSetupRange.fromJson(row),
+        ], sorted.toSet())) {
+          await txn.insert(
+            'track_setup_history',
+            piece.toJson(),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+      });
       // Track definitions are not day-scoped either; events and setup history
       // above refer to them by id.
       await copyRows('track_definition');
@@ -602,6 +615,31 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       ]);
       await deleteByIn(txn, 'track_event', 'date', sorted);
       await deleteByIn(txn, 'track_absence', 'date', sorted);
+      // ↳ CLAIM(range-cut): the deleted days' overrides are gone, so the days
+      // leave the setup periods too (unknown, not the nominal dose).
+      final cutRows = await txn.query(
+        'track_setup_history',
+        where: 'start_date <= ? AND end_date >= ?',
+        whereArgs: [sorted.last, sorted.first],
+      );
+      final cutFrom = [for (final row in cutRows) TrackSetupRange.fromJson(row)];
+      final cutTo = rangesWithoutDays(cutFrom, sorted.toSet());
+      for (final range in cutFrom) {
+        if (cutTo.contains(range)) continue;
+        await txn.delete(
+          'track_setup_history',
+          where: 'id = ?',
+          whereArgs: [range.id],
+        );
+      }
+      for (final piece in cutTo) {
+        if (cutFrom.contains(piece)) continue;
+        await txn.insert(
+          'track_setup_history',
+          piece.toJson(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
       await deleteByIn(txn, 'track_experiment_day', 'date', sorted);
       // An experiment with no days left would still block its range and hold
       // learning in abstention (review T15).
