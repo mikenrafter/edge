@@ -129,7 +129,7 @@ Future<void> createTrackTables(Database db) async {
       CASE m.label WHEN 'meal' THEN 'late_meal' WHEN 'nap' THEN 'naps'
         WHEN 'workout' THEN 'late_workout' ELSE m.label END,
       m.date, CAST(strftime('%s', m.date || ' ' || m.hhmm || ':00', 'utc') AS INTEGER) * 1000,
-      CASE m.label WHEN 'caffeine' THEN m.caffeine_mg WHEN 'alcohol' THEN m.metric_value ELSE NULL END,
+      CASE m.label WHEN 'caffeine' THEN m.caffeine_mg WHEN 'alcohol' THEN CASE WHEN m.metric_value > 0 THEN m.metric_value END ELSE NULL END,
       NULL, 'moment', m.date || ':' || m.hhmm, CASE m.label WHEN 'caffeine' THEN 'mg' WHEN 'alcohol' THEN 'units' ELSE '' END
       FROM moment_label m
       WHERE m.label IN ('caffeine', 'meal', 'alcohol', 'cannabis', 'nicotine',
