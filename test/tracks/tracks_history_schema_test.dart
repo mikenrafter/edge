@@ -462,20 +462,34 @@ void main() {
       await LocalDb.importFromDbFile(first);
       await LocalDb.importFromDbFile(second);
       final store = TracksStore(fresh);
+      // Coverage arrives as new rows: Oct 22 was already covered, so the second
+      // file only adds Oct 23-25.
       final merged = await store.history('med:x');
-      expect(
-        merged.map((r) => (r.startDate, r.endDate)),
-        [('2026-10-20', '2026-10-25')],
-        reason: 'agreeing pieces read as one period',
-      );
-      await store.saveHistory('med:x', merged); // the editor saves the union
-      await LocalDb.importFromDbFile(first); // ... then the shorter file again
+      expect(merged.map((r) => (r.startDate, r.endDate)), [
+        ('2026-10-20', '2026-10-22'),
+        ('2026-10-23', '2026-10-25'),
+      ]);
+      // The editor extends the first period to the union under its OWN id (the
+      // case that used to be REPLACEd back to Oct 22 by the shorter file).
+      final first0 = merged.first as DoneRange;
+      await store.saveHistory('med:x', [
+        DoneRange(
+          id: first0.id,
+          trackId: 'med:x',
+          startDate: '2026-10-20',
+          untilDate: '2026-10-25',
+          intake: first0.intake,
+        ),
+      ]);
+      await LocalDb.importFromDbFile(first); // ... then the shorter files again
+      await LocalDb.importFromDbFile(second);
       final after = await store.history('med:x');
       expect(
         after.map((r) => (r.startDate, r.endDate)),
         [('2026-10-20', '2026-10-25')],
-        reason: 'Oct 23-25 must survive the re-import',
+        reason: 'Oct 23-25 must survive, with no duplicate rows',
       );
+      expect(await (await LocalDb.instance).query('track_setup_history'), hasLength(1));
     });
 
     // why (review R2-1): deleteDays must not overwrite an unrelated restored row

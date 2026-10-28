@@ -160,8 +160,76 @@ bool _agree(TrackSetupRange a, TrackSetupRange b) => switch ((a, b)) {
   _ => false,
 };
 
-/// Red-phase stub.
+/// What a restore adds, by COVERAGE and never by id: for each incoming period,
+/// the days an agreeing local period (same track, kind and intake) already
+/// covers are no-ops; the uncovered days become new rows. Conflicting local
+/// rows are not coverage, so both are kept and learning abstains on those dates
+/// (CLAIM(range-overlap)). An incoming id is kept when no local row (or earlier
+/// addition) has it, otherwise the row gets `<id>~<start>` (suffixed until
+/// free). Local rows are never touched, so an import cannot shrink coverage,
+/// and a second import of the same file adds nothing.
+/// Reason: REPLACE-by-id let an old export overwrite a longer period the editor
+/// had saved under the same id [review R3-1]; ids carry no meaning across
+/// devices or exports, coverage does.
+// CLAIM(range-restore-coverage) [tracks_range_cut_test; tracks_history_schema_test]
 List<TrackSetupRange> rangesToAdd({
   required Iterable<TrackSetupRange> local,
   required Iterable<TrackSetupRange> incoming,
-}) => throw UnimplementedError('rangesToAdd');
+}) {
+  final known = [...local];
+  final ids = {for (final range in known) range.id};
+  final added = <TrackSetupRange>[];
+  final ordered = [...incoming]
+    ..sort((a, b) => a.startDate.compareTo(b.startDate));
+  for (final range in ordered) {
+    var gaps = [(range.startDate, range.endDate)];
+    for (final other in known) {
+      if (other.trackId != range.trackId || !_agree(other, range)) continue;
+      gaps = [
+        for (final gap in gaps)
+          ..._without(gap, other.startDate, other.endDate),
+      ];
+    }
+    for (final (start, end) in gaps) {
+      var id = range.id;
+      if (start != range.startDate || end != range.endDate || ids.contains(id)) {
+        id = '${range.id}~$start';
+        for (var n = 2; ids.contains(id); n++) {
+          id = '${range.id}~$start#$n';
+        }
+      }
+      ids.add(id);
+      final piece = switch (range) {
+        DoneRange() => DoneRange(
+          id: id,
+          trackId: range.trackId,
+          startDate: start,
+          untilDate: end == kOngoingEndDate ? null : end,
+          intake: range.intake,
+        ),
+        NotDoneRange() => NotDoneRange(
+          id: id,
+          trackId: range.trackId,
+          startDate: start,
+          endDate: end,
+        ),
+      };
+      known.add(piece);
+      added.add(piece);
+    }
+  }
+  return added;
+}
+
+// [gap] minus [coverStart, coverEnd]; an end that is shifted is never the
+// ongoing sentinel (it is strictly before the gap's end).
+List<(String, String)> _without((String, String) gap, String coverStart, String coverEnd) {
+  final (start, end) = gap;
+  if (coverEnd.compareTo(start) < 0 || coverStart.compareTo(end) > 0) {
+    return [gap];
+  }
+  return [
+    if (coverStart.compareTo(start) > 0) (start, _shift(coverStart, -1)),
+    if (coverEnd.compareTo(end) < 0) (_shift(coverEnd, 1), end),
+  ];
+}

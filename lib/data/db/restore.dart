@@ -1279,6 +1279,44 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       return true;
     }
 
+    // Setup periods merge by coverage (rangesToAdd), not by REPLACE on id: the
+    // source rows are read first (never the import source inside the main
+    // transaction), the additions are computed against the local rows, and only
+    // new rows are written, in one transaction with the journal step.
+    Future<int> mergeSetupHistory(String t, int index) async {
+      List<Map<String, Object?>> rows;
+      try {
+        rows = await src.query(t);
+      } on DatabaseException catch (e) {
+        if (e.isNoSuchTableError()) return 0;
+        rethrow;
+      }
+      final incoming = <TrackSetupRange>[];
+      for (final row in rows) {
+        try {
+          incoming.add(TrackSetupRange.fromJson(row));
+        } catch (_) {
+          if (!tolerant) rethrow;
+        }
+      }
+      final additions = rangesToAdd(
+        local: [
+          for (final row in await db.query(t)) TrackSetupRange.fromJson(row),
+        ],
+        incoming: incoming,
+      );
+      await db.transaction((txn) async {
+        if (run != null) {
+          await ImportJournal.advance(txn, run, index, t, rows.length, additions.length);
+        }
+        for (final range in additions) {
+          await txn.insert(t, range.toJson(), conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+      });
+      plan?.advance(t, rows.length);
+      return additions.length;
+    }
+
     try {
       ImportPerf.phase('open_policy', prepWatch, run: perfId);
       final attachWatch = Stopwatch()..start();
@@ -1400,6 +1438,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           plan?.start(t);
           await ImportHooks.table?.beforeTable(t);
           if (await mergeBulkTable(t, index)) continue;
+          if (t == 'track_setup_history') {
+            // CLAIM(range-restore-coverage) [review R3-1]: never REPLACE by id.
+            counts[t] = await mergeSetupHistory(t, index);
+            continue;
+          }
           perfPath = t == SubstrateArchive.table ? 'archive' : 'paged';
           // PAGED SOURCE READ — never `SELECT *` a whole table.
           //

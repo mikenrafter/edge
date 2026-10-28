@@ -209,7 +209,7 @@ void main() {
         local: [_done('2026-10-20', '2026-10-22', id: 'a')],
         incoming: [_done('2026-10-22', '2026-10-25', id: 'b')],
       );
-      expect(_shape(out), [('b', '2026-10-23', '2026-10-25')]);
+      expect(_shape(out), [('b~2026-10-23', '2026-10-23', '2026-10-25')]);
       expect((out.single as DoneRange).intake.amount!.value, 50);
     });
 
@@ -250,7 +250,7 @@ void main() {
 
     test('overlapping agreeing incoming periods do not duplicate each other', () {
       final out = add([], [_done('2026-10-20', '2026-10-22', id: 'a'), _done('2026-10-21', '2026-10-24', id: 'b')]);
-      expect(out, [('a', '2026-10-20', '2026-10-22'), ('b', '2026-10-23', '2026-10-24')]);
+      expect(out, [('a', '2026-10-20', '2026-10-22'), ('b~2026-10-23', '2026-10-23', '2026-10-24')]);
     });
 
     test('running it twice adds nothing the second time', () {
