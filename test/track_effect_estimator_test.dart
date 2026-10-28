@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/track_model.dart';
+import 'package:openstrap_edge/data/track_presets.dart';
 import 'package:openstrap_edge/tracks/learning.dart';
 
 TrackDefinition track(
@@ -790,6 +792,23 @@ void main() {
     );
     expect(below.reason, 'estimated');
     expect(below.effect, closeTo(-7, 1e-6));
+  });
+
+  // WHY: after S5 an unknown onset abstains, so the default caffeine preset
+  // must carry a sourced onset or caffeine (the main preset) never learns.
+  test('default caffeine preset has a known onset, so its residual is computed', () {
+    final caffeine = TrackDefinition.fromJson(
+      jsonDecode(trackPresetPayloads['caffeine']!) as Map<String, dynamic>,
+    );
+    final bedtime = DateTime.utc(2025, 1, 2, 22);
+    final dose = TrackEvent(
+      id: 'c',
+      trackId: caffeine.id,
+      date: '2025-01-02',
+      amount: 100,
+      atMs: bedtime.subtract(const Duration(hours: 6)).millisecondsSinceEpoch,
+    );
+    expect(estimator.features(caffeine, [dose], bedtime).residualMg, isNotNull);
   });
 
   // WHY S5: the default caffeine preset has onset null; it was read as 0 h, so a
