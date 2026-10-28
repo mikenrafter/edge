@@ -422,6 +422,7 @@ List<Moment> dayMoments({
       identity: joined ? 'moment:${label.key}' : null,
       // The meal answer behind this food row can still be changed.
       editRef: joined ? 'moment:${label.key}' : null,
+      fixedLines: joined,
       title: m.label.isEmpty ? localizedText(l, m.meal) : m.label,
       detail: [
         clockOfTs(t),
