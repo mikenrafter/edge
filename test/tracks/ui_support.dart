@@ -1,10 +1,13 @@
 // Observes real SQLite operations so widget tests await completion without clocks
 // or sleeps. Every operation still runs through the production TracksStore.
 import 'dart:async';
+import 'dart:convert';
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' show Database;
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/state/clock_format.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -90,6 +93,9 @@ class ObservedTracksStore extends TracksStore {
   Future<Map<String, bool>> experimentAnswers(String id) =>
       _observe(() => super.experimentAnswers(id));
   @override
+  Future<void> releaseExperimentPrecedence(String trackId) =>
+      _observe(() => super.releaseExperimentPrecedence(trackId));
+  @override
   Future<void> stopExperiment(String id) =>
       _observe(() => withClock(_fixedNow, () => super.stopExperiment(id)));
   @override
@@ -143,4 +149,49 @@ Future<void> settleTracks(
     if (store.operationCount == before) break;
   }
   await tester.pumpAndSettle();
+}
+
+/// Starts a 2 week experiment on custom track [trackId] at [from], follows every
+/// assigned day (do: a log, skip: none) and stores one finalized night after
+/// each day: resting HR 60 + [gap] on do days, 60 on skip days, the same
+/// -1/0/+1 noise cycle in both arms, so the effect is exactly [gap].
+Future<Map> runFollowedExperiment(
+  Database db,
+  TracksStore store, {
+  String trackId = 'custom',
+  required String from,
+  required int gap,
+  required int seed,
+}) async {
+  final experiment = await store.startExperiment(trackId: trackId, startDate: from, weeks: 2, seed: seed);
+  var doIndex = 0, dontIndex = 0;
+  for (final day in (experiment['assignments'] as List).cast<Map>()) {
+    final date = day['date'] as String;
+    final d = DateTime.parse(date);
+    final done = day['do'] == true;
+    if (done) {
+      await store.log(TrackEvent(
+        id: 'adh:$date', trackId: trackId, date: date,
+        atMs: DateTime(d.year, d.month, d.day, 20).millisecondsSinceEpoch, amount: 1));
+    } else {
+      await store.confirmNone(trackId, date);
+    }
+    final noise = ((done ? doIndex++ : dontIndex++) % 3) - 1;
+    final onset = DateTime(d.year, d.month, d.day, 22);
+    await db.insert('day_result', {
+      'day_id': dayLabelOf(DateTime(d.year, d.month, d.day + 1)),
+      'algo_version': 118,
+      'computed_at': 1,
+      'finalized': 1,
+      'partial': 0,
+      'window_json': jsonEncode({
+        'value': {
+          'onset_ms': onset.millisecondsSinceEpoch,
+          'offset_ms': onset.add(const Duration(hours: 8)).millisecondsSinceEpoch,
+        },
+      }),
+      'payload_json': jsonEncode({'scalars': {'rhr': 60 + (done ? gap : 0) + noise}}),
+    });
+  }
+  return experiment;
 }

@@ -380,4 +380,42 @@ void main() {
       startsWith('Each interval covers one system at 95%. With 3 systems compared'),
     );
   });
+
+  // why: owner decision on review T6. The result screen of a long-washout track
+  // repeats the caveat with its washout days.
+  // proves: CLAIM(washout-caveat)
+  testWidgets('experiment screen of a long-washout track shows the caveat', (t) async {
+    final caffeine = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'caffeine');
+    final started = (await t.runAsync(
+      () => store.startExperiment(trackId: 'caffeine', startDate: '2026-10-25', weeks: 2, seed: 17),
+    ))!;
+    await mountTracks(
+      t,
+      ExperimentScreen(store: store, track: caffeine, experimentId: started['id'] as String),
+      height: 3000,
+    );
+    await settleTracks(t, store);
+    expect(find.byKey(const ValueKey('experiment-washout-result')), findsOneWidget);
+    expect(find.textContaining('9.0 days'), findsOneWidget);
+    expect(find.textContaining('biased toward zero'), findsOneWidget);
+  });
+
+  // why: review T18. A completed experiment's result is shown as "from your
+  // experiment" and the wearer can switch back to day-to-day data.
+  // proves: CLAIM(experiment-precedence)
+  testWidgets('detail shows the experiment label and the release button works', (t) async {
+    const walk = TrackDefinition(id: 'custom', name: 'Walk', icon: 'track', kind: 'activity', systems: ['hr']);
+    await t.runAsync(() async {
+      await store.saveDefinition(walk);
+      await runFollowedExperiment(await LocalDb.instance, store, from: '2026-10-01', gap: 8, seed: 17);
+    });
+    await mountTracks(t, TrackDetailScreen(store: store, track: walk), height: 2400);
+    await settleTracks(t, store);
+    expect(find.textContaining('From your experiment'), findsOneWidget);
+    await t.ensureVisible(find.byKey(const ValueKey('use-observational')));
+    await t.tap(find.byKey(const ValueKey('use-observational')));
+    await settleTracks(t, store);
+    expect(find.textContaining('From your experiment'), findsNothing);
+    expect(find.byKey(const ValueKey('use-observational')), findsNothing);
+  });
 }

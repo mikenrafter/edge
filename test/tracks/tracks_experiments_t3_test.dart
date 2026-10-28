@@ -468,20 +468,25 @@ void main() {
     expect(ExperimentableTrack.from(TrackDefinition.fromJson(base)), isNotNull);
   });
 
-  // why: review T6. The cannabis preset has withdrawal_days 28: every skip day
-  // after a do day would still be exposed, biasing the effect toward zero.
-  // proves: CLAIM(washout-vs-block)
-  test('a track whose washout exceeds one day is refused with the washout reason', () async {
-    await expectLater(
-      store.startExperiment(trackId: 'cannabis', startDate: '2026-09-01', weeks: 2, seed: 17),
-      throwsA(isA<ExperimentRefused>().having((e) => e.reason, 'reason', ExperimentRefusal.washout)),
-    );
-    expect(await db.query('track_experiment'), isEmpty);
-    // The caffeine preset: 5 half-lives = 25 h and a 9 day withdrawal.
-    await expectLater(
-      store.startExperiment(trackId: 'caffeine', startDate: '2026-09-01', weeks: 2, seed: 17),
-      throwsA(isA<ExperimentRefused>()),
-    );
+  // why: owner decision 2026-10-27 on review T6. A long-washout track (cannabis
+  // withdrawal 28 d; caffeine 5 half-lives = 25 h and a 9 d withdrawal) may
+  // start, and the report carries the computed washout days so every screen can
+  // say the comparison includes carry-over and is biased toward zero.
+  // proves: CLAIM(washout-caveat)
+  test('a long-washout track starts and its report carries the washout days', () async {
+    final cannabis = await store.startExperiment(
+      trackId: 'cannabis', startDate: '2026-09-01', weeks: 2, seed: 17);
+    expect((await store.experimentReport(cannabis['id'] as String, asOf: DateTime(2026, 9, 3)))['washout_days'], 28);
+    final caffeine = await store.startExperiment(
+      trackId: 'caffeine', startDate: '2026-10-01', weeks: 2, seed: 17);
+    final report = await store.experimentReport(caffeine['id'] as String, asOf: DateTime(2026, 10, 20));
+    expect(report['washout_days'], 9);
+    expect(report['status'], 'completed', reason: 'the caveat does not block a result');
+  });
+
+  test('a track that clears within a day has no caveat field', () async {
+    final experiment = await start();
+    expect((await report(experiment, DateTime(2026, 9, 3))).containsKey('washout_days'), isFalse);
   });
 
   test('a short-lived track still starts', () async {
@@ -827,4 +832,36 @@ void main() {
     );
     expect(await startAt('2026-09-01', track: 'other'), isA<Map>(), reason: 'a different track');
   });
+
+  // why: review R2-9. late_workout and naps are mapped to the workout and nap
+  // sections, whose logging requires a start time and duration, so the
+  // untimed "I did it" always failed for them. The answer is recorded as an
+  // explicit untimed adherence entry on the track, never as an invented
+  // session or nap; the report counts it as followed, and it can be changed.
+  // proves: CLAIM(did-it-without-inventing)
+  for (final trackId in ['late_workout', 'naps', 'late_meal']) {
+    test('"I did it" on $trackId records adherence without inventing an occurrence', () async {
+      final experiment = await store.startExperiment(
+        trackId: trackId, startDate: '2026-09-01', weeks: 2, seed: 17);
+      final id = experiment['id'] as String;
+      final doDate = (experiment['assignments'] as List).cast<Map>().firstWhere((d) => d['do'] == true)['date'] as String;
+      await withClock(Clock.fixed(DateTime(2026, 9, 14, 22)), () async {
+        await store.answerExperimentDay(id, doDate, didIt: true);
+        expect(await store.experimentAnswers(id), {doDate: true});
+        final events = await store.events(trackId: trackId, date: doDate);
+        expect(events, hasLength(1));
+        expect(events.single.atMs, isNull);
+        expect(events.single.amount, isNull);
+        // Answering again changes nothing; "didn't" removes it.
+        await store.answerExperimentDay(id, doDate, didIt: true);
+        expect(await store.events(trackId: trackId, date: doDate), hasLength(1));
+        await store.answerExperimentDay(id, doDate, didIt: false);
+        expect(await store.experimentAnswers(id), {doDate: false});
+        expect(await store.events(trackId: trackId, date: doDate), isEmpty);
+      });
+      expect(await db.query('sessions'), isEmpty, reason: 'no session was invented');
+      expect(await db.query('sleep_nap'), isEmpty, reason: 'no nap was invented');
+      expect(await db.query('food_entry'), isEmpty, reason: 'no meal was invented');
+    });
+  }
 }

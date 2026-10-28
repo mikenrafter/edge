@@ -28,11 +28,30 @@ part 'tracks_learning_store.dart';
 part 'tracks_detection_store.dart';
 part 'tracks_experiment_store.dart';
 
+/// Told after a change that can alter which experiment days remind: a start, a
+/// stop, a track saved (disabled, deleted, marked prescribed). The app installs
+/// the one that re-arms the OS schedule; workers leave it null.
+// CLAIM(reminders-follow-state): the schedule is re-armed after every such
+// change [review T8, R2-2; tracks_experiment_reminders_test.dart].
+abstract interface class ExperimentScheduleListener {
+  Future<void> experimentScheduleChanged();
+}
+
 class TracksStore {
   TracksStore(this.db);
   final Database db;
+  static ExperimentScheduleListener? scheduleListener;
+  Future<void> _scheduleChanged() async {
+    try {
+      await scheduleListener?.experimentScheduleChanged();
+    } catch (_) {}
+  }
+
   Future<Map<String, Map<String, Object?>>> refreshLearning({DateTime? asOf}) =>
       _refreshLearning(asOf: asOf);
+  /// "Use my day-to-day data instead" of a completed experiment's effect.
+  Future<void> releaseExperimentPrecedence(String trackId) =>
+      _releaseExperimentPrecedence(trackId);
   Future<void> confirmNone(String trackId, String date) =>
       _confirmNone(trackId, date);
 
@@ -78,12 +97,16 @@ class TracksStore {
     required String startDate,
     required int weeks,
     int? seed,
-  }) => _startExperiment(
-    trackId: trackId,
-    startDate: startDate,
-    weeks: weeks,
-    seed: seed,
-  );
+  }) async {
+    final started = await _startExperiment(
+      trackId: trackId,
+      startDate: startDate,
+      weeks: weeks,
+      seed: seed,
+    );
+    await _scheduleChanged();
+    return started;
+  }
   Future<List<Map<String, Object?>>> experiments({String? trackId}) =>
       _experiments(trackId: trackId);
 
@@ -101,7 +124,10 @@ class TracksStore {
   /// Ends a running experiment at yesterday (see TracksExperimentStore).
   /// ArgumentError for an unknown id, StateError('experiment_finished') once
   /// its last day has passed.
-  Future<void> stopExperiment(String id) => _stopExperiment(id);
+  Future<void> stopExperiment(String id) async {
+    await _stopExperiment(id);
+    await _scheduleChanged();
+  }
   Future<Map<String, Object?>> experimentReport(String id, {DateTime? asOf}) =>
       _experimentReport(id, asOf: asOf);
   Future<List<Map<String, Object?>>> experimentReminders({
@@ -192,6 +218,7 @@ class TracksStore {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       if (history != null) await _writeHistory(tx, definition.id, history);
     });
+    await _scheduleChanged();
   }
 
   Future<List<TrackSetupRange>> history(String trackId) async => [

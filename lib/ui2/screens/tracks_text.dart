@@ -130,6 +130,11 @@ String tracksText(BuildContext context, String key) {
           'You stopped this experiment early, so no effect is reported and no more reminders are sent.',
     'ExperimentDid' => l?.tracksExperimentDid ?? 'I did it',
     'ExperimentDidnt' => l?.tracksExperimentDidnt ?? 'I did not',
+    'FromExperiment' =>
+      l?.tracksFromExperiment ??
+          'From your experiment: its randomized result is used instead of the day-to-day estimate.',
+    'UseObservational' =>
+      l?.tracksUseObservational ?? 'Use my day-to-day data instead',
     'ExperimentSetup' => l?.tracksExperimentSetup ?? 'Experiment setup',
     'ExperimentTitle' => l?.tracksExperimentTitle ?? 'Experiment',
     'ExperimentExplain' =>
@@ -197,6 +202,7 @@ String trackLearningText(BuildContext context, String? reason) =>
       'logging_incomplete' => 'LoggingIncomplete',
       'coverage' => 'CoverageHold',
       'experiment_learning' => 'ExperimentLearning',
+      'from_experiment' => 'FromExperiment',
       null => 'LearningPending',
       _ => 'LearningNeedData',
     });
@@ -250,11 +256,18 @@ String experimentMultiplicityText(BuildContext context, int count) =>
     AppLocalizations.of(context)?.tracksExperimentMultiplicity(count) ??
     'Each interval covers one system at 95%. With $count systems compared, about one in twenty intervals would miss by chance alone, so treat one that only just excludes zero with caution.';
 
-/// Why a long-washout track cannot be randomized in two-day blocks.
+/// Setup-screen caveat for a track that needs longer than a day to wear off.
 String experimentWashoutText(BuildContext context, double days) {
   final shown = days.toStringAsFixed(1);
   return AppLocalizations.of(context)?.tracksExperimentWashout(shown) ??
       'This track takes about $shown days to wear off (five half-lives, or its withdrawal period). '
-          'Experiment days alternate every day, so a skip day would still carry the last dose and the result would be biased. '
-          'Experiments are not offered for it.';
+          'Experiment days alternate every day, so a skip day still carries earlier doses and withdrawal effects, and the comparison is biased toward zero. '
+          'You can still run it; read the result with that in mind.';
+}
+
+/// The same caveat on the experiment and its result.
+String experimentWashoutResultText(BuildContext context, double days) {
+  final shown = days.toStringAsFixed(1);
+  return AppLocalizations.of(context)?.tracksExperimentWashoutResult(shown) ??
+      'Caveat: this track takes about $shown days to wear off, so skip days include carry-over and withdrawal effects and the effect shown is biased toward zero.';
 }

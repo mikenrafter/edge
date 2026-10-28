@@ -163,11 +163,15 @@ class TrackEffectEstimate {
     this.kineticTargets = const {},
     this.coefficients = const {},
     this.referenceDose,
+    this.experimentId,
   });
   final String trackId, system, reason;
   // The established habitual dose of a baseline track (see CLAIM
   // baseline-reference); the worker persists it in learning state.
   final double? referenceDose;
+
+  /// Set when this estimate IS a completed randomized experiment's result.
+  final String? experimentId;
   final double? effect;
   final int matchedPairs;
   final double? shuffleP, adjustedP;

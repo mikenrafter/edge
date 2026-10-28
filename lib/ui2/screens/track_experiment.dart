@@ -75,7 +75,7 @@ class _ExperimentSetupScreenState extends State<ExperimentSetupScreen> {
         ],
       ),
       const SizedBox(height: S.x3),
-      // ↳ CLAIM(washout-vs-block): say why, and do not offer a biased run.
+      // ↳ CLAIM(washout-caveat): allowed, with the reason stated up front.
       if (washedOut) ...[
         Text(
           experimentWashoutText(context, experimentWashoutDays(widget.track)),
@@ -85,7 +85,7 @@ class _ExperimentSetupScreenState extends State<ExperimentSetupScreen> {
       ],
       if (_failed) Text(text('ExperimentFailed')),
       FilledButton(
-        onPressed: _busy || washedOut ? null : _begin,
+        onPressed: _busy ? null : _begin,
         child: Text(text('ExperimentBegin')),
       ),
     ]);
@@ -175,6 +175,12 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
           key: const ValueKey('experiment-status'),
         ),
         const SizedBox(height: S.x2),
+        if (report['washout_days'] is num)
+          Text(
+            experimentWashoutResultText(context, (report['washout_days'] as num).toDouble()),
+            key: const ValueKey('experiment-washout-result'),
+            style: F.cap,
+          ),
         if (running) ...[
           Text(text('ExperimentPending')),
           TextButton(

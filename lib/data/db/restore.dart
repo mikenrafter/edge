@@ -1988,9 +1988,12 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
     ImportPerf.phase('retag_and_rewind', cleanupWatch, run: perfId);
     // One running experiment per track (review T16): a restored experiment
     // overlapping a local one would send two, possibly opposite, reminders.
-    if (had('track_experiment')) {
-      final dropped = await _ldbReconcileOverlappingExperiments(db);
-      if (dropped > 0) counts['_track_experiment_overlap_dropped'] = dropped;
+    // Unconditional: a resumed import skips tables the first run committed, so
+    // the current copy counts say nothing about what is in the table (review
+    // R2-10). Idempotent, and cheap on an empty table.
+    final droppedExperiments = await _ldbReconcileOverlappingExperiments(db);
+    if (droppedExperiments > 0) {
+      counts['_track_experiment_overlap_dropped'] = droppedExperiments;
     }
     // Last, so it can never be mistaken for a table row count by anything that
     // walks this map in order.

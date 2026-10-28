@@ -23,10 +23,6 @@ extension TracksExperimentStore on TracksStore {
     if (ExperimentableTrack.from(track.single) == null) {
       throw const ExperimentRefused(ExperimentRefusal.prescribed);
     }
-    // ↳ CLAIM(washout-vs-block)
-    if (experimentWashoutExceedsBlock(track.single)) {
-      throw const ExperimentRefused(ExperimentRefusal.washout);
-    }
     final end = endDate(startDate, weeks);
     final chosen = seed ?? math.Random().nextInt(0x7fffffff);
     final assignments = assignExperimentDays(weeks * 7, chosen);
@@ -64,6 +60,8 @@ extension TracksExperimentStore on TracksStore {
     );
   }
 
+  static const _mappedToSection = {'late_workout', 'naps', 'late_meal'};
+
   static String _answerEventId(String id, String date) => 'xp:$id:$date';
 
   // CLAIM(backfill-answers): each past assigned date can be answered from the
@@ -89,7 +87,20 @@ extension TracksExperimentStore on TracksStore {
     if (didIt) {
       await db.delete('track_absence', where: 'track_id = ? AND date = ?', whereArgs: [trackId, date]);
       if (existing == null) {
-        await log(TrackEvent(id: eventId, trackId: trackId, date: date));
+        final answer = TrackEvent(id: eventId, trackId: trackId, date: date);
+        if (_mappedToSection.contains(trackId)) {
+          // ↳ CLAIM(did-it-without-inventing): these tracks mirror the workout,
+          // nap and food sections, whose logging needs a time or an amount and
+          // would invent a session, nap or meal. The answer is an explicit
+          // untimed entry on the track itself.
+          await db.insert(
+            'track_event',
+            answer.toJson(),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        } else {
+          await log(answer);
+        }
       }
     } else {
       if (existing != null) await deleteEvent(existing);
@@ -192,12 +203,17 @@ extension TracksExperimentStore on TracksStore {
     final trackId = e['track_id'] as String;
     final start = e['start_date'] as String, end = e['end_date'] as String;
     final now = asOf ?? clock.now();
+    final definition = (await definitions()).where((d) => d.id == trackId).firstOrNull;
     final report = <String, Object?>{
       'id': id,
       'track_id': trackId,
       'start_date': start,
       'end_date': end,
       'effects': <String, Object?>{},
+      // ↳ CLAIM(washout-caveat): every screen can say the comparison carries
+      // earlier doses and is biased toward zero.
+      if (definition != null && experimentWashoutExceedsBlock(definition))
+        'washout_days': experimentWashoutDays(definition),
     };
     if (end != endDate(start, e['weeks'] as int)) {
       return {...report, 'status': 'stopped'};
