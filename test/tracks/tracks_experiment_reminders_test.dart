@@ -94,8 +94,13 @@ void main() {
   List<MethodCall> armed() =>
       calls.where((c) => c.method == 'zonedSchedule').toList();
   List<int> armedIds() => [for (final c in armed()) (c.arguments as Map)['id'] as int];
-  DateTime when(MethodCall c) =>
-      DateTime.parse((c.arguments as Map)['scheduledDateTime'] as String);
+  // The plugin serializes the instant in the timezone database's local zone,
+  // which is UTC in tests, without an offset: read it as UTC, show it local.
+  DateTime when(MethodCall c) {
+    final raw = (c.arguments as Map)['scheduledDateTime'] as String;
+    final hasZone = raw.endsWith('Z') || RegExp(r'[+-]\d\d:?\d\d$').hasMatch(raw);
+    return DateTime.parse(hasZone ? raw : '${raw}Z').toLocal();
+  }
 
   test('arms one morning one-shot per assigned day ahead, in the experiment band',
       () async {
