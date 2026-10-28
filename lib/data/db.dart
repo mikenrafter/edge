@@ -1931,6 +1931,9 @@ class LocalDb {
       );
     // Historic totals cannot be allocated to individual clock moments.
     await _addColumnIfMissing(db, 'moment_label', 'caffeine_mg', 'REAL');
+    // What the answer actually added to its dose field (after any clamp), so a
+    // change can take back exactly that. NULL: saved before this was kept.
+    await _addColumnIfMissing(db, 'moment_label', 'metric_value', 'REAL');
   }
 
   static Map<String, Object?> _momentLabelRow(MomentLabel l) => {
@@ -1939,6 +1942,7 @@ class LocalDb {
         'label': l.label,
         'note': l.note,
         'caffeine_mg': l.caffeineMg,
+        'metric_value': l.metricValue,
         'answered_at': l.answeredAtMs,
       };
 

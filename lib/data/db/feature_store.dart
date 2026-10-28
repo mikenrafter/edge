@@ -515,18 +515,18 @@ Future<List<MomentLabel>> _ldbMomentLabels({required String? date, required Stri
               : null,
       orderBy: 'date ASC, hhmm ASC',
     );
-    return [
-      for (final r in rows)
-        MomentLabel(
-          date: r['date'] as String,
-          hhmm: r['hhmm'] as String,
-          label: r['label'] as String?,
-          note: r['note'] as String?,
-          caffeineMg: (r['caffeine_mg'] as num?)?.toDouble(),
-          answeredAtMs: (r['answered_at'] as num).toInt(),
-        ),
-    ];
+    return [for (final r in rows) _ldbPrivMomentLabel(r)];
   }
+
+MomentLabel _ldbPrivMomentLabel(Map<String, Object?> r) => MomentLabel(
+      date: r['date'] as String,
+      hhmm: r['hhmm'] as String,
+      label: r['label'] as String?,
+      note: r['note'] as String?,
+      caffeineMg: (r['caffeine_mg'] as num?)?.toDouble(),
+      metricValue: (r['metric_value'] as num?)?.toDouble(),
+      answeredAtMs: (r['answered_at'] as num).toInt(),
+    );
 
 Future<bool> _ldbAnswerMoment(MomentLabel l, {required String? metricField, required double? metricValue, required double? metricMax, Transaction? transaction}) async {
     // One transaction: the label check, the read of the day's total and the
@@ -539,41 +539,201 @@ Future<bool> _ldbAnswerMoment(MomentLabel l, {required String? metricField, requ
           whereArgs: [l.date, l.hhmm],
           limit: 1);
       if (have.isNotEmpty) return false;
+      final added = metricField != null && metricValue != null
+          ? await _ldbPrivAddDose(txn, l.date, l.hhmm, metricField, metricValue,
+              metricMax, l.answeredAtMs)
+          : 0.0;
       await txn.insert('moment_label', {
         ...LocalDb._momentLabelRow(l),
         if (l.label == 'caffeine' && metricField == 'caffeine_mg')
           'caffeine_mg': metricValue,
+        // What this answer added, so a later change can take back exactly
+        // that. Null for a label that is no dose.
+        'metric_value': doseFieldOfLabel(l.label) == null ? null : added,
       });
-      if (metricField != null && metricValue != null) {
-        final atMin = int.parse(l.hhmm.substring(0, 2)) * 60 +
-            int.parse(l.hhmm.substring(3, 5));
-        final old = await txn.query('journal_metric',
-            where: 'date = ? AND field = ?',
-            whereArgs: [l.date, metricField],
-            limit: 1);
-        final oldVal = old.isEmpty ? 0.0 : (old.first['value'] as num).toDouble();
-        final oldAt = old.isEmpty ? null : (old.first['at_min'] as num?)?.toInt();
-        await txn.insert(
-            'journal_metric',
-            {
-              'date': l.date,
-              'field': metricField,
-              'value': metricMax == null
-                  ? oldVal + metricValue
-                  : (oldVal + metricValue).clamp(0.0, metricMax).toDouble(),
-              'at_min': oldAt != null && oldAt > atMin ? oldAt : atMin,
-              'updated_at': l.answeredAtMs,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace);
-      }
       return true;
     }
     return transaction == null
         ? (await LocalDb.instance).transaction(write) : write(transaction);
   }
 
+/// Adds [value] to [date]'s [field] total (clamped to [max] when given; the
+/// time becomes the later of the stored one and the minute of [hhmm]) and
+/// returns what was ACTUALLY added, after the clamp.
+Future<double> _ldbPrivAddDose(Transaction txn, String date, String hhmm, String field, double value, double? max, int updatedAtMs) async {
+    final atMin = int.parse(hhmm.substring(0, 2)) * 60 +
+        int.parse(hhmm.substring(3, 5));
+    final old = await txn.query('journal_metric',
+        where: 'date = ? AND field = ?', whereArgs: [date, field], limit: 1);
+    final oldVal = old.isEmpty ? 0.0 : (old.first['value'] as num).toDouble();
+    final oldAt = old.isEmpty ? null : (old.first['at_min'] as num?)?.toInt();
+    final total = max == null
+        ? oldVal + value
+        : (oldVal + value).clamp(0.0, max).toDouble();
+    await txn.insert(
+        'journal_metric',
+        {
+          'date': date,
+          'field': field,
+          'value': total,
+          'at_min': oldAt != null && oldAt > atMin ? oldAt : atMin,
+          'updated_at': updatedAtMs,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
+    return total - oldVal;
+  }
+
+/// Takes [amount] back out of [date]'s [field] total. A total that reaches
+/// zero leaves the day ABSENT for that field (never a logged zero), as a
+/// removed assumed glass does. The time is fixed by the caller afterwards.
+Future<void> _ldbPrivTakeBackDose(Transaction txn, String date, String field, double amount, int updatedAtMs) async {
+    final old = await txn.query('journal_metric',
+        where: 'date = ? AND field = ?', whereArgs: [date, field], limit: 1);
+    if (old.isEmpty || amount <= 0) return;
+    final left = (old.first['value'] as num).toDouble() - amount;
+    if (left <= 1e-9) {
+      await txn.delete('journal_metric',
+          where: 'date = ? AND field = ?', whereArgs: [date, field]);
+    } else {
+      await txn.update('journal_metric',
+          {'value': left, 'updated_at': updatedAtMs},
+          where: 'date = ? AND field = ?', whereArgs: [date, field]);
+    }
+  }
+
+/// After a dose was taken back from [field], its stored time must not keep
+/// naming the removed moment. The later of what still stands: a time that is
+/// not the removed moment's own, and the minute of the day's other recorded
+/// doses (caffeine and alcohol have them in the track feed). Neither: unknown
+/// (null), never the removed moment's minute.
+Future<void> _ldbPrivFixDoseMinute(Transaction txn, String date, String field, int removedMin) async {
+    final row = await txn.query('journal_metric',
+        where: 'date = ? AND field = ?', whereArgs: [date, field], limit: 1);
+    if (row.isEmpty) return;
+    final at = (row.first['at_min'] as num?)?.toInt();
+    final track = switch (field) {
+      'caffeine_mg' => 'caffeine',
+      'alcohol_units' => 'alcohol',
+      _ => null,
+    };
+    final explicit =
+        track == null ? null : (await LocalDb._trackDoseSummary(txn, date, track)).minute;
+    final kept = at == removedMin ? null : at;
+    final best = kept == null
+        ? explicit
+        : (explicit == null || kept > explicit ? kept : explicit);
+    if (best == at) return;
+    await txn.update('journal_metric', {'at_min': best},
+        where: 'date = ? AND field = ?', whereArgs: [date, field]);
+  }
+
+/// Replaces the saved answer [before] with [after] (see
+/// `LocalDb.changeMomentAnswer`).
+// CLAIM(change-answer-atomic): every write of a change runs in one transaction
+// and every refusal is decided before the first write, so a stale, missing,
+// refused or failed change leaves moment_label, journal_metric, symptom_entry
+// and wake_meta exactly as they were [change_answer_test.dart].
+// CLAIM(change-answer-exact): a change takes back exactly the amount the old
+// answer recorded as added (moment_label.metric_value, after any clamp), never
+// a guess; an answer that never recorded it is refused
+// [change_answer_test.dart "never kept"].
 Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, required MomentLabel after, required String? metricField, required double? metricValue, required double? metricMax, required StoredSymptom? symptom}) async {
-    throw UnimplementedError('changeMomentAnswer');
+    if (before.key != after.key) {
+      throw ArgumentError.value(after.key, 'after', 'must be the same moment as ${before.key}');
+    }
+    if ((after.label == 'symptom') != (symptom != null)) {
+      throw ArgumentError.value(symptom, 'symptom', 'a symptom answer, and only it, carries a description');
+    }
+    if (symptom != null && symptom.key != after.key) {
+      throw ArgumentError.value(symptom.key, 'symptom', 'must be the same moment');
+    }
+    final newField = doseFieldOfLabel(after.label);
+    if (metricField != null && metricField != newField) {
+      throw ArgumentError.value(metricField, 'metricField', '${after.label} does not add to it');
+    }
+    final date = before.date, hhmm = before.hhmm;
+    final moment = int.parse(hhmm.substring(0, 2)) * 60 + int.parse(hhmm.substring(3, 5));
+    try {
+      return await (await LocalDb.instance).transaction<MomentAnswerChange>((txn) async {
+        final rows = await txn.query('moment_label',
+            where: 'date = ? AND hhmm = ?', whereArgs: [date, hhmm], limit: 1);
+        if (rows.isEmpty) return const MomentNotFound();
+        final stored = _ldbPrivMomentLabel(rows.single);
+        if (stored.label != before.label ||
+            stored.note != before.note ||
+            stored.caffeineMg != before.caffeineMg ||
+            stored.metricValue != before.metricValue ||
+            stored.answeredAtMs != before.answeredAtMs) {
+          return MomentStale(stored);
+        }
+        final priorField = doseFieldOfLabel(stored.label);
+        final priorAmount = stored.metricValue ??
+            (stored.label == 'caffeine' ? stored.caffeineMg : null);
+        if (priorField != null && priorAmount == null) {
+          return const MomentChangeFailed(MomentChangeFailure.priorAmountUnknown);
+        }
+        final stamp = after.answeredAtMs > stored.answeredAtMs
+            ? after.answeredAtMs
+            : stored.answeredAtMs + 1;
+
+        // Nothing above wrote. From here on, one failure rolls it all back.
+        await txn.delete('symptom_entry',
+            where: 'date = ? AND hhmm = ?', whereArgs: [date, hhmm]);
+        if (priorField != null) {
+          await _ldbPrivTakeBackDose(txn, date, priorField, priorAmount!, stamp);
+        }
+        final added = metricField != null && metricValue != null
+            ? await _ldbPrivAddDose(txn, date, hhmm, metricField, metricValue, metricMax, stamp)
+            : 0.0;
+        final caffeineMg = after.label == 'caffeine' && metricField == 'caffeine_mg'
+            ? metricValue
+            : null;
+        await txn.update(
+            'moment_label',
+            {
+              'label': after.label,
+              'note': after.note,
+              'caffeine_mg': caffeineMg,
+              'metric_value': newField == null ? null : added,
+              'answered_at': stamp,
+            },
+            where: 'date = ? AND hhmm = ?',
+            whereArgs: [date, hhmm]);
+        // A dose taken back and not re-added leaves a time that named this
+        // moment; fix it now the label row (the track feed reads it) is final.
+        if (priorField != null && !(priorField == newField && added != 0)) {
+          await _ldbPrivFixDoseMinute(txn, date, priorField, moment);
+        }
+        // CLAIM(remainder-time-fresh): every journal write of the aggregate
+        // clears the stored remainder time of its substance.
+        // ↳ CLAIM(remainder-time-fresh)
+        for (final field in {priorField, newField}) {
+          final track = switch (field) {
+            'caffeine_mg' => 'caffeine',
+            'alcohol_units' => 'alcohol',
+            _ => null,
+          };
+          if (track != null) await LocalDb._clearRemainderMinute(txn, date, track);
+        }
+        if (symptom != null) {
+          await txn.insert('symptom_entry', LocalDb._symptomRow(symptom),
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        return MomentChanged(MomentLabel(
+          date: date,
+          hhmm: hhmm,
+          label: after.label,
+          note: after.note,
+          caffeineMg: caffeineMg,
+          metricValue: newField == null ? null : added,
+          answeredAtMs: stamp,
+        ));
+      });
+    } on ArgumentError {
+      rethrow;
+    } catch (error) {
+      return MomentChangeFailed(MomentChangeFailure.storage, error);
+    }
   }
 
 Future<void> _ldbPutWakeEvidence({required int onsetSec, required String kind, required int atSec}) async {

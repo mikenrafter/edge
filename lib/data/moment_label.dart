@@ -53,6 +53,17 @@ class MomentLabel {
   }
 }
 
+/// The journal field a dose answer adds to, by the stored label id: caffeine,
+/// alcohol and water. Null for every other label. `MomentChoice.journalField`
+/// reads this, so the answer and the data layer cannot disagree about which
+/// labels write a dose.
+String? doseFieldOfLabel(String? label) => switch (label) {
+      'caffeine' => 'caffeine_mg',
+      'alcohol' => 'alcohol_units',
+      'water' => 'water_ml',
+      _ => null,
+    };
+
 /// The LOCAL wall-clock DateTime of a `YYYY-MM-DD` + `HH:mm` pair, or null when
 /// either is malformed. Built from calendar fields, never from a day start plus
 /// minutes, so a DST day does not shift it.

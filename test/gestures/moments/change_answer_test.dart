@@ -345,7 +345,11 @@ void main() {
       await db.insert('wake_meta',
           {'key': 'substance_remainder_min:2026-10-05:caffeine', 'value': '1'});
       await _change(_m, MomentChoice.alcohol, value: 2);
-      final keys = [for (final r in await _all('wake_meta')) r['key']];
+      // wake_meta also holds unrelated state (e.g. wake_split_v1).
+      final keys = [
+        for (final r in await _all('wake_meta'))
+          if ('${r['key']}'.startsWith('substance_remainder_min:')) r['key']
+      ];
       expect(keys, ['substance_remainder_min:2026-10-05:caffeine'],
           reason: 'both touched substances of THIS day, nothing of other days');
     });
@@ -371,6 +375,19 @@ void main() {
       expect((second as MomentStale).current.caffeineMg, 120);
       expect(await _snapshot(), afterFirst, reason: 'no double add');
       expect(await _total('caffeine_mg'), 220);
+    });
+
+    test('an earlier copy is Stale even when the answer was re-saved with the '
+        'same content (the answered-at stamp is part of its identity)',
+        () async {
+      await _writer.answer(_m, MomentChoice.caffeine, value: 80, now: _t1);
+      final opened = await _saved(_m);
+      await _writer.change(opened, MomentChoice.caffeine,
+          value: 80, now: _t2);
+      final r = await _writer.change(opened, MomentChoice.caffeine,
+          value: 80, now: _t2.add(const Duration(minutes: 1)));
+      expect(r, isA<MomentStale>());
+      expect(await _total('caffeine_mg'), 80);
     });
 
     test('an answer changed underneath (a note edited elsewhere) is Stale',

@@ -41,12 +41,7 @@ enum MomentChoice {
 
   /// The EXISTING numeric journal field this answer maps to, or null when none
   /// fits (the answer is then the label alone).
-  String? get journalField => switch (this) {
-        MomentChoice.caffeine => 'caffeine_mg',
-        MomentChoice.alcohol => 'alcohol_units',
-        MomentChoice.water => 'water_ml',
-        _ => null,
-      };
+  String? get journalField => doseFieldOfLabel(id);
 
   static MomentChoice? fromId(String? id) {
     for (final c in values) {
@@ -351,21 +346,7 @@ class MomentAnswerWriter {
     DateTime? now,
   }) async {
     final field = choice.journalField;
-    if (choice == MomentChoice.water && value != null) {
-      // One tap is one glass; an amount is never asked, so none is accepted.
-      throw ArgumentError.value(value, 'value', 'Water takes no amount');
-    }
-    if (value != null) {
-      final spec = field == null ? null : kJournalFieldsByKey[field];
-      if (spec == null) {
-        throw ArgumentError.value(
-            value, 'value', '${choice.id} has no journal field to add to');
-      }
-      if (!value.isFinite || value <= 0 || value > spec.max) {
-        throw ArgumentError.value(
-            value, 'value', 'must be above 0 and at most ${spec.max}');
-      }
-    }
+    _checkAmount(choice, value);
     // One glass is the unit-aware step: 250 ml, or one US cup (8 fl oz) when the
     // saved units preference is imperial. Always stored as ml.
     final glass = choice == MomentChoice.water
@@ -397,17 +378,7 @@ class MomentAnswerWriter {
     SymptomDescription d, {
     DateTime? now,
   }) async {
-    String? typed(String? v) {
-      final t = v?.trim();
-      return t == null || t.isEmpty ? null : t;
-    }
-
-    if (d.kind == SymptomKind.other && typed(d.kindOther) == null) {
-      throw ArgumentError.value(d.kindOther, 'kindOther', 'Other needs text');
-    }
-    if (d.area == SymptomArea.other && typed(d.areaOther) == null) {
-      throw ArgumentError.value(d.areaOther, 'areaOther', 'Other needs text');
-    }
+    _checkSymptom(d);
     final at = (now ?? DateTime.now()).millisecondsSinceEpoch;
     final saved = await LocalDb.answerMomentSymptom(
       MomentLabel(
@@ -423,9 +394,12 @@ class MomentAnswerWriter {
   }
 
   /// Replaces the saved answer [saved] with [choice] (and [value], [note] or
-  /// [symptom], validated exactly as in [answer] / [answerSymptom]). The write
-  /// is `LocalDb.changeMomentAnswer`: one transaction that takes back what the
-  /// old answer added and adds what the new one does. RED stub.
+  /// [symptom], checked exactly as [answer] / [answerSymptom] check theirs).
+  /// The write is `LocalDb.changeMomentAnswer`: one transaction that takes back
+  /// what the old answer added and adds what the new one does. It is never part
+  /// of the day-review batch, so [transaction] is not used. Returns the stored
+  /// answer or why nothing changed (stale, missing, refused, failed).
+  /// A water answer takes no amount: one glass, as in [answer].
   Future<MomentAnswerChange> change(
     MomentLabel saved,
     MomentChoice choice, {
@@ -434,7 +408,75 @@ class MomentAnswerWriter {
     SymptomDescription? symptom,
     DateTime? now,
   }) async {
-    throw UnimplementedError('MomentAnswerWriter.change');
+    _checkAmount(choice, value);
+    if (choice == MomentChoice.symptom) {
+      if (symptom == null) {
+        throw ArgumentError.notNull('symptom');
+      }
+      _checkSymptom(symptom);
+    } else if (symptom != null) {
+      throw ArgumentError.value(symptom, 'symptom', '${choice.id} takes no description');
+    }
+    final field = choice.journalField;
+    final glass = choice == MomentChoice.water
+        ? WaterUnits.stepMl(await _savedSystem())
+        : null;
+    final at = (now ?? DateTime.now()).millisecondsSinceEpoch;
+    final trimmed = choice == MomentChoice.symptom ? null : note?.trim();
+    return LocalDb.changeMomentAnswer(
+      before: saved,
+      after: MomentLabel(
+          date: saved.date,
+          hhmm: saved.hhmm,
+          label: choice.id,
+          note: trimmed == null || trimmed.isEmpty ? null : trimmed,
+          answeredAtMs: at),
+      metricField: choice == MomentChoice.water
+          ? field
+          : (value == null ? null : field),
+      metricValue: glass ?? value,
+      metricMax:
+          choice == MomentChoice.water ? kJournalFieldsByKey[field]!.max : null,
+      symptom: symptom == null
+          ? null
+          : StoredSymptom(
+              date: saved.date,
+              hhmm: saved.hhmm,
+              description: symptom,
+              createdAtMs: at),
+    );
+  }
+
+  static void _checkAmount(MomentChoice choice, double? value) {
+    if (choice == MomentChoice.water && value != null) {
+      // One tap is one glass; an amount is never asked, so none is accepted.
+      throw ArgumentError.value(value, 'value', 'Water takes no amount');
+    }
+    if (value == null) return;
+    final field = choice.journalField;
+    final spec = field == null ? null : kJournalFieldsByKey[field];
+    if (spec == null) {
+      throw ArgumentError.value(
+          value, 'value', '${choice.id} has no journal field to add to');
+    }
+    if (!value.isFinite || value <= 0 || value > spec.max) {
+      throw ArgumentError.value(
+          value, 'value', 'must be above 0 and at most ${spec.max}');
+    }
+  }
+
+  static void _checkSymptom(SymptomDescription d) {
+    String? typed(String? v) {
+      final t = v?.trim();
+      return t == null || t.isEmpty ? null : t;
+    }
+
+    if (d.kind == SymptomKind.other && typed(d.kindOther) == null) {
+      throw ArgumentError.value(d.kindOther, 'kindOther', 'Other needs text');
+    }
+    if (d.area == SymptomArea.other && typed(d.areaOther) == null) {
+      throw ArgumentError.value(d.areaOther, 'areaOther', 'Other needs text');
+    }
   }
 
   static Future<UnitSystem> _savedSystem() async {

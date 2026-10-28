@@ -66,7 +66,14 @@ Future<Map<String, Map<String, Object?>>> _cols(Database db) async => {
     };
 
 void _expectShape(Map<String, Map<String, Object?>> cols) {
-  expect(cols.keys.toSet(), {'date', 'hhmm', 'label', 'note', 'answered_at'});
+  // caffeine_mg: the amount of a caffeine answer; metric_value: what an answer
+  // added to its dose field, so a change can take it back (CLS-1).
+  expect(cols.keys.toSet(), {
+    'date', 'hhmm', 'label', 'note', 'answered_at', 'caffeine_mg', 'metric_value',
+  });
+  expect(cols['metric_value']!['type'], 'REAL');
+  expect(cols['metric_value']!['notnull'], 0,
+      reason: 'NULL means saved before it was kept');
   expect(cols['date']!['type'], 'TEXT');
   expect(cols['date']!['notnull'], 1);
   expect(cols['date']!['pk'], 1);
