@@ -88,7 +88,7 @@ void main() {
       expect(tea.kinetics.fields['onset_hours']!.locked, true);
       expect(
         saved.kinetics.fields['onset_hours']!.value,
-        isNull,
+        0.5,
         reason: 'A sub-activity override must not overwrite the track default',
       );
       expect(saved.roles.toSet(), {'own_sleep', 'detectable'});

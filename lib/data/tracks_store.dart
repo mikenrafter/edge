@@ -379,12 +379,12 @@ class TracksStore {
             : null;
         final at = event.atMs;
         if (at == null) throw ArgumentError('medication_time');
-        final local = DateTime.fromMillisecondsSinceEpoch(at);
+        // ↳ CLAIM(med-slot-pick)
         await MedDb.logTrack(
           db,
           medKey: event.trackId.substring(4),
           date: event.date,
-          slotMin: explicitSlot ?? local.hour * 60 + local.minute,
+          explicitSlotMin: explicitSlot,
           atMs: at,
           amount: event.amount,
         );

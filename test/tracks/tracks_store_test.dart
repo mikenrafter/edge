@@ -731,4 +731,74 @@ void main() {
     expect(event.amount, 2);
     expect(event.unit, 'bowls');
   });
+
+  test('medication quick log fills the nearest open scheduled slot', () async {
+    // WHY S1: an 08:05 intake of an 08:00-scheduled dose was stored at slot
+    // 08:05, leaving 08:00 missed and the 08:05 row invisible to the med screen.
+    final db = await LocalDb.instance;
+    await MedDb.putDef(
+      db,
+      const MedDef(
+        key: 'pill',
+        label: 'Pill',
+        schedule: [MedSchedule(8 * 60, [])],
+      ),
+    );
+    await store.log(
+      const TrackEvent(
+        id: 'a',
+        trackId: 'med:pill',
+        date: '2026-10-01',
+        atMs: 1790841900000, // 2026-10-01 08:05 UTC (TZ=UTC)
+      ),
+    );
+    final rows = await db.query('med_dose');
+    expect(rows.map((r) => r['slot_min']), [8 * 60]);
+    expect(rows.single['taken_ts'], 1790841900);
+  });
+
+  TrackEvent caffeineDose(String id, double amount, {int? atMs}) => TrackEvent(
+    id: id,
+    trackId: 'caffeine',
+    date: '2026-10-01',
+    amount: amount,
+    atMs: atMs,
+  );
+  Future<JournalMetricValue?> caffeineTotal() async =>
+      (await LocalDb.journalMetricsForDay('2026-10-01'))['caffeine_mg'];
+
+  // WHY S7: after the journal total was edited to 0, logging 80 mg made Journal
+  // read 80 while Tracks held 100 + 80. proves: CLAIM(substance-reconcile)
+  test('substance total reconciles with canonical doses after a journal edit', () async {
+    await store.log(caffeineDose('a', 100));
+    expect((await caffeineTotal())!.value, 100);
+    await LocalDb.putJournalMetrics('2026-10-01', {
+      'caffeine_mg': const JournalMetricValue(0),
+    });
+    await store.log(caffeineDose('b', 80));
+    expect((await caffeineTotal())!.value, 180);
+    // A journal-only remainder above the doses survives later dose edits.
+    await LocalDb.putJournalMetrics('2026-10-01', {
+      'caffeine_mg': const JournalMetricValue(230),
+    });
+    await store.log(caffeineDose('b', 70));
+    expect((await caffeineTotal())!.value, 220);
+  });
+
+  // WHY S8: removing the only timed dose left its 22:00 on the untimed 50 mg
+  // remainder, falsely supporting late-intake wake adjustments.
+  // proves: CLAIM(substance-reconcile)
+  test('removing a timed dose does not time the untimed remainder', () async {
+    await LocalDb.putJournalMetrics('2026-10-01', {
+      'caffeine_mg': const JournalMetricValue(50),
+    });
+    await store.log(caffeineDose('late', 30, atMs: 1790892000000)); // 22:00 UTC
+    expect((await caffeineTotal())!.atMinuteOfDay, 22 * 60);
+    await store.deleteEvent(
+      (await store.events(trackId: 'caffeine')).singleWhere((e) => e.id == 'late'),
+    );
+    final after = (await caffeineTotal())!;
+    expect(after.value, 50);
+    expect(after.atMinuteOfDay, isNull);
+  });
 }

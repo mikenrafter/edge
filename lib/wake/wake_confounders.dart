@@ -1,4 +1,5 @@
 // Owns the journal-to-detector policy. No delivery or mutable state.
+import 'dart:convert';
 import 'dart:math' as math;
 import '../data/journal_fields.dart';
 import '../util/heavy.dart';
@@ -105,6 +106,15 @@ class ConfounderProfile {
     sick,
     lateMeal,
   );
+}
+
+/// Storage key of a user track's learned wake parameters in `wake_meta`. One
+/// definition for the writer (WakeJournal), the reader and the profile worker.
+String naturalUserParameterKey(String id, Set<String> context, int track) {
+  final base = 'natural_wake_user_${Uri.encodeComponent(id)}';
+  if (context.length == 1 && track == 0) return base;
+  final ids = context.toList()..sort();
+  return '${base}_context_${Uri.encodeComponent(jsonEncode([track, ids]))}';
 }
 
 /// Built-in presets form a monoid on the domain of tightening profiles:

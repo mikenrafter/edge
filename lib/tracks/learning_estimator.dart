@@ -18,33 +18,45 @@ class TrackEffectEstimator {
   }) {
     var dose = 0.0, residual = 0.0, lag = 0.0, weightedHours = 0.0;
     var unknownDose = false, unknownResidual = false;
+    // CLAIM(residual-window): residual exposure is summed over seven half-lives
+    // (under 1% left per dose), never a fixed 48 h; a window beyond the 48 h
+    // exposure record needs the track's complete history or the residual stays
+    // unknown [S6; track_effect_estimator_test]. Dose and lag keep 48 h.
+    final windowHours = _residualWindowHours(track);
+    if (windowHours > 48 && !historyComplete) unknownResidual = true;
     for (final event in events) {
       if (event.trackId != track.id) continue;
       final at = event.atMs;
       if (at == null) {
         final firstDate = dayLabelOf(
-          bedtime.subtract(const Duration(hours: 48)),
+          bedtime.subtract(Duration(minutes: (windowHours * 60).ceil())),
         );
         if (event.date.compareTo(firstDate) >= 0 &&
             event.date.compareTo(dayLabelOf(bedtime)) <= 0) {
-          unknownDose = true;
           unknownResidual = true;
+          if (event.date.compareTo(dayLabelOf(
+                bedtime.subtract(const Duration(hours: 48)),
+              )) >=
+              0) {
+            unknownDose = true;
+          }
         }
         continue;
       }
       final hours =
           (bedtime.millisecondsSinceEpoch - at) / Duration.millisecondsPerHour;
-      if (hours < 0 || hours > 48) continue;
-      final amount = event.amount;
-      if (amount == null || !amount.isFinite || amount < 0) {
-        unknownDose = true;
+      if (hours < 0 || hours > windowHours) continue;
+      // ↳ CLAIM(unit-abstain)
+      final amount = _amountInTrackUnit(track, event);
+      if (amount == null) {
         unknownResidual = true;
+        if (hours <= 48) unknownDose = true;
         continue;
       }
       if (hours <= 24) {
         dose += amount;
         weightedHours += amount * hours;
-      } else {
+      } else if (hours <= 48) {
         lag += amount;
       }
       var kinetics = track.kinetics;
@@ -60,10 +72,18 @@ class TrackEffectEstimator {
         }
       }
       final halfLife = kinetics.fields['half_life_hours']?.value;
-      final onset = kinetics.fields['onset_hours']?.value ?? 0;
-      if (halfLife == null || !halfLife.isFinite || halfLife <= 0) {
+      final onset = kinetics.fields['onset_hours']?.value;
+      // CLAIM(onset-unknown): an unknown onset leaves residual exposure
+      // unknown; it is never read as zero [S5; track_effect_estimator_test].
+      if (halfLife == null ||
+          !halfLife.isFinite ||
+          halfLife <= 0 ||
+          onset == null ||
+          !onset.isFinite ||
+          onset < 0) {
         unknownResidual = true;
       } else if (hours >= onset) {
+        // ↳ CLAIM(residual-window)
         residual += amount * math.pow(.5, hours / halfLife);
       }
     }
@@ -234,6 +254,31 @@ class TrackEffectEstimator {
   }
 }
 
+double _residualWindowHours(TrackDefinition track) {
+  var halfLife = 0.0;
+  for (final k in [
+    track.kinetics,
+    for (final sub in track.subActivities) sub.kinetics,
+  ]) {
+    final value = k.fields['half_life_hours']?.value;
+    if (value != null && value.isFinite && value > halfLife) halfLife = value;
+  }
+  return math.min(math.max(48.0, halfLife * 7), 730.0 * 24);
+}
+
+// CLAIM(unit-abstain): an event amount enters dose fitting only when its unit
+// equals the track's current unit (empty means unstated, taken as compatible);
+// any other unit is an unsupported conversion and leaves the amount unknown
+// [S3; track_effect_estimator_test].
+double? _amountInTrackUnit(TrackDefinition track, TrackEvent event) {
+  final amount = event.amount;
+  if (amount == null || !amount.isFinite || amount < 0) return null;
+  final unit = event.unit?.trim().toLowerCase() ?? '';
+  final expected = track.unit.trim().toLowerCase();
+  if (unit.isNotEmpty && expected.isNotEmpty && unit != expected) return null;
+  return amount;
+}
+
 class _LearningRow {
   const _LearningRow(this.night, this.features);
   final TrackNight night;
@@ -252,17 +297,25 @@ List<_NightPair> _matchedPairs(
   List<TrackDefinition> tracks,
 ) {
   final valid = rows.where((r) => r.features[track.id]?.dose != null).toList();
+  // CLAIM(baseline-reference): with "this track is my baseline" the reference
+  // is the habitual dose (most frequent, earliest on ties), so nights with less
+  // than habit pair as deviations below it and later abstinence cannot become
+  // the reference [S4; track_effect_estimator_test].
   var referenceDose = 0.0;
   if (track.noUnadjustedData && valid.isNotEmpty) {
-    referenceDose = valid
-        .map((r) => r.features[track.id]!.dose!)
-        .reduce(math.min);
+    final counts = <double, int>{};
+    for (final r in valid) {
+      counts.update(r.features[track.id]!.dose!, (n) => n + 1, ifAbsent: () => 1);
+    }
+    referenceDose = counts.entries
+        .reduce((best, e) => e.value > best.value ? e : best)
+        .key;
   }
   final controls = valid
       .where((r) => r.features[track.id]!.dose == referenceDose)
       .toList();
   final exposed = valid
-      .where((r) => r.features[track.id]!.dose! > referenceDose)
+      .where((r) => r.features[track.id]!.dose! != referenceDose)
       .toList();
   final used = <int>{};
   final pairs = <_NightPair>[];
@@ -291,7 +344,13 @@ List<_NightPair> _matchedPairs(
     }
     if (best != null) {
       used.add(best.night.at.millisecondsSinceEpoch);
-      pairs.add(_NightPair(row, best));
+      // ↳ CLAIM(baseline-reference): the pair's "exposed" side is always the
+      // higher dose, so a night below the reference keeps the effect's sign.
+      pairs.add(
+        row.features[track.id]!.dose! > referenceDose
+            ? _NightPair(row, best)
+            : _NightPair(best, row),
+      );
     }
   }
   return pairs;

@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/track_model.dart';
+import 'package:openstrap_edge/data/track_presets.dart';
 import 'package:openstrap_edge/tracks/learning.dart';
 
 TrackDefinition track(
@@ -15,6 +17,7 @@ TrackDefinition track(
   systems: systems,
   kinetics: TrackKinetics({
     'half_life_hours': TrackKineticField(value: halfLife),
+    'onset_hours': TrackKineticField(value: 0),
   }),
 );
 
@@ -139,6 +142,7 @@ TrackDefinition historyTrack({
   systems: const ['sleep'],
   kinetics: TrackKinetics({
     'half_life_hours': const TrackKineticField(value: 6),
+    'onset_hours': const TrackKineticField(value: 0),
     'tolerance_days': TrackKineticField(
       value: tolerance,
       locked: locked == 'tolerance_days',
@@ -657,4 +661,294 @@ void main() {
       }
     },
   );
+
+  // WHY S3: after caffeine changed from mg to cups, 100 historical mg and 2 new
+  // cups were summed into one dose scale (dose 102). proves: CLAIM(unit-abstain)
+  test('amounts in another unit than the track abstain instead of summing', () {
+    final bedtime = DateTime.utc(2025, 1, 2, 22);
+    TrackEvent event(String id, double amount, String? unit, int hoursBefore) =>
+        TrackEvent(
+          id: id,
+          trackId: 'a',
+          date: '2025-01-02',
+          amount: amount,
+          unit: unit,
+          atMs: bedtime
+              .subtract(Duration(hours: hoursBefore))
+              .millisecondsSinceEpoch,
+        );
+    final cups = TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      unit: 'cups',
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+      }),
+    );
+    final mixed = estimator.features(cups, [
+      event('old', 100, 'mg', 8),
+      event('new', 2, 'cups', 2),
+    ], bedtime);
+    expect(mixed.dose, isNull);
+    expect(mixed.residualMg, isNull);
+    // Positive control: same-unit (and unstated-unit) amounts still add.
+    final same = estimator.features(cups, [
+      event('a1', 1, 'cups', 8),
+      event('a2', 2, null, 2),
+    ], bedtime);
+    expect(same.dose, 3);
+    // The slow-history window applies the same rule to a 10-day-old mg dose.
+    final slowTrack = TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      unit: 'cups',
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+        'onset_hours': TrackKineticField(value: 0),
+        'tolerance_days': TrackKineticField(value: 1),
+        'withdrawal_days': TrackKineticField(value: 1),
+      }),
+    );
+    final slowSame = estimator.features(slowTrack, [
+      event('old', 1, 'cups', 24 * 5),
+      event('new', 2, 'cups', 2),
+    ], bedtime, historyComplete: true);
+    expect(slowSame.effectiveResidual, isNotNull, reason: 'positive control');
+    final slow = estimator.features(slowTrack, [
+      event('old', 100, 'mg', 24 * 5),
+      event('new', 2, 'cups', 2),
+    ], bedtime, historyComplete: true);
+    expect(slow.effectiveResidual, isNull);
+  });
+
+  // WHY S4: with "this track is my baseline" the reference was the minimum
+  // observed dose, so 14 late abstinence nights replaced the habitual 100 mg
+  // reference and the 150-vs-100 contrast was no longer estimated.
+  // proves: CLAIM(baseline-reference)
+  test('baseline reference stays habitual after later abstinence nights', () {
+    TrackEvent dose(TrackNight n, double amount) => TrackEvent(
+      id: 'd-${n.at.millisecondsSinceEpoch}',
+      trackId: 'a',
+      date: '2025-01-01',
+      amount: amount,
+      atMs: n.at.subtract(const Duration(hours: 6)).millisecondsSinceEpoch,
+    );
+    TrackNight withEvents(TrackNight n, double amount) => TrackNight(
+      at: n.at,
+      bedtimeMinute: n.bedtimeMinute,
+      sleepDebtHours: n.sleepDebtHours,
+      load: n.load,
+      outcomes: n.outcomes,
+      baselines: n.baselines,
+      negativeControls: n.negativeControls,
+      completeTrackIds: {'a'},
+      events: [dose(n, amount)],
+    );
+    // Habitual 100 mg weeks vs 150 mg weeks differ by exactly 8 sleep units.
+    final base = cohort();
+    final nights = [
+      for (final n in base) withEvents(n, n.events.isEmpty ? 100 : 150),
+    ];
+    final tail = [
+      for (var i = 0; i < 14; i++)
+        withEvents(
+          TrackNight(
+            at: base.last.at.add(Duration(days: i + 1)),
+            bedtimeMinute: 1320,
+            sleepDebtHours: 0,
+            load: 0,
+            outcomes: const {'sleep': 50},
+            baselines: const {'sleep': 50},
+            negativeControls: const {'sleep': 50},
+          ),
+          0,
+        ),
+    ];
+    final tracked = TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      systems: const ['sleep'],
+      noUnadjustedData: true,
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+      }),
+    );
+    final result = estimate([...nights, ...tail], tracks: [tracked]);
+    expect(result.reason, 'estimated');
+    // 56 pairs, contrast 8, shrinkage 56 / (56 + 8) = .875 -> 7.
+    expect(result.effect, closeTo(7, 1e-6));
+    // Deviation below the reference: habitual 100 mg weeks (earliest, so the
+    // reference) against 50 mg weeks that sleep 8 units better -> -8 per
+    // +50 mg, shrunk to -7. The sign shows the higher dose is the exposed side.
+    final below = estimate(
+      [for (final n in base) withEvents(n, n.events.isEmpty ? 100 : 50)],
+      tracks: [tracked],
+    );
+    expect(below.reason, 'estimated');
+    expect(below.effect, closeTo(-7, 1e-6));
+  });
+
+  // WHY: after S5 an unknown onset abstains, so the default caffeine preset
+  // must carry a sourced onset or caffeine (the main preset) never learns.
+  test('default caffeine preset has a known onset, so its residual is computed', () {
+    final caffeine = TrackDefinition.fromJson(
+      jsonDecode(trackPresetPayloads['caffeine']!) as Map<String, dynamic>,
+    );
+    final bedtime = DateTime.utc(2025, 1, 2, 22);
+    final dose = TrackEvent(
+      id: 'c',
+      trackId: caffeine.id,
+      date: '2025-01-02',
+      amount: 100,
+      atMs: bedtime.subtract(const Duration(hours: 6)).millisecondsSinceEpoch,
+    );
+    expect(estimator.features(caffeine, [dose], bedtime).residualMg, isNotNull);
+  });
+
+  // WHY S5: the default caffeine preset has onset null; it was read as 0 h, so a
+  // numeric residual was reported with no kinetics behind it.
+  // proves: CLAIM(onset-unknown)
+  test('unknown onset leaves residual absent while dose stays known', () {
+    final bedtime = DateTime.utc(2025, 1, 2, 22);
+    final events = [
+      TrackEvent(
+        id: 'a',
+        trackId: 'a',
+        date: '2025-01-02',
+        amount: 100,
+        atMs: bedtime
+            .subtract(const Duration(hours: 6))
+            .millisecondsSinceEpoch,
+      ),
+    ];
+    TrackDefinition withOnset(double? onset) => TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      kinetics: TrackKinetics({
+        'half_life_hours': const TrackKineticField(value: 6),
+        'onset_hours': TrackKineticField(value: onset),
+      }),
+    );
+    final unknown = estimator.features(withOnset(null), events, bedtime);
+    expect(unknown.dose, 100);
+    expect(unknown.residualMg, isNull);
+    // Positive control: a known 1 h onset keeps 100 * 0.5^(6/6) = 50.
+    expect(
+      estimator.features(withOnset(1), events, bedtime).residualMg,
+      closeTo(50, 1e-10),
+    );
+  });
+
+  // WHY S6: a dose 72 h before bed with a 100 h half-life (61% left) fell past
+  // the fixed 48 h cutoff and reported residual 0.
+  // proves: CLAIM(residual-window)
+  test('long half-life residual outlives 48 h or abstains without history', () {
+    final bedtime = DateTime.utc(2025, 1, 5, 22);
+    final events = [
+      TrackEvent(
+        id: 'old',
+        trackId: 'a',
+        date: '2025-01-02',
+        amount: 100,
+        atMs: bedtime
+            .subtract(const Duration(hours: 72))
+            .millisecondsSinceEpoch,
+      ),
+    ];
+    final longLived = track('a', halfLife: 100);
+    // 100 * 0.5^(72/100) = 60.7 mg (hand: 2^-0.72 = 0.6071).
+    expect(
+      estimator
+          .features(longLived, events, bedtime, historyComplete: true)
+          .residualMg,
+      closeTo(60.71, 0.01),
+    );
+    expect(estimator.features(longLived, events, bedtime).residualMg, isNull);
+    // Positive control: a short half-life needs no history and still drops it.
+    expect(estimator.features(track('a'), events, bedtime).residualMg, 0);
+  });
+
+  // WHY S11: a sub-activity half-life override (every dose here uses it) hid the
+  // parent's fit and was never itself learned. proves: CLAIM(sub-override-scale)
+  test('sub-activity overrides scale with the parent and enter the fit', () {
+    TrackKinetics kinetics(double hl, {bool locked = false}) => TrackKinetics({
+      'half_life_hours': TrackKineticField(value: hl, locked: locked),
+    });
+    final subs = [
+      TrackSubActivity(id: 'free', name: 'free', kinetics: kinetics(8)),
+      TrackSubActivity(
+        id: 'pinned',
+        name: 'pinned',
+        kinetics: kinetics(8, locked: true),
+      ),
+      const TrackSubActivity(id: 'inherits', name: 'inherits'),
+    ];
+    final scaled = scaleSubActivityKinetics(subs, 'half_life_hours', .5);
+    expect(scaled[0].kinetics.fields['half_life_hours']!.value, 4);
+    expect(scaled[1].kinetics.fields['half_life_hours']!.value, 8);
+    expect(scaled[2].kinetics.fields.containsKey('half_life_hours'), isFalse);
+
+    // Ground truth: every dose has a 3 h half-life, set by the only
+    // sub-activity's override. The user entered override 6 h under parent 6 h.
+    // Scaling both by .5 reaches the truth (override 3, parent 3). Before the
+    // fix candidates changed the unused parent only, so the loss stayed flat.
+    final nights = List.generate(224, (i) {
+      final exposed = (i ~/ 7).isOdd;
+      final at = DateTime.utc(2025, 1, 1, 22).add(Duration(days: i));
+      final dose = [80.0, 100.0, 140.0, 200.0][i % 4];
+      final hours = [1, 3, 5, 8, 10][i % 5];
+      return TrackNight(
+        at: at,
+        bedtimeMinute: 1320,
+        sleepDebtHours: 0,
+        load: 0,
+        baselines: const {'sleep': 50},
+        outcomes: {'sleep': 50 + (exposed ? dose * pow(.5, hours / 3) * .1 : 0)},
+        completeTrackIds: const {'a'},
+        negativeControls: const {'sleep': 50},
+        events: [
+          if (exposed)
+            TrackEvent(
+              id: 'a-$i',
+              trackId: 'a',
+              date: '2025-01-01',
+              amount: dose,
+              subActivityId: 'only',
+              atMs: at.subtract(Duration(hours: hours)).millisecondsSinceEpoch,
+            ),
+        ],
+      );
+    });
+    final overridden = TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      systems: const ['sleep'],
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+        'onset_hours': TrackKineticField(value: 0),
+      }),
+      subActivities: [
+        TrackSubActivity(
+          id: 'only',
+          name: 'only',
+          kinetics: const TrackKinetics({
+            'half_life_hours': TrackKineticField(value: 6),
+          }),
+        ),
+      ],
+    );
+    final result = estimate(nights, tracks: [overridden]);
+    expect(result.reason, 'estimated');
+    expect(result.kineticTargets['half_life_hours'], 3);
+  });
 }

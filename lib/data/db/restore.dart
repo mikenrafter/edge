@@ -350,6 +350,15 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         await copyRows('journal', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('journal_metric', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('cycle_log', where: 'date = ?', whereArgs: [dayId]);
+        // Track rows ride with their day (the journal totals above already do,
+        // and without the timed doses they would restore as untimed remainders).
+        await copyRows('track_event', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('track_absence', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows(
+          'track_setup_history',
+          where: 'start_date <= ? AND end_date >= ?',
+          whereArgs: [dayId, dayId],
+        );
         await copyRows('notifications', where: 'date = ?', whereArgs: [dayId]);
         await copyRows(
           'sleep_session_candidates',
@@ -375,6 +384,9 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
       // `custom_magnesium` with no label, no unit and no idea what scale they
       // are on — the values survive the export and their meaning does not.
       await copyRows('journal_field_def');
+      // Track definitions are not day-scoped either; events and setup history
+      // above refer to them by id.
+      await copyRows('track_definition');
       await copyRows('activity_review_meta');
       // An old day's substrate lives in the archive, not the live tables:
       // exported as archive buckets cut to exactly these days, still
@@ -1714,6 +1726,35 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                       if (!ack) ...[row['at_ms'], row['data_json']]],
                     limit: 1);
                   if (existing.isNotEmpty) continue;
+                  row.remove('id');
+                  await txn.insert(t, row);
+                  copied++;
+                  continue;
+                }
+                if (t == 'track_learning_log') {
+                  // CLAIM(audit-identity): audit rows merge by what they say
+                  // (track, day, field, before, after, reason), never by their
+                  // local AUTOINCREMENT id, so a foreign row cannot replace a
+                  // local entry and a repeated import adds nothing [S10;
+                  // tracks_learning_storage_test].
+                  final existing = await txn.query(
+                    t,
+                    columns: ['id'],
+                    where:
+                        'track_id = ? AND date = ? AND field = ? AND reason = ? '
+                        'AND before_value IS ? AND after_value IS ?',
+                    whereArgs: [
+                      row['track_id'],
+                      row['date'],
+                      row['field'],
+                      row['reason'],
+                      row['before_value'],
+                      row['after_value'],
+                    ],
+                    limit: 1,
+                  );
+                  if (existing.isNotEmpty) continue;
+                  // ↳ CLAIM(audit-identity)
                   row.remove('id');
                   await txn.insert(t, row);
                   copied++;

@@ -351,12 +351,8 @@ class DbWakeJournal {
     );
   }
 
-  static String _userParameterKey(String id, Set<String> context, int track) {
-    final base = 'natural_wake_user_${Uri.encodeComponent(id)}';
-    if (context.length == 1 && track == 0) return base;
-    final ids = context.toList()..sort();
-    return '${base}_context_${Uri.encodeComponent(jsonEncode([track, ids]))}';
-  }
+  static String _userParameterKey(String id, Set<String> context, int track) =>
+      naturalUserParameterKey(id, context, track);
 
   static String _parameterKey(int track) => track == 0
       ? 'natural_wake_parameters'

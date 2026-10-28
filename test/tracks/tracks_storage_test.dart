@@ -220,4 +220,56 @@ void main() {
       hasLength(1),
     );
   });
+
+  // WHY S9: a selected-day export omitted track rows, so restoring it lost the
+  // custom track and turned timed substance doses into untimed remainders.
+  // proves: export/import parity for the selected day's track rows.
+  test('selected-day export carries track rows, definitions and history', () async {
+    final db = await LocalDb.instance;
+    await db.insert('track_definition', {
+      'id': 'custom',
+      'payload_json': jsonEncode({'id': 'custom', 'name': 'Reading', 'kind': 'activity'}),
+    });
+    for (final (id, start, end) in [
+      ('h-in', '2026-10-20', '2026-10-27'),
+      ('h-out', '2026-08-01', '2026-08-05'),
+    ]) {
+      await db.insert('track_setup_history', {
+        'id': id,
+        'track_id': 'custom',
+        'start_date': start,
+        'end_date': end,
+        'done': 1,
+      });
+    }
+    for (final (id, date) in [('in', '2026-10-26'), ('out', '2026-10-01')]) {
+      await db.insert('track_event', {
+        'id': id,
+        'track_id': 'custom',
+        'date': date,
+        'at_ms': 1793030400000,
+        'source_kind': 'manual',
+        'source_id': id,
+      });
+    }
+    await db.insert('track_absence', {'track_id': 'custom', 'date': '2026-10-26'});
+    await db.insert('track_absence', {'track_id': 'custom', 'date': '2026-10-01'});
+    await env.seedData();
+    final days = await LocalDb.exportDaysDb({'2026-10-26'});
+    await env.wipe();
+    await LocalDb.instance;
+    await LocalDb.importFromDbFile(days);
+    final after = await LocalDb.instance;
+    expect(
+      (await after.query('track_definition', where: "id = 'custom'")).length,
+      1,
+    );
+    expect((await after.query('track_event')).map((r) => r['id']), ['in']);
+    expect((await after.query('track_absence')).map((r) => r['date']), [
+      '2026-10-26',
+    ]);
+    expect((await after.query('track_setup_history')).map((r) => r['id']), [
+      'h-in',
+    ]);
+  });
 }

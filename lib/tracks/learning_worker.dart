@@ -140,6 +140,7 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
       };
     }
     final date = dayLabelOf(now), fields = {...track.kinetics.fields};
+    var subActivities = track.subActivities;
     final periods = (state['periods_us'] as Map? ?? {}).cast<String, dynamic>();
     final logs = <Map<String, Object?>>[];
     final canStep = saved?['last_step_date'] != date;
@@ -210,6 +211,26 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
           'after_value': step.value,
           'reason': step.reason,
         });
+        // ↳ CLAIM(sub-override-scale): audited like the parent step.
+        final scaled = scaleSubActivityKinetics(
+          subActivities,
+          field,
+          step.value! / track.kinetics.fields[field]!.value!,
+        );
+        for (var i = 0; i < scaled.length; i++) {
+          final before = subActivities[i].kinetics.fields[field]?.value;
+          final after = scaled[i].kinetics.fields[field]?.value;
+          if (before == after) continue;
+          logs.add({
+            'track_id': track.id,
+            'date': date,
+            'field': '$field@${scaled[i].id}',
+            'before_value': before,
+            'after_value': after,
+            'reason': step.reason,
+          });
+        }
+        subActivities = scaled;
       }
     }
     final changed = logs.any(
@@ -240,6 +261,7 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
         'definition_json': jsonEncode({
           ...track.toJson(),
           'kinetics': TrackKinetics(fields).toJson(),
+          'sub_activities': [for (final s in subActivities) s.toJson()],
         }),
     });
     summaries[track.id] = {

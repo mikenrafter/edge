@@ -298,7 +298,16 @@ void main() {
       });
       final first = await profile(bed);
       expect(first.userTrackIds, {'med:test'});
-      expect(first.adjustedFor, {'Medication 1 h before bed'});
+      // Observed context only until learned parameters exist (S12).
+      expect(first.adjustedFor, isEmpty);
+      await db.insert('wake_meta', {
+        'key': 'natural_wake_user_med%3Atest',
+        'value': jsonEncode({
+          'triggerRunOffsetSec': -15,
+          'windowLeadMinutes': 1,
+        }),
+      });
+      expect((await profile(bed)).adjustedFor, {'Medication 1 h before bed'});
       const source = DbWakeNightSource();
       final from = DateTime(2026, 9, 1), to = DateTime(2026, 9, 2);
       final before = await source.revision(from, to);
