@@ -44,7 +44,7 @@ void main() {
       await store.saveDefinition(
         custom(),
         history: [
-          const TrackSetupRange(
+          TrackSetupRange(
             id: 'first',
             trackId: 'reading',
             startDate: '2026-10-01',
@@ -61,14 +61,14 @@ void main() {
         store.saveDefinition(
           edited,
           history: [
-            const TrackSetupRange(
+            TrackSetupRange(
               id: 'a',
               trackId: 'reading',
               startDate: '2026-10-01',
               endDate: '2026-10-03',
               done: true,
             ),
-            const TrackSetupRange(
+            TrackSetupRange(
               id: 'b',
               trackId: 'reading',
               startDate: '2026-10-03',
@@ -87,7 +87,7 @@ void main() {
         store.saveDefinition(
           edited,
           history: [
-            const TrackSetupRange(
+            TrackSetupRange(
               id: 'reject',
               trackId: 'reading',
               startDate: '2026-10-01',

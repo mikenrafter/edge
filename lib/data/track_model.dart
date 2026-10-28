@@ -173,16 +173,52 @@ class TrackDefinition {
   }
 }
 
-class TrackSetupRange {
-  const TrackSetupRange({
-    required this.id,
-    required this.trackId,
-    required this.startDate,
-    required this.endDate,
-    required this.done,
-  });
-  final String id, trackId, startDate, endDate;
-  final bool done;
+/// The stored `end_date` of a range with no end ("since X").
+// CLAIM(ongoing-sentinel): see the green implementation; red-phase stub.
+const String kOngoingEndDate = '9999-12-31';
+
+/// `TrackEvent.sourceKind` of an in-memory exposure synthesized from a range.
+const String kRangeExposureSource = 'history';
+
+/// An amount in the unit the track had when the wearer entered it.
+final class DailyAmount {
+  const DailyAmount(this.value, this.unit);
+  final double value;
+  final String unit;
+}
+
+/// What a taken-daily period says about each day (all of it optional).
+final class DailyIntake {
+  const DailyIntake({this.approxMinute, this.amount});
+  final int? approxMinute;
+  final DailyAmount? amount;
+}
+
+sealed class TrackSetupRange {
+  const TrackSetupRange._(this.id, this.trackId, this.startDate);
+  factory TrackSetupRange({
+    required String id,
+    required String trackId,
+    required String startDate,
+    required String endDate,
+    required bool done,
+  }) => done
+      ? DoneRange(
+          id: id,
+          trackId: trackId,
+          startDate: startDate,
+          untilDate: endDate == kOngoingEndDate ? null : endDate,
+        )
+      : NotDoneRange(
+          id: id,
+          trackId: trackId,
+          startDate: startDate,
+          endDate: endDate,
+        );
+  final String id, trackId, startDate;
+  String get endDate;
+  bool get done;
+  String? get validationError => null;
   factory TrackSetupRange.fromJson(Map<String, dynamic> j) => TrackSetupRange(
     id: j['id'] as String,
     trackId: j['track_id'] as String,
@@ -197,6 +233,38 @@ class TrackSetupRange {
     'end_date': endDate,
     'done': done ? 1 : 0,
   };
+}
+
+final class NotDoneRange extends TrackSetupRange {
+  const NotDoneRange({
+    required String id,
+    required String trackId,
+    required String startDate,
+    required this.endDate,
+  }) : super._(id, trackId, startDate);
+  @override
+  final String endDate;
+  @override
+  bool get done => false;
+}
+
+final class DoneRange extends TrackSetupRange {
+  const DoneRange({
+    required String id,
+    required String trackId,
+    required String startDate,
+    this.untilDate,
+    this.intake = const DailyIntake(),
+  }) : super._(id, trackId, startDate);
+
+  /// Null means ongoing.
+  final String? untilDate;
+  final DailyIntake intake;
+  bool get ongoing => untilDate == null;
+  @override
+  String get endDate => untilDate ?? kOngoingEndDate;
+  @override
+  bool get done => true;
 }
 
 class TrackEvent {

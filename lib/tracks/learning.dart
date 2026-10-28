@@ -145,7 +145,13 @@ class TrackExposureFeatures {
     this.withdrawalPressure,
     this.exposureRunDays,
     this.abstinenceDays,
+    this.presenceOnly = false,
   });
+
+  /// Red-phase stub: true when exposure is known to have happened but its
+  /// amount is not (on/off contrast only).
+  final bool presenceOnly;
+  double? get exposureLevel => dose;
   final double? dose, residualMg, timingHours, nextNightDose;
   final double? effectiveResidual, withdrawalPressure;
   final int? exposureRunDays, abstinenceDays;
