@@ -949,9 +949,30 @@ Future<void> _ldbPutJournalMetrics(String date, Map<String, JournalMetricValue> 
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
       await WaterMomentStore.recordTotalChange(txn, date, fields['water_ml']);
+      final previous = {
+        for (final r in await txn.query(
+          'journal_metric',
+          where: "date = ? AND field IN ('caffeine_mg', 'alcohol_units')",
+          whereArgs: [date],
+        ))
+          r['field'] as String: r,
+      };
       await txn.delete('journal_metric', where: 'date = ?', whereArgs: [date]);
-      // ↳ CLAIM(remainder-time-fresh)
-      await LocalDb._clearRemainderMinute(txn, date);
+      // ↳ CLAIM(remainder-time-fresh): only a substance field whose value or
+      // time actually changed loses its stored remainder time; saving an
+      // unrelated field keeps it [R3-2, R4-2].
+      for (final e in const {
+        'caffeine_mg': 'caffeine',
+        'alcohol_units': 'alcohol',
+      }.entries) {
+        final old = previous[e.key], next = fields[e.key];
+        final unchanged = old == null
+            ? next == null
+            : next != null &&
+                  (old['value'] as num).toDouble() == next.value &&
+                  (old['at_min'] as num?)?.toInt() == next.atMinuteOfDay;
+        if (!unchanged) await LocalDb._clearRemainderMinute(txn, date, e.value);
+      }
       for (final e in fields.entries) {
         await txn.insert('journal_metric', {
           'date': date,
