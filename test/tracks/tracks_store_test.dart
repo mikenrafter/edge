@@ -921,7 +921,11 @@ void main() {
     await LocalDb.putJournalMetrics('2026-10-01', {
       'caffeine_mg': const JournalMetricValue(50, atMinuteOfDay: 18 * 60),
     });
-    await store.log(caffeineDose('late', 30, atMs: 1790892000000));
+    // Local 22:00 (not a UTC instant): the dose's time of day is zone-independent,
+    // so under any TZ it is later than the 18:00 remainder and owns the aggregate.
+    await store.log(caffeineDose('late', 30, atMs: DateTime(2026, 10, 1, 22).millisecondsSinceEpoch));
+    final before = (await caffeineTotal())!;
+    expect((before.value, before.atMinuteOfDay), (80, 22 * 60), reason: 'aggregate carries the dose time');
     final current = await LocalDb.journalMetricsForDay('2026-10-01');
     await LocalDb.putJournalMetrics('2026-10-01', {
       ...current,
