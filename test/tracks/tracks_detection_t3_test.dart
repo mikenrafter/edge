@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/activity_store.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/day_review.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
@@ -79,9 +80,12 @@ void main() {
     ),
   );
 
-  Future<Map> detect(List<Map<String, Object?>> windows) async =>
+  Future<Map> detect(
+    List<Map<String, Object?>> windows, {
+    String date = detectionDay,
+  }) async =>
       await (tracks as dynamic).refreshDetections(
-            date: detectionDay,
+            date: date,
             windows: windows,
           )
           as Map;
@@ -363,4 +367,74 @@ void main() {
       );
     },
   );
+
+  // why: review T13. The prompt's two answers were only tested by writing the
+  // absence directly with confirmNone, so the test passed with the review flow's
+  // "No" (discard -> TrackActivity.answerNo) removed, and "Yes" (an untimed
+  // event on the prompt's day, past the future-end guard) was untested.
+  // Mutation checked 2026-10-27: removing the answerNo call, or the
+  // `!expected.isPrompt` guard bypass, turns these red.
+  Future<ActivitySuggestion> openPrompt(String date) async {
+    final result = await detect([], date: date);
+    final id = ((result['prompts'] as List).single as Map)['suggestion_id'] as String;
+    return (await activities.get(id))!;
+  }
+
+  test('answering No to the prompt records an absence and ends the question', () async {
+    await detectable('alcohol', min: 2, max: 3);
+    final prompt = await openPrompt(detectionDay);
+    await repo.discardActivity(prompt);
+    expect(
+      await db.query('track_absence'),
+      [
+        {'track_id': 'alcohol', 'date': detectionDay},
+      ],
+    );
+    expect(await tracks.events(), isEmpty, reason: 'no occurrence is invented');
+    expect((await detect([]))['prompts'], isEmpty);
+    expect(
+      await db.query('activity_suggestions', where: "status = 'pending'"),
+      isEmpty,
+      reason: 'the answered prompt does not return on the next refresh',
+    );
+  });
+
+  test('No does not contradict a day that already holds a logged occurrence', () async {
+    await detectable('alcohol', min: 2, max: 3);
+    await tracks.log(
+      TrackEvent(
+        id: 'drink',
+        trackId: 'alcohol',
+        date: detectionDay,
+        atMs: DateTime(2026, 10, 1, 21).millisecondsSinceEpoch,
+      ),
+    );
+    final prompt = await openPrompt(detectionDay); // 1 logged < minimum 2
+    await repo.discardActivity(prompt);
+    expect(await db.query('track_absence'), isEmpty);
+    expect(await tracks.events(trackId: 'alcohol'), hasLength(1));
+  });
+
+  test('answering Yes logs one untimed occurrence on the prompt day, even for today', () async {
+    await detectable('alcohol', min: 1, max: 3);
+    final today = todayLabel();
+    final prompt = await openPrompt(today);
+    expect(
+      prompt.endTs * 1000,
+      greaterThan(DateTime.now().millisecondsSinceEpoch),
+      reason: 'a prompt for today ends in the future: the guard must not apply',
+    );
+    await repo.confirmActivity(prompt);
+    final events = await tracks.events(trackId: 'alcohol');
+    expect(events, hasLength(1));
+    expect(events.single.date, today);
+    expect(events.single.atMs, isNull, reason: 'a prompt answer has no time');
+    expect(events.single.amount, isNull, reason: 'and no dose');
+    expect((await detect([], date: today))['prompts'], isEmpty);
+    expect(await db.query('activity_suggestions', where: "status = 'pending'"), isEmpty);
+    // The same answer for a past day lands on that day.
+    final past = await openPrompt('2026-09-30');
+    await repo.confirmActivity(past);
+    expect((await tracks.events(trackId: 'alcohol', date: '2026-09-30')).single.atMs, isNull);
+  });
 }
