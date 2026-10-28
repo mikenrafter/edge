@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 
+import 'package:openstrap_edge/data/med_store.dart';
+import 'package:openstrap_edge/data/moment_label.dart';
+import 'package:openstrap_edge/data/nutrition_store.dart';
 import '../backup/backup_support.dart';
 
 void main() {
@@ -271,5 +274,56 @@ void main() {
     expect((await after.query('track_setup_history')).map((r) => r['id']), [
       'h-in',
     ]);
+  });
+
+  // WHY R2-7: the selected-day export copied only manual track rows; medication
+  // doses (med_dose), caffeine moments (moment_label), meals (food_entry) and
+  // the medication definitions stayed behind, so the restored track_event_feed
+  // lost them. proves: feed parity before and after export, wipe and import.
+  test('selected-day export restores the same track_event_feed', () async {
+    final db = await LocalDb.instance;
+    await MedDb.putDef(db, const MedDef(key: 'vit', label: 'Vitamin', doseUnit: 'IU'));
+    await MedDb.logTrack(
+      db,
+      medKey: 'vit',
+      date: '2026-10-26',
+      explicitSlotMin: 8 * 60,
+      atMs: 1793000000000,
+      amount: 1000,
+    );
+    await LocalDb.putMomentLabel(
+      const MomentLabel(
+        date: '2026-10-26',
+        hhmm: '09:30',
+        label: 'caffeine',
+        caffeineMg: 90,
+        answeredAtMs: 1,
+      ),
+    );
+    await NutritionDb.logTrack(
+      db,
+      id: 'meal1',
+      date: '2026-10-26',
+      atTs: 1793010000,
+      quantity: 2,
+      unit: 'bowls',
+    );
+    await env.seedData();
+    Future<List<String>> feed(dynamic d) async => [
+      for (final r in await d.query(
+        'track_event_feed',
+        where: "date = '2026-10-26' AND source_kind <> 'journal'",
+        orderBy: 'id',
+      ))
+        jsonEncode(r),
+    ];
+    final before = await feed(db);
+    expect(before.length, 3, reason: 'fixture must exercise three owners');
+    final days = await LocalDb.exportDaysDb({'2026-10-26'});
+    await env.wipe();
+    await LocalDb.instance;
+    await LocalDb.importFromDbFile(days);
+    expect(await feed(await LocalDb.instance), before);
+    expect((await MedDb.defs(await LocalDb.instance)).single.label, 'Vitamin');
   });
 }

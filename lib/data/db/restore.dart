@@ -359,6 +359,11 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
           where: 'start_date <= ? AND end_date >= ?',
           whereArgs: [dayId, dayId],
         );
+        // The canonical owners behind track_event_feed rows: medication doses,
+        // caffeine moments and meals.
+        await copyRows('med_dose', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('moment_label', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('food_entry', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('notifications', where: 'date = ?', whereArgs: [dayId]);
         await copyRows(
           'sleep_session_candidates',
@@ -387,6 +392,8 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
       // Track definitions are not day-scoped either; events and setup history
       // above refer to them by id.
       await copyRows('track_definition');
+      await copyRows('med_def');
+      await copyRows('food_def');
       await copyRows('activity_review_meta');
       // An old day's substrate lives in the archive, not the live tables:
       // exported as archive buckets cut to exactly these days, still
