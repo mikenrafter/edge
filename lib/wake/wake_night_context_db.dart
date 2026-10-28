@@ -45,7 +45,10 @@ class DbWakeNightSource implements WakeNightSource {
     final med = await db.rawQuery(
       "SELECT group_concat(v, '|') AS rev FROM (SELECT quote(key)||quote(label)||quote(dose_unit)||quote(active) AS v FROM med_def ORDER BY key)",
     );
-    return '${j.single['rev']}/${m.single['rev']}/${t.single['rev']}/${e.single['rev']}/${h.single['rev']}/${med.single['rev']}';
+    final learned = await db.rawQuery(
+      "SELECT group_concat(v, '|') AS rev FROM (SELECT quote(key)||quote(value) AS v FROM wake_meta WHERE key LIKE 'natural_wake_user_%' ORDER BY key)",
+    );
+    return '${j.single['rev']}/${m.single['rev']}/${t.single['rev']}/${e.single['rev']}/${h.single['rev']}/${med.single['rev']}/${learned.single['rev']}';
   }
 
   @override
@@ -89,6 +92,10 @@ Future<ConfounderProfile> loadWakeProfile(
     where: 'start_date<? AND end_date>=?',
     whereArgs: [args[1], args[0]],
   );
+  final userParameters = await db.query(
+    'wake_meta',
+    where: "key LIKE 'natural_wake_user_%'",
+  );
   final input = WakeProfileInput(
     journal,
     metrics,
@@ -102,6 +109,7 @@ Future<ConfounderProfile> loadWakeProfile(
     medications: medications,
     events: events,
     history: history,
+    userParameters: userParameters,
   );
   return Isolate.run(() => wakeProfileHeavy(input));
 }
@@ -111,7 +119,11 @@ Future<ConfounderProfile> loadWakeProfile(
 )
 class WakeProfileInput {
   final List<Map<String, Object?>> journal, metrics;
-  final List<Map<String, Object?>> definitions, events, history, medications;
+  final List<Map<String, Object?>> definitions,
+      events,
+      history,
+      medications,
+      userParameters;
   final int? bedtimeMs;
   final WorkerInputs worker;
   const WakeProfileInput(
@@ -123,6 +135,7 @@ class WakeProfileInput {
     this.medications = const [],
     this.events = const [],
     this.history = const [],
+    this.userParameters = const [],
   });
 }
 
@@ -147,7 +160,36 @@ ConfounderProfile wakeProfileHeavy(WakeProfileInput input) {
         : DateTime.fromMillisecondsSinceEpoch(input.bedtimeMs!),
   );
   if (input.bedtimeMs == null) return preset;
-  return preset.combine(trackContextHeavy(input));
+  final context = trackContextHeavy(input);
+  final combined = preset.combine(context.profile);
+  // CLAIM(adjusted-only-if-learned): a track's label is "adjusted for" only
+  // when learned wake parameters for exactly this context are stored and
+  // non-zero; otherwise the track is observed context (userTrackIds) and its
+  // thresholds stay the identity [S12; tracks_natural_learning_test].
+  final learned = {
+    for (final row in input.userParameters)
+      row['key'] as String: jsonDecode(row['value'] as String) as Map,
+  };
+  bool applied(String id) {
+    final data = learned[naturalUserParameterKey(
+      id,
+      combined.userTrackIds,
+      combined.track,
+    )];
+    return data != null &&
+        (((data['triggerRunOffsetSec'] as num?) ?? 0) != 0 ||
+            ((data['windowLeadMinutes'] as num?) ?? 0) != 0);
+  }
+
+  return combined.combine(
+    ConfounderProfile(
+      // ↳ CLAIM(adjusted-only-if-learned)
+      adjustedFor: {
+        for (final e in context.labels.entries)
+          if (applied(e.key)) e.value,
+      },
+    ),
+  );
 }
 
 const _journalFieldTrack = {
@@ -175,11 +217,14 @@ Set<String> gatedJournalFieldsHeavy(WakeProfileInput input) {
 }
 
 @heavy
-ConfounderProfile trackContextHeavy(WakeProfileInput input) {
+({ConfounderProfile profile, Map<String, String> labels}) trackContextHeavy(
+  WakeProfileInput input,
+) {
   final bedtime = input.bedtimeMs!;
   final date = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(bedtime));
   final events = [for (final r in input.events) TrackEvent.fromJson(r)];
   var result = ConfounderProfile.identity;
+  final labels = <String, String>{};
   for (final d in decodeTrackDefinitionsHeavy(
     input.definitions,
     input.medications,
@@ -213,11 +258,10 @@ ConfounderProfile trackContextHeavy(WakeProfileInput input) {
     final label = lead == null
         ? d.name
         : '${d.name} ${lead == lead.roundToDouble() ? lead.toInt() : lead.toStringAsFixed(1)} h before bed';
-    result = result.combine(
-      ConfounderProfile(userTrackIds: {d.id}, adjustedFor: {label}),
-    );
+    result = result.combine(ConfounderProfile(userTrackIds: {d.id}));
+    labels[d.id] = label;
   }
-  return result;
+  return (profile: result, labels: labels);
 }
 
 // Bounded to the sleep occurrence's journal dates. Both live policy and outcome

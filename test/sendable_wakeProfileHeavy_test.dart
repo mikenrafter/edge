@@ -32,7 +32,7 @@ void main() {
     },
   );
   test(
-    'user identity sets and adjustment labels cross the actual worker',
+    'user identity sets cross the actual worker; labels need learned parameters',
     () async {
       final bed = DateTime(2026, 10, 26, 22);
       final input = WakeProfileInput(
@@ -66,7 +66,10 @@ void main() {
       );
       final result = await Isolate.run(() => wakeProfileHeavy(input));
       expect(result.userTrackIds, {'reading'});
-      expect(result.adjustedFor, {'Reading 1 h before bed'});
+      // WHY S12: a first-ever log is observed context (identity thresholds), not
+      // an adjustment, so no "Adjusted for" label until learned parameters exist.
+      // proves: CLAIM(adjusted-only-if-learned)
+      expect(result.adjustedFor, isEmpty);
       expect(result.hrArousalBpm, 4);
     },
   );
@@ -113,4 +116,50 @@ void main() {
       expect(result.hrArousalBpm, control ? 6 : 4);
     });
   }
+
+  test('a track is labelled adjusted only once learned parameters apply', () async {
+    final bed = DateTime(2026, 10, 26, 22);
+    WakeProfileInput input(List<Map<String, Object?>> learned) => WakeProfileInput(
+      [],
+      [],
+      bed.millisecondsSinceEpoch,
+      const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'),
+      definitions: [
+        {
+          'id': 'reading',
+          'payload_json': jsonEncode({
+            'id': 'reading',
+            'name': 'Reading',
+            'kind': 'activity',
+            'roles': ['own_sleep'],
+            'systems': ['sleep'],
+            'enabled': true,
+          }),
+        },
+      ],
+      events: [
+        {
+          'id': 'r',
+          'track_id': 'reading',
+          'date': '2026-10-26',
+          'at_ms': bed.subtract(const Duration(hours: 1)).millisecondsSinceEpoch,
+        },
+      ],
+      userParameters: learned,
+    );
+    Map<String, Object?> row(num offset, num lead) => {
+      'key': 'natural_wake_user_reading',
+      'value': jsonEncode({
+        'triggerRunOffsetSec': offset,
+        'windowLeadMinutes': lead,
+      }),
+    };
+    final zero = await Isolate.run(() => wakeProfileHeavy(input([row(0, 0)])));
+    expect(zero.adjustedFor, isEmpty);
+    final learnedProfile = await Isolate.run(
+      () => wakeProfileHeavy(input([row(-15, 1)])),
+    );
+    expect(learnedProfile.userTrackIds, {'reading'});
+    expect(learnedProfile.adjustedFor, {'Reading 1 h before bed'});
+  });
 }
