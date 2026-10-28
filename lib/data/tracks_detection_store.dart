@@ -18,6 +18,41 @@ extension TracksDetectionStore on TracksStore {
       ) ??
       0;
 
+  /// Logged occurrences of [trackId] on [date] that the wearer (or an import)
+  /// entered, not the ones a confirmed candidate wrote: those are already
+  /// counted as candidates.
+  Future<int> _countLogged(String trackId, String date) async =>
+      Sqflite.firstIntValue(
+        await db.rawQuery(
+          "SELECT COUNT(*) FROM track_event_feed WHERE track_id = ? "
+          "AND date = ? AND id NOT LIKE 'suggestion:%'",
+          [trackId, date],
+        ),
+      ) ??
+      0;
+
+  /// Whether a logged occurrence already explains [window]: an untimed one on
+  /// the window's date, or a timed one in the [_explainHours] before it ends.
+  Future<bool> _explainedByLog(
+    String trackId,
+    String date,
+    DetectionWindow window,
+  ) async {
+    final rows = await db.rawQuery(
+      'SELECT 1 FROM track_event_feed WHERE track_id = ? AND ('
+      '(at_ms IS NULL AND date = ?) OR (at_ms >= ? AND at_ms <= ?)) LIMIT 1',
+      [
+        trackId,
+        date,
+        (window.startTs - _explainHours * 3600) * 1000,
+        window.endTs * 1000,
+      ],
+    );
+    return rows.isNotEmpty;
+  }
+
+  static const _explainHours = 12;
+
   /// The stable T2 effects for the track's selected systems, or none.
   Future<List<LearnedSignature>> _learnedSignatures(
     TrackDefinition track,
@@ -93,7 +128,8 @@ extension TracksDetectionStore on TracksStore {
     final day = DateTime.parse(date);
     final dayStart = DateTime(day.year, day.month, day.day);
     for (final track in tracks) {
-      var count = await _countCandidates(track.id, date);
+      final logged = await _countLogged(track.id, date);
+      var count = await _countCandidates(track.id, date) + logged;
       final learned = TrackDetectors.hasPreset(track.id) ||
               track.id == 'caffeine'
           ? const <LearnedSignature>[]
@@ -104,6 +140,9 @@ extension TracksDetectionStore on TracksStore {
         if (count >= track.detectionMax) break;
         // Back-to-back windows are one event, not one per window.
         if (window.startTs <= lastEnd) continue;
+        // An occurrence the wearer already logged explains the window; a
+        // second entry for it would double the day's count.
+        if (await _explainedByLog(track.id, date, window)) continue;
         final reason = _reasonFor(track.id, window, systems, learned);
         if (reason == null) {
           final why = track.id == 'alcohol'
@@ -128,10 +167,10 @@ extension TracksDetectionStore on TracksStore {
           },
         ]);
         candidates.addAll(made);
-        count = await _countCandidates(track.id, date);
+        count = await _countCandidates(track.id, date) + logged;
       }
       if (!askMinimum || track.detectionMin <= 0) continue;
-      final logged = Sqflite.firstIntValue(
+      final loggedToday = Sqflite.firstIntValue(
             await db.rawQuery(
               'SELECT COUNT(*) FROM track_event_feed '
               'WHERE track_id = ? AND date = ?',
@@ -157,7 +196,7 @@ extension TracksDetectionStore on TracksStore {
             ),
           ) ??
           0;
-      if (answered || logged + pendingCandidates >= track.detectionMin) continue;
+      if (answered || loggedToday + pendingCandidates >= track.detectionMin) continue;
       promptTracks.add(track.id);
       await store.reconcile(ActivityKind.track, [
         {
