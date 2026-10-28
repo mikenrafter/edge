@@ -106,6 +106,56 @@ TrackSetupRange _piece(
   };
 }
 
-/// Red-phase stub.
-List<TrackSetupRange> mergeAgreeingOverlaps(Iterable<TrackSetupRange> ranges) =>
-    throw UnimplementedError('mergeAgreeingOverlaps');
+/// Folds periods that overlap AND agree (same kind, same intake, compared like
+/// RangeExposures) into one: the earliest-starting id survives with the union
+/// of coverage. Conflicting overlaps (different intake, or done vs not-done) are
+/// kept untouched, and adjacent periods are left alone.
+/// Reason: restoring a day export beside the full period leaves an agreeing
+/// piece; the editor re-saves what history() returns, and overlap validation
+/// would reject its own rows [review R2-3]. Read-time only: nothing is rewritten
+/// until the wearer saves.
+// CLAIM(range-overlap) [tracks_range_cut_test; tracks_setup_range_test]
+List<TrackSetupRange> mergeAgreeingOverlaps(Iterable<TrackSetupRange> ranges) {
+  final sorted = [...ranges]
+    ..sort((a, b) => a.startDate.compareTo(b.startDate));
+  final out = <TrackSetupRange>[];
+  for (final range in sorted) {
+    final index = out.lastIndexWhere(
+      (kept) =>
+          kept.endDate.compareTo(range.startDate) >= 0 && _agree(kept, range),
+    );
+    if (index < 0) {
+      out.add(range);
+      continue;
+    }
+    final kept = out[index];
+    if (range.endDate.compareTo(kept.endDate) > 0) {
+      out[index] = switch (kept) {
+        DoneRange() => DoneRange(
+          id: kept.id,
+          trackId: kept.trackId,
+          startDate: kept.startDate,
+          untilDate: range is DoneRange && range.ongoing ? null : range.endDate,
+          intake: kept.intake,
+        ),
+        NotDoneRange() => NotDoneRange(
+          id: kept.id,
+          trackId: kept.trackId,
+          startDate: kept.startDate,
+          endDate: range.endDate,
+        ),
+      };
+    }
+  }
+  return out;
+}
+
+bool _agree(TrackSetupRange a, TrackSetupRange b) => switch ((a, b)) {
+  (DoneRange a, DoneRange b) =>
+    a.intake.approxMinute == b.intake.approxMinute &&
+        a.intake.amount?.value == b.intake.amount?.value &&
+        a.intake.amount?.unit.trim().toLowerCase() ==
+            b.intake.amount?.unit.trim().toLowerCase(),
+  (NotDoneRange(), NotDoneRange()) => true,
+  _ => false,
+};
