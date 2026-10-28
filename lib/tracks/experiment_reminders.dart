@@ -133,16 +133,25 @@ class ExperimentReminders {
         final route = due.first['route'] as String;
         final marker = await _read(date);
         if (marker != null && marker.state == 'delivered') continue;
-        if (marker != null && pending != null) {
-          // ↳ CLAIM(reminder-delivered-guard): still pending (even past its
-          // time, an inexact one can be late): keep it. Gone and past: fired.
-          if (pending.contains(marker.id)) {
-            wanted[date] = (at: marker.at, id: marker.id, route: route, armed: true);
-            continue;
-          }
-          if (!marker.at.isAfter(now)) {
-            await _write(date, 'delivered', marker.at, marker.id);
-            continue;
+        if (marker != null) {
+          // ↳ CLAIM(reminder-revalidated): a retained request is checked against
+          // the CURRENT sleep / quiet-hours gate; a suppressed one is moved to
+          // the next allowed instant, or dropped when none is left that day
+          // [review R4-2]. A request already due is left to fire.
+          final suppressed =
+              marker.at.isAfter(now) && gate.reasonAt(prefs, marker.at) != null;
+          if (pending != null) {
+            // ↳ CLAIM(reminder-delivered-guard): still pending (even past its
+            // time, an inexact one can be late): keep it. Gone and past: fired.
+            if (pending.contains(marker.id)) {
+              if (!suppressed) {
+                wanted[date] = (at: marker.at, id: marker.id, route: route, armed: true);
+                continue;
+              }
+            } else if (!marker.at.isAfter(now)) {
+              await _write(date, 'delivered', marker.at, marker.id);
+              continue;
+            }
           }
         }
         final at = instantFor(date, prefs, gate, now);

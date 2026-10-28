@@ -355,6 +355,53 @@ void main() {
     expect(held(), isEmpty, reason: 'the stop was applied after the stale pass');
   });
 
+  // why: review R4-2. A request armed for 08:00 survived a refresh that
+  // established sleep until 09:30, because retained pending requests skipped the
+  // gate; the earlier sleep tests erased pending requests and markers first.
+  // The original schedule stays intact here: it must be revalidated, moved to
+  // the next allowed instant, or dropped when none is left.
+  // proves: CLAIM(reminder-revalidated)
+  test('a retained 08:00 reminder moves to 09:30 when sleep now runs to 09:30', () async {
+    await startAt(morning);
+    expect(held().first, DateTime(2026, 10, 26, 8));
+    final ids = pending.keys.toSet();
+    await refresh(
+      DateTime(2026, 10, 26, 7),
+      sleep: const ReminderSleepGate(
+        schedule: ExpectedSleepSchedule(onsetMinute: 1320, wakeMinute: 570),
+      ),
+    );
+    final times = held();
+    expect(times, hasLength(14));
+    expect([times.first.hour, times.first.minute], [9, 30]);
+    expect(times.every((d) => d.hour == 9 && d.minute == 30), isTrue);
+    expect(pending.keys.toSet(), ids, reason: 'moved in place: same ids, no duplicates');
+  });
+
+  test('a retained reminder is cancelled when the wearer sleeps through the whole window', () async {
+    await startAt(morning);
+    await refresh(
+      DateTime(2026, 10, 26, 7),
+      sleep: const ReminderSleepGate(
+        schedule: ExpectedSleepSchedule(onsetMinute: 1320, wakeMinute: 780),
+      ),
+    );
+    expect(held(), isEmpty);
+    expect(await db.query('compute_freshness', where: "key LIKE 'experiment_reminder:%'"), isEmpty,
+        reason: 'cancelled intentions leave no marker');
+    // Back to normal sleep: armed again.
+    await refresh(DateTime(2026, 10, 26, 7));
+    expect(held().first, DateTime(2026, 10, 26, 8));
+  });
+
+  test('a retained reminder that is not suppressed is left exactly as it is', () async {
+    await startAt(morning);
+    calls.clear();
+    await refresh(DateTime(2026, 10, 26, 7));
+    expect(armed(), isEmpty);
+    expect(cancelledIds(), isEmpty);
+  });
+
   // why: review R3-3 / R2-8. iOS keeps 64 pending notifications in total. The
   // experiment band takes only what is left after the higher classes (alarm >
   // medication > wind-down/check-in > water > experiment) and the slots held
