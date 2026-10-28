@@ -1204,7 +1204,9 @@ class _MomentAnswerEditScreenState extends State<MomentAnswerEditScreen> {
     });
   }
 
-  String? _message(AppLocalizations? l) => switch (_refused) {
+  /// What to tell the wearer about a change that did not happen.
+  static String? _messageFor(AppLocalizations? l, MomentAnswerChange? result) =>
+      switch (result) {
         null || MomentChanged() => null,
         MomentNotFound() =>
           l?.momentEditNotFound ?? 'This answer is no longer saved.',
@@ -1225,7 +1227,7 @@ class _MomentAnswerEditScreenState extends State<MomentAnswerEditScreen> {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final message = _message(l);
+    final message = _messageFor(l, _refused);
     return Scaffold(
       key: const ValueKey('moment-edit-screen'),
       backgroundColor: p.bg,
@@ -1273,6 +1275,8 @@ class _MomentAnswerEditScreenState extends State<MomentAnswerEditScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Above the pinned Save: it appears upward, so the button and
+                // the form above never move (the shift test measures it).
                 if (message != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: S.x2),
