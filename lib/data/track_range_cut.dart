@@ -1,6 +1,21 @@
 // Cutting setup periods by day.
+import 'package:uuid/uuid.dart';
 import 'day_label.dart';
 import 'track_model.dart';
+
+/// Where new setup-period ids come from (an interface, not a callback, so the
+/// heavy-calc guard can resolve the call). Production uses [RandomRangeIds];
+/// tests inject a counter.
+abstract interface class RangeIdSource {
+  String next();
+}
+
+/// UUID v4 ids: unique without looking at any other row.
+final class RandomRangeIds implements RangeIdSource {
+  const RandomRangeIds();
+  @override
+  String next() => const Uuid().v4();
+}
 
 /// Reason: a period's days are only trustworthy together with the overrides
 /// (real logs, "none today", not-done periods) of those days. Two paths remove
@@ -11,8 +26,8 @@ import 'track_model.dart';
 /// A day that leaves a period is simply unstated (learning reads it as unknown,
 /// never as the nominal dose or as a clean control) [review P8a-P2, P8a-P3].
 ///
-/// Invariants: intake and the done/not-done kind are kept; the piece that
-/// starts where the original did keeps its id, later pieces are `<id>@<start>`;
+/// Invariants: intake and the done/not-done kind are kept; every new piece has a
+/// fresh id and an uncut period keeps its own;
 /// an ongoing period stays ongoing only in [rangesWithoutDays]; [rangesOnDays]
 /// returns bounded pieces. Errors: none; days outside a period are ignored.
 /// Mating parts: restore.dart (the two callers), TrackSetupRange.
@@ -21,8 +36,9 @@ import 'track_model.dart';
 // [tracks_range_cut_test; tracks_history_schema_test].
 List<TrackSetupRange> rangesWithoutDays(
   Iterable<TrackSetupRange> ranges,
-  Set<String> days,
-) {
+  Set<String> days, {
+  required RangeIdSource newId,
+}) {
   final out = <TrackSetupRange>[];
   for (final range in ranges) {
     final inside = _inside(range, days);
@@ -32,11 +48,11 @@ List<TrackSetupRange> rangesWithoutDays(
     }
     var cursor = range.startDate;
     for (final day in inside) {
-      if (cursor.compareTo(day) < 0) out.add(_piece(range, cursor, _shift(day, -1)));
+      if (cursor.compareTo(day) < 0) out.add(_piece(range, cursor, _shift(day, -1), newId));
       cursor = _shift(day, 1);
     }
     if (cursor.compareTo(range.endDate) <= 0) {
-      out.add(_piece(range, cursor, range.endDate));
+      out.add(_piece(range, cursor, range.endDate, newId));
     }
   }
   return out;
@@ -44,8 +60,9 @@ List<TrackSetupRange> rangesWithoutDays(
 
 List<TrackSetupRange> rangesOnDays(
   Iterable<TrackSetupRange> ranges,
-  Set<String> days,
-) {
+  Set<String> days, {
+  required RangeIdSource newId,
+}) {
   final out = <TrackSetupRange>[];
   for (final range in ranges) {
     final inside = _inside(range, days);
@@ -56,7 +73,7 @@ List<TrackSetupRange> rangesOnDays(
         previous = day;
         continue;
       }
-      out.add(_piece(range, runStart, previous, bounded: true));
+      out.add(_piece(range, runStart, previous, newId, bounded: true));
       if (day != null) runStart = previous = day;
     }
   }
@@ -74,21 +91,20 @@ String _shift(String day, int by) {
   return dayLabelOf(DateTime(parsed.year, parsed.month, parsed.day + by));
 }
 
-// CLAIM(range-piece-id) [review R2-1]: a piece that changes coverage gets the id
-// `<id>@<d|n>:<start>..<end>` (kind and both ends), so pieces with different
-// coverage never share an id and never take the id of the period they were cut
-// from; an INSERT OR REPLACE by id can only replace an identical piece. An
-// uncut period keeps its id.
+// CLAIM(range-fresh-id) [review R4-1, R4-2]: a newly created piece always gets
+// a FRESH id from [newId] (a UUID in production). Ids are never derived from
+// another id (`<id>@...`, `<id>~...`): a derived id can equal one the wearer's
+// edit or an earlier restore already made, and the insert then replaces or
+// ignores a row. Restore is by coverage, so ids carry no cross-device meaning.
+// A period that is not cut keeps its own id (it is not a new piece).
 TrackSetupRange _piece(
   TrackSetupRange range,
   String start,
-  String end, {
+  String end,
+  RangeIdSource newId, {
   bool bounded = false,
 }) {
-  final same = start == range.startDate && end == range.endDate;
-  final id = same
-      ? range.id
-      : '${range.id}@${range is DoneRange ? 'd' : 'n'}:$start..$end';
+  final id = newId.next();
   return switch (range) {
     DoneRange() => DoneRange(
       id: id,
@@ -164,9 +180,8 @@ bool _agree(TrackSetupRange a, TrackSetupRange b) => switch ((a, b)) {
 /// the days an agreeing local period (same track, kind and intake) already
 /// covers are no-ops; the uncovered days become new rows. Conflicting local
 /// rows are not coverage, so both are kept and learning abstains on those dates
-/// (CLAIM(range-overlap)). An incoming id is kept when no local row (or earlier
-/// addition) has it, otherwise the row gets `<id>~<start>` (suffixed until
-/// free). Local rows are never touched, so an import cannot shrink coverage,
+/// (CLAIM(range-overlap)). Every added row gets a fresh id (CLAIM(range-fresh-id)).
+/// Local rows are never touched, so an import cannot shrink coverage,
 /// and a second import of the same file adds nothing.
 /// Reason: REPLACE-by-id let an old export overwrite a longer period the editor
 /// had saved under the same id [review R3-1]; ids carry no meaning across
@@ -175,9 +190,9 @@ bool _agree(TrackSetupRange a, TrackSetupRange b) => switch ((a, b)) {
 List<TrackSetupRange> rangesToAdd({
   required Iterable<TrackSetupRange> local,
   required Iterable<TrackSetupRange> incoming,
+  required RangeIdSource newId,
 }) {
   final known = [...local];
-  final ids = {for (final range in known) range.id};
   final added = <TrackSetupRange>[];
   final ordered = [...incoming]
     ..sort((a, b) => a.startDate.compareTo(b.startDate));
@@ -191,14 +206,7 @@ List<TrackSetupRange> rangesToAdd({
       ];
     }
     for (final (start, end) in gaps) {
-      var id = range.id;
-      if (start != range.startDate || end != range.endDate || ids.contains(id)) {
-        id = '${range.id}~$start';
-        for (var n = 2; ids.contains(id); n++) {
-          id = '${range.id}~$start#$n';
-        }
-      }
-      ids.add(id);
+      final id = newId.next();
       final piece = switch (range) {
         DoneRange() => DoneRange(
           id: id,

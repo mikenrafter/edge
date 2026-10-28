@@ -408,12 +408,8 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
       await out.transaction((txn) async {
         for (final piece in rangesOnDays([
           for (final row in spanning) TrackSetupRange.fromJson(row),
-        ], sorted.toSet())) {
-          await txn.insert(
-            'track_setup_history',
-            piece.toJson(),
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
+        ], sorted.toSet(), newId: const RandomRangeIds())) {
+          await txn.insert('track_setup_history', piece.toJson());
         }
       });
       // Track definitions are not day-scoped either; events and setup history
@@ -637,21 +633,20 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
         whereArgs: [sorted.last, sorted.first],
       );
       final cutFrom = [for (final row in cutRows) TrackSetupRange.fromJson(row)];
-      final cutTo = rangesWithoutDays(cutFrom, sorted.toSet());
+      final cutTo = rangesWithoutDays(cutFrom, sorted.toSet(), newId: const RandomRangeIds());
+      // Fresh ids cannot collide, so the pieces go in first with a plain insert
+      // (never replace or ignore), then the cut originals go, in this one
+      // transaction [review R4-2].
+      for (final piece in cutTo) {
+        if (cutFrom.contains(piece)) continue;
+        await txn.insert('track_setup_history', piece.toJson());
+      }
       for (final range in cutFrom) {
         if (cutTo.contains(range)) continue;
         await txn.delete(
           'track_setup_history',
           where: 'id = ?',
           whereArgs: [range.id],
-        );
-      }
-      for (final piece in cutTo) {
-        if (cutFrom.contains(piece)) continue;
-        await txn.insert(
-          'track_setup_history',
-          piece.toJson(),
-          conflictAlgorithm: ConflictAlgorithm.ignore,
         );
       }
       await deleteByIn(txn, 'track_experiment_day', 'date', sorted);
@@ -1304,13 +1299,14 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           for (final row in await db.query(t)) TrackSetupRange.fromJson(row),
         ],
         incoming: incoming,
+        newId: const RandomRangeIds(),
       );
       await db.transaction((txn) async {
         if (run != null) {
           await ImportJournal.advance(txn, run, index, t, rows.length, additions.length);
         }
         for (final range in additions) {
-          await txn.insert(t, range.toJson(), conflictAlgorithm: ConflictAlgorithm.ignore);
+          await txn.insert(t, range.toJson());
         }
       });
       plan?.advance(t, rows.length);
