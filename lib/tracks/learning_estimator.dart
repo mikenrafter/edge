@@ -24,6 +24,11 @@ class TrackEffectEstimator {
     // unknown [S6; track_effect_estimator_test]. Dose and lag keep 48 h.
     final windowHours = _residualWindowHours(track);
     if (windowHours > 48 && !historyComplete) unknownResidual = true;
+    // ↳ CLAIM(unit-abstain): a unitless track still cannot mix explicit units.
+    if (_explicitUnitsConflict(track, events)) {
+      unknownDose = true;
+      unknownResidual = true;
+    }
     for (final event in events) {
       if (event.trackId != track.id) continue;
       final at = event.atMs;
@@ -186,7 +191,13 @@ class TrackEffectEstimator {
             ),
         }),
     ];
-    final pairs = _matchedPairs(track, system, rows, relevant);
+    final pairs = _matchedPairs(
+      track,
+      system,
+      rows,
+      relevant,
+      establishedNights: minimumPairs * 2,
+    );
     if (pairs.length < minimumPairs) {
       final confounded = relevant.any(
         (t) =>
@@ -254,7 +265,7 @@ class TrackEffectEstimator {
   }
 }
 
-double _residualWindowHours(TrackDefinition track) {
+double _longestHalfLife(TrackDefinition track) {
   var halfLife = 0.0;
   for (final k in [
     track.kinetics,
@@ -263,12 +274,16 @@ double _residualWindowHours(TrackDefinition track) {
     final value = k.fields['half_life_hours']?.value;
     if (value != null && value.isFinite && value > halfLife) halfLife = value;
   }
-  return math.min(math.max(48.0, halfLife * 7), 730.0 * 24);
+  return halfLife;
 }
 
+double _residualWindowHours(TrackDefinition track) =>
+    math.min(math.max(48.0, _longestHalfLife(track) * 7), 730.0 * 24);
+
 // CLAIM(unit-abstain): an event amount enters dose fitting only when its unit
-// equals the track's current unit (empty means unstated, taken as compatible);
-// any other unit is an unsupported conversion and leaves the amount unknown
+// equals the track's current unit (an event without a unit is taken as the
+// track's); with no track unit, all explicit event units must agree; any other
+// unit is an unsupported conversion and leaves the amount unknown
 // [S3; track_effect_estimator_test].
 double? _amountInTrackUnit(TrackDefinition track, TrackEvent event) {
   final amount = event.amount;
@@ -277,6 +292,16 @@ double? _amountInTrackUnit(TrackDefinition track, TrackEvent event) {
   final expected = track.unit.trim().toLowerCase();
   if (unit.isNotEmpty && expected.isNotEmpty && unit != expected) return null;
   return amount;
+}
+
+bool _explicitUnitsConflict(TrackDefinition track, List<TrackEvent> events) {
+  if (track.unit.trim().isNotEmpty) return false;
+  final units = {
+    for (final e in events)
+      if (e.trackId == track.id && (e.unit?.trim().isNotEmpty ?? false))
+        e.unit!.trim().toLowerCase(),
+  };
+  return units.length > 1;
 }
 
 class _LearningRow {
@@ -294,17 +319,19 @@ List<_NightPair> _matchedPairs(
   TrackDefinition track,
   String system,
   List<_LearningRow> rows,
-  List<TrackDefinition> tracks,
-) {
+  List<TrackDefinition> tracks, {
+  required int establishedNights,
+}) {
   final valid = rows.where((r) => r.features[track.id]?.dose != null).toList();
   // CLAIM(baseline-reference): with "this track is my baseline" the reference
-  // is the habitual dose (most frequent, earliest on ties), so nights with less
-  // than habit pair as deviations below it and later abstinence cannot become
-  // the reference [S4; track_effect_estimator_test].
+  // is the habitual dose of the first [establishedNights] valid nights (most
+  // frequent, earliest on ties). Appending later nights never moves it, so
+  // abstinence that outnumbers habit cannot become the reference, and nights
+  // below it pair as deviations [S4, R2-3; track_effect_estimator_test].
   var referenceDose = 0.0;
   if (track.noUnadjustedData && valid.isNotEmpty) {
     final counts = <double, int>{};
-    for (final r in valid) {
+    for (final r in valid.take(establishedNights)) {
       counts.update(r.features[track.id]!.dose!, (n) => n + 1, ifAbsent: () => 1);
     }
     referenceDose = counts.entries

@@ -143,17 +143,21 @@ class WakeProfileInput {
 ConfounderProfile wakeProfileHeavy(WakeProfileInput input) {
   WorkerInit.ensure(input.worker);
   assertWorker();
-  // CLAIM(preset-gate): a journal aggregate adjusts thresholds only while its
-  // preset track definition is enabled and has the own_sleep role and sleep
-  // system; a missing definition means the unedited preset [S2;
+  // CLAIM(preset-gate): a journal aggregate or tag adjusts thresholds only
+  // while its preset track definition is enabled and has the own_sleep role and
+  // sleep system; a missing definition means the unedited preset [S2, R2-9;
   // sendable_wakeProfileHeavy_test].
-  final gated = gatedJournalFieldsHeavy(input);
+  final gated = ineligiblePresetTracksHeavy(input);
   final preset = profileFromJournalRows(
-    input.journal,
+    [
+      for (final j in input.journal)
+        // ↳ CLAIM(preset-gate)
+        withoutGatedTagsHeavy(j, gated),
+    ],
     [
       for (final m in input.metrics)
         // ↳ CLAIM(preset-gate)
-        if (!gated.contains(m['field'])) m,
+        if (!gated.contains(_journalFieldTrack[m['field']])) m,
     ],
     input.bedtimeMs == null
         ? null
@@ -196,9 +200,15 @@ const _journalFieldTrack = {
   'caffeine_mg': 'caffeine',
   'alcohol_units': 'alcohol',
 };
+const _journalTagTrack = {
+  'alcohol': 'alcohol',
+  'sick': 'illness',
+  'late meal': 'late_meal',
+  'workout': 'late_workout',
+};
 
 @heavy
-Set<String> gatedJournalFieldsHeavy(WakeProfileInput input) {
+Set<String> ineligiblePresetTracksHeavy(WakeProfileInput input) {
   final byId = {
     for (final d in decodeTrackDefinitionsHeavy(
       input.definitions,
@@ -207,12 +217,32 @@ Set<String> gatedJournalFieldsHeavy(WakeProfileInput input) {
       d.id: d,
   };
   return {
-    for (final e in _journalFieldTrack.entries)
-      if (byId[e.value] case final d?
+    for (final id in {
+      ..._journalFieldTrack.values,
+      ..._journalTagTrack.values,
+    })
+      if (byId[id] case final d?
           when !d.enabled ||
               !d.roles.contains('own_sleep') ||
               !d.systems.contains('sleep'))
-        e.key,
+        id,
+  };
+}
+
+@heavy
+Map<String, Object?> withoutGatedTagsHeavy(
+  Map<String, Object?> row,
+  Set<String> gated,
+) {
+  if (gated.isEmpty) return row;
+  final tags = jsonDecode(row['tags_json'] as String);
+  if (tags is! List || tags.any((v) => v is! String)) return row;
+  return {
+    ...row,
+    'tags_json': jsonEncode([
+      for (final t in tags)
+        if (!gated.contains(_journalTagTrack[t])) t,
+    ]),
   };
 }
 

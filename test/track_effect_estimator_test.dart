@@ -753,8 +753,8 @@ void main() {
     final nights = [
       for (final n in base) withEvents(n, n.events.isEmpty ? 100 : 150),
     ];
-    final tail = [
-      for (var i = 0; i < 14; i++)
+    List<TrackNight> abstinence(int count) => [
+      for (var i = 0; i < count; i++)
         withEvents(
           TrackNight(
             at: base.last.at.add(Duration(days: i + 1)),
@@ -768,6 +768,7 @@ void main() {
           0,
         ),
     ];
+    final tail = abstinence(14);
     final tracked = TrackDefinition(
       id: 'a',
       name: 'a',
@@ -783,6 +784,12 @@ void main() {
     expect(result.reason, 'estimated');
     // 56 pairs, contrast 8, shrinkage 56 / (56 + 8) = .875 -> 7.
     expect(result.effect, closeTo(7, 1e-6));
+    // WHY R2-3: the reference was recomputed on every estimate; once abstinence
+    // nights (120) outnumbered habitual ones (56) it became 0 and the effect
+    // fell to about 3.45. The established reference must not move.
+    final outnumbered = estimate([...nights, ...abstinence(120)], tracks: [tracked]);
+    expect(outnumbered.reason, 'estimated');
+    expect(outnumbered.effect, closeTo(7, 1e-6));
     // Deviation below the reference: habitual 100 mg weeks (earliest, so the
     // reference) against 50 mg weeks that sleep 8 units better -> -8 per
     // +50 mg, shrunk to -7. The sign shows the higher dose is the exposed side.
@@ -878,7 +885,10 @@ void main() {
 
   // WHY S11: a sub-activity half-life override (every dose here uses it) hid the
   // parent's fit and was never itself learned. proves: CLAIM(sub-override-scale)
-  test('sub-activity overrides scale with the parent and enter the fit', () {
+  // WHY R2-10: locking the parent half-life removed the kinetic target even
+  // though the sub-activity override stayed unlocked. proves: CLAIM(override-independent)
+  for (final parentLocked in [false, true])
+  test('sub-activity overrides scale with the parent and enter the fit (parent locked: $parentLocked)', () {
     TrackKinetics kinetics(double hl, {bool locked = false}) => TrackKinetics({
       'half_life_hours': TrackKineticField(value: hl, locked: locked),
     });
@@ -933,9 +943,9 @@ void main() {
       icon: 'track',
       kind: 'consumed',
       systems: const ['sleep'],
-      kinetics: const TrackKinetics({
-        'half_life_hours': TrackKineticField(value: 6),
-        'onset_hours': TrackKineticField(value: 0),
+      kinetics: TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6, locked: parentLocked),
+        'onset_hours': const TrackKineticField(value: 0),
       }),
       subActivities: [
         TrackSubActivity(
@@ -950,5 +960,115 @@ void main() {
     final result = estimate(nights, tracks: [overridden]);
     expect(result.reason, 'estimated');
     expect(result.kineticTargets['half_life_hours'], 3);
+  });
+
+  // WHY R2-1: parent half-life 6 h with a 100 h sub-activity override got a 60 h
+  // history window, yet its residual needs 700 h; the worker marked a too-short
+  // history complete and a 72 h-old dose read as residual 0.
+  // proves: CLAIM(history-window-covers-residual)
+  test('history window covers the longest sub-activity half-life', () {
+    final overridden = TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      kinetics: const TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6),
+        'onset_hours': TrackKineticField(value: 0),
+      }),
+      subActivities: [
+        TrackSubActivity(
+          id: 'slow',
+          name: 'slow',
+          kinetics: const TrackKinetics({
+            'half_life_hours': TrackKineticField(value: 100),
+          }),
+        ),
+      ],
+    );
+    expect(
+      trackHistoryWindow(overridden),
+      greaterThanOrEqualTo(const Duration(hours: 700)),
+    );
+    // Positive control: no override keeps the short window (10 x 6 h = 60 h).
+    expect(trackHistoryWindow(track('a')), const Duration(hours: 60));
+  });
+
+  // WHY R2-2: with an empty definition unit the unit check was skipped, so 100 mg
+  // and 2 cups summed to dose 102. proves: CLAIM(unit-abstain)
+  test('a unitless track abstains on events in different explicit units', () {
+    final bedtime = DateTime.utc(2025, 1, 2, 22);
+    TrackEvent event(String id, double amount, String? unit, int hoursBefore) =>
+        TrackEvent(
+          id: id,
+          trackId: 'a',
+          date: '2025-01-02',
+          amount: amount,
+          unit: unit,
+          atMs: bedtime
+              .subtract(Duration(hours: hoursBefore))
+              .millisecondsSinceEpoch,
+        );
+    final mixed = estimator.features(track('a'), [
+      event('x', 100, 'mg', 8),
+      event('y', 2, 'cups', 2),
+    ], bedtime);
+    expect(mixed.dose, isNull);
+    expect(mixed.residualMg, isNull);
+    // Positive control: one consistent explicit unit (or none) still adds.
+    final same = estimator.features(track('a'), [
+      event('x', 100, 'mg', 8),
+      event('y', 2, 'MG', 2),
+      event('z', 1, null, 3),
+    ], bedtime);
+    expect(same.dose, 103);
+  });
+
+  test('a locked parent freezes only itself; unlocked overrides take the step', () {
+    TrackDefinition build({required bool parentLocked}) => TrackDefinition(
+      id: 'a',
+      name: 'a',
+      icon: 'track',
+      kind: 'consumed',
+      systems: const ['sleep'],
+      kinetics: TrackKinetics({
+        'half_life_hours': TrackKineticField(value: 6, locked: parentLocked),
+      }),
+      subActivities: [
+        TrackSubActivity(
+          id: 'only',
+          name: 'only',
+          kinetics: const TrackKinetics({
+            'half_life_hours': TrackKineticField(value: 8),
+          }),
+        ),
+      ],
+    );
+    KineticApplication apply(TrackDefinition t) => applyKineticTarget(
+      policy: const TrackLearningPolicy(),
+      track: t,
+      fields: {...t.kinetics.fields},
+      subActivities: t.subActivities,
+      field: 'half_life_hours',
+      age: const Duration(days: 400),
+      target: 3,
+      date: '2026-10-27',
+      reason: 'time_ordered_matched_fit',
+    );
+    // Half-life moves at most 1% per step: parent 6 -> 5.94, ratio .99.
+    final locked = apply(build(parentLocked: true));
+    expect(locked.fields['half_life_hours']!.value, 6);
+    expect(locked.fields['half_life_hours']!.locked, isTrue);
+    expect(
+      locked.subActivities.single.kinetics.fields['half_life_hours']!.value,
+      closeTo(8 * .99, 1e-12),
+    );
+    expect(locked.logs.map((l) => l['field']), ['half_life_hours@only']);
+    final open = apply(build(parentLocked: false));
+    expect(open.fields['half_life_hours']!.value, closeTo(5.94, 1e-12));
+    expect(open.logs.map((l) => l['field']), [
+      'half_life_hours',
+      'half_life_hours@only',
+    ]);
   });
 }

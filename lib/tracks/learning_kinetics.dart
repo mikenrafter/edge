@@ -53,7 +53,9 @@ Map<String, double> _validatedKineticTargets(
     }
     final field = track.kinetics.fields[key];
     if (field == null ||
-        field.locked ||
+        // ↳ CLAIM(override-independent): a locked parent still lets unlocked
+        // overrides be fitted.
+        (field.locked && !hasUnlockedOverride(track.subActivities, key)) ||
         field.value == null ||
         field.value! <= 0) {
       continue;
@@ -112,6 +114,87 @@ List<TrackSubActivity> scaleSubActivityKinetics(
     ),
 ];
 
+bool hasUnlockedOverride(List<TrackSubActivity> subs, String field) => subs.any(
+  (s) =>
+      s.kinetics.fields[field]?.value != null &&
+      s.kinetics.fields[field]?.locked != true,
+);
+
+class KineticApplication {
+  const KineticApplication(this.fields, this.subActivities, this.logs);
+  final Map<String, TrackKineticField> fields;
+  final List<TrackSubActivity> subActivities;
+  final List<Map<String, Object?>> logs;
+}
+
+// CLAIM(override-independent): a parent lock freezes only the parent; unlocked
+// sub-activity overrides of the same field still take the learned step (scaled
+// by the ratio the parent would have moved), and every change is audited
+// [R2-10, S11; track_effect_estimator_test].
+KineticApplication applyKineticTarget({
+  required TrackLearningPolicy policy,
+  required TrackDefinition track,
+  required Map<String, TrackKineticField> fields,
+  required List<TrackSubActivity> subActivities,
+  required String field,
+  required Duration age,
+  required double target,
+  required String date,
+  required String reason,
+  Duration? learnedMinimum,
+}) {
+  KineticApplication unchanged() => KineticApplication(fields, subActivities, const []);
+  final parent = track.kinetics.fields[field];
+  if (parent?.value == null) return unchanged();
+  final parentLocked = parent!.locked;
+  if (parentLocked && !hasUnlockedOverride(subActivities, field)) {
+    return unchanged();
+  }
+  final step = policy.step(
+    track: track,
+    field: field,
+    age: age,
+    target: target,
+    learnedMinimum: learnedMinimum,
+    reason: reason,
+    ignoreLock: parentLocked,
+  );
+  if (!step.changed) return unchanged();
+  final logs = <Map<String, Object?>>[];
+  final nextFields = {...fields};
+  if (!parentLocked) {
+    nextFields[field] = TrackKineticField(value: step.value, locked: false);
+    logs.add({
+      'track_id': track.id,
+      'date': date,
+      'field': field,
+      'before_value': parent.value,
+      'after_value': step.value,
+      'reason': step.reason,
+    });
+  }
+  // ↳ CLAIM(override-independent)
+  final scaled = scaleSubActivityKinetics(
+    subActivities,
+    field,
+    step.value! / parent.value!,
+  );
+  for (var i = 0; i < scaled.length; i++) {
+    final before = subActivities[i].kinetics.fields[field]?.value;
+    final after = scaled[i].kinetics.fields[field]?.value;
+    if (before == after) continue;
+    logs.add({
+      'track_id': track.id,
+      'date': date,
+      'field': '$field@${scaled[i].id}',
+      'before_value': before,
+      'after_value': after,
+      'reason': step.reason,
+    });
+  }
+  return KineticApplication(nextFields, scaled, logs);
+}
+
 TrackDefinition _withKinetic(TrackDefinition t, String key, double value) =>
     TrackDefinition(
       id: t.id,
@@ -127,7 +210,10 @@ TrackDefinition _withKinetic(TrackDefinition t, String key, double value) =>
       ),
       kinetics: TrackKinetics({
         ...t.kinetics.fields,
-        key: TrackKineticField(value: value),
+        // A locked parent keeps its value; only its unlocked overrides move.
+        key: t.kinetics.fields[key]!.locked
+            ? t.kinetics.fields[key]!
+            : TrackKineticField(value: value),
       }),
     );
 

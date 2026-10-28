@@ -162,4 +162,53 @@ void main() {
     expect(learnedProfile.userTrackIds, {'reading'});
     expect(learnedProfile.adjustedFor, {'Reading 1 h before bed'});
   });
+
+  // WHY R2-9: disabling illness (or removing its sleep role/system) still let a
+  // "sick" journal tag raise HR and tighten motion; late meal and workout
+  // likewise. proves: CLAIM(preset-gate)
+  for (final (tag, trackId, edit) in <(String, String, Map<String, Object?>)>[
+    ('sick', 'illness', {'enabled': false}),
+    ('late meal', 'late_meal', {'systems': <String>[]}),
+    ('workout', 'late_workout', {'roles': <String>[]}),
+  ]) {
+    test('journal tag "$tag" respects the edited $trackId track', () async {
+      WakeProfileInput input(Map<String, Object?> change) => WakeProfileInput(
+        [
+          {'date': '2026-10-26', 'tags_json': jsonEncode([tag, 'stress'])},
+        ],
+        [],
+        DateTime(2026, 10, 26, 22).millisecondsSinceEpoch,
+        const WorkerInputs(nowEpochMs: 0, zoneId: 'UTC', localeTag: 'en'),
+        definitions: [
+          {
+            'id': trackId,
+            'payload_json': jsonEncode({
+              'id': trackId,
+              'name': trackId,
+              'kind': 'activity',
+              'roles': ['own_sleep'],
+              'systems': ['sleep'],
+              'enabled': true,
+              ...change,
+            }),
+          },
+        ],
+      );
+      final control = await Isolate.run(() => wakeProfileHeavy(input({})));
+      final edited = await Isolate.run(() => wakeProfileHeavy(input(edit)));
+      // Control: the tag takes effect through the unedited preset.
+      final flag = {
+        'sick': control.sick,
+        'late meal': control.lateMeal,
+        'workout': control.workout,
+      }[tag]!;
+      expect(flag, isTrue);
+      expect(
+        {'sick': edited.sick, 'late meal': edited.lateMeal, 'workout': edited.workout}[tag],
+        isFalse,
+      );
+      // An ungated tag (stress has no preset track) is untouched.
+      expect(edited.stress, isTrue);
+    });
+  }
 }
