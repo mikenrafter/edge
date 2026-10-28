@@ -133,4 +133,19 @@ void main() {
       expect(experimentWashoutExceedsBlock(track(withdrawalDays: 28)), isTrue);
     });
   });
+
+  // why: review T11. Balance is a property of the generator, not of one seed:
+  // every block of two days holds one do and one skip, for every length the app
+  // offers, and an odd length differs from an even one only by one extra coin.
+  test('every two-day block is balanced for every seed and offered length', () {
+    for (final weeks in experimentWeeks) {
+      for (var seed = 0; seed < 200; seed++) {
+        final days = assignExperimentDays(weeks * 7, seed);
+        expect(days, hasLength(weeks * 7));
+        for (var k = 0; k + 1 < days.length; k += 2) {
+          expect(days[k], isNot(days[k + 1]), reason: 'weeks=$weeks seed=$seed block=$k');
+        }
+      }
+    }
+  });
 }

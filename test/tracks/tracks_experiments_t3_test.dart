@@ -140,29 +140,44 @@ void main() {
     },
   );
 
-  test(
-    'seed changes allocation; fixed seed reproduces it after a fresh install',
-    () async {
-      final first = assignments(await start(seed: 17));
-      await env.wipe();
-      db = await LocalDb.instance;
-      store = TracksStore(db);
-      await store.saveDefinition(
-        const TrackDefinition(
-          id: 'custom',
-          name: 'Walk',
-          icon: 'track',
-          kind: 'activity',
-          systems: ['hr'],
-        ),
-      );
-      final second = assignments(await start(seed: 29));
-      expect(
-        second.map((d) => d['do']).toList(),
-        isNot(first.map((d) => d['do']).toList()),
-      );
-    },
-  );
+  // why: review T11. The old test only compared seed 29 with seed 17, so it
+  // passed even for a non-deterministic generator. A fixed seed must give the
+  // same allocation again after a wipe, pairs must be balanced, and the
+  // literal sequence pins the generator (D = do, s = skip) as worked out
+  // independently from the splitmix-style steps in assignExperimentDays.
+  // Mutation checked 2026-10-27: changing 0x9E3779B9 fails the literals.
+  test('a fixed seed reproduces its allocation after a fresh install', () async {
+    String letters(Map experiment) =>
+        assignments(experiment).map((d) => d['do'] == true ? 'D' : 's').join();
+    final first = await start(seed: 17);
+    expect(letters(first), 'DssDDsDsDssDsD');
+    final days = assignments(first);
+    for (var k = 0; k + 1 < days.length; k += 2) {
+      expect(days[k]['do'], isNot(days[k + 1]['do']), reason: 'block $k holds one do and one skip');
+    }
+    await env.wipe();
+    db = await LocalDb.instance;
+    store = TracksStore(db);
+    await store.saveDefinition(
+      const TrackDefinition(
+        id: 'custom',
+        name: 'Walk',
+        icon: 'track',
+        kind: 'activity',
+        systems: ['hr'],
+      ),
+    );
+    final again = await start(seed: 17);
+    expect(assignments(again), days, reason: 'same seed, same assignments');
+    expect(again['id'], first['id']);
+    await env.wipe();
+    db = await LocalDb.instance;
+    store = TracksStore(db);
+    await store.saveDefinition(
+      const TrackDefinition(id: 'custom', name: 'Walk', icon: 'track', kind: 'activity', systems: ['hr']),
+    );
+    expect(letters(await start(seed: 29)), 'DsDsDssDDsDssD');
+  });
 
   test(
     'invalid duration and a second running experiment are refused without partial rows',
