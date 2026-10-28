@@ -25,8 +25,10 @@ class TrackEffectEstimator {
     final windowHours = _residualWindowHours(track);
     if (windowHours > 48 && !historyComplete) unknownResidual = true;
     // ↳ CLAIM(unit-abstain): a unitless track still cannot mix explicit units.
-    if (_explicitUnitsConflict(track, events)) {
-      unknownDose = true;
+    // Checked inside each feature's own window (R3-4): an old event outside
+    // the 48 h dose window cannot blank a recent dose.
+    if (_explicitUnitsConflict(track, events, bedtime, 48)) unknownDose = true;
+    if (_explicitUnitsConflict(track, events, bedtime, windowHours)) {
       unknownResidual = true;
     }
     for (final event in events) {
@@ -294,11 +296,22 @@ double? _amountInTrackUnit(TrackDefinition track, TrackEvent event) {
   return amount;
 }
 
-bool _explicitUnitsConflict(TrackDefinition track, List<TrackEvent> events) {
+bool _explicitUnitsConflict(
+  TrackDefinition track,
+  List<TrackEvent> events,
+  DateTime bedtime,
+  double windowHours,
+) {
   if (track.unit.trim().isNotEmpty) return false;
   final units = {
     for (final e in events)
-      if (e.trackId == track.id && (e.unit?.trim().isNotEmpty ?? false))
+      if (e.trackId == track.id &&
+          e.atMs != null &&
+          (e.unit?.trim().isNotEmpty ?? false) &&
+          (bedtime.millisecondsSinceEpoch - e.atMs!) /
+                  Duration.millisecondsPerHour <=
+              windowHours &&
+          e.atMs! <= bedtime.millisecondsSinceEpoch)
         e.unit!.trim().toLowerCase(),
   };
   return units.length > 1;

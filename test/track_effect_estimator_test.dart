@@ -1100,4 +1100,32 @@ void main() {
     expect(fields['tolerance_days']!.locked, isTrue);
     expect(fields.length, greaterThan(1));
   });
+
+  // WHY R3-4: a cups event 55 h old (outside the 48 h dose window) made a recent
+  // 100 mg dose unknown on a unitless track. proves: CLAIM(unit-abstain)
+  test('unit conflicts are judged inside each feature window', () {
+    final bedtime = DateTime.utc(2025, 1, 4, 22);
+    TrackEvent event(String id, double amount, String unit, int hoursBefore) =>
+        TrackEvent(
+          id: id,
+          trackId: 'a',
+          date: '2025-01-04',
+          amount: amount,
+          unit: unit,
+          atMs: bedtime
+              .subtract(Duration(hours: hoursBefore))
+              .millisecondsSinceEpoch,
+        );
+    final f = estimator.features(track('a'), [
+      event('old', 2, 'cups', 55),
+      event('recent', 100, 'mg', 5),
+    ], bedtime);
+    expect(f.dose, 100);
+    // Positive control: the conflict inside 48 h still abstains.
+    final inside = estimator.features(track('a'), [
+      event('old', 2, 'cups', 30),
+      event('recent', 100, 'mg', 5),
+    ], bedtime);
+    expect(inside.dose, isNull);
+  });
 }
