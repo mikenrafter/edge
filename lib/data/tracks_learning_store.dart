@@ -40,6 +40,7 @@ extension TracksLearningStore on TracksStore {
         events: await tx.query('track_event_feed', orderBy: 'date, at_ms'),
         history: await tx.query('track_setup_history'),
         absences: await tx.query('track_absence'),
+        unknownDays: await tx.query('track_unknown_day'),
         experiments: await tx.query('track_experiment', orderBy: 'id'),
         states: await tx.query('track_learning'),
         experimentResults: experimentResults,
@@ -84,6 +85,7 @@ extension TracksLearningStore on TracksStore {
           !_sameRows(freshEvents, snapshot.events) ||
           !_sameRows(freshStates, snapshot.states) ||
           !_sameRows(await tx.query('track_absence'), snapshot.absences) ||
+          !_sameRows(await tx.query('track_unknown_day'), snapshot.unknownDays) ||
           !_sameRows(
             await tx.query('track_experiment', orderBy: 'id'),
             snapshot.experiments,

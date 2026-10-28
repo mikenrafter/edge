@@ -279,9 +279,14 @@ void main() {
     expect((await after.query('track_absence')).map((r) => r['date']), [
       '2026-10-26',
     ]);
-    expect((await after.query('track_setup_history')).map((r) => r['id']), [
-      'h-in',
-    ]);
+    // Review P8a-P2: the period is clipped to the selected day (it cannot carry
+    // the overrides of the other days it spans).
+    expect(
+      (await after.query('track_setup_history')).map(
+        (r) => (r['id'], r['start_date'], r['end_date']),
+      ),
+      [('h-in@d:2026-10-26..2026-10-26', '2026-10-26', '2026-10-26')],
+    );
   });
 
   // WHY R2-7: the selected-day export copied only manual track rows; medication

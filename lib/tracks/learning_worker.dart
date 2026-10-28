@@ -24,6 +24,7 @@ class TrackLearningInput {
     required this.worker,
     this.experiments = const [],
     this.experimentResults = const [],
+    this.unknownDays = const [],
   });
   final List<Map<String, Object?>> definitions,
       events,
@@ -32,6 +33,10 @@ class TrackLearningInput {
       states,
       days;
   final List<Map<String, Object?>> medications, experiments;
+
+  /// `{date}` rows of days whose logs were deleted: unknown, whatever the
+  /// logging pledge or a setup period says [CLAIM(deleted-day-unknown)].
+  final List<Map<String, Object?>> unknownDays;
 
   /// The latest completed experiment's effect per track x system:
   /// {experiment_id, track_id, system, effect, lower, upper, n_do, n_dont}.
@@ -289,6 +294,7 @@ List<TrackNight> trackNightsHeavy(
   Map<String, double>? previous;
   final durationHours = <double>[], freeDurationHours = <double>[];
   final observations = <({int endMs, Map<String, double> outcomes})>[];
+  final unknownDates = {for (final row in input.unknownDays) row['date'] as String};
   final exposures = RangeExposures(
     ranges: ranges,
     realEvents: events,
@@ -396,20 +402,26 @@ List<TrackNight> trackNightsHeavy(
                 r.endDate.compareTo(date) >= 0,
           );
       final since = d.loggingComplete ? d.loggingCompleteSinceMs : null;
-      if ((since != null && exposureStart.millisecondsSinceEpoch >= since) ||
-          dates.every(confirmedDate)) {
+      // ↳ CLAIM(deleted-day-unknown): a deleted date overrides every kind of
+      // completeness for the nights whose windows contain it.
+      if (!dates.any(unknownDates.contains) &&
+          ((since != null && exposureStart.millisecondsSinceEpoch >= since) ||
+              dates.every(confirmedDate))) {
         complete.add(d.id);
       }
       final start = at.subtract(trackHistoryWindow(d));
       var fullHistory = since != null && start.millisecondsSinceEpoch >= since;
-      var confirmedHistory = true;
+      var confirmedHistory = true, unknownInHistory = false;
       for (
         var day = DateTime(start.year, start.month, start.day);
         !day.isAfter(at);
         day = DateTime(day.year, day.month, day.day + 1)
       ) {
         final date = dayLabelOf(day);
-        if (!confirmedDate(date)) confirmedHistory = false;
+        if (!confirmedDate(date) || unknownDates.contains(date)) {
+          confirmedHistory = false;
+          if (unknownDates.contains(date)) unknownInHistory = true;
+        }
         // A taken-daily period stands in for the log of each day it covers:
         // its time, amount and unit if given, otherwise an unknown-dose marker.
         // Real logs, "none today" and not-done periods win (RangeExposures).
@@ -417,7 +429,7 @@ List<TrackNight> trackNightsHeavy(
         final exposure = exposures.on(d.id, date);
         if (exposure != null) nightEvents.add(exposure);
       }
-      fullHistory = fullHistory || confirmedHistory;
+      fullHistory = (fullHistory || confirmedHistory) && !unknownInHistory;
       if (fullHistory) historyComplete.add(d.id);
     }
     final negative = observations

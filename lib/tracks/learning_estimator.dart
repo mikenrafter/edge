@@ -374,6 +374,10 @@ double? _amountInTrackUnit(TrackDefinition track, TrackEvent event) {
   if (amount == null || !amount.isFinite || amount < 0) return null;
   final unit = event.unit?.trim().toLowerCase() ?? '';
   final expected = track.unit.trim().toLowerCase();
+  // ↳ CLAIM(unit-abstain) [review P8a-P1]: a period's amount is stored with the
+  // unit it was entered in, so the units must be identical, an empty unit
+  // included; only a real log without a unit is read as the track's own.
+  if (event.sourceKind == kRangeExposureSource) return unit == expected ? amount : null;
   if (unit.isNotEmpty && expected.isNotEmpty && unit != expected) return null;
   return amount;
 }
@@ -385,22 +389,15 @@ bool _explicitUnitsConflict(
   double windowHours,
 ) {
   if (track.unit.trim().isNotEmpty) return false;
-  final firstDate = dayLabelOf(
-    bedtime.subtract(Duration(minutes: (windowHours * 60).ceil())),
-  );
   final units = {
     for (final e in events)
       if (e.trackId == track.id &&
+          e.atMs != null &&
           (e.unit?.trim().isNotEmpty ?? false) &&
-          (e.atMs != null
-              ? (bedtime.millisecondsSinceEpoch - e.atMs!) /
-                        Duration.millisecondsPerHour <=
-                    windowHours &&
-                e.atMs! <= bedtime.millisecondsSinceEpoch
-              // An untimed range exposure still adds its amount to a dose.
-              : e.sourceKind == kRangeExposureSource &&
-                    e.date.compareTo(firstDate) >= 0 &&
-                    e.date.compareTo(dayLabelOf(bedtime)) <= 0))
+          (bedtime.millisecondsSinceEpoch - e.atMs!) /
+                  Duration.millisecondsPerHour <=
+              windowHours &&
+          e.atMs! <= bedtime.millisecondsSinceEpoch)
         e.unit!.trim().toLowerCase(),
   };
   return units.length > 1;

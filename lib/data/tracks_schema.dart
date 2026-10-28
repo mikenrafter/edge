@@ -70,6 +70,11 @@ Future<void> createTrackTables(Database db) async {
     'CREATE TABLE IF NOT EXISTS track_absence ('
     'track_id TEXT NOT NULL, date TEXT NOT NULL, PRIMARY KEY(track_id, date))',
   );
+  // v86 (review P8a-R2-2): dates whose logs were deleted. Learning treats them
+  // as unknown, overriding "I log every time" and setup-period completeness.
+  await db.execute(
+    'CREATE TABLE IF NOT EXISTS track_unknown_day (date TEXT PRIMARY KEY)',
+  );
   await db.execute(
     'CREATE TABLE IF NOT EXISTS track_experiment ('
     'id TEXT PRIMARY KEY, track_id TEXT NOT NULL, start_date TEXT NOT NULL, '

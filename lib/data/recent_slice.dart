@@ -143,6 +143,7 @@ const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   'track_learning': (SliceKeep.all, null, 'track learning state'),
   'track_learning_log': (SliceKeep.all, null, 'track learning audit'),
   'track_absence': (SliceKeep.all, null, 'confirmed track absences'),
+  'track_unknown_day': (SliceKeep.all, null, 'days whose track logs were deleted'),
   'track_experiment': (SliceKeep.all, null, 'track experiments'),
   'track_experiment_day': (SliceKeep.all, null, 'track experiment assignments'),
   'med_dose': (SliceKeep.all, null, 'medication doses'),

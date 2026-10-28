@@ -11,6 +11,7 @@ import '../tracks/detection_windows.dart';
 import '../tracks/experiment.dart';
 import '../tracks/learning_worker.dart';
 import '../util/worker_init.dart';
+import 'track_range_cut.dart';
 import '../util/worker_audit.dart';
 import '../util/worker_entries.dart' show Dispatcher;
 import 'activity_store.dart';
@@ -221,15 +222,18 @@ class TracksStore {
     await _scheduleChanged();
   }
 
-  Future<List<TrackSetupRange>> history(String trackId) async => [
-    for (final r in await db.query(
-      'track_setup_history',
-      where: 'track_id = ?',
-      whereArgs: [trackId],
-      orderBy: 'start_date',
-    ))
-      TrackSetupRange.fromJson(r),
-  ];
+  /// The track's periods, with agreeing overlaps read as one (CLAIM(range-overlap))
+  /// so the editor's re-save passes overlap validation.
+  Future<List<TrackSetupRange>> history(String trackId) async =>
+      mergeAgreeingOverlaps([
+        for (final r in await db.query(
+          'track_setup_history',
+          where: 'track_id = ?',
+          whereArgs: [trackId],
+          orderBy: 'start_date',
+        ))
+          TrackSetupRange.fromJson(r),
+      ]);
 
   Future<void> saveHistory(String trackId, List<TrackSetupRange> ranges) async {
     _validateHistory(trackId, ranges);
