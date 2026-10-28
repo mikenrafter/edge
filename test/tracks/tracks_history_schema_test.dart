@@ -145,6 +145,23 @@ void main() {
       expect(await _userVersion(again), LocalDb.schemaVersion);
     });
 
+    // why (review R2-2): schema 86 adds the deleted-day marker table, empty, on
+    // top of a v85 database that keeps its history rows.
+    test('v85 gains the empty deleted-day table and keeps history', () async {
+      final db0 = await LocalDb.instance;
+      await db0.insert('track_setup_history', _row('keep', '2026-01-01', '9999-12-31', minute: 480));
+      await LocalDb.close();
+      final legacy = await databaseFactory.openDatabase(p.join(env.dbDir, LocalDb.dbName));
+      await legacy.execute('DROP TABLE track_unknown_day');
+      await legacy.execute('PRAGMA user_version = 85');
+      await legacy.close();
+      final db = await LocalDb.instance;
+      expect(LocalDb.schemaVersion, greaterThanOrEqualTo(86));
+      expect(await _userVersion(db), LocalDb.schemaVersion);
+      expect(await db.query('track_unknown_day'), isEmpty);
+      expect(await db.query('track_setup_history'), [_row('keep', '2026-01-01', '9999-12-31', minute: 480)]);
+    });
+
     test('a fresh install has the columns from the start', () async {
       final db = await LocalDb.instance;
       expect(

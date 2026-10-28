@@ -615,6 +615,16 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
       ]);
       await deleteByIn(txn, 'track_event', 'date', sorted);
       await deleteByIn(txn, 'track_absence', 'date', sorted);
+      // CLAIM(deleted-day-unknown) [review R2-2]: with the logs gone, a pledge
+      // ("I log every time") or a setup period would read these days as dose 0
+      // or nominal. The dates are remembered so learning treats them as unknown.
+      for (final day in sorted) {
+        await txn.insert(
+          'track_unknown_day',
+          {'date': day},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
       // ↳ CLAIM(range-cut): the deleted days' overrides are gone, so the days
       // leave the setup periods too (unknown, not the nominal dose).
       final cutRows = await txn.query(

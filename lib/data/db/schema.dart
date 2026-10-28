@@ -1064,6 +1064,10 @@ Future<Database> _ldbPrivOpen() async {
           // Nullable taken-daily columns on track_setup_history; no backfill.
           await createTrackTables(db);
         }
+        if (oldV < 86) {
+          // Empty deleted-day marker table; nothing is inferred for old deletes.
+          await createTrackTables(db);
+        }
       },
       onOpen: (db) async {
         await LocalDb._repairOpenSchema(db);
