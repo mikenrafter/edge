@@ -446,6 +446,36 @@ void main() {
       expect((await _saved(_m)).metricValue, isNull);
     });
 
+    test('R4-1: a CHANGED Tracks remainder drops the old aggregate time; the '
+        'answer change later leaves the remainder without a made-up time',
+        () async {
+      await LocalDb.putJournalMetrics(_date,
+          const {'alcohol_units': JournalMetricValue(1, atMinuteOfDay: 20 * 60)});
+      await _writer.answer(_m, MomentChoice.alcohol, value: 2, now: _t1);
+      await LocalDb.editTrackJournal('$_date:alcohol_units', 2);
+      expect(await _total('alcohol_units'), 4);
+      expect(await _atMin('alcohol_units'), 615,
+          reason: 'time comes from the canonical dose, not the old 20:00');
+      await _change(_m, MomentChoice.other, note: 'x');
+      expect(await _total('alcohol_units'), 2);
+      expect(await _atMin('alcohol_units'), isNull);
+    });
+
+    test('R4-2: Dart and SQL agree at the amount bound (1e300 is refused on '
+        'both sides, just below is accepted on both)', () async {
+      final db = await LocalDb.instance;
+      for (final (hhmm, v) in [('10:15', 1e300), ('15:40', 9e299)]) {
+        await db.rawInsert(
+            'INSERT INTO moment_label (date, hhmm, label, metric_value, '
+            "answered_at) VALUES ('$_date', '$hhmm', 'alcohol', ?, 1)",
+            [v]);
+      }
+      expect((await _saved(_m)).metricValue, isNull);
+      expect((await _saved(_m2)).metricValue, 9e299);
+      expect((await feed('moment:$_date:10:15'))!['amount'], isNull);
+      expect((await feed('moment:$_date:15:40'))!['amount'], 9e299);
+    });
+
     test('R2-4: saving an unchanged water answer keeps its clipped '
         'contribution after the total was corrected', () async {
       await LocalDb.putJournalMetrics(
