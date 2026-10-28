@@ -61,8 +61,11 @@ const _knee = SymptomDescription(
   area: SymptomArea.knees,
 );
 
-Moment _row(String key, String title, IconData icon, int hour, int minute) =>
+Moment _row(String key, String title, IconData icon, int hour, int minute,
+        [String detail = '']) =>
     Moment(
+      fixedLines: true,
+      detail: detail,
       at: DateTime(2026, 10, 6, hour, minute).millisecondsSinceEpoch ~/ 1000,
       identity: 'moment:$key',
       editRef: 'moment:$key',
@@ -98,11 +101,12 @@ void main() {
     testWidgets('answered rows before and after a change, $mode', (t) async {
       final boundary = GlobalKey();
       t.view.devicePixelRatio = 1;
-      t.view.physicalSize = const Size(390, 400);
+      t.view.physicalSize = const Size(390, 450);
       addTearDown(t.view.reset);
       final before = _row('2026-10-06 10:15', 'Caffeine', LucideIcons.coffee, 10, 15);
       final after = _row('2026-10-06 10:15', 'Alcohol', LucideIcons.wine, 10, 15);
-      final other = _row('2026-10-06 20:45', 'Other', LucideIcons.bookmark, 20, 45);
+      final other = _row('2026-10-06 20:45', 'Other', LucideIcons.bookmark, 20, 45,
+          'Knees sore after the stairs; settled after resting a long while.');
       await t.pumpWidget(MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: buildTheme(brightness),

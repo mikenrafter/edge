@@ -267,6 +267,75 @@ void main() {
     });
   });
 
+  group('review CLS1-C8: a typed amount is never silently dropped', () {
+    for (final bad in ['1..2', 'abc', '2 mg']) {
+      testWidgets('"$bad" is refused with a reason and writes nothing',
+          (t) async {
+        final r = await _rig(t);
+        await r.mount(t);
+        final before = await r.snapshot(t);
+        await _open(t, _caffeineId);
+        await t.enterText(_field('moment-value:${_caffeine.key}'), bad);
+        await apk2Tap(t, apk2Key('moment-edit-save'));
+        expect(apk2Key('moment-edit-screen'), findsOneWidget);
+        expect(apk2Key('moment-amount-error:${_caffeine.key}'), findsOneWidget);
+        expect(await r.snapshot(t), before);
+      });
+    }
+  });
+
+  group('review CLS1-C3: answered rows keep their height', () {
+    Future<double> height(WidgetTester t, String id) async {
+      await apk2Show(t, id);
+      return t.getSize(apk2Row(id)).height;
+    }
+
+    testWidgets('an Other note (long) -> Caffeine with no note', (t) async {
+      final r = await _rig(t);
+      await r.mount(t);
+      final before = await height(t, apk2Answered);
+      await _open(t, apk2Answered);
+      await apk2Tap(t, apk2Key('moment-choice:2026-10-06 20:45:caffeine'));
+      await apk2Tap(t, apk2Key('moment-edit-save'));
+      expect(await height(t, apk2Answered), before);
+    });
+
+    testWidgets('no note -> a long note', (t) async {
+      final r = await _rig(t);
+      await r.mount(t);
+      final before = await height(t, _caffeineId);
+      await _open(t, _caffeineId);
+      await apk2Tap(t, _chip(_caffeine, MomentChoice.other));
+      await t.enterText(_field('moment-note:${_caffeine.key}'), apk2AnswerNote);
+      await apk2Tap(t, apk2Key('moment-edit-save'));
+      expect(await height(t, _caffeineId), before);
+    });
+
+    testWidgets('a long symptom description -> a one-word answer', (t) async {
+      final r = await _rig(t);
+      await _seed(t, () async {
+        await _writer.answerSymptom(
+            const PendingMoment(date: apk2Day, hhmm: '16:00'),
+            const SymptomDescription(
+              severity: SymptomSeverity.moderate,
+              side: SymptomSide.both,
+              kind: SymptomKind.other,
+              kindOther: 'pins and needles that come and go in waves',
+              area: SymptomArea.other,
+              areaOther: 'the outside of the right lower leg below the knee',
+            ),
+            now: reviewNow);
+      });
+      await r.mount(t, size: const Size(320, 900));
+      const id = 'moment:$apk2Day 16:00';
+      final before = await height(t, id);
+      await _open(t, id);
+      await apk2Tap(t, apk2Key('moment-choice:$apk2Day 16:00:nap'));
+      await apk2Tap(t, apk2Key('moment-edit-save'));
+      expect(await height(t, id), before);
+    });
+  });
+
   group('when the change is refused', () {
     testWidgets('an answer changed elsewhere meanwhile: it says so, stays open, '
         'and does not overwrite', (t) async {
@@ -320,8 +389,8 @@ void main() {
       expect(m.single.editRef, 'moment:2026-10-06 10:15');
     });
 
-    test('a food entry that stands for the meal moment is the food entry\'s '
-        'row, which has no moment editor', () {
+    test('C4: a food entry that stands for the meal moment carries the moment '
+        'editor, so Edit survives changing an answer to Meal', () {
       final at = DateTime(2026, 10, 6, 8, 10).millisecondsSinceEpoch ~/ 1000;
       final m = dayMoments(timeline: {'day_start': dayStart},
           momentLabels: [label('08:10', 'meal')],
@@ -329,7 +398,7 @@ void main() {
               label: 'Rice bowl', atTs: at + 15, kcal: 550)]);
       expect(m, hasLength(1), reason: 'the join is the precondition');
       expect(m.single.identity, 'moment:2026-10-06 08:10');
-      expect(m.single.editRef, isNull);
+      expect(m.single.editRef, 'moment:2026-10-06 08:10');
     });
   });
 }

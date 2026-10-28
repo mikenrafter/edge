@@ -83,6 +83,7 @@ class Moment {
     this.annotationLabel,
     this.identity,
     this.editRef,
+    this.fixedLines = false,
     this.eventGroup,
     this.wakeGroup,
     this.wakeKind,
@@ -96,6 +97,11 @@ class Moment {
   /// What opens this row's own editor ('nap', 'session:ID', 'moment:DATE HH:mm'
   /// for an answered marked moment), or NULL when the row has none. Only rows that can be edited carry one.
   final String? editRef;
+
+  /// An answered marked moment: the row is one title line and one detail line
+  /// (ellipsis), reserved even when empty, so changing the answer never
+  /// changes the row's height. The full text is in the row's semantics.
+  final bool fixedLines;
 
   /// A family of band events folded together even when their ids differ (the
   /// charger and battery pack). Null: fold only equal [eventId]s.
@@ -414,6 +420,8 @@ List<Moment> dayMoments({
     out.add(Moment(
       at: t,
       identity: joined ? 'moment:${label.key}' : null,
+      // The meal answer behind this food row can still be changed.
+      editRef: joined ? 'moment:${label.key}' : null,
       title: m.label.isEmpty ? localizedText(l, m.meal) : m.label,
       detail: [
         clockOfTs(t),
@@ -509,6 +517,7 @@ List<Moment> dayMoments({
       identity: 'moment:${m.key}',
       // The answer can be changed: its row carries an Edit (CLS-1).
       editRef: 'moment:${m.key}',
+      fixedLines: true,
       title: described?.describe(l) ?? choice.localized(l),
       // The row carries the clock; the detail is only the wearer's note.
       detail: note != null && note.isNotEmpty ? note : '',
@@ -2116,10 +2125,17 @@ class MomentRow extends StatelessWidget {
                 children: [
                   Text(
                     m.title,
+                    maxLines: m.fixedLines ? 1 : null,
+                    overflow: m.fixedLines ? TextOverflow.ellipsis : null,
                     style: F.body
                         .copyWith(color: p.ink, fontWeight: FontWeight.w600),
                   ),
-                  if (m.detail.isNotEmpty)
+                  if (m.fixedLines)
+                    Text(m.detail.isEmpty ? ' ' : m.detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: F.cap.copyWith(color: p.ink2, height: 1.4))
+                  else if (m.detail.isNotEmpty)
                     Text(m.detail,
                         style: F.cap.copyWith(color: p.ink2, height: 1.4)),
                 ],
