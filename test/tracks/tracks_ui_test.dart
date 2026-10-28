@@ -160,10 +160,9 @@ void main() {
       expect(rows.single.date, '2026-10-20');
       expect(rows.single.amount, isNull);
       expect(rows.single.subActivityId, 'tea');
-      final at = DateTime.fromMillisecondsSinceEpoch(
-        rows.single.atMs!,
-        isUtc: true,
-      );
+      // The picked time is local wall time on the chosen local day; its UTC
+      // date differs west of UTC in the evening, so compare the local date.
+      final at = DateTime.fromMillisecondsSinceEpoch(rows.single.atMs!);
       expect((at.year, at.month, at.day), (2026, 10, 20));
       expect(t.takeException(), isNull);
     },
