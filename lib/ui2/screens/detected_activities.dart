@@ -172,9 +172,9 @@ class ActivityProposalCard extends StatelessWidget {
     if (text is String && text.isNotEmpty) return text;
     return switch (s.details['evidence_kind']) {
       'early_sleep_hr_hrv' => l?.activityTrackEvidenceSleep ??
-          'Early sleep heart rate rose while HRV fell compared with your baseline.',
+          'Early sleep heart rate rose while HRV fell compared with your usual nights.',
       'resting_hr_jump' => l?.activityTrackEvidenceRestingHr ??
-          'Resting heart rate rose well above your baseline without movement.',
+          'Resting heart rate rose well above your usual level without movement.',
       _ => l?.activityTrackEvidenceLearned ??
           'Matches the pattern learned from your logged days.',
     };

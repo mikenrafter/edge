@@ -46,7 +46,7 @@ void main() {
       'track_name': 'Alcohol',
       'prompt': prompt,
       'evidence':
-          'Early sleep heart rate rose while HRV fell compared with your baseline.',
+          'Early sleep heart rate rose while HRV fell compared with your usual nights.',
     },
   );
 
