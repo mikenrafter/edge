@@ -123,3 +123,4 @@ MULTIDEVICE_PROGRESS.md
 
 # flutter golden mismatch artifacts
 test/proof/failures/
+test/tracks/failures/
