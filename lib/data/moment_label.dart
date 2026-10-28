@@ -64,6 +64,22 @@ String? doseFieldOfLabel(String? label) => switch (label) {
       _ => null,
     };
 
+/// SQL for a stored amount column as the reader sees it: a finite number of at
+/// least zero, else NULL (unknown). SQL aggregates and the track feed use this,
+/// so a corrupt value (negative, text, infinite) never reaches a total.
+/// [momentAmountFromRow] is the Dart side of the same rule.
+String validAmountSql(String column) =>
+    "CASE WHEN typeof($column) IN ('real', 'integer') AND $column >= 0 "
+    "AND $column < 1e300 THEN $column END";
+
+/// A stored amount, or null when it is not a finite number of at least zero
+/// (including text in a REAL column).
+double? momentAmountFromRow(Object? v) {
+  if (v is! num) return null;
+  final d = v.toDouble();
+  return d.isFinite && d >= 0 ? d : null;
+}
+
 /// The LOCAL wall-clock DateTime of a `YYYY-MM-DD` + `HH:mm` pair, or null when
 /// either is malformed. Built from calendar fields, never from a day start plus
 /// minutes, so a DST day does not shift it.

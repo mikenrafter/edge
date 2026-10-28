@@ -1,6 +1,7 @@
 // TracksStore owns these records; other sections retain their canonical rows.
 import 'package:sqflite/sqflite.dart';
 import 'track_presets.dart';
+import 'moment_label.dart' show validAmountSql;
 
 Future<void> createTrackTables(Database db) async {
   await db.execute(
@@ -108,7 +109,7 @@ Future<void> createTrackTables(Database db) async {
       CASE j.field WHEN 'caffeine_mg' THEN 'caffeine' ELSE 'alcohol' END,
       j.date, NULL,
       j.value - COALESCE((
-        SELECT SUM(CASE j.field WHEN 'caffeine_mg' THEN m.caffeine_mg ELSE m.metric_value END)
+        SELECT SUM(CASE j.field WHEN 'caffeine_mg' THEN ${validAmountSql('m.caffeine_mg')} ELSE ${validAmountSql('m.metric_value')} END)
         FROM moment_label m WHERE m.date = j.date
         AND m.label = CASE j.field WHEN 'caffeine_mg' THEN 'caffeine' ELSE 'alcohol' END), 0)
         - COALESCE((SELECT SUM(t.amount) FROM track_event t WHERE t.date = j.date AND
@@ -118,7 +119,7 @@ Future<void> createTrackTables(Database db) async {
       FROM journal_metric j
       WHERE j.field IN ('caffeine_mg', 'alcohol_units') AND j.value >
         COALESCE((
-          SELECT SUM(CASE j.field WHEN 'caffeine_mg' THEN m.caffeine_mg ELSE m.metric_value END)
+          SELECT SUM(CASE j.field WHEN 'caffeine_mg' THEN ${validAmountSql('m.caffeine_mg')} ELSE ${validAmountSql('m.metric_value')} END)
           FROM moment_label m WHERE m.date = j.date
           AND m.label = CASE j.field WHEN 'caffeine_mg' THEN 'caffeine' ELSE 'alcohol' END), 0)
         + COALESCE((SELECT SUM(t.amount) FROM track_event t WHERE t.date = j.date AND
@@ -129,7 +130,7 @@ Future<void> createTrackTables(Database db) async {
       CASE m.label WHEN 'meal' THEN 'late_meal' WHEN 'nap' THEN 'naps'
         WHEN 'workout' THEN 'late_workout' ELSE m.label END,
       m.date, CAST(strftime('%s', m.date || ' ' || m.hhmm || ':00', 'utc') AS INTEGER) * 1000,
-      CASE m.label WHEN 'caffeine' THEN m.caffeine_mg WHEN 'alcohol' THEN CASE WHEN m.metric_value > 0 THEN m.metric_value END ELSE NULL END,
+      CASE m.label WHEN 'caffeine' THEN ${validAmountSql('m.caffeine_mg')} WHEN 'alcohol' THEN NULLIF(${validAmountSql('m.metric_value')}, 0) ELSE NULL END,
       NULL, 'moment', m.date || ':' || m.hhmm, CASE m.label WHEN 'caffeine' THEN 'mg' WHEN 'alcohol' THEN 'units' ELSE '' END
       FROM moment_label m
       WHERE m.label IN ('caffeine', 'meal', 'alcohol', 'cannabis', 'nicotine',

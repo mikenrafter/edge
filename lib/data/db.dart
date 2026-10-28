@@ -2226,8 +2226,8 @@ class LocalDb {
       // caffeine, metric_value for alcohol (the same amounts the track feed shows).
       final timed = await tx.rawQuery(
         field == 'caffeine_mg'
-            ? "SELECT COALESCE(SUM(caffeine_mg), 0) AS value FROM moment_label WHERE date = ? AND label = 'caffeine'"
-            : "SELECT COALESCE(SUM(metric_value), 0) AS value FROM moment_label WHERE date = ? AND label = 'alcohol'",
+            ? "SELECT COALESCE(SUM(${validAmountSql('caffeine_mg')}), 0) AS value FROM moment_label WHERE date = ? AND label = 'caffeine'"
+            : "SELECT COALESCE(SUM(${validAmountSql('metric_value')}), 0) AS value FROM moment_label WHERE date = ? AND label = 'alcohol'",
         [date],
       );
       final track = field == 'caffeine_mg' ? 'caffeine' : 'alcohol';
@@ -2239,6 +2239,20 @@ class LocalDb {
           (residual ?? 0) +
           (timed.single['value'] as num).toDouble() +
           (logged.single['value'] as num).toDouble();
+      // An unchanged remainder is not a write of its own field: the shared
+      // reconciliation rebuilds the same total and keeps the remainder's time.
+      final summary = await _trackDoseSummary(tx, date, track);
+      final current = await tx.query('journal_metric',
+          where: 'date = ? AND field = ?', whereArgs: [date, field], limit: 1);
+      final currentRemainder = current.isEmpty
+          ? 0.0
+          : (current.single['value'] as num).toDouble() - summary.dose;
+      if (residual != null &&
+          currentRemainder > 0 &&
+          (residual - currentRemainder).abs() < 1e-9) {
+        await _reconcileSubstance(tx, date, track, summary);
+        return;
+      }
       // ↳ CLAIM(remainder-time-fresh)
       await _clearRemainderMinute(tx, date, track);
       if (total == 0 && residual == null) {

@@ -518,20 +518,15 @@ Future<List<MomentLabel>> _ldbMomentLabels({required String? date, required Stri
     return [for (final r in rows) _ldbPrivMomentLabel(r)];
   }
 
-double? _ldbPrivAmount(Object? v) {
-    final d = (v as num?)?.toDouble();
-    return d != null && d.isFinite && d >= 0 ? d : null;
-  }
-
 MomentLabel _ldbPrivMomentLabel(Map<String, Object?> r) => MomentLabel(
       date: r['date'] as String,
       hhmm: r['hhmm'] as String,
       label: r['label'] as String?,
       note: r['note'] as String?,
-      caffeineMg: (r['caffeine_mg'] as num?)?.toDouble(),
+      caffeineMg: momentAmountFromRow(r['caffeine_mg']),
       // Parse on read: a hand-edited or corrupt amount (negative, not a
       // number) degrades to unknown, never to a wrong dose.
-      metricValue: _ldbPrivAmount(r['metric_value']),
+      metricValue: momentAmountFromRow(r['metric_value']),
       answeredAtMs: (r['answered_at'] as num).toInt(),
     );
 
