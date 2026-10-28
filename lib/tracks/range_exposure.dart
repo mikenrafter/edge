@@ -55,20 +55,37 @@ class RangeExposures {
   static bool _covers(TrackSetupRange range, String date) =>
       range.startDate.compareTo(date) <= 0 && range.endDate.compareTo(date) >= 0;
 
+  static bool _sameIntake(DailyIntake a, DailyIntake b) =>
+      a.approxMinute == b.approxMinute &&
+      a.amount?.value == b.amount?.value &&
+      a.amount?.unit.trim().toLowerCase() == b.amount?.unit.trim().toLowerCase();
+
   /// The in-memory exposure for [trackId] on local day [date] (`YYYY-MM-DD`),
   /// or null when no done period covers it or the day is carved out.
   // ↳ CLAIM(range-override) ↳ CLAIM(range-carve-out)
   TrackEvent? on(String trackId, String date) {
     if (_carved.contains('$trackId|$date')) return null;
     if (_notDone[trackId]?.any((r) => _covers(r, date)) ?? false) return null;
-    DoneRange? range;
-    for (final candidate in _done[trackId] ?? const <DoneRange>[]) {
-      if (_covers(candidate, date)) {
-        range = candidate;
-        break;
-      }
+    final covering = [
+      for (final candidate in _done[trackId] ?? const <DoneRange>[])
+        if (_covers(candidate, date)) candidate,
+    ];
+    if (covering.isEmpty) return null;
+    final range = covering.first;
+    // CLAIM(range-overlap): merged backups can leave several done periods on one
+    // date. If they disagree the dose is ambiguous, so the date is UNKNOWN (an
+    // exposure whose amount is NaN, which every estimator path reads as an
+    // unknown amount), never "the first row" [review P8a-P4;
+    // tracks_range_exposure_test]. Agreeing periods are not ambiguous.
+    if (covering.any((other) => !_sameIntake(range.intake, other.intake))) {
+      return TrackEvent(
+        id: 'history:$trackId:$date',
+        trackId: trackId,
+        date: date,
+        amount: double.nan,
+        sourceKind: kRangeExposureSource,
+      );
     }
-    if (range == null) return null;
     final minute = range.intake.approxMinute;
     final day = DateTime.parse(date);
     return TrackEvent(

@@ -304,28 +304,91 @@ void main() {
       expect(_estimator.features(_track(), ok, bedtime).dose, 50);
     });
 
-    // why: on a unitless track every explicit unit must agree (R3-4). An untimed
-    // range exposure still adds its amount to the dose, so its unit counts.
-    // proves: CLAIM(unit-abstain)
-    test('an untimed range unit conflicting with a logged unit abstains', () {
-      final unitless = _track(unit: '');
-      final range = synthetic(
-        _done('2026-03-01', minute: null, amount: const DailyAmount(50, 'mg')),
-        ['2026-03-10'],
-      );
-      final cups = TrackEvent(
-        id: 'cups',
+    // why (review P8a-P1): a range amount is only as good as the unit it was
+    // entered in, empty unit included. A saved 50 with no unit must not become
+    // 50 mg when the track later gains the unit mg, nor 50 of an unknown unit
+    // on a unitless track that was saved as mg. Real events keep the legacy
+    // "no unit means the track's unit"; ranges do not (the unit is always
+    // stored with the amount). proves: CLAIM(unit-abstain)
+    test('a range amount needs exactly the track unit, empty units included', () {
+      for (final minute in <int?>[480, null]) {
+        double? doseFor(String trackUnit, String rangeUnit) {
+          final events = synthetic(
+            _done('2026-03-01', minute: minute, amount: DailyAmount(50, rangeUnit)),
+            ['2026-03-10'],
+          );
+          return _estimator.features(_track(unit: trackUnit), events, bedtime).dose;
+        }
+
+        expect(doseFor('mg', ''), isNull, reason: 'empty vs mg, minute=$minute');
+        expect(doseFor('', 'mg'), isNull, reason: 'mg vs empty, minute=$minute');
+        expect(doseFor('mg', 'ml'), isNull, reason: 'minute=$minute');
+        // positive controls: identical units, including both empty.
+        expect(doseFor('mg', 'mg'), 50, reason: 'minute=$minute');
+        expect(doseFor('', ''), 50, reason: 'both empty, minute=$minute');
+      }
+    });
+
+    // why: real logs keep the legacy rule, so the P1 change must not reach them.
+    test('a real log without a unit still counts as the track unit', () {
+      final log = TrackEvent(
+        id: 'x',
         trackId: 'a',
         date: '2026-03-10',
         atMs: DateTime(2026, 3, 10, 16).millisecondsSinceEpoch,
-        amount: 2,
-        unit: 'cups',
+        amount: 80,
       );
-      expect(_estimator.features(unitless, range, bedtime).dose, 50);
+      expect(_estimator.features(_track(), [log], bedtime).dose, 80);
+    });
+
+    // why (review P8a-P4): merged backups can hold overlapping done periods. If
+    // they disagree on a date the dose is ambiguous, so that date is unknown
+    // (never "first row wins", which flips with row order); if they agree it is
+    // not ambiguous. proves: CLAIM(range-overlap)
+    test('overlapping periods that disagree make the date unknown, in any order', () {
+      final a = _done('2026-03-01', until: '2026-03-31', id: 'a');
+      final b = _done(
+        '2026-03-05',
+        id: 'b',
+        amount: const DailyAmount(100, 'mg'),
+      );
+      for (final ranges in [
+        [a, b],
+        [b, a],
+      ]) {
+        final e = _exposures(ranges);
+        final events = [for (final d in ['2026-03-09', '2026-03-10']) e.on('a', d)!];
+        final f = _estimator.features(_track(), events, bedtime);
+        expect(f.dose, isNull, reason: 'ambiguous 50 vs 100');
+        expect(f.residualMg, isNull);
+        expect(f.presenceOnly, isFalse);
+        // a date only one period covers is still fine
+        expect(
+          _estimator
+              .features(_track(), [e.on('a', '2026-03-03')!], DateTime(2026, 3, 3, 22))
+              .dose,
+          50,
+        );
+      }
+    });
+
+    test('overlapping periods that agree are not ambiguous', () {
+      final e = _exposures([
+        _done('2026-03-01', until: '2026-03-31', id: 'a'),
+        _done('2026-03-05', id: 'b'),
+      ]);
+      final f = _estimator.features(_track(), [e.on('a', '2026-03-10')!], bedtime);
+      expect(f.dose, 50);
+    });
+
+    test('a different time alone is also ambiguous', () {
+      final e = _exposures([
+        _done('2026-03-01', id: 'a', minute: 480),
+        _done('2026-03-01', id: 'b', minute: 600),
+      ]);
       expect(
-        _estimator.features(unitless, [...range, cups], bedtime).dose,
+        _estimator.features(_track(), [e.on('a', '2026-03-10')!], bedtime).dose,
         isNull,
-        reason: '50 mg and 2 cups must not be summed',
       );
     });
 
