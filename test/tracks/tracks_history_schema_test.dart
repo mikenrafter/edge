@@ -9,6 +9,11 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
+import 'package:openstrap_edge/data/track_model.dart';
+import 'package:openstrap_edge/tracks/learning.dart';
+import 'package:openstrap_edge/tracks/range_exposure.dart';
+import 'package:openstrap_edge/tracks/learning_worker.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
 import 'package:openstrap_edge/wake/wake_night_context_db.dart';
 import '../backup/backup_support.dart';
 
@@ -40,6 +45,12 @@ Map<String, Object?> _row(
   'amount': amount,
   'amount_unit': unit,
 };
+
+/// Rows without their id: restore, export and cut give new rows fresh random ids
+/// (CLAIM(range-fresh-id)), so only coverage and intake are compared.
+List<Map<String, Object?>> _noIds(Iterable<Map<String, Object?>> rows) => [
+  for (final r in rows) {...r}..remove('id'),
+];
 
 Future<Set<String>> _columns(Database db) async => {
   for (final c in await db.rawQuery('PRAGMA table_info(track_setup_history)'))
@@ -194,11 +205,11 @@ void main() {
       await LocalDb.instance;
       await LocalDb.importFromDbFile(backup);
       expect(
-        await (await LocalDb.instance).query(
+        _noIds(await (await LocalDb.instance).query(
           'track_setup_history',
           orderBy: 'start_date',
-        ),
-        [notDone, ongoing],
+        )),
+        _noIds([notDone, ongoing]),
       );
     });
 
@@ -224,8 +235,8 @@ void main() {
       await LocalDb.instance;
       await LocalDb.importFromDbFile(backup);
       expect(
-        await (await LocalDb.instance).query('track_setup_history'),
-        [_row('old', '2026-01-01', '2026-01-31')],
+        _noIds(await (await LocalDb.instance).query('track_setup_history')),
+        _noIds([_row('old', '2026-01-01', '2026-01-31')]),
       );
     });
 
@@ -246,7 +257,7 @@ void main() {
       final rebuilt = await LocalDb.instance;
       expect(LocalDb.lastRebuild, isNotNull, reason: 'the brick must trip a rebuild');
       expect(LocalDb.lastRebuild!.salvaged['track_setup_history'], 1);
-      expect(await rebuilt.query('track_setup_history'), [ongoing]);
+      expect(_noIds(await rebuilt.query('track_setup_history')), _noIds([ongoing]));
     });
 
     // why: S9 again, tightened by review P8a-P2. A selected-day export cannot
@@ -268,10 +279,9 @@ void main() {
       await env.wipe();
       await LocalDb.instance;
       await LocalDb.importFromDbFile(days);
-      expect(await (await LocalDb.instance).query('track_setup_history'), [
-        _row('ongoing@d:2026-10-26..2026-10-26', '2026-10-26', '2026-10-26',
-            minute: 495, amount: 2.5, unit: 'mg'),
-      ]);
+      expect(_noIds(await (await LocalDb.instance).query('track_setup_history')), _noIds([
+        _row('x', '2026-10-26', '2026-10-26', minute: 495, amount: 2.5, unit: 'mg'),
+      ]));
     });
 
     test('two selected runs of one period come back as two clipped rows', () async {
@@ -283,11 +293,11 @@ void main() {
       await LocalDb.instance;
       await LocalDb.importFromDbFile(days);
       expect(
-        await (await LocalDb.instance).query('track_setup_history', orderBy: 'start_date'),
-        [
-          _row('ongoing@d:2026-10-22..2026-10-23', '2026-10-22', '2026-10-23', minute: 495, amount: 2.5, unit: 'mg'),
-          _row('ongoing@d:2026-10-26..2026-10-26', '2026-10-26', '2026-10-26', minute: 495, amount: 2.5, unit: 'mg'),
-        ],
+        _noIds(await (await LocalDb.instance).query('track_setup_history', orderBy: 'start_date')),
+        _noIds([
+          _row('x', '2026-10-22', '2026-10-23', minute: 495, amount: 2.5, unit: 'mg'),
+          _row('x', '2026-10-26', '2026-10-26', minute: 495, amount: 2.5, unit: 'mg'),
+        ]),
       );
     });
 
@@ -408,38 +418,161 @@ void main() {
       await db.insert('track_setup_history', ongoing);
       await db.insert('track_setup_history', notDone);
       await LocalDb.deleteDays({'2026-10-26', '2026-09-15'});
-      expect(
-        await db.query('track_setup_history', orderBy: 'start_date'),
-        [
-          _row('stopped@n:2026-09-01..2026-09-14', '2026-09-01', '2026-09-14', done: 0),
-          _row('stopped@n:2026-09-16..2026-09-30', '2026-09-16', '2026-09-30', done: 0),
-          _row('ongoing@d:2026-10-20..2026-10-25', '2026-10-20', '2026-10-25', minute: 495, amount: 2.5, unit: 'mg'),
-          _row('ongoing@d:2026-10-27..9999-12-31', '2026-10-27', '9999-12-31', minute: 495, amount: 2.5, unit: 'mg'),
-        ],
-      );
+      final rows = await db.query('track_setup_history', orderBy: 'start_date');
+      expect(_noIds(rows), _noIds([
+        _row('x', '2026-09-01', '2026-09-14', done: 0),
+        _row('x', '2026-09-16', '2026-09-30', done: 0),
+        _row('x', '2026-10-20', '2026-10-25', minute: 495, amount: 2.5, unit: 'mg'),
+        _row('x', '2026-10-27', '9999-12-31', minute: 495, amount: 2.5, unit: 'mg'),
+      ]));
+      expect(rows.map((r) => r['id']).toSet(), hasLength(4));
+      expect(rows.map((r) => r['id']), isNot(contains('ongoing')));
     });
 
-    // why (review R2-1): a clipped export of an ongoing period's first day used
-    // to keep the period's id, so a restore REPLACEd the whole period with one
-    // day. Now the piece has its own id and the full period survives.
-    test('re-importing a first-day export keeps the full period beside the piece', () async {
+    // why (review R2-1, R3-1): restore never REPLACEs a setup row by id and never
+    // shrinks local coverage. Re-importing a first-day export beside the full
+    // period is a no-op (the day is already covered by an agreeing period).
+    test('importing a piece the local period already covers changes nothing', () async {
       final db = await LocalDb.instance;
       await db.insert('track_setup_history', ongoing);
       await env.seedData();
       final days = await LocalDb.exportDaysDb({'2026-10-20'});
-      await db.delete('track_setup_history');
-      await db.insert('track_setup_history', ongoing);
       await LocalDb.importFromDbFile(days);
-      final rows = await (await LocalDb.instance).query('track_setup_history', orderBy: 'id');
-      expect(rows.map((r) => (r['id'], r['start_date'], r['end_date'])), [
-        ('ongoing', '2026-10-20', '9999-12-31'),
-        ('ongoing@d:2026-10-20..2026-10-20', '2026-10-20', '2026-10-20'),
+      expect(await (await LocalDb.instance).query('track_setup_history'), [ongoing]);
+    });
+
+    test('importing the same file twice is idempotent', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_setup_history', ongoing);
+      await env.seedData();
+      final days = await LocalDb.exportDaysDb({'2026-10-22', '2026-10-23', '2026-10-26'});
+      await env.wipe();
+      await LocalDb.instance;
+      await LocalDb.importFromDbFile(days);
+      final first = await (await LocalDb.instance).query('track_setup_history', orderBy: 'start_date');
+      expect(first, hasLength(2));
+      await LocalDb.importFromDbFile(days);
+      expect(await (await LocalDb.instance).query('track_setup_history', orderBy: 'start_date'), first);
+    });
+
+    // Sol's exact case: exports of Oct 20-22 and Oct 22-25 merge on read, the
+    // editor saves the union, and re-importing the shorter export must not take
+    // Oct 23-25 away.
+    test('merge, save, re-import never loses coverage', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_setup_history', ongoing);
+      await env.seedData();
+      final first = await LocalDb.exportDaysDb({'2026-10-20', '2026-10-21', '2026-10-22'});
+      final second = await LocalDb.exportDaysDb({'2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25'});
+      await env.wipe();
+      final fresh = await LocalDb.instance;
+      await LocalDb.importFromDbFile(first);
+      await LocalDb.importFromDbFile(second);
+      final store = TracksStore(fresh);
+      // Coverage arrives as new rows: Oct 22 was already covered, so the second
+      // file only adds Oct 23-25.
+      final merged = await store.history('med:x');
+      expect(merged.map((r) => (r.startDate, r.endDate)), [
+        ('2026-10-20', '2026-10-22'),
+        ('2026-10-23', '2026-10-25'),
       ]);
+      // The editor extends the first period to the union under its OWN id (the
+      // case that used to be REPLACEd back to Oct 22 by the shorter file).
+      final first0 = merged.first as DoneRange;
+      await store.saveHistory('med:x', [
+        DoneRange(
+          id: first0.id,
+          trackId: 'med:x',
+          startDate: '2026-10-20',
+          untilDate: '2026-10-25',
+          intake: first0.intake,
+        ),
+      ]);
+      await LocalDb.importFromDbFile(first); // ... then the shorter files again
+      await LocalDb.importFromDbFile(second);
+      final after = await store.history('med:x');
+      expect(
+        after.map((r) => (r.startDate, r.endDate)),
+        [('2026-10-20', '2026-10-25')],
+        reason: 'Oct 23-25 must survive, with no duplicate rows',
+      );
+      expect(await (await LocalDb.instance).query('track_setup_history'), hasLength(1));
+    });
+
+    List<TrackSetupRange> rawRanges(List<Map<String, Object?>> rows) =>
+        [for (final r in rows) TrackSetupRange.fromJson(r)];
+    bool covers(TrackSetupRange r, String d) =>
+        r.startDate.compareTo(d) <= 0 && r.endDate.compareTo(d) >= 0;
+
+    // why (review R4-1), Sol's exact sequence: export an ongoing period's Oct
+    // 27-28, restore it, edit that piece to not-done, restore the original full
+    // backup, then export Oct 27-28 again. The second export used to derive the
+    // edited piece's id for the done piece and overwrite the carve-out. Now every
+    // exported piece has a fresh id, so both survive. proves: CLAIM(range-fresh-id)
+    test('clip, edit, full restore, selected export keeps the edited carve-out', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_setup_history', ongoing);
+      await env.seedData();
+      final full = await LocalDb.exportCopy();
+      final clip = await LocalDb.exportDaysDb({'2026-10-27', '2026-10-28'});
+      await env.wipe();
+      final b = await LocalDb.instance;
+      await LocalDb.importFromDbFile(clip);
+      final store = TracksStore(b);
+      final piece = (await store.history('med:x')).single;
+      await store.saveHistory('med:x', [
+        NotDoneRange(id: piece.id, trackId: 'med:x', startDate: '2026-10-27', endDate: '2026-10-28'),
+      ]);
+      await LocalDb.importFromDbFile(full);
+      final again = await LocalDb.exportDaysDb({'2026-10-27', '2026-10-28'});
+      final file = await databaseFactory.openDatabase(again, options: OpenDatabaseOptions(readOnly: true));
+      final exported = rawRanges(await file.query('track_setup_history'));
+      await file.close();
+      expect(exported.map((r) => r.done).toSet(), {true, false}, reason: 'carve-out and done piece both exported');
+      expect(exported.map((r) => r.id).toSet(), hasLength(exported.length));
+      final local = rawRanges(await (await LocalDb.instance).query('track_setup_history'));
+      expect(local.where((r) => !r.done && r.id == piece.id), hasLength(1), reason: 'the edit is untouched');
+      // nominal doses must not come back on the carve-out dates
+      final exposures = RangeExposures(ranges: exported, realEvents: const [], absences: const []);
+      expect(exposures.on('med:x', '2026-10-27'), isNull);
+      expect(exposures.on('med:x', '2026-10-28'), isNull);
+    });
+
+    // why (review R4-2), Sol's exact sequence: export not-done Oct 27-30, restore,
+    // edit it to done Oct 27-28, restore the original not-done Oct 20-30, then
+    // delete Oct 26. The cut tail used to take an id equal to the edited row's and
+    // IGNORE dropped it, resurrecting nominal doses on Oct 27-28.
+    test('not-done export, edit to done, original restore, deleteDays keeps the not-done tail', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_setup_history', _row('n', '2026-10-20', '2026-10-30', done: 0));
+      await env.seedData();
+      final full = await LocalDb.exportCopy();
+      final clip = await LocalDb.exportDaysDb({'2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30'});
+      await env.wipe();
+      final b = await LocalDb.instance;
+      await LocalDb.importFromDbFile(clip);
+      final store = TracksStore(b);
+      final piece = (await store.history('med:x')).single;
+      await store.saveHistory('med:x', [
+        DoneRange(id: piece.id, trackId: 'med:x', startDate: '2026-10-27', untilDate: '2026-10-28'),
+      ]);
+      await LocalDb.importFromDbFile(full);
+      await LocalDb.deleteDays({'2026-10-26'});
+      final rows = rawRanges(await (await LocalDb.instance).query('track_setup_history'));
+      expect(rows.where((r) => r.done && r.id == piece.id), hasLength(1), reason: 'the edited row survives');
+      for (final d in ['2026-10-20', '2026-10-25', '2026-10-27', '2026-10-28', '2026-10-30']) {
+        expect(rows.any((r) => !r.done && covers(r, d)), isTrue, reason: 'not-done must still cover $d');
+      }
+      expect(rows.any((r) => covers(r, '2026-10-26')), isFalse, reason: 'the deleted day leaves every period');
+      expect(rows.map((r) => r.id).toSet(), hasLength(rows.length));
+      final exposures = RangeExposures(ranges: rows, realEvents: const [], absences: const []);
+      expect(exposures.on('med:x', '2026-10-27'), isNull);
+      expect(exposures.on('med:x', '2026-10-28'), isNull);
     });
 
     // why (review R2-1): deleteDays must not overwrite an unrelated restored row
     // that happens to carry a piece-style id (here a not-done carve-out).
-    test('deleteDays does not overwrite a restored carve-out with a piece-style id', () async {
+    test('deleteDays cannot overwrite a row whose id looks like a derived id', () async {
       final db = await LocalDb.instance;
       await db.insert('track_setup_history', ongoing);
       final carve = _row('ongoing@2026-10-27', '2026-10-27', '2026-10-28', done: 0);
@@ -447,7 +580,11 @@ void main() {
       await LocalDb.deleteDays({'2026-10-26'});
       final rows = await db.query('track_setup_history', orderBy: 'start_date');
       expect(rows.where((r) => r['id'] == 'ongoing@2026-10-27').single, carve);
-      expect(rows.map((r) => r['id']), contains('ongoing@d:2026-10-27..9999-12-31'));
+      expect(
+        rows.where((r) => r['done'] == 1 && r['start_date'] == '2026-10-27' && r['end_date'] == '9999-12-31'),
+        hasLength(1),
+        reason: 'the ongoing tail is cut under a fresh id, beside the carve-out',
+      );
     });
 
     // why (review R2-2), end to end through the real store and worker: with "I
@@ -511,6 +648,70 @@ void main() {
       );
     });
 
+    // why (review R3-2): a selected-day export carries the unknown-day markers of
+    // its selected dates (like events and absences), and the restored marker
+    // keeps a pledged night ineligible through the worker.
+    test('selected-day export carries the unknown-day marker and eligibility survives', () async {
+      final db = await LocalDb.instance;
+      await db.insert('track_unknown_day', {'date': '2026-10-24'});
+      await db.insert('track_unknown_day', {'date': '2026-09-01'});
+      await env.seedData();
+      final days = await LocalDb.exportDaysDb({'2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25'});
+      await env.wipe();
+      await LocalDb.instance;
+      await LocalDb.importFromDbFile(days);
+      final restored = await (await LocalDb.instance).query('track_unknown_day');
+      expect(restored.map((r) => r['date']), ['2026-10-24'], reason: 'only selected dates travel');
+      final bedtime = DateTime(2026, 10, 25, 22);
+      final pledged = TrackDefinition(
+        id: 'a',
+        name: 'A',
+        icon: 'track',
+        kind: 'consumed',
+        systems: const ['sleep'],
+        loggingComplete: true,
+        loggingCompleteSinceMs: DateTime(2026, 1, 1).millisecondsSinceEpoch,
+        kinetics: const TrackKinetics({'half_life_hours': TrackKineticField(value: 6)}),
+      );
+      TrackNight night(List<Map<String, Object?>> unknown) {
+        final input = TrackLearningInput(
+          definitions: [
+            {'id': 'a', 'payload_json': jsonEncode(pledged.toJson())},
+          ],
+          events: const [],
+          history: const [],
+          absences: const [],
+          unknownDays: unknown,
+          states: const [],
+          days: [
+            {
+              'day_id': '2026-10-26',
+              'window_json': jsonEncode({
+                'value': {
+                  'onset_ms': bedtime.millisecondsSinceEpoch,
+                  'offset_ms': bedtime.add(const Duration(hours: 8)).millisecondsSinceEpoch,
+                },
+              }),
+              'payload_json': jsonEncode({
+                'scalars': {'rhr': 55},
+                'sleep': {'accounting': {'value': {'tst_sec': 7 * 3600}}},
+                'coverage': {'rr_coverage': .95},
+              }),
+            },
+          ],
+          worker: WorkerInputs(
+            nowEpochMs: DateTime(2026, 10, 27).millisecondsSinceEpoch,
+            zoneId: 'UTC',
+            localeTag: 'en',
+          ),
+        );
+        return trackNightsHeavy(input, [pledged], const [], const []).single;
+      }
+
+      expect(night(const []).completeTrackIds, {'a'}, reason: 'control: no marker, pledge makes it eligible');
+      expect(night(restored).completeTrackIds, isEmpty);
+    });
+
     test('a full backup carries the deleted-day markers', () async {
       final db = await LocalDb.instance;
       await LocalDb.deleteDays({'2026-05-02'});
@@ -533,7 +734,7 @@ void main() {
       await db.insert('track_setup_history', ongoing);
       await db.insert('track_setup_history', notDone);
       await LocalDb.deleteDays({'2026-10-19', '2026-08-01'});
-      expect(await db.query('track_setup_history', orderBy: 'start_date'), [notDone, ongoing]);
+      expect(await db.query('track_setup_history', orderBy: 'start_date'), [notDone, ongoing]);  // untouched, ids included
     });
   });
 }

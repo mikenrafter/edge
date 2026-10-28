@@ -151,16 +151,20 @@ void main() {
         )).single['payload_json'],
         payload,
       );
+      // Restore merges setup history by coverage under fresh ids (ids carry no
+      // meaning across devices), so compare the rows without their id.
       expect(
-        await after.query(
-          'track_setup_history',
-          where: 'track_id = ?',
-          whereArgs: ['custom'],
-          orderBy: 'start_date',
-        ),
+        [
+          for (final row in await after.query(
+            'track_setup_history',
+            where: 'track_id = ?',
+            whereArgs: ['custom'],
+            orderBy: 'start_date',
+          ))
+            {...row}..remove('id'),
+        ],
         [
           {
-            'id': 'history-yes',
             'track_id': 'custom',
             'start_date': '2026-09-01',
             'end_date': '2026-09-30',
@@ -171,7 +175,6 @@ void main() {
             'amount_unit': null,
           },
           {
-            'id': 'history-no',
             'track_id': 'custom',
             'start_date': '2026-10-01',
             'end_date': '2026-10-05',
@@ -283,9 +286,9 @@ void main() {
     // the overrides of the other days it spans).
     expect(
       (await after.query('track_setup_history')).map(
-        (r) => (r['id'], r['start_date'], r['end_date']),
+        (r) => (r['start_date'], r['end_date']),
       ),
-      [('h-in@d:2026-10-26..2026-10-26', '2026-10-26', '2026-10-26')],
+      [('2026-10-26', '2026-10-26')],
     );
   });
 

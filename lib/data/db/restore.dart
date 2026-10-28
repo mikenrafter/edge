@@ -354,6 +354,10 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         // and without the timed doses they would restore as untimed remainders).
         await copyRows('track_event', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('track_absence', where: 'date = ?', whereArgs: [dayId]);
+        // CLAIM(deleted-day-unknown) [review R3-2]: a selected day's unknown marker
+        // travels with it, or a restored pre-delete period would make the
+        // deleted day nominal again.
+        await copyRows('track_unknown_day', where: 'date = ?', whereArgs: [dayId]);
         // The canonical owners behind track_event_feed rows: medication doses,
         // caffeine moments and meals.
         // The journal remainder's own time (see writeTrackSubstance) travels with
@@ -404,12 +408,8 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
       await out.transaction((txn) async {
         for (final piece in rangesOnDays([
           for (final row in spanning) TrackSetupRange.fromJson(row),
-        ], sorted.toSet())) {
-          await txn.insert(
-            'track_setup_history',
-            piece.toJson(),
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
+        ], sorted.toSet(), newId: const RandomRangeIds())) {
+          await txn.insert('track_setup_history', piece.toJson());
         }
       });
       // Track definitions are not day-scoped either; events and setup history
@@ -633,21 +633,20 @@ Future<int> _ldbDeleteDays(Set<String> dayIds) async {
         whereArgs: [sorted.last, sorted.first],
       );
       final cutFrom = [for (final row in cutRows) TrackSetupRange.fromJson(row)];
-      final cutTo = rangesWithoutDays(cutFrom, sorted.toSet());
+      final cutTo = rangesWithoutDays(cutFrom, sorted.toSet(), newId: const RandomRangeIds());
+      // Fresh ids cannot collide, so the pieces go in first with a plain insert
+      // (never replace or ignore), then the cut originals go, in this one
+      // transaction [review R4-2].
+      for (final piece in cutTo) {
+        if (cutFrom.contains(piece)) continue;
+        await txn.insert('track_setup_history', piece.toJson());
+      }
       for (final range in cutFrom) {
         if (cutTo.contains(range)) continue;
         await txn.delete(
           'track_setup_history',
           where: 'id = ?',
           whereArgs: [range.id],
-        );
-      }
-      for (final piece in cutTo) {
-        if (cutFrom.contains(piece)) continue;
-        await txn.insert(
-          'track_setup_history',
-          piece.toJson(),
-          conflictAlgorithm: ConflictAlgorithm.ignore,
         );
       }
       await deleteByIn(txn, 'track_experiment_day', 'date', sorted);
@@ -1275,6 +1274,45 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       return true;
     }
 
+    // Setup periods merge by coverage (rangesToAdd), not by REPLACE on id: the
+    // source rows are read first (never the import source inside the main
+    // transaction), the additions are computed against the local rows, and only
+    // new rows are written, in one transaction with the journal step.
+    Future<int> mergeSetupHistory(String t, int index) async {
+      List<Map<String, Object?>> rows;
+      try {
+        rows = await src.query(t);
+      } on DatabaseException catch (e) {
+        if (e.isNoSuchTableError()) return 0;
+        rethrow;
+      }
+      final incoming = <TrackSetupRange>[];
+      for (final row in rows) {
+        try {
+          incoming.add(TrackSetupRange.fromJson(row));
+        } catch (_) {
+          if (!tolerant) rethrow;
+        }
+      }
+      final additions = rangesToAdd(
+        local: [
+          for (final row in await db.query(t)) TrackSetupRange.fromJson(row),
+        ],
+        incoming: incoming,
+        newId: const RandomRangeIds(),
+      );
+      await db.transaction((txn) async {
+        if (run != null) {
+          await ImportJournal.advance(txn, run, index, t, rows.length, additions.length);
+        }
+        for (final range in additions) {
+          await txn.insert(t, range.toJson());
+        }
+      });
+      plan?.advance(t, rows.length);
+      return additions.length;
+    }
+
     try {
       ImportPerf.phase('open_policy', prepWatch, run: perfId);
       final attachWatch = Stopwatch()..start();
@@ -1396,6 +1434,11 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           plan?.start(t);
           await ImportHooks.table?.beforeTable(t);
           if (await mergeBulkTable(t, index)) continue;
+          if (t == 'track_setup_history') {
+            // CLAIM(range-restore-coverage) [review R3-1]: never REPLACE by id.
+            counts[t] = await mergeSetupHistory(t, index);
+            continue;
+          }
           perfPath = t == SubstrateArchive.table ? 'archive' : 'paged';
           // PAGED SOURCE READ — never `SELECT *` a whole table.
           //
