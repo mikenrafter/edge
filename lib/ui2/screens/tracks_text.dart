@@ -130,6 +130,11 @@ String tracksText(BuildContext context, String key) {
           'You stopped this experiment early, so no effect is reported and no more reminders are sent.',
     'ExperimentDid' => l?.tracksExperimentDid ?? 'I did it',
     'ExperimentDidnt' => l?.tracksExperimentDidnt ?? 'I did not',
+    'FromExperiment' =>
+      l?.tracksFromExperiment ??
+          'From your experiment: its randomized result is used instead of the day-to-day estimate.',
+    'UseObservational' =>
+      l?.tracksUseObservational ?? 'Use my day-to-day data instead',
     'ExperimentSetup' => l?.tracksExperimentSetup ?? 'Experiment setup',
     'ExperimentTitle' => l?.tracksExperimentTitle ?? 'Experiment',
     'ExperimentExplain' =>
@@ -197,6 +202,7 @@ String trackLearningText(BuildContext context, String? reason) =>
       'logging_incomplete' => 'LoggingIncomplete',
       'coverage' => 'CoverageHold',
       'experiment_learning' => 'ExperimentLearning',
+      'from_experiment' => 'FromExperiment',
       null => 'LearningPending',
       _ => 'LearningNeedData',
     });

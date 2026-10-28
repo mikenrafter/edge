@@ -49,6 +49,9 @@ class TracksStore {
 
   Future<Map<String, Map<String, Object?>>> refreshLearning({DateTime? asOf}) =>
       _refreshLearning(asOf: asOf);
+  /// "Use my day-to-day data instead" of a completed experiment's effect.
+  Future<void> releaseExperimentPrecedence(String trackId) =>
+      _releaseExperimentPrecedence(trackId);
   Future<void> confirmNone(String trackId, String date) =>
       _confirmNone(trackId, date);
 

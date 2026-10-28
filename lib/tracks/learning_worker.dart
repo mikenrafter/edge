@@ -1,5 +1,6 @@
 // TracksStore owns durable state. This worker owns a single immutable snapshot.
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import '../data/day_label.dart';
 import '../data/track_model.dart';
@@ -21,6 +22,7 @@ class TrackLearningInput {
     required this.days,
     required this.worker,
     this.experiments = const [],
+    this.experimentResults = const [],
   });
   final List<Map<String, Object?>> definitions,
       events,
@@ -29,6 +31,10 @@ class TrackLearningInput {
       states,
       days;
   final List<Map<String, Object?>> medications, experiments;
+
+  /// The latest completed experiment's effect per track x system:
+  /// {experiment_id, track_id, system, effect, lower, upper, n_do, n_dont}.
+  final List<Map<String, Object?>> experimentResults;
   final WorkerInputs worker;
 }
 
@@ -90,11 +96,9 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     final age = Duration(milliseconds: input.worker.nowEpochMs - started);
     // A running randomized experiment owns its track's estimation: nothing
     // observational fills in for days the experiment has not yet resolved.
-    // CLAIM(experiment-precedence-is-abstention): "experiment days take
-    // precedence in estimation" means exactly this abstention while the
-    // experiment runs. An experiment's result is reported on its own screen and
-    // does NOT feed the learned effect; afterwards its nights are ordinary
-    // observational nights [review T18; plan note in fix-t3-report.md].
+    // While it runs the experiment abstains (no weak-evidence adaptation, see
+    // T9); once COMPLETED its effect is preferred, see CLAIM(experiment-precedence)
+    // below [review T18].
     final today = dayLabelOf(now);
     final inExperiment = input.experiments.any(
       (r) =>
@@ -119,6 +123,35 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
         : own
               .firstWhere((e) => e.effect != null, orElse: () => own.first)
               .reason;
+    // CLAIM(experiment-precedence): a completed experiment's effect for a
+    // track x system is preferred over the observational estimate, until a
+    // newer experiment replaces it or the wearer releases it. It informs the
+    // shown effect only: kinetic fits and period adaptation keep using the
+    // observational estimates [review T18, orchestrator decision 2026-10-27;
+    // tracks_experiment_precedence_test.dart].
+    final released = (state['experiment_released'] as Map? ?? {}).cast<String, dynamic>();
+    final preferred = {
+      for (final r in input.experimentResults)
+        if (r['track_id'] == track.id &&
+            !inExperiment &&
+            released[r['system']] != r['experiment_id'])
+          r['system'] as String: TrackEffectEstimate(
+            trackId: track.id,
+            system: r['system'] as String,
+            reason: 'from_experiment',
+            effect: (r['effect'] as num).toDouble(),
+            matchedPairs: math.min(r['n_do'] as int, r['n_dont'] as int),
+            experimentId: r['experiment_id'] as String,
+          ),
+    };
+    final shown = preferred.isEmpty
+        ? own
+        : [
+            for (final e in own)
+              if (!preferred.containsKey(e.system)) e,
+            ...preferred.values,
+          ];
+    final shownReason = preferred.isEmpty ? reason : 'from_experiment';
     final stats = <String, Object?>{};
     for (final system in track.systems) {
       var moments = const TrackMoments();
@@ -149,7 +182,7 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     final periods = (state['periods_us'] as Map? ?? {}).cast<String, dynamic>();
     final logs = <Map<String, Object?>>[];
     final canStep = saved?['last_step_date'] != date;
-    // ↳ CLAIM(experiment-precedence-is-abstention): the abstention is not weak
+    // ↳ the abstention is not weak
     // evidence, so no period adapts and no audit row is written (review T9).
     if (canStep && !inExperiment && age >= policy.globalMinimum) {
       for (final field in trackKineticKeys) {
@@ -229,12 +262,14 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     final nextState = {
       'periods_us': periods,
       'statistics': stats,
+      if (released.isNotEmpty) 'experiment_released': released,
       'effects': [
-        for (final e in own)
+        for (final e in shown)
           {
             'system': e.system,
             'effect': e.effect,
             'reason': e.reason,
+            if (e.experimentId != null) 'experiment_id': e.experimentId,
             'matched_pairs': e.matchedPairs,
             'shuffle_p': e.shuffleP,
             'adjusted_p': e.adjustedP,
@@ -255,7 +290,7 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
         }),
     });
     summaries[track.id] = {
-      'reason': reason,
+      'reason': shownReason,
       'days': age.inDays,
       'minimum_days': policy.globalMinimum.inDays,
       ...nextState,

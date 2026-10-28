@@ -344,6 +344,18 @@ class _TrackDetailScreenState extends State<TrackDetailScreen> {
         trackLearningText(context, _learning?['reason'] as String?),
         key: const ValueKey('track-learning-status'),
       ),
+      // ↳ CLAIM(experiment-precedence): the wearer can return to day-to-day data.
+      if (_learning?['reason'] == 'from_experiment')
+        TextButton(
+          key: const ValueKey('use-observational'),
+          onPressed: _busy
+              ? null
+              : () async {
+                  await widget.store.releaseExperimentPrecedence(_track.id);
+                  await _load();
+                },
+          child: Text(text('UseObservational')),
+        ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: Text(text('LogEveryTime')),

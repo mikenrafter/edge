@@ -18140,5 +18140,7 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tracksFromExperiment": "From your experiment: its randomized result is used instead of the day-to-day estimate.",
+  "tracksUseObservational": "Use my day-to-day data instead"
 }

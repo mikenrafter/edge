@@ -32,6 +32,7 @@ extension TracksLearningStore on TracksStore {
     DateTime? asOf,
   }) async {
     final now = asOf ?? DateTime.now();
+    final experimentResults = await _completedExperimentResults(now);
     final snapshot = await db.transaction(
       (tx) async => TrackLearningInput(
         definitions: await tx.query('track_definition', orderBy: 'id'),
@@ -41,6 +42,7 @@ extension TracksLearningStore on TracksStore {
         absences: await tx.query('track_absence'),
         experiments: await tx.query('track_experiment', orderBy: 'id'),
         states: await tx.query('track_learning'),
+        experimentResults: experimentResults,
         days: await tx.rawQuery(
           'SELECT d.* FROM day_result d WHERE finalized = 1 AND partial = 0 AND skipped = 0 '
           'AND algo_version = (SELECT MAX(algo_version) FROM day_result n WHERE n.day_id = d.day_id) '
@@ -115,6 +117,55 @@ extension TracksLearningStore on TracksStore {
       return true;
     });
     return applied ? result.summaries : {};
+  }
+
+  /// The latest COMPLETED experiment per track (by end date) with its effect
+  /// for each system. Stopped, running and unreportable experiments give none.
+  Future<List<Map<String, Object?>>> _completedExperimentResults(DateTime now) async {
+    final latest = <String, String>{};
+    for (final row in await db.query('track_experiment', orderBy: 'end_date, id')) {
+      latest[row['track_id'] as String] = row['id'] as String;
+    }
+    final out = <Map<String, Object?>>[];
+    for (final entry in latest.entries) {
+      final report = await _experimentReport(entry.value, asOf: now);
+      if (report['status'] != 'completed') continue;
+      for (final e in (report['effects'] as Map).entries) {
+        final effect = e.value as Map;
+        out.add({
+          'experiment_id': entry.value,
+          'track_id': entry.key,
+          'system': e.key,
+          'effect': effect['effect'],
+          'lower': effect['lower'],
+          'upper': effect['upper'],
+          'n_do': effect['n_do'],
+          'n_dont': effect['n_dont'],
+        });
+      }
+    }
+    return out;
+  }
+
+  /// The wearer's "use my day-to-day data instead": every system currently
+  /// shown from an experiment returns to the observational estimate until a
+  /// NEWER experiment completes. ArgumentError for a track with no learning
+  /// state; a no-op when nothing is shown from an experiment.
+  // CLAIM(experiment-precedence) [review T18]
+  Future<void> _releaseExperimentPrecedence(String trackId) async {
+    final rows = await db.query('track_learning', columns: ['track_id'], where: 'track_id = ?', whereArgs: [trackId]);
+    if (rows.isEmpty) throw ArgumentError('track');
+    await db.execute(
+      'UPDATE track_learning SET state_json = json_set(state_json, '
+      "'\$.experiment_released', json_patch("
+      "COALESCE(json_extract(state_json, '\$.experiment_released'), '{}'), "
+      '(SELECT json_group_object(json_extract(e.value, \'\$.system\'), '
+      "json_extract(e.value, '\$.experiment_id')) FROM json_each(state_json, '\$.effects') e "
+      "WHERE json_extract(e.value, '\$.reason') = 'from_experiment'))) "
+      'WHERE track_id = ? AND EXISTS (SELECT 1 FROM json_each(state_json, '
+      "'\$.effects') e WHERE json_extract(e.value, '\$.reason') = 'from_experiment')",
+      [trackId],
+    );
   }
 
   static bool _sameRows(

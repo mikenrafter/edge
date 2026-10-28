@@ -162,8 +162,12 @@ class TrackEffectEstimate {
     this.adjustedP,
     this.kineticTargets = const {},
     this.coefficients = const {},
+    this.experimentId,
   });
   final String trackId, system, reason;
+
+  /// Set when this estimate IS a completed randomized experiment's result.
+  final String? experimentId;
   final double? effect;
   final int matchedPairs;
   final double? shuffleP, adjustedP;

@@ -399,4 +399,23 @@ void main() {
     expect(find.textContaining('9.0 days'), findsOneWidget);
     expect(find.textContaining('biased toward zero'), findsOneWidget);
   });
+
+  // why: review T18. A completed experiment's result is shown as "from your
+  // experiment" and the wearer can switch back to day-to-day data.
+  // proves: CLAIM(experiment-precedence)
+  testWidgets('detail shows the experiment label and the release button works', (t) async {
+    const walk = TrackDefinition(id: 'custom', name: 'Walk', icon: 'track', kind: 'activity', systems: ['hr']);
+    await t.runAsync(() async {
+      await store.saveDefinition(walk);
+      await runFollowedExperiment(await LocalDb.instance, store, from: '2026-10-01', gap: 8, seed: 17);
+    });
+    await mountTracks(t, TrackDetailScreen(store: store, track: walk), height: 2400);
+    await settleTracks(t, store);
+    expect(find.textContaining('From your experiment'), findsOneWidget);
+    await t.ensureVisible(find.byKey(const ValueKey('use-observational')));
+    await t.tap(find.byKey(const ValueKey('use-observational')));
+    await settleTracks(t, store);
+    expect(find.textContaining('From your experiment'), findsNothing);
+    expect(find.byKey(const ValueKey('use-observational')), findsNothing);
+  });
 }
