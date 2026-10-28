@@ -790,6 +790,22 @@ void main() {
     final outnumbered = estimate([...nights, ...abstinence(120)], tracks: [tracked]);
     expect(outnumbered.reason, 'estimated');
     expect(outnumbered.effect, closeTo(7, 1e-6));
+    // WHY R3-3: production reads only the latest 730 nights, so established
+    // nights leave the window. The reference is therefore returned for
+    // persistence and read back, never re-derived from a rolled window.
+    TrackEffectEstimate refOf(List<TrackNight> window, {double? stored}) =>
+        estimator
+            .estimate(
+              tracks: [tracked],
+              nights: window,
+              asOf: cutoff,
+              references: {if (stored != null) 'a': stored},
+            )
+            .first;
+    expect(refOf([...nights, ...abstinence(120)]).referenceDose, 100);
+    final rolled = [...nights.skip(7), ...abstinence(120)];
+    expect(refOf(rolled).referenceDose, 150, reason: 'rolled window alone drifts');
+    expect(refOf(rolled, stored: 100).referenceDose, 100);
     // Deviation below the reference: habitual 100 mg weeks (earliest, so the
     // reference) against 50 mg weeks that sleep 8 units better -> -8 per
     // +50 mg, shrunk to -7. The sign shows the higher dose is the exposed side.
