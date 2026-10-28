@@ -141,6 +141,13 @@ class NotificationService {
   static const int idMedsBase = 2300;
   static const int maxMedSlots = 12;
 
+  /// Slot band [idExperimentBase .. +maxExperimentSlots) — one ONE-SHOT per
+  /// upcoming assigned day of a running N-of-1 experiment, armed by
+  /// [ExperimentReminders.refresh] and cleared the moment no experiment has an
+  /// assignment ahead (ended, stopped, or the track was turned off).
+  static const int idExperimentBase = 2400;
+  static const int maxExperimentSlots = 8;
+
   /// Slot band [idWaterBase .. idWaterBase + maxWaterSlots) — one daily-repeating
   /// OS notification per hydration slot, armed by
   /// [NotificationCenter.scheduleStandingReminders] from the SAME slot list the
@@ -188,6 +195,8 @@ class NotificationService {
   ///   • the medication band ([isMedSlot]) — armed only while
   ///     `NotificationPrefs.medsEnabled` is on, at the times in the user's own
   ///     `med_def` schedule, and only for a dose still upcoming.
+  ///   • the experiment band ([isExperimentSlot]) — armed only for a day the
+  ///     wearer's own running experiment assigned, while reminders are on.
   ///   • [idWindDown] — armed only from a LEARNED bedtime (Sleep Coach), never
   ///     a population fallback, and only while `windDownEnabled` is on.
   ///   • [idMorningBrief] — armed by `aiReminderPlan` only for a user with a
@@ -218,11 +227,18 @@ class NotificationService {
   static bool isMedSlot(int id) =>
       id >= idMedsBase && id < idMedsBase + maxMedSlots;
 
+  /// Whether [id] is one of the experiment reminder slots.
+  static bool isExperimentSlot(int id) =>
+      id >= idExperimentBase && id < idExperimentBase + maxExperimentSlots;
+
   /// The gate itself — see [schedulableIds]. Public because
   /// [NotificationCenter.scheduleAiReminders] filters its plan through it
   /// rather than arming a slot and having it refused one line later.
   static bool maySchedule(int id) =>
-      schedulableIds.contains(id) || isWaterSlot(id) || isMedSlot(id);
+      schedulableIds.contains(id) ||
+      isWaterSlot(id) ||
+      isMedSlot(id) ||
+      isExperimentSlot(id);
 
   AndroidNotificationChannel _channelFor(NotifCategory c) => switch (c) {
         NotifCategory.health => _healthChannel,

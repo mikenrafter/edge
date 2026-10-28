@@ -189,6 +189,7 @@ import '../notify/notification_service.dart';
 import '../notify/tap_router.dart';
 import '../settings/settings_repository.dart';
 import '../notify/water_buzzer.dart';
+import '../tracks/experiment_reminders.dart';
 import '../notify/reminder_sleep_gate.dart';
 import '../data/assumed_water.dart';
 import 'units_controller.dart' show UnitsController;
@@ -4587,6 +4588,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
         journalDoneToday: BriefingStore.journalDoneToday(),
         sweepHeadline: await _sweepHeadlineNow(),
       );
+      // Morning reminders for a running N-of-1 experiment (cleared when none).
+      await ExperimentReminders.refresh(prefs);
     } catch (e) {
       _log('[notify] schedule reminders skipped: $e');
     }

@@ -478,6 +478,33 @@ class NotificationCenter {
     }
   }
 
+  /// Replaces the experiment reminder band with [at] (one-shots, in order;
+  /// extra instants beyond the band are dropped). An empty list clears the
+  /// band, which is how an ended or stopped experiment stops reminding.
+  /// Serialized with the other scheduling passes.
+  Future<void> armExperimentReminders(
+    List<({DateTime at, String route})> at,
+  ) => _synchronized(() async {
+    final svc = NotificationService.instance;
+    for (var i = 0; i < NotificationService.maxExperimentSlots; i++) {
+      await svc.cancel(NotificationService.idExperimentBase + i);
+    }
+    if (at.isEmpty) return;
+    await svc.ensureTimezone();
+    for (var i = 0; i < at.length && i < NotificationService.maxExperimentSlots; i++) {
+      await svc.scheduleOnce(
+        id: NotificationService.idExperimentBase + i,
+        category: NotifCategory.reminders,
+        // No track name and no arm: this lands on a lock screen. The screen
+        // behind the tap says what today's assignment is.
+        title: 'Experiment day',
+        body: 'Today has an assignment in your experiment.',
+        at: at[i].at,
+        route: at[i].route,
+      );
+    }
+  });
+
   /// The phone backstop of a main-alarm snooze: one OS-scheduled notification
   /// at the snooze's [due] time. A suspended phone cannot run the snooze's
   /// timer, but the OS posts this on time; if the app is awake the re-alarm
