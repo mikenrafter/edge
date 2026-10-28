@@ -623,7 +623,14 @@ dependencies:
       # baselines (HR p10, mean epoch RMSSD); cardio default unchanged (kAlgoVersion 117).
       # Phase 3 adds live wake evidence only. Stored analytics output is unchanged;
       # kAlgoVersion stays 117. See docs/wake-port-evidence.md.
-      ref: 8bd648748e38f5864214f0b719e069678bd905f8
+      # REPIN @ d876c427 (fix/hmm-baseline, on 8bd6487): the experimental HMM
+      # decoder takes its baselines from the whole session, rejects artifact
+      # epochs (unobserved), gates wake on movement density and falls back to
+      # cardio when its output is degenerate. The night payload gains
+      # staging_effective_method, staging_fallback and staging_fallback_sec;
+      # staging_method stays the requested method. sleep.stage group counter
+      # 3 -> 4. Cardio output is unchanged (kAlgoVersion 119).
+      ref: d876c427ce59eed95b5e54411e3b69253f294ae6
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
