@@ -75,6 +75,9 @@ class ObservedTracksStore extends TracksStore {
     ),
   );
   @override
+  Future<void> stopExperiment(String id) =>
+      _observe(() => super.stopExperiment(id));
+  @override
   Future<List<Map<String, Object?>>> experiments({String? trackId}) =>
       _observe(() => super.experiments(trackId: trackId));
   @override

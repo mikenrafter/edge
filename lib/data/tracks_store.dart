@@ -2,6 +2,7 @@
 // transactions serialize its writes. Linked records delegate to their owner.
 // Invalid writes throw ArgumentError; database/owner failures propagate.
 import 'dart:isolate';
+import 'package:clock/clock.dart';
 import 'dart:math' as math;
 import 'package:sqflite/sqflite.dart';
 import '../models/activity_suggestion.dart';
@@ -56,6 +57,11 @@ class TracksStore {
   );
   Future<List<Map<String, Object?>>> experiments({String? trackId}) =>
       _experiments(trackId: trackId);
+
+  /// Ends a running experiment at yesterday (see TracksExperimentStore).
+  /// ArgumentError for an unknown id, StateError('experiment_finished') once
+  /// its last day has passed.
+  Future<void> stopExperiment(String id) => _stopExperiment(id);
   Future<Map<String, Object?>> experimentReport(String id, {DateTime? asOf}) =>
       _experimentReport(id, asOf: asOf);
   Future<List<Map<String, Object?>>> experimentReminders({

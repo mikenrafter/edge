@@ -123,6 +123,11 @@ String tracksText(BuildContext context, String key) {
     'ExperimentPrescribed' =>
       l?.tracksExperimentPrescribed ??
           'Prescribed treatments are never randomized; the app will not ask you to skip one. Talk to your clinician about changes.',
+    'ExperimentStop' => l?.tracksExperimentStop ?? 'Stop experiment',
+    'ExperimentStopped' => l?.tracksExperimentStopped ?? 'Stopped',
+    'ExperimentStoppedNote' =>
+      l?.tracksExperimentStoppedNote ??
+          'You stopped this experiment early, so no effect is reported and no more reminders are sent.',
     'ExperimentSetup' => l?.tracksExperimentSetup ?? 'Experiment setup',
     'ExperimentTitle' => l?.tracksExperimentTitle ?? 'Experiment',
     'ExperimentExplain' =>

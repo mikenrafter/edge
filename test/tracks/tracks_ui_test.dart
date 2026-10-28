@@ -296,4 +296,35 @@ void main() {
     await settleTracks(t, store);
     expect(find.textContaining('Skip it'), findsWidgets);
   });
+
+  // why: review T8. The wearer can stop a running experiment from its screen;
+  // the detail screen then offers a new one and keeps the stopped one viewable.
+  // proves: CLAIM(stop-ends-reminders)
+  testWidgets('a running experiment can be stopped from its screen', (t) async {
+    final sauna = (await t.runAsync(() => store.definitions()))!.firstWhere((d) => d.id == 'sauna');
+    final now = DateTime.now();
+    final started = (await t.runAsync(
+      () => store.startExperiment(
+        trackId: 'sauna',
+        startDate: dayLabelOf(DateTime(now.year, now.month, now.day - 2)),
+        weeks: 2,
+        seed: 17,
+      ),
+    ))!;
+    await mountTracks(t, TrackDetailScreen(store: store, track: sauna), height: 2400);
+    await settleTracks(t, store);
+    await t.ensureVisible(find.text('View experiment'));
+    await t.tap(find.text('View experiment'));
+    await settleTracks(t, store);
+    await t.tap(find.byKey(const ValueKey('experiment-stop')));
+    await settleTracks(t, store);
+    expect(find.text('Start an experiment'), findsOneWidget);
+    final report = (await t.runAsync(() => store.experimentReport(started['id'] as String)))!;
+    expect(report['status'], 'stopped');
+    await t.ensureVisible(find.text('View last experiment'));
+    await t.tap(find.text('View last experiment'));
+    await settleTracks(t, store);
+    expect(find.textContaining('Stopped'), findsWidgets);
+    expect(find.byKey(const ValueKey('experiment-stop')), findsNothing);
+  });
 }

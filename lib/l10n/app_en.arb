@@ -18113,5 +18113,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "tracksExperimentStop": "Stop experiment",
+  "tracksExperimentStopped": "Stopped",
+  "tracksExperimentStoppedNote": "You stopped this experiment early, so no effect is reported and no more reminders are sent."
 }

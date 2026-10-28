@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -535,5 +536,60 @@ void main() {
     expect(await db.query('track_experiment_day', where: 'experiment_id = ?', whereArgs: ['xp-b']), isEmpty);
     expect(await db.query('track_experiment_day', where: 'experiment_id = ?', whereArgs: ['xp-a']), hasLength(14));
     expect(counts['_track_experiment_overlap_dropped'], 1);
+  });
+
+  // why: review T8. Without a stop, deleting the track or changing your mind
+  // left four weeks of daily notifications. Stopping ends the experiment at
+  // yesterday, drops later assignments (no reminders), frees the range, and the
+  // report says "stopped" instead of presenting a partial run as complete.
+  // proves: CLAIM(stop-ends-reminders)
+  test('stopExperiment ends reminders, frees the range and reports stopped', () async {
+    final experiment = await start(); // 2026-09-01 .. 2026-09-14
+    await withClock(Clock.fixed(DateTime(2026, 9, 4, 10)), () async {
+      await store.stopExperiment(experiment['id'] as String);
+    });
+    final row = (await store.experiments(trackId: 'custom')).single;
+    expect(row['end_date'], '2026-09-03');
+    expect(assignments(row).map((d) => d['date']), ['2026-09-01', '2026-09-02', '2026-09-03']);
+    expect(await store.experimentReminders(date: '2026-09-02'), hasLength(1));
+    expect(await store.experimentReminders(date: '2026-09-04'), isEmpty);
+    expect(await store.experimentReminders(date: '2026-09-10'), isEmpty);
+    final result = await report(experiment, DateTime(2026, 10, 1));
+    expect(result['status'], 'stopped');
+    expect(result['effects'], isEmpty);
+    // The range is free again.
+    final again = await store.startExperiment(
+      trackId: 'custom', startDate: '2026-09-04', weeks: 2, seed: 5);
+    expect(again['start_date'], '2026-09-04');
+  });
+
+  test('stopping before the first day has passed removes the experiment', () async {
+    final experiment = await start();
+    await withClock(Clock.fixed(DateTime(2026, 9, 1, 8)), () async {
+      await store.stopExperiment(experiment['id'] as String);
+    });
+    expect(await db.query('track_experiment'), isEmpty);
+    expect(await db.query('track_experiment_day'), isEmpty);
+  });
+
+  test('stopExperiment refuses unknown and already finished experiments', () async {
+    await expectLater(store.stopExperiment('nope'), throwsArgumentError);
+    final experiment = await start();
+    await withClock(Clock.fixed(DateTime(2026, 10, 1)), () async {
+      await expectLater(store.stopExperiment(experiment['id'] as String), throwsStateError);
+    });
+    expect(await db.query('track_experiment_day'), hasLength(14));
+  });
+
+  // why: review T8. "Deleting" a track only disables it; reminders must follow.
+  test('a disabled track sends no reminders and a re-enabled one does again', () async {
+    final experiment = await start();
+    final date = assignments(experiment).first['date'] as String;
+    expect(await store.experimentReminders(date: date), hasLength(1));
+    await store.deleteDefinition('custom');
+    expect(await store.experimentReminders(date: date), isEmpty);
+    final current = (await store.definitions()).firstWhere((d) => d.id == 'custom');
+    await store.saveDefinition(TrackDefinition.fromJson({...current.toJson(), 'enabled': true}));
+    expect(await store.experimentReminders(date: date), hasLength(1));
   });
 }

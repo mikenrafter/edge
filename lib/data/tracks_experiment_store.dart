@@ -48,7 +48,7 @@ extension TracksExperimentStore on TracksStore {
         'end_date': end,
         'weeks': weeks,
         'seed': chosen,
-        'created_ms': DateTime.now().millisecondsSinceEpoch,
+        'created_ms': clock.now().millisecondsSinceEpoch,
       });
       final first = DateTime.parse(startDate);
       for (var i = 0; i < assignments.length; i++) {
@@ -62,6 +62,41 @@ extension TracksExperimentStore on TracksStore {
     return (await _experiments(trackId: trackId)).firstWhere(
       (e) => e['id'] == id,
     );
+  }
+
+  /// A stopped experiment keeps its rows, with `end_date` moved to yesterday
+  /// and later assignments deleted, so it is recognisable as stopped by
+  /// `end_date != endDate(start_date, weeks)`. One that has not yet had a full
+  /// day is removed. No schema change.
+  // CLAIM(stop-ends-reminders): after a stop no assignment is left on or after
+  // today, so no reminder is produced; the range is free [tracks_experiments_t3_test].
+  Future<void> _stopExperiment(String id) async {
+    final rows = await db.query('track_experiment', where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) throw ArgumentError('experiment');
+    final today = dayLabelOf(clock.now());
+    final start = rows.single['start_date'] as String;
+    final end = rows.single['end_date'] as String;
+    if (end.compareTo(today) < 0) throw StateError('experiment_finished');
+    final now = clock.now();
+    final yesterday = dayLabelOf(DateTime(now.year, now.month, now.day - 1));
+    await db.transaction((tx) async {
+      if (start.compareTo(yesterday) > 0) {
+        await tx.delete('track_experiment_day', where: 'experiment_id = ?', whereArgs: [id]);
+        await tx.delete('track_experiment', where: 'id = ?', whereArgs: [id]);
+        return;
+      }
+      await tx.delete(
+        'track_experiment_day',
+        where: 'experiment_id = ? AND date > ?',
+        whereArgs: [id, yesterday],
+      );
+      await tx.update(
+        'track_experiment',
+        {'end_date': yesterday},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    });
   }
 
   Future<List<Map<String, Object?>>> _experiments({String? trackId}) async {
@@ -103,7 +138,7 @@ extension TracksExperimentStore on TracksStore {
     final e = experiment.single;
     final trackId = e['track_id'] as String;
     final start = e['start_date'] as String, end = e['end_date'] as String;
-    final now = asOf ?? DateTime.now();
+    final now = asOf ?? clock.now();
     final report = <String, Object?>{
       'id': id,
       'track_id': trackId,
@@ -111,6 +146,9 @@ extension TracksExperimentStore on TracksStore {
       'end_date': end,
       'effects': <String, Object?>{},
     };
+    if (end != endDate(start, e['weeks'] as int)) {
+      return {...report, 'status': 'stopped'};
+    }
     // The final night is part of the experiment; nothing is concluded early.
     if (dayLabelOf(now).compareTo(end) <= 0) {
       return {...report, 'status': 'running'};
@@ -230,7 +268,9 @@ extension TracksExperimentStore on TracksStore {
       // medication, a restored experiment and a track marked prescribed after
       // the start all stay silent.
       "WHERE d.date = ? AND x.track_id NOT LIKE 'med:%' "
-      "AND COALESCE(json_extract(t.payload_json, '\$.prescribed'), 0) = 0",
+      "AND COALESCE(json_extract(t.payload_json, '\$.prescribed'), 0) = 0 "
+      // ↳ CLAIM(stop-ends-reminders): "deleting" a track only disables it.
+      "AND COALESCE(json_extract(t.payload_json, '\$.enabled'), 1) != 0",
       [date],
     );
     return [

@@ -132,11 +132,21 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
     }
   }
 
+  Future<void> _stop() async {
+    try {
+      await widget.store.stopExperiment(widget.experimentId);
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     String text(String key) => tracksText(context, key);
     final report = _report, experiment = _experiment;
     final running = report?['status'] == 'running';
+    final stopped = report?['status'] == 'stopped';
     final effects = (report?['effects'] as Map? ?? const {}).cast<String, Map>();
     return detailScaffold(context, text('ExperimentTitle'), [
       Text(widget.track.name, style: F.head),
@@ -147,13 +157,20 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
         const Center(child: CircularProgressIndicator())
       else ...[
         Text(
-          '${running ? text('ExperimentRunning') : text('ExperimentCompleted')}'
+          '${running ? text('ExperimentRunning') : stopped ? text('ExperimentStopped') : text('ExperimentCompleted')}'
           ' · ${experiment['start_date']} – ${experiment['end_date']}',
           key: const ValueKey('experiment-status'),
         ),
         const SizedBox(height: S.x2),
-        if (running)
-          Text(text('ExperimentPending'))
+        if (running) ...[
+          Text(text('ExperimentPending')),
+          TextButton(
+            key: const ValueKey('experiment-stop'),
+            onPressed: _stop,
+            child: Text(text('ExperimentStop')),
+          ),
+        ] else if (stopped)
+          Text(text('ExperimentStoppedNote'))
         else ...[
           Text(text('ExperimentEffectHeading'), style: F.head),
           if (report['adherence'] is Map)
