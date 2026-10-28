@@ -3719,7 +3719,7 @@
   "activityPossibleTrack": "Posible: {track}",
   "activityTrackDidYou": "¿Hoy tuviste o hiciste «{track}»?",
   "activityTrackPromptNote": "Sí añade una entrada sin hora ni cantidad. No registra que hoy no ocurrió.",
-  "activityTrackNote": "Una pista de las señales de tu cuerpo, no un diagnóstico. Confirmar añade una entrada sin cantidad.",
+  "activityTrackNote": "Una pista de las señales de tu cuerpo, no un diagnóstico. Confirmar añade una entrada sin cantidad. Los umbrales que la generan no están validados.",
   "activityTrackYes": "Sí",
   "activityTrackNo": "No",
   "activityTrackNotHappened": "No ocurrió",

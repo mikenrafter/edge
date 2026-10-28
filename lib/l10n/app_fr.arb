@@ -3701,7 +3701,7 @@
   "activityPossibleTrack": "Possible : {track}",
   "activityTrackDidYou": "Avez-vous eu ou fait « {track} » aujourd’hui ?",
   "activityTrackPromptNote": "Oui ajoute une entrée sans heure ni quantité. Non enregistre que rien n’a eu lieu aujourd’hui.",
-  "activityTrackNote": "Un indice tiré de vos signaux corporels, pas un diagnostic. Confirmer ajoute une entrée sans quantité.",
+  "activityTrackNote": "Un indice tiré de vos signaux corporels, pas un diagnostic. Confirmer ajoute une entrée sans quantité. Les seuils utilisés ne sont pas validés.",
   "activityTrackYes": "Oui",
   "activityTrackNo": "Non",
   "activityTrackNotHappened": "N’a pas eu lieu",

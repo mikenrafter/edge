@@ -59,10 +59,20 @@ enum DetectionAbstain { noHrvSeries, noBaseline }
 
 class TrackDetectors {
   const TrackDetectors();
-  static const minCoverage = .5;
-  static const maxRestingMotion = .1;
-  static const alcoholHrRise = 5.0, alcoholRmssdRatio = .8;
-  static const cannabisHrRise = 15.0;
+  // Sources. None of these numbers is a validated detection threshold; each
+  // is an engineering choice that candidates present as a question only.
+  //  - alcohol direction (HR up, RMSSD down in early sleep): Pietila 2018,
+  //    doi 10.2196/mental.9519. The sizes below are unvalidated.
+  //  - cannabis resting HR rise: Cheung 2024, doi 10.1161/JAHA.124.037731
+  //    (a laboratory rise, not a wearable detector; no wearable detection
+  //    study exists). The 15 bpm cut-off and the motion limit are unvalidated.
+  //  - coverage, motion limit and learned-signature floors: unvalidated.
+  static const minCoverage = .5; // unvalidated
+  static const maxRestingMotion = .1; // unvalidated
+  static const alcoholHrRise = 5.0, alcoholRmssdRatio = .8; // unvalidated sizes
+  static const cannabisHrRise = 15.0; // unvalidated cut-off
+  // Learned signatures: separate floors in each system's own unit (bpm, ms).
+  static const learnedHrFloor = 3.0, learnedRmssdFloor = 5.0; // unvalidated
   // The estimator's own gate, plus a margin for a stable personal signature.
   static const minLearnedPairs = 20, maxLearnedP = .05;
 
@@ -141,19 +151,22 @@ class TrackDetectors {
     var matched = 0;
     for (final s in signatures) {
       final double? now, base;
+      final double floor;
       switch (s.system) {
         case 'hr':
           now = w.hr;
           base = w.baselineHr;
+          floor = learnedHrFloor;
         case 'hrv':
           now = w.rmssd;
           base = w.baselineRmssd;
+          floor = learnedRmssdFloor;
         default:
           continue; // no window measurement for this system
       }
       if (now == null || base == null) return null;
       final deviation = (now - base) * s.effect.sign;
-      if (deviation < 3 || deviation < s.effect.abs() * .75) return null;
+      if (deviation < floor || deviation < s.effect.abs() * .75) return null;
       matched++;
     }
     return matched == 0 ? null : 'learned_signature';

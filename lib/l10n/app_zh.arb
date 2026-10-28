@@ -3701,7 +3701,7 @@
   "activityPossibleTrack": "可能：{track}",
   "activityTrackDidYou": "你今天有没有“{track}”？",
   "activityTrackPromptNote": "选“是”会添加一条没有时间和数量的记录；选“否”会记录今天没有发生。",
-  "activityTrackNote": "这是身体信号给出的提示，不是诊断。确认后会添加一条没有数量的记录。",
+  "activityTrackNote": "这是身体信号给出的提示，不是诊断。确认后会添加一条没有数量的记录。 其判定阈值尚未经过验证。",
   "activityTrackYes": "是",
   "activityTrackNo": "否",
   "activityTrackNotHappened": "没有发生",

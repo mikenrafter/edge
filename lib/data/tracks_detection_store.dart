@@ -164,6 +164,7 @@ extension TracksDetectionStore on TracksStore {
             'end_ts': window.endTs,
             'evidence_kind': reason,
             'phase': window.phase,
+            'validation': 'unvalidated',
             'signals': window.evidence(),
           },
         ], moved: moved);

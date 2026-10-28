@@ -18036,7 +18036,7 @@
     }
   },
   "activityTrackPromptNote": "Yes adds an entry with no time or amount. No records that none happened today.",
-  "activityTrackNote": "A hint from your body signals, not a diagnosis. Confirming adds an entry with no amount.",
+  "activityTrackNote": "A hint from your body signals, not a diagnosis. Confirming adds an entry with no amount. The thresholds behind it are unvalidated.",
   "activityTrackYes": "Yes",
   "activityTrackNo": "No",
   "activityTrackNotHappened": "Did not happen",

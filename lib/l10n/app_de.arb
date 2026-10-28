@@ -3807,7 +3807,7 @@
   "activityPossibleTrack": "Möglich: {track}",
   "activityTrackDidYou": "Hast du heute „{track}“ gehabt oder gemacht?",
   "activityTrackPromptNote": "Ja fügt einen Eintrag ohne Uhrzeit und Menge hinzu. Nein hält fest, dass heute nichts war.",
-  "activityTrackNote": "Ein Hinweis aus deinen Körpersignalen, keine Diagnose. Bestätigen fügt einen Eintrag ohne Menge hinzu.",
+  "activityTrackNote": "Ein Hinweis aus deinen Körpersignalen, keine Diagnose. Bestätigen fügt einen Eintrag ohne Menge hinzu. Die zugrunde liegenden Schwellenwerte sind nicht validiert.",
   "activityTrackYes": "Ja",
   "activityTrackNo": "Nein",
   "activityTrackNotHappened": "Ist nicht passiert",

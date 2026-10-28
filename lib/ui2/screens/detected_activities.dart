@@ -114,7 +114,7 @@ class ActivityProposalCard extends StatelessWidget {
                   ? (l?.activityTrackPromptNote ??
                       'Yes adds an entry with no time or amount. No records that none happened today.')
                   : (l?.activityTrackNote ??
-                      'A hint from your body signals, not a diagnosis. Confirming adds an entry with no amount.'),
+                      'A hint from your body signals, not a diagnosis. Confirming adds an entry with no amount. The thresholds behind it are unvalidated.'),
               style: F.cap.copyWith(color: p.ink3),
             ),
           const SizedBox(height: S.x3),
