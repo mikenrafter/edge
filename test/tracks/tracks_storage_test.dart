@@ -326,4 +326,43 @@ void main() {
     expect(await feed(await LocalDb.instance), before);
     expect((await MedDb.defs(await LocalDb.instance)).single.label, 'Vitamin');
   });
+
+  // WHY R2-8: definitions kept logging_complete_since_ms while the export held
+  // only selected days' events, so after restore the omitted evening dose read
+  // as confirmed absence. proves: CLAIM(export-completeness)
+  test('selected-day export does not vouch for complete logging', () async {
+    final db = await LocalDb.instance;
+    await db.insert('track_definition', {
+      'id': 'custom',
+      'payload_json': jsonEncode({
+        'id': 'custom',
+        'name': 'Reading',
+        'kind': 'activity',
+        'logging_complete': true,
+        'logging_complete_since_ms': 1700000000000,
+      }),
+    });
+    await env.seedData();
+    final days = await LocalDb.exportDaysDb({'2026-10-26'});
+    // The live definition is untouched by exporting.
+    expect(
+      jsonDecode(
+        (await db.query('track_definition', where: "id = 'custom'"))
+            .single['payload_json'] as String,
+      )['logging_complete'],
+      true,
+    );
+    await env.wipe();
+    await LocalDb.instance;
+    await LocalDb.importFromDbFile(days);
+    final restored = jsonDecode(
+      (await (await LocalDb.instance).query(
+        'track_definition',
+        where: "id = 'custom'",
+      )).single['payload_json'] as String,
+    ) as Map;
+    expect(restored['logging_complete'], false);
+    expect(restored['logging_complete_since_ms'], isNull);
+    expect(restored['name'], 'Reading');
+  });
 }

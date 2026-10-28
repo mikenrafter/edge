@@ -392,6 +392,30 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
       // Track definitions are not day-scoped either; events and setup history
       // above refer to them by id.
       await copyRows('track_definition');
+      // CLAIM(export-completeness): a selected-day export carries only some
+      // days' events, so it cannot vouch for "everything logged since X"; the
+      // copied definitions are written as not-confirmed-complete, and an
+      // omitted dose reads as unknown rather than as confirmed absence [R2-8;
+      // tracks_storage_test].
+      // Text rewrite, not a decode: the payload is machine-written JSON and
+      // this path must not decode stored payloads.
+      final completeFlag = RegExp(r'"logging_complete"\s*:\s*true');
+      final completeSince = RegExp(r'"logging_complete_since_ms"\s*:\s*-?\d+');
+      for (final row in await out.query('track_definition')) {
+        final text = row['payload_json'] as String;
+        if (!completeFlag.hasMatch(text)) continue;
+        await out.update(
+          'track_definition',
+          {
+            // ↳ CLAIM(export-completeness)
+            'payload_json': text
+                .replaceAll(completeFlag, '"logging_complete":false')
+                .replaceAll(completeSince, '"logging_complete_since_ms":null'),
+          },
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+      }
       await copyRows('med_def');
       await copyRows('food_def');
       await copyRows('activity_review_meta');
