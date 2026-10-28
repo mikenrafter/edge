@@ -134,7 +134,7 @@ ConfounderProfile wakeProfileHeavy(WakeProfileInput input) {
   // preset track definition is enabled and has the own_sleep role and sleep
   // system; a missing definition means the unedited preset [S2;
   // sendable_wakeProfileHeavy_test].
-  final gated = _gatedJournalFields(input);
+  final gated = gatedJournalFieldsHeavy(input);
   final preset = profileFromJournalRows(
     input.journal,
     [
@@ -155,7 +155,8 @@ const _journalFieldTrack = {
   'alcohol_units': 'alcohol',
 };
 
-Set<String> _gatedJournalFields(WakeProfileInput input) {
+@heavy
+Set<String> gatedJournalFieldsHeavy(WakeProfileInput input) {
   final byId = {
     for (final d in decodeTrackDefinitionsHeavy(
       input.definitions,
