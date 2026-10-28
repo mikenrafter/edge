@@ -518,13 +518,20 @@ Future<List<MomentLabel>> _ldbMomentLabels({required String? date, required Stri
     return [for (final r in rows) _ldbPrivMomentLabel(r)];
   }
 
+double? _ldbPrivAmount(Object? v) {
+    final d = (v as num?)?.toDouble();
+    return d != null && d.isFinite && d >= 0 ? d : null;
+  }
+
 MomentLabel _ldbPrivMomentLabel(Map<String, Object?> r) => MomentLabel(
       date: r['date'] as String,
       hhmm: r['hhmm'] as String,
       label: r['label'] as String?,
       note: r['note'] as String?,
       caffeineMg: (r['caffeine_mg'] as num?)?.toDouble(),
-      metricValue: (r['metric_value'] as num?)?.toDouble(),
+      // Parse on read: a hand-edited or corrupt amount (negative, not a
+      // number) degrades to unknown, never to a wrong dose.
+      metricValue: _ldbPrivAmount(r['metric_value']),
       answeredAtMs: (r['answered_at'] as num).toInt(),
     );
 
@@ -539,10 +546,24 @@ Future<bool> _ldbAnswerMoment(MomentLabel l, {required String? metricField, requ
           whereArgs: [l.date, l.hhmm],
           limit: 1);
       if (have.isNotEmpty) return false;
-      final added = metricField != null && metricValue != null
-          ? await _ldbPrivAddDose(txn, l.date, l.hhmm, metricField, metricValue,
-              metricMax, l.answeredAtMs)
-          : 0.0;
+      // Caffeine and alcohol: the shared reconciliation (CLAIM(substance-
+      // reconcile)), so a first answer never does delta arithmetic on a total
+      // the wearer may have lowered and keeps the remainder's own time. Water
+      // has no canonical dose record and is added.
+      final track = switch (doseFieldOfLabel(l.label)) {
+        'caffeine_mg' => 'caffeine',
+        'alcohol_units' => 'alcohol',
+        _ => null,
+      };
+      final doseBefore =
+          track == null ? null : await LocalDb._trackDoseSummary(txn, l.date, track);
+      final hasDose = metricField != null && metricValue != null;
+      final added = track != null
+          ? (hasDose ? metricValue : 0.0)
+          : hasDose
+              ? await _ldbPrivAddDose(txn, l.date, l.hhmm, metricField, metricValue,
+                  metricMax, l.answeredAtMs)
+              : 0.0;
       await txn.insert('moment_label', {
         ...LocalDb._momentLabelRow(l),
         if (l.label == 'caffeine' && metricField == 'caffeine_mg')
@@ -551,6 +572,9 @@ Future<bool> _ldbAnswerMoment(MomentLabel l, {required String? metricField, requ
         // that. Null for a label that is no dose.
         'metric_value': doseFieldOfLabel(l.label) == null ? null : added,
       });
+      if (track != null) {
+        await LocalDb._reconcileSubstance(txn, l.date, track, doseBefore!);
+      }
       return true;
     }
     return transaction == null
@@ -613,8 +637,10 @@ Future<void> _ldbPrivFixWaterMinute(Transaction txn, String date, int removedMin
         'SELECT MAX(m) AS m FROM ('
         "SELECT CAST(substr(hhmm, 1, 2) AS INTEGER) * 60 + CAST(substr(hhmm, 4, 2) AS INTEGER) AS m "
         "FROM moment_label WHERE date = ? AND label = 'water' "
-        'UNION ALL SELECT at_min AS m FROM water_moment WHERE date = ?)',
-        [date, date]);
+        'UNION ALL SELECT at_min AS m FROM water_moment WHERE date = ? '
+        "UNION ALL SELECT at_min AS m FROM assumed_water WHERE date = ? "
+        "AND state <> 'removed' AND ml > 0)",
+        [date, date, date]);
     final explicit = (surviving.single['m'] as num?)?.toInt();
     final kept = at == removedMin ? null : at;
     final best = kept == null
@@ -693,11 +719,16 @@ Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, 
         };
         await txn.delete('symptom_entry',
             where: 'date = ? AND hhmm = ?', whereArgs: [date, hhmm]);
-        if (priorField == 'water_ml') {
+        // Water answered again stays what it was: the recorded (clipped)
+        // contribution is kept, never re-added at a full glass.
+        final waterUnchanged = priorField == 'water_ml' && newField == 'water_ml';
+        if (priorField == 'water_ml' && !waterUnchanged) {
           await _ldbPrivTakeBackDose(txn, date, priorField!, priorAmount!, stamp);
         }
         var added = 0.0;
-        if (newField == 'water_ml' && metricField != null && metricValue != null) {
+        if (waterUnchanged) {
+          added = priorAmount!;
+        } else if (newField == 'water_ml' && metricField != null && metricValue != null) {
           added = await _ldbPrivAddDose(txn, date, hhmm, metricField, metricValue, metricMax, stamp);
         } else if (substance(newField) != null) {
           added = metricField != null ? metricValue ?? 0.0 : 0.0;
@@ -720,7 +751,7 @@ Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, 
           await LocalDb._reconcileSubstance(txn, date, t, doseBefore[t]!);
         }
         // Water's time must not keep naming the removed moment.
-        if (priorField == 'water_ml' && !(newField == 'water_ml' && added != 0)) {
+        if (priorField == 'water_ml' && !waterUnchanged) {
           await _ldbPrivFixWaterMinute(txn, date, moment);
         }
         if (symptom != null) {

@@ -2222,12 +2222,14 @@ class LocalDb {
     }
     final db = await instance;
     await db.transaction((tx) async {
-      final timed = field == 'caffeine_mg'
-          ? await tx.rawQuery(
-              "SELECT COALESCE(SUM(caffeine_mg), 0) AS value FROM moment_label WHERE date = ? AND label = 'caffeine'",
-              [date],
-            )
-          : <Map<String, Object?>>[];
+      // The timed doses are the answered moments' amounts: caffeine_mg for
+      // caffeine, metric_value for alcohol (the same amounts the track feed shows).
+      final timed = await tx.rawQuery(
+        field == 'caffeine_mg'
+            ? "SELECT COALESCE(SUM(caffeine_mg), 0) AS value FROM moment_label WHERE date = ? AND label = 'caffeine'"
+            : "SELECT COALESCE(SUM(metric_value), 0) AS value FROM moment_label WHERE date = ? AND label = 'alcohol'",
+        [date],
+      );
       final track = field == 'caffeine_mg' ? 'caffeine' : 'alcohol';
       final logged = await tx.rawQuery(
         'SELECT COALESCE(SUM(amount), 0) AS value FROM track_event WHERE date = ? AND track_id = ? AND (unit IS NULL OR unit = ?)',
@@ -2235,7 +2237,7 @@ class LocalDb {
       );
       final total =
           (residual ?? 0) +
-          (timed.isEmpty ? 0 : (timed.single['value'] as num).toDouble()) +
+          (timed.single['value'] as num).toDouble() +
           (logged.single['value'] as num).toDouble();
       // ↳ CLAIM(remainder-time-fresh)
       await _clearRemainderMinute(tx, date, track);

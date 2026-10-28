@@ -181,7 +181,7 @@ void main() {
     });
 
     test('caffeine -> alcohol: the caffeine is taken back, the alcohol added; '
-        'the time of the untimed 100 is not invented', () async {
+        'the untimed 100 keeps its own time', () async {
       await LocalDb.putJournalMetrics(_date, const {
         'caffeine_mg': JournalMetricValue(100, atMinuteOfDay: 8 * 60),
       });
@@ -190,10 +190,10 @@ void main() {
       await _change(_m, MomentChoice.alcohol, value: 2);
 
       expect(await _total('caffeine_mg'), 100);
-      // The 08:00 was overwritten by 10:15 when the caffeine was answered; with
-      // that dose gone nothing records when the 100 mg was, so no time is kept
-      // (never a fabricated 10:15).
-      expect(await _atMin('caffeine_mg'), isNull);
+      // The untimed 100 mg keeps the time it had (08:00): the first answer
+      // recorded it as the remainder's own time before 10:15 replaced the
+      // aggregate's, so removing the 80 mg restores it (never a made-up 10:15).
+      expect(await _atMin('caffeine_mg'), 480);
       expect(await _total('alcohol_units'), 2);
       expect(await _atMin('alcohol_units'), 615);
       final row = (await _all('moment_label')).single;
@@ -304,7 +304,8 @@ void main() {
       final db = await LocalDb.instance;
       await db.update('journal_metric', {'value': 180.0, 'at_min': 615});
       await db.insert('wake_meta',
-          {'key': 'substance_remainder_min:$_date:caffeine', 'value': '480'});
+          {'key': 'substance_remainder_min:$_date:caffeine', 'value': '480'},
+          conflictAlgorithm: ConflictAlgorithm.replace);
       await _change(_m, MomentChoice.caffeine, value: 80);
       expect(await _total('caffeine_mg'), 180);
       expect(await _atMin('caffeine_mg'), 615);
@@ -387,6 +388,25 @@ void main() {
       await LocalDb.editTrackMoment('$_date:10:15', delete: true);
       expect(await _total('caffeine_mg'), 100);
       expect(await _atMin('caffeine_mg'), 480);
+    });
+
+    test('a Tracks edit of the untimed remainder keeps an alcohol answer\'s '
+        'dose in the total', () async {
+      await _writer.answer(_m, MomentChoice.alcohol, value: 2, now: _t1);
+      await LocalDb.editTrackJournal('$_date:alcohol_units', 1);
+      expect(await _total('alcohol_units'), 3);
+    });
+
+    test('a corrupt stored amount (negative) reads as unknown and is refused '
+        'for a dose change, never used', () async {
+      final db = await LocalDb.instance;
+      await db.rawInsert(
+          'INSERT INTO moment_label (date, hhmm, label, metric_value, answered_at) '
+          "VALUES ('$_date', '10:15', 'alcohol', -5, 1)");
+      expect((await _saved(_m)).metricValue, isNull);
+      final r = await _change(_m, MomentChoice.other, note: 'x');
+      expect(r, isA<MomentChangeFailed>());
+      expect((await feed('moment:$_date:10:15'))!['amount'], isNull);
     });
 
     test('R2-4: saving an unchanged water answer keeps its clipped '
@@ -505,10 +525,12 @@ void main() {
       await _writer.answer(_m, MomentChoice.caffeine, value: 80, now: _t1);
       for (final k in ['caffeine', 'alcohol']) {
         await db.insert('wake_meta',
-            {'key': 'substance_remainder_min:$_date:$k', 'value': '480'});
+            {'key': 'substance_remainder_min:$_date:$k', 'value': '480'},
+          conflictAlgorithm: ConflictAlgorithm.replace);
       }
       await db.insert('wake_meta',
-          {'key': 'substance_remainder_min:2026-10-05:caffeine', 'value': '1'});
+          {'key': 'substance_remainder_min:2026-10-05:caffeine', 'value': '1'},
+          conflictAlgorithm: ConflictAlgorithm.replace);
       await _change(_m, MomentChoice.alcohol, value: 2);
       // wake_meta also holds unrelated state (e.g. wake_split_v1).
       final keys = [
@@ -588,7 +610,8 @@ void main() {
       });
       await _writer.answer(_m, MomentChoice.caffeine, value: 80, now: _t1);
       await db.insert('wake_meta',
-          {'key': 'substance_remainder_min:$_date:caffeine', 'value': '480'});
+          {'key': 'substance_remainder_min:$_date:caffeine', 'value': '480'},
+          conflictAlgorithm: ConflictAlgorithm.replace);
       final before = await _snapshot();
       // The last write of the change is the symptom insert; make it fail after
       // the label and journal writes have already happened.

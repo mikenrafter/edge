@@ -10,6 +10,7 @@
 //
 // RED: none of them is in the restore list, so none comes back.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/db.dart';
 
@@ -126,5 +127,70 @@ void main() {
     expect(rows.single['label'], 'tea', reason: 'a moment is answered once');
     // ...and the other tables still arrived.
     expect(await db.query('symptom_entry'), hasLength(1));
+  });
+
+  // metric_value (CLS-1): what a marked-moment answer added to its dose field.
+  Future<String> exportWithAnswer() async {
+    await env.wipe();
+    final db = await LocalDb.instance;
+    await db.insert('moment_label', {
+      'date': '2026-09-21', 'hhmm': '09:00', 'label': 'alcohol',
+      'answered_at': 1790000200, 'metric_value': 2.0,
+    });
+    await env.seedData();
+    return LocalDb.exportCopy();
+  }
+
+  test('metric_value travels in a full backup', () async {
+    final path = await exportWithAnswer();
+    await env.wipe();
+    await LocalDb.importFromDbFile(path);
+    final rows = await (await LocalDb.instance).query('moment_label');
+    expect(rows.single['metric_value'], 2.0);
+  });
+
+  test('a backup from before metric_value restores it as unknown (NULL)',
+      () async {
+    final path = await exportWithAnswer();
+    final old = await databaseFactory.openDatabase(path);
+    // The track feed view reads the column; an older file has neither.
+    await old.execute('DROP VIEW IF EXISTS track_event_feed');
+    await old.execute('ALTER TABLE moment_label DROP COLUMN metric_value');
+    await old.close();
+    await env.wipe();
+    await LocalDb.importFromDbFile(path);
+    final rows = await (await LocalDb.instance).query('moment_label');
+    expect(rows.single['label'], 'alcohol');
+    expect(rows.single['metric_value'], isNull);
+  });
+
+  test('a selected-day export carries metric_value; deleteDays keeps the '
+      'answer (a decision that cannot be rebuilt)', () async {
+    await env.wipe();
+    final db = await LocalDb.instance;
+    await db.insert('moment_label', {
+      'date': '2026-09-21', 'hhmm': '09:00', 'label': 'alcohol',
+      'answered_at': 1, 'metric_value': 2.0,
+    });
+    final path = await LocalDb.exportDaysDb({'2026-09-21'});
+    final copy = await databaseFactory.openDatabase(path, options: OpenDatabaseOptions(readOnly: true));
+    final rows = await copy.query('moment_label');
+    await copy.close();
+    expect(rows.single['metric_value'], 2.0);
+    await LocalDb.deleteDays({'2026-09-21'});
+    expect((await db.query('moment_label')).single['metric_value'], 2.0);
+  });
+
+  test('a database from before metric_value gets the column on open', () async {
+    await env.wipe();
+    final db = await LocalDb.instance;
+    await db.execute('DROP VIEW IF EXISTS track_event_feed');
+    await db.execute('ALTER TABLE moment_label DROP COLUMN metric_value');
+    await LocalDb.close();
+    final reopened = await LocalDb.instance;
+    final cols = await reopened.rawQuery('PRAGMA table_info(moment_label)');
+    expect([for (final c in cols) c['name']], contains('metric_value'));
+    // ...and the view that reads it was rebuilt after the column came back.
+    await reopened.rawQuery('SELECT amount FROM track_event_feed');
   });
 }
