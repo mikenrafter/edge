@@ -152,7 +152,9 @@ class TrackEffectEstimator {
     double prior, [
     double? storedReference,
   ]) {
-    double? established = storedReference;
+    // CLAIM(reference-only-in-baseline-mode): a saved reference applies only
+    // while "this track is my baseline" is on [R4-3; track_effect_estimator_test].
+    double? established = track.noUnadjustedData ? storedReference : null;
     TrackEffectEstimate absent(
       String reason, {
       int pairs = 0,

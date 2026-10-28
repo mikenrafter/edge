@@ -1144,4 +1144,24 @@ void main() {
     ], bedtime);
     expect(inside.dose, isNull);
   });
+
+  // WHY R4-3: a saved reference of 150 still applied after baseline mode was
+  // switched off, turning an estimable 0/100 cohort into "unmatched".
+  // proves: CLAIM(reference-only-in-baseline-mode)
+  test('a saved reference is ignored once baseline mode is off', () {
+    final nights = cohort();
+    final plain = estimate(nights);
+    expect(plain.reason, 'estimated');
+    final withStale = estimator
+        .estimate(
+          tracks: [track('a')],
+          nights: nights,
+          asOf: cutoff,
+          references: const {'a': 150},
+        )
+        .first;
+    expect(withStale.reason, 'estimated');
+    expect(withStale.effect, plain.effect);
+    expect(withStale.referenceDose, isNull);
+  });
 }

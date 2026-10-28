@@ -267,9 +267,11 @@ TrackLearningResult trackLearningHeavy(TrackLearningInput input) {
     final changed = logs.any(
       (r) => !(r['field'] as String).endsWith(':minimum'),
     );
-    final reference =
-        own.map((e) => e.referenceDose).nonNulls.firstOrNull ??
-        references[track.id];
+    // ↳ CLAIM(reference-only-in-baseline-mode): dropped when the mode is off.
+    final reference = !track.noUnadjustedData
+        ? null
+        : own.map((e) => e.referenceDose).nonNulls.firstOrNull ??
+              references[track.id];
     final nextState = {
       if (reference != null) 'reference_dose': reference,
       'periods_us': periods,
