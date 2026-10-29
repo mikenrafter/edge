@@ -5167,6 +5167,15 @@ class BleEngine implements AlarmBandWriter {
         _highFreqUntil?.millisecondsSinceEpoch ==
             targetWake.millisecondsSinceEpoch;
     if (unchanged && !force) return PromptWriteOutcome.unchanged;
+    // A forced re-ENTER recovers the lease that is already meant to end at
+    // [targetWake]: it asks only for what is left, so 61 s prompting cannot
+    // outlive the window, and nothing at or after the end (checked again
+    // before transport, in case it waited in the write queue).
+    if (force) {
+      final left = targetWake.difference(_packageClockNow());
+      if (left.inSeconds <= 0) return PromptWriteOutcome.skipped;
+      if (left < duration) duration = Duration(seconds: left.inSeconds);
+    }
     _log(
       '[SYNC] HighFreq enter ($reason${force ? ', forced' : ''}) — '
       'interval=${intervalSeconds}s '
@@ -5190,7 +5199,11 @@ class BleEngine implements AlarmBandWriter {
         profile: session.band,
       ),
       owner: session,
-      beforeTransport: ticket == null ? null : () => ticket.current,
+      beforeTransport: ticket == null && !force
+          ? null
+          : () =>
+              (ticket == null || ticket.current) &&
+              (!force || _packageClockNow().isBefore(targetWake)),
     );
     if (_liveStale(session, generation)) return PromptWriteOutcome.skipped;
     if (ticket != null && !ticket.current) {

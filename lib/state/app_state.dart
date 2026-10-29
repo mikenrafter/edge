@@ -8198,6 +8198,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       _lastBandPromptOutcome = PromptWriteOutcome.skipped;
       return;
     }
+    // Trace eligibility is decided when the pass starts: a pass that began
+    // inside the span keeps its outcome even if its write returns after T.
+    final startedAt = _wakeNow();
     ({DateTime windowEnd, int minutes})? armed;
     String? source;
     var enter = false;
@@ -8283,18 +8286,20 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     }
     if (!ticket.current) return;
     _lastBandPromptOutcome = outcome;
-    await _traceCollection(armed,
+    await _traceCollection(armed, startedAt,
         source: source, enter: enter, forced: force, outcome: outcome,
         error: error);
   }
 
-  /// F4: each refresh outcome inside the collection span goes to `wake_trace`
+  /// F4: each refresh outcome of a pass that STARTED inside the collection
+  /// span ([startedAt]) goes to `wake_trace`
   /// as kind `collection`, once per change, so the next field report says
   /// whether the window was asked for and what came back. Diagnostic only
   /// (not a journal kind: it expires with the other diagnostics). Never
   /// throws.
   Future<void> _traceCollection(
-    ({DateTime windowEnd, int minutes})? armed, {
+    ({DateTime windowEnd, int minutes})? armed,
+    DateTime startedAt, {
     required String? source,
     required bool enter,
     required bool forced,
@@ -8303,9 +8308,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   }) async {
     if (armed == null) return;
     final wakeAt = armed.windowEnd;
-    final now = _wakeNow();
     final from = wakeAt.subtract(naturalCollectionLead(armed.minutes + 10));
-    if (now.isBefore(from) || !now.isBefore(wakeAt)) return;
+    if (startedAt.isBefore(from) || !startedAt.isBefore(wakeAt)) return;
     final epoch = wakeAt.millisecondsSinceEpoch ~/ 1000;
     final sig = '$epoch|$source|$enter|$forced|${outcome.name}|$error';
     if (sig == _lastCollectionTraceSig) return;
