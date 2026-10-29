@@ -195,6 +195,9 @@ class WakeHarnessConfig {
   Map<String, Object?> provenance({
     required int learnedOffsetSec,
     required ConfounderProfile composed,
+    WakeRule? ranAs,
+    int windowLeadMinutes = 0,
+    int windowMinutes = 0,
   }) {
     final effective = <String, Object?>{
       'rule': rule.name,

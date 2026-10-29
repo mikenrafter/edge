@@ -7,13 +7,36 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/sync/headless_gate.dart';
 import 'package:openstrap_edge/wake/natural_wake.dart';
+import 'package:openstrap_edge/state/control_operations.dart'
+    show ExpectedSleepSchedule;
+import 'package:openstrap_edge/wake/wake_confounders.dart';
 import 'package:openstrap_edge/wake/wake_harness.dart';
+import 'package:openstrap_edge/wake/wake_harness_ledger.dart';
 import 'package:openstrap_edge/wake/wake_orchestrator.dart';
 
 import 'support/wake_fakes.dart';
 
 final _t = DateTime(2026, 10, 5, 7, 0);
 int get _tSec => _t.millisecondsSinceEpoch ~/ 1000;
+
+/// The production legacy evaluator's place: a scripted answer, and what it
+/// was asked with.
+class _FakeLegacy implements LegacyWakeEvaluator {
+  bool fire = true;
+  ConfounderProfile journal = const ConfounderProfile();
+  final asked = <ConfounderProfile?>[];
+  @override
+  Future<ConfounderProfile> journalProfile(
+          DateTime end, ExpectedSleepSchedule? schedule) async =>
+      journal;
+  @override
+  Future<bool> detected(DateTime now, DateTime end,
+      ExpectedSleepSchedule? schedule,
+      {ConfounderProfile? profile}) async {
+    asked.add(profile);
+    return fire;
+  }
+}
 
 class _Rig {
   _Rig({MemoryWakeStateStore? state, MemoryWakeTraceStore? trace})
@@ -22,11 +45,14 @@ class _Rig {
         trace = trace ?? MemoryWakeTraceStore() {
     env = FakeWakeEnv()..armedEpochSec = _tSec;
     observer = ScriptedObserver();
+    ledger = MemoryWakeHarnessLedger(this.trace);
     orchestrator = _build();
   }
   final TestClock clock;
   final MemoryWakeStateStore state;
   final MemoryWakeTraceStore trace;
+  final legacy = _FakeLegacy();
+  late final MemoryWakeHarnessLedger ledger;
   late final FakeWakeEnv env;
   late final ScriptedObserver observer;
   late WakeOrchestrator orchestrator;
@@ -35,6 +61,8 @@ class _Rig {
       observer: observer,
       stateStore: state,
       traceStore: trace,
+      legacy: legacy,
+      harnessRecorder: WakeHarnessRecorder(ledger, now: clock.call),
       now: clock.call);
   void restart() => orchestrator = _build();
   Future<WakeTickOutcome> tick(WakePlanInput p) => orchestrator.tick(p);
@@ -55,9 +83,11 @@ WakePlanInput _plan([WakeHarnessConfig? h]) {
 Future<(_Rig, bool, String?)> _run(
   NaturalObservation obs, [
   WakeHarnessConfig? h,
+  bool legacyFires = true,
 ]) async {
   final r = _Rig();
   r.observer.next = obs;
+  r.legacy.fire = legacyFires;
   final out = await r.tick(_plan(h));
   return (r, out.naturalFired, await r.lastReason());
 }
@@ -141,12 +171,13 @@ void main() {
       expect(fired, isFalse);
       expect(r.env.haptics, isEmpty);
       expect(r.observer.requests, isEmpty);
-      expect(await r.entries('harness'), hasLength(1),
-          reason: 'its provenance is still recorded');
+      expect(r.legacy.asked, isEmpty,
+          reason: 'the legacy route (AppState) evaluates and records it');
+      expect(await r.lastReason(), isNull);
     });
   });
 
-  group('hybrid rule: legacy physiology AND NOT a current NREM', () {
+  group('hybrid rule: production legacy AND NOT a current NREM', () {
     const hybrid = WakeHarnessConfig(rule: WakeRule.hybrid);
 
     test('a current NREM at or above the veto confidence holds', () async {
@@ -165,9 +196,25 @@ void main() {
       expect(fired, isTrue);
     });
 
+    test('the legacy evaluator holding holds, whatever the stage', () async {
+      final (_, fired, reason) = await _run(remObs(), hybrid, false);
+      expect(fired, isFalse);
+      expect(reason, 'legacyHold');
+    });
+
     test('no current stager evidence: legacy stands', () async {
       final (_, fired, _) = await _run(absentObs('staleEvidence'), hybrid);
       expect(fired, isTrue);
+    });
+
+    test('an observer error is no stage evidence: legacy stands', () async {
+      final r = _Rig()..observer.failWith = StateError('stager down');
+      final out = await r.tick(_plan(hybrid));
+      expect(out.naturalFired, isTrue);
+      final strict = _Rig()..observer.failWith = StateError('stager down');
+      final held = await strict.tick(_plan(const WakeHarnessConfig(
+          rule: WakeRule.hybrid, requireRemOrWake: true)));
+      expect(held.naturalFired, isFalse);
     });
 
     test('require REM or wake: no evidence holds, REM fires', () async {
@@ -178,30 +225,22 @@ void main() {
           reason: 'hybrid has no run-length gate');
     });
 
-    test('the HR rise coefficient flips it', () async {
-      // Fake evidence: baseline 50, recent 56.
-      final (_, fires, _) = await _run(remObs(),
-          const WakeHarnessConfig(rule: WakeRule.hybrid, hrRiseBpm: 6));
-      expect(fires, isTrue);
-      final (_, holds, reason) = await _run(remObs(),
-          const WakeHarnessConfig(rule: WakeRule.hybrid, hrRiseBpm: 7));
-      expect(holds, isFalse);
-      expect(reason, 'hrArousalHold');
-    });
-
-    test('the motion ceiling coefficient flips it', () async {
-      // Fake evidence: motion 0.01.
-      final (_, fires, _) = await _run(remObs(),
-          const WakeHarnessConfig(rule: WakeRule.hybrid, motionCeilingG: 0.02));
-      expect(fires, isTrue, reason: '0.01 < 0.02');
+    test('the evaluator gets the composed profile, and the record carries it',
+        () async {
       final r = _Rig()
         ..observer.next = remObs()
-        ..observer.evidence = const NaturalGateEvidence(
-            baseline: 50, recentHr: 56, motion: .03, trending: false);
-      final out = await r.tick(_plan(const WakeHarnessConfig(
-          rule: WakeRule.hybrid, motionCeilingG: 0.02)));
-      expect(out.naturalFired, isFalse);
-      expect(await r.lastReason(), 'motionCeilingHold');
+        ..legacy.journal = const ConfounderProfile(
+            protectionMinutes: 10, trendWindowMinutes: 5, workout: true);
+      await r.tick(_plan(
+          const WakeHarnessConfig(rule: WakeRule.hybrid, hrRiseBpm: 9)));
+      expect(r.legacy.asked, hasLength(1));
+      final used = r.legacy.asked.single!;
+      expect(used.hrArousalBpm, 9);
+      expect(used.protectionMinutes, 10);
+      final eff = (await r.entries('harness')).single.data['effective'] as Map;
+      expect(eff['hrRiseBpm'], 9);
+      expect(eff['protectionMinutes'], 10);
+      expect(eff['trendWindowMinutes'], 5);
     });
   });
 
@@ -222,7 +261,9 @@ void main() {
       await r.tick(_plan(h));
       expect(r.env.armCalls, [_tSec], reason: h.rule.name);
       expect(r.env.cancelCalls, isEmpty);
-      expect(await r.entries('harness'), hasLength(1), reason: h.rule.name);
+      expect(await r.entries('harness'),
+          hasLength(h.rule == WakeRule.legacy ? 0 : 1),
+          reason: '${h.rule.name}: legacy records on its own route');
     }
   });
 

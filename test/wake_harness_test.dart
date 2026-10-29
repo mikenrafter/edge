@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:openstrap_edge/wake/wake_confounders.dart';
 import 'package:openstrap_edge/wake/wake_harness.dart';
+import 'package:openstrap_edge/wake/natural_wake.dart';
 
 void main() {
   WakeHarnessConfig parse(Map<String, Object?> j, [List<String>? errors]) =>
@@ -183,6 +184,86 @@ void main() {
     test('developer mode off ignores it', () {
       final c = effectiveWakeHarness(developerMode: false, stored: stored);
       expect(c.isDefault, isTrue);
+    });
+  });
+
+  group('snapshot covers every decision-affecting field (Sol code r1 #6)', () {
+    test('composed policy, window, lead and the routed rule are recorded', () {
+      const c = WakeHarnessConfig(rule: WakeRule.legacy, hrRiseBpm: 6);
+      const journal = ConfounderProfile(
+        protectionMinutes: 10,
+        trendWindowMinutes: 5,
+        stress: true,
+        alcohol: true,
+      );
+      final eff = c.provenance(
+        learnedOffsetSec: 0,
+        composed: c.compose(journal),
+        windowLeadMinutes: 3,
+        windowMinutes: 45,
+      )['effective'] as Map;
+      expect(eff['protectionMinutes'], 10);
+      expect(eff['trendWindowMinutes'], 5);
+      expect(eff['trendThresholdFactor'], 0.5);
+      expect(eff['disableEarlyDelivery'], isTrue);
+      expect(eff['windowLeadMinutes'], 3);
+      expect(eff['windowMinutes'], 45);
+      // The default config on the legacy route records what ran: legacy.
+      final ran = WakeHarnessConfig.defaults.provenance(
+        learnedOffsetSec: 0,
+        composed: const ConfounderProfile(),
+        ranAs: WakeRule.legacy,
+      );
+      expect(ran['rule'], 'legacy');
+      expect((ran['effective'] as Map)['hrRiseBpm'], 4);
+    });
+  });
+
+  group('planner (Sol code r1 #2, #4)', () {
+    final wakeAt = DateTime.utc(2026, 10, 26, 7);
+    NaturalDecision decide(WakeHarnessConfig h,
+            {bool userActive = false,
+            bool? legacyFire,
+            NaturalObservation? obs}) =>
+        NaturalWakePlanner.decide(NaturalDecisionInput(
+          now: wakeAt.subtract(const Duration(minutes: 20)),
+          wakeAt: wakeAt,
+          windowMinutes: 60,
+          observation: obs,
+          connected: true,
+          alreadyFired: false,
+          acknowledged: false,
+          lateness: Duration.zero,
+          userActive: userActive,
+          harness: h,
+          legacyFire: legacyFire,
+          evidence: const NaturalGateEvidence(
+              baseline: 50, recentHr: 70, motion: 0.0, trending: false),
+        ));
+    const nrem = NaturalObservation(
+      stage: 'nrem', confidence: 0.6, evidenceAgeMs: 30000,
+      abstention: null, runSec: 600, epochStartMs: 1, note: null);
+    const hybrid = WakeHarnessConfig(
+        rule: WakeRule.hybrid, requireRemOrWake: true, hrRiseBpm: 15);
+
+    test('user activity fires Natural (control) but never hybrid', () {
+      expect(decide(WakeHarnessConfig.defaults, userActive: true).fire,
+          isTrue);
+      expect(
+          decide(hybrid, userActive: true, legacyFire: false, obs: nrem).fire,
+          isFalse);
+      expect(decide(hybrid, userActive: true, legacyFire: true, obs: nrem).fire,
+          isFalse, reason: 'the NREM veto still applies');
+    });
+
+    test("hybrid's boolean is the legacy evaluator's, not the gate evidence",
+        () {
+      const h = WakeHarnessConfig(rule: WakeRule.hybrid);
+      expect(decide(h, legacyFire: false).reason, NaturalReason.legacyHold,
+          reason: 'evidence alone (+20 bpm, still) would pass the gates');
+      expect(decide(h, legacyFire: true).fire, isTrue);
+      expect(decide(h).fire, isFalse, reason: 'unknown legacy answer holds');
+      expect(decide(h, legacyFire: true, obs: nrem).fire, isFalse);
     });
   });
 

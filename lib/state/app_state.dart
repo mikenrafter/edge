@@ -6029,6 +6029,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
 
   String? _wakeHarnessLoggedRaw;
 
+  /// The stored rule is hybrid but this occurrence's route cannot run it.
+  bool get wakeHybridUnavailable => false;
+
   /// Straight to prefs (never through the alarm schedule Save).
   void setWakeHarness(WakeHarnessConfig c) {
     Prefs.setString(kWakeHarnessPrefKey, c.encode());
@@ -7615,7 +7618,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     }
     final detected = await _legacySmartWake.detected(
         now, windowEnd, sleepOperations.schedule,
-        harness: harness.rule == WakeRule.legacy ? harness : null);
+        profile: harness.rule == WakeRule.legacy
+            ? harness.compose(await _legacySmartWake.journalProfile(
+                windowEnd, sleepOperations.schedule))
+            : null);
     if (!detected || epoch == _smartWakeFiredForEpoch) return;
     _smartWakeFiredForEpoch = epoch; // set BEFORE the write
     await _dispatchBandAlert('wake',

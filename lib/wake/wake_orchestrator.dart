@@ -49,6 +49,7 @@ import 'wake_confounders.dart';
 import 'wake_night_context.dart';
 import 'wake_settings.dart';
 import 'wake_harness.dart';
+import 'wake_harness_ledger.dart';
 
 /// [HeadlessSyncGate] owner for background wake ticks.
 const String kWakeGateOwner = 'wake_tick';
@@ -454,6 +455,21 @@ abstract interface class NaturalWakePolicyListener {
   void noteNaturalLead(DateTime wakeAt, int lead);
 }
 
+/// The production legacy Smart Wake evaluator, as the orchestrator sees it.
+abstract interface class LegacyWakeEvaluator {
+  /// The journal confounder profile the evaluator would use for [end].
+  Future<ConfounderProfile> journalProfile(
+      DateTime end, ExpectedSleepSchedule? schedule);
+
+  /// [profile]: the composed profile to evaluate with (null: the journal's).
+  Future<bool> detected(
+    DateTime now,
+    DateTime end,
+    ExpectedSleepSchedule? schedule, {
+    ConfounderProfile? profile,
+  });
+}
+
 class WakeOrchestrator {
   WakeOrchestrator({
     required this.env,
@@ -469,11 +485,21 @@ class WakeOrchestrator {
     this.onNaturalRepeatChanged,
     this.repeatRetryWait = const Duration(seconds: 5),
     Future<void> Function(Duration)? repeatDelay,
-  })  : observer = observer ?? const IsolateNaturalStageObserver(),
+    this.legacy,
+    WakeHarnessRecorder? harnessRecorder,
+  })  : harnessRecorder = harnessRecorder ??
+            WakeHarnessRecorder(MemoryWakeHarnessLedger(traceStore)),
+        observer = observer ?? const IsolateNaturalStageObserver(),
         _now = now ?? DateTime.now,
         _repeatDelay = repeatDelay ?? Future<void>.delayed;
 
   final NaturalWakePolicyListener? onNaturalPolicy;
+
+  /// The production legacy evaluator (hybrid's decision); null: hybrid holds.
+  final LegacyWakeEvaluator? legacy;
+
+  /// The shared provenance seam (see wake_harness_ledger.dart).
+  final WakeHarnessRecorder harnessRecorder;
   final WakeEnv env;
   final NaturalStageObserver observer;
   final WakeStateStore stateStore;

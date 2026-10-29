@@ -174,6 +174,7 @@ enum NaturalReason {
   motionCeilingHold,
   motionTrendHold,
   lateWindowHold,
+  legacyHold,
 }
 
 class NaturalDecisionInput {
@@ -192,7 +193,11 @@ class NaturalDecisionInput {
     this.sleepOnset,
     this.tuning = const NaturalWakeParameters(),
     this.harness = WakeHarnessConfig.defaults,
+    this.legacyFire,
   });
+
+  /// Hybrid only: the production legacy evaluator's answer (null: unknown).
+  final bool? legacyFire;
 
   /// The developer wake harness (defaults = today's constants exactly).
   final WakeHarnessConfig harness;
