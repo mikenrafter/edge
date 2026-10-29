@@ -281,6 +281,30 @@ void main() {
       expect(enters(), 1, reason: 'checked before transport, not only after');
     });
 
+    int durationOf(Uint8List f) {
+      final p = parseFrame(f, profile: BandProfile.gen4)!;
+      return p.inner[6] | (p.inner[7] << 8);
+    }
+
+    test('a forced ENTER at T-2 min asks for at most the 120 s left, and the '
+        'engine end stays T', () async {
+      await enter();
+      expect(durationOf(frames.where(_isEnter).last), 90 * 60);
+      expect(await enter(force: true, at: target.subtract(const Duration(minutes: 2))),
+          PromptWriteOutcome.wrote);
+      expect(enters(), 2);
+      expect(durationOf(frames.where(_isEnter).last), lessThanOrEqualTo(120),
+          reason: 'a full lease would keep 61 s prompting long past T');
+      expect(engine.highFreqUntil, target);
+    });
+
+    test('a forced ENTER at or after T is not sent', () async {
+      await enter();
+      expect(await enter(force: true, at: target.add(const Duration(seconds: 1))),
+          PromptWriteOutcome.skipped);
+      expect(enters(), 1);
+    });
+
     test('a superseded caller writes nothing and claims nothing', () async {
       expect(await enter(ticket: _Ticket()..current = false),
           PromptWriteOutcome.skipped);

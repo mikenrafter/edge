@@ -8303,7 +8303,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   }) async {
     if (armed == null) return;
     final wakeAt = armed.windowEnd;
-    final now = DateTime.now();
+    final now = _wakeNow();
     final from = wakeAt.subtract(naturalCollectionLead(armed.minutes + 10));
     if (now.isBefore(from) || !now.isBefore(wakeAt)) return;
     final epoch = wakeAt.millisecondsSinceEpoch ~/ 1000;
