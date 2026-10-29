@@ -59,6 +59,8 @@ const Map<String, String> kPrefsNotBackedUp = {
   'settings_recovery_journal_v1': 'transient write-ahead journal',
   'import_summary_v1': 'record of the last import on this install',
   'import_run_v1': 'bookkeeping of the import running on this install',
+  'dev.wake_harness.v1': 'developer wake-rule experiment on this phone; a '
+      'restored experiment must not silently change how a wake fires',
 };
 
 /// Key prefixes that stay on the device, each with the reason. Empty on

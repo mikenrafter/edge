@@ -8,6 +8,7 @@ import '../state/smart_wake.dart';
 import '../util/heavy.dart';
 import '../util/worker_init.dart';
 import 'wake_confounders.dart';
+import 'wake_harness.dart';
 import 'wake_night_context.dart';
 import 'wake_night_context_db.dart';
 
@@ -18,8 +19,9 @@ class LegacySmartWake {
   Future<bool> detected(
     DateTime now,
     DateTime end,
-    ExpectedSleepSchedule? schedule,
-  ) async {
+    ExpectedSleepSchedule? schedule, {
+    WakeHarnessConfig? harness,
+  }) async {
     final night = await context.load(end, schedule);
     final rows = await LocalDb.onehzForStager(
       now.subtract(const Duration(hours: 3)).millisecondsSinceEpoch ~/ 1000,
@@ -35,7 +37,7 @@ class LegacySmartWake {
       end.millisecondsSinceEpoch,
       rows,
       nights,
-      night.profile,
+      harness == null ? night.profile : harness.compose(night.profile),
       schedule?.windowFor(end).$1.millisecondsSinceEpoch,
     );
     return Isolate.run(() => legacyWakeHeavy(input));

@@ -1395,6 +1395,8 @@ class LocalDb {
   static const wakeJournalKinds = {
     'natural', 'natural_haptic', 'natural_repeat', 'gradual', 'fallback',
     'snooze', 'snooze_stop', 'ack', 'tune',
+    // The wake dev harness's per-occurrence effective config (wake_harness).
+    'harness',
   };
 
   /// Append one trace row. Only diagnostics expire after 14 elapsed days;
@@ -1422,7 +1424,21 @@ class LocalDb {
     final db = await instance;
     final newest =
         await db.query('wake_trace', orderBy: 'id DESC', limit: limit);
-    return newest.reversed.toList();
+    // A harness record is what those rows ran under: keep it even when it is
+    // older than the newest [limit] rows of its occurrence.
+    final ids = {for (final r in newest) r['id']};
+    final epochs = {for (final r in newest) r['wake_epoch']}.toList();
+    final harness = epochs.isEmpty
+        ? const <Map<String, Object?>>[]
+        : await db.query('wake_trace',
+            where: "kind = 'harness' AND wake_epoch IN "
+                '(${List.filled(epochs.length, '?').join(',')})',
+            whereArgs: epochs);
+    return [
+      ...newest.reversed,
+      for (final r in harness)
+        if (!ids.contains(r['id'])) r,
+    ]..sort((a, b) => (a['id'] as int).compareTo(b['id'] as int));
   }
 
   /// HR/accel for the causal stager: `decoded_onehz` rows with `rec_ts` (unix

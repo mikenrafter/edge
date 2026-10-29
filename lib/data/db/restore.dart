@@ -319,6 +319,13 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
         where: 'ts >= ? AND ts < ?',
         whereArgs: [startSec, endSec],
       );
+      // The wake harness record rides with its OCCURRENCE (the alarm instant),
+      // not the evening it was written.
+      await copyRows(
+        'wake_trace',
+        where: "kind = 'harness' AND wake_epoch >= ? AND wake_epoch < ?",
+        whereArgs: [startSec, endSec],
+      );
       await copyRows(
         'sessions',
         where: 'start_ts >= ? AND start_ts < ?',
@@ -1874,13 +1881,20 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
                   // A local acknowledgement also keeps its local dream answer.
                   if (!LocalDb.wakeJournalKinds.contains(row['kind'])) continue;
                   final ack = row['kind'] == 'ack';
+                  // A harness record's identity is occurrence + activation
+                  // seq + config digest, all inside data_json: not when it
+                  // was written.
+                  final harness = row['kind'] == 'harness';
                   final existing = await txn.query(t,
                     columns: ['id'],
                     where: ack
                         ? 'wake_epoch = ? AND kind = ?'
+                        : harness
+                        ? 'wake_epoch = ? AND kind = ? AND data_json = ?'
                         : 'wake_epoch = ? AND kind = ? AND at_ms = ? AND data_json = ?',
                     whereArgs: [row['wake_epoch'], row['kind'],
-                      if (!ack) ...[row['at_ms'], row['data_json']]],
+                      if (harness) row['data_json']
+                      else if (!ack) ...[row['at_ms'], row['data_json']]],
                     limit: 1);
                   if (existing.isNotEmpty) continue;
                   row.remove('id');

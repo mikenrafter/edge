@@ -244,6 +244,24 @@ void main() {
       expect((recs.single.data['effective'] as Map)['hrRiseBpm'], 9);
     });
 
+    test('once experimental, a reset to defaults is recorded; A-B-A keeps '
+        'both activations of A', () async {
+      const a = WakeHarnessConfig(rule: WakeRule.hybrid);
+      const b = WakeHarnessConfig(rule: WakeRule.hybrid, hrRiseBpm: 5);
+      final r = _Rig();
+      r.observer.next = stageObs('nrem', confidence: 0.6);
+      for (final h in [a, b, a, WakeHarnessConfig.defaults]) {
+        await r.tick(_plan(h));
+        r.clock.advance(const Duration(seconds: 30));
+      }
+      final recs = await r.entries('harness');
+      expect(recs.map((e) => e.data['seq']), [0, 1, 2, 3]);
+      expect(recs.map((e) => e.data['rule']),
+          ['hybrid', 'hybrid', 'hybrid', 'natural']);
+      expect(recs[0].data['digest'], recs[2].data['digest']);
+      expect(recs[0].data['digest'], isNot(recs[1].data['digest']));
+    });
+
     test('a mid-window change writes a new record', () async {
       final r = _Rig();
       r.observer.next = stageObs('nrem', confidence: 0.6);

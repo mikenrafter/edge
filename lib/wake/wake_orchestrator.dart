@@ -259,7 +259,17 @@ class WakePlanInput {
         harness: harness,
       );
 
-  WakePlanInput withHarness(WakeHarnessConfig h) => this;
+  WakePlanInput withHarness(WakeHarnessConfig h) => WakePlanInput(
+        wakeAt: wakeAt,
+        naturalMinutes: naturalMinutes,
+        gradualMinutes: gradualMinutes,
+        gradualPattern: gradualPattern,
+        gradualCadenceSec: gradualCadenceSec,
+        expectedSchedule: expectedSchedule,
+        sleepOnset: sleepOnset,
+        upgradePending: upgradePending,
+        harness: h,
+      );
 
   int get wakeSec => wakeAt.millisecondsSinceEpoch ~/ 1000;
   WakeConfiguration get configuration => wakeConfigurationOf(
@@ -387,6 +397,11 @@ class _Run {
   String? naturalSig;
   String? fallbackSig;
 
+  /// Digest of the last harness snapshot recorded for this occurrence (null:
+  /// never experimental, nothing recorded) and how many were recorded.
+  String? harnessDigest;
+  int harnessSeq = 0;
+
   /// Anything unreadable falls back to the default: the worst a corrupt state
   /// can do is cost a warm-up, never crash a wake.
   factory _Run.from(Map<String, Object?>? j, int wakeEpoch) {
@@ -408,6 +423,10 @@ class _Run {
     r.lastTickMs = tick is int ? tick : null;
     r.naturalSig = j['naturalSig'] as String?;
     r.fallbackSig = j['fallbackSig'] as String?;
+    final hd = j['harnessDigest'];
+    r.harnessDigest = hd is String ? hd : null;
+    final hs = j['harnessSeq'];
+    r.harnessSeq = hs is int && hs >= 0 ? hs : 0;
     return r;
   }
 
@@ -424,6 +443,8 @@ class _Run {
         'lastTickMs': lastTickMs,
         'naturalSig': naturalSig,
         'fallbackSig': fallbackSig,
+        'harnessDigest': harnessDigest,
+        'harnessSeq': harnessSeq,
       };
 }
 
@@ -816,6 +837,23 @@ class WakeOrchestrator {
     final n = plan.naturalMinutes + tuning.windowLeadMinutes.clamp(-10, 10);
     onNaturalPolicy?.noteNaturalLead(plan.wakeAt, tuning.windowLeadMinutes);
     final sec = plan.wakeSec;
+    final harness = plan.harness;
+    profile = harness.compose(profile);
+    // Before any decision, on both routes (the legacy override evaluates
+    // after this tick): one durable record per effective-snapshot change.
+    await _recordHarness(
+      sec,
+      run,
+      harness,
+      harness.provenance(
+        learnedOffsetSec: tuning.triggerRunOffsetSec,
+        composed: profile,
+      ),
+    );
+    if (harness.rule == WakeRule.legacy) {
+      // The legacy evaluator owns this occurrence's early buzz (AppState).
+      return (NaturalReason.off, false);
+    }
 
     Future<void> log(NaturalReason reason, Map<String, Object?> extra,
         {bool force = false}) async {
@@ -1120,6 +1158,21 @@ class WakeOrchestrator {
     }
   }
 
+  /// The shared provenance writer. An occurrence that never left the defaults
+  /// writes nothing; once it has, every effective-snapshot transition is
+  /// recorded (a reset or leaving developer mode included). `seq` is the
+  /// activation identity, so A -> B -> A keeps both activations of A.
+  Future<void> _recordHarness(int sec, _Run run, WakeHarnessConfig harness,
+      Map<String, Object?> record) async {
+    final digest = record['digest'] as String;
+    if (run.harnessDigest == null && harness.isDefault) return;
+    if (run.harnessDigest == digest) return;
+    run.harnessDigest = digest;
+    final seq = run.harnessSeq++;
+    await _trace(sec, 'harness', {...record, 'seq': seq});
+    await _save(run);
+  }
+
   NaturalDecisionInput _input(WakePlanInput plan, _Run run, DateTime now,
           NaturalObservation? obs, Duration lateness,
           {bool userActive = false, DateTime? onset,
@@ -1139,6 +1192,7 @@ class WakeOrchestrator {
         sleepOnset: onset,
         tuning: tuning,
         profile: profile, evidence: evidence,
+        harness: plan.harness,
       );
 
   DateTime? _onsetFor(WakePlanInput plan, DateTime now) =>

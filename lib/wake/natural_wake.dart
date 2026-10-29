@@ -42,6 +42,7 @@ import 'package:openstrap_analytics/onehz.dart';
 
 import 'natural_wake_tuning.dart';
 import 'wake_confounders.dart';
+import 'wake_harness.dart';
 import '../state/smart_wake.dart' show precedingNightBaselineHeavy;
 
 import '../state/control_operations.dart' show ExpectedSleepSchedule;
@@ -190,8 +191,11 @@ class NaturalDecisionInput {
     this.evidence,
     this.sleepOnset,
     this.tuning = const NaturalWakeParameters(),
+    this.harness = WakeHarnessConfig.defaults,
   });
 
+  /// The developer wake harness (defaults = today's constants exactly).
+  final WakeHarnessConfig harness;
   final ConfounderProfile profile;
   final NaturalGateEvidence? evidence;
   final NaturalWakeParameters tuning;
@@ -299,14 +303,33 @@ abstract final class NaturalWakePlanner {
       return const NaturalDecision(NaturalReason.fire, viaUserActivity: true);
     }
     final o = i.observation;
-    if (o == null) return no(NaturalReason.observerFailed);
-
-    final age = o.evidenceAgeMs;
-    final current =
+    final h = i.harness;
+    final ageCapMs = h.evidenceAgeCapSec * 1000;
+    bool currentOf(NaturalObservation o) =>
         o.abstention != 'staleEvidence' &&
         o.abstention != 'noEvidence' &&
-        age != null &&
-        age <= kNaturalMaxEvidenceAgeMs;
+        o.evidenceAgeMs != null &&
+        o.evidenceAgeMs! <= ageCapMs;
+    if (h.rule == WakeRule.hybrid) {
+      // Legacy physiology AND NOT a current NREM. No current stage leaves the
+      // legacy decision standing unless REM-or-wake is required.
+      final staged = o != null && o.stage != 'absent' && currentOf(o);
+      if (staged &&
+          o.stage == 'nrem' &&
+          o.confidence >= h.vetoMinConfidence) {
+        return no(NaturalReason.noRemCandidate, current: true);
+      }
+      if (h.requireRemOrWake && !(staged && o.stage != 'nrem')) {
+        return no(
+          staged ? NaturalReason.noRemCandidate : NaturalReason.samplesStale,
+          current: staged,
+        );
+      }
+      return _physiology(i, current: staged);
+    }
+    if (o == null) return no(NaturalReason.observerFailed);
+
+    final current = currentOf(o);
 
     if (o.stage == 'absent') {
       return no(switch (o.abstention) {
@@ -325,40 +348,48 @@ abstract final class NaturalWakePlanner {
     // Light or deep sleep (the stager's nrem) is the only thing that holds the
     // haptic back; REM and awake both qualify. (The enum value keeps its old
     // name: stored traces carry it.)
-    if (!kNaturalEligibleStages.contains(o.stage)) {
+    if (!h.eligibleStages.contains(o.stage)) {
       return no(NaturalReason.noRemCandidate, current: true);
     }
-    if (o.runSec <
-        kNaturalRemTriggerRunSec +
-            i.tuning.triggerRunOffsetSec.clamp(-60, 60)) {
+    if (o.runSec < h.effectiveTriggerRunSec(i.tuning.triggerRunOffsetSec)) {
       return no(NaturalReason.remNotStable, current: true);
     }
-    if (o.confidence < kNaturalMinConfidence) {
+    if (o.confidence < h.minConfidence) {
       return no(NaturalReason.lowConfidence, current: true);
     }
+    return _physiology(i, current: true);
+  }
+
+  /// The shared analytics physiology gates (the legacy rule's evidence).
+  static NaturalDecision _physiology(
+    NaturalDecisionInput i, {
+    required bool current,
+  }) {
+    NaturalDecision no(NaturalReason r) =>
+        NaturalDecision(r, samplesCurrent: current);
     final e = i.evidence;
     if (e == null ||
         e.baseline == null ||
         e.recentHr == null ||
         e.motion == null ||
         e.trending == null) {
-      return no(NaturalReason.physiologyUnavailable, current: true);
+      return no(NaturalReason.physiologyUnavailable);
     }
     // Explicit hold; with the same baseline the +4 bpm arousal floor also
     // excludes HR within 2 bpm. Keep it independent of future threshold tuning.
     if (i.wakeAt.difference(i.now).inMilliseconds <=
             i.profile.protectionMinutes * 60000 &&
         (e.recentHr! - e.baseline!).abs() <= 2) {
-      return no(NaturalReason.lateWindowHold, current: true);
+      return no(NaturalReason.lateWindowHold);
     }
     if (e.recentHr! < e.baseline! + i.profile.hrArousalBpm) {
-      return no(NaturalReason.hrArousalHold, current: true);
+      return no(NaturalReason.hrArousalHold);
     }
     if (e.motion! >= i.profile.motionCeilingG) {
-      return no(NaturalReason.motionCeilingHold, current: true);
+      return no(NaturalReason.motionCeilingHold);
     }
-    if (e.trending!) return no(NaturalReason.motionTrendHold, current: true);
-    return const NaturalDecision(NaturalReason.fire, samplesCurrent: true);
+    if (e.trending!) return no(NaturalReason.motionTrendHold);
+    return NaturalDecision(NaturalReason.fire, samplesCurrent: current);
   }
 
   /// Whether the user is awake because they are actively using the app AND the

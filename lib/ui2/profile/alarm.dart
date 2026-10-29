@@ -52,8 +52,13 @@ import '../screens/home_screen.dart' show go, weekdayShortName;
 import '../screens/metric_detail.dart' show detailLinkRow;
 import 'snooze_settings_rows.dart';
 import '../ui2.dart';
-import 'profile.dart' show SetRow, SettingsAccordion, kDisabledOpacity;
-import 'settings.dart' show editExpectedSleepSchedule;
+import '../../state/prefs.dart';
+import '../../wake/wake_harness.dart';
+import 'profile.dart'
+    show SetRow, SettingsAccordion, SwitchRow, goto, kDisabledOpacity;
+import 'settings.dart' show NotificationSettings, editExpectedSleepSchedule;
+
+part 'wake_lab.dart';
 
 /// What we actually know about the armed alarm.
 enum AlarmArmState {
@@ -286,6 +291,11 @@ class _AlarmScreenState extends State<AlarmScreen> {
             onSnoozeSettings: app.setSnoozeSettings,
             snoozeUnsupportedReason: caps.of(Feature.alarmSnooze).reason,
             snoozeExactTimingUnavailable: _exactUnavailable,
+            footer: [
+              const SizedBox(height: S.x4),
+              const _AlarmSleepSettings(),
+              if (caps.has(Feature.developerMode)) _WakeLabSection(app),
+            ],
           ),
         );
       },
@@ -386,7 +396,11 @@ class AlarmScreenView extends StatefulWidget {
     this.onSnoozeSettings,
     this.snoozeUnsupportedReason,
     this.snoozeExactTimingUnavailable = false,
+    this.footer = const [],
   });
+
+  /// Sections under the alarm controls (sleep settings, the Wake lab).
+  final List<Widget> footer;
 
   @override
   State<AlarmScreenView> createState() => _AlarmScreenViewState();
@@ -837,6 +851,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                                 : null,
                           ),
                         ),
+                        ...w.footer,
                       ],
                     ),
                   ),

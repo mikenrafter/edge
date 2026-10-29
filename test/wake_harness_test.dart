@@ -9,7 +9,7 @@ import 'package:openstrap_edge/wake/wake_harness.dart';
 
 void main() {
   WakeHarnessConfig parse(Map<String, Object?> j, [List<String>? errors]) =>
-      WakeHarnessConfig.parse(jsonEncode(j), onError: errors?.add);
+      WakeHarnessConfig.parse(jsonEncode(j), errors: errors);
 
   group('parse (S3)', () {
     test('a full valid config round-trips', () {
@@ -41,10 +41,10 @@ void main() {
         () {
       for (final raw in [null, '', 'not json', '[1,2]', '42']) {
         final errors = <String>[];
-        final c = WakeHarnessConfig.parse(raw, onError: errors.add);
+        final c = WakeHarnessConfig.parse(raw, errors: errors);
         expect(c.isDefault, isTrue, reason: '$raw');
         if (raw != null && raw.isNotEmpty) {
-          expect(errors, hasLength(1), reason: '$raw');
+          expect(errors, hasLength(1), reason: raw);
         }
       }
     });
@@ -78,7 +78,7 @@ void main() {
       expect(hi.minConfidence, 0.9);
       expect(hi.evidenceAgeCapSec, 600);
       expect(hi.hrRiseBpm, 15);
-      expect(hi.motionCeilingG, 0.02);
+      expect(hi.motionCeilingG, 0.0, reason: 'r2: motion bounds 0..0.08');
       expect(hi.vetoMinConfidence, 0.9);
     });
 
@@ -145,20 +145,31 @@ void main() {
 
     test('provenance carries rule, effective values and a stable digest', () {
       const c = WakeHarnessConfig(rule: WakeRule.hybrid, hrRiseBpm: 9);
-      final p = c.compose(const ConfounderProfile());
+      final p = c.compose(const ConfounderProfile(motionCeilingG: 0.05));
       final rec = c.provenance(learnedOffsetSec: -15, composed: p);
       expect(rec['version'], 1);
       expect(rec['rule'], 'hybrid');
       final eff = rec['effective'] as Map;
-      expect(eff['triggerRunSec'], 105);
       expect(eff['hrRiseBpm'], 9);
-      expect(eff['motionCeilingG'], 0.08);
+      expect(eff['motionCeilingG'], 0.05, reason: 'after journal composition');
       expect(eff['vetoMinConfidence'], 0.5);
       expect(rec['digest'], isA<String>());
       expect(c.provenance(learnedOffsetSec: -15, composed: p)['digest'],
           rec['digest']);
-      expect(c.provenance(learnedOffsetSec: 0, composed: p)['digest'],
-          isNot(rec['digest']));
+      expect(
+          c.provenance(learnedOffsetSec: -15, composed: c.compose(
+              const ConfounderProfile()))['digest'],
+          isNot(rec['digest']),
+          reason: 'a journal change is a new effective snapshot');
+      const n = WakeHarnessConfig(triggerRunSec: 150);
+      final nr = n.provenance(
+          learnedOffsetSec: -15, composed: const ConfounderProfile());
+      expect((nr['effective'] as Map)['triggerRunSec'], 135,
+          reason: 'after the learned offset');
+      expect(
+          n.provenance(learnedOffsetSec: 0, composed: const ConfounderProfile())
+              ['digest'],
+          isNot(nr['digest']));
     });
   });
 

@@ -94,6 +94,7 @@ import 'live_stream_controller.dart';
 import 'sync_controller.dart';
 import 'workout_controller.dart';
 import '../wake/legacy_smart_wake.dart';
+import '../wake/wake_harness.dart';
 import '../wake/natural_wake.dart'
     show
         NaturalStageObserver,
@@ -6013,6 +6014,28 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// Developer mode. Held in Prefs; set here so the capabilities move with it.
   bool get devMode => Prefs.getBool(Prefs.devMode, false);
 
+  /// The wake dev harness in force: the stored config in developer mode, the
+  /// defaults otherwise (S4). A bad stored value is logged once per value.
+  WakeHarnessConfig get wakeHarness {
+    final raw = Prefs.getString(kWakeHarnessPrefKey, '');
+    final errors = <String>[];
+    final c = effectiveWakeHarness(
+        developerMode: devMode, stored: raw, errors: errors);
+    if (errors.isNotEmpty && _wakeHarnessLoggedRaw != raw) {
+      _wakeHarnessLoggedRaw = raw;
+      _log('[wake] ${errors.join('; ')}');
+    }
+    return c;
+  }
+
+  String? _wakeHarnessLoggedRaw;
+
+  /// Straight to prefs (never through the alarm schedule Save).
+  void setWakeHarness(WakeHarnessConfig c) {
+    Prefs.setString(kWakeHarnessPrefKey, c.encode());
+    notifyListeners();
+  }
+
   void setDevMode(bool on) {
     Prefs.setBool(Prefs.devMode, on);
     notifyListeners();
@@ -7424,7 +7447,18 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       if (plan.naturalMinutes > 0 && plan.expectedSchedule == null) {
         plan = plan.withSleepOnset(await loadDetectedSleepOnset(plan.wakeAt));
       }
-      if (wake.legacySmartWakeActive) await _checkLegacySmartWake(plan.wakeAt);
+      // One immutable harness snapshot per tick (defaults outside developer
+      // mode); an edit made during this tick applies to the next one.
+      var harness = wakeHarness;
+      // Hybrid needs the Natural route's live stager. While legacy Smart Wake
+      // owns the occurrence, what runs (and is recorded) is plain legacy.
+      if (wake.legacySmartWakeActive && harness.rule == WakeRule.hybrid) {
+        harness = WakeHarnessConfig.defaults.copyWith(rule: WakeRule.legacy);
+      }
+      plan = plan.withHarness(harness);
+      if (wake.legacySmartWakeActive) {
+        await _checkLegacySmartWake(plan.wakeAt, harness: harness);
+      }
       // With neither feature on there is nothing to orchestrate: the existing
       // arm engine already keeps the native alarm armed.
       if (plan.configuration == WakeConfiguration.neither &&
@@ -7432,6 +7466,14 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
         return;
       }
       final out = await _wakeOrchestrator.tick(plan);
+      // Harness override to legacy: the orchestrator recorded the provenance
+      // and stood Natural down; the legacy evaluator runs on the Natural window.
+      if (harness.rule == WakeRule.legacy &&
+          !wake.legacySmartWakeActive &&
+          plan.naturalMinutes > 0) {
+        await _checkLegacySmartWake(plan.wakeAt,
+            harness: harness, windowMinutes: plan.naturalMinutes);
+      }
       _logWakeTick(plan, out);
       if (out.naturalFired) _releaseWakeCollection(plan.wakeSec);
     } catch (e) {
@@ -7551,17 +7593,25 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   @visibleForTesting
   Future<void> debugCheckLegacySmartWake(DateTime end) => _checkLegacySmartWake(end);
 
-  Future<void> _checkLegacySmartWake(DateTime windowEnd) async {
+  /// [windowMinutes] set: a harness legacy override, on the Natural window.
+  /// Unset: today's lookup of the legacy Smart Wake window.
+  Future<void> _checkLegacySmartWake(DateTime windowEnd,
+      {WakeHarnessConfig harness = WakeHarnessConfig.defaults,
+      int? windowMinutes}) async {
     final epoch = windowEnd.millisecondsSinceEpoch ~/ 1000;
     if (epoch == _smartWakeFiredForEpoch) return;
-    final armed = armedSmartWakeWindow(epoch: epoch, schedule: _schedule);
+    final armed = windowMinutes != null
+        ? (windowEnd: windowEnd, minutes: windowMinutes)
+        : armedSmartWakeWindow(epoch: epoch, schedule: _schedule);
     if (armed == null) return;
     final now = _wakeNow();
     if (!inSmartWakeWindow(
         windowEnd: armed.windowEnd, minutes: armed.minutes, now: now)) {
       return;
     }
-    final detected = await _legacySmartWake.detected(now,windowEnd,sleepOperations.schedule);
+    final detected = await _legacySmartWake.detected(
+        now, windowEnd, sleepOperations.schedule,
+        harness: harness.rule == WakeRule.legacy ? harness : null);
     if (!detected || epoch == _smartWakeFiredForEpoch) return;
     _smartWakeFiredForEpoch = epoch; // set BEFORE the write
     await _dispatchBandAlert('wake',
