@@ -15,6 +15,17 @@ class _FlakyLedger extends MemoryWakeHarnessLedger {
   _FlakyLedger(super.trace);
   int failures = 0;
   int readFailures = 0;
+  int saveFailures = 0;
+  bool failAfterAppend = false;
+  @override
+  Future<void> saveState(Map<String, Object?> state) async {
+    if (saveFailures > 0) {
+      saveFailures--;
+      throw StateError('ledger save failed');
+    }
+    await super.saveState(state);
+  }
+
   @override
   Future<Map<String, Object?>?> loadState() async {
     if (readFailures > 0) {
@@ -32,7 +43,13 @@ class _FlakyLedger extends MemoryWakeHarnessLedger {
       failures--;
       return false;
     }
-    return super.appendOnce(entry);
+    final ok = await super.appendOnce(entry);
+    if (failAfterAppend) {
+      failAfterAppend = false;
+      // The row landed, but removing it from the durable queue will fail.
+      saveFailures++;
+    }
+    return ok;
   }
 }
 
@@ -162,6 +179,73 @@ void main() {
 
     List<Object?> hr(List<WakeTraceEntry> rows) =>
         [for (final e in rows) (e.data['effective'] as Map)['hrRiseBpm']];
+
+    test(
+      'an upgrade retains the old pending entry in its original occurrence',
+      () async {
+        final at = clock.millisecondsSinceEpoch;
+        final snapshot = rec(a);
+        final l = _FlakyLedger(trace)
+          ..state = {
+            'epoch': _epoch,
+            'seq': 0,
+            'pending': {
+              'digest': snapshot['digest'],
+              'atMs': at,
+              'data': {...snapshot, 'seq': 0},
+            },
+          };
+        clock = clock.add(const Duration(seconds: 30));
+        await tick(recorder(l), b, _epoch + 86400);
+        final old = await rows();
+        expect(hr(old), [6]);
+        expect(old.single.atMs, at);
+        expect(old.single.data['seq'], 0);
+        final next = await trace.forWake(_epoch + 86400);
+        expect(hr(next), [9]);
+        expect(next.single.data['seq'], 0);
+      },
+    );
+
+    test(
+      'a failed enqueue never retries older entries before the save',
+      () async {
+        final l = _FlakyLedger(trace)..failures = 1;
+        await tick(recorder(l), a);
+        l.saveFailures = 1;
+        await tick(recorder(l), b);
+        expect(l.attempts, hasLength(1));
+        expect(await rows(), isEmpty);
+        await tick(recorder(l), b);
+        expect(hr(await rows()), [6, 9]);
+        expect((await rows()).map((e) => e.data['seq']), [0, 1]);
+      },
+    );
+
+    test(
+      'an invalid queue is retained without appending or resetting state',
+      () async {
+        final state = <String, Object?>{'occ': {}, 'queue': 'broken'};
+        final l = _FlakyLedger(trace)..state = state;
+        await tick(recorder(l), a);
+        expect(l.state, state);
+        expect(l.attempts, isEmpty);
+      },
+    );
+
+    test(
+      'a failed queue acknowledgement retries the same row after restart',
+      () async {
+        final l = _FlakyLedger(trace)..failAfterAppend = true;
+        final at = clock.millisecondsSinceEpoch;
+        await tick(recorder(l), a);
+        await tick(recorder(l), b);
+        final got = await rows();
+        expect(hr(got), [6, 9]);
+        expect(got.map((e) => e.data['seq']), [0, 1]);
+        expect(l.attempts.take(2).map((e) => e.atMs), [at, at]);
+      },
+    );
 
     test('A fails, then B (A still failing), then A: B is kept', () async {
       final l = _FlakyLedger(trace)..failures = 2;

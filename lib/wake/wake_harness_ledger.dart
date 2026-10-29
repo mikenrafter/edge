@@ -1,6 +1,8 @@
 // The one provenance seam for the wake dev harness: both evaluators (the
 // Natural orchestrator and the legacy evaluator in AppState) record their
-// effective snapshot here BEFORE they decide. See wake_harness.dart.
+// effective snapshot here BEFORE they decide. WakeHarnessRecorder owns the
+// bookkeeping and serializes its read/enqueue/flush operations through _chain.
+// See wake_harness.dart.
 import 'dart:convert';
 
 import 'wake_orchestrator.dart' show WakeTraceEntry, WakeTraceStore;
@@ -71,7 +73,7 @@ class WakeHarnessRecorder {
   /// Record [record] (a `WakeHarnessConfig.provenance` map) for occurrence
   /// [epoch] at [atMs]. [untouched]: the stored config is the default; an
   /// occurrence that has only ever been untouched writes nothing. Never
-  /// throws (a failure leaves everything for the next call).
+  /// throws. Failed reads or saves leave durable bookkeeping intact for retry.
   Future<void> record(
     int epoch,
     Map<String, Object?> record, {
@@ -92,22 +94,45 @@ class WakeHarnessRecorder {
     final loaded = await ledger.loadState(); // a failed read propagates
     final occ = <String, Object?>{};
     final queue = <Map<String, Object?>>[];
+    var changed = false;
     if (loaded != null) {
-      final o = loaded['occ'];
-      if (o is Map) occ.addAll(o.cast<String, Object?>());
-      final q = loaded['queue'];
-      if (q is List) {
-        for (final e in q) {
-          if (e is Map) queue.add(e.cast<String, Object?>());
+      if (loaded.containsKey('epoch')) {
+        // Upgrade the former single-occurrence state without losing an
+        // unconfirmed append, even when this call is for a different wake.
+        final previousEpoch = loaded['epoch'] as int;
+        var seq = loaded['seq'] as int;
+        var last = loaded['acked'];
+        final pending = loaded['pending'] as Map?;
+        if (pending != null) {
+          final data = (pending['data'] as Map).cast<String, Object?>();
+          queue.add({
+            'epoch': previousEpoch,
+            'atMs': pending['atMs'] as int,
+            'data': data,
+          });
+          last = pending['digest'];
+          seq = (data['seq'] as int) + 1;
         }
+        occ['$previousEpoch'] = {'last': last, 'seq': seq};
+        changed = true;
+      } else {
+        // Invalid bookkeeping must fail before a save can overwrite it.
+        occ.addAll((loaded['occ'] as Map).cast<String, Object?>());
+        for (final e in loaded['queue'] as List) {
+          queue.add((e as Map).cast<String, Object?>());
+        }
+      }
+      for (final e in queue) {
+        _entry(e); // validate every pending row before saving a new snapshot
       }
     }
     final key = '$epoch';
-    var mine = occ[key] is Map ? (occ[key] as Map).cast<String, Object?>() : null;
+    var mine = occ.containsKey(key)
+        ? (occ[key] as Map).cast<String, Object?>()
+        : null;
     mine ??= await _recover(epoch);
     final last = mine['last'];
     final digest = record['digest'];
-    var changed = false;
     if (!(last == null && untouched) && digest != last) {
       final seq = mine['seq'] as int;
       queue.add({
@@ -122,11 +147,16 @@ class WakeHarnessRecorder {
       occ[key] = mine;
       changed = true;
     }
-    // Keep bookkeeping for the latest occurrences and any still queued.
+    // This is an elapsed-time cache bound, independent of local day length.
+    // Evicted occurrences recover their sequence from the durable trace.
     final queued = {for (final e in queue) '${e['epoch']}'};
+    final before = occ.length;
     occ.removeWhere(
-      (k, _) => !queued.contains(k) && (int.tryParse(k) ?? 0) < epoch - 3 * 86400,
+      (k, _) =>
+          !queued.contains(k) &&
+          int.parse(k) < epoch - const Duration(days: 3).inSeconds,
     );
+    changed |= occ.length != before;
     if (changed) await ledger.saveState({'occ': occ, 'queue': queue});
     if (queue.isEmpty) return;
     var sent = 0;

@@ -144,6 +144,28 @@ void main() {
     expect(rows.map((r) => (r['effective'] as Map)['hrRiseBpm']), [6, 9, 6]);
   });
 
+  test(
+    'only absent bookkeeping returns null; malformed bookkeeping throws',
+    () async {
+      const ledger = DbWakeHarnessLedger();
+      expect(await ledger.loadState(), isNull);
+      for (final raw in ['{broken', 'null', '[]']) {
+        await LocalDb.wakeMetaSet(kWakeHarnessLedgerKey, raw);
+        await expectLater(ledger.loadState(), throwsFormatException);
+        expect(await LocalDb.wakeMetaGet(kWakeHarnessLedgerKey), raw);
+      }
+    },
+  );
+
+  test('a database read failure propagates from the ledger', () async {
+    await (await LocalDb.instance).execute('DROP TABLE wake_meta');
+    await expectLater(
+      const DbWakeHarnessLedger().loadState(),
+      throwsA(isA<DatabaseException>()),
+    );
+    await LocalDb.close(); // reopening repairs the table for the next test
+  });
+
   test('a ledger read failure on the switch back to A never restarts the '
       'sequence', () async {
     Map<String, Object?> rec(double hr) {
