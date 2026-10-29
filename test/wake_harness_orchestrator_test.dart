@@ -62,7 +62,7 @@ class _Rig {
       stateStore: state,
       traceStore: trace,
       legacy: legacy,
-      harnessRecorder: WakeHarnessRecorder(ledger, now: clock.call),
+      harnessRecorder: WakeHarnessRecorder(ledger),
       now: clock.call);
   void restart() => orchestrator = _build();
   Future<WakeTickOutcome> tick(WakePlanInput p) => orchestrator.tick(p);

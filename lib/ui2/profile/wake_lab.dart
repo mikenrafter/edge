@@ -183,8 +183,10 @@ class _WakeLabSection extends StatelessWidget {
           SwitchRow('Require REM or awake', h.requireRemOrWake,
               (on) => set(h.copyWith(requireRemOrWake: on)),
               sub: 'On: no current stage holds the buzz.'),
-          note('Hybrid needs Natural Wake on for the day; while the old Smart '
-              'Wake runs, plain legacy runs instead.'),
+          if (app.wakeHybridUnavailable)
+            note('Unavailable for the armed alarm: hybrid needs Natural Wake '
+                'running for that day. The usual wake runs with the defaults '
+                'until it is.'),
         ],
         note('Offline sleep analysis (cardio / HMM) is under Sleep settings; '
             'live wake staging is unchanged by it.'),

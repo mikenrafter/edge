@@ -17,6 +17,7 @@ import 'wake_journal.dart';
 import 'wake_night_context.dart';
 import 'wake_night_context_db.dart';
 import '../state/control_operations.dart';
+import 'wake_harness_ledger.dart';
 import 'wake_orchestrator.dart';
 import 'wake_settings.dart';
 
@@ -94,6 +95,41 @@ class DbWakeStateStore
 /// dozen rows; this is a ceiling so a screen that reloads on every tick stays
 /// cheap.
 const int kWakeTraceReadLimit = 400;
+
+/// `wake_meta` key of the harness recorder's bookkeeping (not restored).
+const String kWakeHarnessLedgerKey = 'harness_ledger';
+
+class DbWakeHarnessLedger implements WakeHarnessLedger {
+  const DbWakeHarnessLedger();
+
+  @override
+  Future<Map<String, Object?>?> loadState() async {
+    try {
+      final raw = await LocalDb.wakeMetaGet(kWakeHarnessLedgerKey);
+      final j = raw == null ? null : jsonDecode(raw);
+      return j is Map ? j.cast<String, Object?>() : null;
+    } catch (_) {
+      return null; // unreadable: start the occurrence afresh
+    }
+  }
+
+  @override
+  Future<void> saveState(Map<String, Object?> state) =>
+      LocalDb.wakeMetaSet(kWakeHarnessLedgerKey, jsonEncode(state));
+
+  @override
+  Future<bool> appendOnce(WakeTraceEntry e) async {
+    try {
+      return await LocalDb.appendWakeHarnessOnce(
+        wakeEpochSec: e.wakeEpochSec,
+        atMs: e.atMs,
+        dataJson: jsonEncode(e.data),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+}
 
 class DbWakeTraceStore implements WakeTraceStore {
   const DbWakeTraceStore();

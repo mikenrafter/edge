@@ -16,8 +16,6 @@ import 'package:openstrap_edge/state/alarm_schedule.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/sync/headless_gate.dart';
-import 'package:openstrap_edge/state/control_operations.dart'
-    show ExpectedSleepSchedule;
 import 'package:openstrap_edge/wake/natural_wake.dart';
 import 'package:openstrap_edge/wake/wake_harness.dart';
 import 'package:shared_preferences/shared_preferences.dart';

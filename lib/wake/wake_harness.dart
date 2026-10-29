@@ -190,8 +190,10 @@ class WakeHarnessConfig {
         );
 
   /// The durable record of what actually ran: the stored params and the
-  /// effective values after learned offsets and journal composition. The
-  /// digest identifies the effective snapshot (not the time it was written).
+  /// effective values after learned offsets and journal composition, the
+  /// window and lead it ran on, and the rule the route really evaluated
+  /// ([ranAs]; the stored rule when null). The digest identifies that
+  /// effective snapshot (never the time it was written).
   Map<String, Object?> provenance({
     required int learnedOffsetSec,
     required ConfounderProfile composed,
@@ -199,18 +201,27 @@ class WakeHarnessConfig {
     int windowLeadMinutes = 0,
     int windowMinutes = 0,
   }) {
+    final ran = ranAs ?? rule;
     final effective = <String, Object?>{
-      'rule': rule.name,
-      if (rule == WakeRule.natural) ...{
+      'rule': ran.name,
+      'windowMinutes': windowMinutes,
+      'windowLeadMinutes': windowLeadMinutes,
+      if (ran == WakeRule.natural) ...{
         'triggerRunSec': effectiveTriggerRunSec(learnedOffsetSec),
         'learnedTriggerOffsetSec': learnedOffsetSec,
         'minConfidence': minConfidence,
         'eligibleStages': (eligibleStages.toList()..sort()),
       },
-      'evidenceAgeCapSec': evidenceAgeCapSec,
+      if (ran != WakeRule.legacy) 'evidenceAgeCapSec': evidenceAgeCapSec,
+      // Every composed policy field a decision reads.
       'hrRiseBpm': composed.hrArousalBpm,
       'motionCeilingG': composed.motionCeilingG,
-      if (rule == WakeRule.hybrid) ...{
+      'protectionMinutes': composed.protectionMinutes,
+      'trendWindowMinutes': composed.trendWindowMinutes,
+      'trendThresholdFactor': composed.trendThresholdFactor,
+      'disableEarlyDelivery': composed.disableEarlyDelivery,
+      'track': composed.track,
+      if (ran == WakeRule.hybrid) ...{
         'vetoMinConfidence': vetoMinConfidence,
         'requireRemOrWake': requireRemOrWake,
       },
@@ -218,7 +229,7 @@ class WakeHarnessConfig {
     final canonical = jsonEncode(effective);
     return {
       'version': 1,
-      'rule': rule.name,
+      'rule': ran.name,
       'params': toJson(),
       'effective': effective,
       'digest': _fnv1a(canonical),

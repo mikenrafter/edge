@@ -1408,6 +1408,15 @@ class LocalDb {
     required String dataJson,
   }) => _ldbAppendWakeTrace(wakeEpochSec: wakeEpochSec, atMs: atMs, kind: kind, dataJson: dataJson);
 
+  /// Append one `harness` provenance row unless the same occurrence already
+  /// holds it (identity: epoch + kind + data; never the time). True when the
+  /// row is present afterwards.
+  static Future<bool> appendWakeHarnessOnce({
+    required int wakeEpochSec,
+    required int atMs,
+    required String dataJson,
+  }) => _ldbAppendWakeHarnessOnce(wakeEpochSec: wakeEpochSec, atMs: atMs, dataJson: dataJson);
+
   /// The trace for one wake, oldest first. With [limit], the NEWEST [limit]
   /// rows (still returned oldest first), so a screen that reloads on every tick
   /// reads a bounded amount however long the night was.
@@ -6075,6 +6084,8 @@ class LocalDb {
     'run_state',
     'snooze_state',
     'snooze_window',
+    // The wake harness recorder's per-occurrence bookkeeping (this install).
+    'harness_ledger',
   };
 
   static const Set<String> _keepLocalOnImport = {

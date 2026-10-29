@@ -34,7 +34,7 @@ void main() {
     clock = DateTime.utc(2026, 10, 26, 6);
   });
   WakeHarnessRecorder recorder(WakeHarnessLedger l) =>
-      WakeHarnessRecorder(l, now: () => clock);
+      WakeHarnessRecorder(l);
   Future<List<WakeTraceEntry>> rows() async => [
     for (final e in await trace.forWake(_epoch))
       if (e.kind == 'harness') e,
@@ -54,11 +54,11 @@ void main() {
   test('an untouched occurrence writes nothing; once experimental, a reset '
       'is recorded', () async {
     final r = recorder(MemoryWakeHarnessLedger(trace));
-    await r.record(_epoch, rec(WakeHarnessConfig.defaults), untouched: true);
+    await r.record(_epoch, rec(WakeHarnessConfig.defaults), untouched: true, atMs: clock.millisecondsSinceEpoch);
     expect(await rows(), isEmpty);
-    await r.record(_epoch, rec(legacy), untouched: false);
-    await r.record(_epoch, rec(legacy), untouched: false);
-    await r.record(_epoch, rec(WakeHarnessConfig.defaults), untouched: true);
+    await r.record(_epoch, rec(legacy), untouched: false, atMs: clock.millisecondsSinceEpoch);
+    await r.record(_epoch, rec(legacy), untouched: false, atMs: clock.millisecondsSinceEpoch);
+    await r.record(_epoch, rec(WakeHarnessConfig.defaults), untouched: true, atMs: clock.millisecondsSinceEpoch);
     final got = await rows();
     expect(got.map((e) => e.data['seq']), [0, 1]);
     expect(got.map((e) => e.data['rule']), ['legacy', 'natural']);
@@ -68,12 +68,12 @@ void main() {
       'activation', () async {
     final l = _FlakyLedger(trace)..failures = 2;
     final r = recorder(l);
-    await r.record(_epoch, rec(legacy), untouched: false);
+    await r.record(_epoch, rec(legacy), untouched: false, atMs: clock.millisecondsSinceEpoch);
     clock = clock.add(const Duration(seconds: 30));
-    await r.record(_epoch, rec(legacy), untouched: false);
+    await r.record(_epoch, rec(legacy), untouched: false, atMs: clock.millisecondsSinceEpoch);
     expect(await rows(), isEmpty);
     clock = clock.add(const Duration(seconds: 30));
-    await r.record(_epoch, rec(legacy), untouched: false);
+    await r.record(_epoch, rec(legacy), untouched: false, atMs: clock.millisecondsSinceEpoch);
     final got = await rows();
     expect(got, hasLength(1));
     expect(got.single.data['seq'], 0);
@@ -85,12 +85,12 @@ void main() {
   test('a pending activation survives a restart and is flushed before the '
       'next one', () async {
     final l = _FlakyLedger(trace)..failures = 1;
-    await recorder(l).record(_epoch, rec(legacy), untouched: false);
+    await recorder(l).record(_epoch, rec(legacy), untouched: false, atMs: clock.millisecondsSinceEpoch);
     expect(await rows(), isEmpty);
     // A new recorder over the same durable ledger: what a restart is.
     final again = recorder(l);
     const b = WakeHarnessConfig(rule: WakeRule.legacy, hrRiseBpm: 8);
-    await again.record(_epoch, rec(b), untouched: false);
+    await again.record(_epoch, rec(b), untouched: false, atMs: clock.millisecondsSinceEpoch);
     final got = await rows();
     expect(got.map((e) => e.data['seq']), [0, 1]);
     expect(
@@ -107,9 +107,9 @@ void main() {
       trendWindowMinutes: 5,
       workout: true,
     );
-    await r.record(_epoch, rec(legacy), untouched: false);
-    await r.record(_epoch, rec(legacy, p: workout), untouched: false);
-    await r.record(_epoch, rec(legacy), untouched: false);
+    await r.record(_epoch, rec(legacy), untouched: false, atMs: clock.millisecondsSinceEpoch);
+    await r.record(_epoch, rec(legacy, p: workout), untouched: false, atMs: clock.millisecondsSinceEpoch);
+    await r.record(_epoch, rec(legacy), untouched: false, atMs: clock.millisecondsSinceEpoch);
     final got = await rows();
     expect(got.map((e) => e.data['seq']), [0, 1, 2]);
     expect(got[0].data['digest'], got[2].data['digest']);
@@ -121,8 +121,8 @@ void main() {
   test('a learned window-lead change is a transition', () async {
     final r = recorder(MemoryWakeHarnessLedger(trace));
     const hybrid = WakeHarnessConfig(rule: WakeRule.hybrid);
-    await r.record(_epoch, rec(hybrid), untouched: false);
-    await r.record(_epoch, rec(hybrid, lead: 5), untouched: false);
+    await r.record(_epoch, rec(hybrid), untouched: false, atMs: clock.millisecondsSinceEpoch);
+    await r.record(_epoch, rec(hybrid, lead: 5), untouched: false, atMs: clock.millisecondsSinceEpoch);
     final got = await rows();
     expect(got, hasLength(2));
     expect((got[1].data['effective'] as Map)['windowLeadMinutes'], 5);
@@ -130,8 +130,8 @@ void main() {
 
   test('another occurrence starts its own sequence', () async {
     final r = recorder(MemoryWakeHarnessLedger(trace));
-    await r.record(_epoch, rec(legacy), untouched: false);
-    await r.record(_epoch + 86400, rec(legacy), untouched: false);
+    await r.record(_epoch, rec(legacy), untouched: false, atMs: clock.millisecondsSinceEpoch);
+    await r.record(_epoch + 86400, rec(legacy), untouched: false, atMs: clock.millisecondsSinceEpoch);
     expect(await rows(), hasLength(1));
     expect((await rows()).single.data['seq'], 0);
     expect(

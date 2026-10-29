@@ -398,11 +398,6 @@ class _Run {
   String? naturalSig;
   String? fallbackSig;
 
-  /// Digest of the last harness snapshot recorded for this occurrence (null:
-  /// never experimental, nothing recorded) and how many were recorded.
-  String? harnessDigest;
-  int harnessSeq = 0;
-
   /// Anything unreadable falls back to the default: the worst a corrupt state
   /// can do is cost a warm-up, never crash a wake.
   factory _Run.from(Map<String, Object?>? j, int wakeEpoch) {
@@ -424,10 +419,6 @@ class _Run {
     r.lastTickMs = tick is int ? tick : null;
     r.naturalSig = j['naturalSig'] as String?;
     r.fallbackSig = j['fallbackSig'] as String?;
-    final hd = j['harnessDigest'];
-    r.harnessDigest = hd is String ? hd : null;
-    final hs = j['harnessSeq'];
-    r.harnessSeq = hs is int && hs >= 0 ? hs : 0;
     return r;
   }
 
@@ -444,8 +435,6 @@ class _Run {
         'lastTickMs': lastTickMs,
         'naturalSig': naturalSig,
         'fallbackSig': fallbackSig,
-        'harnessDigest': harnessDigest,
-        'harnessSeq': harnessSeq,
       };
 }
 
@@ -864,20 +853,9 @@ class WakeOrchestrator {
     onNaturalPolicy?.noteNaturalLead(plan.wakeAt, tuning.windowLeadMinutes);
     final sec = plan.wakeSec;
     final harness = plan.harness;
-    profile = harness.compose(profile);
-    // Before any decision, on both routes (the legacy override evaluates
-    // after this tick): one durable record per effective-snapshot change.
-    await _recordHarness(
-      sec,
-      run,
-      harness,
-      harness.provenance(
-        learnedOffsetSec: tuning.triggerRunOffsetSec,
-        composed: profile,
-      ),
-    );
     if (harness.rule == WakeRule.legacy) {
-      // The legacy evaluator owns this occurrence's early buzz (AppState).
+      // Explicitly suppressed: the legacy evaluator (AppState) owns this
+      // occurrence's early buzz and records its own provenance.
       return (NaturalReason.off, false);
     }
 
@@ -897,6 +875,35 @@ class WakeOrchestrator {
     if (now.isBefore(plan.wakeAt.subtract(naturalCollectionLead(n)))) {
       return (NaturalReason.beforeWindow, false); // collection has not begun
     }
+    // Hybrid decides with the production legacy evaluator, so it is that
+    // evaluator's composed profile that is recorded and used.
+    ConfounderProfile? legacyProfile;
+    if (harness.rule == WakeRule.hybrid && legacy != null) {
+      try {
+        legacyProfile = harness.compose(await legacy!
+            .journalProfile(plan.wakeAt, plan.expectedSchedule)
+            .timeout(opTimeout));
+      } catch (e) {
+        await _trace(sec, 'error', {'where': 'legacyProfile', 'error': '$e'});
+      }
+    }
+    profile = legacyProfile ?? harness.compose(profile);
+    // The shared provenance seam, before this evaluator decides.
+    try {
+      await harnessRecorder
+          .record(
+            sec,
+            harness.provenance(
+              learnedOffsetSec: tuning.triggerRunOffsetSec,
+              composed: profile,
+              windowLeadMinutes: tuning.windowLeadMinutes.clamp(-10, 10),
+              windowMinutes: plan.naturalMinutes,
+            ),
+            untouched: harness.isDefault,
+            atMs: now.millisecondsSinceEpoch,
+          )
+          .timeout(opTimeout);
+    } catch (_) {/* retried from the pending activation next tick */}
     // Sleep so far, when known: the detected onset or the saved schedule's onset
     // for this night. Unknown never blocks.
     final onset = _onsetFor(plan, now);
@@ -980,11 +987,29 @@ class WakeOrchestrator {
     // "I'm up" may have landed while the samples and the observer were awaited.
     if (_acked(run)) return (NaturalReason.acknowledged, false);
 
-    final decision = samplesFailed && !userActive
+    // Hybrid: the production legacy answer, from its own rows and cutoff. An
+    // unreadable stage (samples or observer failed) is just no stage.
+    bool? legacyFire;
+    final hybrid = harness.rule == WakeRule.hybrid;
+    if (hybrid &&
+        legacyProfile != null &&
+        env.connected &&
+        !now.isBefore(NaturalWakePlanner.windowStart(plan.wakeAt, n))) {
+      try {
+        legacyFire = await legacy!
+            .detected(now, plan.wakeAt, plan.expectedSchedule,
+                profile: legacyProfile)
+            .timeout(opTimeout * 2);
+      } catch (e) {
+        await _trace(sec, 'error', {'where': 'legacy', 'error': '$e'});
+      }
+    }
+    final decision = samplesFailed && !userActive && !hybrid
         ? const NaturalDecision(NaturalReason.samplesUnavailable)
         : NaturalWakePlanner.decide(_input(
             plan, run, now, obs, lateness, onset: onset,
-            userActive: userActive, tuning: tuning, profile: profile, evidence: evidence));
+            userActive: userActive, tuning: tuning, profile: profile,
+            evidence: evidence, legacyFire: legacyFire));
     final detail = <String, Object?>{
       if (decision.viaUserActivity) 'basis': 'userActive',
       'samples': decision.samplesCurrent == null
@@ -1184,27 +1209,13 @@ class WakeOrchestrator {
     }
   }
 
-  /// The shared provenance writer. An occurrence that never left the defaults
-  /// writes nothing; once it has, every effective-snapshot transition is
-  /// recorded (a reset or leaving developer mode included). `seq` is the
-  /// activation identity, so A -> B -> A keeps both activations of A.
-  Future<void> _recordHarness(int sec, _Run run, WakeHarnessConfig harness,
-      Map<String, Object?> record) async {
-    final digest = record['digest'] as String;
-    if (run.harnessDigest == null && harness.isDefault) return;
-    if (run.harnessDigest == digest) return;
-    run.harnessDigest = digest;
-    final seq = run.harnessSeq++;
-    await _trace(sec, 'harness', {...record, 'seq': seq});
-    await _save(run);
-  }
-
   NaturalDecisionInput _input(WakePlanInput plan, _Run run, DateTime now,
           NaturalObservation? obs, Duration lateness,
           {bool userActive = false, DateTime? onset,
           NaturalWakeParameters tuning = const NaturalWakeParameters(),
           ConfounderProfile profile = const ConfounderProfile(),
-          NaturalGateEvidence? evidence}) =>
+          NaturalGateEvidence? evidence,
+          bool? legacyFire}) =>
       NaturalDecisionInput(
         now: now,
         wakeAt: plan.wakeAt,
@@ -1219,6 +1230,7 @@ class WakeOrchestrator {
         tuning: tuning,
         profile: profile, evidence: evidence,
         harness: plan.harness,
+        legacyFire: legacyFire,
       );
 
   DateTime? _onsetFor(WakePlanInput plan, DateTime now) =>

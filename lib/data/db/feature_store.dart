@@ -106,6 +106,25 @@ Future<void> _ldbAppendWakeTrace({required int wakeEpochSec, required int atMs, 
     });
   }
 
+Future<bool> _ldbAppendWakeHarnessOnce({required int wakeEpochSec, required int atMs, required String dataJson}) async {
+    final db = await LocalDb.instance;
+    return db.transaction((txn) async {
+      final existing = await txn.query('wake_trace',
+          columns: ['id'],
+          where: "wake_epoch = ? AND kind = 'harness' AND data_json = ?",
+          whereArgs: [wakeEpochSec, dataJson],
+          limit: 1);
+      if (existing.isNotEmpty) return true;
+      await txn.insert('wake_trace', {
+        'wake_epoch': wakeEpochSec,
+        'at_ms': atMs,
+        'kind': 'harness',
+        'data_json': dataJson,
+      });
+      return true;
+    });
+  }
+
 Future<List<Map<String, Object?>>> _ldbWakeTraceRows(int wakeEpochSec, {required int? limit}) async {
     final db = await LocalDb.instance;
     if (limit == null) {

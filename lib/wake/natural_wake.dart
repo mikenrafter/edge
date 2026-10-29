@@ -304,7 +304,8 @@ abstract final class NaturalWakePlanner {
     // Awake because they are using the phone and the wrist moved with it. This
     // needs no stage, so an observer that abstained or failed cannot hide it.
     if (i.profile.disableEarlyDelivery) return no(NaturalReason.policyHold);
-    if (i.userActive) {
+    // Natural only: hybrid must meet its legacy decision and stage terms.
+    if (i.userActive && i.harness.rule == WakeRule.natural) {
       return const NaturalDecision(NaturalReason.fire, viaUserActivity: true);
     }
     final o = i.observation;
@@ -316,7 +317,8 @@ abstract final class NaturalWakePlanner {
         o.evidenceAgeMs != null &&
         o.evidenceAgeMs! <= ageCapMs;
     if (h.rule == WakeRule.hybrid) {
-      // Legacy physiology AND NOT a current NREM. No current stage leaves the
+      // The production legacy decision AND NOT a current NREM. No current
+      // stage (an abstention, stale evidence, an observer error) leaves the
       // legacy decision standing unless REM-or-wake is required.
       final staged = o != null && o.stage != 'absent' && currentOf(o);
       if (staged &&
@@ -330,7 +332,9 @@ abstract final class NaturalWakePlanner {
           current: staged,
         );
       }
-      return _physiology(i, current: staged);
+      return i.legacyFire == true
+          ? NaturalDecision(NaturalReason.fire, samplesCurrent: staged)
+          : no(NaturalReason.legacyHold, current: staged);
     }
     if (o == null) return no(NaturalReason.observerFailed);
 
