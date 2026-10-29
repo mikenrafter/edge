@@ -117,6 +117,45 @@ Stopwatch _packageClockStopwatch() => clock.stopwatch();
 /// package:clock's zone-aware now, for the band-prompt stamps.
 DateTime _packageClockNow() => clock.now();
 
+/// Bytes a queued write builds right before transport ([BleEngine._write]);
+/// null drops the write.
+abstract interface class _LateFrame {
+  Uint8List? build();
+}
+
+/// A forced ENTER_HIGH_FREQ_SYNC whose lease is what is left until [until]
+/// at the moment it is built, capped at [maxDuration]. Built at or after
+/// [until] it is dropped and marks itself [expired].
+class _ForcedEnterFrame implements _LateFrame {
+  _ForcedEnterFrame({
+    required this.seq,
+    required this.intervalSeconds,
+    required this.maxDuration,
+    required this.until,
+    required this.band,
+  });
+  final int seq;
+  final int intervalSeconds;
+  final Duration maxDuration;
+  final DateTime until;
+  final BandProfile band;
+  bool expired = false;
+
+  @override
+  Uint8List? build() {
+    final left = until.difference(_packageClockNow()).inSeconds;
+    if (left <= 0) {
+      expired = true;
+      return null;
+    }
+    final max = maxDuration.inSeconds;
+    return cmdEnterHighFreqSync(seq,
+        intervalSeconds: intervalSeconds,
+        durationSeconds: left < max ? left : max,
+        profile: band);
+  }
+}
+
 class EcgFrameEvent extends EcgEngineEvent {
   final LabradorR17 r17;
   const EcgFrameEvent(this.r17, super.linkGeneration);
@@ -4891,6 +4930,9 @@ class BleEngine implements AlarmBandWriter {
   /// immediately before the bytes go to the transport (the chain may hold
   /// this write behind earlier ones for a while); returning false skips the
   /// write, which then reports false.
+  /// [lateFrame] rebuilds the bytes inside the queued operation, right before
+  /// transport (after [beforeTransport]); a null build drops the write, which
+  /// then reports false.
   /// [notAfter] is a delivery deadline: a write still waiting in the queue when
   /// it passes is DROPPED, not sent. The caller that queued it has given up by
   /// then (and may have retried or moved on), so writing it late is a stale
@@ -4901,6 +4943,7 @@ class BleEngine implements AlarmBandWriter {
     bool allowDangerous = false,
     bool Function()? beforeTransport,
     DateTime? notAfter,
+    _LateFrame? lateFrame,
   }) {
     // FOOTGUN(DATA_LOSS): destructive commands are refused before the write queue.
     // FOOTGUN(LINK_LOSS): reboot and power-cycle commands are refused here.
@@ -4940,6 +4983,11 @@ class BleEngine implements AlarmBandWriter {
           return false;
         }
         if (beforeTransport != null && !beforeTransport()) return false;
+        if (lateFrame != null) {
+          final built = lateFrame.build();
+          if (built == null) return false;
+          raw = built;
+        }
         final hook = debugWriteHook;
         if (hook != null) return await hook(raw);
         final cmd = session.cmdTo;
@@ -5167,6 +5215,22 @@ class BleEngine implements AlarmBandWriter {
         _highFreqUntil?.millisecondsSinceEpoch ==
             targetWake.millisecondsSinceEpoch;
     if (unchanged && !force) return PromptWriteOutcome.unchanged;
+    // A forced re-ENTER recovers the lease that is already meant to end at
+    // [targetWake]: it asks only for what is left WHEN IT REACHES TRANSPORT
+    // (the frame is rebuilt inside the queued write), so 61 s prompting
+    // cannot outlive the window, and nothing goes out at or after the end.
+    final session = _session!;
+    final forced = force
+        ? _ForcedEnterFrame(
+            seq: _seq.nextLive(),
+            intervalSeconds: intervalSeconds,
+            maxDuration: duration,
+            until: targetWake,
+            band: session.band,
+          )
+        : null;
+    final forcedNow = forced?.build();
+    if (forced != null && forcedNow == null) return PromptWriteOutcome.skipped;
     _log(
       '[SYNC] HighFreq enter ($reason${force ? ', forced' : ''}) — '
       'interval=${intervalSeconds}s '
@@ -5180,19 +5244,25 @@ class BleEngine implements AlarmBandWriter {
     // the link was replaced must not claim the mode on the successor, which
     // never received the ENTER (teardown already cleared the dead link's
     // state, and the successor's own post-connect refresh re-applies).
-    final session = _session!;
     final generation = _linkGeneration;
     final ok = await _write(
-      cmdEnterHighFreqSync(
-        _seq.nextLive(),
-        intervalSeconds: intervalSeconds,
-        durationSeconds: duration.inSeconds,
-        profile: session.band,
-      ),
+      forcedNow ??
+          cmdEnterHighFreqSync(
+            _seq.nextLive(),
+            intervalSeconds: intervalSeconds,
+            durationSeconds: duration.inSeconds,
+            profile: session.band,
+          ),
       owner: session,
       beforeTransport: ticket == null ? null : () => ticket.current,
+      lateFrame: forced,
     );
     if (_liveStale(session, generation)) return PromptWriteOutcome.skipped;
+    if (forced != null && forced.expired) {
+      _log('[SYNC] HighFreq enter ($reason) reached transport after its end '
+          '— dropped, nothing sent.');
+      return PromptWriteOutcome.skipped;
+    }
     if (ticket != null && !ticket.current) {
       _log('[SYNC] HighFreq enter ($reason) superseded — mode NOT claimed.');
       return PromptWriteOutcome.skipped;

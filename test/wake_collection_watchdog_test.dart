@@ -345,6 +345,28 @@ void main() {
         reason: 'the first forced ENTER landed: the lease is fresh again');
   });
 
+  test('a pass that starts at T-2 s and completes at T+3 s still stores its '
+      'outcome', () async {
+    final gate = Completer<bool>();
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete(false);
+      app.debugWakeClock = null;
+    });
+    onWrite = (f) => _isEnter(f) && !gate.isCompleted
+        ? gate.future
+        : Future.value(true);
+    app.debugWakeClock = () => wakeAt.subtract(const Duration(seconds: 2));
+    final pass = app.debugRefreshHighFreqWakeWindow();
+    await until(() => enters() >= 1);
+    app.debugWakeClock = () => wakeAt.add(const Duration(seconds: 3));
+    gate.complete(false);
+    await pass;
+    final rows = await collectionRows();
+    expect(rows.map((r) => r['outcome']), ['failed'],
+        reason: 'eligibility is decided when the pass starts, not when its '
+            'write returns');
+  });
+
   test('a collection trace append that fails is retried with the next '
       'identical outcome', () async {
     final store = _FlakyTrace();
