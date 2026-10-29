@@ -7386,7 +7386,12 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
 
   /// One pass of the band-prompt decision. Tests only.
   @visibleForTesting
-  Future<void> debugRefreshHighFreqWakeWindow() => _refreshHighFreqWakeWindow();
+  Future<void> debugRefreshHighFreqWakeWindow({bool force = false}) =>
+      _refreshHighFreqWakeWindow(force: force);
+
+  /// Where `collection` trace rows go. Tests only (a store that fails).
+  @visibleForTesting
+  WakeTraceStore debugCollectionTraceStore = const DbWakeTraceStore();
 
   @visibleForTesting
   set debugBackground(bool v) => _background = v;
@@ -8301,7 +8306,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     if (sig == _lastCollectionTraceSig) return;
     _lastCollectionTraceSig = sig;
     try {
-      await const DbWakeTraceStore().append(WakeTraceEntry(
+      await debugCollectionTraceStore.append(WakeTraceEntry(
         wakeEpochSec: epoch,
         atMs: _wakeNow().millisecondsSinceEpoch,
         kind: 'collection',

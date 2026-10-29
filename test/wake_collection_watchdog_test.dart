@@ -19,6 +19,8 @@ import 'package:openstrap_edge/state/alarm_schedule.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/sync/sync_policy.dart';
+import 'package:openstrap_edge/wake/wake_orchestrator.dart';
+import 'package:openstrap_edge/wake/wake_stores.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -278,34 +280,98 @@ void main() {
     expect(rows.first['enter'], isTrue);
   });
 
-  test('a run stuck past 60 s is superseded; when it finally completes it '
-      'claims nothing', () async {
+  test('a hung refresh holds later requests, and the band ends in the '
+      'newest requested state', () async {
+    // Simulated band: ENTER turns its prompting on, EXIT off, in the order
+    // the frames land.
+    var bandOn = false;
     final gate = Completer<bool>();
     addTearDown(() {
       if (!gate.isCompleted) gate.complete(false);
     });
-    onWrite = (f) => _isEnter(f) ? gate.future : Future.value(true);
+    onWrite = (f) async {
+      final p = parseFrame(f, profile: BandProfile.gen4);
+      final op = p != null && p.valid ? p.inner[2] : null;
+      final ok = op == Cmd.enterHighFreqSync && !gate.isCompleted
+          ? await gate.future
+          : true;
+      if (ok && op == Cmd.enterHighFreqSync) bandOn = true;
+      if (ok && op == Cmd.exitHighFreqSync) bandOn = false;
+      return ok;
+    };
     final stuck = app.debugRefreshHighFreqWakeWindow();
     await until(() => enters() >= 1);
     expect(enters(), 1, reason: 'the old ENTER is on the wire');
 
-    // The alarm moves out of reach: the newer request wants no prompt.
+    // The alarm moves out of reach: the newer request, 61 s later, wants no
+    // prompt.
     final far = DateTime.now().add(const Duration(hours: 10));
     await schedule(DateTime(far.year, far.month, far.day, far.hour, far.minute));
     final newer = withClock(
         Clock.fixed(DateTime.now().add(const Duration(seconds: 61))),
         () => app.debugRefreshHighFreqWakeWindow());
-    var newerDone = false;
-    await newer.timeout(const Duration(seconds: 2), onTimeout: () {
-      fail('a refresh hung for more than 60 s still blocks every later one');
-    }).then((_) => newerDone = true);
-    expect(newerDone, isTrue);
 
     gate.complete(true);
     await stuck;
+    await newer;
     await settle();
-    expect(requested(), isFalse,
-        reason: 'the superseded ENTER must not claim the mode');
+    expect(bandOn, isFalse,
+        reason: 'the old ENTER landed after the newer request decided "off"; '
+            'the band must end where the newer request wants it');
+    expect(requested(), isFalse);
     expect(band.highFreqReason, isNull);
   });
+
+  test('a force still pending when the first forced write lands is dropped: '
+      'no back-to-back ENTER', () async {
+    await believedLease();
+    final gate = Completer<bool>();
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete(false);
+    });
+    onWrite = (f) => _isEnter(f) && !gate.isCompleted
+        ? gate.future
+        : Future.value(true);
+    final first = app.debugRefreshHighFreqWakeWindow(force: true);
+    await until(() => enters() >= 2);
+    expect(enters(), 2, reason: 'the forced ENTER is on the wire');
+    // The next tick's watchdog asks again while it is still delayed.
+    final second = app.debugRefreshHighFreqWakeWindow(force: true);
+    gate.complete(true);
+    await first;
+    await second;
+    await settle();
+    expect(enters(), 2,
+        reason: 'the first forced ENTER landed: the lease is fresh again');
+  });
+
+  test('a collection trace append that fails is retried with the next '
+      'identical outcome', () async {
+    final store = _FlakyTrace();
+    app.debugCollectionTraceStore = store;
+    band.throwOnApply = StateError('radio gone');
+    await app.debugRefreshHighFreqWakeWindow();
+    expect(store.failures, 1);
+    await app.debugRefreshHighFreqWakeWindow();
+    final rows = await collectionRows();
+    expect(rows.map((r) => r['outcome']), ['failed'],
+        reason: 'the failed append must not mark the outcome as traced');
+  });
+}
+
+/// Fails its first append, then stores normally.
+class _FlakyTrace implements WakeTraceStore {
+  int failures = 0;
+  @override
+  Future<void> append(WakeTraceEntry e) async {
+    if (failures == 0) {
+      failures++;
+      throw StateError('disk full');
+    }
+    await const DbWakeTraceStore().append(e);
+  }
+
+  @override
+  Future<List<WakeTraceEntry>> forWake(int wakeEpochSec) =>
+      const DbWakeTraceStore().forWake(wakeEpochSec);
 }

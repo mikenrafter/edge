@@ -156,6 +156,26 @@ void main() {
           WakeCollectionAction.refresh);
     });
 
+    test('the last three minutes: a silent wake lease is still re-ENTERed '
+        'until T (silence is not the renewal margin)', () {
+      for (final left in [181, 180, 1]) {
+        final at = wakeAt.subtract(s(left));
+        expect(
+            wakeCollectionAction(
+              now: at,
+              wakeAt: wakeAt,
+              reason: lease,
+              until: wakeAt,
+              lastPromptAt: at.subtract(s(200)),
+              enteredAt: at.subtract(const Duration(hours: 1)),
+              lastAttemptAt: null,
+              lastOutcome: null,
+            ),
+            WakeCollectionAction.forceReenter,
+            reason: 'T-$left s');
+      }
+    });
+
     test('a lease ending before the alarm is a plain refresh', () {
       expect(
           decide(
@@ -239,6 +259,26 @@ void main() {
           reason: 'the "unchanged" short-circuit trusted the engine\'s own '
               'claim, which is the thing the watchdog doubts');
       expect(engine.highFreqEnteredAt, DateTime(2026, 10, 27, 12, 10));
+    });
+
+    test('a command whose ticket goes stale while it waits in the write '
+        'queue is never sent', () async {
+      final gate = Completer<bool>();
+      onWrite = (f) => _isEnter(f) && !gate.isCompleted
+          ? gate.future
+          : Future.value(true);
+      // An earlier, unticketed ENTER holds the queue on the wire.
+      final first = enter();
+      await pumpEventQueue();
+      expect(enters(), 1);
+      final ticket = _Ticket();
+      final queued = enter(force: true, ticket: ticket);
+      await pumpEventQueue();
+      ticket.current = false;
+      gate.complete(true);
+      await first;
+      expect(await queued, PromptWriteOutcome.skipped);
+      expect(enters(), 1, reason: 'checked before transport, not only after');
     });
 
     test('a superseded caller writes nothing and claims nothing', () async {
