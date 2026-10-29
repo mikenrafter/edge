@@ -305,6 +305,72 @@ void main() {
       expect(enters(), 1);
     });
 
+    test('a forced ENTER requested at T-120 s but held in the write queue '
+        'until T-20 s asks for at most 20 s', () async {
+      var now = target.subtract(const Duration(seconds: 120));
+      await withClock(Clock(() => now), () async {
+        final gate = Completer<bool>();
+        onWrite = (f) => _isEnter(f) && !gate.isCompleted
+            ? gate.future
+            : Future.value(true);
+        final first = engine.applyHighFreqWakeWindow(
+            enabled: true,
+            targetWake: target,
+            duration: const Duration(minutes: 90),
+            intervalSeconds: 61,
+            reason: 'scheduled_alarm');
+        await pumpEventQueue();
+        final forced = engine.applyHighFreqWakeWindow(
+            enabled: true,
+            targetWake: target,
+            duration: const Duration(minutes: 90),
+            intervalSeconds: 61,
+            reason: 'scheduled_alarm',
+            force: true);
+        await pumpEventQueue();
+        now = target.subtract(const Duration(seconds: 20));
+        gate.complete(true);
+        await first;
+        expect(await forced, PromptWriteOutcome.wrote);
+        expect(enters(), 2);
+        expect(durationOf(frames.where(_isEnter).last), lessThanOrEqualTo(20),
+            reason: 'the lease is computed when the frame reaches transport');
+        expect(engine.highFreqUntil, target);
+      });
+    });
+
+    test('a forced ENTER that reaches transport after T is dropped and '
+        'reported skipped, not failed', () async {
+      var now = target.subtract(const Duration(seconds: 5));
+      await withClock(Clock(() => now), () async {
+        final gate = Completer<bool>();
+        onWrite = (f) => _isEnter(f) && !gate.isCompleted
+            ? gate.future
+            : Future.value(true);
+        final first = engine.applyHighFreqWakeWindow(
+            enabled: true,
+            targetWake: target,
+            duration: const Duration(minutes: 90),
+            intervalSeconds: 61,
+            reason: 'scheduled_alarm');
+        await pumpEventQueue();
+        final forced = engine.applyHighFreqWakeWindow(
+            enabled: true,
+            targetWake: target,
+            duration: const Duration(minutes: 90),
+            intervalSeconds: 61,
+            reason: 'scheduled_alarm',
+            force: true);
+        await pumpEventQueue();
+        now = target.add(const Duration(seconds: 1));
+        gate.complete(true);
+        await first;
+        expect(await forced, PromptWriteOutcome.skipped,
+            reason: 'nothing was attempted on the wire');
+        expect(enters(), 1);
+      });
+    });
+
     test('a superseded caller writes nothing and claims nothing', () async {
       expect(await enter(ticket: _Ticket()..current = false),
           PromptWriteOutcome.skipped);
