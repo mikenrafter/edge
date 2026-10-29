@@ -15,7 +15,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:clock/clock.dart' show clock;
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
@@ -213,9 +212,9 @@ import '../sync/sync_policy.dart'
         PromptWriteOutcome,
         PromptWriteTicket,
         WakeCollectionAction,
-        kBandPromptRunTimeout,
         kSnoozePromptReason,
-        wakeCollectionAction;
+        wakeCollectionAction,
+        wakeLeaseSilent;
 import '../sync/update_service.dart';
 import '../telemetry/telemetry_service.dart';
 import '../telemetry/health_uploader.dart';
@@ -7409,7 +7408,12 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
 
   /// One pass of the band-prompt decision. Tests only.
   @visibleForTesting
-  Future<void> debugRefreshHighFreqWakeWindow() => _refreshHighFreqWakeWindow();
+  Future<void> debugRefreshHighFreqWakeWindow({bool force = false}) =>
+      _refreshHighFreqWakeWindow(force: force);
+
+  /// Where `collection` trace rows go. Tests only (a store that fails).
+  @visibleForTesting
+  WakeTraceStore debugCollectionTraceStore = const DbWakeTraceStore();
 
   @visibleForTesting
   set debugBackground(bool v) => _background = v;
@@ -8170,56 +8174,62 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// nothing requested yet, would not even be written), leaving the band
   /// prompting in the foreground with the engine believing it asked for it.
   ///
-  /// A run still going after [kBandPromptRunTimeout] (a hung write or read)
-  /// no longer blocks: the next request starts a new GENERATION. The old run
-  /// is not cancelled, but every write it makes checks its generation first
-  /// (before transport and before claiming the mode), its loop stops, and
-  /// only the owning generation clears [_bandPromptRun]. Limit: the engine's
-  /// writes are serialized, so a write hung on the wire still delays the
-  /// newer run's write; the check only stops the stale one from claiming.
+  /// Each run carries a generation ([_BandPromptTicket]) that every write
+  /// checks before transport and before claiming the mode. Runs are never
+  /// superseded while one is still going (spec F3 deferred, Sol r1 #1): the
+  /// engine cannot yet reconcile a command already on the wire with a newer
+  /// request, so a hung run keeps holding later ones, which then re-run in
+  /// order. The `collection` trace shows whether that ever happens.
   ///
   /// [force]: re-send an ENTER the engine believes is in force (the
-  /// keep-alive watchdog). Carried into a running pass's next loop.
+  /// keep-alive watchdog). A force still pending for a later pass is
+  /// revalidated first: it is dropped once a pass wrote or the lease is no
+  /// longer silent.
   Future<void> _refreshHighFreqWakeWindow({bool force = false}) {
     if (force) _bandPromptForce = true;
     final running = _bandPromptRun;
-    final started = _bandPromptRunStartedAt;
-    if (running != null &&
-        started != null &&
-        clock.now().difference(started) < kBandPromptRunTimeout) {
+    if (running != null) {
       _bandPromptRestale = true;
       return running;
     }
-    if (running != null) {
-      _log('[SYNC] Band prompt refresh still running after '
-          '${kBandPromptRunTimeout.inSeconds} s — superseded (generation '
-          '$_bandPromptGen).');
-    }
     final gen = ++_bandPromptGen;
-    _bandPromptRunStartedAt = clock.now();
     return _bandPromptRun = _runBandPrompt(_BandPromptTicket(this, gen));
   }
 
   Future<void> _runBandPrompt(_BandPromptTicket ticket) async {
     try {
+      var wrote = false;
       do {
         _bandPromptRestale = false;
-        final f = _bandPromptForce;
+        final f = _bandPromptForce && !wrote && _wakeLeaseSilentNow();
         _bandPromptForce = false;
         await _refreshHighFreqWakeWindowOnce(ticket, force: f);
+        wrote = wrote || _lastBandPromptOutcome == PromptWriteOutcome.wrote;
       } while (_bandPromptRestale && ticket.current);
     } finally {
-      // Only the owning generation clears the pointer: a superseded run
-      // finishing late must not drop its successor's.
-      if (ticket.current) {
-        _bandPromptRun = null;
-        _bandPromptRunStartedAt = null;
-      }
+      if (ticket.current) _bandPromptRun = null;
     }
   }
 
+  /// [wakeLeaseSilent] for the planned window, now.
+  bool _wakeLeaseSilentNow() {
+    final planned = plannedCollectionWindow(
+      epoch: alarmEpoch,
+      schedule: _schedule,
+      upgrade: wake.runningUpgradeState,
+    );
+    if (planned == null) return false;
+    return wakeLeaseSilent(
+      now: DateTime.now(),
+      wakeAt: planned.windowEnd,
+      reason: engine.highFreqReason,
+      until: engine.highFreqUntil,
+      lastPromptAt: engine.lastHighFreqPromptAt,
+      enteredAt: engine.highFreqEnteredAt,
+    );
+  }
+
   Future<void>? _bandPromptRun;
-  DateTime? _bandPromptRunStartedAt;
   int _bandPromptGen = 0;
   bool _bandPromptRestale = false;
   bool _bandPromptForce = false;
@@ -8349,9 +8359,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     final epoch = wakeAt.millisecondsSinceEpoch ~/ 1000;
     final sig = '$epoch|$source|$enter|$forced|${outcome.name}|$error';
     if (sig == _lastCollectionTraceSig) return;
-    _lastCollectionTraceSig = sig;
     try {
-      await const DbWakeTraceStore().append(WakeTraceEntry(
+      await debugCollectionTraceStore.append(WakeTraceEntry(
         wakeEpochSec: epoch,
         atMs: _wakeNow().millisecondsSinceEpoch,
         kind: 'collection',
@@ -8363,6 +8372,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
           if (error != null) 'error': '$error',
         },
       ));
+      // Only a stored row counts as traced: a failed append is retried with
+      // the next identical outcome.
+      _lastCollectionTraceSig = sig;
     } catch (e) {
       _log('[wake] collection trace failed: $e');
     }
