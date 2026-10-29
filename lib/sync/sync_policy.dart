@@ -306,6 +306,52 @@ class BandPromptPolicy {
   }
 }
 
+/// What one band-prompt write did (`BleEngine.applyHighFreqWakeWindow`):
+/// written and claimed, already in force (nothing sent), the write failed,
+/// or it was not attempted (no link, or a newer request superseded it).
+enum PromptWriteOutcome { wrote, unchanged, failed, skipped }
+
+/// The wake-window lease prompts every 61 s; 2.5 periods without a prompt
+/// means the band is not prompting, whatever the engine believes it asked.
+const Duration kWakePromptSilenceLimit = Duration(seconds: 150);
+
+/// After a refresh that wrote, the keep-alive tick waits this long before
+/// asking again. Any other outcome retries on the next tick.
+const Duration kWakeCollectionRetryGap = Duration(minutes: 2);
+
+/// A band-prompt refresh still running after this long is superseded: a
+/// newer request starts its own run and the old one may no longer write.
+const Duration kBandPromptRunTimeout = Duration(seconds: 60);
+
+/// What the keep-alive tick does about the wake window's band prompt.
+enum WakeCollectionAction { none, refresh, forceReenter }
+
+/// Pure decision for `AppState._ensureWakeCollection`, inside the collection
+/// span only. Times are the caller's; nothing here reads a clock.
+WakeCollectionAction wakeCollectionAction({
+  required DateTime now,
+  required DateTime wakeAt,
+  required String? reason,
+  required DateTime? until,
+  required DateTime? lastPromptAt,
+  required DateTime? enteredAt,
+  required DateTime? lastAttemptAt,
+  required PromptWriteOutcome? lastOutcome,
+}) {
+  // RED STUB: today's behaviour (lease end only, flat throttle).
+  final covered = until != null &&
+      reason != null &&
+      reason != kIosBackgroundPromptReason &&
+      until.isAfter(now.add(const Duration(minutes: 3))) &&
+      !until.isBefore(wakeAt);
+  if (covered) return WakeCollectionAction.none;
+  if (lastAttemptAt != null &&
+      now.difference(lastAttemptAt) < kWakeCollectionRetryGap) {
+    return WakeCollectionAction.none;
+  }
+  return WakeCollectionAction.refresh;
+}
+
 /// True when a connection reporting "connected" should NOT be trusted because
 /// no data has actually arrived recently. The bar depends on what inbound
 /// traffic a healthy link actually produces: [kLinkFreshnessSeconds] while a

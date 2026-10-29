@@ -4,7 +4,10 @@
 import 'package:openstrap_edge/ble/ble_engine.dart';
 
 class FakeAlarmEngine extends BleEngine {
-  FakeAlarmEngine() : super(onRecord: (_, _) async {}, onState: (_) {}) {
+  /// [clock] is the engine's own clock (prompt and ENTER stamps), so a test
+  /// can place them in the past without moving the app's.
+  FakeAlarmEngine({super.clock})
+      : super(onRecord: (_, _) async {}, onState: (_) {}) {
     state.connection = 'connected';
   }
 

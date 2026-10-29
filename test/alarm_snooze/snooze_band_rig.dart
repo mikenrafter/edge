@@ -38,6 +38,7 @@ import 'package:openstrap_edge/haptics/builtin_patterns.dart';
 import 'package:openstrap_edge/haptics/haptics_service.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/paired_device.dart' show PairedDevice;
+import 'package:openstrap_edge/sync/sync_policy.dart' show PromptWriteOutcome;
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
 import '../support/wake_fakes.dart' show TestClock;
@@ -88,12 +89,14 @@ class SnoozeBandEngine extends BleEngine {
   final List<String> userDisables = [];
 
   @override
-  Future<void> applyHighFreqWakeWindow({
+  Future<PromptWriteOutcome> applyHighFreqWakeWindow({
     required bool enabled,
     required DateTime? targetWake,
     Duration duration = const Duration(seconds: 7200),
     int intervalSeconds = 180,
     String reason = 'wake_window',
+    bool force = false,
+    bool Function()? stillCurrent,
   }) {
     prompts.add((
       enabled: enabled && targetWake != null,
@@ -107,6 +110,8 @@ class SnoozeBandEngine extends BleEngine {
       duration: duration,
       intervalSeconds: intervalSeconds,
       reason: reason,
+      force: force,
+      stillCurrent: stillCurrent,
     );
   }
 

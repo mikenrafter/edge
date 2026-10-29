@@ -34,6 +34,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/band_ownership.dart';
 import 'package:openstrap_edge/sync/paired_device.dart';
 import 'package:openstrap_edge/sync/reset_gate.dart';
+import 'package:openstrap_edge/sync/sync_policy.dart' show PromptWriteOutcome;
 
 import 'app_state_derive_harness.dart' show deriveHook, HookCall, TickCounter, settleMs, until;
 
@@ -269,15 +270,18 @@ class SyncFakeEngine extends BleEngine {
   void setBackground(bool value) => events.add('setBackground:$value');
 
   @override
-  Future<void> applyHighFreqWakeWindow({
+  Future<PromptWriteOutcome> applyHighFreqWakeWindow({
     required bool enabled,
     required DateTime? targetWake,
     Duration duration = const Duration(seconds: 7200),
     int intervalSeconds = 180,
     String reason = 'wake_window',
+    bool force = false,
+    bool Function()? stillCurrent,
   }) async {
     if (stamp != null) promptStamps.add(await stamp!());
     events.add('prompt:$enabled');
+    return PromptWriteOutcome.wrote;
   }
 
   @override

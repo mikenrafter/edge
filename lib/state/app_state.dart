@@ -208,6 +208,7 @@ import '../sync/sync_policy.dart'
     show
         BandPromptPolicy,
         BandPromptRequest,
+        PromptWriteOutcome,
         kIosBackgroundPromptReason,
         kSnoozePromptReason;
 import '../sync/update_service.dart';
@@ -3212,7 +3213,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       unawaited(engine
           .applyHighFreqWakeWindow(
               enabled: false, targetWake: null, reason: kSnoozePromptReason)
-          .catchError((Object _) {}));
+          .catchError((Object _) => PromptWriteOutcome.failed));
     }
     // Both controllers cancel their timer and nothing else: a live workout is
     // not finalized, the display hold and Live Activity are not released, the

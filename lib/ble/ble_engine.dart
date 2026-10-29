@@ -2221,6 +2221,12 @@ class BleEngine implements AlarmBandWriter {
   /// gone — a reconnect resets both, so a caller re-applies after it.
   String? get highFreqReason => _highFreqReason;
   DateTime? get highFreqUntil => _highFreqUntil;
+
+  /// When the band last sent HIGH_FREQ_SYNC_PROMPT ([clock] time). RED STUB.
+  DateTime? get lastHighFreqPromptAt => null;
+
+  /// When the current ENTER was written and claimed ([clock] time). RED STUB.
+  DateTime? get highFreqEnteredAt => null;
   final Map<int, int> _lastSequenceByRevision = <int, int>{};
   int? _strapHistoryOldestTs;
   int? _strapHistoryNewestTs;
@@ -5123,24 +5129,26 @@ class BleEngine implements AlarmBandWriter {
   /// an interval of 60 or less, not because anything established it. A shorter
   /// interval means more wake/connect cycles for the same result; the pinned
   /// cadence is the one with evidence behind it.
-  Future<void> applyHighFreqWakeWindow({
+  Future<PromptWriteOutcome> applyHighFreqWakeWindow({
     required bool enabled,
     required DateTime? targetWake,
     Duration duration = const Duration(seconds: 7200),
     int intervalSeconds = 180,
     String reason = 'wake_window',
+    bool force = false,
+    bool Function()? stillCurrent,
   }) async {
-    if (_session?.connected != true) return;
+    if (_session?.connected != true) return PromptWriteOutcome.skipped;
     if (!enabled || targetWake == null) {
       await _disableHighFreqSync(reason: '$reason:outside_window');
-      return;
+      return PromptWriteOutcome.skipped;
     }
     final unchanged =
         _highFreqModeRequested &&
         _highFreqReason == reason &&
         _highFreqUntil?.millisecondsSinceEpoch ==
             targetWake.millisecondsSinceEpoch;
-    if (unchanged) return;
+    if (unchanged) return PromptWriteOutcome.skipped;
     _log(
       '[SYNC] HighFreq enter ($reason) — interval=${intervalSeconds}s '
       'duration=${duration.inSeconds}s until=${targetWake.toIso8601String()}',
@@ -5164,14 +5172,15 @@ class BleEngine implements AlarmBandWriter {
       ),
       owner: session,
     );
-    if (_liveStale(session, generation)) return;
+    if (_liveStale(session, generation)) return PromptWriteOutcome.skipped;
     if (!ok) {
       _log('[SYNC] HighFreq enter ($reason) write FAILED — mode NOT claimed.');
-      return;
+      return PromptWriteOutcome.skipped;
     }
     _highFreqModeRequested = true;
     _highFreqReason = reason;
     _highFreqUntil = targetWake;
+    return PromptWriteOutcome.skipped;
   }
 
   Future<void> _disableHighFreqSync({required String reason}) async {
