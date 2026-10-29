@@ -48,6 +48,7 @@ import 'natural_wake_tuning.dart';
 import 'wake_confounders.dart';
 import 'wake_night_context.dart';
 import 'wake_settings.dart';
+import 'wake_harness.dart';
 
 /// [HeadlessSyncGate] owner for background wake ticks.
 const String kWakeGateOwner = 'wake_tick';
@@ -220,7 +221,12 @@ class WakePlanInput {
     this.expectedSchedule,
     this.sleepOnset,
     this.upgradePending = false,
+    this.harness = WakeHarnessConfig.defaults,
   });
+
+  /// The developer wake harness in force for this tick (defaults outside
+  /// developer mode).
+  final WakeHarnessConfig harness;
 
   /// T, the armed native alarm instant.
   final DateTime wakeAt;
@@ -250,7 +256,10 @@ class WakePlanInput {
         expectedSchedule: expectedSchedule,
         sleepOnset: onset,
         upgradePending: upgradePending,
+        harness: harness,
       );
+
+  WakePlanInput withHarness(WakeHarnessConfig h) => this;
 
   int get wakeSec => wakeAt.millisecondsSinceEpoch ~/ 1000;
   WakeConfiguration get configuration => wakeConfigurationOf(
