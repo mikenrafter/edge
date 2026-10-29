@@ -319,10 +319,6 @@ const Duration kWakePromptSilenceLimit = Duration(seconds: 150);
 /// asking again. Any other outcome retries on the next tick.
 const Duration kWakeCollectionRetryGap = Duration(minutes: 2);
 
-/// A band-prompt refresh still running after this long is superseded: a
-/// newer request starts its own run and the old one may no longer write.
-const Duration kBandPromptRunTimeout = Duration(seconds: 60);
-
 /// A band-prompt caller's claim to still be the newest request. The engine
 /// checks it before the transport write and again before claiming the mode,
 /// so a superseded refresh can neither send nor overwrite a newer one's state.
@@ -345,27 +341,56 @@ WakeCollectionAction wakeCollectionAction({
   required DateTime? lastAttemptAt,
   required PromptWriteOutcome? lastOutcome,
 }) {
-  // A wake-window lease the engine holds past the alarm. An iOS background
-  // lease prompts every 900 s and never counts: it gets a normal refresh.
-  final covered = until != null &&
-      reason != null &&
-      reason != kIosBackgroundPromptReason &&
-      until.isAfter(now.add(const Duration(minutes: 3))) &&
-      !until.isBefore(wakeAt);
-  bool recent(DateTime? t) =>
-      t != null && now.difference(t) <= kWakePromptSilenceLimit;
-  // Covered AND prompting (or the ENTER is too fresh to have prompted yet).
-  if (covered && (recent(lastPromptAt) || recent(enteredAt))) {
-    return WakeCollectionAction.none;
-  }
+  final silent = wakeLeaseSilent(
+      now: now,
+      wakeAt: wakeAt,
+      reason: reason,
+      until: until,
+      lastPromptAt: lastPromptAt,
+      enteredAt: enteredAt);
+  // Prompting, and more than 3 minutes of lease left: nothing to do.
+  final covered = !silent &&
+      wakeLeaseHeld(wakeAt: wakeAt, reason: reason, until: until) &&
+      until!.isAfter(now.add(const Duration(minutes: 3)));
+  if (covered) return WakeCollectionAction.none;
   if (lastOutcome == PromptWriteOutcome.wrote &&
       lastAttemptAt != null &&
       now.difference(lastAttemptAt) < kWakeCollectionRetryGap) {
     return WakeCollectionAction.none;
   }
-  return covered
+  return silent
       ? WakeCollectionAction.forceReenter
       : WakeCollectionAction.refresh;
+}
+
+/// The engine holds a wake-window lease that reaches the alarm. An iOS
+/// background lease prompts every 900 s and never counts.
+bool wakeLeaseHeld({
+  required DateTime wakeAt,
+  required String? reason,
+  required DateTime? until,
+}) =>
+    until != null &&
+    reason != null &&
+    reason != kIosBackgroundPromptReason &&
+    !until.isBefore(wakeAt);
+
+/// A held wake lease that has not prompted for [kWakePromptSilenceLimit],
+/// and whose ENTER is older than that too. Independent of the 3-minute
+/// renewal margin: a silent lease stays eligible for a forced ENTER until T.
+bool wakeLeaseSilent({
+  required DateTime now,
+  required DateTime wakeAt,
+  required String? reason,
+  required DateTime? until,
+  required DateTime? lastPromptAt,
+  required DateTime? enteredAt,
+}) {
+  bool recent(DateTime? t) =>
+      t != null && now.difference(t) <= kWakePromptSilenceLimit;
+  return wakeLeaseHeld(wakeAt: wakeAt, reason: reason, until: until) &&
+      !recent(lastPromptAt) &&
+      !recent(enteredAt);
 }
 
 /// True when a connection reporting "connected" should NOT be trusted because
