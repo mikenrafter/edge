@@ -6,6 +6,9 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/wake/wake_confounders.dart';
+import 'package:openstrap_edge/wake/wake_harness.dart';
+import 'package:openstrap_edge/wake/wake_harness_ledger.dart';
 import 'package:openstrap_edge/wake/wake_stores.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -107,6 +110,68 @@ void main() {
     final recent = await LocalDb.wakeTraceRecent();
     expect(recent.where((r) => r['kind'] == 'harness'), hasLength(1));
     expect(recent.where((r) => r['kind'] == 'natural'), hasLength(400));
+  });
+
+  test('after a restore the recorder resumes the sequence from the restored '
+      'rows (its bookkeeping is not restored)', () async {
+    Map<String, Object?> rec(double hr) {
+      final c = WakeHarnessConfig(rule: WakeRule.legacy, hrRiseBpm: hr);
+      return c.provenance(
+          learnedOffsetSec: 0, composed: c.compose(const ConfounderProfile()));
+    }
+
+    var at = atMinute(-40).millisecondsSinceEpoch;
+    Future<void> record(double hr) async {
+      await WakeHarnessRecorder(const DbWakeHarnessLedger())
+          .record(epoch, rec(hr), untouched: false, atMs: at);
+      at += 30000;
+    }
+
+    await record(6);
+    await record(9);
+    await env.seedData();
+    final backup = await LocalDb.exportCopy();
+    await env.wipe();
+    await LocalDb.importFromDbFile(backup);
+    expect(await LocalDb.wakeMetaGet(kWakeHarnessLedgerKey), isNull,
+        reason: 'precondition: bookkeeping does not travel');
+    await record(6);
+    final rows = [
+      for (final r in await harnessRows())
+        jsonDecode(r['data_json'] as String) as Map,
+    ];
+    expect(rows.map((r) => r['seq']), [0, 1, 2]);
+    expect(rows.map((r) => (r['effective'] as Map)['hrRiseBpm']), [6, 9, 6]);
+  });
+
+  test('a ledger read failure on the switch back to A never restarts the '
+      'sequence', () async {
+    Map<String, Object?> rec(double hr) {
+      final c = WakeHarnessConfig(rule: WakeRule.legacy, hrRiseBpm: hr);
+      return c.provenance(
+          learnedOffsetSec: 0, composed: c.compose(const ConfounderProfile()));
+    }
+
+    final recorder = WakeHarnessRecorder(const DbWakeHarnessLedger());
+    var at = atMinute(-40).millisecondsSinceEpoch;
+    Future<void> record(double hr) async {
+      await recorder.record(epoch, rec(hr), untouched: false, atMs: at);
+      at += 30000;
+    }
+
+    await record(6);
+    await record(9);
+    // The bookkeeping cannot be read on the switch back to A.
+    await (await LocalDb.instance).execute('DROP TABLE wake_meta');
+    await record(6);
+    await LocalDb.close(); // reopening heals the missing table, empty
+    await record(6);
+    final rows = [
+      for (final r in await harnessRows())
+        jsonDecode(r['data_json'] as String) as Map,
+    ];
+    expect(rows.map((r) => r['seq']), [0, 1, 2]);
+    expect(rows.map((r) => (r['effective'] as Map)['hrRiseBpm']), [6, 9, 6]);
   });
 }
 

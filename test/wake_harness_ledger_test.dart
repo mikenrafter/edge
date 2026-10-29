@@ -14,6 +14,16 @@ const _epoch = 1791183600;
 class _FlakyLedger extends MemoryWakeHarnessLedger {
   _FlakyLedger(super.trace);
   int failures = 0;
+  int readFailures = 0;
+  @override
+  Future<Map<String, Object?>?> loadState() async {
+    if (readFailures > 0) {
+      readFailures--;
+      throw StateError('ledger read failed');
+    }
+    return super.loadState();
+  }
+
   final attempts = <WakeTraceEntry>[];
   @override
   Future<bool> appendOnce(WakeTraceEntry entry) async {
@@ -138,5 +148,67 @@ void main() {
       (await trace.forWake(_epoch + 86400)).single.data['seq'],
       0,
     );
+  });
+
+  group('Sol code r2', () {
+    const a = WakeHarnessConfig(rule: WakeRule.legacy, hrRiseBpm: 6);
+    const b = WakeHarnessConfig(rule: WakeRule.legacy, hrRiseBpm: 9);
+    Future<void> tick(WakeHarnessRecorder r, WakeHarnessConfig c,
+        [int epoch = _epoch]) async {
+      await r.record(epoch, rec(c), untouched: false,
+          atMs: clock.millisecondsSinceEpoch);
+      clock = clock.add(const Duration(seconds: 30));
+    }
+
+    List<Object?> hr(List<WakeTraceEntry> rows) =>
+        [for (final e in rows) (e.data['effective'] as Map)['hrRiseBpm']];
+
+    test('A fails, then B (A still failing), then A: B is kept', () async {
+      final l = _FlakyLedger(trace)..failures = 2;
+      final r = recorder(l);
+      await tick(r, a);
+      await tick(r, b);
+      await tick(r, a);
+      final got = await rows();
+      expect(got.map((e) => e.data['seq']), [0, 1, 2]);
+      expect(hr(got), [6, 9, 6]);
+    });
+
+    test('a pending entry survives a change of occurrence', () async {
+      final l = _FlakyLedger(trace)..failures = 1;
+      final r = recorder(l);
+      await tick(r, a);
+      await tick(r, a, _epoch + 86400);
+      expect(hr(await rows()), [6], reason: 'the first occurrence kept its A');
+      expect(await trace.forWake(_epoch + 86400), hasLength(1));
+    });
+
+    test('a ledger read failure on the switch back to A retries, never '
+        'resets the sequence', () async {
+      final l = _FlakyLedger(trace);
+      final r = recorder(l);
+      await tick(r, a);
+      await tick(r, b);
+      l.readFailures = 1;
+      await tick(r, a);
+      await tick(r, a);
+      final got = await rows();
+      expect(got.map((e) => e.data['seq']), [0, 1, 2]);
+      expect(hr(got), [6, 9, 6]);
+    });
+
+    test('missing bookkeeping (restore, fresh install) is recovered from the '
+        "occurrence's durable rows", () async {
+      await tick(recorder(MemoryWakeHarnessLedger(trace)), a);
+      await tick(recorder(MemoryWakeHarnessLedger(trace)), b);
+      // New, empty bookkeeping over the same durable rows each time.
+      await tick(recorder(MemoryWakeHarnessLedger(trace)), b);
+      expect((await rows()).map((e) => e.data['seq']), [0, 1],
+          reason: 'B is already the last recorded snapshot');
+      await tick(recorder(MemoryWakeHarnessLedger(trace)), a);
+      final got = await rows();
+      expect(got.map((e) => e.data['seq']), [0, 1, 2]);
+      expect(hr(got), [6, 9, 6]);
+    });
   });
 }
