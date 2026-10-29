@@ -16,6 +16,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:clock/clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/sync/sync_policy.dart';
@@ -29,6 +30,11 @@ Uint8List _eventInner(int id, {int ts = 1786000000}) {
     ..setUint16(2, id, Endian.little)
     ..setUint32(4, ts, Endian.little);
   return inner;
+}
+
+class _Ticket implements PromptWriteTicket {
+  @override
+  bool current = true;
 }
 
 bool _isEnter(Uint8List f) {
@@ -161,18 +167,13 @@ void main() {
 
   group('the engine', () {
     late BleEngine engine;
-    late DateTime engineNow;
     late List<Uint8List> frames;
     late Future<bool> Function(Uint8List) onWrite;
 
     setUp(() {
-      engineNow = DateTime(2026, 10, 27, 12, 0);
       frames = [];
       onWrite = (_) async => true;
-      engine = BleEngine(
-          onRecord: (_, _) async {},
-          onState: (_) {},
-          clock: () => engineNow);
+      engine = BleEngine(onRecord: (_, _) async {}, onState: (_) {});
       engine.debugInstallFakeLink(onWrite: (f) {
         frames.add(f);
         return onWrite(f);
@@ -182,26 +183,31 @@ void main() {
     int enters() => frames.where(_isEnter).length;
     final target = DateTime(2026, 10, 27, 13, 30);
 
+    /// The stamps read package:clock, so [at] places them.
     Future<PromptWriteOutcome> enter({
       bool force = false,
-      bool Function()? stillCurrent,
+      PromptWriteTicket? ticket,
+      DateTime? at,
     }) =>
-        engine.applyHighFreqWakeWindow(
-          enabled: true,
-          targetWake: target,
-          duration: const Duration(minutes: 90),
-          intervalSeconds: 61,
-          reason: 'scheduled_alarm',
-          force: force,
-          stillCurrent: stillCurrent,
-        );
+        withClock(
+            Clock.fixed(at ?? DateTime(2026, 10, 27, 12, 0)),
+            () => engine.applyHighFreqWakeWindow(
+                  enabled: true,
+                  targetWake: target,
+                  duration: const Duration(minutes: 90),
+                  intervalSeconds: 61,
+                  reason: 'scheduled_alarm',
+                  force: force,
+                  ticket: ticket,
+                ));
 
-    test('HIGH_FREQ_SYNC_PROMPT is stamped with the engine clock', () async {
+    test('HIGH_FREQ_SYNC_PROMPT is stamped with the receipt time', () async {
       expect(engine.lastHighFreqPromptAt, isNull);
-      engineNow = DateTime(2026, 10, 27, 12, 21, 7);
-      engine.debugReceiveFrame(
-          Frame(_eventInner(EventId.highFreqSyncPrompt), true, true),
-          role: 'events');
+      withClock(
+          Clock.fixed(DateTime(2026, 10, 27, 12, 21, 7)),
+          () => engine.debugReceiveFrame(
+              Frame(_eventInner(EventId.highFreqSyncPrompt), true, true),
+              role: 'events'));
       expect(engine.lastHighFreqPromptAt, DateTime(2026, 10, 27, 12, 21, 7));
     });
 
@@ -210,8 +216,7 @@ void main() {
       await enter();
       expect(engine.highFreqEnteredAt, isNull);
       onWrite = (_) async => true;
-      engineNow = DateTime(2026, 10, 27, 12, 5);
-      await enter();
+      await enter(at: DateTime(2026, 10, 27, 12, 5));
       expect(engine.highFreqEnteredAt, DateTime(2026, 10, 27, 12, 5));
     });
 
@@ -228,8 +233,8 @@ void main() {
     test('force re-sends an unchanged ENTER and re-stamps it', () async {
       await enter();
       expect(enters(), 1);
-      engineNow = DateTime(2026, 10, 27, 12, 10);
-      expect(await enter(force: true), PromptWriteOutcome.wrote);
+      expect(await enter(force: true, at: DateTime(2026, 10, 27, 12, 10)),
+          PromptWriteOutcome.wrote);
       expect(enters(), 2,
           reason: 'the "unchanged" short-circuit trusted the engine\'s own '
               'claim, which is the thing the watchdog doubts');
@@ -237,7 +242,7 @@ void main() {
     });
 
     test('a superseded caller writes nothing and claims nothing', () async {
-      expect(await enter(stillCurrent: () => false),
+      expect(await enter(ticket: _Ticket()..current = false),
           PromptWriteOutcome.skipped);
       expect(enters(), 0);
       expect(engine.highFreqReason, isNull);
@@ -247,11 +252,11 @@ void main() {
         'the mode', () async {
       final gate = Completer<bool>();
       onWrite = (f) => _isEnter(f) ? gate.future : Future.value(true);
-      var current = true;
-      final pending = enter(stillCurrent: () => current);
+      final ticket = _Ticket();
+      final pending = enter(ticket: ticket);
       await pumpEventQueue();
       expect(enters(), 1);
-      current = false;
+      ticket.current = false;
       gate.complete(true);
       expect(await pending, PromptWriteOutcome.skipped);
       expect(engine.highFreqReason, isNull);

@@ -38,7 +38,7 @@ import 'package:openstrap_edge/haptics/builtin_patterns.dart';
 import 'package:openstrap_edge/haptics/haptics_service.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/paired_device.dart' show PairedDevice;
-import 'package:openstrap_edge/sync/sync_policy.dart' show PromptWriteOutcome;
+import 'package:openstrap_edge/sync/sync_policy.dart' show PromptWriteOutcome, PromptWriteTicket;
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
 import '../support/wake_fakes.dart' show TestClock;
@@ -96,7 +96,7 @@ class SnoozeBandEngine extends BleEngine {
     int intervalSeconds = 180,
     String reason = 'wake_window',
     bool force = false,
-    bool Function()? stillCurrent,
+    PromptWriteTicket? ticket,
   }) {
     prompts.add((
       enabled: enabled && targetWake != null,
@@ -111,7 +111,7 @@ class SnoozeBandEngine extends BleEngine {
       intervalSeconds: intervalSeconds,
       reason: reason,
       force: force,
-      stillCurrent: stillCurrent,
+      ticket: ticket,
     );
   }
 

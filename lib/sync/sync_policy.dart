@@ -323,6 +323,13 @@ const Duration kWakeCollectionRetryGap = Duration(minutes: 2);
 /// newer request starts its own run and the old one may no longer write.
 const Duration kBandPromptRunTimeout = Duration(seconds: 60);
 
+/// A band-prompt caller's claim to still be the newest request. The engine
+/// checks it before the transport write and again before claiming the mode,
+/// so a superseded refresh can neither send nor overwrite a newer one's state.
+abstract interface class PromptWriteTicket {
+  bool get current;
+}
+
 /// What the keep-alive tick does about the wake window's band prompt.
 enum WakeCollectionAction { none, refresh, forceReenter }
 
@@ -338,18 +345,27 @@ WakeCollectionAction wakeCollectionAction({
   required DateTime? lastAttemptAt,
   required PromptWriteOutcome? lastOutcome,
 }) {
-  // RED STUB: today's behaviour (lease end only, flat throttle).
+  // A wake-window lease the engine holds past the alarm. An iOS background
+  // lease prompts every 900 s and never counts: it gets a normal refresh.
   final covered = until != null &&
       reason != null &&
       reason != kIosBackgroundPromptReason &&
       until.isAfter(now.add(const Duration(minutes: 3))) &&
       !until.isBefore(wakeAt);
-  if (covered) return WakeCollectionAction.none;
-  if (lastAttemptAt != null &&
+  bool recent(DateTime? t) =>
+      t != null && now.difference(t) <= kWakePromptSilenceLimit;
+  // Covered AND prompting (or the ENTER is too fresh to have prompted yet).
+  if (covered && (recent(lastPromptAt) || recent(enteredAt))) {
+    return WakeCollectionAction.none;
+  }
+  if (lastOutcome == PromptWriteOutcome.wrote &&
+      lastAttemptAt != null &&
       now.difference(lastAttemptAt) < kWakeCollectionRetryGap) {
     return WakeCollectionAction.none;
   }
-  return WakeCollectionAction.refresh;
+  return covered
+      ? WakeCollectionAction.forceReenter
+      : WakeCollectionAction.refresh;
 }
 
 /// True when a connection reporting "connected" should NOT be trusted because

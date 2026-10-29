@@ -114,6 +114,9 @@ sealed class EcgEngineEvent {
 /// package:clock's zone-aware stopwatch (fake time under fakeAsync).
 Stopwatch _packageClockStopwatch() => clock.stopwatch();
 
+/// package:clock's zone-aware now, for the band-prompt stamps.
+DateTime _packageClockNow() => clock.now();
+
 class EcgFrameEvent extends EcgEngineEvent {
   final LabradorR17 r17;
   const EcgFrameEvent(this.r17, super.linkGeneration);
@@ -2215,6 +2218,8 @@ class BleEngine implements AlarmBandWriter {
   DateTime? _highFreqUntil;
   String? _highFreqReason;
   bool _highFreqModeRequested = false;
+  DateTime? _lastHighFreqPromptAt;
+  DateTime? _highFreqEnteredAt;
 
   /// What the band is currently asked to prompt (ENTER_HIGH_FREQ_SYNC), as
   /// last applied on this link. Null when the mode is off or the link is
@@ -2222,11 +2227,15 @@ class BleEngine implements AlarmBandWriter {
   String? get highFreqReason => _highFreqReason;
   DateTime? get highFreqUntil => _highFreqUntil;
 
-  /// When the band last sent HIGH_FREQ_SYNC_PROMPT ([clock] time). RED STUB.
-  DateTime? get lastHighFreqPromptAt => null;
+  /// When the band last sent HIGH_FREQ_SYNC_PROMPT on this link (package:clock
+  /// time). The proof that a lease is actually prompting, which
+  /// [highFreqUntil] (what was asked) is not.
+  DateTime? get lastHighFreqPromptAt => _lastHighFreqPromptAt;
 
-  /// When the current ENTER was written and claimed ([clock] time). RED STUB.
-  DateTime? get highFreqEnteredAt => null;
+  /// When the ENTER behind the current claim was written (package:clock
+  /// time), so a
+  /// fresh lease gets time for its first prompt.
+  DateTime? get highFreqEnteredAt => _highFreqEnteredAt;
   final Map<int, int> _lastSequenceByRevision = <int, int>{};
   int? _strapHistoryOldestTs;
   int? _strapHistoryNewestTs;
@@ -3112,6 +3121,8 @@ class BleEngine implements AlarmBandWriter {
       _highFreqModeRequested = false;
       _highFreqReason = null;
       _highFreqUntil = null;
+      _highFreqEnteredAt = null;
+      _lastHighFreqPromptAt = null;
       _lastSequenceByRevision.clear();
       _historicalVersionCounts.clear();
       _historicalOpticalDebugKeys.clear();
@@ -5129,6 +5140,12 @@ class BleEngine implements AlarmBandWriter {
   /// an interval of 60 or less, not because anything established it. A shorter
   /// interval means more wake/connect cycles for the same result; the pinned
   /// cadence is the one with evidence behind it.
+  ///
+  /// [force] re-sends an ENTER the engine believes is already in force (the
+  /// wake-window watchdog: no prompt has arrived, so the claim is doubted).
+  /// [ticket] is the caller's generation check: stale before the write
+  /// means nothing is sent, stale after it means the mode is not claimed, so
+  /// a superseded caller can never overwrite a newer one's state.
   Future<PromptWriteOutcome> applyHighFreqWakeWindow({
     required bool enabled,
     required DateTime? targetWake,
@@ -5136,21 +5153,23 @@ class BleEngine implements AlarmBandWriter {
     int intervalSeconds = 180,
     String reason = 'wake_window',
     bool force = false,
-    bool Function()? stillCurrent,
+    PromptWriteTicket? ticket,
   }) async {
     if (_session?.connected != true) return PromptWriteOutcome.skipped;
+    if (ticket != null && !ticket.current) return PromptWriteOutcome.skipped;
     if (!enabled || targetWake == null) {
-      await _disableHighFreqSync(reason: '$reason:outside_window');
-      return PromptWriteOutcome.skipped;
+      return _disableHighFreqSync(
+          reason: '$reason:outside_window', ticket: ticket);
     }
     final unchanged =
         _highFreqModeRequested &&
         _highFreqReason == reason &&
         _highFreqUntil?.millisecondsSinceEpoch ==
             targetWake.millisecondsSinceEpoch;
-    if (unchanged) return PromptWriteOutcome.skipped;
+    if (unchanged && !force) return PromptWriteOutcome.unchanged;
     _log(
-      '[SYNC] HighFreq enter ($reason) — interval=${intervalSeconds}s '
+      '[SYNC] HighFreq enter ($reason${force ? ', forced' : ''}) — '
+      'interval=${intervalSeconds}s '
       'duration=${duration.inSeconds}s until=${targetWake.toIso8601String()}',
     );
     // Frame for the SESSION'S band. Built gen4-only, a gen5 strap got a header
@@ -5171,24 +5190,34 @@ class BleEngine implements AlarmBandWriter {
         profile: session.band,
       ),
       owner: session,
+      beforeTransport: ticket == null ? null : () => ticket.current,
     );
     if (_liveStale(session, generation)) return PromptWriteOutcome.skipped;
+    if (ticket != null && !ticket.current) {
+      _log('[SYNC] HighFreq enter ($reason) superseded — mode NOT claimed.');
+      return PromptWriteOutcome.skipped;
+    }
     if (!ok) {
       _log('[SYNC] HighFreq enter ($reason) write FAILED — mode NOT claimed.');
-      return PromptWriteOutcome.skipped;
+      return PromptWriteOutcome.failed;
     }
     _highFreqModeRequested = true;
     _highFreqReason = reason;
     _highFreqUntil = targetWake;
-    return PromptWriteOutcome.skipped;
+    _highFreqEnteredAt = _packageClockNow();
+    return PromptWriteOutcome.wrote;
   }
 
-  Future<void> _disableHighFreqSync({required String reason}) async {
+  Future<PromptWriteOutcome> _disableHighFreqSync({
+    required String reason,
+    PromptWriteTicket? ticket,
+  }) async {
     if (_session?.connected != true || !_highFreqModeRequested) {
       _highFreqModeRequested = false;
       _highFreqReason = null;
       _highFreqUntil = null;
-      return;
+      _highFreqEnteredAt = null;
+      return PromptWriteOutcome.unchanged;
     }
     _log('[SYNC] HighFreq exit ($reason).');
     // Same pinning as the ENTER above: an EXIT written to a link that is gone
@@ -5196,14 +5225,18 @@ class BleEngine implements AlarmBandWriter {
     // has since programmed.
     final session = _session!;
     final generation = _linkGeneration;
-    await _write(
+    final ok = await _write(
       cmdExitHighFreqSync(_seq.nextLive(), profile: session.band),
       owner: session,
+      beforeTransport: ticket == null ? null : () => ticket.current,
     );
-    if (_liveStale(session, generation)) return;
+    if (_liveStale(session, generation)) return PromptWriteOutcome.skipped;
+    if (ticket != null && !ticket.current) return PromptWriteOutcome.skipped;
     _highFreqModeRequested = false;
     _highFreqReason = null;
     _highFreqUntil = null;
+    _highFreqEnteredAt = null;
+    return ok ? PromptWriteOutcome.wrote : PromptWriteOutcome.failed;
   }
 
   // ── record store sinks (wrap the caller's sinks + arm the derive debounce) ──────
@@ -6591,6 +6624,7 @@ class BleEngine implements AlarmBandWriter {
         }
         return;
       case EventId.highFreqSyncPrompt:
+        _lastHighFreqPromptAt = _packageClockNow();
         _log(
           '[SYNC] HighFreq prompt received — scheduling a one-shot historical refresh.',
         );
@@ -6611,6 +6645,7 @@ class BleEngine implements AlarmBandWriter {
         _highFreqModeRequested = false;
         _highFreqReason = null;
         _highFreqUntil = null;
+        _highFreqEnteredAt = null;
         return;
     }
   }

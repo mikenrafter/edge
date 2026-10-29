@@ -34,7 +34,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/band_ownership.dart';
 import 'package:openstrap_edge/sync/paired_device.dart';
 import 'package:openstrap_edge/sync/reset_gate.dart';
-import 'package:openstrap_edge/sync/sync_policy.dart' show PromptWriteOutcome;
+import 'package:openstrap_edge/sync/sync_policy.dart' show PromptWriteOutcome, PromptWriteTicket;
 
 import 'app_state_derive_harness.dart' show deriveHook, HookCall, TickCounter, settleMs, until;
 
@@ -277,7 +277,7 @@ class SyncFakeEngine extends BleEngine {
     int intervalSeconds = 180,
     String reason = 'wake_window',
     bool force = false,
-    bool Function()? stillCurrent,
+    PromptWriteTicket? ticket,
   }) async {
     if (stamp != null) promptStamps.add(await stamp!());
     events.add('prompt:$enabled');

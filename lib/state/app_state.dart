@@ -15,6 +15,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:clock/clock.dart' show clock;
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
@@ -209,8 +210,11 @@ import '../sync/sync_policy.dart'
         BandPromptPolicy,
         BandPromptRequest,
         PromptWriteOutcome,
-        kIosBackgroundPromptReason,
-        kSnoozePromptReason;
+        PromptWriteTicket,
+        WakeCollectionAction,
+        kBandPromptRunTimeout,
+        kSnoozePromptReason,
+        wakeCollectionAction;
 import '../sync/update_service.dart';
 import '../telemetry/telemetry_service.dart';
 import '../telemetry/health_uploader.dart';
@@ -7494,6 +7498,11 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// stager reads. Here a tick in that span with no prompt running, or one
   /// about to lapse, refreshes the plan (coalesced; an unchanged plan writes
   /// nothing). Never reads the power mode: the window is the user's request.
+  ///
+  /// The engine's lease is only what was ASKED. A lease that has not produced
+  /// a prompt for 150 s is re-ENTERed even though it looks unchanged (field
+  /// night 10-27: the lease lapsed at ~12:21 and nothing asked again before
+  /// the 13:00 window). See [wakeCollectionAction] for the retry timing.
   DateTime? _lastWakeCollectionCheckAt;
 
   void _ensureWakeCollection() {
@@ -7510,21 +7519,24 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     final now = DateTime.now();
     final from = wakeAt.subtract(naturalCollectionLead(planned.minutes + 10));
     if (now.isBefore(from) || !now.isBefore(wakeAt)) return;
-    final until = engine.highFreqUntil;
-    // Only a wake-window lease (61 s prompts) collects for the stager. The iOS
-    // background keep-alive lease prompts every 900 s: it can run past the
-    // alarm without covering the window, so it must not suppress the request.
-    final reason = engine.highFreqReason;
-    final covered = until != null &&
-        reason != null &&
-        reason != kIosBackgroundPromptReason &&
-        until.isAfter(now.add(const Duration(minutes: 3))) &&
-        !until.isBefore(wakeAt);
-    if (covered) return;
-    final last = _lastWakeCollectionCheckAt;
-    if (last != null && now.difference(last) < const Duration(minutes: 2)) return;
+    final action = wakeCollectionAction(
+      now: now,
+      wakeAt: wakeAt,
+      reason: engine.highFreqReason,
+      until: engine.highFreqUntil,
+      lastPromptAt: engine.lastHighFreqPromptAt,
+      enteredAt: engine.highFreqEnteredAt,
+      lastAttemptAt: _lastWakeCollectionCheckAt,
+      lastOutcome: _lastBandPromptOutcome,
+    );
+    if (action == WakeCollectionAction.none) return;
     _lastWakeCollectionCheckAt = now;
-    unawaited(_refreshHighFreqWakeWindow());
+    final force = action == WakeCollectionAction.forceReenter;
+    if (force) {
+      _log('[SYNC] Band prompt: no prompt for 150 s on a lease the engine '
+          'holds — re-ENTER.');
+    }
+    unawaited(_refreshHighFreqWakeWindow(force: force));
   }
 
   /// The occurrence (unix s) whose Natural Wake has fired or been acknowledged:
@@ -8107,36 +8119,86 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   /// foregrounded could outlive the foreground pass's EXIT (which, seeing
   /// nothing requested yet, would not even be written), leaving the band
   /// prompting in the foreground with the engine believing it asked for it.
-  Future<void> _refreshHighFreqWakeWindow() {
+  ///
+  /// A run still going after [kBandPromptRunTimeout] (a hung write or read)
+  /// no longer blocks: the next request starts a new GENERATION. The old run
+  /// is not cancelled, but every write it makes checks its generation first
+  /// (before transport and before claiming the mode), its loop stops, and
+  /// only the owning generation clears [_bandPromptRun]. Limit: the engine's
+  /// writes are serialized, so a write hung on the wire still delays the
+  /// newer run's write; the check only stops the stale one from claiming.
+  ///
+  /// [force]: re-send an ENTER the engine believes is in force (the
+  /// keep-alive watchdog). Carried into a running pass's next loop.
+  Future<void> _refreshHighFreqWakeWindow({bool force = false}) {
+    if (force) _bandPromptForce = true;
     final running = _bandPromptRun;
-    if (running != null) {
+    final started = _bandPromptRunStartedAt;
+    if (running != null &&
+        started != null &&
+        clock.now().difference(started) < kBandPromptRunTimeout) {
       _bandPromptRestale = true;
       return running;
     }
-    final run = _bandPromptRun = () async {
-      try {
-        do {
-          _bandPromptRestale = false;
-          await _refreshHighFreqWakeWindowOnce();
-        } while (_bandPromptRestale);
-      } finally {
+    if (running != null) {
+      _log('[SYNC] Band prompt refresh still running after '
+          '${kBandPromptRunTimeout.inSeconds} s — superseded (generation '
+          '$_bandPromptGen).');
+    }
+    final gen = ++_bandPromptGen;
+    _bandPromptRunStartedAt = clock.now();
+    return _bandPromptRun = _runBandPrompt(_BandPromptTicket(this, gen));
+  }
+
+  Future<void> _runBandPrompt(_BandPromptTicket ticket) async {
+    try {
+      do {
+        _bandPromptRestale = false;
+        final f = _bandPromptForce;
+        _bandPromptForce = false;
+        await _refreshHighFreqWakeWindowOnce(ticket, force: f);
+      } while (_bandPromptRestale && ticket.current);
+    } finally {
+      // Only the owning generation clears the pointer: a superseded run
+      // finishing late must not drop its successor's.
+      if (ticket.current) {
         _bandPromptRun = null;
+        _bandPromptRunStartedAt = null;
       }
-    }();
-    return run;
+    }
   }
 
   Future<void>? _bandPromptRun;
+  DateTime? _bandPromptRunStartedAt;
+  int _bandPromptGen = 0;
   bool _bandPromptRestale = false;
+  bool _bandPromptForce = false;
 
-  Future<void> _refreshHighFreqWakeWindowOnce() async {
-    if (!engine.isConnected) return;
+  /// The newest refresh's outcome; [wakeCollectionAction] holds the retry for
+  /// 2 min only after a write that landed.
+  PromptWriteOutcome? _lastBandPromptOutcome;
+
+  /// Signature of the last `collection` trace row, so each outcome is written
+  /// once per change rather than once per refresh.
+  String? _lastCollectionTraceSig;
+
+  Future<void> _refreshHighFreqWakeWindowOnce(_BandPromptTicket ticket,
+      {bool force = false}) async {
+    if (!engine.isConnected) {
+      _lastBandPromptOutcome = PromptWriteOutcome.skipped;
+      return;
+    }
+    ({DateTime windowEnd, int minutes})? armed;
+    String? source;
+    var enter = false;
+    var outcome = PromptWriteOutcome.skipped;
+    Object? error;
     try {
       // Collection follows the SCHEDULE, not whether this process currently
       // tracks an armed epoch (see [plannedCollectionWindow]): an epoch cleared
       // by a fire, a replayed event or a restart must not switch off the
       // window the user asked for.
-      final armed = plannedCollectionWindow(
+      armed = plannedCollectionWindow(
         epoch: alarmEpoch,
         schedule: _schedule,
         upgrade: wake.runningUpgradeState,
@@ -8150,6 +8212,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
           _wakeCollectionDoneEpoch ==
               armed.windowEnd.millisecondsSinceEpoch ~/ 1000 &&
           DateTime.now().isBefore(armed.windowEnd);
+      if (!ticket.current) return;
       final plan = collectionDone
           ? const HighFreqWakePlan(
               shouldEnable: false,
@@ -8161,6 +8224,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
               scheduledWindowMinutes: armed?.minutes ?? 0,
               expectedSchedule: sleepOperations.schedule,
             );
+      source = plan.source;
       final target = plan.targetWake;
       final iosBackgrounded = _background && Platform.isIOS;
       final req = BandPromptPolicy.plan(
@@ -8177,28 +8241,80 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
         currentUntil: engine.highFreqUntil,
         now: DateTime.now(),
       );
+      enter = req != null;
       if (req == null) {
-        await engine.applyHighFreqWakeWindow(
+        outcome = await engine.applyHighFreqWakeWindow(
           enabled: false,
           targetWake: null,
           reason: plan.source,
+          ticket: ticket,
         );
       } else {
-        await engine.applyHighFreqWakeWindow(
+        outcome = await engine.applyHighFreqWakeWindow(
           enabled: true,
           targetWake: req.until,
           duration: req.duration,
           intervalSeconds: req.intervalSeconds,
           reason: req.reason,
+          force: force,
+          ticket: ticket,
         );
       }
       _log(
         '[SYNC] Band prompt: smartWake=${plan.shouldEnable} '
         '(source=${plan.source} samples=${plan.sampleCount}) '
-        'iosBackground=$iosBackgrounded → ${req ?? 'off'}',
+        'iosBackground=$iosBackgrounded → ${req ?? 'off'} '
+        '(${outcome.name}${force ? ', forced' : ''})',
       );
     } catch (e) {
+      outcome = PromptWriteOutcome.failed;
+      error = e;
       _log('[SYNC] Band prompt refresh skipped: $e');
+    }
+    if (!ticket.current) return;
+    _lastBandPromptOutcome = outcome;
+    await _traceCollection(armed,
+        source: source, enter: enter, forced: force, outcome: outcome,
+        error: error);
+  }
+
+  /// F4: each refresh outcome inside the collection span goes to `wake_trace`
+  /// as kind `collection`, once per change, so the next field report says
+  /// whether the window was asked for and what came back. Diagnostic only
+  /// (not a journal kind: it expires with the other diagnostics). Never
+  /// throws.
+  Future<void> _traceCollection(
+    ({DateTime windowEnd, int minutes})? armed, {
+    required String? source,
+    required bool enter,
+    required bool forced,
+    required PromptWriteOutcome outcome,
+    required Object? error,
+  }) async {
+    if (armed == null) return;
+    final wakeAt = armed.windowEnd;
+    final now = DateTime.now();
+    final from = wakeAt.subtract(naturalCollectionLead(armed.minutes + 10));
+    if (now.isBefore(from) || !now.isBefore(wakeAt)) return;
+    final epoch = wakeAt.millisecondsSinceEpoch ~/ 1000;
+    final sig = '$epoch|$source|$enter|$forced|${outcome.name}|$error';
+    if (sig == _lastCollectionTraceSig) return;
+    _lastCollectionTraceSig = sig;
+    try {
+      await const DbWakeTraceStore().append(WakeTraceEntry(
+        wakeEpochSec: epoch,
+        atMs: _wakeNow().millisecondsSinceEpoch,
+        kind: 'collection',
+        data: {
+          'outcome': outcome.name,
+          'source': source,
+          'enter': enter,
+          'forced': forced,
+          if (error != null) 'error': '$error',
+        },
+      ));
+    } catch (e) {
+      _log('[wake] collection trace failed: $e');
     }
   }
 
@@ -8644,4 +8760,15 @@ class _NapExtendsSleep implements MainSleepExtendedListener {
   Future<void> mainSleepExtended(String day) async {
     await app.sleepOperations.recalculate(day);
   }
+}
+
+/// One band-prompt refresh generation ([AppState._refreshHighFreqWakeWindow]):
+/// current while no newer run has superseded it.
+class _BandPromptTicket implements PromptWriteTicket {
+  _BandPromptTicket(this._app, this._gen);
+  final AppState _app;
+  final int _gen;
+
+  @override
+  bool get current => _gen == _app._bandPromptGen;
 }

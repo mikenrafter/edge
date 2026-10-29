@@ -2,9 +2,10 @@
 // arriving (spec dev-harness §5.1 F1-F5, §9 Part A), driven through the REAL
 // AppState and engine with a fake link.
 //
-// The engine's clock is separate from the app's here: placing the ENTER and
-// the prompts in the past is how a test says "the band has been silent for
-// N seconds" without waiting.
+// The engine stamps prompts and ENTERs with package:clock while the app's
+// tick reads the wall clock: running the band side under `withClock` in the
+// past is how a test says "the band has been silent for N seconds" without
+// waiting.
 
 import 'dart:async';
 import 'dart:convert';
@@ -44,7 +45,6 @@ Uint8List _prompt() {
 
 /// A band whose prompt write can be made to throw (the refresh-threw case).
 class _Band extends FakeAlarmEngine {
-  _Band({super.clock});
   Object? throwOnApply;
   int applies = 0;
 
@@ -56,7 +56,7 @@ class _Band extends FakeAlarmEngine {
     int intervalSeconds = 180,
     String reason = 'wake_window',
     bool force = false,
-    bool Function()? stillCurrent,
+    PromptWriteTicket? ticket,
   }) {
     applies++;
     final t = throwOnApply;
@@ -68,7 +68,7 @@ class _Band extends FakeAlarmEngine {
       intervalSeconds: intervalSeconds,
       reason: reason,
       force: force,
-      stillCurrent: stillCurrent,
+      ticket: ticket,
     );
   }
 }
@@ -82,8 +82,12 @@ void main() {
   late DateTime wakeAt;
   late List<Uint8List> frames;
   late Future<bool> Function(Uint8List) onWrite;
-  DateTime? bandNow;
   var testNo = 0;
+
+  /// Runs [f] with the band's stamps [ago] in the past.
+  Future<T> ago<T>(Duration d, Future<T> Function() f) =>
+      withClock(Clock.fixed(DateTime.now().subtract(d)), f);
+  const silent = Duration(minutes: 5);
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
@@ -123,10 +127,9 @@ void main() {
   setUp(() async {
     await (await SharedPreferences.getInstance()).clear();
     await LocalDb.clearAlarmSchedule();
-    bandNow = null;
     frames = [];
     onWrite = (_) async => true;
-    band = _Band(clock: () => bandNow ?? DateTime.now());
+    band = _Band();
     band.debugInstallFakeLink(
         onWrite: (f) {
           frames.add(f);
@@ -164,11 +167,10 @@ void main() {
 
   Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 200));
 
-  /// The window's lease as the engine believes it, ENTERed [ago] by the
-  /// band's clock, with no prompt since.
-  Future<void> believedLease(Duration ago) async {
-    bandNow = DateTime.now().subtract(ago);
-    await app.debugRefreshHighFreqWakeWindow();
+  /// The window's lease as the engine believes it, ENTERed 5 min ago, with
+  /// no prompt since.
+  Future<void> believedLease() async {
+    await ago(silent, app.debugRefreshHighFreqWakeWindow);
     expect(requested(), isTrue);
     expect(band.highFreqReason, 'scheduled_alarm');
     expect(enters(), 1);
@@ -187,20 +189,22 @@ void main() {
   test('the engine believes the lease but no prompt came for 150 s: the next '
       'tick re-ENTERs, and the one after is held by the 2-minute throttle',
       () async {
-    await believedLease(const Duration(minutes: 5));
-    await app.debugKeepAliveTick();
+    await believedLease();
+    // The band stays silent: even the re-ENTER is stamped in the past, so
+    // only the throttle can hold the second tick.
+    await ago(silent, app.debugKeepAliveTick);
     await until(() => enters() >= 2);
     expect(enters(), 2,
         reason: '"covered" trusted highFreqUntil while the band was silent');
-    await app.debugKeepAliveTick();
+    await ago(silent, app.debugKeepAliveTick);
     await settle();
     expect(enters(), 2, reason: 'a forced write that landed waits 2 min');
   });
 
   test('prompts arriving: no re-ENTER', () async {
-    await believedLease(const Duration(minutes: 5));
-    bandNow = DateTime.now().subtract(const Duration(seconds: 10));
-    band.debugReceiveFrame(Frame(_prompt(), true, true), role: 'events');
+    await believedLease();
+    withClock(Clock.fixed(DateTime.now().subtract(const Duration(seconds: 10))),
+        () => band.debugReceiveFrame(Frame(_prompt(), true, true), role: 'events'));
     expect(band.lastHighFreqPromptAt, isNotNull);
     await app.debugKeepAliveTick();
     await app.debugKeepAliveTick();
@@ -212,13 +216,14 @@ void main() {
       () async {
     final far = DateTime.now().add(const Duration(hours: 10));
     await schedule(DateTime(far.year, far.month, far.day, far.hour, far.minute));
-    bandNow = DateTime.now().subtract(const Duration(minutes: 5));
-    await band.applyHighFreqWakeWindow(
-        enabled: true,
-        targetWake: far,
-        duration: const Duration(minutes: 90),
-        intervalSeconds: 61,
-        reason: 'scheduled_alarm');
+    await ago(
+        silent,
+        () => band.applyHighFreqWakeWindow(
+            enabled: true,
+            targetWake: far,
+            duration: const Duration(minutes: 90),
+            intervalSeconds: 61,
+            reason: 'scheduled_alarm'));
     expect(enters(), 1);
     await app.debugKeepAliveTick();
     await settle();
@@ -227,7 +232,7 @@ void main() {
 
   test('a forced ENTER whose write fails is retried on the very next tick',
       () async {
-    await believedLease(const Duration(minutes: 5));
+    await believedLease();
     var attempts = 0;
     onWrite = (f) async {
       if (_isEnter(f)) attempts++;
@@ -260,7 +265,7 @@ void main() {
   });
 
   test('each refresh outcome is traced once per change', () async {
-    await believedLease(const Duration(minutes: 5));
+    await believedLease();
     await app.debugKeepAliveTick();
     await until(() => enters() >= 2);
     await settle();
