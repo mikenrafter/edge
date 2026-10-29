@@ -104,14 +104,25 @@ class DbWakeHarnessLedger implements WakeHarnessLedger {
 
   @override
   Future<Map<String, Object?>?> loadState() async {
+    // A failed read throws (retried by the recorder). Only absent or
+    // unparseable bookkeeping is "none"; the recorder then recovers each
+    // occurrence from its durable rows, so nothing is renumbered.
+    final raw = await LocalDb.wakeMetaGet(kWakeHarnessLedgerKey);
+    if (raw == null) return null;
     try {
-      final raw = await LocalDb.wakeMetaGet(kWakeHarnessLedgerKey);
-      final j = raw == null ? null : jsonDecode(raw);
+      final j = jsonDecode(raw);
       return j is Map ? j.cast<String, Object?>() : null;
-    } catch (_) {
-      return null; // unreadable: start the occurrence afresh
+    } on FormatException {
+      return null;
     }
   }
+
+  @override
+  Future<List<WakeTraceEntry>> harnessRows(int epoch) async => [
+    for (final e in DbWakeTraceStore._entries(
+        await LocalDb.wakeTraceRows(epoch)))
+      if (e.kind == 'harness') e,
+  ];
 
   @override
   Future<void> saveState(Map<String, Object?> state) =>
