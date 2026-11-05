@@ -136,6 +136,11 @@ const List<RatchetList> kRatchets = <RatchetList>[
   RatchetList('ui2_spinner_status_allowed',
       'test/ui2_spinner_status_guard_test.dart', RatchetKind.dartLiteral,
       symbol: '_allowed'),
+  // 13 registry entries whose reset help is not device-specific (unverified or
+  // no official site). Zero is allowed; it may only shrink.
+  RatchetList('pairing_reset_followup',
+      'test/guards/support/pairing_reset_fixtures.dart', RatchetKind.dartLiteral,
+      symbol: 'kPairingFollowUp'),
   // 1
   RatchetList('copy_jargon_allowed_keys', 'test/copy_jargon_guard_test.dart',
       RatchetKind.dartLiteral,

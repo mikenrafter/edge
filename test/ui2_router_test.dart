@@ -499,7 +499,7 @@ void main() {
             theme: buildTheme(Brightness.light), home: const MyDevices()),
       ));
       expect(find.text('Your band'), findsOneWidget);
-      expect(find.text('Pair a band'), findsNothing);
+      expect(find.text('Pair your band'), findsNothing);
 
       // Forget. `unpair()` itself is platform-bound (ASK, the engine, the
       // foreground service); what it leaves behind for this screen is this.
@@ -510,7 +510,7 @@ void main() {
       expect(find.text('Your band'), findsNothing);
       expect(find.text('This phone'), findsOneWidget,
           reason: 'the phone row is what used to swallow the empty state');
-      expect(find.text('Pair a band'), findsOneWidget);
+      expect(find.byKey(const ValueKey('pair-band-card')), findsOneWidget);
     });
 
     testWidgets('and for someone who only ever had the phone', (tester) async {
@@ -530,7 +530,7 @@ void main() {
           onPair: () => pairs++,
         ),
       ));
-      await tester.tap(find.text('Pair a band'));
+      await tester.tap(find.widgetWithText(BigButton, 'Pair your band'));
       expect(pairs, 1);
     });
 
@@ -571,7 +571,7 @@ void main() {
               isBand: true),
         ], onPair: () {}),
       ));
-      expect(find.text('Pair a band'), findsNothing);
+      expect(find.text('Pair your band'), findsNothing);
     });
   });
 

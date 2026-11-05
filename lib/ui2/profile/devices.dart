@@ -46,6 +46,8 @@ import 'package:provider/provider.dart';
 import '../../ble/adapters/_registry.dart'
     show
         BandEntry,
+        DeviceCategory,
+        DeviceRole,
         kBandRegistry,
         kBleHrs,
         kColmi,
@@ -88,6 +90,9 @@ import '../../state/clock_format.dart' show formatClockOf;
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../pairing/device_picker.dart' show DevicePickerScreen;
+import '../pairing/pair_text.dart' show pairL10n;
+import '../pairing/pair_widgets.dart' show OutlineAction;
+import '../pairing/secondary_sensor_card.dart' show SecondarySensorCard;
 import '../onboarding/profile_setup.dart' show formatDay;
 import '../ui2.dart';
 import '../sources/source_catalog_screen.dart' show SourceCatalogScreen;
@@ -1130,9 +1135,10 @@ class MyDevices extends StatelessWidget {
   }
 
   Widget _build(BuildContext c, AppState app, Set<String> liveAdapterIds) {
+    final sources = rankSources(liveSources(app,
+        liveAdapterIds: liveAdapterIds, alwaysListPhone: true));
     return MyDevicesView(
-      sources: rankSources(liveSources(app,
-          liveAdapterIds: liveAdapterIds, alwaysListPhone: true)),
+      sources: sources,
       // The band row's dot says connected or not. That covers six different
       // problems with six different fixes, and a user cannot fix a problem the
       // app will not name — so the engine's own verdict rides alongside it.
@@ -1146,6 +1152,10 @@ class MyDevices extends StatelessWidget {
       // way back to pairing. So push it.
       onPair: () => goto(c, const RePair()),
       onAddSensor: () => addSensor(c),
+      onUnpair: () {
+        final band = sources.where((s) => s.isBand).firstOrNull;
+        _confirmForget(c, app, band?.displayName(c) ?? '');
+      },
       onTogglePhoneSteps: app.togglePhoneSteps,
       phoneStepsOn: app.phoneStepsEnabled,
       phoneStepsUnavailable:
@@ -1434,6 +1444,9 @@ class MyDevicesView extends StatelessWidget {
   final List<HealthSource> sources;
   final VoidCallback? onPair, onAddSensor;
 
+  /// "Unpair band" on the already-paired card; null hides the button.
+  final VoidCallback? onUnpair;
+
   /// The band's own state, from `bandStatusFor`. Null when nothing is paired.
   final BandStatus? status;
 
@@ -1456,6 +1469,7 @@ class MyDevicesView extends StatelessWidget {
     this.sources = const [],
     this.onPair,
     this.onAddSensor,
+    this.onUnpair,
     this.status,
     this.contendedSignals = const [],
     this.onSignalPriority,
@@ -1508,12 +1522,13 @@ class MyDevicesView extends StatelessWidget {
                             'The phone counts steps only. Heart rate, sleep, recovery and temperature stay blank until you pair a band.')
                         : (l?.devicesNothingMeasuringBody ??
                             'No band is paired and no phone steps are arriving, so every metric stays blank.'),
-                    fix: l?.devicesPairABand ?? 'Pair a band',
                     icon: LucideIcons.watch,
-                    onFix: onPair,
                   ),
-                  if (sources.isNotEmpty) const SizedBox(height: S.x3),
                 ],
+                // "Pair a device": the band first (or who it is, when one is
+                // paired), then "Add a device" for anything else.
+                ..._pairSection(c, hasBand),
+                if (sources.isNotEmpty) const SizedBox(height: S.x3),
                 // LIVE — the first of the two buckets. Only drawn when there is
                 // something in it: a heading over nothing is the empty rung
                 // problem again, one level up.
@@ -1545,19 +1560,6 @@ class MyDevicesView extends StatelessWidget {
                   ],
                   const SizedBox(height: S.x3),
                 ],
-                // At the foot of LIVE, because that is what it adds to. Not
-                // gated on having a band: a sensor is a second source, and
-                // someone with no band at all is exactly who benefits most
-                // from being able to pair one.
-                if (onAddSensor != null)
-                  Surface(
-                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
-                    child: SetRow(LucideIcons.plus, C.green,
-                        l?.devicesAddASensor ?? 'Add a sensor',
-                        sub: l?.devicesAddASensorSub ??
-                            'A heart-rate strap or a ring, alongside the band',
-                        onTap: onAddSensor),
-                  ),
                 // The catalog comes first: what every source is and supplies,
                 // before the detail of who won what.
                 if (onSourceCatalog != null && sources.isNotEmpty) ...[
@@ -1614,6 +1616,124 @@ class MyDevicesView extends StatelessWidget {
     );
   }
 }
+
+extension _PairSection on MyDevicesView {
+  /// The "Pair a device" section. Empty when there is nothing to show (a
+  /// fixture with no callbacks and no band).
+  List<Widget> _pairSection(BuildContext c, bool hasBand) {
+    final l = pairL10n(c);
+    final band = sources.where((s) => s.isBand).firstOrNull;
+    final children = <Widget>[
+      if (!hasBand && onPair != null) _PairBandCard(onPair!),
+      if (hasBand && band != null)
+        _BandPairedCard(band.displayName(c), onUnpair),
+      if (onAddSensor != null)
+        Surface(
+          pad: const EdgeInsets.symmetric(horizontal: S.x4),
+          child: SetRow(LucideIcons.plus, C.green, l.pairAddDevice,
+              sub: l.pairAddDeviceSub, onTap: onAddSensor),
+        ),
+    ];
+    if (children.isEmpty) return const [];
+    // Said plainly, with or without a band: only WHOOP can be the main band.
+    children.add(Text(l.pairMainBandWhoopOnly,
+        key: const ValueKey('main-band-whoop-only-note'),
+        style: F.cap.copyWith(color: P.of(c).ink3)));
+    return [
+      Section(l.pairSectionTitle, Column(children: [
+        for (var i = 0; i < children.length; i++) ...[
+          if (i > 0) const SizedBox(height: S.x3),
+          children[i],
+        ],
+      ])),
+      const SizedBox(height: S.x3),
+    ];
+  }
+}
+
+/// The registry entry of a paired SECONDARY SENSOR (a workout sensor such as a
+/// heart-rate strap), or null for the band, the phone, a ring, a scale or a
+/// thermometer. A WHOOP the user confirmed as a plain sensor is stored under
+/// the heart-rate-sensor adapter, so it is one too.
+BandEntry? secondarySensorEntry(HealthSource s) {
+  if (s.isBand || s.deviceId == null) return null;
+  final e = kBandRegistry.where((e) => e.id == s.family).firstOrNull;
+  return e != null &&
+          e.role == DeviceRole.sensor &&
+          e.category == DeviceCategory.workoutSensor
+      ? e
+      : null;
+}
+
+/// No band yet: the card that starts the band flow.
+class _PairBandCard extends StatelessWidget {
+  final VoidCallback onPair;
+  const _PairBandCard(this.onPair);
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = pairL10n(c);
+    return Surface(
+      key: const ValueKey('pair-band-card'),
+      color: Color.alphaBlend(p.wash(C.green), p.card),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(LucideIcons.watch, size: 20, color: p.on(C.green)),
+          const SizedBox(width: S.x3),
+          Expanded(
+              child: Text(l.pairBandTitle,
+                  style: F.head.copyWith(color: p.ink))),
+        ]),
+        const SizedBox(height: S.x2),
+        Text(l.pairCardBandBody, style: F.body.copyWith(color: p.ink2)),
+        const SizedBox(height: S.x4),
+        BigButton(l.pairBandTitle,
+            icon: LucideIcons.bluetooth, color: C.green, onTap: onPair),
+      ]),
+    );
+  }
+}
+
+/// A band is paired: who, and that it has to be unpaired before another.
+class _BandPairedCard extends StatelessWidget {
+  final String name;
+  final VoidCallback? onUnpair;
+  const _BandPairedCard(this.name, this.onUnpair);
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = pairL10n(c);
+    return Surface(
+      key: const ValueKey('band-paired-card'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(LucideIcons.watch, size: 20, color: p.on(C.green)),
+          const SizedBox(width: S.x3),
+          // The band's own row is listed below; the sentence names it.
+          Expanded(
+              child: Text(l.pairSensorPaired,
+                  style: F.head.copyWith(color: p.ink))),
+        ]),
+        const SizedBox(height: S.x2),
+        Text(l.pairAlreadyHaveBand(name),
+            style: F.body.copyWith(color: p.ink2)),
+        if (onUnpair != null) ...[
+          const SizedBox(height: S.x4),
+          OutlineAction(l.pairUnpairBand,
+              icon: LucideIcons.unlink, color: C.red, onTap: onUnpair),
+        ],
+      ]),
+    );
+  }
+}
+
+@visibleForTesting
+Future<void> debugConfirmForgetBand(
+        BuildContext c, AppState app, String name) =>
+    _confirmForget(c, app, name);
+
 
 /// The one line under a source's name.
 ///
@@ -1675,7 +1795,10 @@ class SourceRow extends StatelessWidget {
     final p = P.of(c);
     final battery = s.batteryPct;
     final stacked = bigText(c);
-    final tierBadge = s.tier == null
+    // A secondary sensor is named by its role on its own page; a rung and an
+    // "Experimental" word on the row said nothing about what it sends.
+    final secondary = secondarySensorEntry(s) != null;
+    final tierBadge = s.tier == null || secondary
         ? null
         : Pill(
             AppLocalizations.of(c)?.devicesTierRank(s.tier!.rank) ??
@@ -1746,7 +1869,7 @@ class SourceRow extends StatelessWidget {
               // IN THE WRAP, not a second trailing pill: this line already
               // wraps at accessibility sizes, and a pill column beside it does
               // not. The band's own page carries the explanation.
-              if (s.experimental)
+              if (s.experimental && !secondary)
                 Text(AppLocalizations.of(c)?.devicesExperimental ?? 'Experimental',
                     style: F.over.copyWith(color: p.on(C.orange))),
                   ],
@@ -2395,7 +2518,11 @@ class DeviceDetailView extends StatelessWidget {
                       fix: fault.fix ?? '', icon: LucideIcons.bluetoothOff),
                   const SizedBox(height: S.x5),
                 ],
-                if (s.tier case final t?) ...[
+                if (secondarySensorEntry(s) case final sensor?) ...[
+                  SecondarySensorCard(
+                      entry: sensor, experimental: s.experimental),
+                  const SizedBox(height: S.x5),
+                ] else if (s.tier case final t?) ...[
                   TierRow(t, filled: s.disabledReason == null),
                   const SizedBox(height: S.x5),
                 ],
@@ -2411,6 +2538,7 @@ class DeviceDetailView extends StatelessWidget {
                   SettingsAccordion('Sensor',
                       id: 'device_detail_sensor',
                       children: [
+                      if (secondarySensorEntry(s) == null)
                       SetRow(LucideIcons.flaskConical, C.orange,
                           l?.devicesSupport ?? 'Support',
                           value: l?.devicesExperimental ?? 'Experimental',

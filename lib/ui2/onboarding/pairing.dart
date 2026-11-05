@@ -15,11 +15,17 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../../ble/adapters/_registry.dart' show BandEntry;
 import '../../ble/band_status_l10n.dart' show localizedBandStatus;
 import '../../ble/ble_state.dart';
 import '../../l10n/app_localizations.dart';
+import '../../l10n/display_text.dart' show localizedText;
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
+import '../pairing/pair_help.dart';
+import '../pairing/pair_text.dart';
+import '../pairing/pair_widgets.dart';
+import '../pairing/reset_steps_view.dart';
 import '../ui2.dart';
 
 /// Onboarding steps the user deliberately walked past.
@@ -109,7 +115,11 @@ class PairingScreen extends StatefulWidget {
   /// Walk past pairing and open the app anyway. Supplied by the router.
   final VoidCallback? onSkip;
 
-  const PairingScreen({super.key, this.onSkip});
+  /// The band the user chose on the list; its reset steps show when pairing
+  /// does not finish. Null shows the plain failure cards.
+  final BandEntry? entry;
+
+  const PairingScreen({super.key, this.onSkip, this.entry});
 
   @override
   State<PairingScreen> createState() => _PairingScreenState();
@@ -165,6 +175,10 @@ class _PairingScreenState extends State<PairingScreen> {
         blocker: _blocker,
         onPair: _pair,
         onSkip: widget.onSkip,
+        resetEntry: widget.entry,
+        onPickDifferent: Navigator.of(c).canPop()
+            ? () => Navigator.of(c).maybePop()
+            : null,
       );
 }
 
@@ -177,6 +191,17 @@ class PairingView extends StatelessWidget {
   /// Which phone-side blocker, when [phase] is `bluetoothBlocked`.
   final BleBlocker? blocker;
 
+  /// The band being paired. When set, a pairing that could not finish
+  /// (not found, refused, failed) shows this device's reset steps and a way
+  /// to ask for help instead of the generic advice card.
+  final BandEntry? resetEntry;
+
+  /// "Pick a different band". Null hides the link.
+  final VoidCallback? onPickDifferent;
+
+  /// How the help dialog and the maker's-page row open a link.
+  final PairLinkOpener openLink;
+
   const PairingView({
     super.key,
     required this.phase,
@@ -184,10 +209,93 @@ class PairingView extends StatelessWidget {
     this.detail = '',
     this.blocker,
     this.onSkip,
+    this.resetEntry,
+    this.onPickDifferent,
+    this.openLink = const SystemLinkOpener(),
   });
+
+  static const _resetPhases = {
+    PairPhase.notFound,
+    PairPhase.bondRefused,
+    PairPhase.failed,
+  };
+
+  /// The failure screen with a device's reset steps (G3).
+  Widget _resetScaffold(BuildContext c, BandEntry entry) {
+    final p = P.of(c);
+    final l = pairL10n(c);
+    final label = localizedText(AppLocalizations.of(c), entry.label);
+    return Scaffold(
+      backgroundColor: p.bg,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(S.x4, S.x6, S.x4, S.x8),
+          children: [
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Container(
+                width: 56,
+                height: 56,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                    color: p.wash(C.orange), borderRadius: R.rMd),
+                child: Icon(LucideIcons.triangleAlert,
+                    size: 28, color: p.on(C.orange)),
+              ),
+            ),
+            const SizedBox(height: S.x4),
+            Text(resetTitle(l, entry), style: F.t1.copyWith(color: p.ink)),
+            const SizedBox(height: S.x2),
+            Text(l.pairResetBody(label), style: F.body.copyWith(color: p.ink2)),
+            const SizedBox(height: S.x4),
+            ResetStepsView(entry: entry, openLink: openLink),
+            if (phase == PairPhase.failed && detail.isNotEmpty) ...[
+              const SizedBox(height: S.x3),
+              _Detail(detail),
+            ],
+            const SizedBox(height: S.x4),
+            BigButton(_cta(c, phase),
+                icon: LucideIcons.refreshCw, color: C.green, onTap: onPair),
+            const SizedBox(height: S.x3),
+            OutlineAction(l.pairHelpButton,
+                icon: LucideIcons.circleHelp,
+                quiet: true,
+                onTap: () =>
+                    showPairHelpDialog(c, entry: entry, openLink: openLink)),
+            if (onPickDifferent != null)
+              TextLinkButton(l.pairPickDifferentBand, onTap: onPickDifferent),
+            ..._skip(c),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "Skip for now" and its note; nothing when there is no way to skip.
+  List<Widget> _skip(BuildContext c) {
+    final p = P.of(c);
+    if (onSkip == null || phase == PairPhase.paired) return const [];
+    return [
+      const SizedBox(height: S.x3),
+      // Never disabled, not even mid-scan: waiting out a scan you
+      // already know will fail is exactly the trap this exists for.
+      BigButton(AppLocalizations.of(c)?.pairingSkipForNow ?? 'Skip for now',
+          color: C.blue, soft: true, onTap: onSkip),
+      const SizedBox(height: S.x2),
+      Text(
+        AppLocalizations.of(c)?.pairingSkipNote ??
+            'The app opens without a band.',
+        style: F.cap.copyWith(color: p.ink3),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext c) {
+    final reset = resetEntry;
+    if (reset != null && _resetPhases.contains(phase)) {
+      return _resetScaffold(c, reset);
+    }
     final p = P.of(c);
         final busy = phase == PairPhase.scanning;
     final body = _body(c, phase, blocker);
@@ -233,19 +341,7 @@ class PairingView extends StatelessWidget {
                 icon: LucideIcons.radio,
                 color: C.blue,
                 onTap: busy ? null : onPair),
-            if (onSkip != null && phase != PairPhase.paired) ...[
-              const SizedBox(height: S.x3),
-              // Never disabled, not even mid-scan: waiting out a scan you
-              // already know will fail is exactly the trap this exists for.
-              BigButton(AppLocalizations.of(c)?.pairingSkipForNow ?? 'Skip for now',
-                  color: C.blue, soft: true, onTap: onSkip),
-              const SizedBox(height: S.x2),
-              Text(
-                AppLocalizations.of(c)?.pairingSkipNote ??
-                    'The app opens without a band.',
-                style: F.cap.copyWith(color: p.ink3),
-              ),
-            ],
+            ..._skip(c),
           ],
         ),
       ),

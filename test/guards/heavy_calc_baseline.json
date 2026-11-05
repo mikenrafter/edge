@@ -2397,6 +2397,13 @@
     },
     {
       "rule": "unresolvedInvocation",
+      "file": "ble/adapters/_registry.dart",
+      "symbol": "hintedNameMatch",
+      "element": "e.nameMatcher?.call(lowercaseName)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
       "file": "ble/adapters/adapter.dart",
       "symbol": "ReplayBandLink.write",
       "element": "onWrite?.call(characteristicUuid, value)",
@@ -3519,13 +3526,6 @@
       "rule": "unresolvedInvocation",
       "file": "ble/hrs_link.dart",
       "symbol": "HrsLink._scanForEntries",
-      "element": "e.nameMatcher?.call(lowercaseName)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/hrs_link.dart",
-      "symbol": "HrsLink._scanForEntries",
       "element": "onResults(_ranked(seen))",
       "count": 3
     },
@@ -3541,13 +3541,6 @@
       "file": "ble/hrs_link.dart",
       "symbol": "HrsLink.forgetDevice",
       "element": "debugPrint('[hrs] refusing to forget the primary band from here.')",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "ble/hrs_link.dart",
-      "symbol": "HrsLink.hintedNameMatch",
-      "element": "e.nameMatcher?.call(lowercaseName)",
       "count": 1
     },
     {
@@ -3574,15 +3567,15 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ble/hrs_link.dart",
-      "symbol": "HrsLink.pairNotifySensor",
-      "element": "debugPrint('[hrs] pair: $m')",
+      "symbol": "HrsLink.stopScanIfRunning",
+      "element": "debugPrint('[hrs] stopScan did not land: $e')",
       "count": 1
     },
     {
       "rule": "unresolvedInvocation",
       "file": "ble/hrs_link.dart",
-      "symbol": "HrsLink.stopScanIfRunning",
-      "element": "debugPrint('[hrs] stopScan did not land: $e')",
+      "symbol": "_DevicePairingIo.discoverServices",
+      "element": "debugPrint('[hrs] pair: $m')",
       "count": 1
     },
     {
@@ -12170,7 +12163,7 @@
     {
       "rule": "unresolvedInvocation",
       "file": "ui2/pairing/device_picker.dart",
-      "symbol": "_DevicePickerScreenState._pickNearby",
+      "symbol": "_DevicePickerScreenState.pair",
       "element": "sensor.pick!(cand.device)",
       "count": 1
     },

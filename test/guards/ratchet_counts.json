@@ -61,6 +61,9 @@
       "entries": 2,
       "sum": 9
     },
+    "pairing_reset_followup": {
+      "entries": 13
+    },
     "sample_guard_slice_entry": {
       "entries": 2
     },
