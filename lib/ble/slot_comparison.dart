@@ -116,7 +116,7 @@ typedef _Claim = ({CapabilityStatus status, CapabilityTrace trace});
 const String _canonical = 'lib/compute/inputs/canonical.dart';
 const String _pipeline = 'lib/compute/onehz_pipeline.dart';
 
-bool _nativeWhoop(BandEntry e) => e.id == kWhoopGen4.id || e.id == kWhoopGen5.id;
+bool _nativeWhoop(BandEntry e) => kWhoopGen4.id == e.id || kWhoopGen5.id == e.id;
 
 /// Every capability [e] gives in a slot, each with the rule behind it. The one
 /// place claims are made, so a claim cannot exist without its trace.

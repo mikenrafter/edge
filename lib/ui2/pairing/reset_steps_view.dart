@@ -15,7 +15,7 @@ import 'pair_text.dart';
 import 'pair_widgets.dart';
 
 bool isWhoopEntry(BandEntry e) =>
-    e.id == kWhoopGen4.id || e.id == kWhoopGen5.id;
+    kWhoopGen4.id == e.id || kWhoopGen5.id == e.id;
 
 /// The l10n key of every step to show for [e] (its own, else the general ones).
 List<String> resetStepKeysFor(BandEntry e) {
