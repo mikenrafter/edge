@@ -599,7 +599,7 @@ class _PrepareAccumulator {
   /// conversion honest.
   ///
   /// Unreachable today — a day's admitted rows are all one family, because
-  /// `derivableSourceSql()` renders `source IS NULL` (db.dart:116) — and that
+  /// `derivableSourceSql()` renders `source IS NULL` (lib/data/db/admission.dart) — and that
   /// is exactly why it is written now rather than discovered when the M5
   /// resolver starts admitting two devices to one day.
   String? _skinTempUnit;
@@ -796,7 +796,7 @@ class _PrepareAccumulator {
     // only visible once every page is in. See [monotonizeBeatAxis].
     monotonizeBeatAxis(rrTsMs);
     // `_skinTempUnitDrops` (see [_skinTempFor]) is structurally 0 today —
-    // `derivableSourceSql()` renders `source IS NULL` (db.dart:116), so a
+    // `derivableSourceSql()` renders `source IS NULL` (lib/data/db/admission.dart), so a
     // day's admitted rows are all one family and never trip the guard.
     // Deliberately NOT a crashing `assert` here: this file's own test fixture
     // (test/two_device_fixture_test.dart case 3) exercises the guard by

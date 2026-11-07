@@ -18,6 +18,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/dart_source.dart';
+import 'support/db_source.dart';
 
 /// A bundle-decode seam: the file, the helper, and why it counts.
 class Seam {
@@ -148,9 +149,16 @@ void main() {
     // cloud_import, whoop_import) go through it, which is the only reason
     // producers can keep building plain [{t,v}] lists in memory.
     final code = stripCommentsAndStrings(
-      File('lib/data/db.dart').readAsStringSync(),
+      dbLibrarySource(),
     );
-    final body = helperBody(code, 'putDayResult');
+    // The public writer must still reach the encoding body.
+    expect(
+      RegExp(r'static Future<void> putDayResult\([^;]*?\)\s*=>\s*_ldbPutDayResult\(')
+          .hasMatch(code),
+      isTrue,
+      reason: 'LocalDb.putDayResult no longer forwards to _ldbPutDayResult',
+    );
+    final body = helperBody(code, '_ldbPutDayResult');
     expect(body, isNotNull);
     expect(
       body,
@@ -166,7 +174,7 @@ void main() {
     // nothing and the AI Coach loses every intra-day curve — sqflite cannot
     // register a SQL decompress function to get it back.
     final code = stripCommentsAndStrings(
-      File('lib/data/db.dart').readAsStringSync(),
+      dbLibrarySource(),
     );
     expect(code, isNot(contains('payload_json BLOB')));
   });
@@ -174,7 +182,7 @@ void main() {
   test('v_series reads all three shapes', () {
     // Old rows keep the legacy shape forever — there is no rewriting migration
     // — so dropping the legacy branch would blank every un-backfilled day.
-    final src = File('lib/data/db.dart').readAsStringSync();
+    final src = dbLibrarySource();
     final view = src.substring(
       src.indexOf('CREATE VIEW v_series'),
       src.indexOf('CREATE VIEW v_hypnogram'),

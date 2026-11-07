@@ -36,6 +36,7 @@ import 'package:openstrap_edge/data/observation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'support/db_source.dart';
 
 /// `exportCopy` writes a real file, so the backup round trip needs somewhere
 /// to put it.
@@ -57,7 +58,7 @@ class _FakePathProvider extends PathProviderPlatform {
 /// A reader that feeds `metric_series`, `day_result`, a `baselines` row, a
 /// rolling window, or any argument to an analytics function is the thing this
 /// whole file exists to stop.
-const _allowedToNameTheTable = {'lib/data/db.dart'};
+final _allowedToNameTheTable = {...dbLibraryFiles()};
 
 /// How a Dart file actually reaches a SQLite table: as a quoted table name
 /// handed to sqflite, or named in SQL text. Case-insensitive on the keyword,

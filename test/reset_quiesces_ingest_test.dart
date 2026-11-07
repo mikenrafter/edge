@@ -29,6 +29,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/sync/reset_gate.dart';
+import 'support/db_source.dart';
 
 void main() {
   final src = File('lib/state/app_state.dart').readAsStringSync();
@@ -312,7 +313,7 @@ void main() {
   });
 
   test('the wipe runs on the sync-commit gate', () {
-    final db = File('lib/data/db.dart').readAsStringSync();
+    final db = dbLibrarySource();
     expect(db.contains('static Future<int> wipeAll() =>\n'
         '      _withReaderInvalidated(() => _withCommitGate(_wipeAllLocked));'),
         isTrue);

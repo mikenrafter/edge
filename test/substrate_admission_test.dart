@@ -36,6 +36,7 @@ import 'package:openstrap_edge/data/models.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'support/db_source.dart';
 
 class _FakePathProvider extends PathProviderPlatform {
   _FakePathProvider(this.root);
@@ -55,8 +56,8 @@ class _FakePathProvider extends PathProviderPlatform {
 /// it is deliberately the narrow one. Adding a file here is the deliberate act
 /// the invariant asks for — and if you are adding one because you wrote a new
 /// decoded read, you wanted `derivableSourceSql()` instead.
-const _mayWriteThePredicate = {
-  'lib/data/db.dart',
+final _mayWriteThePredicate = {
+  ...dbLibraryFiles(),
   'lib/health/health_export.dart',
 };
 
