@@ -48,6 +48,7 @@
 // refuse on it.
 
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 
 import 'package:collection/collection.dart' show IterableExtension;
@@ -57,9 +58,10 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart'
     show polarPmdSupportsPpi;
 
-import '../compute/inputs/canonical.dart' show wearableEnabled;
+import '../compute/inputs/canonical.dart'
+    show adoptReplacementWearable, wearableEnabled;
 import '../data/db.dart';
-import '../sync/paired_device.dart' show cleanDeviceLabel;
+import '../sync/paired_device.dart' show cleanDeviceLabel, kBandSourceTier;
 import 'accessory_setup.dart';
 import 'adapters/_registry.dart';
 import 'adapters/adapter.dart';
@@ -108,6 +110,8 @@ typedef BandCandidate = ({
   String entryId,
   // The role==band registry entry this advertisement ALSO belongs to (e.g. a
   // WHOOP heard in a sensor scan because it advertises 0x180D), else null.
+  // Also set, to [entryId]'s own band with modelCertain false, when only the
+  // name matched a WHOOP: the name cannot tell WHOOP 4 from WHOOP 5.
   BandIdentity? alsoBand,
 });
 
@@ -475,17 +479,18 @@ class HrsLink {
   /// and [hints] carry the scan's per-peripheral state in and out; the
   /// defaults describe a first, unfiltered sighting.
   ///
-  /// A service, company id or service-data UUID that an entry names is its
+  /// A service (a framed band's by its prefix, as [serviceIsEntry]), company
+  /// id or service-data UUID that an entry names is its
   /// identity and gets locked in [confirmed] (a peripheral does not swap GATT
   /// identity mid-scan). A name match is only a guess and is
   /// re-tried every advertisement. A name an entry claims on an advertisement
   /// carrying one of THAT entry's hints outranks a plain service match: a
   /// Polar optical sensor advertises 0x180D, which is [kBleHrs]'s own service.
   ///
-  /// The label is the ADVERTISED name first (`platformName` is the OS's cached
-  /// one, possibly stale), both through `cleanDeviceLabel`; a name that drops
-  /// out of a later advertisement keeps [previousLabel], so the row under the
-  /// user's finger does not change.
+  /// The label is the ADVERTISED name first, then [previousLabel] (a name that
+  /// drops out of a later advertisement keeps the row's label, so the row
+  /// under the user's finger does not change), then `platformName` (the OS's
+  /// cached one, possibly stale); names go through `cleanDeviceLabel`.
   ///
   /// Unfiltered scan, or one the filter let in on a shared hint alone
   /// ([BandEntry.scanHints]): a result matching nothing is some other
@@ -508,8 +513,8 @@ class HrsLink {
   }) {
     final key = device.remoteId.str;
     final label = cleanDeviceLabel(advName) ??
-        cleanDeviceLabel(platformName) ??
-        previousLabel;
+        previousLabel ??
+        cleanDeviceLabel(platformName);
     // NULLABLE ON PURPOSE: `withServices` filters on the SCAN, not on the
     // payload, so an advertisement can match the filter and still arrive with
     // a truncated `serviceUuids`. A fallback returned from in here would be
@@ -517,7 +522,7 @@ class HrsLink {
     String? serviceMatch() {
       for (final g in serviceUuids) {
         for (final e in entries) {
-          if (g == Guid(e.service)) return e.id;
+          if (serviceIsEntry(e, g.str128)) return e.id;
         }
       }
       return null;
@@ -548,7 +553,6 @@ class HrsLink {
     final band = bandIdentityOf(
       advertisedServiceUuids: adUuids,
       name: scanName,
-      manufacturerCompanyIds: manufacturerCompanyIds,
       serviceDataUuids: [for (final g in serviceDataUuids) g.str128],
     );
     // Recorded BEFORE the unmatched early return below: a band-only packet
@@ -570,8 +574,12 @@ class HrsLink {
       label: label,
       rssi: rssi,
       entryId: entryId,
-      // An entry that IS the band is not "also" a band.
-      alsoBand: best != null && best.entry.id != entryId ? best : null,
+      // An entry that IS the band is not "also" a band, unless only the name
+      // matched: then the uncertain identity rides along, so nobody reads a
+      // WHOOP model off the name-matched entry.
+      alsoBand: best != null && (best.entry.id != entryId || !best.modelCertain)
+          ? best
+          : null,
     );
   }
 
@@ -813,8 +821,8 @@ class HrsLink {
     } catch (e) {
       debugPrint('[hrs] pair connect failed: $e');
       return const PairOutcome.failed(
-          'That sensor did not answer. It may be asleep or connected to '
-          'another phone or app.');
+          'That sensor did not answer. It may have gone back to sleep, or it '
+          'may already be connected to another phone or app.');
     }
     final io = _DevicePairingIo(entry, device);
     try {
@@ -829,8 +837,8 @@ class HrsLink {
       );
     } catch (e) {
       debugPrint('[hrs] pair setup failed: $e');
-      return const PairOutcome.failed(
-          'That sensor disconnected during setup. Nothing was saved.');
+      return const PairOutcome.failed('That sensor disconnected before it '
+          'could be set up. Nothing was saved.');
     } finally {
       io.close();
       // The pairing connection is not the session. `arm()` opens its own when
@@ -1368,13 +1376,24 @@ class _DevicePairingIo implements PairingIo {
       false;
 
   @override
-  Future<void> persist(PairedDevice d) => LocalDb.upsertDevice(
-        id: d.id,
-        adapterId: d.adapterId,
-        remoteId: d.remoteId,
-        label: d.label,
-        tier: d.tier,
-      );
+  Future<void> persist(PairedDevice d) async {
+    await LocalDb.upsertDevice(
+      id: d.id,
+      adapterId: d.adapterId,
+      remoteId: d.remoteId,
+      label: d.label,
+      tier: d.tier,
+    );
+    // A replacement for the active wearable: syncs now land on this row, so
+    // derivation has to read it too. Best effort, the sensor is paired either
+    // way.
+    try {
+      await adoptReplacementWearable(d.id);
+    } catch (e) {
+      // developer.log, not debugPrint: the heavy-calc baseline does not grow.
+      developer.log('could not move the active wearable: $e', name: 'hrs');
+    }
+  }
 
   void close() => _link?.close();
 }
@@ -1389,9 +1408,10 @@ bool _hasCharacteristic(List<DiscoveredService> services, String required) {
 /// has connected: discovery, persistence and the two device writes/reads come
 /// through [io] so no Bluetooth is needed.
 ///
-/// Order: discover (a throw gives a failed outcome), required characteristics,
-/// Garmin multi-link check, own-identity check (Coros, Polar PPI), band
-/// cross-check, bond trigger, THEN persist. Nothing is written or persisted on
+/// Order: discover (a throw gives a failed outcome), band cross-check
+/// (it needs only the services, so a band missing a characteristic still
+/// gets the band choice), required characteristics, Garmin multi-link check,
+/// own-identity check (Coros, Polar PPI), bond trigger, THEN persist. Nothing is written or persisted on
 /// any refusal.
 ///
 /// The band cross-check: the band is whatever GATT shows
@@ -1412,16 +1432,28 @@ Future<PairOutcome> pairNotifyDevice({
   try {
     services = await io.discoverServices();
   } catch (_) {
-    return const PairOutcome.failed(
-        'That sensor disconnected during setup. Nothing was saved.');
+    return const PairOutcome.failed('That sensor disconnected before it '
+        'could be set up. Nothing was saved.');
+  }
+  final gattBand = bandIdentityFromGatt([for (final s in services) s.uuid]);
+  final band = gattBand ?? earlierBand?.entry;
+  final confirmedBand = band != null && band.id != entry.id;
+  if (confirmedBand) {
+    final ok = confirmation != null &&
+        confirmation.remoteId == remoteId &&
+        confirmation.bandEntryId == band.id;
+    if (!ok) {
+      return PairOutcome.band(band,
+          modelCertain: gattBand != null || earlierBand?.modelCertain != false);
+    }
   }
   final missing = [
     for (final u in entry.requiredCharacteristics)
       if (!_hasCharacteristic(services, u)) u,
   ];
   if (missing.isNotEmpty) {
-    return PairOutcome.failed('That device answered but does not expose the '
-        '${entry.label} data this needs '
+    return PairOutcome.failed('That device answered, but it does not expose '
+        'the ${entry.label} data this needs '
         '(missing ${missing.map((u) => u.substring(0, 8)).join(", ")}). '
         'Nothing was saved.');
   }
@@ -1444,14 +1476,6 @@ Future<PairOutcome> pairNotifyDevice({
     pmdFeatures: entry.id == kPolarPmd.id ? await io.readPmdFeatures() : null,
   );
   if (refusal != null) return PairOutcome.failed(refusal);
-  final band = bandIdentityFromGatt([for (final s in services) s.uuid]) ??
-      earlierBand?.entry;
-  if (band != null && band.id != entry.id) {
-    final ok = confirmation != null &&
-        confirmation.remoteId == remoteId &&
-        confirmation.bandEntryId == band.id;
-    if (!ok) return PairOutcome.band(band);
-  }
   if (entry.bondTriggerCharacteristic != null && !await io.triggerBond()) {
     return const PairOutcome.failed('That device did not accept Bluetooth '
         'pairing. Nothing was saved.');
@@ -1462,7 +1486,11 @@ Future<PairOutcome> pairNotifyDevice({
       adapterId: entry.id,
       remoteId: remoteId,
       label: label,
-      tier: HrsLink.deriveTier(tier, entry.id),
+      // A band the user kept as a plain sensor is still a wrist (or finger)
+      // optical source: deriveTier would rank it beat-to-beat off the
+      // heart-rate adapter's declared signals, above the band tier, on the
+      // R-peak rung and first for live heart rate.
+      tier: confirmedBand ? kBandSourceTier : HrsLink.deriveTier(tier, entry.id),
     ));
   } catch (_) {
     return const PairOutcome.failed(

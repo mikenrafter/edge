@@ -1,7 +1,9 @@
 // Which main-device band (role == band) an advertisement or a GATT list belongs
 // to, whatever scan found it, and what the pairing step reports. A WHOOP can
 // advertise 0x180D under any name; filing it as a chest strap is the bug this
-// guards against. Evidence order: a service beats a company id beats a name.
+// guards against. Evidence order: a service beats a service-data UUID beats a
+// name. A company id alone is no band evidence: it names the maker, not the
+// product.
 import 'adapters/_registry.dart';
 
 /// [entry] is the band; [modelCertain] is false when only the NAME matched a
@@ -23,37 +25,40 @@ String normalizeGattUuid(String uuid) {
 Iterable<BandEntry> get _bands =>
     kBandRegistry.where((e) => e.role == DeviceRole.band);
 
-/// A framed band is a family: matched by its 32-bit service prefix. A
-/// notify-class band is matched by its full UUID, because a shared prefix is a
-/// stranger (Nordic UART shares Coros's 6e400001).
-bool _serviceIsEntry(BandEntry e, String normalized) => e.isFramed
-    ? normalized.startsWith(e.servicePrefix.toLowerCase())
-    : normalized == normalizeGattUuid(e.service);
+/// Whether service [uuid] (any form) is [e]'s. A framed band is a family:
+/// matched by its 32-bit service prefix. A notify-class band is matched by its
+/// full UUID, because a shared prefix is a stranger (Nordic UART shares
+/// Coros's 6e400001).
+bool serviceIsEntry(BandEntry e, String uuid) {
+  final normalized = normalizeGattUuid(uuid);
+  return e.isFramed
+      ? normalized.startsWith(e.servicePrefix.toLowerCase())
+      : normalized == normalizeGattUuid(e.service);
+}
 
 BandEntry? _bandForService(Iterable<String> uuids) {
-  final norm = [for (final u in uuids) normalizeGattUuid(u)];
   for (final e in _bands) {
-    if (norm.any((u) => _serviceIsEntry(e, u))) return e;
+    if (uuids.any((u) => serviceIsEntry(e, u))) return e;
   }
   return null;
 }
 
 /// The band an advertisement belongs to, or null. A service match settles the
-/// model; so does a company id or service-data UUID an entry names as its
-/// own. A name alone only proves the family, so a framed band matched by name
-/// is [BandIdentity.modelCertain] false.
+/// model; so does a service-data UUID an entry names as its own. A company id
+/// does not count: Garmin's 0x0087 is on every Garmin product, so a Garmin
+/// heart-rate strap would be refused as the watch. A name alone only proves
+/// the family, so a framed band matched by name is
+/// [BandIdentity.modelCertain] false.
 BandIdentity? bandIdentityOf({
   required List<String> advertisedServiceUuids,
   required String? name,
-  List<int> manufacturerCompanyIds = const <int>[],
   List<String> serviceDataUuids = const <String>[],
 }) {
   final bySvc = _bandForService(advertisedServiceUuids);
   if (bySvc != null) return (entry: bySvc, modelCertain: true);
   final data = {for (final u in serviceDataUuids) normalizeGattUuid(u)};
   for (final e in _bands) {
-    if (e.scanCompanyIds.any(manufacturerCompanyIds.contains) ||
-        e.scanServiceData.any((u) => data.contains(normalizeGattUuid(u)))) {
+    if (e.scanServiceData.any((u) => data.contains(normalizeGattUuid(u)))) {
       return (entry: e, modelCertain: true);
     }
   }
@@ -106,10 +111,15 @@ class PairOutcome {
 
   /// Non-null on a plain failure (nothing was saved).
   final String? error;
-  const PairOutcome._(this.isBand, this.error);
+
+  /// With [isBand]: false when only the device's name said which band it is
+  /// (a WHOOP name cannot tell 4 from 5); true when GATT showed it.
+  final bool modelCertain;
+  const PairOutcome._(this.isBand, this.error, {this.modelCertain = true});
   const PairOutcome.saved() : this._(null, null);
   const PairOutcome.failed(String message) : this._(null, message);
-  const PairOutcome.band(BandEntry entry) : this._(entry, null);
+  const PairOutcome.band(BandEntry entry, {bool modelCertain = true})
+      : this._(entry, null, modelCertain: modelCertain);
   bool get saved => isBand == null && error == null;
 }
 

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/adapters/_registry.dart';
 import 'package:openstrap_edge/ble/band_identity.dart';
 import 'package:openstrap_edge/ble/hrs_link.dart';
+import 'package:openstrap_edge/sync/paired_device.dart' show kBandSourceTier;
 import 'package:openstrap_edge/ui2/pairing/add_device_flow.dart' show addDeviceScanEntries;
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
@@ -91,23 +92,15 @@ void main() {
       expect(_id([kCorosService])?.id, 'coros');
     });
 
-    test('a band company id alone identifies it (Garmin), name not needed', () {
-      // WHY: the name is user-set and may drop "whoop"/brand; company id is stronger.
+    test('a band service-data UUID alone identifies it (Garmin), name not needed', () {
+      // WHY: the name is user-set and may drop the brand; an entry's own
+      // service-data UUID is stronger.
       final r = bandIdentityOf(
           advertisedServiceUuids: [kHeartRateServiceUuid],
           name: null,
-          manufacturerCompanyIds: [kGarminCompanyIds.first]);
+          serviceDataUuids: [kGarminServiceDataUuids.first]);
       expect(r?.entry.id, 'garmin');
       expect(r?.modelCertain, isTrue);
-    });
-
-    test('an unknown company id with only 0x180D is not a band', () {
-      // WHY: negative control for the company-id layer.
-      final r = bandIdentityOf(
-          advertisedServiceUuids: [kHeartRateServiceUuid],
-          name: null,
-          manufacturerCompanyIds: [0xFFFE]);
-      expect(r, isNull);
     });
 
     test('service beats a misleading name: WHOOP 5 service, name "Polar H10"', () {
@@ -167,19 +160,106 @@ void main() {
       expect(c.rssi, -55);
     });
 
-    test('a Garmin company id on a 0x180D ad flags alsoBand=garmin', () {
-      // WHY: the seam must pass company ids through to the cross-check.
+    test('(CR r1) a Garmin company id on a 0x180D ad is a plain strap, not the watch', () async {
+      // WHY: 0x0087 names Garmin, not the watch. A Garmin heart-rate strap
+      // carrying it was flagged as the Garmin watch and refused at pairing.
       final c = HrsLink.candidateFromAd(
         entries: sensors,
         device: BluetoothDevice.fromId('AA:BB:CC:DD:EE:02'),
         serviceUuids: [Guid(kHeartRateServiceUuid)],
-        advName: '',
+        advName: 'HRM-Pro:123456',
         platformName: '',
         rssi: -60,
         manufacturerCompanyIds: [kGarminCompanyIds.first],
       );
       expect(c?.entryId, 'ble_hrs');
-      expect(c?.alsoBand?.entry.id, 'garmin');
+      expect(c?.alsoBand, isNull);
+      final io = _FakeIo(() async => _strap());
+      final out = await pairNotifyDevice(
+          entry: kBleHrs, remoteId: 'AA:BB:CC:DD:EE:02', io: io,
+          earlierBand: c?.alsoBand);
+      expect(out.saved, isTrue);
+      expect(io.writes, hasLength(1));
+      // Control: the company id still finds a Garmin watch in a Garmin scan.
+      final watch = HrsLink.candidateFromAd(
+        entries: [kGarmin],
+        device: BluetoothDevice.fromId('AA:BB:CC:DD:EE:03'),
+        serviceUuids: const [],
+        advName: '',
+        platformName: '',
+        rssi: -60,
+        manufacturerCompanyIds: [kGarminCompanyIds.first],
+      );
+      expect(watch?.entryId, kGarmin.id);
+    });
+
+    test('(CR r1) a framed band matched by its service prefix is a candidate', () {
+      // WHY: band identity matches a framed WHOOP by its 32-bit prefix; the
+      // entry match compared full UUIDs, so a WHOOP advertising a sibling
+      // UUID of its family was a band with no row in an unfiltered scan.
+      final sibling = '${kWhoopGen5.servicePrefix}-0000-1000-8000-00805f9b34fb';
+      expect(sibling, isNot(kWhoopGen5.service));
+      final c = HrsLink.candidateFromAd(
+        entries: kBandRegistry,
+        device: BluetoothDevice.fromId('AA:BB:CC:DD:EE:04'),
+        serviceUuids: [Guid(sibling)],
+        advName: '',
+        platformName: '',
+        rssi: -60,
+      );
+      expect(c?.entryId, 'gen5');
+    });
+
+    test('(CR r1) a name-only WHOOP keeps its model uncertain', () {
+      // WHY: the name cannot tell WHOOP 4 from 5; the name-matched entry is
+      // gen4, and dropping the uncertain identity made it read as a WHOOP 4.
+      final c = HrsLink.candidateFromAd(
+        entries: kBandRegistry,
+        device: BluetoothDevice.fromId('AA:BB:CC:DD:EE:05'),
+        serviceUuids: const [],
+        advName: 'WHOOP 4C0FFEE',
+        platformName: '',
+        rssi: -60,
+      );
+      expect(c?.entryId, 'gen4');
+      expect(c?.alsoBand?.entry.id, 'gen4');
+      expect(c?.alsoBand?.modelCertain, isFalse);
+      // Control: a service settles the model, and the band is not "also".
+      final sure = HrsLink.candidateFromAd(
+        entries: kBandRegistry,
+        device: BluetoothDevice.fromId('AA:BB:CC:DD:EE:06'),
+        serviceUuids: [Guid(kWhoopGen5.service)],
+        advName: 'WHOOP 4C0FFEE',
+        platformName: '',
+        rssi: -60,
+      );
+      expect(sure?.entryId, 'gen5');
+      expect(sure?.alsoBand, isNull);
+    });
+
+    test('(CR r1) a name that drops out keeps the row label over the OS cache', () {
+      // WHY: the OS-cached platform name can be stale; the row must not
+      // change under the user's finger.
+      final c = HrsLink.candidateFromAd(
+        entries: sensors,
+        device: BluetoothDevice.fromId('AA:BB:CC:DD:EE:07'),
+        serviceUuids: [Guid(kHeartRateServiceUuid)],
+        advName: '',
+        platformName: 'Old Name',
+        rssi: -60,
+        previousLabel: 'Polar H10 1234',
+      );
+      expect(c?.label, 'Polar H10 1234');
+      // Control: with no earlier label the OS name is still used.
+      final first = HrsLink.candidateFromAd(
+        entries: sensors,
+        device: BluetoothDevice.fromId('AA:BB:CC:DD:EE:08'),
+        serviceUuids: [Guid(kHeartRateServiceUuid)],
+        advName: '',
+        platformName: 'Old Name',
+        rssi: -60,
+      );
+      expect(first?.label, 'Old Name');
     });
 
     test('a chest strap has alsoBand null', () {
@@ -416,7 +496,7 @@ void _matching() {
       expect(_id([_hr, kCorosService])?.id, 'coros');
     });
 
-    test('service evidence beats a conflicting name or company id', () {
+    test('service evidence beats a conflicting name or service-data UUID', () {
       // WHY: names are user-set and company ids shared; a service is the strongest evidence.
       expect(_full([kCorosService], 'My WHOOP')?.entry.id, 'coros');
       expect(_full([kCorosService], 'My WHOOP')?.modelCertain, isTrue);
@@ -425,7 +505,7 @@ void _matching() {
       final r = bandIdentityOf(
           advertisedServiceUuids: [kWhoopGen5.service],
           name: 'Garmin Forerunner',
-          manufacturerCompanyIds: [kGarminCompanyIds.first]);
+          serviceDataUuids: [kGarminServiceDataUuids.first]);
       expect(r?.entry.id, 'gen5');
     });
   });
@@ -559,6 +639,34 @@ void _pairing() {
       expect(refused.writes, isEmpty);
     });
 
+    test('(CR 4500472602) a band missing the measurement characteristic is still a band outcome', () async {
+      // WHY: the band cross-check needs only the discovered services. Run
+      // after the characteristic check, a WHOOP without the measurement
+      // characteristic got "does not expose the data" instead of the band
+      // choice this flow exists to offer.
+      final p = _Pairing();
+      final out = await p.run(
+          kBleHrs, () async => [_svc(_hr), _svc(kWhoopGen5.service)]);
+      expect(out.isBand?.id, 'gen5');
+      expect(out.error, isNull);
+      expect(p.writes, isEmpty);
+    });
+
+    test('(CR 4500539072) a band outcome says whether its model is certain', () async {
+      // WHY: the flow must not guess certainty from whether the entry changed.
+      // GATT proves the model; a name match alone does not.
+      final byName = (entry: kWhoopGen4, modelCertain: false);
+      final proven = await _Pairing().run(kBleHrs,
+          () async => [..._strap(), _svc(kWhoopGen4.service)],
+          earlierBand: byName);
+      expect(proven.isBand?.id, 'gen4');
+      expect(proven.modelCertain, isTrue, reason: 'GATT showed the gen4 service');
+      final nameOnly = await _Pairing().run(kBleHrs, () async => _strap(),
+          earlierBand: byName);
+      expect(nameOnly.isBand?.id, 'gen4');
+      expect(nameOnly.modelCertain, isFalse, reason: 'only the name said WHOOP');
+    });
+
     test('a strap missing its measurement characteristic fails, zero writes', () async {
       // WHY: a row pointing at a device that cannot answer is a sensor that appears paired and never beats.
       final p = _Pairing();
@@ -629,6 +737,26 @@ void _pairing() {
       expect(out.saved, isTrue);
       expect(p.writes, hasLength(1));
       expect(p.writes.single.adapterId, 'ble_hrs');
+    });
+
+    test('(CR r2) a WHOOP kept as a plain sensor is stored at the band tier, not beat-to-beat', () async {
+      // WHY: deriveTier off ble_hrs's declared signals says beatToBeat, which
+      // would rank a wrist optical WHOOP above the band, fill the R-peak
+      // rung and win live heart rate.
+      final p = _Pairing();
+      await p.run(
+        kBleHrs,
+        () async => [..._strap(), _svc(kWhoopGen5.service)],
+        remoteId: 'AA:BB:CC:DD:EE:05',
+        confirmation: const PairConfirmation(
+            remoteId: 'AA:BB:CC:DD:EE:05', bandEntryId: 'gen5'),
+      );
+      expect(p.writes.single.tier, kBandSourceTier);
+      expect(kBandSourceTier, 'wristOptical');
+      // Positive control: a real chest strap keeps its beat-to-beat tier.
+      final strap = _Pairing();
+      await strap.run(kBleHrs, () async => _strap());
+      expect(strap.writes.single.tier, 'beatToBeat');
     });
 
     test('a confirmation for another device is still refused', () async {

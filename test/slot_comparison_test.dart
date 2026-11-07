@@ -1,7 +1,8 @@
-// Slot comparison: what a device gives as the main band vs a secondary sensor.
-// Capabilities come from the compute layer's eligibility rules (S6): the
-// metric x device columns (canonical.dart columnFor/capabilities), the native
-// WHOOP pipeline, and the workout-armed sensor set.
+// Slot comparison: what a device gives "Every day" (the main band, or the
+// active wearable) and "Workouts only" (a workout-armed sensor). Capabilities
+// come from the compute layer's eligibility rules (S6): the metric x device
+// columns (canonical.dart columnFor/capabilities), the native WHOOP pipeline,
+// and the workout-armed sensor set.
 import 'dart:convert';
 import 'dart:io';
 
@@ -14,10 +15,19 @@ import 'package:openstrap_edge/compute/inputs/canonical.dart'
 typedef C = DeviceCapability;
 typedef K = CapabilityKind;
 
-// The whole-day outputs a framed WHOOP gets natively (the slot). Pinned by hand
-// from compute/onehz_pipeline.dart: sleep (:1938), strain (:2035), rmssd (:2026),
-// readiness (recovery) and skin temperature. No all-day HR capability (DT6).
-const _slot = <DeviceCapability>{C.sleep, C.recovery, C.strain, C.hrv, C.skinTemperature};
+// The table's rows, in the order the sheets draw them (owner-approved r4
+// mockup): the whole-day rows, then the workout rows. Never blood oxygen.
+const _dayRows = <DeviceCapability>[
+  C.sleep,
+  C.recovery,
+  C.strain,
+  C.heartRate,
+  C.hrv,
+  C.respiration,
+  C.skinTemperature,
+  C.steps,
+];
+const _workoutRows = <DeviceCapability>[C.workoutHeartRate, C.workoutBeatToBeat];
 
 Set<DeviceCapability> _keys(SlotSide s) => s.sends.keys.toSet();
 
@@ -25,281 +35,283 @@ List<BandEntry> _columnEntries() =>
     [for (final e in kBandRegistry) if (columnFor(e.id) != null) e];
 
 void main() {
-  test('the slot is exactly the five native whole-day outputs', () {
-    // WHY (S2): "doesn't send" is defined against this set; a drifting slot
-    // silently changes every secondary sensor's list.
-    expect(kBandSlotOutputs, _slot);
+  test('the table rows are the eight whole-day rows, then the two workout rows', () {
+    // WHY: every sheet and the device card draw the same rows in the same
+    // order; a drifting list changes every table at once.
+    expect(kDayCapabilities, _dayRows);
+    expect(kSessionCapabilities.toList(), _workoutRows);
+    expect(kTableRows, [..._dayRows, ..._workoutRows]);
+    expect(kTableRows, isNot(contains(C.bloodOxygen)));
   });
 
-  group('WHOOP as the main band', () {
+  group('WHOOP', () {
     for (final e in [kWhoopGen4, kWhoopGen5]) {
-      test('${e.id}: native sleep, recovery, strain, HRV; skin temp conditional', () {
-        // WHY: the compute layer produces these for a framed WHOOP; the user is told so.
-        final b = slotComparisonFor(e).asBand.sends;
-        for (final c in [C.sleep, C.recovery, C.strain, C.hrv]) {
-          expect(b[c]?.kind, K.native, reason: '${e.id} $c');
+      test('${e.id}: every day, as the main band, sends every row', () {
+        // WHY: the native pipeline (onehz_pipeline.dart) computes sleep,
+        // recovery, strain, resting HR, HRV, respiration and skin temperature,
+        // and the band records workouts.
+        final cmp = slotComparisonFor(e);
+        expect(cmp.slot, DeviceSlot.everyDay);
+        final d = cmp.everyDay.sends;
+        expect(d.keys.toSet(), {..._dayRows, ..._workoutRows});
+        for (final c in [C.sleep, C.recovery, C.strain, C.heartRate, C.hrv,
+            C.respiration, C.workoutHeartRate, C.workoutBeatToBeat]) {
+          expect(d[c]?.kind, K.native, reason: '${e.id} $c');
         }
-        final t = b[C.skinTemperature];
-        expect(t, isNotNull, reason: '${e.id} skin temperature');
-        // DT7: needs a nightly mean, >=3 prior nights and baseline SD >=1
-        // (onehz_pipeline.dart:1034); WHOOP 5's deg C needs 14 nights.
-        expect(t!.kind, K.conditional, reason: '${e.id} skin temperature');
-        expect(t.reasonKey?.trim() ?? '', isNotEmpty,
-            reason: 'conditional needs a reason key');
-        expect(b.keys.toSet().intersection(_slot), _slot);
+        // DT7: a nightly mean, >= 3 prior nights, baseline spread >= 1.
+        expect(d[C.skinTemperature]?.kind, K.conditional);
+        expect(d[C.skinTemperature]?.reasonKey, kReasonSkinTempNights);
       });
 
-      test('${e.id}: no steps claim', () {
-        // WHY: WHOOP declares no step counter.
-        final b = slotComparisonFor(e).asBand.sends;
-        expect(b.containsKey(C.steps), isFalse);
+      test('${e.id}: workouts only, read as a heart-rate sensor', () {
+        // WHY: a WHOOP kept for workouts is paired under ble_hrs, so it sends
+        // heart rate, and beat timing only if the band sends RR intervals.
+        final w = slotComparisonFor(e).workoutsOnly.sends;
+        expect(w.keys.toSet(), _workoutRows.toSet());
+        expect(w[C.workoutHeartRate]?.kind, K.native);
+        expect(w[C.workoutBeatToBeat]?.kind, K.conditional);
+        expect(w[C.workoutBeatToBeat]?.reasonKey, kReasonUnconfirmed);
       });
     }
-  });
 
-  test('blood oxygen is never sent by a WHOOP, as band or sensor (S1)', () {
-    // WHY: the app refuses SpO2 permanently (compute/onehz_pipeline.dart:937,
-    // kSpo2Refusal): ir-red is one drifting channel, not oxygenation. Raw
-    // red/IR membership must not turn into a promise.
-    for (final e in [kWhoopGen4, kWhoopGen5]) {
-      final cmp = slotComparisonFor(e);
-      expect(cmp.asBand.sends.containsKey(C.bloodOxygen), isFalse, reason: e.id);
-      expect(cmp.asSensor.sends.containsKey(C.bloodOxygen), isFalse, reason: e.id);
-      expect(cmp.asBand.doesNotSend.contains(C.bloodOxygen), isFalse,
-          reason: '${e.id}: not a slot output either');
-    }
-  });
-
-  test('no registry entry claims blood oxygen, on either side (G2 r1 S1)', () {
-    // WHY: the pairing comparison must never promise SpO2 for any device, a
-    // vendor's own reading included (Oura and Garmin columns carry a device
-    // spo2 row; that is the column's business, not a pairing promise).
-    expect(capabilities(columnFor('garmin')!)['spo2'], MetricClass.device,
-        reason: 'positive control: a column does offer a vendor spo2');
-    expect(capabilities(columnFor('oura')!)['spo2'], MetricClass.device,
-        reason: 'positive control');
-    for (final e in kBandRegistry) {
-      final cmp = slotComparisonFor(e);
-      expect(cmp.asBand.sends.containsKey(C.bloodOxygen), isFalse, reason: e.id);
-      expect(cmp.asSensor.sends.containsKey(C.bloodOxygen), isFalse, reason: e.id);
-      expect(capabilityTrace(e, C.bloodOxygen, asBand: true), isNull, reason: e.id);
-      expect(capabilityTrace(e, C.bloodOxygen, asBand: false), isNull, reason: e.id);
-    }
-  });
-
-  group('as a secondary sensor (S2)', () {
-    test('WHOOP as sensor sends exactly workout HR and beat-to-beat', () {
-      // WHY: as a 0x180D sensor only the live HR service is read, never history.
-      for (final e in [kWhoopGen4, kWhoopGen5]) {
-        expect(_keys(slotComparisonFor(e).asSensor), {C.workoutHeartRate, C.workoutBeatToBeat},
-            reason: e.id);
-      }
-    });
-
-    test('ble_hrs lists sleep, recovery, strain, HRV and skin temp as not sent', () {
-      // WHY: the central requirement. A chest strap paired without a band must
-      // say it gives none of the band's whole-day outputs. The old difference
-      // rule gave it an empty list.
-      final s = slotComparisonFor(kBleHrs).asSensor;
-      expect(s.sends.keys, contains(C.workoutHeartRate));
-      expect(s.doesNotSend,
-          containsAll(<DeviceCapability>{C.sleep, C.recovery, C.strain}));
-      expect(s.doesNotSend, _slot.difference(_keys(s)));
-      expect(s.doesNotSend.contains(C.workoutHeartRate), isFalse);
-    });
-
-    test('doesNotSend = slot minus sends, for EVERY registry entry', () {
-      // WHY: the slot defines the omission, not whether this device has a band column.
-      expect(kBandRegistry.length, greaterThan(10));
-      for (final e in kBandRegistry) {
-        final s = slotComparisonFor(e).asSensor;
-        expect(s.doesNotSend, _slot.difference(_keys(s)), reason: e.id);
-        expect(s.doesNotSend.intersection(_keys(s)), isEmpty, reason: e.id);
-      }
-    });
-
-    test('only workout-armed sensors and a WHOOP read as a heart-rate sensor send anything (G2 r1 S2)', () {
-      // WHY: canonical.dart kWorkoutArmedSensors arms only ble_hrs and
-      // polar_pmd. A WHOOP confirmed as a secondary sensor is paired under
-      // ble_hrs, so it gets ble_hrs's slot. Coros and Oura declare heart rate
-      // and beats, but nothing arms them as a workout source.
-      const both = {C.workoutHeartRate, C.workoutBeatToBeat};
-      final sensors = {'ble_hrs', 'polar_pmd', 'gen4', 'gen5'};
-      expect(kWorkoutArmedSensors, {'ble_hrs', 'polar_pmd'});
-      for (final e in kBandRegistry) {
-        final sends = slotComparisonFor(e).asSensor;
-        expect(_keys(sends), sensors.contains(e.id) ? both : isEmpty,
-            reason: e.id);
-        if (!sensors.contains(e.id)) {
-          expect(sends.doesNotSend, _slot, reason: '${e.id}: the whole slot');
-        }
-      }
-      for (final id in ['coros', 'oura']) {
-        expect(declaredSignals(id).map((s) => s.name), contains('rrIntervals'),
-            reason: '$id: positive control, it does declare beats');
-      }
+    test('steps: WHOOP 4 only during live sessions, WHOOP 5 from its own counter', () {
+      // WHY: gen4 has no on-chip counter (derivation_engine.dart
+      // _stepCounterModulus), so its steps come only from the strap's 100 Hz
+      // pedometer over a live link (live_step_runs.dart). gen5's cumulative
+      // counter rides every synced row (decoded_onehz.step_count).
+      final g4 = slotComparisonFor(kWhoopGen4).everyDay.sends[C.steps];
+      expect(g4?.kind, K.conditional);
+      expect(g4?.reasonKey, kReasonLiveSessions);
+      expect(slotComparisonFor(kWhoopGen5).everyDay.sends[C.steps]?.kind,
+          K.native);
     });
   });
 
-  group('wearable columns (S6)', () {
+  group('wearables fill every day (the active wearable)', () {
     test('the six columned entries are found (control for the loops below)', () {
-      // WHY: if columnFor changed ids the loops would pass over nothing.
       expect({for (final e in _columnEntries()) e.id},
           {'garmin', 'pebble', 'miband234', 'ultrahuman', 'colmi', 'oura'});
     });
 
-    test('every mapped row exists in some column', () {
-      // WHY: a typo in kCapabilityRow would make a capability silently never sent.
-      final rows = {
-        for (final e in _columnEntries()) ...columnFor(e.id)!.keys,
-      };
-      for (final r in kCapabilityRow.entries) {
-        expect(rows, contains(r.value), reason: '${r.key}');
+    test('Oura: the rows read off kOuraColumn, with their captions', () {
+      // WHY: oura_inputs.dart: sleep off the ring's own stages, readiness
+      // provisional until 14 nights of baseline, skin temperature after a few
+      // nights, strain and steps not decoded; not workout-armed.
+      final cmp = slotComparisonFor(kOura);
+      expect(cmp.slot, DeviceSlot.everyDay);
+      final d = cmp.everyDay.sends;
+      expect(d.keys.toSet(), {C.sleep, C.recovery, C.heartRate, C.hrv,
+          C.respiration, C.skinTemperature});
+      expect(d[C.sleep]?.reasonKey, kReasonOwnStagesRing);
+      expect(d[C.recovery]?.reasonKey, kReasonFirstNights);
+      expect(d[C.skinTemperature]?.reasonKey, kReasonSkinTempNights);
+      for (final c in [C.heartRate, C.hrv, C.respiration]) {
+        expect(d[c]?.kind, K.native, reason: '$c');
       }
+      expect(cmp.workoutsOnly.sends, isEmpty);
     });
 
-    test('a wearable band slot follows capabilities(column), class by class', () {
-      // WHY: ours -> native, device -> vendorReported, estimated -> conditional
-      // (with a reason), unavailable -> not sent. Read off the real columns.
+    test('every columned wearable: every-day rows follow capabilities(column)', () {
+      // WHY: ours -> native (or a stated condition), device -> the device's own
+      // reading, estimated -> conditional, unavailable -> not sent.
       for (final e in _columnEntries()) {
         final col = columnFor(e.id)!;
         final cls = capabilities(col);
-        final sends = slotComparisonFor(e).asBand.sends;
+        final cmp = slotComparisonFor(e);
+        expect(cmp.slot, DeviceSlot.everyDay, reason: e.id);
+        expect(cmp.workoutsOnly.sends, isEmpty, reason: e.id);
+        final sends = cmp.everyDay.sends;
         for (final m in kCapabilityRow.entries) {
-          final row = col[m.value];
-          final c = cls[m.value]!;
+          final c = cls[m.value];
           final got = sends[m.key];
           final why = '${e.id} ${m.key} ($c)';
           switch (c) {
-            case MetricClass.unavailable:
+            case null || MetricClass.unavailable:
               expect(got, isNull, reason: why);
             case MetricClass.device:
               expect(got?.kind, K.vendorReported, reason: why);
             case MetricClass.estimated:
               expect(got?.kind, K.conditional, reason: why);
-              expect(got?.reasonKey?.trim() ?? '', isNotEmpty, reason: why);
             case MetricClass.ours:
-              expect(got?.kind,
-                  row!.provisionalAt != null ? K.conditional : K.native,
-                  reason: why);
+              expect(got, isNotNull, reason: why);
+              expect(got!.kind, isNot(K.vendorReported), reason: why);
+          }
+          if (got?.kind == K.conditional) {
+            expect(got!.reasonKey?.trim() ?? '', isNotEmpty, reason: why);
           }
         }
+        expect(sends.keys.toSet().intersection(_workoutRows.toSet()), isEmpty,
+            reason: '${e.id}: a wearable is no workout session source');
       }
     });
 
-    test('hand-read anchors: Garmin and Mi Band', () {
-      // WHY: the loop above reads the same table; these were read by hand.
-      // garmin_inputs.dart:170 spo2 is the watch's own value; :176 skin temp is
-      // not decoded; :164 HRV is device-reported unless a strap gave beats;
-      // :183 readiness is an estimate (resting-HR only) without a strap;
-      // strain is ours. miband_inputs.dart:61 spo2 is never available.
-      final g = slotComparisonFor(kGarmin).asBand.sends;
-      expect(g.containsKey(C.bloodOxygen), isFalse);
+    test('Pebble HR rows are Pebble 2 only; SE keeps reported sleep and steps', () {
+      final cmp = slotComparisonFor(kPebble);
+      final d = cmp.everyDay.sends;
+      expect(d.keys.toSet(), {C.sleep, C.recovery, C.strain, C.heartRate, C.steps});
+      for (final c in [C.recovery, C.strain, C.heartRate]) {
+        expect(d[c]?.kind, K.conditional, reason: 'SE has no HR sensor: $c');
+      }
+      expect(d[C.strain]?.reasonKey, 'capReasonPebble2Only');
+      expect(d[C.heartRate]?.reasonKey, 'capReasonPebble2Only');
+      // WHY (CR 4500472602): Pebble 2's recovery is an estimate; the
+      // Pebble 2 only caption must not drop that.
+      expect(d[C.recovery]?.reasonKey, 'capReasonPebble2OnlyEstimated');
+      expect(d[C.sleep]?.reasonKey, kReasonOwnStages);
+      expect(d[C.steps]?.kind, K.vendorReported);
+      expect(cmp.workoutsOnly.sends, isEmpty);
+    });
+
+    test('hand-read anchors: Garmin', () {
+      // garmin_inputs.dart: HRV the watch's own unless a strap gave beats,
+      // readiness an estimate without a strap, strain ours, no skin temp.
+      final g = slotComparisonFor(kGarmin).everyDay.sends;
       expect(g.containsKey(C.skinTemperature), isFalse);
       expect(g[C.hrv]?.kind, K.vendorReported);
       expect(g[C.recovery]?.kind, K.conditional);
       expect(g[C.strain]?.kind, K.native);
-      expect(slotComparisonFor(kMiBand234).asBand.sends.containsKey(C.bloodOxygen), isFalse);
     });
   });
 
-  test('Coros is excluded from wearable compute, so its band slot sends nothing', () {
-    // WHY: compute/inputs/canonical.dart:127 wearableEnabled() is false for
-    // kCoros and it has no column: nothing native, nothing vendor-reported.
-    final b = slotComparisonFor(kCoros).asBand;
-    expect(b.sends, isEmpty);
-    expect(columnFor(kCoros.id), isNull, reason: 'positive control for the rule');
+  group('workout sensors fill workouts only', () {
+    test('a chest strap: heart rate; beat timing if the strap sends it', () {
+      // WHY: kWorkoutArmedSensors arms ble_hrs; RR intervals are optional in
+      // the Heart Rate Service.
+      final cmp = slotComparisonFor(kBleHrs);
+      expect(cmp.slot, DeviceSlot.workoutsOnly);
+      expect(cmp.everyDay.sends, isEmpty);
+      final w = cmp.workoutsOnly.sends;
+      expect(w[C.workoutHeartRate]?.kind, K.native);
+      expect(w[C.workoutBeatToBeat]?.reasonKey, kReasonUnconfirmed);
+      expect(cmp.workoutsOnly.doesNotSend, _dayRows.toSet());
+    });
+
+    test('Polar PMD: its PPI stream is beats, so no "not confirmed" caption', () {
+      final w = slotComparisonFor(kPolarPmd).workoutsOnly.sends;
+      expect(w[C.workoutBeatToBeat]?.kind, K.native);
+      expect(w[C.workoutHeartRate]?.reasonKey, isNull);
+      expect(slotComparisonFor(kPolarPmd).slot, DeviceSlot.workoutsOnly);
+    });
+
+    test('only the armed sensors and a WHOOP send anything for workouts', () {
+      expect(kWorkoutArmedSensors, {'ble_hrs', 'polar_pmd'});
+      for (final e in kBandRegistry) {
+        final w = _keys(slotComparisonFor(e).workoutsOnly);
+        final armed = {'ble_hrs', 'polar_pmd', 'gen4', 'gen5'}.contains(e.id);
+        expect(w, armed ? _workoutRows.toSet() : isEmpty, reason: e.id);
+      }
+    });
   });
 
-  test('a sensor-role entry has an empty band slot', () {
-    // WHY: a chest strap cannot be the main device; do not promise sleep from it.
-    for (final e in [kBleHrs, kPolarPmd, kThermometer]) {
-      expect(slotComparisonFor(e).asBand.sends, isEmpty, reason: e.id);
+  test('"not confirmed" only where the device may not send it: a generic strap, a WHOOP read as one', () {
+    // WHY (owner): devices people use (Oura, Polar) carry only factual
+    // captions; the unconfirmed one is for RR from the generic profile.
+    final unconfirmed = {
+      for (final e in kBandRegistry)
+        for (final s in DeviceSlot.values)
+          for (final m in slotComparisonFor(e).side(s).sends.entries)
+            if (m.value.reasonKey == kReasonUnconfirmed) '${e.id}:${m.key.name}',
+    };
+    expect(unconfirmed, {
+      'ble_hrs:workoutBeatToBeat',
+      'gen4:workoutBeatToBeat',
+      'gen5:workoutBeatToBeat',
+    });
+  });
+
+  test('Coros, scales and thermometers fit neither column', () {
+    // WHY: canonical.dart wearableEnabled() is false for Coros and it has no
+    // column; nothing arms it for workouts.
+    expect(declaredSignals('coros').map((s) => s.name), contains('rrIntervals'),
+        reason: 'positive control: Coros does declare beats');
+    for (final e in [kCoros, kThermometer, kMiScale2, kMiScaleComposition]) {
+      final cmp = slotComparisonFor(e);
+      expect(cmp.slot, isNull, reason: e.id);
+      expect(cmp.everyDay.sends, isEmpty, reason: e.id);
+      expect(cmp.workoutsOnly.sends, isEmpty, reason: e.id);
+    }
+  });
+
+  test('no registry entry claims blood oxygen, in either column (S1)', () {
+    expect(capabilities(columnFor('oura')!)['spo2'], MetricClass.device,
+        reason: 'positive control: a column does offer a vendor spo2');
+    for (final e in kBandRegistry) {
+      final cmp = slotComparisonFor(e);
+      for (final s in DeviceSlot.values) {
+        expect(cmp.side(s).sends.containsKey(C.bloodOxygen), isFalse,
+            reason: '${e.id} $s');
+        expect(cmp.side(s).doesNotSend.contains(C.bloodOxygen), isFalse,
+            reason: '${e.id} $s');
+        expect(capabilityTrace(e, C.bloodOxygen, slot: s), isNull,
+            reason: '${e.id} $s');
+      }
+    }
+  });
+
+  test('doesNotSend is the table rows minus sends, for every entry and column', () {
+    for (final e in kBandRegistry) {
+      final cmp = slotComparisonFor(e);
+      for (final s in DeviceSlot.values) {
+        final side = cmp.side(s);
+        expect(side.doesNotSend, kTableRows.toSet().difference(_keys(side)),
+            reason: '${e.id} $s');
+      }
     }
   });
 
   group('nothing fabricated (S6)', () {
-    test('every capability claimed for every entry traces to an eligibility rule', () {
-      // WHY: a claim with no rule behind it is a false promise. The trace names
-      // the rule and an existing repo file; unclaimed capabilities have none.
+    test('every claim traces to an eligibility rule in an existing file', () {
       var claims = 0;
       for (final e in kBandRegistry) {
         final cmp = slotComparisonFor(e);
-        for (final band in [true, false]) {
-          final side = band ? cmp.asBand : cmp.asSensor;
-          for (final c in side.sends.keys) {
+        for (final s in DeviceSlot.values) {
+          for (final c in cmp.side(s).sends.keys) {
             claims++;
-            final t = capabilityTrace(e, c, asBand: band);
-            final why = '${e.id} ${band ? "band" : "sensor"} $c';
+            final t = capabilityTrace(e, c, slot: s);
+            final why = '${e.id} $s $c';
             expect(t, isNotNull, reason: why);
             expect(t!.rule.trim(), isNotEmpty, reason: why);
-            expect(File(t.source).existsSync(), isTrue,
-                reason: '$why: ${t.source}');
+            expect(File(t.source).existsSync(), isTrue, reason: '$why: ${t.source}');
           }
         }
       }
-      expect(claims, greaterThan(10), reason: 'vacuity control');
+      expect(claims, greaterThan(20), reason: 'vacuity control');
     });
 
-    test('a band-slot claim needs a column or the native WHOOP pipeline', () {
-      // WHY: nothing else in the compute layer produces whole-day values for a band.
+    test('an every-day claim needs a column or the native WHOOP pipeline', () {
       for (final e in kBandRegistry) {
-        final sends = slotComparisonFor(e).asBand.sends;
-        final eligible = columnFor(e.id) != null || e.id == 'gen4' || e.id == 'gen5';
-        if (!eligible) expect(sends, isEmpty, reason: e.id);
-      }
-    });
-
-    test('a capability with no trace is not claimed', () {
-      // WHY: the reverse direction; if trace says null the side must not list it.
-      for (final e in kBandRegistry) {
-        final cmp = slotComparisonFor(e);
-        for (final c in DeviceCapability.values) {
-          for (final band in [true, false]) {
-            final side = band ? cmp.asBand : cmp.asSensor;
-            if (capabilityTrace(e, c, asBand: band) == null) {
-              expect(side.sends.containsKey(c), isFalse, reason: '${e.id} $c');
-            }
-          }
+        final eligible =
+            columnFor(e.id) != null || e.id == 'gen4' || e.id == 'gen5';
+        if (!eligible) {
+          expect(slotComparisonFor(e).everyDay.sends, isEmpty, reason: e.id);
         }
       }
     });
 
-    test('every capability has a clean eligibility source', () {
-      // WHY: whole-day capabilities need a column row (kCapabilityRow) and
-      // session ones the sensor rule (kSessionCapabilities). A new capability
-      // without either would be signal guessing. DT6: all-day HR was dropped
-      // for exactly that reason (no column row is all-day HR).
-      expect(DeviceCapability.values.map((c) => c.name),
-          isNot(contains('heartRateAllDay')));
-      final unsourced = [
-        for (final c in DeviceCapability.values)
-          if (!kCapabilityRow.containsKey(c) &&
-              !kSessionCapabilities.contains(c) &&
-              c != C.bloodOxygen)
-            c,
-      ];
-      expect(unsourced, isEmpty, reason: 'no eligibility source for $unsourced');
+    test('every whole-day capability has a column row', () {
+      final rows = {for (final e in _columnEntries()) ...columnFor(e.id)!.keys};
+      for (final c in _dayRows) {
+        expect(kCapabilityRow[c], isNotNull, reason: '$c');
+        expect(rows, contains(kCapabilityRow[c]), reason: '$c');
+      }
     });
   });
 
-  test('every label and reason key the comparison can show has text in every locale', () {
-    // WHY: a reason or label with no translation would render blank for that
-    // language. Reasons are collected from the real comparison, not a list.
-    final keys = <String>{...kCapabilityLabelKey.values};
+  test('every label and reason key the table can show has text in every locale', () {
+    final keys = <String>{for (final c in kTableRows) kCapabilityLabelKey[c]!};
     for (final e in kBandRegistry) {
       final cmp = slotComparisonFor(e);
-      for (final side in [cmp.asBand, cmp.asSensor]) {
-        for (final s in side.sends.values) {
-          if (s.reasonKey != null) keys.add(s.reasonKey!);
+      for (final s in DeviceSlot.values) {
+        for (final st in cmp.side(s).sends.values) {
+          if (st.reasonKey != null) keys.add(st.reasonKey!);
         }
       }
     }
-    expect(kCapabilityLabelKey.keys.toSet(), DeviceCapability.values.toSet());
-    expect(keys.length, greaterThan(DeviceCapability.values.length),
+    expect(keys.length, greaterThan(kTableRows.length + 4),
         reason: 'vacuity control: some reason keys were found');
     final arbs = Directory('lib/l10n').listSync().whereType<File>().where(
         (f) => RegExp(r'app_\w+\.arb$').hasMatch(f.path));
+    // The fork ships seven locales (no Thai), the PR eight.
     expect(arbs.length, 7);
     for (final f in arbs) {
       final arb = jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
