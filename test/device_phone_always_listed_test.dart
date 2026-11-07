@@ -170,7 +170,8 @@ void main() {
         ..paired = PairedDevice('AA:BB:CC:DD:EE:FF', 'SER1');
       addTearDown(app.dispose);
       await _pump(t, app, const MyDevices());
-      expect(find.text('Your band'), findsOneWidget);
+      // The PR's "Your band" card (the band's name is also "Your band" here).
+      expect(find.byKey(const ValueKey('band-paired-card')), findsOneWidget);
       expect(find.text('This phone'), findsOneWidget);
       expect(find.text(_reason), findsOneWidget);
     });
@@ -180,9 +181,10 @@ void main() {
       final app = _Phone(enabled: false);
       addTearDown(app.dispose);
       await _pump(t, app, const MyDevices());
-      // With no band and a phone that is off, the empty state still says so.
-      expect(find.text('Nothing is measuring yet'), findsOneWidget);
-      expect(find.text('No band is paired'), findsNothing);
+      // With no band and a phone that is off, the "Your band" card says no band
+      // is paired (the PR replaced the old "Nothing is measuring yet" card).
+      expect(find.text('No band is paired'), findsOneWidget);
+      expect(find.text('Nothing is measuring yet'), findsNothing);
     });
   });
 

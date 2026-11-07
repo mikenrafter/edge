@@ -88,10 +88,8 @@ class _PairBandViewState extends State<PairBandView> {
       backgroundColor: p.bg,
       body: SafeArea(
         child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l.pairSetUpTitle, onBack: widget.onBack),
-          ),
+          // No Padding: the fork's NavBar owns its inset.
+          NavBar(l.pairSetUpTitle, onBack: widget.onBack),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x10),
