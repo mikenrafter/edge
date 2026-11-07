@@ -1,11 +1,13 @@
 // First-run "Pair your band": the list, the filter pills, the strap-only
-// confirm sheet, the help dialog and the way out. Rendered with fakes.
+// sheet, the always-open Trouble connecting card and the way out. Rendered with fakes.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/ble/adapters/_registry.dart';
 import 'package:openstrap_edge/ui2/community_links.dart';
 import 'package:openstrap_edge/ui2/pairing/pair_band_view.dart';
 import 'package:openstrap_edge/ui2/pairing/pair_help.dart' show PairLinkOpener;
+import 'package:openstrap_edge/ui2/pairing/pair_text.dart' show PairFilter;
 
 import 'support/pair_ui_support.dart';
 
@@ -50,7 +52,7 @@ void main() {
       ValueChanged<BandEntry>? onPick,
       VoidCallback? onStrap,
       VoidCallback? onSkip,
-      VoidCallback? onDemo,
+      VoidCallback? onBack,
       String? problem,
       _Links? links,
     }) =>
@@ -58,46 +60,60 @@ void main() {
           entries: entries ?? firstRunBandEntries(),
           host: _Host(onPick ?? (_) {}, onStrap ?? () {}),
           onSkip: onSkip,
-          onDemoMode: onDemo,
+          onBack: onBack,
           problem: problem,
           openLink: links ?? _Links(),
         );
 
     testWidgets('title, subtitle, and one row per device with what it sends', (t) async {
-      await pumpPair(t, view(), size: const Size(412, 1600));
+      await pumpPair(t, view(), size: const Size(412, 2400));
+      expect(find.text('Set up'), findsOneWidget);
+      expect(find.byKey(const ValueKey('pair-band-title')), findsOneWidget);
       expect(find.text('Pair your band'), findsOneWidget);
       expect(find.text('Pick the one you wear. We will look for it nearby.'), findsOneWidget);
       for (final e in firstRunBandEntries()) {
         expect(_row(e), findsOneWidget, reason: e.id);
+        expect(
+            find.descendant(
+                of: _row(e),
+                matching: find.text('Sleep, recovery, strain, heart rate and more')),
+            findsOneWidget,
+            reason: e.id);
       }
-      expect(
-          find.descendant(
-              of: _row(kWhoopGen5),
-              matching: find.text(
-                  'Sends: sleep, recovery, strain, heart-rate variability, skin temperature')),
-          findsOneWidget);
+    });
+
+    testWidgets('each row carries the Every day chip', (t) async {
+      await pumpPair(t, view(), size: const Size(412, 2400));
+      for (final e in firstRunBandEntries()) {
+        expect(find.descendant(of: _row(e), matching: find.text('Every day')), findsOneWidget,
+            reason: e.id);
+        expect(find.descendant(of: _row(e), matching: find.text('Workouts only')), findsNothing,
+            reason: e.id);
+      }
     });
 
     testWidgets('says plainly that only WHOOP is the main band', (t) async {
-      await pumpPair(t, view(), size: const Size(412, 1600));
+      await pumpPair(t, view(), size: const Size(412, 2400));
       expect(find.byKey(const ValueKey('main-band-whoop-only-note')), findsOneWidget);
       expect(find.text('Main band: WHOOP 4.0 or WHOOP 5.0/MG only. Other devices can be added as additional devices.'), findsOneWidget);
     });
 
     testWidgets('never says what a band would NOT send, nor primary/secondary/tier', (t) async {
-      await pumpPair(t, view(), size: const Size(412, 1600));
+      await pumpPair(t, view(), size: const Size(412, 2400));
       for (final w in ['Doesn’t send', 'primary', 'Primary', 'secondary', 'Secondary', 'Tier', 'Experimental']) {
         expect(find.textContaining(w), findsNothing, reason: w);
       }
     });
 
-    testWidgets('pills show only the kinds in the list; Rings narrows it', (t) async {
+    testWidgets('pills show only the groups in the list; Rings narrows it', (t) async {
       // The view works for any list; the first run itself offers WHOOP only.
       final all = [kWhoopGen5, kOura, kColmi, kUltrahuman, kMiBand234, kPebble];
-      await pumpPair(t, view(entries: all), size: const Size(412, 1600));
-      for (final k in ['All', 'Straps', 'Rings', 'Bands', 'Watches']) {
+      await pumpPair(t, view(entries: all), size: const Size(412, 2400));
+      for (final k in ['All', 'WHOOP', 'Rings', 'Watches']) {
         expect(find.text(k), findsOneWidget, reason: k);
       }
+      expect(find.text('Chest straps & armbands'), findsNothing);
+      expect(find.text('Bands'), findsNothing);
       expect(find.text('Scales'), findsNothing);
       await t.tap(find.text('Rings'));
       await t.pumpAndSettle();
@@ -106,94 +122,113 @@ void main() {
       expect(_row(kUltrahuman), findsOneWidget);
       expect(_row(kWhoopGen5), findsNothing);
       expect(_row(kMiBand234), findsNothing);
+      // The Mi Band is a watch, with the other watches.
+      await t.tap(find.text('Watches'));
+      await t.pumpAndSettle();
+      expect(_row(kMiBand234), findsOneWidget);
+      expect(_row(kPebble), findsOneWidget);
+      expect(_row(kOura), findsNothing);
       await t.tap(find.text('All'));
       await t.pumpAndSettle();
       expect(_row(kWhoopGen5), findsOneWidget);
     });
 
+    test('the pills’ groups are PairFilter values (WHOOP, rings, watches, straps)', () {
+      expect(PairFilter.values.map((f) => f.name), ['whoop', 'rings', 'watches', 'straps']);
+    });
+
     testWidgets('tapping a row picks that device', (t) async {
       final picked = <String>[];
-      await pumpPair(t, view(onPick: (e) => picked.add(e.id)), size: const Size(412, 1600));
+      await pumpPair(t, view(onPick: (e) => picked.add(e.id)), size: const Size(412, 2400));
       await t.tap(_row(kWhoopGen5));
       expect(picked, ['gen5']);
     });
 
-    testWidgets('the strap-only link opens the confirm sheet with the matrix', (t) async {
-      await pumpPair(t, view(), size: const Size(412, 1600));
+    testWidgets('the strap-only link opens the strap sheet', (t) async {
+      await pumpPair(t, view(), size: const Size(412, 2400));
       await t.tap(find.text('I only have a heart-rate strap'));
       await t.pumpAndSettle();
-      expect(find.text('Pair a sensor without a band?'), findsOneWidget);
-      expect(find.text('A band'), findsOneWidget);
-      expect(find.text('This strap'), findsOneWidget);
-      expect(find.text('Sleep'), findsWidgets);
-      expect(find.text('Pair it as a sensor anyway'), findsOneWidget);
+      expect(find.text('This is a heart-rate strap'), findsOneWidget);
+      expect(find.text('Pair Bluetooth heart rate sensor'), findsOneWidget);
       expect(find.text('Go back'), findsOneWidget);
+      expect(find.text('Sleep'), findsWidgets);
     });
 
     testWidgets('Go back closes the sheet and pairs nothing', (t) async {
       var confirmed = 0;
-      await pumpPair(t, view(onStrap: () => confirmed++), size: const Size(412, 1600));
+      await pumpPair(t, view(onStrap: () => confirmed++), size: const Size(412, 2400));
       await t.tap(find.text('I only have a heart-rate strap'));
       await t.pumpAndSettle();
       await t.tap(find.text('Go back'));
       await t.pumpAndSettle();
-      expect(find.text('Pair a sensor without a band?'), findsNothing);
+      expect(find.text('This is a heart-rate strap'), findsNothing);
       expect(confirmed, 0);
     });
 
-    testWidgets('“Pair it as a sensor anyway” closes the sheet and carries on', (t) async {
+    testWidgets('Pair closes the sheet and carries on (strapOnlyConfirmed)', (t) async {
       var confirmed = 0;
-      await pumpPair(t, view(onStrap: () => confirmed++), size: const Size(412, 1600));
+      await pumpPair(t, view(onStrap: () => confirmed++), size: const Size(412, 2400));
       await t.tap(find.text('I only have a heart-rate strap'));
       await t.pumpAndSettle();
-      await t.tap(find.text('Pair it as a sensor anyway'));
+      await t.tap(find.text('Pair Bluetooth heart rate sensor'));
       await t.pumpAndSettle();
-      expect(find.text('Pair a sensor without a band?'), findsNothing);
+      expect(find.text('This is a heart-rate strap'), findsNothing);
       expect(confirmed, 1);
     });
 
-    testWidgets('“I can’t pair my band” opens help; with nothing chosen only Discord', (t) async {
-      final links = _Links();
-      await pumpPair(t, view(links: links), size: const Size(412, 1600));
-      await t.tap(find.text('I can’t pair my band'));
+    testWidgets('there is no “I can’t pair my band” button, and no dialog anywhere', (t) async {
+      await pumpPair(t, view(), size: const Size(412, 2400));
+      expect(find.text('I can’t pair my band'), findsNothing);
+      await t.tap(_row(kWhoopGen5));
       await t.pumpAndSettle();
-      expect(find.text('Need a hand pairing?'), findsOneWidget);
-      expect(find.text('See how to put it in pairing mode'), findsNothing);
-      await t.tap(find.text('Ask us on Discord'));
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.text('Need a hand pairing?'), findsNothing);
+    });
+
+    testWidgets('the Trouble connecting card is always there, with a link per WHOOP and Discord', (t) async {
+      final links = _Links();
+      await pumpPair(t, view(links: links), size: const Size(412, 2400));
+      expect(find.byKey(const ValueKey('trouble-connecting')), findsOneWidget);
+      expect(find.text('Trouble connecting?'), findsOneWidget);
+      for (final e in firstRunBandEntries()) {
+        expect(find.byKey(ValueKey('trouble-link-${e.id}')), findsOneWidget, reason: e.id);
+      }
+      await t.tap(find.byKey(const ValueKey('trouble-link-discord')));
       expect(links.opened, [kDiscordUrl]);
     });
 
-    testWidgets('after trying a device, help offers that device’s own page', (t) async {
+    testWidgets('the card stays, unchanged, after trying a device; its links open each model’s page', (t) async {
       final links = _Links();
-      await pumpPair(t, view(links: links), size: const Size(412, 1600));
+      await pumpPair(t, view(links: links), size: const Size(412, 2400));
       await t.tap(_row(kWhoopGen5));
-      await t.tap(find.text('I can’t pair my band'));
       await t.pumpAndSettle();
-      await t.tap(find.text('See how to put it in pairing mode'));
+      expect(find.byKey(const ValueKey('trouble-connecting')), findsOneWidget);
+      await t.tap(find.byKey(ValueKey('trouble-link-${kWhoopGen5.id}')));
       expect(links.opened, [kWhoopGen5.resetSteps!.officialUrl]);
+      expect(find.byType(Dialog), findsNothing);
     });
 
     testWidgets('Skip for now shows only when there is something to skip', (t) async {
-      await pumpPair(t, view(), size: const Size(412, 1600));
+      await pumpPair(t, view(), size: const Size(412, 2400));
       expect(find.text('Skip for now'), findsNothing);
       var skipped = 0;
-      await pumpPair(t, view(onSkip: () => skipped++), size: const Size(412, 1600));
+      await pumpPair(t, view(onSkip: () => skipped++), size: const Size(412, 2400));
       await t.tap(find.text('Skip for now'));
       expect(skipped, 1);
     });
 
-    testWidgets('demo mode is offered only when supplied', (t) async {
-      await pumpPair(t, view(onSkip: () {}), size: const Size(412, 1600));
-      expect(find.text('Try demo mode'), findsNothing);
-      var demo = 0;
-      await pumpPair(t, view(onSkip: () {}, onDemo: () => demo++), size: const Size(412, 1600));
-      await t.tap(find.text('Try demo mode'));
-      expect(demo, 1);
+    testWidgets('the back chevron goes where the first run says', (t) async {
+      var back = 0;
+      await pumpPair(t, view(onBack: () => back++), size: const Size(412, 2400));
+      await t.tap(find.byIcon(LucideIcons.chevronLeft));
+      expect(back, 1);
     });
 
     testWidgets('a problem is said in a card', (t) async {
-      await pumpPair(t, view(problem: 'Bluetooth is off.'), size: const Size(412, 1600));
+      await pumpPair(t, view(problem: 'Bluetooth is off.'), size: const Size(412, 2400));
       expect(find.text('Bluetooth is off.'), findsOneWidget);
+      // The card is under it, not instead of it.
+      expect(find.byKey(const ValueKey('trouble-connecting')), findsOneWidget);
     });
 
     testWidgets('German at 2x text on a small phone does not overflow', (t) async {
@@ -205,7 +240,7 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text('Ich habe nur einen Herzfrequenzgurt'));
       await t.pumpAndSettle();
-      expect(find.text('Sensor ohne Band koppeln?'), findsOneWidget);
+      expect(find.text('Das ist ein Herzfrequenzgurt'), findsOneWidget);
       expect(t.takeException(), isNull);
     });
   });

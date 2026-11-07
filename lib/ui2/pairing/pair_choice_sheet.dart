@@ -1,6 +1,7 @@
-// The confirm sheet the pairing screens share: a title, a sentence, the C1
-// comparison, one main button, an optional second choice and "Go back". The
-// callers differ only in words and labels, so there is one sheet.
+// The confirm sheet the pairing screens share: the device, a title and a lead,
+// THE table with the device's column washed, a note, one filled main button,
+// an optional second choice as a text link, and "Go back". The callers differ
+// only in words, so there is one sheet.
 import 'package:flutter/material.dart';
 
 import '../../ble/slot_comparison.dart';
@@ -12,19 +13,25 @@ import 'slot_comparison_view.dart';
 enum PairChoice { primary, secondary, back }
 
 class PairChoiceSheet extends StatelessWidget {
+  /// The device's tile and its name ("WHOOP 5 · 7C21", "Oura Ring").
+  final IconData deviceIcon;
+  final String deviceName;
+
   final String title;
-  final String? body;
+  final String? lead;
   final SlotComparison comparison;
-  final String? bandHeading, sensorHeading;
 
-  /// Why the band column is unavailable (a non-WHOOP band); null when it is not.
-  final String? bandUnavailableReason;
+  /// The column the device goes into; washed on the table.
+  final DeviceSlot? focus;
 
-  /// The main button. Green when it is the recommended path, soft blue when
-  /// it is the deliberate "anyway" one.
+  /// Icon-and-caption notes under the table.
+  final List<Widget> notes;
+
+  /// "Put it in pairing mode", above the main button; null shows none.
+  final Widget? pairingMode;
+
   final String primaryLabel;
   final IconData? primaryIcon;
-  final bool primaryIsRecommended;
 
   /// The second choice, a text link under the button. Null hides it.
   final String? secondaryLabel;
@@ -32,15 +39,16 @@ class PairChoiceSheet extends StatelessWidget {
 
   const PairChoiceSheet({
     super.key,
+    required this.deviceIcon,
+    required this.deviceName,
     required this.title,
-    this.body,
+    this.lead,
     required this.comparison,
-    this.bandHeading,
-    this.sensorHeading,
-    this.bandUnavailableReason,
+    this.focus,
+    this.notes = const [],
+    this.pairingMode,
     required this.primaryLabel,
     this.primaryIcon,
-    this.primaryIsRecommended = false,
     this.secondaryLabel,
     required this.backLabel,
   });
@@ -51,28 +59,46 @@ class PairChoiceSheet extends StatelessWidget {
     void pop(PairChoice v) => Navigator.of(c).pop(v);
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x4),
+        padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),
         child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Row(children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration:
+                      BoxDecoration(color: p.card2, borderRadius: R.rSm),
+                  child: Icon(deviceIcon, size: 16, color: p.ink2),
+                ),
+                const SizedBox(width: S.x2),
+                Expanded(
+                  child: Text(deviceName,
+                      key: const ValueKey('choice-device'),
+                      style: F.cap.copyWith(
+                          color: p.ink2, fontWeight: FontWeight.w600)),
+                ),
+              ]),
+              const SizedBox(height: S.x3),
               Text(title,
                   key: const ValueKey('choice-title'),
-                  style: F.t2.copyWith(color: p.ink)),
-              if (body != null) ...[
+                  style: F.t1.copyWith(color: p.ink)),
+              if (lead != null) ...[
                 const SizedBox(height: S.x2),
-                Text(body!, style: F.body.copyWith(color: p.ink2)),
+                Text(lead!, style: F.body.copyWith(color: p.ink2)),
               ],
               const SizedBox(height: S.x4),
-              SlotComparisonView(
-                  comparison: comparison,
-                  bandHeading: bandHeading,
-                  sensorHeading: sensorHeading,
-                  bandUnavailableReason: bandUnavailableReason),
-              const SizedBox(height: S.x4),
+              SlotTable(comparison: comparison, focus: focus),
+              ...notes,
+              if (pairingMode != null) ...[
+                const SizedBox(height: S.x5),
+                pairingMode!,
+              ],
+              const SizedBox(height: S.x5),
               BigButton(primaryLabel,
+                  key: const ValueKey('choice-primary'),
                   icon: primaryIcon,
-                  color: primaryIsRecommended ? C.green : C.blue,
-                  soft: !primaryIsRecommended,
                   onTap: () => pop(PairChoice.primary)),
               if (secondaryLabel != null)
                 TextLinkButton(secondaryLabel!,

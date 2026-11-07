@@ -63,6 +63,7 @@ import '../../ble/ble_state.dart'
     show BleUnavailableException, bandStatusFor, classifyBleBlocker;
 import '../../ble/hrs_link.dart';
 import '../../ble/ios_ble_restore.dart';
+import '../../ble/oura_link.dart' show pairOuraRingWithTypedKey;
 import '../../data/db.dart' show LocalDb;
 import '../../l10n/app_localizations.dart';
 import '../onboarding/pairing.dart' show PairingScreen;
@@ -70,6 +71,7 @@ import '../pairing/add_device_flow.dart';
 import '../pairing/pair_outcome_text.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
+import 'devices.dart' show kPairableSensors, refuseIfSensorCapReached;
 import 'profile.dart';
 import 'wearable_numbers.dart' show WearableUnlocks;
 
@@ -97,11 +99,17 @@ class PairSensorScreen extends StatefulWidget {
   /// ordinary [onPicked] step runs, so this only ever adds a way in.
   final Future<String?> Function(BluetoothDevice, String key)? onPickedWithKey;
 
+  /// Candidates to start with instead of an empty list. Tests only: a real
+  /// scan needs a radio, and the pair step is what has to be exercised.
+  @visibleForTesting
+  final List<BandCandidate>? debugFound;
+
   const PairSensorScreen({
     super.key,
     required this.entry,
     this.onPicked,
     this.onPickedWithKey,
+    this.debugFound,
   });
 
   @override
@@ -141,6 +149,7 @@ class _PairSensorScreenState extends State<PairSensorScreen>
   @override
   void initState() {
     super.initState();
+    _found = widget.debugFound ?? const [];
     unawaited(_load());
   }
 
@@ -191,6 +200,15 @@ class _PairSensorScreenState extends State<PairSensorScreen>
   }
 
   Future<void> _scan() async {
+    // Before the scan or the system picker, not only before the pair: the iOS
+    // picker grants the accessory at the OS level the moment it is chosen, so
+    // refusing after it would leave a grant behind for a sensor this phone
+    // will not keep. Soft — a sensor that already has its row may re-pair.
+    if (await refuseIfSensorCapReached(context,
+            adapterId: widget.entry.id, anyOfAdapter: true) ||
+        !mounted) {
+      return;
+    }
     if (_viaPicker) return _pairViaPicker();
     if (_unreachable) {
       final label = widget.entry.label;
@@ -273,6 +291,20 @@ class _PairSensorScreenState extends State<PairSensorScreen>
 
   Future<void> _pickDevice(BluetoothDevice device,
       {required String? label, BandIdentity? earlierBand}) async {
+    // THE exact cap check. This screen stays open after a pair and offers
+    // "Pair another", and every route into it (Add sensor, onboarding,
+    // re-pair) only checked on the way in. The minted id is the row only
+    // `pairNotifySensor` writes; an injected callback mints its own.
+    final mintedHere =
+        widget.onPicked == null && widget.onPickedWithKey == null;
+    if (await refuseIfSensorCapReached(context,
+            repairingId: mintedHere
+                ? HrsLink.mintDeviceId(widget.entry, device.remoteId.str)
+                : null,
+            adapterId: widget.entry.id) ||
+        !mounted) {
+      return;
+    }
     setState(() {
       _busy = device.remoteId.str;
       _problem = null;
@@ -334,18 +366,20 @@ class _PairSensorScreenState extends State<PairSensorScreen>
     );
     final r = await AddDeviceFlow(this)
         .afterConnect(context, cand, widget.entry, outcome);
-    return switch (r.outcome) {
-      AddDeviceOutcome.pairedSecondary || AddDeviceOutcome.pairedOther => null,
-      AddDeviceOutcome.failed || AddDeviceOutcome.bandFlowHeldBack => r.message,
-      // Backed out, or handed on: nothing was saved here.
-      AddDeviceOutcome.cancelled ||
-      AddDeviceOutcome.openedBandFlow =>
-        pairOutcomeText(l, outcome),
-    };
+    if (!mounted) return null;
+    return afterBandFoundText(l, outcome, r,
+        bandPairedNow: context.read<AppState>().isPaired);
   }
 
   @override
   bool get hasMainBand => context.read<AppState>().isPaired;
+
+  @override
+  String? get mainBandName => context.read<AppState>().strapName;
+
+  /// The same unpair Settings' "Unpair band" runs (`AppState.unpair`).
+  @override
+  Future<void> unpairMainBand() => context.read<AppState>().unpair();
 
   @override
   Future<PairOutcome> pair(BandCandidate cand, BandEntry entry,
@@ -369,10 +403,27 @@ class _PairSensorScreenState extends State<PairSensorScreen>
   Future<String?> mainBandBlockedReason() => HrsLink.scanHeldBackReason();
 
   @override
-  Future<void> openBandFlow(BandEntry band) async {
-    if (!band.isFramed) return;
+  Future<void> openBandFlow(BandEntry band,
+      {required String remoteId, bool modelKnown = true}) async {
+    if (!band.isFramed) {
+      // A ring pairs only on its own screen, with its key (the same screen
+      // "Add a device" opens for it).
+      final sensor =
+          kPairableSensors.where((s) => s.entry.id == band.id).firstOrNull;
+      if (sensor == null) return;
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => PairSensorScreen(
+          entry: band,
+          onPicked: sensor.pick,
+          onPickedWithKey:
+              band.id == kOura.id ? pairOuraRingWithTypedKey : null,
+        ),
+      ));
+      return;
+    }
     await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => PairingScreen(entry: band),
+      builder: (_) =>
+          PairingScreen(entry: modelKnown ? band : null, remoteId: remoteId),
     ));
   }
 
@@ -698,3 +749,28 @@ class PairSensorView extends StatelessWidget {
     );
   }
 }
+
+/// What this screen says after a connect found a band and the user chose
+/// what to do ([AddDeviceFlow.afterConnect]); null says nothing went wrong.
+/// The main-band flow that opened may have paired the band: then
+/// "Nothing was saved" would be false. A ring's own screen reported its own
+/// outcome. [bandPairedNow] is whether a main band is paired once the flow
+/// closed.
+@visibleForTesting
+String? afterBandFoundText(
+  AppLocalizations? l,
+  PairOutcome outcome,
+  AddDeviceResult r, {
+  required bool bandPairedNow,
+}) =>
+    switch (r.outcome) {
+      AddDeviceOutcome.pairedSecondary || AddDeviceOutcome.pairedOther => null,
+      AddDeviceOutcome.failed || AddDeviceOutcome.bandFlowHeldBack => r.message,
+      AddDeviceOutcome.openedBandFlow
+          when bandPairedNow || outcome.isBand?.isFramed == false =>
+        null,
+      // Backed out, or the band flow did not pair it: nothing was saved.
+      AddDeviceOutcome.cancelled ||
+      AddDeviceOutcome.openedBandFlow =>
+        pairOutcomeText(l, outcome),
+    };

@@ -355,12 +355,14 @@ const _notComponents = {
   // swappable piece of a pairing screen, driven by registry data and pumped,
   // state by state, by ui2_pairing_blocks_test.dart,
   // ui2_pairing_help_reset_test.dart, ui2_pair_band_view_test.dart and
-  // ui2_secondary_sensor_card_test.dart. A
-  // gallery cell is too narrow for the comparison matrix and the sheets, and
-  // the dialog and sheets open over a route.
-  'SlotComparisonView', 'CategoryFilterPills', 'PairHelpDialog',
-  'ResetStepsView', 'PairBandView', 'PairChoiceSheet', 'PairStepRow',
-  'OutlineAction', 'TextLinkButton', 'ChoiceRow', 'SecondarySensorCard',
+  // ui2_device_slot_card_test.dart. A
+  // gallery cell is too narrow for the slot table and the sheets, and the
+  // sheets open over a route.
+  'SlotTable', 'SlotMark', 'PairNote', 'CategoryFilterPills',
+  'TroubleConnectingCard', 'ResetStepsView', 'PairingModeSection',
+  'PairBandView',
+  'PairChoiceSheet', 'PairStepRow', 'TextLinkButton', 'ChoiceRow',
+  'DeviceSlotCard',
   // tabs and drill-downs
   'HomeScreen', 'HealthScreen', 'WorkoutScreen', 'NutritionScreen',
   'WellnessScreen', 'CycleTab', 'MetricDetail', 'ReadinessDetail',

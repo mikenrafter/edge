@@ -15,7 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
-import '../../ble/adapters/_registry.dart' show BandEntry;
+import '../../ble/adapters/_registry.dart' show BandEntry, ResetKind;
 import '../../ble/band_status_l10n.dart' show localizedBandStatus;
 import '../../ble/ble_state.dart';
 import '../../l10n/app_localizations.dart';
@@ -116,10 +116,16 @@ class PairingScreen extends StatefulWidget {
   final VoidCallback? onSkip;
 
   /// The band the user chose on the list; its reset steps show when pairing
-  /// does not finish. Null shows the plain failure cards.
+  /// does not finish, and a WHOOP advertising the other generation is passed
+  /// over. Null (no model known) shows the plain failure cards.
   final BandEntry? entry;
 
-  const PairingScreen({super.key, this.onSkip, this.entry});
+  /// The one band the user tapped in a scan, by remote id; null pairs the
+  /// first matching band in range. Android's scan honours it; the iOS
+  /// accessory picker chooses on its own sheet.
+  final String? remoteId;
+
+  const PairingScreen({super.key, this.onSkip, this.entry, this.remoteId});
 
   @override
   State<PairingScreen> createState() => _PairingScreenState();
@@ -141,7 +147,8 @@ class _PairingScreenState extends State<PairingScreen> {
       if (await app.accessorySetupSupported()) {
         await app.pairViaAccessorySetup();
       } else {
-        final found = await app.scanForBand();
+        final found = await app.scanForBand(
+            remoteId: widget.remoteId, generation: widget.entry?.id);
         if (found == null) {
           if (mounted) setState(() => _phase = PairPhase.notFound);
           return;
@@ -199,7 +206,7 @@ class PairingView extends StatelessWidget {
   /// "Pick a different band". Null hides the link.
   final VoidCallback? onPickDifferent;
 
-  /// How the help dialog and the maker's-page row open a link.
+  /// How the "Trouble connecting?" card and the maker's-page row open a link.
   final PairLinkOpener openLink;
 
   const PairingView({
@@ -248,7 +255,10 @@ class PairingView extends StatelessWidget {
             const SizedBox(height: S.x2),
             Text(l.pairResetBody(label), style: F.body.copyWith(color: p.ink2)),
             const SizedBox(height: S.x4),
-            ResetStepsView(entry: entry, openLink: openLink),
+            ResetStepsView(
+                entry: entry,
+                openLink: openLink,
+                bondRefused: phase == PairPhase.bondRefused),
             if (phase == PairPhase.failed && detail.isNotEmpty) ...[
               const SizedBox(height: S.x3),
               _Detail(detail),
@@ -256,12 +266,15 @@ class PairingView extends StatelessWidget {
             const SizedBox(height: S.x4),
             BigButton(_cta(c, phase),
                 icon: LucideIcons.refreshCw, color: C.green, onTap: onPair),
-            const SizedBox(height: S.x3),
-            OutlineAction(l.pairHelpButton,
-                icon: LucideIcons.circleHelp,
-                quiet: true,
-                onTap: () =>
-                    showPairHelpDialog(c, entry: entry, openLink: openLink)),
+            const SizedBox(height: S.x4),
+            // The maker's page sits in the steps above when they are general
+            // ones; the card does not offer it twice.
+            TroubleConnectingCard(
+                entries: [
+                  if (entry.resetSteps?.kind != ResetKind.unverified) entry,
+                ],
+                openLink: openLink,
+                showSteps: false),
             if (onPickDifferent != null)
               TextLinkButton(l.pairPickDifferentBand, onTap: onPickDifferent),
             ..._skip(c),
@@ -284,7 +297,8 @@ class PairingView extends StatelessWidget {
       const SizedBox(height: S.x2),
       Text(
         AppLocalizations.of(c)?.pairingSkipNote ??
-            'The app opens without a band.',
+            'The app opens without a band. Nothing is measured until one is '
+                'paired.',
         style: F.cap.copyWith(color: p.ink3),
       ),
     ];

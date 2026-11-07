@@ -1,14 +1,18 @@
 // ignore_for_file: depend_on_referenced_packages
-// The "I can't pair my band" help dialog and the reset-steps view, plus the
+// The "Trouble connecting?" card and the reset-steps view, plus the
 // pairing screen's failure states that show them. Rendered, with fake link
 // openers: no browser, no BLE.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/ble/adapters/_registry.dart';
+import 'package:openstrap_edge/ble/band_identity.dart' show PairOutcome;
+import 'package:openstrap_edge/ble/ble_state.dart' show ScanAcceptPolicy;
+import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/community_links.dart';
 import 'package:openstrap_edge/ui2/onboarding/pairing.dart';
 import 'package:openstrap_edge/ui2/pairing/pair_help.dart';
+import 'package:openstrap_edge/ui2/pairing/pair_outcome_text.dart';
 import 'package:openstrap_edge/ui2/pairing/reset_steps_view.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:url_launcher_platform_interface/link.dart' show LinkDelegate;
@@ -18,10 +22,12 @@ import 'support/pair_ui_support.dart';
 
 class _Links implements PairLinkOpener {
   final opened = <String>[];
+  final bool ok;
+  _Links([this.ok = true]);
   @override
   Future<bool> open(String url) async {
     opened.add(url);
-    return true;
+    return ok;
   }
 }
 
@@ -43,69 +49,132 @@ Widget _scroll(Widget w) => Scaffold(
         padding: const EdgeInsets.all(16), child: w));
 
 void main() {
-  group('help dialog (H1)', () {
-    testWidgets('a device with an official page offers it, Discord, and Close',
+  group('(CR r1) the main-band scan takes only the band the user chose', () {
+    // WHY: PairingScreen paired whichever WHOOP the scan heard first, so a
+    // nearby WHOOP of the other generation, or not the one tapped, was saved.
+    const gen4 = '61080001-8d6d-82b8-614a-1c8cb0f8dcc6';
+    const gen5 = 'fd4b0001-cce1-4033-93ce-002d5875f58a';
+    test('the tapped remote id only', () {
+      expect(ScanAcceptPolicy.fitsChoice('AA:01', [gen5], wantRemoteId: 'AA:01'), isTrue);
+      expect(ScanAcceptPolicy.fitsChoice('AA:02', [gen5], wantRemoteId: 'AA:01'), isFalse);
+    });
+    test('the chosen generation, or a result that names none', () {
+      expect(ScanAcceptPolicy.fitsChoice('AA:01', [gen4], wantGeneration: 'gen5'), isFalse);
+      expect(ScanAcceptPolicy.fitsChoice('AA:01', [gen5], wantGeneration: 'gen5'), isTrue);
+      // A name-only or 16-bit-only match names no generation: still a candidate.
+      expect(ScanAcceptPolicy.fitsChoice('AA:01', ['fd4b'], wantGeneration: 'gen4'), isTrue);
+      expect(ScanAcceptPolicy.fitsChoice('AA:01', const [], wantGeneration: 'gen4'), isTrue);
+    });
+    test('nothing chosen: anything the scan matched', () {
+      expect(ScanAcceptPolicy.fitsChoice('AA:09', [gen4]), isTrue);
+    });
+  });
+
+  test('(CR r1) the band-not-sensor sentence names the band in the user\'s language', () {
+    // WHY: the raw registry label ("Colmi ring") went into a German sentence.
+    // The fork translates its presentation labels into Russian only (German
+    // falls back to English there), so the control locale is Russian.
+    final ru = lookupAppLocalizations(const Locale('ru'));
+    final text = pairOutcomeText(ru, const PairOutcome.band(kColmi))!;
+    expect(text, contains(ru.presentationColmiRing));
+    expect(ru.presentationColmiRing, isNot('Colmi ring'), reason: 'control');
+  });
+
+  group('Trouble connecting card (H1)', () {
+    Widget card(List<BandEntry> entries, [PairLinkOpener? links]) => _scroll(
+        TroubleConnectingCard(entries: entries, openLink: links ?? _Links()));
+
+    testWidgets('always open: title, body, a link per model, and Discord, with no tap',
         (t) async {
-      final links = _Links();
-      await pumpPair(t, Scaffold(body: PairHelpDialog(entry: kWhoopGen5, openLink: links)));
-      expect(find.text('Need a hand pairing?'), findsOneWidget);
-      expect(find.text('See how to put it in pairing mode'), findsOneWidget);
-      expect(find.text('Opens the maker’s help page in your browser'), findsOneWidget);
-      expect(find.text('Ask us on Discord'), findsOneWidget);
-      expect(find.text('Close'), findsOneWidget);
+      await pumpPair(t, card([kWhoopGen4, kWhoopGen5]));
+      expect(find.byKey(const ValueKey('trouble-connecting')), findsOneWidget);
+      expect(find.text('Trouble connecting?'), findsOneWidget);
+      expect(find.text('Put the band in pairing mode, then try again. Still stuck? Ask us.'),
+          findsOneWidget);
+      expect(find.byKey(ValueKey('trouble-link-${kWhoopGen4.id}')), findsOneWidget);
+      expect(find.byKey(ValueKey('trouble-link-${kWhoopGen5.id}')), findsOneWidget);
+      expect(find.byKey(const ValueKey('trouble-link-discord')), findsOneWidget);
+      expect(find.text('Ask on Discord'), findsOneWidget);
+      expect(find.text('The OpenStrap community'), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
     });
 
-    testWidgets('the official choice opens that device’s own page', (t) async {
-      final links = _Links();
-      await pumpPair(t, Scaffold(body: PairHelpDialog(entry: kWhoopGen5, openLink: links)));
-      await t.tap(find.text('See how to put it in pairing mode'));
-      expect(links.opened, [kWhoopGen5.resetSteps!.officialUrl]);
+    testWidgets('each link row names its model and shows the page’s host', (t) async {
+      await pumpPair(t, card([kWhoopGen5]));
+      expect(find.text('${kWhoopGen5.label} pairing mode'), findsOneWidget);
+      expect(find.text(Uri.parse(kWhoopGen5.resetSteps!.officialUrl!).host), findsOneWidget);
     });
 
-    testWidgets('an unverified device’s choice opens its maker page too', (t) async {
+    testWidgets('model links come in entry order, Discord last', (t) async {
+      await pumpPair(t, card([kWhoopGen5, kWhoopGen4]));
+      double y(String id) => t.getTopLeft(find.byKey(ValueKey('trouble-link-$id'))).dy;
+      expect(y(kWhoopGen5.id), lessThan(y(kWhoopGen4.id)));
+      expect(y(kWhoopGen4.id), lessThan(y('discord')));
+      await pumpPair(t, card([kWhoopGen4, kWhoopGen5]));
+      expect(y(kWhoopGen4.id), lessThan(y(kWhoopGen5.id)));
+    });
+
+    testWidgets('each model link opens its own page', (t) async {
       final links = _Links();
-      await pumpPair(t, Scaffold(body: PairHelpDialog(entry: kColmi, openLink: links)));
-      await t.tap(find.text('See how to put it in pairing mode'));
+      await pumpPair(t, card([kWhoopGen4, kWhoopGen5], links));
+      await t.tap(find.byKey(ValueKey('trouble-link-${kWhoopGen5.id}')));
+      await t.tap(find.byKey(ValueKey('trouble-link-${kWhoopGen4.id}')));
+      expect(links.opened,
+          [kWhoopGen5.resetSteps!.officialUrl, kWhoopGen4.resetSteps!.officialUrl]);
+      expect(find.byType(Dialog), findsNothing);
+    });
+
+    testWidgets('an unverified device’s link opens its maker page too', (t) async {
+      final links = _Links();
+      await pumpPair(t, card([kColmi], links));
+      await t.tap(find.byKey(ValueKey('trouble-link-${kColmi.id}')));
       expect(links.opened, [kColmi.resetSteps!.officialUrl]);
     });
 
-    testWidgets('the Discord choice opens the community link', (t) async {
+    testWidgets('the Discord link opens the community link', (t) async {
       final links = _Links();
-      await pumpPair(t, Scaffold(body: PairHelpDialog(entry: kWhoopGen5, openLink: links)));
-      await t.tap(find.text('Ask us on Discord'));
+      await pumpPair(t, card([kWhoopGen5], links));
+      await t.tap(find.byKey(const ValueKey('trouble-link-discord')));
       expect(links.opened, [kDiscordUrl]);
+      expect(find.byType(Dialog), findsNothing);
     });
 
-    testWidgets('a device with no official site gets Discord only', (t) async {
-      await pumpPair(t, Scaffold(body: PairHelpDialog(entry: kBleHrs, openLink: _Links())));
-      expect(find.text('See how to put it in pairing mode'), findsNothing);
-      expect(find.text('Ask us on Discord'), findsOneWidget);
+    testWidgets('(CR r1) a link nothing could open says so, with the address', (t) async {
+      // WHY: open3rdPartyLink returns false when no app takes the link; the
+      // tap did nothing visible and the user had no way to the page.
+      // Control first: an opened link says nothing.
+      await pumpPair(t, card([kWhoopGen5], _Links()));
+      await t.tap(find.byKey(const ValueKey('trouble-link-discord')));
+      await t.pump();
+      expect(find.textContaining('Could not open the link'), findsNothing);
+      await pumpPair(t, card([kWhoopGen5], _Links(false)));
+      await t.tap(find.byKey(const ValueKey('trouble-link-discord')));
+      await t.pump();
+      expect(find.text('Could not open the link. The address is $kDiscordUrl'),
+          findsOneWidget);
     });
 
-    testWidgets('no device chosen yet: Discord only', (t) async {
-      await pumpPair(t, Scaffold(body: PairHelpDialog(entry: null, openLink: _Links())));
-      expect(find.text('See how to put it in pairing mode'), findsNothing);
-      expect(find.text('Ask us on Discord'), findsOneWidget);
+    testWidgets('a model link that fails says it the same way, with its own address', (t) async {
+      await pumpPair(t, card([kWhoopGen5], _Links(false)));
+      await t.tap(find.byKey(ValueKey('trouble-link-${kWhoopGen5.id}')));
+      await t.pump();
+      expect(
+          find.text('Could not open the link. The address is '
+              '${kWhoopGen5.resetSteps!.officialUrl}'),
+          findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
     });
 
-    testWidgets('Close dismisses the dialog and opens nothing', (t) async {
-      final links = _Links();
-      await pumpPair(
-          t,
-          Builder(
-              builder: (c) => Scaffold(
-                  body: Center(
-                      child: TextButton(
-                          onPressed: () => showPairHelpDialog(c,
-                              entry: kWhoopGen5, openLink: links),
-                          child: const Text('open'))))));
-      await t.tap(find.text('open'));
-      await t.pumpAndSettle();
-      expect(find.text('Need a hand pairing?'), findsOneWidget);
-      await t.tap(find.text('Close'));
-      await t.pumpAndSettle();
-      expect(find.text('Need a hand pairing?'), findsNothing);
-      expect(links.opened, isEmpty);
+    testWidgets('a device with no official site is left out: Discord only', (t) async {
+      await pumpPair(t, card([kBleHrs]));
+      expect(find.byKey(ValueKey('trouble-link-${kBleHrs.id}')), findsNothing);
+      expect(find.byKey(const ValueKey('trouble-link-discord')), findsOneWidget);
+    });
+
+    testWidgets('no entries: Discord only', (t) async {
+      await pumpPair(t, card(const []));
+      expect(find.text('Ask on Discord'), findsOneWidget);
+      expect(find.textContaining('pairing mode'), findsOneWidget); // the body line
     });
 
     testWidgets('by default links leave the app: external application mode', (t) async {
@@ -113,10 +182,10 @@ void main() {
       final before = UrlLauncherPlatform.instance;
       UrlLauncherPlatform.instance = fake;
       addTearDown(() => UrlLauncherPlatform.instance = before);
-      await pumpPair(t, Scaffold(body: PairHelpDialog(entry: kWhoopGen5)));
-      await t.tap(find.text('Ask us on Discord'));
+      await pumpPair(t, _scroll(TroubleConnectingCard(entries: [kWhoopGen5])));
+      await t.tap(find.byKey(const ValueKey('trouble-link-discord')));
       await t.pump();
-      await t.tap(find.text('See how to put it in pairing mode'));
+      await t.tap(find.byKey(ValueKey('trouble-link-${kWhoopGen5.id}')));
       await t.pump();
       expect(fake.calls, [
         (kDiscordUrl, PreferredLaunchMode.externalApplication),
@@ -125,10 +194,76 @@ void main() {
     });
 
     testWidgets('German copy fits at 2x text', (t) async {
-      await pumpPair(t, Scaffold(body: PairHelpDialog(entry: kWhoopGen5, openLink: _Links())),
+      await pumpPair(t, card([kWhoopGen4, kWhoopGen5]),
           locale: const Locale('de'), textScale: 2, size: const Size(360, 900));
       expect(t.takeException(), isNull);
-      expect(find.text('Schließen'), findsOneWidget);
+      expect(find.text('Probleme beim Verbinden?'), findsOneWidget);
+      expect(find.text('Auf Discord fragen'), findsOneWidget);
+    });
+  });
+
+  group('pairing mode, up front (owner r5)', () {
+    Future<void> section(WidgetTester t, BandEntry e, {_Links? links}) => pumpPair(
+        t,
+        Scaffold(
+            body: SingleChildScrollView(
+                child: PairingModeSection(entry: e, openLink: links ?? _Links()))),
+        size: const Size(412, 1000));
+
+    testWidgets('specific (WHOOP 5): its own numbered steps, no link', (t) async {
+      await section(t, kWhoopGen5);
+      expect(find.text('Put it in pairing mode'), findsOneWidget);
+      for (var i = 1; i <= 4; i++) {
+        expect(find.byKey(ValueKey('pairing-mode-step-gen5-$i')), findsOneWidget);
+      }
+      expect(find.textContaining('tap the top firmly'), findsOneWidget);
+      expect(find.byKey(const ValueKey('pairing-mode-link-gen5')), findsNothing);
+    });
+
+    testWidgets('unverified (Oura): the general steps and the maker page, no badge', (t) async {
+      final links = _Links();
+      await section(t, kOura, links: links);
+      expect(find.text('Not confirmed yet'), findsNothing);
+      expect(find.byKey(const ValueKey('pairing-mode-step-oura-3')), findsOneWidget);
+      await t.tap(find.byKey(const ValueKey('pairing-mode-link-oura')));
+      await t.pumpAndSettle();
+      expect(links.opened, [kOura.resetSteps!.officialUrl]);
+    });
+
+    testWidgets('no official site (a generic strap): one line, no steps, no link', (t) async {
+      await section(t, kBleHrs);
+      expect(find.byKey(const ValueKey('pairing-mode-no-site-ble_hrs')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pairing-mode-step-ble_hrs-1')), findsNothing);
+    });
+
+    testWidgets('the first-run card shows WHOOP 4 and WHOOP 5 steps with no tap', (t) async {
+      await pumpPair(
+          t,
+          Scaffold(
+              body: SingleChildScrollView(
+                  child: TroubleConnectingCard(entries: [kWhoopGen4, kWhoopGen5]))),
+          size: const Size(412, 1600));
+      expect(find.byKey(const ValueKey('pairing-mode-step-gen4-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pairing-mode-step-gen5-4')), findsOneWidget);
+      // Each model's steps sit under its own link.
+      final link5 = t.getTopLeft(find.byKey(const ValueKey('trouble-link-gen5'))).dy;
+      expect(t.getTopLeft(find.byKey(const ValueKey('pairing-mode-step-gen4-1'))).dy,
+          lessThan(link5));
+      expect(t.getTopLeft(find.byKey(const ValueKey('pairing-mode-step-gen5-1'))).dy,
+          greaterThan(link5));
+      expect(find.byType(Dialog), findsNothing);
+    });
+
+    testWidgets('every entry’s section fits in German at 2x text', (t) async {
+      for (final e in kBandRegistry) {
+        await pumpPair(
+            t,
+            Scaffold(body: SingleChildScrollView(child: PairingModeSection(entry: e))),
+            locale: const Locale('de'),
+            textScale: 2,
+            size: const Size(360, 2400));
+        expect(t.takeException(), isNull, reason: e.id);
+      }
     });
   });
 
@@ -166,6 +301,14 @@ void main() {
       expect(find.text('$host · opens in your browser'), findsOneWidget);
       await t.tap(find.text('Open the maker’s help page'));
       expect(links.opened, [kColmi.resetSteps!.officialUrl]);
+      await pumpPair(t, _scroll(ResetStepsView(entry: kColmi, openLink: _Links(false))));
+      await t.tap(find.text('Open the maker’s help page'));
+      await t.pump();
+      expect(
+          find.text('Could not open the link. The address is '
+              '${kColmi.resetSteps!.officialUrl}'),
+          findsOneWidget,
+          reason: 'CR r1: a failed open shows the address');
       // Not a WHOOP: no takeover line.
       expect(find.byKey(const ValueKey('reset-whoop-takeover')), findsNothing);
     });
@@ -210,13 +353,13 @@ void main() {
         );
 
     for (final phase in [PairPhase.notFound, PairPhase.bondRefused, PairPhase.failed]) {
-      testWidgets('${phase.name}: the entry’s reset steps and three ways forward', (t) async {
+      testWidgets('${phase.name}: the entry’s reset steps and the ways forward', (t) async {
         var tried = 0, picked = 0;
         await pumpPair(
             t,
             view(phase,
                 entry: kWhoopGen5, onPair: () => tried++, onPick: () => picked++),
-            size: const Size(412, 1400));
+            size: const Size(412, 1800));
         expect(find.text('Your band is paired somewhere else'), findsOneWidget);
         expect(find.textContaining('We couldn’t finish pairing WHOOP 5.'), findsOneWidget);
         expect(find.textContaining('tap the top firmly'), findsOneWidget);
@@ -225,19 +368,54 @@ void main() {
         expect(tried, 1);
         await t.tap(find.text('Pick a different band'));
         expect(picked, 1);
-        expect(find.text('I can’t pair my band'), findsOneWidget);
+        expect(find.text('I can’t pair my band'), findsNothing);
+        expect(find.byKey(const ValueKey('trouble-connecting')), findsOneWidget);
       });
     }
 
-    testWidgets('“I can’t pair my band” opens the help dialog for this device', (t) async {
+    testWidgets('(CR r2) a refused bond lists the Bluetooth-settings Forget step, even for WHOOP 5', (t) async {
+      // WHY: WHOOP 5's own four steps never say to forget the old pairing
+      // record, and Try again cannot clear a refused bond without it.
+      const forget = 'In your phone’s Bluetooth settings, find the device and choose Forget.';
+      await pumpPair(t, view(PairPhase.bondRefused, entry: kWhoopGen5),
+          size: const Size(412, 1600));
+      expect(find.text(forget), findsOneWidget);
+      expect(find.textContaining('tap the top firmly'), findsOneWidget,
+          reason: 'its own steps stay');
+      await pumpPair(t, view(PairPhase.notFound, entry: kWhoopGen5),
+          size: const Size(412, 1600));
+      expect(find.text(forget), findsNothing,
+          reason: 'not found is not a refused bond');
+      // A device on the general steps already has it, once.
+      expect(resetStepKeysFor(kWhoopGen4, bondRefused: true)
+          .where((k) => k == 'pairResetGenericStep2'), hasLength(1));
+      expect(resetStepKeysFor(kWhoopGen5, bondRefused: true).last,
+          'pairResetGenericStep2');
+    });
+
+    testWidgets('the Trouble connecting card is there, with this device’s page, no tap needed',
+        (t) async {
       final links = _Links();
       await pumpPair(t, view(PairPhase.notFound, entry: kWhoopGen5, links: links),
           size: const Size(412, 1400));
-      await t.tap(find.text('I can’t pair my band'));
-      await t.pumpAndSettle();
-      expect(find.text('Need a hand pairing?'), findsOneWidget);
-      await t.tap(find.text('See how to put it in pairing mode'));
+      expect(find.byKey(const ValueKey('trouble-connecting')), findsOneWidget);
+      expect(find.byKey(ValueKey('trouble-link-${kWhoopGen5.id}')), findsOneWidget);
+      expect(find.byKey(const ValueKey('trouble-link-discord')), findsOneWidget);
+      await t.tap(find.byKey(ValueKey('trouble-link-${kWhoopGen5.id}')));
       expect(links.opened, [kWhoopGen5.resetSteps!.officialUrl]);
+      await t.tap(find.byKey(const ValueKey('trouble-link-discord')));
+      expect(links.opened.last, kDiscordUrl);
+      expect(find.byType(Dialog), findsNothing);
+    });
+
+    testWidgets('unless the steps already show it: an unverified device’s card is Discord only',
+        (t) async {
+      await pumpPair(t, view(PairPhase.bondRefused, entry: kColmi), size: const Size(412, 1400));
+      expect(find.byKey(const ValueKey('trouble-connecting')), findsOneWidget);
+      expect(find.byKey(ValueKey('trouble-link-${kColmi.id}')), findsNothing);
+      expect(find.byKey(const ValueKey('trouble-link-discord')), findsOneWidget);
+      // The maker row in the steps is the one way to the page.
+      expect(find.text('Open the maker’s help page'), findsOneWidget);
     });
 
     testWidgets('an unverified ring: ring wording, orange note, maker row', (t) async {
@@ -247,10 +425,10 @@ void main() {
       expect(find.text('Open the maker’s help page'), findsOneWidget);
     });
 
-    testWidgets('without an entry the screen is unchanged: no reset steps, no help button', (t) async {
+    testWidgets('without an entry the screen is unchanged: no reset steps, no Trouble card', (t) async {
       await pumpPair(t, view(PairPhase.notFound), size: const Size(412, 1400));
       expect(find.text('To reset it'), findsNothing);
-      expect(find.text('I can’t pair my band'), findsNothing);
+      expect(find.byKey(const ValueKey('trouble-connecting')), findsNothing);
       expect(find.text('No band in range'), findsOneWidget);
     });
 
@@ -258,13 +436,16 @@ void main() {
       testWidgets('${phase.name} never shows reset steps', (t) async {
         await pumpPair(t, view(phase, entry: kWhoopGen5), size: const Size(412, 1400));
         expect(find.text('To reset it'), findsNothing);
+        expect(find.byKey(const ValueKey('trouble-connecting')), findsNothing);
       });
     }
 
     testWidgets('German at 2x text does not overflow', (t) async {
-      await pumpPair(t, view(PairPhase.notFound, entry: kColmi),
-          locale: const Locale('de'), textScale: 2, size: const Size(360, 1800));
-      expect(t.takeException(), isNull);
+      for (final e in [kColmi, kWhoopGen5]) {
+        await pumpPair(t, view(PairPhase.notFound, entry: e),
+            locale: const Locale('de'), textScale: 2, size: const Size(360, 2200));
+        expect(t.takeException(), isNull, reason: e.id);
+      }
     });
   });
 }

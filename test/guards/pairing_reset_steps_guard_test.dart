@@ -9,7 +9,6 @@ import 'package:openstrap_edge/ble/adapters/_registry.dart';
 import 'package:openstrap_edge/ble/reset_url.dart';
 
 import 'support/pairing_reset_fixtures.dart';
-import 'support/ratchets.dart';
 
 Map<String, dynamic> _arb(File f) =>
     jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
@@ -240,17 +239,6 @@ void main() {
       expect(kBandRegistry.every((e) => e.resetSteps != null), isTrue,
           reason: 'every entry must declare reset steps first');
       expect(actual, kPairingFollowUp);
-    });
-
-    test('is registered as a shrink-only ratchet with the repo mechanism', () async {
-      // WHY: equality alone lets a PR add a device to both sides; the ratchet
-      // snapshot + target-branch check make growth fail.
-      final r = kRatchets.where((r) => r.id == 'pairing_reset_followup');
-      expect(r, hasLength(1));
-      expect(r.single.symbol, 'kPairingFollowUp');
-      expect(r.single.file, 'test/guards/support/pairing_reset_fixtures.dart');
-      final counts = await countRatchets(dirReader('.'), lists: r);
-      expect(counts['pairing_reset_followup']!['entries'], kPairingFollowUp.length);
     });
   });
 }

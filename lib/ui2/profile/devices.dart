@@ -46,8 +46,6 @@ import 'package:provider/provider.dart';
 import '../../ble/adapters/_registry.dart'
     show
         BandEntry,
-        DeviceCategory,
-        DeviceRole,
         kBandRegistry,
         kBleHrs,
         kColmi,
@@ -91,8 +89,10 @@ import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../pairing/device_picker.dart' show DevicePickerScreen;
 import '../pairing/pair_text.dart' show pairL10n;
-import '../pairing/pair_widgets.dart' show OutlineAction;
-import '../pairing/secondary_sensor_card.dart' show SecondarySensorCard;
+import '../../ble/slot_comparison.dart' show DeviceSlot;
+import '../pairing/device_slot_card.dart'
+    show DeviceSlotCard, pairedDeviceSlot;
+import '../pairing/pair_text.dart' show slotPill;
 import '../onboarding/profile_setup.dart' show formatDay;
 import '../ui2.dart';
 import '../sources/source_catalog_screen.dart' show SourceCatalogScreen;
@@ -1299,33 +1299,88 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
   ),
 ];
 
+/// Whether the paired `device` rows already hold as many secondary sensors as
+/// this phone will pair alongside its band — the rows minus the primary one.
+///
+/// PAIRED ROWS, NOT LIVE SLOTS, and deliberately: admission is a question
+/// about the sensors this phone manages, not about who holds a GATT link in
+/// this instant. Live slot state is transient — `OuraLink` holds one only from
+/// connect through `stop()`, `HrsLink` only for a workout — so reading it would
+/// admit or refuse the same pairing depending on the second it was tapped, and
+/// a slot freed a moment later cannot un-refuse anything. The same constant
+/// bounds both because the number is the same number.
+///
+/// A pair that rewrites a row this phone already has is a re-pair (a lost
+/// bond, a reset), not an addition, so it never counts against the cap. Which
+/// row a pair writes depends on the path:
+///
+/// * [repairingId] — the row id the pair will write, when it is known before
+///   the pair runs (`HrsLink.mintDeviceId`, keyed by the peripheral).
+/// * [adapterId] of a single-slot sensor — any existing row of that adapter
+///   is the row the pair rewrites. The ring: `pairOuraRing` reuses the one
+///   ring row it finds. The Mi Band: `pairMiBand234` reuses the row of the
+///   same band, and a different band's successful pair forgets every other
+///   Mi Band row (one Mi Band syncs at a time), so it never nets a row.
+/// * [anyOfAdapter] — a SOFT check before a sensor's own screen opens or a
+///   scan starts, when the peripheral is not known yet. An existing row of
+///   [adapterId] lets the user through to that screen's forget / re-pair
+///   section; the pair itself is checked again, exactly, before it runs.
+///
+/// Anything else (a heart-rate strap pair whose peripheral has no row yet)
+/// adds a row and is counted.
+bool sensorCapReached(Iterable<Map<String, Object?>> deviceRows,
+    {String? repairingId, String? adapterId, bool anyOfAdapter = false}) {
+  // A row with no `remote_id` holds no link — a backup restore brings a
+  // sensor's row across without the old phone's handle — so it cannot take
+  // a slot, and counting it would refuse the very re-pair that replaces it.
+  final secondary = deviceRows
+      .where((r) =>
+          r['id'] != LocalDb.kPrimaryDeviceId &&
+          ((r['remote_id'] as String?) ?? '').isNotEmpty)
+      .toList();
+  final sameAdapterRewrites = adapterId != null &&
+      (anyOfAdapter || adapterId == kOura.id || adapterId == kMiBand234.id);
+  for (final r in secondary) {
+    if (repairingId != null && r['id'] == repairingId) return false;
+    if (sameAdapterRewrites && r['adapter_id'] == adapterId) return false;
+  }
+  return secondary.length >= kMaxConcurrentSecondaryLinks;
+}
+
+/// Shows the sensor-limit sheet and returns true when [sensorCapReached].
+///
+/// Called before EVERY sensor pair, not only on the way into a screen: the
+/// picker and `PairSensorScreen` both stay open after a pair for the next one,
+/// and onboarding and `RePair` open the picker without passing through
+/// [addSensor] at all, so a check at any door alone let one visit pair any
+/// number of sensors. The exact check lives where the pair runs
+/// (`_pickNearby`, `PairSensorScreen._pickDevice`); the ones at doors are
+/// courtesy, so nobody scans for a sensor they cannot keep.
+Future<bool> refuseIfSensorCapReached(BuildContext c,
+    {String? repairingId, String? adapterId, bool anyOfAdapter = false}) async {
+  if (!sensorCapReached(await LocalDb.deviceRows(),
+      repairingId: repairingId,
+      adapterId: adapterId,
+      anyOfAdapter: anyOfAdapter)) {
+    return false;
+  }
+  if (!c.mounted) return true;
+  // DERIVED FROM THE CONSTANT the check uses. Hardcoded, the sentence states a
+  // different rule from the one enforced the moment the cap moves.
+  await showReasonSheet(
+      c,
+      AppLocalizations.of(c)
+              ?.devicesSensorLimit(kMaxConcurrentSecondaryLinks) ??
+          'This phone will pair at most $kMaxConcurrentSecondaryLinks '
+              'sensors alongside your band. Remove one to add another.');
+  return true;
+}
+
 /// Choose which kind of sensor to pair, then hand off to the pairing screen.
 Future<void> addSensor(BuildContext c) async {
-  // Count paired secondary devices (the `device` table minus the primary row).
-  //
-  // PAIRED ROWS, NOT LIVE SLOTS, and deliberately: admission here is a
-  // question about the sensors this phone manages, not about who holds a GATT
-  // link in this instant. Live slot state is transient — `OuraLink` holds one
-  // only from connect through `stop()`, `HrsLink` only for a workout — so
-  // reading it would admit or refuse the same pairing depending on the second
-  // it was tapped, and a slot freed a moment later cannot un-refuse anything.
-  // The same constant bounds both because the number is the same number; the
-  // sentence below states the PAIRING rule, which is the one enforced here.
-  final secondaryCount = (await LocalDb.deviceRows())
-      .where((r) => r['id'] != LocalDb.kPrimaryDeviceId)
-      .length;
-  if (secondaryCount >= kMaxConcurrentSecondaryLinks) {
-    if (!c.mounted) return;
-    // DERIVED FROM THE CONSTANT the check above uses. Hardcoded, the sentence
-    // states a different rule from the one enforced the moment the cap moves.
-    await showReasonSheet(
-        c,
-        AppLocalizations.of(c)
-                ?.devicesSensorLimit(kMaxConcurrentSecondaryLinks) ??
-            'This phone pairs at most $kMaxConcurrentSecondaryLinks sensors alongside your band. Remove one to add another.');
-    return;
-  }
-  if (!c.mounted) return;
+  // No cap check here: at the cap the picker still has to open, so a sensor
+  // that already has a row can reach its own screen to re-pair or replace
+  // it. Each sensor and each pair is checked inside.
   // `includeBand: false` — this phone already has its one primary band;
   // re-pairing it is `RePair`'s job, not a row beside a chest strap here.
   await goto(c, const DevicePickerScreen(includeBand: false));
@@ -1496,7 +1551,6 @@ class MyDevicesView extends StatelessWidget {
     // the toggle sits on while a denied READ permission returns nothing. So
     // "a source exists" was the wrong test for this card: it told a user
     // whose phone was measuring nothing that "the phone counts steps".
-    final phoneCounting = sources.any((s) => !s.isBand && s.connected);
     final l = AppLocalizations.of(c);
     return Scaffold(
       backgroundColor: p.bg,
@@ -1507,24 +1561,6 @@ class MyDevicesView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                // FIRST, in the tier-2 slot the missing band would occupy —
-                // not appended under the phone. Someone who has just forgotten
-                // a band is here to add one, and the row they can see is not
-                // the one they came for.
-                if (!hasBand) ...[
-                  StatusCard(
-                    phoneCounting
-                        ? (l?.devicesNoBandPaired ?? 'No band is paired')
-                        : (l?.devicesNothingMeasuringYet ??
-                            'Nothing is measuring yet'),
-                    phoneCounting
-                        ? (l?.devicesPhoneCountingBody ??
-                            'The phone counts steps only. Heart rate, sleep, recovery and temperature stay blank until you pair a band.')
-                        : (l?.devicesNothingMeasuringBody ??
-                            'No band is paired and no phone steps are arriving, so every metric stays blank.'),
-                    icon: LucideIcons.watch,
-                  ),
-                ],
                 // "Pair a device": the band first (or who it is, when one is
                 // paired), then "Add a device" for anything else.
                 ..._pairSection(c, hasBand),
@@ -1624,9 +1660,17 @@ extension _PairSection on MyDevicesView {
     final l = pairL10n(c);
     final band = sources.where((s) => s.isBand).firstOrNull;
     final children = <Widget>[
-      if (!hasBand && onPair != null) _PairBandCard(onPair!),
-      if (hasBand && band != null)
-        _BandPairedCard(band.displayName(c), onUnpair),
+      // ONE card for the band, paired or not, so the section keeps its
+      // height when the state flips: the status and the action in one box.
+      if ((!hasBand && onPair != null) || (hasBand && band != null))
+        _YourBandCard(
+          bandName: hasBand ? band?.displayName(c) : null,
+          bandState: hasBand && band != null
+              ? _localizedSourceState(c, band)
+              : null,
+          onPair: onPair,
+          onUnpair: onUnpair,
+        ),
       if (onAddSensor != null)
         Surface(
           pad: const EdgeInsets.symmetric(horizontal: S.x4),
@@ -1635,10 +1679,6 @@ extension _PairSection on MyDevicesView {
         ),
     ];
     if (children.isEmpty) return const [];
-    // Said plainly, with or without a band: only WHOOP can be the main band.
-    children.add(Text(l.pairMainBandWhoopOnly,
-        key: const ValueKey('main-band-whoop-only-note'),
-        style: F.cap.copyWith(color: P.of(c).ink3)));
     return [
       Section(l.pairSectionTitle, Column(children: [
         for (var i = 0; i < children.length; i++) ...[
@@ -1651,78 +1691,73 @@ extension _PairSection on MyDevicesView {
   }
 }
 
-/// The registry entry of a paired SECONDARY SENSOR (a workout sensor such as a
-/// heart-rate strap), or null for the band, the phone, a ring, a scale or a
-/// thermometer. A WHOOP the user confirmed as a plain sensor is stored under
-/// the heart-rate-sensor adapter, so it is one too.
-BandEntry? secondarySensorEntry(HealthSource s) {
+/// A paired device that fits one of the two columns: a ring or a watch
+/// (every day, as the active wearable) or a workout sensor such as a
+/// heart-rate strap (workouts only). Null for the band, the phone, a scale, a
+/// thermometer or a Coros watch. A WHOOP the user kept for workouts is stored
+/// under the heart-rate-sensor adapter, so it is a workout sensor too.
+({BandEntry entry, DeviceSlot slot})? slotDeviceOf(HealthSource s) {
   if (s.isBand || s.deviceId == null) return null;
   final e = kBandRegistry.where((e) => e.id == s.family).firstOrNull;
-  return e != null &&
-          e.role == DeviceRole.sensor &&
-          e.category == DeviceCategory.workoutSensor
-      ? e
-      : null;
+  final slot = e == null ? null : pairedDeviceSlot(e);
+  return slot == null ? null : (entry: e!, slot: slot);
 }
 
-/// No band yet: the card that starts the band flow.
-class _PairBandCard extends StatelessWidget {
-  final VoidCallback onPair;
-  const _PairBandCard(this.onPair);
+/// The column chip a source row carries: the band is every day; a paired
+/// device its own column.
+DeviceSlot? sourceSlot(HealthSource s) =>
+    s.isBand ? DeviceSlot.everyDay : slotDeviceOf(s)?.slot;
+
+/// "Your band": no band yet ("No band is paired", the WHOOP-only line and
+/// "Pair your band"), or the paired band (its name, its state and "Unpair
+/// band"). Both states keep the same shape: a heading row, two lines, one
+/// button.
+class _YourBandCard extends StatelessWidget {
+  /// The paired band's name; null when no band is paired.
+  final String? bandName;
+  final String? bandState;
+  final VoidCallback? onPair, onUnpair;
+  const _YourBandCard(
+      {this.bandName, this.bandState, this.onPair, this.onUnpair});
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = pairL10n(c);
+    final paired = bandName != null;
     return Surface(
-      key: const ValueKey('pair-band-card'),
-      color: Color.alphaBlend(p.wash(C.green), p.card),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(LucideIcons.watch, size: 20, color: p.on(C.green)),
-          const SizedBox(width: S.x3),
-          Expanded(
-              child: Text(l.pairBandTitle,
-                  style: F.head.copyWith(color: p.ink))),
-        ]),
+      key: ValueKey(paired ? 'band-paired-card' : 'pair-band-card'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: S.x2,
+          runSpacing: S.x2,
+          children: [
+            Text(l.devicesYourBand, style: F.head.copyWith(color: p.ink)),
+            slotPill(l, DeviceSlot.everyDay),
+          ],
+        ),
         const SizedBox(height: S.x2),
-        Text(l.pairCardBandBody, style: F.body.copyWith(color: p.ink2)),
-        const SizedBox(height: S.x4),
-        BigButton(l.pairBandTitle,
-            icon: LucideIcons.bluetooth, color: C.green, onTap: onPair),
-      ]),
-    );
-  }
-}
-
-/// A band is paired: who, and that it has to be unpaired before another.
-class _BandPairedCard extends StatelessWidget {
-  final String name;
-  final VoidCallback? onUnpair;
-  const _BandPairedCard(this.name, this.onUnpair);
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    final l = pairL10n(c);
-    return Surface(
-      key: const ValueKey('band-paired-card'),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(LucideIcons.watch, size: 20, color: p.on(C.green)),
-          const SizedBox(width: S.x3),
-          // The band's own row is listed below; the sentence names it.
-          Expanded(
-              child: Text(l.pairSensorPaired,
-                  style: F.head.copyWith(color: p.ink))),
-        ]),
-        const SizedBox(height: S.x2),
-        Text(l.pairAlreadyHaveBand(name),
-            style: F.body.copyWith(color: p.ink2)),
-        if (onUnpair != null) ...[
+        Text(paired ? bandName! : l.devicesNoBandPaired,
+            key: const ValueKey('your-band-status'),
+            style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        paired
+            ? Text(bandState ?? '', style: F.cap.copyWith(color: p.ink2))
+            : Text(l.pairCardBandBody,
+                key: const ValueKey('main-band-whoop-only-note'),
+                style: F.cap.copyWith(color: p.ink2)),
+        if (paired ? onUnpair != null : onPair != null) ...[
           const SizedBox(height: S.x4),
-          OutlineAction(l.pairUnpairBand,
-              icon: LucideIcons.unlink, color: C.red, onTap: onUnpair),
+          paired
+              ? BigButton(l.pairUnpairBand,
+                  icon: LucideIcons.unlink,
+                  color: C.red,
+                  soft: true,
+                  onTap: onUnpair)
+              : BigButton(l.pairBandTitle,
+                  icon: LucideIcons.bluetooth, onTap: onPair),
         ],
       ]),
     );
@@ -1749,7 +1784,10 @@ String sourceState(HealthSource s) {
   // resting state and not a fault — and a sensor whose tier could not be named
   // falls back to the phone's rung, where this function would otherwise have
   // told the user their chest strap was reporting steps.
-  if (s.deviceId != null) {
+  // A ring or watch fills whole days, so a workout never arms it: it reads
+  // as a band does, by sync and link, below.
+  final wearable = slotDeviceOf(s)?.slot == DeviceSlot.everyDay;
+  if (s.deviceId != null && !wearable) {
     if (s.connected) return 'Streaming beats';
     // A source with no rung supplies no signal, so there is nothing for a
     // workout to arm and nothing being derived. Say that, rather than promise
@@ -1766,7 +1804,7 @@ String sourceState(HealthSource s) {
 
 String _localizedSourceState(BuildContext c, HealthSource s) {
   final l = AppLocalizations.of(c);
-  if (s.deviceId != null) {
+  if (s.deviceId != null && slotDeviceOf(s)?.slot != DeviceSlot.everyDay) {
     if (s.connected) return l?.devicesStreamingBeats ?? 'Streaming beats';
     return s.tier == null
         ? (l?.devicesStoringWhatItSends ?? 'Paired · storing what it sends')
@@ -1797,7 +1835,8 @@ class SourceRow extends StatelessWidget {
     final stacked = bigText(c);
     // A secondary sensor is named by its role on its own page; a rung and an
     // "Experimental" word on the row said nothing about what it sends.
-    final secondary = secondarySensorEntry(s) != null;
+    final slot = sourceSlot(s);
+    final secondary = slotDeviceOf(s) != null;
     final tierBadge = s.tier == null || secondary
         ? null
         : Pill(
@@ -1874,6 +1913,11 @@ class SourceRow extends StatelessWidget {
                     style: F.over.copyWith(color: p.on(C.orange))),
                   ],
                 ),
+                if (slot != null) ...[
+                  const SizedBox(height: S.x2),
+                  slotPill(pairL10n(c), slot,
+                      key: ValueKey('source-slot-${slot.name}')),
+                ],
                 if (stacked && tierBadge != null) ...[
                   const SizedBox(height: S.x1),
                   tierBadge,
@@ -2518,10 +2562,11 @@ class DeviceDetailView extends StatelessWidget {
                       fix: fault.fix ?? '', icon: LucideIcons.bluetoothOff),
                   const SizedBox(height: S.x5),
                 ],
-                if (secondarySensorEntry(s) case final sensor?) ...[
-                  SecondarySensorCard(
-                      entry: sensor, experimental: s.experimental),
-                  const SizedBox(height: S.x5),
+                if (slotDeviceOf(s) case final d?) ...[
+                  DeviceSlotCard(entry: d.entry, slot: d.slot),
+                  const SizedBox(height: S.x4),
+                  // The switch the card's note names, right under it.
+                  DeviceUseSwitch(deviceId: s.deviceId!, adapterId: d.entry.id),
                 ] else if (s.tier case final t?) ...[
                   TierRow(t, filled: s.disabledReason == null),
                   const SizedBox(height: S.x5),
@@ -2538,7 +2583,7 @@ class DeviceDetailView extends StatelessWidget {
                   SettingsAccordion('Sensor',
                       id: 'device_detail_sensor',
                       children: [
-                      if (secondarySensorEntry(s) == null)
+                      if (slotDeviceOf(s) == null)
                       SetRow(LucideIcons.flaskConical, C.orange,
                           l?.devicesSupport ?? 'Support',
                           value: l?.devicesExperimental ?? 'Experimental',
@@ -2546,6 +2591,8 @@ class DeviceDetailView extends StatelessWidget {
                               'Decoded from the protocol. Nobody on the project owns one, '
                               'so it has not been tested on hardware.',
                           chevron: false),
+                      // The every-day card above already describes wearables.
+                      if (slotDeviceOf(s)?.slot != DeviceSlot.everyDay)
                       SetRow(LucideIcons.database, C.teal,
                           l?.devicesWhatItDoes ?? 'What it does',
                           sub: s.tier == null
@@ -2604,7 +2651,8 @@ class DeviceDetailView extends StatelessWidget {
                   const SizedBox(height: S.x5),
                   // The beta "use this device" switch: off keeps the sensor
                   // stored but out of every derived number (rule R6).
-                  if (s.family case final family?) ...[
+                  if (s.family case final family?
+                      when slotDeviceOf(s) == null) ...[
                     DeviceUseSwitch(deviceId: s.deviceId!, adapterId: family),
                     const SizedBox(height: S.x5),
                   ],

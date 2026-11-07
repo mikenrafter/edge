@@ -1,5 +1,5 @@
-// Small pieces the pairing screens share: a numbered step, an outline button,
-// a text link and a tappable icon row. Kept in one file so the screens read
+// Small pieces the pairing screens share: a numbered step, a text link and a
+// tappable icon row. Kept in one file so the screens read
 // alike; none of them knows anything about pairing itself.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -10,17 +10,21 @@ import '../ui2.dart';
 class PairStepRow extends StatelessWidget {
   final int number;
   final String text;
-  const PairStepRow(this.number, this.text, {super.key});
+
+  /// The small one for sheets and cards: a smaller badge, caption text.
+  final bool compact;
+  const PairStepRow(this.number, this.text, {super.key, this.compact = false});
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    final badge = compact ? 22.0 : 28.0;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: S.x2),
+      padding: EdgeInsets.symmetric(vertical: compact ? S.x1 : S.x2),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
-          width: 28,
-          height: 28,
+          width: badge,
+          height: badge,
           alignment: Alignment.center,
           decoration:
               BoxDecoration(color: p.wash(C.blue), shape: BoxShape.circle),
@@ -28,59 +32,16 @@ class PairStepRow extends StatelessWidget {
               style: F.cap
                   .copyWith(color: p.on(C.blue), fontWeight: FontWeight.w700)),
         ),
-        const SizedBox(width: S.x3),
+        SizedBox(width: compact ? S.x2 : S.x3),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.only(top: 3),
-            child: Text(text, style: F.body.copyWith(color: p.ink)),
+            padding: EdgeInsets.only(top: compact ? 2 : 3),
+            child: Text(text,
+                style: (compact ? F.cap.copyWith(color: p.ink2) : F.body)
+                    .copyWith(color: compact ? p.ink2 : p.ink)),
           ),
         ),
       ]),
-    );
-  }
-}
-
-/// A full-width outlined button. [quiet] is the muted grey one ("I can't pair
-/// my band"); otherwise it takes [color]'s ink (a red "Unpair band").
-class OutlineAction extends StatelessWidget {
-  final String label;
-  final IconData? icon;
-  final Color color;
-  final bool quiet;
-  final VoidCallback? onTap;
-  const OutlineAction(this.label,
-      {super.key, this.icon, this.color = C.blue, this.quiet = false, this.onTap});
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    final ink = quiet ? p.ink2 : p.on(color);
-    return Pressable(
-      onTap: onTap,
-      child: Container(
-        constraints: BoxConstraints(minHeight: quiet ? S.tap : 52),
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x2),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          borderRadius: R.rMd,
-          border: Border.all(color: quiet ? p.line : ink, width: 1.5),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (icon != null) ...[
-            Icon(icon, size: quiet ? 16 : 18, color: ink),
-            const SizedBox(width: S.x2),
-          ],
-          Flexible(
-            child: Text(label,
-                textAlign: TextAlign.center,
-                style: (quiet
-                        ? F.body.copyWith(fontWeight: FontWeight.w600)
-                        : F.head)
-                    .copyWith(color: ink)),
-          ),
-        ]),
-      ),
     );
   }
 }

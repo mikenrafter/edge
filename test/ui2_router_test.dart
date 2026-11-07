@@ -468,8 +468,15 @@ void main() {
             sources: [band(connected: false)],
             status: bandStatusFor(connection: 'disconnected')),
       ));
-      // Exactly one "Not connected": the row. No card repeating it.
-      expect(find.text('Not connected'), findsOneWidget);
+      // No failure card. "Not connected" is said by the row and by the
+      // "Your band" card's state line, never by a StatusCard.
+      expect(find.byType(StatusCard), findsNothing);
+      expect(find.text('Not connected'), findsNWidgets(2));
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('band-paired-card')),
+              matching: find.text('Not connected')),
+          findsOneWidget);
     });
   });
 
@@ -498,7 +505,7 @@ void main() {
         child: MaterialApp(
             theme: buildTheme(Brightness.light), home: const MyDevices()),
       ));
-      expect(find.text('Your band'), findsOneWidget);
+      expect(find.byKey(const ValueKey('band-paired-card')), findsOneWidget);
       expect(find.text('Pair your band'), findsNothing);
 
       // Forget. `unpair()` itself is platform-bound (ASK, the engine, the
@@ -507,7 +514,12 @@ void main() {
       app.notifyListeners();
       await tester.pump();
 
-      expect(find.text('Your band'), findsNothing);
+      // The band's row is gone; the one "Your band" left is the card's
+      // heading, now saying so and offering the way back.
+      expect(find.byKey(const ValueKey('band-paired-card')), findsNothing);
+      expect(find.text('Your band'), findsOneWidget);
+      expect(find.text('No band is paired'), findsOneWidget);
+      expect(find.widgetWithText(BigButton, 'Pair your band'), findsOneWidget);
       expect(find.text('This phone'), findsOneWidget,
           reason: 'the phone row is what used to swallow the empty state');
       expect(find.byKey(const ValueKey('pair-band-card')), findsOneWidget);
