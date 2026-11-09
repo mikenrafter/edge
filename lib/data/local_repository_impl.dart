@@ -24,6 +24,7 @@ import '../compute/inputs/canonical.dart'
         withoutWearableEstimates;
 import '../ble/adapters/_registry.dart' show kBandRegistry;
 import '../compute/quiet_level.dart';
+import '../compute/vendor_sleep.dart' show vendorHypnogram;
 import '../compute/staging_provenance.dart';
 import '../models/activity_suggestion.dart';
 import 'activity_store.dart';
@@ -343,10 +344,7 @@ class LocalRepositoryImpl extends LocalRepository {
         'stage_min': minutes,
         // Same point shape as our own night: each stage from its start,
         // closed by a final point at wake.
-        'hypnogram': [
-          for (final e in n.epochs) {'t': e.startSec, 'stage': e.stage},
-          {'t': n.offsetSec, 'stage': n.epochs.last.stage},
-        ],
+        'hypnogram': vendorHypnogram(n.epochs, n.offsetSec),
       });
     }
     return out;

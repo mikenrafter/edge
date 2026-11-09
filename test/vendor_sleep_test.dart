@@ -313,4 +313,33 @@ void main() {
     expect(LocalDb.restoreTablesForTest, contains('vendor_sleep_epoch'));
     expect(LocalDb.salvageTablesForTest, contains('vendor_sleep_epoch'));
   });
+
+  group('vendorHypnogram', () {
+    test('a gap between epochs is an unobserved boundary', () {
+      final h = vendorHypnogram(const [
+        VendorEpoch(0, 30, 'light'),
+        VendorEpoch(60, 90, 'deep'),
+      ], 100);
+      expect(h, [
+        {'t': 0, 'stage': 'light'},
+        {'t': 30, 'stage': 'unobserved'},
+        {'t': 60, 'stage': 'deep'},
+        {'t': 90, 'stage': 'unobserved'},
+        {'t': 100, 'stage': 'unobserved'},
+      ]);
+    });
+
+    test('back-to-back epochs add nothing', () {
+      expect(
+          vendorHypnogram(const [
+            VendorEpoch(0, 30, 'light'),
+            VendorEpoch(30, 60, 'deep'),
+          ], 60),
+          [
+            {'t': 0, 'stage': 'light'},
+            {'t': 30, 'stage': 'deep'},
+            {'t': 60, 'stage': 'deep'},
+          ]);
+    });
+  });
 }
