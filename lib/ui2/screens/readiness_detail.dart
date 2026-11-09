@@ -57,6 +57,11 @@ class ReadinessData {
   /// as five consecutive days.
   final List<double?> series;
 
+  /// The calendar day [series] ends on: the day it was densified, not the day
+  /// it is drawn. A screen left open across midnight keeps dating its scores
+  /// with the days they are from. Null (a fixture) reads the day it is drawn.
+  final DateTime? anchor;
+
   /// `todayHeadlineOf` off the same today read: the state and update note
   /// Home shows beside this number. Empty when the screen was opened for a
   /// held-over night ([day]) — today's state does not describe that night.
@@ -82,6 +87,7 @@ class ReadinessData {
     this.heldOverNight,
     this.day,
     this.series = const [],
+    this.anchor,
     this.absentDiag,
     this.asOfDay,
     this.computedAt,
@@ -112,6 +118,7 @@ class ReadinessData {
     final today = await repo.getTodayStored();
     final cd = await repo.getInsights();
     final chart = await repo.getChart('recovery');
+    final anchor = DateTime.now();
 
     final daily = today['daily'];
     final gb = cd['readiness_glassbox'];
@@ -155,6 +162,7 @@ class ReadinessData {
           ? computedAtOf(status['overnight_computed_at'])
           : null,
       series: denseDays(pointsOf(chart), 90),
+      anchor: anchor,
       // Only read when there is nothing to explain away — a scored day has no
       // diag in its bundle anyway, and this is one more day_result decode.
       //
@@ -191,7 +199,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
   /// The scrubbed day's figures, not the newest day's.
   @override
   void openNerdStatsAt(int slot, int slots) {
-    final n = DateTime.now();
+    final n = _d?.anchor ?? DateTime.now();
     go(context, Investigate('readiness',
         day: dayLabelOf(DateTime(n.year, n.month, n.day - (slots - 1 - slot)))));
   }
@@ -475,7 +483,9 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
     final scored = [for (final v in win) ?v];
     // "Steady" is the usual band; abstains under two weeks of scored days.
     final band = usualRangeFor('readiness', scored, null);
-    final n = DateTime.now();
+    // The day the series was built for, never the day it is drawn.
+    final n = d.anchor ?? DateTime.now();
+    final behindToday = calendarDaysBetween(n, DateTime.now());
     String dayOf(int i) => prettyDay(
         dayLabelOf(DateTime(n.year, n.month, n.day - (win.length - 1 - i))), l);
 
@@ -491,9 +501,12 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
       // already counts it this way; the two screens dated one chart
       // differently.
       xLabels: [
-        l?.readinessDetailDaysAgo(win.length - 1) ??
-            '${win.length - 1} day${win.length == 2 ? '' : 's'} ago',
-        l?.readinessDetailToday ?? 'Today',
+        l?.readinessDetailDaysAgo(win.length - 1 + behindToday) ??
+            '${win.length - 1 + behindToday} day'
+                '${win.length - 1 + behindToday == 1 ? '' : 's'} ago',
+        behindToday <= 0
+            ? (l?.readinessDetailToday ?? 'Today')
+            : dayOf(win.length - 1),
       ],
       series: win,
       legend: [

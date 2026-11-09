@@ -143,6 +143,31 @@ void main() {
       expect(find.textContaining('20 · Rest today'), findsNothing);
     });
 
+    testWidgets('a series built three days ago is dated from then, not today',
+        (t) async {
+      final built = DateTime.now().subtract(const Duration(days: 3));
+      final s = <double?>[for (var i = 0; i < 20; i++) 50, 80, 20];
+      await _host(
+          t,
+          ReadinessDetail(
+              data: ReadinessData(
+                  readiness: const Metric(
+                      value: 20,
+                      unit: '',
+                      confidence: .8,
+                      tier: MetricTier.estimate),
+                  series: s,
+                  anchor: built)),
+          height: 2400,
+          screen: true);
+      final frame = t.widget<ChartFrame>(find
+          .byWidgetPredicate((w) => w is ChartFrame && w.title == 'Recovery'));
+      expect(frame.xLabels.last, isNot('Today'),
+          reason: 'the last bar is three days old');
+      expect(frame.xLabels.first, '24 days ago',
+          reason: '21 slots behind the anchor, which is 3 days behind today');
+    });
+
     testWidgets('under two weeks there is no band, and one line says why',
         (t) async {
       await _host(t, ReadinessDetail(data: data(const [50, 55, 20])),
