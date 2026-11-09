@@ -1327,6 +1327,7 @@
   "homeDriverRhr": "静息心率",
   "homeDriverResp": "呼吸频率",
   "homeDriverTemp": "皮肤温度",
+  "homeCoachSetUpChip": "设置教练",
   "homeDbRebuiltTitle": "你的数据库已重建",
   "homeDbRebuiltNothingRecovered": "没有任何数据可以恢复。",
   "homeDbRebuiltRecovered": "已恢复：{list}。",
@@ -3412,11 +3413,7 @@
   "importPausedTodayPending": "今天的内容准备好后会立即显示",
   "importPausedSaving": "导入完成前暂停保存",
   "homeWhyRecoveryTitle": "恢复状态偏低",
-  "homeWhyRecoveryDrivers": "拖累最大：{a} {za}、{b} {zb}（与你的基线的偏差）。",
-  "homeWhyRecoveryDriver": "拖累最大：{a} {za}（与你的基线的偏差）。",
   "homeWhyRecoveryPlain": "恢复 {score}/100",
-  "homeWhyRecoveryPullingTwo": "拉低恢复评分的因素：{a}、{b}。",
-  "homeWhyRecoveryPullingOne": "拉低恢复评分的因素：{a}。",
   "homeWhySleepTitle": "睡眠不足",
   "homeWhySleepBody": "已评分的睡眠时长低于你的需求。",
   "homeWhyStrainTitle": "负荷超过目标",
@@ -3444,32 +3441,6 @@
       }
     }
   },
-  "@homeWhyRecoveryDrivers": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "za": {
-        "type": "String"
-      },
-      "b": {
-        "type": "String"
-      },
-      "zb": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryDriver": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "za": {
-        "type": "String"
-      }
-    }
-  },
   "@homeWhyRecoveryPlain": {
     "placeholders": {
       "score": {
@@ -3483,23 +3454,6 @@
         "type": "String"
       },
       "range": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryPullingTwo": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "b": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryPullingOne": {
-    "placeholders": {
-      "a": {
         "type": "String"
       }
     }

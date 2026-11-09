@@ -1327,6 +1327,7 @@
   "homeDriverRhr": "Frecuencia cardíaca en reposo",
   "homeDriverResp": "Frecuencia respiratoria",
   "homeDriverTemp": "Temperatura de la piel",
+  "homeCoachSetUpChip": "Configurar el entrenador",
   "homeDbRebuiltTitle": "Tu base de datos se reconstruyó",
   "homeDbRebuiltNothingRecovered": "No se pudo recuperar nada.",
   "homeDbRebuiltRecovered": "Recuperado: {list}.",
@@ -3430,11 +3431,7 @@
   "importPausedTodayPending": "Hoy aparecerá en cuanto esté listo",
   "importPausedSaving": "Guardar está en pausa hasta que termine la importación",
   "homeWhyRecoveryTitle": "La recuperación es baja",
-  "homeWhyRecoveryDrivers": "Mayor lastre: {a} {za}, {b} {zb} (desviaciones respecto a tu referencia).",
-  "homeWhyRecoveryDriver": "Mayor lastre: {a} {za} (desviaciones respecto a tu referencia).",
   "homeWhyRecoveryPlain": "Recuperación {score} de 100",
-  "homeWhyRecoveryPullingTwo": "Lo reduce: {a}, {b}.",
-  "homeWhyRecoveryPullingOne": "Lo reduce: {a}.",
   "homeWhySleepTitle": "Falta sueño",
   "homeWhySleepBody": "El sueño evaluado quedó por debajo de tu necesidad.",
   "homeWhyStrainTitle": "Esfuerzo por encima del objetivo",
@@ -3462,32 +3459,6 @@
       }
     }
   },
-  "@homeWhyRecoveryDrivers": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "za": {
-        "type": "String"
-      },
-      "b": {
-        "type": "String"
-      },
-      "zb": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryDriver": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "za": {
-        "type": "String"
-      }
-    }
-  },
   "@homeWhyRecoveryPlain": {
     "placeholders": {
       "score": {
@@ -3501,23 +3472,6 @@
         "type": "String"
       },
       "range": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryPullingTwo": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "b": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryPullingOne": {
-    "placeholders": {
-      "a": {
         "type": "String"
       }
     }

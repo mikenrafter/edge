@@ -1327,6 +1327,7 @@
   "homeDriverRhr": "आराम की हृदय गति",
   "homeDriverResp": "श्वसन दर",
   "homeDriverTemp": "त्वचा का तापमान",
+  "homeCoachSetUpChip": "कोच सेट अप करें",
   "homeDbRebuiltTitle": "आपका डेटाबेस दोबारा बनाया गया",
   "homeDbRebuiltNothingRecovered": "कुछ भी वापस नहीं पढ़ा जा सका।",
   "homeDbRebuiltRecovered": "पुनर्प्राप्त: {list}।",
@@ -3412,11 +3413,7 @@
   "importPausedTodayPending": "आज का डेटा तैयार होते ही दिखेगा",
   "importPausedSaving": "आयात पूरा होने तक सहेजना रुका हुआ है",
   "homeWhyRecoveryTitle": "रिकवरी कम है",
-  "homeWhyRecoveryDrivers": "सबसे बड़ा असर: {a} {za}, {b} {zb} (आपकी बेसलाइन से अंतर)।",
-  "homeWhyRecoveryDriver": "सबसे बड़ा असर: {a} {za} (आपकी बेसलाइन से अंतर)।",
   "homeWhyRecoveryPlain": "रिकवरी {score}/100",
-  "homeWhyRecoveryPullingTwo": "इसे नीचे खींच रहे हैं: {a}, {b}।",
-  "homeWhyRecoveryPullingOne": "इसे नीचे खींच रहा है: {a}।",
   "homeWhySleepTitle": "नींद की कमी",
   "homeWhySleepBody": "आपकी मापी गई नींद ज़रूरत से कम थी।",
   "homeWhyStrainTitle": "लक्ष्य से अधिक स्ट्रेन",
@@ -3444,32 +3441,6 @@
       }
     }
   },
-  "@homeWhyRecoveryDrivers": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "za": {
-        "type": "String"
-      },
-      "b": {
-        "type": "String"
-      },
-      "zb": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryDriver": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "za": {
-        "type": "String"
-      }
-    }
-  },
   "@homeWhyRecoveryPlain": {
     "placeholders": {
       "score": {
@@ -3483,23 +3454,6 @@
         "type": "String"
       },
       "range": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryPullingTwo": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "b": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryPullingOne": {
-    "placeholders": {
-      "a": {
         "type": "String"
       }
     }

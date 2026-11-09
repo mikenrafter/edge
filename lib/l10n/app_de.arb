@@ -1360,6 +1360,7 @@
   "homeDriverRhr": "Ruhepuls",
   "homeDriverResp": "Atemfrequenz",
   "homeDriverTemp": "Hauttemperatur",
+  "homeCoachSetUpChip": "Coach einrichten",
   "homeDbRebuiltTitle": "Deine Datenbank wurde neu aufgebaut",
   "homeDbRebuiltNothingRecovered": "Es konnte nichts wiederhergestellt werden.",
   "homeDbRebuiltRecovered": "Wiederhergestellt: {list}.",
@@ -3518,11 +3519,7 @@
   "importPausedTodayPending": "Heute erscheint, sobald es fertig ist",
   "importPausedSaving": "Speichern ist pausiert, bis der Import abgeschlossen ist",
   "homeWhyRecoveryTitle": "Erholung ist niedrig",
-  "homeWhyRecoveryDrivers": "Größte Bremse: {a} {za}, {b} {zb} (Streuungen von deiner Basislinie).",
-  "homeWhyRecoveryDriver": "Größte Bremse: {a} {za} (Streuungen von deiner Basislinie).",
   "homeWhyRecoveryPlain": "Erholung {score} von 100",
-  "homeWhyRecoveryPullingTwo": "Zieht ihn nach unten: {a}, {b}.",
-  "homeWhyRecoveryPullingOne": "Zieht ihn nach unten: {a}.",
   "homeWhySleepTitle": "Schlaf reicht nicht aus",
   "homeWhySleepBody": "Dein bewerteter Schlaf lag unter deinem Bedarf.",
   "homeWhyStrainTitle": "Belastung über dem Ziel",
@@ -3550,32 +3547,6 @@
       }
     }
   },
-  "@homeWhyRecoveryDrivers": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "za": {
-        "type": "String"
-      },
-      "b": {
-        "type": "String"
-      },
-      "zb": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryDriver": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "za": {
-        "type": "String"
-      }
-    }
-  },
   "@homeWhyRecoveryPlain": {
     "placeholders": {
       "score": {
@@ -3589,23 +3560,6 @@
         "type": "String"
       },
       "range": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryPullingTwo": {
-    "placeholders": {
-      "a": {
-        "type": "String"
-      },
-      "b": {
-        "type": "String"
-      }
-    }
-  },
-  "@homeWhyRecoveryPullingOne": {
-    "placeholders": {
-      "a": {
         "type": "String"
       }
     }

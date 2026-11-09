@@ -4,9 +4,8 @@
 //     PROSE ("lifting your score" / "dragging your score down") and no numeric
 //     z. So the copy is built from label + contribution sign; a number is added
 //     only when a numeric z is actually present in `detail`.
-//       no numbers: "Pulling it down: HRV, Skin temperature."  (one: "Pulling it down: HRV.")
-//       numbers:    "Biggest drag: HRV -2.0, Resting heart rate -1.0 (how far each sits from your usual)."
-//  2. Ranked by negative weighted contribution (largest drag first), not by z.
+//       (Superseded: the drivers belong to the percentile score, not to the
+//       composite ring, so the recovery why is always the plain score.)
 //  3. (superseded by round 4) The since caption row overlaps no dial and the dial
 //     below still opens its ring; the held tap target lives in the r4 test.
 import 'package:flutter/material.dart';
@@ -93,13 +92,14 @@ void main() {
       ]);
       expect(d.drivers.length, 3, reason: 'the loader passed them through');
       await _rings(t, d);
-      expect(t.widget<Text>(_body).data, 'Pulling it down: HRV, Skin temperature.');
+      expect(t.widget<Text>(_body).data, 'Recovery 22 of 100',
+          reason: 'glassbox drivers are another score\'s, never blamed here');
     });
 
     testWidgets('one drag', (t) async {
       final d = await _loaded(t, [_drv('rhr', -3.1, _drag), _drv('hrv', 2.0, _lift)]);
       await _rings(t, d);
-      expect(t.widget<Text>(_body).data, 'Pulling it down: Resting heart rate.');
+      expect(t.widget<Text>(_body).data, 'Recovery 22 of 100');
     });
 
     testWidgets('only lifts, or none named: the plain score', (t) async {
@@ -107,35 +107,6 @@ void main() {
       expect(t.widget<Text>(_body).data, 'Recovery 22 of 100');
       await _rings(t, await _loaded(t, const []));
       expect(t.widget<Text>(_body).data, 'Recovery 22 of 100');
-    });
-  });
-
-  group('ranking is by weighted contribution, not by z', () {
-    Map<String, dynamic> z(String l, double c, double zz) =>
-        _drv(l, c, 'oriented robust-z (median+MAD)=$zz');
-
-    testWidgets('HRV z=-2 (bigger drag) outranks temp z=-3 (smaller drag)',
-        (t) async {
-      await _rings(
-          t,
-          _syn(drivers: [
-            z('temp', -1.0, -3.0),
-            z('hrv', -6.0, -2.0),
-            z('rhr', -3.0, -1.0),
-          ]));
-      expect(t.widget<Text>(_body).data,
-          'Biggest drag: HRV -2.0, Resting heart rate -1.0 (how far each sits from your usual).');
-    });
-
-    testWidgets('without numbers the same order holds', (t) async {
-      await _rings(
-          t,
-          _syn(drivers: [
-            _drv('temp', -1.0, _drag),
-            _drv('hrv', -6.0, _drag),
-            _drv('rhr', -3.0, _drag),
-          ]));
-      expect(t.widget<Text>(_body).data, 'Pulling it down: HRV, Resting heart rate.');
     });
   });
 

@@ -1277,38 +1277,12 @@ class _HomeWhyRow extends StatelessWidget {
   }
 }
 
-/// Evidence or nothing. Built from what BOTH driver shapes carry (label and the
-/// sign/size of the weighted `contribution`; the production `detail` is prose):
-/// the biggest drags first. A number is added only when a numeric z is really in
-/// `detail` (`...=<z>`) for every driver named; otherwise none is invented.
+/// The recovery ring is the composite score. The only driver list on hand,
+/// `readiness_glassbox.drivers`, belongs to a different (percentile) score and
+/// can come from a rollup up to seven days old, so blaming it for THIS ring on
+/// THIS night would be a guess. Nothing in the composite names its own drivers,
+/// so the reason is the plain score.
 String _recoveryWhy(HomeData d, AppLocalizations? l) {
-  final drags = <(String, double, double?)>[];
-  for (final e in d.drivers) {
-    final c = e['contribution'];
-    if (c is! num || c >= 0) continue;
-    final detail = '${e['detail']}';
-    final z = detail.contains('=') ? double.tryParse(detail.split('=').last) : null;
-    drags.add((driverLabel(e['label'], l), c.toDouble(), z));
-  }
-  drags.sort((a, b) => a.$2.compareTo(b.$2)); // largest drag first
-  final top = drags.take(2).toList();
-  String f(double? z) => z!.toStringAsFixed(1);
-  final numeric = top.isNotEmpty && top.every((x) => x.$3 != null);
-  if (top.length == 2) {
-    final (a, b) = (top[0], top[1]);
-    return numeric
-        ? (l?.homeWhyRecoveryDrivers(a.$1, f(a.$3), b.$1, f(b.$3)) ??
-            'Biggest drag: ${a.$1} ${f(a.$3)}, ${b.$1} ${f(b.$3)} (how far each sits from your usual).')
-        : (l?.homeWhyRecoveryPullingTwo(a.$1, b.$1) ??
-            'Pulling it down: ${a.$1}, ${b.$1}.');
-  }
-  if (top.length == 1) {
-    final a = top[0];
-    return numeric
-        ? (l?.homeWhyRecoveryDriver(a.$1, f(a.$3)) ??
-            'Biggest drag: ${a.$1} ${f(a.$3)} (how far each sits from your usual).')
-        : (l?.homeWhyRecoveryPullingOne(a.$1) ?? 'Pulling it down: ${a.$1}.');
-  }
   final v = (d.readiness.value ?? 0).round();
   return l?.homeWhyRecoveryPlain(v) ?? 'Recovery $v of 100';
 }
