@@ -1003,7 +1003,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       final maxRowid = Sqflite.firstIntValue(
         await db.rawQuery('SELECT MAX(rowid) FROM imp.${quoteSql(t)}'),
       );
-      if (maxRowid == null || maxRowid <= 0) {
+      if (maxRowid == null) {
         counts[t] = 0;
         return true;
       }
@@ -1108,7 +1108,18 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
       // never waits long behind one, and a salvage loses little to one
       // unreadable chunk.
       final chunkRows = ImportHooks.chunkRows ?? 25000;
-      final startLower = run?.startRowid(index, order) ?? 0;
+      // A table keyed on its own INTEGER column has that column as its rowid,
+      // so a row can sit at 0 or below (a zero counter): a walk that starts at
+      // `rowid > 0` never reads it, and a table whose highest rowid is 0 was
+      // skipped outright. Start just below the lowest rowid when there is one
+      // at or under 0; the common case keeps its 0-based chunks.
+      final minRowid = Sqflite.firstIntValue(
+          await db.rawQuery('SELECT MIN(rowid) FROM imp.${quoteSql(t)}'));
+      final firstLower = minRowid != null && minRowid <= 0
+          ? (minRowid == LocalDb._kBelowAnyRowid ? minRowid : minRowid - 1)
+          : 0;
+      final resumeLower = run?.startRowid(index, order) ?? 0;
+      final startLower = resumeLower == 0 ? firstLower : resumeLower;
       var protectedDayResults = false;
       var rrSourceMax = false;
       var copied = 0;
@@ -1126,7 +1137,7 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
           rrSourceMax = true;
           // Paged like the copy below, so a band-sync commit can land between
           // pages instead of waiting out a scan of the whole source.
-          for (var lo = 0; lo < maxRowid; lo += chunkRows) {
+          for (var lo = firstLower; lo < maxRowid; lo += chunkRows) {
             rrPages++;
             final rrPageWatch = Stopwatch()..start();
             // REPLACE with a LEFT JOIN rather than an UPSERT: Android 8-10
