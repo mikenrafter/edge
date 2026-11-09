@@ -1412,8 +1412,25 @@ Future<Map<String, int>> _ldbPrivMergeFromDbFileBody(String path, {required List
         }
       }
       ImportPerf.phase('policy_and_sizing', prepWatch, run: perfId);
+      // Cancel-all deletes the schedule rows, so an empty table cannot tell
+      // "cancelled" from "never set": the marker says which, and a cancelled
+      // install keeps it empty. A fresh install has nothing to protect.
+      var scheduleCancelled = false;
+      if (!(run?.fresh ?? false)) {
+        try {
+          final sp = await SharedPreferences.getInstance();
+          await sp.reload();
+          scheduleCancelled = sp.getBool('alarm_schedule_cleared') == true;
+        } on Object {
+          // No preference store (a bare test host): nothing was cancelled.
+        }
+      }
       for (var index = startIdx; index < order.length; index++) {
         final t = order[index];
+        if (scheduleCancelled && t == 'alarm_schedule') {
+          counts[t] = 0;
+          continue;
+        }
         final tableWatch = Stopwatch()..start();
         var perfPath = impAttached && bulkTables.contains(t) ? 'bulk' : (t == SubstrateArchive.table ? 'archive' : 'paged');
         int? sourceMax;

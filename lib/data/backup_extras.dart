@@ -53,6 +53,8 @@ const Map<String, String> kPrefsNotBackedUp = {
   'backup.folder': 'a storage-access URI/permission that is not valid elsewhere',
   'backup.last_run_ms': 'status of this install\'s auto-backup',
   'backup.last_error': 'status of this install\'s auto-backup',
+  'alarm_schedule_cleared': 'records that Cancel-all ran on this phone, so an '
+      'import cannot bring a cancelled alarm back',
   'alarm_probe_pending': 'transient: an in-flight alarm check on this phone',
   'ble.ask_add_pending': 'transient: a pairing prompt waiting on this phone',
   'health_upload_last_ts': 'telemetry upload cursor of this install',

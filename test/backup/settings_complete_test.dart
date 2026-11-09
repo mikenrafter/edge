@@ -9,10 +9,14 @@ import 'package:path/path.dart' as p;
 
 import 'package:openstrap_edge/data/backup_extras.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+
+import '../support/fake_alarm_engine.dart';
 
 import 'backup_support.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late BackupEnv env;
   setUpAll(() async => env = await BackupEnv.create('bkx_complete_test.db'));
   tearDownAll(() async => env.dispose());
@@ -121,5 +125,61 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({'coach_api_key': 'sk-1'});
     await LocalDb.importFromDbFile(had);
     expect((await lastImportSummary())!.needsReentry, isEmpty);
+  });
+
+  group('Cancel-all survives an import', () {
+    late AppState app;
+
+    // A schedule exported, then cancelled on an install that has data.
+    Future<String> exportThenCancel() async {
+      await wipeAll();
+      await env.seedData();
+      await LocalDb.setAlarmScheduleDay(
+          weekday: 2, hour: 7, minute: 15, enabled: true);
+      final path = await LocalDb.exportCopy();
+      app = AppState.forTesting(engine: FakeAlarmEngine());
+      addTearDown(app.dispose);
+      app.device.connection = 'connected';
+      await app.disableAlarm();
+      expect(await LocalDb.alarmScheduleRows(), isEmpty);
+      return path;
+    }
+
+    test('an import does not bring a cancelled schedule back', () async {
+      final path = await exportThenCancel();
+      await LocalDb.importFromDbFile(path);
+      expect(await LocalDb.alarmScheduleRows(), isEmpty);
+    });
+
+    test('configuring a weekday after Cancel-all lets a later import fill '
+        'absent slots again', () async {
+      final path = await exportThenCancel();
+      await app.setScheduleDay(weekday: 4, hour: 6, minute: 0, enabled: true);
+      await LocalDb.importFromDbFile(path);
+      final byDay = {
+        for (final r in await LocalDb.alarmScheduleRows()) r['weekday']: r,
+      };
+      expect(byDay.keys.toSet(), {2, 4});
+      expect(byDay[4]!['hour'], 6, reason: 'the local row still wins');
+    });
+
+    test('a fresh install still restores the schedule', () async {
+      await wipeAll();
+      await LocalDb.setAlarmScheduleDay(
+          weekday: 2, hour: 7, minute: 15, enabled: true);
+      final path = await LocalDb.exportCopy();
+      await wipeAll();
+      await setPrefs({'alarm_schedule_cleared': true});
+      await LocalDb.importFromDbFile(path);
+      expect(await LocalDb.alarmScheduleRows(), hasLength(1));
+    });
+
+    test('the cancel marker is device state: it is not exported', () async {
+      await wipeAll();
+      await setPrefs({'alarm_schedule_cleared': true});
+      final out = await LocalDb.exportCopy();
+      expect((await exportedPrefs(out))?.keys ?? <String>[],
+          isNot(contains('alarm_schedule_cleared')));
+    });
   });
 }

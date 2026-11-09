@@ -6182,6 +6182,9 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   }
 
   Future<void> _persistScheduleEntry(AlarmScheduleEntry next) async {
+    // The user chose a slot: the schedule is no longer "cancelled".
+    await (await SharedPreferences.getInstance())
+        .remove('alarm_schedule_cleared');
     await LocalDb.setAlarmScheduleDay(
       weekday: next.weekday,
       hour: next.hour,
@@ -6504,6 +6507,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   Future<void> debugOnArmed(DateTime when, int epoch) => _onArmed(when, epoch);
 
   Future<void> _persistScheduleBatch(List<AlarmScheduleEntry> entries) async {
+    await (await SharedPreferences.getInstance())
+        .remove('alarm_schedule_cleared');
     await LocalDb.setAlarmScheduleRows([for (final e in entries) e.toRow()]);
     await _loadAlarmSchedule();
     notifyListeners();
@@ -7894,6 +7899,10 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('alarm_epoch');
     await prefs.remove('alarm_epoch_confirmed');
+    // Tells an import that an empty schedule means "cancelled", not "never
+    // set". Marked BEFORE the rows go: a crash between the two leaves a marker
+    // over rows (harmless), never an empty table an import could refill.
+    await prefs.setBool('alarm_schedule_cleared', true);
     await LocalDb.clearAlarmSchedule();
     _schedule = fillDefaultAlarmSchedule(const []);
     notifyListeners();
