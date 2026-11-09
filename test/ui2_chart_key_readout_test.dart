@@ -529,6 +529,8 @@ void main() {
         h: 600);
     expect(find.bySemanticsLabel('7-day avg 53 bpm'), findsOneWidget);
     expect(find.bySemanticsLabel('vs avg +1 bpm'), findsOneWidget);
+    expect(find.bySemanticsLabel('Missing No record'), findsOneWidget,
+        reason: 'a statistic with no value is spoken, as it is drawn');
     expect(find.bySemanticsLabel(RegExp('Resting heart rate')), findsNothing);
     handle.dispose();
   });

@@ -1081,12 +1081,12 @@ class ChartKeyReadout extends StatelessWidget {
       for (final stat in stats)
         KeyedSubtree(
           key: ValueKey('chart-panel-stat:${stat.label}'),
-          child: stat.value == null
-              ? ExcludeSemantics(child: _cell(c, p, stat))
-              : Semantics(
-                  container: true,
-                  label: '${stat.label} ${stat.value}',
-                  child: ExcludeSemantics(child: _cell(c, p, stat))),
+          // A missing statistic is spoken too ("label No record"), as it is
+          // drawn ("—"); skipping it left a listener unsure there was one.
+          child: Semantics(
+              container: true,
+              label: '${stat.label} ${stat.value ?? (AppLocalizations.of(c)?.metricDetailNoRecordLabel ?? 'No record')}',
+              child: ExcludeSemantics(child: _cell(c, p, stat))),
         ),
     ];
     return Container(
