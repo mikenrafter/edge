@@ -1,0 +1,22 @@
+[
+  {
+    "section": "identity",
+    "sha": "415ff7d0809bac2325bcdc39ea2cc6f60ad5e8fa"
+  },
+  {
+    "section": "reset-help",
+    "sha": "250ca91877414918a37dd20fabd8d0bbc0d5ba60"
+  },
+  {
+    "section": "add-device",
+    "sha": "d4594f4c2f24dfadb69fbb5d7a986bc5b4bae620"
+  },
+  {
+    "section": "first-run",
+    "sha": "e2826e7648ef03c94ed7fa341543f554688a56be"
+  },
+  {
+    "section": "comparison",
+    "sha": "7f3d7a50e0a664ea5e2157c744ab0884eb119170"
+  }
+]
