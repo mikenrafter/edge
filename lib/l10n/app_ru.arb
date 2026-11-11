@@ -9243,5 +9243,79 @@
         "type": "String"
       }
     }
+  },
+  "guideTapMarker": "нажать",
+  "guideScrollMarker": "листать",
+  "guideStepUnavailable": "Этот шаг сейчас нельзя показать.",
+  "guideNoVariantBody": "Эта инструкция пока не подходит для вашего браслета. Подходит для: {bands}.",
+  "guideHrZonesTitle": "Где найти зоны пульса",
+  "guideHrZonesIntro": "Экран зон пульса находится за показателем «{score}». Нужно три нажатия.",
+  "guideHrZonesStep1": "На вкладке **{tab}** нажмите на кольцо **{ring}**.",
+  "guideHrZonesStep2": "Прокрутите вниз до **{section}** и нажмите **{action}** справа.",
+  "guideHrZonesStep3": "Это экран **{screen}**. Чтобы задать свои зоны, нажмите **{link}**.",
+  "guideHrZonesAltTitle": "Другой путь",
+  "guideHrZonesAltBody": "Откройте вкладку **{tab}** и нажмите **{link}**, затем выполните шаги 2 и 3.",
+  "guideHrZonesMissingTitle": "Не видите «{section}»?",
+  "guideHrZonesMissingBody": "Раздел появляется, только когда браслет записал пульс за этот день. Поносите его некоторое время и проверьте снова.",
+  "@guideNoVariantBody": {
+    "placeholders": {
+      "bands": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideHrZonesIntro": {
+    "placeholders": {
+      "score": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideHrZonesStep1": {
+    "placeholders": {
+      "tab": {
+        "type": "String"
+      },
+      "ring": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideHrZonesStep2": {
+    "placeholders": {
+      "section": {
+        "type": "String"
+      },
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideHrZonesStep3": {
+    "placeholders": {
+      "screen": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideHrZonesAltBody": {
+    "placeholders": {
+      "tab": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      }
+    }
+  },
+  "@guideHrZonesMissingTitle": {
+    "placeholders": {
+      "section": {
+        "type": "String"
+      }
+    }
   }
 }
