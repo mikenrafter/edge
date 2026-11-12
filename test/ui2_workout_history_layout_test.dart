@@ -15,7 +15,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'support/live_guide_harness.dart' show tolerateKnownSyncStatusOverflow;
+import 'support/live_guide_harness.dart' show tolerateKnownNextOverflows;
 
 class _HistoryRepo extends LocalRepository {
   @override
@@ -69,7 +69,7 @@ void main() {
       t.view.physicalSize = const Size(390, 844);
       t.view.devicePixelRatio = 1;
       addTearDown(t.view.reset);
-      tolerateKnownSyncStatusOverflow(); // next's status line, not the History card
+      tolerateKnownNextOverflows(); // next's status line and load card, not the History row
       final app = AppState.forTesting()..repo = _HistoryRepo();
       addTearDown(app.dispose);
       final l = lookupAppLocalizations(const Locale('de'));

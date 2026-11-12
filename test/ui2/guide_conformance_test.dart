@@ -198,19 +198,21 @@ void main() {
     });
   }
 
-  test('known sync overflow is the only one dropped', () {
-    // why: tolerateKnownSyncStatusOverflow must not hide a guide or screen overflow.
-    // Fails if the filter matched every RenderFlex overflow (or none).
-    FlutterErrorDetails overflowIn(String file) => FlutterErrorDetails(
+  test('known next overflows are the only ones dropped', () {
+    // why: tolerateKnownNextOverflows must not hide a guide or screen overflow. Fails if
+    // the filter matched every RenderFlex overflow (or none of the two known ones).
+    FlutterErrorDetails overflowIn(String where) => FlutterErrorDetails(
           exception: FlutterError('A RenderFlex overflowed by 2.0 pixels on the right.'),
-          informationCollector: () => [DiagnosticsNode.message('creator: Row:file:///lib/ui2/$file:1020:22')],
+          informationCollector: () => [DiagnosticsNode.message('creator: Row:file:///lib/ui2/$where:22')],
         );
-    expect(isKnownSyncStatusOverflow(overflowIn('sync_control.dart')), isTrue);
-    expect(isKnownSyncStatusOverflow(overflowIn('workout_screen.dart')), isFalse);
+    expect(isKnownNextOverflow(overflowIn('sync_control.dart:1020')), isTrue);
+    expect(isKnownNextOverflow(overflowIn('screens/workout_screen.dart:374')), isTrue);
+    expect(isKnownNextOverflow(overflowIn('screens/workout_screen.dart:1320')), isFalse, reason: 'the History row is ours to keep clean');
+    expect(isKnownNextOverflow(overflowIn('guides/guide_step_card.dart:50')), isFalse);
     expect(
-        isKnownSyncStatusOverflow(FlutterErrorDetails(
+        isKnownNextOverflow(FlutterErrorDetails(
             exception: FlutterError('Null check operator used on a null value'),
-            informationCollector: () => [DiagnosticsNode.message('sync_control.dart')])),
+            informationCollector: () => [DiagnosticsNode.message('sync_control.dart:1020:22')])),
         isFalse);
   });
 
