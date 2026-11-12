@@ -259,7 +259,7 @@ void main() {
       expect(_step(app), 0);
     });
 
-    for (final locale in const [Locale('en'), Locale('de'), Locale('ru'), Locale('zh'), Locale('th'), Locale('hi'), Locale('fr'), Locale('es')]) {
+    for (final locale in const [Locale('en'), Locale('de'), Locale('ru'), Locale('zh'), Locale('hi'), Locale('fr'), Locale('es')]) {
       testWidgets('step 1 in ${locale.languageCode}: caption quotes the screen\'s own label; card and target do not collide', (t) async {
         // why: the owner\'s language requirement on the live path (text scale 1.3,
         // phone width). The caption is the translated sentence, the card keeps

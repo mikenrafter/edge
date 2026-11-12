@@ -185,6 +185,22 @@ void main() {
     });
   }
 
+  test('known sync overflow is the only one dropped', () {
+    // why: tolerateKnownSyncStatusOverflow must not hide a guide or screen overflow.
+    // Fails if the filter matched every RenderFlex overflow (or none).
+    FlutterErrorDetails overflowIn(String file) => FlutterErrorDetails(
+          exception: FlutterError('A RenderFlex overflowed by 2.0 pixels on the right.'),
+          informationCollector: () => [DiagnosticsNode.message('creator: Row:file:///lib/ui2/$file:1020:22')],
+        );
+    expect(isKnownSyncStatusOverflow(overflowIn('sync_control.dart')), isTrue);
+    expect(isKnownSyncStatusOverflow(overflowIn('workout_screen.dart')), isFalse);
+    expect(
+        isKnownSyncStatusOverflow(FlutterErrorDetails(
+            exception: FlutterError('Null check operator used on a null value'),
+            informationCollector: () => [DiagnosticsNode.message('sync_control.dart')])),
+        isFalse);
+  });
+
   testWidgets('CLAIM(alarm-keys): the Wake time key exists only while the day is on, and the step-2 target is what turns it on', (t) async {
     // why: Wake time is drawn (dimmed) for an OFF day, so its label cannot tell the
     // run that step 2 is done; the guide stands on 'alarm-wake-time', which alarm.dart
