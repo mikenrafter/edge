@@ -235,6 +235,26 @@ void main() {
       expect(GuideTarget.label(fnText((_) => 'Strain')).resolve(root, l), isA<TargetFound>());
     });
 
+    testWidgets('a labelled wrapper around a pressable text is one control (CLAIM(one-control-once)); two such buttons stay ambiguous', (t) async {
+      // why: day_review.dart's `reviewButton` is Semantics(label) > Opacity > BigButton
+      // (Pressable) > Text with the same words. The Semantics sits ABOVE the Pressable, so
+      // "nearest Pressable above the match" saw two controls and every review button was
+      // ambiguous, with one row too. Fails if the nested control is counted again; the second
+      // half is the positive control that real duplicates are still ambiguous.
+      Widget button(String label, double width) => Semantics(
+            button: true,
+            label: label,
+            excludeSemantics: true,
+            child: Opacity(opacity: 1, child: SizedBox(width: width, child: Pressable(onTap: () {}, child: Text(label)))),
+          );
+      final (root, l) = await _pumpIn(t, const Locale('en'), (_) => Column(children: [button('Save', 120)]));
+      final one = GuideTarget.label(fnText((_) => 'Save')).resolve(root, l);
+      expect(one, isA<TargetFound>());
+      expect((one as TargetFound).rect.width, 120, reason: 'the whole labelled button');
+      final (root2, l2) = await _pumpIn(t, const Locale('en'), (_) => Column(children: [button('Save', 120), button('Save', 90)]));
+      expect(GuideTarget.label(fnText((_) => 'Save')).resolve(root2, l2), isA<TargetAmbiguous>());
+    });
+
     testWidgets('a control whose Text appears twice inside the SAME Pressable counts once', (t) async {
       // why: "same nearest Pressable" is the dedupe rule (title + subtitle echo).
       final (root, l) = await _pumpIn(

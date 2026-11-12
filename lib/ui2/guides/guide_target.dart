@@ -207,6 +207,23 @@ final class _LabelTarget extends GuideTarget {
       });
       controls.putIfAbsent(pressable ?? outermostSemantics ?? m, () => m);
     }
+    // A Semantics label WRAPPING the control that also prints it (day_review.dart's
+    // `reviewButton`: Semantics > Opacity > BigButton > Text) is that control, not a
+    // second one: drop every control that sits inside another matched control.
+    // CLAIM(one-control-once): ↳ [guide_target_test 'a labelled wrapper around a pressable text is one control'].
+    final nested = <Element>{};
+    for (final outer in controls.keys) {
+      for (final inner in controls.keys) {
+        if (identical(outer, inner)) continue;
+        var inside = false;
+        inner.visitAncestorElements((a) {
+          if (identical(a, outer)) inside = true;
+          return !inside && !identical(a, root);
+        });
+        if (inside) nested.add(inner);
+      }
+    }
+    nested.forEach(controls.remove);
     if (controls.length > 1) {
       return _Miss(TargetAmbiguous(this, controls.length, '${controls.length} controls read $quoted'));
     }
