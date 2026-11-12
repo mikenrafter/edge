@@ -45,6 +45,8 @@ import 'ui2/screens/workout_screen.dart';
 import 'ui2/ui2.dart';
 import 'data/db.dart' show LocalDb;
 import 'settings/settings_repository.dart' show settingsRestoredSignal;
+import 'ui2/guides/guide_runner.dart';
+import 'ui2/profile/settings.dart' show MoreSettings;
 
 class OpenStrapApp extends StatefulWidget {
   const OpenStrapApp({super.key});
@@ -53,6 +55,8 @@ class OpenStrapApp extends StatefulWidget {
 }
 
 class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  late final _guideRunner = GuideRunner(navigatorKey: _navigatorKey);
   @override
   void initState() {
     super.initState();
@@ -100,6 +104,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     settingsRestoredSignal.removeListener(_onSettingsRestored);
+    _guideRunner.dispose();
     super.dispose();
   }
 
@@ -175,7 +180,10 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
     locale.useForPresentation();
     final twelveHour = !context.watch<ClockFormatController>().resolve24h(
         MediaQuery.alwaysUse24HourFormatOf(context));
-    return MaterialApp(
+    return ChangeNotifierProvider<GuideRunner>.value(
+      value: _guideRunner,
+      child: MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'OpenStrap',
       debugShowCheckedModeBanner: false,
       // The palette is the design system's, the CHOICE is still the user's.
@@ -214,7 +222,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       ),
       navigatorObservers: [TelemetryNavigatorObserver()],
       home: const _Gate(),
-    );
+    ));
   }
 }
 
@@ -574,6 +582,8 @@ class _ShellState extends State<AppMainShell> {
   int _rev = 0;
 
   AppState? _app;
+  GuideRunner? _guideRunner;
+  GuideShellLink? _guideShell;
 
   @override
   void initState() {
@@ -581,6 +591,11 @@ class _ShellState extends State<AppMainShell> {
     // A tapped notification asks for a tab via AppState.navRequest. Jump there,
     // then clear the request so it isn't replayed on rebuild.
     _app = context.read<AppState>();
+    _guideRunner = context.read<GuideRunner?>();
+    _guideShell = GuideShellLink(selectTab: _go, openSettings: () async {
+      if (mounted) await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const MoreSettings()));
+    });
+    _guideRunner?.attachShell(_guideShell!);
     _app!.navRequest.addListener(_consumeSoon);
     _app!.screenRequest.addListener(_consumeSoon);
     // Cold launch from a tapped notification: the route may already be set
@@ -657,6 +672,7 @@ class _ShellState extends State<AppMainShell> {
 
   @override
   void dispose() {
+    if (_guideShell != null) _guideRunner?.detachShell(_guideShell!);
     _app?.navRequest.removeListener(_consumeSoon);
     _app?.screenRequest.removeListener(_consumeSoon);
     super.dispose();
