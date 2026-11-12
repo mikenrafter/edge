@@ -2445,7 +2445,7 @@ Future<_WorkoutData> _loadWorkoutData(AppState app) async {
       setHistory: history,
       overreach: overreach,
       morningAfter: morningAfter,
-      suggestions: await activeSuggestions(),
+      suggestions: await activeSuggestions(repo),
       importedLast: await lastImportAt(HealthImport.workouts),
     );
 }

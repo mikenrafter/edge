@@ -81,7 +81,41 @@ Future<void> _review(WidgetTester t, List<Suggestion> suggestions,
       brightness: brightness);
 }
 
+class _SuggestionRepo extends LocalRepository {
+  _SuggestionRepo(this.rows);
+  final List<ActivitySuggestion> rows;
+  @override
+  Future<List<ActivitySuggestion>> pendingActivities() async => rows;
+}
+
 void main() {
+  // why: CLAIM(workout-suggestion-read-seam). Activity bypassed the configured
+  // repository, causing a legacy migration write on its first guide-driven
+  // visit. Literal rows also pin filtering and the authoritative time window.
+  test('workout suggestions read the repository and exclude naps and invalid windows', () async {
+    final repo = _SuggestionRepo(const [
+      ActivitySuggestion(id: 'nap', kind: ActivityKind.nap,
+          startTs: 100, endTs: 200, revision: 0),
+      ActivitySuggestion(id: 'workout', kind: ActivityKind.workout,
+          startTs: 300, endTs: 900, revision: 2,
+          details: {'id': 'stale', 'start_ts': 1, 'end_ts': 2,
+            'sport': 'running', 'avg_bpm': 148, 'peak_bpm': 171}),
+      ActivitySuggestion(id: 'invalid', kind: ActivityKind.workout,
+          startTs: 900, endTs: 900, revision: 0),
+    ]);
+    final suggestions = await activeSuggestions(repo);
+    expect(suggestions, hasLength(1));
+    final suggestion = suggestions.single;
+    expect(suggestion.id, 'workout');
+    expect(suggestion.startTs, 300);
+    expect(suggestion.endTs, 900);
+    expect(suggestion.durationMin, 10);
+    expect(suggestion.sport, 'running');
+    expect(suggestion.avgBpm, 148);
+    expect(suggestion.peakBpm, 171);
+    expect(await activeSuggestions(_SuggestionRepo(const [])), isEmpty);
+  });
+
   group('day breakdown workout review', () {
     testWidgets('draws the bout and its whole window with staged actions', (t) async {
       await _review(t, [_sug()]);
