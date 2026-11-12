@@ -9329,7 +9329,7 @@
   "guideAlarmStep3": "Затем нажмите **{wake}** под этим днём и выберите время. У каждого дня может быть своё время.",
   "guideAlarmAltBody": "Откройте **{settings}**, затем нажмите **{alarm}**.",
   "guideAlarmMissingTitle": "Не видите «{wake}»?",
-  "guideAlarmMissingBody": "**{wake}** появляется, только когда день включён: включите его первой строкой под вкладками дней. Если этот раздел свёрнут, нажмите на его заголовок, чтобы открыть.",
+  "guideAlarmMissingBody": "**{wake}** появляется, только когда день включён: включите его первой строкой под вкладками дней. Если какой-то раздел свёрнут (**{more}** на вкладке «Сон» или раздел под вкладками дней), нажмите на его заголовок, чтобы открыть.",
   "guideAddNapTitle": "Где самому записать дневной сон",
   "guideAddNapStep1": "На вкладке **{tab}** нажмите **{naps}** под последней ночью.",
   "guideAddNapStep2": "Нажмите **{log}**. Вас спросят о двух вещах: **{fell}**, затем **{woke}**. Выберите оба времени.",
@@ -9348,7 +9348,7 @@
   "guideFixTimesStep1": "На вкладке **{tab}** нажмите **{change}** под последней ночью. Там написано **{set}**, пока вы сами не задали время. Вас спросят, когда вы легли, а затем когда проснулись.",
   "guideFixTimesStep2": "Чтобы отменить изменения, нажмите **{back}**. Ночь вернётся ко времени, которое определило приложение.",
   "guideFixTimesBackTitle": "Не видите «{back}»?",
-  "guideFixTimesBackBody": "**{back}** появляется только после того, как вы сами задали время. Сначала задайте его, и кнопка появится.",
+  "guideFixTimesBackBody": "**{back}** появляется только после того, как вы сами задали время. Сначала задайте его, и кнопка появится. Если раздел **{night}** свёрнут, нажмите на его заголовок, чтобы открыть.",
   "guideFixTimesAskTitle": "О чём спрашивают окна выбора",
   "guideFixTimesAskBody": "Сначала время, когда вы легли, затем время, когда проснулись. По этим двум значениям ночь рассчитывается заново.",
   "guideDeleteTitle": "Где удалить тренировку",
@@ -9443,11 +9443,15 @@
     }
   },
   "@guideAlarmMissingBody": {
-    "description": "Footer card body: why the Wake time row can be missing (the day is off, or the section is folded).",
+    "description": "Footer card body: why the Wake time row can be missing (the day is off, or a section is folded). {wake} is the row, {more} the Sleep tab section that holds the Alarm row.",
     "placeholders": {
       "wake": {
         "type": "String",
         "description": "Name of the Wake time row"
+      },
+      "more": {
+        "type": "String",
+        "description": "Title of the Sleep tab section that holds the Alarm row"
       }
     }
   },
@@ -9589,10 +9593,15 @@
     }
   },
   "@guideFixTimesBackBody": {
+    "description": "Footer card body: why Back to automatic can be missing (the times are not yours yet), and that the night section can be folded. {night} is that section title.",
     "placeholders": {
       "back": {
         "type": "String",
         "description": "Name of the Back to automatic button"
+      },
+      "night": {
+        "type": "String",
+        "description": "Title of the section that holds the night"
       }
     }
   },
@@ -9770,5 +9779,7 @@
       }
     }
   },
-  "guideRemoveStep3": "Затем внизу нажмите **{save}**. До этого ничего не удаляется."
+  "guideRemoveStep3": "Затем внизу нажмите **{save}**. До этого ничего не удаляется.",
+  "guideAddNapMissingTitle": "Не видите «{naps}»?",
+  "guideAddNapMissingBody": "**{naps}** находится под вашей ночью. Если этот раздел, **{night}**, свёрнут, нажмите на его заголовок, чтобы открыть."
 }

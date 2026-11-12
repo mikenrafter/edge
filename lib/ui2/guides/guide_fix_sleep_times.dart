@@ -44,7 +44,7 @@ Guide get fixSleepTimesGuide => Guide(
         GuideFooter(
           kind: GuideFooterKind.missingTarget,
           title: (l) => l.guideFixTimesBackTitle(l.sleepDetailBackToAutomatic),
-          body: (l) => l.guideFixTimesBackBody(l.sleepDetailBackToAutomatic),
+          body: (l) => l.guideFixTimesBackBody(l.sleepDetailBackToAutomatic, l.sleepDetailThroughTheNight),
         ),
         GuideFooter(
           kind: GuideFooterKind.note,

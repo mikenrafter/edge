@@ -38,6 +38,13 @@ Guide get addNapGuide => Guide(
         ]),
       ],
       footers: [
+        // The Naps button sits in the "Through the night" section, which the
+        // person may have folded (the app remembers it): the in-place help says so.
+        GuideFooter(
+          kind: GuideFooterKind.missingTarget,
+          title: (l) => l.guideAddNapMissingTitle(l.sleepDetailEditNaps),
+          body: (l) => l.guideAddNapMissingBody(l.sleepDetailEditNaps, l.sleepDetailThroughTheNight),
+        ),
         GuideFooter(
           kind: GuideFooterKind.note,
           title: (l) => l.guideAddNapFoundTitle,

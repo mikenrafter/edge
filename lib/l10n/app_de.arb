@@ -3926,7 +3926,7 @@
   "guideAlarmStep3": "Tippe dann unter diesem Tag auf **{wake}** und wähle die Uhrzeit. Jeder Tag kann seine eigene Zeit haben.",
   "guideAlarmAltBody": "Öffne **{settings}** und tippe dann auf **{alarm}**.",
   "guideAlarmMissingTitle": "„{wake}“ nicht zu sehen?",
-  "guideAlarmMissingBody": "**{wake}** erscheint erst, wenn der Tag eingeschaltet ist: Schalte ihn mit der ersten Zeile unter den Tag-Tabs ein. Ist dieser Abschnitt eingeklappt, tippe auf seinen Titel, um ihn zu öffnen.",
+  "guideAlarmMissingBody": "**{wake}** erscheint erst, wenn der Tag eingeschaltet ist: Schalte ihn mit der ersten Zeile unter den Tag-Tabs ein. Ist ein Abschnitt eingeklappt (**{more}** im Schlaf-Tab oder der unter den Tag-Tabs), tippe auf seinen Titel, um ihn zu öffnen.",
   "guideAddNapTitle": "So trägst du selbst ein Nickerchen ein",
   "guideAddNapStep1": "Tippe im Tab **{tab}** unter deiner letzten Nacht auf **{naps}**.",
   "guideAddNapStep2": "Tippe auf **{log}**. Du wirst zwei Dinge gefragt: **{fell}**, dann **{woke}**. Wähle beide Zeiten.",
@@ -3945,7 +3945,7 @@
   "guideFixTimesStep1": "Tippe im Tab **{tab}** unter deiner letzten Nacht auf **{change}**. Dort steht **{set}**, bis du die Zeiten selbst festgelegt hast. Du wirst gefragt, wann du ins Bett gegangen bist und dann, wann du aufgewacht bist.",
   "guideFixTimesStep2": "Zum Rückgängigmachen tippe auf **{back}**. Die Nacht bekommt wieder die Zeiten, die die App erkannt hat.",
   "guideFixTimesBackTitle": "„{back}“ nicht zu sehen?",
-  "guideFixTimesBackBody": "**{back}** erscheint erst, nachdem du die Zeiten selbst festgelegt hast. Lege sie zuerst fest, dann taucht es auf.",
+  "guideFixTimesBackBody": "**{back}** erscheint erst, nachdem du die Zeiten selbst festgelegt hast. Lege sie zuerst fest, dann taucht es auf. Ist **{night}** eingeklappt, tippe auf den Titel, um es zu öffnen.",
   "guideFixTimesAskTitle": "Was die Auswahl fragt",
   "guideFixTimesAskBody": "Zuerst, wann du ins Bett gegangen bist, dann, wann du aufgewacht bist. Aus diesen beiden Zeiten wird die Nacht neu berechnet.",
   "guideDeleteTitle": "So löschst du ein Training",
@@ -3981,5 +3981,7 @@
   "guideDoneTitle": "Fertig",
   "guideDoneBody": "Das war der letzte Schritt.",
   "guideTargetProxy": "Ziel der Anleitung: {caption}",
-  "guideRemoveStep3": "Tippe dann unten auf **{save}**. Bis dahin wird nichts entfernt."
+  "guideRemoveStep3": "Tippe dann unten auf **{save}**. Bis dahin wird nichts entfernt.",
+  "guideAddNapMissingTitle": "„{naps}“ nicht zu sehen?",
+  "guideAddNapMissingBody": "**{naps}** steht unter deiner Nacht. Ist dieser Teil, **{night}**, eingeklappt, tippe auf seinen Titel, um ihn zu öffnen."
 }

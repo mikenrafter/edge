@@ -3820,7 +3820,7 @@
   "guideAlarmStep3": "Touchez ensuite **{wake}** sous ce jour et choisissez l’heure. Chaque jour peut avoir sa propre heure.",
   "guideAlarmAltBody": "Ouvrez **{settings}**, puis touchez **{alarm}**.",
   "guideAlarmMissingTitle": "Vous ne voyez pas « {wake} » ?",
-  "guideAlarmMissingBody": "**{wake}** n’apparaît que lorsque le jour est activé : activez-le avec la première ligne sous les onglets des jours. Si cette section est repliée, touchez son titre pour l’ouvrir.",
+  "guideAlarmMissingBody": "**{wake}** n’apparaît que lorsque le jour est activé : activez-le avec la première ligne sous les onglets des jours. Si une section est repliée (**{more}** dans l’onglet Sommeil, ou celle sous les onglets des jours), touchez son titre pour l’ouvrir.",
   "guideAddNapTitle": "Où enregistrer une sieste vous-même",
   "guideAddNapStep1": "Dans l’onglet **{tab}**, touchez **{naps}** sous votre dernière nuit.",
   "guideAddNapStep2": "Touchez **{log}**. Deux questions vous sont posées : **{fell}**, puis **{woke}**. Choisissez les deux heures.",
@@ -3839,7 +3839,7 @@
   "guideFixTimesStep1": "Dans l’onglet **{tab}**, touchez **{change}** sous votre dernière nuit. Il indique **{set}** tant que vous n’avez pas réglé les heures vous-même. On vous demande quand vous vous êtes couché, puis quand vous vous êtes réveillé.",
   "guideFixTimesStep2": "Pour annuler vos modifications, touchez **{back}**. La nuit reprend les heures détectées par l’app.",
   "guideFixTimesBackTitle": "Vous ne voyez pas « {back} » ?",
-  "guideFixTimesBackBody": "**{back}** n’apparaît qu’après avoir réglé les heures vous-même. Réglez-les d’abord, il apparaîtra.",
+  "guideFixTimesBackBody": "**{back}** n’apparaît qu’après avoir réglé les heures vous-même. Réglez-les d’abord, il apparaîtra. Si **{night}** est replié, touchez son titre pour l’ouvrir.",
   "guideFixTimesAskTitle": "Ce que demandent les sélecteurs",
   "guideFixTimesAskBody": "D’abord l’heure à laquelle vous vous êtes couché, puis celle à laquelle vous vous êtes réveillé. La nuit est recalculée à partir de ces deux heures.",
   "guideDeleteTitle": "Où supprimer une séance",
@@ -3875,5 +3875,7 @@
   "guideDoneTitle": "Terminé",
   "guideDoneBody": "C’était la dernière étape.",
   "guideTargetProxy": "Cible du guide : {caption}",
-  "guideRemoveStep3": "Touchez ensuite **{save}**, en bas. Rien n’est supprimé avant."
+  "guideRemoveStep3": "Touchez ensuite **{save}**, en bas. Rien n’est supprimé avant.",
+  "guideAddNapMissingTitle": "Vous ne voyez pas « {naps} » ?",
+  "guideAddNapMissingBody": "**{naps}** se trouve sous votre nuit. Si cette partie, **{night}**, est repliée, touchez son titre pour l’ouvrir."
 }

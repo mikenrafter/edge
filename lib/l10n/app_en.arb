@@ -18824,13 +18824,17 @@
       }
     }
   },
-  "guideAlarmMissingBody": "**{wake}** only appears once the day is on: turn it on with the first row under the day tabs. If that section is folded, tap its title to open it.",
+  "guideAlarmMissingBody": "**{wake}** only appears once the day is on: turn it on with the first row under the day tabs. If a section is folded (**{more}** on the Sleep tab, or the one under the day tabs), tap its title to open it.",
   "@guideAlarmMissingBody": {
-    "description": "Footer card body: why the Wake time row can be missing (the day is off, or the section is folded).",
+    "description": "Footer card body: why the Wake time row can be missing (the day is off, or a section is folded). {wake} is the row, {more} the Sleep tab section that holds the Alarm row.",
     "placeholders": {
       "wake": {
         "type": "String",
         "description": "Name of the Wake time row"
+      },
+      "more": {
+        "type": "String",
+        "description": "Title of the Sleep tab section that holds the Alarm row"
       }
     }
   },
@@ -19020,13 +19024,17 @@
       }
     }
   },
-  "guideFixTimesBackBody": "**{back}** only shows after you have set the times yourself. Set them first, then it appears.",
+  "guideFixTimesBackBody": "**{back}** only shows after you have set the times yourself. Set them first, then it appears. If **{night}** is folded, tap its title to open it.",
   "@guideFixTimesBackBody": {
-    "description": "Footer card body.",
+    "description": "Footer card body: why Back to automatic can be missing (the times are not yours yet), and that the night section can be folded. {night} is that section title.",
     "placeholders": {
       "back": {
         "type": "String",
         "description": "Name of the Back to automatic button"
+      },
+      "night": {
+        "type": "String",
+        "description": "Title of the section that holds the night"
       }
     }
   },
@@ -19289,6 +19297,30 @@
       "save": {
         "type": "String",
         "description": "Name of the Save button"
+      }
+    }
+  },
+  "guideAddNapMissingTitle": "Don't see \"{naps}\"?",
+  "@guideAddNapMissingTitle": {
+    "description": "Footer card title (the \"Don't see it?\" help): the Naps button is not visible. {naps} is its in-app name.",
+    "placeholders": {
+      "naps": {
+        "type": "String",
+        "description": "Name of the Naps button"
+      }
+    }
+  },
+  "guideAddNapMissingBody": "**{naps}** is under your night. If that part, **{night}**, is folded, tap its title to open it.",
+  "@guideAddNapMissingBody": {
+    "description": "Footer card body: the Naps button sits in a section that can be folded. {naps} is the button, {night} the section title.",
+    "placeholders": {
+      "naps": {
+        "type": "String",
+        "description": "Name of the Naps button"
+      },
+      "night": {
+        "type": "String",
+        "description": "Title of the section that holds it"
       }
     }
   }

@@ -72,7 +72,7 @@ Guide get alarmScheduleGuide => Guide(
         GuideFooter(
           kind: GuideFooterKind.missingTarget,
           title: (l) => l.guideAlarmMissingTitle(l.alarmWakeTimeRowTitle),
-          body: (l) => l.guideAlarmMissingBody(l.alarmWakeTimeRowTitle),
+          body: (l) => l.guideAlarmMissingBody(l.alarmWakeTimeRowTitle, l.sleepTabMoreTitle),
         ),
       ],
     );

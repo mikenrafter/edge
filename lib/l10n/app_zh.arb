@@ -3820,7 +3820,7 @@
   "guideAlarmStep3": "然后点按该日下方的**{wake}**并选择时间。每天都可以有不同的时间。",
   "guideAlarmAltBody": "打开**{settings}**，然后点按**{alarm}**。",
   "guideAlarmMissingTitle": "没有看到“{wake}”？",
-  "guideAlarmMissingBody": "只有开启该日后才会显示**{wake}**：请用日期标签下方的第一行开启。如果该部分已折叠，请点按其标题展开。",
+  "guideAlarmMissingBody": "只有开启该日后才会显示**{wake}**：请用日期标签下方的第一行开启。如果某个部分已折叠（睡眠标签页上的**{more}**，或日期标签下方的那一部分），请点按其标题展开。",
   "guideAddNapTitle": "在哪里自己记录小睡",
   "guideAddNapStep1": "在**{tab}**标签页，点按上一晚下方的**{naps}**。",
   "guideAddNapStep2": "点按**{log}**。系统会问你两个问题：**{fell}**，然后是**{woke}**。请选好这两个时间。",
@@ -3839,7 +3839,7 @@
   "guideFixTimesStep1": "在**{tab}**标签页，点按上一晚下方的**{change}**。在你自己设置时间之前，它显示为**{set}**。系统会先问你几点上床，再问几点起床。",
   "guideFixTimesStep2": "想撤销修改，点按**{back}**。这一晚会恢复为应用检测到的时间。",
   "guideFixTimesBackTitle": "没有看到“{back}”？",
-  "guideFixTimesBackBody": "只有在你自己设置过时间之后才会出现**{back}**。先设置时间，它就会出现。",
+  "guideFixTimesBackBody": "只有在你自己设置过时间之后才会出现**{back}**。先设置时间，它就会出现。如果**{night}**已折叠，请点按其标题展开。",
   "guideFixTimesAskTitle": "选择器会问什么",
   "guideFixTimesAskBody": "先问你几点上床，再问你几点起床。这一晚会根据这两个时间重新计算。",
   "guideDeleteTitle": "在哪里删除一次训练",
@@ -3875,5 +3875,7 @@
   "guideDoneTitle": "完成",
   "guideDoneBody": "这是最后一步。",
   "guideTargetProxy": "指南目标：{caption}",
-  "guideRemoveStep3": "然后点按底部的**{save}**。在此之前不会删除任何内容。"
+  "guideRemoveStep3": "然后点按底部的**{save}**。在此之前不会删除任何内容。",
+  "guideAddNapMissingTitle": "没有看到“{naps}”？",
+  "guideAddNapMissingBody": "**{naps}**位于你的夜间睡眠下方。如果该部分**{night}**已折叠，请点按其标题展开。"
 }

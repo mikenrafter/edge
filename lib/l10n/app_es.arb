@@ -3838,7 +3838,7 @@
   "guideAlarmStep3": "Después toca **{wake}** bajo ese día y elige la hora. Cada día puede tener su propia hora.",
   "guideAlarmAltBody": "Abre **{settings}** y toca **{alarm}**.",
   "guideAlarmMissingTitle": "¿No ves «{wake}»?",
-  "guideAlarmMissingBody": "**{wake}** solo aparece cuando el día está activado: actívalo con la primera fila bajo las pestañas de los días. Si esa sección está plegada, toca su título para abrirla.",
+  "guideAlarmMissingBody": "**{wake}** solo aparece cuando el día está activado: actívalo con la primera fila bajo las pestañas de los días. Si una sección está plegada (**{more}** en la pestaña Sueño, o la que hay bajo las pestañas de los días), toca su título para abrirla.",
   "guideAddNapTitle": "Dónde registrar una siesta tú mismo",
   "guideAddNapStep1": "En la pestaña **{tab}**, toca **{naps}** bajo tu última noche.",
   "guideAddNapStep2": "Toca **{log}**. Te preguntará dos cosas: **{fell}** y **{woke}**. Elige las dos horas.",
@@ -3857,7 +3857,7 @@
   "guideFixTimesStep1": "En la pestaña **{tab}**, toca **{change}** bajo tu última noche. Dice **{set}** hasta que fijes tú las horas. Te preguntará a qué hora te acostaste y luego a qué hora te despertaste.",
   "guideFixTimesStep2": "Para deshacer tus cambios, toca **{back}**. La noche vuelve a las horas que detectó la app.",
   "guideFixTimesBackTitle": "¿No ves «{back}»?",
-  "guideFixTimesBackBody": "**{back}** solo aparece después de fijar tú las horas. Fíjalas primero y aparecerá.",
+  "guideFixTimesBackBody": "**{back}** solo aparece después de fijar tú las horas. Fíjalas primero y aparecerá. Si **{night}** está plegado, toca su título para abrirlo.",
   "guideFixTimesAskTitle": "Qué te preguntan los selectores",
   "guideFixTimesAskBody": "Primero la hora a la que te acostaste y luego la hora a la que te despertaste. La noche se calcula de nuevo con esas dos horas.",
   "guideDeleteTitle": "Dónde eliminar una sesión",
@@ -3893,5 +3893,7 @@
   "guideDoneTitle": "Listo",
   "guideDoneBody": "Ese era el último paso.",
   "guideTargetProxy": "Objetivo de la guía: {caption}",
-  "guideRemoveStep3": "Luego toca **{save}**, abajo. Hasta entonces no se elimina nada."
+  "guideRemoveStep3": "Luego toca **{save}**, abajo. Hasta entonces no se elimina nada.",
+  "guideAddNapMissingTitle": "¿No ves «{naps}»?",
+  "guideAddNapMissingBody": "**{naps}** está bajo tu noche. Si esa parte, **{night}**, está plegada, toca su título para abrirla."
 }
