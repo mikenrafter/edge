@@ -12,15 +12,17 @@
 //
 // CLAIM(review-keys): step 2's anchor is the review screen's nav bar, keyed
 // 'day-review-nav' only while reviewing, because "Discard" is printed once per
-// pending row and so is ambiguous (not found) with two or more rows; step 3's
+// pending row (the target is the first); the anchor cannot be that label, which
+// is not unique with two or more rows; step 3's
 // anchor is the Save label, which exists only while something is staged
 // [guide_conformance_test 'review keys'].
 // ↳ CLAIM(review-keys)
 //
 // Step 1's card exists only while something is waiting; with nothing pending
 // the Home card reads "Breakdown of your day" and the target is absent (the
-// missing-target help says where else to look). With several pending rows the
-// "Discard" target is ambiguous and the card is shown without an outline.
+// missing-target help says where else to look). Every pending row has its own
+// "Discard"; the step outlines the FIRST (GuideTarget.firstLabel) and its caption
+// says each item has its own, so the step always points at one control.
 
 import 'package:flutter/widgets.dart' show ValueKey;
 
@@ -31,7 +33,7 @@ import 'guide_target.dart';
 
 final _card = GuideTarget.label(ScreenLabel.homeReviewActivities);
 final _reviewNav = GuideTarget.key(const ValueKey('day-review-nav'));
-final _discard = GuideTarget.label(ScreenLabel.dayReviewDiscard);
+final _discard = GuideTarget.firstLabel(ScreenLabel.dayReviewDiscard);
 final _save = GuideTarget.label(ScreenLabel.dayReviewSave);
 
 Guide get removeDetectedGuide => Guide(

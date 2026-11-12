@@ -3830,7 +3830,7 @@
   "guideAddNapRulesBody": "Une sieste dure entre 5 minutes et 6 heures, doit être déjà terminée et ne peut chevaucher ni une autre sieste ni votre sommeil principal.",
   "guideRemoveTitle": "Où supprimer une sieste ou une séance qui n’était pas réelle",
   "guideRemoveStep1": "Dans l’onglet **{tab}**, touchez la carte **{card}**. Elle n’apparaît que lorsque quelque chose attend votre réponse.",
-  "guideRemoveStep2": "Sur la sieste ou la séance qui n’a pas eu lieu, touchez **{discard}**.",
+  "guideRemoveStep2": "Chaque élément a son propre **{discard}**. Touchez-le sur la sieste ou la séance qui n’a pas eu lieu ; le contour marque le premier.",
   "guideRemoveSavedTitle": "Déjà enregistrée ?",
   "guideRemoveSavedBody": "Ouvrez l’onglet **{sleep}** et touchez **{naps}**. Touchez **{notNap}** sur une sieste trouvée par le bracelet, ou **{delete}** sur une que vous avez enregistrée vous-même.",
   "guideRemoveMissingTitle": "Vous ne voyez pas « {card} » ?",

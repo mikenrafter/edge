@@ -101,6 +101,14 @@ sealed class GuideTarget {
   }) =>
       _LabelTarget(alternatives, within);
 
+  /// As [label], but where several controls read the same words (one "Discard"
+  /// per pending row) the FIRST one in screen order is the target instead of
+  /// the result being ambiguous: a step then points at exactly one control.
+  /// CLAIM(first-of-many): document order = top to bottom on a column, so "first"
+  /// is the topmost [guide_target_test 'firstLabel picks the topmost of several'].
+  factory GuideTarget.firstLabel(GuideText label, {GuideTarget? within}) =>
+      _LabelTarget([label], within, firstOfMany: true);
+
   /// By Key: the keyed widget's own render box; no growing.
   factory GuideTarget.key(Key key) => _KeyTarget(key);
 
@@ -152,7 +160,8 @@ final class _KeyTarget extends GuideTarget {
 final class _LabelTarget extends GuideTarget {
   final List<GuideText> alternatives;
   final GuideTarget? within;
-  const _LabelTarget(this.alternatives, this.within);
+  final bool firstOfMany;
+  const _LabelTarget(this.alternatives, this.within, {this.firstOfMany = false});
 
   @override
   _Lookup _lookup(Element root, RenderBox rootBox, Element scope, AppLocalizations l) {
@@ -226,11 +235,11 @@ final class _LabelTarget extends GuideTarget {
       }
     }
     nested.forEach(controls.remove);
-    if (controls.length > 1) {
+    if (controls.length > 1 && !firstOfMany) {
       return _Miss(TargetAmbiguous(this, controls.length, '${controls.length} controls read $quoted'));
     }
-    final control = controls.keys.single;
-    final box = laidOutBox(control) ?? laidOutBox(controls.values.single);
+    final control = controls.keys.first;
+    final box = laidOutBox(control) ?? laidOutBox(controls.values.first);
     if (box == null) return _miss(searchIn, '$quoted has no laid-out box');
     return _Hit(control, rectInRoot(box, rootBox));
   }

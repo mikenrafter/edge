@@ -215,7 +215,7 @@ void main() {
         isFalse);
   });
 
-  testWidgets('CLAIM(review-keys): with two pending rows Discard is ambiguous but the screen is still recognised; Save appears once one is staged', (t) async {
+  testWidgets('CLAIM(review-keys): with two pending rows the step outlines the first Discard; Save appears once one is staged', (t) async {
     // why: "Discard" prints once per pending row. Step 2 therefore anchors on the
     // review nav key, or two rows would read as "you've left the path". Fails if the
     // key is dropped from day_timeline.dart, set outside review, or if Save is
@@ -228,7 +228,12 @@ void main() {
     final root = find.byType(DayTimelineScreen).evaluate().single;
     expect(find.text(l.dayReviewDiscard), findsNWidgets(2), reason: 'fixture: a nap and a workout are pending');
     expect(steps[1].anchor.resolve(root, l), isA<TargetFound>(), reason: 'the review screen is recognised');
-    expect(steps[1].target.resolve(root, l), isA<TargetAmbiguous>(), reason: 'two Discard buttons');
+    // The step points at ONE control: the topmost Discard, i.e. the first pending row's.
+    final target = steps[1].target.resolve(root, l);
+    expect(target, isA<TargetFound>(), reason: 'two Discard buttons, one target');
+    final discards = find.text(l.dayReviewDiscard);
+    expect((target as TargetFound).rect.center.dy, closeTo(t.getCenter(discards.first).dy, 1), reason: 'the first (topmost) row');
+    expect(t.getCenter(discards.first).dy, lessThan(t.getCenter(discards.last).dy));
     expect(steps[2].anchor.resolve(root, l), isNot(isA<TargetFound>()), reason: 'Save is not there before anything is staged');
     await t.tap(find.text(l.dayReviewDiscard).first);
     await settleLiveGuide(t, frames: 10);

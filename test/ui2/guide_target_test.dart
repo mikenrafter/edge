@@ -255,6 +255,20 @@ void main() {
       expect(GuideTarget.label(fnText((_) => 'Save')).resolve(root2, l2), isA<TargetAmbiguous>());
     });
 
+    testWidgets('firstLabel picks the topmost of several (CLAIM(first-of-many)); label stays ambiguous', (t) async {
+      // why: one Discard per pending row made guide #4's step ambiguous with 2+ rows.
+      // Fails if firstLabel returns ambiguous, picks the last, or label() stops being ambiguous.
+      final (root, l) = await _pumpIn(t, const Locale('en'), (_) => Column(children: [
+            Pressable(onTap: () {}, child: const SizedBox(height: 40, child: Text('Discard'))),
+            const SizedBox(height: 100),
+            Pressable(onTap: () {}, child: const SizedBox(height: 40, child: Text('Discard'))),
+          ]));
+      final first = GuideTarget.firstLabel(fnText((_) => 'Discard')).resolve(root, l);
+      expect(first, isA<TargetFound>());
+      expect((first as TargetFound).rect.top, lessThan(50), reason: 'the top row, not the one 140 px lower');
+      expect(GuideTarget.label(fnText((_) => 'Discard')).resolve(root, l), isA<TargetAmbiguous>());
+    });
+
     testWidgets('a control whose Text appears twice inside the SAME Pressable counts once', (t) async {
       // why: "same nearest Pressable" is the dedupe rule (title + subtitle echo).
       final (root, l) = await _pumpIn(

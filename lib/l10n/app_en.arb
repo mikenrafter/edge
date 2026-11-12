@@ -18914,9 +18914,9 @@
       }
     }
   },
-  "guideRemoveStep2": "On the nap or workout that didn't happen, tap **{discard}**.",
+  "guideRemoveStep2": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the outline marks the first one.",
   "@guideRemoveStep2": {
-    "description": "Step 2 caption. {discard} is the in-app name of the Discard button on a detected nap or workout in the review.",
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the outline marks the first.",
     "placeholders": {
       "discard": {
         "type": "String",
