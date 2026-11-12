@@ -57,11 +57,11 @@ Guide _askFirstGuide() {
 }
 
 Guide _occludedGuide() => Guide(
-  id: 'occluded', title: (_) => 'Occluded', start: GuideStart.today,
+  id: 'occluded', title: fnText((_) => 'Occluded'), start: GuideStart.today,
   variants: [GuideVariant(steps: [GuideStep(
     id: 'finish', target: GuideTarget.key(stageFinish),
     anchor: GuideTarget.key(stageFinish), action: GuideAction.tap,
-    caption: (_) => 'Tap Finish.',
+    caption: fnText((_) => 'Tap Finish.'),
   )])],
 );
 
