@@ -3830,7 +3830,7 @@
   "guideAddNapRulesBody": "小睡时长需在 5 分钟到 6 小时之间，必须已经结束，且不能与其他小睡或你的主睡眠重叠。",
   "guideRemoveTitle": "在哪里移除不是真实发生的小睡或训练",
   "guideRemoveStep1": "在**{tab}**标签页，点按**{card}**卡片。只有在有内容等你确认时才会显示。",
-  "guideRemoveStep2": "对没有发生的小睡点按**{notNap}**，对没有发生的训练点按**{notWorkout}**。",
+  "guideRemoveStep2": "对没有发生的小睡或训练，点按**{discard}**。",
   "guideRemoveSavedTitle": "已经保存了？",
   "guideRemoveSavedBody": "打开**{sleep}**标签页并点按**{naps}**。对手环发现的小睡点按**{notNap}**，对自己记录的小睡点按**{delete}**。",
   "guideRemoveMissingTitle": "没有看到“{card}”？",
@@ -3874,5 +3874,6 @@
   "guideBackToGuide": "返回指南",
   "guideDoneTitle": "完成",
   "guideDoneBody": "这是最后一步。",
-  "guideTargetProxy": "指南目标：{caption}"
+  "guideTargetProxy": "指南目标：{caption}",
+  "guideRemoveStep3": "然后点按底部的**{save}**。在此之前不会删除任何内容。"
 }

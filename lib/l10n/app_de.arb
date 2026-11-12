@@ -3936,7 +3936,7 @@
   "guideAddNapRulesBody": "Ein Nickerchen dauert zwischen 5 Minuten und 6 Stunden, muss schon vorbei sein und darf sich nicht mit einem anderen Nickerchen oder deinem Hauptschlaf überschneiden.",
   "guideRemoveTitle": "So entfernst du ein Nickerchen oder Training, das gar nicht stattgefunden hat",
   "guideRemoveStep1": "Tippe im Tab **{tab}** auf die Karte **{card}**. Sie erscheint nur, solange etwas auf dich wartet.",
-  "guideRemoveStep2": "Tippe bei einem Nickerchen auf **{notNap}** oder bei einem Training auf **{notWorkout}**, wenn es nicht stattgefunden hat.",
+  "guideRemoveStep2": "Tippe bei dem Nickerchen oder Training, das nicht stattgefunden hat, auf **{discard}**.",
   "guideRemoveSavedTitle": "Schon gespeichert?",
   "guideRemoveSavedBody": "Öffne den Tab **{sleep}** und tippe auf **{naps}**. Tippe bei einem vom Band erkannten Nickerchen auf **{notNap}**, bei einem selbst eingetragenen auf **{delete}**.",
   "guideRemoveMissingTitle": "„{card}“ nicht zu sehen?",
@@ -3980,5 +3980,6 @@
   "guideBackToGuide": "Zurück zur Anleitung",
   "guideDoneTitle": "Fertig",
   "guideDoneBody": "Das war der letzte Schritt.",
-  "guideTargetProxy": "Ziel der Anleitung: {caption}"
+  "guideTargetProxy": "Ziel der Anleitung: {caption}",
+  "guideRemoveStep3": "Tippe dann unten auf **{save}**. Bis dahin wird nichts entfernt."
 }

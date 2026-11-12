@@ -18910,17 +18910,13 @@
       }
     }
   },
-  "guideRemoveStep2": "Tap **{notNap}** on a nap, or **{notWorkout}** on a workout, that didn't happen.",
+  "guideRemoveStep2": "On the nap or workout that didn't happen, tap **{discard}**.",
   "@guideRemoveStep2": {
-    "description": "Step 2 caption. Bold words are the in-app buttons for a nap and for a workout.",
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button on a detected nap or workout in the review.",
     "placeholders": {
-      "notNap": {
+      "discard": {
         "type": "String",
-        "description": "Name of the Not a nap button"
-      },
-      "notWorkout": {
-        "type": "String",
-        "description": "Name of the Not a workout button"
+        "description": "Name of the Discard button"
       }
     }
   },
@@ -19283,6 +19279,16 @@
       "caption": {
         "type": "String",
         "description": "The step caption."
+      }
+    }
+  },
+  "guideRemoveStep3": "Then tap **{save}** at the bottom. Nothing is removed until you do.",
+  "@guideRemoveStep3": {
+    "description": "Step 3 caption. {save} is the in-app name of the Save button that appears once a decision is staged.",
+    "placeholders": {
+      "save": {
+        "type": "String",
+        "description": "Name of the Save button"
       }
     }
   }

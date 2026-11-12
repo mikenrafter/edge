@@ -9339,7 +9339,7 @@
   "guideAddNapRulesBody": "Дневной сон длится от 5 минут до 6 часов, должен уже закончиться и не может пересекаться с другим дневным сном или с основным сном.",
   "guideRemoveTitle": "Где убрать дневной сон или тренировку, которых не было",
   "guideRemoveStep1": "На вкладке **{tab}** нажмите на карточку **{card}**. Она есть, только пока что-то ждёт вашего ответа.",
-  "guideRemoveStep2": "Нажмите **{notNap}** у дневного сна или **{notWorkout}** у тренировки, которых не было.",
+  "guideRemoveStep2": "У дневного сна или тренировки, которых не было, нажмите **{discard}**.",
   "guideRemoveSavedTitle": "Уже сохранено?",
   "guideRemoveSavedBody": "Откройте вкладку **{sleep}** и нажмите **{naps}**. Нажмите **{notNap}** у сна, найденного браслетом, или **{delete}** у записанного вами.",
   "guideRemoveMissingTitle": "Не видите «{card}»?",
@@ -9500,14 +9500,11 @@
     }
   },
   "@guideRemoveStep2": {
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button on a detected nap or workout in the review.",
     "placeholders": {
-      "notNap": {
+      "discard": {
         "type": "String",
-        "description": "Name of the Not a nap button"
-      },
-      "notWorkout": {
-        "type": "String",
-        "description": "Name of the Not a workout button"
+        "description": "Name of the Discard button"
       }
     }
   },
@@ -9772,5 +9769,6 @@
         "description": "The step caption."
       }
     }
-  }
+  },
+  "guideRemoveStep3": "Затем внизу нажмите **{save}**. До этого ничего не удаляется."
 }

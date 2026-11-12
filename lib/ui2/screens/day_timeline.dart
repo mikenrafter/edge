@@ -1499,7 +1499,13 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         backgroundColor: p.bg,
         body: Stack(children: [
         SafeArea(child: LayoutBuilder(builder: (c, box) => Column(children: [
-          NavBar(title, onBack: _leave),
+          // CLAIM(review-keys): the live guide "remove a detected nap or workout"
+          // anchors its second step on this key, present only while reviewing
+          // (every pending row prints its own Discard, so that label is ambiguous)
+          // [guide_remove_detected.dart; guide_conformance_test 'review keys'].
+          NavBar(title,
+              key: reviewing ? const ValueKey('day-review-nav') : null,
+              onBack: _leave),
           // The chart scrolls with the page, as it did before review existed.
           // The Save bar is a sibling BELOW the list, so no row sits behind it.
           Expanded(child: SingleChildScrollView(

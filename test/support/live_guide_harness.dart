@@ -46,26 +46,29 @@ class GuideFakeRepo extends LocalRepository {
   /// Two auto-detected bouts waiting for an answer (guide #4's Today card).
   final bool withPending;
 
-  GuideFakeRepo({this.sleepSource = 'auto', this.withWorkout = true, this.withPending = true});
+  /// With [withPending], only the nap waits (one row to review, so "Discard" is unambiguous).
+  final bool singlePending;
 
-  static int _at(int hour, int minute) {
+  GuideFakeRepo({this.sleepSource = 'auto', this.withWorkout = true, this.withPending = true, this.singlePending = false});
+
+  static int _at(int hour, int minute, {int daysAgo = 0}) {
     final n = DateTime.now();
-    return DateTime(n.year, n.month, n.day, hour, minute).millisecondsSinceEpoch ~/ 1000;
+    return DateTime(n.year, n.month, n.day - daysAgo, hour, minute).millisecondsSinceEpoch ~/ 1000;
   }
 
   @override
   Future<List<ActivitySuggestion>> pendingActivities() async => withPending
       ? [
-          ActivitySuggestion(id: 'n1', kind: ActivityKind.nap, startTs: _at(13, 5), endTs: _at(13, 45), revision: 0),
+          ActivitySuggestion(id: 'n1', kind: ActivityKind.nap, startTs: _at(13, 5, daysAgo: 1), endTs: _at(13, 45, daysAgo: 1), revision: 0),
           ActivitySuggestion(
             id: 'w1',
             kind: ActivityKind.workout,
-            startTs: _at(17, 30),
-            endTs: _at(18, 10),
+            startTs: _at(17, 30, daysAgo: 1),
+            endTs: _at(18, 10, daysAgo: 1),
             revision: 0,
             details: const {'sport': 'running', 'peak_bpm': 168, 'avg_bpm': 141},
           ),
-        ]
+        ].take(singlePending ? 1 : 2).toList()
       : const [];
   @override
   Future<Map<String, dynamic>> getChart(String metric, {int? from, int? to, Set<String> signals = const {}}) async => const {'points': []};
@@ -185,7 +188,7 @@ void tolerateKnownSyncStatusOverflow() {
 
 /// True for the one overflow [tolerateKnownSyncStatusOverflow] drops.
 bool isKnownSyncStatusOverflow(FlutterErrorDetails details) {
-  final text = details.toStringDeep();
+  final text = details.toString();
   return text.contains('RenderFlex overflowed') && text.contains('sync_control.dart');
 }
 

@@ -3830,7 +3830,7 @@
   "guideAddNapRulesBody": "झपकी 5 मिनट से 6 घंटे के बीच की होनी चाहिए, पहले ही खत्म हो चुकी हो, और किसी दूसरी झपकी या आपकी मुख्य नींद से टकराए नहीं।",
   "guideRemoveTitle": "जो झपकी या सेशन असली नहीं था, उसे कहाँ हटाएँ",
   "guideRemoveStep1": "**{tab}** टैब पर **{card}** कार्ड पर टैप करें। यह तभी दिखता है जब कुछ आपके जवाब का इंतज़ार कर रहा हो।",
-  "guideRemoveStep2": "जो झपकी या सेशन हुआ ही नहीं, उसके लिए झपकी पर **{notNap}** या सेशन पर **{notWorkout}** पर टैप करें।",
+  "guideRemoveStep2": "जो झपकी या सेशन हुआ ही नहीं, उस पर **{discard}** पर टैप करें।",
   "guideRemoveSavedTitle": "पहले ही सेव हो चुका?",
   "guideRemoveSavedBody": "**{sleep}** टैब खोलें और **{naps}** पर टैप करें। बैंड की पहचानी झपकी पर **{notNap}** और खुद दर्ज की झपकी पर **{delete}** पर टैप करें।",
   "guideRemoveMissingTitle": "\"{card}\" नहीं दिख रहा?",
@@ -3874,5 +3874,6 @@
   "guideBackToGuide": "गाइड पर वापस जाएँ",
   "guideDoneTitle": "हो गया",
   "guideDoneBody": "यह आखिरी चरण था।",
-  "guideTargetProxy": "गाइड का लक्ष्य: {caption}"
+  "guideTargetProxy": "गाइड का लक्ष्य: {caption}",
+  "guideRemoveStep3": "फिर नीचे **{save}** पर टैप करें। इससे पहले कुछ नहीं हटता।"
 }

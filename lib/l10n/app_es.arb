@@ -3848,7 +3848,7 @@
   "guideAddNapRulesBody": "Una siesta dura entre 5 minutos y 6 horas, tiene que haber terminado ya y no puede solaparse con otra siesta ni con tu sueño principal.",
   "guideRemoveTitle": "Dónde quitar una siesta o una sesión que no fue real",
   "guideRemoveStep1": "En la pestaña **{tab}**, toca la tarjeta **{card}**. Solo aparece mientras haya algo esperando tu respuesta.",
-  "guideRemoveStep2": "Toca **{notNap}** en una siesta, o **{notWorkout}** en una sesión, que no ocurrió.",
+  "guideRemoveStep2": "En la siesta o la sesión que no ocurrió, toca **{discard}**.",
   "guideRemoveSavedTitle": "¿Ya la guardaste?",
   "guideRemoveSavedBody": "Abre la pestaña **{sleep}** y toca **{naps}**. Toca **{notNap}** en una siesta que encontró la banda, o **{delete}** en una que registraste tú.",
   "guideRemoveMissingTitle": "¿No ves «{card}»?",
@@ -3892,5 +3892,6 @@
   "guideBackToGuide": "Volver a la guía",
   "guideDoneTitle": "Listo",
   "guideDoneBody": "Ese era el último paso.",
-  "guideTargetProxy": "Objetivo de la guía: {caption}"
+  "guideTargetProxy": "Objetivo de la guía: {caption}",
+  "guideRemoveStep3": "Luego toca **{save}**, abajo. Hasta entonces no se elimina nada."
 }

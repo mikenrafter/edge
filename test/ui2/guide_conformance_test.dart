@@ -37,7 +37,8 @@ import 'package:openstrap_edge/ui2/guides/guide_catalogue.dart';
 import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart' show AlarmScreenView;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
-import 'package:openstrap_edge/ui2/screens/detected_activities.dart' show DetectedActivitiesScreen;
+import 'package:openstrap_edge/ui2/screens/day_review.dart' show DayReviewEntry;
+import 'package:openstrap_edge/ui2/screens/day_timeline.dart' show DayTimelineScreen;
 import 'package:openstrap_edge/ui2/screens/log_workout.dart' show LogWorkout;
 import 'package:openstrap_edge/ui2/screens/sleep_tab.dart' show SleepTab;
 import 'package:path/path.dart' as p;
@@ -64,11 +65,20 @@ class _Scene {
   /// 'manual' = the user has set the sleep times themselves.
   final String sleepSource;
 
+  /// Only the nap is waiting for review (the default fake has a nap and a workout).
+  final bool singlePending;
+
   const _Scene(this.guideId, this.stepId, this.screen, this.home, this.label,
-      {this.printed = true, this.prepare, this.sleepSource = 'auto'});
+      {this.printed = true, this.prepare, this.sleepSource = 'auto', this.singlePending = false});
 }
 
 Widget _tab(Widget w) => Scaffold(body: w);
+
+/// The user has tapped Discard on the one pending row: a decision is staged, the Save bar shows.
+Future<void> _stageDiscard(WidgetTester t, AppLocalizations l) async {
+  await t.tap(find.text(l.dayReviewDiscard));
+  await settleLiveGuide(t, frames: 10);
+}
 
 Future<void> _tapHistory(WidgetTester t, AppLocalizations l) async {
   // At 1.3x many translations put History outside the horizontal viewport.
@@ -93,8 +103,11 @@ final List<_Scene> _scenes = [
   _Scene('alarm-schedule', 'set-wake-time', AlarmScreenView, () => AlarmScreenView(connected: true, schedule: _tuesdayOn), (l) => l.alarmWakeTimeRowTitle),
   _Scene('add-nap', 'open-naps', SleepTab, () => _tab(const SleepTab()), (l) => l.sleepDetailEditNaps),
   _Scene('add-nap', 'log-nap', NapsScreen, () => const NapsScreen(), (l) => l.napsLogANap),
-  _Scene('remove-detected', 'open-detected', HomeScreen, () => _tab(const HomeScreen()), (l) => l.activityReviewTitle),
-  _Scene('remove-detected', 'discard', DetectedActivitiesScreen, () => const DetectedActivitiesScreen(), (l) => l.napsNotANapLabel),
+  _Scene('remove-detected', 'open-detected', HomeScreen, () => _tab(const HomeScreen()), (l) => l.homeReviewActivities),
+  // One pending row: "Discard" is printed once per pending row, so with two or more
+  // it is ambiguous (the 'review keys' test below pins that on purpose).
+  _Scene('remove-detected', 'discard', DayTimelineScreen, () => const DayReviewEntry(), (l) => l.dayReviewDiscard, singlePending: true),
+  _Scene('remove-detected', 'save', DayTimelineScreen, () => const DayReviewEntry(), (l) => l.dayReviewSave, singlePending: true, prepare: _stageDiscard),
   _Scene('fix-sleep-times', 'change-times', SleepTab, () => _tab(const SleepTab()), (l) => l.sleepDetailSetTimesMyself),
   _Scene('fix-sleep-times', 'back-to-automatic', SleepTab, () => _tab(const SleepTab()), (l) => l.sleepDetailBackToAutomatic, sleepSource: 'manual'),
   _Scene('delete-workout', 'open-history', WorkoutScreen, () => _tab(const WorkoutScreen()), (l) => l.workoutTabHistory),
@@ -138,7 +151,7 @@ void main() {
     final covered = [for (final s in _scenes) '${s.guideId}/${s.stepId}'];
     expect(covered.toSet(), hasLength(covered.length), reason: 'no scene twice');
     expect(covered.toSet(), shipped);
-    expect(shipped, hasLength(21), reason: 'guide #1 has 3 steps, #2 3, #3 2, #4 2, #5 2, #6 2, #7 4, #8 3');
+    expect(shipped, hasLength(22), reason: 'guide #1 has 3 steps, #2 3, #3 2, #4 3, #5 2, #6 2, #7 4, #8 3');
   });
 
   for (final locale in AppLocalizations.supportedLocales) {
@@ -150,7 +163,7 @@ void main() {
               home: scene.home(),
               locale: locale,
               textScale: 1.3,
-              repo: GuideFakeRepo(sleepSource: scene.sleepSource));
+              repo: GuideFakeRepo(sleepSource: scene.sleepSource, singlePending: scene.singlePending));
           await settleLiveGuide(t, frames: 30);
           await scene.prepare?.call(t, l);
           await settleLiveGuide(t, frames: 30);
@@ -199,6 +212,26 @@ void main() {
             exception: FlutterError('Null check operator used on a null value'),
             informationCollector: () => [DiagnosticsNode.message('sync_control.dart')])),
         isFalse);
+  });
+
+  testWidgets('CLAIM(review-keys): with two pending rows Discard is ambiguous but the screen is still recognised; Save appears once one is staged', (t) async {
+    // why: "Discard" prints once per pending row. Step 2 therefore anchors on the
+    // review nav key, or two rows would read as "you've left the path". Fails if the
+    // key is dropped from day_timeline.dart, set outside review, or if Save is
+    // present before a decision is staged (the run would skip step 2).
+    final l = lookupAppLocalizations(const Locale('en'));
+    await pumpLiveGuideApp(t, home: const DayReviewEntry(), repo: GuideFakeRepo());
+    await settleLiveGuide(t, frames: 30);
+    final guide = kGuideCatalogue.firstWhere((e) => e.guide.id == 'remove-detected').guide;
+    final steps = (guide.variantFor(null) as GuideVariantFound).variant.steps;
+    final root = find.byType(DayTimelineScreen).evaluate().single;
+    expect(find.text(l.dayReviewDiscard), findsNWidgets(2), reason: 'fixture: a nap and a workout are pending');
+    expect(steps[1].anchor.resolve(root, l), isA<TargetFound>(), reason: 'the review screen is recognised');
+    expect(steps[1].target.resolve(root, l), isA<TargetAmbiguous>(), reason: 'two Discard buttons');
+    expect(steps[2].anchor.resolve(root, l), isNot(isA<TargetFound>()), reason: 'Save is not there before anything is staged');
+    await t.tap(find.text(l.dayReviewDiscard).first);
+    await settleLiveGuide(t, frames: 10);
+    expect(steps[2].anchor.resolve(root, l), isA<TargetFound>(), reason: 'staging a discard shows Save');
   });
 
   testWidgets('CLAIM(alarm-keys): the Wake time key exists only while the day is on, and the step-2 target is what turns it on', (t) async {
