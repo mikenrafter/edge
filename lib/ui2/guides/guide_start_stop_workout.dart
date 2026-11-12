@@ -11,17 +11,19 @@
 // live screen runs a periodic timer, so checks pump frames and never settle.
 
 import 'guide.dart';
+import 'guide_copy.dart';
+import 'guide_labels.dart';
 import 'guide_target.dart';
 
-final _startCard = GuideTarget.label((l) => l.workoutStartSessionLabel);
-final _search = GuideTarget.label((l) => l.activityPickerSearchLabel);
-final _start = GuideTarget.label((l) => l.activitySetupStart);
-final _finish = GuideTarget.label((l) => l.activityLiveFinishSessionLabel);
+final _startCard = GuideTarget.label(ScreenLabel.workoutStartSessionLabel);
+final _search = GuideTarget.label(ScreenLabel.activityPickerSearchLabel);
+final _start = GuideTarget.label(ScreenLabel.activitySetupStart);
+final _finish = GuideTarget.label(ScreenLabel.activityLiveFinishSessionLabel);
 
 /// A fictional 70 kg user, so the picker and setup show calorie hints.
 Guide get startStopWorkoutGuide => Guide(
       id: 'start-workout',
-      title: (l) => l.guideStartTitle,
+      title: GuideCopy.startWorkoutTitle,
       start: GuideStart.activity,
       variants: [
         GuideVariant(steps: [
@@ -30,41 +32,41 @@ Guide get startStopWorkoutGuide => Guide(
             target: _startCard,
             anchor: _startCard,
             action: GuideAction.tap,
-            caption: (l) => l.guideStartStep1(l.tabActivity, l.workoutStartSessionLabel),
+            caption: GuideCopy.startWorkoutCaptionStartCard,
           ),
           GuideStep(
             id: 'choose-activity',
             target: _search,
             anchor: _search,
             action: GuideAction.tap,
-            caption: (l) => l.guideStartStep2(l.activityPickerSearchLabel),
+            caption: GuideCopy.startWorkoutCaptionChooseActivity,
           ),
           GuideStep(
             id: 'start',
             target: _start,
             anchor: _start,
             action: GuideAction.tap,
-            caption: (l) => l.guideStartStep3(l.activitySetupStart),
+            caption: GuideCopy.startWorkoutCaptionStart,
           ),
           GuideStep(
             id: 'finish',
             target: _finish,
             anchor: _finish,
             action: GuideAction.tap,
-            caption: (l) => l.guideStartStep4(l.activityLiveFinishSessionLabel),
+            caption: GuideCopy.startWorkoutCaptionFinish,
           ),
         ]),
       ],
       footers: [
         GuideFooter(
           kind: GuideFooterKind.note,
-          title: (l) => l.guideStartNoBandTitle,
-          body: (l) => l.guideStartNoBandBody,
+          title: GuideCopy.startWorkoutFooter0Title,
+          body: GuideCopy.startWorkoutFooter0Body,
         ),
         GuideFooter(
           kind: GuideFooterKind.note,
-          title: (l) => l.guideStartPauseTitle,
-          body: (l) => l.guideStartPauseBody(l.activityLivePauseLabel, l.activityLiveResumeLabel),
+          title: GuideCopy.startWorkoutFooter1Title,
+          body: GuideCopy.startWorkoutFooter1Body,
         ),
       ],
     );

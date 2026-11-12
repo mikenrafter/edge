@@ -27,19 +27,20 @@ import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 import '../support/skeleton_fixture.dart';
+import '../support/guide_text.dart';
 
 Guide _guide(String id, Set<BandGeneration> devices) => Guide(
       id: id,
-      title: (_) => 'Title $id',
+      title: fnText((_) => 'Title $id'),
       start: GuideStart.today,
       variants: [
         GuideVariant(devices: devices, steps: [
           GuideStep(
             id: 'only',
-            target: GuideTarget.label((_) => 'nowhere'),
-            anchor: GuideTarget.label((_) => 'nowhere'),
+            target: GuideTarget.label(fnText((_) => 'nowhere')),
+            anchor: GuideTarget.label(fnText((_) => 'nowhere')),
             action: GuideAction.tap,
-            caption: (_) => 'Caption',
+            caption: fnText((_) => 'Caption'),
           ),
         ]),
       ],
@@ -251,7 +252,7 @@ void main() {
       for (final e in kGuideCatalogue) {
         final row = find.byKey(HelpScreen.guideRowKey(e.guide.id));
         expect(row, findsOneWidget, reason: e.guide.id);
-        expect(find.descendant(of: row, matching: find.text(e.guide.title(l))), findsOneWidget);
+        expect(find.descendant(of: row, matching: find.text(e.guide.title.of(l))), findsOneWidget);
       }
       expect(t.takeException(), isNull);
     });

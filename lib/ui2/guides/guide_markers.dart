@@ -63,11 +63,11 @@ List<Rect> legibleContent(Element root, {required List<Rect> keep}) {
   if (rootBox == null) return const [];
   final plan = skeletonPlan(root, keep: keep, chrome: defaultSkeletonChrome(root));
   final found = <Rect>[];
-  visitOnstage(root, (e) {
+  for (final e in onstageElements(root)) {
     final ro = e is RenderObjectElement ? e.renderObject : null;
     if (ro is RenderParagraph && ro.hasSize) {
       final length = ro.text.toPlainText().length;
-      if (length == 0) return;
+      if (length == 0) continue;
       final visible = visibleBoundsInRoot(ro, rootBox);
       final boxes = ro.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: length));
       // One rect per line: boxes sharing a line (several spans) are merged.
@@ -81,12 +81,12 @@ List<Rect> legibleContent(Element root, {required List<Rect> keep}) {
       for (final local in byLine.values) {
         found.add(rectInRoot(ro, rootBox, local).intersect(visible));
       }
-      return;
+      continue;
     }
     if (ro is RenderBox && ro.hasSize && paintsVisual(e.widget, ro)) {
       found.add(rectInRoot(ro, rootBox).intersect(visibleBoundsInRoot(ro, rootBox)));
     }
-  });
+  }
   return [
     for (final r in found)
       if (!r.isEmpty && !plan.any((s) => s.rect.overlaps(r))) r,

@@ -569,7 +569,7 @@ class AppMainShell extends StatefulWidget {
   State<AppMainShell> createState() => _ShellState();
 }
 
-class _ShellState extends State<AppMainShell> {
+class _ShellState extends State<AppMainShell> implements GuideShellLink {
   /// Restore the last-selected tab so a relaunch lands where the user left off.
   late ShellDomain _domain = restoredShellTab();
 
@@ -592,10 +592,8 @@ class _ShellState extends State<AppMainShell> {
     // then clear the request so it isn't replayed on rebuild.
     _app = context.read<AppState>();
     _guideRunner = context.read<GuideRunner?>();
-    _guideShell = GuideShellLink(selectTab: _go, openSettings: () async {
-      if (mounted) await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const MoreSettings()));
-    });
-    _guideRunner?.attachShell(_guideShell!);
+    _guideShell = this;
+    _guideRunner?.attachShell(this);
     _app!.navRequest.addListener(_consumeSoon);
     _app!.screenRequest.addListener(_consumeSoon);
     // Cold launch from a tapped notification: the route may already be set
@@ -659,6 +657,16 @@ class _ShellState extends State<AppMainShell> {
             (_) => HealthScreen.tabRequest.value = -1);
       }
     }
+  }
+
+  /// [GuideShellLink]: a live guide brings the app to its start tab...
+  @override
+  void selectTab(ShellDomain tab) => _go(tab);
+
+  /// ...or to Settings, pushed on the root Navigator like any other screen.
+  @override
+  Future<void> openSettings() async {
+    if (mounted) await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const MoreSettings()));
   }
 
   void _go(ShellDomain d) {

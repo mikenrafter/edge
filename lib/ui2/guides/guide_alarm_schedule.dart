@@ -24,9 +24,11 @@
 import 'package:flutter/widgets.dart' show ValueKey;
 
 import 'guide.dart';
+import 'guide_copy.dart';
+import 'guide_labels.dart';
 import 'guide_target.dart';
 
-final _alarmRow = GuideTarget.label((l) => l.settingsAlarmRowTitle);
+final _alarmRow = GuideTarget.label(ScreenLabel.settingsAlarmRowTitle);
 final _dayOnRow = GuideTarget.key(const ValueKey('alarm-day-enabled'));
 final _wakeTime = GuideTarget.key(const ValueKey('alarm-wake-time'));
 
@@ -35,16 +37,16 @@ final _dayTabs = [for (var d = 0; d < 7; d++) GuideTarget.key(ValueKey('wake-day
 
 Guide get alarmScheduleGuide => Guide(
       id: 'alarm-schedule',
-      title: (l) => l.guideAlarmTitle,
+      title: GuideCopy.alarmTitle,
       start: GuideStart.sleep,
       variants: [
         GuideVariant(steps: [
           GuideStep(
             id: 'open-alarm',
             target: _alarmRow,
-            anchor: GuideTarget.label((l) => l.sleepDetailNavTitle),
+            anchor: GuideTarget.label(ScreenLabel.sleepDetailNavTitle),
             action: GuideAction.scrollThenTap,
-            caption: (l) => l.guideAlarmStep1(l.tabSleep, l.sleepTabMoreTitle, l.settingsAlarmRowTitle),
+            caption: GuideCopy.alarmCaptionOpenAlarm,
           ),
           GuideStep(
             id: 'pick-day',
@@ -52,27 +54,27 @@ Guide get alarmScheduleGuide => Guide(
             anchor: _dayOnRow,
             alsoKeep: _dayTabs,
             action: GuideAction.tap,
-            caption: (l) => l.guideAlarmStep2(l.wellnessTue),
+            caption: GuideCopy.alarmCaptionPickDay,
           ),
           GuideStep(
             id: 'set-wake-time',
             target: _wakeTime,
             anchor: _wakeTime,
             action: GuideAction.tap,
-            caption: (l) => l.guideAlarmStep3(l.alarmWakeTimeRowTitle),
+            caption: GuideCopy.alarmCaptionSetWakeTime,
           ),
         ]),
       ],
       footers: [
         GuideFooter(
           kind: GuideFooterKind.anotherWay,
-          title: (l) => l.guideAnotherWayInTitle,
-          body: (l) => l.guideAlarmAltBody(l.settingsNavTitle, l.settingsAlarmRowTitle),
+          title: GuideCopy.alarmFooter0Title,
+          body: GuideCopy.alarmFooter0Body,
         ),
         GuideFooter(
           kind: GuideFooterKind.missingTarget,
-          title: (l) => l.guideAlarmMissingTitle(l.alarmWakeTimeRowTitle),
-          body: (l) => l.guideAlarmMissingBody(l.alarmWakeTimeRowTitle, l.sleepTabMoreTitle),
+          title: GuideCopy.alarmFooter1Title,
+          body: GuideCopy.alarmFooter1Body,
         ),
       ],
     );

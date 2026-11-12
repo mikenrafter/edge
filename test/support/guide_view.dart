@@ -174,7 +174,7 @@ class _GuideStepViewState extends State<GuideStepView> {
         children: [
           // The caption comes first in tree (and so reading) order: a screen
           // reader says what to do before it walks the screen.
-          _caption(p, step.caption(l)),
+          _caption(p, step.caption.of(l)),
           const SizedBox(height: S.x3),
           switch (_resolution) {
             null => _frame(context, l, null),
@@ -350,8 +350,8 @@ class GuideView extends StatelessWidget {
     final l = AppLocalizations.of(context) ?? lookupAppLocalizations(const Locale('en'));
     final p = P.of(context);
     final head = <Widget>[
-      Text(guide.title(l), style: F.t1.copyWith(color: p.ink)),
-      if (guide.intro?.call(l) case final intro?) ...[
+      Text(guide.title.of(l), style: F.t1.copyWith(color: p.ink)),
+      if (guide.intro?.of(l) case final intro?) ...[
         const SizedBox(height: S.x2),
         Text(intro, style: F.body.copyWith(color: p.ink2)),
       ],
@@ -391,7 +391,7 @@ class GuideView extends StatelessWidget {
                 for (final f in guide.footers)
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 420),
-                    child: GuideFooterCard(title: f.title(l), body: f.body(l)),
+                    child: GuideFooterCard(title: f.title.of(l), body: f.body.of(l)),
                   ),
               ],
             ),

@@ -16,6 +16,7 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 import '../support/guide_demo_screens.dart';
 import '../support/guide_view.dart';
 import '../support/skeleton_fixture.dart';
+import '../support/guide_text.dart';
 
 const _fk = GuideStepView.frameKey;
 
@@ -42,11 +43,11 @@ GuideStep _step(double gap, GuideAction a,
     demoStep(
       id: 'step-$n',
       screen: (_) => _screen(gap),
-      target: target ?? GuideTarget.label((l) => l.dayStrainHowSet),
-      anchor: GuideTarget.label((l) => l.dayStrainTimeInZonesSection),
+      target: target ?? GuideTarget.label(fnText((l) => l.dayStrainHowSet)),
+      anchor: GuideTarget.label(fnText((l) => l.dayStrainTimeInZonesSection)),
       alsoKeep: alsoKeep,
       action: a,
-      caption: (l) => 'Step caption $n: ${l.dayStrainTimeInZonesSection}',
+      caption: fnText((l) => 'Step caption $n: ${l.dayStrainTimeInZonesSection}'),
     );
 
 Future<void> _pump(WidgetTester t, GuideStep step, {int number = 2, Locale locale = const Locale('en')}) async {
@@ -193,7 +194,7 @@ void main() {
     testWidgets('an unresolvable target shows a failure INSTEAD of a guide, without throwing', (t) async {
       // why: "unresolved target = typed failure (no silent empty guide)" at the
       // view level: the reader must see that this step is broken.
-      await _pump(t, _step(0, GuideAction.tap, target: GuideTarget.label((_) => 'No such label')));
+      await _pump(t, _step(0, GuideAction.tap, target: GuideTarget.label(fnText((_) => 'No such label'))));
       expect(t.takeException(), isNull);
       expect(find.byKey(GuideStepView.failureKey), findsOneWidget);
       expect(find.byKey(GuideStepView.outlineKey), findsNothing);
@@ -244,10 +245,10 @@ void main() {
             ),
           );
         }),
-        target: GuideTarget.label((l) => l.dayStrainHowSet),
-        anchor: GuideTarget.label((l) => l.dayStrainTimeInZonesSection),
+        target: GuideTarget.label(fnText((l) => l.dayStrainHowSet)),
+        anchor: GuideTarget.label(fnText((l) => l.dayStrainTimeInZonesSection)),
         action: GuideAction.tap,
-        caption: (_) => 'caption',
+        caption: fnText((_) => 'caption'),
       );
       await _pump(t, step);
       final l = lookupAppLocalizations(const Locale('en'));
@@ -285,11 +286,11 @@ void main() {
               ],
             ),
           ),
-          target: GuideTarget.label((_) => 'Go link'),
-          anchor: GuideTarget.label((_) => 'Go link'),
-          alsoKeep: [GuideTarget.label((_) => 'Legible hint line')],
+          target: GuideTarget.label(fnText((_) => 'Go link')),
+          anchor: GuideTarget.label(fnText((_) => 'Go link')),
+          alsoKeep: [GuideTarget.label(fnText((_) => 'Legible hint line'))],
           action: GuideAction.tap,
-          caption: (_) => 'Tap Go link',
+          caption: fnText((_) => 'Tap Go link'),
         );
 
     testWidgets('the tap pill never covers legible text: it goes below when left has no room and above is taken', (t) async {
@@ -327,10 +328,10 @@ void main() {
             ],
           ),
         ),
-        target: GuideTarget.label((_) => 'Go link'),
-        anchor: GuideTarget.label((_) => 'Go link'),
+        target: GuideTarget.label(fnText((_) => 'Go link')),
+        anchor: GuideTarget.label(fnText((_) => 'Go link')),
         action: GuideAction.tap,
-        caption: (_) => 'Tap Go link',
+        caption: fnText((_) => 'Tap Go link'),
       );
       await _pump(t, step);
       final outline = t.getRect(find.byKey(GuideStepView.outlineKey));
@@ -378,7 +379,7 @@ void main() {
     testWidgets('alsoKeep leaves its unit readable (text and semantics)', (t) async {
       // why: step 3 of guide #1 keeps "Your zones" besides the link.
       final h = t.ensureSemantics();
-      await _pump(t, _step(0, GuideAction.tap, alsoKeep: [GuideTarget.label((_) => 'other card text')]));
+      await _pump(t, _step(0, GuideAction.tap, alsoKeep: [GuideTarget.label(fnText((_) => 'other card text'))]));
       final state = t.state<SkeletonizeState>(find.byType(Skeletonize));
       final other = _inSkeleton(t, t.getRect(find.text('other card text')));
       expect(state.paintedShapes.where((s) => s.rect.overlaps(other)), isEmpty);
@@ -391,15 +392,15 @@ void main() {
   group('GuideView', () {
     GuideStep s(String label) => demoStep(
           id: 'id-$label',
-          anchor: GuideTarget.label((_) => label),
+          anchor: GuideTarget.label(fnText((_) => label)),
           screen: (_) => Scaffold(body: Center(child: Pressable(onTap: () {}, child: Text(label)))),
-          target: GuideTarget.label((_) => label),
+          target: GuideTarget.label(fnText((_) => label)),
           action: GuideAction.tap,
-          caption: (_) => 'Caption for $label',
+          caption: fnText((_) => 'Caption for $label'),
         );
     final footers = [
-      GuideFooter(kind: GuideFooterKind.anotherWay, title: (_) => 'Another way in', body: (_) => 'Open the Activity tab.'),
-      GuideFooter(kind: GuideFooterKind.missingTarget, title: (_) => "Don't see it?", body: (_) => 'Wear the band for a while.'),
+      GuideFooter(kind: GuideFooterKind.anotherWay, title: fnText((_) => 'Another way in'), body: fnText((_) => 'Open the Activity tab.')),
+      GuideFooter(kind: GuideFooterKind.missingTarget, title: fnText((_) => "Don't see it?"), body: fnText((_) => 'Wear the band for a while.')),
     ];
 
     Future<void> pumpGuide(WidgetTester t, Guide g, BandGeneration? band) async {
@@ -415,7 +416,7 @@ void main() {
       final g = Guide(
         start: GuideStart.today,
         id: 'g',
-        title: (_) => 'Where to find Alpha',
+        title: fnText((_) => 'Where to find Alpha'),
         variants: [GuideVariant(steps: steps)],
         footers: footers,
       );
@@ -436,7 +437,7 @@ void main() {
 
     testWidgets('the band picks the variant: WHOOP 5 gets its own, longer path', (t) async {
       // why: separate WHOOP 4 / 5 variants where the path differs (owner).
-      final g = Guide(id: 'g', title: (_) => 'T', start: GuideStart.today, variants: [
+      final g = Guide(id: 'g', title: fnText((_) => 'T'), start: GuideStart.today, variants: [
         GuideVariant(devices: {BandGeneration.whoop4}, steps: [s('Alpha')]),
         GuideVariant(devices: {BandGeneration.whoop5}, steps: [s('Alpha'), s('Beta')]),
       ]);
@@ -448,7 +449,7 @@ void main() {
 
     testWidgets('a guide with no variant for the band says so instead of rendering steps', (t) async {
       // why: "a guide with no variant for the user's band says so".
-      final g = Guide(id: 'g', title: (_) => 'T', start: GuideStart.today, variants: [
+      final g = Guide(id: 'g', title: fnText((_) => 'T'), start: GuideStart.today, variants: [
         GuideVariant(devices: {BandGeneration.whoop4}, steps: [s('Alpha')]),
       ]);
       await pumpGuide(t, g, BandGeneration.whoop5);

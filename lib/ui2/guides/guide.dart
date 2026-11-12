@@ -10,6 +10,9 @@ import 'package:flutter/widgets.dart';
 
 import '../../l10n/app_localizations.dart';
 import 'guide_target.dart';
+import 'guide_text.dart';
+
+export 'guide_text.dart' show GuideText;
 
 enum BandGeneration { whoop4, whoop5 }
 
@@ -34,7 +37,7 @@ class GuideStep {
   /// Extra units kept readable besides the target's (step 3 keeps "Your zones").
   final List<GuideTarget> alsoKeep;
   final GuideAction action;
-  final String Function(AppLocalizations l) caption;
+  final GuideText caption;
 
   const GuideStep({
     required this.id,
@@ -64,8 +67,8 @@ enum GuideFooterKind {
 
 class GuideFooter {
   final GuideFooterKind kind;
-  final String Function(AppLocalizations l) title;
-  final String Function(AppLocalizations l) body;
+  final GuideText title;
+  final GuideText body;
   const GuideFooter({required this.kind, required this.title, required this.body});
 }
 
@@ -99,13 +102,13 @@ final class GuideNoVariant extends GuideVariantResult {
 
 class Guide {
   final String id;
-  final String Function(AppLocalizations l) title;
+  final GuideText title;
 
   /// Where a run brings the app before step 1.
   final GuideStart start;
 
   /// One line under the title ("...it takes three taps").
-  final String Function(AppLocalizations l)? intro;
+  final GuideText? intro;
   final List<GuideVariant> variants;
   final List<GuideFooter> footers;
 

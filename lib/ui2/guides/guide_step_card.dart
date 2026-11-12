@@ -113,7 +113,7 @@ class _GuideStepCardState extends State<GuideStepCard> {
     );
     Widget footer(GuideFooter f, Key key) => Padding(
       key: key, padding: const EdgeInsets.only(top: S.x2),
-      child: GuideFooterCard(title: f.title(l), body: f.body(l)),
+      child: GuideFooterCard(title: f.title.of(l), body: f.body.of(l)),
     );
     final model = widget.model;
     final content = <Widget>[];

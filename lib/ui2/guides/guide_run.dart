@@ -80,11 +80,13 @@ class GuideRun extends ChangeNotifier {
     // Match the visible content, so a Sleep title cannot match the tab button
     // on every other screen (or become ambiguous with that button).
     Element content = root;
-    visitOnstage(root, (e) {
+    for (final e in onstageElements(root)) {
       if (e.widget is AppShell) {
-        visitOnstage(e, (child) { if (child.widget is IndexedStack) content = child; });
+        for (final child in onstageElements(e)) {
+          if (child.widget is IndexedStack) content = child;
+        }
       }
-    });
+    }
     return [for (var i = 0; i < variant.steps.length; i++)
       if (variant.steps[i].anchor.resolve(content, l) is TargetFound) i].lastOrNull;
   }

@@ -17,6 +17,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../grammar.dart' show Pressable;
+import 'guide_text.dart';
 import 'tree_geometry.dart';
 
 /// What a target resolves to: always exactly one of the four, never null.
@@ -85,7 +86,7 @@ sealed class GuideTarget {
   /// semantics node) count ONCE. [within] scopes the match to the subtree of
   /// another target (a Key, a Section...).
   factory GuideTarget.label(
-    String Function(AppLocalizations l) label, {
+    GuideText label, {
     GuideTarget? within,
   }) =>
       _LabelTarget([label], within);
@@ -93,7 +94,7 @@ sealed class GuideTarget {
   /// As [label], accepting any of several labels (a control whose text depends
   /// on state, e.g. "Set your own zones" / "Edit your own zones").
   factory GuideTarget.anyLabel(
-    List<String Function(AppLocalizations l)> alternatives, {
+    List<GuideText> alternatives, {
     GuideTarget? within,
   }) =>
       _LabelTarget(alternatives, within);
@@ -133,9 +134,9 @@ final class _KeyTarget extends GuideTarget {
   @override
   _Lookup _lookup(Element root, RenderBox rootBox, Element scope, AppLocalizations l) {
     final hits = <Element>[];
-    visitBuilt(scope, (e) {
+    for (final e in builtElements(scope)) {
       if (e.widget.key == key) hits.add(e);
-    });
+    }
     if (hits.isEmpty) return _miss(scope, 'no widget with key $key');
     if (hits.length > 1) {
       return _Miss(TargetAmbiguous(this, hits.length, '${hits.length} widgets share key $key'));
@@ -147,14 +148,14 @@ final class _KeyTarget extends GuideTarget {
 }
 
 final class _LabelTarget extends GuideTarget {
-  final List<String Function(AppLocalizations l)> alternatives;
+  final List<GuideText> alternatives;
   final GuideTarget? within;
   const _LabelTarget(this.alternatives, this.within);
 
   @override
   _Lookup _lookup(Element root, RenderBox rootBox, Element scope, AppLocalizations l) {
-    final wanted = {for (final f in alternatives) f(l).trim().toUpperCase()}..remove('');
-    final quoted = [for (final f in alternatives) '"${f(l).trim()}"'].join(' / ');
+    final wanted = {for (final f in alternatives) f.of(l).trim().toUpperCase()}..remove('');
+    final quoted = [for (final f in alternatives) '"${f.of(l).trim()}"'].join(' / ');
 
     var searchIn = scope;
     final w = within;
@@ -177,7 +178,7 @@ final class _LabelTarget extends GuideTarget {
 
     // Candidates: Text and Semantics labels that equal a wanted label.
     final matches = <Element>[];
-    visitBuilt(searchIn, (e) {
+    for (final e in builtElements(searchIn)) {
       final widget = e.widget;
       final text = switch (widget) {
         Text() => widget.data ?? widget.textSpan?.toPlainText(),
@@ -185,7 +186,7 @@ final class _LabelTarget extends GuideTarget {
         _ => null,
       };
       if (text != null && wanted.contains(text.trim().toUpperCase())) matches.add(e);
-    });
+    }
     if (matches.isEmpty) return _miss(searchIn, 'nothing on screen reads $quoted');
 
     // One control = one nearest tappable Pressable, else one outermost matching
@@ -219,9 +220,9 @@ final class _LabelTarget extends GuideTarget {
 /// Every [ScrollableState] under [scope] (onstage), outer before inner.
 List<ScrollableState> _scrollablesUnder(Element scope) {
   final out = <ScrollableState>[];
-  visitBuilt(scope, (e) {
+  for (final e in builtElements(scope)) {
     if (e is StatefulElement && e.state is ScrollableState) out.add(e.state as ScrollableState);
-  });
+  }
   return out;
 }
 
@@ -237,6 +238,23 @@ Future<void> _nextLayout() {
   final binding = WidgetsBinding.instance;
   binding.scheduleFrame();
   return binding.endOfFrame;
+}
+
+/// Whether a reveal is still wanted: false once the user navigated away or ended
+/// the guide. An interface rather than a closure so that the heavy-calc guard
+/// (test/guards) can resolve the call.
+abstract interface class RevealGate {
+  bool get isOpen;
+}
+
+/// [RevealGate] that also closes when [root] unmounts.
+class _RootGate implements RevealGate {
+  final Element root;
+  final RevealGate? outer;
+  const _RootGate(this.root, this.outer);
+
+  @override
+  bool get isOpen => root.mounted && (outer?.isOpen ?? true);
 }
 
 /// Bounded scroll discovery: resolves [target]; while it is [TargetNotBuilt],
@@ -260,13 +278,14 @@ Future<TargetResolution> revealTarget(
   GuideTarget target,
   AppLocalizations l, {
   int maxViewports = 20,
-  bool Function()? isCurrent,
+  RevealGate? isCurrent,
 }) async {
-  bool active() => root.mounted && (isCurrent?.call() ?? true);
+  final gate = _RootGate(root, isCurrent);
+  bool active() => gate.isOpen;
   if (!active()) return TargetNotBuilt(target, 'page is no longer active');
   var now = target.resolve(root, l);
   if (now is TargetNotBuilt) {
-    final search = _Search(root, target, l, maxViewports, active);
+    final search = _Search(root, target, l, maxViewports, gate);
     final found = await search.runAll();
     if (!active()) return TargetNotBuilt(target, 'page is no longer active');
     if (!found) {
@@ -292,14 +311,15 @@ class _Search {
   final GuideTarget target;
   final AppLocalizations l;
   final int maxViewports;
-  final bool Function() active;
+  final RevealGate gate;
+  bool active() => gate.isOpen;
 
   /// True once any direction stopped because the budget ran out, not because
   /// it reached the end.
   bool budgetSpent = false;
   final _visited = <ScrollableState>{};
 
-  _Search(this.root, this.target, this.l, this.maxViewports, this.active);
+  _Search(this.root, this.target, this.l, this.maxViewports, this.gate);
 
   bool _found() => target.resolve(root, l) is TargetFound;
 

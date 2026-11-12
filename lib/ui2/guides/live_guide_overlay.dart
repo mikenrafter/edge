@@ -203,14 +203,14 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     // failed search is not retried just because our own animation ticks.
     final content = <Object?>[];
     if (page != null) {
-      visitBuilt(page, (e) {
+      for (final e in builtElements(page)) {
         final w = e.widget;
         if (w is Text) content.add(w.data ?? w.textSpan?.toPlainText());
         if (e is StatefulElement && e.state is ScrollableState) {
           final position = (e.state as ScrollableState).position;
           if (position.hasContentDimensions) content.add(position.maxScrollExtent);
         }
-      });
+      }
     }
     final signature = Object.hashAll(content);
     final box = page == null ? null : laidOutBox(page);
@@ -236,9 +236,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       final token = Object();
       _searchToken = token;
       _searchingPage = page;
-      unawaited(revealTarget(page, step.target, l, isCurrent: () =>
-        mounted && identical(_searchToken, token) && !widget.run.isExited && identical(widget.routes.page, page) &&
-        identical(widget.run.currentStep, step)).whenComplete(() {
+      unawaited(revealTarget(page, step.target, l, isCurrent: _StepGate(this, token, page, step)).whenComplete(() {
           if (mounted && identical(_searchToken, token)) {
             _searchingPage = null;
             _searchToken = null;
@@ -298,7 +296,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     final target = _target;
     final model = switch (state) {
       GuideAtStep(:final index) => GuideCardOnStep(number: index + 1, total: run.variant.steps.length,
-        caption: run.variant.steps[index].caption(l), missingHelp: run.guide.missingTargetHelp),
+        caption: run.variant.steps[index].caption.of(l), missingHelp: run.guide.missingTargetHelp),
       GuideOffPath() => const GuideCardOffPath(),
       GuideFinished() => GuideCardDone(run.guide.doneFooters),
     };
@@ -327,7 +325,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         )))),
         if (marked) Positioned.fromRect(rect: target, child: Semantics(
           key: LiveGuideOverlay.targetProxyKey, container: true, button: true,
-          label: l.guideTargetProxy(step.caption(l).replaceAll('**', '')), onTap: _activateTarget,
+          label: l.guideTargetProxy(step.caption.of(l).replaceAll('**', '')), onTap: _activateTarget,
           child: const SizedBox.expand(),
         )),
         if (show) Positioned.fill(child: CustomMultiChildLayout(
@@ -417,4 +415,23 @@ class _RenderGuideShield extends RenderProxyBox {
     result.add(BoxHitTestEntry(this, position));
     return true;
   }
+}
+
+/// Whether the reveal search started for ([page], [step]) is still wanted: this
+/// overlay is mounted, still on that search, the run is alive and still on that
+/// page and step. A class (not a closure) so the heavy-calc guard can resolve it.
+class _StepGate implements RevealGate {
+  final LiveGuideOverlayState _state;
+  final Object _token;
+  final Element _page;
+  final GuideStep _step;
+  const _StepGate(this._state, this._token, this._page, this._step);
+
+  @override
+  bool get isOpen =>
+      _state.mounted &&
+      identical(_state._searchToken, _token) &&
+      !_state.widget.run.isExited &&
+      identical(_state.widget.routes.page, _page) &&
+      identical(_state.widget.run.currentStep, _step);
 }

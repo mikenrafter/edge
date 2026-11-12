@@ -235,17 +235,17 @@ void main() {
           [l.activityZonesSetYourOwnLink, l.activityZonesEditYourOwnLink],
         ];
         for (var i = 0; i < steps.length; i++) {
-          final c = steps[i].caption(l);
+          final c = steps[i].caption.of(l);
           expect(c, isNotEmpty);
           expect(options[i].any(c.contains), isTrue, reason: 'step ${i + 1} caption "$c" must quote one of ${options[i]}');
           if (locale.languageCode != 'en') {
-            expect(c, isNot(steps[i].caption(en)), reason: 'step ${i + 1} caption untranslated');
+            expect(c, isNot(steps[i].caption.of(en)), reason: 'step ${i + 1} caption untranslated');
           }
         }
-        expect(steps[1].caption(l), contains(l.dayStrainTimeInZonesSection));
+        expect(steps[1].caption.of(l), contains(l.dayStrainTimeInZonesSection));
         final g = heartRateZonesGuide;
-        final texts = [g.title(l), for (final f in g.footers) ...[f.title(l), f.body(l)]];
-        final enTexts = [g.title(en), for (final f in g.footers) ...[f.title(en), f.body(en)]];
+        final texts = [g.title.of(l), for (final f in g.footers) ...[f.title.of(l), f.body.of(l)]];
+        final enTexts = [g.title.of(en), for (final f in g.footers) ...[f.title.of(en), f.body.of(en)]];
         for (var i = 0; i < texts.length; i++) {
           expect(texts[i], isNotEmpty);
           if (locale.languageCode != 'en') expect(texts[i], isNot(enTexts[i]), reason: 'text #$i untranslated');

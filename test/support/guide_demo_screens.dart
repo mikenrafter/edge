@@ -18,6 +18,7 @@ import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/screens/home_screen.dart' show HomeScreen;
 
 import 'guide_demo_data.dart';
+import 'guide_text.dart' show GuideText;
 
 final Map<String, WidgetBuilder> kGuideDemoScreens = {
   // Home inside the tab bar, as on the phone: the bar is chrome and stays legible.
@@ -45,7 +46,7 @@ GuideStep demoStep({
   required GuideTarget anchor,
   List<GuideTarget> alsoKeep = const [],
   required GuideAction action,
-  required String Function(AppLocalizations l) caption,
+  required GuideText caption,
 }) {
   kGuideDemoScreens[id] = screen;
   return GuideStep(id: id, target: target, anchor: anchor, alsoKeep: alsoKeep, action: action, caption: caption);

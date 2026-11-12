@@ -321,8 +321,19 @@ class _Placeholder extends StatelessWidget {
 }
 
 /// Resolver for the regions that must stay legible and interactive. Rects in
-/// the root element's local space.
-typedef SkeletonChromeResolver = List<Rect> Function(Element root);
+/// the root element's local space. An interface, not a function type, so the
+/// heavy-calc guard (test/guards) can resolve the call.
+abstract interface class SkeletonChrome {
+  List<Rect> of(Element root);
+}
+
+/// [defaultSkeletonChrome] as a [SkeletonChrome].
+class DefaultSkeletonChrome implements SkeletonChrome {
+  const DefaultSkeletonChrome();
+
+  @override
+  List<Rect> of(Element root) => defaultSkeletonChrome(root);
+}
 
 /// The default: finds `ScreenTitle` and `NavBar` by widget type, and AppShell's
 /// private tab bar by its runtime type (app_shell.dart:215), without editing
@@ -398,7 +409,7 @@ class Skeletonize extends StatefulWidget {
 
   /// Extra units to leave readable (e.g. "Your zones" in step 3).
   final List<GuideTarget> alsoKeep;
-  final SkeletonChromeResolver chrome;
+  final SkeletonChrome chrome;
   final double progress;
 
   const Skeletonize({
@@ -406,7 +417,7 @@ class Skeletonize extends StatefulWidget {
     required this.child,
     required this.keep,
     this.alsoKeep = const [],
-    this.chrome = defaultSkeletonChrome,
+    this.chrome = const DefaultSkeletonChrome(),
     this.progress = 1,
   });
 
@@ -502,7 +513,7 @@ class SkeletonizeState extends State<Skeletonize> {
     for (final t in widget.alsoKeep) {
       if (t.resolve(layer, l) case TargetFound(:final rect)) keepRects.add(rect);
     }
-    final chrome = widget.chrome(layer);
+    final chrome = widget.chrome.of(layer);
     final shapes = unresolved ? const <SkeletonShape>[] : skeletonPlan(layer, keep: keepRects, chrome: chrome);
 
     final painted = revealedShapes(shapes, widget.progress);
@@ -563,13 +574,13 @@ class SkeletonizeState extends State<Skeletonize> {
 
     String textBelow(Element e) {
       final parts = <String>[];
-      visitOnstage(e, (c) {
+      for (final c in onstageElements(e)) {
         final w = c.widget;
         if (w is Text) {
           final t = (w.data ?? w.textSpan?.toPlainText() ?? '').trim();
           if (t.isNotEmpty) parts.add(t);
         }
-      });
+      }
       return parts.join(', ');
     }
 

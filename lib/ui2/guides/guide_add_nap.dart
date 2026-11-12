@@ -9,14 +9,16 @@
 // generation.
 
 import 'guide.dart';
+import 'guide_copy.dart';
+import 'guide_labels.dart';
 import 'guide_target.dart';
 
-final _napsButton = GuideTarget.label((l) => l.sleepDetailEditNaps);
-final _logANap = GuideTarget.label((l) => l.napsLogANap);
+final _napsButton = GuideTarget.label(ScreenLabel.sleepDetailEditNaps);
+final _logANap = GuideTarget.label(ScreenLabel.napsLogANap);
 
 Guide get addNapGuide => Guide(
       id: 'add-nap',
-      title: (l) => l.guideAddNapTitle,
+      title: GuideCopy.addNapTitle,
       start: GuideStart.sleep,
       variants: [
         GuideVariant(steps: [
@@ -25,7 +27,7 @@ Guide get addNapGuide => Guide(
             target: _napsButton,
             anchor: _napsButton,
             action: GuideAction.tap,
-            caption: (l) => l.guideAddNapStep1(l.tabSleep, l.sleepDetailEditNaps),
+            caption: GuideCopy.addNapCaptionOpenNaps,
           ),
           GuideStep(
             id: 'log-nap',
@@ -33,7 +35,7 @@ Guide get addNapGuide => Guide(
             anchor: _logANap,
             action: GuideAction.tap,
             // The picker questions are shown in lower case inside the sentence.
-            caption: (l) => l.guideAddNapStep2(l.napsLogANap, l.napsFellAsleepHelp.toLowerCase(), l.napsWokeUpHelp.toLowerCase()),
+            caption: GuideCopy.addNapCaptionLogNap,
           ),
         ]),
       ],
@@ -42,18 +44,18 @@ Guide get addNapGuide => Guide(
         // person may have folded (the app remembers it): the in-place help says so.
         GuideFooter(
           kind: GuideFooterKind.missingTarget,
-          title: (l) => l.guideAddNapMissingTitle(l.sleepDetailEditNaps),
-          body: (l) => l.guideAddNapMissingBody(l.sleepDetailEditNaps, l.sleepDetailThroughTheNight),
+          title: GuideCopy.addNapFooter0Title,
+          body: GuideCopy.addNapFooter0Body,
         ),
         GuideFooter(
           kind: GuideFooterKind.note,
-          title: (l) => l.guideAddNapFoundTitle,
-          body: (l) => l.guideAddNapFoundBody(l.napsNotANapLabel),
+          title: GuideCopy.addNapFooter1Title,
+          body: GuideCopy.addNapFooter1Body,
         ),
         GuideFooter(
           kind: GuideFooterKind.note,
-          title: (l) => l.guideAddNapRulesTitle,
-          body: (l) => l.guideAddNapRulesBody,
+          title: GuideCopy.addNapFooter2Title,
+          body: GuideCopy.addNapFooter2Body,
         ),
       ],
     );

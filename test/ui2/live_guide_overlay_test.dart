@@ -19,6 +19,7 @@ import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/skeleton/skeleton.dart';
 
 import '../support/live_guide_stage.dart';
+import '../support/guide_text.dart';
 
 final _en = lookupAppLocalizations(const Locale('en'));
 
@@ -40,14 +41,14 @@ bool _anyShapeOverlaps(Iterable<SkeletonShape> shapes, Rect r) => shapes.any((s)
 Guide _askFirstGuide() {
   final base = stageGuide();
   final variant = (base.variantFor(null) as GuideVariantFound).variant;
-  return Guide(id: 'ask', title: (_) => 'Ask', start: GuideStart.today, variants: [
+  return Guide(id: 'ask', title: fnText((_) => 'Ask'), start: GuideStart.today, variants: [
     GuideVariant(steps: [
       GuideStep(
         id: 'ask',
         target: GuideTarget.key(stageAskFirst),
         anchor: GuideTarget.key(stageHomeTitle),
         action: GuideAction.tap,
-        caption: (_) => 'Tap **Ask first**.',
+        caption: fnText((_) => 'Tap **Ask first**.'),
       ),
       variant.steps[1],
     ]),
@@ -177,14 +178,14 @@ void main() {
       // Default taken: the step card is shown, the page is NOT covered or
       // blocked, and "Don't see it?" is offered (the guide's missing-target help).
       final base = stageGuide();
-      final broken = Guide(id: 'broken', title: (_) => 'Broken', start: GuideStart.today, variants: [
+      final broken = Guide(id: 'broken', title: fnText((_) => 'Broken'), start: GuideStart.today, variants: [
         GuideVariant(steps: [
           GuideStep(
             id: 'lost',
             target: GuideTarget.key(const ValueKey('no-such-widget')),
             anchor: GuideTarget.key(stageHomeTitle),
             action: GuideAction.tap,
-            caption: (_) => 'Tap **Nothing**.',
+            caption: fnText((_) => 'Tap **Nothing**.'),
           ),
         ]),
       ], footers: base.footers);
