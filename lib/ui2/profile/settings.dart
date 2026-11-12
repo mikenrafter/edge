@@ -47,6 +47,8 @@ import '../../telemetry/health_uploader.dart';
 import '../../theme/theme_controller.dart';
 import '../activity/zones.dart' show ZonesDetail;
 import '../screens/coach.dart' show CoachSetup, coachSubtitle;
+import '../guides/guide_catalogue.dart' show bandGenerationOf;
+import '../guides/help_screen.dart' show HelpScreen;
 import '../screens/tracks_screen.dart';
 import '../screens/explorer.dart' show ExplorerScreen;
 import '../screens/home_screen.dart' show deviceBatteryOf, go;
@@ -288,6 +290,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       ),
       onDataExplorer: () => goto(c, const ExplorerScreen()),
       onCoach: () => goto(c, const CoachSetup()),
+      onHelp: () => goto(c, HelpScreen(band: bandGenerationOf(c.read<AppState>().paired))),
       relaySupported: caps.has(Feature.relayEntry),
       onAlarm: () => goto(c, const AlarmScreen()),
       onBandNotifications: () => goto(c, const BandNotifications()),
@@ -666,6 +669,7 @@ class MoreSettingsView extends StatelessWidget {
       onLogs,
       onDataExplorer,
       onCoach,
+      onHelp,
       onAlarm,
       onBandNotifications,
       onGestures,
@@ -733,6 +737,7 @@ class MoreSettingsView extends StatelessWidget {
     this.onLogs,
     this.onDataExplorer,
     this.onCoach,
+    this.onHelp,
     this.onAlarm,
     this.onBandNotifications,
     this.onGestures,
@@ -777,6 +782,10 @@ class MoreSettingsView extends StatelessWidget {
                     l?.tracksTitle ?? 'Tracks',
                     sub: l?.tracksSubtitle ?? 'Your activities, timing and context',
                     onTap: () => go(c, const TracksScreen())),
+                // Step-by-step guides that walk the real screens (live guides).
+                SetRow(LucideIcons.circleHelp, C.blue,
+                    l?.profileHelpRow ?? 'Help',
+                    onTap: onHelp),
                 SettingsAccordion('You & preferences',
                     id: 'settings_preferences',
                     children: [
