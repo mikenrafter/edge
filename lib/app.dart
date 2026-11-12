@@ -339,7 +339,7 @@ class _Gate extends StatelessWidget {
               onBack: () => context.read<AppState>().backToWelcome()),
           AppRoute.profile => ProfileSetupScreen(
               onDone: () => OnboardingBypass.mark(OnboardingBypass.kProfile)),
-          AppRoute.shell => const ConsentPromptHost(child: _Shell()),
+          AppRoute.shell => const ConsentPromptHost(child: AppMainShell()),
         };
         // Demo mode's persistent reminder — pinned below EVERY route this
         // switch can produce (onboarding steps included), so there is no
@@ -552,13 +552,16 @@ Widget? screenForRoute(String route) => switch (routePath(route)) {
       _ => null,
     };
 
-class _Shell extends StatefulWidget {
-  const _Shell();
+/// The signed-in app: [AppShell] with the four real tabs, the deep-link
+/// plumbing and the running-workout bar. Public so integration tests (live
+/// guides) mount the very shell the app runs, not a copy of its tab mapping.
+class AppMainShell extends StatefulWidget {
+  const AppMainShell({super.key});
   @override
-  State<_Shell> createState() => _ShellState();
+  State<AppMainShell> createState() => _ShellState();
 }
 
-class _ShellState extends State<_Shell> {
+class _ShellState extends State<AppMainShell> {
   /// Restore the last-selected tab so a relaunch lands where the user left off.
   late ShellDomain _domain = restoredShellTab();
 
