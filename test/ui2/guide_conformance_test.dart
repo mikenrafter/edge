@@ -38,7 +38,6 @@ import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart' show AlarmScreenView;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/screens/day_review.dart' show DayReviewEntry;
-import 'package:openstrap_edge/ui2/screens/day_timeline.dart' show DayTimelineScreen;
 import 'package:openstrap_edge/ui2/screens/log_workout.dart' show LogWorkout;
 import 'package:openstrap_edge/ui2/screens/sleep_tab.dart' show SleepTab;
 import 'package:path/path.dart' as p;
