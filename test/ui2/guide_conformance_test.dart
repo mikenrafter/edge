@@ -86,7 +86,10 @@ final List<_Scene> _scenes = [
   _Scene('heart-rate-zones', 'open-zones', DayStrainDetail, () => const DayStrainDetail(), (l) => l.dayStrainHowSet),
   _Scene('heart-rate-zones', 'set-own-zones', ZonesDetail, () => const ZonesDetail(), (l) => l.activityZonesSetYourOwnLink),
   _Scene('alarm-schedule', 'open-alarm', SleepTab, () => _tab(const SleepTab()), (l) => l.settingsAlarmRowTitle),
-  _Scene('alarm-schedule', 'pick-day', AlarmScreenView, () => AlarmScreenView(connected: true, schedule: fillDefaultAlarmSchedule(const [])), (l) => l.wellnessTue),
+  // The target is the day's on/off row ("Alarm", printed in English in every language
+  // on this screen), so the quoted label is the day TAB the caption names; the row
+  // itself is proven by the 'alarm keys' test below.
+  _Scene('alarm-schedule', 'pick-day', AlarmScreenView, () => AlarmScreenView(connected: true, schedule: fillDefaultAlarmSchedule(const [])), (l) => l.wellnessTue, printed: false),
   _Scene('alarm-schedule', 'set-wake-time', AlarmScreenView, () => AlarmScreenView(connected: true, schedule: _tuesdayOn), (l) => l.alarmWakeTimeRowTitle),
   _Scene('add-nap', 'open-naps', SleepTab, () => _tab(const SleepTab()), (l) => l.sleepDetailEditNaps),
   _Scene('add-nap', 'log-nap', NapsScreen, () => const NapsScreen(), (l) => l.napsLogANap),
@@ -181,6 +184,31 @@ void main() {
       }
     });
   }
+
+  testWidgets('CLAIM(alarm-keys): the Wake time key exists only while the day is on, and the step-2 target is what turns it on', (t) async {
+    // why: Wake time is drawn (dimmed) for an OFF day, so its label cannot tell the
+    // run that step 2 is done; the guide stands on 'alarm-wake-time', which alarm.dart
+    // sets only while the day is on. Fails if the key is always set (the run would
+    // skip step 2) or never set (step 3 never shows), or if step 2 points at a row that
+    // does not switch the day on.
+    final l = lookupAppLocalizations(const Locale('en'));
+    await pumpLiveGuideApp(t,
+        home: AlarmScreenView(connected: true, schedule: fillDefaultAlarmSchedule(const [])),
+        locale: const Locale('en'),
+        textScale: 1.0,
+        repo: GuideFakeRepo());
+    await settleLiveGuide(t, frames: 30);
+    final guide = kGuideCatalogue.firstWhere((e) => e.guide.id == 'alarm-schedule').guide;
+    final steps = (guide.variantFor(null) as GuideVariantFound).variant.steps;
+    final root = find.byType(AlarmScreenView).evaluate().single;
+    expect(steps[1].anchor.resolve(root, l), isA<TargetFound>(), reason: 'step 2 shows with every day off');
+    expect(steps[2].anchor.resolve(root, l), isNot(isA<TargetFound>()), reason: 'step 3 is not reachable with the day off');
+    final found = steps[1].target.resolve(root, l) as TargetFound;
+    await t.tapAt(found.rect.center);
+    await settleLiveGuide(t, frames: 10);
+    expect(steps[2].anchor.resolve(root, l), isA<TargetFound>(), reason: 'tapping the step-2 target turned the day on');
+    expect((steps[2].target.resolve(root, l) as TargetFound).rect.size, isNot(Size.zero));
+  });
 
   group('CLAIM(guide-copy): strings', () {
     for (final locale in AppLocalizations.supportedLocales) {

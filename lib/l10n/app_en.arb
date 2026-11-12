@@ -18780,14 +18780,10 @@
       }
     }
   },
-  "guideAlarmStep2": "Under **{group}**, tap a day to turn it on, for example **{day}**.",
+  "guideAlarmStep2": "Tap the tab of the day you want, for example **{day}**, then tap the first row below the tabs to turn that day on.",
   "@guideAlarmStep2": {
-    "description": "Step 2 caption. Bold words are in-app labels: {group} is the \"Weekly schedule\" heading, {day} a short weekday name such as Tue.",
+    "description": "Step 2 caption. Bold words are in-app labels: {day} is a short weekday name such as Tue (the tab of that day).",
     "placeholders": {
-      "group": {
-        "type": "String",
-        "description": "Heading of the weekly schedule"
-      },
       "day": {
         "type": "String",
         "description": "Short name of one weekday"
@@ -18804,21 +18800,13 @@
       }
     }
   },
-  "guideAlarmAltBody": "Open **{profile}**, then **{settings}**, then **{band}**, then **{alarm}**.",
+  "guideAlarmAltBody": "Open **{settings}**, then tap **{alarm}**.",
   "@guideAlarmAltBody": {
     "description": "Footer card body: the second route to the Alarm screen. Bold words are in-app labels in the order they are tapped.",
     "placeholders": {
-      "profile": {
-        "type": "String",
-        "description": "Profile screen name"
-      },
       "settings": {
         "type": "String",
-        "description": "Settings row name"
-      },
-      "band": {
-        "type": "String",
-        "description": "The band settings group name"
+        "description": "Settings screen name"
       },
       "alarm": {
         "type": "String",
@@ -18826,23 +18814,23 @@
       }
     }
   },
-  "guideAlarmMissingTitle": "Don't see \"{group}\"?",
+  "guideAlarmMissingTitle": "Don't see \"{wake}\"?",
   "@guideAlarmMissingTitle": {
-    "description": "Footer card title: the user cannot see the weekly schedule. {group} is its in-app heading.",
+    "description": "Footer card title: the user cannot see the Wake time row. {wake} is its in-app name.",
     "placeholders": {
-      "group": {
+      "wake": {
         "type": "String",
-        "description": "Heading of the weekly schedule"
+        "description": "Name of the Wake time row"
       }
     }
   },
-  "guideAlarmMissingBody": "**{group}** only shows while your band is connected. Keep the band close to your phone, wait for it to connect, then look again.",
+  "guideAlarmMissingBody": "**{wake}** only appears once the day is on: turn it on with the first row under the day tabs. If that section is folded, tap its title to open it.",
   "@guideAlarmMissingBody": {
-    "description": "Footer card body: why the weekly schedule can be missing (the band is not connected).",
+    "description": "Footer card body: why the Wake time row can be missing (the day is off, or the section is folded).",
     "placeholders": {
-      "group": {
+      "wake": {
         "type": "String",
-        "description": "Heading of the weekly schedule"
+        "description": "Name of the Wake time row"
       }
     }
   },

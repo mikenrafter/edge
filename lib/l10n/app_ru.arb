@@ -9325,11 +9325,11 @@
   "guideAnotherWayInTitle": "Другой путь",
   "guideAlarmTitle": "Где поставить будильник или задать своё время на каждый день",
   "guideAlarmStep1": "На вкладке **{tab}** прокрутите вниз до **{section}** и нажмите **{row}**.",
-  "guideAlarmStep2": "В разделе **{group}** нажмите на день, чтобы включить его, например **{day}**.",
+  "guideAlarmStep2": "Нажмите на вкладку нужного дня, например **{day}**, затем на первую строку под вкладками, чтобы включить этот день.",
   "guideAlarmStep3": "Затем нажмите **{wake}** под этим днём и выберите время. У каждого дня может быть своё время.",
-  "guideAlarmAltBody": "Откройте **{profile}**, затем **{settings}**, затем **{band}**, затем **{alarm}**.",
-  "guideAlarmMissingTitle": "Не видите «{group}»?",
-  "guideAlarmMissingBody": "**{group}** показывается, только пока браслет подключён. Держите браслет рядом с телефоном, дождитесь подключения и посмотрите снова.",
+  "guideAlarmAltBody": "Откройте **{settings}**, затем нажмите **{alarm}**.",
+  "guideAlarmMissingTitle": "Не видите «{wake}»?",
+  "guideAlarmMissingBody": "**{wake}** появляется, только когда день включён: включите его первой строкой под вкладками дней. Если этот раздел свёрнут, нажмите на его заголовок, чтобы открыть.",
   "guideAddNapTitle": "Где самому записать дневной сон",
   "guideAddNapStep1": "На вкладке **{tab}** нажмите **{naps}** под последней ночью.",
   "guideAddNapStep2": "Нажмите **{log}**. Вас спросят о двух вещах: **{fell}**, затем **{woke}**. Выберите оба времени.",
@@ -9404,11 +9404,8 @@
     }
   },
   "@guideAlarmStep2": {
+    "description": "Step 2 caption. Bold words are in-app labels: {day} is a short weekday name such as Tue (the tab of that day).",
     "placeholders": {
-      "group": {
-        "type": "String",
-        "description": "Heading of the weekly schedule"
-      },
       "day": {
         "type": "String",
         "description": "Short name of one weekday"
@@ -9424,18 +9421,11 @@
     }
   },
   "@guideAlarmAltBody": {
+    "description": "Footer card body: the second route to the Alarm screen. Bold words are in-app labels in the order they are tapped.",
     "placeholders": {
-      "profile": {
-        "type": "String",
-        "description": "Profile screen name"
-      },
       "settings": {
         "type": "String",
-        "description": "Settings row name"
-      },
-      "band": {
-        "type": "String",
-        "description": "The band settings group name"
+        "description": "Settings screen name"
       },
       "alarm": {
         "type": "String",
@@ -9444,18 +9434,20 @@
     }
   },
   "@guideAlarmMissingTitle": {
+    "description": "Footer card title: the user cannot see the Wake time row. {wake} is its in-app name.",
     "placeholders": {
-      "group": {
+      "wake": {
         "type": "String",
-        "description": "Heading of the weekly schedule"
+        "description": "Name of the Wake time row"
       }
     }
   },
   "@guideAlarmMissingBody": {
+    "description": "Footer card body: why the Wake time row can be missing (the day is off, or the section is folded).",
     "placeholders": {
-      "group": {
+      "wake": {
         "type": "String",
-        "description": "Heading of the weekly schedule"
+        "description": "Name of the Wake time row"
       }
     }
   },

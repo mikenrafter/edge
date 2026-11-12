@@ -993,6 +993,11 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
         LucideIcons.clock,
         C.blue,
         l?.alarmWakeTimeRowTitle ?? 'Wake time',
+        // CLAIM(alarm-wake-key): the live guide's last step stands on this key,
+        // and it exists only while the day is on. The row is drawn either way
+        // (dimmed when off), so the label alone cannot tell the guide the user
+        // has done step 2 [guide_alarm_schedule.dart; guide_conformance_test].
+        key: dayOn ? const ValueKey('alarm-wake-time') : null,
         enabled: dayOn,
         value: AlarmScreenView._hhmmOf(day.hour, day.minute),
         chevron: false,
