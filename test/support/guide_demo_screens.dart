@@ -12,13 +12,11 @@ import 'package:flutter/widgets.dart';
 import 'package:openstrap_edge/ui2/activity/day_strain.dart' show DayStrainDetail;
 import 'package:openstrap_edge/ui2/activity/zones.dart' show ZonesDetail;
 import 'package:openstrap_edge/ui2/app_shell.dart' show AppShell, ShellDomain;
-import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/guides/guide.dart';
 import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/screens/home_screen.dart' show HomeScreen;
 
 import 'guide_demo_data.dart';
-import 'guide_text.dart' show GuideText;
 
 final Map<String, WidgetBuilder> kGuideDemoScreens = {
   // Home inside the tab bar, as on the phone: the bar is chrome and stays legible.

@@ -46,7 +46,6 @@ import 'ui2/ui2.dart';
 import 'data/db.dart' show LocalDb;
 import 'settings/settings_repository.dart' show settingsRestoredSignal;
 import 'ui2/guides/guide_runner.dart';
-import 'ui2/profile/settings.dart' show MoreSettings;
 
 class OpenStrapApp extends StatefulWidget {
   const OpenStrapApp({super.key});
