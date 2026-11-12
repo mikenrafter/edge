@@ -660,7 +660,7 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink {
 
   /// [GuideShellLink]: a live guide brings the app to its start tab...
   @override
-  void selectTab(ShellDomain tab) => _go(tab);
+  void selectTab(ShellDomain tab) => _go(tab, persist: false);
 
   /// ...or to Settings, pushed on the root Navigator like any other screen.
   @override
@@ -668,13 +668,14 @@ class _ShellState extends State<AppMainShell> implements GuideShellLink {
     if (mounted) await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const MoreSettings()));
   }
 
-  void _go(ShellDomain d) {
+  void _go(ShellDomain d, {bool persist = true}) {
     if (d == _domain) return;
     setState(() {
       _domain = d;
       _rev++;
     });
-    Prefs.setInt(Prefs.shellTabV2, d.index);
+    // Guide navigation is temporary; only the user's own tab changes persist.
+    if (persist) Prefs.setInt(Prefs.shellTabV2, d.index);
   }
 
   @override
