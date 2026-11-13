@@ -168,6 +168,16 @@ class LiveGuideApp {
   LiveGuideApp(this.state, this.runner, this.navigatorKey);
 
   NavigatorState get navigator => navigatorKey.currentState!;
+
+  bool _disposed = false;
+
+  /// Release owned timers before widget-test invariant checks. Tear-down may
+  /// call this again after an explicit screenshot cleanup.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    state.dispose();
+  }
 }
 
 /// KNOWN next BUGS, NOT the guides'. Two layout overflows exist on integrate/next
@@ -209,14 +219,17 @@ Future<LiveGuideApp> pumpLiveGuideApp(
   Size size = const Size(390, 844),
   GuideRunner? runner,
   LocalRepository? repo,
+  Brightness brightness = Brightness.light,
+  double devicePixelRatio = 1,
+  GlobalKey? captureKey,
 }) async {
   SharedPreferences.setMockInitialValues(const {});
   await Prefs.ensureLoaded();
   // Prefs caches its own instance across tests, while setMockInitialValues
   // replaces the plugin singleton. Seed its synchronous tab read explicitly.
   Prefs.setInt(Prefs.shellTabV2, 0);
-  t.view.physicalSize = size;
-  t.view.devicePixelRatio = 1;
+  t.view.physicalSize = size * devicePixelRatio;
+  t.view.devicePixelRatio = devicePixelRatio;
   addTearDown(t.view.reset);
   tolerateKnownNextOverflows();
 
@@ -235,31 +248,35 @@ Future<LiveGuideApp> pumpLiveGuideApp(
   final key = GlobalKey<NavigatorState>();
   final guideRunner = runner ?? GuideRunner(navigatorKey: key);
   final state = AppState.forTesting();
-  addTearDown(state.dispose);
   state.repo = repo ?? GuideFakeRepo();
   final app = LiveGuideApp(state, guideRunner, runner?.navigatorKey ?? key);
+  addTearDown(app.dispose);
 
   await t.pumpWidget(MultiProvider(
     providers: [
       ChangeNotifierProvider<AppState>.value(value: state),
       ChangeNotifierProvider<UnitsController>(create: (_) => UnitsController.seed(UnitSystem.metric)),
       ChangeNotifierProvider<ThemeController>.value(
-          value: ThemeController.seed(AppThemeChoice.light, Brightness.light)),
+          value: ThemeController.seed(
+            brightness == Brightness.dark ? AppThemeChoice.dark : AppThemeChoice.light, brightness)),
       ChangeNotifierProvider<GuideRunner>.value(value: guideRunner),
     ],
-    child: MaterialApp(
-      navigatorKey: app.navigatorKey,
-      navigatorObservers: [guideRunner.routes],
-      debugShowCheckedModeBanner: false,
-      theme: buildTheme(Brightness.light),
-      locale: locale,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
-        child: child!,
+    child: RepaintBoundary(
+      key: captureKey,
+      child: MaterialApp(
+        navigatorKey: app.navigatorKey,
+        navigatorObservers: [guideRunner.routes],
+        debugShowCheckedModeBanner: false,
+        theme: buildTheme(brightness),
+        locale: locale,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        home: home ?? const AppMainShell(),
       ),
-      home: home ?? const AppMainShell(),
     ),
   ));
   await settleLiveGuide(t);
