@@ -222,6 +222,9 @@ class GuideRunner extends ChangeNotifier {
   /// guide's start again. CLAIM(back-walks-all-hops) [guide_r3_routing_test 'R2'].
   Future<void> _walkHops(GuideRun run, int index, AppLocalizations? l) async {
     final node = run.variant.steps[index].node;
+    // After every hop the walk waits for the screen to change and looks again: the card's
+    // count is a forecast (the shell's tab selection can show another sub-tab than the one
+    // parked), the next control only exists once the screen has changed.
     var moved = false;
     GuideHop? previous;
     for (var i = 0; node != null && i < _maxHops && identical(_run, run); i++) {
@@ -233,6 +236,9 @@ class GuideRunner extends ChangeNotifier {
       if (!_makeHop(hop, page)) break;
       previous = hop;
       moved = true;
+      // One frame shows the new screen, the next lets the guide's overlay plan it (its
+      // input layer must let the next control through before the next tap is made).
+      await WidgetsBinding.instance.endOfFrame;
       await WidgetsBinding.instance.endOfFrame;
       while (routes.isTransitioning && identical(_run, run)) {
         await WidgetsBinding.instance.endOfFrame;

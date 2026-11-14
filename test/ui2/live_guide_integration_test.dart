@@ -192,7 +192,9 @@ void main() {
     final userPrefs = await t.runAsync(prefsSnapshot);
     final userDb = await t.runAsync(_dbChanges);
     expect(userPrefs, isNot(prefs), reason: 'ordinary navigation still saves the selected tab');
-    await app.runner.backToGuide();
+    final walk = app.runner.backToGuide();
+    await _reveal(t); // the walk waits for frames between its hops
+    await walk;
     await _reveal(t);
     expect(find.byType(WorkoutScreen), findsOneWidget);
     expect(run.state, isA<GuideAtStep>());

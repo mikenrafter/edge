@@ -110,7 +110,7 @@ class _Plot extends CustomPainter implements GuidePlot {
   bool shouldRepaint(_Plot oldDelegate) => true;
 }
 
-class _Background extends CustomPainter {
+class _Background extends CustomPainter implements GuideDecoration {
   int paints = 0;
   @override
   void paint(Canvas canvas, Size size) {

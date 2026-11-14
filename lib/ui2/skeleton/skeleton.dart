@@ -439,7 +439,6 @@ class _WindowLook {
     final focus = policy.focus;
     _Unit? o, a, b;
     final neighbours = <_Unit>{};
-    var mateSlots = <int>{};
     // A step's tab or sub-tab target has no neighbours (every card is a placeholder). Off
     // path the route back keeps its neighbouring cards lit, also when it is a tab or
     // sub-tab: the owner's rule [guide_r2_off_path_test, guide_r3_routing_test 'R4'].
@@ -491,9 +490,15 @@ class _WindowLook {
           if (at < focusAt) a = sibling;
           if (at > focusAt) b ??= sibling;
         }
-        mateSlots = {?slotOf[a], ?slotOf[b]};
-        for (final entry in slotOf.entries) {
-          if (mateSlots.contains(entry.value)) neighbours.add(entry.key);
+        // Cards beside the neighbour in the same slot (a row of tiles) are neighbours too;
+        // cards stacked below it in a slot that holds a whole list are not.
+        bool beside(_Unit u, _Unit? n) {
+          if (n == null || slotOf[u] != slotOf[n]) return false;
+          final x = boxOf(u), y = boxOf(n);
+          return math.min(x.bottom, y.bottom) - math.max(x.top, y.top) > 0;
+        }
+        for (final entry in slotOf.keys) {
+          if (beside(entry, a) || beside(entry, b)) neighbours.add(entry);
         }
       } else if (o != null) {
         final at = all.indexOf(o);
