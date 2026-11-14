@@ -3,6 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
+import 'package:openstrap_edge/ui2/grammar.dart' show Pressable;
+import 'package:openstrap_edge/ui2/screens/screens.dart' show DayNav;
+import 'package:openstrap_edge/ui2/guides/guide_dim.dart';
+import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart';
 
 import '../support/layout_shift_probe.dart';
 
@@ -49,6 +53,89 @@ Future<ShiftProbe> _loadFeed(WidgetTester t, double placeholder) async {
 }
 
 void main() {
+  // WHY: enabling a day arrow must not rename the stationary date picker.
+  // CLAIM(guide-probe-control-identity): paint-only marks preserve control slots.
+  // # catches: GuideUnitMark displacing Opacity/Expanded in the ancestor path,
+  // making ordinal #0 jump from the date picker to the newly enabled arrow.
+  testWidgets('guide marks preserve control identity when a sibling enables', (
+    t,
+  ) async {
+    final dim = GuideDimController();
+    addTearDown(dim.dispose);
+    Widget app(bool enabled, {double top = 0}) => GuideDimScope(
+      controller: dim,
+      child: MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: EdgeInsets.only(top: top),
+            child: SizedBox(
+              width: 300,
+              child: DayNav(
+                key: const ValueKey('daynav'),
+                day: '2026-11-14',
+                days: enabled ? ['2026-11-14', '2026-11-13'] : ['2026-11-14'],
+                alwaysShow: true,
+                onDay: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final probe = ShiftProbe(trackUnkeyed: true);
+    String pickerId() => probe.idOf(
+      t,
+      find.descendant(
+        of: find.byType(Pressable).at(1),
+        matching: find.byType(GestureDetector),
+      ),
+    )!;
+    void checkMarkBoxes() {
+      expect(dim.looks, isNull);
+      for (final e in find.byType(GuideUnitMark).evaluate()) {
+        final mark = e.widget as GuideUnitMark;
+        expect(
+          t.getRect(find.byWidget(mark)),
+          t.getRect(find.byWidget(mark.child!)),
+        );
+      }
+    }
+
+    await t.pumpWidget(app(false));
+    final before = probe.capture(t, atMs: 0);
+    final id = pickerId();
+    final rect = _find(before, id).rect;
+    checkMarkBoxes();
+    await t.pumpWidget(app(true));
+    final enabled = probe.capture(t, atMs: 100);
+    checkMarkBoxes();
+    expect(pickerId(), id);
+    expect(_find(enabled, id).rect, rect);
+    expect(
+      score(
+        probe.scenario(_viewport),
+        ShiftPolicy.standard,
+      ).findings.where((f) => f.rule == 'shift'),
+      isEmpty,
+    );
+
+    // Positive control: ignoring the paint-only ancestor must still measure a
+    // real move of the control's own box exactly.
+    await t.pumpWidget(app(true, top: 24));
+    final moved = probe.capture(t, atMs: 200);
+    checkMarkBoxes();
+    expect(pickerId(), id);
+    expect(_find(moved, id).rect.top - rect.top, 24);
+    expect(
+      score(
+        probe.scenario(_viewport),
+        ShiftPolicy.standard,
+      ).findings.where((f) => f.rule == 'shift' && f.elementId == id),
+      isNotEmpty,
+    );
+  });
+
   testWidgets('a too-short placeholder pushes the paragraph down 80', (t) async {
     final probe = await _loadFeed(t, 20);
     final before = _find(probe.frames[0], 'body').rect;

@@ -14,6 +14,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/ui2/inline_loading.dart';
+import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart' show GuideUnitMark;
 
 class ShiftProbe {
   /// Opt-in: also track widgets WITHOUT a `ValueKey<String>` under a stable
@@ -232,6 +233,11 @@ class ShiftProbe {
         scope = k.value;
         return false;
       }
+      // CLAIM(guide-probe-control-identity): paint-only marks must not displace
+      // the structural ancestor that distinguishes sibling controls. Otherwise
+      // enabling an arrow renames the date picker [probe_test]. Geometry still
+      // comes from the control's own box in _slotBox.
+      if (a.widget is GuideUnitMark) return true;
       if (types.length < 3) types.add(a.widget.runtimeType.toString());
       return true;
     });
