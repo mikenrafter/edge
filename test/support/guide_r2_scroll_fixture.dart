@@ -44,7 +44,7 @@ class R2ScrollFixture {
         caption: fnText((_) => 'Find Target.'))])]);
     run = GuideRun(guide: guide, variant: guide.variants.single);
     entry = OverlayEntry(builder: (_) => LiveGuideOverlay(run: run, navigatorKey: navKey,
-      routes: routes, onExit: run.exit));
+      routes: routes, onExit: run.exit, onBackToGuide: () {}));
     navKey.currentState!.overlay!.insert(entry!);
     for (var i = 0; i < 18; i++) { await t.pump(const Duration(milliseconds: 100)); }
     addTearDown(() { if (entry!.mounted) entry!.remove(); run.dispose(); controller.dispose(); });

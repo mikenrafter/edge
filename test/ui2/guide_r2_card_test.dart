@@ -333,7 +333,8 @@ void main() {
     void visit(SemanticsNode node) {
       for (final id in node.getSemanticsData().customSemanticsActionIds ?? <int>[]) {
         final action = CustomSemanticsAction.getAction(id);
-        if (action?.label != null) actions[action!.label!] = (node, id);
+        final label = action?.label;
+        if (label != null) actions[label] = (node, id);
       }
       node.visitChildren((child) { visit(child); return true; });
     }
