@@ -156,27 +156,44 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   @override
   List<Rect> get layerInk {
     final layer = _layerKey.currentContext?.findRenderObject();
-    final plan = _skeletonPlan;
-    if (layer is! RenderBox || plan == null || _yieldNow) return const [];
-    final sections = plan.shapes.isEmpty ? 0 : plan.shapes.last.section + 1;
-    final shown = _collapsed ? sections : (revealProgress * sections).floor();
+    final looks = _published;
+    final page = _page;
+    if (layer is! RenderBox || looks == null || page == null || _yieldNow) return const [];
     final ink = <Rect>[];
-    for (final unit in plan.units) {
-      if (!unit.skeleton || unit.section >= shown) continue;
-      final component = unit.component;
-      final box = component == null ? unit.paragraph ?? unit.visual : component.mounted ? laidOutBox(component) : null;
-      if (box == null || !box.attached || !box.hasSize) continue;
-      final shapes = component != null ? skeletonOfComponent(component, box)
-          : unit.paragraph != null ? skeletonOfParagraph(unit.paragraph!, scaffoldOf(_page!))
-          : [SkeletonShape(kind: SkeletonKind.block, rect: Offset.zero & box.size, section: 0)];
+    void add(RenderBox box, List<SkeletonShape> shapes) {
       Rect? bounds;
       for (final shape in shapes) {
         if (shape.kind == SkeletonKind.dim || shape.kind == SkeletonKind.heading) continue;
         bounds = bounds?.expandToInclude(shape.rect) ?? shape.rect;
       }
-      if (bounds == null) continue;
+      if (bounds == null) return;
       final visible = rectInRoot(box, layer, bounds).intersect(visibleBoundsInRoot(box, layer));
       if (!visible.isEmpty) ink.add(visible);
+    }
+    void visit(Element element) {
+      final box = laidOutBox(element);
+      if (_paintsItself(element.widget) || isGuideControl(element.widget)) {
+        if (box != null && looks.lookOf(element) == GuideUnitLook.skeleton) {
+          add(box, skeletonOfComponent(element, box));
+        }
+        return;
+      }
+      final object = element is RenderObjectElement ? element.renderObject : null;
+      if (object is RenderParagraph && object.attached && object.hasSize) {
+        if (looks.looseLookOf(object) == GuideUnitLook.skeleton) {
+          add(object, skeletonOfParagraph(object, scaffoldOf(page)));
+        }
+        return;
+      }
+      element.debugVisitOnstageChildren(visit);
+    }
+    visit(page);
+    // Loose visuals have no component foreground; their plan still owns the look.
+    for (final unit in _skeletonPlan?.units ?? const <PlannedUnit>[]) {
+      final box = unit.visual;
+      if (box == null || !box.attached || !box.hasSize || !unit.skeleton) continue;
+      if (!layerShapes.any((shape) => shape.section == unit.section)) continue;
+      add(box, [SkeletonShape(kind: SkeletonKind.block, rect: Offset.zero & box.size, section: 0)]);
     }
     return ink;
   }
@@ -742,7 +759,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       if (!_sameShapes(_shapes, shapes) || !setEquals(_staticSections, staticSections)) _staticTick.value++;
     }
     final changed = _page != page || _step != step || _target != target || _yielding != (page == null) ||
-      !listEquals(_chrome, chrome) || !listEquals(_legible, legible) || _route != route;
+      !listEquals(_chrome, chrome) || !listEquals(_legible, legible) || _route != route ||
+      (_skeletonPlan == null) != (skeleton == null);
     _page = page;
     _step = step;
     _target = target;
@@ -863,7 +881,9 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         if (r.top < screen.height / 4 && r.width > screen.width / 2) bounds = Rect.fromLTRB(bounds.left, math.max(bounds.top, r.bottom), bounds.right, bounds.bottom);
       }
       return Stack(children: [
-        if (show && (target != null && step != null || state is GuideOffPath))
+        // CLAIM(lazy-skeleton-input): a published P6 plan needs input even before
+        // its target exists, including newly built rows [guide_r2_review_test R4].
+        if (show && _published != null)
           Positioned.fill(child: ExcludeSemantics(child: GestureDetector(
             // Skeleton ink swallows activation (tap, long press, double tap) by being
             // hit-tested: the page below is not in the hit path there, so no activation

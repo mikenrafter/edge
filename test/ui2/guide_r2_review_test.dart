@@ -159,4 +159,30 @@ void main() {
     });
   }
 
+  // WHY: CLAIM(lazy-skeleton-input): P6 publishes skeletons before a lazy target has a box.
+  // # catches: mounting the shield only when a target rectangle exists.
+  testWidgets('R4 lazy target search mounts input for the published skeleton plan', (t) async {
+    final page = _ScrollPage(lazy: true);
+    await page.pump(t);
+    final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+    expect(page.run.state, isA<GuideAtStep>());
+    expect(overlay.targetRect, isNull);
+    expect(page.dim.looks, isNotNull, reason: 'P6 plan is already published');
+    expect(overlay.paintedShapes.any((s) => s.kind == SkeletonKind.bar), isTrue);
+    expect(find.byKey(LiveGuideOverlay.skeletonKey), findsOneWidget,
+      reason: 'a published skeleton needs its input layer even with TargetNotBuilt');
+    final visible = find.textContaining('Item ').evaluate().where((element) {
+      final box = element.renderObject as RenderBox;
+      final top = box.localToGlobal(Offset.zero).dy;
+      return top >= 220 && top + box.size.height <= 600;
+    }).first;
+    final label = (visible.widget as Text).data!;
+    final control = find.ancestor(of: find.text(label), matching: find.byType(Pressable)).first;
+    expect(page.dim.looks!.lookOf(t.element(control)), GuideUnitLook.skeleton);
+    await t.tapAt(t.getRect(find.text(label)).center);
+    expect(page.skeletonTaps, 0);
+    await t.pumpWidget(const SizedBox());
+    await t.pump();
+  });
+
 }
