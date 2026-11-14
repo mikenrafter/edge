@@ -42,8 +42,8 @@ class GuideStep {
   /// Declared destination; optional only for custom/legacy guide fixtures.
   final GuideNode? node;
 
-  /// Identifies the route this step belongs to: the step is ACTIVE when this
-  /// resolves on the current screen (and not on the others' screens).
+  /// Selects between actions on the same declared node once content arrives.
+  /// In custom guides without a node, it also identifies the page.
   final GuideTarget anchor;
 
   /// Extra units kept readable besides the target's (step 3 keeps "Your zones").
@@ -69,7 +69,8 @@ class GuideStep {
     required this.caption,
   });
 
-  /// True when [anchor] resolves (found) under [root].
+  /// Anchor presence for compatibility/review fixtures. The live run uses its
+  /// declared navigation node, including loading states.
   bool isActive(Element root, AppLocalizations l) => anchor.resolve(root, l) is TargetFound;
 }
 

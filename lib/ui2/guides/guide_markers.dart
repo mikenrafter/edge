@@ -17,6 +17,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../skeleton/skeleton.dart';
 import '../skeleton/unit_paint.dart' show isIconParagraph;
 import '../theme.dart';
+import '../grammar.dart' show ScreenTitle, NavBar;
 import 'tree_geometry.dart';
 
 /// Gap between the target and its outline, in pixels.
@@ -240,20 +241,28 @@ const _kTimerLineHeight = 24.0;
 List<Rect> liveStatusRects(Element root) {
   final rootBox = laidOutBox(root);
   if (rootBox == null) return const [];
-  final lines = <(Rect, String)>[];
+  final lines = <(Rect, String, bool)>[];
   for (final e in onstageElements(root)) {
     final ro = e is RenderObjectElement ? e.renderObject : null;
     if (ro is! RenderParagraph || !ro.hasSize) continue;
     final text = ro.text.toPlainText();
     if (text.isEmpty) continue;
+    var card = false, scrolling = false, header = false;
+    e.visitAncestorElements((a) {
+      final w = a.widget;
+      card |= isGuideCard(w);
+      scrolling |= w is Scrollable;
+      header |= w is ScreenTitle || w is NavBar || w.runtimeType.toString() == 'HeaderRows';
+      return !identical(a, root);
+    });
     final visible = visibleBoundsInRoot(ro, rootBox);
     final rect = rectInRoot(ro, rootBox).intersect(visible);
-    if (!rect.isEmpty) lines.add((rect, text.trim()));
+    if (!rect.isEmpty) lines.add((rect, text.trim(), !card && (header || !scrolling)));
   }
-  if (lines.isEmpty) return const [];
-  final top = lines.map((l) => l.$1.top).reduce(math.min);
+  final headers = lines.where((l) => l.$3);
+  final top = headers.isEmpty ? double.negativeInfinity : headers.map((l) => l.$1.top).reduce(math.min);
   return [
-    for (final (rect, text) in lines)
-      if (rect.top < top + 28 || _clockText.hasMatch(text) && rect.height >= _kTimerLineHeight) rect,
+    for (final (rect, text, header) in lines)
+      if (header && rect.top < top + 28 || _clockText.hasMatch(text) && rect.height >= _kTimerLineHeight) rect,
   ];
 }

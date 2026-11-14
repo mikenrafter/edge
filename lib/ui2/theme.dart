@@ -404,6 +404,17 @@ class Motion {
 
   /// Minimum interval between live-guide plans during page animations.
   /// Reduced motion removes the throttle as well as the reveal animation.
+  static const guidePulse = Duration(milliseconds: 1600);
+  static void configureGuidePulse(AnimationController clock, {required bool enabled}) {
+    clock.duration = guidePulse;
+    if (enabled) {
+      if (!clock.isAnimating) clock.repeat();
+    } else {
+      clock.stop();
+      clock.value = .25; // value 1, without a visible pulse
+    }
+  }
+
   static const guidePlanInterval = Duration(milliseconds: 50);
 
   /// The session clock. A live workout counts REAL seconds, so this is the one

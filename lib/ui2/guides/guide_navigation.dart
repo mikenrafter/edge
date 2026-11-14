@@ -127,7 +127,7 @@ const guideNavigationTree = <GuideNode, GuideDestination>{
     'WhatChangedScreen',
   ]),
   GuideNode.naps: GuideDestination(GuideNode.sleep, ['NapsScreen']),
-  GuideNode.alarm: GuideDestination(GuideNode.sleep, ['AlarmScreen']),
+  GuideNode.alarm: GuideDestination(GuideNode.sleep, ['AlarmScreen', 'AlarmScreenView']),
   GuideNode.circadian: GuideDestination(GuideNode.sleep, ['CircadianDetail']),
   GuideNode.sleepDebt: GuideDestination(GuideNode.sleep, []),
   GuideNode.sleepConsistency: GuideDestination(GuideNode.sleep, []),
@@ -224,8 +224,9 @@ class GuideNavigation {
     var current = from;
     while (current != common && parent(current) != null) {
       final p = parent(current)!;
-      if (subTabIndex(current) != null)
+      if (subTabIndex(current) != null) {
         break; // no Back from a sub-tab to its container
+      }
       hops.add(GuideHop(p, GuideHopKind.back));
       current = p;
     }
@@ -249,8 +250,9 @@ class GuideNavigation {
       if (next == GuideNode.activity ||
           next == GuideNode.health ||
           next == current ||
-          onPath(next, current))
+          onPath(next, current)) {
         continue;
+      }
       hops.add(
         GuideHop(
           next,
@@ -270,7 +272,7 @@ class GuideNavigation {
     for (final e in onstageElements(root)) {
       final w = e.widget;
       if (w is GuideLocation) return w.node;
-      if (w is MetricDetail)
+      if (w is MetricDetail) {
         return switch (w.metricKey) {
           'recovery' => GuideNode.recovery,
           'stress' => GuideNode.stress,
@@ -281,6 +283,7 @@ class GuideNavigation {
           'steps' => GuideNode.daySteps,
           _ => GuideNode.metric,
         };
+      }
       if (w is SubTabs && inActivity) {
         return [
           GuideNode.activityOverview,
@@ -288,7 +291,7 @@ class GuideNavigation {
           GuideNode.activityHistory,
         ][w.index];
       }
-      if (w is SubTabs && inHealth)
+      if (w is SubTabs && inHealth) {
         return [
           GuideNode.healthOverview,
           GuideNode.healthExplore,
@@ -296,6 +299,7 @@ class GuideNavigation {
           GuideNode.healthVitals,
           GuideNode.healthLabs,
         ][w.index];
+      }
       final name = w.runtimeType.toString();
       final candidate = _screens[name];
       if (candidate != null) {
@@ -350,8 +354,9 @@ class GuideNavigation {
           .firstOrNull;
       final root = laidOutBox(page),
           box = avatar == null ? null : laidOutBox(avatar);
-      if (root != null && box != null)
+      if (root != null && box != null) {
         return TargetFound(rectInRoot(box, root), renderObject: box);
+      }
     }
     final label = switch (hop.node) {
       GuideNode.dayStrain => ScreenLabel.homeRingStrain,

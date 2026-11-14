@@ -205,7 +205,7 @@ void main() {
           informationCollector: () => [DiagnosticsNode.message('creator: Row:file:///lib/ui2/$where:22')],
         );
     expect(isKnownNextOverflow(overflowIn('sync_control.dart:1020')), isTrue);
-    expect(isKnownNextOverflow(overflowIn('screens/workout_screen.dart:374')), isTrue);
+    expect(isKnownNextOverflow(overflowIn('screens/workout_screen.dart:382')), isTrue);
     expect(isKnownNextOverflow(overflowIn('screens/workout_screen.dart:1320')), isFalse, reason: 'the History row is ours to keep clean');
     expect(isKnownNextOverflow(overflowIn('guides/guide_step_card.dart:50')), isFalse);
     expect(

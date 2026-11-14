@@ -135,7 +135,8 @@ double rectGap(Rect a, Rect b) {
 ///    the way to the target.
 ///
 /// "Card" = a top-level [isGuideCard] unit of the page; above / below = previous / next
-/// in reading order (top, then left). A control or chart that is no card is "in the window"
+/// in its vertical layout, including lazy lists. Transforms and clipping do not
+/// reorder siblings or change target ownership. A non-card control is "in the window"
 /// when it lies between the top of the card above and the bottom of the card below.
 ///
 /// All rects are in the page root's coordinates. Replaces kSkeletonReach (a distance
@@ -154,18 +155,21 @@ class DimPolicy {
   /// Off path: the cards next to [focus] stay lit instead of dimmed.
   final bool neighboursLit;
   final bool navigationTarget;
-  const DimPolicy({this.focus, this.skeletonAll = false, this.placeholders = true, this.neighboursLit = false, this.navigationTarget = false});
+  final RenderBox? focusObject;
+  const DimPolicy({this.focus, this.skeletonAll = false, this.placeholders = true, this.neighboursLit = false, this.navigationTarget = false, this.focusObject});
 
   /// The policy for a step whose [target] was found.
   static DimPolicy of(Element page, TargetFound target) {
-    final root = laidOutBox(page);
-    final navigation = root != null && onstageElements(page).any((e) {
+    final navigation = onstageElements(page).any((e) {
       final w = e.widget;
       final box = laidOutBox(e);
-      return (w is SubTabs || w.runtimeType.toString() == '_TabBar') && box != null &&
-          rectInRoot(box, root).contains(target.rect.center);
+      if (!(w is SubTabs || w.runtimeType.toString() == '_TabBar') || box == null) return false;
+      for (RenderObject? object = target.renderObject; object != null; object = object.parent) {
+        if (identical(object, box)) return true;
+      }
+      return false;
     });
-    return DimPolicy(focus: target.rect, navigationTarget: navigation);
+    return DimPolicy(focus: target.rect, navigationTarget: navigation, focusObject: target.renderObject);
   }
 }
 
@@ -210,6 +214,18 @@ class _Unit {
   const _Unit(this.bounds, this.drafts, [this.component, this.paragraph, this.visual, this.fullBounds, this.card = false]);
 }
 
+bool _unitOwnsBox(_Unit unit, RenderBox target) {
+  final box = unit.component == null ? unit.paragraph ?? unit.visual : laidOutBox(unit.component!);
+  if (box == null) return false;
+  for (RenderObject? object = target; object != null; object = object.parent) {
+    if (identical(object, box)) return true;
+  }
+  for (RenderObject? object = box; object != null; object = object.parent) {
+    if (identical(object, target)) return true;
+  }
+  return false;
+}
+
 /// How far an erase reaches past its text line, so glyph overhang (descenders,
 /// italics) does not survive it.
 const _kEraseGrow = 1.0;
@@ -249,7 +265,7 @@ class _Planner {
       rectInRoot(box, rootBox, local).intersect(visibleBoundsInRoot(box, rootBox));
 
   /// One bar (and its erase when the text sits on the scaffold) per line.
-  List<_Item> linesOf(RenderParagraph paragraph, {required bool onCard}) {
+  List<_Item> linesOf(RenderParagraph paragraph, {required bool onCard, Color? placeholderInk}) {
     final length = paragraph.text.toPlainText().length;
     if (length == 0) return const [];
     final boxes = paragraph.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: length));
@@ -289,8 +305,7 @@ class _Planner {
         ));
       }
       if (!bar.isEmpty) {
-        final ink = HSVColor.fromColor(paragraph.text.style?.color ?? C.n500);
-        drafts.add(_Draft(SkeletonKind.bar, bar, heading ? ink.withValue(ink.value * .6).toColor() : null));
+        drafts.add(_Draft(SkeletonKind.bar, bar, heading ? placeholderInk ?? placeholderBarColor(scaffold) : null));
       }
       items.add(_Item(line, 1, drafts, text: true));
     }
@@ -360,7 +375,7 @@ class _Planner {
       if (ro is RenderParagraph && ro.hasSize) {
         final frame = e.findAncestorWidgetOfExactType<ChartFrame>();
         if (heading && frame != null && ro.text.toPlainText() != frame.title) return;
-        items.addAll(linesOf(ro, onCard: here));
+        items.addAll(linesOf(ro, onCard: here, placeholderInk: heading ? placeholderBarColor(placeholderSurfaceOf(e, scaffold)) : null));
       } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
         final rect = visibleOf(ro);
         if (!rect.isEmpty) {
@@ -414,49 +429,58 @@ class _WindowLook {
     final focus = policy.focus;
     _Unit? o, a, b;
     if (focus != null && !policy.navigationTarget) {
-      final at = all.indexWhere((c) => boxOf(c).contains(focus.center));
-      final inside = at >= 0 ? at : all.indexWhere((c) => boxOf(c).overlaps(focus));
-      if (inside >= 0) {
-        o = all[inside];
-        Element? column;
-        List<_Unit> siblings = all;
-        Element? slot(_Unit u, Element layout) {
-          Element? child = u.component;
-          var under = false;
-          child?.visitAncestorElements((e) {
-            if (identical(e, layout)) { under = true; return false; }
-            child = e;
-            return true;
-          });
-          return under ? child : null;
-        }
-        // A wrapper Column with only this card does not order the page. Walk
-        // out to the first vertical layout that orders distinct card slots.
-        // Lazy ListViews are columns too, even though they have no Flex widget.
-        o.component?.visitAncestorElements((e) {
-          final w = e.widget;
-          final direction = e.findAncestorWidgetOfExactType<Scrollable>()?.axisDirection;
-          final vertical = w is Flex && w.direction == Axis.vertical ||
-              e is SliverMultiBoxAdaptorElement && w is! SliverGrid &&
-                (direction == AxisDirection.down || direction == AxisDirection.up);
-          if (!vertical) return true;
-          final under = all.where((u) => slot(u, e) != null).toList();
-          if (under.map((u) => slot(u, e)).toSet().length < 2) return true;
-          column = e;
-          siblings = under;
-          return false;
+      bool ownsFocus(_Unit unit) => policy.focusObject == null
+          ? boxOf(unit).contains(focus.center) : _unitOwnsBox(unit, policy.focusObject!);
+      final at = all.indexWhere(ownsFocus);
+      final inside = at >= 0 || policy.focusObject != null ? at : all.indexWhere((c) => boxOf(c).overlaps(focus));
+      if (inside >= 0) o = all[inside];
+      final focusElement = o?.component ?? units.where((u) =>
+        u.component != null && ownsFocus(u)).firstOrNull?.component;
+      Element? column;
+      List<_Unit> siblings = all;
+      Element? slot(Element? unit, Element layout) {
+        Element? child = unit;
+        var under = false;
+        child?.visitAncestorElements((e) {
+          if (identical(e, layout)) { under = true; return false; }
+          child = e;
+          return true;
         });
-        final at = siblings.indexOf(o);
-        final ownSlot = column == null ? null : slot(o, column!);
-        for (var i = at - 1; i >= 0; i--) {
-          if (column == null || slot(siblings[i], column!) != ownSlot) { a = siblings[i]; break; }
-        }
-        for (var i = at + 1; i < siblings.length; i++) {
-          if (column == null || slot(siblings[i], column!) != ownSlot) { b = siblings[i]; break; }
-        }
+        return under ? child : null;
       }
-
+      // A wrapper Column with only this card does not order the page. Lazy
+      // ListViews are columns too. A NavBar back arrow can have a card sibling
+      // below it even though the focus itself is not a card.
+      focusElement?.visitAncestorElements((e) {
+        final w = e.widget;
+        final direction = e.findAncestorWidgetOfExactType<Scrollable>()?.axisDirection;
+        final vertical = w is Flex && w.direction == Axis.vertical ||
+            e is SliverMultiBoxAdaptorElement && w is! SliverGrid &&
+              (direction == AxisDirection.down || direction == AxisDirection.up);
+        if (!vertical) return true;
+        final focusSlot = slot(focusElement, e);
+        final under = all.where((u) => slot(u.component, e) != null).toList();
+        if (focusSlot == null || !under.any((u) => slot(u.component, e) != focusSlot)) return true;
+        column = e;
+        siblings = under;
+        return false;
+      });
+      if (column != null) {
+        final children = <Element>[];
+        column!.visitChildren(children.add);
+        final focusAt = children.indexOf(slot(focusElement, column!)!);
+        for (final sibling in siblings) {
+          final at = children.indexOf(slot(sibling.component, column!)!);
+          if (at < focusAt) a = sibling;
+          if (at > focusAt) b ??= sibling;
+        }
+      } else if (o != null) {
+        final at = all.indexOf(o);
+        if (at > 0) a = all[at - 1];
+        if (at + 1 < all.length) b = all[at + 1];
+      }
     }
+
     own = o;
     above = a;
     below = b;
@@ -604,7 +628,9 @@ SkeletonPlan planSkeleton(
   // overlaps a card's top edge keeps nothing.
   bool kept(_Unit u) => dim == null
       ? legible.any((k) => k.overlaps(u.bounds))
-      : keep.any((k) => k.overlaps(u.bounds) && (u.bounds.contains(k.center) || k.contains(u.bounds.center))) ||
+      : keep.any((k) => dim.focusObject != null && k == dim.focus
+          ? _unitOwnsBox(u, dim.focusObject!)
+          : k.overlaps(u.bounds) && (u.bounds.contains(k.center) || k.contains(u.bounds.center))) ||
           chrome.any((c) => c.contains(u.bounds.center));
   final skeletonized = [
     for (final u in units)
@@ -654,6 +680,28 @@ List<SkeletonShape> skeletonOfParagraph(RenderParagraph paragraph, Color scaffol
   if (unit == null) return const [];
   return [for (final d in unit.drafts) SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: 0)];
 }
+
+/// The opaque surface already painted beneath an element. No fill is added.
+Color placeholderSurfaceOf(Element element, Color fallback) {
+  final layers = <Color>[];
+  element.visitAncestorElements((a) {
+    final w = a.widget;
+    final color = w is DecoratedBox && w.decoration is BoxDecoration
+        ? (w.decoration as BoxDecoration).color : w is ColoredBox ? w.color : null;
+    if (color != null) layers.add(color);
+    return color == null || color.a < 1;
+  });
+  var color = fallback;
+  for (final layer in layers.reversed) { color = Color.alphaBlend(layer, color); }
+  return color;
+}
+
+/// Difference-white at kPlaceholderStrength, evaluated before the shared value
+/// pulse. This keeps each surface's tone without repainting its background.
+Color placeholderBarColor(Color surface) => Color.from(alpha: 1,
+  red: surface.r + kPlaceholderStrength * (1 - 2 * surface.r),
+  green: surface.g + kPlaceholderStrength * (1 - 2 * surface.g),
+  blue: surface.b + kPlaceholderStrength * (1 - 2 * surface.b));
 
 /// How strongly a placeholder bar or block darkens or lightens what is under it: it is
 /// painted with [BlendMode.difference] against white, so the tone comes from the unit's

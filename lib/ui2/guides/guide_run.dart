@@ -137,8 +137,9 @@ class GuideRun extends ChangeNotifier {
       } else {
         final pending = _lastIndex ?? 0;
         final node = variant.steps[pending].node!;
-        if (location != null && GuideNavigation.onPath(location, node))
+        if (location != null && GuideNavigation.onPath(location, node)) {
           index = pending;
+        }
       }
     } else {
       index = matchStep(variant, topPage, l);

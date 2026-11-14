@@ -60,9 +60,9 @@ final _rules = <_Rule>[
   _Rule(
     'infinite .repeat()',
     RegExp(r'\.repeat\s*\('),
-    'A loop that never ends cannot be stopped by the reduced-motion gate. '
-        'Drive ambient motion from a caller-owned phase value instead — see '
-        'BreathRing.t.',
+    'Ambient loops belong to Motion, which owns their reduced-motion gate. '
+        'Callers own their phase and lifetime.',
+    allow: {_tokenFile},
   ),
   _Rule(
     'ungated Duration(',

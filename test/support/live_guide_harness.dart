@@ -207,7 +207,7 @@ void tolerateKnownNextOverflows() {
 bool isKnownNextOverflow(FlutterErrorDetails details) {
   final text = details.toString();
   return text.contains('RenderFlex overflowed') &&
-      (text.contains('sync_control.dart:1020:') || text.contains('workout_screen.dart:374:'));
+      (text.contains('sync_control.dart:1020:') || text.contains('workout_screen.dart:382:'));
 }
 
 /// Mounts [home] (default: the real [AppMainShell]) under the providers the

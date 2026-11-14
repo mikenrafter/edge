@@ -83,11 +83,19 @@ class R2Fixture {
           Expanded(child: Pressable(key: r2Sibling, onTap: () => alternatives++,
             child: const Surface(child: Text('Sibling'))))])
         : targetControl),
+      if (lookalike) ...[
+      Positioned(top: lookalike ? y + 60 : 310, left: 16, right: 16, child: GestureDetector(key: r2Alternative, behavior: HitTestBehavior.opaque,
+        onTap: () => alternatives++, onLongPress: () => longPresses++,
+        onDoubleTap: () => doubleTaps++, onVerticalDragUpdate: (_) => dragUpdates++, child: Surface(child: Text(lookalike ? 'Target option' : 'Alternative')))),
+      Positioned(top: 220, left: 16, right: 16, child: Surface(key: r2Quiet,
+        color: const Color(0xff7040a0), child: Text(quietLabel, style: const TextStyle(color: Colors.white)))),
+      ] else ...[
       Positioned(top: 220, left: 16, right: 16, child: Surface(key: r2Quiet,
         color: const Color(0xff7040a0), child: Text(quietLabel, style: const TextStyle(color: Colors.white)))),
       Positioned(top: lookalike ? y + 60 : 310, left: 16, right: 16, child: GestureDetector(key: r2Alternative, behavior: HitTestBehavior.opaque,
         onTap: () => alternatives++, onLongPress: () => longPresses++,
         onDoubleTap: () => doubleTaps++, onVerticalDragUpdate: (_) => dragUpdates++, child: Surface(child: Text(lookalike ? 'Target option' : 'Alternative')))),
+      ],
       const Positioned(top: 390, left: 16, right: 16, child: Section('Details', Surface(child: Text('Read this context')), key: r2Details)),
       // Two look-alike cards with a body (they share "Target" with the label): a skeleton
       // card keeps its heading, dimmed, at the top-left; the body lines are bars.

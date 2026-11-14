@@ -10,6 +10,7 @@ import 'skeleton.dart';
 
 class GuidePlaceholderPaint {
   final Set<RenderParagraph> paragraphs;
+  final Map<RenderParagraph, Color> inks;
   final Set<RenderParagraph> hidden;
   final Set<RenderCustomPaint> plots;
   final Set<RenderCustomPaint> framePaint;
@@ -18,6 +19,7 @@ class GuidePlaceholderPaint {
   final double fade, pulse;
   GuidePlaceholderPaint._(
     this.paragraphs,
+    this.inks,
     this.hidden,
     this.plots,
     this.framePaint,
@@ -33,6 +35,7 @@ class GuidePlaceholderPaint {
     required double pulse,
   }) {
     final paragraphs = <RenderParagraph>{};
+    final inks = <RenderParagraph, Color>{};
     final hidden = <RenderParagraph>{};
     final plots = <RenderCustomPaint>{};
     final framePaint = <RenderCustomPaint>{};
@@ -48,8 +51,9 @@ class GuidePlaceholderPaint {
         return; // axes/labels belong to the plot too
       }
       if (ro is RenderCustomPaint &&
-          e.findAncestorWidgetOfExactType<ChartFrame>() != null)
+          e.findAncestorWidgetOfExactType<ChartFrame>() != null) {
         framePaint.add(ro);
+      }
       if (ro is RenderParagraph) {
         final frame = e.findAncestorWidgetOfExactType<ChartFrame>();
         if (frame != null && ro.text.toPlainText() != frame.title) {
@@ -57,6 +61,7 @@ class GuidePlaceholderPaint {
           return;
         }
         paragraphs.add(ro);
+        inks[ro] = placeholderBarColor(placeholderSurfaceOf(e, paletteOf(unit).bg));
         return;
       }
       e.debugVisitOnstageChildren(visit);
@@ -65,6 +70,7 @@ class GuidePlaceholderPaint {
     visit(unit);
     return GuidePlaceholderPaint._(
       paragraphs,
+      inks,
       hidden,
       plots,
       framePaint,
@@ -82,6 +88,7 @@ class GuidePlaceholderPaint {
     required double pulse,
   }) => GuidePlaceholderPaint._(
     paragraphs,
+    {for (final p in paragraphs) p: placeholderBarColor(palette.bg)},
     {},
     {},
     {},
@@ -100,8 +107,7 @@ class GuidePlaceholderPaint {
     final layer = OffsetLayer();
     context.pushLayer(layer, (_, at) {
       final content = _PlaceholderContext(layer, at & size, this);
-      content.paintChild(child, at);
-      content.stopRecordingIfNeeded();
+      content.paintContents(child, at);
     }, offset);
   }
 }
@@ -116,6 +122,14 @@ class _PlaceholderContext extends PaintingContext {
     super.estimatedBounds,
     this.treatment,
   );
+
+  void paintContents(RenderBox child, Offset offset) {
+    try {
+      paintChild(child, offset);
+    } finally {
+      stopRecordingIfNeeded();
+    }
+  }
 
   @override
   PaintingContext createChildContext(ContainerLayer childLayer, Rect bounds) =>
@@ -134,8 +148,7 @@ class _PlaceholderContext extends PaintingContext {
         super.paintChild(child, offset);
         canvas.restore();
       } else {
-        final textColor = HSVColor.fromColor(child.text.style?.color ?? t.palette.ink3);
-        final pigment = textColor.withValue(textColor.value * .6).toColor();
+        final pigment = t.inks[child] ?? placeholderBarColor(t.palette.bg);
         final shapes = skeletonOfParagraph(child, t.palette.bg);
         canvas.save();
         canvas.translate(offset.dx, offset.dy);

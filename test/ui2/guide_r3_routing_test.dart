@@ -9,7 +9,6 @@ import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import '../support/guide_r2_scenes.dart';
-import '../support/guide_r2_manifest.dart';
 import '../support/live_guide_harness.dart';
 
 LiveGuideOverlayState _overlay(WidgetTester t) => t.state(find.byType(LiveGuideOverlay));

@@ -90,7 +90,7 @@ void main() {
     await page.pump(t);
     final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
     final old = t.getRect(find.byKey(_skeleton));
-    expect(overlay.paintedShapes.any((s) => s.kind.name == 'surface' && s.rect.overlaps(old)), isTrue);
+    expect(overlay.paintedShapes.any((s) => s.kind.name == 'bar' && s.rect.overlaps(old)), isTrue);
     final before = overlay.planningCount;
     var sampled = false;
     // This callback runs after layout/paint and before post-frame planning. Dispatch real input there.

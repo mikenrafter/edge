@@ -239,12 +239,19 @@ void main() {
       expect(t.takeException(), isNull);
     });
 
-    testWidgets('an idle guide schedules no frames', (t) async {
-      // why: the overlay re-plans after each frame; the loop must settle
-      // (PR 1 'markers follow layout' made the same promise for the frame view).
+    testWidgets('an idle guide pulses without moving the card or replanning', (t) async {
+      // WHY: the owner's pulse needs frames, while idle geometry stays stable.
+      // # catches: replanning or moving the instruction card on every pulse tick.
       await pumpLiveStage(t);
       await _settleReveal(t);
-      await t.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
+      final overlay = _overlay(t);
+      final plans = overlay.planningCount;
+      final card = t.getRect(find.byKey(GuideStepCard.cardKey));
+      await t.pump(const Duration(milliseconds: 400));
+      await t.pump(const Duration(milliseconds: 400));
+      expect(t.binding.hasScheduledFrame, isTrue, reason: 'the shared pulse keeps repainting');
+      expect(overlay.planningCount, lessThanOrEqualTo(plans + 1));
+      expect(t.getRect(find.byKey(GuideStepCard.cardKey)), card);
     });
   });
 

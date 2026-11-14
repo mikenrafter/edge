@@ -22,22 +22,21 @@ void main() {
   tearDownAll(LocalDb.close);
 
   for (final id in ['log-past-workout', 'delete-workout']) {
-    // WHY: input per layer holds for EVERY guide (structural r2): the Start card is a
-    // LARGE unit, so it is dimmed (clickable) rather than skeleton (blocked); its tap
-    // navigates for real, once, and the run goes off path. The old rule kept
-    // delete-workout on blocking legacy skeletons.
-    // # catches: a legacy-look guide that still blocks dimmed content, a large card
-    // skeletonized and therefore dead, or W2 redirect.
-    // proves: CLAIM(overlay-pass-through).
-    testWidgets('r2 $id painted Start card opens the picker and goes off path', (t) async {
+    // WHY: on a tab/sub-tab target every content card is a placeholder.
+    // # catches: retaining the old large-card dim exception or leaking a real tap.
+    testWidgets('r3 $id navigation target makes Start card a noninteractive placeholder', (t) async {
       final m = await pumpR2Scene(t, r2Scenes.firstWhere((s) => s.guide == id && s.step == 'open-history'));
       try {
         await settleLiveGuide(t, frames: 18);
         await t.tap(find.text(r2Locale.workoutStartSessionLabel));
         await settleLiveGuide(t, frames: 16);
-        expect(find.byType(ActivityPicker), findsOneWidget, reason: 'dimmed Start-card navigation happened');
-        expect(m.run.state, isA<GuideOffPath>());
-        expect(find.byKey(GuideStepCard.offPathKey), findsOneWidget);
+        expect(find.byType(ActivityPicker), findsNothing);
+        expect(m.run.currentStep?.id, 'open-history');
+        m.removeOverlay();
+        await t.pump();
+        await t.tap(find.text(r2Locale.workoutStartSessionLabel));
+        await settleLiveGuide(t, frames: 16);
+        expect(find.byType(ActivityPicker), findsOneWidget, reason: 'the original control works after the guide ends');
       } finally { await disposeR2(t, m); }
     });
   }

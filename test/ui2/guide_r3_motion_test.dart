@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:openstrap_edge/ui2/grammar.dart' show Surface;
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
@@ -38,6 +39,19 @@ void main() {
     }
   });
 
+  // WHY: the shared ambient loop is permitted only behind the motion policy gate.
+  // # catches: a token-owned loop that keeps ticking after reduced motion is enabled.
+  testWidgets('F: motion policy stops the shared clock when motion is disabled', (t) async {
+    final clock = AnimationController(vsync: t, duration: kGuidePulseDuration);
+    addTearDown(clock.dispose);
+    Motion.configureGuidePulse(clock, enabled: true);
+    expect(clock.isAnimating, isTrue);
+    await t.pump(const Duration(milliseconds: 400));
+    Motion.configureGuidePulse(clock, enabled: false);
+    expect(clock.isAnimating, isFalse);
+    expect(guidePulseValue(clock.value), 1);
+  });
+
   // WHY: the card holds its place until a scrolling target collides; movement
   // completes before opacity is restored, within the owner's 800ms budget.
   // proves: CLAIM(guide-card-motion).
@@ -68,6 +82,20 @@ void main() {
     at(1200, 250);
     expect(m.top, 250, reason: 'next step starts a new held position');
   });
+  // WHY: reduced motion stops the pulse clock, so card recovery must not wait on it.
+  // # catches: a permanently faded card when the animation clock is disabled.
+  test('G: reduced motion holds during scroll then recovers without a ticking clock', () {
+    final m = GuideCardMotion();
+    m.place(500, scrolling: false, collision: false, elapsed: Duration.zero, animate: false);
+    m.place(80, scrolling: true, collision: true, elapsed: Duration.zero, animate: false);
+    expect(m.top, 500);
+    expect(m.opacity, .2);
+    m.place(80, scrolling: false, collision: true, elapsed: Duration.zero, animate: false);
+    expect(m.top, 80);
+    expect(m.opacity, 1);
+    expect(m.isAnimating, isFalse);
+  });
+
   // WHY: the instruction must stand out on the unchanged card surfaces below it.
   // # catches: a flat material or a thick/non-theme border.
   testWidgets('G: instruction has a one pixel theme outline and medium shadow', (t) async {
@@ -110,6 +138,23 @@ void main() {
     await t.pump();
     expect(t.getRect(card).top, closeTo(moved, 1));
     expect(opacity(), 1);
+  });
+
+  // WHY: scrolling a built target away cannot change a partly visible sibling's
+  // layout-window treatment. P6 is for a target not built yet, not this unit.
+  // # catches: collapsing all built cards when the target crosses a viewport edge.
+  testWidgets('E: a partially clipped neighbour stays dim when the built target scrolls away', (t) async {
+    final fixture = R2ScrollFixture();
+    await fixture.pump(t);
+    final below = find.ancestor(of: find.text('Later information 0'), matching: find.byType(Surface)).first;
+    final element = t.element(below);
+    expect(fixture.dim.looks!.lookOf(element), GuideUnitLook.dim);
+    fixture.controller.jumpTo(655);
+    for (var i = 0; i < 4; i++) { await t.pump(const Duration(milliseconds: 100)); }
+    final rect = t.getRect(below);
+    expect(rect.top, lessThan(0));
+    expect(rect.bottom, greaterThan(0));
+    expect(fixture.dim.looks!.lookOf(element), GuideUnitLook.dim);
   });
 
 }

@@ -13,9 +13,8 @@
 //   4. scrolls a lazy target into view ([revealTarget]) and shows the scroll
 //      marker on `scrollThenTap` steps.
 //
-// Input: a tap on the target goes THROUGH to the real control (it does exactly
-// what it always does, confirmation dialogs included); every other tap on the
-// page is absorbed; the card's buttons work; Android system Back and the
+// Input: lit and dimmed units pass the original tap to the real control once.
+// Placeholder units absorb activation and hand vertical drags to the page; the card's buttons work; Android system Back and the
 // NavBar arrow work. Accepted limitation (S6): on step pages the shield absorbs
 // the iOS edge-swipe Back gesture. Use the NavBar arrow to leave those pages.
 // While a dialog / sheet / picker is on top the overlay is inert and draws nothing, so
@@ -25,8 +24,8 @@
 // node "Guide target: <caption>" that performs the tap; covered content stays
 // in the semantics tree (foreign semantics cannot be excluded).
 //
-// CLAIM(overlay-pass-through): the target's tap reaches the real control; other
-// taps on the page do not [live_guide_overlay_test 'pointer rules'].
+// CLAIM(overlay-pass-through): lit/dimmed controls receive the original tap once;
+// placeholders absorb activation [live_guide_overlay_test 'pointer rules'].
 // CLAIM(overlay-yields-to-dialogs): with a dialog on top the overlay neither
 // absorbs taps nor changes the run's state
 // [live_guide_overlay_test 'a dialog on top is not leaving the path'].
@@ -104,7 +103,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   late final AnimationController _reveal;
   late final AnimationController _pulse;
   final _cardMotion = GuideCardMotion();
-  final _cardOpacity = ValueNotifier<double>(1);
+  final _cardOpacity = _CardOpacity();
   Duration get _elapsed => _pulse.lastElapsedDuration ?? Duration.zero;
   bool get _scrolling => _watchedScrolls.any((p) => p.isScrollingNotifier.value);
 
@@ -175,12 +174,10 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     if (layer is! RenderBox || looks == null || page == null || _yieldNow) return const [];
     final ink = <Rect>[];
     void add(RenderBox box, List<SkeletonShape> shapes) {
-      for (final shape in shapes) {
-        if (shape.kind == SkeletonKind.dim || shape.kind == SkeletonKind.heading || shape.kind == SkeletonKind.icon) continue;
-        final visible = rectInRoot(box, layer, shape.rect).intersect(visibleBoundsInRoot(box, layer));
-        if (!visible.isEmpty) ink.add(visible);
-      }
+      final visible = rectInRoot(box, layer).intersect(visibleBoundsInRoot(box, layer));
+      if (!visible.isEmpty) ink.add(visible);
     }
+
     void visit(Element element) {
       final box = laidOutBox(element);
       if (_paintsItself(element.widget) || isGuideControl(element.widget)) {
@@ -284,18 +281,16 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     _watchedScrolls..clear()..addAll(next);
   }
 
-  /// P6 (dim look): the target is off screen or not built, so the way to it
-  /// shows at once (no progressive reveal) with the scroll marker.
+  /// P6: a target not built yet collapses the way to it. A built target keeps
+  /// its layout window as it scrolls away, so clipped units never change look.
   bool get _collapsed {
-    final t = _liveTarget;
-    return _step != null && (t == null ? _lazyTarget : !_onScreen(t, Offset.zero & _viewport));
+    return _step != null && _liveTarget == null && _lazyTarget;
   }
 
   /// The step's target is not built yet but a scrollable could build it ([TargetNotBuilt]):
   /// the way to it lies in the scroll. A target that is absent or ambiguous is not that:
   /// there is nothing to scroll to, so nothing is collapsed and no marker is shown.
   bool _lazyTarget = false;
-  Size _viewport = Size.zero;
 
   /// [t] counts as on screen when it lies within [v] vertically and at least half of its
   /// width does horizontally: a sub-tab half hidden by its row's own side scroll is
@@ -324,7 +319,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(vsync: this, duration: kGuidePulseDuration)..addListener(_pulsed)..repeat();
+    _pulse = AnimationController(vsync: this, duration: kGuidePulseDuration)..addListener(_pulsed);
     _reveal = AnimationController(vsync: this, duration: kGuideRevealDuration)..addListener(_changed);
     widget.run.addListener(_changed);
     widget.routes.addListener(_routeChanged);
@@ -336,6 +331,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   void didChangeDependencies() {
     super.didChangeDependencies();
     _reveal.duration = motion(context, kGuideRevealDuration);
+    Motion.configureGuidePulse(_pulse, enabled: Motion.enabled(context));
     final dim = GuideDimScope.controllerOf(context);
     if (!identical(dim, _dim)) {
       _unpublish();
@@ -442,7 +438,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
         ).where((c) => c.widget is Pressable && laidOutBox(c) != null).toList();
         if (index < controls.length) {
           backElement = controls[index];
-          back = rectOf(backElement!).intersect(visibleBoundsInRoot(laidOutBox(backElement!)!, root));
+          back = rectOf(backElement).intersect(visibleBoundsInRoot(laidOutBox(backElement)!, root));
           backIsTab = true;
         }
         break;
@@ -477,7 +473,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final route = back;
     final keepers = [?back];
     final plan = planSkeleton(page, keep: keepers, chrome: [?tabBar],
-        dim: DimPolicy(focus: back, placeholders: false, neighboursLit: true, navigationTarget: backIsTab));
+        dim: DimPolicy(focus: back, placeholders: false, neighboursLit: true, navigationTarget: backIsTab, focusObject: backElement == null ? null : laidOutBox(backElement)));
     final veil = scaffoldOf(page).withValues(alpha: kDimOpacity);
     final out = <SkeletonShape>[...plan.shapes];
     final units = <PlannedUnit>[...plan.units];
@@ -745,7 +741,6 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final targetNow = box != null && resolution is TargetFound
         ? MatrixUtils.transformRect(box.getTransformTo(layer), resolution.rect) : null;
     final viewport = Offset.zero & layer.size;
-    _viewport = layer.size;
     final outside = targetNow != null && !_onScreen(targetNow, viewport);
     // The page is revealed once per step, and again when LATE CONTENT moves the target
     // away (an async read lands above it). It is never re-revealed after the USER
@@ -816,8 +811,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
         final localChrome = defaultSkeletonChrome(page);
         chrome = localChrome.map(intoOverlay).toList();
         legible = [...legibleContent(page, keep: keep), ...status].map(intoOverlay).toList();
-        // P6: target (partly) off screen -> the content on screen collapses to skeleton.
-        final policy = outside ? const DimPolicy(skeletonAll: true) : DimPolicy.of(page, resolution);
+        // A built target's window belongs to layout, independently of clipping.
+        final policy = DimPolicy.of(page, resolution);
         skeleton = planSkeleton(page, keep: keep, chrome: localChrome, dim: policy);
         shapes = intoOverlayShapes(skeleton.shapes, transform);
       }
@@ -1047,7 +1042,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
         )),
         if (show) Positioned.fill(child: CustomMultiChildLayout(
           delegate: _GuideLayout(bounds, target != null ? outline : routeMarked ? routeOutline : target ?? (offscreen ? Rect.fromLTWH(bounds.center.dx, bounds.bottom + 10, 1, 1) : null),
-            _legible, _cardFraction, _cardGeometry, true, _cardMotion, _elapsed, _scrolling, _cardOpacity),
+            _legible, _cardFraction, _cardGeometry, true, _cardMotion, _elapsed, _scrolling, _cardOpacity, Motion.enabled(context)),
           children: [
             LayoutId(id: 'card', child: ValueListenableBuilder<double>(valueListenable: _cardOpacity, builder: (_, value, child) => Opacity(opacity: value, child: child), child: _cardMover(GuideStepCard(model: model, onExit: widget.onExit,
               onBackToGuide: state is GuideOffPath && state.lastIndex != null ? widget.onBackToGuide : null), l))),
@@ -1107,6 +1102,22 @@ class _CardGeometry {
   Rect? bounds;
 }
 
+// Owns deferred opacity publication and ignores it after disposal/listener removal.
+class _CardOpacity extends ValueNotifier<double> {
+  _CardOpacity() : super(1);
+  double _pending = 1;
+  bool _scheduled = false;
+  void afterLayout(double next) {
+    _pending = next;
+    if (_scheduled || next == value) return;
+    _scheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _scheduled = false;
+      if (hasListeners) value = _pending;
+    });
+  }
+}
+
 class _GuideLayout extends MultiChildLayoutDelegate {
   final Rect bounds;
   final Rect? target;
@@ -1117,8 +1128,9 @@ class _GuideLayout extends MultiChildLayoutDelegate {
   final GuideCardMotion cardMotion;
   final Duration elapsed;
   final bool scrolling;
-  final ValueNotifier<double> opacity;
-  _GuideLayout(this.bounds, this.target, this.avoid, this.fraction, this.geometry, this.seekGap, this.cardMotion, this.elapsed, this.scrolling, this.opacity);
+  final _CardOpacity opacity;
+  final bool animate;
+  _GuideLayout(this.bounds, this.target, this.avoid, this.fraction, this.geometry, this.seekGap, this.cardMotion, this.elapsed, this.scrolling, this.opacity, this.animate);
   @override
   void performLayout(Size size) {
     Rect? pill;
@@ -1147,15 +1159,12 @@ class _GuideLayout extends MultiChildLayoutDelegate {
     final held = cardMotion.top;
     final heldRect = held == null ? null : Rect.fromLTWH(card.left, held, cardSize.width, cardSize.height);
     final collision = heldRect != null && keep.any((r) => r.overlaps(heldRect));
-    cardMotion.place(card.top, scrolling: scrolling, collision: collision, elapsed: elapsed);
+    cardMotion.place(card.top, scrolling: scrolling, collision: collision, elapsed: elapsed, animate: animate);
     final top = cardMotion.top!.clamp(lower, upper);
     final placed = Rect.fromLTWH(card.left, top, cardSize.width, cardSize.height);
     positionChild('card', placed.topLeft);
     // Opacity changes after layout so it cannot rebuild during this layout pass.
-    if (opacity.value != cardMotion.opacity) {
-      final value = cardMotion.opacity;
-      SchedulerBinding.instance.addPostFrameCallback((_) { if (opacity.hasListeners) opacity.value = value; });
-    }
+    opacity.afterLayout(cardMotion.opacity);
     geometry..top = top..lower = lower..upper = upper..step = math.max(40, (upper - lower) / 5);
     if (hasChild('scroll')) {
       final markerSize = layoutChild('scroll', BoxConstraints.loose(bounds.size));
@@ -1165,7 +1174,7 @@ class _GuideLayout extends MultiChildLayoutDelegate {
   }
   @override
   bool shouldRelayout(_GuideLayout old) => bounds != old.bounds || target != old.target ||
-      !listEquals(avoid, old.avoid) || fraction != old.fraction || scrolling != old.scrolling || elapsed != old.elapsed;
+      !listEquals(avoid, old.avoid) || fraction != old.fraction || scrolling != old.scrolling || elapsed != old.elapsed || animate != old.animate;
 }
 
 /// What the overlay's input and paint layer reads at paint and hit-test time, so a

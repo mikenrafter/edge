@@ -49,6 +49,21 @@ void main() {
     expect(_look(t, plan, 'far'), GuideUnitLook.skeleton);
   });
 
+  // WHY: another layout sibling may paint over the same coordinates, but it
+  // cannot become the target's own card.
+  // # catches: finding the target's owner by rectangle containment.
+  testWidgets('B: overlapping sibling paint does not change target ownership', (t) async {
+    await _pump(t, Column(key: _root, children: [
+      Transform.translate(offset: const Offset(0, 64), child: _card('above')),
+      _card('own', body: const Text('Target', key: _target)), _card('below'),
+    ]));
+    expect(t.getRect(find.byKey(const ValueKey('above'))).overlaps(t.getRect(find.byKey(const ValueKey('own')))), isTrue);
+    final plan = _plan(t);
+    expect(_look(t, plan, 'own'), isNull);
+    expect(_look(t, plan, 'above'), GuideUnitLook.dim);
+    expect(_look(t, plan, 'below'), GuideUnitLook.dim);
+  });
+
   // WHY: a lazy page has no outer Column, and a one-card wrapper does not
   // define its neighbours. The ListView is the ordering layout.
   // # catches: stopping at an incidental one-card Column above a lazy list.
@@ -66,6 +81,18 @@ void main() {
     expect(_look(t, plan, 'far'), GuideUnitLook.skeleton);
   });
 
+  // WHY: a route-back arrow is in a header, whose next layout sibling is a card.
+  // # catches: treating every non-card focus as having no card neighbours.
+  testWidgets('B: a NavBar focus keeps its next card sibling lit off path', (t) async {
+    await _pump(t, Column(key: _root, children: [const NavBar('Detour'), _card('first'), _card('second')]));
+    final root = t.element(find.byKey(_root));
+    final arrow = find.descendant(of: find.byType(NavBar), matching: find.byType(Pressable)).first;
+    final focus = t.getRect(arrow);
+    final plan = planSkeleton(root, keep: [focus], dim: DimPolicy(focus: focus, placeholders: false, neighboursLit: true));
+    expect(_look(t, plan, 'first'), isNull);
+    expect(_look(t, plan, 'second'), GuideUnitLook.dim);
+  });
+
   // WHY: a navigation target has no content-card window.
   // # catches: keeping the first card below the sub-tabs dimmed.
   testWidgets('B: a sub-tab target makes every content card a placeholder', (t) async {
@@ -77,6 +104,21 @@ void main() {
     for (final id in ['first', 'second', 'third']) {
       expect(_look(t, plan, id), GuideUnitLook.skeleton, reason: id);
     }
+  });
+
+  // WHY: tab identity survives clipping; a tab's centre may be outside its viewport.
+  // # catches: identifying navigation by rectangle containment instead of ancestry.
+  testWidgets('B: a clipped sub-tab target still makes every card a placeholder', (t) async {
+    t.view.physicalSize = const Size(180, 600);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await _pump(t, Column(key: _root, children: [
+      const SubTabs(['Overview', 'History'], 0, _ignore, itemKeys: [null, _target]),
+      _card('first'), _card('second'),
+    ]));
+    final plan = _plan(t);
+    expect(_look(t, plan, 'first'), GuideUnitLook.skeleton);
+    expect(_look(t, plan, 'second'), GuideUnitLook.skeleton);
   });
 
   // WHY: original surfaces, icons and images survive the placeholder treatment.

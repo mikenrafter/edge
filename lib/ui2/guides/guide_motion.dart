@@ -2,8 +2,9 @@
 // module owns only presentation state, never navigation or app data.
 import 'dart:math' as math;
 import 'package:flutter/animation.dart';
+import '../theme.dart' show Motion;
 
-const kGuidePulseDuration = Duration(milliseconds: 1600);
+const kGuidePulseDuration = Motion.guidePulse;
 
 // CLAIM(guide-pulse): value +/-8%, one smooth full cycle every 1.6s; callers
 // multiply HSV value only [guide_r3_motion_test].
@@ -32,7 +33,20 @@ class GuideCardMotion {
     required bool scrolling,
     required bool collision,
     required Duration elapsed,
+    bool animate = true,
   }) {
+    if (!animate) {
+      top ??= desired;
+      if (scrolling) {
+        if (collision) { opacity = .2; _pending = true; }
+      } else {
+        if (_pending || collision) top = desired;
+        opacity = 1;
+        _pending = false;
+        _started = null;
+      }
+      return;
+    }
     if (top == null) {
       top = desired;
       return;
