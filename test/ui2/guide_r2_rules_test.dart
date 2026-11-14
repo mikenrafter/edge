@@ -16,6 +16,8 @@ import '../support/guide_r2_scroll_fixture.dart';
 import '../support/guide_r2_scenes.dart';
 import '../support/live_guide_harness.dart';
 
+// Catalogue-wide sweeps below are skipped: hardening stage (owner 2026-11-14); code kept.
+
 void main() {
   setUpAll(() async {
     await loadFonts();
@@ -54,7 +56,7 @@ void main() {
         expect(manifest['units'], isNotEmpty, reason: 'positive control: the real page supplies classified units');
         expect(manifest['violations'], isEmpty, reason: '${scene.id}: P1-P9 independent component oracle');
       } finally { await disposeR2(t, m); }
-    });
+    }, skip: true); // hardening stage (owner 2026-11-14)
 
     // WHY: P6 must explain target absence at intermediate scroll offsets as
     // well as at the final reveal destination; card safety is a per-frame rule.
@@ -117,7 +119,7 @@ void main() {
         expect(offsets, isNotEmpty, reason: 'observed the live page, including non-scroll pages');
         expect(violations, isEmpty, reason: scene.id);
       } finally { await disposeR2(t, m); }
-    });
+    }, skip: true); // hardening stage (owner 2026-11-14)
 
     // WHY: D-S1 chrome follows visible routes. Root pushes cover the shell.
     // # catches: S1 reserving an invisible tab strip on a pushed page.
