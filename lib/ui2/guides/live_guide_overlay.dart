@@ -6,10 +6,10 @@
 //      sheet or picker is on top),
 //   2. lets the run match a step by anchor ([GuideRun.observe]),
 //   3. plans the skeleton over that subtree (the same [skeletonPlan] as
-//      PR 1: keep = the step's target + alsoKeep + chrome) and paints it in the
-//      overlay's own coordinates, progressively: whole sections fade to
-//      skeleton from the top over [kGuideRevealDuration], then the outline and
-//      the pill appear,
+//      PR 1: keep = the step's target + alsoKeep + chrome) by the owner's
+//      placeholder rule (the card above and below the target's card dimmed, the rest
+//      placeholder; see [DimPolicy]). Placeholders show at once; the dim fades in
+//      linearly over [kGuideRevealDuration], then the outline and the pill appear,
 //   4. scrolls a lazy target into view ([revealTarget]) and shows the scroll
 //      marker on `scrollThenTap` steps.
 //
@@ -48,7 +48,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_shell.dart' show AppShell;
-import '../grammar.dart' show NavBar, Pressable, ScreenTitle, Section, Surface;
+import '../grammar.dart' show NavBar, Pressable, ScreenTitle;
 import '../theme.dart';
 import 'guide.dart';
 import 'guide_markers.dart';
@@ -199,11 +199,13 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   }
   @override
   Set<int> get layerStatic => _staticSections;
+  @override
+  double get layerFade => _reveal.value;
 
   @visibleForTesting
   List<SkeletonShape> get paintedShapes {
     if (_yielding) return const [];
-    final shapes = _collapsed ? _shapes : revealedShapes(_shapes, revealProgress);
+    final shapes = _shapes; // placeholders at once; only the dim fades ([_publish])
     // A scroll since the plan moved the target; no ink may lie over it meanwhile.
     final target = _liveTarget;
     if (target == null || target == _target) return shapes;
@@ -424,7 +426,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     }
     final route = back;
     final keepers = [?back];
-    final plan = planSkeleton(page, keep: keepers, chrome: [?tabBar], dim: const DimPolicy());
+    final plan = planSkeleton(page, keep: keepers, chrome: [?tabBar],
+        dim: DimPolicy(focus: back, placeholders: false, neighboursLit: true));
     final veil = scaffoldOf(page).withValues(alpha: kDimOpacity);
     final out = <SkeletonShape>[...plan.shapes];
     final units = <PlannedUnit>[...plan.units];
@@ -682,6 +685,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       _revealedPage = null;
       _revealedStep = null;
       _reveal.stop();
+      if (_reveal.value != 1) _reveal.value = 1; // off path: the dim is there at full strength
     }
     final box = page == null ? null : laidOutBox(page);
     final resolution = page == null || step == null ? null : step.target.resolve(page, l);
@@ -841,7 +845,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   }
 
   /// True for a component that wraps itself in a [GuideUnitMark].
-  static bool _paintsItself(Widget w) => w is Surface || w is Section || w is Pressable;
+  static bool _paintsItself(Widget w) => isGuideComponent(w);
 
   /// Hands the plan to the components (they repaint themselves; nothing rebuilds).
   /// Equal plans notify nobody ([GuideDimController.setLooks]).
@@ -853,12 +857,13 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       _unpublish();
       return;
     }
-    final units = plan.shapes.isEmpty ? 0 : plan.shapes.last.section + 1;
-    final shown = _collapsed ? null : (revealProgress.clamp(0.0, 1.0) * units).floor();
-    final next = GuidePlan.from(_page, plan,
-      keep: _keepBoxes, skeletonAll: _collapsed, revealed: shown);
+    final next = GuidePlan.from(_page, plan, keep: _keepBoxes, skeletonAll: _collapsed);
     _published = next;
     dim.setLooks(next);
+    // CLAIM(dim-fade-linear): the placeholders are there at once; the dim ramps 0 -> 1
+    // linearly over [kGuideRevealDuration] per step [live_guide_overlay_test 'the dim fades in'].
+    dim.setFade(_reveal.value);
+    if (_staticSections.isNotEmpty) _staticTick.value++;
     // The controller keeps the plan in force when [next] equals it.
     _published = dim.looks is GuidePlan ? dim.looks as GuidePlan : next;
   }
@@ -1082,6 +1087,7 @@ class _GuideLayout extends MultiChildLayoutDelegate {
 abstract interface class _GuideLayerSource {
   List<SkeletonShape> get layerShapes;
   List<Rect> get layerHoles;
+  double get layerFade;
   Set<int> get layerStatic;
   List<Rect> get layerInk;
 }
@@ -1096,7 +1102,8 @@ class _GuidePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final painted = source.layerStatic;
     if (painted.isEmpty) return;
-    paintSkeletonShapes(canvas, [for (final s in source.layerShapes) if (painted.contains(s.section)) s], palette);
+    paintSkeletonShapes(canvas, [for (final s in source.layerShapes) if (painted.contains(s.section)) s], palette,
+        fade: source.layerFade);
   }
 
   @override

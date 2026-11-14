@@ -61,8 +61,8 @@ void main() {
 const _nearby = ValueKey('t2-nearby');
 const _dimmed = ValueKey('t2-dimmed');
 
-/// A scrolling page under the shipped overlay: the target on top, a skeleton row near it, a
-/// dimmed control farther down (beyond skeleton reach).
+/// A scrolling page under the shipped overlay: a placeholder card two cards before the target's
+/// card, a dimmed card right above it.
 class _DragPage {
   final scroll = ScrollController();
   final dim = GuideDimController();
@@ -81,12 +81,19 @@ class _DragPage {
       theme: buildTheme(Brightness.light), localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(body: Stack(children: [
-        Positioned(top: 16, left: 16, child: Pressable(key: _control, onTap: () {}, child: const Text('Target'))),
+        // The topmost text line is live status (kept lit): a title keeps the "Nearby" card out of that.
+        const Positioned(top: 16, left: 16, child: Text('Page title')),
         Positioned(top: 80, left: 16, right: 16, bottom: 0, child: SingleChildScrollView(controller: scroll,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // Window rule: the target's card is the 4th; "Different" is right above it (dimmed);
+            // "Nearby" is two cards before the window (a placeholder).
             Pressable(key: _nearby, onTap: () => nearbyTaps++, child: const Surface(child: Text('Nearby'))),
-            const SizedBox(height: 120),
+            const SizedBox(height: 60),
+            const Surface(child: Text('Filler card')),
+            const SizedBox(height: 12),
             Pressable(key: _dimmed, onTap: () => dimmedTaps++, child: const Surface(child: Text('Different'))),
+            const SizedBox(height: 12),
+            Surface(child: Pressable(key: _control, onTap: () {}, child: const Text('Target'))),
             const SizedBox(height: 1400),
           ]))),
       ])))));

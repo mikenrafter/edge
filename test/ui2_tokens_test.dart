@@ -202,6 +202,10 @@ const _notComponents = {
   // wrapper and a 1 px line under ScreenTitle); nothing to look at. Pumped
   // in test/layout_shift/probe_shared_slot_test.dart and the tabs test.
   'SharedSlot', 'ContentTopMarker',
+  // A guide-unit marker around a box the caller already draws (the day selector bar, an
+  // accordion card): a plain proxy with no pixel, layout or semantics of its own. Pumped in
+  // test/ui2/guide_r2_window_test.dart and guide_phone_feedback_test.dart.
+  'GuideBox',
   // An invisible leading-edge gesture strip; nothing to look at. Pumped in
   // test/apk2_timeline_layout_test.dart (the iOS swipe asks before leaving).
   'EdgeSwipeBack',

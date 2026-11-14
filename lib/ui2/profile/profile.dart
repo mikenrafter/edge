@@ -300,7 +300,7 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
       // The card is drawn here rather than by Surface, which wraps its child in
       // an inert Pressable: the first Pressable inside an accordion is its
       // header, the only control a tap or a screen reader should find first.
-      child: Container(
+      child: GuideBox(card: true, child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: S.x4),
         decoration: BoxDecoration(
@@ -340,7 +340,7 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
               row,
             ],
         ]),
-      ),
+      )),
     );
   }
 }

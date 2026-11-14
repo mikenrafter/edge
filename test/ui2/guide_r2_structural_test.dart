@@ -116,46 +116,6 @@ void main() {
   });
   tearDownAll(LocalDb.close);
 
-  group('large cards are dimmed, not skeleton', () {
-    // WHY: owner complaint: the Start-session card on Activity > History turned into a grey
-    // block. "Large" must be one named, testable rule.
-    // # catches: a missing/changed threshold, `>=` instead of `>`, a width rule that would
-    // turn full-width one-row controls dim.
-    test('r2 isLargeUnit: taller than kLargeUnitHeight, width never counts', () {
-      expect(kLargeUnitHeight, 120.0);
-      expect(isLargeUnit(Rect.fromLTWH(0, 0, 380, kLargeUnitHeight)), isFalse, reason: 'exactly at the limit is not large');
-      expect(isLargeUnit(Rect.fromLTWH(0, 0, 380, kLargeUnitHeight + .5)), isTrue);
-      expect(isLargeUnit(const Rect.fromLTWH(0, 0, 412, 190)), isTrue, reason: 'the measured Start session card');
-      expect(isLargeUnit(const Rect.fromLTWH(0, 0, 412, 76)), isFalse, reason: 'a full-width one-row control stays a look-alike');
-      expect(isLargeUnit(const Rect.fromLTWH(0, 0, 119, 94)), isFalse, reason: 'the measured quick-activity tile');
-    });
-
-    for (final id in ['log-past-workout', 'delete-workout']) {
-      // WHY: the two guides whose open-history step owns the screenshot the owner flagged.
-      // The Start card lies within kSkeletonReach of the History sub-tab but is large.
-      // # catches: skeletonizing a large card for being near the target; also "everything dim"
-      // (the small sub-tab look-alikes must stay skeleton).
-      testWidgets('r2 $id/open-history dims the Start session card whole, keeps small look-alikes skeleton', (t) async {
-        final m = await pumpR2Scene(t, r2Scenes.firstWhere((s) => s.guide == id && s.step == 'open-history'));
-        try {
-          await settleLiveGuide(t, frames: 18);
-          final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
-          final control = find.byWidgetPredicate((w) => w is Pressable && w.onTap != null);
-          final card = t.getRect(find.ancestor(of: find.text(r2Locale.workoutStartSessionLabel), matching: control).first);
-          expect(card.height, greaterThan(kLargeUnitHeight), reason: 'positive control: the Start card is large');
-          final target = overlay.targetRect!;
-          expect(rectGap(card, target), lessThanOrEqualTo(kSkeletonReach), reason: 'positive control: it is near the target');
-          final over = overlay.paintedShapes.where((s) => s.rect.overlaps(card.deflate(1))).toList();
-          expect(over.map((s) => s.kind.name), ['dim'], reason: 'one dim layer, no bars, blocks or surfaces');
-          expect(over.single.rect, card, reason: 'over the whole card box, mascot included');
-          final sibling = t.getRect(find.ancestor(of: find.text(r2Locale.workoutTabActivities), matching: control).first);
-          expect(overlay.paintedShapes.any((s) => s.kind.name != 'dim' && s.rect.overlaps(sibling.deflate(1))), isTrue,
-            reason: 'the small sibling sub-tab stays a skeleton look-alike');
-        } finally { await disposeR2(t, m); }
-      });
-    }
-  });
-
   group('skeleton cards keep a dimmed heading', () {
     // WHY: owner item F: a skeleton card with a body still says what it is. The plan must
     // emit ONE heading shape on the first line (the Section title, else the first text line)
@@ -215,7 +175,8 @@ void main() {
       final kept = r2MaxDistance(guided, heading, card);
       expect(kept, greaterThanOrEqualTo((original * .08).round()), reason: 'the heading is still there, dimmed');
       expect(kept, lessThanOrEqualTo((original * .5).round()), reason: 'at most half of the original contrast');
-      final line = r2Rgb(P(false).line);
+      // A bar is blended with the surface under it (BlendMode.difference against white).
+      final line = [for (final c in card) (c * (1 - kPlaceholderStrength) + (255 - c) * kPlaceholderStrength).round()];
       var barPixels = 0;
       for (final rect in body) {
         for (var y = rect.top.ceil(); y < rect.bottom.floor(); y++) {

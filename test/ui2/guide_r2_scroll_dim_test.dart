@@ -65,7 +65,7 @@ Future<_Frame> _audit(WidgetTester t, int index, String when, {
   final r = await raster();
   final scaffold = r2Rgb(buildTheme(Brightness.light).scaffoldBackgroundColor);
   final exclude = <Rect>[
-    target.inflate(kSkeletonReach + 14), // skeleton look-alikes, outline
+    target.inflate(14), // the outline
     ...chrome.map((c) => c.inflate(2)),
     ...kept.map((k) => k.$2.inflate(2)),
   ];

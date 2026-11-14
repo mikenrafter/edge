@@ -66,10 +66,10 @@ Future<void> _startFromHelp(WidgetTester t, LiveGuideApp app, String guideId) as
   await t.pump();
   expect(row.hitTestable(), findsOneWidget, reason: 'the Help row is visible before the user taps it');
   await t.tap(row);
-  await settleLiveGuide(t, frames: 12);
+  await settleLiveGuide(t, frames: 18);
 }
 
-Future<void> _reveal(WidgetTester t) => settleLiveGuide(t, frames: 12);
+Future<void> _reveal(WidgetTester t) => settleLiveGuide(t, frames: 18);
 
 Future<int> _dbChanges() async => ((await (await LocalDb.instance)
     .rawQuery('SELECT total_changes() AS n')).single['n'] as num).toInt();

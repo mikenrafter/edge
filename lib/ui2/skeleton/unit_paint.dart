@@ -4,7 +4,7 @@
 // the page lags the page by a frame while it scrolls, flings or stretches. So the
 // look is painted INSIDE the content's own render subtree:
 //
-//  * [GuideUnitMark] wraps a Surface, Section or Pressable (grammar.dart). At paint
+//  * [GuideUnitMark] wraps a Surface, Section, Pressable or GuideBox (grammar.dart). At paint
 //    time it asks the plan ([GuideDimController.looks]) about its component and
 //    paints its own foreground: one whole-box dim, or the skeleton with the heading
 //    dimmed. It repaints (never rebuilds) when the plan changes.
@@ -12,7 +12,9 @@
 //    the same for LOOSE text (a paragraph in no component), inside the scrollable and
 //    inside Android's overscroll stretch, in the frame the text moves in.
 //
-// Nothing here knows a guide. With no plan in force both are a plain proxy.
+// A dim follows the drawn box's rounded corners and fades in with [GuideDimController.fade];
+// placeholders do not fade. Nothing here knows a guide. With no plan in force both are a
+// plain proxy.
 //
 // COST: with no plan, one proxy render object per component and nothing per frame.
 // With a plan, a repaint of a dimmed component is one rect; a skeleton component
@@ -124,6 +126,25 @@ class RenderGuideUnit extends RenderProxyBox {
     super.detach();
   }
 
+  /// The corner radius of the box this component draws (the first decorated box below
+  /// it that is as big as it), so a dim does not stick out past rounded corners.
+  BorderRadius? _drawnRadius() {
+    RenderObject? o = child;
+    for (var depth = 0; o != null && depth < 6; depth++) {
+      if (o is RenderDecoratedBox && o.hasSize && o.size == size) {
+        final d = o.decoration;
+        if (d is BoxDecoration && d.shape == BoxShape.rectangle) {
+          final r = d.borderRadius?.resolve(TextDirection.ltr);
+          if (r != null) return r;
+        }
+      }
+      RenderObject? next;
+      o.visitChildren((c) => next ??= c);
+      o = next;
+    }
+    return null;
+  }
+
   @override
   void paint(PaintingContext context, Offset offset) {
     super.paint(context, offset);
@@ -134,14 +155,21 @@ class RenderGuideUnit extends RenderProxyBox {
     final canvas = context.canvas;
     switch (look) {
       case GuideUnitLook.dim:
-        canvas.drawRect(offset & size, Paint()..color = scaffoldOf(_component).withValues(alpha: kDimOpacity));
+        // The dim reaches the edges of the drawn box: its own rounded corners.
+        final paint = Paint()..color = scaffoldOf(_component).withValues(alpha: kDimOpacity * (_controller?.fade ?? 1));
+        final radius = _drawnRadius();
+        if (radius == null) {
+          canvas.drawRect(offset & size, paint);
+        } else {
+          canvas.drawRRect(radius.toRRect(offset & size), paint);
+        }
       case GuideUnitLook.skeleton:
         final shapes = skeletonOfComponent(_component, this);
         if (shapes.isEmpty) return;
         canvas
           ..save()
           ..translate(offset.dx, offset.dy);
-        paintSkeletonShapes(canvas, shapes, paletteOf(_component));
+        paintSkeletonShapes(canvas, shapes, paletteOf(_component), fade: _controller?.fade ?? 1);
         canvas.restore();
     }
   }
@@ -248,7 +276,7 @@ class RenderGuideLoose extends RenderProxyBox {
         case GuideUnitLook.dim:
           final visible = rectInRoot(p, this).intersect(visibleBoundsInRoot(p, this));
           if (visible.isEmpty) continue;
-          canvas.drawRect(visible.shift(offset), Paint()..color = scaffold.withValues(alpha: kDimOpacity));
+          canvas.drawRect(visible.shift(offset), Paint()..color = scaffold.withValues(alpha: kDimOpacity * (_controller?.fade ?? 1)));
         case GuideUnitLook.skeleton:
           final shapes = skeletonOfParagraph(p, scaffold);
           if (shapes.isEmpty) continue;
@@ -256,7 +284,7 @@ class RenderGuideLoose extends RenderProxyBox {
             ..save()
             ..translate(offset.dx, offset.dy)
             ..transform(p.getTransformTo(this).storage);
-          paintSkeletonShapes(canvas, shapes, palette);
+          paintSkeletonShapes(canvas, shapes, palette, fade: _controller?.fade ?? 1);
           canvas.restore();
       }
     }

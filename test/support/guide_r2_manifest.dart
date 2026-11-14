@@ -210,10 +210,10 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
       [r2Locale.activitySetupRouteLabel, r2Locale.activitySetupHeartRateLabel,
        r2Locale.activitySetupPrivateLabel].any(u.text.contains);
     final keep = offeredListChoice || offeredHere || namedDetails || kept.any((r) => r.overlaps(u.rect));
-    // Structural r2: a LARGE unit (taller than kLargeUnitHeight) is never skeleton for
+    // Structural r2: a LARGE unit (taller than _kOldLargeUnit) is never skeleton for
     // being near the target; look-alike words still apply.
-    final large = u.rect.height > kLargeUnitHeight;
-    final nearbySibling = !large && u.control && resolved is TargetFound && rectGap(u.rect, resolved.rect) <= kSkeletonReach;
+    final large = u.rect.height > _kOldLargeUnit;
+    final nearbySibling = !large && u.control && resolved is TargetFound && rectGap(u.rect, resolved.rect) <= _kOldReach;
     final competing = nearbySibling || r2Words(u.text).intersection(targetWords).isNotEmpty;
     final covering = shapes.where((s) => s.rect.overlaps(u.rect.deflate(.5))).toList();
     final expected = keep ? 'keep' : competing ? 'skeleton' : 'dim';
@@ -258,7 +258,7 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
     final r = rectInRoot(box, rootBox).intersect(visibleBoundsInRoot(box, rootBox));
     if (r.isEmpty) continue;
     final w = e.widget;
-    if (r2Control(w) && resolved is TargetFound && rectGap(r, resolved.rect) <= kSkeletonReach) controlRects.add(r);
+    if (r2Control(w) && resolved is TargetFound && rectGap(r, resolved.rect) <= _kOldReach) controlRects.add(r);
     if (w is Text && r2Words(w.data ?? w.textSpan?.toPlainText() ?? '').intersection(targetWords).isNotEmpty) {
       lookalikes.add(r);
     }
@@ -297,6 +297,11 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
     'shapes': [for (final s in shapes) {'kind': s.kind.name, 'rect': r2Rect(s.rect),
       'section': s.section, 'color': s.color?.toARGB32()}], 'violations': violations};
 }
+
+// The OLD placeholder policy's numbers (reach falloff, large unit), kept for this oracle only: it
+// backs the P1-P9 manifest sweeps, which are skipped (hardening) until rewritten for the
+// window rule. Production no longer has either constant.
+const _kOldReach = 56.0, _kOldLargeUnit = 120.0;
 
 Future<void> r2WriteManifest(WidgetTester t, R2Scene scene, Map<String, Object?> data) async {
   // Always emitted, including failing runs; no opt-in that silently drops proof.

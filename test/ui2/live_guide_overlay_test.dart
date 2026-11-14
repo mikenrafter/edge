@@ -19,6 +19,8 @@ import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/skeleton/skeleton.dart';
 import 'package:openstrap_edge/ui2/grammar.dart' show NavBar, Pressable, ScreenTitle, Surface;
 
+import 'package:openstrap_edge/ui2/guides/guide_dim.dart' show GuideDimScope;
+
 import '../support/live_guide_stage.dart';
 import '../support/guide_text.dart';
 
@@ -281,43 +283,42 @@ void main() {
     });
   });
 
-  group('progressive reveal', () {
-    testWidgets('sections fade in from the top over the reveal time, then the outline and pill appear', (t) async {
-      // why: CLAIM(overlay-reveal). Spec: "progressively ... over ~600 ms per
-      // step (revealedShapes), then the outline and pill appear".
+  group('dim fade', () {
+    double fadeOf(WidgetTester t) => GuideDimScope.controllerOf(t.element(find.byType(LiveGuideOverlay)))!.fade;
+
+    testWidgets('the placeholders are there at once; the dim fades in linearly over 800 ms; then the outline and pill appear', (t) async {
+      // why: CLAIM(dim-fade-linear), owner 2026-11-14: "on page load placeholders appear at
+      // once; the dim fades in linearly over 800 ms". Replaces the progressive per-unit
+      // reveal (whole units from the top over 600 ms).
+      // catches: a plan revealed unit by unit (shape count grows), a fade that is not
+      // linear (eased, stepped), a duration other than 800 ms, markers before the end.
+      expect(kGuideRevealDuration, const Duration(milliseconds: 800));
       await pumpLiveStage(t);
       await t.pump();
       await t.pump();
       final s = _overlay(t);
-      expect(s.revealProgress, lessThan(.2), reason: 'a new step starts hidden');
+      final first = s.paintedShapes.map((x) => '${x.kind.name}@${x.rect}').toList();
+      expect(first, isNotEmpty, reason: 'the plan is on screen in the first frames');
+      expect(fadeOf(t), lessThan(.1), reason: 'the dim starts clear');
       expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing);
       expect(find.byKey(LiveGuideOverlay.tapPillKey), findsNothing);
-      final fewShapes = s.paintedShapes.length;
+      final start = fadeOf(t);
 
-      await t.pump(kGuideRevealDuration ~/ 2);
-      expect(s.revealProgress, closeTo(.5, .15));
-      final halfShapes = s.paintedShapes.length;
-      expect(halfShapes, greaterThanOrEqualTo(fewShapes));
-      expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing, reason: 'markers wait for the full reveal');
-
+      var last = start;
+      for (var ms = 200; ms <= 600; ms += 200) {
+        await t.pump(const Duration(milliseconds: 200));
+        expect(fadeOf(t), closeTo(start + ms / 800, .06), reason: 'linear: $ms ms in');
+        expect(fadeOf(t), greaterThan(last));
+        last = fadeOf(t);
+        expect(s.paintedShapes.map((x) => '${x.kind.name}@${x.rect}').toList(), first,
+          reason: 'the shapes do not change while the dim ramps');
+      }
       await t.pump(kGuideRevealDuration);
       await t.pump();
+      expect(fadeOf(t), 1);
       expect(s.revealProgress, 1);
-      expect(s.paintedShapes.length, greaterThan(halfShapes), reason: 'more of the page is covered at the end');
       expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
       expect(find.byKey(LiveGuideOverlay.tapPillKey), findsOneWidget);
-    });
-
-    testWidgets('a revealed prefix is whole sections from the top (never half a card)', (t) async {
-      // why: revealedShapes reveals whole units; the overlay must paint through it.
-      await pumpLiveStage(t);
-      await t.pump();
-      await t.pump();
-      await t.pump(kGuideRevealDuration ~/ 2);
-      final sections = {for (final s in _overlay(t).paintedShapes) s.section};
-      if (sections.isNotEmpty) {
-        expect(sections, {for (var i = 0; i <= sections.reduce((a, b) => a > b ? a : b); i++) i}, reason: 'contiguous from the top');
-      }
     });
 
     testWidgets('a new step restarts the reveal', (t) async {
@@ -329,6 +330,7 @@ void main() {
       await t.pump();
       await t.pump();
       expect(_overlay(t).revealProgress, lessThan(.2));
+      expect(fadeOf(t), lessThan(.2), reason: 'the dim of the new step starts clear');
       expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing);
     });
   });
@@ -380,17 +382,18 @@ void main() {
       final stage = await pumpLiveStage(t, guide: _occludedGuide());
       var targetDrags = 0, otherDrags = 0, lookalikeDrags = 0;
       Widget area(Key key, VoidCallback onEnd, [String label = 'area']) => GestureDetector(
-        key: key, behavior: HitTestBehavior.opaque,
+        key: key, behavior: HitTestBehavior.opaque, onTap: () {},
         onVerticalDragEnd: (_) => onEnd(),
-        child: SizedBox(width: 240, height: 44, child: Center(child: Text(label))),
+        child: Surface(child: SizedBox(height: 44, child: Center(child: Text(label)))),
       );
-      await pushStagePage(t, stage, Scaffold(body: Column(children: [
-        const SizedBox(height: 120),
+      await pushStagePage(t, stage, Scaffold(body: ListView(children: [
+        const ScreenTitle('Drags'),
+        const SizedBox(height: 60),
+        area(stageElsewhereAction, () => lookalikeDrags++, 'Far above'),
+        const SizedBox(height: 12),
+        area(stageOtherAction, () => otherDrags++, 'Next to it'),
+        const SizedBox(height: 12),
         area(stageFinish, () => targetDrags++, 'Finish'),
-        const SizedBox(height: 8),
-        area(stageElsewhereAction, () => lookalikeDrags++, 'Finish help'),
-        const SizedBox(height: kSkeletonReach + 24),
-        area(stageOtherAction, () => otherDrags++, 'Unrelated'),
       ])));
       await _settleReveal(t);
       await t.drag(find.byKey(stageFinish), const Offset(0, 60));
@@ -402,7 +405,7 @@ void main() {
       expect(otherDrags, 1, reason: 'dimmed content stays draggable, exactly once');
       final shapes = _overlay(t).paintedShapes;
       expect(_anyShapeOverlaps(shapes.where((x) => x.kind != SkeletonKind.dim), _rectOf(t, find.byKey(stageElsewhereAction))), isTrue,
-        reason: 'positive control: the look-alike (shares "Finish" with the target) is skeleton');
+        reason: 'positive control: the card two above the target is a placeholder');
       await t.drag(find.byKey(stageElsewhereAction), const Offset(0, 60), warnIfMissed: false);
       await t.pump();
       expect(lookalikeDrags, 0, reason: 'skeleton ink takes the pointer');
@@ -428,34 +431,33 @@ void main() {
       // Positive control: the look-alike works once the overlay is gone.
       final stage = await pumpLiveStage(t);
       await _settleReveal(t);
+      // The window rule (owner, 2026-11-14): the card above the target's card is dimmed, the
+      // cards further away are placeholders.
       await pushStagePage(t, stage, Scaffold(body: ListView(children: [
         const ScreenTitle('Stage home', key: stageHomeTitle),
+        Pressable(key: stageElsewhereAction, onTap: () => stage.taps.elsewhere++, child: const Surface(child: Text('Far above'))),
+        const SizedBox(height: 12),
+        Pressable(key: stageOtherAction, onTap: () => stage.taps.otherAction++, child: const Surface(child: Text('Next to it'))),
+        const SizedBox(height: 12),
         Pressable(key: stageOpenDetails, onTap: () => stage.taps.openDetails++, child: const Surface(child: Text('Open details'))),
-        Pressable(key: stageOtherAction, onTap: () => stage.taps.otherAction++,
-          child: const Surface(child: Text('Open details help'))),
-        // Beyond the skeleton reach: a control right beside the target is skeleton
-        // whatever its words say (owner: distance falloff), so "Unrelated" must be far.
-        const SizedBox(height: kSkeletonReach + 24),
-        Pressable(key: stageElsewhereAction, onTap: () => stage.taps.elsewhere++,
-          child: const Surface(child: Text('Unrelated'))),
       ])));
       await _settleReveal(t);
       final shapes = _overlay(t).paintedShapes;
-      expect(_anyShapeOverlaps(shapes.where((x) => x.kind != SkeletonKind.dim), _rectOf(t, find.byKey(stageOtherAction))), isTrue,
-        reason: 'positive control: "Open details help" shares words with the target, so it is skeleton');
-      expect(_anyShapeOverlaps(shapes.where((x) => x.kind == SkeletonKind.dim), _rectOf(t, find.byKey(stageElsewhereAction))), isTrue,
-        reason: 'positive control: "Unrelated" is dimmed');
-      await t.tap(find.byKey(stageElsewhereAction), warnIfMissed: false);
-      await t.pump(const Duration(milliseconds: 400));
-      expect(stage.taps.elsewhere, 1, reason: 'a dimmed control receives its real tap exactly once');
+      expect(_anyShapeOverlaps(shapes.where((x) => x.kind != SkeletonKind.dim), _rectOf(t, find.byKey(stageElsewhereAction))), isTrue,
+        reason: 'positive control: the card two above the target is a placeholder');
+      expect(_anyShapeOverlaps(shapes.where((x) => x.kind == SkeletonKind.dim), _rectOf(t, find.byKey(stageOtherAction))), isTrue,
+        reason: 'positive control: the card right above the target is dimmed');
       await t.tap(find.byKey(stageOtherAction), warnIfMissed: false);
-      await t.longPress(find.byKey(stageOtherAction), warnIfMissed: false);
       await t.pump(const Duration(milliseconds: 400));
-      expect(stage.taps.otherAction, 0, reason: 'a skeleton look-alike absorbs the tap');
+      expect(stage.taps.otherAction, 1, reason: 'a dimmed control receives its real tap exactly once');
+      await t.tap(find.byKey(stageElsewhereAction), warnIfMissed: false);
+      await t.longPress(find.byKey(stageElsewhereAction), warnIfMissed: false);
+      await t.pump(const Duration(milliseconds: 400));
+      expect(stage.taps.elsewhere, 0, reason: 'a placeholder absorbs the tap');
       stage.entry!.remove();
       await t.pump();
-      await t.tap(find.byKey(stageOtherAction));
-      expect(stage.taps.otherAction, 1, reason: 'positive control: the control works without the overlay');
+      await t.tap(find.byKey(stageElsewhereAction));
+      expect(stage.taps.elsewhere, 1, reason: 'positive control: the control works without the overlay');
     });
 
     testWidgets('the card\'s Exit works and asks the owner of the run to end it, once', (t) async {

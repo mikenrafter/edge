@@ -40,15 +40,23 @@ class _ScrollPage {
       theme: buildTheme(Brightness.light), localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(body: Stack(children: [
-        Positioned(top: 16, left: 16, child: Pressable(key: _target, onTap: () {}, child: const Text('Target'))),
+        // The page's topmost text line counts as live status (kept lit): a title keeps "Nearby" out of that.
+        if (lazy) Positioned(top: 16, left: 16, child: Pressable(key: _target, onTap: () {}, child: const Text('Target')))
+        else const Positioned(top: 16, left: 16, child: Text('Page title')),
         Positioned(top: 80, left: 16, right: 16, bottom: 0, child: lazy ? ListView.builder(controller: scroll, itemCount: 100, itemExtent: 100,
           cacheExtent: 0, itemBuilder: (_, i) => Pressable(key: i == 0 ? _skeleton : i == 80 ? const ValueKey('lazy-target') : null,
             onTap: () => skeletonTaps++, child: Text('Item $i')))
           : SingleChildScrollView(controller: scroll,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // Window rule: the target's card is the 4th; "Different" is right above it (dimmed);
+            // "Nearby" is two cards before the window (a placeholder).
             Pressable(key: _skeleton, onTap: () => skeletonTaps++, child: const Surface(child: Text('Nearby'))),
             const SizedBox(height: 44),
+            const Surface(child: Text('Filler card')),
+            const SizedBox(height: 12),
             Pressable(key: _dimmed, onTap: () => dimTaps++, child: const Surface(child: Text('Different'))),
+            const SizedBox(height: 12),
+            Surface(child: Pressable(key: _target, onTap: () {}, child: const Text('Target'))),
             const Text('Loose paragraph'),
             const SizedBox(height: 1400),
           ]))),
@@ -127,37 +135,8 @@ void main() {
 
   }
 
-  for (final (name, top, height, label, skeleton) in [
-    ('hit padding is outside ink reach', 100.0, 44.0, 'Other', false),
-    ('nearby ink is eligible', 80.0, 44.0, 'Other', true),
-    ('a distant matching word stays dim', 300.0, 44.0, 'Target option', false),
-    ('a tall matching card stays dim', 70.0, 160.0, 'Target option', false),
-  ]) {
-    // WHY: CLAIM(skeleton-visible-reach): full component bounds paint; visible ink decides eligibility.
-    // # catches: expanded hit boxes defining reach, or shared words bypassing reach/large exclusions.
-    testWidgets('R3 $name', (t) async {
-      const rootKey = ValueKey('policy-page');
-      await t.pumpWidget(MaterialApp(home: Scaffold(body: Stack(key: rootKey, children: [
-        Positioned(top: 20, left: 0, child: Pressable(key: _target, onTap: () {},
-          child: const Text('Target', style: TextStyle(fontSize: 10, height: 1)))),
-        Positioned(top: top, left: 0, child: SizedBox(height: height, width: 100,
-          child: Pressable(key: _skeleton, onTap: () {}, child: Align(
-            alignment: height > 120 ? Alignment.topLeft : Alignment.center,
-            child: Text(label, style: const TextStyle(fontSize: 10, height: 1)))))),
-      ]))));
-      final root = t.element(find.byKey(rootKey));
-      final targetBox = t.renderObject<RenderBox>(find.byKey(_target));
-      final target = TargetFound(t.getRect(find.byKey(_target)), renderObject: targetBox);
-      final plan = planSkeleton(root, keep: [target.rect], dim: DimPolicy.of(root, target));
-      final unit = plan.units.singleWhere((u) => u.component?.widget.key == _skeleton);
-      expect(unit.skeleton, skeleton);
-      if (!skeleton) {
-        final shape = plan.shapes.singleWhere((s) => s.section == unit.section);
-        expect(shape.kind, SkeletonKind.dim);
-        expect(shape.rect, t.getRect(find.byKey(_skeleton)), reason: 'dim still covers the full component');
-      }
-    });
-  }
+  // The four R3 reach cases (hit padding, nearby ink, distant word, tall card) pinned the old distance
+  // falloff (kSkeletonReach / kLargeUnitHeight); the window rule replaced them: guide_r2_window_test.
 
   // WHY: CLAIM(lazy-skeleton-input): P6 publishes skeletons before a lazy target has a box.
   // # catches: mounting the shield only when a target rectangle exists.

@@ -1505,6 +1505,21 @@ class Surface extends StatelessWidget {
   }
 }
 
+/// A decorated box that is ONE guide unit, though it is not a [Surface]: a guide run
+/// dims it, or draws its placeholders, as a whole, so the dim reaches the edges of
+/// the drawn box (decoration and padding) and nothing inside is dimmed a second time.
+/// With [card] true it counts as a card of the page (the guide's three-card window);
+/// without, it is a plain unit (the day selector bar). With no guide running it is a
+/// plain proxy: no pixel, layout or semantics change.
+class GuideBox extends StatelessWidget {
+  final bool card;
+  final Widget child;
+  const GuideBox({super.key, this.card = false, required this.child});
+
+  @override
+  Widget build(BuildContext c) => GuideUnitMark(component: c, child: child);
+}
+
 /// Marks a subtree that already sits on a card (an accordion body): a [Surface]
 /// in it draws its content flat, without a second card or side margin.
 class InsideCard extends InheritedWidget {

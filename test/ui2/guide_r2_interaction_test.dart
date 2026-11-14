@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/ui2/skeleton/skeleton.dart' show kSkeletonReach;
 import 'package:openstrap_edge/app.dart' show AppMainShell;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ui2/activity/picker.dart';
 import 'package:openstrap_edge/ui2/grammar.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide.dart';
+import 'package:openstrap_edge/ui2/guides/guide_target.dart';
+import '../support/guide_text.dart';
 import '../support/live_guide_stage.dart';
 import '../support/guide_r2_scroll_fixture.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
@@ -21,39 +22,6 @@ void main() {
   tearDownAll(LocalDb.close);
 
   for (final id in ['log-past-workout', 'delete-workout']) {
-    // WHY: amendment B names these screenshots: a small History target cannot
-    // turn the rest of Activity into anonymous controls and mascot blocks. Structural
-    // r2: both History guides (log-past-workout and delete-workout) share the page.
-    // # catches: treating every tappable control as a skeleton candidate.
-    testWidgets('r2 $id open-history has zero skeleton outside its sub-tab group', (t) async {
-      final m = await pumpR2Scene(t, r2Scenes.firstWhere((s) => s.guide == id && s.step == 'open-history'));
-      try {
-        await settleLiveGuide(t, frames: 18);
-        final row = t.getRect(find.ancestor(of: find.text(r2Locale.workoutTabHistory),
-          matching: find.byType(SubTabs)).first);
-        final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
-        final start = find.ancestor(of: find.text(r2Locale.workoutStartSessionLabel),
-          matching: find.byWidgetPredicate((w) => w is Pressable && w.onTap != null)).first;
-        final quick = find.byWidgetPredicate((w) => w.runtimeType.toString() == 'WorkoutQuickTile').first;
-        final units = <Rect>[t.getRect(start), t.getRect(quick)];
-        for (final label in [r2Locale.homeSteps, r2Locale.nutritionTitle]) {
-          units.add(t.getRect(find.ancestor(of: find.text(label),
-            matching: find.byWidgetPredicate((w) => w is Pressable && w.onTap != null)).first));
-        }
-        final visible = units.map((r) => r.intersect(Offset.zero & r2Size)).toList();
-        expect(visible.every((r) => !r.isEmpty), isTrue, reason: 'all four named components are actually visible');
-        final outside = overlay.paintedShapes.where((s) => s.kind.name != 'dim' && !r2Contains(row.inflate(kSkeletonReach + 1), s.rect));
-        expect(outside, isEmpty, reason: 'B (falloff): skeleton only on controls within kSkeletonReach of the sub-tab row; '
-          'row=$row target=${overlay.targetRect} outside=${[for (final s in outside) '${s.kind.name}@${s.rect}#${s.section}']}');
-        expect(overlay.paintedShapes.where((s) => s.kind.name == 'erase'), isEmpty,
-          reason: 'no scaffold erase patches on the purple start banner');
-        for (final box in visible) {
-          expect(overlay.paintedShapes.any((s) => s.kind.name == 'dim' && r2Contains(s.rect, box)), isTrue,
-            reason: 'whole distant component must dim: $box');
-        }
-      } finally { await disposeR2(t, m); }
-    }, skip: true); // hardening stage (owner 2026-11-14): 30-min flag, see r2-green-report 'Specific fixes'
-
     // WHY: input per layer holds for EVERY guide (structural r2): the Start card is a
     // LARGE unit, so it is dimmed (clickable) rather than skeleton (blocked); its tap
     // navigates for real, once, and the run goes off path. The old rule kept
@@ -78,7 +46,8 @@ void main() {
   // # catches: W2 redirected advance, forwarding a synthetic tap in addition to the original pointer,
   // or absorbing the dimmed control's original tap.
   testWidgets('r2 dimmed control receives exactly one callback per real tap', (t) async {
-    final f = R2Fixture();
+    // lookalike: the Alternative card sits right under the target's card: in the window, dimmed.
+    final f = R2Fixture(lookalike: true);
     await f.pump(t);
     await t.tapAt(t.getRect(find.byKey(r2Alternative)).center);
     await t.pump(const Duration(milliseconds: 400));
@@ -94,7 +63,8 @@ void main() {
   // WHY: owner reversal requires skeleton look-alikes to block taps.
   // # catches: W2 redirected advance, or passing skeleton input through as dim.
   testWidgets('r2 skeleton look-alike blocks tap and preserves run', (t) async {
-    final f = R2Fixture(lookalike: true);
+    // Default layout: the Alternative card is the second card below the target's: a placeholder.
+    final f = R2Fixture();
     await f.pump(t);
     final box = t.getRect(find.byKey(r2Alternative));
     final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
@@ -140,7 +110,7 @@ void main() {
     // without advancing or finishing the run.
     // # catches: replaying taps, or blocking only single taps but leaking long/double press.
     testWidgets('r2 skeleton look-alike blocks $gesture', (t) async {
-      final f = R2Fixture(lookalike: true);
+      final f = R2Fixture();
       await f.pump(t);
       final box = t.getRect(find.byKey(r2Alternative));
       final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
@@ -167,9 +137,11 @@ void main() {
   // paint and input until it closes, preserving both the dialog and run.
   // # catches: keeping the guide shield/card above a dialog opened off target.
   testWidgets('r2 dimmed dialog opener yields overlay and preserves run', (t) async {
+    // The target is "Other action"; "Ask first" is the card right below it: dimmed, clickable.
     final base = stageGuide();
-    final guide = Guide(id: base.id, title: base.title, start: base.start,
-      variants: base.variants, footers: base.footers);
+    final guide = Guide(id: base.id, title: base.title, start: base.start, footers: base.footers,
+      variants: [GuideVariant(steps: [GuideStep(id: 'open', target: GuideTarget.key(stageOtherAction),
+        anchor: GuideTarget.key(stageHomeTitle), action: GuideAction.tap, caption: fnText((_) => 'Tap Other action.'))])]);
     final stage = await pumpLiveStage(t, guide: guide);
     for (var i = 0; i < 12; i++) { await t.pump(const Duration(milliseconds: 100)); }
     await t.tap(find.byKey(stageAskFirst));

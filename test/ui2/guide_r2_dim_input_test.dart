@@ -93,7 +93,12 @@ void main() {
     expect(find.byKey(GuideStepCard.offPathKey), findsOneWidget);
     final rect = t.getRect(find.byKey(r2Other));
     final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
-    expect(overlay.paintedShapes.where((s) => s.kind.name == 'dim' && s.rect.overlaps(rect)), isNotEmpty);
+    // Owner placeholder rule: off path the card next to the route back (the first card under the
+    // NavBar) is lit, every other card is dimmed.
+    expect(overlay.paintedShapes.where((s) => s.rect.overlaps(rect.deflate(1))), isEmpty, reason: 'the route back\'s neighbouring card is lit');
+    final second = t.getRect(find.text('Second card'));
+    expect(overlay.paintedShapes.where((s) => s.kind.name == 'dim' && s.rect.overlaps(second)), isNotEmpty);
+    expect(overlay.paintedShapes.where((s) => s.kind.name != 'dim'), isEmpty, reason: 'off path: no placeholders');
     final back = t.getRect(find.descendant(of: find.byType(NavBar),
       matching: find.byWidgetPredicate((w) => w is Pressable && w.onTap != null)).first);
     expect(overlay.paintedShapes.where((s) => s.rect.overlaps(back.deflate(.5))), isEmpty,
@@ -142,29 +147,6 @@ void main() {
     });
   }
 
-  // WHY: a sibling beside the target is a look-alike, and harmless layout wrappers around the
-  // target (Padding) cannot change that.
-  // # catches: counting Padding as a group boundary.
-  testWidgets('r2 a sibling beside the target survives Padding around the target', (t) async {
-    Future<List<String>> kinds(bool wrapped) async {
-      final f = R2Fixture(grouped: true, wrapTarget: wrapped);
-      await f.pump(t);
-      final rect = t.getRect(find.byKey(r2Sibling));
-      final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
-      final result = overlay.paintedShapes.where((s) => s.rect.overlaps(rect.deflate(.5)))
-        .map((s) => s.kind.name).toList();
-      f.entry!.remove();
-      await t.pumpWidget(const SizedBox());
-      await t.pump();
-      return result;
-    }
-    final plain = await kinds(false);
-    final wrapped = await kinds(true);
-    expect(plain, isNotEmpty, reason: 'positive control: sibling is a skeleton look-alike');
-    expect(plain, isNot(contains('dim')));
-    expect(wrapped, plain, reason: 'harmless Padding cannot change the sibling\'s look');
-  });
-
   // WHY: D-S9 visual dim never hides ordinary page content from assistive tech.
   // # catches: wrapping dimmed units in ExcludeSemantics to simplify hit testing.
   testWidgets('r2 dimmed content remains in the semantics tree', (t) async {
@@ -179,22 +161,6 @@ void main() {
       // (the old copy of this test failed on that, not on the behaviour it names).
       semantics.dispose();
     }
-  });
-
-  // WHY: a look-alike is decided by distance (visible-ink reach), not by which Row it is in:
-  // a sibling in another row within reach stays skeleton, a far control dims.
-  // # catches: skeletonizing the whole page, or dimming a near sibling for being in another row.
-  testWidgets('r2 a look-alike in another row within reach is skeleton and a far one dims', (t) async {
-    final f = R2Fixture(grouped: true, separateRows: true);
-    await f.pump(t);
-    final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
-    final sibling = t.getRect(find.byKey(r2Sibling));
-    expect(overlay.paintedShapes.where((s) => s.rect.overlaps(sibling.deflate(.5)))
-      .map((s) => s.kind.name), isNot(contains('dim')));
-    expect(overlay.paintedShapes.where((s) => s.kind.name != 'dim' && s.rect.overlaps(sibling.deflate(.5))), isNotEmpty);
-    final far = t.getRect(find.byKey(r2Alternative));
-    expect(overlay.paintedShapes.where((s) => s.rect.overlaps(far.deflate(.5)))
-      .map((s) => s.kind.name), ['dim'], reason: 'the near sibling does not skeletonize the whole page');
   });
 
 }

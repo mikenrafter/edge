@@ -30,7 +30,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../grammar.dart' show NavBar, Pressable, ScreenTitle, Section, Surface;
+import '../grammar.dart' show GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface;
 import '../guides/guide_target.dart';
 import '../guides/tree_geometry.dart';
 import '../theme.dart';
@@ -54,6 +54,11 @@ enum SkeletonKind {
   /// ONE translucent layer ([SkeletonShape.color], alpha included) over a whole
   /// component's box: the r2 dim look. Never an erase patch.
   dim,
+
+  /// A rect that stays exactly as it is: an icon inside a placeholder unit. Painted
+  /// as nothing; every placeholder fill leaves a hole at it (owner: icons are never
+  /// placeholders).
+  icon,
 
   /// A skeleton card's heading (its Section title, else its first text line): the
   /// text itself stays, drawn DIMMED at the unit's top-left, while the body lines
@@ -92,19 +97,6 @@ class SkeletonShape {
 /// half of its original in light and dark [guide_r2_contrast].
 const kDimOpacity = .72;
 
-/// Words too common to make two labels look alike (r2 D-S2). Words shorter
-/// than three letters are ignored as well.
-const _kStopwords = {
-  'the', 'and', 'for', 'you', 'your', 'are', 'how', 'these', 'this', 'that', 'with',
-  'from', 'tap', 'not', 'any', 'can', 'its', 'his', 'her', 'our', 'out', 'but',
-};
-
-/// The content words of [text]: lower case, >= 3 letters, no stopwords.
-Set<String> contentWords(String text) => {
-  for (final w in text.toLowerCase().split(RegExp(r'[^\p{L}\p{N}]+', unicode: true)))
-    if (w.length >= 3 && !_kStopwords.contains(w)) w,
-};
-
 /// True for a widget with tap semantics (a control the user can press).
 bool isGuideControl(Widget w) => w is Pressable && w.onTap != null ||
     w is GestureDetector && (w.onTap != null || w.onLongPress != null) ||
@@ -112,29 +104,12 @@ bool isGuideControl(Widget w) => w is Pressable && w.onTap != null ||
     w is Semantics && (w.properties.onTap != null || w.properties.button == true) ||
     w is TextField || w is Switch || w is Checkbox || w is Radio;
 
-/// The r2 dim look's rule for which non-kept units stay skeleton: look-alikes of
-/// the target (a CONTROL inside the target's [group] box, or any unit sharing a
-/// content word with the target's label). Every other unit gets one dim layer.
-/// All rects are in the page root's coordinates.
-/// How near a control must be to the target to stay skeleton (owner, pilot APK
-/// feedback B): the gap between its ink and the target's ink is at most this many
-/// logical px (about one row: the 8-12 px gaps of a card list plus a small
-/// margin). Reach uses visible ink, excluding hit padding. Controls beyond it
-/// are dimmed with the rest of their component.
-/// Applies to content inside the visible scroll area only; P6 scroll-through
-/// content is skeleton at any distance ([DimPolicy.skeletonAll]).
-const kSkeletonReach = 56.0;
+/// True for a Surface / Section / control box / GuideBox: a component that paints its own guide look.
+bool isGuideComponent(Widget w) => w is Surface || w is Section || w is Pressable || w is GuideBox;
 
-/// A unit (Surface, Section or control box) taller than this many logical px is
-/// LARGE: near the target it is dimmed whole, never skeleton (owner: the Start
-/// session card on Activity > History became a grey block). 120 keeps one-row
-/// controls (44-76 px, sub-tabs, list rows) skeleton and turns the 190 px Start
-/// card and the 132 px "Did something the band missed?" card into dim. Width is not
-/// a criterion: full-width one-row controls are the look-alikes the rule is for.
-const kLargeUnitHeight = 120.0;
-
-/// True for a unit whose [box] is strictly taller than [kLargeUnitHeight].
-bool isLargeUnit(Rect box) => box.height > kLargeUnitHeight;
+/// True for a CARD of the page (owner placeholder rule): a Surface, a Section or a
+/// [GuideBox] with `card: true`. Cards are what the three-card window counts.
+bool isGuideCard(Widget w) => w is Surface || w is Section || w is GuideBox && w.card;
 
 /// Gap between two boxes: 0 when they overlap, else the distance between their edges.
 double rectGap(Rect a, Rect b) {
@@ -143,77 +118,42 @@ double rectGap(Rect a, Rect b) {
   return math.sqrt(dx * dx + dy * dy);
 }
 
-/// The visible text/icon/image/chart ink under [box], excluding layout and hit padding.
-/// Null means there is no visible ink to compare, not an invented fallback box.
-Rect? _visibleInk(RenderBox box, RenderBox root) {
-  Rect? ink;
-  void add(RenderBox object, Rect local) {
-    final visible = rectInRoot(object, root, local).intersect(visibleBoundsInRoot(object, root));
-    if (!visible.isEmpty) ink = ink?.expandToInclude(visible) ?? visible;
-  }
-  void visit(RenderObject object) {
-    if (object is RenderParagraph && object.hasSize) {
-      final length = object.text.toPlainText().length;
-      for (final glyphs in object.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: length))) {
-        add(object, glyphs.toRect());
-      }
-    } else if (object is RenderImage || object is RenderCustomPaint &&
-        (object.painter != null || object.foregroundPainter != null)) {
-      if (object is RenderBox && object.hasSize) add(object, Offset.zero & object.size);
-    } else {
-      object.visitChildren(visit);
-    }
-  }
-  visit(box);
-  return ink;
-}
-
+/// OWNER PLACEHOLDER RULE (2026-11-14), the whole of it:
+///
+///  * On a step the target's own card stays fully lit (the target is outlined in it);
+///    the card ABOVE and the card BELOW it, in reading order, are DIMMED; every other
+///    card is PLACEHOLDER (its title stays, dimmed).
+///  * Never placeholders: icons (left exactly as they are), card titles, headers and
+///    navigation (screen title and header rows, NavBar, tab bar). Loose text is only
+///    ever dimmed; a control or chart above the first card (the header band) is dimmed.
+///  * Off path: no placeholders, only dim. The route-back control and its neighbouring
+///    cards stay lit ([neighboursLit]).
+///  * P6, the target is not built ([skeletonAll]): everything on screen is placeholder,
+///    the way to the target.
+///
+/// "Card" = a top-level [isGuideCard] unit of the page; above / below = previous / next
+/// in reading order (top, then left). A control or chart that is no card is "in the window"
+/// when it lies between the top of the card above and the bottom of the card below.
+///
+/// All rects are in the page root's coordinates. Replaces kSkeletonReach (a distance
+/// falloff around the target) and kLargeUnitHeight (large units dimmed): the window is
+/// counted in cards, not pixels.
 class DimPolicy {
-  final Rect? targetRect;
-  final Set<String> targetWords;
-  final List<Rect> controls;
+  /// The target (on a step) or the route-back control (off path): the window's centre.
+  final Rect? focus;
 
-  /// P6: the target is off screen, so everything on screen collapses to
-  /// skeleton (the user scrolls through it toward the marker).
+  /// P6: the target is not built, so everything on screen collapses to placeholder.
   final bool skeletonAll;
-  const DimPolicy({this.targetRect, this.targetWords = const {}, this.controls = const [], this.skeletonAll = false});
 
-  /// Reads the policy for [target] from the laid-out [page]: the controls and
-  /// the words of the target's label. A control is a look-alike when it is within
-  /// [kSkeletonReach] of the target.
-  static DimPolicy of(Element page, TargetFound target) {
-    final root = laidOutBox(page);
-    if (root == null) return const DimPolicy();
-    final controls = <Rect>[];
-    final words = <String>{};
-    for (final e in onstageElements(page)) {
-      final box = laidOutBox(e);
-      if (box == null) continue;
-      final w = e.widget;
-      if (isGuideControl(w)) {
-        final ink = _visibleInk(box, root);
-        if (ink != null) controls.add(ink);
-      }
-      final ro = e is RenderObjectElement ? e.renderObject : null;
-      if (ro is RenderParagraph && ro.hasSize && target.rect.contains(rectInRoot(ro, root).center)) {
-        words.addAll(contentWords(ro.text.toPlainText()));
-      }
-      // An icon-only control (a bin) is named by its semantics label.
-      final label = w is Pressable ? w.semanticLabel : w is Semantics ? w.properties.label : null;
-      if (label != null && target.rect.contains(rectInRoot(box, root).center)) words.addAll(contentWords(label));
-    }
-    return DimPolicy(targetRect: _visibleInk(target.renderObject, root), targetWords: words, controls: controls);
-  }
+  /// False off path: nothing becomes a placeholder.
+  final bool placeholders;
 
-  // CLAIM(skeleton-visible-reach): distance and size gate every look-alike,
-  // including shared words. Only P6 bypasses them [guide_r2_review_test R3].
-  bool lookalike(Rect bounds, Set<String> words, {Rect? inkBounds}) {
-    if (skeletonAll) return true;
-    final target = targetRect;
-    final ink = inkBounds;
-    if (target == null || ink == null || isLargeUnit(bounds) || rectGap(ink, target) > kSkeletonReach) return false;
-    return controls.any((control) => control.overlaps(ink)) || words.any(targetWords.contains);
-  }
+  /// Off path: the cards next to [focus] stay lit instead of dimmed.
+  final bool neighboursLit;
+  const DimPolicy({this.focus, this.skeletonAll = false, this.placeholders = true, this.neighboursLit = false});
+
+  /// The policy for a step whose [target] was found.
+  static DimPolicy of(Element page, TargetFound target) => DimPolicy(focus: target.rect);
 }
 
 /// A shape before its unit has a number.
@@ -243,7 +183,6 @@ class _Item {
 class _Unit {
   final Rect bounds;
   final List<_Draft> drafts;
-  final Set<String> words;
 
   /// The Surface / Section / control element the unit is; null for a loose paragraph.
   final Element? component;
@@ -253,16 +192,9 @@ class _Unit {
   final RenderBox? visual;
   final Rect? fullBounds;
 
-  Rect? get inkBounds {
-    Rect? ink;
-    for (final draft in drafts) {
-      if (draft.kind != SkeletonKind.bar && draft.kind != SkeletonKind.heading && draft.kind != SkeletonKind.block) continue;
-      ink = ink?.expandToInclude(draft.rect) ?? draft.rect;
-    }
-    return ink;
-  }
-
-  const _Unit(this.bounds, this.drafts, [this.words = const {}, this.component, this.paragraph, this.visual, this.fullBounds]);
+  /// A card of the page: a Surface / Section / card box, or a control that wraps one.
+  final bool card;
+  const _Unit(this.bounds, this.drafts, [this.component, this.paragraph, this.visual, this.fullBounds, this.card = false]);
 }
 
 /// How far an erase reaches past its text line, so glyph overhang (descenders,
@@ -358,8 +290,12 @@ class _Planner {
       final byLeft = a.sortRect.left.compareTo(b.sortRect.left);
       return byLeft != 0 ? byLeft : a.tie.compareTo(b.tie);
     });
+    // A card's title is never a placeholder: the first text line stays, dimmed, when
+    // the unit has a body (a second text line or a chart/ring) to turn into bars.
     final firstText = items.indexWhere((i) => i.text);
-    final headed = heading && firstText >= 0 && items.where((i) => i.text).length >= 2 ? firstText : -1;
+    final textLines = items.where((i) => i.text).length;
+    final hasVisual = items.any((i) => !i.text);
+    final headed = heading && firstText >= 0 && (textLines >= 2 || hasVisual) ? firstText : -1;
     return [
       ...leading,
       for (var i = 0; i < items.length; i++)
@@ -376,15 +312,22 @@ class _Planner {
     if (bounds.isEmpty) return null;
     final surfaces = <_Draft>[];
     final items = <_Item>[];
-    final words = <String>{};
+    // A control that wraps a Surface / Section (Pressable(child: Surface)) is that card.
+    var isCard = isGuideCard(card.widget);
 
     void inner(Element e, bool onCard) {
       final w = e.widget;
-      // Icons are not planned, except where headings are on (the dim look): there an
-      // icon is a line like any other, the heading when it comes first, a bar after.
-      if ((w is Icon || w is ImageIcon) && !heading) return;
-      final label = w is Pressable ? w.semanticLabel : w is Semantics ? w.properties.label : null;
-      if (label != null) words.addAll(contentWords(label));
+      if (isGuideCard(w)) isCard = true;
+      // An icon is never a placeholder: in the dim look it is a hole the fills leave
+      // (SkeletonKind.icon); otherwise it is not planned at all.
+      if (w is Icon || w is ImageIcon) {
+        final iconBox = heading ? laidOutBox(e) : null;
+        if (iconBox != null) {
+          final rect = visibleOf(iconBox);
+          if (!rect.isEmpty) surfaces.add(_Draft(SkeletonKind.icon, rect));
+        }
+        return;
+      }
       var here = onCard;
       if (w is Surface) {
         final surfaceBox = laidOutBox(e);
@@ -396,7 +339,6 @@ class _Planner {
       }
       final ro = e is RenderObjectElement ? e.renderObject : null;
       if (ro is RenderParagraph && ro.hasSize) {
-        words.addAll(contentWords(ro.text.toPlainText()));
         items.addAll(linesOf(ro, onCard: here));
       } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
         final rect = visibleOf(ro);
@@ -407,7 +349,8 @@ class _Planner {
 
     inner(card, false);
     final drafts = orderedDrafts(items, surfaces);
-    return drafts.isEmpty ? null : _Unit(bounds, drafts, words, card, null, null, rectInRoot(box, rootBox));
+    // The dim look dims a unit whole, so it needs no drafts to exist.
+    return drafts.isEmpty && !heading ? null : _Unit(bounds, drafts, card, null, null, rectInRoot(box, rootBox), isCard);
   }
 
   /// A loose paragraph as a unit (the dim look boxes the whole paragraph).
@@ -417,10 +360,73 @@ class _Planner {
     return _Unit(
       dimLook ? visibleOf(ro) : items.map((i) => i.sortRect).reduce((a, b) => a.expandToInclude(b)),
       orderedDrafts(items),
-      contentWords(ro.text.toPlainText()),
       null,
       ro,
     );
+  }
+}
+
+/// How the window rule treats one unit: placeholder or dim ([null]: lit).
+enum GuideUnitLookKind { skeleton, dim }
+
+/// [DimPolicy]'s window rule applied to the units of one page (see [DimPolicy]).
+class _WindowLook {
+  final DimPolicy policy;
+  late final List<_Unit> cards;
+  late final _Unit? own, above, below;
+  late final double spanTop, spanBottom, firstCardTop;
+
+  _WindowLook(List<_Unit> units, this.policy, List<Rect> keep) {
+    Rect boxOf(_Unit u) => u.bounds;
+    final all = [
+      for (final u in units)
+        if (u.card) u,
+    ]..sort((a, b) {
+        final byTop = boxOf(a).top.compareTo(boxOf(b).top);
+        return byTop != 0 ? byTop : boxOf(a).left.compareTo(boxOf(b).left);
+      });
+    cards = all;
+    firstCardTop = all.isEmpty ? double.infinity : boxOf(all.first).top;
+    final focus = policy.focus;
+    _Unit? o, a, b;
+    if (focus != null) {
+      final at = all.indexWhere((c) => boxOf(c).contains(focus.center));
+      final inside = at >= 0 ? at : all.indexWhere((c) => boxOf(c).overlaps(focus));
+      if (inside >= 0) {
+        o = all[inside];
+        if (inside > 0) a = all[inside - 1];
+        if (inside + 1 < all.length) b = all[inside + 1];
+      } else {
+        for (final c in all) {
+          if (boxOf(c).center.dy < focus.center.dy) {
+            a = c;
+          } else {
+            b ??= c;
+          }
+        }
+      }
+    }
+    own = o;
+    above = a;
+    below = b;
+    spanTop = a != null ? boxOf(a).top : o != null ? boxOf(o).top : focus?.top ?? double.infinity;
+    spanBottom = b != null ? boxOf(b).bottom : o != null ? boxOf(o).bottom : focus?.bottom ?? double.negativeInfinity;
+  }
+
+  GuideUnitLookKind? of(_Unit u) {
+    if (policy.skeletonAll) return GuideUnitLookKind.skeleton;
+    if (identical(u, own)) return null;
+    final isCard = u.card;
+    if (identical(u, above) || identical(u, below)) return policy.neighboursLit ? null : GuideUnitLookKind.dim;
+    if (!policy.placeholders) return GuideUnitLookKind.dim;
+    if (isCard) return GuideUnitLookKind.skeleton;
+    // Loose text is only ever dimmed (titles, status lines, labels between cards).
+    if (u.paragraph != null) return GuideUnitLookKind.dim;
+    // A control or chart that is no card: dimmed in the header band (above the first
+    // card) and inside the window, a placeholder anywhere else.
+    final y = u.bounds.center.dy;
+    if (y < firstCardTop || y >= spanTop && y <= spanBottom) return GuideUnitLookKind.dim;
+    return GuideUnitLookKind.skeleton;
   }
 }
 
@@ -501,7 +507,7 @@ SkeletonPlan planSkeleton(
     seen.add(e);
     for (final c in onstageElements(e)) {
       final w = c.widget;
-      if (w is Surface || w is Section || w is Pressable) seen.add(c);
+      if (isGuideComponent(w)) seen.add(c);
     }
   }
 
@@ -510,14 +516,14 @@ SkeletonPlan planSkeleton(
     final w = e.widget;
     // The dim look treats the OUTERMOST control as one component too (its whole
     // box, padding and background included), not just the text inside it.
-    if (w is Surface || w is Section || (dim != null && isGuideControl(w) && laidOutBox(e) != null)) {
+    if (w is Surface || w is Section || w is GuideBox || (dim != null && isGuideControl(w) && laidOutBox(e) != null)) {
       see(e);
       final unit = planner.cardUnit(e);
       if (unit != null) units.add(unit);
       return; // everything inside belongs to this unit
     }
-    // A loose icon is its own unit in the dim look (dimmed whole); not otherwise.
-    if ((w is Icon || w is ImageIcon) && dim == null) return;
+    // An icon is never a unit: it is left exactly as it is.
+    if (w is Icon || w is ImageIcon) return;
     final ro = e is RenderObjectElement ? e.renderObject : null;
     if (ro is RenderParagraph && ro.hasSize) {
       seenLoose.add(ro);
@@ -525,36 +531,52 @@ SkeletonPlan planSkeleton(
       if (unit != null) units.add(unit);
     } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
       final rect = planner.visibleOf(ro);
-      if (!rect.isEmpty) units.add(_Unit(rect, [_Draft(SkeletonKind.block, rect)], const {}, null, null, ro));
+      if (!rect.isEmpty) units.add(_Unit(rect, [_Draft(SkeletonKind.block, rect)], null, null, ro));
     }
     e.debugVisitOnstageChildren(find);
   }
 
   find(root);
 
+  // KEPT: a unit that overlaps a keep rect (the target, caption-named content, live
+  // status) stays as it is. Chrome keeps only the units that lie IN it (their centre
+  // inside), so a card that merely touches the NavBar's box is not kept [Day strain's
+  // top card was, on the phone, and nothing on that page dimmed].
+  //
+  // A keep rect keeps a unit when its centre lies in the unit (the target in its card, a timer
+  // in its card) or the unit's centre lies in it (a kept section): a status line that merely
+  // overlaps a card's top edge keeps nothing.
+  bool kept(_Unit u) => dim == null
+      ? legible.any((k) => k.overlaps(u.bounds))
+      : keep.any((k) => k.overlaps(u.bounds) && (u.bounds.contains(k.center) || k.contains(u.bounds.center))) ||
+          chrome.any((c) => c.contains(u.bounds.center));
   final skeletonized = [
     for (final u in units)
-      if (!legible.any((k) => k.overlaps(u.bounds))) u,
+      if (!kept(u)) u,
   ]..sort((a, b) {
       final byTop = a.bounds.top.compareTo(b.bounds.top);
       return byTop != 0 ? byTop : a.bounds.left.compareTo(b.bounds.left);
     });
+  final look = dim == null ? null : _WindowLook(units, dim, keep);
   final shapes = <SkeletonShape>[];
   final planned = <PlannedUnit>[];
   final veil = scaffold.withValues(alpha: kDimOpacity);
-  for (var i = 0; i < skeletonized.length; i++) {
-    final u = skeletonized[i];
-    final skeleton = dim == null || dim.lookalike(u.fullBounds ?? u.bounds, u.words, inkBounds: u.inkBounds);
+  var section = 0;
+  for (final u in skeletonized) {
+    final GuideUnitLookKind? kind = look == null ? GuideUnitLookKind.skeleton : look.of(u);
+    if (kind == null) continue; // lit: neighbours of an off-path route, like a kept unit
+    final skeleton = kind == GuideUnitLookKind.skeleton;
     if (skeleton) {
       for (final d in u.drafts) {
-        shapes.add(SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: i));
+        shapes.add(SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: section));
       }
     } else {
-      shapes.add(SkeletonShape(kind: SkeletonKind.dim, rect: u.bounds, color: veil, section: i));
+      shapes.add(SkeletonShape(kind: SkeletonKind.dim, rect: u.bounds, color: veil, section: section));
     }
     if (u.component != null || u.paragraph != null || u.visual != null) {
-      planned.add(PlannedUnit(component: u.component, paragraph: u.paragraph, visual: u.visual, skeleton: skeleton, section: i));
+      planned.add(PlannedUnit(component: u.component, paragraph: u.paragraph, visual: u.visual, skeleton: skeleton, section: section));
     }
+    section++;
   }
   return SkeletonPlan(shapes, planned, seen, seenLoose);
 }
@@ -577,36 +599,54 @@ List<SkeletonShape> skeletonOfParagraph(RenderParagraph paragraph, Color scaffol
   return [for (final d in unit.drafts) SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: 0)];
 }
 
+/// How strongly a placeholder bar or block darkens or lightens what is under it: it is
+/// painted with [BlendMode.difference] against white, so the tone comes from the unit's
+/// own surface (lighter on a dark card, darker on a light one, a tint on a coloured
+/// one) and no colour pair is fixed (owner, 2026-11-14).
+const kPlaceholderStrength = .14;
+
 /// Paints [shapes] with [palette]: the single painter of placeholders, shared by
 /// the review overlay ([Skeletonize]) and the components that paint themselves.
 /// A heading is the REAL text: the surface fills leave a hole at its line and a
-/// veil dims it.
-void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette) {
-  final holes = [for (final s in shapes) if (s.kind == SkeletonKind.heading) s.rect];
-  for (final s in shapes) {
+/// veil dims it. An icon is a hole in every fill. [fade] (0..1) scales the dim
+/// layers' alpha (the dim fades in; placeholders never fade).
+void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette, {double fade = 1}) {
+  final headings = [for (final s in shapes) if (s.kind == SkeletonKind.heading) s.rect];
+  final icons = [for (final s in shapes) if (s.kind == SkeletonKind.icon) s.rect];
+  Color veilOf(Color c) => c.withValues(alpha: c.a * fade.clamp(0.0, 1.0));
+  final ink = Paint()
+    ..blendMode = BlendMode.difference
+    ..color = C.white.withValues(alpha: kPlaceholderStrength);
+  // Dimmed headings first: a block laid over the same control then tones them evenly.
+  final ordered = [
+    ...shapes.where((s) => s.kind == SkeletonKind.heading || s.kind == SkeletonKind.dim),
+    ...shapes.where((s) => s.kind != SkeletonKind.heading && s.kind != SkeletonKind.dim),
+  ];
+  for (final s in ordered) {
     switch (s.kind) {
-      case SkeletonKind.surface:
-        if (holes.isEmpty) {
+      case SkeletonKind.icon:
+        break;
+      case SkeletonKind.heading || SkeletonKind.dim:
+        canvas.drawRect(s.rect, Paint()..color = veilOf(s.color!));
+      case SkeletonKind.surface || SkeletonKind.erase || SkeletonKind.bar || SkeletonKind.block:
+        canvas.save();
+        for (final hole in icons) { canvas.clipRect(hole, clipOp: ClipOp.difference); }
+        if (s.kind == SkeletonKind.surface) {
+          // The heading is real text: the card fill leaves its line alone.
+          for (final h in headings) { canvas.clipRect(h, clipOp: ClipOp.difference); }
           canvas.drawRRect(R.rLg.toRRect(s.rect), Paint()..color = s.color!);
+        } else if (s.kind == SkeletonKind.erase) {
+          canvas.drawRect(s.rect, Paint()..color = s.color!);
+        } else if (s.kind == SkeletonKind.bar) {
+          // The shape is the whole line box; the drawn bar is a slimmer pill
+          // centred in it, as in the mock-up.
+          final h = math.min(s.rect.height, math.max(8.0, s.rect.height * .55));
+          final pill = Rect.fromCenter(center: s.rect.center, width: s.rect.width, height: h);
+          canvas.drawRRect(RRect.fromRectAndRadius(pill, Radius.circular(h / 2)), ink);
         } else {
-          canvas.save();
-          for (final h in holes) { canvas.clipRect(h, clipOp: ClipOp.difference); }
-          canvas.drawRRect(R.rLg.toRRect(s.rect), Paint()..color = s.color!);
-          canvas.restore();
+          canvas.drawRRect(R.rMd.toRRect(s.rect), ink);
         }
-      case SkeletonKind.erase:
-        canvas.drawRect(s.rect, Paint()..color = s.color!);
-      case SkeletonKind.bar:
-        // The shape is the whole line box; the drawn bar is a slimmer pill
-        // centred in it, as in the mock-up.
-        final h = math.min(s.rect.height, math.max(8.0, s.rect.height * .55));
-        final pill = Rect.fromCenter(center: s.rect.center, width: s.rect.width, height: h);
-        canvas.drawRRect(RRect.fromRectAndRadius(pill, Radius.circular(h / 2)), Paint()..color = palette.line);
-      case SkeletonKind.block:
-        canvas.drawRRect(R.rMd.toRRect(s.rect), Paint()..color = palette.line);
-      case SkeletonKind.dim:
-      case SkeletonKind.heading:
-        canvas.drawRect(s.rect, Paint()..color = s.color!);
+        canvas.restore();
     }
   }
 }

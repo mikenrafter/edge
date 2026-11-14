@@ -397,10 +397,10 @@ class Motion {
   static const base = Duration(milliseconds: 180);
   static const slow = Duration(milliseconds: 280);
 
-  /// One live-guide step's skeleton fading in, top to bottom. Longer than [slow]:
-  /// it reveals a whole screen section by section. Gated by reduced motion like
-  /// the rest (the guide then shows the finished state at once).
-  static const reveal = Duration(milliseconds: 600);
+  /// One live-guide step's dim fading in, linearly (owner, 2026-11-14: 800 ms). The
+  /// placeholders are there at once; only the dim ramps. Gated by reduced motion
+  /// like the rest (the guide then shows the finished state at once).
+  static const reveal = Duration(milliseconds: 800);
 
   /// Minimum interval between live-guide plans during page animations.
   /// Reduced motion removes the throttle as well as the reveal animation.

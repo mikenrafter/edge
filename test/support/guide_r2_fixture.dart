@@ -137,6 +137,7 @@ class R2Fixture {
     navKey.currentState!.push(MaterialPageRoute<void>(builder: (_) => Scaffold(body: Column(children: [
       const NavBar('Elsewhere'),
       Pressable(key: r2Other, onTap: () => others++, child: const Surface(child: Text('Other action'))),
+      const Surface(child: Text('Second card')),
     ]))));
     await frames(t);
   }

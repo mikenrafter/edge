@@ -5,7 +5,7 @@
 //
 //  * [GuideDimScope] sits once at the app root. Its [GuideDimController] holds the
 //    plan: which component is dimmed, which is skeleton.
-//  * `Surface`, `Section` and `Pressable` (grammar.dart) wrap themselves in
+//  * `Surface`, `Section`, `Pressable` and `GuideBox` (grammar.dart) wrap themselves in
 //    [GuideUnitMark] (../skeleton/unit_paint.dart), which asks the plan at PAINT
 //    time and paints its own foreground. Loose text inside a scrollable is painted
 //    by [GuideScrollBehavior]'s layer, inside the scrollable and its overscroll
@@ -23,7 +23,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
 
-import '../grammar.dart' show Pressable, Section, Surface;
 import '../skeleton/skeleton.dart';
 import '../skeleton/unit_paint.dart' show isIconParagraph;
 import 'tree_geometry.dart';
@@ -72,6 +71,20 @@ class GuideDimController extends ChangeNotifier {
 
   /// The plan in force; null when no guide is dimming anything.
   GuideUnitLooks? get looks => _looks;
+
+  double _fade = 1;
+
+  /// How far the dim has faded in, 0..1 (linear, owner: 800 ms per step). The
+  /// placeholders are not faded: they appear at once.
+  double get fade => _fade;
+
+  /// Sets [fade] and repaints the components (they never rebuild).
+  void setFade(double value) {
+    final next = value.clamp(0.0, 1.0);
+    if (_disposed || next == _fade) return;
+    _fade = next;
+    notifyListeners();
+  }
 
   /// Replaces the plan and repaints the components that read it. A plan that gives
   /// every component the same look as the one in force ([GuidePlan.sameLooks])
@@ -129,7 +142,6 @@ class GuideDimScope extends InheritedWidget {
   bool updateShouldNotify(GuideDimScope oldWidget) => !identical(controller, oldWidget.controller);
 }
 
-bool _isComponent(Widget w) => w is Surface || w is Section || w is Pressable;
 
 /// The plan the overlay writes: its decisions per component and per loose
 /// paragraph, plus the rules for what the plan has not seen (a component built by
@@ -153,17 +165,13 @@ class GuidePlan implements GuideLooseLooks {
   /// A plan from [plan] on [page]. [keep]: the live boxes that stay legible
   /// (target, caption-named content), against which unseen components are tested.
   /// [skeletonAll]: the P6 collapse, so unseen components are skeleton too.
-  /// [revealed]: only units with a section below this index take effect (the
-  /// progressive reveal); null = all.
   factory GuidePlan.from(Element? page, SkeletonPlan plan, {
     List<RenderBox> keep = const [],
     bool skeletonAll = false,
-    int? revealed,
   }) {
     final components = <Element, GuideUnitLook>{};
     final paragraphs = <RenderParagraph, GuideUnitLook>{};
     for (final u in plan.units) {
-      if (revealed != null && u.section >= revealed) continue;
       final look = u.skeleton ? GuideUnitLook.skeleton : GuideUnitLook.dim;
       final c = u.component;
       // A control that is not a Surface / Section / Pressable cannot paint itself: the
@@ -227,7 +235,7 @@ class GuidePlan implements GuideLooseLooks {
         onPage = true;
         return false;
       }
-      if (_isComponent(a.widget)) {
+      if (isGuideComponent(a.widget)) {
         outermost = false;
         return false;
       }
