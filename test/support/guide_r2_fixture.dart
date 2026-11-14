@@ -73,7 +73,7 @@ class R2Fixture {
       Positioned.fill(child: GestureDetector(key: r2UnderCard, behavior: HitTestBehavior.opaque,
         onTap: () => underlying++, onLongPress: () => underlyingLongPresses++, child: const SizedBox.expand())),
       const Positioned(top: 8, left: 16, right: 16, child: ScreenTitle('Fixture title')),
-      Positioned(top: y, left: 16, right: 16, child: grouped
+      Positioned(top: y, left: 16, right: grouped ? 104 : 16, child: grouped
         ? separateRows ? Column(key: r2Group, children: [
             Row(children: [Expanded(child: targetControl)]),
             Row(children: [Expanded(child: Pressable(key: r2Sibling, onTap: () => alternatives++,
