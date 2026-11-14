@@ -38,6 +38,12 @@ void main() {
         final rect = t.getRect(r2Tab(i));
         expect(overlay.paintedShapes.any((s) => s.kind.name == 'dim' && r2Contains(s.rect, rect)), isTrue,
           reason: 'tab $i: whole box, including selected Health pigment');
+        // WHY: CLAIM(off-path-one-dim): the tab paints its own foreground.
+        // # catches: publishing a tab look and painting its section again in the overlay.
+        final layers = overlay.paintedShapes.where((s) => s.kind.name == 'dim' && r2Contains(s.rect, rect));
+        expect(layers, hasLength(1));
+        expect(overlay.layerStatic, isNot(contains(layers.single.section)),
+          reason: 'tab $i already paints in its component; the overlay must not duplicate it');
       }
       final page = app.runner.routes.page!;
       for (final unit in r2Units(page)) {

@@ -421,15 +421,18 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     final plan = planSkeleton(page, keep: keepers, chrome: [?tabBar], dim: const DimPolicy());
     final veil = scaffoldOf(page).withValues(alpha: kDimOpacity);
     final out = <SkeletonShape>[...plan.shapes];
-    final extra = <Element, GuideUnitLook>{};
+    final units = <PlannedUnit>[...plan.units];
     var section = plan.shapes.isEmpty ? 0 : plan.shapes.last.section + 1;
     for (var i = 0; i < tabs.length; i++) {
       if (back != null && tabs[i].overlaps(back)) continue;
-      out.add(SkeletonShape(kind: SkeletonKind.dim, rect: tabs[i], color: veil, section: section++));
-      extra[tabElements[i]] = GuideUnitLook.dim;
+      out.add(SkeletonShape(kind: SkeletonKind.dim, rect: tabs[i], color: veil, section: section));
+      units.add(PlannedUnit(component: tabElements[i], skeleton: false, section: section++));
     }
     final routeElement = backElement;
-    return (plan, out, extra, route, routeElement == null ? null : _Route.of(routeElement, isTab: backIsTab));
+    // CLAIM(off-path-one-dim): tab sections belong to their component painters,
+    // never the overlay as well [guide_r2_off_path_test].
+    final tabPlan = SkeletonPlan(out, units, {...plan.seen, ...tabElements}, plan.seenLoose);
+    return (tabPlan, out, const <Element, GuideUnitLook>{}, route, routeElement == null ? null : _Route.of(routeElement, isTab: backIsTab));
   }
 
   // The user's card height for THIS run, as a fraction of the travel available
