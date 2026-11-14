@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/ui2/skeleton/skeleton.dart' show kSkeletonReach;
 import 'package:openstrap_edge/app.dart' show AppMainShell;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ui2/activity/picker.dart';
@@ -41,8 +42,8 @@ void main() {
         }
         final visible = units.map((r) => r.intersect(Offset.zero & r2Size)).toList();
         expect(visible.every((r) => !r.isEmpty), isTrue, reason: 'all four named components are actually visible');
-        final outside = overlay.paintedShapes.where((s) => s.kind.name != 'dim' && !r2Contains(row.inflate(1), s.rect));
-        expect(outside, isEmpty, reason: 'B: only Overview/History look-alikes may be skeleton');
+        final outside = overlay.paintedShapes.where((s) => s.kind.name != 'dim' && !r2Contains(row.inflate(kSkeletonReach + 1), s.rect));
+        expect(outside, isEmpty, reason: 'B (falloff): skeleton only on controls within kSkeletonReach of the sub-tab row');
         expect(overlay.paintedShapes.where((s) => s.kind.name == 'erase'), isEmpty,
           reason: 'no scaffold erase patches on the purple start banner');
         for (final box in visible) {

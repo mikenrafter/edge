@@ -434,7 +434,9 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     // Use THIS layout's resolution: a late insert can unbuild a previously
     // visible target. Waiting for _target to become null would need another
     // full plan, but the next frame may reuse this plan's unchanged signature.
-    final retry = _searchingPage == null &&
+    // The dim look reveals once per step: after that the user scrolls (the marker
+    // shows the way) and the overlay must not scroll the page back under them.
+    final retry = widget.run.guide.look != GuideLook.dim && _searchingPage == null &&
         ((targetNow == null && _searchSignature != signature) ||
          (outside && _lastRevealRect != targetNow));
     if (page != null && step != null && (newStep || retry)) {
