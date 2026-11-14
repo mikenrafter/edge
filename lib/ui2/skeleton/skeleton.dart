@@ -275,9 +275,9 @@ class _Planner {
     for (final local in lines) {
       final line = rectInRoot(paragraph, rootBox, local);
       final bar = line.intersect(visible);
-      if (bar.isEmpty) continue;
+      if (bar.isEmpty && !heading) continue;
       final drafts = <_Draft>[];
-      if (!onCard) {
+      if (!onCard && !heading) {
         // Scaffold text: erase first (see SkeletonKind.erase). The grown rect
         // is dropped back to the bar when it would touch a legible rect.
         final grown = line.inflate(_kEraseGrow).intersect(visible);
@@ -287,15 +287,15 @@ class _Planner {
           scaffold,
         ));
       }
-      drafts.add(_Draft(SkeletonKind.bar, bar));
-      items.add(_Item(bar, 1, drafts, text: true));
+      if (!bar.isEmpty) drafts.add(_Draft(SkeletonKind.bar, bar));
+      items.add(_Item(line, 1, drafts, text: true));
     }
     return items;
   }
 
   /// [items] sorted into plan order, the first text line turned into the dimmed
   /// heading when there are two or more text lines and headings are on.
-  List<_Draft> orderedDrafts(List<_Item> items, [List<_Draft> leading = const []]) {
+  List<_Draft> orderedDrafts(List<_Item> items, [List<_Draft> leading = const [], bool keepHeading = false]) {
     items.sort((a, b) {
       final byTop = a.sortRect.top.compareTo(b.sortRect.top);
       if (byTop != 0) return byTop;
@@ -307,11 +307,14 @@ class _Planner {
     final firstText = items.indexWhere((i) => i.text);
     final textLines = items.where((i) => i.text).length;
     final hasVisual = items.any((i) => !i.text);
-    final headed = heading && firstText >= 0 && (textLines >= 2 || hasVisual) ? firstText : -1;
+    final headed = heading && keepHeading && firstText >= 0 && (textLines >= 2 || hasVisual) ? firstText : -1;
     return [
       ...leading,
       for (var i = 0; i < items.length; i++)
-        if (i == headed) _Draft(SkeletonKind.heading, items[i].sortRect, _veil) else ...items[i].drafts,
+        if (i == headed) ...[
+          if (!items[i].sortRect.intersect(visibleBoundsInRoot(rootBox, rootBox)).isEmpty)
+            _Draft(SkeletonKind.heading, items[i].sortRect.intersect(visibleBoundsInRoot(rootBox, rootBox)), _veil),
+        ] else ...items[i].drafts,
     ];
   }
 
@@ -360,7 +363,7 @@ class _Planner {
     }
 
     inner(card, false);
-    final drafts = orderedDrafts(items, surfaces);
+    final drafts = orderedDrafts(items, surfaces, isCard);
     // The dim look dims a unit whole, so it needs no drafts to exist.
     return drafts.isEmpty && !heading ? null : _Unit(bounds, drafts, card, null, null, rectInRoot(box, rootBox), isCard);
   }
