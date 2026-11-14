@@ -77,6 +77,14 @@ void main() {
       run.opened();
       await run.frames([0, 150, 2500]);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      if (screen.key == 'review doorway') {
+        final semantics = t.ensureSemantics();
+        try {
+          await t.pump();
+          expect(find.bySemanticsLabel(RegExp('Breakdown of your day')), findsNothing,
+            reason: 'an unknown pending count must not announce zero pending items');
+        } finally { semantics.dispose(); }
+      }
       repo.gate.complete();
       await landed(run);
       check(run, screen.key);
