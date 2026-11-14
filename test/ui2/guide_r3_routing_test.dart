@@ -77,6 +77,34 @@ void main() {
     }
   });
 
+  // WHY: switching tabs restores a parked sub-tab; the route cannot count a
+  // second History tap when History will already be selected on return.
+  // # catches: canonical default-entry paths overstating the actual hop count.
+  testWidgets('A: returning to a parked History sub-tab is one tab hop', (t) async {
+    final app = await pumpLiveGuideApp(t);
+    try {
+      await app.runner.start(r2Guide('log-past-workout'), band: null);
+      await settleLiveGuide(t, frames: 18);
+      final target = _overlay(t).targetRect!;
+      await t.tapAt(target.intersect(t.getRect(find.byType(SubTabs))).center);
+      await settleLiveGuide(t, frames: 18);
+      expect(app.runner.activeRun!.currentStep!.id, 'log-past');
+      await t.tapAt(t.getRect(r2Tab(3)).center);
+      await settleLiveGuide(t, frames: 18);
+      expect(app.runner.activeRun!.state, isA<GuideOffPath>());
+      expect(find.text('1 step back'), findsOneWidget);
+      expect(t.getRect(find.byKey(LiveGuideOverlay.outlineKey)).contains(t.getRect(r2Tab(2)).center), isTrue);
+      await t.tapAt(t.getRect(r2Tab(2)).center);
+      await settleLiveGuide(t, frames: 18);
+      expect(app.runner.activeRun!.currentStep!.id, 'log-past');
+    } finally {
+      app.runner.exit();
+      await t.pumpWidget(const SizedBox());
+      app.dispose();
+      await t.pump();
+    }
+  });
+
   // WHY: Day strain's page exists before its future supplies How these are set.
   // # catches: the loading page flashing an off-path instruction.
   testWidgets('A: real Day strain stays on path while its data future is pending', (t) async {
