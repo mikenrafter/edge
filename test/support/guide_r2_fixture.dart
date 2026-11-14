@@ -15,6 +15,10 @@ const r2Alternative = ValueKey('r2-alternative');
 const r2Quiet = ValueKey('r2-quiet');
 const r2Details = ValueKey('r2-details');
 const r2Other = ValueKey('r2-other');
+const r2Group = ValueKey('r2-group');
+const r2Sibling = ValueKey('r2-sibling');
+const r2UnderCard = ValueKey('r2-under-card');
+const r2Back = ValueKey('r2-back');
 const r2Capture = ValueKey('r2-capture');
 
 // Test-side selector supplies real laid-out target boxes to the new interface.
@@ -35,13 +39,23 @@ class R2Fixture {
   final targetTop = ValueNotifier<double>(100);
   final Guide guide;
   late GuideRun run;
-  final bool lookalike;
+  final bool lookalike, grouped, wrapTarget, separateRows;
+  final String targetLabel, quietLabel, caption;
+  final Brightness brightness;
+  final Size size;
+  final double textScale;
+  int longPresses = 0, doubleTaps = 0, dragUpdates = 0, underlying = 0, underlyingLongPresses = 0;
   OverlayEntry? entry;
   int targets = 0, alternatives = 0, others = 0, exits = 0, returns = 0;
-  R2Fixture({bool declarations = false, this.lookalike = false}) : guide = Guide(id: 'r2-fixture', look: GuideLook.dim,
+  R2Fixture({bool declarations = false, this.lookalike = false,
+    this.grouped = false, this.wrapTarget = false, this.separateRows = false, bool explicitGroup = false,
+    this.targetLabel = 'Target', this.quietLabel = 'Quiet information',
+    this.caption = 'Tap Target or Alternative. Check the details.',
+    this.brightness = Brightness.light, this.size = const Size(390, 780), this.textScale = 1}) : guide = Guide(id: 'r2-fixture', look: GuideLook.dim,
     title: fnText((_) => 'Fixture'), start: GuideStart.today, variants: [GuideVariant(steps: [
       GuideStep(id: 'target', target: GuideTarget.key(r2Target), anchor: GuideTarget.key(r2Target),
-        action: GuideAction.tap, caption: fnText((_) => 'Tap Target or Alternative. Check the details.'),
+        group: explicitGroup ? GuideTarget.key(r2Group) : null,
+        action: GuideAction.tap, caption: fnText((_) => caption),
         alsoTap: declarations ? [const R2Content([r2Alternative])] : const [],
         alsoRead: declarations ? [const R2Content([r2Details])] : const []),
     ])], footers: [GuideFooter(kind: GuideFooterKind.missingTarget,
@@ -49,22 +63,39 @@ class R2Fixture {
 
   Widget get home => Scaffold(body: ValueListenableBuilder<double>(
     valueListenable: targetTop, builder: (_, y, _) => Stack(children: [
+      Positioned.fill(child: GestureDetector(key: r2UnderCard, behavior: HitTestBehavior.opaque,
+        onTap: () => underlying++, onLongPress: () => underlyingLongPresses++, child: const SizedBox.expand())),
       const Positioned(top: 8, left: 16, right: 16, child: ScreenTitle('Fixture title')),
-      Positioned(top: y, left: 16, right: 16, child: Pressable(key: r2Target,
-        onTap: () => targets++, child: const Surface(child: Text('Target')))),
-      const Positioned(top: 220, left: 16, right: 16, child: Surface(key: r2Quiet,
-        color: Color(0xff7040a0), child: Text('Quiet information', style: TextStyle(color: Colors.white)))),
-      Positioned(top: 310, left: 16, right: 16, child: Pressable(key: r2Alternative,
-        onTap: () => alternatives++, child: Surface(child: Text(lookalike ? 'Target option' : 'Alternative')))),
+      Positioned(top: y, left: 16, right: 16, child: grouped
+        ? separateRows ? Column(key: r2Group, children: [
+            Row(children: [Expanded(child: targetControl)]),
+            Row(children: [Expanded(child: Pressable(key: r2Sibling, onTap: () => alternatives++,
+              child: const Surface(child: Text('Sibling'))))])])
+        : Row(key: r2Group, children: [Expanded(child: wrapTarget
+            ? Padding(padding: const EdgeInsets.all(4), child: targetControl)
+            : targetControl),
+          Expanded(child: Pressable(key: r2Sibling, onTap: () => alternatives++,
+            child: const Surface(child: Text('Sibling'))))])
+        : targetControl),
+      Positioned(top: 220, left: 16, right: 16, child: Surface(key: r2Quiet,
+        color: const Color(0xff7040a0), child: Text(quietLabel, style: const TextStyle(color: Colors.white)))),
+      Positioned(top: 310, left: 16, right: 16, child: GestureDetector(key: r2Alternative, behavior: HitTestBehavior.opaque,
+        onTap: () => alternatives++, onLongPress: () => longPresses++,
+        onDoubleTap: () => doubleTaps++, onVerticalDragUpdate: (_) => dragUpdates++, child: Surface(child: Text(lookalike ? 'Target option' : 'Alternative')))),
       const Positioned(top: 390, left: 16, right: 16, child: Section('Details', Surface(child: Text('Read this context')), key: r2Details)),
     ])));
 
+  Widget get targetControl => Pressable(key: r2Target, onTap: () => targets++,
+    child: Surface(child: Text(targetLabel)));
+
   Future<void> pump(WidgetTester t) async {
-    t.view.physicalSize = const Size(390, 780);
+    t.view.physicalSize = size;
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
     await t.pumpWidget(RepaintBoundary(key: r2Capture, child: MaterialApp(
-      navigatorKey: navKey, navigatorObservers: [routes], theme: buildTheme(Brightness.light),
+      navigatorKey: navKey, navigatorObservers: [routes], theme: buildTheme(brightness),
+      builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(
+        textScaler: TextScaler.linear(textScale)), child: child!),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales, locale: const Locale('en'), home: home)));
     await t.pump();

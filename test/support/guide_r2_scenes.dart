@@ -98,10 +98,10 @@ class R2Mounted {
 // Shell scenes use the shipped runner; pushed scenes install the actual
 // overlay/run after page preparation under the real shell. Staging Discard
 // prepares a fixture; the dedicated pointer tests prove input pass-through.
-Future<R2Mounted> pumpR2Scene(WidgetTester t, R2Scene scene, {Size size = r2Size}) async {
+Future<R2Mounted> pumpR2Scene(WidgetTester t, R2Scene scene, {Size size = r2Size, Brightness brightness = Brightness.light}) async {
   final guide = r2Guide(scene.guide);
   final repo = GuideFakeRepo(sleepSource: scene.manual ? 'manual' : 'auto', singlePending: true);
-  final app = await pumpLiveGuideApp(t, size: size, repo: repo);
+  final app = await pumpLiveGuideApp(t, size: size, repo: repo, brightness: brightness);
   if (scene.shell) {
     // Use the shipped runner here: tab-navigation signals may be owned by
     // GuideRunner. A separately inserted run would bypass that real seam.

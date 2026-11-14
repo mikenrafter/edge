@@ -52,14 +52,15 @@ void main() {
   setUpAll(() async { await loadFonts(); await skLoadAppFonts(); await r2OpenDb('guide_r2_contrast.db'); });
   tearDownAll(LocalDb.close);
 
+  for (final brightness in Brightness.values) {
   for (final scene in r2Scenes.where((s) => r2Pilots.contains(s.guide))) {
-    // WHY: pilot dim is light enough to retain >=3:1 actual text contrast.
+    // WHY: D-S7 pilot dim retains 4.5:1 normal / 3:1 large text in both themes.
     // The undimmed raster supplies independent glyph/background coordinates;
     // the guided raster supplies the measured colours at those SAME pixels.
-    // # catches: dim alpha erases text, opaque grey replaces glyphs, or a plan
+    // # catches: W8 black scrim destroys dark-theme contrast; opaque grey glyphs; a plan
     // reporting dim whose painter still uses low-contrast placeholder bars.
-    testWidgets('r2 pilot dim text contrast stays at least 3 to 1 ${scene.id}', (t) async {
-      final m = await pumpR2Scene(t, scene);
+    testWidgets('r2 pilot dim contrast normal 4.5 large 3 ${brightness.name} ${scene.id}', (t) async {
+      final m = await pumpR2Scene(t, scene, brightness: brightness);
       try {
         await settleLiveGuide(t, frames: 18);
         final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
@@ -88,9 +89,13 @@ void main() {
           if (counts.isEmpty) continue;
           final background = counts.keys.reduce((a,b) => counts[a]! > counts[b]! ? a : b);
           final foreground = counts.keys.reduce((a,b) => _ratio(a, background) > _ratio(b, background) ? a : b);
-          if (_ratio(foreground, background) < 3) continue; // Existing unreadable ink is not a dim regression.
+          final style = ro.text is TextSpan ? (ro.text as TextSpan).style : null;
+          final fontSize = style?.fontSize ?? 14;
+          final large = fontSize >= 24 || fontSize >= 18.6667 && (style?.fontWeight ?? FontWeight.w400).value >= FontWeight.w700.value;
+          final minimum = large ? 3.0 : 4.5;
+          if (_ratio(foreground, background) < minimum) continue; // Existing unreadable ink is not a dim regression.
           final fg = points[foreground]!, bg = points[background]!;
-          expect(_ratio(guided.rgb(fg.$1, fg.$2), guided.rgb(bg.$1, bg.$2)), greaterThanOrEqualTo(3),
+          expect(_ratio(guided.rgb(fg.$1, fg.$2), guided.rgb(bg.$1, bg.$2)), greaterThanOrEqualTo(minimum),
             reason: '${scene.id}: ${ro.text.toPlainText()}');
           checked++;
         }
@@ -99,10 +104,12 @@ void main() {
     });
   }
 
+  }
+
   // WHY: P6 remains a pilot exception to narrowed P1: content that must be
   // scrolled past collapses while the target is offscreen, with a directional
   // marker. Observe real discovery from its first frame, not a settled shot.
-  // # catches: no placeholders/marker until revealTarget has already jumped,
+  // # catches: T5 one unrelated bar anywhere; no placeholders/marker until revealTarget has already jumped,
   // or treating P1 as banning collapse of intervening non-competing content.
   testWidgets('r2 pilot scroll discovery collapses intervening content and points to target', (t) async {
     final scene = r2Scenes.firstWhere((s) => s.guide == 'heart-rate-zones' && s.step == 'open-zones');
@@ -120,8 +127,30 @@ void main() {
         if (target == null || !r2Contains(Offset.zero & viewport, target)) {
           sawOffscreen = true;
           expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsOneWidget, reason: 'P6 frame $frame');
-          expect(overlay.paintedShapes.any((s) => s.kind.name == 'bar' || s.kind.name == 'block'), isTrue,
-            reason: 'intervening content collapses during discovery');
+          final marker = find.byKey(LiveGuideOverlay.scrollMarkerKey);
+          final up = target != null && target.bottom < 0;
+          expect(t.widget<RotatedBox>(marker).quarterTurns % 4, up ? 3 : 1);
+          final skeleton = overlay.paintedShapes.where((s) => s.kind.name == 'bar' || s.kind.name == 'block').toList();
+          expect(skeleton, isNotEmpty, reason: 'on-screen content toward target is skeleton');
+          final units = r2Units(m.app.runner.routes.page!);
+          final toward = units.where((u) => !u.rect.isEmpty &&
+            (up ? u.rect.center.dy <= viewport.height / 2 : u.rect.center.dy >= viewport.height / 2)).toList();
+          expect(toward, isNotEmpty, reason: 'T5: real content exists on marker side');
+          for (final unit in toward) {
+            expect(skeleton.any((s) => s.rect.overlaps(unit.rect)), isTrue,
+              reason: 'T5: specific intervening unit, not one arbitrary bar: ${unit.text}');
+          }
+          for (final shape in skeleton) {
+            expect(r2Contains(Offset.zero & viewport, shape.rect), isTrue);
+            if (target != null) {
+              expect(shape.rect.overlaps(target.deflate(.5)), isFalse, reason: 'T5 no skeleton over target band');
+              expect(up ? shape.rect.top >= target.bottom : shape.rect.bottom <= target.top, isTrue,
+                reason: 'D-S4 only content on the way toward target');
+            }
+          }
+        } else {
+          expect(overlay.paintedShapes.where((s) => s.rect.overlaps(target.deflate(.5))), isEmpty,
+            reason: 'D-S4/T5 no shapes on target once visible');
         }
       }
       expect(sawOffscreen, isTrue, reason: 'fixture really began with the pilot scroll target off screen');

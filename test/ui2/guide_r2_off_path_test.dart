@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/ui2/grammar.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide_runner.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
@@ -79,4 +80,91 @@ void main() {
       await t.pump();
     }
   });
+  for (var tab = 0; tab < 4; tab++) {
+    // WHY: T3/D-S5 recovery must use the shipped runner, including the root
+    // re-tap case where there is nothing for Navigator to pop.
+    // # catches: W4 sticky off-path state which observe/backToGuide never clears.
+    testWidgets('r2 runner returns after tab $tab including current-tab re-tap', (t) async {
+      final app = await pumpLiveGuideApp(t, size: r2Size);
+      try {
+        final started = await app.runner.start(r2Guide('heart-rate-zones'), band: null) as GuideStarted;
+        await settleLiveGuide(t, frames: 18);
+        await t.tapAt(t.getRect(r2Tab(tab)).center);
+        await settleLiveGuide(t, frames: 12);
+        expect(_selected(t, tab), isTrue);
+        if (tab == 0) {
+          expect(started.run.currentStep?.id, 'open-strain');
+          expect(find.byKey(GuideStepCard.offPathKey), findsNothing);
+          await app.runner.backToGuide();
+        } else {
+          expect(started.run.state, isA<GuideOffPath>());
+          // The button's callback is GuideRunner.backToGuide, never a test pop.
+          await t.tap(find.byKey(GuideStepCard.backToGuideKey));
+        }
+        await settleLiveGuide(t, frames: 18);
+        expect(identical(app.runner.activeRun, started.run), isTrue);
+        expect(started.run.currentStep?.id, 'open-strain');
+        expect(find.byKey(GuideStepCard.offPathKey), findsNothing);
+        expect(_selected(t, 0), isTrue);
+        // A second invocation must also finish, not inherit a stuck walk.
+        await app.runner.backToGuide();
+        expect(started.run.currentStep?.id, 'open-strain');
+      } finally {
+        app.runner.exit();
+        await t.pumpWidget(const SizedBox());
+        app.dispose();
+        await t.pump();
+      }
+    });
+  }
+
+  // WHY: D-S8 keeps the back arrow one step closer, even when one pop still
+  // leaves the user off path. T3 must walk both pages through GuideRunner.
+  // # catches: W7 dimming the first back arrow; W4 recovery pops once and sticks.
+  testWidgets('r2 two pages deep keeps each back arrow and runner walks home', (t) async {
+    final app = await pumpLiveGuideApp(t, size: r2Size);
+    try {
+      final started = await app.runner.start(r2Guide('heart-rate-zones'), band: null) as GuideStarted;
+      await settleLiveGuide(t, frames: 18);
+      void push(String name) => app.navigator.push(MaterialPageRoute<void>(builder: (_) =>
+        Scaffold(body: Column(children: [NavBar(name), const Text('Outside the guide')]))));
+      push('First detour');
+      await settleLiveGuide(t);
+      push('Second detour');
+      await settleLiveGuide(t);
+      expect(started.run.state, isA<GuideOffPath>());
+      Rect backRect() => t.getRect(find.descendant(of: find.byType(NavBar),
+        matching: find.byWidgetPredicate((w) => w is Pressable && w.onTap != null)).first);
+      final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+      final failures = <String>[];
+      if (overlay.paintedShapes.any((s) => s.rect.overlaps(backRect().deflate(.5)))) {
+        failures.add('D-S8/W7: deepest back arrow dimmed');
+      }
+      await t.tapAt(backRect().center);
+      await settleLiveGuide(t);
+      expect(find.text('First detour'), findsOneWidget);
+      expect(find.text('Second detour'), findsNothing);
+      expect(started.run.state, isA<GuideOffPath>(), reason: 'one step closer, still off path');
+      if (overlay.paintedShapes.any((s) => s.rect.overlaps(backRect().deflate(.5)))) {
+        failures.add('D-S8/W7: remaining back arrow dimmed');
+      }
+      push('Second detour');
+      await settleLiveGuide(t);
+      var completed = false;
+      final returning = app.runner.backToGuide().then((_) => completed = true);
+      await settleLiveGuide(t, frames: 30);
+      expect(completed, isTrue, reason: 'runner recovery cannot hang two routes deep');
+      await returning;
+      expect(app.navigator.canPop(), isFalse);
+      expect(started.run.currentStep?.id, 'open-strain');
+      expect(find.byKey(GuideStepCard.offPathKey), findsNothing);
+      expect(failures, isEmpty);
+    } finally {
+      app.runner.exit();
+      await t.pumpWidget(const SizedBox());
+      app.dispose();
+      await t.pump();
+    }
+  });
+
 }

@@ -37,7 +37,10 @@ List<double> r2Rect(Rect r) => [r.left, r.top, r.width, r.height];
 bool r2Contains(Rect outer, Rect inner) => inner.left >= outer.left - .5 &&
   inner.top >= outer.top - .5 && inner.right <= outer.right + .5 && inner.bottom <= outer.bottom + .5;
 Set<String> r2Words(String s) => RegExp(r'[\p{L}\p{N}]+', unicode: true)
-  .allMatches(s.toLowerCase()).map((m) => m[0]!).toSet();
+  .allMatches(s.toLowerCase()).map((m) => m[0]!).where((word) =>
+    word.length >= 3 && !const {'how', 'are', 'these', 'your', 'the', 'and',
+      'for', 'with', 'this', 'that', 'you', 'from', 'into', 'own', 'our',
+      'can', 'not', 'but', 'has', 'have', 'was', 'were', 'its'}.contains(word)).toSet();
 bool r2Control(Widget w) => w is Pressable && w.onTap != null ||
   w is GestureDetector && (w.onTap != null || w.onLongPress != null) ||
   w is InkResponse && w.onTap != null || w is ButtonStyleButton && w.onPressed != null ||
@@ -111,8 +114,9 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
   };
   final resolved = step.target.resolve(page, r2Locale);
   final targetWords = r2Words(label);
-  Rect? targetGroup;
-  if (resolved is TargetFound) {
+  final declaredGroup = step.group?.resolve(page, r2Locale);
+  Rect? targetGroup = declaredGroup is TargetFound ? declaredGroup.rect : null;
+  if (targetGroup == null && resolved is TargetFound) {
     for (final e in onstageElements(page)) {
       if (!r2Control(e.widget) || !identical(laidOutBox(e), resolved.renderObject)) continue;
       var levels = 0;
@@ -153,7 +157,12 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
       final control = laidOutBox(u.element);
       tapPasses = hit.path.any((entry) => identical(entry.target, control));
       final underCard = t.getRect(find.byKey(GuideStepCard.cardKey)).contains(u.rect.center);
-      if (!tapPasses && !underCard) violations.add('A/C: real control cannot receive pointer: ${u.text}');
+      if (!tapPasses && !underCard && (keep || !competing)) {
+        violations.add('owner: dimmed/target/caption control cannot receive pointer: ${u.text}');
+      }
+      if (tapPasses && !underCard && !keep && competing) {
+        violations.add('owner: skeleton look-alike receives a pointer: ${u.text}');
+      }
       if (offeredListChoice && !tapPasses) violations.add('P7: offered choice cannot receive pointer: ${u.text}');
     }
     if (keep && covering.isNotEmpty) violations.add('P3/P7/P8: kept ${u.text} covered');

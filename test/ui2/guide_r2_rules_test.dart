@@ -13,6 +13,7 @@ import 'package:openstrap_edge/ui2/skeleton/skeleton.dart';
 import '../support/bundled_fonts.dart';
 import '../support/skeleton_fixture.dart' show skLoadAppFonts;
 import '../support/guide_r2_manifest.dart';
+import '../support/guide_r2_scroll_fixture.dart';
 import '../support/guide_r2_scenes.dart';
 import '../support/live_guide_harness.dart';
 
@@ -101,7 +102,7 @@ void main() {
           // The original progressive reveal intentionally delays the outline.
           // Once it completes, every position must satisfy the full invariant.
           if (overlay.revealProgress < 1 && visible) continue;
-          if (!visible && r2Pilots.contains(scene.guide)) {
+          if (!visible) {
             if (find.byKey(LiveGuideOverlay.scrollMarkerKey).evaluate().isEmpty) {
               violations.add('frame $frame offsets=$positions: offscreen/unbuilt target has no scroll marker');
             } else if (target != null) {
@@ -132,75 +133,137 @@ void main() {
       } finally { await disposeR2(t, m); }
     });
 
-    // WHY: pushed pages still need the shell tab strip as chrome and bounds.
-    // # catches: defaultSkeletonChrome searching only the top route subtree.
-    testWidgets('r2 chrome finds shell tabs on ${scene.id}', (t) async {
+    // WHY: D-S1 chrome follows visible routes. Root pushes cover the shell.
+    // # catches: S1 reserving an invisible tab strip on a pushed page.
+    testWidgets('r2 chrome is confined to visible page on ${scene.id}', (t) async {
       final m = await pumpR2Scene(t, scene);
       try {
         await settleLiveGuide(t, frames: 18);
-        final tab = t.getRect(r2Tabs(hidden: true));
         final page = m.app.runner.routes.page!;
         final root = laidOutBox(page)!;
-        final localTab = tab.shift(-root.localToGlobal(Offset.zero));
+        final visible = (Offset.zero & root.size).intersect(visibleBoundsInRoot(root, root));
         final chrome = defaultSkeletonChrome(page);
-        expect(chrome.any((r) => r2Contains(r, localTab)), isTrue,
-          reason: 'P4: shell tabs must be found from every top page');
-        final card = t.getRect(find.byKey(GuideStepCard.cardKey));
-        expect(card.overlaps(tab), isFalse, reason: 'card bounds must stop above shell tabs');
+        for (final rect in chrome) {
+          expect(r2Contains(visible, rect), isTrue, reason: 'no chrome outside visible page: $rect');
+        }
+        if (scene.shell) {
+          final tab = t.getRect(r2Tabs());
+          final localTab = tab.shift(-root.localToGlobal(Offset.zero));
+          expect(chrome.any((r) => r2Contains(r, localTab)), isTrue);
+          expect(t.getRect(find.byKey(GuideStepCard.cardKey)).overlaps(tab), isFalse);
+        } else {
+          expect(r2Tabs(), findsNothing, reason: 'pushed page covers the shell');
+          // A phantom tab strip cannot reserve otherwise blank bottom pixels.
+          expect(chrome.where((r) => r.top > root.size.height * .75 && r.width > root.size.width / 2), isEmpty);
+        }
       } finally { await disposeR2(t, m); }
     });
 
     // WHY: gesture wiring must obey tab bounds on every page, not just a
     // correctly configured pure placement helper.
-    // # catches: drag clamping to the full viewport on pushed pages, or x drift.
+    // # catches: T7 a no-op drag, transient page scrolling, phantom tab bounds, or x drift.
     // proves: CLAIM(card-never-covers-target).
     testWidgets('r2 dragged card stays above tabs on ${scene.id}', (t) async {
       final m = await pumpR2Scene(t, scene);
       try {
         await settleLiveGuide(t, frames: 18);
         final initial = t.getRect(find.byKey(GuideStepCard.cardKey));
+        final positions = [for (final e in builtElements(m.app.runner.routes.page!))
+          if (e is StatefulElement && e.state is ScrollableState)
+            (e.state as ScrollableState).position];
+        var changes = 0;
+        void changed() { changes++; }
+        for (final p in positions) { p.addListener(changed); }
+        addTearDown(() { for (final p in positions) { p.removeListener(changed); } });
+        var moved = false;
         for (final dy in [-180.0, 2000.0, -2000.0]) {
           final before = t.getRect(find.byKey(GuideStepCard.cardKey));
           await t.dragFrom(Offset(before.right - 7, before.center.dy), Offset(60, dy));
           await settleLiveGuide(t, frames: 2);
           final card = t.getRect(find.byKey(GuideStepCard.cardKey));
-          final tabs = t.getRect(r2Tabs(hidden: true));
+          final bottom = scene.shell ? t.getRect(r2Tabs()).top : r2Size.height;
+          moved |= (card.top - before.top).abs() > 1;
           expect(card.left, initial.left);
           expect(card.width, initial.width);
           expect(card.top, greaterThanOrEqualTo(0));
-          expect(card.bottom, lessThanOrEqualTo(tabs.top), reason: scene.id);
+          expect(card.bottom, lessThanOrEqualTo(bottom), reason: scene.id);
           final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
           final target = overlay.targetRect!;
           expect(card.overlaps(target), isFalse);
           expect(card.overlaps(t.getRect(find.byKey(LiveGuideOverlay.tapPillKey))), isFalse);
         }
+        expect(moved, isTrue, reason: 'T7: at least one pointer drag really moved the card');
+        expect(changes, 0, reason: 'T7: no transient underlying page scrolling');
       } finally { await disposeR2(t, m); }
     });
 
     if (scene.shell) {
       for (var tab = 0; tab < 4; tab++) {
-        // WHY: every shell step must permit every tab tap, including a re-tap;
-        // the owner's r2 decision makes that deliberate navigation off path.
-        // # catches: shield absorbs a tab, card hides it, or route matching
-        // silently resumes a step instead of showing the off-path card.
+        // WHY: D-S5 only actual navigation leaves the path; re-taps stay put.
+        // # catches: W4 forcing sticky off path on a selected-tab re-tap,
+        // or a shield absorbing navigation to a different tab.
         // proves: CLAIM(overlay-pass-through).
         testWidgets('r2 tab $tab navigates off path from ${scene.id}', (t) async {
           final m = await pumpR2Scene(t, scene);
           try {
             await settleLiveGuide(t, frames: 18);
+            final before = m.run.currentStep!.id;
+            final wasSelected = t.widgetList<Semantics>(find.descendant(of: r2Tab(tab),
+              matching: find.byType(Semantics))).any((w) => w.properties.selected == true);
             final rect = t.getRect(r2Tab(tab));
             expect(t.getRect(find.byKey(GuideStepCard.cardKey)).overlaps(rect), isFalse);
             await t.tapAt(rect.center);
             await settleLiveGuide(t, frames: 12);
-            expect(m.run.state, isA<GuideOffPath>(), reason: 'tab $tab from ${scene.id}');
-            expect(find.byKey(GuideStepCard.offPathKey), findsOneWidget);
+            if (wasSelected) {
+              expect(m.run.state, isA<GuideAtStep>());
+              expect(m.run.currentStep?.id, before);
+              expect(find.byKey(GuideStepCard.offPathKey), findsNothing);
+            } else {
+              expect(m.run.state, isA<GuideOffPath>(), reason: 'tab $tab from ${scene.id}');
+              expect(find.byKey(GuideStepCard.offPathKey), findsOneWidget);
+            }
             final widget = t.widget(r2Tab(tab));
             final selected = find.descendant(of: find.byWidget(widget), matching: find.byWidgetPredicate(
               (w) => w is Semantics && w.properties.selected == true));
-            expect(selected, findsOneWidget, reason: 'the actual tab changed, not just the guide card');
+            expect(selected, findsOneWidget, reason: 'the requested tab is actually selected');
           } finally { await disposeR2(t, m); }
         });
       }
     }
   }
+  for (final look in [GuideLook.dim]) {
+    // WHY: T4 the visibility invariant applies after user scrolling as well
+    // as automatic reveal in the dim pilot; legacy absorb remains a control.
+    // # catches: W5 marker tied only to automatic reveal; a clipped outline
+    // remains after user scrolling, or global input shield swallows the drag.
+    testWidgets('r2 user scroll away and back updates marker direction ${look.name}', (t) async {
+      final f = R2ScrollFixture();
+      await f.pump(t, look);
+      final initial = t.getRect(find.byKey(r2ScrollTarget));
+      expect(r2Contains(const Rect.fromLTWH(0, 0, 390, 780), initial), isTrue);
+      expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
+      final before = f.controller.offset;
+      // Left edge is outside the card's full-width-but-inset box.
+      await t.dragFrom(const Offset(4, 360), const Offset(0, -600));
+      await t.pump(const Duration(milliseconds: 50));
+      final away = t.getRect(find.byKey(r2ScrollTarget));
+      expect(f.controller.offset, greaterThan(before + 300), reason: 'real user scroll reached page');
+      expect(away.bottom, lessThan(0), reason: 'target really moved above viewport');
+      final marker = find.byKey(LiveGuideOverlay.scrollMarkerKey);
+      expect(marker, findsOneWidget);
+      expect(t.widget<RotatedBox>(marker).quarterTurns % 4, 3, reason: 'points UP toward hidden target');
+      expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing, reason: 'no clipped outline');
+      await t.dragFrom(const Offset(4, 100), const Offset(0, 600));
+      await t.pump(const Duration(milliseconds: 50));
+      final returned = t.getRect(find.byKey(r2ScrollTarget));
+      expect(r2Contains(const Rect.fromLTWH(0, 0, 390, 780), returned), isTrue);
+      expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
+      expect(r2Contains(t.getRect(find.byKey(LiveGuideOverlay.outlineKey)), returned), isTrue);
+      final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+      expect(overlay.paintedShapes.where((s) => s.rect.overlaps(returned.deflate(.5))), isEmpty);
+      expect(t.getRect(find.byKey(GuideStepCard.cardKey)).overlaps(returned), isFalse);
+      expect(f.run.currentStep?.id, 'target');
+    });
+  }
+
 }

@@ -40,6 +40,10 @@ class GuideStep {
 
   final GuideTarget target;
 
+  /// Explicit look-alike group; absent uses the nearest-container heuristic.
+  /// RED declaration only: not consumed by the live overlay yet.
+  final GuideTarget? group;
+
   /// Identifies the route this step belongs to: the step is ACTIVE when this
   /// resolves on the current screen (and not on the others' screens).
   final GuideTarget anchor;
@@ -58,6 +62,7 @@ class GuideStep {
   const GuideStep({
     required this.id,
     required this.target,
+    this.group,
     required this.anchor,
     this.alsoKeep = const [],
     this.alsoTap = const [],

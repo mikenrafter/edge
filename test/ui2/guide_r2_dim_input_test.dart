@@ -1,5 +1,8 @@
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
+import 'package:flutter/material.dart';
+import 'package:openstrap_edge/ui2/grammar.dart';
+import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
@@ -43,18 +46,19 @@ void main() {
     expect(plain, [112, 64, 160, 255], reason: 'positive control: sample is purple component padding');
     expect(guided, isNot(plain), reason: 'the whole background receives dim');
     expect(guided[3], 255, reason: 'composited onto an opaque app');
-    expect(guided.take(3).toSet().length, greaterThan(1), reason: 'translucency retains purple, not a grey erase');
+    expect(guided[0] - guided[1], greaterThan(12), reason: 'T8: purple retains red over green, not near-grey erase');
+    expect(guided[2] - guided[1], greaterThan(24), reason: 'purple retains blue over green');
   });
 
   // WHY: P7 offers an alternative action, not merely a readable label.
-  // # catches: consuming alsoTap for paint only while omitting shield holes.
+  // # catches: T9 ignoring caption alternatives when planning paint, or swallowing their real input.
   // proves: CLAIM(overlay-pass-through).
   testWidgets('r2 declared alternative is legible and its pointer reaches the real control', (t) async {
     final f = R2Fixture(declarations: true);
     await f.pump(t);
     final rect = t.getRect(find.byKey(r2Alternative));
     await t.tapAt(rect.center);
-    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
     expect(f.alternatives, 1, reason: 'actual callback observed, never called by the test');
     final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
     expect(overlay.paintedShapes.where((s) => s.rect.overlaps(rect.deflate(1))), isEmpty);
@@ -71,7 +75,7 @@ void main() {
   });
 
   // WHY: off-path r2 decision dims all page components, including their boxes.
-  // # catches: step==null disables the painter and leaves the entire page full colour.
+  // # catches: W7 dimming the back arrow; step==null disables the painter and leaves the entire page full colour.
   testWidgets('r2 off path dims content and non-return chrome', (t) async {
     final f = R2Fixture();
     await f.pump(t);
@@ -80,6 +84,10 @@ void main() {
     final rect = t.getRect(find.byKey(r2Other));
     final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
     expect(overlay.paintedShapes.where((s) => s.kind.name == 'dim' && s.rect.overlaps(rect)), isNotEmpty);
+    final back = t.getRect(find.descendant(of: find.byType(NavBar),
+      matching: find.byWidgetPredicate((w) => w is Pressable && w.onTap != null)).first);
+    expect(overlay.paintedShapes.where((s) => s.rect.overlaps(back.deflate(.5))), isEmpty,
+      reason: 'T6/W7: the arrow one route closer stays full colour');
     final title = t.getRect(find.text('Elsewhere'));
     expect(overlay.paintedShapes.any((s) => s.kind.name == 'dim' && s.rect.overlaps(title)), isTrue,
       reason: 'only back arrow, not the entire NavBar, is exempt off path');
@@ -110,4 +118,70 @@ void main() {
     expect(f.returns, 1);
     expect(find.byKey(GuideStepCard.offPathKey), findsNothing);
   });
+  for (final word in ['a', 'it', 'to', 'of', 'on', 'in', 'or', 'how', 'are', 'these', 'your', 'the', 'and', 'for']) {
+    // WHY: D-S2 function words and short words cannot turn unrelated prose
+    // into a competing label. This drives the overlay, not just an oracle.
+    // # catches: S2 matching any token, including stopwords and two-letter words.
+    testWidgets('r2 look-alike matching ignores $word', (t) async {
+      final f = R2Fixture(targetLabel: '$word Target', quietLabel: '$word information');
+      await f.pump(t);
+      final rect = t.getRect(find.byKey(r2Quiet));
+      final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+      expect(overlay.paintedShapes.where((s) => s.rect.overlaps(rect.deflate(.5)))
+        .map((s) => s.kind.name), ['dim']);
+    });
+  }
+
+  for (final explicit in [true, false]) {
+    // WHY: D-S3 group data survives layout wrappers; the fallback must still
+    // recognize a sibling in a nearby Row when no group was declared.
+    // # catches: S3 counting Padding as a group boundary or ignoring group data.
+    testWidgets('r2 ${explicit ? "declared" : "fallback"} group survives Padding around target', (t) async {
+      Future<List<String>> kinds(bool wrapped) async {
+        final f = R2Fixture(grouped: true, wrapTarget: wrapped, explicitGroup: explicit);
+        await f.pump(t);
+        final rect = t.getRect(find.byKey(r2Sibling));
+        final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+        final result = overlay.paintedShapes.where((s) => s.rect.overlaps(rect.deflate(.5)))
+          .map((s) => s.kind.name).toList();
+        f.entry!.remove();
+        await t.pumpWidget(const SizedBox());
+        await t.pump();
+        return result;
+      }
+      final plain = await kinds(false);
+      final wrapped = await kinds(true);
+      expect(plain, isNotEmpty, reason: 'positive control: sibling is a skeleton look-alike');
+      expect(plain, isNot(contains('dim')));
+      expect(wrapped, plain, reason: 'harmless Padding cannot change group membership');
+    });
+  }
+
+  // WHY: D-S9 visual dim never hides ordinary page content from assistive tech.
+  // # catches: wrapping dimmed units in ExcludeSemantics to simplify hit testing.
+  testWidgets('r2 dimmed content remains in the semantics tree', (t) async {
+    final semantics = t.ensureSemantics();
+    addTearDown(semantics.dispose);
+    final f = R2Fixture();
+    await f.pump(t);
+    expect(find.bySemanticsLabel('Quiet information'), findsOneWidget);
+    expect(f.run.state, isA<GuideAtStep>().having((s) => s.index, 'index', 0));
+  });
+
+  // WHY: D-S3 an explicit group outranks the heuristic; a sibling in another
+  // row is still a look-alike when the guide declares their shared component.
+  // # catches: accepting GuideStep.group as data but never consuming it.
+  testWidgets('r2 declared group overrides nearest Row fallback', (t) async {
+    final f = R2Fixture(grouped: true, separateRows: true, explicitGroup: true);
+    await f.pump(t);
+    final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+    final sibling = t.getRect(find.byKey(r2Sibling));
+    expect(overlay.paintedShapes.where((s) => s.rect.overlaps(sibling.deflate(.5)))
+      .map((s) => s.kind.name), isNot(contains('dim')));
+    expect(overlay.paintedShapes.where((s) => s.kind.name != 'dim' && s.rect.overlaps(sibling.deflate(.5))), isNotEmpty);
+    final far = t.getRect(find.byKey(r2Alternative));
+    expect(overlay.paintedShapes.where((s) => s.rect.overlaps(far.deflate(.5)))
+      .map((s) => s.kind.name), ['dim'], reason: 'group declaration does not skeletonize the whole page');
+  });
+
 }

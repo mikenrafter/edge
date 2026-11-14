@@ -1,4 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
+import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/ui2/grammar.dart' show ScreenTitle;
+import 'package:openstrap_edge/ui2/guides/guide_run.dart';
+import 'package:openstrap_edge/ui2/guides/guide_runner.dart';
+import '../support/guide_r2_scenes.dart';
+import '../support/live_guide_harness.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
@@ -13,10 +20,12 @@ Future<void> _drag(WidgetTester t, Offset delta) async {
 }
 
 void main() {
+  setUpAll(() => r2OpenDb('guide_r2_card.db'));
+  tearDownAll(LocalDb.close);
   const bounds = Rect.fromLTRB(0, 60, 390, 720);
   const card = Size(366, 120);
 
-  // WHY: user-selected height must win when it is clear of target/pill.
+  // WHY: D-S6 user height wins only after target/pill, chrome and avoid list.
   // # catches: continuing to choose only top/bottom and ignoring preferredTop.
   test('r2 placement respects clear user height and keeps full width', () {
     final r = placeGuideCard(bounds: bounds, cardSize: card, preferredTop: 300,
@@ -189,4 +198,159 @@ void main() {
     expect(bottom.bottom, lessThanOrEqualTo(780));
     expect(top.top, lessThan(bottom.top), reason: 'both drags must actually move the card');
   });
+  // WHY: T2 protects real page actions hidden under blank card space. A card
+  // owns taps as well as drags, even after the page-wide shield is removed.
+  // # catches: W1 translucent drag-only card leaks taps/long-press to Delete;
+  // W2 pointer-up on the card incorrectly finishes the run.
+  testWidgets('r2 card blank-space tap never reaches the underlying Pressable', (t) async {
+    final f = R2Fixture();
+    await f.pump(t);
+    final point = _blank(_card(t));
+    expect(t.getRect(find.byKey(r2UnderCard)).contains(point), isTrue);
+    await t.tapAt(point);
+    await t.longPressAt(point);
+    await f.frames(t);
+    expect(f.underlying, 0);
+    expect(f.underlyingLongPresses, 0);
+    expect(f.targets, 0);
+    expect(f.run.state, isA<GuideAtStep>().having((s) => s.index, 'index', 0));
+    // Positive control: the very same point reaches the Pressable without card.
+    f.entry!.remove();
+    await t.pump();
+    await t.tapAt(point);
+    await t.pump();
+    expect(f.underlying, 1);
+    await t.longPressAt(point);
+    expect(f.underlyingLongPresses, 1);
+  });
+
+  // WHY: D-S6 avoid-list title/timer outranks user height but yields to the
+  // target/pill. Tab exclusion is expressed by the available bounds.
+  // # catches: S6 honoring preferredTop over avoid, or avoiding title over target.
+  test('r2 placement precedence target then tab bounds then avoid then preference', () {
+    final avoid = const Rect.fromLTWH(20, 310, 350, 44);
+    final target = const Rect.fromLTWH(20, 600, 350, 40);
+    final placed = placeGuideCard(bounds: bounds, cardSize: card,
+      preferredTop: 300, keepClear: [target], avoid: [avoid]);
+    expect(placed, const Rect.fromLTWH(12, 72, 366, 120));
+    expect(placed.overlaps(avoid), isFalse);
+    final unavoidable = placeGuideCard(bounds: bounds, cardSize: card,
+      preferredTop: 300, keepClear: [target], avoid: [bounds]);
+    expect(unavoidable.overlaps(target), isFalse, reason: 'target wins when avoid cannot be satisfied');
+    expect(unavoidable.bottom, lessThanOrEqualTo(bounds.bottom));
+  });
+
+  // WHY: D-S6 never-cover is still possible when natural card height exceeds
+  // both clear edges: cap the rendered box, scroll the remaining caption.
+  // # catches: S6 choosing the least target overlap instead of capping height.
+  testWidgets('r2 tall card caps above target and scrolls its long caption', (t) async {
+    final f = R2Fixture(caption: List.filled(45, 'Read this detailed instruction.').join(' '));
+    f.targetTop.value = 360;
+    await f.pump(t);
+    final target = t.getRect(find.byKey(r2Target));
+    expect(_card(t).overlaps(target), isFalse, reason: 'cap instead of covering central target');
+    expect(_card(t).overlaps(t.getRect(find.byKey(LiveGuideOverlay.tapPillKey))), isFalse);
+    final scroll = find.descendant(of: find.byKey(GuideStepCard.cardKey), matching: find.byType(Scrollable)).first;
+    final position = t.state<ScrollableState>(scroll).position;
+    expect(position.maxScrollExtent, greaterThan(100), reason: 'caption is longer than cap');
+    final before = position.pixels;
+    await t.drag(scroll, const Offset(0, -80));
+    await t.pump();
+    expect(position.pixels, greaterThan(before), reason: 'capped content remains reachable');
+    expect(_card(t).overlaps(target), isFalse);
+  });
+
+  // WHY: W6 can hide when tests construct overlays themselves. The production
+  // runner survives exit/start and must discard the previous run's preference.
+  // # catches: W6 storing dragged height on GuideRunner rather than its run.
+  testWidgets('r2 production runner start drag exit start resets height', (t) async {
+    final app = await pumpLiveGuideApp(t, size: r2Size);
+    try {
+      final first = await app.runner.start(r2Guide('log-past-workout'), band: null) as GuideStarted;
+      await settleLiveGuide(t, frames: 18);
+      final initial = _card(t);
+      await _drag(t, const Offset(0, -140));
+      expect(_card(t).top, isNot(closeTo(initial.top, 1)), reason: 'real drag set run preference');
+      app.runner.exit();
+      await settleLiveGuide(t);
+      expect(find.byKey(GuideStepCard.cardKey), findsNothing);
+      final second = await app.runner.start(r2Guide('log-past-workout'), band: null) as GuideStarted;
+      await settleLiveGuide(t, frames: 18);
+      expect(identical(first.run, second.run), isFalse);
+      expect(_card(t), initial);
+    } finally {
+      app.runner.exit();
+      await t.pumpWidget(const SizedBox());
+      app.dispose();
+      await t.pump();
+    }
+  });
+
+  // WHY: D-S9 the keyboard reduces the card's available height, even after a
+  // user dragged to a position which would now lie under it.
+  // # catches: using padding.bottom but ignoring viewInsets after a drag.
+  testWidgets('r2 dragged card stays above an open keyboard', (t) async {
+    final f = R2Fixture();
+    await f.pump(t);
+    await _drag(t, const Offset(0, -140));
+    t.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await f.frames(t);
+    expect(_card(t).bottom, lessThanOrEqualTo(480));
+    expect(_card(t).overlaps(t.getRect(find.byKey(r2Target))), isFalse);
+    expect(f.run.currentStep?.id, 'target');
+  });
+
+  // WHY: D-S9 rotation preserves the chosen fraction of available vertical
+  // travel, not an absolute pixel coordinate or a top/bottom snap.
+  // # catches: storing raw preferredTop pixels across a viewport size change.
+  testWidgets('r2 user height keeps its fraction after screen height changes', (t) async {
+    final f = R2Fixture();
+    await f.pump(t);
+    await _drag(t, const Offset(0, -200));
+    final chosen = _card(t);
+    // Fixture ScreenTitle reserves 60 pixels; gap is 12 at each edge.
+    final titleBottom = t.getRect(find.byType(ScreenTitle)).bottom;
+    final lower = titleBottom + kGuideCardGap;
+    final fraction = (chosen.top - lower) / (780 - kGuideCardGap - chosen.height - lower);
+    expect(fraction, inExclusiveRange(.1, .9), reason: 'interior preference, not an edge snap');
+    t.view.physicalSize = const Size(390, 1000);
+    await f.frames(t);
+    final resized = _card(t);
+    final expected = lower + fraction * (1000 - kGuideCardGap - resized.height - lower);
+    expect(resized.top, closeTo(expected, 1));
+    expect(resized.overlaps(t.getRect(find.byKey(r2Target))), isFalse);
+  });
+
+  // WHY: D-S9 people using a screen reader need an alternative to dragging.
+  // # catches: exposing move labels without actionable semantics, or moving x.
+  testWidgets('r2 card semantics actions move up and down', (t) async {
+    final handle = t.ensureSemantics();
+    addTearDown(handle.dispose);
+    final f = R2Fixture();
+    await f.pump(t);
+    final owner = t.binding.rootPipelineOwner.semanticsOwner!;
+    final actions = <String, (SemanticsNode, int)>{};
+    void visit(SemanticsNode node) {
+      for (final id in node.getSemanticsData().customSemanticsActionIds ?? <int>[]) {
+        final action = CustomSemanticsAction.getAction(id);
+        if (action?.label != null) actions[action!.label!] = (node, id);
+      }
+      node.visitChildren((child) { visit(child); return true; });
+    }
+    visit(owner.rootSemanticsNode!);
+    expect(actions.keys, containsAll(['Move card up', 'Move card down']));
+    final before = _card(t);
+    final up = actions['Move card up']!;
+    owner.performAction(up.$1.id, SemanticsAction.customAction, up.$2);
+    await f.frames(t);
+    final moved = _card(t);
+    expect(moved.top, lessThan(before.top));
+    expect(moved.left, before.left);
+    final down = actions['Move card down']!;
+    owner.performAction(down.$1.id, SemanticsAction.customAction, down.$2);
+    await f.frames(t);
+    expect(_card(t).top, greaterThan(moved.top));
+    expect(f.run.currentStep?.id, 'target');
+  });
+
 }
