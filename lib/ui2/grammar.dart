@@ -103,11 +103,12 @@ class _PressableState extends State<Pressable> {
   int? _pointer;
 
   // The guide run (guides/guide_dim.dart) paints its dim or skeleton INSIDE the
-  // component, so it moves with the content in every frame.
+  // component, so it moves with the content in every frame. The mark sits BELOW this
+  // control's own Semantics: the first render object of a Pressable (what
+  // `tester.getSemantics(find.byType(Pressable))` reads) stays its semantics node, so
+  // a screen reader and the tree tests see exactly what they saw before guides.
   @override
-  Widget build(BuildContext c) => GuideUnitMark(component: c, child: _content(c));
-
-  Widget _content(BuildContext c) {
+  Widget build(BuildContext c) {
     Widget out = ConstrainedBox(
       constraints: const BoxConstraints(minWidth: S.tap, minHeight: S.tap),
       // widthFactor/heightFactor pin the Align to its child's size. Without
@@ -130,7 +131,7 @@ class _PressableState extends State<Pressable> {
         label: widget.semanticLabel,
         onTap: widget.onTap,
         excludeSemantics: true,
-        child: Listener(
+        child: GuideUnitMark(component: c, child: Listener(
           behavior: HitTestBehavior.opaque,
           onPointerDown: (event) {
             if (_pointer != null) return;
@@ -155,19 +156,20 @@ class _PressableState extends State<Pressable> {
             duration: motion(c, Motion.fast),
             child: out,
           ),
-        ),
+        )),
       );
     }
     if (widget.onTap == null) {
+      final marked = GuideUnitMark(component: c, child: out);
       return widget.semanticLabel == null
-          ? out
-          : Semantics(label: widget.semanticLabel, child: out);
+          ? marked
+          : Semantics(label: widget.semanticLabel, child: marked);
     }
     return Semantics(
       button: !widget.link,
       link: widget.link,
       label: widget.semanticLabel,
-      child: GestureDetector(
+      child: GuideUnitMark(component: c, child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         onTapDown: (_) => setState(() => _down = true),
@@ -178,7 +180,7 @@ class _PressableState extends State<Pressable> {
           duration: motion(c, Motion.fast),
           child: out,
         ),
-      ),
+      )),
     );
   }
 }
@@ -1469,27 +1471,27 @@ class Surface extends StatelessWidget {
     this.semanticLabel,
   });
 
+  // The guide mark is INSIDE the Pressable (around the card), never outside it: the
+  // Surface's first render object stays the Pressable's semantics node, as before guides.
   @override
-  Widget build(BuildContext c) => GuideUnitMark(component: c, child: _card(c));
-
-  Widget _card(BuildContext c) {
+  Widget build(BuildContext c) {
     final p = P.of(c);
     // Inside an accordion's card: no second card, and no second side margin.
     if (InsideCard.of(c)) {
       return Pressable(
         onTap: onTap,
         semanticLabel: semanticLabel,
-        child: Container(
+        child: GuideUnitMark(component: c, child: Container(
           width: double.infinity,
           padding: pad.copyWith(left: 0, right: 0),
           child: child,
-        ),
+        )),
       );
     }
     return Pressable(
       onTap: onTap,
       semanticLabel: semanticLabel,
-      child: Container(
+      child: GuideUnitMark(component: c, child: Container(
         width: double.infinity,
         padding: pad,
         decoration: BoxDecoration(
@@ -1498,7 +1500,7 @@ class Surface extends StatelessWidget {
           boxShadow: p.el(elevation),
         ),
         child: child,
-      ),
+      )),
     );
   }
 }
