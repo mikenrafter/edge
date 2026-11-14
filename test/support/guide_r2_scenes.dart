@@ -28,7 +28,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'live_guide_harness.dart';
 
 const r2Size = Size(412, 915);
-const r2Pilots = {'start-workout', 'log-past-workout', 'heart-rate-zones'};
 final r2Locale = lookupAppLocalizations(const Locale('en'));
 Guide r2Guide(String id) => kGuideCatalogue.firstWhere((e) => e.guide.id == id).guide;
 Finder r2Tabs({bool hidden = false}) => find.byWidgetPredicate(
@@ -98,9 +97,10 @@ class R2Mounted {
 // Shell scenes use the shipped runner; pushed scenes install the actual
 // overlay/run after page preparation under the real shell. Staging Discard
 // prepares a fixture; the dedicated pointer tests prove input pass-through.
-Future<R2Mounted> pumpR2Scene(WidgetTester t, R2Scene scene, {Size size = r2Size, Brightness brightness = Brightness.light}) async {
+Future<R2Mounted> pumpR2Scene(WidgetTester t, R2Scene scene, {Size size = r2Size, Brightness brightness = Brightness.light,
+  bool singlePending = true, GuideFakeRepo? repo}) async {
   final guide = r2Guide(scene.guide);
-  final repo = GuideFakeRepo(sleepSource: scene.manual ? 'manual' : 'auto', singlePending: true);
+  repo ??= GuideFakeRepo(sleepSource: scene.manual ? 'manual' : 'auto', singlePending: singlePending);
   final app = await pumpLiveGuideApp(t, size: size, repo: repo, brightness: brightness);
   if (scene.shell) {
     // Use the shipped runner here: tab-navigation signals may be owned by

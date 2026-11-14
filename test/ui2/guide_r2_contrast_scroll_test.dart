@@ -53,7 +53,8 @@ void main() {
   tearDownAll(LocalDb.close);
 
   for (final brightness in Brightness.values) {
-  for (final scene in r2Scenes.where((s) => r2Pilots.contains(s.guide))) {
+  for (final scene in r2Scenes) {
+    // Structural r2: every guide is dim-look, so this runs for all 22 steps.
     // WHY: owner decision after pilot APK e828832b: the D-S7 contrast floor (4.5:1 / 3:1)
     // is DROPPED; dimmed text is not meant to be read closely. New rule: its contrast ratio
     // is at most 50% of the original ratio, in both themes. Skeleton units are not dimmed text.
@@ -61,16 +62,22 @@ void main() {
     // the guided raster supplies the measured colours at those SAME pixels.
     // # catches: W8 black scrim destroys dark-theme contrast; opaque grey glyphs; a plan
     // reporting dim whose painter still uses low-contrast placeholder bars.
-    testWidgets('r2 pilot dim contrast at most half of the original ${brightness.name} ${scene.id}', (t) async {
+    testWidgets('r2 dim contrast at most half of the original ${brightness.name} ${scene.id}', (t) async {
       final m = await pumpR2Scene(t, scene, brightness: brightness);
       try {
         await settleLiveGuide(t, frames: 18);
         final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
-        final dims = overlay.paintedShapes.where((s) => s.kind.name == 'dim').toList();
-        expect(dims, isNotEmpty, reason: 'positive control: this pilot step actually dims content');
-        final plain = await _pixels(t, _pageBoundary(m));
+        final shapes = overlay.paintedShapes.toList();
+        final dims = shapes.where((s) => s.kind.name == 'dim').toList();
+        expect(dims, isNotEmpty, reason: 'positive control: this step actually dims content');
         final guided = await _pixels(t, _rootBoundary(t));
         final card = t.getRect(find.byKey(GuideStepCard.cardKey));
+        // The dim is painted by the components themselves (structural r2), so the
+        // page raster is no longer plain while the guide runs: the original comes
+        // from the same page after the guide is gone.
+        m.removeOverlay();
+        await settleLiveGuide(t, frames: 4);
+        final plain = await _pixels(t, _pageBoundary(m));
         final page = m.app.runner.routes.page!;
         final root = laidOutBox(page)!;
         var checked = 0;
@@ -80,7 +87,7 @@ void main() {
           final rect = rectInRoot(ro, root).intersect(visibleBoundsInRoot(ro, root));
           if (rect.isEmpty || card.overlaps(rect) || !dims.any((s) => r2Contains(s.rect, rect))) continue;
           // A unit that is skeleton (bars, blocks, surfaces) is not dimmed text.
-          if (overlay.paintedShapes.any((s) => s.kind.name != 'dim' && s.rect.overlaps(rect))) continue;
+          if (shapes.any((s) => s.kind.name != 'dim' && s.rect.overlaps(rect))) continue;
           final counts = <int, int>{};
           final points = <int, (int, int)>{};
           for (var y = rect.top.ceil(); y < rect.bottom.floor(); y++) {

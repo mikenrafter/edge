@@ -24,6 +24,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
+import 'package:openstrap_edge/ui2/guides/guide_dim.dart';
 import 'package:openstrap_edge/ui2/guides/guide_runner.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 import 'package:provider/provider.dart';
@@ -261,7 +262,7 @@ Future<LiveGuideApp> pumpLiveGuideApp(
             brightness == Brightness.dark ? AppThemeChoice.dark : AppThemeChoice.light, brightness)),
       ChangeNotifierProvider<GuideRunner>.value(value: guideRunner),
     ],
-    child: RepaintBoundary(
+    child: GuideDimScope(controller: guideRunner.dim, child: RepaintBoundary(
       key: captureKey,
       child: MaterialApp(
         navigatorKey: app.navigatorKey,
@@ -277,7 +278,7 @@ Future<LiveGuideApp> pumpLiveGuideApp(
         ),
         home: home ?? const AppMainShell(),
       ),
-    ),
+    )),
   ));
   await settleLiveGuide(t);
   return app;

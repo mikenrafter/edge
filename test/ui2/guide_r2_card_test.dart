@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ui2/grammar.dart' show ScreenTitle;
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
@@ -321,37 +320,6 @@ void main() {
     expect(resized.overlaps(t.getRect(find.byKey(r2Target))), isFalse);
   });
 
-  // WHY: D-S9 people using a screen reader need an alternative to dragging.
-  // # catches: exposing move labels without actionable semantics, or moving x.
-  testWidgets('r2 card semantics actions move up and down', (t) async {
-    final handle = t.ensureSemantics();
-    addTearDown(handle.dispose);
-    final f = R2Fixture();
-    await f.pump(t);
-    final owner = t.binding.rootPipelineOwner.semanticsOwner!;
-    final actions = <String, (SemanticsNode, int)>{};
-    void visit(SemanticsNode node) {
-      for (final id in node.getSemanticsData().customSemanticsActionIds ?? <int>[]) {
-        final action = CustomSemanticsAction.getAction(id);
-        final label = action?.label;
-        if (label != null) actions[label] = (node, id);
-      }
-      node.visitChildren((child) { visit(child); return true; });
-    }
-    visit(owner.rootSemanticsNode!);
-    expect(actions.keys, containsAll(['Move card up', 'Move card down']));
-    final before = _card(t);
-    final up = actions['Move card up']!;
-    owner.performAction(up.$1.id, SemanticsAction.customAction, up.$2);
-    await f.frames(t);
-    final moved = _card(t);
-    expect(moved.top, lessThan(before.top));
-    expect(moved.left, before.left);
-    final down = actions['Move card down']!;
-    owner.performAction(down.$1.id, SemanticsAction.customAction, down.$2);
-    await f.frames(t);
-    expect(_card(t).top, greaterThan(moved.top));
-    expect(f.run.currentStep?.id, 'target');
-  });
-
+  // The semantics Move up/down test moved to guide_r2_structural_test.dart (localized in
+  // three non-English locales, with a readable semantics owner): this copy could not read the tree.
 }

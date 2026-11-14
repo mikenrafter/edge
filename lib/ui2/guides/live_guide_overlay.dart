@@ -708,6 +708,8 @@ class _GuidePainter extends CustomPainter {
           canvas.drawRRect(R.rMd.toRRect(s.rect), Paint()..color = palette.line);
         case SkeletonKind.dim:
           canvas.drawRect(s.rect, Paint()..color = s.color!);
+        case SkeletonKind.heading:
+          break; // RED stub: green draws the heading dimmed.
       }
     }
   }

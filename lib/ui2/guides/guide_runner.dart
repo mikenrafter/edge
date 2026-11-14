@@ -32,6 +32,7 @@ import 'live_guide_overlay.dart';
 
 import '../app_shell.dart' show ShellDomain;
 import 'guide.dart';
+import 'guide_dim.dart';
 import 'guide_run.dart';
 import 'guide_routes.dart';
 
@@ -77,6 +78,10 @@ class GuideRunner extends ChangeNotifier {
   final GlobalKey<NavigatorState> navigatorKey;
 
   final GuideRouteObserver routes;
+
+  /// The plan the run's components draw from; the app root provides it through
+  /// [GuideDimScope]. RED: nothing writes or reads it yet.
+  final dim = GuideDimController();
 
   GuideRunner({required this.navigatorKey, GuideRouteObserver? routes})
       : routes = routes ?? GuideRouteObserver();
@@ -215,6 +220,7 @@ class GuideRunner extends ChangeNotifier {
   @override
   void dispose() {
     exit();
+    dim.dispose();
     super.dispose();
   }
 }

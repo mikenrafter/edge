@@ -17,7 +17,7 @@ import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/skeleton/skeleton.dart';
-import 'package:openstrap_edge/ui2/grammar.dart' show NavBar, Pressable;
+import 'package:openstrap_edge/ui2/grammar.dart' show NavBar, Pressable, ScreenTitle, Surface;
 
 import '../support/live_guide_stage.dart';
 import '../support/guide_text.dart';
@@ -370,23 +370,27 @@ void main() {
   });
 
   group('pointer rules', () {
-    // why: S9 / CLAIM(overlay-pass-through). Exercise drag recognizers, not
-    // just taps: the target hole passes drags and the surrounding shield
-    // absorbs them. Removing the overlay proves the covered recognizer works.
-    testWidgets('target drags pass through and unrelated drags are absorbed', (t) async {
+    // why: S9 / CLAIM(overlay-pass-through), per layer (structural r2: input per
+    // layer holds for EVERY guide, the legacy absorb-everything shield is gone).
+    // The target passes drags; a DIMMED control passes them too (exactly one drag, run
+    // unchanged); a drag that starts on SKELETON ink is not a drag on that control.
+    // # catches: a guide that still absorbs every non-target drag (legacy look), or a
+    // dimmed control that loses the real gesture.
+    testWidgets('drags per layer: target and dimmed controls pass, skeleton look-alikes do not', (t) async {
       final stage = await pumpLiveStage(t, guide: _occludedGuide());
-      var targetDrags = 0, otherDrags = 0;
-      Widget area(Key key, VoidCallback onEnd) => GestureDetector(
+      var targetDrags = 0, otherDrags = 0, lookalikeDrags = 0;
+      Widget area(Key key, VoidCallback onEnd, [String label = 'area']) => GestureDetector(
         key: key, behavior: HitTestBehavior.opaque,
         onVerticalDragEnd: (_) => onEnd(),
-        child: const SizedBox(width: 240, height: 100),
+        child: SizedBox(width: 240, height: 100, child: Center(child: Text(label))),
       );
       await pushStagePage(t, stage, Scaffold(body: Column(children: [
         const SizedBox(height: 120),
-        area(stageFinish, () => targetDrags++),
+        area(stageFinish, () => targetDrags++, 'Finish'),
         const SizedBox(height: 20),
-        area(stageOtherAction, () => otherDrags++),
-        const SizedBox(height: 200),
+        area(stageOtherAction, () => otherDrags++, 'Unrelated'),
+        const SizedBox(height: 20),
+        area(stageElsewhereAction, () => lookalikeDrags++, 'Finish help'),
       ])));
       await _settleReveal(t);
       await t.drag(find.byKey(stageFinish), const Offset(0, 60));
@@ -395,11 +399,14 @@ void main() {
       expect(stage.run.state, isA<GuideAtStep>(), reason: 'a drag is not completion');
       await t.drag(find.byKey(stageOtherAction), const Offset(0, 60), warnIfMissed: false);
       await t.pump();
-      expect(otherDrags, 0);
-      stage.entry!.remove();
+      expect(otherDrags, 1, reason: 'dimmed content stays draggable, exactly once');
+      final shapes = _overlay(t).paintedShapes;
+      expect(_anyShapeOverlaps(shapes.where((x) => x.kind != SkeletonKind.dim), _rectOf(t, find.byKey(stageElsewhereAction))), isTrue,
+        reason: 'positive control: the look-alike (shares "Finish" with the target) is skeleton');
+      await t.drag(find.byKey(stageElsewhereAction), const Offset(0, 60), warnIfMissed: false);
       await t.pump();
-      await t.drag(find.byKey(stageOtherAction), const Offset(0, 60));
-      expect(otherDrags, 1, reason: 'positive control without the shield');
+      expect(lookalikeDrags, 0, reason: 'skeleton ink takes the pointer');
+      expect(stage.run.state, isA<GuideAtStep>());
     });
 
     testWidgets('a tap on the target reaches the real control, which does what it always does', (t) async {
@@ -414,16 +421,34 @@ void main() {
       expect(find.byKey(stageDetailsTitle), findsOneWidget, reason: 'the real navigation happened');
     });
 
-    testWidgets('taps anywhere else on the page are absorbed (with a positive control without the overlay)', (t) async {
-      // why: spec "taps elsewhere are absorbed" - a skeleton you can still press
-      // through is a trap. Positive control: the very same tap works once the
-      // overlay is gone, so the 0 above is the overlay's doing.
+    testWidgets('taps per layer: dimmed controls work once, skeleton look-alikes are blocked, with positive controls', (t) async {
+      // why: owner decision "input per layer" for EVERY guide (structural r2): dimmed
+      // content is clickable (the real control, exactly once); skeleton is not. The
+      // legacy "every other tap is absorbed" rule is retired with the legacy look.
+      // Positive control: the look-alike works once the overlay is gone.
       final stage = await pumpLiveStage(t);
       await _settleReveal(t);
+      await pushStagePage(t, stage, Scaffold(body: ListView(children: [
+        const ScreenTitle('Stage home', key: stageHomeTitle),
+        Pressable(key: stageOpenDetails, onTap: () => stage.taps.openDetails++, child: const Surface(child: Text('Open details'))),
+        Pressable(key: stageOtherAction, onTap: () => stage.taps.otherAction++,
+          child: const Surface(child: Text('Open details help'))),
+        Pressable(key: stageElsewhereAction, onTap: () => stage.taps.elsewhere++,
+          child: const Surface(child: Text('Unrelated'))),
+      ])));
+      await _settleReveal(t);
+      final shapes = _overlay(t).paintedShapes;
+      expect(_anyShapeOverlaps(shapes.where((x) => x.kind != SkeletonKind.dim), _rectOf(t, find.byKey(stageOtherAction))), isTrue,
+        reason: 'positive control: "Open details help" shares words with the target, so it is skeleton');
+      expect(_anyShapeOverlaps(shapes.where((x) => x.kind == SkeletonKind.dim), _rectOf(t, find.byKey(stageElsewhereAction))), isTrue,
+        reason: 'positive control: "Unrelated" is dimmed');
+      await t.tap(find.byKey(stageElsewhereAction), warnIfMissed: false);
+      await t.pump(const Duration(milliseconds: 400));
+      expect(stage.taps.elsewhere, 1, reason: 'a dimmed control receives its real tap exactly once');
       await t.tap(find.byKey(stageOtherAction), warnIfMissed: false);
-      await t.tap(find.text('Second card text'), warnIfMissed: false);
-      await t.pump();
-      expect(stage.taps.otherAction, 0);
+      await t.longPress(find.byKey(stageOtherAction), warnIfMissed: false);
+      await t.pump(const Duration(milliseconds: 400));
+      expect(stage.taps.otherAction, 0, reason: 'a skeleton look-alike absorbs the tap');
       stage.entry!.remove();
       await t.pump();
       await t.tap(find.byKey(stageOtherAction));

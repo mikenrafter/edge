@@ -6,6 +6,7 @@ import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
+import 'package:openstrap_edge/ui2/theme.dart';
 import '../support/guide_r2_fixture.dart';
 
 void main() {
@@ -46,8 +47,17 @@ void main() {
     expect(plain, [112, 64, 160, 255], reason: 'positive control: sample is purple component padding');
     expect(guided, isNot(plain), reason: 'the whole background receives dim');
     expect(guided[3], 255, reason: 'composited onto an opaque app');
-    expect(guided[0] - guided[1], greaterThan(12), reason: 'T8: purple retains red over green, not near-grey erase');
-    expect(guided[2] - guided[1], greaterThan(24), reason: 'purple retains blue over green');
+    // Owner (pilot APK e828832b): dim FURTHER, so the old fixed hue margins (12 and 24
+    // levels) no longer hold. The intent stays: the tint DIRECTION survives (not a
+    // grey erase) and the pixel is not the bare scaffold colour, yet it moved at
+    // least halfway from the original towards the scaffold.
+    final scaffold = buildTheme(Brightness.light).scaffoldBackgroundColor;
+    final bg = [(scaffold.r * 255).round(), (scaffold.g * 255).round(), (scaffold.b * 255).round()];
+    int far(List<int> px) => [for (var c = 0; c < 3; c++) (px[c] - bg[c]).abs()].reduce((a, b) => a > b ? a : b);
+    expect(guided[0], greaterThan(guided[1]), reason: 'T8: purple retains red over green, not a grey erase');
+    expect(guided[2], greaterThan(guided[1]), reason: 'purple retains blue over green');
+    expect(far(guided), greaterThanOrEqualTo(4), reason: 'not an opaque scaffold-coloured erase patch');
+    expect(far(guided), lessThanOrEqualTo(far(plain) * .5), reason: 'dimmed at least halfway to the scaffold');
   });
 
   // WHY: P7 offers an alternative action, not merely a readable label.
@@ -161,11 +171,16 @@ void main() {
   // # catches: wrapping dimmed units in ExcludeSemantics to simplify hit testing.
   testWidgets('r2 dimmed content remains in the semantics tree', (t) async {
     final semantics = t.ensureSemantics();
-    addTearDown(semantics.dispose);
-    final f = R2Fixture();
-    await f.pump(t);
-    expect(find.bySemanticsLabel('Quiet information'), findsOneWidget);
-    expect(f.run.state, isA<GuideAtStep>().having((s) => s.index, 'index', 0));
+    try {
+      final f = R2Fixture();
+      await f.pump(t);
+      expect(find.bySemanticsLabel('Quiet information'), findsOneWidget);
+      expect(f.run.state, isA<GuideAtStep>().having((s) => s.index, 'index', 0));
+    } finally {
+      // Disposed here, not in a tear-down: the framework checks handles BEFORE tear-downs run
+      // (the old copy of this test failed on that, not on the behaviour it names).
+      semantics.dispose();
+    }
   });
 
   // WHY: D-S3 an explicit group outranks the heuristic; a sibling in another

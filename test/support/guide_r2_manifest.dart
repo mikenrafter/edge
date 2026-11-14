@@ -2,6 +2,7 @@
 // types and actual control callbacks, never from skeletonPlan's section ids.
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -92,6 +93,49 @@ List<Rect> r2Kept(Element page, GuideStep step) {
   return kept;
 }
 
+/// Item F: a skeleton card with a body (two or more text lines) keeps its HEADING
+/// (the Section title, else the first text line) drawn dimmed at the top-left (one
+/// `heading` shape on that line, no bar over it); every other line is a bar.
+/// Single-line units (a tab, a button label) are plain bars.
+List<String> r2HeadingViolations(R2Unit u, Element page, List<SkeletonShape> shapes) {
+  final root = laidOutBox(page)!;
+  final lines = <Rect>[]; // every visible text line of the unit, in root coordinates
+  for (final e in onstageElements(u.element)) {
+    final ro = e is RenderObjectElement ? e.renderObject : null;
+    if (ro is! RenderParagraph || !ro.hasSize) continue;
+    final length = ro.text.toPlainText().length;
+    if (length == 0) continue;
+    final rows = <Rect>[];
+    for (final b in ro.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: length))) {
+      final r = rectInRoot(ro, root, b.toRect());
+      final at = rows.indexWhere((x) => (math.min(x.bottom, r.bottom) - math.max(x.top, r.top)) > .5 * math.min(x.height, r.height));
+      if (at < 0) { rows.add(r); } else { rows[at] = rows[at].expandToInclude(r); }
+    }
+    lines.addAll(rows);
+  }
+  if (lines.length < 2) return const [];
+  lines.sort((a, b) => a.top != b.top ? a.top.compareTo(b.top) : a.left.compareTo(b.left));
+  final first = lines.first;
+  final inside = shapes.where((s) => u.rect.inflate(1).contains(s.rect.center)).toList();
+  final headings = inside.where((s) => s.kind.name == 'heading').toList();
+  final out = <String>[];
+  if (headings.length != 1) {
+    out.add('F: skeleton card needs exactly one dimmed heading, has ${headings.length}: ${u.text}');
+  } else {
+    if (!headings.single.rect.inflate(1).contains(first.center)) out.add('F: heading is not on the first line: ${u.text}');
+    if (headings.single.rect.center.dx > u.rect.center.dx) out.add('F: heading is not at the top-left: ${u.text}');
+  }
+  if (inside.any((s) => (s.kind.name == 'bar' || s.kind.name == 'block') && s.rect.overlaps(first.deflate(1)))) {
+    out.add('F: a bar covers the heading line: ${u.text}');
+  }
+  for (final line in lines.skip(1)) {
+    if (!inside.any((s) => s.kind.name == 'bar' && s.rect.overlaps(line.deflate(1)))) {
+      out.add('F: body line is not a bar: ${u.text}');
+    }
+  }
+  return out;
+}
+
 Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene) {
   final page = mounted.app.runner.routes.page!;
   final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
@@ -103,6 +147,20 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
     'heart-rate-zones/open-strain' => r2Locale.homeRingStrain,
     'heart-rate-zones/open-zones' => r2Locale.dayStrainHowSet,
     'heart-rate-zones/set-own-zones' => r2Locale.activityZonesSetYourOwnLink,
+    'alarm-schedule/open-alarm' => r2Locale.settingsAlarmRowTitle,
+    // The day on/off row prints "Alarm" in every language (guide_alarm_schedule.dart).
+    'alarm-schedule/pick-day' => 'Alarm',
+    'alarm-schedule/set-wake-time' => r2Locale.alarmWakeTimeRowTitle,
+    'add-nap/open-naps' => r2Locale.sleepDetailEditNaps,
+    'add-nap/log-nap' => r2Locale.napsLogANap,
+    'remove-detected/open-detected' => r2Locale.homeReviewActivities,
+    'remove-detected/discard' => r2Locale.dayReviewDiscard,
+    'remove-detected/save' => r2Locale.dayReviewSave,
+    // The demo night is automatic, so the button reads "Set the times myself".
+    'fix-sleep-times/change-times' => r2Locale.sleepDetailSetTimesMyself,
+    'fix-sleep-times/back-to-automatic' => r2Locale.sleepDetailBackToAutomatic,
+    'delete-workout/open-history' => r2Locale.workoutTabHistory,
+    'delete-workout/delete-session' => r2Locale.workoutDeleteSessionLabel,
     'start-workout/start-card' => r2Locale.workoutStartSessionLabel,
     'start-workout/choose-activity' => r2Locale.activityPickerSearchLabel,
     'start-workout/start' => r2Locale.activitySetupStart,
@@ -110,7 +168,7 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
     'log-past-workout/open-history' => r2Locale.workoutTabHistory,
     'log-past-workout/log-past' => r2Locale.workoutLogPastFix,
     'log-past-workout/log-it' => r2Locale.logWorkoutLogIt,
-    _ => throw StateError('no pilot label oracle for ${scene.id}'),
+    _ => throw StateError('no label oracle for ${scene.id}'),
   };
   final resolved = step.target.resolve(page, r2Locale);
   final targetWords = r2Words(label);
@@ -138,15 +196,25 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
   final violations = <String>[];
   final units = r2Units(page);
   final records = <Map<String, Object?>>[];
+  final dayTabs = scene.id == 'alarm-schedule/pick-day' ? [for (var d = 0; d < 7; d++)
+    if (GuideTarget.key(ValueKey('wake-day-$d')).resolve(page, r2Locale) case TargetFound(:final rect)) rect] : <Rect>[];
   for (final u in units) {
     // Caption obligations are an independent oracle, not conditional on the
     // new declarations being populated (an empty declaration must go red).
     final offeredListChoice = scene.step == 'choose-activity' && u.control;
+    // The five newly covered guides: caption-offered choices, from the printed text
+    // and the screen's own keys, never from the declarations under test.
+    final offeredHere = (scene.id == 'remove-detected/discard' && u.text.contains(r2Locale.dayReviewDiscard)) ||
+      (scene.id == 'delete-workout/delete-session' && u.text.contains(r2Locale.workoutDeleteSessionLabel)) ||
+      (dayTabs.any((r) => r.overlaps(u.rect)));
     final namedDetails = scene.guide == 'start-workout' && scene.step == 'start' &&
       [r2Locale.activitySetupRouteLabel, r2Locale.activitySetupHeartRateLabel,
        r2Locale.activitySetupPrivateLabel].any(u.text.contains);
-    final keep = offeredListChoice || namedDetails || kept.any((r) => r.overlaps(u.rect));
-    final nearbySibling = u.control && resolved is TargetFound && rectGap(u.rect, resolved.rect) <= kSkeletonReach;
+    final keep = offeredListChoice || offeredHere || namedDetails || kept.any((r) => r.overlaps(u.rect));
+    // Structural r2: a LARGE unit (taller than kLargeUnitHeight) is never skeleton for
+    // being near the target; look-alike words still apply.
+    final large = u.rect.height > kLargeUnitHeight;
+    final nearbySibling = !large && u.control && resolved is TargetFound && rectGap(u.rect, resolved.rect) <= kSkeletonReach;
     final competing = nearbySibling || r2Words(u.text).intersection(targetWords).isNotEmpty;
     final covering = shapes.where((s) => s.rect.overlaps(u.rect.deflate(.5))).toList();
     final expected = keep ? 'keep' : competing ? 'skeleton' : 'dim';
@@ -163,7 +231,7 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
       if (tapPasses && !underCard && !keep && competing) {
         violations.add('owner: skeleton look-alike receives a pointer: ${u.text}');
       }
-      if (offeredListChoice && !tapPasses) violations.add('P7: offered choice cannot receive pointer: ${u.text}');
+      if ((offeredListChoice || offeredHere) && !tapPasses) violations.add('P7: offered choice cannot receive pointer: ${u.text}');
     }
     if (keep && covering.isNotEmpty) violations.add('P3/P7/P8: kept ${u.text} covered');
     if (!keep && competing && !covering.any((s) => s.kind.name != 'dim')) {
@@ -176,6 +244,7 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
       }
       if (covering.any((s) => s.kind.name != 'dim')) violations.add('P1/P9: quiet content skeleton/erase: ${u.text}');
     }
+    if (expected == 'skeleton') violations.addAll(r2HeadingViolations(u, page, shapes));
     records.add({'type': u.element.widget.runtimeType.toString(), 'text': u.text,
       'rect': r2Rect(u.rect), 'control': u.control, 'wordMatch': r2Words(u.text).intersection(targetWords).toList(),
       'expected': expected, 'tapPasses': tapPasses, 'shapeIndices': covering.map(shapes.indexOf).toList()});
@@ -209,7 +278,7 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
     if (s.kind.name == 'erase' && coloured.any((r) => r.overlaps(s.rect))) {
       violations.add('P9: erase patch on a coloured background ${s.rect}');
     }
-    if (s.kind.name != 'dim' && s.kind.name != 'erase' &&
+    if (s.kind.name != 'dim' && s.kind.name != 'erase' && s.kind.name != 'heading' &&
       ![...controlRects, ...lookalikes].any((r) => r2Contains(r.inflate(1), s.rect))) {
       violations.add('P1: skeleton is neither control nor target look-alike ${s.rect}');
     }
@@ -218,7 +287,7 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
   for (final shape in shapes) { counts.update(shape.kind.name, (n) => n + 1, ifAbsent: () => 1); }
   final area = r2UnionArea(shapes.where((s) => s.kind.name == 'dim')
     .map((s) => s.rect.intersect(Offset.zero & r2Size)).where((r) => !r.isEmpty).toList());
-  return {'look': mounted.run.guide.look.name, 'shapeCounts': counts,
+  return {'shapeCounts': counts,
     'dimmedAreaFraction': area / (r2Size.width * r2Size.height),
     'dimmedAreaDefinition': 'Union of viewport-clipped dim rectangles divided by viewport area',
     'guide': scene.guide, 'step': scene.step, 'targetLabel': label, 'caption': step.caption.of(r2Locale),

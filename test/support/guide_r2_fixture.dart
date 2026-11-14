@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/grammar.dart';
 import 'package:openstrap_edge/ui2/guides/guide.dart';
+import 'package:openstrap_edge/ui2/guides/guide_dim.dart';
 import 'package:openstrap_edge/ui2/guides/guide_routes.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide_target.dart';
@@ -20,6 +21,8 @@ const r2Sibling = ValueKey('r2-sibling');
 const r2UnderCard = ValueKey('r2-under-card');
 const r2Back = ValueKey('r2-back');
 const r2Capture = ValueKey('r2-capture');
+const r2HeadedCard = ValueKey('r2-headed-card');
+const r2HeadedSection = ValueKey('r2-headed-section');
 
 // Test-side selector supplies real laid-out target boxes to the new interface.
 // It does not replace the overlay's planning, painting or shield.
@@ -36,10 +39,12 @@ class R2Content implements GuideContent {
 class R2Fixture {
   final navKey = GlobalKey<NavigatorState>();
   final routes = GuideRouteObserver();
+  final dim = GuideDimController();
   final targetTop = ValueNotifier<double>(100);
   final Guide guide;
   late GuideRun run;
-  final bool lookalike, grouped, wrapTarget, separateRows;
+  final bool lookalike, grouped, wrapTarget, separateRows, headed;
+  final Locale locale;
   final String targetLabel, quietLabel, caption;
   final Brightness brightness;
   final Size size;
@@ -49,6 +54,7 @@ class R2Fixture {
   int targets = 0, alternatives = 0, others = 0, exits = 0, returns = 0;
   R2Fixture({bool declarations = false, this.lookalike = false,
     this.grouped = false, this.wrapTarget = false, this.separateRows = false, bool explicitGroup = false,
+    this.headed = false, this.locale = const Locale('en'),
     this.targetLabel = 'Target', this.quietLabel = 'Quiet information',
     this.caption = 'Tap Target or Alternative. Check the details.',
     this.brightness = Brightness.light, this.size = const Size(390, 780), this.textScale = 1}) : guide = Guide(id: 'r2-fixture', look: GuideLook.dim,
@@ -83,6 +89,14 @@ class R2Fixture {
         onTap: () => alternatives++, onLongPress: () => longPresses++,
         onDoubleTap: () => doubleTaps++, onVerticalDragUpdate: (_) => dragUpdates++, child: Surface(child: Text(lookalike ? 'Target option' : 'Alternative')))),
       const Positioned(top: 390, left: 16, right: 16, child: Section('Details', Surface(child: Text('Read this context')), key: r2Details)),
+      // Two look-alike cards with a body (they share "Target" with the label): a skeleton
+      // card keeps its heading, dimmed, at the top-left; the body lines are bars.
+      if (headed) const Positioned(top: 480, left: 16, right: 16, child: Surface(key: r2HeadedCard,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Target notes'), Text('Alpha beta gamma'), Text('Delta epsilon zeta')]))),
+      if (headed) const Positioned(top: 600, left: 16, right: 16, child: Section('Target section',
+        Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Body line one'), Text('Body line two')])), key: r2HeadedSection)),
     ])));
 
   Widget get targetControl => Pressable(key: r2Target, onTap: () => targets++,
@@ -92,15 +106,15 @@ class R2Fixture {
     t.view.physicalSize = size;
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
-    await t.pumpWidget(RepaintBoundary(key: r2Capture, child: MaterialApp(
+    await t.pumpWidget(GuideDimScope(controller: dim, child: RepaintBoundary(key: r2Capture, child: MaterialApp(
       navigatorKey: navKey, navigatorObservers: [routes], theme: buildTheme(brightness),
       builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(
         textScaler: TextScaler.linear(textScale)), child: child!),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales, locale: const Locale('en'), home: home)));
+      supportedLocales: AppLocalizations.supportedLocales, locale: locale, home: home))));
     await t.pump();
     await start(t);
-    addTearDown(() { if (entry?.mounted ?? false) entry!.remove(); run.dispose(); targetTop.dispose(); });
+    addTearDown(() { if (entry?.mounted ?? false) entry!.remove(); run.dispose(); targetTop.dispose(); dim.dispose(); });
   }
   Future<void> start(WidgetTester t) async {
     run = GuideRun(guide: guide, variant: guide.variants.single);

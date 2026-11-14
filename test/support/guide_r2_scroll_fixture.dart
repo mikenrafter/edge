@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/grammar.dart';
 import 'package:openstrap_edge/ui2/guides/guide.dart';
+import 'package:openstrap_edge/ui2/guides/guide_dim.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide_routes.dart';
 import 'package:openstrap_edge/ui2/guides/guide_target.dart';
@@ -18,6 +19,7 @@ class R2ScrollFixture {
   final controller = ScrollController(initialScrollOffset: 400);
   final navKey = GlobalKey<NavigatorState>();
   final routes = GuideRouteObserver();
+  final dim = GuideDimController();
   late GuideRun run;
   OverlayEntry? entry;
   int lookalikeTaps = 0;
@@ -25,7 +27,7 @@ class R2ScrollFixture {
     t.view.physicalSize = const Size(390, 780);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
-    await t.pumpWidget(MaterialApp(navigatorKey: navKey, navigatorObservers: [routes],
+    await t.pumpWidget(GuideDimScope(controller: dim, child: MaterialApp(navigatorKey: navKey, navigatorObservers: [routes],
       theme: buildTheme(Brightness.light), locale: const Locale('en'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -35,7 +37,7 @@ class R2ScrollFixture {
         for (var i = 0; i < 14; i++) SizedBox(height: 100, child: i == 1
           ? Pressable(key: r2ScrollLookalike, onTap: () => lookalikeTaps++, child: const Surface(child: Text('Target option')))
           : Surface(child: Text('Later information $i'))),
-      ])]))));
+      ])])))));
     await t.pump();
     final target = GuideTarget.key(r2ScrollTarget);
     final guide = Guide(id: 'scroll-fixture', look: look, title: fnText((_) => 'Scroll'),
@@ -47,6 +49,6 @@ class R2ScrollFixture {
       routes: routes, onExit: run.exit, onBackToGuide: () {}));
     navKey.currentState!.overlay!.insert(entry!);
     for (var i = 0; i < 18; i++) { await t.pump(const Duration(milliseconds: 100)); }
-    addTearDown(() { if (entry!.mounted) entry!.remove(); run.dispose(); controller.dispose(); });
+    addTearDown(() { if (entry!.mounted) entry!.remove(); run.dispose(); controller.dispose(); dim.dispose(); });
   }
 }

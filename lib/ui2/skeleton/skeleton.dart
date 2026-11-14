@@ -53,6 +53,11 @@ enum SkeletonKind {
   /// ONE translucent layer ([SkeletonShape.color], alpha included) over a whole
   /// component's box: the r2 dim look. Never an erase patch.
   dim,
+
+  /// A skeleton card's heading (its Section title, else its first text line): the
+  /// text itself stays, drawn DIMMED at the unit's top-left, while the body lines
+  /// are [bar]s. The rect is the heading line's box. RED: nothing emits it yet.
+  heading,
 }
 
 @immutable
@@ -116,6 +121,18 @@ bool isGuideControl(Widget w) => w is Pressable && w.onTap != null ||
 /// Applies to content inside the visible scroll area only; P6 scroll-through
 /// content is skeleton at any distance ([DimPolicy.skeletonAll]).
 const kSkeletonReach = 56.0;
+
+/// A unit (Surface, Section or control box) taller than this many logical px is
+/// LARGE: near the target it is dimmed whole, never skeleton (owner: the Start
+/// session card on Activity > History became a grey block). 120 keeps one-row
+/// controls (44-76 px, sub-tabs, list rows) skeleton and turns the 190 px Start
+/// card and the 132 px "Did something the band missed?" card into dim. Width is not
+/// a criterion: full-width one-row controls are the look-alikes the rule is for.
+const kLargeUnitHeight = 120.0;
+
+/// True for a unit whose [box] is strictly taller than [kLargeUnitHeight].
+/// RED STUB: returns false until green implements it.
+bool isLargeUnit(Rect box) => false;
 
 /// Gap between two boxes: 0 when they overlap, else the distance between their edges.
 double rectGap(Rect a, Rect b) {
@@ -830,6 +847,8 @@ class _RenderSkeleton extends RenderProxyBox {
           canvas.drawRRect(R.rMd.toRRect(s.rect), Paint()..color = p.line);
         case SkeletonKind.dim:
           canvas.drawRect(s.rect, Paint()..color = s.color!);
+        case SkeletonKind.heading:
+          break; // RED stub: green draws the heading dimmed.
       }
     }
     canvas.restore();

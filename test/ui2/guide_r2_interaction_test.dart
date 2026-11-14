@@ -22,9 +22,9 @@ void main() {
 
   for (final id in ['log-past-workout', 'delete-workout']) {
     // WHY: amendment B names these screenshots: a small History target cannot
-    // turn the rest of Activity into anonymous controls and mascot blocks.
+    // turn the rest of Activity into anonymous controls and mascot blocks. Structural
+    // r2: both History guides (log-past-workout and delete-workout) share the page.
     // # catches: treating every tappable control as a skeleton candidate.
-    if (id == 'log-past-workout') {
     testWidgets('r2 $id open-history has zero skeleton outside its sub-tab group', (t) async {
       final m = await pumpR2Scene(t, r2Scenes.firstWhere((s) => s.guide == id && s.step == 'open-history'));
       try {
@@ -53,11 +53,12 @@ void main() {
       } finally { await disposeR2(t, m); }
     });
 
-    }
-
-    // WHY: owner reversal keeps legacy skeleton controls blocked. Only the
-    // pilot's dimmed Start card navigates normally and goes off path.
-    // # catches: allowing legacy skeleton taps, blocking pilot dim, or W2 redirect.
+    // WHY: input per layer holds for EVERY guide (structural r2): the Start card is a
+    // LARGE unit, so it is dimmed (clickable) rather than skeleton (blocked); its tap
+    // navigates for real, once, and the run goes off path. The old rule kept
+    // delete-workout on blocking legacy skeletons.
+    // # catches: a legacy-look guide that still blocks dimmed content, a large card
+    // skeletonized and therefore dead, or W2 redirect.
     // proves: CLAIM(overlay-pass-through).
     testWidgets('r2 $id painted Start card opens the picker and goes off path', (t) async {
       final m = await pumpR2Scene(t, r2Scenes.firstWhere((s) => s.guide == id && s.step == 'open-history'));
@@ -65,15 +66,9 @@ void main() {
         await settleLiveGuide(t, frames: 18);
         await t.tap(find.text(r2Locale.workoutStartSessionLabel));
         await settleLiveGuide(t, frames: 16);
-        if (id == 'log-past-workout') {
-          expect(find.byType(ActivityPicker), findsOneWidget, reason: 'dimmed Start-card navigation happened');
-          expect(m.run.state, isA<GuideOffPath>());
-          expect(find.byKey(GuideStepCard.offPathKey), findsOneWidget);
-        } else {
-          expect(find.byType(ActivityPicker), findsNothing, reason: 'legacy skeleton blocks tap');
-          expect(m.run.state, isA<GuideAtStep>().having((s) => s.index, 'index', 0));
-          expect(find.byKey(GuideStepCard.offPathKey), findsNothing);
-        }
+        expect(find.byType(ActivityPicker), findsOneWidget, reason: 'dimmed Start-card navigation happened');
+        expect(m.run.state, isA<GuideOffPath>());
+        expect(find.byKey(GuideStepCard.offPathKey), findsOneWidget);
       } finally { await disposeR2(t, m); }
     });
   }

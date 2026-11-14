@@ -37,24 +37,13 @@ void main() {
     expect(r2Scenes.map((s) => s.guide).toSet().length, 8);
   });
 
-  // WHY: only the three owner-selected pilots change appearance. An omitted
-  // opt-in silently changes another guide or leaves a pilot on the old look.
-  // # catches: making dim the default or accidentally opting in a fourth guide.
-  test('r2 only the three pilots opt into dim; other five keep skeleton', () {
-    for (final entry in kGuideCatalogue) {
-      expect(entry.guide.look, r2Pilots.contains(entry.guide.id) ? GuideLook.dim : GuideLook.skeleton,
-        reason: entry.guide.id);
-    }
-    final source = r2Guide('start-workout');
-    expect(Guide(id: 'default', title: source.title, start: source.start, variants: source.variants).look,
-      GuideLook.skeleton);
-  });
-
   for (final scene in r2Scenes) {
-    if (r2Pilots.contains(scene.guide)) {
-    // WHY: r2 P1–P5/P7–P9 apply to every pilot step.
+    // WHY: structural r2: the P1-P9 rules, the large-unit rule and the skeleton-card
+    // heading rule apply to EVERY step of EVERY guide on demo data (the pilot gate is gone).
     // # catches: blanket skeletonization, per-line dim/erase, missed kept section,
-    // hidden caption context or a shape on chrome/blank scaffold.
+    // hidden caption context or a shape on chrome/blank scaffold, a large card
+    // skeletonized for being near the target, a skeleton card that lost its heading,
+    // a caption-offered choice (day tabs, every Discard, every bin) left dim.
     // proves: CLAIM(kept-untouched), CLAIM(guide-covered).
     testWidgets('r2 P1-P9 manifest guard ${scene.id}', (t) async {
       final m = await pumpR2Scene(t, scene);
@@ -67,8 +56,6 @@ void main() {
         expect(manifest['violations'], isEmpty, reason: '${scene.id}: P1-P9 independent component oracle');
       } finally { await disposeR2(t, m); }
     });
-
-    }
 
     // WHY: P6 must explain target absence at intermediate scroll offsets as
     // well as at the final reveal destination; card safety is a per-frame rule.
