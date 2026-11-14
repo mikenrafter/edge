@@ -172,9 +172,8 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
   };
   final resolved = step.target.resolve(page, r2Locale);
   final targetWords = r2Words(label);
-  final declaredGroup = step.group?.resolve(page, r2Locale);
-  Rect? targetGroup = declaredGroup is TargetFound ? declaredGroup.rect : null;
-  if (targetGroup == null && resolved is TargetFound) {
+  Rect? targetGroup;
+  if (resolved is TargetFound) {
     for (final e in onstageElements(page)) {
       if (!r2Control(e.widget) || !identical(laidOutBox(e), resolved.renderObject)) continue;
       var levels = 0;

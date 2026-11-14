@@ -80,7 +80,7 @@ class GuideRunner extends ChangeNotifier {
   final GuideRouteObserver routes;
 
   /// The plan the run's components draw from; the app root provides it through
-  /// [GuideDimScope]. RED: nothing writes or reads it yet.
+  /// [GuideDimScope]. The overlay writes it on every plan; the components read it.
   final dim = GuideDimController();
 
   GuideRunner({required this.navigatorKey, GuideRouteObserver? routes})

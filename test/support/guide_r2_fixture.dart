@@ -54,14 +54,13 @@ class R2Fixture {
   OverlayEntry? entry;
   int targets = 0, alternatives = 0, others = 0, exits = 0, returns = 0;
   R2Fixture({bool declarations = false, this.lookalike = false,
-    this.grouped = false, this.wrapTarget = false, this.separateRows = false, bool explicitGroup = false,
+    this.grouped = false, this.wrapTarget = false, this.separateRows = false,
     this.headed = false, this.locale = const Locale('en'),
     this.targetLabel = 'Target', this.quietLabel = 'Quiet information',
     this.caption = 'Tap Target or Alternative. Check the details.',
     this.brightness = Brightness.light, this.size = const Size(390, 780), this.textScale = 1}) : guide = Guide(id: 'r2-fixture',
     title: fnText((_) => 'Fixture'), start: GuideStart.today, variants: [GuideVariant(steps: [
       GuideStep(id: 'target', target: GuideTarget.key(r2Target), anchor: GuideTarget.key(r2Target),
-        group: explicitGroup ? GuideTarget.key(r2Group) : null,
         action: GuideAction.tap, caption: fnText((_) => caption),
         alsoTap: declarations ? [const R2Content([r2Alternative])] : const [],
         alsoRead: declarations ? [const R2Content([r2Details])] : const []),

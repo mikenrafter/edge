@@ -142,30 +142,28 @@ void main() {
     });
   }
 
-  for (final explicit in [true, false]) {
-    // WHY: D-S3 group data survives layout wrappers; the fallback must still
-    // recognize a sibling in a nearby Row when no group was declared.
-    // # catches: S3 counting Padding as a group boundary or ignoring group data.
-    testWidgets('r2 ${explicit ? "declared" : "fallback"} group survives Padding around target', (t) async {
-      Future<List<String>> kinds(bool wrapped) async {
-        final f = R2Fixture(grouped: true, wrapTarget: wrapped, explicitGroup: explicit);
-        await f.pump(t);
-        final rect = t.getRect(find.byKey(r2Sibling));
-        final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
-        final result = overlay.paintedShapes.where((s) => s.rect.overlaps(rect.deflate(.5)))
-          .map((s) => s.kind.name).toList();
-        f.entry!.remove();
-        await t.pumpWidget(const SizedBox());
-        await t.pump();
-        return result;
-      }
-      final plain = await kinds(false);
-      final wrapped = await kinds(true);
-      expect(plain, isNotEmpty, reason: 'positive control: sibling is a skeleton look-alike');
-      expect(plain, isNot(contains('dim')));
-      expect(wrapped, plain, reason: 'harmless Padding cannot change group membership');
-    });
-  }
+  // WHY: a sibling beside the target is a look-alike, and harmless layout wrappers around the
+  // target (Padding) cannot change that.
+  // # catches: counting Padding as a group boundary.
+  testWidgets('r2 a sibling beside the target survives Padding around the target', (t) async {
+    Future<List<String>> kinds(bool wrapped) async {
+      final f = R2Fixture(grouped: true, wrapTarget: wrapped);
+      await f.pump(t);
+      final rect = t.getRect(find.byKey(r2Sibling));
+      final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+      final result = overlay.paintedShapes.where((s) => s.rect.overlaps(rect.deflate(.5)))
+        .map((s) => s.kind.name).toList();
+      f.entry!.remove();
+      await t.pumpWidget(const SizedBox());
+      await t.pump();
+      return result;
+    }
+    final plain = await kinds(false);
+    final wrapped = await kinds(true);
+    expect(plain, isNotEmpty, reason: 'positive control: sibling is a skeleton look-alike');
+    expect(plain, isNot(contains('dim')));
+    expect(wrapped, plain, reason: 'harmless Padding cannot change the sibling\'s look');
+  });
 
   // WHY: D-S9 visual dim never hides ordinary page content from assistive tech.
   // # catches: wrapping dimmed units in ExcludeSemantics to simplify hit testing.
@@ -183,11 +181,11 @@ void main() {
     }
   });
 
-  // WHY: D-S3 an explicit group outranks the heuristic; a sibling in another
-  // row is still a look-alike when the guide declares their shared component.
-  // # catches: accepting GuideStep.group as data but never consuming it.
-  testWidgets('r2 declared group overrides nearest Row fallback', (t) async {
-    final f = R2Fixture(grouped: true, separateRows: true, explicitGroup: true);
+  // WHY: a look-alike is decided by distance (visible-ink reach), not by which Row it is in:
+  // a sibling in another row within reach stays skeleton, a far control dims.
+  // # catches: skeletonizing the whole page, or dimming a near sibling for being in another row.
+  testWidgets('r2 a look-alike in another row within reach is skeleton and a far one dims', (t) async {
+    final f = R2Fixture(grouped: true, separateRows: true);
     await f.pump(t);
     final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
     final sibling = t.getRect(find.byKey(r2Sibling));
@@ -196,7 +194,7 @@ void main() {
     expect(overlay.paintedShapes.where((s) => s.kind.name != 'dim' && s.rect.overlaps(sibling.deflate(.5))), isNotEmpty);
     final far = t.getRect(find.byKey(r2Alternative));
     expect(overlay.paintedShapes.where((s) => s.rect.overlaps(far.deflate(.5)))
-      .map((s) => s.kind.name), ['dim'], reason: 'group declaration does not skeletonize the whole page');
+      .map((s) => s.kind.name), ['dim'], reason: 'the near sibling does not skeletonize the whole page');
   });
 
 }

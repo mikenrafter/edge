@@ -25,7 +25,8 @@ enum GuideStart { today, sleep, activity, health, settings }
 
 /// Caption-named content resolved afresh from the live tree. Implementations
 /// may select a collection (for example every currently built activity row).
-/// RED interface only: the live overlay does not consume these declarations yet.
+/// The live overlay resolves a step's [GuideStep.alsoTap] and [GuideStep.alsoRead]
+/// afresh on every plan and keeps what they return in full colour.
 abstract interface class GuideContent {
   List<TargetFound> resolve(Element root, AppLocalizations l);
 }
@@ -36,10 +37,6 @@ class GuideStep {
   final String id;
 
   final GuideTarget target;
-
-  /// Explicit look-alike group; absent uses the nearest-container heuristic.
-  /// RED declaration only: not consumed by the live overlay yet.
-  final GuideTarget? group;
 
   /// Identifies the route this step belongs to: the step is ACTIVE when this
   /// resolves on the current screen (and not on the others' screens).
@@ -59,7 +56,6 @@ class GuideStep {
   const GuideStep({
     required this.id,
     required this.target,
-    this.group,
     required this.anchor,
     this.alsoKeep = const [],
     this.alsoTap = const [],
