@@ -11,6 +11,7 @@
 // 'any' variant.
 
 import 'guide.dart';
+import 'guide_content.dart';
 import 'guide_copy.dart';
 import 'guide_labels.dart';
 import 'guide_target.dart';
@@ -37,6 +38,7 @@ Guide get deleteWorkoutGuide => Guide(
             id: 'delete-session',
             target: _bin,
             anchor: GuideTarget.label(ScreenLabel.workoutTrackedLabel),
+            alsoTap: [EveryLabelled([ScreenLabel.workoutDeleteSessionLabel])], // every session has a bin
             action: GuideAction.tap,
             caption: GuideCopy.deleteWorkoutCaptionDeleteSession,
           ),

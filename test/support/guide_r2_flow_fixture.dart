@@ -14,6 +14,7 @@ import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
+import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart' show GuideScrollBehavior;
 import 'guide_r2_fixture.dart' show R2Content, r2Capture;
 import 'guide_text.dart';
 
@@ -53,12 +54,13 @@ class R2FlowFixture {
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
     await t.pumpWidget(GuideDimScope(controller: dim, child: RepaintBoundary(key: r2Capture, child: MaterialApp(
+      scrollBehavior: const GuideScrollBehavior(),
       navigatorKey: navKey, navigatorObservers: [routes], theme: buildTheme(Brightness.light),
       debugShowCheckedModeBanner: false, locale: const Locale('en'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales, home: home))));
     await t.pump();
-    final guide = Guide(id: 'flow-fixture', look: GuideLook.dim, title: fnText((_) => 'Flow'), start: GuideStart.today,
+    final guide = Guide(id: 'flow-fixture', title: fnText((_) => 'Flow'), start: GuideStart.today,
       variants: [GuideVariant(steps: [GuideStep(id: 'target', target: GuideTarget.key(flowTarget),
         anchor: GuideTarget.key(flowTarget), action: GuideAction.tap,
         alsoRead: const [R2Content([flowKept])], caption: fnText((_) => 'Tap Pinned target. Read the kept note.'))])]);

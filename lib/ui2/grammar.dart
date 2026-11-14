@@ -46,6 +46,7 @@ import '../data/journal_fields.dart' show formatMinuteOfDay;
 import '../models/metric.dart';
 import '../state/prefs.dart';
 import 'shared_slot.dart';
+import 'skeleton/unit_paint.dart' show GuideUnitMark;
 import 'chart_annotations.dart' show AnnotationSet, ChartAnnotationLane;
 import 'charts.dart';
 import 'scroll_hint.dart';
@@ -101,8 +102,12 @@ class _PressableState extends State<Pressable> {
   bool _down = false;
   int? _pointer;
 
+  // The guide run (guides/guide_dim.dart) paints its dim or skeleton INSIDE the
+  // component, so it moves with the content in every frame.
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => GuideUnitMark(component: c, child: _content(c));
+
+  Widget _content(BuildContext c) {
     Widget out = ConstrainedBox(
       constraints: const BoxConstraints(minWidth: S.tap, minHeight: S.tap),
       // widthFactor/heightFactor pin the Align to its child's size. Without
@@ -1465,7 +1470,9 @@ class Surface extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => GuideUnitMark(component: c, child: _card(c));
+
+  Widget _card(BuildContext c) {
     final p = P.of(c);
     // Inside an accordion's card: no second card, and no second side margin.
     if (InsideCard.of(c)) {
@@ -1524,7 +1531,9 @@ class Section extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => GuideUnitMark(component: c, child: _section(c));
+
+  Widget _section(BuildContext c) {
     final p = P.of(c);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

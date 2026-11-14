@@ -18,9 +18,6 @@ enum BandGeneration { whoop4, whoop5 }
 
 enum GuideAction { tap, scrollThenTap }
 
-/// The r2 component dim look is a pilot; existing guides retain skeleton.
-enum GuideLook { skeleton, dim }
-
 /// Where a guide begins: a tab of the shell, or the Settings screen. A run
 /// first brings the app here (pop to the shell root, select the destination)
 /// so step 1's screen is on top.
@@ -125,7 +122,6 @@ final class GuideNoVariant extends GuideVariantResult {
 
 class Guide {
   final String id;
-  final GuideLook look;
   final GuideText title;
 
   /// Where a run brings the app before step 1.
@@ -138,7 +134,6 @@ class Guide {
 
   const Guide({
     required this.id,
-    this.look = GuideLook.skeleton,
     required this.title,
     required this.start,
     this.intro,

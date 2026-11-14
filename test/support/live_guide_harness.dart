@@ -27,6 +27,7 @@ import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/guides/guide_dim.dart';
 import 'package:openstrap_edge/ui2/guides/guide_runner.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
+import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart' show GuideScrollBehavior;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -264,7 +265,7 @@ Future<LiveGuideApp> pumpLiveGuideApp(
     ],
     child: GuideDimScope(controller: guideRunner.dim, child: RepaintBoundary(
       key: captureKey,
-      child: MaterialApp(
+      child: MaterialApp(scrollBehavior: const GuideScrollBehavior(),
         navigatorKey: app.navigatorKey,
         navigatorObservers: [guideRunner.routes],
         debugShowCheckedModeBanner: false,

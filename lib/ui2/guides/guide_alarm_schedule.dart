@@ -24,6 +24,7 @@
 import 'package:flutter/widgets.dart' show ValueKey;
 
 import 'guide.dart';
+import 'guide_content.dart';
 import 'guide_copy.dart';
 import 'guide_labels.dart';
 import 'guide_target.dart';
@@ -34,6 +35,7 @@ final _wakeTime = GuideTarget.key(const ValueKey('alarm-wake-time'));
 
 /// The seven day tabs (0 = Monday ... 6 = Sunday), kept readable on step 2.
 final _dayTabs = [for (var d = 0; d < 7; d++) GuideTarget.key(ValueKey('wake-day-$d'))];
+final _dayTabKeys = KeyedContent([for (var d = 0; d < 7; d++) ValueKey('wake-day-$d')]);
 
 Guide get alarmScheduleGuide => Guide(
       id: 'alarm-schedule',
@@ -53,6 +55,7 @@ Guide get alarmScheduleGuide => Guide(
             target: _dayOnRow,
             anchor: _dayOnRow,
             alsoKeep: _dayTabs,
+            alsoTap: [_dayTabKeys], // "Tap the tab of the day you want": all seven
             action: GuideAction.tap,
             caption: GuideCopy.alarmCaptionPickDay,
           ),

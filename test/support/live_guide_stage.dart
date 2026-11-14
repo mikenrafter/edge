@@ -23,6 +23,7 @@ import 'package:openstrap_edge/ui2/guides/guide_routes.dart';
 import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart' show GuideScrollBehavior;
 import 'guide_text.dart';
 
 const stageOpenDetails = ValueKey('stage-open-details');
@@ -209,7 +210,7 @@ Future<LiveStage> pumpLiveStage(
   final stage = LiveStage(taps, key, GuideRun(guide: g, variant: variant));
   addTearDown(stage.run.dispose);
   addTearDown(stage.dim.dispose);
-  await t.pumpWidget(GuideDimScope(controller: stage.dim, child: MaterialApp(
+  await t.pumpWidget(GuideDimScope(controller: stage.dim, child: MaterialApp(scrollBehavior: const GuideScrollBehavior(),
     navigatorKey: key,
     navigatorObservers: [stage.routes],
     debugShowCheckedModeBanner: false,

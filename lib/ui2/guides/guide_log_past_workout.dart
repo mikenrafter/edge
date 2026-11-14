@@ -19,7 +19,6 @@ final _logIt = GuideTarget.label(ScreenLabel.logWorkoutLogIt);
 
 Guide get logPastWorkoutGuide => Guide(
       id: 'log-past-workout',
-      look: GuideLook.dim,
       title: GuideCopy.logPastTitle,
       start: GuideStart.activity,
       variants: [

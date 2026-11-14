@@ -12,7 +12,6 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/grammar.dart';
 import 'package:openstrap_edge/ui2/guides/guide.dart';
-import 'package:openstrap_edge/ui2/guides/guide_catalogue.dart';
 import 'package:openstrap_edge/ui2/guides/guide_dim.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide_runner.dart';
@@ -22,6 +21,7 @@ import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/guides/tree_geometry.dart';
 import 'package:openstrap_edge/ui2/skeleton/skeleton.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
+import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart' show GuideScrollBehavior;
 import '../support/bundled_fonts.dart';
 import '../support/guide_r2_fixture.dart';
 import '../support/guide_r2_pixels.dart';
@@ -48,7 +48,7 @@ Future<void> _pumpScope(WidgetTester t, GuideDimController dim, Widget body, {Si
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
   await t.pumpWidget(GuideDimScope(controller: dim, child: RepaintBoundary(key: _capture,
-    child: MaterialApp(theme: buildTheme(Brightness.light), debugShowCheckedModeBanner: false,
+    child: MaterialApp(scrollBehavior: const GuideScrollBehavior(), theme: buildTheme(Brightness.light), debugShowCheckedModeBanner: false,
       home: Scaffold(body: body)))));
   await t.pump();
 }
@@ -115,20 +115,6 @@ void main() {
     await r2OpenDb('guide_r2_structural.db');
   });
   tearDownAll(LocalDb.close);
-
-  group('one behaviour: no look opt-in', () {
-    // WHY: owner decision after the pilot: the dim look is how EVERY guide works, so no
-    // guide can be left on the old skeleton-everything look and a new guide needs no opt-in.
-    // # catches: a guide still on the legacy look, or a default that leaves a new guide on it.
-    // NOTE for green: deleting GuideLook (and `Guide.look`) is the goal; this test then goes
-    // with it, and the per-layer input and manifest tests below carry the behaviour.
-    test('r2 the catalogue has no legacy-look guide and the default look is dim', () {
-      expect([for (final e in kGuideCatalogue) if (e.guide.look != GuideLook.dim) e.guide.id], isEmpty);
-      final source = r2Guide('start-workout');
-      expect(Guide(id: 'default', title: source.title, start: source.start, variants: source.variants).look,
-        GuideLook.dim, reason: 'a guide that declares nothing is a dim guide');
-    });
-  });
 
   group('large cards are dimmed, not skeleton', () {
     // WHY: owner complaint: the Start-session card on Activity > History turned into a grey

@@ -9,6 +9,7 @@ import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
+import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart' show GuideScrollBehavior;
 import 'guide_text.dart';
 
 const r2Target = ValueKey('r2-target');
@@ -57,7 +58,7 @@ class R2Fixture {
     this.headed = false, this.locale = const Locale('en'),
     this.targetLabel = 'Target', this.quietLabel = 'Quiet information',
     this.caption = 'Tap Target or Alternative. Check the details.',
-    this.brightness = Brightness.light, this.size = const Size(390, 780), this.textScale = 1}) : guide = Guide(id: 'r2-fixture', look: GuideLook.dim,
+    this.brightness = Brightness.light, this.size = const Size(390, 780), this.textScale = 1}) : guide = Guide(id: 'r2-fixture',
     title: fnText((_) => 'Fixture'), start: GuideStart.today, variants: [GuideVariant(steps: [
       GuideStep(id: 'target', target: GuideTarget.key(r2Target), anchor: GuideTarget.key(r2Target),
         group: explicitGroup ? GuideTarget.key(r2Group) : null,
@@ -107,6 +108,7 @@ class R2Fixture {
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
     await t.pumpWidget(GuideDimScope(controller: dim, child: RepaintBoundary(key: r2Capture, child: MaterialApp(
+      scrollBehavior: const GuideScrollBehavior(),
       navigatorKey: navKey, navigatorObservers: [routes], theme: buildTheme(brightness),
       builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(
         textScaler: TextScaler.linear(textScale)), child: child!),

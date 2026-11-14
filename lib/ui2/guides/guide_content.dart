@@ -8,7 +8,6 @@ import '../../l10n/app_localizations.dart';
 import '../grammar.dart' show Pressable;
 import 'guide.dart';
 import 'guide_target.dart';
-import 'guide_text.dart';
 import 'tree_geometry.dart';
 
 /// Every pressable ROW built on the page (smaller than half the page, so a
@@ -44,5 +43,31 @@ class LabelledContent implements GuideContent {
   List<TargetFound> resolve(Element root, AppLocalizations l) => [
     for (final label in labels)
       if (GuideTarget.label(label).resolve(root, l) case final TargetFound found) found,
+  ];
+}
+
+/// EVERY control the screen prints under these [labels], not just one: "Every item
+/// has its own Discard", "the bin at the end of the session's row". Each is a
+/// control the caption offers, so each stays legible and keeps its real tap.
+class EveryLabelled implements GuideContent {
+  final List<GuideText> labels;
+  const EveryLabelled(this.labels);
+
+  @override
+  List<TargetFound> resolve(Element root, AppLocalizations l) => [
+    for (final label in labels) ...everyControlLabelled(root, label, l),
+  ];
+}
+
+/// The widgets the screen keys with these [keys] (each that resolves to exactly one
+/// place): the seven day tabs of the alarm screen.
+class KeyedContent implements GuideContent {
+  final List<Key> keys;
+  const KeyedContent(this.keys);
+
+  @override
+  List<TargetFound> resolve(Element root, AppLocalizations l) => [
+    for (final key in keys)
+      if (GuideTarget.key(key).resolve(root, l) case final TargetFound found) found,
   ];
 }

@@ -3875,6 +3875,10 @@
   "guideDoneTitle": "完成",
   "guideDoneBody": "这是最后一步。",
   "guideTargetProxy": "指南目标：{caption}",
+  "guideTabProxy": "指南：打开“{tab}”标签页",
+  "guideBackProxy": "指南：返回路径",
+  "guideMoveCardUp": "将卡片上移",
+  "guideMoveCardDown": "将卡片下移",
   "guideRemoveStep3": "然后点按底部的**{save}**。在此之前不会删除任何内容。",
   "guideAddNapMissingTitle": "没有看到“{naps}”？",
   "guideAddNapMissingBody": "**{naps}**位于你的夜间睡眠下方。如果该部分**{night}**已折叠，请点按其标题展开。"

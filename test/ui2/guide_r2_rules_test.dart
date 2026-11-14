@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/ui2/guides/guide.dart';
 import 'package:openstrap_edge/ui2/guides/guide_catalogue.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
@@ -218,14 +217,14 @@ void main() {
       }
     }
   }
-  for (final look in [GuideLook.dim]) {
+  {
     // WHY: T4 the visibility invariant applies after user scrolling as well
     // as automatic reveal in the dim pilot; legacy absorb remains a control.
     // # catches: W5 marker tied only to automatic reveal; a clipped outline
     // remains after user scrolling, or global input shield swallows the drag.
-    testWidgets('r2 user scroll away and back updates marker direction ${look.name}', (t) async {
+    testWidgets('r2 user scroll away and back updates marker direction', (t) async {
       final f = R2ScrollFixture();
-      await f.pump(t, look);
+      await f.pump(t);
       final initial = t.getRect(find.byKey(r2ScrollTarget));
       expect(r2Contains(const Rect.fromLTWH(0, 0, 390, 780), initial), isTrue);
       expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);

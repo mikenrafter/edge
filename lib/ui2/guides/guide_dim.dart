@@ -1,14 +1,31 @@
-// GUIDE DIM SCOPE (RED STUB, structural r2): the seam through which a guide run
-// tells the app's own components how to draw themselves, so the dim and the
-// skeleton are part of the SAME widget subtree as the content. That way they
-// scroll, fling and overscroll-stretch with it, in every frame.
+// GUIDE DIM SCOPE: the seam through which a guide run tells the app's own
+// components how to draw themselves, so the dim and the skeleton are part of the
+// SAME widget subtree as the content. That way they scroll, fling and
+// overscroll-stretch with it, in every frame (owner design, 2026-11-14).
 //
-// RED: only the types exist. Nothing reads [GuideDimScope] yet (green: the shared
-// grammar components Surface, Section and Pressable, plus a page-level fallback
-// for loose text, ask [GuideUnitLooks.lookOf] and paint their own foreground; the
-// overlay computes the plan and writes it here).
+//  * [GuideDimScope] sits once at the app root. Its [GuideDimController] holds the
+//    plan: which component is dimmed, which is skeleton.
+//  * `Surface`, `Section` and `Pressable` (grammar.dart) wrap themselves in
+//    [GuideUnitMark] (../skeleton/unit_paint.dart), which asks the plan at PAINT
+//    time and paints its own foreground. Loose text inside a scrollable is painted
+//    by [GuideScrollBehavior]'s layer, inside the scrollable and its overscroll
+//    stretch.
+//  * The overlay (live_guide_overlay.dart) computes the plan and writes it with
+//    [GuideDimController.setLooks]; it keeps the card, outline, pill, scroll marker
+//    and per-layer hit testing, and paints only what no component paints itself.
+//
+// CLAIM(dim-in-tree): a component painted under a plan paints its own dim in the
+// frame it moves in [guide_r2_scroll_dim_test, guide_r2_structural_test].
+// CLAIM(dim-notifies-on-change): the controller notifies only when the plan changed
+// [guide_r2_structural_test 'plan equality'].
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter/rendering.dart';
+
+import '../grammar.dart' show Pressable, Section, Surface;
+import '../skeleton/skeleton.dart';
+import '../skeleton/unit_paint.dart' show isIconParagraph;
+import 'tree_geometry.dart';
 
 /// How a guide run wants one component drawn. A component absent from the plan
 /// (the target, caption-named content, chrome, the route-back control) is drawn
@@ -30,16 +47,38 @@ abstract interface class GuideUnitLooks {
   GuideUnitLook? lookOf(BuildContext unit);
 }
 
+/// A [GuideUnitLooks] that also decides loose paragraphs (text in no component).
+abstract interface class GuideLooseLooks implements GuideUnitLooks {
+  /// The look for the loose [paragraph], or null when it stays as it is.
+  GuideUnitLook? looseLookOf(RenderParagraph paragraph);
+}
+
 /// Holds the current [GuideUnitLooks] and tells the components when it changes.
 class GuideDimController extends ChangeNotifier {
   GuideUnitLooks? _looks;
+  bool _disposed = false;
+
+  /// True after [dispose]: a run that ends after its app root went away (a test
+  /// tear-down, an app shutting down) clears into nothing instead of failing.
+  bool get isDisposed => _disposed;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _looks = null;
+    super.dispose();
+  }
 
   /// The plan in force; null when no guide is dimming anything.
   GuideUnitLooks? get looks => _looks;
 
-  /// Replaces the plan and repaints the components that read it.
+  /// Replaces the plan and repaints the components that read it. A plan equal to
+  /// the one in force ([GuidePlan.samePlan]) changes nothing and notifies nobody.
   void setLooks(GuideUnitLooks? looks) {
-    if (identical(_looks, looks)) return;
+    if (_disposed) return;
+    final old = _looks;
+    if (identical(old, looks)) return;
+    if (old is GuidePlan && looks is GuidePlan && old.samePlan(looks)) return;
     _looks = looks;
     notifyListeners();
   }
@@ -54,7 +93,145 @@ class GuideDimScope extends InheritedNotifier<GuideDimController> {
   const GuideDimScope({super.key, required GuideDimController controller, required super.child})
       : super(notifier: controller);
 
-  /// The controller of the nearest scope, or null outside one.
+  /// The controller of the nearest scope, or null outside one. Registers a
+  /// dependency: the caller rebuilds on every plan change.
   static GuideDimController? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<GuideDimScope>()?.notifier;
+
+  /// As [maybeOf] without the dependency: for the components and the overlay, which
+  /// listen to the controller themselves and never rebuild for a plan change.
+  static GuideDimController? controllerOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<GuideDimScope>()?.notifier;
+}
+
+bool _isComponent(Widget w) => w is Surface || w is Section || w is Pressable;
+
+/// The plan the overlay writes: its decisions per component and per loose
+/// paragraph, plus the rules for what the plan has not seen (a component built by
+/// a scroll after the plan was made).
+///
+/// A component the plan has not seen is dimmed (skeleton when the whole page is
+/// collapsed, [fallback]) if it is the OUTERMOST component on the guided [page] and
+/// overlaps none of the [keep] boxes: so freshly scrolled-in content is never bright
+/// for the frames before the next plan.
+class GuidePlan implements GuideLooseLooks {
+  final Element? page;
+  final Map<Element, GuideUnitLook> _byComponent;
+  final Map<RenderParagraph, GuideUnitLook> _byParagraph;
+  final Set<Element> _seen;
+  final Set<RenderParagraph> _seenLoose;
+  final List<RenderBox> _keep;
+  final GuideUnitLook fallback;
+
+  GuidePlan._(this.page, this._byComponent, this._byParagraph, this._seen, this._seenLoose, this._keep, this.fallback);
+
+  /// A plan from [plan] on [page]. [keep]: the live boxes that stay legible
+  /// (target, caption-named content), against which unseen components are tested.
+  /// [skeletonAll]: the P6 collapse, so unseen components are skeleton too.
+  /// [revealed]: only units with a section below this index take effect (the
+  /// progressive reveal); null = all.
+  factory GuidePlan.from(Element? page, SkeletonPlan plan, {
+    List<RenderBox> keep = const [],
+    bool skeletonAll = false,
+    int? revealed,
+    Map<Element, GuideUnitLook> extra = const {},
+  }) {
+    final components = <Element, GuideUnitLook>{...extra};
+    final paragraphs = <RenderParagraph, GuideUnitLook>{};
+    for (final u in plan.units) {
+      if (revealed != null && u.section >= revealed) continue;
+      final look = u.skeleton ? GuideUnitLook.skeleton : GuideUnitLook.dim;
+      final c = u.component;
+      // A control that is not a Surface / Section / Pressable cannot paint itself: the
+      // overlay paints its section (live_guide_overlay.dart). Keyed here anyway, harmless.
+      if (c != null) components[c] = look;
+      final p = u.paragraph;
+      if (p != null) paragraphs[p] = look;
+    }
+    return GuidePlan._(page, components, paragraphs, {...plan.seen, ...extra.keys}, plan.seenLoose, keep,
+        skeletonAll ? GuideUnitLook.skeleton : GuideUnitLook.dim);
+  }
+
+  /// True when [other] decides exactly as this one: same components, same looks,
+  /// same loose paragraphs. The page, keep boxes and seen sets are part of how
+  /// unseen components are treated, so they count too.
+  bool samePlan(GuidePlan other) =>
+      identical(page, other.page) && fallback == other.fallback &&
+      _sameMap(_byComponent, other._byComponent) && _sameMap(_byParagraph, other._byParagraph) &&
+      _sameSet(_seen, other._seen) && _sameSet(_seenLoose, other._seenLoose) && _sameList(_keep, other._keep);
+
+  static bool _sameMap<K>(Map<K, GuideUnitLook> a, Map<K, GuideUnitLook> b) {
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      if (b[e.key] != e.value) return false;
+    }
+    return true;
+  }
+
+  static bool _sameSet<T>(Set<T> a, Set<T> b) => a.length == b.length && a.containsAll(b);
+
+  static bool _sameList(List<RenderBox> a, List<RenderBox> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  @override
+  GuideUnitLook? lookOf(BuildContext unit) {
+    if (unit is! Element) return null;
+    final known = _byComponent[unit];
+    if (known != null) return known;
+    if (_seen.contains(unit)) return null;
+    return _unseen(unit);
+  }
+
+  @override
+  GuideUnitLook? looseLookOf(RenderParagraph paragraph) {
+    final known = _byParagraph[paragraph];
+    if (known != null) return known;
+    if (_seenLoose.contains(paragraph) || isIconParagraph(paragraph)) return null;
+    final pageBox = page == null ? null : laidOutBox(page!);
+    if (pageBox == null || !_isUnder(paragraph, pageBox) || _overlapsKeep(paragraph)) return null;
+    return fallback;
+  }
+
+  GuideUnitLook? _unseen(Element unit) {
+    final page = this.page;
+    if (page == null) return null;
+    var onPage = false, outermost = true;
+    unit.visitAncestorElements((a) {
+      if (identical(a, page)) {
+        onPage = true;
+        return false;
+      }
+      if (_isComponent(a.widget)) {
+        outermost = false;
+        return false;
+      }
+      return true;
+    });
+    if (!onPage || !outermost) return null;
+    final box = unit.renderObject;
+    if (box is! RenderBox || !box.hasSize || _overlapsKeep(box)) return null;
+    return fallback;
+  }
+
+  bool _isUnder(RenderObject object, RenderObject ancestor) {
+    for (RenderObject? o = object; o != null; o = o.parent) {
+      if (identical(o, ancestor)) return true;
+    }
+    return false;
+  }
+
+  bool _overlapsKeep(RenderObject object) {
+    if (object is! RenderBox || !object.hasSize || !object.attached) return true;
+    final rect = MatrixUtils.transformRect(object.getTransformTo(null), Offset.zero & object.size);
+    for (final k in _keep) {
+      if (!k.attached || !k.hasSize) continue;
+      if (MatrixUtils.transformRect(k.getTransformTo(null), Offset.zero & k.size).overlaps(rect)) return true;
+    }
+    return false;
+  }
 }

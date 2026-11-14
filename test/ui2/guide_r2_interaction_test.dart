@@ -168,7 +168,7 @@ void main() {
   testWidgets('r2 dimmed dialog opener yields overlay and preserves run', (t) async {
     final base = stageGuide();
     final guide = Guide(id: base.id, title: base.title, start: base.start,
-      look: GuideLook.dim, variants: base.variants, footers: base.footers);
+      variants: base.variants, footers: base.footers);
     final stage = await pumpLiveStage(t, guide: guide);
     for (var i = 0; i < 12; i++) { await t.pump(const Duration(milliseconds: 100)); }
     await t.tap(find.byKey(stageAskFirst));
@@ -191,7 +191,7 @@ void main() {
   // # catches: using AbsorbPointer over skeletons and swallowing scroll drags.
   testWidgets('r2 vertical drag starting on skeleton scrolls the real page', (t) async {
     final f = R2ScrollFixture();
-    await f.pump(t, GuideLook.dim);
+    await f.pump(t);
     final box = t.getRect(find.byKey(r2ScrollLookalike));
     final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
     final shapes = overlay.paintedShapes.where((s) => s.kind.name != 'dim' && s.rect.overlaps(box)).toList();

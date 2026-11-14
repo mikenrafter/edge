@@ -23,6 +23,7 @@
 // draw it on demo data.
 
 import 'dart:math' as math;
+import 'dart:ui' show ClipOp;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -56,7 +57,8 @@ enum SkeletonKind {
 
   /// A skeleton card's heading (its Section title, else its first text line): the
   /// text itself stays, drawn DIMMED at the unit's top-left, while the body lines
-  /// are [bar]s. The rect is the heading line's box. RED: nothing emits it yet.
+  /// are [bar]s. The rect is the heading line's box; [SkeletonShape.color] is the
+  /// veil that dims the real text.
   heading,
 }
 
@@ -131,8 +133,7 @@ const kSkeletonReach = 56.0;
 const kLargeUnitHeight = 120.0;
 
 /// True for a unit whose [box] is strictly taller than [kLargeUnitHeight].
-/// RED STUB: returns false until green implements it.
-bool isLargeUnit(Rect box) => false;
+bool isLargeUnit(Rect box) => box.height > kLargeUnitHeight;
 
 /// Gap between two boxes: 0 when they overlap, else the distance between their edges.
 double rectGap(Rect a, Rect b) {
@@ -181,7 +182,8 @@ class DimPolicy {
   bool lookalike(Rect bounds, Set<String> words) {
     if (skeletonAll) return true;
     final t = targetRect;
-    if (t != null && rectGap(bounds, t) <= kSkeletonReach && controls.any((c) => c.overlaps(bounds) &&
+    // A LARGE unit near the target is dimmed whole; only a shared word makes it a look-alike.
+    if (t != null && !isLargeUnit(bounds) && rectGap(bounds, t) <= kSkeletonReach && controls.any((c) => c.overlaps(bounds) &&
         _contains(c.inflate(2), bounds) && c.width * c.height < 2 * bounds.width * bounds.height)) {
       return true;
     }
@@ -205,7 +207,10 @@ class _Item {
   /// Blocks sort before bars that tie with them (a bar can sit on a block).
   final int tie;
   final List<_Draft> drafts;
-  const _Item(this.sortRect, this.tie, this.drafts);
+
+  /// A text line (its bar): the heading of a skeleton card is the first of these.
+  final bool text;
+  const _Item(this.sortRect, this.tie, this.drafts, {this.text = false});
 }
 
 /// One skeletonized unit: its visible bounds (what "kept" is decided on) and
@@ -214,7 +219,13 @@ class _Unit {
   final Rect bounds;
   final List<_Draft> drafts;
   final Set<String> words;
-  const _Unit(this.bounds, this.drafts, [this.words = const {}]);
+
+  /// The Surface / Section / control element the unit is; null for a loose paragraph.
+  final Element? component;
+
+  /// The paragraph of a loose unit.
+  final RenderParagraph? paragraph;
+  const _Unit(this.bounds, this.drafts, [this.words = const {}, this.component, this.paragraph]);
 }
 
 /// How far an erase reaches past its text line, so glyph overhang (descenders,
@@ -227,33 +238,30 @@ const _kEraseGrow = 1.0;
 bool paintsVisual(Widget w, RenderObject ro) =>
     (w is CustomPaint && (w.painter != null || w.foregroundPainter != null)) || ro is RenderImage;
 
-/// PURE over an already laid-out subtree. Output order: unit by unit,
-/// top-to-bottom; inside a unit, containers before what they contain (an erase
-/// before its bar), then by (top, left). Shapes are in the root's local space,
-/// after applying every ancestor clip (viewports, ClipRect, the root bounds)
-/// and transform between the root and the shape's render object; a shape whose
-/// clipped rect is empty is dropped.
-///
-/// A unit is kept (no shapes) when its visible bounds overlap any [keep] or
-/// [chrome] rect: the section holding a target stays whole; a target outside
-/// every card keeps only its own paragraph.
-///
-/// ↳ CLAIM(kept-untouched): no returned shape overlaps a [keep]/[chrome] rect
-/// [skeleton_plan_test 'what stays legible'].
-List<SkeletonShape> skeletonPlan(
-  Element root, {
-  required List<Rect> keep,
-  List<Rect> chrome = const [],
-  DimPolicy? dim,
-}) {
-  final rootBox = laidOutBox(root);
-  if (rootBox == null) return const [];
-  final legible = [...keep, ...chrome];
-  // Tree inspection must not register dependencies on the inspected elements,
-  // which may themselves be inherited elements. Only colours are read here.
-  ThemeData themeAt(Element e) => (e.widget is Theme ? e.widget as Theme :
-      e.findAncestorWidgetOfExactType<Theme>())?.data ?? ThemeData.fallback();
-  final scaffold = themeAt(root).scaffoldBackgroundColor;
+/// The theme at [e], read without registering a dependency (tree inspection must
+/// not rebuild the inspected elements, which may themselves be inherited).
+ThemeData _themeAt(Element e) => (e.widget is Theme ? e.widget as Theme :
+    e.findAncestorWidgetOfExactType<Theme>())?.data ?? ThemeData.fallback();
+
+/// The scaffold colour a component dims toward.
+Color scaffoldOf(Element e) => _themeAt(e).scaffoldBackgroundColor;
+
+/// The palette of the theme at [e] (no dependency registered).
+P paletteOf(Element e) => P(_themeAt(e).brightness == Brightness.dark);
+
+/// Everything that turns laid-out elements into [_Unit]s, in the coordinates of
+/// [rootBox]. One planner serves the whole page (the overlay's plan, in page
+/// coordinates) and one component (what a Surface paints for itself, in its own).
+class _Planner {
+  final RenderBox rootBox;
+  final Color scaffold;
+  final List<Rect> legible;
+
+  /// Skeleton cards keep their first text line, dimmed (r2 item F).
+  final bool heading;
+  _Planner(this.rootBox, this.scaffold, this.legible, {required this.heading});
+
+  Color get _veil => scaffold.withValues(alpha: kDimOpacity);
 
   Rect visibleOf(RenderBox box, [Rect? local]) =>
       rectInRoot(box, rootBox, local).intersect(visibleBoundsInRoot(box, rootBox));
@@ -299,13 +307,31 @@ List<SkeletonShape> skeletonPlan(
         ));
       }
       drafts.add(_Draft(SkeletonKind.bar, bar));
-      items.add(_Item(bar, 1, drafts));
+      items.add(_Item(bar, 1, drafts, text: true));
     }
     return items;
   }
 
-  /// The unit a Surface / Section opens: its nested surfaces, then its lines
-  /// and visuals.
+  /// [items] sorted into plan order, the first text line turned into the dimmed
+  /// heading when there are two or more text lines and headings are on.
+  List<_Draft> orderedDrafts(List<_Item> items, [List<_Draft> leading = const []]) {
+    items.sort((a, b) {
+      final byTop = a.sortRect.top.compareTo(b.sortRect.top);
+      if (byTop != 0) return byTop;
+      final byLeft = a.sortRect.left.compareTo(b.sortRect.left);
+      return byLeft != 0 ? byLeft : a.tie.compareTo(b.tie);
+    });
+    final firstText = items.indexWhere((i) => i.text);
+    final headed = heading && firstText >= 0 && items.where((i) => i.text).length >= 2 ? firstText : -1;
+    return [
+      ...leading,
+      for (var i = 0; i < items.length; i++)
+        if (i == headed) _Draft(SkeletonKind.heading, items[i].sortRect, _veil) else ...items[i].drafts,
+    ];
+  }
+
+  /// The unit a Surface / Section / control opens: its nested surfaces, then its
+  /// lines and visuals.
   _Unit? cardUnit(Element card) {
     final box = laidOutBox(card);
     if (box == null) return null;
@@ -323,7 +349,7 @@ List<SkeletonShape> skeletonPlan(
         final surfaceBox = laidOutBox(e);
         if (surfaceBox != null) {
           final rect = visibleOf(surfaceBox);
-          if (!rect.isEmpty) surfaces.add(_Draft(SkeletonKind.surface, rect, w.color ?? P(themeAt(e).brightness == Brightness.dark).card));
+          if (!rect.isEmpty) surfaces.add(_Draft(SkeletonKind.surface, rect, w.color ?? P(_themeAt(e).brightness == Brightness.dark).card));
         }
         here = true;
       }
@@ -339,14 +365,100 @@ List<SkeletonShape> skeletonPlan(
     }
 
     inner(card, false);
-    items.sort((a, b) {
-      final byTop = a.sortRect.top.compareTo(b.sortRect.top);
-      if (byTop != 0) return byTop;
-      final byLeft = a.sortRect.left.compareTo(b.sortRect.left);
-      return byLeft != 0 ? byLeft : a.tie.compareTo(b.tie);
-    });
-    final drafts = [...surfaces, for (final i in items) ...i.drafts];
-    return drafts.isEmpty ? null : _Unit(bounds, drafts, words);
+    final drafts = orderedDrafts(items, surfaces);
+    return drafts.isEmpty ? null : _Unit(bounds, drafts, words, card);
+  }
+
+  /// A loose paragraph as a unit (the dim look boxes the whole paragraph).
+  _Unit? looseUnit(RenderParagraph ro, {required bool dimLook}) {
+    final items = linesOf(ro, onCard: false);
+    if (items.isEmpty) return null;
+    return _Unit(
+      dimLook ? visibleOf(ro) : items.map((i) => i.sortRect).reduce((a, b) => a.expandToInclude(b)),
+      orderedDrafts(items),
+      contentWords(ro.text.toPlainText()),
+      null,
+      ro,
+    );
+  }
+}
+
+/// One unit of a [SkeletonPlan] as the components need it: which component (or
+/// loose paragraph) it is and how it is drawn.
+class PlannedUnit {
+  /// The Surface / Section / control element; null for a loose paragraph.
+  final Element? component;
+
+  /// The loose paragraph; null for a component.
+  final RenderParagraph? paragraph;
+
+  /// True: placeholders (heading dimmed, body bars). False: one whole-box dim.
+  final bool skeleton;
+
+  /// The unit's [SkeletonShape.section].
+  final int section;
+  const PlannedUnit({this.component, this.paragraph, required this.skeleton, required this.section});
+}
+
+/// What [planSkeleton] decided: the shapes (the plan as rectangles) and the same
+/// decisions per component, for the components that paint themselves.
+class SkeletonPlan {
+  final List<SkeletonShape> shapes;
+
+  /// One per skeletonized or dimmed unit; kept units are absent.
+  final List<PlannedUnit> units;
+
+  /// Every Surface / Section / control element the plan has seen (kept, nested or
+  /// planned): a component that is NOT in here was built after the plan.
+  final Set<Element> seen;
+
+  /// Every loose paragraph the plan has seen, kept or not.
+  final Set<RenderParagraph> seenLoose;
+  const SkeletonPlan(this.shapes, this.units, this.seen, this.seenLoose);
+}
+
+/// PURE over an already laid-out subtree. Output order: unit by unit,
+/// top-to-bottom; inside a unit, containers before what they contain (an erase
+/// before its bar), then by (top, left). Shapes are in the root's local space,
+/// after applying every ancestor clip (viewports, ClipRect, the root bounds)
+/// and transform between the root and the shape's render object; a shape whose
+/// clipped rect is empty is dropped.
+///
+/// A unit is kept (no shapes) when its visible bounds overlap any [keep] or
+/// [chrome] rect: the section holding a target stays whole; a target outside
+/// every card keeps only its own paragraph.
+///
+/// ↳ CLAIM(kept-untouched): no returned shape overlaps a [keep]/[chrome] rect
+/// [skeleton_plan_test 'what stays legible'].
+List<SkeletonShape> skeletonPlan(
+  Element root, {
+  required List<Rect> keep,
+  List<Rect> chrome = const [],
+  DimPolicy? dim,
+}) => planSkeleton(root, keep: keep, chrome: chrome, dim: dim).shapes;
+
+/// [skeletonPlan] and, for the same units, which component each one is.
+SkeletonPlan planSkeleton(
+  Element root, {
+  required List<Rect> keep,
+  List<Rect> chrome = const [],
+  DimPolicy? dim,
+}) {
+  final rootBox = laidOutBox(root);
+  if (rootBox == null) return const SkeletonPlan([], [], {}, {});
+  final legible = [...keep, ...chrome];
+  final scaffold = scaffoldOf(root);
+  final planner = _Planner(rootBox, scaffold, legible, heading: dim != null);
+  final seen = <Element>{};
+  final seenLoose = <RenderParagraph>{};
+
+  /// Marks [e] and every component below it as seen.
+  void see(Element e) {
+    seen.add(e);
+    for (final c in onstageElements(e)) {
+      final w = c.widget;
+      if (w is Surface || w is Section || w is Pressable) seen.add(c);
+    }
   }
 
   final units = <_Unit>[];
@@ -355,23 +467,19 @@ List<SkeletonShape> skeletonPlan(
     // The dim look treats the OUTERMOST control as one component too (its whole
     // box, padding and background included), not just the text inside it.
     if (w is Surface || w is Section || (dim != null && isGuideControl(w) && laidOutBox(e) != null)) {
-      final unit = cardUnit(e);
+      see(e);
+      final unit = planner.cardUnit(e);
       if (unit != null) units.add(unit);
       return; // everything inside belongs to this unit
     }
     if (w is Icon || w is ImageIcon) return;
     final ro = e is RenderObjectElement ? e.renderObject : null;
     if (ro is RenderParagraph && ro.hasSize) {
-      final items = linesOf(ro, onCard: false);
-      if (items.isNotEmpty) {
-        units.add(_Unit(
-          dim != null ? visibleOf(ro) : items.map((i) => i.sortRect).reduce((a, b) => a.expandToInclude(b)),
-          [for (final i in items) ...i.drafts],
-          contentWords(ro.text.toPlainText()),
-        ));
-      }
+      seenLoose.add(ro);
+      final unit = planner.looseUnit(ro, dimLook: dim != null);
+      if (unit != null) units.add(unit);
     } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
-      final rect = visibleOf(ro);
+      final rect = planner.visibleOf(ro);
       if (!rect.isEmpty) units.add(_Unit(rect, [_Draft(SkeletonKind.block, rect)]));
     }
     e.debugVisitOnstageChildren(find);
@@ -386,22 +494,76 @@ List<SkeletonShape> skeletonPlan(
       final byTop = a.bounds.top.compareTo(b.bounds.top);
       return byTop != 0 ? byTop : a.bounds.left.compareTo(b.bounds.left);
     });
-  if (dim != null) {
-    final veil = scaffold.withValues(alpha: kDimOpacity);
-    return [
-      for (var i = 0; i < skeletonized.length; i++)
-        if (dim.lookalike(skeletonized[i].bounds, skeletonized[i].words))
-          ...[for (final d in skeletonized[i].drafts)
-            SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: i)]
-        else
-          SkeletonShape(kind: SkeletonKind.dim, rect: skeletonized[i].bounds, color: veil, section: i),
-    ];
+  final shapes = <SkeletonShape>[];
+  final planned = <PlannedUnit>[];
+  final veil = scaffold.withValues(alpha: kDimOpacity);
+  for (var i = 0; i < skeletonized.length; i++) {
+    final u = skeletonized[i];
+    final skeleton = dim == null || dim.lookalike(u.bounds, u.words);
+    if (skeleton) {
+      for (final d in u.drafts) {
+        shapes.add(SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: i));
+      }
+    } else {
+      shapes.add(SkeletonShape(kind: SkeletonKind.dim, rect: u.bounds, color: veil, section: i));
+    }
+    if (u.component != null || u.paragraph != null) {
+      planned.add(PlannedUnit(component: u.component, paragraph: u.paragraph, skeleton: skeleton, section: i));
+    }
   }
-  return [
-    for (var i = 0; i < skeletonized.length; i++)
-      for (final d in skeletonized[i].drafts)
-        SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: i),
-  ];
+  return SkeletonPlan(shapes, planned, seen, seenLoose);
+}
+
+/// What one component paints over itself when its look is skeleton: its shapes in
+/// ITS OWN coordinates (origin = the component's top-left), with the heading
+/// dimmed. Empty when it has nothing to show.
+List<SkeletonShape> skeletonOfComponent(Element component, RenderBox box) {
+  final planner = _Planner(box, scaffoldOf(component), const [], heading: true);
+  final unit = planner.cardUnit(component);
+  if (unit == null) return const [];
+  return [for (final d in unit.drafts) SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: 0)];
+}
+
+/// What a loose paragraph paints over itself when its look is skeleton, in the
+/// PARAGRAPH's own coordinates.
+List<SkeletonShape> skeletonOfParagraph(RenderParagraph paragraph, Color scaffold) {
+  final unit = _Planner(paragraph, scaffold, const [], heading: true).looseUnit(paragraph, dimLook: true);
+  if (unit == null) return const [];
+  return [for (final d in unit.drafts) SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: 0)];
+}
+
+/// Paints [shapes] with [palette]: the single painter of placeholders, shared by
+/// the review overlay ([Skeletonize]) and the components that paint themselves.
+/// A heading is the REAL text: the surface fills leave a hole at its line and a
+/// veil dims it.
+void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette) {
+  final holes = [for (final s in shapes) if (s.kind == SkeletonKind.heading) s.rect];
+  for (final s in shapes) {
+    switch (s.kind) {
+      case SkeletonKind.surface:
+        if (holes.isEmpty) {
+          canvas.drawRRect(R.rLg.toRRect(s.rect), Paint()..color = s.color!);
+        } else {
+          canvas.save();
+          for (final h in holes) { canvas.clipRect(h, clipOp: ClipOp.difference); }
+          canvas.drawRRect(R.rLg.toRRect(s.rect), Paint()..color = s.color!);
+          canvas.restore();
+        }
+      case SkeletonKind.erase:
+        canvas.drawRect(s.rect, Paint()..color = s.color!);
+      case SkeletonKind.bar:
+        // The shape is the whole line box; the drawn bar is a slimmer pill
+        // centred in it, as in the mock-up.
+        final h = math.min(s.rect.height, math.max(8.0, s.rect.height * .55));
+        final pill = Rect.fromCenter(center: s.rect.center, width: s.rect.width, height: h);
+        canvas.drawRRect(RRect.fromRectAndRadius(pill, Radius.circular(h / 2)), Paint()..color = palette.line);
+      case SkeletonKind.block:
+        canvas.drawRRect(R.rMd.toRRect(s.rect), Paint()..color = palette.line);
+      case SkeletonKind.dim:
+      case SkeletonKind.heading:
+        canvas.drawRect(s.rect, Paint()..color = s.color!);
+    }
+  }
 }
 
 /// The shapes `progress` (0..1, clamped) reveals: WHOLE units only,
@@ -831,26 +993,7 @@ class _RenderSkeleton extends RenderProxyBox {
     canvas
       ..save()
       ..translate(offset.dx, offset.dy);
-    for (final s in shapes) {
-      switch (s.kind) {
-        case SkeletonKind.surface:
-          canvas.drawRRect(R.rLg.toRRect(s.rect), Paint()..color = s.color!);
-        case SkeletonKind.erase:
-          canvas.drawRect(s.rect, Paint()..color = s.color!);
-        case SkeletonKind.bar:
-          // The shape is the whole line box; the drawn bar is a slimmer pill
-          // centred in it, as in the mock-up.
-          final h = math.min(s.rect.height, math.max(8.0, s.rect.height * .55));
-          final pill = Rect.fromCenter(center: s.rect.center, width: s.rect.width, height: h);
-          canvas.drawRRect(RRect.fromRectAndRadius(pill, Radius.circular(h / 2)), Paint()..color = p.line);
-        case SkeletonKind.block:
-          canvas.drawRRect(R.rMd.toRRect(s.rect), Paint()..color = p.line);
-        case SkeletonKind.dim:
-          canvas.drawRect(s.rect, Paint()..color = s.color!);
-        case SkeletonKind.heading:
-          break; // RED stub: green draws the heading dimmed.
-      }
-    }
+    paintSkeletonShapes(canvas, shapes, p);
     canvas.restore();
   }
 

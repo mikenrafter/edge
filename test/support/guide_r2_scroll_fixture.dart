@@ -11,6 +11,7 @@ import 'package:openstrap_edge/ui2/guides/guide_routes.dart';
 import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
+import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart' show GuideScrollBehavior;
 import 'guide_text.dart';
 
 const r2ScrollLookalike = ValueKey('r2-scroll-lookalike');
@@ -23,11 +24,11 @@ class R2ScrollFixture {
   late GuideRun run;
   OverlayEntry? entry;
   int lookalikeTaps = 0;
-  Future<void> pump(WidgetTester t, GuideLook look) async {
+  Future<void> pump(WidgetTester t) async {
     t.view.physicalSize = const Size(390, 780);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
-    await t.pumpWidget(GuideDimScope(controller: dim, child: MaterialApp(navigatorKey: navKey, navigatorObservers: [routes],
+    await t.pumpWidget(GuideDimScope(controller: dim, child: MaterialApp(scrollBehavior: const GuideScrollBehavior(), navigatorKey: navKey, navigatorObservers: [routes],
       theme: buildTheme(Brightness.light), locale: const Locale('en'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -40,7 +41,7 @@ class R2ScrollFixture {
       ])])))));
     await t.pump();
     final target = GuideTarget.key(r2ScrollTarget);
-    final guide = Guide(id: 'scroll-fixture', look: look, title: fnText((_) => 'Scroll'),
+    final guide = Guide(id: 'scroll-fixture', title: fnText((_) => 'Scroll'),
       start: GuideStart.today, variants: [GuideVariant(steps: [GuideStep(id: 'target',
         target: target, anchor: GuideTarget.key(const ValueKey('r2-scroll-column')), action: GuideAction.scrollThenTap,
         caption: fnText((_) => 'Find Target.'))])]);

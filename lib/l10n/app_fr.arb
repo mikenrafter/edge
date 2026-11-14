@@ -3875,6 +3875,10 @@
   "guideDoneTitle": "Terminé",
   "guideDoneBody": "C’était la dernière étape.",
   "guideTargetProxy": "Cible du guide : {caption}",
+  "guideTabProxy": "Guide : ouvrir l’onglet {tab}",
+  "guideBackProxy": "Guide : retour au chemin",
+  "guideMoveCardUp": "Déplacer la carte vers le haut",
+  "guideMoveCardDown": "Déplacer la carte vers le bas",
   "guideRemoveStep3": "Touchez ensuite **{save}**, en bas. Rien n’est supprimé avant.",
   "guideAddNapMissingTitle": "Vous ne voyez pas « {naps} » ?",
   "guideAddNapMissingBody": "**{naps}** se trouve sous votre nuit. Si cette partie, **{night}**, est repliée, touchez son titre pour l’ouvrir."

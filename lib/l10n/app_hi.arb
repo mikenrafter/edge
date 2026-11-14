@@ -3875,6 +3875,10 @@
   "guideDoneTitle": "हो गया",
   "guideDoneBody": "यह आखिरी चरण था।",
   "guideTargetProxy": "गाइड का लक्ष्य: {caption}",
+  "guideTabProxy": "गाइड: {tab} टैब खोलें",
+  "guideBackProxy": "गाइड: रास्ते पर वापस जाएँ",
+  "guideMoveCardUp": "कार्ड को ऊपर ले जाएँ",
+  "guideMoveCardDown": "कार्ड को नीचे ले जाएँ",
   "guideRemoveStep3": "फिर नीचे **{save}** पर टैप करें। इससे पहले कुछ नहीं हटता।",
   "guideAddNapMissingTitle": "\"{naps}\" नहीं दिख रहा?",
   "guideAddNapMissingBody": "**{naps}** आपकी रात के नीचे है। अगर वह भाग, **{night}**, बंद है, तो उसका शीर्षक टैप करके खोलें।"

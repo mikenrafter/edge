@@ -32,7 +32,6 @@ final _ownZonesLink = GuideTarget.anyLabel([
 
 Guide get heartRateZonesGuide => Guide(
       id: 'heart-rate-zones',
-      look: GuideLook.dim,
       title: GuideCopy.hrZonesTitle,
       start: GuideStart.today,
       intro: GuideCopy.hrZonesIntro,

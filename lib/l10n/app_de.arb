@@ -3981,6 +3981,10 @@
   "guideDoneTitle": "Fertig",
   "guideDoneBody": "Das war der letzte Schritt.",
   "guideTargetProxy": "Ziel der Anleitung: {caption}",
+  "guideTabProxy": "Anleitung: Tab {tab} öffnen",
+  "guideBackProxy": "Anleitung: zurück zum Weg",
+  "guideMoveCardUp": "Karte nach oben schieben",
+  "guideMoveCardDown": "Karte nach unten schieben",
   "guideRemoveStep3": "Tippe dann unten auf **{save}**. Bis dahin wird nichts entfernt.",
   "guideAddNapMissingTitle": "„{naps}“ nicht zu sehen?",
   "guideAddNapMissingBody": "**{naps}** steht unter deiner Nacht. Ist dieser Teil, **{night}**, eingeklappt, tippe auf seinen Titel, um ihn zu öffnen."

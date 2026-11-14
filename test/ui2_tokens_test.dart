@@ -26,6 +26,10 @@ const _tokenFile = 'lib/ui2/theme.dart';
 /// Where `Pressable` is defined — the one place a raw gesture is legal.
 const _gestureFile = 'lib/ui2/grammar.dart';
 
+/// The live guide's input layer and the skeleton plan that names gesture widgets.
+const _guideOverlayFile = 'lib/ui2/guides/live_guide_overlay.dart';
+const _guideSkeletonFile = 'lib/ui2/skeleton/skeleton.dart';
+
 final _rules = <_Rule>[
   _Rule(
     'raw fontSize:',
@@ -82,7 +86,10 @@ final _rules = <_Rule>[
     'Pressable is the only gesture primitive and Scrubber the only drag — they '
         'are what apply the 44 pt minimum and the slider semantics, so a call '
         'site that bypasses them is a call site that opts out of them.',
-    allow: {_gestureFile},
+    // The guide run is an input layer over every screen, not a screen: its card sinks
+    // and drags pointers, its skeleton ink absorbs them, and the plan recognises the
+    // app's own gesture widgets as controls (guides/live_guide_overlay.dart, skeleton.dart).
+    allow: {_gestureFile, _guideOverlayFile, _guideSkeletonFile},
   ),
 ];
 
