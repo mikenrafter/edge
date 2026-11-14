@@ -518,7 +518,8 @@ void main() {
       expect(stage.run.state, isA<GuideOffPath>());
       expect(find.byKey(GuideStepCard.offPathKey), findsOneWidget);
       expect(find.text(_en.guideOffPathTitle), findsOneWidget);
-      expect(_overlay(t).paintedShapes, isEmpty);
+      // Off the path everything is DIMMED (owner decision 3), never skeleton: no ink absorbs a tap.
+      expect(_overlay(t).paintedShapes.where((s) => s.kind != SkeletonKind.dim), isEmpty);
       expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing);
       await t.tap(find.byKey(stageElsewhereAction));
       expect(stage.taps.elsewhere, 1, reason: 'the page underneath is usable');

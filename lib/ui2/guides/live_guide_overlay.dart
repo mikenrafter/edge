@@ -110,6 +110,9 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   _Route? _routeInfo;
   GuideDimController? _dim;
   GuidePlan? _published;
+  Object? _searchSignature;
+  Object? _scrollAtReveal;
+  Rect? _lastRevealRect;
   Rect? _target;
   RenderBox? _targetObject;
   List<Rect> _chrome = const [], _legible = const [];
@@ -137,10 +140,14 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   /// shows at once (no progressive reveal) with the scroll marker.
   bool get _collapsed {
     final t = _target;
-    return _step != null &&
-      (t == null || !(Offset.zero & _viewport).contains(t.topLeft) || !(Offset.zero & _viewport).contains(t.bottomRight));
+    return _step != null && (t == null || !_within(t, Offset.zero & _viewport));
   }
   Size _viewport = Size.zero;
+
+  /// [inner] lies inside [outer], edges included (a full-width card ends exactly at
+  /// the screen edge; [Rect.contains] would call that outside).
+  static bool _within(Rect inner, Rect outer) => inner.left >= outer.left - .5 && inner.top >= outer.top - .5 &&
+      inner.right <= outer.right + .5 && inner.bottom <= outer.bottom + .5;
   @visibleForTesting
   Rect? get targetRect => _target;
   @visibleForTesting
@@ -399,6 +406,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     // without resizing; sliver geometry and counts catch newly built lazy content.
     // See the late-content, real Sleep and History integration regressions.
     final content = <Object?>[];
+    final discoveryContent = <Object?>[];
+    final scrolls = <Object?>[];
     var builtCount = 0;
     if (page != null) {
       for (final e in builtElements(page)) {
@@ -406,6 +415,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         final w = e.widget;
         content.add(e);
         content.add(w);
+        if (w is Text) discoveryContent.add(w.data ?? w.textSpan?.toPlainText());
         final object = e is RenderObjectElement ? e.renderObject : null;
         if (object != null && object.attached) {
           content.add(object);
@@ -421,15 +431,22 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         }
         if (e is StatefulElement && e.state is ScrollableState) {
           final position = (e.state as ScrollableState).position;
-          if (position.hasPixels) content.add(position.pixels);
+          if (position.hasPixels) { content.add(position.pixels); scrolls.add(position.pixels); }
           if (position.hasContentDimensions) {
             content.add(position.minScrollExtent);
             content.add(position.maxScrollExtent);
             content.add(position.viewportDimension);
+            discoveryContent.add(position.minScrollExtent);
+            discoveryContent.add(position.maxScrollExtent);
+            discoveryContent.add(position.viewportDimension);
           }
         }
       }
     }
+    // Discovery retries use stable text/extents: rebuilding cached list
+    // children during an unsuccessful search must not restart that search.
+    final signature = Object.hashAll(discoveryContent);
+    final scrollSignature = Object.hashAll(scrolls);
     final planSignature = (page, layer.size, builtCount, Object.hashAll(content), widget.run,
       widget.run.state, l, _searchingPage, _revealedPage, _revealedStep);
     if (_plannedSignature == planSignature) return;
@@ -461,13 +478,22 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         ? MatrixUtils.transformRect(box.getTransformTo(layer), resolution.rect) : null;
     final viewport = Offset.zero & layer.size;
     _viewport = layer.size;
-    final outside = targetNow != null &&
-        !(viewport.contains(targetNow.topLeft) && viewport.contains(targetNow.bottomRight));
-    // The page is revealed once per step: after that the user scrolls (the marker
-    // shows the way) and the overlay must not scroll the page back under them.
-    if (page != null && step != null && newStep) {
+    final outside = targetNow != null && !_within(targetNow, viewport);
+    // The page is revealed once per step, and again when LATE CONTENT moves the target
+    // away (an async read lands above it). It is never re-revealed after the USER
+    // scrolled: the marker shows the way and the overlay must not scroll the page back
+    // under their finger. [_scrollAtReveal] is where every scrollable stood when the
+    // last reveal settled; any other position is the user's.
+    if (_searchingPage == null && _scrollAtReveal == null) _scrollAtReveal = scrollSignature;
+    final retry = _searchingPage == null && _scrollAtReveal == scrollSignature &&
+        ((targetNow == null && _searchSignature != signature) ||
+         (outside && _lastRevealRect != targetNow));
+    if (page != null && step != null && (newStep || retry)) {
       _revealedPage = page;
       _revealedStep = step;
+      _searchSignature = signature;
+      _lastRevealRect = targetNow;
+      _scrollAtReveal = null;
       // Also reveal plain-tap targets built just beyond the viewport: a target
       // must be visible before the card asks the user to press it.
       final token = Object();
@@ -546,11 +572,13 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         skeleton = tabPlan;
         extra = tabExtra;
         shapes = intoOverlayShapes(tabShapes, transform);
-      } else {
+      } else if (resolution is TargetNotBuilt) {
         // P6: the target is not built yet; everything on screen is the way to it.
         skeleton = planSkeleton(page, keep: const [], chrome: localChrome, dim: const DimPolicy(skeletonAll: true));
         shapes = intoOverlayShapes(skeleton.shapes, transform);
       }
+      // A target that is absent or ambiguous with no route to show covers nothing: a guide
+      // never hides a screen it cannot point into (the card offers "Don't see it?").
     }
     if (page != null && box != null && step == null && widget.run.state is GuideOffPath) {
       // Off path: everything dims except the one control one step closer to the
@@ -613,6 +641,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     _published = dim.looks is GuidePlan ? dim.looks as GuidePlan : next;
   }
 
+  /// Takes this overlay's plan back, if it is still the one in force.
   void _unpublish() {
     final dim = _dim, mine = _published;
     _published = null;

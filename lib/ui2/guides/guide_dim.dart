@@ -89,19 +89,27 @@ class GuideDimController extends ChangeNotifier {
 
 /// Provided once at the app root (above the Navigator). Components inside read
 /// the plan from here.
-class GuideDimScope extends InheritedNotifier<GuideDimController> {
-  const GuideDimScope({super.key, required GuideDimController controller, required super.child})
-      : super(notifier: controller);
+///
+/// An [InheritedWidget] that carries the controller and does NOT rebuild anything when
+/// the plan changes: each component listens to the controller itself and repaints
+/// (never rebuilds), so a plan change costs one repaint per component and a run can
+/// end while the tree is being torn down.
+class GuideDimScope extends InheritedWidget {
+  final GuideDimController controller;
+  const GuideDimScope({super.key, required this.controller, required super.child});
 
   /// The controller of the nearest scope, or null outside one. Registers a
-  /// dependency: the caller rebuilds on every plan change.
+  /// dependency on the scope widget (it changes only when the controller object does).
   static GuideDimController? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<GuideDimScope>()?.notifier;
+      context.dependOnInheritedWidgetOfExactType<GuideDimScope>()?.controller;
 
   /// As [maybeOf] without the dependency: for the components and the overlay, which
-  /// listen to the controller themselves and never rebuild for a plan change.
+  /// listen to the controller themselves.
   static GuideDimController? controllerOf(BuildContext context) =>
-      context.getInheritedWidgetOfExactType<GuideDimScope>()?.notifier;
+      context.getInheritedWidgetOfExactType<GuideDimScope>()?.controller;
+
+  @override
+  bool updateShouldNotify(GuideDimScope oldWidget) => !identical(controller, oldWidget.controller);
 }
 
 bool _isComponent(Widget w) => w is Surface || w is Section || w is Pressable;
