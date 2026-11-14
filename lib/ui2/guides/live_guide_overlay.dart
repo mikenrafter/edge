@@ -96,7 +96,7 @@ class LiveGuideOverlay extends StatefulWidget {
   State<LiveGuideOverlay> createState() => LiveGuideOverlayState();
 }
 
-class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerProviderStateMixin {
+class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerProviderStateMixin implements _GuideLayerSource {
   final _layerKey = GlobalKey();
   late final AnimationController _reveal;
   List<SkeletonShape> _shapes = const [];
@@ -106,6 +106,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   Map<Element, GuideUnitLook> _extraLooks = const {};
   List<RenderBox> _keepBoxes = const [];
   Set<int> _staticSections = const {};
+  final _staticTick = ValueNotifier<int>(0);
   /// What the highlighted route-back control is, for the screen-reader proxy.
   _Route? _routeInfo;
   GuideDimController? _dim;
@@ -132,6 +133,13 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
 
   @visibleForTesting
   int get planningCount => _planningCount;
+
+  @override
+  List<SkeletonShape> get layerShapes => paintedShapes;
+  @override
+  List<Rect> get layerHoles => [?_target, ?_route, ..._chrome];
+  @override
+  Set<int> get layerStatic => _staticSections;
 
   @visibleForTesting
   List<SkeletonShape> get paintedShapes => _yielding ? const [] : _collapsed ? _shapes : revealedShapes(_shapes, revealProgress);
@@ -597,8 +605,13 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         if (u.component != null ? _paintsItself(u.component!.widget) : u.paragraph != null && hasLooseLayer(u.paragraph!)) u.section,
     };
     final staticSections = {for (final s in shapes) if (!inTree.contains(s.section)) s.section};
+    // The shapes are read at paint and hit-test time ([_GuideLayerSource]): a scroll that
+    // only moves them rebuilds nothing; only static ink needs a repaint of its layer.
+    if (staticSections.isNotEmpty || _staticSections.isNotEmpty) {
+      if (!_sameShapes(_shapes, shapes) || !setEquals(_staticSections, staticSections)) _staticTick.value++;
+    }
     final changed = _page != page || _step != step || _target != target || _yielding != (page == null) ||
-      !_sameShapes(_shapes, shapes) || !listEquals(_chrome, chrome) || !listEquals(_legible, legible) || _route != route;
+      !listEquals(_chrome, chrome) || !listEquals(_legible, legible) || _route != route;
     _page = page;
     _step = step;
     _target = target;
@@ -654,6 +667,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_pointer);
     widget.run.removeListener(_changed);
     _reveal.dispose();
+    _staticTick.dispose();
     super.dispose();
   }
 
@@ -710,7 +724,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
             // paints (a control that is not a Surface/Section/Pressable, a loose chart)
             // and decides hit testing.
             child: CustomPaint(key: LiveGuideOverlay.skeletonKey,
-              painter: _GuidePainter(paintedShapes, p, [?target, ?_route, ..._chrome], _staticSections)),
+              painter: _GuidePainter(this, p, _staticTick)),
           ))),
         if (marked || routeMarked) Positioned.fromRect(rect: (marked ? outline : routeOutline)!, child: ExcludeSemantics(child: IgnorePointer(child: DecoratedBox(
           key: LiveGuideOverlay.outlineKey,
@@ -811,29 +825,53 @@ class _GuideLayout extends MultiChildLayoutDelegate {
       !listEquals(avoid, old.avoid) || fraction != old.fraction;
 }
 
-class _GuidePainter extends CustomPainter {
-  final List<SkeletonShape> shapes;
-  final P palette;
-  final List<Rect> holes;
+/// What the overlay's input and paint layer reads at paint and hit-test time, so a
+/// scroll that only moves shapes never rebuilds the overlay.
+abstract interface class _GuideLayerSource {
+  List<SkeletonShape> get layerShapes;
+  List<Rect> get layerHoles;
+  Set<int> get layerStatic;
+}
 
-  /// The sections painted here; every other section is painted by its component.
-  final Set<int> painted;
-  _GuidePainter(this.shapes, this.palette, [this.holes = const [], this.painted = const {}]);
+class _GuidePainter extends CustomPainter {
+  final _GuideLayerSource source;
+  final P palette;
+  _GuidePainter(this.source, this.palette, Listenable repaint) : super(repaint: repaint);
+
+  List<SkeletonShape>? _inkFor;
+  List<Rect> _ink = const [];
+
   @override
   void paint(Canvas canvas, Size size) {
+    final painted = source.layerStatic;
     if (painted.isEmpty) return;
-    paintSkeletonShapes(canvas, [for (final s in shapes) if (painted.contains(s.section)) s], palette);
+    paintSkeletonShapes(canvas, [for (final s in source.layerShapes) if (painted.contains(s.section)) s], palette);
   }
+
   @override
-  bool shouldRepaint(_GuidePainter old) => true;
+  bool shouldRepaint(_GuidePainter old) => !identical(old.source, source) || old.palette != palette;
+
+  /// The box each skeleton unit's ink spans: a tap anywhere in it is absorbed, also
+  /// in the gaps between its bars.
+  List<Rect> _inkBoxes() {
+    final shapes = source.layerShapes;
+    if (identical(_inkFor, shapes)) return _ink;
+    final bySection = <int, Rect>{};
+    for (final s in shapes) {
+      if (s.kind == SkeletonKind.dim || s.kind == SkeletonKind.heading) continue;
+      bySection[s.section] = bySection[s.section]?.expandToInclude(s.rect) ?? s.rect;
+    }
+    _inkFor = shapes;
+    return _ink = bySection.values.toList();
+  }
 
   /// Input per layer (owner decision, r2): ONLY skeleton ink takes pointers; a
   /// dim layer, a hole (target, chrome) or blank scaffold lets them through to
   /// the real page.
   @override
   bool? hitTest(Offset position) {
-    if (holes.any((r) => r.contains(position))) return false;
-    return shapes.any((s) => s.kind != SkeletonKind.dim && s.rect.contains(position));
+    if (source.layerHoles.any((r) => r.contains(position))) return false;
+    return _inkBoxes().any((r) => r.contains(position));
   }
 }
 

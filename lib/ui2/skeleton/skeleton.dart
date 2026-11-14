@@ -172,6 +172,9 @@ class DimPolicy {
       if (ro is RenderParagraph && ro.hasSize && target.rect.contains(rectInRoot(ro, root).center)) {
         words.addAll(contentWords(ro.text.toPlainText()));
       }
+      // An icon-only control (a bin) is named by its semantics label.
+      final label = w is Pressable ? w.semanticLabel : w is Semantics ? w.properties.label : null;
+      if (label != null && target.rect.contains(rectInRoot(box, root).center)) words.addAll(contentWords(label));
     }
     return DimPolicy(targetRect: target.rect, targetWords: words, controls: controls);
   }
@@ -184,7 +187,9 @@ class DimPolicy {
     final t = targetRect;
     // A LARGE unit near the target is dimmed whole; only a shared word makes it a look-alike.
     if (t != null && !isLargeUnit(bounds) && rectGap(bounds, t) <= kSkeletonReach && controls.any((c) => c.overlaps(bounds) &&
-        _contains(c.inflate(2), bounds) && c.width * c.height < 2 * bounds.width * bounds.height)) {
+        // The unit is a control (it sits in one of about its own size) or HOLDS one.
+        (_contains(c.inflate(2), bounds) && c.width * c.height < 2 * bounds.width * bounds.height ||
+         _contains(bounds.inflate(2), c)))) {
       return true;
     }
     return words.any(targetWords.contains);
@@ -343,7 +348,11 @@ class _Planner {
 
     void inner(Element e, bool onCard) {
       final w = e.widget;
-      if (w is Icon || w is ImageIcon) return; // icons are not planned
+      // Icons are not planned, except where headings are on (the dim look): there an
+      // icon is a line like any other, the heading when it comes first, a bar after.
+      if ((w is Icon || w is ImageIcon) && !heading) return;
+      final label = w is Pressable ? w.semanticLabel : w is Semantics ? w.properties.label : null;
+      if (label != null) words.addAll(contentWords(label));
       var here = onCard;
       if (w is Surface) {
         final surfaceBox = laidOutBox(e);
@@ -472,7 +481,8 @@ SkeletonPlan planSkeleton(
       if (unit != null) units.add(unit);
       return; // everything inside belongs to this unit
     }
-    if (w is Icon || w is ImageIcon) return;
+    // A loose icon is its own unit in the dim look (dimmed whole); not otherwise.
+    if ((w is Icon || w is ImageIcon) && dim == null) return;
     final ro = e is RenderObjectElement ? e.renderObject : null;
     if (ro is RenderParagraph && ro.hasSize) {
       seenLoose.add(ro);

@@ -72,15 +72,17 @@ class GuideDimController extends ChangeNotifier {
   /// The plan in force; null when no guide is dimming anything.
   GuideUnitLooks? get looks => _looks;
 
-  /// Replaces the plan and repaints the components that read it. A plan equal to
-  /// the one in force ([GuidePlan.samePlan]) changes nothing and notifies nobody.
+  /// Replaces the plan and repaints the components that read it. A plan that gives
+  /// every component the same look as the one in force ([GuidePlan.sameLooks])
+  /// replaces it silently: nothing is marked for paint, so a scroll that only brings
+  /// in more dimmed content costs no repaint beyond the scroll's own.
   void setLooks(GuideUnitLooks? looks) {
     if (_disposed) return;
     final old = _looks;
     if (identical(old, looks)) return;
-    if (old is GuidePlan && looks is GuidePlan && old.samePlan(looks)) return;
+    final same = old is GuidePlan && looks is GuidePlan && old.sameLooks(looks);
     _looks = looks;
-    notifyListeners();
+    if (!same) notifyListeners();
   }
 
   /// Removes the plan: every component draws as usual.
@@ -160,28 +162,25 @@ class GuidePlan implements GuideLooseLooks {
         skeletonAll ? GuideUnitLook.skeleton : GuideUnitLook.dim);
   }
 
-  /// True when [other] decides exactly as this one: same components, same looks,
-  /// same loose paragraphs. The page, keep boxes and seen sets are part of how
-  /// unseen components are treated, so they count too.
-  bool samePlan(GuidePlan other) =>
-      identical(page, other.page) && fallback == other.fallback &&
-      _sameMap(_byComponent, other._byComponent) && _sameMap(_byParagraph, other._byParagraph) &&
-      _sameSet(_seen, other._seen) && _sameSet(_seenLoose, other._seenLoose) && _sameList(_keep, other._keep);
-
-  static bool _sameMap<K>(Map<K, GuideUnitLook> a, Map<K, GuideUnitLook> b) {
-    if (a.length != b.length) return false;
-    for (final e in a.entries) {
-      if (b[e.key] != e.value) return false;
-    }
-    return true;
+  /// True when no component and no loose paragraph would be painted differently under
+  /// [other]. A component only the plan in force or only [other] names is compared
+  /// with what the other plan does to a component it never saw (its [fallback]), so
+  /// content that scrolled in and is dimmed like the fallback does not count.
+  bool sameLooks(GuidePlan other) {
+    if (fallback != other.fallback) return false;
+    return _agree(_byComponent, _seen, other._byComponent, other._seen) &&
+        _agree(_byParagraph, _seenLoose, other._byParagraph, other._seenLoose);
   }
 
-  static bool _sameSet<T>(Set<T> a, Set<T> b) => a.length == b.length && a.containsAll(b);
+  GuideUnitLook? _effective<K>(Map<K, GuideUnitLook> byKey, Set<K> seen, K key) =>
+      byKey[key] ?? (seen.contains(key) ? null : fallback);
 
-  static bool _sameList(List<RenderBox> a, List<RenderBox> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (!identical(a[i], b[i])) return false;
+  bool _agree<K>(Map<K, GuideUnitLook> a, Set<K> aSeen, Map<K, GuideUnitLook> b, Set<K> bSeen) {
+    for (final key in a.keys) {
+      if (_effective(a, aSeen, key) != _effective(b, bSeen, key)) return false;
+    }
+    for (final key in b.keys) {
+      if (_effective(a, aSeen, key) != _effective(b, bSeen, key)) return false;
     }
     return true;
   }
