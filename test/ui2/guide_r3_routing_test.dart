@@ -4,10 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ui2/grammar.dart';
 import 'package:openstrap_edge/ui2/guides/guide_catalogue.dart';
+import 'package:openstrap_edge/ui2/guides/guide_dim.dart';
 import 'package:openstrap_edge/ui2/guides/guide_navigation.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
+import '../support/guide_r2_manifest.dart';
 import '../support/guide_r2_scenes.dart';
 import '../support/live_guide_harness.dart';
 
@@ -64,7 +66,18 @@ void main() {
       expect(app.runner.activeRun!.state, isA<GuideOffPath>());
       final history = find.descendant(of: tabs, matching: find.widgetWithText(Pressable, subTabs.items[2]));
       expect(t.getRect(find.byKey(LiveGuideOverlay.outlineKey)).contains(t.getRect(history.first).intersect(t.getRect(tabs)).center), isTrue);
-      expect(find.text('1 step back'), findsOneWidget);
+      expect(find.text('1 tap back'), findsOneWidget);
+      // WHY: owner review R4: off path the cards next to the route-back control stay lit,
+      // also when that control is a sub-tab; the cards further away dim.
+      // # catches: neighbour lighting skipped for tab-like route-back controls.
+      final page = app.runner.routes.page!;
+      final looks = GuideDimScope.controllerOf(page)!.looks!;
+      final cards = [for (final u in r2Units(page)) if (u.element.widget is Section || u.element.widget is Surface) u]
+        ..sort((a, b) => a.rect.top.compareTo(b.rect.top));
+      final below = cards.where((u) => u.rect.top >= t.getRect(tabs).bottom - 1).toList();
+      expect(below, isNotEmpty, reason: 'the page has cards under the sub-tabs');
+      expect(looks.lookOf(below.first.element), isNull, reason: 'the card next to the route back is lit');
+      expect(cards.any((u) => looks.lookOf(u.element) == GuideUnitLook.dim), isTrue, reason: 'cards further away dim');
       await t.tap(find.byKey(GuideStepCard.backToGuideKey));
       await settleLiveGuide(t, frames: 18);
       expect(GuideNavigation.location(app.runner.routes.page!), GuideNode.activityHistory);
@@ -92,11 +105,45 @@ void main() {
       await t.tapAt(t.getRect(r2Tab(3)).center);
       await settleLiveGuide(t, frames: 18);
       expect(app.runner.activeRun!.state, isA<GuideOffPath>());
-      expect(find.text('1 step back'), findsOneWidget);
+      expect(find.text('1 tap back'), findsOneWidget);
       expect(t.getRect(find.byKey(LiveGuideOverlay.outlineKey)).contains(t.getRect(r2Tab(2)).center), isTrue);
       await t.tapAt(t.getRect(r2Tab(2)).center);
       await settleLiveGuide(t, frames: 18);
       expect(app.runner.activeRun!.currentStep!.id, 'log-past');
+    } finally {
+      app.runner.exit();
+      await t.pumpWidget(const SizedBox());
+      app.dispose();
+      await t.pump();
+    }
+  });
+
+  // WHY: owner review R2. The card counts every hop of the way back, so one press of
+  // "Back to the guide" must take all of them, also the sub-tab still selected from an
+  // earlier visit (History stays selected on Activity while the user is elsewhere).
+  // # catches: a walk that selects the tab and stops, leaving a second press to the user.
+  testWidgets('R2: one Back to the guide press from Today reaches Activity > Overview with History parked', (t) async {
+    final app = await pumpLiveGuideApp(t);
+    try {
+      await app.runner.start(r2Guide('start-workout'), band: null);
+      await settleLiveGuide(t, frames: 18);
+      expect(app.runner.activeRun!.currentStep!.id, 'start-card');
+      final tabs = find.byType(SubTabs);
+      final items = t.widget<SubTabs>(tabs).items;
+      final history = find.descendant(of: tabs, matching: find.widgetWithText(Pressable, items[2])).first;
+      await t.tapAt(t.getRect(history).intersect(t.getRect(tabs)).center);
+      await settleLiveGuide(t, frames: 18);
+      expect(GuideNavigation.location(app.runner.routes.page!), GuideNode.activityHistory);
+      expect(app.runner.activeRun!.state, isA<GuideOffPath>(), reason: 'History is not on this guide\'s path');
+      await t.tapAt(t.getRect(r2Tab(0)).center);
+      await settleLiveGuide(t, frames: 18);
+      expect(app.runner.activeRun!.state, isA<GuideOffPath>());
+      expect(find.text('2 taps back'), findsOneWidget, reason: 'Activity tab, then the Overview sub-tab');
+      await t.tap(find.byKey(GuideStepCard.backToGuideKey));
+      await settleLiveGuide(t, frames: 30);
+      expect(GuideNavigation.location(app.runner.routes.page!), GuideNode.activityOverview);
+      expect(app.runner.activeRun!.state, isA<GuideAtStep>(), reason: 'one press, not two');
+      expect(app.runner.activeRun!.currentStep!.id, 'start-card');
     } finally {
       app.runner.exit();
       await t.pumpWidget(const SizedBox());

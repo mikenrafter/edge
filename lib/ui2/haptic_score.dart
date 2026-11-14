@@ -26,6 +26,7 @@ import '../haptics/score_layout.dart';
 import '../l10n/app_localizations.dart';
 import '../notify/buzz_sequence.dart';
 import 'theme.dart';
+import './skeleton/guide_plot.dart';
 
 /// The colour of band command [command] (0 based) on theme [p]: a palette
 /// that cycles, every entry at least 3:1 against the card in light and dark.
@@ -49,7 +50,9 @@ const List<Color> _kCommandAccents = [
 ];
 
 /// Paints the staff lines, bars, notes, rests, ties and dots of [layout].
-class HapticScorePainter extends CustomPainter {
+class HapticScorePainter extends CustomPainter implements GuidePlot {
+  @override
+  Color get guideLineColor => ink;
   const HapticScorePainter(this.layout,
       {required this.ink, required this.commandColor});
 

@@ -104,11 +104,30 @@ class RenderGuideUnit extends RenderProxyBox {
 
   set controller(GuideDimController? value) {
     if (identical(_controller, value)) return;
-    if (attached) _controller?.removeListener(markNeedsPaint);
+    if (attached) _controller?.removeListener(_planChanged);
+    _pulse.stop();
     _controller = value;
     if (attached) _listen();
     markNeedsPaint();
   }
+
+  /// Repaints this component asked for itself, for the tests that pin who repaints:
+  /// because the plan changed, and because the pulse ticked.
+  @visibleForTesting
+  int planRepaints = 0, pulseRepaints = 0;
+
+  void _planChanged() {
+    planRepaints++;
+    markNeedsPaint();
+  }
+
+  void _pulsed() {
+    pulseRepaints++;
+    markNeedsPaint();
+  }
+
+  /// Listens to the pulse only while this component paints placeholders.
+  final _pulse = PulseSubscription();
 
   @override
   void attach(PipelineOwner owner) {
@@ -118,12 +137,13 @@ class RenderGuideUnit extends RenderProxyBox {
 
   void _listen() {
     final c = _controller;
-    if (c != null && !c.isDisposed) c.addListener(markNeedsPaint);
+    if (c != null && !c.isDisposed) c.addListener(_planChanged);
   }
 
   @override
   void detach() {
-    _controller?.removeListener(markNeedsPaint);
+    _controller?.removeListener(_planChanged);
+    _pulse.stop();
     super.detach();
   }
 
@@ -150,6 +170,7 @@ class RenderGuideUnit extends RenderProxyBox {
   void paint(PaintingContext context, Offset offset) {
     final looks = _controller?.looks;
     final look = _component.mounted ? looks?.lookOf(_component) : null;
+    _pulse.follow(_controller, look == GuideUnitLook.skeleton, _pulsed);
     if (look == GuideUnitLook.skeleton && child != null) {
       GuidePlaceholderPaint.of(_component, fade: _controller?.fade ?? 1, pulse: _controller?.pulse ?? 1)
           .paint(context, child!, offset, size);
@@ -224,10 +245,13 @@ class RenderGuideLoose extends RenderProxyBox {
   set controller(GuideDimController? value) {
     if (identical(_controller, value)) return;
     if (attached) _controller?.removeListener(markNeedsPaint);
+    _pulse.stop();
     _controller = value;
     if (attached) _listen();
     markNeedsPaint();
   }
+
+  final _pulse = PulseSubscription();
 
   @override
   void attach(PipelineOwner owner) {
@@ -245,6 +269,7 @@ class RenderGuideLoose extends RenderProxyBox {
   void detach() {
     _scrollController?.removeListener(_scrollChanged);
     _controller?.removeListener(markNeedsPaint);
+    _pulse.stop();
     super.detach();
   }
 
@@ -260,11 +285,13 @@ class RenderGuideLoose extends RenderProxyBox {
     final looks = _controller?.looks;
     final c = child;
     if (looks is! GuideLooseLooks || c == null || !_element.mounted) {
+      _pulse.stop();
       super.paint(context, offset);
       return;
     }
     final placeholders = {for (final p in looseParagraphs(_element))
       if (looks.looseLookOf(p) == GuideUnitLook.skeleton) p};
+    _pulse.follow(_controller, placeholders.isNotEmpty, markNeedsPaint);
     if (placeholders.isEmpty) {
       super.paint(context, offset);
     } else {
@@ -290,5 +317,35 @@ class RenderGuideLoose extends RenderProxyBox {
       }
     }
     canvas.restore();
+  }
+}
+
+/// One component's subscription to [GuideDimController.pulseListenable]: held only
+/// while it paints placeholders, so lit and dimmed components never hear a pulse tick.
+class PulseSubscription {
+  GuideDimController? _on;
+  VoidCallback? _callback;
+
+  /// True while subscribed.
+  bool get active => _on != null;
+
+  /// Subscribes ([placeholders]) or unsubscribes to match what the component paints now.
+  void follow(GuideDimController? controller, bool placeholders, VoidCallback onPulse) {
+    if (!placeholders || controller == null || controller.isDisposed) {
+      stop();
+      return;
+    }
+    if (identical(_on, controller)) return;
+    stop();
+    controller.pulseListenable.addListener(onPulse);
+    _on = controller;
+    _callback = onPulse;
+  }
+
+  void stop() {
+    final on = _on, callback = _callback;
+    if (on != null && callback != null && !on.isDisposed) on.pulseListenable.removeListener(callback);
+    _on = null;
+    _callback = null;
   }
 }

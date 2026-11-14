@@ -50,8 +50,13 @@ class GuidePlaceholderPaint {
         plots.add(ro);
         return; // axes/labels belong to the plot too
       }
+      // A chart frame's own paint is axes and gridlines; a painter that never declared
+      // itself ([guide_plot.dart]) or that marks data over a plot is hidden too. Only
+      // its child is painted. CLAIM(guide-painters-classified).
       if (ro is RenderCustomPaint &&
-          e.findAncestorWidgetOfExactType<ChartFrame>() != null) {
+          (e.findAncestorWidgetOfExactType<ChartFrame>() != null ||
+              !guideKeepsPainter(ro.painter) ||
+              !guideKeepsPainter(ro.foregroundPainter))) {
         framePaint.add(ro);
       }
       if (ro is RenderParagraph) {
@@ -172,22 +177,17 @@ class _PlaceholderContext extends PaintingContext {
       return;
     }
     if (child is RenderCustomPaint && t.plots.contains(child)) {
-      final plot =
-          (child.painter is GuidePlot ? child.painter : child.foregroundPainter)
-              as GuidePlot;
-      final hsv = HSVColor.fromColor(plot.guideLineColor);
-      final color = hsv
-          .withSaturation(hsv.saturation * .45)
-          .withValue(hsv.value * .8)
-          .toColor();
+      final plot = guidePlotOf(child.painter) ?? guidePlotOf(child.foregroundPainter);
+      if (plot == null) return;
       paintSkeletonShapes(
         canvas,
         [
           SkeletonShape(
-            kind: SkeletonKind.sine,
+            // A dial is an empty ring track, a chart one wave: neither carries a value.
+            kind: skeletonKindOfPlot(plot),
             rect: offset & child.size,
             section: 0,
-            color: color,
+            color: mutedGuideColor(plot.guideLineColor),
           ),
         ],
         t.palette,

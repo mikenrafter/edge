@@ -59,6 +59,7 @@ import 'tree_geometry.dart';
 
 import '../skeleton/skeleton.dart';
 import '../skeleton/unit_paint.dart' show hasLooseLayer;
+import '../skeleton/guide_plot.dart' show GuideDecoration;
 import 'guide_dim.dart';
 import 'guide_run.dart';
 import 'guide_routes.dart';
@@ -104,12 +105,44 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   late final AnimationController _pulse;
   final _cardMotion = GuideCardMotion();
   final _cardOpacity = _CardOpacity();
-  Duration get _elapsed => _pulse.lastElapsedDuration ?? Duration.zero;
+  /// The card's motion time: the frame clock, so the clock controller may stop and start
+  /// between motions without moving it.
+  Duration get _elapsed => SchedulerBinding.instance.currentFrameTimeStamp;
   bool get _scrolling => _watchedScrolls.any((p) => p.isScrollingNotifier.value);
 
+  /// True while the page shows at least one placeholder: the only time the pulse has
+  /// anything to draw. Off path, on the Done card and on screens whose cards all sit in
+  /// the lit/dim window there are none, and the guide then asks for no frames at all.
+  bool _hasPlaceholders = false;
+
+  @visibleForTesting
+  bool get hasPlaceholders => _hasPlaceholders && !_yieldNow;
+
+  /// True while the overlay clock runs. The clock drives the placeholder pulse and the
+  /// card's move-then-restore motion; it runs only while one of them needs it.
+  @visibleForTesting
+  bool get isPulsing => _pulse.isAnimating;
+
+  bool get _wantsPulse => hasPlaceholders && Motion.enabled(context);
+
+  /// Starts or stops the clock to match what needs it. CLAIM(pulse-only-with-placeholders)
+  /// [guide_r3_pulse_test, live_guide_overlay_test 'an idle guide schedules no frames'].
+  void _syncClock() {
+    if (!mounted) return;
+    final wanted = _wantsPulse || _cardMotion.isAnimating;
+    if (wanted && !_pulse.isAnimating) {
+      Motion.configureGuidePulse(_pulse, enabled: true);
+    } else if (!wanted && _pulse.isAnimating) {
+      _pulse.stop();
+    }
+    if (!_wantsPulse) _dim?.setPulse(1);
+  }
+
   void _pulsed() {
-    _dim?.setPulse(guidePulseValue(_pulse.value));
-    if (_staticSections.isNotEmpty) _staticTick.value++;
+    if (_wantsPulse) {
+      _dim?.setPulse(guidePulseValue(_pulse.value));
+      if (_staticSections.isNotEmpty) _staticTick.value++;
+    }
     if (_cardMotion.isAnimating && mounted) setState(() {});
   }
   List<SkeletonShape> _shapes = const [];
@@ -152,6 +185,35 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   @visibleForTesting
   int get planningCount => _planningCount;
 
+  /// Page-tree signatures computed (the walk that hashes every built element). Idle
+  /// frames of the pulse must not add to it [guide_r3_pulse_test].
+  int _signatureChecks = 0;
+
+  @visibleForTesting
+  int get signatureChecks => _signatureChecks;
+
+  /// Something the guide heard about (a scroll, a pointer, a run or route change) since
+  /// the page was last read: the next frame re-reads it whatever else is going on.
+  bool _planDirty = true;
+  Duration? _lastSignatureAt;
+  Element? _signedPage;
+  Size? _signedSize;
+
+  void _markDirty() => _planDirty = true;
+
+  /// True for a frame the placeholder pulse (or the card's own motion) asked for, with
+  /// nothing the guide knows of changed: the page need not be read again yet. The pulse
+  /// only repaints; it is not a reason to hash the page. CLAIM(pulse-no-plan-walk).
+  bool _pulseOnlyFrame(Element? page, Size size) {
+    if (!_pulse.isAnimating || _planDirty || _plannedSignature == null) return false;
+    if (!identical(page, _signedPage) || size != _signedSize) return false;
+    final last = _lastSignatureAt;
+    if (last == null) return false;
+    final others = SchedulerBinding.instance.transientCallbackCount - 1 - (_reveal.isAnimating ? 1 : 0);
+    if (others > 0) return false; // another animation moves the page: read it as before
+    return SchedulerBinding.instance.currentFrameTimeStamp - last < Motion.guidePulsePlanInterval;
+  }
+
   @override
   List<SkeletonShape> get layerShapes => paintedShapes;
   @override
@@ -173,7 +235,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final page = _page;
     if (layer is! RenderBox || looks == null || page == null || _yieldNow) return const [];
     final ink = <Rect>[];
-    void add(RenderBox box, List<SkeletonShape> shapes) {
+    void add(RenderBox box) {
       final visible = rectInRoot(box, layer).intersect(visibleBoundsInRoot(box, layer));
       if (!visible.isEmpty) ink.add(visible);
     }
@@ -182,14 +244,14 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
       final box = laidOutBox(element);
       if (_paintsItself(element.widget) || isGuideControl(element.widget)) {
         if (box != null && looks.lookOf(element) == GuideUnitLook.skeleton) {
-          add(box, skeletonOfComponent(element, box));
+          add(box);
         }
         return;
       }
       final object = element is RenderObjectElement ? element.renderObject : null;
       if (object is RenderParagraph && object.attached && object.hasSize) {
         if (looks.looseLookOf(object) == GuideUnitLook.skeleton) {
-          add(object, skeletonOfParagraph(object, scaffoldOf(page)));
+          add(object);
         }
         return;
       }
@@ -201,7 +263,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
       final box = unit.visual;
       if (box == null || !box.attached || !box.hasSize || !unit.skeleton) continue;
       if (!layerShapes.any((shape) => shape.section == unit.section)) continue;
-      add(box, [SkeletonShape(kind: SkeletonKind.block, rect: Offset.zero & box.size, section: 0)]);
+      add(box);
     }
     return ink;
   }
@@ -267,6 +329,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   /// page's) reads the target again. The plan itself stays throttled.
   void _scrolled() {
     if (!mounted) return;
+    _markDirty();
     if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
       SchedulerBinding.instance.addPostFrameCallback((_) { if (mounted) setState(() {}); });
     } else {
@@ -312,6 +375,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
 
   void _routeChanged() {
     if (!mounted) return;
+    _markDirty();
     _publish();
     _scrolled();
   }
@@ -330,8 +394,10 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _markDirty();
     _reveal.duration = motion(context, kGuideRevealDuration);
-    Motion.configureGuidePulse(_pulse, enabled: Motion.enabled(context));
+    if (!Motion.enabled(context)) Motion.configureGuidePulse(_pulse, enabled: false);
+    _syncClock();
     final dim = GuideDimScope.controllerOf(context);
     if (!identical(dim, _dim)) {
       _unpublish();
@@ -343,6 +409,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   @override
   void didUpdateWidget(LiveGuideOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _markDirty();
     if (oldWidget.routes != widget.routes) {
       oldWidget.routes.removeListener(_routeChanged);
       widget.routes.addListener(_routeChanged);
@@ -359,6 +426,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
 
   void _changed() {
     if (!mounted) return;
+    _markDirty();
     _publish(); // The reveal moves on; the components repaint, nothing rebuilds.
     setState(() {});
   }
@@ -374,6 +442,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   }
 
   void _pointer(PointerEvent event) {
+    _markDirty();
     final layer = _layerKey.currentContext?.findRenderObject();
     if (layer is! RenderBox || !layer.hasSize || !layer.attached || _yieldNow) return;
     final point = layer.globalToLocal(event.position);
@@ -642,6 +711,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _plan();
+      _syncClock();
       _watch(); // Observes frames; does not request one when geometry is unchanged.
     });
   }
@@ -657,6 +727,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final page = widget.routes.page;
     final l = AppLocalizations.of(context)!;
     widget.run.observe(null, l); // Prune disposed pages even when the plan is cached.
+    if (_pulseOnlyFrame(page, layer.size)) return;
     // One traversal replaces repeated anchor, target, chrome, legibility and
     // skeleton walks on idle/reveal frames. Widget identity catches replacement
     // structure (including same-text controls). Transforms catch controls moving
@@ -711,13 +782,19 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final scrollSignature = Object.hashAll(scrolls);
     final planSignature = (page, layer.size, builtCount, Object.hashAll(content), widget.run,
       widget.run.state, l, _searchingPage, _revealedPage, _revealedStep);
+    _signatureChecks++;
+    _planDirty = false;
+    _lastSignatureAt = SchedulerBinding.instance.currentFrameTimeStamp;
+    _signedPage = page;
+    _signedSize = layer.size;
     if (_plannedSignature == planSignature) return;
     final now = SchedulerBinding.instance.currentFrameTimeStamp;
     // Avoid full-tree planning at animation cadence. Request a trailing frame
     // so even the last throttled layout is eventually measured. New pages,
     // popups and completed animations are always reflected immediately.
+    // The overlay's own clock (placeholder pulse, card motion) is not a page animation.
     final animating = SchedulerBinding.instance.transientCallbackCount >
-        (_reveal.isAnimating ? 1 : 0);
+        (_reveal.isAnimating ? 1 : 0) + (_pulse.isAnimating ? 1 : 0);
     if (page != null && identical(page, _page) && animating &&
         _lastPlanTime != null && now - _lastPlanTime! < motion(context, Motion.guidePlanInterval)) {
       SchedulerBinding.instance.scheduleFrame();
@@ -849,11 +926,15 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
       // A target that is absent or ambiguous with no route to show covers nothing: a guide
       // never hides a screen it cannot point into (the card offers "Don't see it?").
     }
-    if (page != null && box != null && step == null && widget.run.state is GuideOffPath) {
+    final offPath = widget.run.state;
+    if (page != null && box != null && step == null && offPath is GuideOffPath) {
       // Off path: everything dims except the one control one step closer to the
       // guide (NavBar back arrow, or the start tab); it is focused like a target.
       final transform = box.getTransformTo(layer);
-      final last = (widget.run.state as GuideOffPath).lastIndex ?? 0;
+      // The card stays clear of the tab bar and the header, as on a step: a tab is how the
+      // user leaves, and a card over it would sink the tap.
+      chrome = [for (final r in defaultSkeletonChrome(page)) MatrixUtils.transformRect(transform, r)];
+      final last = offPath.lastIndex ?? 0;
       final destination = widget.run.variant.steps[last].node;
       final hops = destination != null
           ? widget.routes.routeTo(destination)
@@ -889,6 +970,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     _targetScrolls = _anchorsOf(_targetObject, scrollStates);
     _shapes = shapes;
     _skeletonPlan = skeleton;
+    _hasPlaceholders = _collapsed || (skeleton?.units.any((u) => u.skeleton) ?? false);
     _keepBoxes = keepBoxes;
     _staticSections = staticSections;
     _routeInfo = route == null ? null : routeInfo;
@@ -976,7 +1058,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final model = switch (state) {
       GuideAtStep(:final index) => GuideCardOnStep(number: index + 1, total: run.variant.steps.length,
         caption: run.variant.steps[index].caption.of(l), missingHelp: run.guide.missingTargetHelp),
-      GuideOffPath() => GuideCardOffPath(stepsBack: _returnHops),
+      GuideOffPath() => GuideCardOffPath(tapsBack: _returnHops),
       GuideFinished() => GuideCardDone(run.guide.doneFooters),
     };
     final show = !_yieldNow && !run.isExited;
@@ -1188,7 +1270,7 @@ abstract interface class _GuideLayerSource {
   List<Rect> get layerInk;
 }
 
-class _GuidePainter extends CustomPainter {
+class _GuidePainter extends CustomPainter implements GuideDecoration {
   final _GuideLayerSource source;
   final P palette;
   _GuidePainter(this.source, this.palette, Listenable repaint) : super(repaint: repaint);

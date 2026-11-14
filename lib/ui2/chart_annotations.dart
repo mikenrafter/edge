@@ -37,6 +37,7 @@ import '../data/day_label.dart' show dayLabelOf;
 import '../models/chart_point.dart' show ChartOlder;
 import 'grammar.dart' show Pressable;
 import 'theme.dart';
+import './skeleton/guide_plot.dart';
 
 /// Annotation families provide the default glyph and colour.
 enum AnnotationKind {
@@ -740,7 +741,7 @@ class AnnotationLine {
 }
 
 /// Paints the dashed lines. Public so tests can read what it will draw.
-class AnnotationLinesPainter extends CustomPainter {
+class AnnotationLinesPainter extends CustomPainter implements GuidePlotOverlay {
   const AnnotationLinesPainter({required this.lines});
   final List<AnnotationLine> lines;
 

@@ -19,6 +19,7 @@
 // CLAIM(dim-notifies-on-change): the controller notifies only when the plan changed
 // [guide_r2_structural_test 'plan equality'].
 
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/widgets.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
@@ -66,18 +67,27 @@ class GuideDimController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _looks = null;
+    _pulse.dispose();
     super.dispose();
   }
 
   /// The plan in force; null when no guide is dimming anything.
   GuideUnitLooks? get looks => _looks;
 
-  double _pulse = 1;
-  double get pulse => _pulse;
+  final _pulse = ValueNotifier<double>(1);
+
+  /// The shared placeholder pulse (a multiplier on the pigments' value, 1 = rest).
+  double get pulse => _pulse.value;
+
+  /// Its own listenable. A component listens to it ONLY while it paints placeholders, so a
+  /// tick repaints placeholders and nothing else; it never reaches [addListener]'s
+  /// plan listeners (lit and dimmed components, loose layers).
+  /// CLAIM(pulse-own-listenable) [guide_r3_pulse_test].
+  ValueListenable<double> get pulseListenable => _pulse;
+
   void setPulse(double value) {
-    if (_disposed || _pulse == value) return;
-    _pulse = value;
-    if (_looks != null) notifyListeners();
+    if (_disposed) return;
+    _pulse.value = value;
   }
 
   double _fade = 1;

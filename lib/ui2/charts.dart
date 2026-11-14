@@ -605,7 +605,7 @@ class Bars extends CustomPainter implements GuidePlot {
 }
 
 /// The score dial. One value, one arc.
-class Ring extends CustomPainter implements GuidePlot {
+class Ring extends CustomPainter implements GuideRing {
   @override
   Color get guideLineColor => color;
   final double v;
@@ -659,7 +659,7 @@ class RingArc {
 }
 
 /// The sleep dial once a night is scored, with one shared spiral geometry.
-class StageRing extends CustomPainter implements GuidePlot {
+class StageRing extends CustomPainter implements GuideRing {
   @override
   Color get guideLineColor => arcs.isEmpty ? track : arcs.first.color;
   final List<RingArc> arcs;
@@ -701,7 +701,7 @@ class StageRing extends CustomPainter implements GuidePlot {
 /// that is still filling (a baseline calibrating night by night), so "not
 /// solid yet" is literally true of the shape, not just a softer tint of the
 /// same arc [Ring] draws for a finished measurement.
-class DashedRing extends CustomPainter implements GuidePlot {
+class DashedRing extends CustomPainter implements GuideRing {
   @override
   Color get guideLineColor => color;
   final double v;
@@ -747,7 +747,7 @@ class DashedRing extends CustomPainter implements GuidePlot {
 }
 
 /// The small flat ring used in macro/nutrient clusters.
-class MacroRing extends CustomPainter implements GuidePlot {
+class MacroRing extends CustomPainter implements GuideRing {
   @override
   Color get guideLineColor => color;
   final double v;

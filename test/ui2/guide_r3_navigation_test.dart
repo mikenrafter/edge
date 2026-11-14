@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/guides/guide_navigation.dart';
@@ -20,6 +21,24 @@ void main() {
     expect(deep.map((h) => h.node), [GuideNode.picker, GuideNode.activityOverview, GuideNode.activityHistory]);
     final two = GuideNavigation.route(GuideNode.workoutSummary, GuideNode.activityOverview);
     expect(two.map((h) => h.kind), [GuideHopKind.back]);
+  });
+
+  // WHY: owner review R8. Screens are matched by their class name (runtimeType); a rename
+  // would silently turn a guide's pages into "off path". The names must be real classes, so a
+  // rename fails here instead.
+  // # catches: a screen renamed in lib/ while the navigation tree still names the old one.
+  test('A: every screen name the tree matches is a class in lib/', () {
+    final source = [
+      for (final f in Directory('lib').listSync(recursive: true).whereType<File>())
+        if (f.path.endsWith('.dart')) f.readAsStringSync(),
+    ].join('\n');
+    final names = {
+      for (final d in guideNavigationTree.values) ...d.screens,
+      '_TabBar', 'ProfileAvatar', 'HeaderRows',
+    };
+    expect(names.length, greaterThan(40), reason: 'positive control: the tree names many screens');
+    final missing = [for (final n in names) if (!RegExp('class\\s+$n\\b').hasMatch(source)) n];
+    expect(missing, isEmpty, reason: 'no such class: rename the entry in guideNavigationTree.screens');
   });
 
   // WHY: Health's sub-tabs are real hops too; the declaration is complete.

@@ -43,6 +43,7 @@ import 'home_screen.dart';
 import 'metric_catalogue.dart';
 import 'explorer_annotations.dart';
 import 'metric_detail.dart' show specOf;
+import '../skeleton/guide_plot.dart';
 
 /// What the Explorer remembers, in the app prefs with the other UI selections.
 /// '' is unset. The chosen DAY is deliberately not remembered.
@@ -63,7 +64,9 @@ class ExplorePlotLine {
 
 /// The plot: the sleep band, then each line. A run breaks wherever
 /// the data does; a run of one point is a dot, since a polyline cannot show it.
-class ExplorePlotPainter extends CustomPainter {
+class ExplorePlotPainter extends CustomPainter implements GuidePlot {
+  @override
+  Color get guideLineColor => lines.isEmpty ? p.ink2 : lines.first.color;
   final List<ExplorePlotLine> lines;
   final List<ExploreBand> bands;
   final P p;

@@ -42,6 +42,10 @@ enum SkeletonKind {
 
   sine,
 
+  /// An empty ring track in a muted pigment: what a dial (a ring painter) becomes. No arc,
+  /// no value. [SkeletonShape.color] is the pigment.
+  ring,
+
   /// One per text line box.
   bar,
 
@@ -69,6 +73,10 @@ enum SkeletonKind {
   /// veil that dims the real text.
   heading,
 }
+
+/// What a plot becomes inside a placeholder: a dial is an empty ring track, every other
+/// plot one wave. The one mapping the plan and the paint share.
+SkeletonKind skeletonKindOfPlot(GuidePlot plot) => plot is GuideRing ? SkeletonKind.ring : SkeletonKind.sine;
 
 @immutable
 class SkeletonShape {
@@ -379,11 +387,9 @@ class _Planner {
       } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
         final rect = visibleOf(ro);
         if (!rect.isEmpty) {
-          final painter = w is CustomPaint ? w.painter ?? w.foregroundPainter : null;
-          if (heading && painter is GuidePlot) {
-            final original = HSVColor.fromColor((painter as GuidePlot).guideLineColor);
-            final muted = original.withSaturation(original.saturation * .45).withValue(original.value * .8).toColor();
-            items.add(_Item(rect, 0, [_Draft(SkeletonKind.sine, rect, muted)]));
+          final plot = guidePlotOf(w is CustomPaint ? w.painter ?? w.foregroundPainter : null);
+          if (heading && plot != null) {
+            items.add(_Item(rect, 0, [_Draft(skeletonKindOfPlot(plot), rect, mutedGuideColor(plot.guideLineColor))]));
           } else if (!heading) {
             items.add(_Item(rect, 0, [_Draft(SkeletonKind.block, rect)]));
           }
@@ -419,6 +425,10 @@ class _WindowLook {
   final DimPolicy policy;
   late final List<_Unit> cards;
   late final _Unit? own, above, below;
+
+  /// Off path (neighboursLit): every card of the layout slots next to the route back, so a
+  /// row of tiles beside it is lit whole, not just its first tile.
+  late final Set<_Unit> mates;
   late final double spanTop, spanBottom, firstCardTop;
 
   _WindowLook(List<_Unit> units, this.policy, List<Rect> keep) {
@@ -428,7 +438,12 @@ class _WindowLook {
     firstCardTop = all.isEmpty ? double.infinity : boxOf(all.first).top;
     final focus = policy.focus;
     _Unit? o, a, b;
-    if (focus != null && !policy.navigationTarget) {
+    final neighbours = <_Unit>{};
+    var mateSlots = <int>{};
+    // A step's tab or sub-tab target has no neighbours (every card is a placeholder). Off
+    // path the route back keeps its neighbouring cards lit, also when it is a tab or
+    // sub-tab: the owner's rule [guide_r2_off_path_test, guide_r3_routing_test 'R4'].
+    if (focus != null && (!policy.navigationTarget || policy.neighboursLit)) {
       bool ownsFocus(_Unit unit) => policy.focusObject == null
           ? boxOf(unit).contains(focus.center) : _unitOwnsBox(unit, policy.focusObject!);
       final at = all.indexWhere(ownsFocus);
@@ -469,21 +484,40 @@ class _WindowLook {
         final children = <Element>[];
         column!.visitChildren(children.add);
         final focusAt = children.indexOf(slot(focusElement, column!)!);
+        final slotOf = <_Unit, int>{};
         for (final sibling in siblings) {
           final at = children.indexOf(slot(sibling.component, column!)!);
+          slotOf[sibling] = at;
           if (at < focusAt) a = sibling;
           if (at > focusAt) b ??= sibling;
+        }
+        mateSlots = {?slotOf[a], ?slotOf[b]};
+        for (final entry in slotOf.entries) {
+          if (mateSlots.contains(entry.value)) neighbours.add(entry.key);
         }
       } else if (o != null) {
         final at = all.indexOf(o);
         if (at > 0) a = all[at - 1];
         if (at + 1 < all.length) b = all[at + 1];
+      } else if (policy.neighboursLit) {
+        // The route back is in no column of the page (the bottom tab bar floats over it, so
+        // no layout order links it to a card): its neighbours are the cards nearest to it by
+        // position, the owner's rule for an off-path route back that is a tab.
+        for (final u in all) {
+          final box = boxOf(u);
+          if (box.top < focus.top) {
+            if (a == null || box.top > boxOf(a).top) a = u;
+          } else if (box.top >= focus.bottom - 1) {
+            if (b == null || box.top < boxOf(b).top) b = u;
+          }
+        }
       }
     }
 
     own = o;
     above = a;
     below = b;
+    mates = {...neighbours, ?a, ?b};
     spanTop = a != null ? boxOf(a).top : o != null ? boxOf(o).top : focus?.top ?? double.infinity;
     spanBottom = b != null ? boxOf(b).bottom : o != null ? boxOf(o).bottom : focus?.bottom ?? double.negativeInfinity;
   }
@@ -492,7 +526,9 @@ class _WindowLook {
     if (policy.skeletonAll || policy.placeholders && policy.navigationTarget && u.card) return GuideUnitLookKind.skeleton;
     if (identical(u, own)) return null;
     final isCard = u.card;
-    if (identical(u, above) || identical(u, below)) return policy.neighboursLit ? null : GuideUnitLookKind.dim;
+    if (identical(u, above) || identical(u, below) || policy.neighboursLit && mates.contains(u)) {
+      return policy.neighboursLit ? null : GuideUnitLookKind.dim;
+    }
     if (!policy.placeholders) return GuideUnitLookKind.dim;
     if (isCard) return GuideUnitLookKind.skeleton;
     // Loose text is only ever dimmed (titles, status lines, labels between cards).
@@ -606,11 +642,10 @@ SkeletonPlan planSkeleton(
       if (unit != null) units.add(unit);
     } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
       final rect = planner.visibleOf(ro);
-      final painter = w is CustomPaint ? w.painter ?? w.foregroundPainter : null;
-      if (!rect.isEmpty && (dim == null || painter is GuidePlot)) {
-        final pigment = painter is GuidePlot ? HSVColor.fromColor((painter as GuidePlot).guideLineColor) : null;
-        units.add(_Unit(rect, [_Draft(dim == null ? SkeletonKind.block : SkeletonKind.sine, rect,
-          pigment?.withSaturation(pigment.saturation * .45).withValue(pigment.value * .8).toColor())], null, null, ro));
+      final plot = guidePlotOf(w is CustomPaint ? w.painter ?? w.foregroundPainter : null);
+      if (!rect.isEmpty && (dim == null || plot != null)) {
+        units.add(_Unit(rect, [_Draft(dim == null || plot == null ? SkeletonKind.block : skeletonKindOfPlot(plot), rect,
+          plot == null ? null : mutedGuideColor(plot.guideLineColor))], null, null, ro));
       }
     }
     e.debugVisitOnstageChildren(find);
@@ -741,6 +776,13 @@ void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palett
         }
         canvas.drawPath(path, Paint()..color = pulsed(s.color ?? palette.ink3)..style = PaintingStyle.stroke..strokeWidth = 2);
         break;
+      case SkeletonKind.ring:
+        final side = math.min(s.rect.width, s.rect.height);
+        final stroke = (side * .09).clamp(3.0, 10.0);
+        if (side > stroke) {
+          canvas.drawCircle(s.rect.center, (side - stroke) / 2,
+            Paint()..color = pulsed(s.color ?? palette.ink3)..style = PaintingStyle.stroke..strokeWidth = stroke);
+        }
       case SkeletonKind.icon:
         break;
       case SkeletonKind.heading || SkeletonKind.dim:

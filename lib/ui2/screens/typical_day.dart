@@ -15,6 +15,7 @@ import 'circadian_detail.dart';
 import 'tracks_screen.dart';
 import 'home_screen.dart';
 import 'metric_detail.dart' show detailScaffold;
+import '../skeleton/guide_plot.dart';
 
 class TypicalDayData {
   const TypicalDayData({this.circadian = const CircadianData(), this.quiet,
@@ -206,7 +207,9 @@ class TypicalDayPlot extends StatelessWidget {
       children: [for (final h in [0, 6, 12, 18, 24]) Text(h == 24 ? '24:00' : clock(h * 60), style: F.cap)]),
   ]);
 }
-class _TypicalPainter extends CustomPainter {
+class _TypicalPainter extends CustomPainter implements GuidePlot {
+  @override
+  Color get guideLineColor => color;
   const _TypicalPainter(this.data, this.color);
   final TypicalDayData data;
   final Color color;

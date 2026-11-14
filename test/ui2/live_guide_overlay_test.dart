@@ -239,7 +239,21 @@ void main() {
       expect(t.takeException(), isNull);
     });
 
-    testWidgets('an idle guide pulses without moving the card or replanning', (t) async {
+    testWidgets('an idle guide schedules no frames when nothing on screen is a placeholder', (t) async {
+      // why: the overlay re-plans after each frame; the loop must settle
+      // (PR 1 'markers follow layout' made the same promise for the frame view). The pulse
+      // is the only reason for a frame and it runs only while a placeholder is shown
+      // (owner review R1): the Details page has the target card and one neighbour only.
+      // catches: a pulse that runs for the whole guide.
+      final stage = await pumpLiveStage(t);
+      await _settleReveal(t);
+      await pushStagePage(t, stage, StagePages(stage.taps).details());
+      await _settleReveal(t);
+      expect(_overlay(t).hasPlaceholders, isFalse);
+      await t.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
+    });
+
+    testWidgets('an idle guide with placeholders pulses without moving the card or replanning', (t) async {
       // WHY: the owner's pulse needs frames, while idle geometry stays stable.
       // # catches: replanning or moving the instruction card on every pulse tick.
       await pumpLiveStage(t);

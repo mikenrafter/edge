@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../gestures/pattern_transcript.dart';
 import '../ui2.dart';
+import '../skeleton/guide_plot.dart';
 
 /// The metronome's four beat colours A, C, D, E. The dot and the dashes both
 /// read this, so they cannot drift apart: a sixteenth in beat b uses colour b.
@@ -99,7 +100,7 @@ class PatternNotation extends StatelessWidget {
 /// Draws a 16th, eighth, quarter or half note, or the matching rest, with a dot
 /// after it for the dotted lengths 3, 6 and 12, in a 24 x 28 box. Painted, not a font glyph: Android fonts may not
 /// have the music block.
-class _SymbolPainter extends CustomPainter {
+class _SymbolPainter extends CustomPainter implements GuideDecoration {
   const _SymbolPainter({
     required this.length,
     required this.note,

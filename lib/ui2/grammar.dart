@@ -53,6 +53,7 @@ import 'scroll_hint.dart';
 import 'status_line.dart';
 import 'theme.dart';
 import 'trend.dart';
+import 'skeleton/guide_plot.dart' show GuideDecoration;
 
 /// ── PRESSABLE ── the only gesture primitive in lib/ui2 ────────────────────
 ///
@@ -4431,7 +4432,7 @@ class _FrameKeys extends StatelessWidget {
 
 /// The placeholder drawn in an empty [ChartFrame]: two periods of a sine wave
 /// whose height is 60% of the plot's, centred. Not a series.
-class _PlaceholderWave extends CustomPainter {
+class _PlaceholderWave extends CustomPainter implements GuideDecoration {
   final Color color;
   const _PlaceholderWave(this.color);
 
@@ -4459,7 +4460,7 @@ class _PlaceholderWave extends CustomPainter {
 
 /// The horizontal rules behind a plot, at the same fractions [ChartFrame]
 /// prints its labels — one count, passed to both, so they cannot drift.
-class _Gridlines extends CustomPainter {
+class _Gridlines extends CustomPainter implements GuideDecoration {
   final int n;
   final Color color;
   const _Gridlines(this.n, this.color);
@@ -4484,7 +4485,7 @@ class _Gridlines extends CustomPainter {
 /// A break in the x direction — where the days on one side were not produced
 /// the same way as the days on the other. Dotted and hairline-thin: provenance
 /// is worth seeing and is not worth alarming anybody about.
-class _XMarks extends CustomPainter {
+class _XMarks extends CustomPainter implements GuideDecoration {
   final List<double> at;
   final Color color;
   const _XMarks(this.at, this.color);

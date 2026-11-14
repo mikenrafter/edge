@@ -38,6 +38,7 @@ import '../state/app_state.dart';
 import 'profile/devices.dart'
     show HealthSource, deviceIdOf, liveSources, rankSources;
 import 'ui2.dart';
+import './skeleton/guide_plot.dart';
 
 /// The tap's cycling rule: the next streaming device after [current] in
 /// [ranked]'s order, wrapping — a two-device tap is a toggle, a three-device
@@ -376,7 +377,7 @@ class _PlotSlot extends StatelessWidget {
       );
 }
 
-class _LiveHrSkeleton extends CustomPainter {
+class _LiveHrSkeleton extends CustomPainter implements GuideDecoration {
   const _LiveHrSkeleton(this.frame, this.axis);
   final Color frame, axis;
   @override
