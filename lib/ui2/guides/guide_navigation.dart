@@ -18,6 +18,11 @@ enum GuideNode {
   activityActivities,
   activityHistory,
   health,
+  healthOverview,
+  healthExplore,
+  healthTrends,
+  healthVitals,
+  healthLabs,
   settings,
   dayStrain,
   zones,
@@ -68,7 +73,6 @@ enum GuideNode {
   devLogs,
   reportIssue,
   help,
-  guideDetail,
   metric,
 }
 
@@ -96,6 +100,11 @@ const guideNavigationTree = <GuideNode, GuideDestination>{
   GuideNode.activityActivities: GuideDestination(GuideNode.activity),
   GuideNode.activityHistory: GuideDestination(GuideNode.activity),
   GuideNode.health: GuideDestination(null, ['HealthScreen']),
+  GuideNode.healthOverview: GuideDestination(GuideNode.health),
+  GuideNode.healthExplore: GuideDestination(GuideNode.health),
+  GuideNode.healthTrends: GuideDestination(GuideNode.health),
+  GuideNode.healthVitals: GuideDestination(GuideNode.health),
+  GuideNode.healthLabs: GuideDestination(GuideNode.health),
   GuideNode.settings: GuideDestination(null, ['MoreSettings']),
   GuideNode.dayStrain: GuideDestination(GuideNode.today, ['DayStrainDetail']),
   GuideNode.zones: GuideDestination(GuideNode.dayStrain, ['ZonesDetail']),
@@ -109,7 +118,7 @@ const guideNavigationTree = <GuideNode, GuideDestination>{
   GuideNode.journal: GuideDestination(GuideNode.today, ['JournalCompose']),
   GuideNode.nutrition: GuideDestination(GuideNode.today, ['NutritionScreen']),
   GuideNode.nutritionLog: GuideDestination(GuideNode.nutrition, [
-    'LogNutrition',
+    'LogFoodSheet',
   ]),
   GuideNode.coach: GuideDestination(GuideNode.today, ['CoachScreen']),
   GuideNode.coachSetup: GuideDestination(GuideNode.coach, ['CoachSetup']),
@@ -121,13 +130,9 @@ const guideNavigationTree = <GuideNode, GuideDestination>{
   GuideNode.alarm: GuideDestination(GuideNode.sleep, ['AlarmScreen']),
   GuideNode.circadian: GuideDestination(GuideNode.sleep, ['CircadianDetail']),
   GuideNode.sleepDebt: GuideDestination(GuideNode.sleep, []),
-  GuideNode.sleepConsistency: GuideDestination(GuideNode.sleep, [
-    'SleepConsistencyDetail',
-  ]),
+  GuideNode.sleepConsistency: GuideDestination(GuideNode.sleep, []),
   GuideNode.sleepNeed: GuideDestination(GuideNode.sleep, []),
-  GuideNode.sleepRegularity: GuideDestination(GuideNode.sleep, [
-    'SleepRegularityDetail',
-  ]),
+  GuideNode.sleepRegularity: GuideDestination(GuideNode.sleep, []),
   GuideNode.picker: GuideDestination(GuideNode.activityOverview, [
     'ActivityPicker',
   ]),
@@ -145,14 +150,22 @@ const guideNavigationTree = <GuideNode, GuideDestination>{
   GuideNode.trackDetail: GuideDestination(GuideNode.tracks, [
     'TrackDetailScreen',
   ]),
-  GuideNode.beats: GuideDestination(GuideNode.health, ['Beats']),
-  GuideNode.ecg: GuideDestination(GuideNode.health, ['EcgHomeScreen']),
+  GuideNode.beats: GuideDestination(GuideNode.healthOverview, ['Beats']),
+  GuideNode.ecg: GuideDestination(GuideNode.healthOverview, ['EcgHomeScreen']),
   GuideNode.ecgCapture: GuideDestination(GuideNode.ecg, ['EcgCaptureScreen']),
   GuideNode.ecgDetail: GuideDestination(GuideNode.ecg, ['EcgDetailScreen']),
-  GuideNode.breathing: GuideDestination(GuideNode.health, ['CalmBreathing']),
-  GuideNode.investigate: GuideDestination(GuideNode.health, ['Investigate']),
-  GuideNode.findings: GuideDestination(GuideNode.health, ['FindingsLog']),
-  GuideNode.drivers: GuideDestination(GuideNode.health, ['DriverBreakdown']),
+  GuideNode.breathing: GuideDestination(GuideNode.healthOverview, [
+    'CalmBreathing',
+  ]),
+  GuideNode.investigate: GuideDestination(GuideNode.healthOverview, [
+    'Investigate',
+  ]),
+  GuideNode.findings: GuideDestination(GuideNode.healthOverview, [
+    'FindingsLog',
+  ]),
+  GuideNode.drivers: GuideDestination(GuideNode.healthOverview, [
+    'DriverBreakdown',
+  ]),
   GuideNode.advanced: GuideDestination(GuideNode.settings, ['AdvancedScreen']),
   GuideNode.profile: GuideDestination(GuideNode.settings, ['EditProfile']),
   GuideNode.devices: GuideDestination(GuideNode.settings, ['MyDevices']),
@@ -171,14 +184,15 @@ const guideNavigationTree = <GuideNode, GuideDestination>{
   GuideNode.reportIssue: GuideDestination(GuideNode.settings, [
     'ReportIssueScreen',
   ]),
-  GuideNode.metric: GuideDestination(GuideNode.health),
+  GuideNode.metric: GuideDestination(GuideNode.healthOverview),
   GuideNode.help: GuideDestination(GuideNode.settings, ['HelpScreen']),
-  GuideNode.guideDetail: GuideDestination(GuideNode.help, [
-    'GuideDetailScreen',
-  ]),
 };
 
 class GuideNavigation {
+  static final _screens = <String, GuideNode>{
+    for (final entry in guideNavigationTree.entries)
+      for (final name in entry.value.screens) name: entry.key,
+  };
   static GuideNode? parent(GuideNode node) => guideNavigationTree[node]!.parent;
   static GuideNode tabOf(GuideNode node) {
     var tab = node;
@@ -210,29 +224,37 @@ class GuideNavigation {
     var current = from;
     while (current != common && parent(current) != null) {
       final p = parent(current)!;
-      if (p == GuideNode.activity)
+      if (subTabIndex(current) != null)
         break; // no Back from a sub-tab to its container
       hops.add(GuideHop(p, GuideHopKind.back));
       current = p;
     }
     if (tabOf(current) != tabOf(to)) {
       final tab = tabOf(to);
-      current = tab == GuideNode.activity ? GuideNode.activityOverview : tab;
-      hops.add(GuideHop(current, GuideHopKind.tab));
+      current = tab == GuideNode.activity
+          ? GuideNode.activityOverview
+          : tab == GuideNode.health
+          ? GuideNode.healthOverview
+          : tab;
+      hops.add(
+        GuideHop(
+          current,
+          tab == GuideNode.settings ? GuideHopKind.page : GuideHopKind.tab,
+        ),
+      );
     }
     if (current == to) return hops;
     final path = down.reversed.toList();
     for (final next in path) {
       if (next == GuideNode.activity ||
+          next == GuideNode.health ||
           next == current ||
           onPath(next, current))
         continue;
       hops.add(
         GuideHop(
           next,
-          parent(next) == GuideNode.activity
-              ? GuideHopKind.subTab
-              : GuideHopKind.page,
+          (subTabIndex(next) != null) ? GuideHopKind.subTab : GuideHopKind.page,
         ),
       );
       current = next;
@@ -244,16 +266,21 @@ class GuideNavigation {
   /// pages whose selected branch changes independently of their root widget.
   static GuideNode? location(Element root) {
     GuideNode? found;
-    var inActivity = false;
+    var inActivity = false, inHealth = false;
     for (final e in onstageElements(root)) {
       final w = e.widget;
       if (w is GuideLocation) return w.node;
-      if (w is MetricDetail) return switch (w.metricKey) {
-        'recovery' => GuideNode.recovery, 'stress' => GuideNode.stress,
-        'sleep_debt' => GuideNode.sleepDebt, 'sleep_consistency' => GuideNode.sleepConsistency,
-        'sleep_need' => GuideNode.sleepNeed, 'sleep_regularity' => GuideNode.sleepRegularity,
-        'steps' => GuideNode.daySteps, _ => GuideNode.metric,
-      };
+      if (w is MetricDetail)
+        return switch (w.metricKey) {
+          'recovery' => GuideNode.recovery,
+          'stress' => GuideNode.stress,
+          'sleep_debt' => GuideNode.sleepDebt,
+          'sleep_consistency' => GuideNode.sleepConsistency,
+          'sleep_need' => GuideNode.sleepNeed,
+          'sleep_regularity' => GuideNode.sleepRegularity,
+          'steps' => GuideNode.daySteps,
+          _ => GuideNode.metric,
+        };
       if (w is SubTabs && inActivity) {
         return [
           GuideNode.activityOverview,
@@ -261,12 +288,24 @@ class GuideNavigation {
           GuideNode.activityHistory,
         ][w.index];
       }
+      if (w is SubTabs && inHealth)
+        return [
+          GuideNode.healthOverview,
+          GuideNode.healthExplore,
+          GuideNode.healthTrends,
+          GuideNode.healthVitals,
+          GuideNode.healthLabs,
+        ][w.index];
       final name = w.runtimeType.toString();
-      for (final entry in guideNavigationTree.entries) {
-        if (entry.value.screens.contains(name)) {
-          found ??= entry.key;
-          if (entry.key == GuideNode.activity) inActivity = true;
-          break;
+      final candidate = _screens[name];
+      if (candidate != null) {
+        found = candidate;
+        if (candidate == GuideNode.activity) {
+          inActivity = true;
+        } else if (candidate == GuideNode.health) {
+          inHealth = true;
+        } else {
+          return candidate;
         }
       }
       if (w is IndexedStack &&
@@ -296,10 +335,24 @@ class GuideNavigation {
     GuideNode.activityOverview => 0,
     GuideNode.activityActivities => 1,
     GuideNode.activityHistory => 2,
+    GuideNode.healthOverview => 0,
+    GuideNode.healthExplore => 1,
+    GuideNode.healthTrends => 2,
+    GuideNode.healthVitals => 3,
+    GuideNode.healthLabs => 4,
     _ => null,
   };
 
   static TargetFound? entry(Element page, GuideHop hop, AppLocalizations l) {
+    if (hop.node == GuideNode.settings) {
+      final avatar = onstageElements(page)
+          .where((e) => e.widget.runtimeType.toString() == 'ProfileAvatar')
+          .firstOrNull;
+      final root = laidOutBox(page),
+          box = avatar == null ? null : laidOutBox(avatar);
+      if (root != null && box != null)
+        return TargetFound(rectInRoot(box, root), renderObject: box);
+    }
     final label = switch (hop.node) {
       GuideNode.dayStrain => ScreenLabel.homeRingStrain,
       GuideNode.zones => ScreenLabel.dayStrainHowSet,

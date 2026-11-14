@@ -19345,5 +19345,7 @@
         "description": "Title of the section that holds it"
       }
     }
-  }
+  },
+  "guideStepsBack": "{count, plural, one{1 step back} other{{count} steps back}}",
+  "@guideStepsBack": {"description": "Number of navigation hops back to the active guide step.", "placeholders": {"count": {"type": "int"}}}
 }

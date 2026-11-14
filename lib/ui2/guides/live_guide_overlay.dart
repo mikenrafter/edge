@@ -48,9 +48,10 @@ import 'package:flutter/scheduler.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../app_shell.dart' show AppShell;
-import '../grammar.dart' show NavBar, Pressable, ScreenTitle;
+import '../grammar.dart' show NavBar, Pressable, ScreenTitle, SubTabs;
 import '../theme.dart';
 import 'guide.dart';
+import 'guide_navigation.dart';
 import 'guide_markers.dart';
 import 'guide_step_card.dart';
 import 'guide_target.dart';
@@ -110,6 +111,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   final _staticTick = ValueNotifier<int>(0);
   /// What the highlighted route-back control is, for the screen-reader proxy.
   _Route? _routeInfo;
+  int? _returnHops;
   GuideDimController? _dim;
   GuidePlan? _published;
   Object? _searchSignature;
@@ -390,7 +392,9 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   /// guide's start tab); used when the step's target is inside a tab the user is not on
   /// ([_tabHolding]). Returns the plan, its shapes, and the route control (rect in page
   /// coordinates and what it is), which gets the target's outline and pill.
-  (SkeletonPlan, List<SkeletonShape>, Rect?, _Route?) _offPathPlan(Element page, {int? routeTab}) {
+  (SkeletonPlan, List<SkeletonShape>, Rect?, _Route?) _offPathPlan(Element page, {int? routeTab,
+    GuideHop? hop,
+  }) {
     final root = laidOutBox(page);
     if (root == null) return (const SkeletonPlan([], [], {}, {}), const [], null, null);
     Rect rectOf(Element e) { final b = laidOutBox(e)!; return rectInRoot(b, root); }
@@ -410,16 +414,49 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         navBar = e;
       }
     }
-    if (navBar != null && routeTab == null) {
+    if (navBar != null && routeTab == null&&
+        (hop == null || hop.kind == GuideHopKind.back)) {
       for (final c in onstageElements(navBar)) {
         if (c.widget is Pressable && laidOutBox(c) != null) { back = rectOf(c); backElement = c; break; }
       }
     }
-    final startTab = routeTab ?? switch (widget.run.guide.start) {
+    if (hop?.kind == GuideHopKind.subTab) {
+      final index = GuideNavigation.subTabIndex(hop!.node);
+      for (final e in onstageElements(page)) {
+        if (e.widget is! SubTabs || index == null) continue;
+        final controls = onstageElements(
+          e,
+        ).where((c) => c.widget is Pressable && laidOutBox(c) != null).toList();
+        if (index < controls.length) {
+          backElement = controls[index];
+          back = rectOf(backElement!).intersect(visibleBoundsInRoot(laidOutBox(backElement!)!, root));
+          backIsTab = true;
+        }
+        break;
+      }
+    }
+    if (hop?.kind == GuideHopKind.page) {
+      final found = GuideNavigation.entry(
+        page,
+        hop!,
+        AppLocalizations.of(context)!,
+      );
+      if (found != null) {
+        back = found.rect;
+        backElement = onstageElements(page)
+            .where((e) => identical(laidOutBox(e), found.renderObject))
+            .firstOrNull;
+      }
+    }
+    final startTab = routeTab ??
+        (hop?.kind == GuideHopKind.tab
+            ? GuideNavigation.tabIndex(hop!.node)
+            : null) ?? switch (widget.run.guide.start) {
       GuideStart.today => 0, GuideStart.sleep => 1, GuideStart.activity => 2, GuideStart.health => 3,
       GuideStart.settings => -1,
     };
-    if (back == null && startTab >= 0 && startTab < tabs.length) {
+    if (back == null &&
+        (hop == null || hop.kind == GuideHopKind.tab) && startTab >= 0 && startTab < tabs.length) {
       back = tabs[startTab];
       backElement = tabElements[startTab];
       backIsTab = true;
@@ -427,7 +464,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     final route = back;
     final keepers = [?back];
     final plan = planSkeleton(page, keep: keepers, chrome: [?tabBar],
-        dim: DimPolicy(focus: back, placeholders: false, neighboursLit: true));
+        dim: DimPolicy(focus: back, placeholders: false, neighboursLit: true, navigationTarget: backIsTab));
     final veil = scaffoldOf(page).withValues(alpha: kDimOpacity);
     final out = <SkeletonShape>[...plan.shapes];
     final units = <PlannedUnit>[...plan.units];
@@ -777,9 +814,14 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       chrome = [for (final r in localChrome) MatrixUtils.transformRect(transform, r)];
       // Only a target that EXISTS in another tab routes through that tab; one that is
       // simply not on this page covers nothing.
-      final holding = resolution is TargetAbsent ? _tabHolding(page, step.target, l) : null;
+      final hops = step.node != null
+          ? widget.routes.routeTo(step.node!)
+          : const <GuideHop>[];
+      final hop = hops.firstOrNull;
+      final holding = hop == null && step.node == null && resolution is TargetAbsent ? _tabHolding(page, step.target, l) : null;
       final (tabPlan, tabShapes, tab, tabRoute) = holding != null
-          ? _offPathPlan(page, routeTab: holding)
+          || hop != null
+          ? _offPathPlan(page, routeTab: holding, hop: hop)
           : (const SkeletonPlan([], [], {}, {}), const <SkeletonShape>[], null, null);
       if (tab != null) {
         routeInfo = tabRoute;
@@ -800,7 +842,15 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       // Off path: everything dims except the one control one step closer to the
       // guide (NavBar back arrow, or the start tab); it is focused like a target.
       final transform = box.getTransformTo(layer);
-      final (plan, planShapes, back, backRoute) = _offPathPlan(page);
+      final last = (widget.run.state as GuideOffPath).lastIndex ?? 0;
+      final destination = widget.run.variant.steps[last].node;
+      final hops = destination != null
+          ? widget.routes.routeTo(destination)
+          : const <GuideHop>[];
+      _returnHops = hops.isEmpty ? null : hops.length;
+      final (plan, planShapes, back, backRoute) = _offPathPlan(page,
+        hop: hops.firstOrNull,
+      );
       if (back != null) route = MatrixUtils.transformRect(transform, back);
       routeInfo = backRoute;
       skeleton = plan;
@@ -833,7 +883,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     _routeInfo = route == null ? null : routeInfo;
     _chromeBoxes = [
       if (page != null) for (final e in onstageElements(page))
-        if (e.widget is ScreenTitle || e.widget is NavBar || e.widget.runtimeType.toString() == '_TabBar')
+        if (e.widget is ScreenTitle || e.widget is NavBar || e.widget is SubTabs || e.widget.runtimeType.toString() == '_TabBar')
           if (laidOutBox(e) case final RenderBox chromeBox) chromeBox,
     ];
     _chrome = chrome;
@@ -913,7 +963,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     final model = switch (state) {
       GuideAtStep(:final index) => GuideCardOnStep(number: index + 1, total: run.variant.steps.length,
         caption: run.variant.steps[index].caption.of(l), missingHelp: run.guide.missingTargetHelp),
-      GuideOffPath() => const GuideCardOffPath(),
+      GuideOffPath() => GuideCardOffPath(stepsBack: _returnHops),
       GuideFinished() => GuideCardDone(run.guide.doneFooters),
     };
     final show = !_yieldNow && !run.isExited;
@@ -1028,7 +1078,8 @@ class _Route {
 
   factory _Route.of(Element e, {required bool isTab}) {
     final w = e.widget;
-    return _Route(laidOutBox(e), isTab, isTab && w is Pressable ? w.semanticLabel : null);
+    final label = isTab && w is Pressable ? w.semanticLabel ?? onstageElements(e).map((c) => c.widget).whereType<Text>().map((t) => t.data).whereType<String>().firstOrNull : null;
+    return _Route(laidOutBox(e), isTab, label);
   }
 }
 

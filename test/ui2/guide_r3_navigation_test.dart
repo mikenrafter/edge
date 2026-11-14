@@ -22,6 +22,15 @@ void main() {
     expect(two.map((h) => h.kind), [GuideHopKind.back]);
   });
 
+  // WHY: Health's sub-tabs are real hops too; the declaration is complete.
+  // # catches: a tree hard-coded only for Activity or a missing enum destination.
+  test('A: Health branches are sub-tab hops and every node is declared', () {
+    expect(guideNavigationTree.keys.toSet(), GuideNode.values.toSet());
+    final hops = GuideNavigation.route(GuideNode.healthExplore, GuideNode.healthTrends);
+    expect(hops.map((h) => h.kind), [GuideHopKind.subTab]);
+    expect(hops.single.node, GuideNode.healthTrends);
+  });
+
   // WHY: a step may be below its loading parent, but another branch is off path.
   // # catches: anchor-only detection and treating every node under Activity as on path.
   test('A: ancestors are on path; siblings and descendants are not', () {

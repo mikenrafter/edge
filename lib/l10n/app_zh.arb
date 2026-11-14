@@ -3881,5 +3881,7 @@
   "guideMoveCardDown": "将卡片下移",
   "guideRemoveStep3": "然后点按底部的**{save}**。在此之前不会删除任何内容。",
   "guideAddNapMissingTitle": "没有看到“{naps}”？",
-  "guideAddNapMissingBody": "**{naps}**位于你的夜间睡眠下方。如果该部分**{night}**已折叠，请点按其标题展开。"
+  "guideAddNapMissingBody": "**{naps}**位于你的夜间睡眠下方。如果该部分**{night}**已折叠，请点按其标题展开。",
+  "guideStepsBack": "返回 {count} 步",
+  "@guideStepsBack": {"description": "Number of navigation hops back to the active guide step.", "placeholders": {"count": {"type": "int"}}}
 }

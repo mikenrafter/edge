@@ -145,6 +145,9 @@ void main() {
       push('Second detour');
       await settleLiveGuide(t);
       expect(started.run.state, isA<GuideOffPath>());
+      // WHY: distance counts actual Back hops, including unnamed routes.
+      // # catches: a fixed off-path message or a canonical-parent-only count.
+      expect(find.text('2 steps back'), findsOneWidget);
       Rect backRect() => t.getRect(find.descendant(of: find.byType(NavBar),
         matching: find.byWidgetPredicate((w) => w is Pressable && w.onTap != null)).first);
       final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
@@ -157,6 +160,7 @@ void main() {
       expect(find.text('First detour'), findsOneWidget);
       expect(find.text('Second detour'), findsNothing);
       expect(started.run.state, isA<GuideOffPath>(), reason: 'one step closer, still off path');
+      expect(find.text('1 step back'), findsOneWidget);
       if (overlay.paintedShapes.any((s) => s.rect.overlaps(backRect().deflate(.5)))) {
         failures.add('D-S8/W7: remaining back arrow dimmed');
       }

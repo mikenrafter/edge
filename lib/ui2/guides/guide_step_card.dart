@@ -50,7 +50,8 @@ final class GuideCardOnStep extends GuideCardModel {
 }
 
 final class GuideCardOffPath extends GuideCardModel {
-  const GuideCardOffPath();
+  final int? stepsBack;
+  const GuideCardOffPath({this.stepsBack});
 }
 
 final class GuideCardDone extends GuideCardModel {
@@ -147,7 +148,7 @@ class _GuideStepCardState extends State<GuideStepCard> {
       case GuideCardOffPath():
         content.add(Column(key: GuideStepCard.offPathKey, crossAxisAlignment: CrossAxisAlignment.start, children: [
           title(l.guideOffPathTitle), const SizedBox(height: S.x1),
-          Text(l.guideOffPathBody, style: F.body.copyWith(color: p.ink2)),
+          Text(model.stepsBack == null ? l.guideOffPathBody : l.guideStepsBack(model.stepsBack!), style: F.body.copyWith(color: p.ink2)),
         ]));
       case GuideCardDone():
         content.add(Column(key: GuideStepCard.doneKey, crossAxisAlignment: CrossAxisAlignment.start, children: [

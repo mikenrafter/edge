@@ -3987,5 +3987,7 @@
   "guideMoveCardDown": "Karte nach unten schieben",
   "guideRemoveStep3": "Tippe dann unten auf **{save}**. Bis dahin wird nichts entfernt.",
   "guideAddNapMissingTitle": "„{naps}“ nicht zu sehen?",
-  "guideAddNapMissingBody": "**{naps}** steht unter deiner Nacht. Ist dieser Teil, **{night}**, eingeklappt, tippe auf seinen Titel, um ihn zu öffnen."
+  "guideAddNapMissingBody": "**{naps}** steht unter deiner Nacht. Ist dieser Teil, **{night}**, eingeklappt, tippe auf seinen Titel, um ihn zu öffnen.",
+  "guideStepsBack": "{count, plural, one{1 Schritt zurück} other{{count} Schritte zurück}}",
+  "@guideStepsBack": {"description": "Number of navigation hops back to the active guide step.", "placeholders": {"count": {"type": "int"}}}
 }

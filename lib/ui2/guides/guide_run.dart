@@ -148,7 +148,7 @@ class GuideRun extends ChangeNotifier {
     final last = _lastIndex;
     if (index != null && last != null && index < last &&
         variant.steps[index].node != null && variant.steps[index].node != variant.steps[last].node) {
-      index = location != null && GuideNavigation.onPath(location, variant.steps[last].node!) ? last : null;
+      if (location == null || !GuideNavigation.onPath(location, variant.steps[last].node!)) index = null;
     }
     // A reveal may dispose the anchor in a lazy list. Only restore a step
     // whose anchor was already observed on THIS page, with its action still

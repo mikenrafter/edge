@@ -206,6 +206,9 @@ const _notComponents = {
   // accordion card): a plain proxy with no pixel, layout or semantics of its own. Pumped in
   // test/ui2/guide_r2_window_test.dart and guide_phone_feedback_test.dart.
   'GuideBox',
+  // Navigation declaration with no render object or semantics of its own.
+  // Loading and sub-tab selection are exercised in guide_r3_navigation_test.
+  'GuideLocation',
   // An invisible leading-edge gesture strip; nothing to look at. Pumped in
   // test/apk2_timeline_layout_test.dart (the iOS swipe asks before leaving).
   'EdgeSwipeBack',

@@ -3899,5 +3899,7 @@
   "guideMoveCardDown": "Mover la tarjeta hacia abajo",
   "guideRemoveStep3": "Luego toca **{save}**, abajo. Hasta entonces no se elimina nada.",
   "guideAddNapMissingTitle": "¿No ves «{naps}»?",
-  "guideAddNapMissingBody": "**{naps}** está bajo tu noche. Si esa parte, **{night}**, está plegada, toca su título para abrirla."
+  "guideAddNapMissingBody": "**{naps}** está bajo tu noche. Si esa parte, **{night}**, está plegada, toca su título para abrirla.",
+  "guideStepsBack": "{count, plural, one{1 paso atrás} other{{count} pasos atrás}}",
+  "@guideStepsBack": {"description": "Number of navigation hops back to the active guide step.", "placeholders": {"count": {"type": "int"}}}
 }

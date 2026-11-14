@@ -1,0 +1,109 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/ui2/grammar.dart';
+import 'package:openstrap_edge/ui2/guides/guide_catalogue.dart';
+import 'package:openstrap_edge/ui2/guides/guide_navigation.dart';
+import 'package:openstrap_edge/ui2/guides/guide_run.dart';
+import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
+import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
+import '../support/guide_r2_scenes.dart';
+import '../support/guide_r2_manifest.dart';
+import '../support/live_guide_harness.dart';
+
+LiveGuideOverlayState _overlay(WidgetTester t) => t.state(find.byType(LiveGuideOverlay));
+void main() {
+  setUpAll(() => r2OpenDb('guide_r3_routing.db'));
+  tearDownAll(LocalDb.close);
+
+  // WHY: the tree has to be used by the shipped steps, not only policy tests.
+  // # catches: incomplete migration that silently falls back to anchor matching.
+  test('A: every shipped step is attached to a declared navigation node', () {
+    for (final entry in kGuideCatalogue) {
+      for (final variant in entry.guide.variants) {
+        for (final step in variant.steps) {
+          expect(step.node, isNotNull, reason: '${entry.guide.id}/${step.id}');
+          expect(guideNavigationTree.containsKey(step.node), isTrue);
+        }
+      }
+    }
+  });
+
+  // WHY: after reaching History, another Activity branch needs the History
+  // sub-tab as the route back, rather than a redundant Activity tab tap.
+  // # catches: a correct policy disconnected from the overlay and progress rewinding.
+  testWidgets('A: leaving History highlights History and the recovery button selects it', (t) async {
+    final app = await pumpLiveGuideApp(t);
+    try {
+      await app.runner.start(r2Guide('log-past-workout'), band: null);
+      await settleLiveGuide(t, frames: 18);
+      final focus = _overlay(t).targetRect!;
+      // Structural diagnostics distinguish a swallowed tap from an offscreen
+      // target and remain useful if this contract fails again.
+      expect(focus.center.dx, inInclusiveRange(0, 390), reason: '$focus');
+      expect(focus.overlaps(t.getRect(find.byKey(GuideStepCard.cardKey))), isFalse, reason: 'target/card $focus');
+      final overlay = _overlay(t);
+      // Sub-tabs can be horizontally clipped. Tap the visible part, computed
+      // from the real viewport, independently of the overlay's input holes.
+      final point = focus.intersect(t.getRect(find.byType(SubTabs))).center;
+      expect(overlay.layerHoles.any((r) => r.contains(point)), isTrue);
+      await t.tapAt(point);
+      await settleLiveGuide(t, frames: 18);
+      expect(GuideNavigation.location(app.runner.routes.page!), GuideNode.activityHistory);
+      expect(app.runner.activeRun!.currentStep!.id, 'log-past');
+      // History reveals its target at the bottom of a lazy page. Scroll back
+      // to the navigation row before choosing another sub-tab, as a user does.
+      final pageScroll = find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down).first;
+      t.state<ScrollableState>(pageScroll).position.jumpTo(0);
+      await settleLiveGuide(t, frames: 18);
+      final tabs = find.byType(SubTabs);
+      final subTabs = t.widget<SubTabs>(tabs);
+      final activities = find.descendant(of: tabs, matching: find.widgetWithText(Pressable, subTabs.items[1])).first;
+      await t.tapAt(t.getRect(activities).intersect(t.getRect(tabs)).center);
+      await settleLiveGuide(t, frames: 18);
+      expect(app.runner.activeRun!.state, isA<GuideOffPath>());
+      final history = find.descendant(of: tabs, matching: find.widgetWithText(Pressable, subTabs.items[2]));
+      expect(t.getRect(find.byKey(LiveGuideOverlay.outlineKey)).contains(t.getRect(history.first).intersect(t.getRect(tabs)).center), isTrue);
+      expect(find.text('1 step back'), findsOneWidget);
+      await t.tap(find.byKey(GuideStepCard.backToGuideKey));
+      await settleLiveGuide(t, frames: 18);
+      expect(GuideNavigation.location(app.runner.routes.page!), GuideNode.activityHistory);
+      expect(app.runner.activeRun!.currentStep!.id, 'log-past');
+    } finally {
+      app.runner.exit();
+      await t.pumpWidget(const SizedBox());
+      app.dispose();
+      await t.pump();
+    }
+  });
+
+  // WHY: Day strain's page exists before its future supplies How these are set.
+  // # catches: the loading page flashing an off-path instruction.
+  testWidgets('A: real Day strain stays on path while its data future is pending', (t) async {
+    final repo = _DelayedStrain();
+    final app = await pumpLiveGuideApp(t, repo: repo);
+    try {
+      await app.runner.start(r2Guide('heart-rate-zones'), band: null);
+      await settleLiveGuide(t, frames: 18);
+      await t.tapAt(_overlay(t).targetRect!.center);
+      await settleLiveGuide(t, frames: 18);
+      expect(repo.pending.isCompleted, isFalse);
+      expect(app.runner.activeRun!.state, isA<GuideAtStep>());
+      expect(app.runner.activeRun!.currentStep!.id, 'open-zones');
+      expect(find.byKey(GuideStepCard.offPathKey), findsNothing);
+    } finally {
+      repo.pending.complete(await GuideFakeRepo().getDayStrain('2026-11-14'));
+      await settleLiveGuide(t, frames: 4);
+      app.runner.exit();
+      await t.pumpWidget(const SizedBox());
+      app.dispose();
+      await t.pump();
+    }
+  });
+}
+class _DelayedStrain extends GuideFakeRepo {
+  final pending = Completer<Map<String, dynamic>>();
+  @override
+  Future<Map<String, dynamic>> getDayStrain(String date) => pending.future;
+}

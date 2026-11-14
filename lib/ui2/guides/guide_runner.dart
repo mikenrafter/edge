@@ -31,6 +31,9 @@ import '../../l10n/app_localizations.dart';
 import 'live_guide_overlay.dart';
 
 import '../app_shell.dart' show ShellDomain;
+import '../grammar.dart' show SubTabs;
+import 'guide_navigation.dart';
+import 'tree_geometry.dart';
 import 'guide.dart';
 import 'guide_dim.dart';
 import 'guide_run.dart';
@@ -193,7 +196,28 @@ class GuideRunner extends ChangeNotifier {
         if (run.state is GuideAtStep) return;
       }
       if (!nav.canPop()) {
-        _selectStart(run.guide.start);
+        final index = (run.state as GuideOffPath).lastIndex ?? 0;
+        final target = run.variant.steps[index].node;
+        final current = page == null ? null : GuideNavigation.location(page);
+        final hops = current != null && target != null
+            ? GuideNavigation.route(current, target)
+            : const <GuideHop>[];
+        final hop = hops.firstOrNull;
+        if (hop?.kind == GuideHopKind.subTab && page != null) {
+          final tab = GuideNavigation.subTabIndex(hop!.node);
+          for (final e in onstageElements(page)) {
+            if (e.widget case final SubTabs tabs when tab != null) {
+              tabs.onTap(tab);
+              return;
+            }
+          }
+        }
+        final tab = target == null ? null : GuideNavigation.tabIndex(target);
+        if (tab != null && tab < ShellDomain.values.length) {
+          _shell?.selectTab(ShellDomain.values[tab]);
+        } else {
+          _selectStart(run.guide.start);
+        }
         return;
       }
       final before = routes.topRoute;
