@@ -127,7 +127,7 @@ void _expectClean(List<_Frame> frames, {required int minAudited}) {
 // sweeps are symptom harnesses. The construction they check (the dim painted by the
 // component itself) is pinned by guide_r2_structural_test.
 void testWidgets(String description, Future<void> Function(WidgetTester) body) =>
-    ft.testWidgets(description, body, skip: 'hardening stage (owner 2026-11-14)');
+    ft.testWidgets(description, body, skip: true);
 
 void main() {
   setUpAll(() async {

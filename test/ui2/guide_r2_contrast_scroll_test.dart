@@ -53,7 +53,7 @@ RenderRepaintBoundary _pageBoundary(R2Mounted m) {
 // sweeps are symptom harnesses. The construction they check (the dim painted by the
 // component itself) is pinned by guide_r2_structural_test.
 void testWidgets(String description, Future<void> Function(WidgetTester) body) =>
-    ft.testWidgets(description, body, skip: 'hardening stage (owner 2026-11-14)');
+    ft.testWidgets(description, body, skip: true);
 
 void main() {
   setUpAll(() async { await loadFonts(); await skLoadAppFonts(); await r2OpenDb('guide_r2_contrast.db'); });
