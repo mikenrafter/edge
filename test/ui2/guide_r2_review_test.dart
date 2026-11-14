@@ -1,5 +1,6 @@
 // Focused design regressions for structural review R1-R5. No catalogue or raster audit.
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
@@ -11,6 +12,7 @@ import 'package:openstrap_edge/ui2/guides/guide_run.dart';
 import 'package:openstrap_edge/ui2/guides/guide_target.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart';
+import 'package:openstrap_edge/ui2/skeleton/skeleton.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 import '../support/guide_text.dart';
 
@@ -93,4 +95,36 @@ void main() {
     expect(sampled, isTrue);
     expect(page.skeletonTaps, 0);
   });
+  for (final (name, top, height, label, skeleton) in [
+    ('hit padding is outside ink reach', 100.0, 44.0, 'Other', false),
+    ('nearby ink is eligible', 80.0, 44.0, 'Other', true),
+    ('a distant matching word stays dim', 300.0, 44.0, 'Target option', false),
+    ('a tall matching card stays dim', 70.0, 160.0, 'Target option', false),
+  ]) {
+    // WHY: CLAIM(skeleton-visible-reach): full component bounds paint; visible ink decides eligibility.
+    // # catches: expanded hit boxes defining reach, or shared words bypassing reach/large exclusions.
+    testWidgets('R3 $name', (t) async {
+      const rootKey = ValueKey('policy-page');
+      await t.pumpWidget(MaterialApp(home: Scaffold(body: Stack(key: rootKey, children: [
+        Positioned(top: 20, left: 0, child: Pressable(key: _target, onTap: () {},
+          child: const Text('Target', style: TextStyle(fontSize: 10, height: 1)))),
+        Positioned(top: top, left: 0, child: SizedBox(height: height, width: 100,
+          child: Pressable(key: _skeleton, onTap: () {}, child: Align(
+            alignment: height > 120 ? Alignment.topLeft : Alignment.center,
+            child: Text(label, style: const TextStyle(fontSize: 10, height: 1)))))),
+      ]))));
+      final root = t.element(find.byKey(rootKey));
+      final targetBox = t.renderObject<RenderBox>(find.byKey(_target));
+      final target = TargetFound(t.getRect(find.byKey(_target)), renderObject: targetBox);
+      final plan = planSkeleton(root, keep: [target.rect], dim: DimPolicy.of(root, target));
+      final unit = plan.units.singleWhere((u) => u.component?.widget.key == _skeleton);
+      expect(unit.skeleton, skeleton);
+      if (!skeleton) {
+        final shape = plan.shapes.singleWhere((s) => s.section == unit.section);
+        expect(shape.kind, SkeletonKind.dim);
+        expect(shape.rect, t.getRect(find.byKey(_skeleton)), reason: 'dim still covers the full component');
+      }
+    });
+  }
+
 }

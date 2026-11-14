@@ -117,9 +117,10 @@ bool isGuideControl(Widget w) => w is Pressable && w.onTap != null ||
 /// content word with the target's label). Every other unit gets one dim layer.
 /// All rects are in the page root's coordinates.
 /// How near a control must be to the target to stay skeleton (owner, pilot APK
-/// feedback B): the gap between its box and the target's box is at most this many
+/// feedback B): the gap between its ink and the target's ink is at most this many
 /// logical px (about one row: the 8-12 px gaps of a card list plus a small
-/// margin). Controls beyond it are dimmed with the rest of their component.
+/// margin). Reach uses visible ink, excluding hit padding. Controls beyond it
+/// are dimmed with the rest of their component.
 /// Applies to content inside the visible scroll area only; P6 scroll-through
 /// content is skeleton at any distance ([DimPolicy.skeletonAll]).
 const kSkeletonReach = 56.0;
@@ -140,6 +141,31 @@ double rectGap(Rect a, Rect b) {
   final dx = math.max(0.0, math.max(a.left - b.right, b.left - a.right));
   final dy = math.max(0.0, math.max(a.top - b.bottom, b.top - a.bottom));
   return math.sqrt(dx * dx + dy * dy);
+}
+
+/// The visible text/icon/image/chart ink under [box], excluding layout and hit padding.
+/// Null means there is no visible ink to compare, not an invented fallback box.
+Rect? _visibleInk(RenderBox box, RenderBox root) {
+  Rect? ink;
+  void add(RenderBox object, Rect local) {
+    final visible = rectInRoot(object, root, local).intersect(visibleBoundsInRoot(object, root));
+    if (!visible.isEmpty) ink = ink?.expandToInclude(visible) ?? visible;
+  }
+  void visit(RenderObject object) {
+    if (object is RenderParagraph && object.hasSize) {
+      final length = object.text.toPlainText().length;
+      for (final glyphs in object.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: length))) {
+        add(object, glyphs.toRect());
+      }
+    } else if (object is RenderImage || object is RenderCustomPaint &&
+        (object.painter != null || object.foregroundPainter != null)) {
+      if (object is RenderBox && object.hasSize) add(object, Offset.zero & object.size);
+    } else {
+      object.visitChildren(visit);
+    }
+  }
+  visit(box);
+  return ink;
 }
 
 class DimPolicy {
@@ -165,8 +191,8 @@ class DimPolicy {
       if (box == null) continue;
       final w = e.widget;
       if (isGuideControl(w)) {
-        final r = rectInRoot(box, root).intersect(visibleBoundsInRoot(box, root));
-        if (!r.isEmpty) controls.add(r);
+        final ink = _visibleInk(box, root);
+        if (ink != null) controls.add(ink);
       }
       final ro = e is RenderObjectElement ? e.renderObject : null;
       if (ro is RenderParagraph && ro.hasSize && target.rect.contains(rectInRoot(ro, root).center)) {
@@ -176,23 +202,17 @@ class DimPolicy {
       final label = w is Pressable ? w.semanticLabel : w is Semantics ? w.properties.label : null;
       if (label != null && target.rect.contains(rectInRoot(box, root).center)) words.addAll(contentWords(label));
     }
-    return DimPolicy(targetRect: target.rect, targetWords: words, controls: controls);
+    return DimPolicy(targetRect: _visibleInk(target.renderObject, root), targetWords: words, controls: controls);
   }
 
-  static bool _contains(Rect outer, Rect inner) => inner.left >= outer.left - .5 && inner.top >= outer.top - .5 &&
-      inner.right <= outer.right + .5 && inner.bottom <= outer.bottom + .5;
-
-  bool lookalike(Rect bounds, Set<String> words) {
+  // CLAIM(skeleton-visible-reach): distance and size gate every look-alike,
+  // including shared words. Only P6 bypasses them [guide_r2_review_test R3].
+  bool lookalike(Rect bounds, Set<String> words, {Rect? inkBounds}) {
     if (skeletonAll) return true;
-    final t = targetRect;
-    // A LARGE unit near the target is dimmed whole; only a shared word makes it a look-alike.
-    if (t != null && !isLargeUnit(bounds) && rectGap(bounds, t) <= kSkeletonReach && controls.any((c) => c.overlaps(bounds) &&
-        // The unit is a control (it sits in one of about its own size) or HOLDS one.
-        (_contains(c.inflate(2), bounds) && c.width * c.height < 2 * bounds.width * bounds.height ||
-         _contains(bounds.inflate(2), c)))) {
-      return true;
-    }
-    return words.any(targetWords.contains);
+    final target = targetRect;
+    final ink = inkBounds;
+    if (target == null || ink == null || isLargeUnit(bounds) || rectGap(ink, target) > kSkeletonReach) return false;
+    return controls.any((control) => control.overlaps(ink)) || words.any(targetWords.contains);
   }
 }
 
@@ -231,7 +251,18 @@ class _Unit {
   /// The paragraph of a loose unit.
   final RenderParagraph? paragraph;
   final RenderBox? visual;
-  const _Unit(this.bounds, this.drafts, [this.words = const {}, this.component, this.paragraph, this.visual]);
+  final Rect? fullBounds;
+
+  Rect? get inkBounds {
+    Rect? ink;
+    for (final draft in drafts) {
+      if (draft.kind != SkeletonKind.bar && draft.kind != SkeletonKind.heading && draft.kind != SkeletonKind.block) continue;
+      ink = ink?.expandToInclude(draft.rect) ?? draft.rect;
+    }
+    return ink;
+  }
+
+  const _Unit(this.bounds, this.drafts, [this.words = const {}, this.component, this.paragraph, this.visual, this.fullBounds]);
 }
 
 /// How far an erase reaches past its text line, so glyph overhang (descenders,
@@ -376,7 +407,7 @@ class _Planner {
 
     inner(card, false);
     final drafts = orderedDrafts(items, surfaces);
-    return drafts.isEmpty ? null : _Unit(bounds, drafts, words, card);
+    return drafts.isEmpty ? null : _Unit(bounds, drafts, words, card, null, null, rectInRoot(box, rootBox));
   }
 
   /// A loose paragraph as a unit (the dim look boxes the whole paragraph).
@@ -513,7 +544,7 @@ SkeletonPlan planSkeleton(
   final veil = scaffold.withValues(alpha: kDimOpacity);
   for (var i = 0; i < skeletonized.length; i++) {
     final u = skeletonized[i];
-    final skeleton = dim == null || dim.lookalike(u.bounds, u.words);
+    final skeleton = dim == null || dim.lookalike(u.fullBounds ?? u.bounds, u.words, inkBounds: u.inkBounds);
     if (skeleton) {
       for (final d in u.drafts) {
         shapes.add(SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: i));
