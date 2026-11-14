@@ -145,6 +145,10 @@ class P {
   Color get line => dark ? const Color(0xFF232D3B) : C.n200;
   Color get track => dark ? const Color(0xFF232D3B) : C.n200;
 
+  /// The colour an elevated surface casts. Black in the dark theme: a navy
+  /// shadow is lighter than the dark page and reads as a glow, not a shadow.
+  Color get shadow => dark ? const Color(0xFF000000) : C.n900;
+
   Color get ink => dark ? const Color(0xFFF1F5F9) : C.n900;
   Color get ink2 => dark ? const Color(0xFF94A3B8) : C.n600;
 
@@ -416,6 +420,12 @@ class Motion {
   }
 
   static const guidePlanInterval = Duration(milliseconds: 50);
+
+  /// The longest a pulse-only frame (nothing but the placeholder pulse asked for it) goes
+  /// without the guide re-reading the page. Anything the guide hears about (a scroll, a
+  /// pointer, a run or route change, another animation) re-reads at once; this only
+  /// bounds how late a silent change (late data landing) is noticed while the pulse runs.
+  static const guidePulsePlanInterval = Duration(milliseconds: 150);
 
   /// The session clock. A live workout counts REAL seconds, so this is the one
   /// duration that must NOT pass through [motion] — reduced motion silences

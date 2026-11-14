@@ -50,8 +50,8 @@ final class GuideCardOnStep extends GuideCardModel {
 }
 
 final class GuideCardOffPath extends GuideCardModel {
-  final int? stepsBack;
-  const GuideCardOffPath({this.stepsBack});
+  final int? tapsBack;
+  const GuideCardOffPath({this.tapsBack});
 }
 
 final class GuideCardDone extends GuideCardModel {
@@ -85,6 +85,7 @@ class GuideStepCard extends StatefulWidget {
   static const exitKey = ValueKey('guide-card-exit');
   static const offPathKey = ValueKey('guide-card-off-path');
   static const backToGuideKey = ValueKey('guide-card-back-to-guide');
+  static const tapsBackKey = ValueKey('guide-card-taps-back');
   static const doneKey = ValueKey('guide-card-done');
   static ValueKey<String> footerKey(int index) => ValueKey('guide-card-footer-$index');
 
@@ -148,7 +149,12 @@ class _GuideStepCardState extends State<GuideStepCard> {
       case GuideCardOffPath():
         content.add(Column(key: GuideStepCard.offPathKey, crossAxisAlignment: CrossAxisAlignment.start, children: [
           title(l.guideOffPathTitle), const SizedBox(height: S.x1),
-          Text(model.stepsBack == null ? l.guideOffPathBody : l.guideStepsBack(model.stepsBack!), style: F.body.copyWith(color: p.ink2)),
+          Text(l.guideOffPathBody, style: F.body.copyWith(color: p.ink2)),
+          if (model.tapsBack != null) ...[
+            const SizedBox(height: S.x1),
+            Text(l.guideTapsBack(model.tapsBack!), key: GuideStepCard.tapsBackKey,
+              style: F.body.copyWith(color: p.ink2, fontWeight: FontWeight.w600)),
+          ],
         ]));
       case GuideCardDone():
         content.add(Column(key: GuideStepCard.doneKey, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -175,7 +181,7 @@ class _GuideStepCardState extends State<GuideStepCard> {
       child: ExcludeSemantics(child: Pressable(key: GuideStepCard.exitKey, onTap: widget.onExit,
         child: Text(l.guideExit, style: F.cap.copyWith(color: p.ink2))))));
     return Material(
-      key: GuideStepCard.cardKey, color: p.card, borderRadius: R.rLg, elevation: 6, shadowColor: C.n900,
+      key: GuideStepCard.cardKey, color: p.card, borderRadius: R.rLg, elevation: 6, shadowColor: p.shadow,
       child: DecoratedBox(
         decoration: BoxDecoration(border: Border.all(color: p.line), borderRadius: R.rLg),
         child: Padding(padding: const EdgeInsets.all(S.x4),

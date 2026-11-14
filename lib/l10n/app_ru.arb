@@ -9786,6 +9786,6 @@
   "guideRemoveStep3": "Затем внизу нажмите **{save}**. До этого ничего не удаляется.",
   "guideAddNapMissingTitle": "Не видите «{naps}»?",
   "guideAddNapMissingBody": "**{naps}** находится под вашей ночью. Если этот раздел, **{night}**, свёрнут, нажмите на его заголовок, чтобы открыть.",
-  "guideStepsBack": "{count, plural, one{{count} шаг назад} few{{count} шага назад} many{{count} шагов назад} other{{count} шага назад}}",
-  "@guideStepsBack": {"description": "Number of navigation hops back to the active guide step.", "placeholders": {"count": {"type": "int"}}}
+  "guideTapsBack": "{count, plural, one{{count} касание назад} few{{count} касания назад} many{{count} касаний назад} other{{count} касания назад}}",
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
 }

@@ -3882,6 +3882,6 @@
   "guideRemoveStep3": "फिर नीचे **{save}** पर टैप करें। इससे पहले कुछ नहीं हटता।",
   "guideAddNapMissingTitle": "\"{naps}\" नहीं दिख रहा?",
   "guideAddNapMissingBody": "**{naps}** आपकी रात के नीचे है। अगर वह भाग, **{night}**, बंद है, तो उसका शीर्षक टैप करके खोलें।",
-  "guideStepsBack": "{count, plural, one{1 चरण पीछे} other{{count} चरण पीछे}}",
-  "@guideStepsBack": {"description": "Number of navigation hops back to the active guide step.", "placeholders": {"count": {"type": "int"}}}
+  "guideTapsBack": "{count, plural, one{1 टैप पीछे} other{{count} टैप पीछे}}",
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
 }

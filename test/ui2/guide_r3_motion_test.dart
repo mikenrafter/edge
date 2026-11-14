@@ -112,6 +112,25 @@ void main() {
     expect(border.top.color, P.of(t.element(find.byKey(GuideStepCard.cardKey))).line);
   });
 
+  // WHY: owner R5: a navy shadow is lighter than the dark page and reads as a glow.
+  // # catches: shadowColor taken from a light-theme token in the dark theme.
+  testWidgets('G: the dark theme shadow is black, the light theme keeps its token', (t) async {
+    for (final b in [Brightness.dark, Brightness.light]) {
+      await t.pumpWidget(MaterialApp(theme: buildTheme(b),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: GuideStepCard(model: const GuideCardOffPath(), onExit: () {}))));
+      await t.pumpAndSettle(); // the theme change animates
+      final material = t.widget<Material>(find.byKey(GuideStepCard.cardKey));
+      final color = material.shadowColor!;
+      if (b == Brightness.dark) {
+        expect((color.r, color.g, color.b), (0.0, 0.0, 0.0), reason: 'a true dark shadow, not navy');
+      } else {
+        expect(color, C.n900);
+      }
+    }
+  });
+
   // WHY: the ordered policy must drive the mounted card during a real page drag.
   // # catches: a correct motion helper that is not wired to scroll activity/layout.
   testWidgets('G: mounted card holds and fades during scroll, moves, then restores', (t) async {

@@ -35,6 +35,10 @@ void main() {
       final back = t.getRect(r2Tab(0));
       expect(overlay.paintedShapes.where((s) => s.rect.overlaps(back)), isEmpty,
         reason: 'Today is the one route back');
+      // WHY: a tab is how the user leaves; the card must not sit over the tab bar (found while
+      // testing owner review R2: the off-path card covered most of the bar and sank the tap).
+      // # catches: an off-path plan with no chrome, so the card's bounds run under the bar.
+      expect(t.getRect(find.byKey(GuideStepCard.cardKey)).bottom, lessThanOrEqualTo(t.getRect(r2Tabs()).top + .5));
       for (var i = 1; i < 4; i++) {
         final rect = t.getRect(r2Tab(i));
         expect(overlay.paintedShapes.any((s) => s.kind.name == 'dim' && r2Contains(s.rect, rect)), isTrue,
@@ -47,11 +51,22 @@ void main() {
           reason: 'tab $i already paints in its component; the overlay must not duplicate it');
       }
       final page = app.runner.routes.page!;
-      // Owner 14 Nov: neighbours are layout siblings. The bottom tab bar
-      // has no card sibling in the page column; every content unit dims.
+      // Owner placeholder rule: off path the route back's neighbouring card (the last card above the
+      // tab bar) is lit; every other component is dimmed, and nothing is a placeholder.
+      // WHY: owner review R4 (the rule holds when the route back is a tab).
+      // # catches: a layout-sibling rule that finds no card next to a bottom tab and dims all.
       final units = r2Units(page);
-      expect(overlay.paintedShapes.where((s) => s.kind.name != 'dim'), isEmpty, reason: 'off path: no placeholders');
+      final cards = [for (final u in units) if (u.element.widget is Section || u.element.widget is Surface) u]
+        ..sort((a, b) => a.rect.top.compareTo(b.rect.top));
+      final neighbour = cards.lastWhere((u) => u.rect.top < back.top);
+      expect(overlay.paintedShapes.where((s) => s.kind.name != 'dim'), isEmpty,
+        reason: 'off path: no placeholders; got ${[for (final s in overlay.paintedShapes) if (s.kind.name != 'dim') '${s.kind.name}@${s.rect}']}');
       for (final unit in units) {
+        if (unit.rect.overlaps(neighbour.rect.deflate(1)) && r2Contains(neighbour.rect, unit.rect)) {
+          expect(overlay.paintedShapes.where((s) => s.rect.overlaps(unit.rect.deflate(1))), isEmpty,
+            reason: 'lit: inside the route back\'s neighbouring card: ${unit.text}');
+          continue;
+        }
         expect(overlay.paintedShapes.any((s) => s.kind.name == 'dim' && r2Contains(s.rect, unit.rect)), isTrue,
           reason: 'off-path component ${unit.element.widget.runtimeType}: ${unit.text}');
       }
@@ -147,7 +162,9 @@ void main() {
       expect(started.run.state, isA<GuideOffPath>());
       // WHY: distance counts actual Back hops, including unnamed routes.
       // # catches: a fixed off-path message or a canonical-parent-only count.
-      expect(find.text('2 steps back'), findsOneWidget);
+      expect(find.text('2 taps back'), findsOneWidget);
+      // WHY: the distance is shown ALONGSIDE the off-path text, not instead of it.
+      expect(find.text("This screen isn't part of the guide."), findsOneWidget);
       Rect backRect() => t.getRect(find.descendant(of: find.byType(NavBar),
         matching: find.byWidgetPredicate((w) => w is Pressable && w.onTap != null)).first);
       final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
@@ -160,7 +177,7 @@ void main() {
       expect(find.text('First detour'), findsOneWidget);
       expect(find.text('Second detour'), findsNothing);
       expect(started.run.state, isA<GuideOffPath>(), reason: 'one step closer, still off path');
-      expect(find.text('1 step back'), findsOneWidget);
+      expect(find.text('1 tap back'), findsOneWidget);
       if (overlay.paintedShapes.any((s) => s.rect.overlaps(backRect().deflate(.5)))) {
         failures.add('D-S8/W7: remaining back arrow dimmed');
       }
