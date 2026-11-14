@@ -47,7 +47,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../grammar.dart' show NavBar, Pressable, Section, Surface;
+import '../grammar.dart' show NavBar, Pressable, ScreenTitle, Section, Surface;
 import '../theme.dart';
 import 'guide.dart';
 import 'guide_markers.dart';
@@ -105,6 +105,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   SkeletonPlan? _skeletonPlan;
   Map<Element, GuideUnitLook> _extraLooks = const {};
   List<RenderBox> _keepBoxes = const [];
+  List<RenderBox> _chromeBoxes = const [];
   Set<int> _staticSections = const {};
   final _staticTick = ValueNotifier<int>(0);
   /// What the highlighted route-back control is, for the screen-reader proxy.
@@ -141,7 +142,44 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   @override
   List<SkeletonShape> get layerShapes => paintedShapes;
   @override
-  List<Rect> get layerHoles => [?_liveTarget, ?_route, ..._chrome];
+  List<Rect> get layerHoles {
+    final layer = _layerKey.currentContext?.findRenderObject();
+    if (layer is! RenderBox) return const [];
+    return [
+      for (final box in [..._keepBoxes, ..._chromeBoxes, ?_routeInfo?.object])
+        if (box.attached && box.hasSize) rectInRoot(box, layer).intersect(visibleBoundsInRoot(box, layer)),
+    ];
+  }
+
+  // CLAIM(guide-live-hit-regions): input uses the component's current render transform,
+  // including viewport clips, before any post-frame plan [guide_r2_review_test R1].
+  @override
+  List<Rect> get layerInk {
+    final layer = _layerKey.currentContext?.findRenderObject();
+    final plan = _skeletonPlan;
+    if (layer is! RenderBox || plan == null || _yieldNow) return const [];
+    final sections = plan.shapes.isEmpty ? 0 : plan.shapes.last.section + 1;
+    final shown = _collapsed ? sections : (revealProgress * sections).floor();
+    final ink = <Rect>[];
+    for (final unit in plan.units) {
+      if (!unit.skeleton || unit.section >= shown) continue;
+      final component = unit.component;
+      final box = component == null ? unit.paragraph ?? unit.visual : component.mounted ? laidOutBox(component) : null;
+      if (box == null || !box.attached || !box.hasSize) continue;
+      final shapes = component != null ? skeletonOfComponent(component, box)
+          : unit.paragraph != null ? skeletonOfParagraph(unit.paragraph!, scaffoldOf(_page!))
+          : [SkeletonShape(kind: SkeletonKind.block, rect: Offset.zero & box.size, section: 0)];
+      Rect? bounds;
+      for (final shape in shapes) {
+        if (shape.kind == SkeletonKind.dim || shape.kind == SkeletonKind.heading) continue;
+        bounds = bounds?.expandToInclude(shape.rect) ?? shape.rect;
+      }
+      if (bounds == null) continue;
+      final visible = rectInRoot(box, layer, bounds).intersect(visibleBoundsInRoot(box, layer));
+      if (!visible.isEmpty) ink.add(visible);
+    }
+    return ink;
+  }
   @override
   Set<int> get layerStatic => _staticSections;
 
@@ -716,6 +754,11 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     _keepBoxes = keepBoxes;
     _staticSections = staticSections;
     _routeInfo = route == null ? null : routeInfo;
+    _chromeBoxes = [
+      if (page != null) for (final e in onstageElements(page))
+        if (e.widget is ScreenTitle || e.widget is NavBar || e.widget.runtimeType.toString() == '_TabBar')
+          if (laidOutBox(e) case final RenderBox chromeBox) chromeBox,
+    ];
     _chrome = chrome;
     _legible = legible;
     _route = route;
@@ -949,6 +992,7 @@ abstract interface class _GuideLayerSource {
   List<SkeletonShape> get layerShapes;
   List<Rect> get layerHoles;
   Set<int> get layerStatic;
+  List<Rect> get layerInk;
 }
 
 class _GuidePainter extends CustomPainter {
@@ -956,8 +1000,6 @@ class _GuidePainter extends CustomPainter {
   final P palette;
   _GuidePainter(this.source, this.palette, Listenable repaint) : super(repaint: repaint);
 
-  List<SkeletonShape>? _inkFor;
-  List<Rect> _ink = const [];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -969,27 +1011,13 @@ class _GuidePainter extends CustomPainter {
   @override
   bool shouldRepaint(_GuidePainter old) => !identical(old.source, source) || old.palette != palette;
 
-  /// The box each skeleton unit's ink spans: a tap anywhere in it is absorbed, also
-  /// in the gaps between its bars.
-  List<Rect> _inkBoxes() {
-    final shapes = source.layerShapes;
-    if (identical(_inkFor, shapes)) return _ink;
-    final bySection = <int, Rect>{};
-    for (final s in shapes) {
-      if (s.kind == SkeletonKind.dim || s.kind == SkeletonKind.heading) continue;
-      bySection[s.section] = bySection[s.section]?.expandToInclude(s.rect) ?? s.rect;
-    }
-    _inkFor = shapes;
-    return _ink = bySection.values.toList();
-  }
-
   /// Input per layer (owner decision, r2): ONLY skeleton ink takes pointers; a
   /// dim layer, a hole (target, chrome) or blank scaffold lets them through to
   /// the real page.
   @override
   bool? hitTest(Offset position) {
     if (source.layerHoles.any((r) => r.contains(position))) return false;
-    return _inkBoxes().any((r) => r.contains(position));
+    return source.layerInk.any((r) => r.contains(position));
   }
 }
 

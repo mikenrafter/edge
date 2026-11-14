@@ -230,7 +230,8 @@ class _Unit {
 
   /// The paragraph of a loose unit.
   final RenderParagraph? paragraph;
-  const _Unit(this.bounds, this.drafts, [this.words = const {}, this.component, this.paragraph]);
+  final RenderBox? visual;
+  const _Unit(this.bounds, this.drafts, [this.words = const {}, this.component, this.paragraph, this.visual]);
 }
 
 /// How far an erase reaches past its text line, so glyph overhang (descenders,
@@ -404,9 +405,12 @@ class PlannedUnit {
   /// True: placeholders (heading dimmed, body bars). False: one whole-box dim.
   final bool skeleton;
 
+  /// A loose chart/image, whose live box supplies its input geometry.
+  final RenderBox? visual;
+
   /// The unit's [SkeletonShape.section].
   final int section;
-  const PlannedUnit({this.component, this.paragraph, required this.skeleton, required this.section});
+  const PlannedUnit({this.component, this.paragraph, this.visual, required this.skeleton, required this.section});
 }
 
 /// What [planSkeleton] decided: the shapes (the plan as rectangles) and the same
@@ -490,7 +494,7 @@ SkeletonPlan planSkeleton(
       if (unit != null) units.add(unit);
     } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
       final rect = planner.visibleOf(ro);
-      if (!rect.isEmpty) units.add(_Unit(rect, [_Draft(SkeletonKind.block, rect)]));
+      if (!rect.isEmpty) units.add(_Unit(rect, [_Draft(SkeletonKind.block, rect)], const {}, null, null, ro));
     }
     e.debugVisitOnstageChildren(find);
   }
@@ -517,8 +521,8 @@ SkeletonPlan planSkeleton(
     } else {
       shapes.add(SkeletonShape(kind: SkeletonKind.dim, rect: u.bounds, color: veil, section: i));
     }
-    if (u.component != null || u.paragraph != null) {
-      planned.add(PlannedUnit(component: u.component, paragraph: u.paragraph, skeleton: skeleton, section: i));
+    if (u.component != null || u.paragraph != null || u.visual != null) {
+      planned.add(PlannedUnit(component: u.component, paragraph: u.paragraph, visual: u.visual, skeleton: skeleton, section: i));
     }
   }
   return SkeletonPlan(shapes, planned, seen, seenLoose);
