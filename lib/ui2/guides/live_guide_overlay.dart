@@ -116,6 +116,10 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   Rect? _lastRevealRect;
   Rect? _target;
   RenderBox? _targetObject;
+  /// Where the scrollables that carry [_targetObject] stood when [_target] was planned:
+  /// the scroll since then moves the target by the same distance ([_liveTarget]).
+  List<_ScrollAnchor> _targetScrolls = const [];
+  final Set<ScrollPosition> _watchedScrolls = {};
   List<Rect> _chrome = const [], _legible = const [];
   /// The control that leads back to the guide (off path) or to the step's tab: focused like a target.
   Rect? _route;
@@ -137,25 +141,93 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   @override
   List<SkeletonShape> get layerShapes => paintedShapes;
   @override
-  List<Rect> get layerHoles => [?_target, ?_route, ..._chrome];
+  List<Rect> get layerHoles => [?_liveTarget, ?_route, ..._chrome];
   @override
   Set<int> get layerStatic => _staticSections;
 
   @visibleForTesting
-  List<SkeletonShape> get paintedShapes => _yielding ? const [] : _collapsed ? _shapes : revealedShapes(_shapes, revealProgress);
+  List<SkeletonShape> get paintedShapes {
+    if (_yielding) return const [];
+    final shapes = _collapsed ? _shapes : revealedShapes(_shapes, revealProgress);
+    // A scroll since the plan moved the target; no ink may lie over it meanwhile.
+    final target = _liveTarget;
+    if (target == null || target == _target) return shapes;
+    final inner = target.deflate(.5);
+    return [for (final s in shapes) if (!s.rect.overlaps(inner)) s];
+  }
+
+  /// The target where it stands NOW. The plan is made after a frame and may be
+  /// throttled, so a scroll (user or reveal) would leave the outline, the marker's
+  /// direction and the card one frame behind. A scroll only translates the target, by
+  /// how far each scrollable that carries it has moved since the plan: that needs no
+  /// layout, so it is right in the frame the scroll happens in.
+  Rect? get _liveTarget {
+    final planned = _target;
+    if (planned == null || _targetScrolls.isEmpty) return planned;
+    var moved = Offset.zero;
+    for (final a in _targetScrolls) {
+      if (!a.position.hasPixels) continue;
+      final d = a.position.pixels - a.pixels;
+      moved += switch (a.position.axisDirection) {
+        AxisDirection.down => Offset(0, -d),
+        AxisDirection.up => Offset(0, d),
+        AxisDirection.right => Offset(-d, 0),
+        AxisDirection.left => Offset(d, 0),
+      };
+    }
+    return moved == Offset.zero ? planned : planned.shift(moved);
+  }
+
+  /// The scrollables among [states] that carry [target], each with where it stands now.
+  static List<_ScrollAnchor> _anchorsOf(RenderBox? target, List<ScrollableState> states) {
+    if (target == null || !target.attached) return const [];
+    final carriers = <_ScrollAnchor>[];
+    for (final state in states) {
+      final position = state.position;
+      if (!position.hasPixels) continue;
+      final carrier = state.context.findRenderObject();
+      for (RenderObject? o = target; o != null; o = o.parent) {
+        if (identical(o, carrier)) {
+          carriers.add(_ScrollAnchor(position, position.pixels));
+          break;
+        }
+      }
+    }
+    return carriers;
+  }
+
+  /// A page scrollable moved: rebuild so the overlay's own layout (which follows the
+  /// page's) reads the target again. The plan itself stays throttled.
+  void _scrolled() {
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) { if (mounted) setState(() {}); });
+    } else {
+      setState(() {});
+    }
+  }
+
+  void _watchScrolls(Iterable<ScrollPosition> positions) {
+    final next = positions.toSet();
+    for (final gone in _watchedScrolls.difference(next)) { gone.removeListener(_scrolled); }
+    for (final added in next.difference(_watchedScrolls)) { added.addListener(_scrolled); }
+    _watchedScrolls..clear()..addAll(next);
+  }
 
   /// P6 (dim look): the target is off screen or not built, so the way to it
   /// shows at once (no progressive reveal) with the scroll marker.
   bool get _collapsed {
-    final t = _target;
-    return _step != null && (t == null || !_within(t, Offset.zero & _viewport));
+    final t = _liveTarget;
+    return _step != null && (t == null || !_onScreen(t, Offset.zero & _viewport));
   }
   Size _viewport = Size.zero;
 
-  /// [inner] lies inside [outer], edges included (a full-width card ends exactly at
-  /// the screen edge; [Rect.contains] would call that outside).
-  static bool _within(Rect inner, Rect outer) => inner.left >= outer.left - .5 && inner.top >= outer.top - .5 &&
-      inner.right <= outer.right + .5 && inner.bottom <= outer.bottom + .5;
+  /// [t] counts as on screen when it lies within [v] vertically and at least half of its
+  /// width does horizontally: a sub-tab half hidden by its row's own side scroll is
+  /// still there to tap (the guide cannot scroll it, and a vertical marker would lie).
+  static bool _onScreen(Rect t, Rect v) => t.top >= v.top - .5 && t.bottom <= v.bottom + .5 &&
+      math.min(t.right, v.right) - math.max(t.left, v.left) >= t.width / 2;
+  // Edges count as inside: a full-width target ends exactly at the screen edge.
   @visibleForTesting
   Rect? get targetRect => _target;
   @visibleForTesting
@@ -163,11 +235,23 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   @visibleForTesting
   bool get isYielding => _yielding;
 
+  /// True while the guide must not show: the last plan found no page, or the
+  /// Navigator's top route is no page NOW (a dialog was pushed since that plan, so
+  /// the card must be gone in the next frame, not one frame after the plan).
+  bool get _yieldNow => _yielding || widget.routes.page == null;
+
+  void _routeChanged() {
+    if (!mounted) return;
+    _publish();
+    _scrolled();
+  }
+
   @override
   void initState() {
     super.initState();
     _reveal = AnimationController(vsync: this, duration: kGuideRevealDuration)..addListener(_changed);
     widget.run.addListener(_changed);
+    widget.routes.addListener(_routeChanged);
     GestureBinding.instance.pointerRouter.addGlobalRoute(_pointer);
     _watch();
   }
@@ -187,6 +271,10 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   @override
   void didUpdateWidget(LiveGuideOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.routes != widget.routes) {
+      oldWidget.routes.removeListener(_routeChanged);
+      widget.routes.addListener(_routeChanged);
+    }
     if (oldWidget.run != widget.run) {
       oldWidget.run.removeListener(_changed);
       widget.run.addListener(_changed);
@@ -214,7 +302,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
 
   void _pointer(PointerEvent event) {
     final layer = _layerKey.currentContext?.findRenderObject();
-    if (layer is! RenderBox || !layer.hasSize || !layer.attached || _yielding) return;
+    if (layer is! RenderBox || !layer.hasSize || !layer.attached || _yieldNow) return;
     final point = layer.globalToLocal(event.position);
     if (event is PointerDownEvent && (_target?.contains(point) ?? false) && _hitsTarget(event.position)) _downs[event.pointer] = point;
     if (event is PointerCancelEvent) _downs.remove(event.pointer);
@@ -366,7 +454,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   }
 
   void _activateTarget() {
-    final target = _target;
+    final target = _liveTarget;
     final layer = _layerKey.currentContext?.findRenderObject();
     if (target == null || layer is! RenderBox || !layer.attached) return;
     final position = layer.localToGlobal(target.center);
@@ -416,6 +504,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     final content = <Object?>[];
     final discoveryContent = <Object?>[];
     final scrolls = <Object?>[];
+    final scrollPositions = <ScrollPosition>[];
+    final scrollStates = <ScrollableState>[];
     var builtCount = 0;
     if (page != null) {
       for (final e in builtElements(page)) {
@@ -439,6 +529,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         }
         if (e is StatefulElement && e.state is ScrollableState) {
           final position = (e.state as ScrollableState).position;
+          scrollPositions.add(position);
+          scrollStates.add(e.state as ScrollableState);
           if (position.hasPixels) { content.add(position.pixels); scrolls.add(position.pixels); }
           if (position.hasContentDimensions) {
             content.add(position.minScrollExtent);
@@ -453,6 +545,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     }
     // Discovery retries use stable text/extents: rebuilding cached list
     // children during an unsuccessful search must not restart that search.
+    _watchScrolls(scrollPositions);
     final signature = Object.hashAll(discoveryContent);
     final scrollSignature = Object.hashAll(scrolls);
     final planSignature = (page, layer.size, builtCount, Object.hashAll(content), widget.run,
@@ -486,7 +579,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         ? MatrixUtils.transformRect(box.getTransformTo(layer), resolution.rect) : null;
     final viewport = Offset.zero & layer.size;
     _viewport = layer.size;
-    final outside = targetNow != null && !_within(targetNow, viewport);
+    final outside = targetNow != null && !_onScreen(targetNow, viewport);
     // The page is revealed once per step, and again when LATE CONTENT moves the target
     // away (an async read lands above it). It is never re-revealed after the USER
     // scrolled: the marker shows the way and the overlay must not scroll the page back
@@ -616,6 +709,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     _step = step;
     _target = target;
     _targetObject = resolution is TargetFound ? resolution.renderObject : null;
+    _targetScrolls = _anchorsOf(_targetObject, scrollStates);
     _shapes = shapes;
     _skeletonPlan = skeleton;
     _extraLooks = extra;
@@ -639,7 +733,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     final dim = _dim;
     if (dim == null) return;
     final plan = _skeletonPlan;
-    if (_yielding || widget.run.isExited || plan == null || _page == null) {
+    if (_yieldNow || widget.run.isExited || plan == null || _page == null) {
       _unpublish();
       return;
     }
@@ -654,6 +748,20 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     _published = dim.looks is GuidePlan ? dim.looks as GuidePlan : next;
   }
 
+  // The element is deactivated in the BUILD phase of the frame that removes it (dispose
+  // comes after paint), so the components stop dimming in that same frame.
+  @override
+  void deactivate() {
+    _unpublish();
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    _publish();
+  }
+
   /// Takes this overlay's plan back, if it is still the one in force.
   void _unpublish() {
     final dim = _dim, mine = _published;
@@ -664,6 +772,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   @override
   void dispose() {
     _unpublish();
+    _watchScrolls(const []);
+    widget.routes.removeListener(_routeChanged);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_pointer);
     widget.run.removeListener(_changed);
     _reveal.dispose();
@@ -678,20 +788,20 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     final run = widget.run;
     final state = run.state;
     final step = run.currentStep;
-    final target = _target;
     final model = switch (state) {
       GuideAtStep(:final index) => GuideCardOnStep(number: index + 1, total: run.variant.steps.length,
         caption: run.variant.steps[index].caption.of(l), missingHelp: run.guide.missingTargetHelp),
       GuideOffPath() => const GuideCardOffPath(),
       GuideFinished() => GuideCardDone(run.guide.doneFooters),
     };
-    final show = !_yielding && !run.isExited;
+    final show = !_yieldNow && !run.isExited;
     // The root overlay sits above every route's Material, so text here would
     // fall back to the yellow-underlined debug style. A theme text style fixes
     // that without a Material, which would take part in hit testing.
     return DefaultTextStyle(
         style: Theme.of(context).textTheme.bodyMedium ?? const TextStyle(),
         child: SizedBox.expand(key: _layerKey, child: LayoutBuilder(builder: (context, constraints) {
+      final target = _liveTarget; // laid out after the page below: a scroll shows in this frame
       final screen = Offset.zero & constraints.biggest;
       final outline = target?.inflate(kGuideOutlineGap).intersect(screen);
       final marked = show && target != null && step != null && revealProgress == 1 &&
@@ -758,6 +868,13 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       ]);
     })));
   }
+}
+
+/// A scrollable and where it stood when the target was planned.
+class _ScrollAnchor {
+  final ScrollPosition position;
+  final double pixels;
+  const _ScrollAnchor(this.position, this.pixels);
 }
 
 /// The highlighted route-back control: the tab of the guide's start, or a pushed

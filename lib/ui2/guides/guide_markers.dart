@@ -15,6 +15,7 @@ import 'package:flutter/rendering.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../skeleton/skeleton.dart';
+import '../skeleton/unit_paint.dart' show isIconParagraph;
 import '../theme.dart';
 import 'tree_geometry.dart';
 
@@ -80,8 +81,13 @@ List<Rect> legibleContent(Element root, {required List<Rect> keep}) {
         final key = (r.top * 2).round();
         byLine[key] = byLine[key]?.expandToInclude(r) ?? r;
       }
+      // An icon glyph is dimmed with the component that holds it: it is legible (and
+      // the card must keep clear of it) only inside what the guide keeps.
+      final icon = isIconParagraph(ro);
       for (final local in byLine.values) {
-        found.add(rectInRoot(ro, rootBox, local).intersect(visible));
+        final r = rectInRoot(ro, rootBox, local).intersect(visible);
+        if (icon && !keep.any((k) => k.overlaps(r))) continue;
+        found.add(r);
       }
       continue;
     }

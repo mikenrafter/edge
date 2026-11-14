@@ -2,7 +2,7 @@ import 'package:flutter/widgets.dart';
 
 /// Reads the Navigator's actual top route without subscribing foreign elements
 /// to inherited widgets. Mounted once beside the app's other route observers.
-class GuideRouteObserver extends NavigatorObserver {
+class GuideRouteObserver extends NavigatorObserver with ChangeNotifier {
   Route<dynamic>? _top;
 
   Route<dynamic>? get topRoute => _top;
@@ -10,6 +10,7 @@ class GuideRouteObserver extends NavigatorObserver {
   @override
   void didChangeTop(Route<dynamic> topRoute, Route<dynamic>? previousTopRoute) {
     _top = topRoute;
+    notifyListeners(); // the overlay hides under a dialog in the next frame
   }
 
   /// Includes the departing route above the newly current page after a pop.
