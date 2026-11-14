@@ -195,28 +195,11 @@ class GuideRunner extends ChangeNotifier {
         run.observe(page, l);
         if (run.state is GuideAtStep) return;
       }
+      if (run.state is GuideFinished) return;
       if (!nav.canPop()) {
-        final index = (run.state as GuideOffPath).lastIndex ?? 0;
-        final target = run.variant.steps[index].node;
-        final current = page == null ? null : GuideNavigation.location(page);
-        final hops = current != null && target != null
-            ? GuideNavigation.route(current, target)
-            : const <GuideHop>[];
-        final hop = hops.firstOrNull;
-        if (hop?.kind == GuideHopKind.subTab && page != null) {
-          final tab = GuideNavigation.subTabIndex(hop!.node);
-          for (final e in onstageElements(page)) {
-            if (e.widget case final SubTabs tabs when tab != null) {
-              tabs.onTap(tab);
-              return;
-            }
-          }
-        }
-        final tab = target == null ? null : GuideNavigation.tabIndex(target);
-        if (tab != null && tab < ShellDomain.values.length) {
-          _shell?.selectTab(ShellDomain.values[tab]);
-        } else {
-          _selectStart(run.guide.start);
+        // Only an off-path run has a place to go back to; a finished run has none.
+        if (run.state case GuideOffPath(:final lastIndex)) {
+          await _walkHops(run, lastIndex ?? 0, l);
         }
         return;
       }
@@ -224,6 +207,68 @@ class GuideRunner extends ChangeNotifier {
       final handled = await nav.maybePop();
       if (!handled || before?.isActive != false || identical(before, routes.topRoute)) return;
       await WidgetsBinding.instance.endOfFrame;
+    }
+  }
+
+  /// The most hops one press of "Back to the guide" walks. The deepest route in the
+  /// tree is a tab, its sub-tab and a page; more means the tree and the app disagree.
+  static const _maxHops = 6;
+
+  /// Walks the card's own hop list ([GuideRouteObserver.routeTo]: the retained sub-tab
+  /// counts) in one go, so the "N taps back" the card shows is what one press does.
+  /// Stops when a step matches, when a hop cannot be made by the runner (a pushed
+  /// page), or when a hop changed nothing. If nothing moved the run, it selects the
+  /// guide's start again. CLAIM(back-walks-all-hops) [guide_r3_routing_test 'R2'].
+  Future<void> _walkHops(GuideRun run, int index, AppLocalizations? l) async {
+    final node = run.variant.steps[index].node;
+    var moved = false;
+    GuideHop? previous;
+    for (var i = 0; node != null && i < _maxHops && identical(_run, run); i++) {
+      final page = routes.page;
+      final hop = routes.routeTo(node).firstOrNull;
+      if (page == null || hop == null) break;
+      // The same hop again means the last press changed nothing: stop, don't spin.
+      if (previous != null && previous.node == hop.node && previous.kind == hop.kind) break;
+      if (!_makeHop(hop, page)) break;
+      previous = hop;
+      moved = true;
+      await WidgetsBinding.instance.endOfFrame;
+      while (routes.isTransitioning && identical(_run, run)) {
+        await WidgetsBinding.instance.endOfFrame;
+      }
+      final now = routes.page;
+      if (now != null && l != null) run.observe(now, l);
+      if (run.state is GuideAtStep) return;
+    }
+    if (moved || !identical(_run, run)) return;
+    final tab = node == null ? null : GuideNavigation.tabIndex(node);
+    if (tab != null && tab < ShellDomain.values.length) {
+      _shell?.selectTab(ShellDomain.values[tab]);
+    } else {
+      _selectStart(run.guide.start);
+    }
+  }
+
+  /// Does one hop with the app's own controls; false when it is not one the runner can make.
+  bool _makeHop(GuideHop hop, Element page) {
+    switch (hop.kind) {
+      case GuideHopKind.subTab:
+        final tab = GuideNavigation.subTabIndex(hop.node);
+        if (tab == null) return false;
+        for (final e in onstageElements(page)) {
+          if (e.widget case final SubTabs tabs) {
+            tabs.onTap(tab);
+            return true;
+          }
+        }
+        return false;
+      case GuideHopKind.tab || GuideHopKind.page:
+        final tab = GuideNavigation.tabIndex(hop.node);
+        if (tab == null || tab >= ShellDomain.values.length || _shell == null) return false;
+        _shell!.selectTab(ShellDomain.values[tab]);
+        return true;
+      case GuideHopKind.back:
+        return false;
     }
   }
 
