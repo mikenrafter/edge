@@ -30,10 +30,11 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../grammar.dart' show GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface, SubTabs;
+import '../grammar.dart' show ChartFrame, GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface, SubTabs;
 import '../guides/guide_target.dart';
 import '../guides/tree_geometry.dart';
 import '../theme.dart';
+import 'guide_plot.dart';
 
 enum SkeletonKind {
   /// A card rect repainted in its own surface colour ([SkeletonShape.color]).
@@ -287,7 +288,10 @@ class _Planner {
           scaffold,
         ));
       }
-      if (!bar.isEmpty) drafts.add(_Draft(SkeletonKind.bar, bar));
+      if (!bar.isEmpty) {
+        final ink = HSVColor.fromColor(paragraph.text.style?.color ?? C.n500);
+        drafts.add(_Draft(SkeletonKind.bar, bar, heading ? ink.withValue(ink.value * .6).toColor() : null));
+      }
       items.add(_Item(line, 1, drafts, text: true));
     }
     return items;
@@ -335,7 +339,7 @@ class _Planner {
       if (isGuideCard(w)) isCard = true;
       // An icon is never a placeholder: in the dim look it is a hole the fills leave
       // (SkeletonKind.icon); otherwise it is not planned at all.
-      if (w is Icon || w is ImageIcon) {
+      if (w is Icon || w is ImageIcon || w is Image || w is RawImage) {
         final iconBox = heading ? laidOutBox(e) : null;
         if (iconBox != null) {
           final rect = visibleOf(iconBox);
@@ -348,16 +352,27 @@ class _Planner {
         final surfaceBox = laidOutBox(e);
         if (surfaceBox != null) {
           final rect = visibleOf(surfaceBox);
-          if (!rect.isEmpty) surfaces.add(_Draft(SkeletonKind.surface, rect, w.color ?? P(_themeAt(e).brightness == Brightness.dark).card));
+          if (!heading && !rect.isEmpty) surfaces.add(_Draft(SkeletonKind.surface, rect, w.color ?? P(_themeAt(e).brightness == Brightness.dark).card));
         }
         here = true;
       }
       final ro = e is RenderObjectElement ? e.renderObject : null;
       if (ro is RenderParagraph && ro.hasSize) {
+        final frame = e.findAncestorWidgetOfExactType<ChartFrame>();
+        if (heading && frame != null && ro.text.toPlainText() != frame.title) return;
         items.addAll(linesOf(ro, onCard: here));
       } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
         final rect = visibleOf(ro);
-        if (!rect.isEmpty) items.add(_Item(rect, 0, [_Draft(SkeletonKind.block, rect)]));
+        if (!rect.isEmpty) {
+          final painter = w is CustomPaint ? w.painter ?? w.foregroundPainter : null;
+          if (heading && painter is GuidePlot) {
+            final original = HSVColor.fromColor((painter as GuidePlot).guideLineColor);
+            final muted = original.withSaturation(original.saturation * .45).withValue(original.value * .8).toColor();
+            items.add(_Item(rect, 0, [_Draft(SkeletonKind.sine, rect, muted)]));
+          } else if (!heading) {
+            items.add(_Item(rect, 0, [_Draft(SkeletonKind.block, rect)]));
+          }
+        }
       }
       e.debugVisitOnstageChildren((c) => inner(c, here));
     }
@@ -559,7 +574,7 @@ SkeletonPlan planSkeleton(
       return; // everything inside belongs to this unit
     }
     // An icon is never a unit: it is left exactly as it is.
-    if (w is Icon || w is ImageIcon) return;
+    if (w is Icon || w is ImageIcon || dim != null && (w is Image || w is RawImage)) return;
     final ro = e is RenderObjectElement ? e.renderObject : null;
     if (ro is RenderParagraph && ro.hasSize) {
       seenLoose.add(ro);
@@ -567,7 +582,12 @@ SkeletonPlan planSkeleton(
       if (unit != null) units.add(unit);
     } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
       final rect = planner.visibleOf(ro);
-      if (!rect.isEmpty) units.add(_Unit(rect, [_Draft(SkeletonKind.block, rect)], null, null, ro));
+      final painter = w is CustomPaint ? w.painter ?? w.foregroundPainter : null;
+      if (!rect.isEmpty && (dim == null || painter is GuidePlot)) {
+        final pigment = painter is GuidePlot ? HSVColor.fromColor((painter as GuidePlot).guideLineColor) : null;
+        units.add(_Unit(rect, [_Draft(dim == null ? SkeletonKind.block : SkeletonKind.sine, rect,
+          pigment?.withSaturation(pigment.saturation * .45).withValue(pigment.value * .8).toColor())], null, null, ro));
+      }
     }
     e.debugVisitOnstageChildren(find);
   }
@@ -646,7 +666,11 @@ const kPlaceholderStrength = .14;
 /// A heading is the REAL text: the surface fills leave a hole at its line and a
 /// veil dims it. An icon is a hole in every fill. [fade] (0..1) scales the dim
 /// layers' alpha (the dim fades in; placeholders never fade).
-void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette, {double fade = 1}) {
+void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette, {double fade = 1, double pulse = 1}) {
+  Color pulsed(Color color) {
+    final hsv = HSVColor.fromColor(color);
+    return hsv.withValue((hsv.value * pulse).clamp(0.0, 1.0)).toColor();
+  }
   final headings = [for (final s in shapes) if (s.kind == SkeletonKind.heading) s.rect];
   final icons = [for (final s in shapes) if (s.kind == SkeletonKind.icon) s.rect];
   Color veilOf(Color c) => c.withValues(alpha: c.a * fade.clamp(0.0, 1.0));
@@ -661,6 +685,13 @@ void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palett
   for (final s in ordered) {
     switch (s.kind) {
       case SkeletonKind.sine:
+        final path = Path();
+        for (var i = 0; i <= 80; i++) {
+          final x = s.rect.left + s.rect.width * i / 80;
+          final y = s.rect.center.dy - math.sin(i / 80 * math.pi * 2) * s.rect.height * .28;
+          if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
+        }
+        canvas.drawPath(path, Paint()..color = pulsed(s.color ?? palette.ink3)..style = PaintingStyle.stroke..strokeWidth = 2);
         break;
       case SkeletonKind.icon:
         break;
@@ -680,7 +711,8 @@ void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palett
           // centred in it, as in the mock-up.
           final h = math.min(s.rect.height, math.max(8.0, s.rect.height * .55));
           final pill = Rect.fromCenter(center: s.rect.center, width: s.rect.width, height: h);
-          canvas.drawRRect(RRect.fromRectAndRadius(pill, Radius.circular(h / 2)), ink);
+          canvas.drawRRect(RRect.fromRectAndRadius(pill, Radius.circular(h / 2)),
+            s.color == null ? ink : (Paint()..color = pulsed(s.color!)));
         } else {
           canvas.drawRRect(R.rMd.toRRect(s.rect), ink);
         }

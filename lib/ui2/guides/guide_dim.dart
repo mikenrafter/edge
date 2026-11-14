@@ -72,6 +72,14 @@ class GuideDimController extends ChangeNotifier {
   /// The plan in force; null when no guide is dimming anything.
   GuideUnitLooks? get looks => _looks;
 
+  double _pulse = 1;
+  double get pulse => _pulse;
+  void setPulse(double value) {
+    if (_disposed || _pulse == value) return;
+    _pulse = value;
+    if (_looks != null) notifyListeners();
+  }
+
   double _fade = 1;
 
   /// How far the dim has faded in, 0..1 (linear, owner: 800 ms per step). The

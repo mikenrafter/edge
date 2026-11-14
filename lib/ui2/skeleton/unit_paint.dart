@@ -26,6 +26,7 @@ import 'package:flutter/rendering.dart';
 import '../guides/guide_dim.dart';
 import '../guides/tree_geometry.dart';
 import 'skeleton.dart';
+import 'placeholder_paint.dart';
 
 /// True for a paragraph that is an icon glyph (one private-use code point): icons
 /// are never planned, dimmed or skeletonized on their own.
@@ -147,10 +148,14 @@ class RenderGuideUnit extends RenderProxyBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    super.paint(context, offset);
     final looks = _controller?.looks;
-    if (looks == null || !_component.mounted) return;
-    final look = looks.lookOf(_component);
+    final look = _component.mounted ? looks?.lookOf(_component) : null;
+    if (look == GuideUnitLook.skeleton && child != null) {
+      GuidePlaceholderPaint.of(_component, fade: _controller?.fade ?? 1, pulse: _controller?.pulse ?? 1)
+          .paint(context, child!, offset, size);
+      return;
+    }
+    super.paint(context, offset);
     if (look == null) return;
     final canvas = context.canvas;
     switch (look) {
@@ -164,13 +169,7 @@ class RenderGuideUnit extends RenderProxyBox {
           canvas.drawRRect(radius.toRRect(offset & size), paint);
         }
       case GuideUnitLook.skeleton:
-        final shapes = skeletonOfComponent(_component, this);
-        if (shapes.isEmpty) return;
-        canvas
-          ..save()
-          ..translate(offset.dx, offset.dy);
-        paintSkeletonShapes(canvas, shapes, paletteOf(_component), fade: _controller?.fade ?? 1);
-        canvas.restore();
+        break;
     }
   }
 }
@@ -258,13 +257,22 @@ class RenderGuideLoose extends RenderProxyBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    super.paint(context, offset);
     final looks = _controller?.looks;
     final c = child;
-    if (looks is! GuideLooseLooks || c == null || !_element.mounted) return;
+    if (looks is! GuideLooseLooks || c == null || !_element.mounted) {
+      super.paint(context, offset);
+      return;
+    }
+    final placeholders = {for (final p in looseParagraphs(_element))
+      if (looks.looseLookOf(p) == GuideUnitLook.skeleton) p};
+    if (placeholders.isEmpty) {
+      super.paint(context, offset);
+    } else {
+      GuidePlaceholderPaint.paragraphs(placeholders, paletteOf(_element),
+        fade: _controller?.fade ?? 1, pulse: _controller?.pulse ?? 1).paint(context, c, offset, size);
+    }
     final canvas = context.canvas;
     final scaffold = scaffoldOf(_element);
-    final palette = paletteOf(_element);
     canvas
       ..save()
       ..clipRect(offset & size);
@@ -278,14 +286,7 @@ class RenderGuideLoose extends RenderProxyBox {
           if (visible.isEmpty) continue;
           canvas.drawRect(visible.shift(offset), Paint()..color = scaffold.withValues(alpha: kDimOpacity * (_controller?.fade ?? 1)));
         case GuideUnitLook.skeleton:
-          final shapes = skeletonOfParagraph(p, scaffold);
-          if (shapes.isEmpty) continue;
-          canvas
-            ..save()
-            ..translate(offset.dx, offset.dy)
-            ..transform(p.getTransformTo(this).storage);
-          paintSkeletonShapes(canvas, shapes, palette, fade: _controller?.fade ?? 1);
-          canvas.restore();
+          break; // source text was replaced above, not erased by a surface fill
       }
     }
     canvas.restore();

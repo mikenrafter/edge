@@ -163,14 +163,11 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     if (layer is! RenderBox || looks == null || page == null || _yieldNow) return const [];
     final ink = <Rect>[];
     void add(RenderBox box, List<SkeletonShape> shapes) {
-      Rect? bounds;
       for (final shape in shapes) {
-        if (shape.kind == SkeletonKind.dim || shape.kind == SkeletonKind.heading) continue;
-        bounds = bounds?.expandToInclude(shape.rect) ?? shape.rect;
+        if (shape.kind == SkeletonKind.dim || shape.kind == SkeletonKind.heading || shape.kind == SkeletonKind.icon) continue;
+        final visible = rectInRoot(box, layer, shape.rect).intersect(visibleBoundsInRoot(box, layer));
+        if (!visible.isEmpty) ink.add(visible);
       }
-      if (bounds == null) return;
-      final visible = rectInRoot(box, layer, bounds).intersect(visibleBoundsInRoot(box, layer));
-      if (!visible.isEmpty) ink.add(visible);
     }
     void visit(Element element) {
       final box = laidOutBox(element);
