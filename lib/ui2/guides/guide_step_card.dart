@@ -230,7 +230,21 @@ Rect placeGuideCard({
   if (preferredTop != null) {
     final y = preferredTop.clamp(top.top, math.max(top.top, bottom.top)).toDouble();
     final preferred = Rect.fromLTWH(x, y, width, height);
-    if (overlap(preferred, keepClear) == 0 && overlap(preferred, avoid) == 0) return preferred;
+    bool clear(Rect r) => overlap(r, keepClear) == 0 && overlap(r, avoid) == 0;
+    if (clear(preferred)) return preferred;
+    // The preference is unsafe: the nearer edge position if it is clear, else the
+    // clear position nearest to the preference (flush against a rect to avoid).
+    final nearEdge = (y - top.top).abs() <= (bottom.top - y).abs() ? top : bottom;
+    if (clear(nearEdge)) return nearEdge;
+    Rect? best;
+    for (final r in [...keepClear, ...avoid]) {
+      for (final candidate in [r.bottom, r.top - height]) {
+        final cy = candidate.clamp(top.top, math.max(top.top, bottom.top)).toDouble();
+        final box = Rect.fromLTWH(x, cy, width, height);
+        if (clear(box) && (best == null || (cy - y).abs() < (best.top - y).abs())) best = box;
+      }
+    }
+    if (best != null) return best;
   }
   final bottomKeep = overlap(bottom, keepClear), topKeep = overlap(top, keepClear);
   if (bottomKeep < topKeep) return bottom;

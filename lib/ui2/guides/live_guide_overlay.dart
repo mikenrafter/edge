@@ -251,6 +251,37 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     setState(() => _cardFraction = ((g.top + dy - g.lower) / (g.upper - g.lower)).clamp(0.0, 1.0));
   }
 
+  // The card follows the finger exactly. A gesture recognizer would eat the touch
+  // slop (and apply only the last update per frame), so the drag reads raw pointer
+  // events: once the finger has moved a slop vertically, the card sits at
+  // (its top when the finger went down) + (finger travel), clamped to its bounds.
+  int? _cardPointer;
+  double _cardDownY = 0, _cardDownTop = 0;
+  bool _cardDragging = false;
+
+  void _cardDown(PointerDownEvent e) {
+    if (_cardPointer != null) return;
+    _cardPointer = e.pointer;
+    _cardDownY = e.position.dy;
+    _cardDownTop = _cardGeometry.top;
+    _cardDragging = false;
+  }
+
+  void _cardMove(PointerMoveEvent e) {
+    if (e.pointer != _cardPointer) return;
+    final travel = e.position.dy - _cardDownY;
+    if (!_cardDragging && travel.abs() < kTouchSlop) return;
+    _cardDragging = true;
+    final g = _cardGeometry;
+    if (g.upper <= g.lower) return;
+    final top = (_cardDownTop + travel).clamp(g.lower, g.upper);
+    setState(() => _cardFraction = (top - g.lower) / (g.upper - g.lower));
+  }
+
+  void _cardEnd(PointerEvent e) {
+    if (e.pointer == _cardPointer) _cardPointer = null;
+  }
+
   /// The card, draggable by its blank space (buttons keep their taps) and a
   /// sink for every other pointer: nothing on the card reaches the page below.
   Widget _cardMover(Widget card) => Semantics(
@@ -258,13 +289,12 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       const CustomSemanticsAction(label: 'Move card up'): () => _moveCard(-_cardGeometry.step),
       const CustomSemanticsAction(label: 'Move card down'): () => _moveCard(_cardGeometry.step),
     },
-    child: GestureDetector(
+    child: Listener(
+      onPointerDown: _cardDown, onPointerMove: _cardMove,
+      onPointerUp: _cardEnd, onPointerCancel: _cardEnd,
       // The card is hit-testable, so the page below is never in the hit path; the
-      // no-op tap/long-press keep the drag out of a lone-recognizer arena (a lone
-      // vertical drag would lose its first slop). No double-tap: it delays buttons' taps.
-      onTap: () {}, onLongPress: () {},
-      onVerticalDragUpdate: (d) => _moveCard(d.delta.dy),
-      child: card,
+      // no-op tap/long-press sink taps on blank card space. No double-tap: it delays buttons' taps.
+      child: GestureDetector(onTap: () {}, onLongPress: () {}, child: card),
     ),
   );
 
@@ -601,17 +631,17 @@ class _GuideLayout extends MultiChildLayoutDelegate {
       positionChild('pill', pill.topLeft);
     }
     final maxWidth = math.max(0.0, bounds.width - 2 * kGuideCardGap);
-    var cardSize = layoutChild('card', BoxConstraints(maxWidth: maxWidth, maxHeight: bounds.height));
     final keep = [?target, ?pill];
     // A card taller than the room beside the target caps its height (its text
-    // scrolls) instead of covering the target.
+    // scrolls) instead of covering the target. Laid out once: the delegate
+    // asserts on a second layoutChild.
+    var maxHeight = bounds.height;
     if (keep.isNotEmpty) {
       final union = keep.reduce((a, b) => a.expandToInclude(b));
       final room = math.max(union.top - bounds.top, bounds.bottom - union.bottom) - 2 * kGuideCardGap;
-      if (cardSize.height > room && room > 80) {
-        cardSize = layoutChild('card', BoxConstraints(maxWidth: maxWidth, maxHeight: room));
-      }
+      if (room > 80) maxHeight = math.min(maxHeight, room);
     }
+    final cardSize = layoutChild('card', BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight));
     final lower = bounds.top + kGuideCardGap;
     final upper = math.max(lower, bounds.bottom - kGuideCardGap - cardSize.height);
     final card = placeGuideCard(bounds: bounds, cardSize: cardSize, keepClear: keep, avoid: avoid,
