@@ -49,6 +49,23 @@ void main() {
     expect(_look(t, plan, 'far'), GuideUnitLook.skeleton);
   });
 
+  // WHY: a lazy page has no outer Column, and a one-card wrapper does not
+  // define its neighbours. The ListView is the ordering layout.
+  // # catches: stopping at an incidental one-card Column above a lazy list.
+  testWidgets('B: a lazy page orders cards through one-card column wrappers', (t) async {
+    await _pump(t, ListView(key: _root, children: [
+      Column(children: [_card('above')]),
+      Column(children: [_card('own', body: const Text('Target', key: _target))]),
+      Column(children: [_card('below')]),
+      Column(children: [_card('far')]),
+    ]));
+    final plan = _plan(t);
+    expect(_look(t, plan, 'own'), isNull);
+    expect(_look(t, plan, 'above'), GuideUnitLook.dim);
+    expect(_look(t, plan, 'below'), GuideUnitLook.dim);
+    expect(_look(t, plan, 'far'), GuideUnitLook.skeleton);
+  });
+
   // WHY: a navigation target has no content-card window.
   // # catches: keeping the first card below the sub-tabs dimmed.
   testWidgets('B: a sub-tab target makes every content card a placeholder', (t) async {
@@ -97,7 +114,8 @@ void main() {
     expect(sine, hasLength(1));
     final hsv = HSVColor.fromColor(sine.single.color!);
     final original = HSVColor.fromColor(line);
-    expect(hsv.hue, closeTo(original.hue, .001));
+    // 8-bit pigment rounding may move hue by <1 degree.
+    expect(hsv.hue, closeTo(original.hue, 1));
     expect(hsv.saturation, lessThan(original.saturation));
     expect(sine.single.rect.width, 280);
     expect(sine.single.rect.height, 60);

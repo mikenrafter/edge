@@ -404,37 +404,40 @@ class _WindowLook {
       if (inside >= 0) {
         o = all[inside];
         Element? column;
-        o.component?.visitAncestorElements((e) {
-          final w = e.widget;
-          if (w is Flex && w.direction == Axis.vertical) { column = e; return false; }
-          return true;
-        });
-        Element? slot(_Unit u) {
-          final c = column;
-          if (c == null) return null;
+        List<_Unit> siblings = all;
+        Element? slot(_Unit u, Element layout) {
           Element? child = u.component;
+          var under = false;
           child?.visitAncestorElements((e) {
-            if (identical(e, c)) return false;
+            if (identical(e, layout)) { under = true; return false; }
             child = e;
             return true;
           });
-          return child;
+          return under ? child : null;
         }
-        final siblings = column == null ? all : all.where((u) {
-          var under = false;
-          u.component?.visitAncestorElements((e) {
-            if (identical(e, column)) { under = true; return false; }
-            return true;
-          });
-          return under;
-        }).toList();
+        // A wrapper Column with only this card does not order the page. Walk
+        // out to the first vertical layout that orders distinct card slots.
+        // Lazy ListViews are columns too, even though they have no Flex widget.
+        o.component?.visitAncestorElements((e) {
+          final w = e.widget;
+          final direction = e.findAncestorWidgetOfExactType<Scrollable>()?.axisDirection;
+          final vertical = w is Flex && w.direction == Axis.vertical ||
+              e is SliverMultiBoxAdaptorElement && w is! SliverGrid &&
+                (direction == AxisDirection.down || direction == AxisDirection.up);
+          if (!vertical) return true;
+          final under = all.where((u) => slot(u, e) != null).toList();
+          if (under.map((u) => slot(u, e)).toSet().length < 2) return true;
+          column = e;
+          siblings = under;
+          return false;
+        });
         final at = siblings.indexOf(o);
-        final ownSlot = slot(o);
+        final ownSlot = column == null ? null : slot(o, column!);
         for (var i = at - 1; i >= 0; i--) {
-          if (column == null || slot(siblings[i]) != ownSlot) { a = siblings[i]; break; }
+          if (column == null || slot(siblings[i], column!) != ownSlot) { a = siblings[i]; break; }
         }
         for (var i = at + 1; i < siblings.length; i++) {
-          if (column == null || slot(siblings[i]) != ownSlot) { b = siblings[i]; break; }
+          if (column == null || slot(siblings[i], column!) != ownSlot) { b = siblings[i]; break; }
         }
       }
 
@@ -760,7 +763,7 @@ List<Rect> defaultSkeletonChrome(Element root) {
   final out = <Rect>[];
   void find(Element e) {
     final w = e.widget;
-    if (w is ScreenTitle || w is NavBar || w.runtimeType.toString() == '_TabBar') {
+    if (w is ScreenTitle || w is NavBar || w is SubTabs || w.runtimeType.toString() == '_TabBar') {
       final box = laidOutBox(e);
       if (box != null) out.add(rectInRoot(box, rootBox));
       return;
