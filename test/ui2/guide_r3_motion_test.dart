@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
+import '../support/guide_r2_scroll_fixture.dart';
+import '../support/guide_r2_fixture.dart';
+import 'package:openstrap_edge/ui2/guides/guide_dim.dart';
+import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart';
 import 'package:openstrap_edge/ui2/guides/guide_motion.dart';
 
 void main() {
@@ -17,6 +21,21 @@ void main() {
     expect(guidePulseValue(.25), closeTo(1, .0001));
     expect(guidePulseValue(.01) - guidePulseValue(0), lessThan(.001));
     expect(guidePulseValue(.49), closeTo(guidePulseValue(.51), .0001));
+  });
+
+  // WHY: the overlay must drive all in-tree placeholders with one clock.
+  // # catches: a correct pulse function left unused, or per-card phase clocks.
+  testWidgets('F: mounted placeholders share one controller and one periodic phase', (t) async {
+    final fixture = R2Fixture();
+    await fixture.pump(t);
+    final first = fixture.dim.pulse;
+    await t.pump(const Duration(milliseconds: 800));
+    expect(first + fixture.dim.pulse, closeTo(2, .0001));
+    await t.pump(const Duration(milliseconds: 800));
+    expect(fixture.dim.pulse, closeTo(first, .0001));
+    for (final mark in find.byType(GuideUnitMark).evaluate()) {
+      expect(GuideDimScope.controllerOf(mark), same(fixture.dim));
+    }
   });
 
   // WHY: the card holds its place until a scrolling target collides; movement
@@ -63,6 +82,34 @@ void main() {
     final border = decoration.border! as Border;
     expect(border.top.width, 1);
     expect(border.top.color, P.of(t.element(find.byKey(GuideStepCard.cardKey))).line);
+  });
+
+  // WHY: the ordered policy must drive the mounted card during a real page drag.
+  // # catches: a correct motion helper that is not wired to scroll activity/layout.
+  testWidgets('G: mounted card holds and fades during scroll, moves, then restores', (t) async {
+    final fixture = R2ScrollFixture();
+    await fixture.pump(t);
+    final card = find.byKey(GuideStepCard.cardKey);
+    final initial = t.getRect(card);
+    final drag = await t.startGesture(const Offset(8, 250));
+    await drag.moveBy(const Offset(0, 440));
+    await t.pump(const Duration(milliseconds: 100));
+    await t.pump();
+    expect(t.getRect(card).top, closeTo(initial.top, 1));
+    double opacity() => t.widget<Opacity>(find.ancestor(of: card, matching: find.byType(Opacity)).first).opacity;
+    expect(opacity(), closeTo(.2, .01));
+    await drag.up();
+    (fixture.controller.position as ScrollPositionWithSingleContext).goIdle();
+    await t.pump(const Duration(milliseconds: 50));
+    await t.pump(const Duration(milliseconds: 600));
+    await t.pump();
+    final moved = t.getRect(card).top;
+    expect(moved, isNot(closeTo(initial.top, 1)));
+    expect(opacity(), closeTo(.2, .01));
+    await t.pump(const Duration(milliseconds: 200));
+    await t.pump();
+    expect(t.getRect(card).top, closeTo(moved, 1));
+    expect(opacity(), 1);
   });
 
 }

@@ -52,6 +52,7 @@ import '../grammar.dart' show NavBar, Pressable, ScreenTitle, SubTabs;
 import '../theme.dart';
 import 'guide.dart';
 import 'guide_navigation.dart';
+import 'guide_motion.dart';
 import 'guide_markers.dart';
 import 'guide_step_card.dart';
 import 'guide_target.dart';
@@ -98,9 +99,14 @@ class LiveGuideOverlay extends StatefulWidget {
   State<LiveGuideOverlay> createState() => LiveGuideOverlayState();
 }
 
-class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerProviderStateMixin implements _GuideLayerSource {
+class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderStateMixin implements _GuideLayerSource {
   final _layerKey = GlobalKey();
   late final AnimationController _reveal;
+  late final AnimationController _pulse;
+  void _pulsed() {
+    _dim?.setPulse(guidePulseValue(_pulse.value));
+    if (_staticSections.isNotEmpty) _staticTick.value++;
+  }
   List<SkeletonShape> _shapes = const [];
   /// The plan per component (what the Surfaces, Sections and Pressables paint for
   /// themselves) and the sections no component paints (the overlay paints those).
@@ -200,6 +206,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   Set<int> get layerStatic => _staticSections;
   @override
   double get layerFade => _reveal.value;
+  @override
+  double get layerPulse => _dim?.pulse ?? 1;
 
   @visibleForTesting
   List<SkeletonShape> get paintedShapes {
@@ -310,6 +318,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   @override
   void initState() {
     super.initState();
+    _pulse = AnimationController(vsync: this, duration: kGuidePulseDuration)..addListener(_pulsed)..repeat();
     _reveal = AnimationController(vsync: this, duration: kGuideRevealDuration)..addListener(_changed);
     widget.run.addListener(_changed);
     widget.routes.addListener(_routeChanged);
@@ -946,6 +955,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_pointer);
     widget.run.removeListener(_changed);
     _reveal.dispose();
+    _pulse.dispose();
     _staticTick.dispose();
     super.dispose();
   }
@@ -1136,6 +1146,7 @@ abstract interface class _GuideLayerSource {
   List<SkeletonShape> get layerShapes;
   List<Rect> get layerHoles;
   double get layerFade;
+  double get layerPulse;
   Set<int> get layerStatic;
   List<Rect> get layerInk;
 }
@@ -1151,7 +1162,7 @@ class _GuidePainter extends CustomPainter {
     final painted = source.layerStatic;
     if (painted.isEmpty) return;
     paintSkeletonShapes(canvas, [for (final s in source.layerShapes) if (painted.contains(s.section)) s], palette,
-        fade: source.layerFade);
+        fade: source.layerFade, pulse: source.layerPulse);
   }
 
   @override
