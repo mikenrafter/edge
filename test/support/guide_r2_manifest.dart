@@ -146,7 +146,7 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
       [r2Locale.activitySetupRouteLabel, r2Locale.activitySetupHeartRateLabel,
        r2Locale.activitySetupPrivateLabel].any(u.text.contains);
     final keep = offeredListChoice || namedDetails || kept.any((r) => r.overlaps(u.rect));
-    final nearbySibling = u.control && targetGroup != null && r2Contains(targetGroup!, u.rect);
+    final nearbySibling = u.control && resolved is TargetFound && rectGap(u.rect, resolved.rect) <= kSkeletonReach;
     final competing = nearbySibling || r2Words(u.text).intersection(targetWords).isNotEmpty;
     final covering = shapes.where((s) => s.rect.overlaps(u.rect.deflate(.5))).toList();
     final expected = keep ? 'keep' : competing ? 'skeleton' : 'dim';
@@ -190,7 +190,7 @@ Map<String, Object?> r2Manifest(WidgetTester t, R2Mounted mounted, R2Scene scene
     final r = rectInRoot(box, rootBox).intersect(visibleBoundsInRoot(box, rootBox));
     if (r.isEmpty) continue;
     final w = e.widget;
-    if (r2Control(w) && targetGroup != null && r2Contains(targetGroup!, r)) controlRects.add(r);
+    if (r2Control(w) && resolved is TargetFound && rectGap(r, resolved.rect) <= kSkeletonReach) controlRects.add(r);
     if (w is Text && r2Words(w.data ?? w.textSpan?.toPlainText() ?? '').intersection(targetWords).isNotEmpty) {
       lookalikes.add(r);
     }

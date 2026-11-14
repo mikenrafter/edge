@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 // GUIDE MARKERS: the parts of a guide step that are drawn the same way on every
 // renderer: the "tap" / "scroll" pill, where the pill goes, which content of the
 // screen is still legible (and so must not be covered), the bold-quoted caption
@@ -216,4 +218,31 @@ class GuideFooterCard extends StatelessWidget {
       ),
     );
   }
+}
+
+final _clockText = RegExp(r'^\d{1,2}:\d{2}(:\d{2})?$');
+
+/// The page's live status lines (owner, finish scene): the topmost text line with
+/// the line right under it (a screen's title and subtitle) and every clock-shaped
+/// text (a running timer). The card and the paint keep clear of them. Rects are in
+/// [root]'s coordinates.
+List<Rect> liveStatusRects(Element root) {
+  final rootBox = laidOutBox(root);
+  if (rootBox == null) return const [];
+  final lines = <(Rect, String)>[];
+  for (final e in onstageElements(root)) {
+    final ro = e is RenderObjectElement ? e.renderObject : null;
+    if (ro is! RenderParagraph || !ro.hasSize) continue;
+    final text = ro.text.toPlainText();
+    if (text.isEmpty) continue;
+    final visible = visibleBoundsInRoot(ro, rootBox);
+    final rect = rectInRoot(ro, rootBox).intersect(visible);
+    if (!rect.isEmpty) lines.add((rect, text.trim()));
+  }
+  if (lines.isEmpty) return const [];
+  final top = lines.map((l) => l.$1.top).reduce(math.min);
+  return [
+    for (final (rect, text) in lines)
+      if (rect.top < top + 28 || _clockText.hasMatch(text)) rect,
+  ];
 }

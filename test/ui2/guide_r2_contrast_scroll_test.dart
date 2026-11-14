@@ -54,12 +54,14 @@ void main() {
 
   for (final brightness in Brightness.values) {
   for (final scene in r2Scenes.where((s) => r2Pilots.contains(s.guide))) {
-    // WHY: D-S7 pilot dim retains 4.5:1 normal / 3:1 large text in both themes.
+    // WHY: owner decision after pilot APK e828832b: the D-S7 contrast floor (4.5:1 / 3:1)
+    // is DROPPED; dimmed text is not meant to be read closely. New rule: its contrast ratio
+    // is at most 50% of the original ratio, in both themes. Skeleton units are not dimmed text.
     // The undimmed raster supplies independent glyph/background coordinates;
     // the guided raster supplies the measured colours at those SAME pixels.
     // # catches: W8 black scrim destroys dark-theme contrast; opaque grey glyphs; a plan
     // reporting dim whose painter still uses low-contrast placeholder bars.
-    testWidgets('r2 pilot dim contrast normal 4.5 large 3 ${brightness.name} ${scene.id}', (t) async {
+    testWidgets('r2 pilot dim contrast at most half of the original ${brightness.name} ${scene.id}', (t) async {
       final m = await pumpR2Scene(t, scene, brightness: brightness);
       try {
         await settleLiveGuide(t, frames: 18);
@@ -77,6 +79,8 @@ void main() {
           if (ro is! RenderParagraph || !RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(ro.text.toPlainText())) continue;
           final rect = rectInRoot(ro, root).intersect(visibleBoundsInRoot(ro, root));
           if (rect.isEmpty || card.overlaps(rect) || !dims.any((s) => r2Contains(s.rect, rect))) continue;
+          // A unit that is skeleton (bars, blocks, surfaces) is not dimmed text.
+          if (overlay.paintedShapes.any((s) => s.kind.name != 'dim' && s.rect.overlaps(rect))) continue;
           final counts = <int, int>{};
           final points = <int, (int, int)>{};
           for (var y = rect.top.ceil(); y < rect.bottom.floor(); y++) {
@@ -89,14 +93,11 @@ void main() {
           if (counts.isEmpty) continue;
           final background = counts.keys.reduce((a,b) => counts[a]! > counts[b]! ? a : b);
           final foreground = counts.keys.reduce((a,b) => _ratio(a, background) > _ratio(b, background) ? a : b);
-          final style = ro.text is TextSpan ? (ro.text as TextSpan).style : null;
-          final fontSize = style?.fontSize ?? 14;
-          final large = fontSize >= 24 || fontSize >= 18.6667 && (style?.fontWeight ?? FontWeight.w400).value >= FontWeight.w700.value;
-          final minimum = large ? 3.0 : 4.5;
-          if (_ratio(foreground, background) < minimum) continue; // Existing unreadable ink is not a dim regression.
+          final original = _ratio(foreground, background);
+          if (original < 2.0) continue; // Halving a ratio under 2 would go below 1:1; nothing to measure.
           final fg = points[foreground]!, bg = points[background]!;
-          expect(_ratio(guided.rgb(fg.$1, fg.$2), guided.rgb(bg.$1, bg.$2)), greaterThanOrEqualTo(minimum),
-            reason: '${scene.id}: ${ro.text.toPlainText()}');
+          expect(_ratio(guided.rgb(fg.$1, fg.$2), guided.rgb(bg.$1, bg.$2)), lessThanOrEqualTo(original * .5),
+            reason: '${scene.id}: ${ro.text.toPlainText()} (original ${original.toStringAsFixed(2)})');
           checked++;
         }
         expect(checked, greaterThan(0), reason: 'at least one actual dimmed text line measured, not only shapes');

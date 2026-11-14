@@ -80,8 +80,10 @@ class SkeletonShape {
 }
 
 /// How strongly the r2 dim look veils a component (the scaffold colour at this
-/// opacity). Text keeps >= 4.5:1 contrast in light and dark [guide_r2_contrast].
-const kDimOpacity = .14;
+/// opacity). Owner decision (pilot APK e828832b): there is NO contrast floor;
+/// dimmed text is not meant to be read closely, and its contrast ratio is at most
+/// half of its original in light and dark [guide_r2_contrast].
+const kDimOpacity = .72;
 
 /// Words too common to make two labels look alike (r2 D-S2). Words shorter
 /// than three letters are ignored as well.
@@ -107,27 +109,39 @@ bool isGuideControl(Widget w) => w is Pressable && w.onTap != null ||
 /// the target (a CONTROL inside the target's [group] box, or any unit sharing a
 /// content word with the target's label). Every other unit gets one dim layer.
 /// All rects are in the page root's coordinates.
+/// How near a control must be to the target to stay skeleton (owner, pilot APK
+/// feedback B): the gap between its box and the target's box is at most this many
+/// logical px (about one row: the 8-12 px gaps of a card list plus a small
+/// margin). Controls beyond it are dimmed with the rest of their component.
+/// Applies to content inside the visible scroll area only; P6 scroll-through
+/// content is skeleton at any distance ([DimPolicy.skeletonAll]).
+const kSkeletonReach = 56.0;
+
+/// Gap between two boxes: 0 when they overlap, else the distance between their edges.
+double rectGap(Rect a, Rect b) {
+  final dx = math.max(0.0, math.max(a.left - b.right, b.left - a.right));
+  final dy = math.max(0.0, math.max(a.top - b.bottom, b.top - a.bottom));
+  return math.sqrt(dx * dx + dy * dy);
+}
+
 class DimPolicy {
-  final Rect? group;
+  final Rect? targetRect;
   final Set<String> targetWords;
   final List<Rect> controls;
 
   /// P6: the target is off screen, so everything on screen collapses to
   /// skeleton (the user scrolls through it toward the marker).
   final bool skeletonAll;
-  const DimPolicy({this.group, this.targetWords = const {}, this.controls = const [], this.skeletonAll = false});
+  const DimPolicy({this.targetRect, this.targetWords = const {}, this.controls = const [], this.skeletonAll = false});
 
-  /// Reads the policy for [target] from the laid-out [page]: the declared
-  /// [declaredGroup] box, else the nearest Flex/ListView/SliverList within two
-  /// render-object ancestors of the target control (wrappers such as Padding
-  /// count as levels in the same way the review oracle counts them).
-  static DimPolicy of(Element page, TargetFound target, {Rect? declaredGroup}) {
+  /// Reads the policy for [target] from the laid-out [page]: the controls and
+  /// the words of the target's label. A control is a look-alike when it is within
+  /// [kSkeletonReach] of the target.
+  static DimPolicy of(Element page, TargetFound target) {
     final root = laidOutBox(page);
     if (root == null) return const DimPolicy();
     final controls = <Rect>[];
     final words = <String>{};
-    Rect? group = declaredGroup;
-    var groupFound = group != null;
     for (final e in onstageElements(page)) {
       final box = laidOutBox(e);
       if (box == null) continue;
@@ -135,36 +149,22 @@ class DimPolicy {
       if (isGuideControl(w)) {
         final r = rectInRoot(box, root).intersect(visibleBoundsInRoot(box, root));
         if (!r.isEmpty) controls.add(r);
-        if (!groupFound && identical(box, target.renderObject)) {
-          groupFound = true;
-          var levels = 0;
-          e.visitAncestorElements((parent) {
-            if (parent is RenderObjectElement && ++levels > 2) return false;
-            final pw = parent.widget;
-            if (pw is Flex || pw is ListView || pw is SliverList) {
-              final pb = laidOutBox(parent);
-              if (pb != null) group = rectInRoot(pb, root);
-              return false;
-            }
-            return !identical(parent, page);
-          });
-        }
       }
       final ro = e is RenderObjectElement ? e.renderObject : null;
       if (ro is RenderParagraph && ro.hasSize && target.rect.contains(rectInRoot(ro, root).center)) {
         words.addAll(contentWords(ro.text.toPlainText()));
       }
     }
-    return DimPolicy(group: group, targetWords: words, controls: controls);
+    return DimPolicy(targetRect: target.rect, targetWords: words, controls: controls);
   }
 
-  bool _contains(Rect outer, Rect inner) => inner.left >= outer.left - .5 && inner.top >= outer.top - .5 &&
+  static bool _contains(Rect outer, Rect inner) => inner.left >= outer.left - .5 && inner.top >= outer.top - .5 &&
       inner.right <= outer.right + .5 && inner.bottom <= outer.bottom + .5;
 
   bool lookalike(Rect bounds, Set<String> words) {
     if (skeletonAll) return true;
-    final g = group;
-    if (g != null && _contains(g, bounds) && controls.any((c) => c.overlaps(bounds) &&
+    final t = targetRect;
+    if (t != null && rectGap(bounds, t) <= kSkeletonReach && controls.any((c) => c.overlaps(bounds) &&
         _contains(c.inflate(2), bounds) && c.width * c.height < 2 * bounds.width * bounds.height)) {
       return true;
     }

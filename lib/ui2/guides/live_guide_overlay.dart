@@ -101,6 +101,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   Rect? _target;
   RenderBox? _targetObject;
   List<Rect> _chrome = const [], _legible = const [];
+  /// The control that leads back to the guide (off path) or to the step's tab: focused like a target.
+  Rect? _route;
   bool _yielding = true;
   Element? _page;
   GuideStep? _step;
@@ -198,9 +200,12 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
 
   /// Dim plan for an off-path page, in the page's coordinates: whole components
   /// (tabs included) except the route-back control, which stays full colour.
-  List<SkeletonShape> _offPathPlan(Element page) {
+  /// [tabOnly]: the route is the guide's start tab (never the NavBar back arrow); used
+  /// when the step's target is on a tab the user is not on. Returns the plan and the
+  /// route control's rect (page coordinates), which gets the target's outline and pill.
+  (List<SkeletonShape>, Rect?) _offPathPlan(Element page, {bool tabOnly = false}) {
     final root = laidOutBox(page);
-    if (root == null) return const [];
+    if (root == null) return (const [], null);
     Rect rectOf(Element e) { final b = laidOutBox(e)!; return rectInRoot(b, root); }
     final tabs = <Rect>[];
     Rect? tabBar, back;
@@ -216,7 +221,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         navBar = e;
       }
     }
-    if (navBar != null) {
+    if (navBar != null && !tabOnly) {
       for (final c in onstageElements(navBar)) {
         if (c.widget is Pressable && laidOutBox(c) != null) { back = rectOf(c); break; }
       }
@@ -226,6 +231,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       GuideStart.settings => -1,
     };
     if (back == null && startTab >= 0 && startTab < tabs.length) back = tabs[startTab];
+    final route = back;
     final keepers = [?back];
     final plan = skeletonPlan(page, keep: keepers, chrome: [?tabBar], dim: const DimPolicy());
     final scaffold = (page.findAncestorWidgetOfExactType<Theme>()?.data ?? ThemeData.fallback()).scaffoldBackgroundColor;
@@ -236,7 +242,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       if (back != null && tab.overlaps(back)) continue;
       out.add(SkeletonShape(kind: SkeletonKind.dim, rect: tab, color: veil, section: section++));
     }
-    return out;
+    return (out, route);
   }
 
   // The user's card height for THIS run, as a fraction of the travel available
@@ -474,41 +480,57 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
             for (final found in content.resolve(page, l)) { keep.add(found.rect); }
           }
         }
+        // Live status (title row, running timer) stays readable and clear of the card.
+        final status = dimLook ? liveStatusRects(page) : const <Rect>[];
+        keep.addAll(status);
         final localChrome = defaultSkeletonChrome(page);
         chrome = localChrome.map(intoOverlay).toList();
-        legible = legibleContent(page, keep: keep).map(intoOverlay).toList();
+        legible = [...legibleContent(page, keep: keep), ...status].map(intoOverlay).toList();
         DimPolicy? policy;
         if (dimLook) {
-          final declared = step.group?.resolve(page, l);
           // P6: target (partly) off screen -> the content on screen collapses to skeleton.
           policy = outside ? const DimPolicy(skeletonAll: true)
-              : DimPolicy.of(page, resolution, declaredGroup: declared is TargetFound ? declared.rect : null);
+              : DimPolicy.of(page, resolution);
         }
         shapes = [for (final shape in skeletonPlan(page, keep: keep, chrome: localChrome, dim: policy))
           SkeletonShape(kind: shape.kind, rect: intoOverlay(shape.rect), section: shape.section, color: shape.color)];
       }
     }
+    Rect? route;
     if (page != null && box != null && step != null && resolution is! TargetFound &&
         widget.run.guide.look == GuideLook.dim) {
-      // P6: the target is not built yet; everything on screen is the way to it.
       final transform = box.getTransformTo(layer);
       final localChrome = defaultSkeletonChrome(page);
       chrome = [for (final r in localChrome) MatrixUtils.transformRect(transform, r)];
-      shapes = [for (final shape in skeletonPlan(page, keep: const [], chrome: localChrome, dim: const DimPolicy(skeletonAll: true)))
-        SkeletonShape(kind: shape.kind, rect: MatrixUtils.transformRect(transform, shape.rect),
-          section: shape.section, color: shape.color)];
+      final (tabPlan, tab) = resolution is TargetAbsent ? _offPathPlan(page, tabOnly: true) : (const <SkeletonShape>[], null);
+      if (tab != null) {
+        // The step's target is on a tab the user is not on: that tab is the route
+        // (outline and pill like a target; it passes taps), the rest is dimmed.
+        route = MatrixUtils.transformRect(transform, tab);
+        shapes = [for (final shape in tabPlan)
+          SkeletonShape(kind: shape.kind, rect: MatrixUtils.transformRect(transform, shape.rect),
+            section: shape.section, color: shape.color)];
+      } else {
+        // P6: the target is not built yet; everything on screen is the way to it.
+        shapes = [for (final shape in skeletonPlan(page, keep: const [], chrome: localChrome, dim: const DimPolicy(skeletonAll: true)))
+          SkeletonShape(kind: shape.kind, rect: MatrixUtils.transformRect(transform, shape.rect),
+            section: shape.section, color: shape.color)];
+      }
     }
     if (page != null && box != null && step == null && widget.run.state is GuideOffPath &&
         widget.run.guide.look == GuideLook.dim) {
       // Off path (dim look): everything dims except the one control one step
-      // closer to the guide (NavBar back arrow, or the start tab).
+      // closer to the guide (NavBar back arrow, or the start tab); it is focused
+      // like a target.
       final transform = box.getTransformTo(layer);
-      shapes = [for (final shape in _offPathPlan(page))
+      final (plan, back) = _offPathPlan(page);
+      if (back != null) route = MatrixUtils.transformRect(transform, back);
+      shapes = [for (final shape in plan)
         SkeletonShape(kind: shape.kind, rect: MatrixUtils.transformRect(transform, shape.rect),
           section: shape.section, color: shape.color)];
     }
     final changed = _page != page || _step != step || _target != target || _yielding != (page == null) ||
-      !_sameShapes(_shapes, shapes) || !listEquals(_chrome, chrome) || !listEquals(_legible, legible);
+      !_sameShapes(_shapes, shapes) || !listEquals(_chrome, chrome) || !listEquals(_legible, legible) || _route != route;
     _page = page;
     _step = step;
     _target = target;
@@ -516,6 +538,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     _shapes = shapes;
     _chrome = chrome;
     _legible = legible;
+    _route = route;
     _yielding = page == null;
     if (changed) setState(() {});
   }
@@ -554,6 +577,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       final marked = show && target != null && step != null && revealProgress == 1 &&
           outline != null && !outline.isEmpty;
       final dimLook = run.guide.look == GuideLook.dim;
+      final routeOutline = target == null && show ? _route?.inflate(kGuideOutlineGap).intersect(screen) : null;
+      final routeMarked = routeOutline != null && !routeOutline.isEmpty;
       // The target is hidden: scrolled off (resolved, outline empty) or, in the
       // dim look, not built yet (then the way to it lies below).
       final offscreen = show && step != null && step.action == GuideAction.scrollThenTap &&
@@ -581,9 +606,9 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
             onVerticalDragEnd: (d) { _pageDrag?.end(d); _pageDrag = null; },
             onVerticalDragCancel: () { _pageDrag?.cancel(); _pageDrag = null; },
             child: CustomPaint(key: LiveGuideOverlay.skeletonKey,
-              painter: _GuidePainter(paintedShapes, p, [?target, ..._chrome])),
+              painter: _GuidePainter(paintedShapes, p, [?target, ?_route, ..._chrome])),
           ))),
-        if (marked) Positioned.fromRect(rect: outline, child: ExcludeSemantics(child: IgnorePointer(child: DecoratedBox(
+        if (marked || routeMarked) Positioned.fromRect(rect: (marked ? outline : routeOutline)!, child: ExcludeSemantics(child: IgnorePointer(child: DecoratedBox(
           key: LiveGuideOverlay.outlineKey,
           decoration: BoxDecoration(border: Border.all(color: kGuideMarkerColor, width: 2.5), borderRadius: R.rMd),
         )))),
@@ -593,12 +618,12 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
           child: const SizedBox.expand(),
         )),
         if (show) Positioned.fill(child: CustomMultiChildLayout(
-          delegate: _GuideLayout(bounds, marked ? outline : target ?? (offscreen ? Rect.fromLTWH(bounds.center.dx, bounds.bottom + 10, 1, 1) : null),
-            _legible, _cardFraction, _cardGeometry),
+          delegate: _GuideLayout(bounds, marked ? outline : routeMarked ? routeOutline : target ?? (offscreen ? Rect.fromLTWH(bounds.center.dx, bounds.bottom + 10, 1, 1) : null),
+            _legible, _cardFraction, _cardGeometry, widget.run.guide.look == GuideLook.dim),
           children: [
             LayoutId(id: 'card', child: _cardMover(GuideStepCard(model: model, onExit: widget.onExit,
               onBackToGuide: state is GuideOffPath && state.lastIndex != null ? widget.onBackToGuide : null))),
-            if (marked) LayoutId(id: 'pill', child: ExcludeSemantics(child: IgnorePointer(
+            if (marked || routeMarked) LayoutId(id: 'pill', child: ExcludeSemantics(child: IgnorePointer(
               child: GuideMarkerPill(l.guideTapMarker, key: LiveGuideOverlay.tapPillKey)))),
             if ((marked || offscreen) && step!.action == GuideAction.scrollThenTap) LayoutId(id: 'scroll', child: ExcludeSemantics(child: IgnorePointer(
               child: RotatedBox(key: LiveGuideOverlay.scrollMarkerKey, quarterTurns: offscreen && target != null && target.bottom <= 0 ? 3 : 1,
@@ -621,7 +646,8 @@ class _GuideLayout extends MultiChildLayoutDelegate {
   final List<Rect> avoid;
   final double? fraction;
   final _CardGeometry geometry;
-  _GuideLayout(this.bounds, this.target, this.avoid, this.fraction, this.geometry);
+  final bool seekGap;
+  _GuideLayout(this.bounds, this.target, this.avoid, this.fraction, this.geometry, this.seekGap);
   @override
   void performLayout(Size size) {
     Rect? pill;
@@ -644,7 +670,7 @@ class _GuideLayout extends MultiChildLayoutDelegate {
     final cardSize = layoutChild('card', BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight));
     final lower = bounds.top + kGuideCardGap;
     final upper = math.max(lower, bounds.bottom - kGuideCardGap - cardSize.height);
-    final card = placeGuideCard(bounds: bounds, cardSize: cardSize, keepClear: keep, avoid: avoid,
+    final card = placeGuideCard(bounds: bounds, cardSize: cardSize, keepClear: keep, avoid: avoid, seekGap: seekGap,
       preferredTop: fraction == null ? null : lower + fraction! * (upper - lower));
     positionChild('card', card.topLeft);
     geometry..top = card.top..lower = lower..upper = upper..step = math.max(40, (upper - lower) / 5);

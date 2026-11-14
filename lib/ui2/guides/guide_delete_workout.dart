@@ -7,7 +7,7 @@
 // There is no delete on a session's summary: the bin is an icon with only a
 // semantics label (workout_screen.dart:1113). The row shows it only for a
 // session with an id. With several sessions the label is several controls: the
-// target is then ambiguous and the run says so (the missing-target help). One
+// target is the topmost bin (firstLabel; a plain label was ambiguous). One
 // 'any' variant.
 
 import 'guide.dart';
@@ -16,7 +16,9 @@ import 'guide_labels.dart';
 import 'guide_target.dart';
 
 final _historyTab = GuideTarget.label(ScreenLabel.workoutTabHistory);
-final _bin = GuideTarget.label(ScreenLabel.workoutDeleteSessionLabel);
+// Several sessions each have a bin with this label; the guide points at the topmost
+// (owner, device: a plain label was "ambiguous" on a real history and showed nothing).
+final _bin = GuideTarget.firstLabel(ScreenLabel.workoutDeleteSessionLabel);
 
 Guide get deleteWorkoutGuide => Guide(
       id: 'delete-workout',
