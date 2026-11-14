@@ -116,11 +116,17 @@ List<Rect> legibleContent(Element root, {required List<Rect> keep}) {
 /// CLAIM(pill-order): left, then above, then below, skipping any position that
 /// leaves the frame or touches legible text
 /// [guide_view_test 'GuidePillLayout'].
+/// Which side of the target a pill sits on.
+enum GuidePillSide { above, below }
+
 class GuidePillLayout extends SingleChildLayoutDelegate {
   final Rect outline;
   final Rect bounds;
   final List<Rect> avoid;
-  const GuidePillLayout(this.outline, this.bounds, [this.avoid = const []]);
+
+  /// The side chosen on the previous frame of the same step (null on the first).
+  final GuidePillSide? previous;
+  const GuidePillLayout(this.outline, this.bounds, [this.avoid = const [], this.previous]);
 
   // The default would hand the pill the whole frame as TIGHT constraints.
   @override
