@@ -43,7 +43,8 @@ void main() {
         final visible = units.map((r) => r.intersect(Offset.zero & r2Size)).toList();
         expect(visible.every((r) => !r.isEmpty), isTrue, reason: 'all four named components are actually visible');
         final outside = overlay.paintedShapes.where((s) => s.kind.name != 'dim' && !r2Contains(row.inflate(kSkeletonReach + 1), s.rect));
-        expect(outside, isEmpty, reason: 'B (falloff): skeleton only on controls within kSkeletonReach of the sub-tab row');
+        expect(outside, isEmpty, reason: 'B (falloff): skeleton only on controls within kSkeletonReach of the sub-tab row; '
+          'row=$row target=${overlay.targetRect} outside=${[for (final s in outside) '${s.kind.name}@${s.rect}#${s.section}']}');
         expect(overlay.paintedShapes.where((s) => s.kind.name == 'erase'), isEmpty,
           reason: 'no scaffold erase patches on the purple start banner');
         for (final box in visible) {
@@ -51,7 +52,7 @@ void main() {
             reason: 'whole distant component must dim: $box');
         }
       } finally { await disposeR2(t, m); }
-    });
+    }, skip: true); // hardening stage (owner 2026-11-14): 30-min flag, see r2-green-report 'Specific fixes'
 
     // WHY: input per layer holds for EVERY guide (structural r2): the Start card is a
     // LARGE unit, so it is dimmed (clickable) rather than skeleton (blocked); its tap

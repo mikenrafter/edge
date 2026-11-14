@@ -574,6 +574,13 @@ void main() {
           await settleLiveGuide(t, frames: 14);
         }
         expect(run.state, isA<GuideFinished>());
+        // The last control opens the app's confirm sheet, a modal: the overlay steps aside for
+        // it (D-S9; live_guide_integration_test), so Done is announced once the user has
+        // answered it. The sheet's own announced node answers it ("Keep it": nothing is deleted).
+        final keep = find.semantics.byLabel(RegExp('^Keep it'));
+        expect(keep, findsOneWidget, reason: 'the confirm sheet is announced');
+        t.semantics.tap(keep);
+        await settleLiveGuide(t, frames: 14);
         expect(find.semantics.byLabel(r2Locale.guideDoneTitle), findsOneWidget, reason: 'Done is announced');
       } finally {
         handle.dispose(); // before the end-of-test check, which runs ahead of tear-downs
