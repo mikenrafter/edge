@@ -266,10 +266,10 @@ class GuideNavigation {
 
   /// Screen identity is present during loading. The marker is available for
   /// pages whose selected branch changes independently of their root widget.
-  static GuideNode? location(Element root) {
+  static GuideNode? location(Element root, {bool includeOffstage = false}) {
     GuideNode? found;
     var inActivity = false, inHealth = false;
-    for (final e in onstageElements(root)) {
+    for (final e in includeOffstage ? _mountedElements(root) : onstageElements(root)) {
       final w = e.widget;
       if (w is GuideLocation) return w.node;
       if (w is MetricDetail) {
@@ -325,6 +325,31 @@ class GuideNavigation {
       }
     }
     return found;
+  }
+
+  static Iterable<Element> _mountedElements(Element root) sync* {
+    yield root;
+    final children = <Element>[];
+    root.visitChildren(children.add);
+    for (final child in children) {
+      yield* _mountedElements(child);
+    }
+  }
+
+  /// A shell tab restores its retained branch, rather than its default branch.
+  /// Read only mounted identities: an unvisited lazy tab keeps the default path.
+  static GuideNode? parkedLocation(Element page, GuideNode tab) {
+    final shell = onstageElements(page).where((e) => e.widget is AppShell).firstOrNull;
+    final index = tabIndex(tab);
+    if (shell == null || index == null) return null;
+    final stack = onstageElements(shell).where((e) => e.widget is IndexedStack).firstOrNull;
+    if (stack == null) return null;
+    Element? raw;
+    stack.visitChildren((e) => raw ??= e);
+    final branches = <Element>[];
+    raw?.visitChildren(branches.add);
+    if (index >= branches.length) return null;
+    return location(branches[index], includeOffstage: true);
   }
 
   static int? tabIndex(GuideNode node) => switch (tabOf(node)) {

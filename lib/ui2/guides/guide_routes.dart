@@ -29,8 +29,10 @@ class GuideRouteObserver extends NavigatorObserver with ChangeNotifier {
     final pages = _stack.whereType<PageRoute<dynamic>>().toList();
     final hops = <GuideHop>[];
     GuideNode? here;
+    Element? rootPage;
     for (var i = pages.length - 1; i >= 0; i--) {
       final root = pages[i].subtreeContext;
+      rootPage = root is Element && root.mounted ? root : null;
       here = root is Element && root.mounted ? GuideNavigation.location(root) : null;
       if (here != null && GuideNavigation.onPath(here, destination)) break;
       if (i == 0) break;
@@ -38,7 +40,19 @@ class GuideRouteObserver extends NavigatorObserver with ChangeNotifier {
       final back = previous is Element && previous.mounted ? GuideNavigation.location(previous) : null;
       hops.add(GuideHop(back ?? destination, GuideHopKind.back));
     }
-    if (here != null) hops.addAll(GuideNavigation.route(here, destination));
+    if (here != null) {
+      final tail = GuideNavigation.route(here, destination);
+      final first = tail.firstOrNull;
+      final parked = first?.kind == GuideHopKind.tab && rootPage != null
+          ? GuideNavigation.parkedLocation(rootPage, GuideNavigation.tabOf(first!.node))
+          : null;
+      if (parked == null) {
+        hops.addAll(tail);
+      } else {
+        hops.add(GuideHop(parked, GuideHopKind.tab));
+        hops.addAll(GuideNavigation.route(parked, destination));
+      }
+    }
     return hops;
   }
 
