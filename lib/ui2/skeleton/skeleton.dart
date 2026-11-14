@@ -30,7 +30,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../grammar.dart' show GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface;
+import '../grammar.dart' show GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface, SubTabs;
 import '../guides/guide_target.dart';
 import '../guides/tree_geometry.dart';
 import '../theme.dart';
@@ -152,10 +152,20 @@ class DimPolicy {
 
   /// Off path: the cards next to [focus] stay lit instead of dimmed.
   final bool neighboursLit;
-  const DimPolicy({this.focus, this.skeletonAll = false, this.placeholders = true, this.neighboursLit = false});
+  final bool navigationTarget;
+  const DimPolicy({this.focus, this.skeletonAll = false, this.placeholders = true, this.neighboursLit = false, this.navigationTarget = false});
 
   /// The policy for a step whose [target] was found.
-  static DimPolicy of(Element page, TargetFound target) => DimPolicy(focus: target.rect);
+  static DimPolicy of(Element page, TargetFound target) {
+    final root = laidOutBox(page);
+    final navigation = root != null && onstageElements(page).any((e) {
+      final w = e.widget;
+      final box = laidOutBox(e);
+      return (w is SubTabs || w.runtimeType.toString() == '_TabBar') && box != null &&
+          rectInRoot(box, root).contains(target.rect.center);
+    });
+    return DimPolicy(focus: target.rect, navigationTarget: navigation);
+  }
 }
 
 /// A shape before its unit has a number.
@@ -311,7 +321,7 @@ class _Planner {
     final box = laidOutBox(card);
     if (box == null) return null;
     final bounds = visibleOf(box);
-    if (bounds.isEmpty) return null;
+    if (bounds.isEmpty && !heading) return null;
     final surfaces = <_Draft>[];
     final items = <_Item>[];
     // A control that wraps a Surface / Section (Pressable(child: Surface)) is that card.
@@ -379,34 +389,52 @@ class _WindowLook {
   late final double spanTop, spanBottom, firstCardTop;
 
   _WindowLook(List<_Unit> units, this.policy, List<Rect> keep) {
-    Rect boxOf(_Unit u) => u.bounds;
-    final all = [
-      for (final u in units)
-        if (u.card) u,
-    ]..sort((a, b) {
-        final byTop = boxOf(a).top.compareTo(boxOf(b).top);
-        return byTop != 0 ? byTop : boxOf(a).left.compareTo(boxOf(b).left);
-      });
+    Rect boxOf(_Unit u) => u.fullBounds ?? u.bounds;
+    final all = [for (final u in units) if (u.card) u];
     cards = all;
     firstCardTop = all.isEmpty ? double.infinity : boxOf(all.first).top;
     final focus = policy.focus;
     _Unit? o, a, b;
-    if (focus != null) {
+    if (focus != null && !policy.navigationTarget) {
       final at = all.indexWhere((c) => boxOf(c).contains(focus.center));
       final inside = at >= 0 ? at : all.indexWhere((c) => boxOf(c).overlaps(focus));
       if (inside >= 0) {
         o = all[inside];
-        if (inside > 0) a = all[inside - 1];
-        if (inside + 1 < all.length) b = all[inside + 1];
-      } else {
-        for (final c in all) {
-          if (boxOf(c).center.dy < focus.center.dy) {
-            a = c;
-          } else {
-            b ??= c;
-          }
+        Element? column;
+        o.component?.visitAncestorElements((e) {
+          final w = e.widget;
+          if (w is Flex && w.direction == Axis.vertical) { column = e; return false; }
+          return true;
+        });
+        Element? slot(_Unit u) {
+          final c = column;
+          if (c == null) return null;
+          Element? child = u.component;
+          child?.visitAncestorElements((e) {
+            if (identical(e, c)) return false;
+            child = e;
+            return true;
+          });
+          return child;
+        }
+        final siblings = column == null ? all : all.where((u) {
+          var under = false;
+          u.component?.visitAncestorElements((e) {
+            if (identical(e, column)) { under = true; return false; }
+            return true;
+          });
+          return under;
+        }).toList();
+        final at = siblings.indexOf(o);
+        final ownSlot = slot(o);
+        for (var i = at - 1; i >= 0; i--) {
+          if (column == null || slot(siblings[i]) != ownSlot) { a = siblings[i]; break; }
+        }
+        for (var i = at + 1; i < siblings.length; i++) {
+          if (column == null || slot(siblings[i]) != ownSlot) { b = siblings[i]; break; }
         }
       }
+
     }
     own = o;
     above = a;
@@ -416,7 +444,7 @@ class _WindowLook {
   }
 
   GuideUnitLookKind? of(_Unit u) {
-    if (policy.skeletonAll) return GuideUnitLookKind.skeleton;
+    if (policy.skeletonAll || policy.placeholders && policy.navigationTarget && u.card) return GuideUnitLookKind.skeleton;
     if (identical(u, own)) return null;
     final isCard = u.card;
     if (identical(u, above) || identical(u, below)) return policy.neighboursLit ? null : GuideUnitLookKind.dim;

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ui2/grammar.dart';
 import 'package:openstrap_edge/ui2/guides/guide_run.dart';
+import 'package:openstrap_edge/ui2/guides/guide_dim.dart';
 import 'package:openstrap_edge/ui2/guides/guide_runner.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
@@ -46,24 +47,17 @@ void main() {
           reason: 'tab $i already paints in its component; the overlay must not duplicate it');
       }
       final page = app.runner.routes.page!;
-      // Owner placeholder rule: off path the route back's neighbouring card (the last card above the
-      // tab bar) is lit; every other component is dimmed, and nothing is a placeholder.
+      // Owner 14 Nov: neighbours are layout siblings. The bottom tab bar
+      // has no card sibling in the page column; every content unit dims.
       final units = r2Units(page);
-      final cards = [for (final u in units) if (u.element.widget is Section || u.element.widget is Surface) u]
-        ..sort((a, b) => a.rect.top.compareTo(b.rect.top));
-      final neighbour = cards.lastWhere((u) => u.rect.top < back.top);
       expect(overlay.paintedShapes.where((s) => s.kind.name != 'dim'), isEmpty, reason: 'off path: no placeholders');
       for (final unit in units) {
-        if (unit.rect.overlaps(neighbour.rect.deflate(1)) && r2Contains(neighbour.rect, unit.rect)) {
-          expect(overlay.paintedShapes.where((s) => s.rect.overlaps(unit.rect.deflate(1))), isEmpty,
-            reason: 'lit: inside the route back\'s neighbouring card: ${unit.text}');
-          continue;
-        }
         expect(overlay.paintedShapes.any((s) => s.kind.name == 'dim' && r2Contains(s.rect, unit.rect)), isTrue,
           reason: 'off-path component ${unit.element.widget.runtimeType}: ${unit.text}');
       }
-      final button = t.getRect(find.byKey(GuideStepCard.backToGuideKey));
-      expect(overlay.paintedShapes.where((s) => s.rect.overlaps(button)), isEmpty);
+      final button = t.element(find.byKey(GuideStepCard.backToGuideKey));
+      expect(GuideDimScope.controllerOf(button)!.looks!.lookOf(button), isNull,
+        reason: 'the instruction card belongs to the overlay, outside the dimmed page');
     } finally {
       app.runner.exit();
       await t.pumpWidget(const SizedBox());
