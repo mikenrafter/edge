@@ -159,9 +159,8 @@ class GuidePlan implements GuideLooseLooks {
     List<RenderBox> keep = const [],
     bool skeletonAll = false,
     int? revealed,
-    Map<Element, GuideUnitLook> extra = const {},
   }) {
-    final components = <Element, GuideUnitLook>{...extra};
+    final components = <Element, GuideUnitLook>{};
     final paragraphs = <RenderParagraph, GuideUnitLook>{};
     for (final u in plan.units) {
       if (revealed != null && u.section >= revealed) continue;
@@ -173,7 +172,7 @@ class GuidePlan implements GuideLooseLooks {
       final p = u.paragraph;
       if (p != null) paragraphs[p] = look;
     }
-    return GuidePlan._(page, components, paragraphs, {...plan.seen, ...extra.keys}, plan.seenLoose, keep,
+    return GuidePlan._(page, components, paragraphs, plan.seen, plan.seenLoose, keep,
         skeletonAll ? GuideUnitLook.skeleton : GuideUnitLook.dim);
   }
 

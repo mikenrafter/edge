@@ -47,6 +47,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_shell.dart' show AppShell;
 import '../grammar.dart' show NavBar, Pressable, ScreenTitle, Section, Surface;
 import '../theme.dart';
 import 'guide.dart';
@@ -103,7 +104,6 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   /// The plan per component (what the Surfaces, Sections and Pressables paint for
   /// themselves) and the sections no component paints (the overlay paints those).
   SkeletonPlan? _skeletonPlan;
-  Map<Element, GuideUnitLook> _extraLooks = const {};
   List<RenderBox> _keepBoxes = const [];
   List<RenderBox> _chromeBoxes = const [];
   Set<int> _staticSections = const {};
@@ -273,8 +273,13 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   /// shows at once (no progressive reveal) with the scroll marker.
   bool get _collapsed {
     final t = _liveTarget;
-    return _step != null && (t == null || !_onScreen(t, Offset.zero & _viewport));
+    return _step != null && (t == null ? _lazyTarget : !_onScreen(t, Offset.zero & _viewport));
   }
+
+  /// The step's target is not built yet but a scrollable could build it ([TargetNotBuilt]):
+  /// the way to it lies in the scroll. A target that is absent or ambiguous is not that:
+  /// there is nothing to scroll to, so nothing is collapsed and no marker is shown.
+  bool _lazyTarget = false;
   Size _viewport = Size.zero;
 
   /// [t] counts as on screen when it lies within [v] vertically and at least half of its
@@ -379,13 +384,13 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
 
   /// Dim plan for an off-path page, in the page's coordinates: whole components
   /// (tabs included) except the route-back control, which stays full colour.
-  /// [tabOnly]: the route is the guide's start tab (never the NavBar back arrow); used
-  /// when the step's target is on a tab the user is not on. Returns the plan, its
-  /// shapes, the tab components it dims by hand, and the route control's rect (page
-  /// coordinates), which gets the target's outline and pill.
-  (SkeletonPlan, List<SkeletonShape>, Map<Element, GuideUnitLook>, Rect?, _Route?) _offPathPlan(Element page, {bool tabOnly = false}) {
+  /// [routeTab]: the route is that tab of the shell (never the NavBar back arrow or the
+  /// guide's start tab); used when the step's target is inside a tab the user is not on
+  /// ([_tabHolding]). Returns the plan, its shapes, and the route control (rect in page
+  /// coordinates and what it is), which gets the target's outline and pill.
+  (SkeletonPlan, List<SkeletonShape>, Rect?, _Route?) _offPathPlan(Element page, {int? routeTab}) {
     final root = laidOutBox(page);
-    if (root == null) return (const SkeletonPlan([], [], {}, {}), const [], const {}, null, null);
+    if (root == null) return (const SkeletonPlan([], [], {}, {}), const [], null, null);
     Rect rectOf(Element e) { final b = laidOutBox(e)!; return rectInRoot(b, root); }
     final tabs = <Rect>[];
     final tabElements = <Element>[];
@@ -403,12 +408,12 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
         navBar = e;
       }
     }
-    if (navBar != null && !tabOnly) {
+    if (navBar != null && routeTab == null) {
       for (final c in onstageElements(navBar)) {
         if (c.widget is Pressable && laidOutBox(c) != null) { back = rectOf(c); backElement = c; break; }
       }
     }
-    final startTab = switch (widget.run.guide.start) {
+    final startTab = routeTab ?? switch (widget.run.guide.start) {
       GuideStart.today => 0, GuideStart.sleep => 1, GuideStart.activity => 2, GuideStart.health => 3,
       GuideStart.settings => -1,
     };
@@ -433,7 +438,35 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     // CLAIM(off-path-one-dim): tab sections belong to their component painters,
     // never the overlay as well [guide_r2_off_path_test].
     final tabPlan = SkeletonPlan(out, units, {...plan.seen, ...tabElements}, plan.seenLoose);
-    return (tabPlan, out, const <Element, GuideUnitLook>{}, route, routeElement == null ? null : _Route.of(routeElement, isTab: backIsTab));
+    return (tabPlan, out, route, routeElement == null ? null : _Route.of(routeElement, isTab: backIsTab));
+  }
+
+  /// The index of the tab of the shell under [page], other than the one on screen, whose
+  /// parked (mounted, hidden) screen holds [target]; null when no other tab does, or when
+  /// [page] has no shell. CLAIM(tab-route-only-when-found): a guide points at a tab only
+  /// when the target is really in it [guide_r2_tier2_test F1].
+  int? _tabHolding(Element page, GuideTarget target, AppLocalizations l) {
+    Element? shell;
+    for (final e in onstageElements(page)) {
+      if (e.widget is AppShell) { shell = e; break; }
+    }
+    if (shell == null) return null;
+    Element? stack;
+    for (final e in builtElements(shell)) {
+      if (e.widget is IndexedStack) { stack = e; break; }
+    }
+    if (stack == null) return null;
+    final shown = (stack.widget as IndexedStack).index;
+    Element? row;
+    stack.visitChildren((c) => row ??= c);
+    final raw = row;
+    if (raw == null) return null;
+    final screens = <Element>[];
+    raw.visitChildren(screens.add);
+    for (var i = 0; i < screens.length; i++) {
+      if (i != shown && target.resolve(screens[i], l) is TargetFound) return i;
+    }
+    return null;
   }
 
   // The user's card height for THIS run, as a fraction of the travel available
@@ -693,7 +726,6 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     Rect? target;
     var shapes = <SkeletonShape>[];
     SkeletonPlan? skeleton;
-    var extra = const <Element, GuideUnitLook>{};
     var keepBoxes = <RenderBox>[];
     var chrome = <Rect>[];
     var legible = <Rect>[];
@@ -739,16 +771,18 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       final transform = box.getTransformTo(layer);
       final localChrome = defaultSkeletonChrome(page);
       chrome = [for (final r in localChrome) MatrixUtils.transformRect(transform, r)];
-      final (tabPlan, tabShapes, tabExtra, tab, tabRoute) = resolution is TargetAbsent
-          ? _offPathPlan(page, tabOnly: true)
-          : (const SkeletonPlan([], [], {}, {}), const <SkeletonShape>[], const <Element, GuideUnitLook>{}, null, null);
+      // Only a target that EXISTS in another tab routes through that tab; one that is
+      // simply not on this page covers nothing.
+      final holding = resolution is TargetAbsent ? _tabHolding(page, step.target, l) : null;
+      final (tabPlan, tabShapes, tab, tabRoute) = holding != null
+          ? _offPathPlan(page, routeTab: holding)
+          : (const SkeletonPlan([], [], {}, {}), const <SkeletonShape>[], null, null);
       if (tab != null) {
         routeInfo = tabRoute;
         // The step's target is on a tab the user is not on: that tab is the route
         // (outline and pill like a target; it passes taps), the rest is dimmed.
         route = MatrixUtils.transformRect(transform, tab);
         skeleton = tabPlan;
-        extra = tabExtra;
         shapes = intoOverlayShapes(tabShapes, transform);
       } else if (resolution is TargetNotBuilt) {
         // P6: the target is not built yet; everything on screen is the way to it.
@@ -762,11 +796,10 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       // Off path: everything dims except the one control one step closer to the
       // guide (NavBar back arrow, or the start tab); it is focused like a target.
       final transform = box.getTransformTo(layer);
-      final (plan, planShapes, planExtra, back, backRoute) = _offPathPlan(page);
+      final (plan, planShapes, back, backRoute) = _offPathPlan(page);
       if (back != null) route = MatrixUtils.transformRect(transform, back);
       routeInfo = backRoute;
       skeleton = plan;
-      extra = planExtra;
       shapes = intoOverlayShapes(planShapes, transform);
     }
     // Sections that no component paints itself: the overlay paints those.
@@ -786,11 +819,11 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     _page = page;
     _step = step;
     _target = target;
+    _lazyTarget = resolution is TargetNotBuilt;
     _targetObject = resolution is TargetFound ? resolution.renderObject : null;
     _targetScrolls = _anchorsOf(_targetObject, scrollStates);
     _shapes = shapes;
     _skeletonPlan = skeleton;
-    _extraLooks = extra;
     _keepBoxes = keepBoxes;
     _staticSections = staticSections;
     _routeInfo = route == null ? null : routeInfo;
@@ -822,9 +855,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     }
     final units = plan.shapes.isEmpty ? 0 : plan.shapes.last.section + 1;
     final shown = _collapsed ? null : (revealProgress.clamp(0.0, 1.0) * units).floor();
-    final complete = shown == null || shown >= units;
     final next = GuidePlan.from(_page, plan,
-      keep: _keepBoxes, skeletonAll: _collapsed, revealed: shown, extra: complete ? _extraLooks : const {});
+      keep: _keepBoxes, skeletonAll: _collapsed, revealed: shown);
     _published = next;
     dim.setLooks(next);
     // The controller keeps the plan in force when [next] equals it.
@@ -836,6 +868,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   @override
   void deactivate() {
     _unpublish();
+    _dropPageDrag();
     super.deactivate();
   }
 
@@ -855,6 +888,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   @override
   void dispose() {
     _unpublish();
+    _dropPageDrag();
     _watchScrolls(const []);
     widget.routes.removeListener(_routeChanged);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_pointer);
@@ -868,7 +902,6 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
     final p = P.of(context);
-    _dropPageDrag();
     final run = widget.run;
     final state = run.state;
     final step = run.currentStep;
@@ -879,6 +912,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       GuideFinished() => GuideCardDone(run.guide.doneFooters),
     };
     final show = !_yieldNow && !run.isExited;
+    if (!show || _published == null) _dropPageDrag();
     // The root overlay sits above every route's Material, so text here would
     // fall back to the yellow-underlined debug style. A theme text style fixes
     // that without a Material, which would take part in hit testing.
@@ -888,7 +922,6 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       final target = _liveTarget; // laid out after the page below: a scroll shows in this frame
       final screen = Offset.zero & constraints.biggest;
       final outline = target?.inflate(kGuideOutlineGap).intersect(screen);
-    _dropPageDrag();
       final marked = show && target != null && step != null && revealProgress == 1 &&
           outline != null && !outline.isEmpty;
       final routeOutline = target == null && show ? _route?.inflate(kGuideOutlineGap).intersect(screen) : null;
@@ -896,7 +929,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       // The target is hidden: scrolled off (resolved, outline empty) or not built
       // yet (then the way to it lies below).
       final offscreen = show && step != null && step.action == GuideAction.scrollThenTap &&
-          (target == null ? true : revealProgress == 1 && (outline == null || outline.isEmpty));
+          (target == null ? _lazyTarget : revealProgress == 1 && (outline == null || outline.isEmpty));
       final padding = MediaQuery.paddingOf(context);
       var bounds = Rect.fromLTRB(screen.left, padding.top, screen.right,
         screen.bottom - math.max(padding.bottom, MediaQuery.viewInsetsOf(context).bottom));
@@ -912,7 +945,6 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
             // Skeleton ink swallows activation (tap, long press, double tap) by being
             // hit-tested: the page below is not in the hit path there, so no activation
             // recognizer is needed (a DoubleTapGestureRecognizer here left a pending
-    if (!show || _published == null) _dropPageDrag();
             // timer after every press). A vertical drag is handed to the page's own
             // scrollable so P6 scroll-through still works.
             onVerticalDragStart: _dragStart, onVerticalDragUpdate: (d) => _pageDrag?.drag?.update(d),
@@ -958,6 +990,20 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   }
 }
 
+/// A drag the overlay handed to the page's scrollable. It knows when the position
+/// itself ended or cancelled it (a disposed position resets the drag), so a late cancel
+/// never touches a position that is gone.
+class _PageDrag {
+  Drag? drag;
+  bool _live = true;
+  void ended() => _live = false;
+  void cancel() {
+    if (!_live) return;
+    _live = false;
+    drag?.cancel();
+  }
+}
+
 /// A scrollable and where it stood when the target was planned.
 class _ScrollAnchor {
   final ScrollPosition position;
@@ -990,20 +1036,6 @@ class _GuideLayout extends MultiChildLayoutDelegate {
   final Rect bounds;
   final Rect? target;
   final List<Rect> avoid;
-/// A drag the overlay handed to the page's scrollable. It knows when the position
-/// itself ended or cancelled it (a disposed position resets the drag), so a late cancel
-/// never touches a position that is gone.
-class _PageDrag {
-  Drag? drag;
-  bool _live = true;
-  void ended() => _live = false;
-  void cancel() {
-    if (!_live) return;
-    _live = false;
-    drag?.cancel();
-  }
-}
-
   final double? fraction;
   final _CardGeometry geometry;
   final bool seekGap;
