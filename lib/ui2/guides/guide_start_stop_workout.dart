@@ -11,6 +11,7 @@
 // live screen runs a periodic timer, so checks pump frames and never settle.
 
 import 'guide.dart';
+import 'guide_content.dart';
 import 'guide_copy.dart';
 import 'guide_labels.dart';
 import 'guide_target.dart';
@@ -39,6 +40,7 @@ Guide get startStopWorkoutGuide => Guide(
             id: 'choose-activity',
             target: _search,
             anchor: _search,
+            alsoTap: [PressableRows()], // "or tap one in the list"
             action: GuideAction.tap,
             caption: GuideCopy.startWorkoutCaptionChooseActivity,
           ),
@@ -46,6 +48,13 @@ Guide get startStopWorkoutGuide => Guide(
             id: 'start',
             target: _start,
             anchor: _start,
+            alsoRead: [ // "Check the details"
+              LabelledContent([
+                ScreenLabel.activitySetupRouteLabel,
+                ScreenLabel.activitySetupHeartRateLabel,
+                ScreenLabel.activitySetupPrivateLabel,
+              ]),
+            ],
             action: GuideAction.tap,
             caption: GuideCopy.startWorkoutCaptionStart,
           ),

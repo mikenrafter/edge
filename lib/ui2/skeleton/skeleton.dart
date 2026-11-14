@@ -49,6 +49,10 @@ enum SkeletonKind {
   /// scaffold, not on a card), so no glyph pixel survives at a bar's rounded
   /// corners. Carries [SkeletonShape.color].
   erase,
+
+  /// ONE translucent layer ([SkeletonShape.color], alpha included) over a whole
+  /// component's box: the r2 dim look. Never an erase patch.
+  dim,
 }
 
 @immutable
@@ -75,6 +79,99 @@ class SkeletonShape {
   });
 }
 
+/// How strongly the r2 dim look veils a component (the scaffold colour at this
+/// opacity). Text keeps >= 4.5:1 contrast in light and dark [guide_r2_contrast].
+const kDimOpacity = .14;
+
+/// Words too common to make two labels look alike (r2 D-S2). Words shorter
+/// than three letters are ignored as well.
+const _kStopwords = {
+  'the', 'and', 'for', 'you', 'your', 'are', 'how', 'these', 'this', 'that', 'with',
+  'from', 'tap', 'not', 'any', 'can', 'its', 'his', 'her', 'our', 'out', 'but',
+};
+
+/// The content words of [text]: lower case, >= 3 letters, no stopwords.
+Set<String> contentWords(String text) => {
+  for (final w in text.toLowerCase().split(RegExp(r'[^\p{L}\p{N}]+', unicode: true)))
+    if (w.length >= 3 && !_kStopwords.contains(w)) w,
+};
+
+/// True for a widget with tap semantics (a control the user can press).
+bool isGuideControl(Widget w) => w is Pressable && w.onTap != null ||
+    w is GestureDetector && (w.onTap != null || w.onLongPress != null) ||
+    w is InkResponse && w.onTap != null || w is ButtonStyleButton && w.onPressed != null ||
+    w is Semantics && (w.properties.onTap != null || w.properties.button == true) ||
+    w is TextField || w is Switch || w is Checkbox || w is Radio;
+
+/// The r2 dim look's rule for which non-kept units stay skeleton: look-alikes of
+/// the target (a CONTROL inside the target's [group] box, or any unit sharing a
+/// content word with the target's label). Every other unit gets one dim layer.
+/// All rects are in the page root's coordinates.
+class DimPolicy {
+  final Rect? group;
+  final Set<String> targetWords;
+  final List<Rect> controls;
+
+  /// P6: the target is off screen, so everything on screen collapses to
+  /// skeleton (the user scrolls through it toward the marker).
+  final bool skeletonAll;
+  const DimPolicy({this.group, this.targetWords = const {}, this.controls = const [], this.skeletonAll = false});
+
+  /// Reads the policy for [target] from the laid-out [page]: the declared
+  /// [declaredGroup] box, else the nearest Flex/ListView/SliverList within two
+  /// render-object ancestors of the target control (wrappers such as Padding
+  /// count as levels in the same way the review oracle counts them).
+  static DimPolicy of(Element page, TargetFound target, {Rect? declaredGroup}) {
+    final root = laidOutBox(page);
+    if (root == null) return const DimPolicy();
+    final controls = <Rect>[];
+    final words = <String>{};
+    Rect? group = declaredGroup;
+    var groupFound = group != null;
+    for (final e in onstageElements(page)) {
+      final box = laidOutBox(e);
+      if (box == null) continue;
+      final w = e.widget;
+      if (isGuideControl(w)) {
+        final r = rectInRoot(box, root).intersect(visibleBoundsInRoot(box, root));
+        if (!r.isEmpty) controls.add(r);
+        if (!groupFound && identical(box, target.renderObject)) {
+          groupFound = true;
+          var levels = 0;
+          e.visitAncestorElements((parent) {
+            if (parent is RenderObjectElement && ++levels > 2) return false;
+            final pw = parent.widget;
+            if (pw is Flex || pw is ListView || pw is SliverList) {
+              final pb = laidOutBox(parent);
+              if (pb != null) group = rectInRoot(pb, root);
+              return false;
+            }
+            return !identical(parent, page);
+          });
+        }
+      }
+      final ro = e is RenderObjectElement ? e.renderObject : null;
+      if (ro is RenderParagraph && ro.hasSize && target.rect.contains(rectInRoot(ro, root).center)) {
+        words.addAll(contentWords(ro.text.toPlainText()));
+      }
+    }
+    return DimPolicy(group: group, targetWords: words, controls: controls);
+  }
+
+  bool _contains(Rect outer, Rect inner) => inner.left >= outer.left - .5 && inner.top >= outer.top - .5 &&
+      inner.right <= outer.right + .5 && inner.bottom <= outer.bottom + .5;
+
+  bool lookalike(Rect bounds, Set<String> words) {
+    if (skeletonAll) return true;
+    final g = group;
+    if (g != null && _contains(g, bounds) && controls.any((c) => c.overlaps(bounds) &&
+        _contains(c.inflate(2), bounds) && c.width * c.height < 2 * bounds.width * bounds.height)) {
+      return true;
+    }
+    return words.any(targetWords.contains);
+  }
+}
+
 /// A shape before its unit has a number.
 class _Draft {
   final SkeletonKind kind;
@@ -99,7 +196,8 @@ class _Item {
 class _Unit {
   final Rect bounds;
   final List<_Draft> drafts;
-  const _Unit(this.bounds, this.drafts);
+  final Set<String> words;
+  const _Unit(this.bounds, this.drafts, [this.words = const {}]);
 }
 
 /// How far an erase reaches past its text line, so glyph overhang (descenders,
@@ -129,6 +227,7 @@ List<SkeletonShape> skeletonPlan(
   Element root, {
   required List<Rect> keep,
   List<Rect> chrome = const [],
+  DimPolicy? dim,
 }) {
   final rootBox = laidOutBox(root);
   if (rootBox == null) return const [];
@@ -197,6 +296,7 @@ List<SkeletonShape> skeletonPlan(
     if (bounds.isEmpty) return null;
     final surfaces = <_Draft>[];
     final items = <_Item>[];
+    final words = <String>{};
 
     void inner(Element e, bool onCard) {
       final w = e.widget;
@@ -212,6 +312,7 @@ List<SkeletonShape> skeletonPlan(
       }
       final ro = e is RenderObjectElement ? e.renderObject : null;
       if (ro is RenderParagraph && ro.hasSize) {
+        words.addAll(contentWords(ro.text.toPlainText()));
         items.addAll(linesOf(ro, onCard: here));
       } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
         final rect = visibleOf(ro);
@@ -228,13 +329,15 @@ List<SkeletonShape> skeletonPlan(
       return byLeft != 0 ? byLeft : a.tie.compareTo(b.tie);
     });
     final drafts = [...surfaces, for (final i in items) ...i.drafts];
-    return drafts.isEmpty ? null : _Unit(bounds, drafts);
+    return drafts.isEmpty ? null : _Unit(bounds, drafts, words);
   }
 
   final units = <_Unit>[];
   void find(Element e) {
     final w = e.widget;
-    if (w is Surface || w is Section) {
+    // The dim look treats the OUTERMOST control as one component too (its whole
+    // box, padding and background included), not just the text inside it.
+    if (w is Surface || w is Section || (dim != null && isGuideControl(w) && laidOutBox(e) != null)) {
       final unit = cardUnit(e);
       if (unit != null) units.add(unit);
       return; // everything inside belongs to this unit
@@ -245,8 +348,9 @@ List<SkeletonShape> skeletonPlan(
       final items = linesOf(ro, onCard: false);
       if (items.isNotEmpty) {
         units.add(_Unit(
-          items.map((i) => i.sortRect).reduce((a, b) => a.expandToInclude(b)),
+          dim != null ? visibleOf(ro) : items.map((i) => i.sortRect).reduce((a, b) => a.expandToInclude(b)),
           [for (final i in items) ...i.drafts],
+          contentWords(ro.text.toPlainText()),
         ));
       }
     } else if (ro is RenderBox && ro.hasSize && paintsVisual(w, ro)) {
@@ -265,6 +369,17 @@ List<SkeletonShape> skeletonPlan(
       final byTop = a.bounds.top.compareTo(b.bounds.top);
       return byTop != 0 ? byTop : a.bounds.left.compareTo(b.bounds.left);
     });
+  if (dim != null) {
+    final veil = scaffold.withValues(alpha: kDimOpacity);
+    return [
+      for (var i = 0; i < skeletonized.length; i++)
+        if (dim.lookalike(skeletonized[i].bounds, skeletonized[i].words))
+          ...[for (final d in skeletonized[i].drafts)
+            SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: i)]
+        else
+          SkeletonShape(kind: SkeletonKind.dim, rect: skeletonized[i].bounds, color: veil, section: i),
+    ];
+  }
   return [
     for (var i = 0; i < skeletonized.length; i++)
       for (final d in skeletonized[i].drafts)
@@ -713,6 +828,8 @@ class _RenderSkeleton extends RenderProxyBox {
           canvas.drawRRect(RRect.fromRectAndRadius(pill, Radius.circular(h / 2)), Paint()..color = p.line);
         case SkeletonKind.block:
           canvas.drawRRect(R.rMd.toRRect(s.rect), Paint()..color = p.line);
+        case SkeletonKind.dim:
+          canvas.drawRect(s.rect, Paint()..color = s.color!);
       }
     }
     canvas.restore();

@@ -338,16 +338,17 @@ void main() {
       expect(_step(app), 0);
     });
 
-    testWidgets('taps on other real controls of the page are absorbed (the Recovery ring does not open)', (t) async {
-      // why: spec "taps elsewhere are absorbed" on the real Today, whose rings are
-      // real buttons.
+    testWidgets('taps on other real controls of the page pass through on the dim pilot (the Recovery ring opens, the run goes off path)', (t) async {
+      // why: r2 owner decision (input per layer): dimmed content is clickable and
+      // does its normal thing; the off-path card is the recovery. Changed from the
+      // old "absorbed" rule because heart-rate-zones is a dim-look pilot guide.
       final app = await pumpLiveGuideApp(t);
       await _startFromHelp(t, app, 'heart-rate-zones');
       final l = _l(t);
       await t.tap(_label(l.homeRingRecovery), warnIfMissed: false);
       await _reveal(t);
-      expect(find.byType(ReadinessDetail), findsNothing);
-      expect(_step(app), 0);
+      expect(find.byType(ReadinessDetail), findsOneWidget);
+      expect(app.runner.activeRun?.state, isA<GuideOffPath>());
     });
 
     for (final locale in const [Locale('en'), Locale('de'), Locale('ru'), Locale('zh'), Locale('hi'), Locale('fr'), Locale('es')]) {

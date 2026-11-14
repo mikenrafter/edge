@@ -214,7 +214,8 @@ Rect placeGuideCard({
   required Size cardSize,
   required List<Rect> keepClear,
   List<Rect> avoid = const [],
-  // RED interface stub: ignored until user-position placement is implemented.
+  /// The user's chosen top for this run; a safe one is kept, an unsafe one
+  /// yields (never the other way round) to target/pill, then to [avoid].
   double? preferredTop,
 }) {
   final width = math.min(cardSize.width, bounds.width);
@@ -226,6 +227,11 @@ Rect placeGuideCard({
     final intersection = candidate.intersect(rect);
     return sum + (intersection.isEmpty ? 0 : intersection.width * intersection.height);
   });
+  if (preferredTop != null) {
+    final y = preferredTop.clamp(top.top, math.max(top.top, bottom.top)).toDouble();
+    final preferred = Rect.fromLTWH(x, y, width, height);
+    if (overlap(preferred, keepClear) == 0 && overlap(preferred, avoid) == 0) return preferred;
+  }
   final bottomKeep = overlap(bottom, keepClear), topKeep = overlap(top, keepClear);
   if (bottomKeep < topKeep) return bottom;
   if (topKeep < bottomKeep) return top;

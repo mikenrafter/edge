@@ -12,6 +12,9 @@ import 'guide_text.dart';
 enum ScreenLabel implements GuideText {
   activityLiveFinishSessionLabel,
   activityPickerSearchLabel,
+  activitySetupHeartRateLabel,
+  activitySetupPrivateLabel,
+  activitySetupRouteLabel,
   activitySetupStart,
   activityZonesEditYourOwnLink,
   activityZonesSetYourOwnLink,
@@ -42,6 +45,9 @@ enum ScreenLabel implements GuideText {
   String of(AppLocalizations l) => switch (this) {
         ScreenLabel.activityLiveFinishSessionLabel => l.activityLiveFinishSessionLabel,
         ScreenLabel.activityPickerSearchLabel => l.activityPickerSearchLabel,
+        ScreenLabel.activitySetupHeartRateLabel => l.activitySetupHeartRateLabel,
+        ScreenLabel.activitySetupPrivateLabel => l.activitySetupPrivateLabel,
+        ScreenLabel.activitySetupRouteLabel => l.activitySetupRouteLabel,
         ScreenLabel.activitySetupStart => l.activitySetupStart,
         ScreenLabel.activityZonesEditYourOwnLink => l.activityZonesEditYourOwnLink,
         ScreenLabel.activityZonesSetYourOwnLink => l.activityZonesSetYourOwnLink,
