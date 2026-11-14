@@ -30,6 +30,10 @@ import 'guide_labels.dart';
 import 'guide_target.dart';
 
 final _alarmRow = GuideTarget.label(ScreenLabel.settingsAlarmRowTitle);
+// The Sleep tab's own warning line: printed on that page in every state (sleep_detail.dart
+// `_frame`), so the anchor does not also resolve on Today or Health, which print a
+// "Sleep" label of their own.
+final _sleepTab = GuideTarget.firstLabel(ScreenLabel.sleepDetailMedicalDisclaimer);
 final _dayOnRow = GuideTarget.key(const ValueKey('alarm-day-enabled'));
 final _wakeTime = GuideTarget.key(const ValueKey('alarm-wake-time'));
 
@@ -46,7 +50,7 @@ Guide get alarmScheduleGuide => Guide(
           GuideStep(
             id: 'open-alarm',
             target: _alarmRow,
-            anchor: GuideTarget.label(ScreenLabel.sleepDetailNavTitle),
+            anchor: _sleepTab,
             action: GuideAction.scrollThenTap,
             caption: GuideCopy.alarmCaptionOpenAlarm,
           ),
