@@ -188,7 +188,7 @@ void main() {
     expect(look(o, next), 'dim');
   });
 
-  testWidgets('capture the three owner pages', (t) async {
+  testWidgets('capture the four owner pages', (t) async {
     final dir = _out!;
     {
       final key = GlobalKey();
@@ -205,9 +205,18 @@ void main() {
     }
     {
       final key = GlobalKey();
-      await _start(t, 'fix-sleep-times', key);
+      final app = await _start(t, 'fix-sleep-times', key);
       _dump(t, 'sleep1');
       await _png(t, key, '3-fix-sleep-times-step1-sleep.png');
+      app.runner.exit();
+      await t.pumpWidget(const SizedBox());
+      await t.pump();
+    }
+    {
+      final key = GlobalKey();
+      await _start(t, 'log-past-workout', key);
+      _dump(t, 'history1');
+      await _png(t, key, '4-log-past-workout-step1-activity-history.png');
     }
     expect(Directory(dir).existsSync(), isTrue);
   }, skip: _out == null || _out!.isEmpty);

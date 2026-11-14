@@ -107,11 +107,11 @@ void main() {
     expect(f.exits, 1);
   });
 
-  // WHY: the visual card must follow changing target geometry and restore the
-  // user's height when the conflict disappears in the SAME mounted run.
-  // # catches: helper works but overlay drops preferred height after auto-snap.
+  // WHY: late content cannot leave a target behind the card. Owner 14 Nov:
+  // after moving clear, hold the new position for the rest of this step.
+  // # catches: a covered target, or returning to an old gap during the same step.
   // proves: CLAIM(card-never-covers-target).
-  testWidgets('r2 mounted card snaps for target then restores dragged height', (t) async {
+  testWidgets('r3 mounted card moves clear of late content then holds its position', (t) async {
     final f = R2Fixture();
     await f.pump(t);
     final initial = _card(t);
@@ -126,7 +126,7 @@ void main() {
     expect(snapped.overlaps(t.getRect(find.byKey(LiveGuideOverlay.tapPillKey))), isFalse);
     f.targetTop.value = 100;
     await f.frames(t);
-    expect(_card(t).top, closeTo(chosen.top, 1));
+    expect(_card(t).top, closeTo(snapped.top, 1));
   });
 
   // WHY: the user's height belongs to the run, so advancing to another step

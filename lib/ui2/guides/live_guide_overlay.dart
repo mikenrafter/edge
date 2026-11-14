@@ -103,9 +103,15 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   final _layerKey = GlobalKey();
   late final AnimationController _reveal;
   late final AnimationController _pulse;
+  final _cardMotion = GuideCardMotion();
+  final _cardOpacity = ValueNotifier<double>(1);
+  Duration get _elapsed => _pulse.lastElapsedDuration ?? Duration.zero;
+  bool get _scrolling => _watchedScrolls.any((p) => p.isScrollingNotifier.value);
+
   void _pulsed() {
     _dim?.setPulse(guidePulseValue(_pulse.value));
     if (_staticSections.isNotEmpty) _staticTick.value++;
+    if (_cardMotion.isAnimating && mounted) setState(() {});
   }
   List<SkeletonShape> _shapes = const [];
   /// The plan per component (what the Surfaces, Sections and Pressables paint for
@@ -273,8 +279,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
 
   void _watchScrolls(Iterable<ScrollPosition> positions) {
     final next = positions.toSet();
-    for (final gone in _watchedScrolls.difference(next)) { gone.removeListener(_scrolled); }
-    for (final added in next.difference(_watchedScrolls)) { added.addListener(_scrolled); }
+    for (final gone in _watchedScrolls.difference(next)) { gone.removeListener(_scrolled); gone.isScrollingNotifier.removeListener(_scrolled); }
+    for (final added in next.difference(_watchedScrolls)) { added.addListener(_scrolled); added.isScrollingNotifier.addListener(_scrolled); }
     _watchedScrolls..clear()..addAll(next);
   }
 
@@ -351,6 +357,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
       _revealedPage = null;
       _revealedStep = null;
       _cardFraction = null;
+      _cardMotion.reset();
     }
   }
 
@@ -524,6 +531,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   void _moveCard(double dy) {
     final g = _cardGeometry;
     if (g.upper <= g.lower) return;
+    _cardMotion.reset();
     setState(() => _cardFraction = ((g.top + dy - g.lower) / (g.upper - g.lower)).clamp(0.0, 1.0));
   }
 
@@ -551,6 +559,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final g = _cardGeometry;
     if (g.upper <= g.lower) return;
     final top = (_cardDownTop + travel).clamp(g.lower, g.upper);
+    _cardMotion.reset();
     setState(() => _cardFraction = (top - g.lower) / (g.upper - g.lower));
   }
 
@@ -724,6 +733,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     if (page == null || !identical(page, _searchingPage)) widget.run.observe(page, l);
     final step = widget.run.currentStep;
     final newStep = _revealedPage != page || _revealedStep != step;
+    if (_revealedStep != step) _cardMotion.reset();
     if (page != null && step == null) {
       _revealedPage = null;
       _revealedStep = null;
@@ -956,6 +966,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     widget.run.removeListener(_changed);
     _reveal.dispose();
     _pulse.dispose();
+    _cardOpacity.dispose();
     _staticTick.dispose();
     super.dispose();
   }
@@ -1035,13 +1046,13 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
           child: const SizedBox.expand(),
         )),
         if (show) Positioned.fill(child: CustomMultiChildLayout(
-          delegate: _GuideLayout(bounds, marked ? outline : routeMarked ? routeOutline : target ?? (offscreen ? Rect.fromLTWH(bounds.center.dx, bounds.bottom + 10, 1, 1) : null),
-            _legible, _cardFraction, _cardGeometry, true),
+          delegate: _GuideLayout(bounds, target != null ? outline : routeMarked ? routeOutline : target ?? (offscreen ? Rect.fromLTWH(bounds.center.dx, bounds.bottom + 10, 1, 1) : null),
+            _legible, _cardFraction, _cardGeometry, true, _cardMotion, _elapsed, _scrolling, _cardOpacity),
           children: [
-            LayoutId(id: 'card', child: _cardMover(GuideStepCard(model: model, onExit: widget.onExit,
-              onBackToGuide: state is GuideOffPath && state.lastIndex != null ? widget.onBackToGuide : null), l)),
-            if (marked || routeMarked) LayoutId(id: 'pill', child: ExcludeSemantics(child: IgnorePointer(
-              child: GuideMarkerPill(l.guideTapMarker, key: LiveGuideOverlay.tapPillKey)))),
+            LayoutId(id: 'card', child: ValueListenableBuilder<double>(valueListenable: _cardOpacity, builder: (_, value, child) => Opacity(opacity: value, child: child), child: _cardMover(GuideStepCard(model: model, onExit: widget.onExit,
+              onBackToGuide: state is GuideOffPath && state.lastIndex != null ? widget.onBackToGuide : null), l))),
+            if (target != null || routeMarked) LayoutId(id: 'pill', child: ExcludeSemantics(child: IgnorePointer(
+              child: Opacity(opacity: marked || routeMarked ? 1 : 0, child: GuideMarkerPill(l.guideTapMarker, key: marked || routeMarked ? LiveGuideOverlay.tapPillKey : null))))),
             if ((marked || offscreen) && step.action == GuideAction.scrollThenTap) LayoutId(id: 'scroll', child: ExcludeSemantics(child: IgnorePointer(
               child: RotatedBox(key: LiveGuideOverlay.scrollMarkerKey, quarterTurns: offscreen && target != null && target.bottom <= 0 ? 3 : 1,
                 child: GuideMarkerPill(l.guideScrollMarker, arrow: true))))),
@@ -1093,6 +1104,7 @@ class _Route {
 /// Where the card last landed, written by layout and read by drag handling.
 class _CardGeometry {
   double top = 0, lower = 0, upper = 0, step = 80;
+  Rect? bounds;
 }
 
 class _GuideLayout extends MultiChildLayoutDelegate {
@@ -1102,7 +1114,11 @@ class _GuideLayout extends MultiChildLayoutDelegate {
   final double? fraction;
   final _CardGeometry geometry;
   final bool seekGap;
-  _GuideLayout(this.bounds, this.target, this.avoid, this.fraction, this.geometry, this.seekGap);
+  final GuideCardMotion cardMotion;
+  final Duration elapsed;
+  final bool scrolling;
+  final ValueNotifier<double> opacity;
+  _GuideLayout(this.bounds, this.target, this.avoid, this.fraction, this.geometry, this.seekGap, this.cardMotion, this.elapsed, this.scrolling, this.opacity);
   @override
   void performLayout(Size size) {
     Rect? pill;
@@ -1127,17 +1143,29 @@ class _GuideLayout extends MultiChildLayoutDelegate {
     final upper = math.max(lower, bounds.bottom - kGuideCardGap - cardSize.height);
     final card = placeGuideCard(bounds: bounds, cardSize: cardSize, keepClear: keep, avoid: avoid, seekGap: seekGap,
       preferredTop: fraction == null ? null : lower + fraction! * (upper - lower));
-    positionChild('card', card.topLeft);
-    geometry..top = card.top..lower = lower..upper = upper..step = math.max(40, (upper - lower) / 5);
+    if (geometry.bounds != bounds) { cardMotion.reset(); geometry.bounds = bounds; }
+    final held = cardMotion.top;
+    final heldRect = held == null ? null : Rect.fromLTWH(card.left, held, cardSize.width, cardSize.height);
+    final collision = heldRect != null && keep.any((r) => r.overlaps(heldRect));
+    cardMotion.place(card.top, scrolling: scrolling, collision: collision, elapsed: elapsed);
+    final top = cardMotion.top!.clamp(lower, upper);
+    final placed = Rect.fromLTWH(card.left, top, cardSize.width, cardSize.height);
+    positionChild('card', placed.topLeft);
+    // Opacity changes after layout so it cannot rebuild during this layout pass.
+    if (opacity.value != cardMotion.opacity) {
+      final value = cardMotion.opacity;
+      SchedulerBinding.instance.addPostFrameCallback((_) { if (opacity.hasListeners) opacity.value = value; });
+    }
+    geometry..top = top..lower = lower..upper = upper..step = math.max(40, (upper - lower) / 5);
     if (hasChild('scroll')) {
       final markerSize = layoutChild('scroll', BoxConstraints.loose(bounds.size));
-      final marker = GuidePillLayout(target!, bounds, [...avoid, card, ?pill]).place(markerSize);
+      final marker = GuidePillLayout(target!, bounds, [...avoid, placed, ?pill]).place(markerSize);
       positionChild('scroll', marker.topLeft);
     }
   }
   @override
   bool shouldRelayout(_GuideLayout old) => bounds != old.bounds || target != old.target ||
-      !listEquals(avoid, old.avoid) || fraction != old.fraction;
+      !listEquals(avoid, old.avoid) || fraction != old.fraction || scrolling != old.scrolling || elapsed != old.elapsed;
 }
 
 /// What the overlay's input and paint layer reads at paint and hit-test time, so a

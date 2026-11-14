@@ -175,7 +175,7 @@ class _GuideStepCardState extends State<GuideStepCard> {
       child: ExcludeSemantics(child: Pressable(key: GuideStepCard.exitKey, onTap: widget.onExit,
         child: Text(l.guideExit, style: F.cap.copyWith(color: p.ink2))))));
     return Material(
-      key: GuideStepCard.cardKey, color: p.card, borderRadius: R.rLg,
+      key: GuideStepCard.cardKey, color: p.card, borderRadius: R.rLg, elevation: 6, shadowColor: C.n900,
       child: DecoratedBox(
         decoration: BoxDecoration(border: Border.all(color: p.line), borderRadius: R.rLg),
         child: Padding(padding: const EdgeInsets.all(S.x4),
