@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
@@ -12,6 +13,7 @@ import 'package:openstrap_edge/ui2/profile/wearable_numbers.dart';
 import 'package:openstrap_edge/ui2/screens/detected_activities.dart';
 import 'package:openstrap_edge/ui2/screens/explorer.dart';
 import 'package:openstrap_edge/ui2/screens/moment_follow_up.dart';
+import 'package:openstrap_edge/ui2/screens/wellness_screen.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../backup/backup_support.dart';
@@ -29,6 +31,22 @@ class _ReadRepo extends GuideFakeRepo {
       {int? from, int? to, Set<String> signals = const {}}) async {
     await gate.future;
     return MetricRepo().getChart(metric, from: from, to: to, signals: signals);
+  }
+}
+
+class _BlockedJournalRepo extends GuideFakeRepo {
+  int journalReads = 0;
+  @override
+  Future<Map<String, dynamic>> getJournalInsights({String range = '90d'}) async => const {};
+  @override
+  Future<Map<String, dynamic>> getDayStress(String day) async => const {};
+  @override
+  Future<Map<String, dynamic>> getChart(String metric,
+      {int? from, int? to, Set<String> signals = const {}}) async => const {'points': []};
+  @override
+  Future<Map<String, JournalMetricValue>> getJournalMetrics(String day) {
+    journalReads++;
+    return Completer<Map<String, JournalMetricValue>>().future;
   }
 }
 
@@ -93,6 +111,21 @@ void main() {
     });
   }
 
+  // WHY: the Sleep plan has no journal/medication dependency. A stuck journal
+  // read must not keep its already available sleep values pending forever.
+  testWidgets('Sleep plan settles without reading unrelated journal fields', (t) async {
+    phoneSurface(t);
+    final repo = _BlockedJournalRepo();
+    final app = AppState.forTesting()..repo = repo;
+    addTearDown(app.dispose);
+    await t.pumpWidget(perfApp(app, const WellnessScreen(sleepPlanOnly: true)));
+    final run = ShiftRun(t);
+    await landed(run);
+    expect(repo.journalReads, 0);
+    expect(find.byWidgetPredicate((w) => w is PendingContent && w.pending), findsNothing);
+    await t.pumpWidget(const SizedBox());
+  });
+
   testWidgets('wearable day has a full pending body before cells arrive', (t) async {
     phoneSurface(t);
     final ready = ValueNotifier(false);
@@ -113,13 +146,6 @@ void main() {
 
   testWidgets('legacy moment review waits for SQLite without an empty-state flash', (t) async {
     phoneSurface(t);
-    final gate = Completer<void>(), started = Completer<void>();
-    late Future<void> lock;
-    await t.runAsync(() async {
-      final db = await LocalDb.instance;
-      lock = db.transaction((txn) async { started.complete(); await gate.future; });
-      await started.future;
-    });
     final app = AppState.forTesting();
     addTearDown(app.dispose);
     final run = ShiftRun(t);
@@ -127,8 +153,8 @@ void main() {
     run.opened();
     await run.frames([0, 150, 2500]);
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    await t.runAsync(() async { gate.complete(); await lock; });
     await landed(run);
+    expect(find.text('Nothing to follow up on'), findsOneWidget);
     check(run, 'legacy moment review');
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 3));
