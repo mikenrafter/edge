@@ -374,7 +374,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
     }
   }
 
-  Drag? _pageDrag;
+  /// The page drag this overlay's input layer handed off to the page's scrollable.
+  _PageDrag? _pageDrag;
 
   /// Dim plan for an off-path page, in the page's coordinates: whole components
   /// (tabs included) except the route-back control, which stays full colour.
@@ -508,7 +509,25 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       if (box is! RenderBox || !box.attached || !box.hasSize) continue;
       if ((box.localToGlobal(Offset.zero) & box.size).contains(details.globalPosition)) hit = state;
     }
-    _pageDrag = hit?.position.drag(details, () => _pageDrag = null);
+    _pageDrag = null;
+    if (hit != null) {
+      final handoff = _PageDrag();
+      handoff.drag = hit.position.drag(details, handoff.ended);
+      _pageDrag = handoff;
+    }
+  }
+
+  /// Ends the handed-off page drag, if one is live. CLAIM(drag-handoff-cancel): the input
+  /// layer's recognizer is disposed without telling anyone, and a drag nobody ends leaves
+  /// the page's Scrollable ignoring pointers (the user's next tap is lost). Called when the
+  /// layer leaves the tree, in build, on deactivate and dispose. Deferred to after the
+  /// frame: ending a drag notifies scroll listeners, which must not happen while the tree
+  /// is being built or finalized [guide_r2_tier2_test F2].
+  void _dropPageDrag() {
+    final handoff = _pageDrag;
+    if (handoff == null) return;
+    _pageDrag = null;
+    SchedulerBinding.instance.addPostFrameCallback((_) => handoff.cancel());
   }
 
   void _activateTarget() {
@@ -849,6 +868,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
     final p = P.of(context);
+    _dropPageDrag();
     final run = widget.run;
     final state = run.state;
     final step = run.currentStep;
@@ -868,6 +888,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       final target = _liveTarget; // laid out after the page below: a scroll shows in this frame
       final screen = Offset.zero & constraints.biggest;
       final outline = target?.inflate(kGuideOutlineGap).intersect(screen);
+    _dropPageDrag();
       final marked = show && target != null && step != null && revealProgress == 1 &&
           outline != null && !outline.isEmpty;
       final routeOutline = target == null && show ? _route?.inflate(kGuideOutlineGap).intersect(screen) : null;
@@ -891,10 +912,11 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
             // Skeleton ink swallows activation (tap, long press, double tap) by being
             // hit-tested: the page below is not in the hit path there, so no activation
             // recognizer is needed (a DoubleTapGestureRecognizer here left a pending
+    if (!show || _published == null) _dropPageDrag();
             // timer after every press). A vertical drag is handed to the page's own
             // scrollable so P6 scroll-through still works.
-            onVerticalDragStart: _dragStart, onVerticalDragUpdate: (d) => _pageDrag?.update(d),
-            onVerticalDragEnd: (d) { _pageDrag?.end(d); _pageDrag = null; },
+            onVerticalDragStart: _dragStart, onVerticalDragUpdate: (d) => _pageDrag?.drag?.update(d),
+            onVerticalDragEnd: (d) { _pageDrag?.drag?.end(d); _pageDrag = null; },
             onVerticalDragCancel: () { _pageDrag?.cancel(); _pageDrag = null; },
             // The dim and the skeleton are painted by the components themselves
             // (GuideDimScope); this layer paints only the sections no component
@@ -968,6 +990,20 @@ class _GuideLayout extends MultiChildLayoutDelegate {
   final Rect bounds;
   final Rect? target;
   final List<Rect> avoid;
+/// A drag the overlay handed to the page's scrollable. It knows when the position
+/// itself ended or cancelled it (a disposed position resets the drag), so a late cancel
+/// never touches a position that is gone.
+class _PageDrag {
+  Drag? drag;
+  bool _live = true;
+  void ended() => _live = false;
+  void cancel() {
+    if (!_live) return;
+    _live = false;
+    drag?.cancel();
+  }
+}
+
   final double? fraction;
   final _CardGeometry geometry;
   final bool seekGap;
