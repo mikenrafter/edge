@@ -21,6 +21,7 @@
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 
 import '../grammar.dart' show Pressable, Section, Surface;
 import '../skeleton/skeleton.dart';
@@ -82,8 +83,22 @@ class GuideDimController extends ChangeNotifier {
     if (identical(old, looks)) return;
     final same = old is GuidePlan && looks is GuidePlan && old.sameLooks(looks);
     _looks = looks;
-    if (!same) notifyListeners();
+    if (same) return;
+    // A plan replacing a plan repaints at the START of the next frame (the plan is made
+    // after a frame, and marking paint dirty then would leave that frame's tree dirty);
+    // a first plan or a cleared one repaints now.
+    if (old == null || looks == null) {
+      notifyListeners();
+    } else if (!_pending) {
+      _pending = true;
+      SchedulerBinding.instance.scheduleFrameCallback((_) {
+        _pending = false;
+        if (!_disposed) notifyListeners();
+      });
+    }
   }
+
+  bool _pending = false;
 
   /// Removes the plan: every component draws as usual.
   void clear() => setLooks(null);
