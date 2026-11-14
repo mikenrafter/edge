@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/models/activity_suggestion.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import '../../backup/backup_support.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/activity/day_strain.dart';
@@ -19,6 +20,15 @@ import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/screens/metric_detail.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_tab.dart';
+import 'package:openstrap_edge/ui2/screens/readiness_detail.dart';
+import 'package:openstrap_edge/ui2/screens/day_steps.dart';
+import 'package:openstrap_edge/ui2/screens/naps.dart';
+import 'package:openstrap_edge/ui2/screens/beats.dart';
+import 'package:openstrap_edge/ui2/screens/circadian_detail.dart';
+import 'package:openstrap_edge/ui2/screens/investigate.dart';
+import 'package:openstrap_edge/ui2/screens/what_changed.dart';
+import 'package:openstrap_edge/ui2/screens/typical_day.dart';
+import 'package:openstrap_edge/ui2/screens/wellness_screen.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 import '../../support/as_of_recalc_fakes.dart';
 import '../../support/live_guide_harness.dart';
@@ -51,15 +61,36 @@ class _LateRepo extends GuideFakeRepo {
   @override
   Future<Map<String, dynamic>> getZones() => late(super.getZones);
   @override
+  Future<Map<String, dynamic>> getDayStrain(String day) => late(() => super.getDayStrain(day));
+  @override
   Future<List<ActivitySuggestion>> pendingActivities() => late(super.pendingActivities);
   @override
-  Future<Map<String, dynamic>> getJournalInsights({String range = '90d'}) async => const {'insights': []};
+  Future<Map<String, dynamic>> getJournalInsights({String range = '90d'}) =>
+    late(() async => const {'insights': []});
+  @override
+  Future<Map<String, dynamic>> getWeekdayEffect({String key = 'readiness'}) =>
+    late(() async => const {});
+  @override
+  Future<String?> artifactSignature(String key) => late(() async => null);
+  @override
+  Future<Map<String, dynamic>> getDayHrv(String day) => late(() async => const {});
+  @override
+  Future<Map<String, dynamic>> getDaySteps(String day) => late(() async => const {});
+  @override
+  Future<Map<String, dynamic>> getDayNaps(String day) => late(() => super.getDayNaps(day));
+  @override
+  Future<({List<double> nn, int rawBeats, double cleanFraction})> getNightBeats(String day) =>
+    late(() async => (nn: [for (var i = 0; i < 400; i++) 880 + (i % 37) * 3.0],
+      rawBeats: 412, cleanFraction: .97));
+
 }
+
+final _captureKey = GlobalKey();
 
 Future<void> shot(WidgetTester t, String name) async {
   final dir = Platform.environment['CLS_SHOTS_DIR'];
   if (dir == null) return;
-  final boundary = t.renderObject<RenderRepaintBoundary>(find.byKey(const ValueKey('pilot-shot')));
+  final boundary = t.renderObject<RenderRepaintBoundary>(find.byKey(_captureKey));
   await t.runAsync(() async {
     final image = await boundary.toImage(pixelRatio: 2);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -87,6 +118,15 @@ void main() {
     'heart-rate-zones': () => const ZonesDetail(),
     'day-review': () => const DayReviewEntry(moments: []),
     'day-timeline': () => const DayTimelineScreen(),
+    'recovery': () => const ReadinessDetail(),
+    'day-steps': () => const DayStepsDetail(),
+    'naps': () => const NapsScreen(),
+    'beats': () => const Beats(),
+    'body-clock': () => const CircadianDetail(),
+    'nerd-stats': () => const Investigate('resting_hr'),
+    'what-changed': () => const WhatChangedScreen(),
+    'typical-day': () => const TypicalDayScreen(),
+    'journal-findings': () => const JournalFindings(),
   };
   for (final entry in screens.entries) {
     for (final delay in [150, 2500]) {
@@ -97,7 +137,10 @@ void main() {
         addTearDown(app.dispose);
         final run = ShiftRun(t);
         await t.pumpWidget(perfApp(app, Theme(data: buildTheme(Brightness.dark),
-          child: RepaintBoundary(key: const ValueKey('pilot-shot'), child: entry.value()))));
+          child: RepaintBoundary(key: _captureKey, child: ColoredBox(
+            color: buildTheme(Brightness.dark).scaffoldBackgroundColor, child: entry.value())))));
+        await t.pump();
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
         await t.pump();
         run.opened();
         await run.frames([0, 16, delay]);
@@ -111,7 +154,9 @@ void main() {
           await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
           await run.frames([16]);
         }
-        final result = run.score();
+        // Load latency is reported separately from CLS. A 2.5-second fixture
+        // deliberately incurs latency even when every pixel stays in place.
+        final result = run.score(ShiftPolicy.standard.copyWith(loadWeight: 0, colorWeight: 0));
         debugPrint(formatShiftReport(entry.key, result, run.probe.frames.length));
         // Existing metric-detail bounds. Keep slow arrivals outside the free
         // interaction window, so moving content cannot hide behind latency.
