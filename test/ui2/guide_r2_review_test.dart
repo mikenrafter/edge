@@ -67,6 +67,13 @@ class _ScrollPage {
   }
 }
 
+class _LooseLooks implements GuideLooseLooks {
+  @override
+  GuideUnitLook? lookOf(BuildContext unit) => null;
+  @override
+  GuideUnitLook? looseLookOf(RenderParagraph paragraph) => GuideUnitLook.dim;
+}
+
 void main() {
   // WHY: CLAIM(guide-live-hit-regions): scrolling moves both paint and input even before a plan runs.
   // # catches: cached overlay-coordinate skeleton shapes swallowing a newly arrived dimmed control.
@@ -95,6 +102,31 @@ void main() {
     expect(sampled, isTrue);
     expect(page.skeletonTaps, 0);
   });
+  for (final explicitController in [true, false]) {
+  // WHY: CLAIM(loose-scroll-repaint): viewport repaint boundaries must not leave loose masks behind.
+  // # catches: an outer loose painter relying on plan notifications that equal plans suppress.
+  testWidgets('R2 loose foreground repaints with its viewport without a new plan (explicit controller: $explicitController)', (t) async {
+    final scroll = ScrollController();
+    final dim = GuideDimController();
+    addTearDown(scroll.dispose);
+    addTearDown(dim.dispose);
+    await t.pumpWidget(GuideDimScope(controller: dim, child: MaterialApp(
+      scrollBehavior: const GuideScrollBehavior(), home: Scaffold(body: SingleChildScrollView(
+        controller: explicitController ? scroll : null, child: const Column(children: [Text('Loose words'), SizedBox(height: 2000)]))))));
+    dim.setLooks(_LooseLooks());
+    await t.pump();
+    final layer = t.renderObject<RenderGuideLoose>(find.byType(GuideLooseLayer));
+    final plan = dim.looks;
+    expect(layer.debugNeedsPaint, isFalse, reason: 'positive control: settled foreground');
+    t.state<ScrollableState>(find.byType(Scrollable)).position.jumpTo(20);
+    expect(identical(dim.looks, plan), isTrue);
+    expect(layer.debugNeedsPaint, isTrue, reason: 'scroll itself invalidates the loose foreground');
+    await t.pump();
+    expect(layer.debugNeedsPaint, isFalse);
+  });
+
+  }
+
   for (final (name, top, height, label, skeleton) in [
     ('hit padding is outside ink reach', 100.0, 44.0, 'Other', false),
     ('nearby ink is eligible', 80.0, 44.0, 'Other', true),

@@ -124,38 +124,49 @@ class RenderGuideUnit extends RenderProxyBox {
 }
 
 /// A scroll behavior that gives every Scrollable a [GuideLooseLayer] INSIDE its
-/// overscroll indicator, so loose text dims with the content it sits in, also
+/// overscroll indicator. Its painter listens to viewport offsets, so it dims loose text also
 /// while Android stretches it. The app sets it as `MaterialApp.scrollBehavior`.
 class GuideScrollBehavior extends MaterialScrollBehavior {
   const GuideScrollBehavior();
 
   @override
   Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) =>
-      super.buildOverscrollIndicator(context, GuideLooseLayer(child: child), details);
+      super.buildOverscrollIndicator(context, GuideLooseLayer(scrollController: details.controller, child: child), details);
 }
 
 /// Paints the guide look of the loose paragraphs below it (those in no
 /// [GuideUnitMark] and no nested [GuideLooseLayer]) over its own paint.
 class GuideLooseLayer extends SingleChildRenderObjectWidget {
-  const GuideLooseLayer({super.key, required super.child});
+  final ScrollController? scrollController;
+  const GuideLooseLayer({super.key, this.scrollController, required super.child});
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      RenderGuideLoose(GuideDimScope.controllerOf(context), context as Element);
+      RenderGuideLoose(GuideDimScope.controllerOf(context), context as Element, scrollController);
 
   @override
   void updateRenderObject(BuildContext context, RenderGuideLoose renderObject) {
     renderObject
       ..element = context as Element
+      ..scrollController = scrollController
       ..controller = GuideDimScope.controllerOf(context);
   }
 }
 
 class RenderGuideLoose extends RenderProxyBox {
-  RenderGuideLoose(this._controller, this._element);
+  RenderGuideLoose(this._controller, this._element, this._scrollController);
 
   GuideDimController? _controller;
   Element _element;
+  ScrollController? _scrollController;
+
+  set scrollController(ScrollController? value) {
+    if (identical(_scrollController, value)) return;
+    if (attached) _scrollController?.removeListener(_scrollChanged);
+    _scrollController = value;
+    if (attached) _scrollController?.addListener(_scrollChanged);
+    markNeedsPaint();
+  }
 
   set element(Element value) => _element = value;
 
@@ -171,6 +182,7 @@ class RenderGuideLoose extends RenderProxyBox {
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _listen();
+    _scrollController?.addListener(_scrollChanged);
   }
 
   void _listen() {
@@ -180,8 +192,16 @@ class RenderGuideLoose extends RenderProxyBox {
 
   @override
   void detach() {
+    _scrollController?.removeListener(_scrollChanged);
     _controller?.removeListener(markNeedsPaint);
     super.detach();
+  }
+
+  // CLAIM(loose-scroll-repaint): a viewport repaints independently of this proxy.
+  // Listen to its offset so an unchanged plan still repaints the loose masks in
+  // the same frame [guide_r2_review_test R2]. No plan means no extra repaint.
+  void _scrollChanged() {
+    if (_controller?.looks != null) markNeedsPaint();
   }
 
   @override
