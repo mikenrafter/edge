@@ -44,6 +44,30 @@ bool hasLooseLayer(RenderObject object) {
   return false;
 }
 
+/// The loose paragraphs below [layer] (the element of a [GuideLooseLayer]): those in no
+/// [GuideUnitMark] and no nested [GuideLooseLayer]. CLAIM(loose-same-walk): this walks the
+/// ONSTAGE ELEMENT tree, exactly as the planner does ([planSkeleton]), never the semantics
+/// tree: text under ExcludeSemantics is as loose as any [guide_r2_tier2_test F3].
+Iterable<RenderParagraph> looseParagraphs(Element layer) sync* {
+  final children = <Element>[];
+  layer.debugVisitOnstageChildren(children.add);
+  for (final child in children) {
+    yield* _looseBelow(child);
+  }
+}
+
+Iterable<RenderParagraph> _looseBelow(Element e) sync* {
+  final w = e.widget;
+  if (w is GuideUnitMark || w is GuideLooseLayer) return;
+  final ro = e is RenderObjectElement ? e.renderObject : null;
+  if (ro is RenderParagraph) yield ro;
+  final children = <Element>[];
+  e.debugVisitOnstageChildren(children.add);
+  for (final child in children) {
+    yield* _looseBelow(child);
+  }
+}
+
 /// Wraps one component. [component] is the Surface / Section / Pressable's own
 /// element: the identity the plan is keyed by.
 class GuideUnitMark extends SingleChildRenderObjectWidget {
@@ -216,18 +240,7 @@ class RenderGuideLoose extends RenderProxyBox {
     canvas
       ..save()
       ..clipRect(offset & size);
-    final found = <RenderParagraph>[];
-    void visit(RenderObject o) {
-      if (o is RenderGuideUnit || o is RenderGuideLoose) return;
-      if (o is RenderParagraph) {
-        found.add(o);
-        return;
-      }
-      o.visitChildrenForSemantics(visit);
-    }
-    c.visitChildrenForSemantics(visit);
-    if (c is RenderParagraph) found.add(c);
-    for (final p in found) {
+    for (final p in looseParagraphs(_element)) {
       if (!p.hasSize || !p.attached) continue;
       final look = looks.looseLookOf(p);
       if (look == null) continue;
