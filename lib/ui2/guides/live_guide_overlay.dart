@@ -712,10 +712,11 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with SingleTickerPro
       return Stack(children: [
         if (show && (target != null && step != null || state is GuideOffPath))
           Positioned.fill(child: ExcludeSemantics(child: GestureDetector(
-            // Skeleton ink swallows activation (tap, long press, double tap); the
-            // page itself is not in the hit path there. A vertical drag is handed
-            // to the page's own scrollable so P6 scroll-through still works.
-            onTap: () {}, onLongPress: () {}, onDoubleTap: () {},
+            // Skeleton ink swallows activation (tap, long press, double tap) by being
+            // hit-tested: the page below is not in the hit path there, so no activation
+            // recognizer is needed (a DoubleTapGestureRecognizer here left a pending
+            // timer after every press). A vertical drag is handed to the page's own
+            // scrollable so P6 scroll-through still works.
             onVerticalDragStart: _dragStart, onVerticalDragUpdate: (d) => _pageDrag?.update(d),
             onVerticalDragEnd: (d) { _pageDrag?.end(d); _pageDrag = null; },
             onVerticalDragCancel: () { _pageDrag?.cancel(); _pageDrag = null; },

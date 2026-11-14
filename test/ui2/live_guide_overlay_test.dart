@@ -433,6 +433,9 @@ void main() {
         Pressable(key: stageOpenDetails, onTap: () => stage.taps.openDetails++, child: const Surface(child: Text('Open details'))),
         Pressable(key: stageOtherAction, onTap: () => stage.taps.otherAction++,
           child: const Surface(child: Text('Open details help'))),
+        // Beyond the skeleton reach: a control right beside the target is skeleton
+        // whatever its words say (owner: distance falloff), so "Unrelated" must be far.
+        const SizedBox(height: kSkeletonReach + 24),
         Pressable(key: stageElsewhereAction, onTap: () => stage.taps.elsewhere++,
           child: const Surface(child: Text('Unrelated'))),
       ])));
