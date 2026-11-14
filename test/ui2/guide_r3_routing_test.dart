@@ -152,6 +152,33 @@ void main() {
     }
   });
 
+  // WHY: owner review R2, the case the shell's own tab selection makes real: the guide is on
+  // History, the user is on Today, and selecting the Activity tab shows Overview, so the way
+  // back is two hops (tab, then the History sub-tab) and ONE press must take both.
+  // # catches: a walk that selects the tab and returns, leaving the second hop to the user.
+  testWidgets('R2: one Back to the guide press from Today reaches Activity > History', (t) async {
+    final app = await pumpLiveGuideApp(t);
+    try {
+      await app.runner.start(r2Guide('log-past-workout'), band: null);
+      await settleLiveGuide(t, frames: 18);
+      await t.tapAt(_overlay(t).targetRect!.intersect(t.getRect(find.byType(SubTabs))).center);
+      await settleLiveGuide(t, frames: 18);
+      expect(app.runner.activeRun!.currentStep!.id, 'log-past');
+      await t.tapAt(t.getRect(r2Tab(0)).center);
+      await settleLiveGuide(t, frames: 18);
+      expect(app.runner.activeRun!.state, isA<GuideOffPath>());
+      await t.tap(find.byKey(GuideStepCard.backToGuideKey));
+      await settleLiveGuide(t, frames: 30);
+      expect(GuideNavigation.location(app.runner.routes.page!), GuideNode.activityHistory);
+      expect(app.runner.activeRun!.currentStep?.id, 'log-past', reason: 'one press, not two');
+    } finally {
+      app.runner.exit();
+      await t.pumpWidget(const SizedBox());
+      app.dispose();
+      await t.pump();
+    }
+  });
+
   // WHY: Day strain's page exists before its future supplies How these are set.
   // # catches: the loading page flashing an off-path instruction.
   testWidgets('A: real Day strain stays on path while its data future is pending', (t) async {

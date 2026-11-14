@@ -31,7 +31,8 @@ import '../../l10n/app_localizations.dart';
 import 'live_guide_overlay.dart';
 
 import '../app_shell.dart' show ShellDomain;
-import '../grammar.dart' show SubTabs;
+import 'package:flutter/gestures.dart';
+import '../grammar.dart' show Pressable, SubTabs;
 import 'guide_navigation.dart';
 import 'tree_geometry.dart';
 import 'guide.dart';
@@ -253,13 +254,14 @@ class GuideRunner extends ChangeNotifier {
   bool _makeHop(GuideHop hop, Element page) {
     switch (hop.kind) {
       case GuideHopKind.subTab:
-        final tab = GuideNavigation.subTabIndex(hop.node);
-        if (tab == null) return false;
+        // A real tap on the sub-tab's own control, as a user would make it: no closure of
+        // the screen is called from here.
+        final index = GuideNavigation.subTabIndex(hop.node);
+        if (index == null) return false;
         for (final e in onstageElements(page)) {
-          if (e.widget case final SubTabs tabs) {
-            tabs.onTap(tab);
-            return true;
-          }
+          if (e.widget is! SubTabs) continue;
+          final controls = onstageElements(e).where((c) => c.widget is Pressable && laidOutBox(c) != null).toList();
+          return index < controls.length && _tap(controls[index], page);
         }
         return false;
       case GuideHopKind.tab || GuideHopKind.page:
@@ -270,6 +272,21 @@ class GuideRunner extends ChangeNotifier {
       case GuideHopKind.back:
         return false;
     }
+  }
+
+  /// A pointer down and up at the visible centre of [control], if the tap would reach it.
+  bool _tap(Element control, Element page) {
+    final box = laidOutBox(control), root = laidOutBox(page);
+    if (box == null || root == null || !control.mounted) return false;
+    final visible = rectInRoot(box, root).intersect(visibleBoundsInRoot(box, root));
+    if (visible.isEmpty) return false;
+    final position = root.localToGlobal(visible.center);
+    final result = HitTestResult();
+    WidgetsBinding.instance.hitTestInView(result, position, View.of(control).viewId);
+    if (!result.path.any((entry) => identical(entry.target, box))) return false;
+    GestureBinding.instance.handlePointerEvent(PointerDownEvent(pointer: -3, position: position));
+    GestureBinding.instance.handlePointerEvent(PointerUpEvent(pointer: -3, position: position));
+    return true;
   }
 
   /// Ends the active run (no-op without one).
