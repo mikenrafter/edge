@@ -214,6 +214,8 @@ Rect placeGuideCard({
   required Size cardSize,
   required List<Rect> keepClear,
   List<Rect> avoid = const [],
+  // RED interface stub: ignored until user-position placement is implemented.
+  double? preferredTop,
 }) {
   final width = math.min(cardSize.width, bounds.width);
   final height = math.min(cardSize.height, bounds.height);

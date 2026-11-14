@@ -18,10 +18,20 @@ enum BandGeneration { whoop4, whoop5 }
 
 enum GuideAction { tap, scrollThenTap }
 
+/// The r2 component dim look is a pilot; existing guides retain skeleton.
+enum GuideLook { skeleton, dim }
+
 /// Where a guide begins: a tab of the shell, or the Settings screen. A run
 /// first brings the app here (pop to the shell root, select the destination)
 /// so step 1's screen is on top.
 enum GuideStart { today, sleep, activity, health, settings }
+
+/// Caption-named content resolved afresh from the live tree. Implementations
+/// may select a collection (for example every currently built activity row).
+/// RED interface only: the live overlay does not consume these declarations yet.
+abstract interface class GuideContent {
+  List<TargetFound> resolve(Element root, AppLocalizations l);
+}
 
 class GuideStep {
   /// Stable across releases and locales (progress, deep links and the phase-4
@@ -36,6 +46,12 @@ class GuideStep {
 
   /// Extra units kept readable besides the target's (step 3 keeps "Your zones").
   final List<GuideTarget> alsoKeep;
+  /// P7: caption-offered controls kept full colour. All page input passes
+  /// through independently of this visual declaration (owner amendment A/C).
+  final List<GuideContent> alsoTap;
+
+  /// P8: caption-named information kept full colour.
+  final List<GuideContent> alsoRead;
   final GuideAction action;
   final GuideText caption;
 
@@ -44,6 +60,8 @@ class GuideStep {
     required this.target,
     required this.anchor,
     this.alsoKeep = const [],
+    this.alsoTap = const [],
+    this.alsoRead = const [],
     required this.action,
     required this.caption,
   });
@@ -102,6 +120,7 @@ final class GuideNoVariant extends GuideVariantResult {
 
 class Guide {
   final String id;
+  final GuideLook look;
   final GuideText title;
 
   /// Where a run brings the app before step 1.
@@ -114,6 +133,7 @@ class Guide {
 
   const Guide({
     required this.id,
+    this.look = GuideLook.skeleton,
     required this.title,
     required this.start,
     this.intro,

@@ -1,0 +1,130 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
+import 'package:openstrap_edge/ui2/guides/guide_target.dart';
+import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
+import 'package:openstrap_edge/ui2/guides/tree_geometry.dart';
+import '../support/bundled_fonts.dart';
+import '../support/skeleton_fixture.dart' show skLoadAppFonts;
+import '../support/guide_r2_manifest.dart';
+import '../support/guide_r2_scenes.dart';
+import '../support/live_guide_harness.dart';
+
+class _Pixels {
+  final int width;
+  final List<int> bytes;
+  _Pixels(this.width, this.bytes);
+  int rgb(int x, int y) {
+    final i = (y * width + x) * 4;
+    return bytes[i] << 16 | bytes[i + 1] << 8 | bytes[i + 2];
+  }
+}
+Future<_Pixels> _pixels(WidgetTester t, RenderRepaintBoundary boundary) async =>
+  (await t.runAsync(() async {
+    final image = await boundary.toImage();
+    try { return _Pixels(image.width, (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!
+      .buffer.asUint8List().toList()); } finally { image.dispose(); }
+  }))!;
+double _luminance(int rgb) {
+  double linear(int v) { final s = v / 255; return s <= .04045 ? s / 12.92 : math.pow((s + .055) / 1.055, 2.4).toDouble(); }
+  return .2126 * linear(rgb >> 16 & 255) + .7152 * linear(rgb >> 8 & 255) + .0722 * linear(rgb & 255);
+}
+double _ratio(int a, int b) {
+  final x = _luminance(a), y = _luminance(b);
+  return (math.max(x, y) + .05) / (math.min(x, y) + .05);
+}
+RenderRepaintBoundary _rootBoundary(WidgetTester t) {
+  RenderObject? object = t.element(find.byType(LiveGuideOverlay)).findRenderObject();
+  while (object != null && (object is! RenderRepaintBoundary || object.size != r2Size)) { object = object.parent; }
+  return object! as RenderRepaintBoundary;
+}
+RenderRepaintBoundary _pageBoundary(R2Mounted m) {
+  RenderObject? object = m.app.runner.routes.page!.findRenderObject();
+  while (object != null && (object is! RenderRepaintBoundary || object.size != r2Size)) { object = object.parent; }
+  return object! as RenderRepaintBoundary;
+}
+
+void main() {
+  setUpAll(() async { await loadFonts(); await skLoadAppFonts(); await r2OpenDb('guide_r2_contrast.db'); });
+  tearDownAll(LocalDb.close);
+
+  for (final scene in r2Scenes.where((s) => r2Pilots.contains(s.guide))) {
+    // WHY: pilot dim is light enough to retain >=3:1 actual text contrast.
+    // The undimmed raster supplies independent glyph/background coordinates;
+    // the guided raster supplies the measured colours at those SAME pixels.
+    // # catches: dim alpha erases text, opaque grey replaces glyphs, or a plan
+    // reporting dim whose painter still uses low-contrast placeholder bars.
+    testWidgets('r2 pilot dim text contrast stays at least 3 to 1 ${scene.id}', (t) async {
+      final m = await pumpR2Scene(t, scene);
+      try {
+        await settleLiveGuide(t, frames: 18);
+        final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+        final dims = overlay.paintedShapes.where((s) => s.kind.name == 'dim').toList();
+        expect(dims, isNotEmpty, reason: 'positive control: this pilot step actually dims content');
+        final plain = await _pixels(t, _pageBoundary(m));
+        final guided = await _pixels(t, _rootBoundary(t));
+        final card = t.getRect(find.byKey(GuideStepCard.cardKey));
+        final page = m.app.runner.routes.page!;
+        final root = laidOutBox(page)!;
+        var checked = 0;
+        for (final e in onstageElements(page)) {
+          final ro = e is RenderObjectElement ? e.renderObject : null;
+          if (ro is! RenderParagraph || !RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(ro.text.toPlainText())) continue;
+          final rect = rectInRoot(ro, root).intersect(visibleBoundsInRoot(ro, root));
+          if (rect.isEmpty || card.overlaps(rect) || !dims.any((s) => r2Contains(s.rect, rect))) continue;
+          final counts = <int, int>{};
+          final points = <int, (int, int)>{};
+          for (var y = rect.top.ceil(); y < rect.bottom.floor(); y++) {
+            for (var x = rect.left.ceil(); x < rect.right.floor(); x++) {
+              final rgb = plain.rgb(x, y);
+              counts.update(rgb, (n) => n + 1, ifAbsent: () => 1);
+              points[rgb] = (x, y);
+            }
+          }
+          if (counts.isEmpty) continue;
+          final background = counts.keys.reduce((a,b) => counts[a]! > counts[b]! ? a : b);
+          final foreground = counts.keys.reduce((a,b) => _ratio(a, background) > _ratio(b, background) ? a : b);
+          if (_ratio(foreground, background) < 3) continue; // Existing unreadable ink is not a dim regression.
+          final fg = points[foreground]!, bg = points[background]!;
+          expect(_ratio(guided.rgb(fg.$1, fg.$2), guided.rgb(bg.$1, bg.$2)), greaterThanOrEqualTo(3),
+            reason: '${scene.id}: ${ro.text.toPlainText()}');
+          checked++;
+        }
+        expect(checked, greaterThan(0), reason: 'at least one actual dimmed text line measured, not only shapes');
+      } finally { await disposeR2(t, m); }
+    });
+  }
+
+  // WHY: P6 remains a pilot exception to narrowed P1: content that must be
+  // scrolled past collapses while the target is offscreen, with a directional
+  // marker. Observe real discovery from its first frame, not a settled shot.
+  // # catches: no placeholders/marker until revealTarget has already jumped,
+  // or treating P1 as banning collapse of intervening non-competing content.
+  testWidgets('r2 pilot scroll discovery collapses intervening content and points to target', (t) async {
+    final scene = r2Scenes.firstWhere((s) => s.guide == 'heart-rate-zones' && s.step == 'open-zones');
+    const viewport = Size(412, 180);
+    final m = await pumpR2Scene(t, scene, size: viewport);
+    var sawOffscreen = false;
+    try {
+      final initial = m.initialTarget;
+      expect(initial is TargetNotBuilt || initial is TargetFound && !r2Contains(Offset.zero & viewport, initial.rect),
+        isTrue, reason: 'positive control: target starts outside this small viewport: ${initial is TargetFound ? initial.rect : initial.runtimeType}');
+      for (var frame = 0; frame < 24; frame++) {
+        await t.pump(const Duration(milliseconds: 50));
+        final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+        final target = overlay.targetRect;
+        if (target == null || !r2Contains(Offset.zero & viewport, target)) {
+          sawOffscreen = true;
+          expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsOneWidget, reason: 'P6 frame $frame');
+          expect(overlay.paintedShapes.any((s) => s.kind.name == 'bar' || s.kind.name == 'block'), isTrue,
+            reason: 'intervening content collapses during discovery');
+        }
+      }
+      expect(sawOffscreen, isTrue, reason: 'fixture really began with the pilot scroll target off screen');
+    } finally { await disposeR2(t, m); }
+  });
+}

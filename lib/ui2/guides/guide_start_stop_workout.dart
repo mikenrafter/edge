@@ -23,6 +23,7 @@ final _finish = GuideTarget.label(ScreenLabel.activityLiveFinishSessionLabel);
 /// A fictional 70 kg user, so the picker and setup show calorie hints.
 Guide get startStopWorkoutGuide => Guide(
       id: 'start-workout',
+      look: GuideLook.dim,
       title: GuideCopy.startWorkoutTitle,
       start: GuideStart.activity,
       variants: [
