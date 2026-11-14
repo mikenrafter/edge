@@ -86,7 +86,7 @@ class R2Fixture {
         : targetControl),
       Positioned(top: 220, left: 16, right: 16, child: Surface(key: r2Quiet,
         color: const Color(0xff7040a0), child: Text(quietLabel, style: const TextStyle(color: Colors.white)))),
-      Positioned(top: 310, left: 16, right: 16, child: GestureDetector(key: r2Alternative, behavior: HitTestBehavior.opaque,
+      Positioned(top: lookalike ? y + 60 : 310, left: 16, right: 16, child: GestureDetector(key: r2Alternative, behavior: HitTestBehavior.opaque,
         onTap: () => alternatives++, onLongPress: () => longPresses++,
         onDoubleTap: () => doubleTaps++, onVerticalDragUpdate: (_) => dragUpdates++, child: Surface(child: Text(lookalike ? 'Target option' : 'Alternative')))),
       const Positioned(top: 390, left: 16, right: 16, child: Section('Details', Surface(child: Text('Read this context')), key: r2Details)),

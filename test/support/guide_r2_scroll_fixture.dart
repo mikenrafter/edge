@@ -35,7 +35,7 @@ class R2ScrollFixture {
       home: Scaffold(body: ListView(controller: controller, children: [Column(key: const ValueKey('r2-scroll-column'), children: [
         for (var i = 0; i < 6; i++) SizedBox(height: 100, child: Surface(child: Text('Earlier information $i'))),
         Pressable(key: r2ScrollTarget, onTap: () {}, child: const Surface(child: Text('Target'))),
-        for (var i = 0; i < 14; i++) SizedBox(height: 100, child: i == 1
+        for (var i = 0; i < 14; i++) SizedBox(height: i == 0 ? 76 : 100, child: i == 0
           ? Pressable(key: r2ScrollLookalike, onTap: () => lookalikeTaps++, child: const Surface(child: Text('Target option')))
           : Surface(child: Text('Later information $i'))),
       ])])))));

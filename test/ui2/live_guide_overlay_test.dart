@@ -382,15 +382,15 @@ void main() {
       Widget area(Key key, VoidCallback onEnd, [String label = 'area']) => GestureDetector(
         key: key, behavior: HitTestBehavior.opaque,
         onVerticalDragEnd: (_) => onEnd(),
-        child: SizedBox(width: 240, height: 100, child: Center(child: Text(label))),
+        child: SizedBox(width: 240, height: 44, child: Center(child: Text(label))),
       );
       await pushStagePage(t, stage, Scaffold(body: Column(children: [
         const SizedBox(height: 120),
         area(stageFinish, () => targetDrags++, 'Finish'),
-        const SizedBox(height: 20),
-        area(stageOtherAction, () => otherDrags++, 'Unrelated'),
-        const SizedBox(height: 20),
+        const SizedBox(height: 8),
         area(stageElsewhereAction, () => lookalikeDrags++, 'Finish help'),
+        const SizedBox(height: kSkeletonReach + 24),
+        area(stageOtherAction, () => otherDrags++, 'Unrelated'),
       ])));
       await _settleReveal(t);
       await t.drag(find.byKey(stageFinish), const Offset(0, 60));

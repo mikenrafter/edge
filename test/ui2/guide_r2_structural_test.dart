@@ -165,6 +165,10 @@ void main() {
     testWidgets('r2 skeleton card and Section: heading shape on the first line, body lines are bars', (t) async {
       final f = R2Fixture(headed: true);
       await f.pump(t);
+      // P6 intentionally skeletonizes distant units too. Shared words alone no
+      // longer bypass reach, so move the target off screen for this heading test.
+      f.targetTop.value = -200;
+      await f.frames(t);
       final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
       for (final (key, heading, body) in [
         (r2HeadedCard, 'Target notes', ['Alpha beta gamma', 'Delta epsilon zeta']),
