@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../l10n/app_localizations.dart';
 import 'guide_target.dart';
+import 'guide_navigation.dart';
 import 'guide_text.dart';
 
 export 'guide_text.dart' show GuideText;
@@ -38,6 +39,9 @@ class GuideStep {
 
   final GuideTarget target;
 
+  /// Declared destination; optional only for custom/legacy guide fixtures.
+  final GuideNode? node;
+
   /// Identifies the route this step belongs to: the step is ACTIVE when this
   /// resolves on the current screen (and not on the others' screens).
   final GuideTarget anchor;
@@ -56,6 +60,7 @@ class GuideStep {
   const GuideStep({
     required this.id,
     required this.target,
+    this.node,
     required this.anchor,
     this.alsoKeep = const [],
     this.alsoTap = const [],

@@ -39,6 +39,8 @@ enum SkeletonKind {
   /// A card rect repainted in its own surface colour ([SkeletonShape.color]).
   surface,
 
+  sine,
+
   /// One per text line box.
   bar,
 
@@ -624,6 +626,8 @@ void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palett
   ];
   for (final s in ordered) {
     switch (s.kind) {
+      case SkeletonKind.sine:
+        break;
       case SkeletonKind.icon:
         break;
       case SkeletonKind.heading || SkeletonKind.dim:
