@@ -1,3 +1,4 @@
+import '../guides/guide_navigation.dart';
 import '../../l10n/display_text.dart';
 // WORKOUT — the interaction domain. Not "here are your numbers", but "what do
 // you want to do, and what did you do".
@@ -93,7 +94,13 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
 
   @override
   Widget build(BuildContext c) {
-    return FutureBuilder<_WorkoutData>(
+    return GuideLocation(
+      node: [
+        GuideNode.activityOverview,
+        GuideNode.activityActivities,
+        GuideNode.activityHistory,
+      ][tab],
+      child: FutureBuilder<_WorkoutData>(
       future: _load,
       builder: (c, snap) {
         final loc = AppLocalizations.of(c);
@@ -130,6 +137,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
           ],
         );
       },
+    ),
     );
   }
 

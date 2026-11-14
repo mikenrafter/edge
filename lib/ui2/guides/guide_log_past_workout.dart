@@ -9,6 +9,7 @@
 // it keeps the "When" group readable.
 
 import 'guide.dart';
+import 'guide_navigation.dart';
 import 'guide_copy.dart';
 import 'guide_labels.dart';
 import 'guide_target.dart';
@@ -25,6 +26,7 @@ Guide get logPastWorkoutGuide => Guide(
         GuideVariant(steps: [
           GuideStep(
             id: 'open-history',
+            node: GuideNode.activityOverview,
             target: _historyTab,
             anchor: _historyTab,
             action: GuideAction.tap,
@@ -32,6 +34,7 @@ Guide get logPastWorkoutGuide => Guide(
           ),
           GuideStep(
             id: 'log-past',
+            node: GuideNode.activityHistory,
             target: _logPast,
             anchor: GuideTarget.anyLabel([
               ScreenLabel.workoutTrackedLabel,
@@ -42,6 +45,7 @@ Guide get logPastWorkoutGuide => Guide(
           ),
           GuideStep(
             id: 'log-it',
+            node: GuideNode.logWorkout,
             target: _logIt,
             anchor: _logIt,
             alsoKeep: [GuideTarget.label(ScreenLabel.logWorkoutWhenGroup)],

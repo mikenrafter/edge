@@ -24,6 +24,7 @@
 import 'package:flutter/widgets.dart' show ValueKey;
 
 import 'guide.dart';
+import 'guide_navigation.dart';
 import 'guide_content.dart';
 import 'guide_copy.dart';
 import 'guide_labels.dart';
@@ -49,6 +50,7 @@ Guide get alarmScheduleGuide => Guide(
         GuideVariant(steps: [
           GuideStep(
             id: 'open-alarm',
+            node: GuideNode.sleep,
             target: _alarmRow,
             anchor: _sleepTab,
             action: GuideAction.scrollThenTap,
@@ -56,6 +58,7 @@ Guide get alarmScheduleGuide => Guide(
           ),
           GuideStep(
             id: 'pick-day',
+            node: GuideNode.alarm,
             target: _dayOnRow,
             anchor: _dayOnRow,
             alsoKeep: _dayTabs,
@@ -65,6 +68,7 @@ Guide get alarmScheduleGuide => Guide(
           ),
           GuideStep(
             id: 'set-wake-time',
+            node: GuideNode.alarm,
             target: _wakeTime,
             anchor: _wakeTime,
             action: GuideAction.tap,

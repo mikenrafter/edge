@@ -26,6 +26,7 @@ import '../../l10n/app_localizations.dart';
 import '../app_shell.dart' show AppShell;
 import 'tree_geometry.dart';
 import 'guide.dart';
+import 'guide_navigation.dart';
 import 'guide_target.dart';
 
 sealed class GuideRunState {
@@ -117,7 +118,38 @@ class GuideRun extends ChangeNotifier {
   void observe(Element? topPage, AppLocalizations l) {
     _matchedPages.removeWhere((page, _) => !page.mounted);
     if (_exited || _state is GuideFinished || topPage == null) return;
-    var index = matchStep(variant, topPage, l);
+    final location = GuideNavigation.location(topPage);
+    int? index;
+    if (variant.steps.every((s) => s.node != null)) {
+      final exact = [
+        for (var i = 0; i < variant.steps.length; i++)
+          if (variant.steps[i].node == location) i,
+      ];
+      if (exact.isNotEmpty) {
+        final anchored = exact.where(
+          (i) =>
+              variant.steps[i].anchor.resolve(_contentOf(topPage), l)
+                  is TargetFound,
+        );
+        index =
+            anchored.lastOrNull ??
+            (exact.contains(_lastIndex) ? _lastIndex : exact.first);
+      } else {
+        final pending = _lastIndex ?? 0;
+        final node = variant.steps[pending].node!;
+        if (location != null && GuideNavigation.onPath(location, node))
+          index = pending;
+      }
+    } else {
+      index = matchStep(variant, topPage, l);
+    }
+    // Returning to an earlier branch cannot rewind the pending action. An
+    // ancestor is still on the way to it; a sibling requires a route back.
+    final last = _lastIndex;
+    if (index != null && last != null && index < last &&
+        variant.steps[index].node != null && variant.steps[index].node != variant.steps[last].node) {
+      index = location != null && GuideNavigation.onPath(location, variant.steps[last].node!) ? last : null;
+    }
     // A reveal may dispose the anchor in a lazy list. Only restore a step
     // whose anchor was already observed on THIS page, with its action still
     // found. This also works when Back returns from a later step's route.

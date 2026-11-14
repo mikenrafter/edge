@@ -27,6 +27,7 @@
 import 'package:flutter/widgets.dart' show ValueKey;
 
 import 'guide.dart';
+import 'guide_navigation.dart';
 import 'guide_content.dart';
 import 'guide_copy.dart';
 import 'guide_labels.dart';
@@ -45,6 +46,7 @@ Guide get removeDetectedGuide => Guide(
         GuideVariant(steps: [
           GuideStep(
             id: 'open-detected',
+            node: GuideNode.today,
             target: _card,
             anchor: _card,
             action: GuideAction.tap,
@@ -52,6 +54,7 @@ Guide get removeDetectedGuide => Guide(
           ),
           GuideStep(
             id: 'discard',
+            node: GuideNode.review,
             target: _discard,
             anchor: _reviewNav,
             alsoTap: [EveryLabelled([ScreenLabel.dayReviewDiscard])], // "every item has its own"
@@ -60,6 +63,7 @@ Guide get removeDetectedGuide => Guide(
           ),
           GuideStep(
             id: 'save',
+            node: GuideNode.review,
             target: _save,
             anchor: _save,
             action: GuideAction.tap,
