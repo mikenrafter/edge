@@ -231,7 +231,12 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => AnimatedBuilder(
+    animation: controller,
+    builder: (c, _) => _build(c),
+  );
+
+  Widget _build(BuildContext c) {
     final p = P.of(c);
     final g = widget.data.graph;
     final hr = g.hr, mv = g.movement;
@@ -277,14 +282,17 @@ class ActivitiesTimelineState extends State<ActivitiesTimeline> implements Timel
                   Text('choosing zoom', style: F.over.copyWith(color: p.ink3)),
               ]),
               const SizedBox(height: S.x1),
-              Row(children: [
-                Text('Heart rate ', style: F.cap.copyWith(color: p.ink3)),
-                Text(i == null || i >= hr.length || hr[i] == null ? '—' : '${hr[i]!.round()} bpm',
-                    style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
-                const SizedBox(width: S.x4),
-                Text('Movement ', style: F.cap.copyWith(color: p.ink3)),
-                Text(i == null || i >= mv.length || mv[i] == null ? '—' : '${(mv[i]! * 100).round()}%',
-                    style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+              Wrap(spacing: S.x4, children: [
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Heart rate ', style: F.cap.copyWith(color: p.ink3)),
+                  Text(i == null || i >= hr.length || hr[i] == null ? '—' : '${hr[i]!.round()} bpm',
+                      style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+                ]),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Movement ', style: F.cap.copyWith(color: p.ink3)),
+                  Text(i == null || i >= mv.length || mv[i] == null ? '—' : '${(mv[i]! * 100).round()}%',
+                      style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+                ]),
               ]),
               const SizedBox(height: S.x2),
               Wrap(spacing: S.x2, children: [

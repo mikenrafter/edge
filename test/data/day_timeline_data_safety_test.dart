@@ -3,6 +3,8 @@
 // invalid one writes nothing); Discard is reversible for every detected type
 // and Restore brings the item back, taking back only what its Discard wrote.
 import 'dart:io';
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/activity_store.dart';
@@ -80,6 +82,113 @@ void main() {
       for (final t in before.keys) {
         expect(await rows(t), before[t], reason: t);
       }
+    });
+
+    // why: R1 S1. Only exact replacements may be excluded; every unchanged
+    // stored interval must be checked under the write transaction.
+    // proves: CLAIM(sleep-edit-final-blocks)
+    // catches: validating only the windows supplied by the editor.
+    test('wheel-only and nap-only saves respect unchanged stored blocks', () async {
+      await writeSleepEdit(db, SleepEditPlan(day: day,
+          window: (at(23, 0, 13), at(7)),
+          naps: [NapWrite(start: at(14), end: at(14, 30))]));
+      final tables = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
+      final before = {for (final t in tables) t['name'] as String:
+          await db.query(t['name'] as String)};
+      for (final plan in [
+        SleepEditPlan(day: day, window: (at(23, 0, 13), at(15))),
+        SleepEditPlan(day: day, naps: [NapWrite(start: at(6), end: at(8))]),
+        SleepEditPlan(day: day, naps: [NapWrite(start: at(14, 15), end: at(15))]),
+        // The editor saw a detection, but another flow accepted that window.
+        SleepEditPlan(day: day, naps: [NapWrite(start: at(16), end: at(16, 30),
+            fromStart: at(14), fromEnd: at(14, 30))]),
+        // A source row changed since the editor opened: do not exclude it.
+        SleepEditPlan(day: day, naps: [NapWrite(start: at(14, 10), end: at(15),
+            fromStart: at(14), fromEnd: at(14, 20), fromSource: 'manual')]),
+      ]) {
+        await expectLater(writeSleepEdit(db, plan), throwsA(isA<SleepEditInvalid>()));
+        for (final t in before.keys) { expect(await db.query(t), before[t], reason: t); }
+      }
+      // Positive control: replacing the exact row permits an overlapping move.
+      await writeSleepEdit(db, SleepEditPlan(day: day, naps: [NapWrite(
+          start: at(14, 10), end: at(14, 40), fromStart: at(14),
+          fromEnd: at(14, 30), fromSource: 'manual')]));
+      expect((await rows('sleep_nap')).single['start_ts'], at(14, 10));
+    });
+
+    // why: R1 S1. Neighboring wake dates and bare/enveloped detected windows
+    // are effective sleep too; an override replaces only its own day.
+    test('nap-only plans respect neighboring effective main sleep and detected naps', () async {
+      for (final envelope in [false, true]) {
+        await db.delete('day_result');
+        final window = {'onset_ms': at(23, 0, 14) * 1000,
+            'offset_ms': at(7, 0, 15) * 1000};
+        await db.insert('day_result', {'day_id': '2026-11-15', 'algo_version': 1,
+            'payload_json': jsonEncode({'naps': {'value': [
+              {'start': at(18), 'end': at(18, 30)}]}}),
+            'window_json': jsonEncode(envelope ? {'value': window} : window),
+            'computed_at': 1});
+        for (final bounds in [(at(22, 45), at(23, 15)), (at(18, 15), at(18, 45))]) {
+          await expectLater(writeSleepEdit(db, SleepEditPlan(day: day,
+              naps: [NapWrite(start: bounds.$1, end: bounds.$2)])),
+              throwsA(isA<SleepEditInvalid>()));
+          expect(await rows('sleep_nap'), isEmpty);
+        }
+      }
+      await writeSleepEdit(db, SleepEditPlan(day: '2026-11-15',
+          window: (at(1, 0, 15), at(8, 0, 15))));
+      await writeSleepEdit(db, SleepEditPlan(day: day,
+          naps: [NapWrite(start: at(23), end: at(23, 30))]));
+      expect((await rows('sleep_nap')).single['end_ts'], at(23, 30));
+    });
+
+    // why: R1 S1. A plan prepared before another transaction inserts a nap
+    // must see that committed nap when its own transaction finally starts.
+    test('concurrent insertion refuses a stale plan without changing any rows', () async {
+      final entered = Completer<void>(), release = Completer<void>();
+      final insert = db.transaction((tx) async {
+        await tx.insert('sleep_nap', {'day_id': day, 'start_ts': at(14),
+            'end_ts': at(14, 30), 'source': 'manual', 'created_at': 1});
+        entered.complete();
+        await release.future;
+      });
+      await entered.future;
+      final save = expectLater(writeSleepEdit(db, SleepEditPlan(day: day,
+          window: (at(23, 0, 13), at(15)))), throwsA(isA<SleepEditInvalid>()));
+      release.complete();
+      await insert;
+      await save;
+      expect(await rows('sleep_override'), isEmpty);
+      expect((await rows('sleep_nap')).single['end_ts'], at(14, 30));
+      expect(await rows('activity_review_days'), isEmpty);
+    });
+
+    // why: R1 S1. Two simultaneous saves must not both validate an empty
+    // snapshot before either writes; validation belongs under the same lock.
+    test('simultaneous overlapping plans serialize validation with their writes', () async {
+      Future<bool> attempt(SleepEditPlan plan) async {
+        try { await writeSleepEdit(db, plan); return true; }
+        on SleepEditInvalid { return false; }
+      }
+      final saved = await Future.wait([
+        attempt(SleepEditPlan(day: day, naps: [NapWrite(start: at(14), end: at(14, 30))])),
+        attempt(SleepEditPlan(day: day, naps: [NapWrite(start: at(14, 15), end: at(14, 45))])),
+      ]);
+      expect(saved.where((ok) => ok), hasLength(1));
+      final naps = await rows('sleep_nap');
+      expect(naps, hasLength(1));
+      expect(naps.single['source'], 'manual');
+    });
+
+    // why: missing nap input is an abstention envelope, not a JSON object.
+    test('absent derived naps do not block a real reported window', () async {
+      await db.insert('day_result', {'day_id': day, 'algo_version': 1,
+          'payload_json': jsonEncode({'naps': {'value': '—'}}),
+          'window_json': jsonEncode({'value': '—'}), 'computed_at': 1});
+      await writeSleepEdit(db, SleepEditPlan(day: day,
+          naps: [NapWrite(start: at(14), end: at(14, 30))]));
+      expect((await rows('sleep_nap')).single['end_ts'], at(14, 30));
     });
 
     test('a moved detected nap is suppressed at its old window, never deleted', () async {

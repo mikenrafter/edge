@@ -268,7 +268,12 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
       ];
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) => AnimatedBuilder(
+    animation: controller,
+    builder: (c, _) => _build(c),
+  );
+
+  Widget _build(BuildContext c) {
     final p = P.of(c);
     final a = _active;
     final isNap = a.kind == BlockKind.nap;
@@ -386,19 +391,19 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
         cell('Heart rate', d.hr[i] == null ? '—' : '${d.hr[i]!.round()} bpm', dot: p.on(C.red)),
         cell('Movement', d.movement[i] == null ? '—' : '${(d.movement[i]! * 100).round()}%',
             dot: p.on(C.purple)),
-        cell('Stage · preview', s == null ? 'Not in a block' : s.label(), dot: s == null ? p.line : cols[s]),
+        cell('Stage · preview', s == null ? '—' : s.label(), dot: s == null ? p.line : cols[s]),
       ];
     } else {
       final tot = previewTotals(stages, d.domainStart, a);
-      String hm(int m) => '${m ~/ 60}h ${(m % 60).toString().padLeft(2, '0')}m';
+      String hm(int? m) => m == null ? '—' : '${m ~/ 60}h ${(m % 60).toString().padLeft(2, '0')}m';
       head = '${a.kind == BlockKind.main ? 'Main sleep' : 'Nap'} · '
           '${_clock(a.start)} – ${_clock(a.end)}';
       cells = [
-        cell('Cycles · preview', '≈${tot.cycles}'),
+        cell('Cycles · preview', tot.cycles == null ? '—' : '≈${tot.cycles}'),
         cell('Deep', hm(tot.deepMin), dot: cols[SleepStage.deep]),
         cell('REM', hm(tot.remMin), dot: cols[SleepStage.rem]),
         cell('Light', hm(tot.lightMin), dot: cols[SleepStage.light]),
-        cell('Wake-ups', '${tot.wakeUps}', dot: cols[SleepStage.awake]),
+        cell('Wake-ups', tot.wakeUps == null ? '—' : '${tot.wakeUps}', dot: cols[SleepStage.awake]),
         cell('Naps', '${blocks.where((b) => b.kind == BlockKind.nap).length}'),
       ];
     }
@@ -443,7 +448,10 @@ class SleepTimelineEditorState extends State<SleepTimelineEditor> implements Tim
         ]),
         const SizedBox(height: S.x1),
         if (s.isEmpty)
-          _why(p, LucideIcons.check, 'Both ends line up with your signals', null, null)
+          _why(p, LucideIcons.info,
+              d.movement.any((v) => v != null)
+                  ? 'No clear changes near these ends'
+                  : 'No movement recorded to suggest times', null, null)
         else
           for (final x in s)
             _why(

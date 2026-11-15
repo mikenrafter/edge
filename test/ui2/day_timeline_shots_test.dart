@@ -206,6 +206,30 @@ void main() {
     print('preview stager last update: ${s.lastStageMicros} µs');
   }, skip: !_on);
 
+  testWidgets('unsupported sleep previews', (t) async {
+    t.view.physicalSize = const Size(412 * 2, 1100 * 2);
+    t.view.devicePixelRatio = 2;
+    addTearDown(t.view.reset);
+    final d = dtNight();
+    for (final gap in [false, true]) {
+      final missing = SleepEditorData(day: d.day, domainStart: d.domainStart,
+          hr: [for (var i = 0; i < 1440; i++) gap && (i < 360 || i >= 420) ? d.hr[i] : null],
+          movement: [for (var i = 0; i < 1440; i++) gap && (i < 360 || i >= 420) ? d.movement[i] : null],
+          main: d.main);
+      await t.pumpWidget(_frame(SleepTimelineEditor(key: ValueKey(gap),
+          data: missing, save: _Never(), haptics: _Quiet())));
+      await t.pump();
+      await shot(t, gap ? 'sleep-editor-partial-gap' : 'sleep-editor-no-signals');
+      if (gap) {
+        final s = t.state<SleepTimelineEditorState>(find.byType(SleepTimelineEditor));
+        s.controller.setScrub(dtAt(390).toDouble());
+        s.scrubbed(dtAt(390).toDouble());
+        await t.pump();
+        await shot(t, 'sleep-editor-gap-scrubbed');
+      }
+    }
+  }, skip: !_on);
+
   group('activities', () {
     setUp(() {
       DayTimelinePilot.debugOverride[DayTimelinePilot.activities] = true;
@@ -259,6 +283,12 @@ void main() {
       await apk2Tap(t, apk2Keep(apk2WorkoutB));
       await apk2Tap(t, apk2Discard(apk2NapB));
       await shot(t, 'activities-staged-unsaved');
+      await apk2Tap(t, apk2Key('day-row-edit:$apk2Answered'));
+      await t.enterText(apk2Key('moment-note:2026-10-06 20:45'), 'Edited in the Activities draft');
+      await shot(t, 'activities-saved-moment-editor');
+      await apk2Tap(t, apk2Key('moment-edit-save'));
+      await shot(t, 'activities-saved-edit-staged');
+
       // ⌕ zoom: handles, then glide.
       await t.tap(find.byKey(ActivitiesTimeline.zoomKey));
       await t.pump();

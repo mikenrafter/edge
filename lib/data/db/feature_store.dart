@@ -755,7 +755,7 @@ Future<void> _ldbPrivFixWaterMinute(Transaction txn, String date, int removedMin
 // answer recorded as added (moment_label.metric_value, after any clamp), never
 // a guess; an answer that never recorded it is refused
 // [change_answer_test.dart "never kept"].
-Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, required MomentLabel after, required String? metricField, required double? metricValue, required double? metricMax, required StoredSymptom? symptom}) async {
+Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, required MomentLabel after, required String? metricField, required double? metricValue, required double? metricMax, required StoredSymptom? symptom, Transaction? transaction}) async {
     if (before.key != after.key) {
       throw ArgumentError.value(after.key, 'after', 'must be the same moment as ${before.key}');
     }
@@ -772,7 +772,7 @@ Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, 
     final date = before.date, hhmm = before.hhmm;
     final moment = int.parse(hhmm.substring(0, 2)) * 60 + int.parse(hhmm.substring(3, 5));
     try {
-      return await (await LocalDb.instance).transaction<MomentAnswerChange>((txn) async {
+      Future<MomentAnswerChange> write(Transaction txn) async {
         final rows = await txn.query('moment_label',
             where: 'date = ? AND hhmm = ?', whereArgs: [date, hhmm], limit: 1);
         if (rows.isEmpty) return const MomentNotFound();
@@ -861,10 +861,14 @@ Future<MomentAnswerChange> _ldbChangeMomentAnswer({required MomentLabel before, 
           metricValue: newField == null ? null : added,
           answeredAtMs: stamp,
         ));
-      });
+      }
+      return transaction == null
+          ? await (await LocalDb.instance).transaction(write)
+          : await write(transaction);
     } on ArgumentError {
       rethrow;
     } catch (error) {
+      if (transaction != null) rethrow;
       return MomentChangeFailed(MomentChangeFailure.storage, error);
     }
   }

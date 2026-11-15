@@ -2340,7 +2340,8 @@ class LocalDb {
   /// then the new dose added), and its `symptom_entry` row. The track feed
   /// (`track_event_feed`) is a view over those rows, so it follows.
   /// Stale (the row is no longer [before]), not found, refused or failed: the
-  /// database is unchanged. See [MomentAnswerChange].
+  /// database is unchanged. See [MomentAnswerChange]. A supplied [transaction]
+  /// owns rollback: storage errors throw so its entire batch aborts.
   static Future<MomentAnswerChange> changeMomentAnswer({
     required MomentLabel before,
     required MomentLabel after,
@@ -2348,7 +2349,8 @@ class LocalDb {
     double? metricValue,
     double? metricMax,
     StoredSymptom? symptom,
-  }) => _ldbChangeMomentAnswer(before: before, after: after, metricField: metricField, metricValue: metricValue, metricMax: metricMax, symptom: symptom);
+    Transaction? transaction,
+  }) => _ldbChangeMomentAnswer(before: before, after: after, metricField: metricField, metricValue: metricValue, metricMax: metricMax, symptom: symptom, transaction: transaction);
 
   /// How long a block's evidence is kept after the block began (days).
   static const int _wakeEvidenceKeepDays = 7;

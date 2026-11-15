@@ -21,7 +21,8 @@ const int kPreviewEpochSec = 300;
 /// (epoch seconds), null outside every block. [hr] and [movement] are per
 /// minute from [domainStart] (null: not measured).
 ///
-/// Inside a block: an epoch whose mean movement is above 0.4 is Awake (a
+/// Inside a block: an epoch without measured signals remains unknown.
+/// Otherwise an epoch whose mean movement is above 0.4 is Awake (a
 /// spike in the wave); otherwise its place in a 90-minute cycle from the
 /// block's start says Light, Deep or REM, with Deep favoured early in the
 /// night and when heart rate is below the block's mean, REM favoured late.
@@ -61,6 +62,7 @@ List<SleepStage?> previewStages({
           hN++;
         }
       }
+      if (mvN == 0 && hN == 0) continue;
       if (mvN > 0 && mv / mvN > .4) {
         out[e] = SleepStage.awake;
         continue;
@@ -82,16 +84,23 @@ List<SleepStage?> previewStages({
   return out;
 }
 
-/// What the readout says about one block, from the preview.
+/// What the readout says about one block, from the preview. Totals are null
+/// when any epoch is unsupported: partial coverage cannot describe a whole night.
 class PreviewTotals {
   const PreviewTotals({required this.cycles, required this.deepMin,
       required this.remMin, required this.lightMin, required this.wakeUps});
-  final int cycles, deepMin, remMin, lightMin, wakeUps;
+  final int? cycles, deepMin, remMin, lightMin, wakeUps;
 }
 
 PreviewTotals previewTotals(List<SleepStage?> stages, int domainStart, SleepBlock b) {
   final e0 = ((b.start - domainStart) / kPreviewEpochSec).floor().clamp(0, stages.length);
   final e1 = ((b.end - domainStart) / kPreviewEpochSec).ceil().clamp(0, stages.length);
+  if (e1 <= e0 || b.start < domainStart ||
+      b.end > domainStart + stages.length * kPreviewEpochSec ||
+      stages.sublist(e0, e1).any((s) => s == null)) {
+    return const PreviewTotals(cycles: null, deepMin: null, remMin: null,
+        lightMin: null, wakeUps: null);
+  }
   var deep = 0, rem = 0, light = 0, wakeUps = 0;
   SleepStage? prev;
   for (var e = e0; e < e1; e++) {

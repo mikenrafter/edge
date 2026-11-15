@@ -1189,6 +1189,10 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
   /// Opens the editor of a saved row (a nap, a workout) and reloads after.
   @override
   Future<void> openRowEditor(Moment m) async {
+    if (_review?.pilot == true) {
+      await _review!.editSavedRow(context, m);
+      return;
+    }
     final ref = m.editRef, day = _day ?? _d?.day;
     if (ref == null || day == null) return;
     if (ref.startsWith('moment:')) {
