@@ -25,6 +25,7 @@ import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
+import 'package:openstrap_edge/data/sleep_edit_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -157,6 +158,24 @@ void main() {
     expect(sc['tst_min'], 420);
     expect(sc['rhr'], isNotNull);
     expect((await _series(_d2))['tst_min'], 420);
+  });
+
+  // WHY: preservation of pruned nights must not reuse a whole stored day
+  // when actual overnight samples are available (R4-1).
+  // CLAIM(sleep-edit-r4); catches: unconditionally trying measured reuse.
+  test('R4-1 recalculate with overnight input recomputes the measured night', () async {
+    await _realNight(_d2, prevDay: 4);
+    final measured = (await LocalDb.dayResult(_d2))!['rhr'];
+    expect(measured, isNotNull);
+    expect(measured, isNot(99));
+    await _db.rawUpdate('UPDATE day_result SET rhr = 99 WHERE day_id = ?', [_d2]);
+    await SleepEditStore.recalculate(_d2);
+    await _derive(_d2);
+    expect((await LocalDb.dayResult(_d2))!['rhr'], measured,
+        reason: 'fresh overnight input must replace the stored sentinel');
+    expect((await _scalars(_d2))['tst_min'], 420);
+    final job = (await SleepEditStore.status(_d2))!;
+    expect(job['applied_revision'], job['revision']);
   });
 
   group('Not sleep', () {

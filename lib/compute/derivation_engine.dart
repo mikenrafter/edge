@@ -1999,7 +1999,9 @@ part 'engine/settled.dart';
 // 121 (sleep edit R3): finished edits preserve pruned measured nights, and a
 // recalculation without an override retains the stored assertion. Only an
 // unapplied changed assertion can invalidate measurements with no input.
-const int kAlgoVersion = 121;
+// 122 (sleep edit R4): preserve settled measured nights and reuse unchanged
+// assertions when overnight input is gone even if daytime raw survives.
+const int kAlgoVersion = 122;
 
 enum SleepEditCalculation { complete, incomplete, superseded }
 
@@ -5227,15 +5229,23 @@ class DerivationEngine {
   }
 
   /// Whether [row] is a REAL derived day result worth protecting — i.e. not a
-  /// skip marker and not an all-absent shell.
-  static bool _isRealDayResult(Map<String, dynamic>? row) {
+  /// skip marker and not an all-absent shell. With [nightOnly], daytime facts
+  /// alone do not count as measured night values.
+  static bool _isRealDayResult(Map<String, dynamic>? row, {bool nightOnly = false}) {
     if (row == null) return false;
     if ((row['skipped'] as num?)?.toInt() == 1) return false;
     final payload = _decodeBundle(row['payload_json']);
     if (payload == null) return false;
     if (payload['skipped'] == true) return false;
     final scalars = payload['scalars'];
-    if (scalars is Map && scalars.values.any((v) => v != null)) return true;
+    if (scalars is Map) {
+      // Daytime facts alone must not suppress a pending night's retry.
+      // CLAIM(sleep-edit-r4) [responsiveness_sleep_fix_test: earlier night edited mid-run].
+      final values = nightOnly
+          ? ['rhr', 'rmssd', 'readiness', 'tst_min'].map((key) => scalars[key])
+          : scalars.values;
+      if (values.any((v) => (nightOnly && v is Map ? v['value'] : v) != null)) return true;
+    }
     return row['rhr'] != null || row['rmssd'] != null || row['readiness'] != null;
   }
 

@@ -1,0 +1,7 @@
+// WHY: an optional external input explicitly forwarded is still unknown.
+// CLAIM(resolved-effects); catches: blessing an optional declaration as null.
+class Button {
+  Button({this.action}); final void Function()? action;
+  void tap() { action?.call(); }
+}
+void run([void Function()? unknown]) { Button(action: unknown).tap(); }

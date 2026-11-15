@@ -96,8 +96,8 @@ void main() {
       var n = 0;
       await _pump(
           t,
-          momentFollowUpCardFor(
-              enabled: true, moments: 2, assumedWater: 0, onAnswer: () => n++));
+          MomentFollowUpCard(
+              moments: 2, assumedWater: 0, onAnswer: () => n++));
       expect(find.byKey(_answerKey), findsOneWidget);
       await t.tap(find.byKey(_answerKey));
       await t.pump();
@@ -108,8 +108,8 @@ void main() {
   group('the card is laid out like a community card, minus the controls', () {
     Future<void> both(WidgetTester t) => _pump(
         t,
-        momentFollowUpCardFor(
-            enabled: true, moments: 3, assumedWater: 2, onAnswer: () {}));
+        MomentFollowUpCard(
+            moments: 3, assumedWater: 2, onAnswer: () {}));
 
     testWidgets('a Surface holds the lines and the button', (t) async {
       await both(t);

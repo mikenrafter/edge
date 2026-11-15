@@ -1,0 +1,4 @@
+// WHY: one observed omission cannot hide an explicit unknown source.
+// CLAIM(resolved-effects); catches: letting null defaults dominate other sources.
+void dispatch([void Function()? action]) { action?.call(); }
+void run(void Function() unknown) { dispatch(); dispatch(unknown); }

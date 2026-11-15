@@ -8,4 +8,10 @@ class ExplicitButton {
   ExplicitButton({this.action = null}); final void Function()? action;
   void tap() { action?.call(); }
 }
-void run() { Button().tap(); ExplicitButton().tap(); }
+void positional([void Function()? action]) { action?.call(); }
+void named({void Function()? action = null}) { action?.call(); }
+void run() {
+  Button().tap(); ExplicitButton().tap();
+  positional(); named();
+  positional(() {}); named(action: () {});
+}

@@ -770,6 +770,7 @@ class _CallbackSources extends RecursiveAstVisitor<void> {
   final sources = <Element, List<Expression>>{};
   final aliases = <Element, List<Element>>{};
   final known = <Element>{};
+  final defaultedNulls = <Element>{};
   Element key(Element e) => (e is PropertyAccessorElement ? e.variable : e).baseElement;
   void add(Element? e, Expression? expression) {
     if (e != null && expression != null) sources.putIfAbsent(key(e), () => []).add(expression);
@@ -804,9 +805,30 @@ class _CallbackSources extends RecursiveAstVisitor<void> {
     super.visitConstructorDeclaration(node);
   }
   @override void visitArgumentList(ArgumentList node) {
+    final supplied = <Element>{};
     for (final argument in node.arguments) {
-      add(argument.correspondingParameter,
-          argument is NamedExpression ? argument.expression : argument);
+      final parameter = argument.correspondingParameter;
+      if (parameter != null) supplied.add(key(parameter));
+      add(parameter, argument is NamedExpression ? argument.expression : argument);
+    }
+    final callable = switch (node.parent) {
+      InstanceCreationExpression n => n.constructorName.element,
+      MethodInvocation n => n.methodName.element,
+      FunctionExpressionInvocation n => n.element,
+      SuperConstructorInvocation n => n.element,
+      RedirectingConstructorInvocation n => n.element,
+      _ => null,
+    };
+    if (callable is ExecutableElement) {
+      for (final parameter in callable.formalParameters) {
+        // Only an observed omission supplies a null default. A public optional
+        // parameter forwarded with no known caller is still unknown (R4-2).
+        // CLAIM(resolved-effects) [unresolved_bad_optional_external_callback].
+        if (parameter.isOptional && !supplied.contains(key(parameter)) &&
+            (parameter.defaultValueCode == null || parameter.defaultValueCode == 'null')) {
+          defaultedNulls.add(key(parameter));
+        }
+      }
     }
     super.visitArgumentList(node);
   }
@@ -833,12 +855,7 @@ class _CallbackSources extends RecursiveAstVisitor<void> {
     final values = sources[k] ?? const <Expression>[];
     final links = aliases[k] ?? const <Element>[];
     if (values.isEmpty && links.isEmpty) {
-      // An omitted optional callback is its null default, not an unknown
-      // callable. Explicit arguments still go through every source below.
-      // CLAIM(resolved-effects) [unresolved_ok_null_callback_defaults,
-      // unresolved_bad_optional_callback_override].
-      return k is FormalParameterElement && k.isOptional &&
-          (k.defaultValueCode == null || k.defaultValueCode == 'null');
+      return defaultedNulls.contains(k);
     }
     return values.every((v) => expression(v, {...seen})) &&
         links.every((v) => source(v, {...seen}));

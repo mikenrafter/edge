@@ -300,7 +300,11 @@ extension _EngineDayCompute on DerivationEngine {
         ? null
         : math.min(day.sleepEditGeneration!,
             history.sleepEditGenerationUpTo(day.date));
-    final noInputJob = producedNothing
+    // Night availability is independent of daytime retention. Noon samples
+    // cannot justify clearing a settled night or prevent exact-window reuse.
+    // CLAIM(sleep-edit-r4) [responsiveness_sleep_r4_test].
+    final nightInputMissing = sleepSub.isEmpty;
+    final noInputJob = nightInputMissing
         ? await SleepEditStore.status(day.date)
         : null;
     final unappliedEdit = noInputJob != null &&
@@ -308,12 +312,12 @@ extension _EngineDayCompute on DerivationEngine {
     // A retained job is history, not a new assertion. This also gates the
     // manual-override blanking path; legacy nights without jobs keep their
     // existing rejection semantics. CLAIM(sleep-edit-r3)
-    var blankSource = producedNothing && noInputJob != null && !unappliedEdit
+    var blankSource = nightInputMissing && noInputJob != null && !unappliedEdit
         ? null
         : await _userBlankedNight(day.date, scMap);
     // Prove an unchanged manual assertion before the no-input blanking policy
     // runs. Recalculate must preserve its measured window too (R3-1).
-    if (producedNothing && fence != null &&
+    if (nightInputMissing && fence != null &&
         await SleepEditStore.reuseMeasuredNightIfCurrent(day.date, fence, algoVersion: kAlgoVersion)) {
       _declineReasons[day.date] = 'measured_window_matches_assertion';
       return DayDerive.reused;
@@ -321,7 +325,7 @@ extension _EngineDayCompute on DerivationEngine {
     // A new assertion cannot inherit measurements from an unproven window.
     // Store an unavailable night with its daytime facts in the same fenced
     // result transaction. CLAIM(sleep-edit-r2) [responsiveness_sleep_r2_test].
-    if (producedNothing && blankSource == null && unappliedEdit) {
+    if (nightInputMissing && blankSource == null && unappliedEdit) {
       blankSource = (await LocalDb.getSleepOverride(day.date))?['source'] as String? ?? 'auto';
     }
     if (blankSource != null) {
@@ -347,10 +351,11 @@ extension _EngineDayCompute on DerivationEngine {
         return committed ? DayDerive.committed : DayDerive.refused;
       }
     }
-    if (producedNothing && blankSource == null) {
+    if ((producedNothing || (nightInputMissing && noInputJob != null && !unappliedEdit)) &&
+        blankSource == null) {
       final existing = await LocalDb.dayResult(day.date);
-      if (DerivationEngine._isRealDayResult(existing)) {
-        _log('derive ${day.date}: no substrate (raw pruned) — kept the '
+      if (DerivationEngine._isRealDayResult(existing, nightOnly: !producedNothing)) {
+        _log('derive ${day.date}: no night substrate (raw pruned) — kept the '
             'existing result rather than blanking it');
         _declineReasons[day.date] = 'raw_pruned';
         return DayDerive.declined;

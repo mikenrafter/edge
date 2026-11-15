@@ -122,11 +122,10 @@ Widget? momentFollowUpCardFor({
   required bool enabled,
   required int moments,
   required int assumedWater,
-  VoidCallback? onAnswer,
 }) =>
     enabled && moments + assumedWater > 0
         ? MomentFollowUpCard(
-            moments: moments, assumedWater: assumedWater, onAnswer: onAnswer)
+            moments: moments, assumedWater: assumedWater)
         : null;
 
 /// Marked moments plus assumed water glasses waiting for an answer, for the
