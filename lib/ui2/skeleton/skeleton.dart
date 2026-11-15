@@ -32,6 +32,7 @@ import 'package:flutter/scheduler.dart';
 import '../../l10n/app_localizations.dart';
 import '../grammar.dart' show ChartFrame, GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface, SubTabs;
 import '../guides/guide_target.dart';
+import '../guides/guide_accordion.dart';
 import '../guides/tree_geometry.dart';
 import '../theme.dart';
 import 'guide_plot.dart';
@@ -264,6 +265,37 @@ ThemeData _themeAt(Element e) => (e.widget is Theme ? e.widget as Theme :
 /// The scaffold colour a component dims toward.
 Color scaffoldOf(Element e) => _themeAt(e).scaffoldBackgroundColor;
 
+/// The colour the decorated boxes around [object] (a bar, a card, a button) paint beneath it,
+/// over [fallback], with the opacity of every Opacity above each box (a disabled button is drawn
+/// at 40%). A dim over loose text uses it so the veil shows only on the glyphs, never as a box.
+/// CLAIM(dim-has-no-box) [guide_r5_test R5-7, guide_r5_scenes_test R5-7 'staged'].
+Color surfaceBeneath(RenderObject object, Color fallback) {
+  // From the object up: a box's colour, or an opacity.
+  final chain = <(Color?, double)>[];
+  for (RenderObject? o = object.parent; o != null; o = o.parent) {
+    if (o is RenderDecoratedBox && o.position == DecorationPosition.background) {
+      final d = o.decoration;
+      if (d is BoxDecoration && d.color != null) chain.add((d.color, 1));
+    } else if (o is RenderOpacity) {
+      chain.add((null, o.opacity));
+    } else if (o is RenderAnimatedOpacity) {
+      chain.add((null, o.opacity.value));
+    }
+  }
+  // From the top down: a box is drawn under every opacity above it.
+  var color = fallback;
+  var factor = 1.0;
+  for (var i = chain.length - 1; i >= 0; i--) {
+    final (layer, opacity) = chain[i];
+    if (layer == null) {
+      factor *= opacity;
+    } else {
+      color = Color.alphaBlend(layer.withValues(alpha: layer.a * factor), color);
+    }
+  }
+  return color;
+}
+
 /// The palette of the theme at [e] (no dependency registered).
 P paletteOf(Element e) => P(_themeAt(e).brightness == Brightness.dark);
 
@@ -474,10 +506,22 @@ class _WindowLook {
         });
         return under ? child : null;
       }
+      // A focus pinned OUTSIDE the scrolling content (the Save bar under the list) is ordered by
+      // position: the cards nearest to it on screen are its neighbours, not the last and first
+      // cards of the list's layout order [guide_r5_scenes_test R5-7 'card window'].
+      bool scrolls(Element? e) {
+        var inside = false;
+        e?.visitAncestorElements((a) {
+          if (a.widget is Scrollable) { inside = true; return false; }
+          return true;
+        });
+        return inside;
+      }
+      final pinned = focusElement != null && !scrolls(focusElement) && all.any((u) => scrolls(u.component));
       // A wrapper Column with only this card does not order the page. Lazy
       // ListViews are columns too. A NavBar back arrow can have a card sibling
       // below it even though the focus itself is not a card.
-      focusElement?.visitAncestorElements((e) {
+      (pinned ? null : focusElement)?.visitAncestorElements((e) {
         final w = e.widget;
         final direction = e.findAncestorWidgetOfExactType<Scrollable>()?.axisDirection;
         final vertical = w is Flex && w.direction == Axis.vertical ||
@@ -511,6 +555,14 @@ class _WindowLook {
         }
         for (final entry in slotOf.keys) {
           if (beside(entry, a) || beside(entry, b)) neighbours.add(entry);
+        }
+      } else if (pinned) {
+        for (final u in all) {
+          if (u.bounds.isEmpty || identical(u, o)) {
+            continue;
+          }
+          if (u.bounds.top < focus.top && (a == null || u.bounds.bottom > a.bounds.bottom)) a = u;
+          if (u.bounds.bottom > focus.bottom && u.bounds.top >= focus.top - 1 && (b == null || u.bounds.top < b.bounds.top)) b = u;
         }
       } else if (o != null) {
         final at = all.indexOf(o);
@@ -642,6 +694,7 @@ SkeletonPlan planSkeleton(
   final units = <_Unit>[];
   void find(Element e) {
     final w = e.widget;
+    if (w is GuideNavigationHeader) { see(e); return; }
     // The dim look treats the OUTERMOST control as one component too (its whole
     // box, padding and background included), not just the text inside it.
     if (w is Surface || w is Section || w is GuideBox || (dim != null && isGuideControl(w) && laidOutBox(e) != null)) {
@@ -650,6 +703,10 @@ SkeletonPlan planSkeleton(
       if (unit != null) units.add(unit);
       return; // everything inside belongs to this unit
     }
+    // A Pressable with no tap (a disabled button) is no unit of its own: its text is planned as loose
+    // text. It is SEEN, though, so the plan's fallback for components built after it never dims the
+    // button a second time (a lighter box behind its label) [guide_r5_scenes_test R5-7 'staged'].
+    if (w is Pressable) seen.add(e);
     // An icon is never a unit: it is left exactly as it is.
     if (w is Icon || w is ImageIcon || dim != null && (w is Image || w is RawImage)) return;
     final ro = e is RenderObjectElement ? e.renderObject : null;
@@ -705,7 +762,10 @@ SkeletonPlan planSkeleton(
         shapes.add(SkeletonShape(kind: d.kind, rect: d.rect, color: d.color, section: section));
       }
     } else {
-      shapes.add(SkeletonShape(kind: SkeletonKind.dim, rect: u.bounds, color: veil, section: section));
+      // A loose line dims toward the surface it sits on, not toward the scaffold: over a bar or card
+      // of another colour a scaffold veil is a dark box behind the text (owner's "1 staged").
+      final color = u.paragraph == null ? veil : surfaceBeneath(u.paragraph!, scaffold).withValues(alpha: kDimOpacity);
+      shapes.add(SkeletonShape(kind: SkeletonKind.dim, rect: u.bounds, color: color, section: section));
     }
     if (u.component != null || u.paragraph != null || u.visual != null) {
       planned.add(PlannedUnit(component: u.component, paragraph: u.paragraph, visual: u.visual, skeleton: skeleton, section: section));
@@ -929,7 +989,7 @@ List<Rect> defaultSkeletonChrome(Element root) {
   final out = <Rect>[];
   void find(Element e) {
     final w = e.widget;
-    if (w is ScreenTitle || w is NavBar || w is SubTabs || w.runtimeType.toString() == '_TabBar') {
+    if (isGuideChromeWidget(w)) {
       final box = laidOutBox(e);
       if (box != null) out.add(rectInRoot(box, rootBox));
       return;
@@ -939,6 +999,37 @@ List<Rect> defaultSkeletonChrome(Element root) {
 
   find(root);
   return out;
+}
+
+/// True for the widgets that are navigation chrome: a screen title, a NavBar, a sub-tab
+/// row, AppShell's private tab bar (matched by runtime type, see [defaultSkeletonChrome]).
+/// Chrome is never dimmed, never a placeholder and never absorbs a tap, whenever it was
+/// built [guide_r5_scenes_test R5-4]. CLAIM(chrome-never-covered).
+bool isGuideChromeWidget(Widget w) =>
+    w is ScreenTitle || w is NavBar || w is SubTabs || w.runtimeType.toString() == '_TabBar';
+
+/// The bars that bound the area the guide may use (the card, the pill, the glide): the top bars
+/// (a title, a NavBar, a sub-tab row) and the bottom bar, which is AppShell's tab bar and nothing
+/// else. A [SubTabs] row is never the bottom bar, wherever it lies: Alarm's Mon-Sun row sits below
+/// mid-screen and the old geometric rule took it for the tab bar, cutting the room above it
+/// [guide_r5_test R5-1b]. Rects are in [root]'s coordinates. CLAIM(bars-are-bars).
+({List<Rect> top, List<Rect> bottom}) guideBars(Element root) {
+  final rootBox = laidOutBox(root);
+  if (rootBox == null) return (top: const [], bottom: const []);
+  final top = <Rect>[], bottom = <Rect>[];
+  void find(Element e) {
+    final w = e.widget;
+    if (w is GuideNavigationHeader) return;
+    if (isGuideChromeWidget(w)) {
+      final box = laidOutBox(e);
+      if (box != null) (w.runtimeType.toString() == '_TabBar' ? bottom : top).add(rectInRoot(box, rootBox));
+      return;
+    }
+    e.debugVisitOnstageChildren(find);
+  }
+
+  find(root);
+  return (top: top, bottom: bottom);
 }
 
 /// What a screen reader gets for something that stays readable while the rest
