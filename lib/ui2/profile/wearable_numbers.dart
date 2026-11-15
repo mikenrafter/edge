@@ -921,7 +921,7 @@ class _DeviceUseSwitchState extends State<DeviceUseSwitch> {
               d.busy
                   ? const SizedBox.square(
                       dimension: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                      child: PendingMark())
                   : Switch(value: on, onChanged: _set),
             ]),
           ),

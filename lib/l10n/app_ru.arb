@@ -9787,5 +9787,10 @@
   "guideAddNapMissingTitle": "Не видите «{naps}»?",
   "guideAddNapMissingBody": "**{naps}** находится под вашей ночью. Если этот раздел, **{night}**, свёрнут, нажмите на его заголовок, чтобы открыть.",
   "guideTapsBack": "{count, plural, one{{count} касание назад} few{{count} касания назад} many{{count} касаний назад} other{{count} касания назад}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "deriveDailyLabel": "Расчёт сна, восстановления и нагрузки",
+  "deriveDailyProgress": "Расчёт сна, восстановления и нагрузки · день {index} из {total}",
+  "deriveDailyProgressOn": "Расчёт сна, восстановления и нагрузки · день {index} из {total} · {day}",
+  "deriveWaitingDailyLabel": "Ожидание расчёта сна, восстановления и нагрузки",
+  "deriveTrendsLabel": "Пересчёт тенденций"
 }

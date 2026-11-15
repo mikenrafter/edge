@@ -29,6 +29,7 @@
 //     and the golden sweep measures every Pressable in every case rather than
 //     the five tabs of the shell.
 
+import 'skeleton/async_section.dart';
 import '../l10n/display_text.dart';
 import '../l10n/app_localizations.dart';
 import '../l10n/presentation_text.dart';
@@ -1876,6 +1877,8 @@ class TrendCard extends StatefulWidget {
   /// abstains (or has no data yet) is as tall as one that judges. Off by
   /// default: only a screen that must not move when the band arrives asks.
   final bool reserveVerdict;
+  final bool detailReadout;
+  final Widget? detailFooter;
 
   const TrendCard(
     this.label,
@@ -1895,6 +1898,8 @@ class TrendCard extends StatefulWidget {
     this.format,
     this.dayOf,
     this.reserveVerdict = false,
+    this.detailReadout = false,
+    this.detailFooter,
   });
 
   @override
@@ -1984,7 +1989,7 @@ class _TrendCardState extends State<TrendCard> {
                 : held / (w.series.length - 1)),
       ),
     ]);
-    if (w.dayOf != null && w.series.length > 1) {
+    if (!w.detailReadout && w.dayOf != null && w.series.length > 1) {
       // Excluded from semantics: the card's own label carries the summary and
       // the card is a button into the metric screen, whose chart is the
       // screen-reader slider.
@@ -2001,6 +2006,24 @@ class _TrendCardState extends State<TrendCard> {
           child: plot,
         ),
       );
+    }
+
+    if (w.detailReadout) {
+      final keys = [ChartKey.slots(w.label, ink, w.series,
+        (i, v) => '${_fmt(v)}$u')];
+      return Surface(onTap: w.onTap, child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ChartFrame(title: w.label, unit: displayUnit, height: 100,
+            yAxis: axis,
+            panel: vals.isEmpty ? ChartKeyReadout(cells: [ChartCell(w.label, ink)],
+              time: w.dayOf?.call(math.max(0, w.series.length - 1)),
+              timeSpan: [if (w.dayOf != null) for (var i = 0; i < w.series.length; i++) w.dayOf!(i)]) : null,
+            child: ChartScrub(label: w.label, keys: keys,
+              slots: w.series.length, gaps: true,
+              time: w.dayOf == null ? null : (at) => w.dayOf!(ChartScrub.slotAt(w.series.length, at)),
+              child: plot)),
+          if (w.detailFooter != null) w.detailFooter!,
+        ]));
     }
 
     // Whether value, a sliver of caption and the change share one line. When
@@ -3718,7 +3741,7 @@ class BigButton extends StatelessWidget {
             if (busy) ...[
               SizedBox.square(
                   dimension: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: ink)),
+                  child: PendingMark()),
               const SizedBox(width: S.x2),
             ] else if (icon != null) ...[
               Icon(icon, size: 18, color: ink),

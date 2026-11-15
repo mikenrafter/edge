@@ -35,12 +35,17 @@ import '../guides/guide_target.dart';
 import '../guides/tree_geometry.dart';
 import '../theme.dart';
 import 'guide_plot.dart';
+import 'async_section.dart' show PendingTone;
 
 enum SkeletonKind {
   /// A card rect repainted in its own surface colour ([SkeletonShape.color]).
   surface,
 
   sine,
+  columns,
+  steps,
+  dots,
+  band,
 
   /// An empty ring track in a muted pigment: what a dial (a ring painter) becomes. No arc,
   /// no value. [SkeletonShape.color] is the pigment.
@@ -76,7 +81,14 @@ enum SkeletonKind {
 
 /// What a plot becomes inside a placeholder: a dial is an empty ring track, every other
 /// plot one wave. The one mapping the plan and the paint share.
-SkeletonKind skeletonKindOfPlot(GuidePlot plot) => plot is GuideRing ? SkeletonKind.ring : SkeletonKind.sine;
+SkeletonKind skeletonKindOfPlot(GuidePlot plot) => switch (plot) {
+  GuideRing() => SkeletonKind.ring,
+  GuideBars() => SkeletonKind.columns,
+  GuideSteps() => SkeletonKind.steps,
+  GuideScatter() => SkeletonKind.dots,
+  GuideBand() => SkeletonKind.band,
+  _ => SkeletonKind.sine,
+};
 
 @immutable
 class SkeletonShape {
@@ -756,8 +768,8 @@ const kPlaceholderStrength = .14;
 /// layers' alpha (the dim fades in; placeholders never fade).
 void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette, {double fade = 1, double pulse = 1}) {
   Color pulsed(Color color) {
-    final hsv = HSVColor.fromColor(color);
-    return hsv.withValue((hsv.value * pulse).clamp(0.0, 1.0)).toColor();
+    return Color.from(alpha: color.a * fade, red: color.r * pulse,
+      green: color.g * pulse, blue: color.b * pulse);
   }
   final headings = [for (final s in shapes) if (s.kind == SkeletonKind.heading) s.rect];
   final icons = [for (final s in shapes) if (s.kind == SkeletonKind.icon) s.rect];
@@ -772,6 +784,33 @@ void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palett
   ];
   for (final s in ordered) {
     switch (s.kind) {
+      case SkeletonKind.columns:
+        for (var i = 0; i < 8; i++) {
+          final w = s.rect.width / 8;
+          final h = s.rect.height * (.3 + .45 * (1 + math.sin(i * .9)) / 2);
+          canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(
+            s.rect.left + i * w + 2, s.rect.bottom - h, math.max(0, w - 4), h),
+            const Radius.circular(2)), Paint()..color = pulsed(s.color ?? palette.ink3));
+        }
+      case SkeletonKind.steps:
+        final path = Path()..moveTo(s.rect.left, s.rect.center.dy);
+        for (var i = 0; i < 10; i++) {
+          final x = s.rect.left + s.rect.width * i / 10;
+          final y = s.rect.top + s.rect.height * [.3, .65, .5, .8, .4][i % 5];
+          path..lineTo(x, y)..lineTo(x + s.rect.width / 10, y);
+        }
+        canvas.drawPath(path, Paint()..color = pulsed(s.color ?? palette.ink3)
+          ..style = PaintingStyle.stroke..strokeWidth = 5);
+      case SkeletonKind.dots:
+        for (var i = 0; i < 25; i++) {
+          canvas.drawCircle(Offset(s.rect.left + s.rect.width * (.15 + .7 * (i % 5) / 4),
+            s.rect.top + s.rect.height * (.15 + .7 * (i ~/ 5) / 4)), 2,
+            Paint()..color = pulsed(s.color ?? palette.ink3));
+        }
+      case SkeletonKind.band:
+        canvas.drawRRect(R.rMd.toRRect(Rect.fromLTWH(s.rect.left,
+          s.rect.top + s.rect.height * .35, s.rect.width, s.rect.height * .3)),
+          Paint()..color = pulsed(s.color ?? palette.ink3));
       case SkeletonKind.sine:
         final path = Path();
         for (var i = 0; i <= 80; i++) {
@@ -860,7 +899,7 @@ class _Placeholder extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
         width: width,
         height: height,
-        child: DecoratedBox(decoration: BoxDecoration(color: P.of(context).line, borderRadius: radius)),
+        child: DecoratedBox(decoration: BoxDecoration(color: PendingTone.colorOf(context, P.of(context).line), borderRadius: radius)),
       );
 }
 

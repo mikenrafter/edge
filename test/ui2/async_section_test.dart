@@ -69,50 +69,53 @@ void main() {
     expect(find.text('Try again'), findsOneWidget);
   });
 
-  testWidgets('unknown list counts keep the following section in place', (
-    t,
-  ) async {
-    Widget page(List<String>? items) => MaterialApp(
-      theme: buildTheme(Brightness.dark),
-      home: Scaffold(
-        body: Column(
-          children: [
-            AsyncListSection<String>(
-              items: items,
-              itemBuilder: (_, value) => Text(value),
-              emptyBuilder: (_) => const Text('No entries'),
-            ),
-            const Text('Next section', key: ValueKey('next')),
-          ],
-        ),
-      ),
-    );
-    await t.pumpWidget(page(null));
-    final before = t.getRect(find.byKey(const ValueKey('next')));
+  // WHY: a short or empty list must not leave the pilot's empty viewport,
+  // and accordion content must not acquire another scrollable.
+  testWidgets('settled lists fit their content and never scroll internally', (t) async {
+    Widget page(List<String>? items) => MaterialApp(home: Scaffold(body:
+      SingleChildScrollView(child: AsyncListSection<String>(items: items,
+        itemBuilder: (_, value) => Text(value),
+        emptyBuilder: (_) => const Text('No entries')))));
     await t.pumpWidget(page(['One', 'Two', 'Three', 'Four']));
-    expect(t.getRect(find.byKey(const ValueKey('next'))), before);
+    expect(find.byType(Scrollable), findsOneWidget);
     expect(find.text('Four'), findsOneWidget);
     await t.pumpWidget(page([]));
-    expect(t.getRect(find.byKey(const ValueKey('next'))), before);
+    expect(find.byType(Scrollable), findsOneWidget);
     expect(find.text('No entries'), findsOneWidget);
+    expect(find.byType(PendingRows), findsNothing);
   });
-  testWidgets('pending rows fit a constrained viewport', (t) async {
-    await t.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              height: 80,
-              child: AsyncListSection<String>(
-                items: null,
-                itemBuilder: (_, value) => Text(value),
-                emptyBuilder: (_) => const SizedBox.shrink(),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    expect(t.takeException(), isNull);
+
+  // WHY: fast reads must never flash placeholders. Slow reads fade in after
+  // 200 ms and pulse only value, with identical hue and saturation.
+  // Proves CLAIM(pending-debounce). Changing 200 to 0 or removing fade fails.
+  testWidgets('placeholder waits 200ms then fades with value-only pulse', (t) async {
+    Widget page(bool pending) => MaterialApp(home: PendingContent(
+      pending: pending, child: const Text('Stored value')));
+    PendingTone tone() => t.widget<PendingTone>(find.byType(PendingTone));
+    await t.pumpWidget(page(true));
+    await t.pump(const Duration(milliseconds: 199));
+    expect(tone().fade, 0);
+    await t.pump(const Duration(milliseconds: 1));
+    expect(tone().fade, 0);
+    await t.pump(const Duration(milliseconds: 125));
+    expect(tone().fade, closeTo(.5, .02));
+    await t.pump(const Duration(milliseconds: 125));
+    expect(tone().fade, 1);
+    final context = t.element(find.text('Stored value'));
+    const source = Color(0xff568aba);
+    final pulsed = PendingTone.colorOf(context, source);
+    // Equal RGB ratios preserve HSV hue and saturation. HSVColor.fromColor
+    // quantizes via integer channels, so it is not an oracle for this pulse.
+    expect(pulsed.r / source.r, closeTo(pulsed.g / source.g, 1e-6));
+    expect(pulsed.g / source.g, closeTo(pulsed.b / source.b, 1e-6));
+    expect(pulsed.b, lessThan(source.b));
+    expect(pulsed.a, source.a);
+    await t.pumpWidget(page(false));
+    await t.pumpWidget(page(true));
+    await t.pump(const Duration(milliseconds: 100));
+    await t.pumpWidget(page(false));
+    await t.pump(const Duration(milliseconds: 500));
+    expect(tone().fade, 0, reason: 'completed fast reads cancel delayed paint');
+    await t.pumpWidget(const SizedBox());
   });
 }

@@ -288,6 +288,8 @@ void main() {
     r.repo.failQueueRead = true;
     await r.mount(t);
     expect(apk2Key(apk2LoadError), findsOneWidget);
+    await t.ensureVisible(apk2Key(apk2LoadError));
+    await t.pump();
     apk2StatusSpokenOnce(t, apk2LoadError);
     expect(apk2Key(apk2Chart), findsOneWidget);
     expect(apk2PageIds(), isEmpty);

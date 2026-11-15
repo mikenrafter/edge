@@ -7,10 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 final _key = GlobalKey();
 Widget pilotShot(Widget child) => RepaintBoundary(key: _key, child: child);
-Future<void> takePilotShot(WidgetTester tester, String name) async {
+Future<void> takePilotShot(WidgetTester tester, String name, {GlobalKey? captureKey}) async {
   final dir = Platform.environment['CLS_SHOTS_DIR'];
   if (dir == null) return;
-  final boundary = tester.renderObject<RenderRepaintBoundary>(find.byKey(_key));
+  final boundary = tester.renderObject<RenderRepaintBoundary>(find.byKey(captureKey ?? _key));
   await tester.runAsync(() async {
     final image = await boundary.toImage(pixelRatio: 2);
     try {

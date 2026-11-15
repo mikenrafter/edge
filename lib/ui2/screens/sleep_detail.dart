@@ -733,9 +733,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             shownDay: d.day,
             computedAt: computedAtOf(d.night['computed_at']),
             recalc: recalc),
-        builder: (c, at) => Padding(
-            padding: const EdgeInsets.only(bottom: S.x2),
-            child: AsOfLabel(at: at)),
+        builder: (c, at) => AsOfLabel(at: at),
       );
 
   /// Another night. The scrub cursor belongs to the night it was placed on, so
@@ -743,7 +741,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   void _goDay(String day) {
     setState(() {
       _day = day;
+      _d = null;
       _scrub = null;
+      _rough = null;
       _overrideFailed = null;
       _loading = true;
     });
@@ -782,13 +782,11 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       // the night, the window, the stages and the sections under them. Only
       // what is inside each card differs.
       return _frame(c, title, [
-        SizedBox(height: 24 * MediaQuery.textScalerOf(c).scale(1)),
         ..._dayNav(d),
         ..._nightControls(d, recalc: false),
         _answer(c, p, d, d.night),
         const SizedBox(height: S.x3),
         _nightAccordion(c, [
-        SizedBox(height: 48 * MediaQuery.textScalerOf(c).scale(1)),
         _night(c, p, d, d.night,
             reason: windowCard != null
                 ? null
@@ -842,8 +840,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     // thing that dates the screen.
     return _frame(c, title,
         [
-      SizedBox(height: 24 * MediaQuery.textScalerOf(c).scale(1),
-        child: SingleChildScrollView(child: _asOf(d))),
       ..._dayNav(d),
       ..._nightControls(d),
 
@@ -855,8 +851,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       _nightAccordion(c, [
       // Ours, or any paired device's own staging of the same night — shown
       // side by side as alternatives, never merged.
-      SizedBox(height: 48 * MediaQuery.textScalerOf(c).scale(1),
-        child: d.deviceNights.isEmpty ? null : DeviceFilter(
+      if (d.deviceNights.isNotEmpty) DeviceFilter(
           allLabel: 'OpenStrap',
           showWithOne: true,
           options: [
@@ -873,7 +868,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             _staging = id;
             _scrub = null;
           }),
-        )),
+        ),
       if (_deviceNight(d) case final dn?)
         _night(c, p, d, dn, device: dn)
       else
@@ -892,7 +887,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// (open by default, state kept per [id]) around the section's existing
   /// content. Only the person's tap on its header changes its height.
   Widget _accordion(String title, String id, Widget child, {Key? key}) =>
-      SettingsAccordion(title, id: 'sleep_$id', key: key, children: [InsideCard(child: child)]);
+      SettingsAccordion(title, id: 'sleep_$id', key: key, initiallyExpanded: false, children: [InsideCard(child: child)]);
 
   /// The night, its device staging, the window card and the naps door, as one
   /// section under the night's own title.
@@ -1020,12 +1015,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     ];
   }
 
-  // These sections have unknown signal/insight counts. A bounded viewport
-  // preserves the next section and the wearer's scroll position on refresh;
-  // longer explanations remain scrollable, including with large text.
-  Widget _sectionViewport(BuildContext c, Widget child, {required double height}) =>
-      SizedBox(height: height * MediaQuery.textScalerOf(c).scale(1),
-        child: SingleChildScrollView(child: child));
+  // All variable content lives under a disclosure. Let it fit its contents.
+  Widget _sectionViewport(BuildContext c, Widget child, {required double height}) => child;
 
   /// Total sleep, when it ran, and the two ratios that qualify it. Everything
   /// here is measured; nothing is a judgement.
@@ -1036,20 +1027,16 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final inBed = n['in_bed_min'] as num?;
     final from = clockOfTs(n['onset_ts'] as num?);
     final to = clockOfTs(n['wake_ts'] as num?);
-    // Wall clock minus the minutes nobody watched. `efficiency_pct` has always
-    // divided by this, so on a night with a hole the honest denominator just
-    // read as a worse night unless the screen says which window it is.
-    final unobserved = d.unobservedMin;
-    final watched = (inBed == null || unobserved == null || unobserved <= 0)
-        ? null
-        : math.max(0, inBed - unobserved);
     return Surface(
       key: const ValueKey('card:answer'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(tst == null ? '—' : hm(tst), style: F.n48.copyWith(color: p.ink)),
         const SizedBox(height: S.x1),
-        Text(l?.sleepDetailTotalSleep ?? 'Total sleep',
-            style: F.cap.copyWith(color: p.ink3)),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Text(l?.sleepDetailTotalSleep ?? 'Total sleep',
+            style: F.cap.copyWith(color: p.ink3))),
+          Flexible(child: _asOf(d)),
+        ]),
         // Both rows are always here: with no night they read "—", so the card
         // is the same height first launch and loaded.
         const SizedBox(height: S.x4),
@@ -1066,21 +1053,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         InlineMetrics([
           (l?.sleepDetailInBed ?? 'IN BED', inBed == null ? '—' : hm(inBed),
               C.indigo),
-          (watched == null ? '' : (l?.sleepDetailWatched ?? 'WATCHED'),
-              watched == null ? '' : hm(watched), C.sky),
-          (watched == null
-              ? (l?.sleepDetailAsleepOfThat ?? 'ASLEEP OF THAT')
-              : (l?.sleepDetailAsleep ?? 'ASLEEP'),
+          (l?.sleepDetailAsleepOfThat ?? 'ASLEEP OF THAT',
               eff == null ? '—' : _pct(eff * 100), C.green),
         ]),
-        const SizedBox(height: S.x3),
-        SizedBox(height: MediaQuery.textScalerOf(c).scale(F.over.fontSize!) * 1.5 * 3,
-          child: SingleChildScrollView(child: watched == null ? null : Text(
-            l?.sleepDetailWatchedExplain(hm(watched), hm(inBed!)) ??
-                'The band covered ${hm(watched)} of your ${hm(inBed!)} in bed. '
-                    'Sleep and stage figures use only that time.',
-            style: F.over.copyWith(color: p.ink3, height: 1.5),
-          ))),
       ]),
     );
   }
@@ -1491,7 +1466,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                 n[k] is num ? clockOfTs((n[k] as num).round()) : '\u00A0',
             ],
             annotations: annotations,
-            child: _loading && _d == null ? const PendingPlot() : const SizedBox.expand(),
+            child: _loading && _d == null ? const PendingPlot(shape: PendingChartShape.stages) : const SizedBox.expand(),
           ),
           interval,
           _scrubPanel(c, p, d, n),
@@ -1532,6 +1507,16 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           child: _labelledHypnogram(c, p, stages, n, lane, totals,
               annotations: annotations),
         ),
+        if (d.unobservedMin != null && (n['in_bed_min'] as num?) != null) ...[
+          const SizedBox(height: S.x2),
+          InlineMetrics([(l?.sleepDetailWatched ?? 'WATCHED',
+            hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!)), C.sky)]),
+          Text(l?.sleepDetailWatchedExplain(
+            hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!)),
+            hm(n['in_bed_min'] as num)) ??
+            'The band covered ${hm(math.max(0, (n['in_bed_min'] as num) - d.unobservedMin!))} of your ${hm(n['in_bed_min'] as num)} in bed. Sleep and stage figures use only that time.',
+            style: F.over.copyWith(color: p.ink3, height: 1.5)),
+        ],
         interval,
         _scrubPanel(c, p, d, n),
         if (device != null) ..._deviceStaging(c, p, device),

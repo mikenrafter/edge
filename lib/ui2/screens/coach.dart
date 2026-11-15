@@ -445,10 +445,7 @@ class _CoachScreenState extends State<CoachScreen> {
                     SizedBox(
                       width: 14,
                       height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: p.on(kCoachAccent),
-                      ),
+                      child: PendingMark(),
                     ),
                     const SizedBox(width: S.x3),
                     Expanded(

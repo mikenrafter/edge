@@ -58,10 +58,12 @@ void main() {
         expect(t.getRect(find.byType(ChartScrub)).height, greaterThan(24));
         await apk2Show(t, apk2NapA);
         await apk2Tap(t, apk2Keep(apk2NapA));
+        await t.ensureVisible(apk2Key('apk2-review-savebar'));
+        await t.pump();
         final bar = t.getRect(apk2Key('apk2-review-savebar'));
         expect(bar.bottom, lessThanOrEqualTo(size.height));
-        expect(bar.top, greaterThanOrEqualTo(t.getRect(apk2Key(apk2List)).bottom - 1),
-            reason: 'the Save bar sits below the list, not over it');
+        expect(find.ancestor(of: apk2Key('apk2-review-savebar'), matching: apk2Key(apk2List)),
+          findsOneWidget, reason: 'the footer is in list flow and cannot cover a row');
         await apk2Tap(t, apk2Key(apk2Save));
         expect(await r.status(t, apk2NapA), ActivityReviewStatus.confirmed);
         expect(apk2Key(apk2Save), findsNothing);
@@ -192,10 +194,13 @@ void main() {
       await apk2Show(t, apk2NapA);
       await apk2Tap(t, apk2Keep(apk2NapA));
       expect(apk2Selected(t, apk2Keep(apk2NapA)), isTrue);
+      await t.ensureVisible(apk2Key('apk2-review-savebar'));
+      await t.pump();
       final bar = t.getRect(apk2Key('apk2-review-savebar'));
       expect(bar.left, greaterThanOrEqualTo(0));
       expect(bar.right, lessThanOrEqualTo(360));
-      expect(bar.bottom, closeTo(900, 1), reason: 'the bar belongs at the bottom');
+      expect(bar.bottom, lessThanOrEqualTo(900), reason: 'the footer can be scrolled fully into view');
+      expect(bar.top, greaterThanOrEqualTo(0));
       await apk2Show(t, apk2WorkoutA);
       await apk2Tap(t, apk2Discard(apk2WorkoutA));
       expect(apk2Enabled(t, apk2Key(apk2Save)), isTrue);

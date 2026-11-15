@@ -1,5 +1,6 @@
 // Layout shift budget on Wellness: open (loading -> content). Measurement.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/ui2/ui2.dart' show InlineLoading;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -32,8 +33,12 @@ void main() {
     final run = ShiftRun(t);
     await t.pumpWidget(perfApp(app, const WellnessScreen()));
     run.opened();
-    await run.frames();
-    await t.pump(const Duration(seconds: 3));
+    // SQLite replies need the real event loop. The old static spinner could
+    // pass without ever publishing the loaded screen.
+    await run.frames([0, 16, 50, 100, 200]);
+    await settle(t, until: () => find.byType(InlineLoading).evaluate().isEmpty,
+      what: 'Wellness stored reads complete');
+    await run.frames([0, 100]);
     run.expectNoErrors('wellness open');
   });
 }

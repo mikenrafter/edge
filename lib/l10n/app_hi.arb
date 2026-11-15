@@ -3883,5 +3883,10 @@
   "guideAddNapMissingTitle": "\"{naps}\" नहीं दिख रहा?",
   "guideAddNapMissingBody": "**{naps}** आपकी रात के नीचे है। अगर वह भाग, **{night}**, बंद है, तो उसका शीर्षक टैप करके खोलें।",
   "guideTapsBack": "{count, plural, one{1 टैप पीछे} other{{count} टैप पीछे}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "deriveDailyLabel": "नींद, रिकवरी और मेहनत की गणना हो रही है",
+  "deriveDailyProgress": "नींद, रिकवरी और मेहनत की गणना हो रही है · दिन {index} / {total}",
+  "deriveDailyProgressOn": "नींद, रिकवरी और मेहनत की गणना हो रही है · दिन {index} / {total} · {day}",
+  "deriveWaitingDailyLabel": "नींद, रिकवरी और मेहनत की गणना की प्रतीक्षा है",
+  "deriveTrendsLabel": "रुझानों की दोबारा गणना हो रही है"
 }

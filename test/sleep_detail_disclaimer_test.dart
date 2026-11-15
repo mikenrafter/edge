@@ -124,7 +124,10 @@ void main() {
         } else if (state == 'loaded') {
           expect(find.text('Total sleep'), findsOneWidget);
         } else if (state == 'empty') {
-          expect(find.text('No night to show'), findsWidgets);
+          expect(find.text('Total sleep'), findsOneWidget);
+          expect(find.text('Through the night'), findsOneWidget);
+          // The reason is in the closed night section; the research warning
+          // above remains visible in every state.
         }
         expect(t.takeException(), isNull);
       });

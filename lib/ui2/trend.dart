@@ -16,6 +16,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../compute/findings.dart' show kReadinessEasyBelow, kReadinessGoodFrom;
 import '../l10n/app_localizations.dart';
 import 'charts.dart';
+import 'skeleton/guide_plot.dart';
 import 'theme.dart';
 
 /// Days of your own history before a usual range is drawn.
@@ -138,25 +139,26 @@ class BandLayer extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext c) => LayoutBuilder(
-        builder: (_, box) {
-          final h = box.maxHeight;
-          final top = h * (1 - axis.t(band.hi));
-          final height = h * (axis.t(band.hi) - axis.t(band.lo));
-          if (!(height > 0)) return const SizedBox.shrink();
-          return Stack(children: [
-            Positioned(
-              left: 0,
-              right: 0,
-              top: top,
-              height: height,
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: color, borderRadius: R.rSm),
-              ),
-            ),
-          ]);
-        },
-      );
+  Widget build(BuildContext c) => CustomPaint(
+    painter: _RangeBand(band, axis, color), child: const SizedBox.expand());
+}
+
+class _RangeBand extends CustomPainter implements GuideBand {
+  const _RangeBand(this.band, this.axis, this.guideLineColor);
+  final UsualRange band;
+  final AxisSpec axis;
+  @override
+  final Color guideLineColor;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final top = size.height * (1 - axis.t(band.hi));
+    final height = size.height * (axis.t(band.hi) - axis.t(band.lo));
+    if (height <= 0) return;
+    canvas.drawRRect(R.rSm.toRRect(Rect.fromLTWH(0, top, size.width, height)),
+      Paint()..color = guideLineColor);
+  }
+  @override
+  bool shouldRepaint(_RangeBand old) => band != old.band || axis != old.axis || guideLineColor != old.guideLineColor;
 }
 
 /// The verdict line of a trend header: arrow, word, and the difference from

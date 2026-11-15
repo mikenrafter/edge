@@ -464,8 +464,7 @@ class _BeatsState extends State<Beats>
       c,
       l?.beatsTitle ?? 'Beats',
       [
-        SizedBox(height: 24 * MediaQuery.textScalerOf(c).scale(1),
-        child: SingleChildScrollView(child: _asOf(d))),
+        _asOf(d),
         PendingContent(pending: _loading || _beatsPending,
           child: DayNav(day: _day ?? d.day ?? todayLabel(), days: d.days,
             onDay: _goDay, alwaysShow: true)),
@@ -479,7 +478,7 @@ class _BeatsState extends State<Beats>
           Padding(
             padding: const EdgeInsets.only(top: S.x4),
             child: Column(children: [
-              PendingChart(title: l?.beatsPoincareSection ?? 'Every beat against the one before it', height: 260),
+              PendingChart(shape: PendingChartShape.scatter, title: l?.beatsPoincareSection ?? 'Every beat against the one before it', height: 260),
               const SizedBox(height: S.x5),
               PendingChart(title: l?.beatsNightOf(prettyDay(_day, l)) ?? 'Through the night'),
               const PendingContent(pending: true, child: PendingRows(count: 3)),
@@ -497,7 +496,7 @@ class _BeatsState extends State<Beats>
           if (_beatsPending)
             Section(
               l?.beatsPoincareSection ?? 'Every beat against the one before it',
-              PendingChart(title: l?.beatsScatterTitle ??
+              PendingChart(shape: PendingChartShape.scatter, title: l?.beatsScatterTitle ??
                 'Each interval, plotted against the previous one', height: 260, unit: 'ms'),
             )
           else if (!_beatsFailed)

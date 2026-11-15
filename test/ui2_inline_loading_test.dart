@@ -28,14 +28,14 @@ void main() {
         _loading('Loading last night', detail: 'Calculating · day 3 of 12'));
     expect(find.text('Loading last night'), findsOneWidget);
     expect(find.text('Calculating · day 3 of 12'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(PendingContent), findsOneWidget);
   });
 
   testWidgets('no detail: only the status', (t) async {
     await _pump(t, _loading('Loading last night'));
     expect(find.text('Loading last night'), findsOneWidget);
     expect(find.byType(Text), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(PendingContent), findsOneWidget);
   });
 
   testWidgets('height reserves the final content height', (t) async {

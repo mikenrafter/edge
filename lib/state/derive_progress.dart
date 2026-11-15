@@ -13,10 +13,14 @@ class DeriveProgress {
   /// The pass is queued behind something else and has not started.
   final bool waiting;
 
+  /// The daily results are stored; the cross-day rollup is running.
+  final bool crossDay;
+
   const DeriveProgress({
     this.dayIndex,
     this.dayTotal,
     this.day,
     this.waiting = false,
+    this.crossDay = false,
   });
 }

@@ -19347,5 +19347,33 @@
     }
   },
   "guideTapsBack": "{count, plural, one{1 tap back} other{{count} taps back}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "deriveDailyLabel": "Calculating sleep, recovery and strain",
+  "deriveDailyProgress": "Calculating sleep, recovery and strain · day {index} of {total}",
+  "deriveDailyProgressOn": "Calculating sleep, recovery and strain · day {index} of {total} · {day}",
+  "deriveWaitingDailyLabel": "Waiting to calculate sleep, recovery and strain",
+  "deriveTrendsLabel": "Rebuilding trends",
+  "@deriveDailyProgress": {
+    "placeholders": {
+      "index": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "@deriveDailyProgressOn": {
+    "placeholders": {
+      "index": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
+  }
 }

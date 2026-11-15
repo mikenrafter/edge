@@ -200,7 +200,7 @@ void _tw(String name, Future<void> Function(WidgetTester t) body) =>
 void _expectLine(WidgetTester t, String line,
     {String? action, bool spinner = false, String? reason}) {
   expect(find.text(line), findsOneWidget, reason: reason ?? 'status "$line"');
-  expect(find.byType(CircularProgressIndicator),
+  expect(find.byType(PendingMark),
       spinner ? findsOneWidget : findsNothing,
       reason: spinner ? 'busy: a spinner' : 'settled: no spinner');
   for (final a in const ['Sync now', 'Retry']) {
@@ -272,8 +272,8 @@ void main() {
       await t.pumpWidget(_control(_nothingNew()));
       // The headline follows the ACTIVE step (Calculate); the download's
       // result stays on its own row.
-      _expectLine(t, 'Calculating…', spinner: true);
-      await t.tap(find.text('Calculating…'));
+      _expectLine(t, 'Calculating sleep, recovery and strain', spinner: true);
+      await t.tap(find.text('Calculating sleep, recovery and strain'));
       await _settle(t);
       expect(find.text('Nothing new on the band'), findsOneWidget,
           reason: 'the Download row keeps what the download did');
@@ -282,7 +282,7 @@ void main() {
     _tw('deriving, day known', (t) async {
       await t.pumpWidget(_control(_deriving(const SyncCalculateDetail(
           dayIndex: 3, dayTotal: 7, day: '2026-09-29'))));
-      _expectLine(t, 'Calculating · day 3 of 7', spinner: true);
+      _expectLine(t, 'Calculating sleep, recovery and strain · day 3 of 7', spinner: true);
     });
 
     _tw('deriving, day not known: "Calculating" and no day number', (t) async {
@@ -306,9 +306,9 @@ void main() {
             chunks: 104,
             syncedThrough: DateTime(2026, 9, 30, 14, 32)),
       )));
-      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
+      _expectLine(t, 'Waiting to calculate sleep, recovery and strain', spinner: true);
       expect(find.textContaining('Downloaded'), findsNothing);
-      await t.tap(find.text('Calculating · waiting for another calculation'));
+      await t.tap(find.text('Waiting to calculate sleep, recovery and strain'));
       await _settle(t);
       expect(find.textContaining('14:32'), findsOneWidget,
           reason: 'the Download row says where the data goes through');
@@ -320,8 +320,8 @@ void main() {
         const SyncCalculateDetail(waiting: true),
         download: const SyncDownloadDetail(),
       )));
-      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
-      await t.tap(find.text('Calculating · waiting for another calculation'));
+      _expectLine(t, 'Waiting to calculate sleep, recovery and strain', spinner: true);
+      await t.tap(find.text('Waiting to calculate sleep, recovery and strain'));
       await _settle(t);
       expect(find.text('Nothing new on the band'), findsOneWidget);
     });
@@ -336,14 +336,14 @@ void main() {
             syncedThrough: DateTime(2026, 9, 30, 7, 0),
             bandNewest: DateTime(2026, 9, 30, 9, 10)),
       )));
-      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
+      _expectLine(t, 'Waiting to calculate sleep, recovery and strain', spinner: true);
       expect(find.textContaining('still to fetch'), findsNothing);
     });
 
     _tw('waiting with no download detail at all: the same headline', (t) async {
       await t.pumpWidget(_control(
           _deriving(const SyncCalculateDetail(waiting: true))));
-      _expectLine(t, 'Calculating · waiting for another calculation', spinner: true);
+      _expectLine(t, 'Waiting to calculate sleep, recovery and strain', spinner: true);
     });
 
     _tw('completed: "Synced just now"', (t) async {

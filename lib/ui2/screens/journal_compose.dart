@@ -1063,35 +1063,15 @@ class _WeightTrendState extends State<_WeightTrend> {
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     final title = l?.journalComposeWeightLabel ?? 'Weight';
-    if (_loading) {
-      return _frame(c, title, [
-        const SizedBox(height: S.x2),
-        PendingChart(title: l?.journalComposeSevenDayTrend ?? 'Seven-day trend',
-          height: 140, unit: unitsOf(c)?.isImperial == true ? 'lb' : 'kg'),
-        const PendingContent(pending: true, child: PendingRows(count: 2, rowHeight: 52)),
-      ]);
-    }
     final p = P.of(c);
     final u = unitsOf(c);
     final trend = weightTrendEwma(_byDay);
-    if (trend.length < 2) {
-      return _frame(c, title, [
-        const SizedBox(height: S.x2),
-        StatusCard(
-          l?.journalComposeNotEnoughEntriesTitle ?? 'Not enough entries for a trend',
-          l?.journalComposeNotEnoughEntriesBody ??
-              'A trend needs at least two days of entries.',
-          icon: LucideIcons.scale,
-        ),
-      ]);
-    }
-
     // Indexed by CALENDAR DAY, never compacted: a fortnight nobody weighed is a
     // hole in the line, and compacting would draw a straight, confident segment
     // across it.
     final days = trend.keys.toList()..sort();
-    final first = DateTime.parse(days.first);
-    final span = calendarDaysBetween(first, DateTime.parse(days.last));
+    final first = days.isEmpty ? DateTime.now() : DateTime.parse(days.first);
+    final span = days.isEmpty ? 0 : calendarDaysBetween(first, DateTime.parse(days.last));
     // The controller owns every conversion; this only asks it for the number
     // rather than the sentence, because an axis cannot print "72.4 kg".
     double show(double kg) =>
@@ -1103,7 +1083,7 @@ class _WeightTrendState extends State<_WeightTrend> {
       for (var i = 0; i <= span; i++) _at(trend, first, i, show),
     ];
     final present = <double>[for (final v in vals) ?v];
-    final axis = AxisSpec.of(present, format: axisFixed);
+    final axis = trend.length < 2 ? null : AxisSpec.of(present, format: axisFixed);
 
     return _frame(c, title, [
       const SizedBox(height: S.x2),
@@ -1113,10 +1093,13 @@ class _WeightTrendState extends State<_WeightTrend> {
           unit: u?.isImperial == true ? 'lb' : 'kg',
           height: 140,
           yAxis: axis,
-          xLabels: [days.first, days.last],
+          xLabels: days.isEmpty ? const ['—', '—'] : [days.first, days.last],
           series: vals,
-          empty: axis == null ? const NoData() : null,
-          child: axis == null
+          panel: axis == null ? ChartKeyReadout(time: days.lastOrNull ?? '—',
+            cells: [ChartCell('Weight (${u?.isImperial == true ? 'lb' : 'kg'})', p.on(C.blue))]) : null,
+          empty: !_loading && axis == null ? NoData(message:
+            l?.journalComposeNotEnoughEntriesBody ?? 'A trend needs at least two days of entries.') : null,
+          child: _loading ? const PendingPlot() : axis == null
               ? const SizedBox.shrink()
               // No fill: a filled area under an axis that starts at 68 kg is a
               // truncated axis with the truncation hidden.
@@ -1160,10 +1143,8 @@ class _WeightTrendState extends State<_WeightTrend> {
 
   Widget _frame(BuildContext c, String title, List<Widget> children) =>
       detailScaffold(c, title, [PendingContent(pending: _loading,
-        child: SizedBox(key: const ValueKey('weight-trend-body'),
-          height: 420 * MediaQuery.textScalerOf(c).scale(1),
-          child: SingleChildScrollView(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch, children: children))))]);
+        child: Column(key: const ValueKey('weight-trend-body'),
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: children))]);
 
   /// The trend value on one calendar day, or null. Nulls are what draw the gaps
   /// — there is no nearest-neighbour lookup here on purpose.

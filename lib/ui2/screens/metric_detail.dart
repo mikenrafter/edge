@@ -1,3 +1,4 @@
+import '../profile/profile.dart' show SettingsAccordion;
 // The shared metric drill-down — density 2 of 3.
 //
 // Glance (a row on Health) → MetricDetail (your normal range, what moves it,
@@ -9,7 +10,6 @@
 // Every metric goes through THIS screen. Forty bespoke detail screens is how
 // the old UI ended up with forty different opinions about what a chart is.
 
-import 'dart:math' as math;
 
 import 'package:clock/clock.dart' as pkg_clock;
 import 'package:collection/collection.dart';
@@ -1277,8 +1277,6 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
     final vals = [for (final v in series) ?v];
 
     return detailScaffold(c, uiText(context, spec.title), [
-      SizedBox(height: 24 * MediaQuery.textScalerOf(c).scale(1),
-        child: SingleChildScrollView(child: _asOf(d))),
       // Resting heart rate is the NIGHT's number; this is what the chest is
       // doing this second. Two different quantities, so the live one gets its
       // own card above the trend rather than a second figure on the same card,
@@ -1368,15 +1366,15 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
             _range3(c, spec, win == 1 ? valuesOf(all) : vals, d.percentile,
                 all.isEmpty ? null : all.last.t)),
         if (_outcome != null)
-          Section(l?.metricDetailWhatMovesItSection ?? 'What moves it',
-            AsyncListSection<Widget>(
+          SettingsAccordion(l?.metricDetailWhatMovesItSection ?? 'What moves it',
+            id: 'metric_movers', initiallyExpanded: false, children: [AsyncListSection<Widget>(
               items: _moversPending ? null : d.movers.isEmpty ? [] : [_movers(c, d.movers)],
               emptyBuilder: (_) => _journalFailed
                 ? StatusCard(l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',
                     fix: l?.homeTryAgain ?? 'Try again', onFix: _load)
                 : StatusCard(l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
                     l?.wellnessNothingSeparatedBody ?? 'No clear links found yet.'),
-              itemBuilder: (_, child) => child)),
+              itemBuilder: (_, child) => child)]),
         const SizedBox(height: S.x5),
         // Steps are the one metric assembled from SPANS of the day, each
         // counted by a different sensor. That breakdown is a day's worth of
@@ -1416,6 +1414,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
           const SizedBox(height: S.x3),
         ],
       ],
+      _asOf(d),
     ].map((child) => PendingContent(
       pending: _loading && _d == null, child: child)).toList());
   }
@@ -1690,34 +1689,16 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
             color: spec.color,
           ),
           const SizedBox(height: S.x2),
-          Row(children: [
-            Expanded(
-              child: SizedBox(
-                height: math.max(1, spec.requires.length) * 3 *
-                    MediaQuery.textScalerOf(c).scale(F.over.fontSize!) * F.over.height!,
-                child: SingleChildScrollView(child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (final s in _usingLines(c, l, spec, d))
-                      Text(s, style: F.over.copyWith(color: p.ink3)),
-                  ],
-                )),
-              ),
-            ),
-            // Only offered for a SELECTED, SELECTABLE device that is not
-            // already winning. A button whose effect is already true is a
-            // button that teaches the control does nothing.
-            if (_preferCandidate(d) case final o?)
-              Pressable(
-                onTap: () => _prefer(o),
-                semanticLabel: _preferLabel(l, o),
-                child: Text(
-                  _preferLabel(l, o),
-                  style: F.cap.copyWith(
-                      color: p.on(spec.color), fontWeight: FontWeight.w600),
-                ),
-              ),
-          ]),
+          SettingsAccordion('Sources used', id: 'metric_source_notes', initiallyExpanded: false,
+            children: [Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+              children: [for (final s in _usingLines(c, l, spec, d))
+                Text(s, style: F.over.copyWith(color: p.ink3))])),
+            if (_preferCandidate(d) case final o?) Pressable(
+              onTap: () => _prefer(o), semanticLabel: _preferLabel(l, o),
+              child: Text(_preferLabel(l, o), style: F.cap.copyWith(
+                color: p.on(spec.color), fontWeight: FontWeight.w600))),
+          ])]),
           const SizedBox(height: S.x1),
           Text(
             l?.metricDetailHistoryKeepsSource ??

@@ -1,3 +1,4 @@
+import '../profile/profile.dart' show SettingsAccordion;
 import '../../l10n/display_text.dart';
 // Wellness — softer than Health, same system.
 //
@@ -1761,12 +1762,10 @@ class _JournalFindingsState extends State<JournalFindings> {
     ];
     return detailScaffold(c, title, [
       const SizedBox(height: S.x2),
-      if (_cachedAt case final at?)
-        Padding(
-            padding: const EdgeInsets.only(bottom: S.x2),
-            child: AsOfLabel(at: at)),
-      KeyedSubtree(key: const ValueKey('journal-comparisons'),
-        child: AsyncListSection<Widget>(
+      SettingsAccordion('Your log patterns', id: 'journal_comparisons',
+        key: const ValueKey('journal-comparisons'), initiallyExpanded: false,
+        children: [
+        AsyncListSection<Widget>(
           items: !_rowsReady ? null : [
             if (_rows.isEmpty)
               StatusCard(l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
@@ -1778,15 +1777,18 @@ class _JournalFindingsState extends State<JournalFindings> {
                 style: F.over.copyWith(color: p.ink3, height: 1.5)),
             ],
           ],
-          itemBuilder: (_, child) => child, emptyBuilder: (_) => const SizedBox.shrink())),
-      Section(
+          itemBuilder: (_, child) => child, emptyBuilder: (_) => const SizedBox.shrink())]),
+      SettingsAccordion(
         l?.wellnessWhichDayOfWeek ?? 'Which day of the week',
-        SizedBox(key: const ValueKey('journal-weekday'),
-          height: 320 * MediaQuery.textScalerOf(c).scale(1),
-          child: SingleChildScrollView(child: _weekdayReady
+        id: 'journal_weekday', initiallyExpanded: false, children: [
+        KeyedSubtree(key: const ValueKey('journal-weekday'), child: _weekdayReady
             ? _weekdayCard(c)
-            : PendingChart(title: l?.wellnessWhichDayOfWeek ?? 'Which day of the week'))),
-      ),
+            : PendingChart(shape: PendingChartShape.bars, title: l?.wellnessWhichDayOfWeek ?? 'Which day of the week')),
+      ]),
+      if (_cachedAt case final at?)
+        Padding(
+            padding: const EdgeInsets.only(bottom: S.x2),
+            child: AsOfLabel(at: at)),
     ]);
   }
 

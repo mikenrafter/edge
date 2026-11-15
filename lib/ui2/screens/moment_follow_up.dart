@@ -746,9 +746,7 @@ class _MomentReviewEditorState extends State<MomentReviewEditor> {
               ],
             ),
           ),
-          SizedBox(height: (84 * MediaQuery.textScalerOf(c).scale(1))
-                .clamp(0.0, MediaQuery.sizeOf(c).height * .22),
-            child: showSave ? Padding(
+          if (showSave) Padding(
               padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x4),
               child: BigButton(
                   l?.momentReviewSaveCount(n) ??
@@ -761,7 +759,7 @@ class _MomentReviewEditorState extends State<MomentReviewEditor> {
                   icon: LucideIcons.check,
                   color: C.domMind,
                   onTap: _busy || n == 0 ? null : _save),
-            ) : const SizedBox.shrink()),
+            ),
         ]),
       ),
     );

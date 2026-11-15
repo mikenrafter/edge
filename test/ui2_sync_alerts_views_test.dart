@@ -14,6 +14,7 @@ import 'package:openstrap_edge/ui2/profile/band_notifications.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
+import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -444,20 +445,21 @@ void main() {
         findsOneWidget);
     // The running time sits left of the sentence while a sync runs.
     expect(find.text('1:15'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(PendingMark), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expectNoAction();
     syncStepsCollapsed();
     expect(find.text('Syncing with your band'), findsNothing);
   });
   screenStructure('sync_calculating', fixtures['sync_calculating']!.$2, () {
-    expect(find.text('Calculating · day 2 of 5'), findsOneWidget);
+    expect(find.text('Calculating sleep, recovery and strain · day 2 of 5'), findsOneWidget);
     expect(find.text('1:15'), findsOneWidget);
     expectNoAction();
     syncStepsCollapsed();
   });
   screenStructure('sync_waiting', fixtures['sync_waiting']!.$2, () {
-    expect(find.text('Calculating · waiting for another calculation'), findsOneWidget);
-    expect(find.text('Waiting for another calculation…'), findsNothing);
+    expect(find.text('Waiting to calculate sleep, recovery and strain…'), findsOneWidget);
+    expect(find.text('Waiting to calculate sleep, recovery and strain…'), findsNothing);
     expectNoAction();
     syncStepsCollapsed();
   });
@@ -523,7 +525,7 @@ void main() {
     expect(find.text('12,400 records · 31 chunks'), findsOneWidget);
     expect(find.text('Band time still to fetch: 10 h 30 min'), findsOneWidget);
   });
-  expandedSyncStructure('sync_calculating', 'Calculating · day 2 of 5', () {
+  expandedSyncStructure('sync_calculating', 'Calculating sleep, recovery and strain · day 2 of 5', () {
     expect(find.text('Day 2 of 5 · 2026-09-29'), findsOneWidget);
     expect(find.text('Already connected'), findsOneWidget);
   });
@@ -537,30 +539,16 @@ void main() {
     expect(find.text('Day 5 of 5 · 2026-09-26'), findsOneWidget);
     expect(find.text('41,800 records · 104 chunks'), findsOneWidget);
   });
-  screenStructure('sleep_empty', fixtures['sleep_empty']!.$2, () {
-    expect(find.text('No night to show'), findsOneWidget);
-    expect(find.text('Recalculate this night'), findsOneWidget);
-    // A night the detector missed: the manual window, as "I was asleep".
-    expect(find.text('I was asleep'), findsOneWidget);
-    expect(find.text('Naps'), findsOneWidget);
-  });
-  screenStructure(
-      'sleep_asserted_without_metrics', fixtures['sleep_asserted_without_metrics']!.$2,
-      () {
-    expect(find.text('You set this window'), findsOneWidget);
-    expect(find.text('Your times are saved'), findsOneWidget);
-    expect(find.text('Recalculate this night'), findsOneWidget);
-    expect(find.text('Back to automatic'), findsOneWidget);
-    // Honesty: no empty-night copy beside a window the user asserted.
-    expect(find.text('No night to show'), findsNothing);
-  });
-  screenStructure('sleep_inferred_window', fixtures['sleep_inferred_window']!.$2, () {
-    expect(find.text('This window was inferred from heart rate'),
-        findsOneWidget);
-    expect(find.text('Recalculate this night'), findsOneWidget);
-    expect(find.text('These times are right'), findsOneWidget);
-    expect(find.text('Set the times myself'), findsOneWidget);
-  });
+  // Detailed night content is opened and checked in ui2_sleep_detail_test.
+  // The screen fixture now starts with the secondary night section collapsed.
+  for (final name in ['sleep_empty', 'sleep_asserted_without_metrics', 'sleep_inferred_window']) {
+    screenStructure(name, fixtures[name]!.$2, () {
+      expect(find.text('Total sleep'), findsOneWidget);
+      expect(find.byWidgetPredicate((w) => w is SettingsAccordion && w.id == 'sleep_night'), findsOneWidget);
+      expect(find.text('Recalculate this night'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+  }
   screenStructure('alerts_other_platform', fixtures['alerts_other_platform']!.$2,
       () {
     expect(find.text('Notifications'), findsOneWidget);

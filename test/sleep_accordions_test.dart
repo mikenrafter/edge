@@ -1,5 +1,5 @@
 // The Sleep screen's sections are the app's own remembered accordions: every
-// one open by default, folded only by a tap on its header, and the answer kept
+// one closed by default, opened only by a tap on its header, and the answer kept
 // per section id across a remount. The headline (total sleep) stays outside.
 
 import 'package:flutter/material.dart';
@@ -73,12 +73,12 @@ void main() {
     'Tonight',
   ];
 
-  testWidgets('each section is an accordion with its existing title, all open',
+  testWidgets('each secondary section starts closed, leaving the headline visible',
       (t) async {
     await _open(t);
     for (final title in titles) {
       expect(_acc(title), findsOneWidget, reason: title);
-      expect(_body(title), findsWidgets, reason: '$title is open by default');
+      expect(_body(title), findsNothing, reason: '$title starts closed');
     }
     // The headline is not inside any accordion.
     expect(
@@ -95,15 +95,15 @@ void main() {
     await t.tap(find.descendant(
         of: _acc('Stages'), matching: find.byType(Pressable)).first);
     await _settle(t);
-    expect(_body('Stages'), findsNothing);
-    expect(_body('Tonight'), findsWidgets);
+    expect(_body('Stages'), findsWidgets);
+    expect(_body('Tonight'), findsNothing);
     await t.tap(find.descendant(
         of: _acc('Stages'), matching: find.byType(Pressable)).first);
     await _settle(t);
-    expect(_body('Stages'), findsWidgets);
+    expect(_body('Stages'), findsNothing);
   });
 
-  testWidgets('a folded section stays folded after the screen is remounted',
+  testWidgets('an opened section stays open after the screen is remounted',
       (t) async {
     await _open(t);
     await t.tap(find.descendant(
@@ -112,7 +112,7 @@ void main() {
     await t.pumpWidget(const SizedBox());
     await _settle(t);
     await _open(t);
-    expect(_body('Tonight'), findsNothing);
-    expect(_body('Stages'), findsWidgets);
+    expect(_body('Tonight'), findsWidgets);
+    expect(_body('Stages'), findsNothing);
   });
 }

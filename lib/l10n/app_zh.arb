@@ -3883,5 +3883,10 @@
   "guideAddNapMissingTitle": "没有看到“{naps}”？",
   "guideAddNapMissingBody": "**{naps}**位于你的夜间睡眠下方。如果该部分**{night}**已折叠，请点按其标题展开。",
   "guideTapsBack": "返回需点按 {count} 次",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "deriveDailyLabel": "正在计算睡眠、恢复和负荷",
+  "deriveDailyProgress": "正在计算睡眠、恢复和负荷 · 第 {index} 天，共 {total} 天",
+  "deriveDailyProgressOn": "正在计算睡眠、恢复和负荷 · 第 {index} 天，共 {total} 天 · {day}",
+  "deriveWaitingDailyLabel": "正在等待计算睡眠、恢复和负荷",
+  "deriveTrendsLabel": "正在重新计算趋势"
 }

@@ -169,13 +169,25 @@ void main() {
         () => app.setSnoozeSettings(const SnoozeSettings(enabled: true)),
       );
       await t.pumpWidget(_app(app, const AlarmScreen()));
+      // Drain unrelated preference/trace reads; the OS permission reply above
+      // remains held, so this phase measures that reply alone.
+      await landed(ShiftRun(t));
       await t.scrollUntilVisible(
         find.byType(SnoozeSettingsRows),
         300,
         scrollable: _scroll(),
       );
+      // Stop the setup scroll before measuring the delayed OS reply.
+      final position = t.state<ScrollableState>(_scroll()).position;
+      position.jumpTo(position.pixels);
+      await t.pump();
       final run = ShiftRun(t, skipCoveredRoutes: true)..opened();
       await run.frames([0, 150, 2500]);
+      for (final frame in run.probe.frames) {
+        for (final e in frame.elements.where((e) => e.id.contains('alarm_timeline') || e.id == 'snooze-exact-note')) {
+          debugPrint('CAP ${frame.atMs}: ${e.id} ${e.rect.top}+${e.rect.height}, scroll=${position.pixels}');
+        }
+      }
       await takePilotShot(t, 'alarm-capability');
       answer.complete(false);
       await landed(run);
@@ -206,8 +218,8 @@ void main() {
       await landed(setup);
     }
     await t.scrollUntilVisible(decision, 200, scrollable: _scroll());
-    // The bounded trace scrolls internally as prose grows. Track its keyed
-    // viewport and the surrounding page, rather than the scrolling paragraph.
+    // The late trace stays behind a collapsed disclosure. Its header and
+    // surrounding page must stay still as more decision lines arrive.
     await landed(setup);
     await t.pumpAndSettle(); // finish the setup scroll and initial trace read
     final run = ShiftRun(t, trackUnkeyed: false)..opened();
@@ -229,9 +241,14 @@ void main() {
       app.wake.noteTraceChanged();
     });
     await landed(run);
-    expect(find.textContaining('armed and confirmed'), findsOneWidget);
+    expect(find.textContaining('armed and confirmed'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     check(run, 'alarm trace');
+    await t.tap(find.text('Last wake decision').first);
+    await t.pump();
+    expect(find.textContaining('armed and confirmed'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('alarm-trace-slot')),
+      matching: find.byType(Scrollable)), findsNothing);
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 3));
   });

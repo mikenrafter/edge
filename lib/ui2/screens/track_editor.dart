@@ -170,7 +170,7 @@ class _TrackEditorState extends State<TrackEditor> {
                         ),
                       ],
                     )
-                  : const CircularProgressIndicator(),
+                  : const PendingContent(pending: true, child: Surface(child: PendingRows(count: 5))),
             )
           : ListView(
               padding: const EdgeInsets.all(S.x4),

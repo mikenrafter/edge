@@ -114,14 +114,13 @@ class SnoozeSettingsRows extends StatelessWidget {
         ),
         if (settings.enabled && (reserveExactTimingStatus || exactTimingUnavailable || exactTimingPending))
           Padding(padding: const EdgeInsets.only(bottom: S.x2),
-            child: TextSlot(
-              sizingText: l?.snoozeExactNote ?? 'Exact timing needs the alarm permission',
-              style: F.cap.copyWith(color: p.ink2),
-              child: exactTimingUnavailable || exactTimingPending
-                ? PendingContent(pending: exactTimingPending,
-                    child: Text(l?.snoozeExactNote ?? 'Exact timing needs the alarm permission',
-                      key: const ValueKey('snooze-exact-note'), style: F.cap.copyWith(color: p.ink2)))
-                : null)),
+            child: PendingContent(pending: exactTimingPending,
+              child: Text(exactTimingUnavailable || exactTimingPending
+                ? (l?.snoozeExactNote ?? 'Exact timing needs the alarm permission')
+                : 'Exact timing is enabled for this alarm',
+                key: ValueKey(exactTimingUnavailable || exactTimingPending
+                  ? 'snooze-exact-note' : 'snooze-exact-ready'),
+                style: F.cap.copyWith(color: p.ink2)))),
         SetRow(LucideIcons.hand, C.blue, tapsTitle,
             value: _taps(l, settings.requiredTaps),
             enabled: active,

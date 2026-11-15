@@ -309,6 +309,12 @@ class DeriveCoordinator {
   void _recalcCrossDay(int owner, bool active) {
     if (_recalcOwner != owner) return;
     _setRecalc(_recalc.value.copyWith(crossDay: active));
+    final progress = deriveProgress.value;
+    if (progress != null) {
+      _setProgress(owner, DeriveProgress(
+      dayIndex: progress.dayIndex, dayTotal: progress.dayTotal,
+      day: progress.day, waiting: progress.waiting, crossDay: active));
+    }
   }
 
   void _recalcClear(int owner) {

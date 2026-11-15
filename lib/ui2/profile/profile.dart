@@ -340,7 +340,7 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
           if (_open)
             for (final row in widget.a.children) ...[
               Divider(color: p.line, height: 1),
-              row,
+              Padding(padding: const EdgeInsets.symmetric(vertical: S.x3), child: row),
             ],
         ]),
       )),

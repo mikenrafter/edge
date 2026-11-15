@@ -192,6 +192,7 @@ class _PlaceholderContext extends PaintingContext {
         ],
         t.palette,
         pulse: t.pulse,
+        fade: t.fade,
       );
       return;
     }

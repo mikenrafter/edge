@@ -382,7 +382,8 @@ class _Loading extends StatelessWidget {
     final p = P.of(c);
     return Scaffold(
       backgroundColor: p.bg,
-      body: Center(child: CircularProgressIndicator(color: p.on(C.green))),
+      body: const SafeArea(child: Padding(padding: EdgeInsets.all(S.x4),
+        child: PendingContent(pending: true, child: Surface(child: PendingRows(count: 6))))),
     );
   }
 }

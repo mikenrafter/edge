@@ -33,11 +33,13 @@ class SleepTab extends StatelessWidget {
         SettingsAccordion(
           l?.sleepTabPlanTitle ?? 'Your sleep plan',
           id: 'sleep_plan',
+          initiallyExpanded: false,
           children: const [WellnessScreen(sleepPlanOnly: true)],
         ),
         SettingsAccordion(
           l?.sleepTabMoreTitle ?? 'Alarm and body clock',
           id: 'sleep_more',
+          initiallyExpanded: false,
           children: [
             Column(children: [
             detailLinkRow(

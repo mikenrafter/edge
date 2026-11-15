@@ -421,7 +421,7 @@ void main() {
       _host(SyncControl(state: state, onSync: () {}, clock: () => _t0)),
     );
     // Nothing has finished yet, so the sentence does not name a day.
-    expect(find.text('Calculating…'), findsOneWidget);
+    expect(find.text('Calculating sleep, recovery and strain'), findsOneWidget);
     await _open(t, state, _t0);
     expect(find.text('Day 0 of 3'), findsOneWidget);
   });

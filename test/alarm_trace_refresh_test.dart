@@ -1,3 +1,4 @@
+import 'support/settings_sections.dart' show openSettingsSection;
 // P: the Status section's wake decision trace follows the trace. A tick adds
 // rows for the SAME armed occurrence, so reloading only when the epoch changes
 // left the section stale until you left and came back.
@@ -89,6 +90,7 @@ void main() {
     });
     final app = await pumpScreen(t);
     await settle(t);
+    await openSettingsSection(t, 'Last wake decision');
     expect(find.textContaining('armed and confirmed'), findsOneWidget);
     expect(find.textContaining('Natural Wake:'), findsNothing);
 

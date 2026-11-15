@@ -3883,5 +3883,10 @@
   "guideAddNapMissingTitle": "Vous ne voyez pas « {naps} » ?",
   "guideAddNapMissingBody": "**{naps}** se trouve sous votre nuit. Si cette partie, **{night}**, est repliée, touchez son titre pour l’ouvrir.",
   "guideTapsBack": "{count, plural, one{1 appui en arrière} other{{count} appuis en arrière}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "deriveDailyLabel": "Calcul du sommeil, de la récupération et de l’effort",
+  "deriveDailyProgress": "Calcul du sommeil, de la récupération et de l’effort · jour {index} sur {total}",
+  "deriveDailyProgressOn": "Calcul du sommeil, de la récupération et de l’effort · jour {index} sur {total} · {day}",
+  "deriveWaitingDailyLabel": "En attente du calcul du sommeil, de la récupération et de l’effort",
+  "deriveTrendsLabel": "Recalcul des tendances"
 }

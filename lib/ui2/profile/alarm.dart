@@ -1158,10 +1158,9 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
         value: at == null ? '—' : AlarmScreenView._dayAndTime(c, at),
         chevron: false,
       ),
-      SizedBox(key: const ValueKey('alarm-trace-slot'),
-        height: 160 * MediaQuery.textScalerOf(c).scale(1),
-        child: SingleChildScrollView(child: PendingContent(pending: w.wakeTracePending,
-          child: SetRow(
+      SettingsAccordion('Last wake decision', id: 'alarm_wake_trace',
+        key: const ValueKey('alarm-trace-slot'), initiallyExpanded: false,
+        children: [PendingContent(pending: w.wakeTracePending, child: SetRow(
         LucideIcons.listChecks,
         C.indigo,
         'Last wake decision',
@@ -1172,7 +1171,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
             : 'Nothing recorded for this wake yet',
         chevron: false,
         crossAxisAlignment: CrossAxisAlignment.start,
-      )))),
+      ))]),
     ];
   }
 

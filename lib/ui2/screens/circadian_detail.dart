@@ -379,8 +379,7 @@ class _CircadianDetailState extends State<CircadianDetail>
       ] else ...[
         // Chronotype, jet lag, regularity and the rhythm battery all come off
         // the cross-day rollup, so the label follows that step, not a day.
-        SizedBox(height: 24 * MediaQuery.textScalerOf(c).scale(1),
-          child: SingleChildScrollView(child: Column(
+        Column(
             crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (_cachedAt case final at?)
           Padding(
@@ -398,7 +397,7 @@ class _CircadianDetailState extends State<CircadianDetail>
                 padding: const EdgeInsets.only(bottom: S.x2),
                 child: AsOfLabel(at: at)),
           ),
-          ]))),
+          ]),
         if (advanced) ...[
         if (drawn == 0)
           StatusCard(

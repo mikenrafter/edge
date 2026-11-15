@@ -1,3 +1,4 @@
+import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 // WHY: pilot loaders that do not all use InlineLoading still need reserved
 // geometry. Catches: a blank wearable page, false zero pending count, or a
 // short Explorer loader expanding into a full chart after a slow read.
@@ -47,9 +48,11 @@ class _ReadRepo extends GuideFakeRepo {
 }
 
 class _LatePlanRepo extends GuideFakeRepo {
+  int insightsReads = 0;
   final gate = Completer<void>();
   @override
   Future<Map<String, dynamic>> getInsights() async {
+    insightsReads++;
     await gate.future;
     return {
       'sleep_coach': {
@@ -250,7 +253,7 @@ void main() {
   });
 
   testWidgets(
-    'Sleep plan advice arrives late in the tab list without moving its next section',
+    'Sleep plan defers its read until opened without moving the next section',
     (t) async {
       phoneSurface(t);
       final repo = _LatePlanRepo();
@@ -262,7 +265,8 @@ void main() {
             app,
             ListView(
               children: const [
-                Section('Your sleep plan', WellnessScreen(sleepPlanOnly: true)),
+                SettingsAccordion('Your sleep plan', id: 'sleep_plan', initiallyExpanded: false,
+                  children: [WellnessScreen(sleepPlanOnly: true)]),
                 Text(
                   'Alarm and body clock',
                   key: ValueKey('plan-next-section'),
@@ -279,14 +283,19 @@ void main() {
       await run.frames([0, 150, 2500]);
       final spinners = find.byType(CircularProgressIndicator).evaluate().length;
       await takePilotShot(t, 'sleep-plan');
+      expect(repo.insightsReads, 0);
       repo.gate.complete();
       await landed(run);
+      check(run, 'Sleep plan');
+      await t.tap(find.text('Your sleep plan'));
+      await landed(ShiftRun(t));
+      expect(repo.insightsReads, 1);
       expect(find.textContaining('Turn in by'), findsOneWidget);
       expect(
         find.byWidgetPredicate((w) => w is PendingContent && w.pending),
         findsNothing,
       );
-      check(run, 'Sleep plan');
+      expect(find.descendant(of: find.byType(SettingsAccordion), matching: find.byType(Scrollable)), findsNothing);
       expect(spinners, 0);
       await t.pumpWidget(const SizedBox());
       await t.pump(const Duration(seconds: 3));

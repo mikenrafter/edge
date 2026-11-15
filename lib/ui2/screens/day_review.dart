@@ -45,6 +45,7 @@ class DayReviewEntry extends StatefulWidget {
 class _DayReviewEntryState extends State<DayReviewEntry> {
   String? _day;
   List<PendingMoment>? _moments;
+  String _waitingFor = 'Reading marked moments and water entries';
   @override
   void initState() {
     super.initState();
@@ -64,11 +65,13 @@ class _DayReviewEntryState extends State<DayReviewEntry> {
         if (marks.isNotEmpty) day = marks.first.date;
         day ??= f.pendingAssumed(widget.editor?.now ?? DateTime.now()).firstOrNull?.date;
       }
+      if (mounted) setState(() => _waitingFor = 'Reading pending naps and workouts');
       final activities = widget.activities ?? await repo?.pendingActivities() ?? [];
       final focus = activities.where((s) => s.id == widget.focusId).firstOrNull;
       day = focus == null ? day ?? (activities.isEmpty ? null : _activityDay(activities.first)) : _activityDay(focus);
       day ??= (widget.service ?? MomentReviewService.shared).queue.ranges
           .where((r) => r.inProgress).firstOrNull?.startKey.split(' ').first;
+      if (day == null && mounted) setState(() => _waitingFor = 'Reading the available day list');
       day ??= (await repo?.availableDays())?.firstOrNull;
     } catch (_) {
       // The breakdown's queue read owns the visible retry state.
@@ -82,7 +85,7 @@ class _DayReviewEntryState extends State<DayReviewEntry> {
   }
   @override
   Widget build(BuildContext c) => DayTimelineScreen(
-      reviewEntry: true, resolving: _day == null, day: _day, focusId: widget.focusId,
+      reviewEntry: true, resolving: _day == null, resolvingLabel: _waitingFor, day: _day, focusId: widget.focusId,
       reviewActivities: widget.activities, reviewMoments: _moments,
       reviewService: widget.service, reviewEditor: widget.editor);
 }
