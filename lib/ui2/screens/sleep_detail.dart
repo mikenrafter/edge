@@ -1144,7 +1144,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           ),
         ]),
         const SizedBox(height: S.x2),
-        Wrap(spacing: S.x2, children: [
+        PendingStatic(child: Wrap(spacing: S.x2, children: [
           _recalculateButton(_day ?? day ?? todayLabel()),
           // A rejected night's way back takes the place of "I was asleep" and
           // "Not sleep": one more answer would contradict the reason above.
@@ -1164,7 +1164,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
               child: Text(l?.sleepDetailNotSleep ?? 'Not sleep'),
             ),
           ],
-        ]),
+        ])),
         if (_overrideFailed case final error?)
           StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
       ]), height: 240),
@@ -1311,7 +1311,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         // Keep the naps action inert while a different night is being read.
         onPressed:
             _saving || _loading ? null : () => go(c, NapsScreen(day: day)),
-        child: Text(l?.sleepDetailEditNaps ?? 'Naps'),
+        child: PendingStatic(child: Text(l?.sleepDetailEditNaps ?? 'Naps')),
       ),
     ];
   }
@@ -1393,7 +1393,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             ),
           ],
           const SizedBox(height: S.x2),
-          Wrap(spacing: S.x2, children: [
+          PendingStatic(child: Wrap(spacing: S.x2, children: [
             // The one recalculation control on this screen: it lives in the
             // card that says where the window came from, not in a strip of
             // its own above it.
@@ -1422,7 +1422,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
               onPressed: busy ? null : () => _rejectWindow(day),
               child: Text(l?.sleepDetailNotSleep ?? 'Not sleep'),
             ),
-          ]),
+          ])),
           if (busy) ...[
             const SizedBox(height: S.x2),
             Text(l?.sleepDetailReanalysing ?? 'Re-analysing the night…',
@@ -1526,7 +1526,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     try { app = context.read<AppState>(); } on ProviderNotFoundException { /* pure view */ }
     return TextButton(onPressed: _saving || app == null ? null : () =>
       _runOverride(day, () => app!.recalculateSleep(day), timesSaved: false),
-      child: const Text('Recalculate this night'));
+      child: const PendingStatic(child: Text('Recalculate this night')));
   }
 
   /// Whether [_windowCard] will draw for [d]: it needs a day and a window.
