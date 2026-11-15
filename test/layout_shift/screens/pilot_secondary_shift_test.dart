@@ -20,6 +20,7 @@ import '../../backup/backup_support.dart';
 import '../../support/as_of_recalc_fakes.dart';
 import '../../support/live_guide_harness.dart';
 import '../../support/shift_run.dart';
+import '../../support/pilot_shots.dart';
 import '../../support/skeleton_fixture.dart' show skLoadAppFonts;
 
 class _ReadRepo extends GuideFakeRepo {
@@ -91,7 +92,7 @@ void main() {
       final app = AppState.forTesting()..repo = repo;
       addTearDown(app.dispose);
       final run = ShiftRun(t);
-      await t.pumpWidget(perfApp(app, screen.value));
+      await t.pumpWidget(pilotShot(perfApp(app, screen.value, brightness: Brightness.dark)));
       run.opened();
       await run.frames([0, 150, 2500]);
       expect(find.byType(CircularProgressIndicator), findsNothing);
@@ -103,6 +104,7 @@ void main() {
             reason: 'an unknown pending count must not announce zero pending items');
         } finally { semantics.dispose(); }
       }
+      await takePilotShot(t, screen.key == 'Explorer' ? 'explorer' : 'review-doorway');
       repo.gate.complete();
       await landed(run);
       check(run, screen.key);
@@ -111,6 +113,28 @@ void main() {
     });
   }
 
+  testWidgets('Explorer annotation arrival preserves its plot frame', (t) async {
+    phoneSurface(t);
+    final repo = _ReadRepo()..gate.complete();
+    final annotations = Completer<List<ChartAnnotation>>();
+    final app = AppState.forTesting()..repo = repo;
+    addTearDown(app.dispose);
+    await t.pumpWidget(pilotShot(perfApp(app, ExplorerView(
+      annotationLoader: (_, _) => annotations.future), brightness: Brightness.dark)));
+    final setup = ShiftRun(t);
+    await landed(setup);
+    final run = ShiftRun(t)..opened();
+    await run.frames([0, 150, 2500]);
+    await takePilotShot(t, 'explorer-annotations');
+    annotations.complete([ChartAnnotation(id: 'late-water', kind: AnnotationKind.water,
+      at: DateTime.now().millisecondsSinceEpoch / 1000, label: 'Drank water')]);
+    await landed(run);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    check(run, 'Explorer late annotations');
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 3));
+  });
+
   // WHY: the Sleep plan has no journal/medication dependency. A stuck journal
   // read must not keep its already available sleep values pending forever.
   testWidgets('Sleep plan settles without reading unrelated journal fields', (t) async {
@@ -118,7 +142,9 @@ void main() {
     final repo = _BlockedJournalRepo();
     final app = AppState.forTesting()..repo = repo;
     addTearDown(app.dispose);
-    await t.pumpWidget(perfApp(app, const WellnessScreen(sleepPlanOnly: true)));
+    await t.pumpWidget(pilotShot(perfApp(app, const WellnessScreen(sleepPlanOnly: true), brightness: Brightness.dark)));
+    await t.pump();
+    await takePilotShot(t, 'sleep-plan');
     final run = ShiftRun(t);
     await landed(run);
     expect(repo.journalReads, 0);
@@ -133,12 +159,13 @@ void main() {
     final app = AppState.forTesting();
     addTearDown(app.dispose);
     final run = ShiftRun(t);
-    await t.pumpWidget(perfApp(app, ValueListenableBuilder<bool>(valueListenable: ready,
+    await t.pumpWidget(pilotShot(perfApp(app, ValueListenableBuilder<bool>(valueListenable: ready,
       builder: (_, loaded, _) => WearableDayView(device: 'Watch', loaded: loaded,
-        hasDay: false))));
+        hasDay: false)), brightness: Brightness.dark)));
     run.opened();
     await run.frames([0, 150, 2500]);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    await takePilotShot(t, 'wearable-day');
     ready.value = true;
     await run.frames([0, 16, 100]);
     check(run, 'wearable day');
@@ -149,10 +176,11 @@ void main() {
     final app = AppState.forTesting();
     addTearDown(app.dispose);
     final run = ShiftRun(t);
-    await t.pumpWidget(perfApp(app, const MomentReviewEditor()));
+    await t.pumpWidget(pilotShot(perfApp(app, const MomentReviewEditor(), brightness: Brightness.dark)));
     run.opened();
     await run.frames([0, 150, 2500]);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    await takePilotShot(t, 'legacy-review');
     await landed(run);
     expect(find.text('Nothing to follow up on'), findsOneWidget);
     check(run, 'legacy moment review');

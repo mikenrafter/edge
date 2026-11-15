@@ -50,7 +50,7 @@ const monthAbbr = [
 ];
 
 /// Wraps [child] in the providers every screen reads, under a themed app.
-Widget perfApp(AppState app, Widget child, {LocaleController? locale}) =>
+Widget perfApp(AppState app, Widget child, {LocaleController? locale, Brightness brightness = Brightness.light}) =>
     MultiProvider(
       providers: [
         ChangeNotifierProvider<AppState>.value(value: app),
@@ -58,7 +58,7 @@ Widget perfApp(AppState app, Widget child, {LocaleController? locale}) =>
             value: locale ?? LocaleController.seed(null)),
       ],
       child: MaterialApp(
-        theme: buildTheme(Brightness.light),
+        theme: buildTheme(brightness),
         home: Scaffold(body: child),
       ),
     );

@@ -69,6 +69,15 @@ class _LateRepo extends GuideFakeRepo {
     return (metric == 'resting_hr' || metric == 'steps') ? chart : const {'points': []};
   });
   @override
+  Future<List<Map<String, Object?>>> getDeviceNights(String day) async => rich
+    ? [{'device_id': 'watch', 'label': 'Watch', 'family': 'colmi'}] : [];
+  @override
+  Future<Map<String, dynamic>> getInsights() async => rich ? {
+    'sleep_coach': {'need': {'status': 'ok', 'value': {'need_sec': 28800}},
+      'bedtime': {'status': 'ok', 'value': {'bedtime_min_of_day': 1320}}},
+    'sleep_debt': {'status': 'ok', 'value': {'debt_hours': 1}},
+  } : {};
+  @override
   Future<Map<String, dynamic>> getZones() => late(super.getZones);
   @override
   Future<Map<String, dynamic>> getDayStrain(String day) => late(() => super.getDayStrain(day));
