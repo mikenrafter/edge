@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart' show accordionPrefKey;
 import 'package:openstrap_edge/state/prefs.dart';
+import 'package:openstrap_edge/settings/settings_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'support/dart_source_lexical.dart';
 import 'support/skeleton_fixture.dart';
@@ -55,7 +56,8 @@ void main() {
     expect(find.text('collapsed'), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     // Startup cache is the first-frame oracle; do not wait for a late restore.
-    await Prefs.setBoolAcked(accordionPrefKey('cycle_shape'), false);
+    final stored = await t.runAsync(() => SettingsRepository.instance.appBool(accordionPrefKey('cycle_shape')));
+    expect(stored, isFalse, reason: 'the tap must persist through the actual settings writer');
     await t.pumpWidget(skHost(const _Remember()));
     expect(find.text('collapsed'), findsOneWidget);
   });
