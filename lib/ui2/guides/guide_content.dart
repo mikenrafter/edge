@@ -5,6 +5,8 @@
 import 'package:flutter/widgets.dart';
 
 import '../../l10n/app_localizations.dart';
+
+import '../activity/picker.dart' show ActivityRow;
 import '../grammar.dart' show Pressable;
 import 'guide.dart';
 import 'guide_target.dart';
@@ -70,4 +72,119 @@ class KeyedContent implements GuideContent {
     for (final key in keys)
       if (GuideTarget.key(key).resolve(root, l) case final TargetFound found) found,
   ];
+}
+
+
+/// One target as content (so a multi-target step can list a target next to other content).
+class TargetContent implements GuideContent {
+  final GuideTarget target;
+  const TargetContent(this.target);
+
+  @override
+  List<TargetFound> resolve(Element root, AppLocalizations l) => [
+    if (target.resolve(root, l) case final TargetFound found) found,
+  ];
+}
+
+/// Several contents, in order.
+class ContentList implements GuideContent {
+  final List<GuideContent> parts;
+  const ContentList(this.parts);
+
+  @override
+  List<TargetFound> resolve(Element root, AppLocalizations l) => [for (final p in parts) ...p.resolve(root, l)];
+}
+
+TargetFound? _visibleFound(Element e, RenderBox rootBox) {
+  final box = laidOutBox(e);
+  if (box == null) return null;
+  final rect = rectInRoot(box, rootBox).intersect(visibleBoundsInRoot(box, rootBox));
+  return rect.isEmpty ? null : TargetFound(rect, renderObject: box);
+}
+
+/// The Keep, Discard and Edit buttons of the FIRST item that waits for review, in that order (the
+/// review screen keys them per item). The remove-detected step 2 points at all three.
+class ReviewRowButtons implements GuideContent {
+  const ReviewRowButtons();
+
+  static const _keep = 'apk2-review-keep:';
+
+  @override
+  List<TargetFound> resolve(Element root, AppLocalizations l) {
+    String? id;
+    for (final e in onstageElements(root)) {
+      final k = e.widget.key;
+      if (k is ValueKey<String> && k.value.startsWith(_keep)) {
+        id = k.value.substring(_keep.length);
+        break;
+      }
+    }
+    if (id == null) return const [];
+    return [
+      for (final key in ['apk2-review-keep:$id', 'apk2-review-discard:$id', 'day-review-label:$id'])
+        if (GuideTarget.key(ValueKey(key)).resolve(root, l) case final TargetFound found) found,
+    ];
+  }
+}
+
+/// The recent / quick-start chips of the activity picker (left to right).
+class PickerChips implements GuideContent {
+  const PickerChips();
+
+  @override
+  List<TargetFound> resolve(Element root, AppLocalizations l) {
+    final rootBox = laidOutBox(root);
+    if (rootBox == null) return const [];
+    return [
+      for (final e in onstageElements(root))
+        if (e.widget.runtimeType.toString() == '_Quick')
+          if (_visibleFound(e, rootBox) case final TargetFound found) found,
+    ];
+  }
+}
+
+/// The group headers of the activity picker (top to bottom): the pressable rows that carry the
+/// turning chevron.
+class PickerGroupHeaders implements GuideContent {
+  const PickerGroupHeaders();
+
+  @override
+  List<TargetFound> resolve(Element root, AppLocalizations l) {
+    final rootBox = laidOutBox(root);
+    if (rootBox == null) return const [];
+    return [
+      for (final e in onstageElements(root))
+        if (e.widget is Pressable && onstageElements(e).any((c) => c.widget is AnimatedRotation))
+          if (_visibleFound(e, rootBox) case final TargetFound found) found,
+    ];
+  }
+}
+
+/// The first [count] activity rows the picker shows (those of the open group).
+class PickerRows implements GuideContent {
+  final int count;
+  const PickerRows(this.count);
+
+  @override
+  List<TargetFound> resolve(Element root, AppLocalizations l) {
+    final rootBox = laidOutBox(root);
+    if (rootBox == null) return const [];
+    final out = <TargetFound>[];
+    for (final e in onstageElements(root)) {
+      if (e.widget is! ActivityRow) continue;
+      final found = _visibleFound(e, rootBox);
+      if (found != null) out.add(found);
+      if (out.length >= count) break;
+    }
+    return out;
+  }
+}
+
+/// The first of [inner]'s results (the control a guide opens).
+class FirstOf implements GuideContent {
+  final GuideContent inner;
+  const FirstOf(this.inner);
+
+  @override
+  List<TargetFound> resolve(Element root, AppLocalizations l) => inner.resolve(root, l).take(1).toList();
 }

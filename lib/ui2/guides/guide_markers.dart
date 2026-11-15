@@ -33,11 +33,12 @@ class GuideMarkerPill extends StatelessWidget {
   final String text;
   final bool arrow;
   final Widget? leading;
-  const GuideMarkerPill(this.text, {super.key, this.arrow = false, this.leading});
+  final Color color;
+  const GuideMarkerPill(this.text, {super.key, this.arrow = false, this.leading, this.color = C.yellow});
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
-        decoration: const BoxDecoration(color: C.yellow, borderRadius: R.rPill),
+        decoration: BoxDecoration(color: color, borderRadius: R.rPill),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: S.x2 + 2, vertical: S.x1 / 2),
           child: Row(

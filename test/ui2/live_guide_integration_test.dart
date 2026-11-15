@@ -13,6 +13,7 @@
 // tap advances the run, wrong navigation shows the off-path card, Exit leaves
 // the app where the user is.
 
+import '../support/live_guide_focus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/app.dart' show AppMainShell;
@@ -107,7 +108,7 @@ void main() {
     await _reveal(t);
     expect(_step(app), 0);
     expect(_run(app).currentStep!.id, 'open-alarm');
-    expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
+    expect(liveGuideFocus, findsOneWidget);
     final target = _overlay(t).targetRect!;
     expect(target.overlaps(t.getRect(_label(_l(t).settingsAlarmRowTitle))), isTrue);
     expect(target.top, greaterThanOrEqualTo(0));
@@ -364,7 +365,7 @@ void main() {
         expect(t.takeException(), isNull);
         expect(_caption(t), _plain(l.guideHrZonesStep1(l.tabToday, l.homeRingStrain)));
         final card = t.getRect(find.byKey(GuideStepCard.cardKey));
-        expect(card.overlaps(t.getRect(find.byKey(LiveGuideOverlay.outlineKey))), isFalse);
+        expect(card.overlaps(t.getRect(liveGuideFocus)), isFalse);
         expect(card.overlaps(t.getRect(find.byKey(LiveGuideOverlay.tapPillKey))), isFalse);
         final tabBar = t.getRect(_label(l.tabToday).last);
         expect(card.bottom, lessThanOrEqualTo(tabBar.top + 1), reason: 'the bottom card sits above the tab bar');
@@ -382,7 +383,7 @@ void main() {
       expect(_step(app), 0);
       expect(_caption(t), _plain(l.guideStartStep1(l.tabActivity, l.workoutStartSessionLabel)));
       // The StartCard is edge to edge; growing its outline must not draw offscreen.
-      final outline = t.getRect(find.byKey(LiveGuideOverlay.outlineKey));
+      final outline = t.getRect(liveGuideFocus);
       expect(outline.left, greaterThanOrEqualTo(0));
       expect(outline.right, lessThanOrEqualTo(390));
       expect(outline.top, greaterThanOrEqualTo(0));
@@ -406,7 +407,7 @@ void main() {
       await _reveal(t);
       expect(_step(app), 1);
       expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsNothing, reason: 'revealed and in view: no scroll indicator');
-      expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
+      expect(liveGuideFocus, findsOneWidget);
       expect(_label(l.workoutLogPastFix), findsOneWidget);
       await t.tap(_label(l.workoutLogPastFix));
       await _reveal(t);

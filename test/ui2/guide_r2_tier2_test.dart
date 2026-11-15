@@ -1,5 +1,6 @@
 // Tier 2 review fix F1 (r2-review-opus-tier2.md): the BEHAVIOUR the owner sees, on real
 // widgets (the shipped AppShell, the shipped overlay and run).
+import '../support/live_guide_focus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
@@ -91,7 +92,7 @@ void main() {
         final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
         expect(shell.run.state, isA<GuideAtStep>(), reason: 'positive control: the anchor is on this tab, the step is current');
         expect(overlay.targetRect, isNull);
-        expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing, reason: 'no outline');
+        expect(liveGuideFocus, findsNothing, reason: 'no outline');
         expect(find.byKey(LiveGuideOverlay.tapPillKey), findsNothing, reason: 'no Tap pill');
         expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsNothing, reason: 'no Scroll marker');
         expect(overlay.paintedShapes, isEmpty, reason: 'no dim, no skeleton');
@@ -117,7 +118,7 @@ void main() {
       final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
       expect(shell.run.state, isA<GuideAtStep>());
       expect(overlay.targetRect, isNull, reason: 'the target is not on this tab');
-      final outline = find.byKey(LiveGuideOverlay.outlineKey);
+      final outline = liveGuideFocus;
       expect(outline, findsOneWidget);
       final ring = t.getRect(outline);
       final health = t.getRect(_tab(3)), current = t.getRect(_tab(2));

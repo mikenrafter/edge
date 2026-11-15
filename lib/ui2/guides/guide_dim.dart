@@ -4,7 +4,8 @@
 // overscroll-stretch with it, in every frame (owner design, 2026-11-14).
 //
 //  * [GuideDimScope] sits once at the app root. Its [GuideDimController] holds the
-//    plan: which component is dimmed, which is skeleton.
+//    plan and hover bindings. The active overlay owns hover opacity; components own
+//    their paint subscriptions. Only targeted components subscribe to hover ticks.
 //  * `Surface`, `Section`, `Pressable` and `GuideBox` (grammar.dart) wrap themselves in
 //    [GuideUnitMark] (../skeleton/unit_paint.dart), which asks the plan at PAINT
 //    time and paints its own foreground. Loose text inside a scrollable is painted
@@ -66,6 +67,31 @@ class GuideDimController extends ChangeNotifier {
   GuideUnitLooks? _looks;
   bool _disposed = false;
 
+  /// Layout hooks invalidate geometry without notifying or rebuilding the page.
+  int _geometryRevision = 0;
+  int get geometryRevision => _geometryRevision;
+  void geometryChanged() { _geometryRevision++; }
+
+  final Map<RenderBox, GuideHover> _hovers = {};
+  Object? _hoverOwner;
+  GuideHover? hoverOf(RenderBox unit) => _hovers[unit];
+
+  /// Bind once after layout. Only the target's own render layer paints hover.
+  void setHovers(Map<RenderBox, GuideHover> hovers, {Object? owner}) {
+    if (_disposed) return;
+    _hoverOwner = owner;
+    final old = _hovers.values.toSet();
+    _hovers..clear()..addAll(hovers);
+    notifyListeners();
+    for (final hover in old.difference(hovers.values.toSet())) { hover.dispose(); }
+  }
+
+  void clearHovers({Object? owner}) {
+    if (owner != null && !identical(owner, _hoverOwner)) return;
+    if (_hovers.isNotEmpty) setHovers({});
+  }
+
+
   /// True after [dispose]: a run that ends after its app root went away (a test
   /// tear-down, an app shutting down) clears into nothing instead of failing.
   bool get isDisposed => _disposed;
@@ -74,6 +100,8 @@ class GuideDimController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _looks = null;
+    for (final hover in _hovers.values.toSet()) { hover.dispose(); }
+    _hovers.clear();
     _pulse.dispose();
     super.dispose();
   }
@@ -139,7 +167,10 @@ class GuideDimController extends ChangeNotifier {
   bool _pending = false;
 
   /// Removes the plan: every component draws as usual.
-  void clear() => setLooks(null);
+  void clear() {
+    clearHovers();
+    setLooks(null);
+  }
 }
 
 /// Provided once at the app root (above the Navigator). Components inside read
@@ -301,4 +332,53 @@ class GuidePlan implements GuideLooseLooks, GuideKeepsControls {
     }
     return false;
   }
+}
+
+/// Local target geometry and its animation opacity. The target paints this in
+/// its own coordinate space, including the scrollable's stretch transform.
+class GuideHover extends ValueNotifier<double> {
+  bool _disposed = false;
+  bool get isDisposed => _disposed;
+  @override
+  void dispose() { _disposed = true; super.dispose(); }
+
+  final Rect rect;
+  final double radius;
+  final Color color;
+  GuideHover(this.rect, this.radius, this.color) : super(0);
+}
+
+/// Build scheduling invalidates a cached plan even when a parent's new layout
+/// only repositions a target without laying out the target again. Hand motion
+/// uses render transforms and never schedules a build. The shared subscription
+/// survives overlapping overlay teardown/arrival without retaining old runs.
+class GuideBuildChanges {
+  static final _listeners = <VoidCallback>{};
+  static final _changes = ValueNotifier<int>(0);
+  static BuildOwner? _owner;
+  static VoidCallback? _previous;
+
+  static void addListener(VoidCallback listener) {
+    if (_listeners.isEmpty) {
+      _owner = WidgetsBinding.instance.buildOwner;
+      _previous = _owner?.onBuildScheduled;
+      final previous = _previous;
+      if (previous != null) _changes.addListener(previous);
+      _owner?.onBuildScheduled = _scheduled;
+    }
+    if (_listeners.add(listener)) _changes.addListener(listener);
+  }
+
+  static void removeListener(VoidCallback listener) {
+    if (_listeners.remove(listener)) _changes.removeListener(listener);
+    if (_listeners.isEmpty) {
+      if (_owner?.onBuildScheduled == _scheduled) _owner?.onBuildScheduled = _previous;
+      final previous = _previous;
+      if (previous != null) _changes.removeListener(previous);
+      _owner = null;
+      _previous = null;
+    }
+  }
+
+  static void _scheduled() { _changes.value++; }
 }

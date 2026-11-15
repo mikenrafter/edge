@@ -9246,6 +9246,8 @@
   },
   "guideTapMarker": "нажать",
   "guideScrollMarker": "листать",
+  "guideTapOneOf": "коснитесь одного",
+  "guideSearchOrPick": "поиск или выбор",
   "guideStepUnavailable": "Этот шаг сейчас нельзя показать.",
   "guideNoVariantBody": "Эта инструкция пока не подходит для вашего браслета. Подходит для: {bands}.",
   "guideHrZonesTitle": "Где найти зоны пульса",
@@ -9339,7 +9341,7 @@
   "guideAddNapRulesBody": "Дневной сон длится от 5 минут до 6 часов, должен уже закончиться и не может пересекаться с другим дневным сном или с основным сном.",
   "guideRemoveTitle": "Где убрать дневной сон или тренировку, которых не было",
   "guideRemoveStep1": "На вкладке **{tab}** нажмите на карточку **{card}**. Она есть, только пока что-то ждёт вашего ответа.",
-  "guideRemoveStep2": "У каждого пункта своя кнопка **{discard}**. Нажмите её у дневного сна или тренировки, которых не было; рамка отмечает первый пункт.",
+  "guideRemoveStep2": "У каждого пункта своя кнопка **{discard}**. Нажмите её у дневного сна или тренировки, которых не было; подсветка показывает варианты.",
   "guideRemoveSavedTitle": "Уже сохранено?",
   "guideRemoveSavedBody": "Откройте вкладку **{sleep}** и нажмите **{naps}**. Нажмите **{notNap}** у сна, найденного браслетом, или **{delete}** у записанного вами.",
   "guideRemoveMissingTitle": "Не видите «{card}»?",
@@ -9504,7 +9506,7 @@
     }
   },
   "@guideRemoveStep2": {
-    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the outline marks the first.",
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
     "placeholders": {
       "discard": {
         "type": "String",

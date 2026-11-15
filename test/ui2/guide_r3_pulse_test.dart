@@ -104,7 +104,7 @@ void main() {
     await _settle(t);
     expect(stage.run.state, isA<GuideAtStep>());
     expect(overlay.hasPlaceholders, isFalse, reason: 'Details has a target card and one neighbour: all lit or dim');
-    expect(find.byKey(LiveGuideOverlay.tapHandKey), findsOneWidget, reason: 'the hand owns the clock, with a still-half rest');
+    expect(find.byKey(LiveGuideOverlay.handKey), findsOneWidget, reason: 'the moving hand owns its clock');
     for (var i = 0; i < 30; i++) {
       await t.pump(const Duration(milliseconds: 50));
       expect(stage.dim.pulse, 1, reason: 'no placeholder, so the placeholder pulse never leaves rest');

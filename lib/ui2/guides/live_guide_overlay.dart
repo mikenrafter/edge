@@ -64,6 +64,8 @@ import '../grammar.dart' show NavBar, Pressable, ScreenTitle, SubTabs;
 import '../theme.dart';
 import 'guide.dart';
 import 'guide_content.dart' show PressableRows;
+import 'guide_copy.dart' show GuideCopy;
+import 'guide_hand.dart';
 import 'guide_navigation.dart';
 import 'guide_motion.dart';
 import 'guide_markers.dart';
@@ -72,7 +74,7 @@ import 'guide_target.dart';
 import 'tree_geometry.dart';
 
 import '../skeleton/skeleton.dart';
-import '../skeleton/unit_paint.dart' show hasLooseLayer;
+import '../skeleton/unit_paint.dart' show hasLooseLayer, RenderGuideUnit;
 import '../skeleton/guide_plot.dart' show GuideDecoration;
 import 'guide_dim.dart';
 import 'guide_run.dart';
@@ -111,12 +113,16 @@ class LiveGuideOverlay extends StatefulWidget {
   static const tapHandKey = GuideTapHand.handKey;
   static const scrollChevronKey = GuideScrollIndicator.chevronKey;
   static const targetProxyKey = ValueKey('guide-live-target-proxy');
+  static const routeProxyKey = ValueKey('guide-live-route-proxy');
+  /// The moving hand's own transform layer.
+  static const handKey = ValueKey('guide-live-hand');
+  static const rippleKey = ValueKey('guide-live-ripple');
 
   @override
   State<LiveGuideOverlay> createState() => LiveGuideOverlayState();
 }
 
-class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderStateMixin implements _GuideLayerSource {
+class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderStateMixin implements _GuideLayerSource, GuideHandSource, GuideHandEvents {
   final _layerKey = GlobalKey();
   late final AnimationController _reveal;
   late final AnimationController _pulse;
@@ -164,7 +170,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final enabled = Motion.enabled(context);
     final continuous = enabled && (_wantsPulse || _cardMotion.isAnimating);
     // The tap hand and the scroll indicator's hand share the nudge: still for half of the cycle.
-    final hand = enabled && ((markers?.marked ?? false) || (markers?.routeMarked ?? false) || (markers?.hidden ?? false));
+    final hand = enabled && (((markers?.marked ?? false) && !_movingNow) || ((markers?.routeMarked ?? false) && !_movingNow) || (markers?.hidden ?? false));
     if (continuous) {
       _handRest?.cancel();
       _handRest = null;
@@ -252,6 +258,217 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   /// The controls kept real inside placeholder cards: the previous and next step's targets and
   /// the buttons beside them [_neighbourControls].
   Set<Element> _keptControls = const {};
+  // The overlay owns the hand and cached target geometry for every guide.
+  final _hand = GuideHandMachine();
+  Ticker? _handTicker;
+  Duration? _handLast;
+  final _handTick = ValueNotifier<int>(0);
+
+  /// Every control the hover highlight marks, and the ones the hand visits now (overlay coordinates).
+  List<_Tracked> _hl = const [], _visit = const [];
+
+  /// The page whose first group the guide has opened (once per arrival at the screen).
+  Element? _openedPage;
+  bool _expanding = false;
+  Timer? _expandTimer;
+  int _expandCount = 0;
+
+  /// True while the guide opens a group and the screen takes no taps.
+  @visibleForTesting
+  bool get isExpanding => _expanding;
+
+  /// How many times this overlay has opened a group (once per arrival at the screen).
+  @visibleForTesting
+  int get expandCount => _expandCount;
+
+  @visibleForTesting
+  GuideHandMachine get hand => _hand;
+
+  @override
+  GuideHandMachine get handMachine => _hand;
+
+  @override
+  Color get handColor => _hl.length > 1 || (_step?.multi != null) ? C.blue : kGuideMarkerColor;
+
+  @override
+  List<GuideHandTarget> get handTargets => _cachedTargets;
+
+  /// Animated guides use the moving aid whenever their focus is resolved.
+  bool get _movingNow =>
+      Motion.enabled(context) && _hl.isNotEmpty;
+
+  @visibleForTesting
+  bool get handActive => _handTicker?.isActive ?? false;
+
+  /// The visiting set's rects that are in view now, in visiting order.
+  List<Rect> _visitRects() {
+    final layer = _layerKey.currentContext?.findRenderObject();
+    if (layer is! RenderBox || !layer.hasSize) return const [];
+    final area = _boundsOf(layer.size, MediaQuery.paddingOf(context), MediaQuery.viewInsetsOf(context).bottom, _barsTop, _barsBottom);
+    return [for (final t in _visit) if (_verticallyIn(t.live, area, _targetInChrome || _route != null)) t.live];
+  }
+
+  GuideHandMode _handMode() {
+    final multi = _step?.multi;
+    if (multi == null) return GuideHandMode.single;
+    if (multi.opens != null) return identical(_openedPage, _page) && !_expanding ? GuideHandMode.list : GuideHandMode.opening;
+    return _visit.length <= 1 ? GuideHandMode.single : multi.visit == GuideVisit.list ? GuideHandMode.list : GuideHandMode.row;
+  }
+
+  bool _handGeometryDirty = true;
+  List<Rect> _cachedVisits = const [];
+  List<GuideHandTarget> _cachedTargets = const [];
+  List<(Rect, GuideHover)> _hoverPaints = const [];
+  int _geometryRevision = -1;
+  List<RenderBox> _cachedObjects = const [];
+  Color? _cachedHoverColor;
+
+  void _cacheHandGeometry() {
+    final visits = _visitRects();
+    final targets = [for (final t in _hl) GuideHandTarget(t.live, t.radius)];
+    final objects = [for (final t in _hl) t.object];
+    if (listEquals(objects, _cachedObjects) && _cachedHoverColor == handColor && listEquals(visits, _cachedVisits) && listEquals(
+        [for (final t in targets) (t.rect, t.radius)],
+        [for (final t in _cachedTargets) (t.rect, t.radius)]) &&
+        (_hoverPaints.isNotEmpty && _hoverPaints.every((p) => !p.$2.isDisposed) || targets.isEmpty)) { return; }
+    _cachedObjects = objects;
+    _cachedHoverColor = handColor;
+    _cachedVisits = visits;
+    _cachedTargets = targets;
+    _hand.restart();
+    final bindings = <RenderBox, GuideHover>{};
+    final paints = <(Rect, GuideHover)>[];
+    for (var i = 0; i < _hl.length; i++) {
+      final target = _hl[i];
+      final mark = _hoverMark(target.object);
+      if (mark == null || !mark.attached || !mark.hasSize) continue;
+      final local = MatrixUtils.transformRect(target.object.getTransformTo(mark), Offset.zero & target.object.size);
+      final hover = GuideHover(local, math.min(target.radius, local.shortestSide / 2), handColor);
+      bindings[mark] = hover;
+      paints.add((targets[i].rect, hover));
+    }
+    _hoverPaints = paints;
+    _dim?.setHovers(bindings, owner: this);
+  }
+
+  /// Resolved once with layout, never in the animation callback. Prefer the
+  /// target's own mark; a loose labelled control can use its enclosing mark.
+  RenderGuideUnit? _hoverMark(RenderBox target) {
+    RenderGuideUnit? found;
+    void visit(RenderObject object) {
+      if (found != null) return;
+      if (object is RenderGuideUnit && object.hasSize && object.size == target.size) {
+        found = object;
+        return;
+      }
+      object.visitChildren(visit);
+    }
+    visit(target);
+    if (found != null) return found;
+    for (RenderObject? parent = target.parent; parent != null; parent = parent.parent) {
+      if (parent is RenderGuideUnit) return parent;
+    }
+    return null;
+  }
+
+  GuideStep? _handStep;
+  GuideHandMode? _handModeNow;
+
+  /// Starts, retargets or stops the hand to match the step on screen. Runs after every plan.
+  void _syncHand() {
+    if (!mounted) return;
+    final layer = _layerKey.currentContext?.findRenderObject();
+    final markers = layer is RenderBox && layer.hasSize ? _markersFor(layer.size) : null;
+    final want = _movingNow && ((markers?.marked ?? false) || (markers?.routeMarked ?? false));
+    if (!want) {
+      _handTicker?.stop();
+      _handLast = null;
+      _handStep = null;
+      _handModeNow = null;
+      _dim?.clearHovers(owner: this);
+      _hoverPaints = const [];
+      _handGeometryDirty = true;
+      return;
+    }
+    if (_handGeometryDirty) {
+      _handGeometryDirty = false;
+      _cacheHandGeometry();
+    }
+    if (_cachedVisits.isEmpty) {
+      _handTicker?.stop();
+      _handLast = null;
+      return;
+    }
+    final mode = _handMode();
+    if (_handStep != _step || _handModeNow != mode) {
+      final newStep = _handStep != _step;
+      _handStep = _step;
+      _handModeNow = mode;
+      _hand.events = this;
+      _hand.setMode(mode);
+      if (newStep) _hand.restart();
+    }
+    final ticker = _handTicker ??= createTicker(_handFrame);
+    if (!ticker.isActive) {
+      _handLast = null;
+      ticker.start();
+    }
+  }
+
+  void _handFrame(Duration elapsed) {
+    final last = _handLast;
+    _handLast = elapsed;
+    final dt = last == null ? 0.0 : (elapsed - last).inMicroseconds / 1000;
+    if (_yieldNow || widget.run.isExited) return;
+    _hand.advance(dt, _cachedVisits);
+    for (final (target, hover) in _hoverPaints) {
+      if (hover.isDisposed) {
+        _handGeometryDirty = true;
+        continue;
+      }
+      hover.value = guideHoverOpacity((target.center - _hand.tip).distance);
+    }
+    _handTick.value++;
+  }
+
+  @override
+  void handPressed(int index) {
+    if (_hand.mode == GuideHandMode.opening) _openFirstGroup();
+  }
+
+  /// The one app action a guide may take: tap the control [GuideMultiTarget.opens] names, once per
+  /// arrival at the screen, then let the screen settle with its input blocked. It never selects,
+  /// saves or starts anything.
+  void _openFirstGroup() {
+    final page = _page, step = _step;
+    final opens = step?.multi?.opens;
+    if (page == null || opens == null || identical(_openedPage, page) || _yieldNow) return;
+    final found = opens.resolve(page, AppLocalizations.of(context)!).firstOrNull;
+    _openedPage = page;
+    if (found == null || !found.renderObject.attached) return;
+    final position = found.renderObject.localToGlobal(found.renderObject.size.center(Offset.zero));
+    final result = HitTestResult();
+    WidgetsBinding.instance.hitTestInView(result, position, View.of(context).viewId);
+    if (!result.path.any((entry) => identical(entry.target, found.renderObject))) return;
+    GestureBinding.instance.handlePointerEvent(PointerDownEvent(pointer: -3, position: position));
+    GestureBinding.instance.handlePointerEvent(PointerUpEvent(pointer: -3, position: position));
+    _expandCount++;
+    _expanding = true;
+    _expandTimer?.cancel();
+    _expandTimer = Timer(Motion.guideOpenSettle, _expanded);
+    _markDirty();
+    setState(() {});
+  }
+
+  void _expanded() {
+    _expandTimer = null;
+    if (!mounted) return;
+    _expanding = false;
+    _plannedSignature = null;
+    _markDirty();
+    setState(() {});
+  }
+
   /// The step's target is itself a bar control (a tab, a sub-tab): it lives outside the usable
   /// area by design, so it counts as in view.
   bool _targetInChrome = false;
@@ -296,24 +513,20 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   /// Something the guide heard about (a scroll, a pointer, a run or route change) since
   /// the page was last read: the next frame re-reads it whatever else is going on.
   bool _planDirty = true;
-  Duration? _lastSignatureAt;
   Element? _signedPage;
   Size? _signedSize;
 
   void _markDirty() => _planDirty = true;
 
-  /// True for a frame the placeholder pulse (or the card's own motion) asked for, with
-  /// nothing the guide knows of changed: the page need not be read again yet. The pulse
-  /// only repaints; it is not a reason to hash the page. CLAIM(pulse-no-plan-walk).
-  bool _pulseOnlyFrame(Element? page, Size size) {
-    if (!_pulse.isAnimating || _planDirty || _plannedSignature == null) return false;
+  /// Guide-owned clocks only repaint. Layout hooks and scheduled widget builds
+  /// invalidate the plan; another animation still triggers geometry discovery.
+  /// CLAIM(pulse-no-plan-walk) CLAIM(hand-cached-paths) [guide_r7_test].
+  bool _ownedMotionFrame(Element? page, Size size) {
+    if ((!_pulse.isAnimating && !handActive) || _planDirty || _plannedSignature == null) return false;
     if (!identical(page, _signedPage) || size != _signedSize) return false;
-    final last = _lastSignatureAt;
-    if (last == null) return false;
-    final others = SchedulerBinding.instance.transientCallbackCount - 1 - (_reveal.isAnimating ? 1 : 0);
+    final others = SchedulerBinding.instance.transientCallbackCount - (_pulse.isAnimating ? 1 : 0) - (handActive ? 1 : 0) - (_reveal.isAnimating ? 1 : 0);
     if (others > 0) return false; // another animation moves the page: read it as before
-    if (!_wantsPulse && !_cardMotion.isAnimating) return true;
-    return SchedulerBinding.instance.currentFrameTimeStamp - last < Motion.guidePulsePlanInterval;
+    return true;
   }
 
   @override
@@ -397,9 +610,14 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   /// layout, so it is right in the frame the scroll happens in.
   Rect? get _liveTarget {
     final planned = _target;
-    if (planned == null || _targetScrolls.isEmpty) return planned;
+    return planned == null ? null : _shifted(planned, _targetScrolls);
+  }
+
+  /// [planned] moved by how far each of [scrolls] has moved since it was planned.
+  static Rect _shifted(Rect planned, List<_ScrollAnchor> scrolls) {
+    if (scrolls.isEmpty) return planned;
     var moved = Offset.zero;
-    for (final a in _targetScrolls) {
+    for (final a in scrolls) {
       if (!a.position.hasPixels) continue;
       final d = a.position.pixels - a.pixels;
       moved += switch (a.position.axisDirection) {
@@ -435,6 +653,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   void _scrolled() {
     if (!mounted) return;
     _markDirty();
+    _handGeometryDirty = true;
     if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
       SchedulerBinding.instance.addPostFrameCallback((_) { if (mounted) setState(() {}); });
     } else {
@@ -489,6 +708,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   @override
   void initState() {
     super.initState();
+    GuideBuildChanges.addListener(_markDirty);
     _pulse = AnimationController(vsync: this, duration: kGuidePulseDuration)..addListener(_pulsed);
     _reveal = AnimationController(vsync: this, duration: kGuideRevealDuration)..addListener(_changed);
     widget.run.addListener(_changed);
@@ -825,8 +1045,15 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   void _watch() {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      final revision = _dim?.geometryRevision ?? 0;
+      if (_geometryRevision != revision) {
+        _geometryRevision = revision;
+        _markDirty();
+        _handGeometryDirty = true;
+      }
       _plan();
       _syncClock();
+      _syncHand();
       _watch(); // Observes frames; does not request one when geometry is unchanged.
     });
   }
@@ -842,7 +1069,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final page = widget.routes.page;
     final l = AppLocalizations.of(context)!;
     widget.run.observe(null, l); // Prune disposed pages even when the plan is cached.
-    if (_pulseOnlyFrame(page, layer.size)) return;
+    if (_ownedMotionFrame(page, layer.size)) return;
     // One traversal replaces repeated anchor, target, chrome, legibility and
     // skeleton walks on idle/reveal frames. Widget identity catches replacement
     // structure (including same-text controls). Transforms catch controls moving
@@ -899,7 +1126,6 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
       widget.run.state, l, _searchingPage, _revealedPage, _revealedStep);
     _signatureChecks++;
     _planDirty = false;
-    _lastSignatureAt = SchedulerBinding.instance.currentFrameTimeStamp;
     _signedPage = page;
     _signedSize = layer.size;
     if (_plannedSignature == planSignature) return;
@@ -909,7 +1135,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     // popups and completed animations are always reflected immediately.
     // The overlay's own clock (placeholder pulse, card motion) is not a page animation.
     final animating = SchedulerBinding.instance.transientCallbackCount >
-        (_reveal.isAnimating ? 1 : 0) + (_pulse.isAnimating ? 1 : 0);
+        (_reveal.isAnimating ? 1 : 0) + (_pulse.isAnimating ? 1 : 0) + (handActive ? 1 : 0);
     if (page != null && identical(page, _page) && animating &&
         _lastPlanTime != null && now - _lastPlanTime! < motion(context, Motion.guidePlanInterval)) {
       SchedulerBinding.instance.scheduleFrame();
@@ -990,6 +1216,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     SkeletonPlan? skeleton;
     var keepBoxes = <RenderBox>[];
     var keptControls = <Element>{};
+    var hl = <_Tracked>[], visitSet = <_Tracked>[];
     var chrome = <Rect>[];
     var legible = <Rect>[];
     List<SkeletonShape> intoOverlayShapes(List<SkeletonShape> plan, Matrix4 transform) => [
@@ -1021,6 +1248,26 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
         keep.addAll(status);
         final localChrome = defaultSkeletonChrome(page);
         chrome = localChrome.map(intoOverlay).toList();
+        // Every target the hover highlight marks stays real, including the visiting set.
+        if (Motion.enabled(context)) {
+          final multi = step.multi;
+          final all = multi == null ? <TargetFound>[TargetFound(rect, renderObject: renderObject)] : [...multi.targets.resolve(page, l)];
+          var visit = all;
+          final opens = multi?.opens;
+          if (multi != null && opens != null) {
+            final opened = identical(_openedPage, page) && !_expanding;
+            final after = opened ? (multi.afterOpen?.resolve(page, l) ?? all) : opens.resolve(page, l).take(1).toList();
+            visit = after;
+            if (opened) all.addAll([for (final f in after) if (!all.any((a) => identical(a.renderObject, f.renderObject))) f]);
+          }
+          for (final f in all) {
+            keep.add(f.rect);
+            keepBoxes.add(f.renderObject);
+          }
+          _Tracked track(TargetFound f) => _Tracked(f.renderObject, intoOverlay(f.rect), _anchorsOf(f.renderObject, scrollStates), _radiusOf(f.renderObject));
+          hl = [for (final f in all) track(f)];
+          visitSet = [for (final f in visit) track(f)];
+        }
         // The previous and next step's controls (and the buttons beside them) stay real.
         keptControls = _neighbourControls(page, step, l);
         // The kept previous/next controls are real and tappable: the card keeps clear of them too.
@@ -1097,7 +1344,12 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     if (staticSections.isNotEmpty || _staticSections.isNotEmpty) {
       if (!_sameShapes(_shapes, shapes) || !setEquals(_staticSections, staticSections)) _staticTick.value++;
     }
-    final changed = _page != page || _step != step || _target != target || _yielding != (page == null) ||
+    if (hl.isEmpty && route != null && routeInfo?.object != null) {
+      final routeObject = routeInfo!.object!;
+      hl = [_Tracked(routeObject, route, _anchorsOf(routeObject, scrollStates), _radiusOf(routeObject))];
+      visitSet = hl;
+    }
+    final changed = !listEquals([for (final t in _hl) t.planned], [for (final t in hl) t.planned]) || _page != page || _step != step || _target != target || _yielding != (page == null) ||
       !listEquals(_chrome, chrome) || !listEquals(_legible, legible) || _route != route ||
       (_skeletonPlan == null) != (skeleton == null);
     _page = page;
@@ -1111,6 +1363,9 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     _hasPlaceholders = _collapsed || (skeleton?.units.any((u) => u.skeleton) ?? false);
     _keepBoxes = keepBoxes;
     _keptControls = keptControls;
+    _hl = hl;
+    _visit = visitSet;
+    _handGeometryDirty = true;
     _staticSections = staticSections;
     _routeInfo = route == null ? null : routeInfo;
     _chromeBoxes = [
@@ -1234,17 +1489,28 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   void _unpublish() {
     final dim = _dim, mine = _published;
     _published = null;
-    if (dim != null && mine != null && identical(dim.looks, mine)) dim.clear();
+    if (dim != null && mine != null && identical(dim.looks, mine)) {
+      _handTicker?.stop();
+      _handLast = null;
+      _hoverPaints = const [];
+      _handGeometryDirty = true;
+      dim.clear();
+    }
   }
 
   @override
   void dispose() {
+    GuideBuildChanges.removeListener(_markDirty);
     _unpublish();
     _dropPageDrag();
     _watchScrolls(const []);
     widget.routes.removeListener(_routeChanged);
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_pointer);
     widget.run.removeListener(_changed);
+    _expandTimer?.cancel();
+    _handTicker?.dispose();
+    _dim?.clearHovers(owner: this);
+    _handTick.dispose();
     _reveal.dispose();
     _handRest?.cancel();
     _pulse.dispose();
@@ -1281,6 +1547,18 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
       final marked = markers.marked, routeMarked = markers.routeMarked, hidden = markers.hidden, up = markers.up;
       final screen = Offset.zero & constraints.biggest;
       final bounds = _boundsOf(screen.size, MediaQuery.paddingOf(context), MediaQuery.viewInsetsOf(context).bottom, _barsTop, _barsBottom);
+      // Every animated guide uses the moving hand; reduced motion keeps the static look.
+      final moving = (marked || routeMarked) && _movingNow;
+      Rect? targetUnion;
+      // The label and the card go by the targets the hand visits now (a picker with every group header
+      // marked would otherwise leave them no room).
+      for (final t in (_visit.isEmpty ? _hl : _visit)) {
+        final r = t.live;
+        if (r.overlaps(screen)) targetUnion = targetUnion == null ? r : targetUnion.expandToInclude(r);
+      }
+      final union = moving ? targetUnion?.inflate(kGuideOutlineGap).intersect(screen) : null;
+      final cardTarget = union ?? outline;
+      final tapLabel = _step?.multi != null ? (_step!.multi!.label ?? GuideCopy.tapOneOfLabel).of(l) : l.guideTapMarker;
       return Stack(children: [
         // CLAIM(lazy-skeleton-input): a published P6 plan needs input even before
         // its target exists, including newly built rows [guide_r2_review_test R4].
@@ -1301,7 +1579,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
             child: CustomPaint(key: LiveGuideOverlay.skeletonKey,
               painter: _GuidePainter(this, p, _staticTick)),
           ))),
-        if (marked || routeMarked) Positioned.fromRect(rect: (marked ? outline : routeOutline)!, child: ExcludeSemantics(child: IgnorePointer(child: DecoratedBox(
+        if (!moving && (marked || routeMarked)) Positioned.fromRect(rect: (marked ? outline : routeOutline)!, child: ExcludeSemantics(child: IgnorePointer(child: DecoratedBox(
           key: LiveGuideOverlay.outlineKey,
           decoration: BoxDecoration(border: Border.all(color: kGuideMarkerColor, width: 2.5), borderRadius: R.rMd),
         )))),
@@ -1311,22 +1589,29 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
           child: const SizedBox.expand(),
         )),
         if (routeMarked && _routeInfo != null) Positioned.fromRect(rect: _route!, child: Semantics(
-          container: true, button: true,
+          key: LiveGuideOverlay.routeProxyKey, container: true, button: true,
           label: _routeInfo!.isTab ? l.guideTabProxy(_routeInfo!.tabName ?? '') : l.guideBackProxy,
           onTap: _activateRoute,
           child: const SizedBox.expand(),
         )),
+        // The screen takes no taps while the guide opens a group (a moment, once per arrival).
+        if (show && _expanding) Positioned.fill(child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: () {}, child: const SizedBox.expand())),
+        if (moving) Positioned.fill(child: ExcludeSemantics(child: IgnorePointer(child: RepaintBoundary(
+          child: CustomPaint(key: LiveGuideOverlay.rippleKey, painter: GuideHandPainter(this, _handTick)))))),
+        if (moving) Positioned(left: 0, top: 0, child: ExcludeSemantics(child: IgnorePointer(child: RepaintBoundary(
+          child: GuideHandCursor(key: LiveGuideOverlay.handKey, source: this, clock: _handTick))))),
         if (show) Positioned.fill(child: CustomMultiChildLayout(
-          delegate: _GuideLayout(bounds, target != null ? outline : routeMarked ? routeOutline : target ?? (hidden ? Rect.fromLTWH(bounds.center.dx, bounds.bottom + 10, 1, 1) : null),
+          delegate: _GuideLayout(bounds, target != null ? cardTarget : routeMarked ? routeOutline : target ?? (hidden ? Rect.fromLTWH(bounds.center.dx, bounds.bottom + 10, 1, 1) : null),
             _legible, _cardFraction, _cardGeometry, true, _cardMotion, _elapsed, _scrolling, _cardOpacity, Motion.enabled(context),
-            _pillSide, marked || routeMarked),
+            _pillSide, marked || routeMarked, moving),
           children: [
             LayoutId(id: 'card', child: ValueListenableBuilder<double>(valueListenable: _cardOpacity, builder: (_, value, child) => Opacity(opacity: value, child: child), child: _cardMover(GuideStepCard(model: model, onExit: widget.onExit,
               onBackToGuide: state is GuideOffPath && state.lastIndex != null ? widget.onBackToGuide : null), l))),
             if (target != null || routeMarked) LayoutId(id: 'pill', child: ExcludeSemantics(child: IgnorePointer(
-              child: RepaintBoundary(child: Opacity(opacity: marked || routeMarked ? 1 : 0, child: GuideMarkerPill(l.guideTapMarker,
+              child: RepaintBoundary(child: Opacity(opacity: marked || routeMarked ? 1 : 0, child: GuideMarkerPill(moving ? tapLabel : l.guideTapMarker,
                 key: marked || routeMarked ? LiveGuideOverlay.tapPillKey : null,
-                leading: RepaintBoundary(child: GuideTapHand(clock: _pulse, side: _pillSide)))))))),
+                color: moving ? handColor : kGuideMarkerColor,
+                leading: moving ? null : RepaintBoundary(child: GuideTapHand(clock: _pulse, side: _pillSide)))))))),
             if (hidden) LayoutId(id: 'indicator', child: ExcludeSemantics(child: IgnorePointer(
               child: RepaintBoundary(child: GuideScrollIndicator(key: LiveGuideOverlay.scrollMarkerKey, text: l.guideScrollMarker, clock: _pulse, up: up))))),
           ],
@@ -1378,6 +1663,48 @@ class _PageDrag {
     _live = false;
     drag?.cancel();
   }
+}
+
+/// A target of the hover highlight: its render box, where it was planned, which scrollables carry it
+/// and its own corner radius.
+class _Tracked {
+  final RenderBox object;
+  final Rect planned;
+  final List<_ScrollAnchor> scrolls;
+  final double radius;
+  const _Tracked(this.object, this.planned, this.scrolls, this.radius);
+
+  /// Where it stands now (a scroll since the plan moved it by the same distance).
+  Rect get live => LiveGuideOverlayState._shifted(planned, scrolls);
+}
+
+/// The corner radius of the box [object] draws (the decorated box around or inside it that is as big
+/// as it is), so the highlight follows the target's own shape; a modest default when there is none.
+double _radiusOf(RenderBox object) {
+  double? from(RenderObject? o) {
+    for (var depth = 0; o != null && depth < 5; depth++) {
+      if (o is RenderDecoratedBox && o.hasSize && (o.size.width - object.size.width).abs() < 3 && (o.size.height - object.size.height).abs() < 3) {
+        final d = o.decoration;
+        if (d is BoxDecoration && d.shape == BoxShape.rectangle) {
+          final r = d.borderRadius?.resolve(TextDirection.ltr);
+          if (r != null) return r.topLeft.x;
+        }
+      }
+      RenderObject? next;
+      o.visitChildren((c) => next ??= c);
+      o = next;
+    }
+    return null;
+  }
+
+  var found = from(object);
+  for (RenderObject? up = object.parent; found == null && up != null && up is! RenderView; up = up.parent) {
+    if (up is RenderDecoratedBox) {
+      found = from(up);
+      break;
+    }
+  }
+  return found ?? R.md;
 }
 
 /// A scrollable and where it stood when the target was planned.
@@ -1466,16 +1793,35 @@ class _GuideLayout extends MultiChildLayoutDelegate {
 
   /// The pill shows (target on screen, reveal ended): only then does it have a side to keep.
   final bool pillVisible;
-  _GuideLayout(this.bounds, this.target, this.avoid, this.fraction, this.geometry, this.seekGap, this.cardMotion, this.elapsed, this.scrolling, this.opacity, this.animate, this.pillSide, this.pillVisible);
+
+  /// The label sits top centre above the targets' union.
+  final bool centerPill;
+  _GuideLayout(this.bounds, this.target, this.avoid, this.fraction, this.geometry, this.seekGap, this.cardMotion, this.elapsed, this.scrolling, this.opacity, this.animate, this.pillSide, this.pillVisible, [this.centerPill = false]);
   @override
   void performLayout(Size size) {
     Rect? pill;
     if (hasChild('pill')) {
       final pillSize = layoutChild('pill', BoxConstraints.loose(bounds.size));
-      final layout = GuidePillLayout(target!, bounds, pillVisible ? pillSide.remembered : null);
-      pill = layout.place(pillSize);
-      positionChild('pill', pill.topLeft);
-      pillSide.afterLayout(pillVisible ? layout.sideFor(pillSize) : null);
+      if (centerPill) {
+        final x = (target!.center.dx - pillSize.width / 2).clamp(bounds.left + 6, math.max(bounds.left + 6, bounds.right - pillSize.width - 6)).toDouble();
+        final above = target!.top - pillSize.height - 4;
+        final below = target!.bottom + 4;
+        final aboveFits = above >= bounds.top;
+        final belowFits = below + pillSize.height <= bounds.bottom;
+        final keepBelow = pillVisible && pillSide.remembered == GuidePillSide.below && belowFits &&
+            !(aboveFits && above - bounds.top >= GuidePillLayout.kGuidePillBand);
+        final side = keepBelow || !aboveFits && belowFits ? GuidePillSide.below : GuidePillSide.above;
+        final y = (side == GuidePillSide.above ? above : below)
+            .clamp(bounds.top, math.max(bounds.top, bounds.bottom - pillSize.height)).toDouble();
+        pill = Rect.fromLTWH(x, y, pillSize.width, pillSize.height);
+        positionChild('pill', pill.topLeft);
+        pillSide.afterLayout(pillVisible ? side : null);
+      } else {
+        final layout = GuidePillLayout(target!, bounds, pillVisible ? pillSide.remembered : null);
+        pill = layout.place(pillSize);
+        positionChild('pill', pill.topLeft);
+        pillSide.afterLayout(pillVisible ? layout.sideFor(pillSize) : null);
+      }
     }
     // The scroll indicator sits mid-screen; the card keeps clear of it.
     Rect? indicator;
@@ -1515,7 +1861,7 @@ class _GuideLayout extends MultiChildLayoutDelegate {
   @override
   bool shouldRelayout(_GuideLayout old) => bounds != old.bounds || target != old.target ||
       !listEquals(avoid, old.avoid) || fraction != old.fraction || scrolling != old.scrolling || elapsed != old.elapsed || animate != old.animate ||
-      pillVisible != old.pillVisible;
+      pillVisible != old.pillVisible || centerPill != old.centerPill;
 }
 
 /// What the overlay's input and paint layer reads at paint and hit-test time, so a

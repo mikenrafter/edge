@@ -18637,6 +18637,14 @@
   "@guideScrollMarker": {
     "description": "Short vertical marker in a navigation guide picture: the screen needs scrolling to reach the highlighted control."
   },
+  "guideTapOneOf": "tap one of",
+  "@guideTapOneOf": {
+    "description": "Short label above several highlighted controls in a live guide step: any one of them does the step."
+  },
+  "guideSearchOrPick": "search or pick",
+  "@guideSearchOrPick": {
+    "description": "Short label above the search bar and the activity groups in the live guide step that picks an activity."
+  },
   "guideStepUnavailable": "This step can't be shown right now.",
   "@guideStepUnavailable": {
     "description": "Shown in place of a guide step's picture when the control it points at cannot be found on the demo screen."
@@ -18914,9 +18922,9 @@
       }
     }
   },
-  "guideRemoveStep2": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the outline marks the first one.",
+  "guideRemoveStep2": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the highlight shows the choices.",
   "@guideRemoveStep2": {
-    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the outline marks the first.",
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
     "placeholders": {
       "discard": {
         "type": "String",

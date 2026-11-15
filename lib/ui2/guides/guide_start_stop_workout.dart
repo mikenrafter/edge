@@ -43,6 +43,15 @@ Guide get startStopWorkoutGuide => Guide(
             target: _search,
             anchor: _search,
             alsoTap: [PressableRows()], // "or tap one in the list"
+            // Multi-target step: the search bar, the chips and each group header; the hand opens the
+            // first group once, then visits the search bar and the group's first rows.
+            multi: GuideMultiTarget(
+              targets: ContentList([TargetContent(_search), PickerChips(), PickerGroupHeaders()]),
+              label: GuideCopy.searchOrPickLabel,
+              visit: GuideVisit.list,
+              opens: FirstOf(PickerGroupHeaders()),
+              afterOpen: ContentList([TargetContent(_search), PickerRows(3)]),
+            ),
             action: GuideAction.tap,
             caption: GuideCopy.startWorkoutCaptionChooseActivity,
           ),

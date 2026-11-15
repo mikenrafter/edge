@@ -98,10 +98,10 @@ class R2Mounted {
 // overlay/run after page preparation under the real shell. Staging Discard
 // prepares a fixture; the dedicated pointer tests prove input pass-through.
 Future<R2Mounted> pumpR2Scene(WidgetTester t, R2Scene scene, {Size size = r2Size, Brightness brightness = Brightness.light,
-  bool singlePending = true, GuideFakeRepo? repo}) async {
+  bool singlePending = true, GuideFakeRepo? repo, GlobalKey? captureKey, double devicePixelRatio = 1}) async {
   final guide = r2Guide(scene.guide);
   repo ??= GuideFakeRepo(sleepSource: scene.manual ? 'manual' : 'auto', singlePending: singlePending);
-  final app = await pumpLiveGuideApp(t, size: size, repo: repo, brightness: brightness);
+  final app = await pumpLiveGuideApp(t, size: size, repo: repo, brightness: brightness, captureKey: captureKey, devicePixelRatio: devicePixelRatio);
   if (scene.shell) {
     // Use the shipped runner here: tab-navigation signals may be owned by
     // GuideRunner. A separately inserted run would bypass that real seam.

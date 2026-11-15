@@ -1,7 +1,9 @@
+import '../support/live_guide_focus.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:openstrap_edge/ui2/guides/guide_markers.dart';
+import 'package:openstrap_edge/ui2/guides/guide_hand.dart';
+import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ui2/grammar.dart';
@@ -67,21 +69,19 @@ void main() {
       await settleLiveGuide(t, frames: 18);
       expect(app.runner.activeRun!.state, isA<GuideOffPath>());
       final history = find.descendant(of: tabs, matching: find.widgetWithText(Pressable, subTabs.items[2]));
-      expect(t.getRect(find.byKey(LiveGuideOverlay.outlineKey)).contains(t.getRect(history.first).intersect(t.getRect(tabs)).center), isTrue);
+      expect(t.getRect(liveGuideFocus).contains(t.getRect(history.first).intersect(t.getRect(tabs)).center), isTrue);
       expect(find.text('1 tap back'), findsOneWidget);
       // WHY: P1c / CLAIM(marker-repaint-isolation): the off-path hand still
       // nudges, and a tick builds/paints only inside its own boundary.
-      final handFinder = find.byType(GuideTapHand);
+      final handFinder = find.byType(GuideHandCursor);
       expect(handFinder, findsOneWidget);
       final boundaries = find.ancestor(of: handFinder, matching: find.byType(RepaintBoundary));
       expect(boundaries, findsWidgets, reason: 'the animated hand owns a repaint boundary');
       expect(find.descendant(of: boundaries.first, matching: find.byKey(LiveGuideOverlay.tapPillKey)), findsNothing,
         reason: 'the boundary isolates the hand even from its own static pill');
       final boundary = t.renderObject<RenderRepaintBoundary>(boundaries.first);
-      final hand = t.widget<GuideTapHand>(handFinder);
-      for (var i = 0; i < 120 && (hand.clock.value < .02 || hand.clock.value > .3); i++) {
-        await t.pump(const Duration(milliseconds: 16));
-      }
+      final hand = _overlay(t).hand;
+      await t.pump(const Duration(milliseconds: 16));
       final paints = <RenderObject>[];
       var overlayBuilds = 0, builds = 0;
       final oldPaint = debugOnProfilePaint;
@@ -93,10 +93,10 @@ void main() {
       };
       addTearDown(() { debugOnProfilePaint = oldPaint; debugOnRebuildDirtyWidget = oldBuild; });
       final signatures = _overlay(t).signatureChecks;
-      final phases = <double>{};
+      final phases = <Offset>{};
       for (var i = 0; i < 8; i++) {
         await t.pump(const Duration(milliseconds: 16));
-        phases.add(hand.clock.value);
+        phases.add(hand.tip);
       }
       debugOnProfilePaint = oldPaint;
       debugOnRebuildDirtyWidget = oldBuild;
@@ -113,9 +113,16 @@ void main() {
       final pageRoot = app.runner.routes.page!.renderObject!;
       // paintChild reports cached layer composition too. Count actual content paints,
       // excluding repaint-boundary nodes whose existing layer is merely composited.
+      bool inHover(RenderObject object) {
+        for (RenderObject? parent = object; parent != null; parent = parent.parent) {
+          if (parent is RenderGuideUnit && parent.hover != null) return true;
+        }
+        return false;
+      }
+      final ripple = t.renderObject(find.byKey(LiveGuideOverlay.rippleKey));
       final outside = paints.where((object) =>
         !object.isRepaintBoundary &&
-        (under(object, overlayRoot) || under(object, pageRoot)) && !under(object, boundary)).toList();
+        (under(object, overlayRoot) || under(object, pageRoot)) && !under(object, boundary) && !under(object, ripple) && !inHover(object)).toList();
       expect(outside, isEmpty, reason: 'a hand tick repainted screen content: ${outside.take(6).map((o) => o.debugCreator).join("; ")}');
       expect(overlayBuilds, 0);
       expect(_overlay(t).signatureChecks, signatures, reason: 'hand ticks never walk the page');
@@ -159,7 +166,7 @@ void main() {
       await settleLiveGuide(t, frames: 18);
       expect(app.runner.activeRun!.state, isA<GuideOffPath>());
       expect(find.text('1 tap back'), findsOneWidget);
-      expect(t.getRect(find.byKey(LiveGuideOverlay.outlineKey)).contains(t.getRect(r2Tab(2)).center), isTrue);
+      expect(t.getRect(liveGuideFocus).contains(t.getRect(r2Tab(2)).center), isTrue);
       await t.tapAt(t.getRect(r2Tab(2)).center);
       await settleLiveGuide(t, frames: 18);
       expect(app.runner.activeRun!.currentStep!.id, 'log-past');

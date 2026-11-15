@@ -425,6 +425,9 @@ class Motion {
   /// ease-in-out). Passed through [motion], so reduced motion jumps.
   static const guideScroll = Duration(milliseconds: 600);
 
+  /// How long the guide lets a screen settle after it opens a group (the picker's expansion plus a margin).
+  static const guideOpenSettle = Duration(milliseconds: 380);
+
   /// The longest a pulse-only frame (nothing but the placeholder pulse asked for it) goes
   /// without the guide re-reading the page. Anything the guide hears about (a scroll, a
   /// pointer, a run or route change, another animation) re-reads at once; this only

@@ -7,6 +7,7 @@
 // tests cover drawing, input and semantics apart from GuideRunner's navigation
 // (live_guide_runner_test.dart) and from the full app (live_guide_integration_test.dart).
 
+import '../support/live_guide_focus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
@@ -302,7 +303,7 @@ void main() {
       expect(find.byKey(GuideStepCard.cardKey), findsOneWidget);
       expect(find.byKey(GuideStepCard.dontSeeItKey), findsOneWidget);
       expect(_overlay(t).paintedShapes, isEmpty);
-      expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing);
+      expect(liveGuideFocus, findsNothing);
       await t.tap(find.byKey(stageOtherAction));
       expect(stage.taps.otherAction, 1, reason: 'the page underneath is usable');
       await t.tap(find.byKey(GuideStepCard.exitKey));
@@ -327,7 +328,7 @@ void main() {
       final first = s.paintedShapes.map((x) => '${x.kind.name}@${x.rect}').toList();
       expect(first, isNotEmpty, reason: 'the plan is on screen in the first frames');
       expect(fadeOf(t), lessThan(.1), reason: 'the dim starts clear');
-      expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing);
+      expect(liveGuideFocus, findsNothing);
       expect(find.byKey(LiveGuideOverlay.tapPillKey), findsNothing);
       final start = fadeOf(t);
 
@@ -344,7 +345,7 @@ void main() {
       await t.pump();
       expect(fadeOf(t), 1);
       expect(s.revealProgress, 1);
-      expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
+      expect(liveGuideFocus, findsOneWidget);
       expect(find.byKey(LiveGuideOverlay.tapPillKey), findsOneWidget);
     });
 
@@ -358,20 +359,20 @@ void main() {
       await t.pump();
       expect(_overlay(t).revealProgress, lessThan(.2));
       expect(fadeOf(t), lessThan(.2), reason: 'the dim of the new step starts clear');
-      expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing);
+      expect(liveGuideFocus, findsNothing);
     });
   });
 
   group('markers', () {
-    testWidgets('outline hugs the target (4 px gap) and the tap pill stays off the target and off legible text', (t) async {
+    testWidgets('focus fits the target and the tap pill stays off the target and off legible text', (t) async {
       // why: PR 1 marker rules (CLAIM pill-clear / pill-legible) now on the real page.
       await pumpLiveStage(t);
       await _settleReveal(t);
       final target = _rectOf(t, find.byKey(stageOpenDetails));
-      final outline = _rectOf(t, find.byKey(LiveGuideOverlay.outlineKey));
+      final outline = _rectOf(t, liveGuideFocus);
       final pill = _rectOf(t, find.byKey(LiveGuideOverlay.tapPillKey));
-      expect(outline.contains(target.topLeft) && outline.contains(target.bottomRight), isTrue);
-      expect(outline.left, closeTo(target.left - kGuideOutlineGap, 1.5));
+      expect(outline, target);
+      expect(outline.left, closeTo(target.left, 1.5));
       expect(pill.overlaps(target), isFalse, reason: 'the pill never covers the target');
       final legible = legibleContent(t.element(find.byType(Scaffold).last), keep: [target]);
       for (final r in legible) {
@@ -394,7 +395,7 @@ void main() {
       final finish = _rectOf(t, find.byKey(stageFinish));
       expect(finish.top >= 0 && finish.bottom <= 780, isTrue, reason: 'scrolled into view: $finish');
       expect(find.byKey(LiveGuideOverlay.scrollMarkerKey), findsNothing, reason: 'in view: the indicator is gone');
-      expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
+      expect(liveGuideFocus, findsOneWidget);
     });
   });
 
@@ -552,7 +553,7 @@ void main() {
       expect(find.text(_en.guideOffPathTitle), findsOneWidget);
       // Off the path everything is DIMMED (owner decision 3), never skeleton: no ink absorbs a tap.
       expect(_overlay(t).paintedShapes.where((s) => s.kind != SkeletonKind.dim), isEmpty);
-      expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing);
+      expect(liveGuideFocus, findsNothing);
       await t.tap(find.byKey(stageElsewhereAction));
       expect(stage.taps.elsewhere, 1, reason: 'the page underneath is usable');
     });
@@ -587,7 +588,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 400));
       await _settleReveal(t);
       expect(stage.run.state, isA<GuideAtStep>().having((s) => s.index, 'index', 1));
-      expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
+      expect(liveGuideFocus, findsOneWidget);
     });
 
     testWidgets('coming back to a step page brings the step card back', (t) async {
@@ -667,7 +668,7 @@ void main() {
       var target = _rectOf(t, find.byKey(stageOpenDetails));
       expect(card.top, greaterThan(target.bottom), reason: 'bottom card sits below the target');
       expect(card.bottom, lessThanOrEqualTo(780));
-      expect(card.overlaps(_rectOf(t, find.byKey(LiveGuideOverlay.outlineKey))), isFalse);
+      expect(card.overlaps(_rectOf(t, liveGuideFocus)), isFalse);
       expect(card.overlaps(_rectOf(t, find.byKey(LiveGuideOverlay.tapPillKey))), isFalse);
 
       await pushStagePage(t, stage, StagePages(stage.taps, detailsGap: 520).details());
@@ -676,7 +677,7 @@ void main() {
       target = _rectOf(t, find.byKey(stageFinish));
       expect(target.top, greaterThan(390), reason: 'precondition: the target is in the lower half');
       expect(card.bottom, lessThan(target.top), reason: 'top card sits above the target');
-      expect(card.overlaps(_rectOf(t, find.byKey(LiveGuideOverlay.outlineKey))), isFalse);
+      expect(card.overlaps(_rectOf(t, liveGuideFocus)), isFalse);
       expect(card.overlaps(_rectOf(t, find.byKey(LiveGuideOverlay.tapPillKey))), isFalse);
     });
 
@@ -758,7 +759,7 @@ void main() {
       await _settleReveal(t);
       expect(t.takeException(), isNull);
       final card = _rectOf(t, find.byKey(GuideStepCard.cardKey));
-      expect(card.overlaps(_rectOf(t, find.byKey(LiveGuideOverlay.outlineKey))), isFalse);
+      expect(card.overlaps(_rectOf(t, liveGuideFocus)), isFalse);
       expect(find.text(lookupAppLocalizations(const Locale('ru')).guideExit), findsOneWidget);
     });
   });

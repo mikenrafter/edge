@@ -96,7 +96,7 @@ class _ActivityPickerState extends State<ActivityPicker> {
                   // Labelled and focused: this screen's entire purpose is the
                   // search, and a hint-only field announces nothing once a
                   // character is in it.
-                  child: Semantics(
+                  child: GuideBox(child: Semantics(
                     label: l?.activityPickerSearchLabel ?? 'Search activities',
                     textField: true,
                     child: TextField(
@@ -110,7 +110,7 @@ class _ActivityPickerState extends State<ActivityPicker> {
                               'Search ${allActivities.length} activities',
                           hintStyle: F.body.copyWith(color: p.ink3)),
                     ),
-                  ),
+                  )),
                     ),
                   ],
                 ),

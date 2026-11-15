@@ -1,3 +1,4 @@
+import '../support/live_guide_focus.dart';
 import 'dart:async';
 // Guides round 4 (owner, 2026-11-14, after APK 5e7c00dd): arriving at a step whose target
 // is off screen scrolls to it gently; a scroll indicator replaces the old side marker;
@@ -153,8 +154,8 @@ void main() {
       final target = t.getRect(find.byKey(stageFinish));
       expect(target.center.dy, inInclusiveRange(780 * .2, 780 * .46), reason: 'about a third down: $target');
       expect(target.top >= 0 && target.bottom <= 780, isTrue);
-      expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
-      expect(_card(t).overlaps(t.getRect(find.byKey(LiveGuideOverlay.outlineKey))), isFalse, reason: 'clear of the card');
+      expect(liveGuideFocus, findsOneWidget);
+      expect(_card(t).overlaps(t.getRect(liveGuideFocus)), isFalse, reason: 'clear of the card');
       expect(_card(t).overlaps(t.getRect(find.byKey(LiveGuideOverlay.tapPillKey))), isFalse);
     });
 
@@ -473,30 +474,19 @@ void main() {
     // WHY: item 3: a small pointing hand beside the "tap" label nudges toward the target
     // twice per 1.6 s cycle. catches: no hand, a hand on every frame, one nudge, a wrong
     // direction (the pill sits above the target, so toward it is DOWN).
-    testWidgets('R4-3a: the hand sits in the tap pill and nudges toward the target twice per 1.6 s', (t) async {
+    testWidgets('R4-3a: the moving hand visits the target and pulls back along its finger', (t) async {
       await pumpLiveStage(t);
       await _settle(t);
-      final pill = find.byKey(LiveGuideOverlay.tapPillKey);
-      expect(pill, findsOneWidget);
-      final hand = find.byKey(_handKey);
-      expect(hand, findsOneWidget);
-      expect(find.descendant(of: pill, matching: find.byKey(_handKey)), findsOneWidget);
-      expect(find.descendant(of: pill, matching: find.byIcon(LucideIcons.pointer)), findsOneWidget);
-      final target = t.getRect(find.byKey(stageOpenDetails));
-      expect(t.getRect(pill).center.dy, lessThan(target.center.dy), reason: 'the pill is above, so the hand nudges down');
-      final ys = <double>[];
+      expect(find.byKey(LiveGuideOverlay.handKey), findsOneWidget);
+      expect(find.descendant(of: find.byKey(LiveGuideOverlay.tapPillKey), matching: find.byKey(_handKey)), findsNothing);
+      final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+      final distances = <double>[];
       for (var i = 0; i < 200; i++) {
         await t.pump(const Duration(milliseconds: 16));
-        ys.add(t.getRect(hand).center.dy);
+        distances.add((overlay.hand.tip - overlay.targetRect!.center).distance);
       }
-      final rest = ys.reduce((a, b) => a < b ? a : b);
-      final peak = ys.reduce((a, b) => a > b ? a : b);
-      expect(peak - rest, inInclusiveRange(2, 8), reason: 'a small nudge');
-      var rises = 0;
-      for (var i = 1; i < ys.length; i++) {
-        if (ys[i - 1] < rest + .6 * (peak - rest) && ys[i] >= rest + .6 * (peak - rest)) rises++;
-      }
-      expect(rises, 4, reason: 'two nudges per 1.6 s cycle, in 3.2 s');
+      expect(distances.reduce((a, b) => a < b ? a : b), lessThan(.1));
+      expect(distances.reduce((a, b) => a > b ? a : b), greaterThan(25));
     });
 
     // WHY: item 3 "shared clock; no per-frame rebuilds of the page". catches: a ticker per
@@ -509,7 +499,7 @@ void main() {
       await _awaitPage(t);
       await _settle(t);
       await _settle(t);
-      expect(find.byKey(_handKey), findsOneWidget);
+      expect(find.byKey(LiveGuideOverlay.handKey), findsOneWidget);
       final before = builds;
       for (var i = 0; i < 120; i++) {
         await t.pump(const Duration(milliseconds: 16));
@@ -543,7 +533,7 @@ void main() {
     expect(pill, findsOneWidget);
     final pillBoundary = find.ancestor(of: pill, matching: find.byType(RepaintBoundary)).first;
     expect(find.descendant(of: pillBoundary, matching: find.byKey(GuideStepCard.cardKey)), findsNothing);
-    expect(find.descendant(of: pillBoundary, matching: find.byKey(LiveGuideOverlay.outlineKey)), findsNothing);
+    expect(find.descendant(of: pillBoundary, matching: liveGuideFocus), findsNothing);
     expect(find.descendant(of: pillBoundary, matching: find.byKey(LiveGuideOverlay.skeletonKey)), findsNothing);
     _position(t).jumpTo(1100);
     await t.pump();
@@ -562,28 +552,19 @@ void main() {
   // WHY: P1 / CLAIM(hand-clock-rest): two 200 ms nudge peaks, then 800 ms of
   // stillness per 1600 ms cycle. Inspect the clock and scheduled work, not pixels.
   // catches: repeat() throughout the hand-only cycle or restarting from zero too early.
-  testWidgets('R4-fix-P1b: a hand-only clock sleeps through the still half and resumes', (t) async {
+  testWidgets('R4-fix-P1b: the moving hand has its own clock while placeholders rest', (t) async {
     final stage = await pumpLiveStage(t);
     await _settle(t);
     await pushStagePage(t, stage, StagePages(stage.taps).details());
     await _settle(t);
     final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
     expect(overlay.hasPlaceholders, isFalse);
-    final hand = t.widget<GuideTapHand>(find.byType(GuideTapHand));
-    for (var i = 0; i < 120 && overlay.isPulsing; i++) {
-      await t.pump(const Duration(milliseconds: 16));
-    }
-    expect(hand.clock.value, greaterThanOrEqualTo(.5));
     expect(overlay.isPulsing, isFalse);
-    expect(t.binding.hasScheduledFrame, isFalse);
-    final rest = hand.clock.value;
-    await t.pump(const Duration(milliseconds: 400));
-    expect(hand.clock.value, rest);
-    expect(t.binding.hasScheduledFrame, isFalse);
-    await t.pump(const Duration(milliseconds: 400));
-    await t.pump(const Duration(milliseconds: 16));
-    expect(overlay.isPulsing, isTrue);
-    expect(t.binding.hasScheduledFrame, isTrue);
+    expect(overlay.handActive, isTrue);
+    final before = overlay.hand.tip;
+    for (var i = 0; i < 30; i++) { await t.pump(const Duration(milliseconds: 16)); }
+    expect(overlay.hand.tip, isNot(before));
+    expect(stage.dim.pulse, 1);
   });
 
   group('placement', () {

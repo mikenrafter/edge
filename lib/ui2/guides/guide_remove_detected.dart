@@ -58,6 +58,8 @@ Guide get removeDetectedGuide => Guide(
             target: _discard,
             anchor: _reviewNav,
             alsoTap: [EveryLabelled([ScreenLabel.dayReviewDiscard])], // "every item has its own"
+            // Multi-target step: the moving hand visits Keep, Discard and Edit of the first item.
+            multi: const GuideMultiTarget(targets: ReviewRowButtons()),
             action: GuideAction.tap,
             caption: GuideCopy.removeCaptionDiscard,
           ),

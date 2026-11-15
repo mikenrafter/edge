@@ -12,6 +12,9 @@
 //    the same for LOOSE text (a paragraph in no component), inside the scrollable and
 //    inside Android's overscroll stretch, in the frame the text moves in.
 //
+// The target also paints its own hover foreground in this subtree, in a repaint
+// boundary. CLAIM(hover-in-target-tree) [guide_r7_hover_test].
+//
 // A dim follows the drawn box's rounded corners and fades in with [GuideDimController.fade];
 // placeholders do not fade. Nothing here knows a guide. With no plan in force both are a
 // plain proxy.
@@ -119,6 +122,7 @@ class RenderGuideUnit extends RenderProxyBox {
 
   void _planChanged() {
     planRepaints++;
+    _followHover();
     markNeedsPaint();
   }
 
@@ -129,6 +133,32 @@ class RenderGuideUnit extends RenderProxyBox {
 
   /// Listens to the pulse only while this component paints placeholders.
   final _pulse = PulseSubscription();
+  GuideHover? _hover;
+
+  @override
+  bool get isRepaintBoundary => _hover != null;
+
+  void _followHover() {
+    final next = _controller?.hoverOf(this);
+    if (identical(next, _hover)) return;
+    _hover?.removeListener(_hoverChanged);
+    final wasBoundary = isRepaintBoundary;
+    _hover = next;
+    _hover?.addListener(_hoverChanged);
+    if (wasBoundary != isRepaintBoundary) markNeedsCompositingBitsUpdate();
+  }
+
+  void _hoverChanged() { markNeedsPaint(); }
+
+  @visibleForTesting
+  GuideHover? get hover => _hover;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    _controller?.geometryChanged();
+  }
+
 
   @override
   void attach(PipelineOwner owner) {
@@ -139,11 +169,14 @@ class RenderGuideUnit extends RenderProxyBox {
   void _listen() {
     final c = _controller;
     if (c != null && !c.isDisposed) c.addListener(_planChanged);
+    _followHover();
   }
 
   @override
   void detach() {
     _controller?.removeListener(_planChanged);
+    _hover?.removeListener(_hoverChanged);
+    _hover = null;
     _pulse.stop();
     super.detach();
   }
@@ -179,6 +212,20 @@ class RenderGuideUnit extends RenderProxyBox {
       return;
     }
     super.paint(context, offset);
+    final hover = _hover;
+    if (hover != null && hover.value > .004) {
+      final rr = RRect.fromRectAndRadius(hover.rect.shift(offset), Radius.circular(hover.radius));
+      final canvas = context.canvas;
+      // Filled outer blur takes a rectangular fast path on large targets and
+      // adds a second tint inside. Blurring only the border keeps the centre
+      // uniform. CLAIM(hover-in-target-tree) [guide_r7_hover_test RGB check].
+      canvas.drawRRect(rr, Paint()..color = hover.color.withValues(alpha: .55 * hover.value)
+        ..style = PaintingStyle.stroke..strokeWidth = 2
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7));
+      canvas.drawRRect(rr, Paint()..color = hover.color.withValues(alpha: .26 * hover.value));
+      canvas.drawRRect(rr.deflate(.5), Paint()..color = hover.color.withValues(alpha: .55 * hover.value)
+        ..style = PaintingStyle.stroke..strokeWidth = 1);
+    }
     if (look == null) return;
     final canvas = context.canvas;
     switch (look) {

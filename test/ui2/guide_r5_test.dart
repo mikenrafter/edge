@@ -10,6 +10,7 @@
 //  * 1b: _boundsOf takes ANY wide SubTabs whose top is below mid-screen for the bottom tab bar, so
 //    on Alarm the day row shrinks the card bounds to end above itself, and the pill (clamped
 //    into the bounds) lands at the bottom of them, far from the Wake time outline.
+import '../support/live_guide_focus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -154,14 +155,14 @@ Future<LiveStage> _arrive(WidgetTester t, Widget Function(StageTaps) page) async
   return stage;
 }
 
-final _outline = find.byKey(LiveGuideOverlay.outlineKey);
+final _outline = liveGuideFocus;
 final _pill = find.byKey(LiveGuideOverlay.tapPillKey);
 final _indicator = find.byKey(LiveGuideOverlay.scrollMarkerKey);
 
 /// null when the pill sits against its own outline (above or below it), else why not.
 String? _pillAgainstOutline(WidgetTester t) {
   final outline = t.getRect(_outline), pill = t.getRect(_pill);
-  final above = (pill.bottom - outline.top).abs() <= 3, below = (pill.top - outline.bottom).abs() <= 3;
+  final above = (pill.bottom - outline.top + 8).abs() <= 3, below = (pill.top - outline.bottom - 8).abs() <= 3;
   if (!above && !below) return 'pill $pill is not against its outline $outline';
   if (pill.right > outline.right + .5 || pill.left < outline.left - .5) return 'pill $pill is beside, not on, its outline $outline';
   return null;
