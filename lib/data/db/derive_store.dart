@@ -173,7 +173,7 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
     // SeriesCodec leaves anything it cannot encode exactly as it found it.
     String? storedPayload;
     var storedSeries = const <String, double?>{};
-    final accepted = await LocalDb.timedTransaction(db, 'day result', (txn) async {
+    final accepted = await LocalDb.timedTransaction(db, 'day result', InlineTransactionWork((txn) async {
       // CLAIM(sleep-edit-fence): pre-edit workers cannot replace a new
       // assertion's measurements [responsiveness_sleep_jobs_test].
       if (sleepEditGeneration != null && sleepEditGeneration != await SleepEditStore.generationOn(txn, upTo: dayId)) return false;
@@ -309,7 +309,7 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
         await txn.rawUpdate('UPDATE sleep_edit_job SET applied_revision = revision WHERE day_id = ?', [dayId]);
       }
       return true;
-    });
+    }));
     // Shadow group rows: AFTER the commit, in their own small transaction.
     // Inside this one, SQLITE_FULL on the extra payload rolls back the whole
     // transaction and takes the day_result with it, and a savepoint rollback

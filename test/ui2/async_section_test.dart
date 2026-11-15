@@ -5,6 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
+class _Content implements AsyncSectionContent<String> {
+  const _Content();
+  @override Widget loaded(BuildContext context, String value) => Text(value);
+  @override Widget pending(BuildContext context) => const SizedBox(height: 100);
+  @override Widget empty(BuildContext context) => const Text('No recorded data');
+  @override Widget failed(BuildContext context) => const Text('Try again');
+}
+
 void main() {
   testWidgets('pending content keeps its card size and disables actions', (
     t,
@@ -54,10 +62,7 @@ void main() {
             pending: pending,
             value: value,
             failed: failed,
-            pendingBuilder: (_) => const SizedBox(height: 100),
-            builder: (_, value) => Text(value),
-            emptyBuilder: (_) => const Text('No recorded data'),
-            failureBuilder: (_) => const Text('Try again'),
+            content: const _Content(),
           ),
         );
     await t.pumpWidget(page(pending: true, value: 'Stored result'));

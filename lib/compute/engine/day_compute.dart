@@ -300,7 +300,18 @@ extension _EngineDayCompute on DerivationEngine {
         ? null
         : math.min(day.sleepEditGeneration!,
             history.sleepEditGenerationUpTo(day.date));
-    final blankSource = await _userBlankedNight(day.date, scMap);
+    var blankSource = await _userBlankedNight(day.date, scMap);
+    if (producedNothing && blankSource == null && fence != null &&
+        await SleepEditStore.reuseMeasuredNightIfCurrent(day.date, fence, algoVersion: kAlgoVersion)) {
+      _declineReasons[day.date] = 'measured_window_matches_assertion';
+      return DayDerive.reused;
+    }
+    // A new assertion cannot inherit measurements from an unproven window.
+    // Store an unavailable night with its daytime facts in the same fenced
+    // result transaction. CLAIM(sleep-edit-r2) [responsiveness_sleep_r2_test].
+    if (producedNothing && blankSource == null && await SleepEditStore.status(day.date) != null) {
+      blankSource = (await LocalDb.getSleepOverride(day.date))?['source'] as String? ?? 'auto';
+    }
     if (blankSource != null) {
       bundle['sleep_source'] = blankSource;
       // A typed window the band recorded none of: the night is the user's
@@ -823,6 +834,7 @@ extension _EngineDayCompute on DerivationEngine {
       }
     } catch (e, st) {
       secondHalfOk = false;
+      _incompleteSelectedDays.add(day.date);
       _log('day-blocks (offloaded second half) failed for ${day.date} — '
           'persisting headline day (partial): $e');
       TelemetryService.instance.recordNonFatal(e, st, reason: 'day_blocks_failed');
@@ -971,6 +983,7 @@ extension _EngineDayCompute on DerivationEngine {
     final strapNight = ring != null &&
         await ouraStrapOwnsNight(ring, day.sleepJson['window']);
     final persistWatch = Stopwatch()..start();
+    final pendingEditPartial = !secondHalfOk && await SleepEditStore.dirty(day.date);
     final committed = await LocalDb.putDayResult(
       dayId: day.date,
       sleepEditGeneration: fence,
@@ -985,8 +998,8 @@ extension _EngineDayCompute on DerivationEngine {
       windowJson: jsonEncode(
         ((day.sleepJson['window'] as Map?) ?? const {}).cast<String, dynamic>(),
       ),
-      finalized: effectiveFinalized,
-      partial: effectivePartial,
+      finalized: effectiveFinalized && !pendingEditPartial,
+      partial: effectivePartial || pendingEditPartial,
       rhr: sc('rhr'),
       rmssd: sc('rmssd'),
       readiness: sc('readiness'),

@@ -28,6 +28,10 @@ enum DayDerive {
   /// A result was written (or, for the audit's reference pass, computed).
   committed,
 
+  /// No new calculation: a complete stored measured window exactly matches
+  /// the assertion, proved atomically with its applied marker.
+  reused,
+
   /// Deliberately wrote nothing and kept the existing result. Not a derive:
   /// must not count as done, and settles the day.
   declined,

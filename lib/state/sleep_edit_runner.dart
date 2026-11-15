@@ -20,12 +20,30 @@ class SleepEditRequeue implements Exception {
   String toString() => reason;
 }
 
+/// Named effects keep the worker lane traceable by the heavy-work guard.
+abstract interface class SleepEditEffects {
+  Future<void> run(SleepEditJob job);
+  Future<void> publish();
+  void hold(bool held);
+  void report(Object error);
+}
+
+/// Queue acquisition can fail independently of a job's calculation.
+abstract interface class SleepEditQueue {
+  Future<List<SleepEditJob>> pending({bool retryFailed = false});
+}
+
+final class LocalSleepEditQueue implements SleepEditQueue {
+  const LocalSleepEditQueue();
+  @override
+  Future<List<SleepEditJob>> pending({bool retryFailed = false}) =>
+      SleepEditStore.pending(retryFailed: retryFailed);
+}
+
 class SleepEditRunner {
   SleepEditRunner({
-    required this.run,
-    required this.publish,
-    required this.hold,
-    this.onError,
+    required this.effects,
+    this.queue = const LocalSleepEditQueue(),
     this.timeout = const Duration(minutes: 15),
     this.maxRequeues = 4,
     this.retryDelays = const [
@@ -34,9 +52,8 @@ class SleepEditRunner {
       Duration(minutes: 10),
     ],
   });
-  final Future<void> Function(SleepEditJob job) run;
-  final Future<void> Function() publish;
-  final void Function(bool) hold;
+  final SleepEditEffects effects;
+  final SleepEditQueue queue;
   final Duration timeout;
 
   /// Requeues one revision may use before the edit reports a failure instead.
@@ -45,18 +62,20 @@ class SleepEditRunner {
   /// Waits between in-process retries of failed jobs; the last repeats. Empty:
   /// failed jobs wait for the user's Retry or the next start.
   final List<Duration> retryDelays;
-  final void Function(Object error)? onError;
   Future<void>? _active;
-  bool _disposed = false, _again = false;
+  bool _disposed = false, _again = false, _restart = false;
   Timer? _retry;
   int _retryStep = 0;
   final _requeues = <String, int>{};
 
   Future<void> start({bool restart = false}) {
     _again = true;
-    _retry?.cancel();
-    _retry = null;
-    return _active ??= _drain(restart).whenComplete(() {
+    _restart |= restart;
+    if (restart) {
+      _retry?.cancel();
+      _retry = null;
+    }
+    return _active ??= _drain().whenComplete(() {
       _active = null;
       if (_again && !_disposed) {
         unawaited(start().catchError(_report));
@@ -64,38 +83,41 @@ class SleepEditRunner {
     });
   }
 
-  Future<void> _drain(bool restart) async {
-    hold(true);
-    var anyFailed = false;
+  Future<void> _drain() async {
+    effects.hold(true);
+    var queueFailed = false;
     try {
       while (!_disposed) {
         _again = false;
-        final jobs = await SleepEditStore.pending(retryFailed: restart);
-        restart = false;
+        final jobs = await queue.pending(retryFailed: _restart);
+        _restart = false;
         if (jobs.isEmpty) break;
         for (final job in jobs) {
           if (_disposed) break;
           Future<void>? work;
           var changed = false; // the job's state moved without finishing
           try {
-            work = run(job);
+            work = effects.run(job);
             await work.timeout(timeout);
             _requeues.remove('${job.day}:${job.revision}');
           } on SleepEditRequeue catch (r) {
             final key = '${job.day}:${job.revision}';
-            final used = r.counts ? (_requeues[key] = (_requeues[key] ?? 0) + 1) : 0;
+            final used = r.counts
+                ? (_requeues[key] = (_requeues[key] ?? 0) + 1)
+                : 0;
             if (used >= maxRequeues) {
               _requeues.remove(key);
-              anyFailed = true;
-              await SleepEditStore.advance(job, SleepEditPhase.failed,
-                  error: 'Still not applied after $used tries: ${r.reason}');
+              await SleepEditStore.advance(
+                job,
+                SleepEditPhase.failed,
+                error: 'Still not applied after $used tries: ${r.reason}',
+              );
             } else {
               await SleepEditStore.advance(job, SleepEditPhase.queued);
               _again = true;
             }
             changed = true;
           } catch (e) {
-            anyFailed = true;
             await SleepEditStore.advance(
               job,
               SleepEditPhase.failed,
@@ -103,7 +125,7 @@ class SleepEditRunner {
             );
             changed = true;
           }
-          if (changed) await publish();
+          if (changed) await effects.publish();
           // A timeout is not cancellation. Keep ownership until the actual
           // worker exits, even though the saved controls remain available.
           if (changed && work != null) {
@@ -113,17 +135,34 @@ class SleepEditRunner {
           }
         }
       }
+    } catch (error) {
+      // Queue acquisition is work too: a transient read error must not strand
+      // durable jobs without a wake-up. CLAIM(sleep-edit-retry).
+      queueFailed = true;
+      _again = false;
+      _report(error);
     } finally {
-      hold(false);
-      if (anyFailed && !_disposed) {
-        _scheduleRetry();
-      } else if (!anyFailed) {
-        _retryStep = 0;
+      effects.hold(false);
+      if (!_disposed) {
+        var outstanding = queueFailed;
+        try {
+          outstanding |= (await queue.pending(retryFailed: true)).isNotEmpty;
+        } catch (error) {
+          outstanding = true;
+          _report(error);
+        }
+        if (outstanding) {
+          if (_retry == null) _scheduleRetry();
+        } else {
+          _retry?.cancel();
+          _retry = null;
+          _retryStep = 0;
+        }
       }
     }
   }
 
-  void _report(Object error) => onError?.call(error);
+  void _report(Object error) => effects.report(error);
 
   void _scheduleRetry() {
     if (retryDelays.isEmpty) return;

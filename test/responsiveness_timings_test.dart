@@ -74,7 +74,7 @@ void main() {
           await release.future;
         });
         await acquired.future;
-        final measured = LocalDb.timedTransaction(db, 'receipt probe', (
+        final measured = LocalDb.timedTransaction(db, 'receipt probe',InlineTransactionWork( (
           tx,
         ) async {
           await tx.insert('sync_cursor', {
@@ -83,7 +83,7 @@ void main() {
             'updated_at': 1,
           });
           return 'committed';
-        });
+        }));
         release.complete();
         expect(await measured, 'committed');
         await holder;

@@ -1,9 +1,9 @@
+import 'support/sleep_edit_effects.dart';
 // WHY: review round 1 of responsiveness stages 1-2. The recalculation intent
 // must survive routine paths (an edit on another night, a skipped or blank
 // night, a long pass), never hide a day's other measurements, and never block
 // later days. Drives the production AppState runner and the real engine.
 // CLAIM(sleep-edit-fence), CLAIM(sleep-edit-masking) [F1 F2 F3 F15].
-import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
@@ -240,7 +240,7 @@ void main() {
     await editDay(x);
     final sleep = points(await repo.getChart('tst_min'));
     expect(sleep.keys, contains(at(later)), reason: 'later days keep their points');
-    expect(sleep[at(later)]!['sleep_edit'], 'recalculating',
+    expect((sleep[at(later)]!['sleep_edit'] as SleepEditView).recalculating, true,
         reason: 'and say they were scored against an edit still running');
     expect(sleep.keys, isNot(contains(at(x))), reason: 'the stale night is withheld');
     final strain = points(await repo.getChart('strain'));
@@ -251,9 +251,7 @@ void main() {
   test('a failed job no longer masks later days, and a retry needs no restart', () async {
     await seedStored(later);
     await editDay(y);
-    final runner = SleepEditRunner(
-        hold: (_) {}, publish: () async {},
-        run: (_) async => throw StateError('boom'));
+    final runner = SleepEditRunner(effects: TestSleepEditEffects(hold: (_) {},publish: () async {},run: (_) async => throw StateError('boom')),);
     await runner.start();
     expect((await SleepEditStore.status(y))!['phase'], 'failed');
     expect(await SleepEditStore.dirty(later), false);

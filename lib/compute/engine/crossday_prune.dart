@@ -112,7 +112,7 @@ extension _EngineCrossDayPrune on DerivationEngine {
             final r = await _derivePreparedDay(prepared, profile, dataNowSec, after);
             if (r == DayDerive.committed) {
               done++;
-            } else if (r == DayDerive.declined) {
+            } else if (r == DayDerive.declined || r == DayDerive.reused) {
               // Kept its existing result: final for this raw, so retire the
               // marker and settle rather than retry forever.
               await _settleDay(dayId, fps, edits);

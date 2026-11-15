@@ -545,11 +545,7 @@ class LocalRepositoryImpl extends LocalRepository {
     final view = await SleepEditStore.view(day);
     if (view.isNone) return b;
     if (view.withholdNight) withholdNightInBundle(b);
-    b['sleep_edit'] = {
-      'phase': view.phase,
-      if (view.ownPhase == null) 'from': view.dependsOn,
-      'own': view.withholdNight,
-    };
+    b['sleep_edit'] = view;
     return b;
   }
 
@@ -1149,6 +1145,7 @@ class LocalRepositoryImpl extends LocalRepository {
           };
 
     return {
+      'sleep_edit': sleepBundle?['sleep_edit'],
       'daily': daily,
       'sleep': sleepBundle == null
           ? const {}
@@ -1464,6 +1461,7 @@ class LocalRepositoryImpl extends LocalRepository {
     final rmssd = _scalar(b, 'rmssd');
     final cd = await _crossDay();
     return {
+      'sleep_edit': b['sleep_edit'],
       'hr': hrCurve, // [{t, v}] — detail_cards reads e['v']
       'resting_hr': _scalar(b, 'rhr')?.round(),
       'recovery': _scalar(b, 'readiness'),
@@ -1519,6 +1517,7 @@ class LocalRepositoryImpl extends LocalRepository {
     final served = (b['date'] as String?) ?? date;
     return {
       'computed_at': computedAt,
+      'sleep_edit': b['sleep_edit'],
       'timeline': (_sub(b, 'series')?['hrv_timeline'] as List?) ?? const [],
       'rmssd': _scalar(b, 'rmssd'),
       'sdnn': _scalar(b, 'sdnn'),
@@ -1626,16 +1625,22 @@ class LocalRepositoryImpl extends LocalRepository {
     final view = await SleepEditStore.view(date);
     if (!view.withholdNight) {
       final result = await _daySleepStored(date);
-      // A night scored against an edit that has not finished: its numbers stay
-      // and say so. Never hidden (RULES A.15).
-      return view.dependsOn == null
-          ? result
-          : {...result, 'sleep_edit': {'from': view.dependsOn, 'phase': view.dependsPhase}};
+      if (view.isNone) return result;
+      return {
+        ...result,
+        'sleep_edit': view,
+        if (view.ownPhase != null) ...{
+          'recalculating': view.recalculating,
+          'dependent_recalculation': true,
+          if (view.failed) 'calculation_error': 'Later days could not be recalculated. Your times and this night’s measurements are saved. Retry.',
+        },
+      };
     }
     final assertion = await LocalDb.getSleepOverride(date);
     final job = await SleepEditStore.status(date);
     return {
       'has_sleep': false,
+      'sleep_edit': view,
       // Running or waiting is "recalculating"; failed is not, it is a failure.
       'recalculating': job?['phase'] == 'queued' || job?['phase'] == 'dependents',
       if (job?['phase'] == 'failed') 'calculation_error': 'Recalculation failed. Your times are saved. Retry.',
@@ -1742,6 +1747,7 @@ class LocalRepositoryImpl extends LocalRepository {
       // When the row behind this night was computed (epoch ms) — "As of" while
       // a newer one is being calculated.
       'computed_at': computedAt,
+      'sleep_edit': b['sleep_edit'],
       'sleep_source': sleepSource,
       'duration_min': (tst / 60).round(),
       'in_bed_min': spt == null ? null : (spt / 60).round(),
@@ -2270,6 +2276,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
     return {
       'computed_at': computedAt,
+      'sleep_edit': b['sleep_edit'],
       'stress': {
         'score': score,
         'si': si,
@@ -2442,6 +2449,7 @@ class LocalRepositoryImpl extends LocalRepository {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     return {
+      'sleep_edit': b['sleep_edit'],
       'readiness': _scalar(b, 'readiness'),
       'resting_hr': _scalar(b, 'rhr')?.round(),
     };
@@ -2560,6 +2568,7 @@ class LocalRepositoryImpl extends LocalRepository {
     final tempLine = (series?['skin_temp_day'] as List?) ?? const [];
 
     return {
+      'sleep_edit': b['sleep_edit'],
       'hr': hrCurve,
       'hrv': hrvLine,
       'resp': respLine,
@@ -2752,6 +2761,7 @@ class LocalRepositoryImpl extends LocalRepository {
               e,
         ],
         'computed_at': computedAt,
+      'sleep_edit': b?['sleep_edit'],
       };
     }
     final key = _trendKey(metric);
@@ -3010,7 +3020,7 @@ class LocalRepositoryImpl extends LocalRepository {
     // A point scored against a sleep edit that has not finished (or gave up).
     final sleepEdits = {
       for (final r in rows)
-        if (r['sleep_edit'] is String) r['date'] as String: r['sleep_edit'] as String,
+        if (r['sleep_edit'] is SleepEditView) r['date'] as String: r['sleep_edit'] as SleepEditView,
     };
     final dates = [
       ...stored.keys,
@@ -3026,6 +3036,7 @@ class LocalRepositoryImpl extends LocalRepository {
     }
     return {
       'computed_at': computedAt,
+      'sleep_edit': sleepEdits.values.where((v) => v.failed).firstOrNull ?? sleepEdits.values.firstOrNull,
       'points': [
         for (final d in dates)
           // #448: every derive writes today's readiness, partial night or not,

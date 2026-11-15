@@ -17,6 +17,7 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import '../state/recalc_state.dart';
+import '../data/sleep_edit_store.dart';
 import 'screens/home_screen.dart' show monthShortName;
 import 'theme.dart';
 
@@ -110,6 +111,7 @@ class AsOfHold extends StatefulWidget {
     this.day,
     this.computedAt,
     this.suppressStaleHold = false,
+    this.sleepEdit,
   });
 
   /// The day the shown result is for, and when its row was computed. With both,
@@ -120,6 +122,7 @@ class AsOfHold extends StatefulWidget {
   final String? day;
   final DateTime? computedAt;
   final bool suppressStaleHold;
+  final SleepEditView? sleepEdit;
 
   final Object? shown;
   final DateTime? Function(RecalcState recalc) asOf;
@@ -209,6 +212,13 @@ class _AsOfHoldState extends State<AsOfHold> {
             newest.isAfter(through);
         final at = live ?? _held ?? (newer ? pausedAt : null);
         if (newer && widget.suppressStaleHold) return const SizedBox.shrink();
+        final status = widget.sleepEdit;
+        if (status != null && !status.isNone) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SleepEditStatus(status: status),
+            if (at != null) widget.builder(context, at),
+          ]);
+        }
         if (at == null) return const SizedBox.shrink();
         final label = widget.builder(context, at);
         if (through == null) return label;
@@ -318,5 +328,22 @@ class AsOfLabel extends StatelessWidget {
         style: F.cap.copyWith(color: P.of(context).ink3),
       ),
     );
+  }
+}
+
+/// Durable edit status stays visible while the worker waits or backs off.
+/// Values beside this line are preserved. CLAIM(sleep-edit-r2-status).
+class SleepEditStatus extends StatelessWidget {
+  const SleepEditStatus({super.key, required this.status});
+  final SleepEditView status;
+  @override
+  Widget build(BuildContext context) {
+    if (status.isNone) return const SizedBox.shrink();
+    final text = status.failed
+        ? 'Sleep edit failed. Some values may still reflect the earlier times.'
+        : 'Sleep edit pending. Some values may still reflect the earlier times.';
+    return Semantics(liveRegion: true, child: Text(text,
+      key: const ValueKey('sleep-edit-status'),
+      style: F.cap.copyWith(color: P.of(context).ink2)));
   }
 }

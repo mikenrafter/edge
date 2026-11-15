@@ -925,7 +925,7 @@ class TimelineData {
       final timer = Stopwatch()..start();
       pending.add(name);
       onPending?.call(Set.unmodifiable(pending));
-      try { return await LoadTimings.shared.scope(route, () => LoadTimings.shared.measure(name, 'read total', action)); }
+      try { return await LoadTimings.shared.scope(route, () => LoadTimings.shared.measure(name, 'read total',InlineAsyncWork( action))); }
       finally {
         costs[name] = timer.elapsedMilliseconds;
         pending.remove(name);
@@ -1440,8 +1440,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
             ReadPrefetch.shared.warm(
               'review-day',
               [
-                () => repo.getDayTimeline(d.day!),
-                () => repo.getDayWear(d.day!),
+                InlineAsyncWork(() => repo.getDayTimeline(d.day!)),
+                InlineAsyncWork(() => repo.getDayWear(d.day!)),
               ],
               busy: () =>
                   !mounted ||

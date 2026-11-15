@@ -1196,10 +1196,10 @@ class BundleStore {
           for (final f in batch) {
             LoadTimings.shared.record('bundle', 'decode queue', f.queued.elapsedMicroseconds, route: f.route);
           }
-          final decoded = await LoadTimings.shared.measure('bundle', 'decode execution', () => _lane.decode(DecodeChunkInput(
+          final decoded = await LoadTimings.shared.measure('bundle', 'decode execution',InlineAsyncWork( () => _lane.decode(DecodeChunkInput(
             payloadJson: [for (final f in batch) f.payload],
             projections: [for (final f in batch) f.source.key.projection.name],
-          )));
+          ))));
           if (decoded.graphs.length != batch.length || decoded.estimatedBytes.length != batch.length) {
             throw StateError('BundleDecodeLane returned a malformed chunk');
           }

@@ -1,0 +1,3 @@
+// WHY: trace concrete callback sources; unknown and heavy work remain findings.
+// CLAIM(resolved-effects); catches: blanket callback exemptions.
+void run(dynamic external) { var body = () => 3; body = external; body(); }

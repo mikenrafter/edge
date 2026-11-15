@@ -11,6 +11,7 @@
 // read from canonical decoded tables keyed by physiological time so replayed or
 // duplicated historical seconds cannot bloat compute.
 
+export 'effect_work.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -668,24 +669,24 @@ class LocalDb {
   /// failure, retry ONCE on the writer. Any other failure is the caller's.
   /// Every reader call site goes through here; [body] must be a read.
   static Future<T> readerRun<T>(Future<T> Function(Database db) body, {String name = 'stored read'}) async {
-    final db = await LoadTimings.shared.measure(name, 'reader acquire', () => reader); // reader-acquire
+    final db = await LoadTimings.shared.measure(name, 'reader acquire',InlineAsyncWork( () => reader)); // reader-acquire
     try {
-      return await LoadTimings.shared.measure(name, identical(db, _db) ? 'writer fallback' : 'reader query', () => body(db));
+      return await LoadTimings.shared.measure(name, identical(db, _db) ? 'writer fallback' : 'reader query',InlineAsyncWork( () => body(db)));
     } catch (_) {
       if (db.isOpen || identical(db, _db)) rethrow;
-      return LoadTimings.shared.measure(name, 'closed reader fallback', () async => body(await instance));
+      return LoadTimings.shared.measure(name, 'closed reader fallback',InlineAsyncWork( () async => body(await instance)));
     }
   }
 
   static Future<T> timedTransaction<T>(Database db, String name,
-      Future<T> Function(Transaction tx) body) async {
+      TransactionWork<T> work) async {
     final queued = Stopwatch()..start();
     Stopwatch? held;
     try {
       return await db.transaction((tx) async {
         LoadTimings.shared.record(name, 'writer queue', queued.elapsedMicroseconds);
         held = Stopwatch()..start();
-        return body(tx);
+        return work.run(tx);
       });
     } finally {
       if (held != null) LoadTimings.shared.record(name, 'transaction through commit', held!.elapsedMicroseconds);
@@ -2367,11 +2368,11 @@ class LocalDb {
   /// Remove the override for [dayId] (revert to auto detection).
   static Future<void> deleteSleepOverride(String dayId) async {
     final db = await instance;
-    await timedTransaction(db, 'sleep edit receipt', (tx) async {
+    await timedTransaction(db, 'sleep edit receipt',InlineTransactionWork( (tx) async {
       await tx.delete('sleep_override', where: 'day_id = ?', whereArgs: [dayId]);
       await tx.delete('wake_confirmation', where: 'day_id = ?', whereArgs: [dayId]);
       await SleepEditStore.enqueue(tx, dayId);
-    });
+    }));
   }
 
   /// Every day that currently has a user override — these must be force-derived

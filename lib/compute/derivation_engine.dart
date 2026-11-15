@@ -1990,7 +1990,25 @@ part 'engine/settled.dart';
 // sleep view says the HMM estimate is experimental and not validated, and why
 // a fallback was used. Opted-in nights re-derive. Cardio output (stages,
 // accounting, stored payload and published night baselines) is unchanged.
-const int kAlgoVersion = 119;
+// 119 → 120 (sleep edit R2): no-input assertions reuse night measurements
+// only when the complete stored measured window matches exactly. Other nights
+// record unavailable measurements while preserving daytime facts.
+// A failed second half keeps the edit unapplied even with carried detail.
+const int kAlgoVersion = 120;
+
+enum SleepEditCalculation { complete, incomplete, superseded }
+
+/// Outcome of one selected-pass invocation. The engine owns writes. A refused
+/// invocation stays incomplete even when an unrelated pass has clean diagnostics.
+class DayPassResult {
+  SleepEditCalculation _outcome = SleepEditCalculation.incomplete;
+  SleepEditCalculation get outcome => _outcome;
+  void _reset() => _outcome = SleepEditCalculation.incomplete;
+  void _finish(bool complete) => _outcome = complete
+      ? SleepEditCalculation.complete : SleepEditCalculation.incomplete;
+}
+
+
 class DerivationEngine {
   DerivationEngine({
     this.log,
@@ -2969,7 +2987,7 @@ class DerivationEngine {
                 await _recordDerivedFingerprint(dayId, dayFp[dayId],
                     committed: committed == DayDerive.committed);
               }
-              if (committed == DayDerive.declined) {
+              if (committed == DayDerive.declined || committed == DayDerive.reused) {
                 await _settleDay(dayId, fps, edits);
               }
               reportDone = false;
@@ -2977,7 +2995,7 @@ class DerivationEngine {
               done++;
               _diag['done_days'] = done;
               await _recordDerivedFingerprint(dayId, dayFp[dayId], committed: true);
-            } else if (committed == DayDerive.declined) {
+            } else if (committed == DayDerive.declined || committed == DayDerive.reused) {
               // Handled, not derived: no `done` (that would run baselines and
               // cross-day for nothing), but settled so it is not picked again.
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
@@ -3232,7 +3250,9 @@ class DerivationEngine {
     void Function(String day, int index, int total)? onDayDone,
     void Function(String day)? onDayDerived,
     void Function(List<String> days)? onScopeDays,
+    DayPassResult? result,
   }) async {
+    result?._reset();
     if (days.isEmpty) return 0;
     // The zone the day labels are cut in (interim for design 01): a change
     // since the last derive bumps the `zone` input. Best effort, and outside
@@ -3248,6 +3268,7 @@ class DerivationEngine {
     // The profile is passed in, not read from a store: note it here.
     InputReads.note('profile', '');
     InputReads.note('zone', '');
+    _incompleteSelectedDays.clear();
     _running = true;
     beginWearableDayIndexPass();
     _calcStage('Reading recordings');
@@ -3288,8 +3309,12 @@ class DerivationEngine {
       // With no decoded row anywhere only the user's blanking can still be
       // written (see run()); it needs no raw and no data edge.
       final noData = dataNowSec <= 0;
-      final blankOnly =
-          noData ? await _blankingOverrideDays(scope.targetDays) : <String>{};
+      final blankOnly = noData
+          ? {
+              ...await _blankingOverrideDays(scope.targetDays),
+              ...(await SleepEditStore.staleNights()).intersection(scope.targetDays.toSet()),
+            }
+          : <String>{};
       if (noData && blankOnly.isEmpty) {
         _log('derive selected: no decoded data');
         return 0;
@@ -3349,6 +3374,7 @@ class DerivationEngine {
                     ? DayResultWrite.userOverride
                     : DayResultWrite.derive,
                 onStaleTonight: repass ? null : staleTonight.add);
+            if (committed != DayDerive.committed && committed != DayDerive.reused) _incompleteSelectedDays.add(dayId);
             if (repass) {
               // Counted and reported by its first derive.
               if (committed == DayDerive.committed) {
@@ -3364,11 +3390,13 @@ class DerivationEngine {
               reportDone = false;
             }
           } else {
+            _incompleteSelectedDays.add(dayId);
             _diag['skipped_days'] = (_diag['skipped_days'] as int) + 1;
             _diag['last_error'] = 'no_bounded_window_payload day=$dayId';
             failures++;
           }
         } catch (e) {
+          _incompleteSelectedDays.add(dayId);
           _log('derive selected day $dayId FAILED/skipped: $e');
           _diag['skipped_days'] = (_diag['skipped_days'] as int) + 1;
           _diag['last_error'] = '$e';
@@ -3440,8 +3468,14 @@ class DerivationEngine {
         ..['duration_ms'] = finishedAt - startedAt;
       endWearableDayIndexPass();
       _running = false;
+      result?._finish(_diag['last_error'] == null &&
+          _incompleteSelectedDays.intersection(days).isEmpty);
     }
   }
+
+  // Owner: this engine's selected pass. Partial, refused and declined days
+  // keep the interactive edit's durable obligation. No other pass reads it.
+  final _incompleteSelectedDays = <String>{};
 
   /// Re-derive [day] after the user changed its sleep (reject, set times,
   /// confirm, clear), then every LATER day that still has raw.
@@ -3451,21 +3485,31 @@ class DerivationEngine {
   /// snapshot of it (`_BaselineHistoryCache`). Deriving them together would
   /// score tomorrow against a window that still holds the night just edited.
   /// Days past raw retention cannot be recomputed and keep what they have.
-  /// Returns the days derived; stops after the first pass if it failed.
+  /// Returns a complete, incomplete or superseded outcome; stops before
+  /// dependent work when the edited night did not finish.
   /// CLAIM(sleep-edit-publication): edited-night publication finishes before
   /// dependent days start [responsiveness_sleep_jobs_test].
-  Future<int> rederiveAfterSleepEdit(Profile profile, String day, {Future<bool> Function()? onEdited}) async {
+  Future<SleepEditCalculation> rederiveAfterSleepEdit(Profile profile, String day, {SleepEditPublication? publication}) async {
     // The profile first: the passes below stage with it.
     await _forgetBlankedNightsInSleepProfile();
-    var done = await runDays(profile, {day}, force: true);
-    if (_diag['last_error'] != null) return done;
-    if (onEdited != null && !await onEdited()) return done;
+    final edited = DayPassResult();
+    await runDays(profile, {day}, force: true, result: edited);
+    if (edited.outcome != SleepEditCalculation.complete) return SleepEditCalculation.incomplete;
+    final status = await SleepEditStore.status(day);
+    if (status != null && status['applied_revision'] != status['revision']) {
+      return SleepEditCalculation.incomplete;
+    }
+    if (publication != null && !await publication.publish()) return SleepEditCalculation.superseded;
     final later = {
       for (final d in (await LocalDb.decodedRecTsMaxByDay()).keys)
         if (d.compareTo(day) > 0) d,
     };
-    if (later.isNotEmpty) done += await runDays(profile, later, force: true);
-    return done;
+    if (later.isNotEmpty) {
+      final dependent = DayPassResult();
+      await runDays(profile, later, force: true, result: dependent);
+      return dependent.outcome;
+    }
+    return SleepEditCalculation.complete;
   }
 
   /// The explicit, Advanced "Rebuild history with this priority" action: force
@@ -4201,7 +4245,7 @@ class DerivationEngine {
             if (committed == DayDerive.committed) {
               done++;
               await _recordDerivedFingerprint(dayId, dayFp[dayId], committed: true);
-            } else if (committed == DayDerive.declined) {
+            } else if (committed == DayDerive.declined || committed == DayDerive.reused) {
               await _recordDerivedFingerprint(dayId, dayFp[dayId]);
               await _settleDay(dayId, fps, edits);
             } else {

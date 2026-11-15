@@ -30,6 +30,7 @@ import '../../compute/vendor_sleep.dart' show vendorStagesReported;
 import '../../data/day_label.dart';
 import '../../compute/findings.dart';
 import '../../data/local_repository.dart';
+import '../../data/sleep_edit_store.dart';
 import '../../data/read_paused.dart';
 import '../../sync/import_focus.dart';
 import '../../l10n/app_localizations.dart';
@@ -790,8 +791,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             'sleep',
             [
               for (final day in dates) ...[
-                () => repo.getDaySleepV2(day),
-                () => repo.getDayTimeline(day),
+                InlineAsyncWork(() => repo.getDaySleepV2(day)),
+                InlineAsyncWork(() => repo.getDayTimeline(day)),
               ],
             ],
             busy: () =>
@@ -1164,6 +1165,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
     final failed = n['calculation_error'] as String?;
     final running = n['recalculating'] == true && failed == null;
+    final editStatus = SleepEditView.of(n['sleep_edit']);
+    final dependents = n['dependent_recalculation'] == true ||
+        editStatus != null && editStatus.ownPhase != null && !editStatus.withholdNight;
     final day = _day ?? d.day ?? todayLabel();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1180,10 +1184,11 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           Semantics(
             liveRegion: true,
             container: true,
-            child: const StatusCard('Recalculating this night',
-                'Your times are saved. Measurements will appear when ready.'),
+            child: StatusCard(dependents ? 'Updating later days' : 'Recalculating this night',
+                dependents ? 'This night is ready. Updating values that depend on it.' : 'Your times are saved. Measurements will appear when ready.'),
           ),
-        if (running)
+        if (editStatus?.dependsOn != null) SleepEditStatus(status: editStatus!),
+        if (running && !dependents)
           PendingContent(pending: true, child: _answer(c, p, d, n))
         else
           _answer(c, p, d, n),

@@ -1,0 +1,8 @@
+// WHY: trace concrete callback sources; unknown and heavy work remain findings.
+// CLAIM(resolved-effects); catches: blanket callback exemptions.
+abstract interface class Work<T> { T run(); }
+final class InlineWork<T> implements Work<T> {
+  InlineWork(this.body); final T Function() body;
+  @override T run() => body();
+}
+void run() { final Work<int> work = InlineWork(() => 3); work.run(); }

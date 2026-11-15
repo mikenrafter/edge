@@ -2,6 +2,8 @@
 // or health values are retained. Overlapping read durations are never summed.
 import 'dart:async';
 import 'dart:convert';
+import 'effect_work.dart';
+export 'effect_work.dart';
 
 import '../settings/settings_repository.dart';
 import '../state/prefs.dart';
@@ -28,9 +30,9 @@ class _SettingsStore implements LoadTimingsStore {
   const _SettingsStore();
   @override
   Future<void> save(String encoded) => SettingsRepository.instance.update(
-        (d) => d.setString(LoadTimings.prefKey, encoded),
-        sections: const {},
-      );
+    (d) => d.setString(LoadTimings.prefKey, encoded),
+    sections: const {},
+  );
 }
 
 /// Keeps a bounded local history of screen loads. OFF until the Developer
@@ -44,8 +46,8 @@ class LoadTimings {
     bool? enabled,
     this.saveInterval = const Duration(seconds: 5),
     LoadTimingsStore? store,
-  })  : _enabledOverride = enabled,
-        _store = store ?? const _SettingsStore();
+  }) : _enabledOverride = enabled,
+       _store = store ?? const _SettingsStore();
 
   static const prefKey = 'developer.load_timings.v1';
   static const enabledKey = 'developer.load_timings_enabled.v1';
@@ -113,7 +115,9 @@ class LoadTimings {
         s.phase == 'first usable rows' || s.phase == 'all details ready';
     if (timing.route == _background) {
       _backgroundSamples.add(timing);
-      if (_backgroundSamples.length > backgroundLimit) _backgroundSamples.removeAt(0);
+      if (_backgroundSamples.length > backgroundLimit) {
+        _backgroundSamples.removeAt(0);
+      }
     } else {
       _samples.add(timing);
       if (_samples.where(milestone).length > 24) {
@@ -144,14 +148,10 @@ class LoadTimings {
     }
   }
 
-  Future<T> measure<T>(
-    String name,
-    String phase,
-    Future<T> Function() body,
-  ) async {
+  Future<T> measure<T>(String name, String phase, AsyncWork<T> work) async {
     final clock = enabled ? (Stopwatch()..start()) : null;
     try {
-      return await body();
+      return await work.run();
     } finally {
       if (clock != null) record(name, phase, clock.elapsedMicroseconds);
     }

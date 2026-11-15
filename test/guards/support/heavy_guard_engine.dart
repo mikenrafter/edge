@@ -761,6 +761,112 @@ class _Groups {
   }
 }
 
+// Resolve callback provenance, never by FunctionType alone. Every constructor,
+// argument, alias and assignment source must lead to a lexical closure or a
+// resolved tear-off. The ordinary body/escape rules still inspect those sources.
+// Unknown external inputs and dynamic reassignments remain unresolved.
+// CLAIM(resolved-effects) [heavy_guard_fixtures_test].
+class _CallbackSources extends RecursiveAstVisitor<void> {
+  final sources = <Element, List<Expression>>{};
+  final aliases = <Element, List<Element>>{};
+  final known = <Element>{};
+  Element key(Element e) => (e is PropertyAccessorElement ? e.variable : e).baseElement;
+  void add(Element? e, Expression? expression) {
+    if (e != null && expression != null) sources.putIfAbsent(key(e), () => []).add(expression);
+  }
+  Element? element(Expression expression) => switch (expression) {
+    SimpleIdentifier e => e.element,
+    PrefixedIdentifier e => e.identifier.element,
+    PropertyAccess e => e.propertyName.element,
+    _ => null,
+  };
+  @override void visitVariableDeclaration(VariableDeclaration node) {
+    add(node.declaredFragment?.element, node.initializer);
+    super.visitVariableDeclaration(node);
+  }
+  @override void visitAssignmentExpression(AssignmentExpression node) {
+    add(element(node.leftHandSide), node.rightHandSide);
+    super.visitAssignmentExpression(node);
+  }
+  @override void visitConstructorFieldInitializer(ConstructorFieldInitializer node) {
+    add(node.fieldName.element, node.expression);
+    super.visitConstructorFieldInitializer(node);
+  }
+  @override void visitConstructorDeclaration(ConstructorDeclaration node) {
+    final e = node.declaredFragment?.element;
+    if (e != null) {
+      known.add(key(e));
+      for (final p in e.formalParameters.whereType<FieldFormalParameterElement>()) {
+        final field = p.field;
+        if (field != null) aliases.putIfAbsent(key(field), () => []).add(key(p));
+      }
+    }
+    super.visitConstructorDeclaration(node);
+  }
+  @override void visitArgumentList(ArgumentList node) {
+    for (final argument in node.arguments) {
+      add(argument.correspondingParameter,
+          argument is NamedExpression ? argument.expression : argument);
+    }
+    super.visitArgumentList(node);
+  }
+  @override void visitFunctionDeclaration(FunctionDeclaration node) {
+    final e = node.declaredFragment?.element;
+    if (e != null) {
+      known.add(key(e));
+      node.functionExpression.body.accept(_CallbackReturns((expression) => add(e, expression)));
+    }
+    super.visitFunctionDeclaration(node);
+  }
+  @override void visitMethodDeclaration(MethodDeclaration node) {
+    final e = node.declaredFragment?.element;
+    if (e != null) {
+      known.add(key(e));
+      node.body.accept(_CallbackReturns((expression) => add(e, expression)));
+    }
+    super.visitMethodDeclaration(node);
+  }
+  bool source(Element? e, Set<Element> seen) {
+    if (e == null) return false;
+    final k = key(e);
+    if (!seen.add(k)) return false;
+    final values = sources[k] ?? const <Expression>[];
+    final links = aliases[k] ?? const <Element>[];
+    if (values.isEmpty && links.isEmpty) return false;
+    return values.every((v) => expression(v, {...seen})) &&
+        links.every((v) => source(v, {...seen}));
+  }
+  bool expression(Expression e, Set<Element> seen) {
+    if (e is FunctionExpression) return true;
+    if (e is ParenthesizedExpression) return expression(e.expression, seen);
+    if (e is PostfixExpression && e.operator.lexeme == '!') return expression(e.operand, seen);
+    if (e is NullLiteral) return true; // nullable callbacks cannot execute null
+    if (e is ConditionalExpression) return expression(e.thenExpression, {...seen}) && expression(e.elseExpression, {...seen});
+    if (e is BinaryExpression && e.operator.lexeme == '??') return expression(e.leftOperand, {...seen}) && expression(e.rightOperand, {...seen});
+    if (e is MethodInvocation) return source(e.methodName.element, seen);
+    final el = element(e);
+    if (el is ExecutableElement && el is! PropertyAccessorElement) return known.contains(key(el));
+    return source(el, seen);
+  }
+  bool resolves(_Use use) {
+    final node = use.node;
+    if (node is FunctionExpressionInvocation) return expression(node.function, {});
+    if (node is MethodInvocation) {
+      if (node.methodName.name == 'call' && node.target != null) return expression(node.target!, {});
+      return source(node.methodName.element, {});
+    }
+    return false;
+  }
+}
+class _CallbackReturns extends RecursiveAstVisitor<void> {
+  _CallbackReturns(this.add);
+  final void Function(Expression) add;
+  @override void visitReturnStatement(ReturnStatement node) { if (node.expression != null) add(node.expression!); }
+  @override void visitExpressionFunctionBody(ExpressionFunctionBody node) => add(node.expression);
+  @override void visitFunctionExpression(FunctionExpression node) {} // nested body is not this function's return
+  @override void visitFunctionDeclaration(FunctionDeclaration node) {}
+}
+
 // ---------------------------------------------------------------------------
 // The engine
 // ---------------------------------------------------------------------------
@@ -772,6 +878,7 @@ Future<HeavyGuardResult> analyze(HeavyGuardConfig config) async {
 
   // --- resolve ---
   final decls = <_Decl>[];
+  final callbacks = _CallbackSources();
   final entries = <_Entry>[];
   final oks = <(String, _OkFingerprint)>[];
   final rawReaders = <String>[];
@@ -794,6 +901,7 @@ Future<HeavyGuardResult> analyze(HeavyGuardConfig config) async {
       if (!u.path.startsWith(libRoot)) continue;
       final rel = u.path.substring(libRoot.length);
       if (config.skipFilePrefixes.any(rel.startsWith)) continue;
+      u.unit.accept(callbacks);
       _collectUnit(u.unit, rel, u.content, config, decls, registryVars);
     }
   }
@@ -1032,7 +1140,7 @@ Future<HeavyGuardResult> analyze(HeavyGuardConfig config) async {
             final fp = okByKey['${d.file}|${d.symbol}|$myOrdinal|${u.src}'];
             if (fp != null) {
               fp.used = true;
-            } else {
+            } else if (!callbacks.resolves(u)) {
               add(HeavyRule.unresolvedInvocation, d.file, d.symbol, u.src,
                   'cannot resolve the invoked function');
             }

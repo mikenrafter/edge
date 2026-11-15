@@ -486,7 +486,7 @@ Future<void> _ldbPutSleepOverride({required String dayId, required int onsetTs, 
     // One transaction: a user window edit reopens the night, so the confirmation
     // goes with it (otherwise a crash between the two leaves an edit the next
     // pass would still truncate).
-    await LocalDb.timedTransaction(db, 'sleep edit receipt', (txn) async {
+    await LocalDb.timedTransaction(db, 'sleep edit receipt',InlineTransactionWork( (txn) async {
       await txn.insert('sleep_override', {
         'day_id': dayId,
         'onset_ts': onsetTs,
@@ -497,7 +497,7 @@ Future<void> _ldbPutSleepOverride({required String dayId, required int onsetTs, 
       await txn.delete('wake_confirmation',
           where: 'day_id = ?', whereArgs: [dayId]);
       await SleepEditStore.enqueue(txn, dayId);
-    });
+    }));
   }
 
 Future<List<MomentLabel>> _ldbMomentLabels({required String? date, required String? sinceDate}) async {

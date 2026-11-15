@@ -1,0 +1,3 @@
+// WHY: trace concrete callback sources; unknown and heavy work remain findings.
+// CLAIM(resolved-effects); catches: blanket callback exemptions.
+void run() { final first = () => 3; final second = first; second(); (() => 4)(); }

@@ -1,0 +1,9 @@
+// WHY: trace concrete callback sources; unknown and heavy work remain findings.
+// CLAIM(resolved-effects); catches: blanket callback exemptions.
+import 'package:openstrap_analytics/onehz.dart';
+abstract interface class Work<T> { T run(); }
+final class InlineWork<T> implements Work<T> {
+  InlineWork(this.body); final T Function() body;
+  @override T run() => body();
+}
+void run() { InlineWork(() => readinessCompute(<double>[60, 61])).run(); }

@@ -3,6 +3,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'support/dart_source_lexical.dart';
 
+// Terminal empty allowlist. Kept literal so the registered shrink history is
+// countable by ratchet_lists_test. It must never grant a spinner exemption.
+const _allowed = <String>{};
+
 // Only a top-level value argument makes a linear indicator determinate.
 // A nested constructor's value must not accidentally satisfy this guard.
 bool _indeterminateLinear(String args) {
@@ -28,6 +32,7 @@ bool _indeterminateLinear(String args) {
 }
 
 void main() {
+  test('the terminal spinner allowlist is empty', () => expect(_allowed, isEmpty));
   final spinner = RegExp(r'\b(?:CircularProgressIndicator|RefreshProgressIndicator|CupertinoActivityIndicator|CupertinoSliverRefreshControl)\b|\bRefreshIndicator(?:\.adaptive)?\s*\(|\bRefreshIndicator\.(?:new|adaptive)\b|\bLinearProgressIndicator\.new\b');
   test('spinner detector recognises Material and Cupertino spinners', () {
     for (final sample in ['CircularProgressIndicator()', 'CupertinoActivityIndicator()', 'CircularProgressIndicator.adaptive()', 'RefreshProgressIndicator()', 'CupertinoSliverRefreshControl()', 'RefreshIndicator.adaptive()', 'CircularProgressIndicator.new', 'RefreshIndicator.new', 'LinearProgressIndicator.new']) {

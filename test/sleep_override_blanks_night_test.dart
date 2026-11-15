@@ -20,6 +20,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -131,6 +132,10 @@ Future<Map<String, double?>> _series(String day) async => {
     };
 
 void main() {
+  // WHY: the real second half uses platform services. A partial fixture is
+  // not proof of a measured night. CLAIM(sleep-edit-r2).
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
   setUpAll(() {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;

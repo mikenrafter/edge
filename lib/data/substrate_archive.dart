@@ -337,12 +337,12 @@ abstract final class SubstrateArchive {
         final failureKey = '$deviceId|$day';
         try {
           var sleepEditHeld = false;
-          deleted += await LocalDb.timedTransaction(db, 'archive bucket', (txn) async {
+          deleted += await LocalDb.timedTransaction(db, 'archive bucket',InlineTransactionWork( (txn) async {
             if (await SleepEditStore.hasOutstandingOn(txn)) { sleepEditHeld = true; return 0; }
             final n = await _archiveBucket(txn, deviceId, day, lo, hi);
             await onDeleted?.call(txn, hi);
             return n;
-          });
+          }));
           if (sleepEditHeld) break;
           if (failures.remove(failureKey) != null) failuresChanged = true;
         } catch (e) {

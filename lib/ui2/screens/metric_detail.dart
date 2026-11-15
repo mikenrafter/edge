@@ -19,6 +19,7 @@ import 'package:provider/provider.dart';
 
 import '../../ble/adapters/signals.dart';
 import '../../data/day_label.dart';
+import '../../data/sleep_edit_store.dart';
 import '../../data/db.dart' show LocalDb;
 import '../../data/local_repository.dart';
 import '../../data/read_paused.dart';
@@ -551,6 +552,7 @@ class MetricData {
   /// says while a pass recalculates it. Null when the reader gave none.
   final DateTime? computedAt;
   final String? newestDay;
+  final SleepEditView? sleepEdit;
 
   const MetricData({
     this.series = const [],
@@ -568,6 +570,7 @@ class MetricData {
     this.baselines,
     this.computedAt,
     this.newestDay,
+    this.sleepEdit,
   });
 
   /// The rows of a `getJournalInsights` map that are about [outcome].
@@ -597,6 +600,7 @@ class MetricData {
         baselines: baselines,
         computedAt: computedAt,
         newestDay: newestDay,
+        sleepEdit: sleepEdit,
       );
 
   static Future<MetricData> load(
@@ -652,6 +656,7 @@ class MetricData {
     final points = pointsOf(chart);
     return MetricData(
       computedAt: computedAtOf(chart['computed_at']),
+      sleepEdit: SleepEditView.of(chart['sleep_edit']),
       newestDay: points.isEmpty
           ? null
           : dayLabelOf(
@@ -1246,6 +1251,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
       // swaps `_d` but must not release a label held for the old series.
       shown: _base ?? d,
       day: d.newestDay,
+      sleepEdit: d.sleepEdit,
       computedAt: d.computedAt,
       asOf: (recalc) => asOfFor(
           shownDay: d.newestDay, computedAt: d.computedAt, recalc: recalc),

@@ -1,3 +1,4 @@
+import 'support/sleep_edit_effects.dart';
 // WHY: a recalculation that did not finish must come back on its own. A
 // refused or interrupted run is requeued, a failed one is retried in-process
 // with a backoff, and waiting on a long pass is not a failure [F1].
@@ -55,14 +56,12 @@ void main() {
     await edit(day);
     final calls = <int>[];
     final phasesSeen = <String>[];
-    final runner = SleepEditRunner(
-        hold: (_) {}, publish: () async {},
-        run: (job) async {
+    final runner = SleepEditRunner(effects: TestSleepEditEffects(hold: (_) {},publish: () async {},run: (job) async {
           calls.add(job.revision);
           phasesSeen.add('${(await SleepEditStore.status(day))!['phase']}');
           if (calls.length == 1) throw const SleepEditRequeue('an earlier night was edited');
           await finish(job);
-        });
+        }),);
     await runner.start();
     expect(calls, [1, 1]);
     expect(phasesSeen, ['queued', 'queued'], reason: 'requeued, never failed');
@@ -73,12 +72,10 @@ void main() {
   test('a run that keeps being refused ends as a visible failure, not a hot loop', () async {
     await edit(day);
     var calls = 0;
-    final runner = SleepEditRunner(
-        maxRequeues: 3, retryDelays: const [], hold: (_) {}, publish: () async {},
-        run: (job) async {
+    final runner = SleepEditRunner(effects: TestSleepEditEffects(hold: (_) {},publish: () async {},run: (job) async {
           calls++;
           throw const SleepEditRequeue('refused again');
-        });
+        }),maxRequeues: 3,retryDelays: const []);
     await runner.start();
     expect(calls, 3);
     final status = (await SleepEditStore.status(day))!;
@@ -90,14 +87,11 @@ void main() {
   test('a failed job is retried in-process with a backoff', () async {
     await edit(day);
     var calls = 0;
-    final runner = SleepEditRunner(
-        retryDelays: const [Duration(milliseconds: 30)],
-        hold: (_) {}, publish: () async {},
-        run: (job) async {
+    final runner = SleepEditRunner(effects: TestSleepEditEffects(hold: (_) {},publish: () async {},run: (job) async {
           calls++;
           if (calls == 1) throw StateError('disk busy');
           await finish(job);
-        });
+        }),retryDelays: const [Duration(milliseconds: 30)]);
     await runner.start();
     expect((await SleepEditStore.status(day))!['phase'], 'failed');
     await until(() async => (await SleepEditStore.status(day))!['phase'] == 'done');
@@ -108,13 +102,10 @@ void main() {
   test('disposing the runner cancels a scheduled retry', () async {
     await edit(day);
     var calls = 0;
-    final runner = SleepEditRunner(
-        retryDelays: const [Duration(milliseconds: 50)],
-        hold: (_) {}, publish: () async {},
-        run: (job) async {
+    final runner = SleepEditRunner(effects: TestSleepEditEffects(hold: (_) {},publish: () async {},run: (job) async {
           calls++;
           throw StateError('still failing');
-        });
+        }),retryDelays: const [Duration(milliseconds: 50)]);
     await runner.start();
     runner.dispose();
     await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -124,14 +115,11 @@ void main() {
   test('a new edit supersedes a failed job and runs at once', () async {
     await edit(day);
     final revisions = <int>[];
-    final runner = SleepEditRunner(
-        retryDelays: const [Duration(hours: 1)],
-        hold: (_) {}, publish: () async {},
-        run: (job) async {
+    final runner = SleepEditRunner(effects: TestSleepEditEffects(hold: (_) {},publish: () async {},run: (job) async {
           revisions.add(job.revision);
           if (job.revision == 1) throw StateError('first fails');
           await finish(job);
-        });
+        }),retryDelays: const [Duration(hours: 1)]);
     await runner.start();
     await SleepEditStore.recalculate(day);
     await runner.start();

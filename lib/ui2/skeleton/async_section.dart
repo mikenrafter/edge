@@ -13,32 +13,35 @@ import '../theme.dart';
 import 'guide_plot.dart';
 import 'skeleton.dart' show SkeletonBar, paintSkeletonShapes, SkeletonShape, skeletonKindOfPlot;
 
+/// Named render effects for the reusable section. No hidden callback dispatch.
+abstract interface class AsyncSectionContent<T> {
+  Widget loaded(BuildContext context, T value);
+  Widget pending(BuildContext context);
+  Widget empty(BuildContext context);
+  Widget failed(BuildContext context);
+}
+
 /// A section's pending, retained and settled layouts. A settled empty value is
-/// passed to [builder]; it must never turn back into an endless placeholder.
+/// passed to [AsyncSectionContent.loaded]; it must never turn back into an endless placeholder.
 class AsyncSection<T> extends StatelessWidget {
   const AsyncSection({
     super.key,
     required this.pending,
     required this.value,
-    required this.pendingBuilder,
-    required this.builder,
-    this.emptyBuilder,
-    this.failureBuilder,
+    required this.content,
     this.failed = false,
   });
   final bool pending, failed;
-  final WidgetBuilder? emptyBuilder, failureBuilder;
   final T? value;
-  final WidgetBuilder pendingBuilder;
-  final Widget Function(BuildContext, T) builder;
+  final AsyncSectionContent<T> content;
 
   @override
   Widget build(BuildContext context) {
     final shown = value;
-    if (shown != null) return builder(context, shown);
-    if (failed) return failureBuilder?.call(context) ?? const SizedBox.shrink();
-    if (!pending) return emptyBuilder?.call(context) ?? const SizedBox.shrink();
-    return PendingContent(pending: true, child: pendingBuilder(context));
+    if (shown != null) return content.loaded(context, shown);
+    if (failed) return content.failed(context);
+    if (!pending) return content.empty(context);
+    return PendingContent(pending: true, child: content.pending(context));
   }
 }
 

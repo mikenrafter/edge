@@ -883,6 +883,13 @@ class SleepOperationResult {
   });
 }
 
+/// A failed durable assertion, retained by the operation owner across routes.
+class SleepReceiptFailure {
+  const SleepReceiptFailure(this.operation, this.day, this.message);
+  final int operation;
+  final String day, message;
+}
+
 /// Serialize durable assertions. In AppState, [derive] wakes the durable job
 /// runner and returns its receipt; the worker future never enters this queue.
 /// Absent measurements are a successful save.
@@ -896,6 +903,12 @@ class SleepCoordinator extends ChangeNotifier {
   bool _disposed = false;
   final Duration timeout;
   bool get busy => _pending > 0;
+  int _operation = 0;
+  final _failures = <int, SleepReceiptFailure>{};
+  List<SleepReceiptFailure> get failures => List.unmodifiable(_failures.values);
+  void acknowledge(int operation) {
+    if (_failures.remove(operation) != null && !_disposed) notifyListeners();
+  }
   SleepCoordinator({
     required this.persist,
     required this.derive,
@@ -906,6 +919,7 @@ class SleepCoordinator extends ChangeNotifier {
   (DateTime, DateTime)? expectedWindowFor(DateTime localWakeDate) =>
       schedule?.windowFor(localWakeDate);
   Future<SleepOperationResult> _queue(
+    String day,
     Future<SleepOperationResult> Function() work,
   ) {
     if (_disposed) {
@@ -917,10 +931,17 @@ class SleepCoordinator extends ChangeNotifier {
       );
     }
     final result = Completer<SleepOperationResult>();
+    final operation = ++_operation;
     ++_pending;
     notifyListeners();
     void finish(SleepOperationResult value) {
       if (result.isCompleted) return;
+      if (!value.success) {
+        _failures[operation] = SleepReceiptFailure(operation, day,
+            value.error ?? 'Could not save this change. Try again.');
+      } else {
+        _failures.removeWhere((id, failure) => id < operation && failure.day == day);
+      }
       result.complete(value);
       --_pending;
       if (!_disposed) notifyListeners();
@@ -969,7 +990,7 @@ class SleepCoordinator extends ChangeNotifier {
   Future<SleepOperationResult> mutate(
     String day,
     Future<void> Function() write,
-  ) => _queue(() async {
+  ) => _queue(day, () async {
     await write();
     final metrics = await derive(day);
     return SleepOperationResult(
@@ -978,7 +999,7 @@ class SleepCoordinator extends ChangeNotifier {
       recalculating: metrics['recalculating'] == true,
     );
   });
-  Future<SleepOperationResult> recalculate(String day) => _queue(() async {
+  Future<SleepOperationResult> recalculate(String day) => _queue(day, () async {
     final metrics = await derive(day);
     return SleepOperationResult(
       success: true,
@@ -991,7 +1012,7 @@ class SleepCoordinator extends ChangeNotifier {
     DateTime onset,
     DateTime offset, {
     bool useSchedule = false,
-  }) => _queue(() async {
+  }) => _queue(day, () async {
     final start = onset.millisecondsSinceEpoch ~/ 1000;
     final end = offset.millisecondsSinceEpoch ~/ 1000;
     if (end <= start) {

@@ -8,43 +8,43 @@ void main() {
   test('visible reads, derive and navigation prevent optional work', () async {
     final ticks = <Completer<void>>[];
     final prefetch = ReadPrefetch(
-      idle: () {
+      idle: InlineAsyncWork(() {
         final c = Completer<void>();
         ticks.add(c);
         return c.future;
-      },
+      }),
     );
     var read = 0;
     final visible = prefetch.visibleRead();
     final blocked = prefetch.warm('test', [
-      () async {
+      InlineAsyncWork(() async {
         read++;
         return null;
-      },
+      }),
     ], busy: () => false);
     ticks.removeAt(0).complete();
     await blocked;
     expect(read, 0);
     visible();
     final derive = prefetch.warm('test', [
-      () async {
+      InlineAsyncWork(() async {
         read++;
         return null;
-      },
+      }),
     ], busy: () => true);
     ticks.removeAt(0).complete();
     await derive;
     expect(read, 0);
     final current = Completer<Object?>();
     final warming = prefetch.warm('test', [
-      () {
+      InlineAsyncWork(() {
         read++;
         return current.future;
-      },
-      () async {
+      }),
+      InlineAsyncWork(() async {
         read++;
         return null;
-      },
+      }),
     ], busy: () => false);
     ticks.removeAt(0).complete();
     await Future<void>.value();

@@ -1,3 +1,4 @@
+import 'support/sleep_edit_effects.dart';
 // WHY: a durable assertion receipt must not wait for its worker; old workers
 // cannot publish under newer times. CLAIM(sleep-edit-fence), CLAIM(sleep-receipt).
 import 'dart:async';
@@ -231,17 +232,13 @@ void main() {
       expect(returning['onset_ts'], 3000);
       expect(returning['recalculating'], true);
       final started = <String>[];
-      final runner = SleepEditRunner(
-        hold: (_) {},
-        publish: () async {},
-        run: (job) async {
+      final runner = SleepEditRunner(effects: TestSleepEditEffects(hold: (_) {},publish: () async {},run: (job) async {
           started.add(job.day);
           await result(await SleepEditStore.generation(), 20);
           await SleepEditStore.advance(job, SleepEditPhase.dependents);
           expect(await SleepEditStore.dirty(day), false);
           await SleepEditStore.advance(job, SleepEditPhase.done);
-        },
-      );
+        }),);
       await runner.start(restart: true);
       expect(started, [day]);
       expect(await SleepEditStore.pending(), isEmpty);
@@ -284,11 +281,11 @@ void main() {
       final run = DerivationEngine().rederiveAfterSleepEdit(
         const Profile(ageYears: 30, weightKg: 70, heightCm: 175, sex: 'm'),
         day,
-        onEdited: () async {
+        publication: TestSleepEditPublication( () async {
           entered.complete();
           await publish.future;
           return true;
-        },
+        }),
       );
       try {
         await entered.future.timeout(const Duration(seconds: 20));
@@ -316,11 +313,7 @@ void main() {
     () async {
       await edit(4000);
       final holds = <bool>[];
-      final runner = SleepEditRunner(
-        hold: holds.add,
-        publish: () async {},
-        run: (_) => throw StateError('worker failed'),
-      );
+      final runner = SleepEditRunner(effects: TestSleepEditEffects(hold: holds.add,publish: () async {},run: (_) => throw StateError('worker failed')),);
       await runner.start();
       expect(holds, [true, false]);
       expect((await SleepEditStore.status(day))!['phase'], 'failed');
@@ -338,14 +331,9 @@ void main() {
       await edit(5000);
       final gate = Completer<void>(), failed = Completer<void>();
       final holds = <bool>[];
-      final runner = SleepEditRunner(
-        timeout: Duration.zero,
-        hold: holds.add,
-        run: (_) => gate.future,
-        publish: () async {
+      final runner = SleepEditRunner(effects: TestSleepEditEffects(hold: holds.add,run: (_) => gate.future,publish: () async {
           failed.complete();
-        },
-      );
+        }),timeout: Duration.zero);
       final work = runner.start();
       await failed.future;
       expect((await SleepEditStore.status(day))!['phase'], 'failed');

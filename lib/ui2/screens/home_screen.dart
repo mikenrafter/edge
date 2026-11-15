@@ -1,3 +1,4 @@
+import '../../data/sleep_edit_store.dart';
 import '../../l10n/date_text.dart';
 // HOME — decision-oriented. "What matters today?"
 //
@@ -2029,6 +2030,7 @@ class HomeData {
   /// today's ([heldOverNight]): those numbers are refused above and a time
   /// must not bring them back. Null with no row at all; never "now".
   final DateTime? overnightAt, activityAt;
+  final SleepEditView? sleepEdit;
   final String? overnightDay, activityDay;
 
   /// The last night that scored, when that is NOT today's — so the screen can
@@ -2120,6 +2122,7 @@ class HomeData {
     this.absentDiag,
     this.recoveryState,
     this.readinessUpdate,
+    this.sleepEdit,
     this.overnightAt,
     this.activityAt,
     this.overnightDay,
@@ -2131,7 +2134,7 @@ class HomeData {
   });
 
   static HomeData fromPublishedOverview(String day, Map<String, dynamic> overview) =>
-      HomeData(dayId: day, readiness: metricOf(overview['readiness']),
+      HomeData(dayId: day, sleepEdit: SleepEditView.of(overview['sleep_edit']), readiness: metricOf(overview['readiness']),
           rhr: metricOf(overview['resting_hr']));
 
   /// The overnight-owned figures of a `getToday` payload, through the ONE
@@ -2170,6 +2173,7 @@ class HomeData {
     final o = _overnightOf(today, l);
     final status = today['status'] as Map?;
     return HomeData(
+      sleepEdit: SleepEditView.of(today['sleep_edit']),
       dayId: status?['today_day']?.toString(),
       heldOverNight: heldOverNightOf(today),
       readiness: o.readiness,
@@ -2217,6 +2221,7 @@ class HomeData {
   }) =>
       HomeData(
         name: name,
+        sleepEdit: sleepEdit,
         dayId: dayId,
         readiness: readiness,
         drivers: drivers,
@@ -2293,6 +2298,7 @@ class HomeData {
     return HomeData(
       name: profile['name']?.toString(),
       dayId: date,
+      sleepEdit: SleepEditView.of(overview['sleep_edit']),
       readiness: readiness,
       absentDiag: absentDiag,
       rhr: metricOf(overview['resting_hr']),
@@ -2401,6 +2407,7 @@ class HomeData {
     return HomeData(
       name: profile['name']?.toString(),
       dayId: status?['today_day']?.toString(),
+      sleepEdit: SleepEditView.of(today['sleep_edit']),
       heldOverNight: heldOver,
       illnessState: illness is Map ? illness['state']?.toString() : null,
       illnessDay: illness is Map ? illness['date']?.toString() : null,
@@ -2722,10 +2729,10 @@ class _HomeScreenState extends State<HomeScreen>
         _recordRender();
         final target = day ?? todayLabel();
         final details =
-            <String, Future<Object?> Function()>{
-              'sleep': () => repo.getDaySleepV2(target),
-              'recovery': () => repo.getDayHrv(target),
-              'strain': () => repo.getDayStrain(target),
+            <String, AsyncWork<Object?>>{
+              'sleep': InlineAsyncWork(() => repo.getDaySleepV2(target)),
+              'recovery': InlineAsyncWork(() => repo.getDayHrv(target)),
+              'strain': InlineAsyncWork(() => repo.getDayStrain(target)),
             }.entries.toList()..sort(
               (a, b) =>
                   (LoadMemory.local.estimate('${b.key}:milliseconds') ?? 0)
@@ -2965,6 +2972,7 @@ class _HomeScreenState extends State<HomeScreen>
     return Stack(fit: StackFit.expand, children: [
       _refreshable(tabRootList(padding: pad.copyWith(
         bottom: pad.bottom + pillHeight + pillGap), children: [
+      if (d.sleepEdit case final status? when !status.isNone) SleepEditStatus(status: status),
       // ── greeting ──
       //
       // The same header every tab has: the greeting is the title, the profile

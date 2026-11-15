@@ -3922,30 +3922,14 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   }
 
   late final SleepEditRunner sleepEditRunner = SleepEditRunner(
-    run: _runSleepEdit,
-    onError: (error) => _log('[sleep edit] $error'),
-    publish: () => _deriveCoordinator.publishNow(),
-    hold: (held) => _deriveScheduler.setSleepEditHeld(held),
+    effects: _AppSleepEditEffects(this),
   );
 
   Future<void> _runSleepEdit(SleepEditJob job) async {
     final day = job.day;
-    Future<bool> current() async =>
-        (await SleepEditStore.status(day))?['revision'] == job.revision;
-    if (!await current()) return;
-    // The edit fence as this pass starts. If it has moved by the end, an
-    // earlier night was edited meanwhile and this night's write was refused.
+    if ((await SleepEditStore.status(day))?['revision'] != job.revision) return;
     try {
-      await _deriveSleepDay(day,
-          isCurrent: current,
-          onEdited: () async {
-            if (await SleepEditStore.advance(job, SleepEditPhase.dependents) !=
-                SleepEditAdvance.applied) {
-              return false;
-            }
-            await _deriveCoordinator.publishNow();
-            return true;
-          });
+      await _deriveSleepDay(job);
     } on SyncFailureError catch (e) {
       // Waiting out a long pass is not a fault of the edit.
       if (e.code == SyncFailure.calculationStuck) {
@@ -3961,10 +3945,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
       if (fence != null && await SleepEditStore.generation(upTo: day) != fence) {
         throw const SleepEditRequeue('an earlier night was edited meanwhile');
       }
-      // The pass finished and nothing refused it, yet it stored nothing for
-      // the night: no live inputs left, a skipped or blanked night, a partial
-      // result. That is the outcome. Without this the night stays withheld.
-      await SleepEditStore.markApplied(job);
+      throw StateError('Sleep calculation is incomplete. Your times are saved. Retry.');
     }
     if (await SleepEditStore.advance(job, SleepEditPhase.done) == SleepEditAdvance.applied) {
       await _deriveCoordinator.publishNow();
@@ -3980,7 +3961,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
   @visibleForTesting
   Duration sleepEditWaitLimit = const Duration(minutes: 10);
 
-  Future<Map<String, Object?>> _deriveSleepDay(String day, {Future<bool> Function()? onEdited, Future<bool> Function()? isCurrent}) async {
+  Future<Map<String, Object?>> _deriveSleepDay(SleepEditJob job) async {
+    final day = job.day;
     // A pass that was already running prepared the edited day from the old
     // window and re-pins that night's readiness when it lands, after the
     // edit's own release. Release again once it is done, right before this
@@ -3988,7 +3970,7 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     do {
       await _waitForDerivation(limit: sleepEditWaitLimit);
       if (_disposed) throw StateError('Sleep worker closed');
-      if (isCurrent != null && !await isCurrent()) return {};
+      if ((await SleepEditStore.status(day))?['revision'] != job.revision) return {};
       await LocalDb.releaseFrozenHeadline(day);
     } while (_derive.running || reanalyzing);
     _sleepEditPassFence = await SleepEditStore.generation(upTo: day);
@@ -3997,7 +3979,15 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     notifyListeners();
     try {
       // The edited night, then the later nights scored against it.
-      await _derive.rederiveAfterSleepEdit(_profile, day, onEdited: onEdited);
+      final outcome = await _derive.rederiveAfterSleepEdit(_profile, day, publication: _AppSleepEditPublication(this, job));
+      if (outcome == SleepEditCalculation.superseded) return {};
+      if (outcome == SleepEditCalculation.incomplete) {
+        final fence = _sleepEditPassFence;
+        if (fence != null && await SleepEditStore.generation(upTo: day) != fence) {
+          throw const SleepEditRequeue('an earlier night was edited meanwhile');
+        }
+        throw StateError('Sleep calculation is incomplete. Your times are saved. Retry.');
+      }
       final error = _derive.snapshot()['last_error'];
       if (error != null) throw StateError('$error');
       // A finalized day behind the export cursor is never re-written, so the
@@ -8740,5 +8730,25 @@ class _NapExtendsSleep implements MainSleepExtendedListener {
   @override
   Future<void> mainSleepExtended(String day) async {
     await app.recalculateSleep(day);
+  }
+}
+
+final class _AppSleepEditEffects implements SleepEditEffects {
+  const _AppSleepEditEffects(this.app);
+  final AppState app;
+  @override Future<void> run(SleepEditJob job) => app._runSleepEdit(job);
+  @override Future<void> publish() => app._deriveCoordinator.publishNow();
+  @override void hold(bool held) => app._deriveScheduler.setSleepEditHeld(held);
+  @override void report(Object error) => app._log('[sleep edit] $error');
+}
+
+final class _AppSleepEditPublication implements SleepEditPublication {
+  const _AppSleepEditPublication(this.app, this.job);
+  final AppState app;
+  final SleepEditJob job;
+  @override Future<bool> publish() async {
+    if (await SleepEditStore.advance(job, SleepEditPhase.dependents) != SleepEditAdvance.applied) return false;
+    await app._deriveCoordinator.publishNow();
+    return true;
   }
 }

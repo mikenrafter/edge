@@ -13,18 +13,42 @@ enum SleepEditAdvance { applied, superseded }
 
 /// What reading one day must do while sleep edits are outstanding.
 class SleepEditView {
-  const SleepEditView({this.ownPhase, this.dependsOn, this.dependsPhase});
+  const SleepEditView({
+    this.ownPhase,
+    this.ownUnapplied = false,
+    this.dependsOn,
+    this.dependsPhase,
+  });
   static const none = SleepEditView();
 
-  /// Phase of THIS night's own unapplied edit; null when it has none.
+  /// Phase of this night's outstanding work, including dependent work after
+  /// its own measurements have been applied.
   final String? ownPhase;
+  final bool ownUnapplied;
 
   /// The earliest earlier night whose edit is still outstanding, and its
   /// phase. This day is scored against it: its values stay, flagged.
   final String? dependsOn, dependsPhase;
 
+  Map<String, Object?> toJson() => {
+    'own_phase': ownPhase,
+    'own_unapplied': ownUnapplied,
+    'depends_on': dependsOn,
+    'depends_phase': dependsPhase,
+  };
+  static SleepEditView? of(Object? value) {
+    if (value is SleepEditView) return value;
+    if (value is! Map) return null;
+    return SleepEditView(
+      ownPhase: value['own_phase'] as String?,
+      ownUnapplied: value['own_unapplied'] == true,
+      dependsOn: value['depends_on'] as String?,
+      dependsPhase: value['depends_phase'] as String?,
+    );
+  }
+
   /// This night's sleep numbers belong to times the user has since changed.
-  bool get withholdNight => ownPhase != null;
+  bool get withholdNight => ownUnapplied;
   bool get isNone => ownPhase == null && dependsOn == null;
 
   /// 'queued' / 'dependents' while work runs, 'failed' once it gave up.
@@ -37,6 +61,11 @@ class SleepEditJob {
   const SleepEditJob(this.day, this.revision);
   final String day;
   final int revision;
+}
+
+/// Publication of an applied night must complete before dependent work starts.
+abstract interface class SleepEditPublication {
+  Future<bool> publish();
 }
 
 class SleepEditStore {
@@ -100,7 +129,10 @@ class SleepEditStore {
   /// Every night's revision at this moment, so a pass that reads many nights
   /// can fence each of them later without another query ([generationIn]).
   static Future<Map<String, int>> revisionsOn(DatabaseExecutor db) async => {
-    for (final r in await db.query('sleep_edit_job', columns: ['day_id', 'revision']))
+    for (final r in await db.query(
+      'sleep_edit_job',
+      columns: ['day_id', 'revision'],
+    ))
       r['day_id'] as String: r['revision'] as int,
   };
 
@@ -113,11 +145,13 @@ class SleepEditStore {
   /// This night's own numbers are stale: an assertion landed that no result
   /// has applied yet. Only the night's own sleep numbers are withheld for it
   /// ([SleepEditView.withholdNight]); a later day is never "dirty".
-  static Future<bool> dirtyOn(DatabaseExecutor db, String day) async =>
-      (await db.rawQuery(
-        'SELECT 1 FROM sleep_edit_job WHERE day_id = ? AND applied_revision < revision LIMIT 1',
-        [day],
-      )).isNotEmpty;
+  static Future<bool> dirtyOn(
+    DatabaseExecutor db,
+    String day,
+  ) async => (await db.rawQuery(
+    'SELECT 1 FROM sleep_edit_job WHERE day_id = ? AND applied_revision < revision LIMIT 1',
+    [day],
+  )).isNotEmpty;
 
   /// Nights whose own edit is not applied yet, for a walk over many days.
   static Future<Set<String>> staleNights() => LocalDb.readerRun(
@@ -134,22 +168,29 @@ class SleepEditStore {
   /// CLAIM(sleep-edit-masking) [responsiveness_sleep_fix_test].
   static Future<SleepEditView> viewOn(DatabaseExecutor db, String day) async {
     final rows = await db.rawQuery(
-      'SELECT day_id, phase FROM sleep_edit_job '
-      "WHERE day_id = ? AND applied_revision < revision "
+      'SELECT day_id, phase, applied_revision, revision FROM sleep_edit_job '
+      "WHERE day_id = ? AND (applied_revision < revision OR phase != 'done') "
       "OR day_id < ? AND phase != 'done' ORDER BY day_id",
       [day, day],
     );
     if (rows.isEmpty) return SleepEditView.none;
     String? own, dependsOn, dependsPhase;
+    var ownUnapplied = false;
     for (final r in rows) {
       if (r['day_id'] == day) {
         own = r['phase'] as String;
+        ownUnapplied = r['applied_revision'] != r['revision'];
       } else if (dependsOn == null) {
         dependsOn = r['day_id'] as String;
         dependsPhase = r['phase'] as String;
       }
     }
-    return SleepEditView(ownPhase: own, dependsOn: dependsOn, dependsPhase: dependsPhase);
+    return SleepEditView(
+      ownPhase: own,
+      ownUnapplied: ownUnapplied,
+      dependsOn: dependsOn,
+      dependsPhase: dependsPhase,
+    );
   }
 
   static Future<SleepEditView> view(String day) =>
@@ -202,42 +243,94 @@ class SleepEditStore {
       final out = <Map<String, dynamic>>[];
       for (final row in rows) {
         final date = row['date'] as String;
-        if (jobs.any((j) => j['day_id'] == date && j['applied_revision'] != j['revision'])) continue;
+        if (jobs.any(
+          (j) => j['day_id'] == date && j['applied_revision'] != j['revision'],
+        )) {
+          continue;
+        }
         final earlier = [
           for (final j in jobs)
-            if ((j['day_id'] as String).compareTo(date) < 0 && j['phase'] != 'done') j,
+            if ((j['day_id'] as String).compareTo(date) < 0 &&
+                j['phase'] != 'done')
+              j,
         ];
-        out.add(earlier.isEmpty
-            ? row
-            : {...row, 'sleep_edit': earlier.every((j) => j['phase'] == 'failed') ? 'failed' : 'recalculating'});
+        out.add(
+          earlier.isEmpty
+              ? row
+              : {
+                  ...row,
+                  'sleep_edit': SleepEditView(
+                    dependsOn: earlier.first['day_id'] as String,
+                    dependsPhase: earlier.any((j) => j['phase'] == 'failed')
+                        ? 'failed'
+                        : 'queued',
+                  ),
+                },
+        );
       }
       return out;
     }, name: 'sleep edit chart visibility');
   }
 
-  /// [markApplied] for the engine, fenced like its other writes: only while
-  /// nothing at or before [day] has been edited since [generation].
-  static Future<void> markAppliedIfCurrent(String day, int generation) async {
-    final db = await LocalDb.instance;
-    await LocalDb.timedTransaction(db, 'sleep edit applied', (tx) async {
-      if (await generationOn(tx, upTo: day) != generation) return;
+  /// Reuse a complete measured night only when its persisted bounds exactly
+  /// match the current assertion. The proof and applied marker share a writer
+  /// transaction; a source label alone is never proof. CLAIM(sleep-edit-r2)
+  /// [responsiveness_sleep_r2_test: identical measured confirmed window].
+  static Future<bool> reuseMeasuredNightIfCurrent(
+    String day,
+    int generation, {
+    required int algoVersion,
+  }) async => LocalDb.timedTransaction(
+    await LocalDb.instance,
+    'sleep edit measured window',
+    InlineTransactionWork((tx) async {
+      if (await generationOn(tx, upTo: day) != generation) return false;
+      final measured = await tx.rawQuery(
+        r'''
+            SELECT 1 FROM day_result AS r
+            JOIN sleep_override AS o ON o.day_id = r.day_id
+            WHERE r.day_id = ? AND r.algo_version =
+              (SELECT MAX(algo_version) FROM day_result WHERE day_id = ? AND algo_version <= ?)
+              AND r.partial = 0 AND r.skipped = 0 AND o.source != 'rejected'
+              AND CASE WHEN json_valid(r.window_json) THEN
+                COALESCE(json_extract(r.window_json, '$.value.onset_ms'),
+                         json_extract(r.window_json, '$.onset_ms')) END = o.onset_ts * 1000
+              AND CASE WHEN json_valid(r.window_json) THEN
+                COALESCE(json_extract(r.window_json, '$.value.offset_ms'),
+                         json_extract(r.window_json, '$.offset_ms')) END = o.offset_ts * 1000
+              AND (r.rhr > 0 OR r.rmssd > 0 OR
+                CASE WHEN json_valid(r.payload_json) THEN CAST(
+                  COALESCE(json_extract(r.payload_json, '$.scalars.tst_min.value'),
+                           json_extract(r.payload_json, '$.scalars.tst_min')) AS REAL) END > 0)
+            LIMIT 1
+          ''',
+        [day, day, algoVersion],
+      );
+      if (measured.isEmpty) return false;
       await tx.rawUpdate(
         'UPDATE sleep_edit_job SET applied_revision = revision WHERE day_id = ?',
         [day],
       );
-    });
-  }
+      return true;
+    }),
+  );
 
-  /// The edit's recalculation finished with nothing newer to store for the
-  /// night (no live inputs, a skipped or blanked night, a partial result). The
-  /// applied marker still has to advance, or the night stays withheld forever.
-  /// Compare-and-update on the revision, like [advance].
-  static Future<bool> markApplied(SleepEditJob job) async =>
-      await (await LocalDb.instance).rawUpdate(
-        'UPDATE sleep_edit_job SET applied_revision = revision WHERE day_id = ? AND revision = ?',
-        [job.day, job.revision],
-      ) ==
-      1;
+  /// [markApplied] for the engine, fenced like its other writes: only while
+  /// nothing at or before [day] has been edited since [generation].
+  static Future<void> markAppliedIfCurrent(String day, int generation) async {
+    final db = await LocalDb.instance;
+    await LocalDb.timedTransaction(
+      db,
+      'sleep edit applied',
+      InlineTransactionWork((tx) async {
+        if (await generationOn(tx, upTo: day) != generation) return;
+        await tx.rawUpdate(
+          'UPDATE sleep_edit_job SET applied_revision = revision WHERE day_id = ?',
+          [day],
+        );
+      }),
+    );
+  }
 
   static Future<SleepEditAdvance> advance(
     SleepEditJob job,
@@ -257,6 +350,6 @@ class SleepEditStore {
   static Future<void> recalculate(String day) async => LocalDb.timedTransaction(
     await LocalDb.instance,
     'sleep edit receipt',
-    (tx) => enqueue(tx, day),
+    InlineTransactionWork((tx) => enqueue(tx, day)),
   );
 }
