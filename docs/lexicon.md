@@ -152,3 +152,6 @@ in the same change that introduces it (AGENTS.md §6).
 - **Placeholder** — replacement text bars or a muted plot sine, painted without replacing its existing surface. Icons, images and card titles keep their source paint.
 - **Hover highlight** — a translucent tint and glow painted by a guide target's own component layer. Its opacity follows the moving fingertip's distance; scrolling and stretch carry it with the target.
 - **Moving hand** — the guide's pointing cursor, which taps a single target repeatedly or travels through a multi-target step's choices. Reduced motion uses the static label hand.
+
+## Guides
+- **Accordion hop**: a user tap that expands the outermost closed section containing the pending guide target. Nested closed sections each add one hop.

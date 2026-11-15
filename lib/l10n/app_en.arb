@@ -19365,5 +19365,7 @@
     }
   },
   "guideTapsBack": "{count, plural, one{1 tap back} other{{count} taps back}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "guideExpandAccordion": "Expand {title}",
+  "@guideExpandAccordion": {"description": "Guide hop asking the wearer to open a collapsed section", "placeholders": {"title": {"type": "String"}}}
 }

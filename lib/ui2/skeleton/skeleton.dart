@@ -32,6 +32,7 @@ import 'package:flutter/scheduler.dart';
 import '../../l10n/app_localizations.dart';
 import '../grammar.dart' show ChartFrame, GuideBox, NavBar, Pressable, ScreenTitle, Section, Surface, SubTabs;
 import '../guides/guide_target.dart';
+import '../guides/guide_accordion.dart';
 import '../guides/tree_geometry.dart';
 import '../theme.dart';
 import 'guide_plot.dart';
@@ -681,6 +682,7 @@ SkeletonPlan planSkeleton(
   final units = <_Unit>[];
   void find(Element e) {
     final w = e.widget;
+    if (w is GuideNavigationHeader) { see(e); return; }
     // The dim look treats the OUTERMOST control as one component too (its whole
     // box, padding and background included), not just the text inside it.
     if (w is Surface || w is Section || w is GuideBox || (dim != null && isGuideControl(w) && laidOutBox(e) != null)) {
@@ -965,7 +967,7 @@ List<Rect> defaultSkeletonChrome(Element root) {
 /// Chrome is never dimmed, never a placeholder and never absorbs a tap, whenever it was
 /// built [guide_r5_scenes_test R5-4]. CLAIM(chrome-never-covered).
 bool isGuideChromeWidget(Widget w) =>
-    w is ScreenTitle || w is NavBar || w is SubTabs || w.runtimeType.toString() == '_TabBar';
+    w is GuideNavigationHeader || w is ScreenTitle || w is NavBar || w is SubTabs || w.runtimeType.toString() == '_TabBar';
 
 /// The bars that bound the area the guide may use (the card, the pill, the glide): the top bars
 /// (a title, a NavBar, a sub-tab row) and the bottom bar, which is AppShell's tab bar and nothing
@@ -978,6 +980,7 @@ bool isGuideChromeWidget(Widget w) =>
   final top = <Rect>[], bottom = <Rect>[];
   void find(Element e) {
     final w = e.widget;
+    if (w is GuideNavigationHeader) return;
     if (isGuideChromeWidget(w)) {
       final box = laidOutBox(e);
       if (box != null) (w.runtimeType.toString() == '_TabBar' ? bottom : top).add(rectInRoot(box, rootBox));

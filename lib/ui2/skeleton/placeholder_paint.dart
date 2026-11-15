@@ -44,6 +44,7 @@ class GuidePlaceholderPaint {
     var card = isGuideCard(unit.widget);
     void visit(Element e) {
       final w = e.widget;
+      if (isGuideChromeWidget(w)) return;
       if (w is Icon || w is ImageIcon || w is Image || w is RawImage) return;
       // A control the guide keeps real (the previous or next step's target and the buttons beside
       // it) keeps its own labels inside a placeholder card [guide_r5_scenes_test R5-7].

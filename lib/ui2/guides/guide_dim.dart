@@ -68,6 +68,18 @@ class _HoverBindings extends ChangeNotifier {
 
 /// Holds the current [GuideUnitLooks] and tells the components when it changes.
 class GuideDimController extends ChangeNotifier {
+  final discovery = ValueNotifier<bool>(false);
+  final _discoveryOwners = <Object>{};
+
+  // Discovery has a separate signal: changing a paint plan never rebuilds bodies.
+  void discoverFor(Object owner, bool active) {
+    if (_disposed) return;
+    if (active) { _discoveryOwners.add(owner); } else { _discoveryOwners.remove(owner); }
+    Future.microtask(() {
+      if (!_disposed) discovery.value = _discoveryOwners.isNotEmpty;
+    });
+  }
+
   GuideUnitLooks? _looks;
   bool _disposed = false;
 
@@ -113,6 +125,8 @@ class GuideDimController extends ChangeNotifier {
     _looks = null;
     for (final hover in _hovers.values.toSet()) { hover.dispose(); }
     _hovers.clear();
+    discovery.dispose();
+    _discoveryOwners.clear();
     _bindings.dispose();
     _pulse.dispose();
     super.dispose();

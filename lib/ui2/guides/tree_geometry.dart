@@ -7,6 +7,7 @@
 // and the object (a Transform ABOVE the root does not enter).
 
 import 'package:flutter/widgets.dart';
+import 'guide_accordion.dart';
 
 /// [element] and every ONSTAGE element below it, parents before children. An
 /// `Offstage`, a non-current `IndexedStack` child or a hidden route is skipped,
@@ -37,7 +38,7 @@ Iterable<Element> builtElements(Element element) sync* {
   yield element;
   final w = element.widget;
   final children = <Element>[];
-  if (element is SliverMultiBoxAdaptorElement || w is Viewport || w is ShrinkWrappingViewport || w is SliverMainAxisGroup) {
+  if (w is GuideAccordionBody || element is SliverMultiBoxAdaptorElement || w is Viewport || w is ShrinkWrappingViewport || w is SliverMainAxisGroup) {
     element.visitChildren(children.add);
   } else {
     element.debugVisitOnstageChildren(children.add);

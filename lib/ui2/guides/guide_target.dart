@@ -19,6 +19,7 @@ import 'package:flutter/widgets.dart';
 import '../../l10n/app_localizations.dart';
 import '../grammar.dart' show Pressable;
 import 'guide_text.dart';
+import 'guide_accordion.dart';
 import 'tree_geometry.dart';
 
 /// What a target resolves to: always exactly one of the four, never null.
@@ -36,10 +37,20 @@ final class TargetFound extends TargetResolution {
 
 /// No match in the built tree, but a scrollable under the root could still
 /// build one lazily (a list with extent left to discover).
-final class TargetNotBuilt extends TargetResolution {
+base class TargetNotBuilt extends TargetResolution {
   final GuideTarget target;
   final String detail;
   const TargetNotBuilt(this.target, this.detail);
+}
+
+/// The target exists in a closed body. Ordered outermost first, each header is
+/// one real user tap. This refines NotBuilt so callers still abstain from tapping
+/// the hidden target while the live overlay shows the first expansion hop.
+final class TargetBehindAccordion extends TargetNotBuilt {
+  final List<GuideAccordionBody> accordions;
+  const TargetBehindAccordion(GuideTarget target, this.accordions)
+      : super(target, 'the target is behind a collapsed accordion');
+  GuideTarget get header => GuideTarget.key(accordions.first.headerKey);
 }
 
 /// No match, and nothing left to build: the target is not on this screen
@@ -120,9 +131,20 @@ sealed class GuideTarget {
       return TargetNotBuilt(this, 'the root is not laid out yet');
     }
     return switch (_lookup(root, rootBox, root, l)) {
-      _Hit(:final rect, :final element) => TargetFound(rect, renderObject: laidOutBox(element)!),
+      _Hit(:final rect, :final element) => _resolutionOf(element, rect),
       _Miss(:final failure) => failure,
     };
+  }
+
+  TargetResolution _resolutionOf(Element element, Rect rect) {
+    final closed = <GuideAccordionBody>[];
+    element.visitAncestorElements((a) {
+      final w = a.widget;
+      if (w is GuideAccordionBody && w.offstage) closed.add(w);
+      return true;
+    });
+    return closed.isEmpty ? TargetFound(rect, renderObject: laidOutBox(element)!)
+        : TargetBehindAccordion(this, closed.reversed.toList());
   }
 
   /// Looks for the target inside [scope] (a descendant-or-self of [root]).
@@ -435,6 +457,7 @@ Future<TargetResolution> revealTarget(
   var now = target.resolve(root, l);
   // A target that had to be searched for was off screen on arrival, wherever the search left
   // the page: the glide then places it even if the search left it in view.
+  if (now is TargetBehindAccordion) return now;
   final searched = now is TargetNotBuilt;
   if (now is TargetNotBuilt) {
     final search = _Search(root, target, l, maxViewports, gate);
@@ -479,7 +502,10 @@ class _Search {
 
   _Search(this.root, this.target, this.l, this.maxViewports, this.gate);
 
-  bool _found() => target.resolve(root, l) is TargetFound;
+  bool _found() {
+    final resolution = target.resolve(root, l);
+    return resolution is TargetFound || resolution is TargetBehindAccordion;
+  }
 
   Future<bool> runAll() async {
     // Re-scanned each round: restoring a scrollable can rebuild the lazily built

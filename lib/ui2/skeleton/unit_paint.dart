@@ -23,10 +23,13 @@
 // With a plan, a repaint of a dimmed component is one rect; a skeleton component
 // re-reads its own text lines per paint (a few paragraphs).
 
+import 'dart:ui' show ClipOp;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../guides/guide_dim.dart';
+import '../guides/guide_accordion.dart';
 import '../guides/tree_geometry.dart';
 import 'skeleton.dart';
 import 'placeholder_paint.dart';
@@ -259,11 +262,21 @@ class RenderGuideUnit extends RenderProxyBox {
         // The dim reaches the edges of the drawn box: its own rounded corners.
         final paint = Paint()..color = scaffoldOf(_component).withValues(alpha: kDimOpacity * (_controller?.fade ?? 1));
         final radius = _drawnRadius();
+        // A navigation header stays bright even when an ancestor card is dim.
+        // The holes use local transforms, so scrolling/stretching carries both.
+        canvas.save();
+        for (final e in onstageElements(_component)) {
+          if (e.widget is! GuideNavigationHeader) continue;
+          final box = laidOutBox(e);
+          if (box == null) continue;
+          canvas.clipRect(rectInRoot(box, this).shift(offset), clipOp: ClipOp.difference);
+        }
         if (radius == null) {
           canvas.drawRect(offset & size, paint);
         } else {
           canvas.drawRRect(radius.toRRect(offset & size), paint);
         }
+        canvas.restore();
       case GuideUnitLook.skeleton:
         break;
     }

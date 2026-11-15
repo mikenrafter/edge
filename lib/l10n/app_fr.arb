@@ -3886,5 +3886,6 @@
   "guideAddNapMissingTitle": "Vous ne voyez pas « {naps} » ?",
   "guideAddNapMissingBody": "**{naps}** se trouve sous votre nuit. Si cette partie, **{night}**, est repliée, touchez son titre pour l’ouvrir.",
   "guideTapsBack": "{count, plural, one{1 appui en arrière} other{{count} appuis en arrière}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "guideExpandAccordion": "Développer {title}"
 }

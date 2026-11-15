@@ -11,6 +11,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../grammar.dart';
+import '../guides/guide_accordion.dart';
 import '../theme.dart';
 import 'catalogue.dart';
 import 'live.dart';
@@ -172,7 +173,7 @@ class _ActivityPickerState extends State<ActivityPicker> {
                   }),
                   const SizedBox(height: S.x5),
                   for (var gi = 0; gi < activityLibrary.length; gi++) ...[
-                    Pressable(
+                    GuideNavigationHeader(child: Pressable(
                       onTap: () => setState(() {
                         closing = group;
                         group = group == gi ? -1 : gi;
@@ -202,7 +203,7 @@ class _ActivityPickerState extends State<ActivityPicker> {
                             ],
                           ),
                         ),
-                      ),
+                      )),
                     AnimatedCrossFade(
                       duration: motion(c, Motion.base),
                       crossFadeState: group == gi

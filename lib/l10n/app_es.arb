@@ -3904,5 +3904,6 @@
   "guideAddNapMissingTitle": "¿No ves «{naps}»?",
   "guideAddNapMissingBody": "**{naps}** está bajo tu noche. Si esa parte, **{night}**, está plegada, toca su título para abrirla.",
   "guideTapsBack": "{count, plural, one{1 toque atrás} other{{count} toques atrás}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "guideExpandAccordion": "Expandir {title}"
 }

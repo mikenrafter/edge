@@ -3886,5 +3886,6 @@
   "guideAddNapMissingTitle": "没有看到“{naps}”？",
   "guideAddNapMissingBody": "**{naps}**位于你的夜间睡眠下方。如果该部分**{night}**已折叠，请点按其标题展开。",
   "guideTapsBack": "返回需点按 {count} 次",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}}
+  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "guideExpandAccordion": "展开{title}"
 }
