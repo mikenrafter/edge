@@ -58,9 +58,6 @@ class GuideMarkerPill extends StatelessWidget {
 /// How far the tap hand travels toward the target at the peak of a nudge, in pixels.
 const kGuideNudgeTravel = 4.0;
 
-/// How far the scroll chevron slides in the direction to scroll, in pixels.
-const kGuideChevronTravel = 6.0;
-
 /// The small pointing hand beside the "tap" label. It nudges toward the target twice per
 /// 1.6 s cycle of the shared guide clock ([guideNudgeValue]); the pill is ABOVE the target
 /// when [side] is above, so the hand points down and nudges down, and the reverse below.
@@ -128,17 +125,20 @@ class _RenderGuideHand extends RenderTransform {
   }
 }
 
-/// The mid-screen scroll indicator: a swipe hand, "scroll" and a chevron that slides in the
+/// The mid-screen scroll indicator: a swipe hand, "scroll" and a chevron that points in the
 /// direction to scroll (down when the target is below, up when it is above). Shown while the
-/// target is out of view. Reduced motion: the chevron stands still.
-/// CLAIM(guide-scroll-indicator) [guide_r4_test R4-2a, R4-2c, R4-5c].
+/// target is out of view. The HAND nudges in the scroll direction on the shared clock and the
+/// tap hand's curve (two nudges per 1.6 s cycle); the chevron stands still. Reduced motion: both
+/// still. The hand sits in its own repaint boundary and only its render transform hears the clock.
+/// CLAIM(guide-scroll-indicator) [guide_r5_test R5-2, guide_r4_test R4-2a, R4-2c, R4-5c].
 class GuideScrollIndicator extends StatelessWidget {
   final String text;
   final Animation<double> clock;
 
-  /// True when the target is above the screen: the chevron points and slides up.
+  /// True when the target is above the screen: the hand nudges up and the chevron points up.
   final bool up;
   static const chevronKey = ValueKey('guide-live-scroll-chevron');
+  static const handKey = ValueKey('guide-live-scroll-hand');
 
   const GuideScrollIndicator({super.key, required this.text, required this.clock, required this.up});
 
@@ -151,11 +151,12 @@ class GuideScrollIndicator extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(LucideIcons.hand, size: 16, color: C.n900),
+            RepaintBoundary(child: _GuideNudge(clock: clock, sign: up ? -1 : 1, enabled: Motion.enabled(context),
+              child: const Icon(LucideIcons.hand, key: handKey, size: 16, color: C.n900))),
             const SizedBox(width: S.x1),
             Text(text, style: F.cap.copyWith(color: C.n900, fontWeight: FontWeight.w700)),
             const SizedBox(width: S.x1),
-            RepaintBoundary(child: _GuideScrollChevron(clock: clock, up: up)),
+            Icon(up ? LucideIcons.chevronUp : LucideIcons.chevronDown, key: chevronKey, size: 16, color: C.n900),
           ],
         ),
       ),
@@ -163,48 +164,43 @@ class GuideScrollIndicator extends StatelessWidget {
   }
 }
 
-/// Only the moving part hears the clock; ticks never dirty a build/layout scope.
-class _GuideScrollChevron extends SingleChildRenderObjectWidget {
+/// Moves its child [kGuideNudgeTravel] pixels along y ([sign]: +1 down, -1 up) at the peak of the
+/// shared nudge ([guideNudgeValue]). Listens to the clock in its render object, never in a build.
+class _GuideNudge extends SingleChildRenderObjectWidget {
   final Animation<double> clock;
-  final bool up;
-  _GuideScrollChevron({required this.clock, required this.up}) : super(child: Transform.translate(
-    offset: Offset.zero,
-    child: Icon(up ? LucideIcons.chevronUp : LucideIcons.chevronDown,
-      key: GuideScrollIndicator.chevronKey, size: 16, color: C.n900)));
+  final double sign;
+  final bool enabled;
+  const _GuideNudge({required this.clock, required this.sign, required this.enabled, required super.child});
 
   @override
-  RenderObject createRenderObject(BuildContext context) => _RenderGuideChevron(clock, up, Motion.enabled(context));
+  RenderObject createRenderObject(BuildContext context) => _RenderGuideNudge(clock, sign, enabled);
   @override
-  void updateRenderObject(BuildContext context, _RenderGuideChevron renderObject) => renderObject.update(clock, up, Motion.enabled(context));
+  void updateRenderObject(BuildContext context, _RenderGuideNudge renderObject) => renderObject.update(clock, sign, enabled);
 }
 
-class _RenderGuideChevron extends RenderOpacity {
+class _RenderGuideNudge extends RenderTransform {
   Animation<double> _clock;
-  bool _up, _enabled;
-  _RenderGuideChevron(this._clock, this._up, this._enabled);
+  double _sign;
+  bool _enabled;
+  _RenderGuideNudge(this._clock, this._sign, this._enabled) : super(transform: Matrix4.identity(), alignment: Alignment.center);
 
-  void update(Animation<double> clock, bool up, bool enabled) {
+  void update(Animation<double> clock, double sign, bool enabled) {
     if (attached) _clock.removeListener(_tick);
     _clock = clock;
-    _up = up;
+    _sign = sign;
     _enabled = enabled;
     if (attached) _clock.addListener(_tick);
     _tick();
   }
 
   @override
-  set child(RenderBox? value) { super.child = value; _tick(); }
-  @override
   void attach(PipelineOwner owner) { super.attach(owner); _clock.addListener(_tick); _tick(); }
   @override
   void detach() { _clock.removeListener(_tick); super.detach(); }
 
   void _tick() {
-    final travel = _enabled ? guideChevronValue(_clock.value) : 0.0;
-    opacity = 1 - .5 * travel;
-    if (child case final RenderTransform shift) {
-      shift.transform = Matrix4.translationValues(0, (_up ? -1 : 1) * kGuideChevronTravel * travel, 0);
-    }
+    final nudge = _enabled ? guideNudgeValue(_clock.value) : 0.0;
+    transform = Matrix4.translationValues(0, _sign * kGuideNudgeTravel * nudge, 0);
   }
 }
 

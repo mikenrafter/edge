@@ -61,7 +61,8 @@ Iterable<RenderParagraph> looseParagraphs(Element layer) sync* {
 
 Iterable<RenderParagraph> _looseBelow(Element e) sync* {
   final w = e.widget;
-  if (w is GuideUnitMark || w is GuideLooseLayer) return;
+  // Chrome (a NavBar, a title, a tab bar) is never dimmed, whatever the plan says of it.
+  if (w is GuideUnitMark || w is GuideLooseLayer || isGuideChromeWidget(w)) return;
   final ro = e is RenderObjectElement ? e.renderObject : null;
   if (ro is RenderParagraph) yield ro;
   final children = <Element>[];
@@ -172,7 +173,8 @@ class RenderGuideUnit extends RenderProxyBox {
     final look = _component.mounted ? looks?.lookOf(_component) : null;
     _pulse.follow(_controller, look == GuideUnitLook.skeleton, _pulsed);
     if (look == GuideUnitLook.skeleton && child != null) {
-      GuidePlaceholderPaint.of(_component, fade: _controller?.fade ?? 1, pulse: _controller?.pulse ?? 1)
+      GuidePlaceholderPaint.of(_component, fade: _controller?.fade ?? 1, pulse: _controller?.pulse ?? 1,
+          keeps: looks is GuideKeepsControls ? looks as GuideKeepsControls : null)
           .paint(context, child!, offset, size);
       return;
     }
@@ -311,7 +313,8 @@ class RenderGuideLoose extends RenderProxyBox {
         case GuideUnitLook.dim:
           final visible = rectInRoot(p, this).intersect(visibleBoundsInRoot(p, this));
           if (visible.isEmpty) continue;
-          canvas.drawRect(visible.shift(offset), Paint()..color = scaffold.withValues(alpha: kDimOpacity * (_controller?.fade ?? 1)));
+          // Toward the surface the text sits on, so there is no box behind it (CLAIM(dim-has-no-box)).
+          canvas.drawRect(visible.shift(offset), Paint()..color = surfaceBeneath(p, scaffold).withValues(alpha: kDimOpacity * (_controller?.fade ?? 1)));
         case GuideUnitLook.skeleton:
           break; // source text was replaced above, not erased by a surface fill
       }

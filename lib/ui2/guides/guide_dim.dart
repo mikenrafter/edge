@@ -19,7 +19,7 @@
 // CLAIM(dim-notifies-on-change): the controller notifies only when the plan changed
 // [guide_r2_structural_test 'plan equality'].
 
-import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier, setEquals;
 import 'package:flutter/widgets.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
@@ -52,6 +52,13 @@ abstract interface class GuideUnitLooks {
 abstract interface class GuideLooseLooks implements GuideUnitLooks {
   /// The look for the loose [paragraph], or null when it stays as it is.
   GuideUnitLook? looseLookOf(RenderParagraph paragraph);
+}
+
+/// A plan that keeps some controls real inside placeholder components: the previous and next
+/// step's targets and the buttons beside them. An interface, not a function type (heavy-calc guard).
+abstract interface class GuideKeepsControls {
+  /// True when the control [e] keeps its own labels and look even inside a placeholder card.
+  bool keepsControl(Element e);
 }
 
 /// Holds the current [GuideUnitLooks] and tells the components when it changes.
@@ -169,36 +176,42 @@ class GuideDimScope extends InheritedWidget {
 /// collapsed, [fallback]) if it is the OUTERMOST component on the guided [page] and
 /// overlaps none of the [keep] boxes: so freshly scrolled-in content is never bright
 /// for the frames before the next plan.
-class GuidePlan implements GuideLooseLooks {
+class GuidePlan implements GuideLooseLooks, GuideKeepsControls {
   final Element? page;
   final Map<Element, GuideUnitLook> _byComponent;
   final Map<RenderParagraph, GuideUnitLook> _byParagraph;
   final Set<Element> _seen;
   final Set<RenderParagraph> _seenLoose;
   final List<RenderBox> _keep;
+  final Set<Element> _keepControls;
   final GuideUnitLook fallback;
 
-  GuidePlan._(this.page, this._byComponent, this._byParagraph, this._seen, this._seenLoose, this._keep, this.fallback);
+  GuidePlan._(this.page, this._byComponent, this._byParagraph, this._seen, this._seenLoose, this._keep, this._keepControls, this.fallback);
+
+  @override
+  bool keepsControl(Element e) => _keepControls.contains(e);
 
   /// A plan from [plan] on [page]. [keep]: the live boxes that stay legible
   /// (target, caption-named content), against which unseen components are tested.
   /// [skeletonAll]: the P6 collapse, so unseen components are skeleton too.
   factory GuidePlan.from(Element? page, SkeletonPlan plan, {
     List<RenderBox> keep = const [],
+    Set<Element> keepControls = const {},
     bool skeletonAll = false,
   }) {
     final components = <Element, GuideUnitLook>{};
     final paragraphs = <RenderParagraph, GuideUnitLook>{};
     for (final u in plan.units) {
-      final look = u.skeleton ? GuideUnitLook.skeleton : GuideUnitLook.dim;
       final c = u.component;
+      // A control the guide keeps real is dimmed at most, never a placeholder.
+      final look = u.skeleton && !(c != null && keepControls.contains(c)) ? GuideUnitLook.skeleton : GuideUnitLook.dim;
       // A control that is not a Surface / Section / Pressable cannot paint itself: the
       // overlay paints its section (live_guide_overlay.dart). Keyed here anyway, harmless.
       if (c != null) components[c] = look;
       final p = u.paragraph;
       if (p != null) paragraphs[p] = look;
     }
-    return GuidePlan._(page, components, paragraphs, plan.seen, plan.seenLoose, keep,
+    return GuidePlan._(page, components, paragraphs, plan.seen, plan.seenLoose, keep, keepControls,
         skeletonAll ? GuideUnitLook.skeleton : GuideUnitLook.dim);
   }
 
@@ -207,7 +220,7 @@ class GuidePlan implements GuideLooseLooks {
   /// with what the other plan does to a component it never saw (its [fallback]), so
   /// content that scrolled in and is dimmed like the fallback does not count.
   bool sameLooks(GuidePlan other) {
-    if (fallback != other.fallback) return false;
+    if (fallback != other.fallback || !setEquals(_keepControls, other._keepControls)) return false;
     return _agree(_byComponent, _seen, other._byComponent, other._seen) &&
         _agree(_byParagraph, _seenLoose, other._byParagraph, other._seenLoose);
   }
@@ -247,10 +260,17 @@ class GuidePlan implements GuideLooseLooks {
   GuideUnitLook? _unseen(Element unit) {
     final page = this.page;
     if (page == null) return null;
+    if (isGuideChromeWidget(unit.widget) || _keepControls.contains(unit)) return null;
     var onPage = false, outermost = true;
     unit.visitAncestorElements((a) {
       if (identical(a, page)) {
         onPage = true;
+        return false;
+      }
+      // Chrome built after the plan (a NavBar re-keyed by a rebuild) is no content: it is
+      // never covered while it waits for the next plan [guide_r5_scenes_test R5-4].
+      if (isGuideChromeWidget(a.widget) || _keepControls.contains(a)) {
+        outermost = false;
         return false;
       }
       if (isGuideComponent(a.widget)) {

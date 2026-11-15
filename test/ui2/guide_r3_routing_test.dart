@@ -119,17 +119,18 @@ void main() {
       expect(outside, isEmpty, reason: 'a hand tick repainted screen content: ${outside.take(6).map((o) => o.debugCreator).join("; ")}');
       expect(overlayBuilds, 0);
       expect(_overlay(t).signatureChecks, signatures, reason: 'hand ticks never walk the page');
-      // WHY: owner review R4: off path the cards next to the route-back control stay lit,
-      // also when that control is a sub-tab; the cards further away dim.
-      // # catches: neighbour lighting skipped for tab-like route-back controls.
+      // WHY: owner round 5 item 3 (supersedes review R4): off path with a CHROME route back (here a
+      // sub-tab), every content card dims, the one next to the route back too.
+      // # catches: a neighbour exemption kept for tab-like route-back controls.
       final page = app.runner.routes.page!;
       final looks = GuideDimScope.controllerOf(page)!.looks!;
       final cards = [for (final u in r2Units(page)) if (u.element.widget is Section || u.element.widget is Surface) u]
         ..sort((a, b) => a.rect.top.compareTo(b.rect.top));
       final below = cards.where((u) => u.rect.top >= t.getRect(tabs).bottom - 1).toList();
       expect(below, isNotEmpty, reason: 'the page has cards under the sub-tabs');
-      expect(looks.lookOf(below.first.element), isNull, reason: 'the card next to the route back is lit');
-      expect(cards.any((u) => looks.lookOf(u.element) == GuideUnitLook.dim), isTrue, reason: 'cards further away dim');
+      for (final card in cards) {
+        expect(looks.lookOf(card.element), GuideUnitLook.dim, reason: 'every content card dims, also the one next to the route back');
+      }
       await t.tap(find.byKey(GuideStepCard.backToGuideKey));
       await settleLiveGuide(t, frames: 18);
       expect(GuideNavigation.location(app.runner.routes.page!), GuideNode.activityHistory);

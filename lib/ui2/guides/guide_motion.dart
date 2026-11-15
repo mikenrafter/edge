@@ -19,13 +19,6 @@ double guideNudgeValue(double phase) {
   return .5 - .5 * math.cos(p * 8 * math.pi);
 }
 
-/// The scroll indicator's chevron travel, 0..1 and then back to 0 at once: it slides twice
-/// per cycle in the direction to scroll. CLAIM(guide-chevron) [guide_r4_test R4-2c].
-double guideChevronValue(double phase) {
-  final p = (phase * 2) - (phase * 2).floorToDouble();
-  return Curves.easeOut.transform(p);
-}
-
 /// Where the auto-scroll puts the target: this fraction down the visible area (owner,
 /// round 4).
 const kGuideScrollAnchor = 1 / 3;

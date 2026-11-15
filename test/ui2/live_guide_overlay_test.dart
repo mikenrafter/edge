@@ -91,8 +91,10 @@ void main() {
   // NavBar at the centre of a partly covered target.
   testWidgets('semantics proxy refuses a target centre hidden by the NavBar', (t) async {
     final stage = await _pumpOccludedTarget(t);
-    t.semantics.tap(find.semantics.byLabel(_en.guideTargetProxy('Tap Finish.')));
-    await t.pump();
+    // Round 5 item 1a: a target under the NavBar is out of view, so it has no proxy at all (before, the
+    // proxy existed and its activation had to be refused).
+    expect(find.byKey(LiveGuideOverlay.targetProxyKey), findsNothing);
+    expect(find.semantics.byLabel(_en.guideTargetProxy('Tap Finish.')), findsNothing);
     expect(stage.taps.elsewhere, 0);
     expect(stage.taps.finish, 0);
     expect(stage.run.state, isA<GuideAtStep>());

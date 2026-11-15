@@ -50,6 +50,7 @@
 
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show ClipOp;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -62,6 +63,7 @@ import '../app_shell.dart' show AppShell;
 import '../grammar.dart' show NavBar, Pressable, ScreenTitle, SubTabs;
 import '../theme.dart';
 import 'guide.dart';
+import 'guide_content.dart' show PressableRows;
 import 'guide_navigation.dart';
 import 'guide_motion.dart';
 import 'guide_markers.dart';
@@ -151,8 +153,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   Timer? _handRest;
   bool _handOnly = false;
 
-  /// CLAIM(clock-only-when-needed): the hand keeps the same 1.6 s phase, sleeping
-  /// through its still half. Placeholders, card motion and the chevron need the
+  /// CLAIM(clock-only-when-needed): the hands (tap and scroll indicator) keep the same 1.6 s
+  /// phase, sleeping through their still half. Placeholders and card motion need the
   /// full cycle [guide_r4_test R4-fix-P1b]. Marker visibility is read after layout,
   /// never written by build.
   void _syncClock() {
@@ -160,8 +162,9 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final layer = _layerKey.currentContext?.findRenderObject();
     final markers = layer is RenderBox && layer.hasSize ? _markersFor(layer.size) : null;
     final enabled = Motion.enabled(context);
-    final continuous = enabled && (_wantsPulse || _cardMotion.isAnimating || (markers?.hidden ?? false));
-    final hand = enabled && ((markers?.marked ?? false) || (markers?.routeMarked ?? false));
+    final continuous = enabled && (_wantsPulse || _cardMotion.isAnimating);
+    // The tap hand and the scroll indicator's hand share the nudge: still for half of the cycle.
+    final hand = enabled && ((markers?.marked ?? false) || (markers?.routeMarked ?? false) || (markers?.hidden ?? false));
     if (continuous) {
       _handRest?.cancel();
       _handRest = null;
@@ -199,12 +202,16 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final target = _liveTarget;
     final screen = Offset.zero & size;
     final outline = target?.inflate(kGuideOutlineGap).intersect(screen);
-    final marked = show && target != null && step != null && revealProgress == 1 &&
+    // In view means inside the VISIBLE area (between the bars), not merely on the screen: a target
+    // under the app bar or the status bar is out of view [guide_r5_test R5-1a].
+    final area = _boundsOf(size, MediaQuery.paddingOf(context), MediaQuery.viewInsetsOf(context).bottom, _barsTop, _barsBottom);
+    final inView = target != null && _verticallyIn(target, area, _targetInChrome);
+    final marked = show && target != null && step != null && revealProgress == 1 && inView &&
         outline != null && !outline.isEmpty;
     final routeOutline = target == null && show ? _route?.inflate(kGuideOutlineGap).intersect(screen) : null;
     final routeMarked = routeOutline != null && !routeOutline.isEmpty;
     final hidden = show && step != null && !(_glide?.isMoving ?? false) &&
-        (target == null ? _lazyTarget : _outOfView(target, screen));
+        (target == null ? _lazyTarget : !inView);
     return _GuideMarkers(target, outline, routeOutline, marked, routeMarked, hidden,
         target != null && target.center.dy < screen.center.dy);
   }
@@ -239,6 +246,29 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   List<_ScrollAnchor> _targetScrolls = const [];
   final Set<ScrollPosition> _watchedScrolls = {};
   List<Rect> _chrome = const [], _legible = const [];
+  /// The bars that bound the usable area, in overlay coordinates: the pinned top bars and the
+  /// bottom tab bar ([guideBars]); a sub-tab row is never the bottom bar.
+  List<Rect> _barsTop = const [], _barsBottom = const [];
+  /// The controls kept real inside placeholder cards: the previous and next step's targets and
+  /// the buttons beside them [_neighbourControls].
+  Set<Element> _keptControls = const {};
+  /// The step's target is itself a bar control (a tab, a sub-tab): it lives outside the usable
+  /// area by design, so it counts as in view.
+  bool _targetInChrome = false;
+
+  /// True when [resolution]'s target sits inside a chrome widget of [page] (a tab, a sub-tab, a title).
+  static bool _isInChrome(Element? page, TargetResolution? resolution) {
+    if (page == null || resolution is! TargetFound) return false;
+    for (final e in onstageElements(page)) {
+      if (!isGuideChromeWidget(e.widget)) continue;
+      final box = laidOutBox(e);
+      if (box == null) continue;
+      for (RenderObject? o = resolution.renderObject; o != null; o = o.parent) {
+        if (identical(o, box)) return true;
+      }
+    }
+    return false;
+  }
   /// The control that leads back to the guide (off path) or to the step's tab: focused like a target.
   Rect? _route;
   bool _yielding = true;
@@ -293,7 +323,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final layer = _layerKey.currentContext?.findRenderObject();
     if (layer is! RenderBox) return const [];
     return [
-      for (final box in [..._keepBoxes, ..._chromeBoxes, ?_routeInfo?.object])
+      for (final box in [..._keepBoxes, ..._chromeBoxes, ?_routeInfo?.object,
+          for (final e in _keptControls) if (e.mounted) ?laidOutBox(e)])
         if (box.attached && box.hasSize) rectInRoot(box, layer).intersect(visibleBoundsInRoot(box, layer)),
     ];
   }
@@ -313,6 +344,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     }
 
     void visit(Element element) {
+      // Chrome never carries ink, whenever it was built (the plan may not have seen it yet).
+      if (isGuideChromeWidget(element.widget)) return;
       final box = laidOutBox(element);
       if (_paintsItself(element.widget) || isGuideControl(element.widget)) {
         if (box != null && looks.lookOf(element) == GuideUnitLook.skeleton) {
@@ -430,7 +463,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
   /// [t] counts as on screen when it lies within [v] vertically and at least half of its
   /// width does horizontally: a sub-tab half hidden by its row's own side scroll is
   /// still there to tap (the guide cannot scroll it, and a vertical marker would lie).
-  static bool _onScreen(Rect t, Rect v) => t.top >= v.top - .5 && t.bottom <= v.bottom + .5 &&
+  static bool _onScreen(Rect t, Rect v, bool targetIsBar) => _verticallyIn(t, v, targetIsBar) &&
       math.min(t.right, v.right) - math.max(t.left, v.left) >= t.width / 2;
   // Edges count as inside: a full-width target ends exactly at the screen edge.
   @visibleForTesting
@@ -617,10 +650,14 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
       backElement = tabElements[startTab];
       backIsTab = true;
     }
+    // A route back that is chrome (the NavBar arrow, a tab, a sub-tab) leaves every content unit
+    // dimmed, the route's neighbouring card too; only a route that is itself content (a Settings
+    // row) keeps its neighbours lit [guide_r5_scenes_test R5-3].
+    final chromeRoute = hop == null || hop.kind != GuideHopKind.page;
     final route = back;
     final keepers = [?back];
     final plan = planSkeleton(page, keep: keepers, chrome: [?tabBar],
-        dim: DimPolicy(focus: back, placeholders: false, neighboursLit: true, navigationTarget: backIsTab, focusObject: backElement == null ? null : laidOutBox(backElement)));
+        dim: DimPolicy(focus: back, placeholders: false, neighboursLit: !chromeRoute, navigationTarget: backIsTab, focusObject: backElement == null ? null : laidOutBox(backElement)));
     final veil = scaffoldOf(page).withValues(alpha: kDimOpacity);
     final out = <SkeletonShape>[...plan.shapes];
     final units = <PlannedUnit>[...plan.units];
@@ -901,8 +938,12 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final resolution = page == null || step == null ? null : step.target.resolve(page, l);
     final targetNow = box != null && resolution is TargetFound
         ? MatrixUtils.transformRect(box.getTransformTo(layer), resolution.rect) : null;
-    final viewport = Offset.zero & layer.size;
-    final outside = targetNow != null && !_onScreen(targetNow, viewport);
+    final bars = page == null || box == null ? null : guideBars(page);
+    final barXf = box?.getTransformTo(layer);
+    final barsTop = bars == null ? const <Rect>[] : [for (final r in bars.top) MatrixUtils.transformRect(barXf!, r)];
+    final barsBottom = bars == null ? const <Rect>[] : [for (final r in bars.bottom) MatrixUtils.transformRect(barXf!, r)];
+    final area = _boundsOf(layer.size, MediaQuery.paddingOf(context), MediaQuery.viewInsetsOf(context).bottom, barsTop, barsBottom);
+    final outside = targetNow != null && !_onScreen(targetNow, area, _isInChrome(page, resolution));
     // The page is revealed once per step, and again when LATE CONTENT moves the target
     // away (an async read lands above it). It is never re-revealed after the USER
     // scrolled: the marker shows the way and the overlay must not scroll the page back
@@ -924,11 +965,8 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
       _searchToken = token;
       _searchingPage = page;
       _glide?.abandon();
-      final pageBox = box;
       final glide = RevealGlide(
-        area: _boundsOf(layer.size, MediaQuery.paddingOf(context), MediaQuery.viewInsetsOf(context).bottom, [
-          if (pageBox != null) for (final r in defaultSkeletonChrome(page)) MatrixUtils.transformRect(pageBox.getTransformTo(layer), r),
-        ]),
+        area: area,
         duration: motion(context, Motion.guideScroll),
         anchor: kGuideScrollAnchor,
       );
@@ -951,6 +989,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     var shapes = <SkeletonShape>[];
     SkeletonPlan? skeleton;
     var keepBoxes = <RenderBox>[];
+    var keptControls = <Element>{};
     var chrome = <Rect>[];
     var legible = <Rect>[];
     List<SkeletonShape> intoOverlayShapes(List<SkeletonShape> plan, Matrix4 transform) => [
@@ -982,7 +1021,11 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
         keep.addAll(status);
         final localChrome = defaultSkeletonChrome(page);
         chrome = localChrome.map(intoOverlay).toList();
-        legible = [...legibleContent(page, keep: keep), ...status].map(intoOverlay).toList();
+        // The previous and next step's controls (and the buttons beside them) stay real.
+        keptControls = _neighbourControls(page, step, l);
+        // The kept previous/next controls are real and tappable: the card keeps clear of them too.
+        final keptRects = [for (final e in keptControls) if (laidOutBox(e) case final RenderBox b when b.hasSize) rectInRoot(b, box).intersect(visibleBoundsInRoot(b, box))];
+        legible = [...legibleContent(page, keep: keep), ...status, for (final r in keptRects) if (!r.isEmpty) r].map(intoOverlay).toList();
         // A built target's window belongs to layout, independently of clipping.
         final policy = DimPolicy.of(page, resolution);
         skeleton = planSkeleton(page, keep: keep, chrome: localChrome, dim: policy);
@@ -1067,6 +1110,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     _skeletonPlan = skeleton;
     _hasPlaceholders = _collapsed || (skeleton?.units.any((u) => u.skeleton) ?? false);
     _keepBoxes = keepBoxes;
+    _keptControls = keptControls;
     _staticSections = staticSections;
     _routeInfo = route == null ? null : routeInfo;
     _chromeBoxes = [
@@ -1075,11 +1119,76 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
           if (laidOutBox(e) case final RenderBox chromeBox) chromeBox,
     ];
     _chrome = chrome;
+    _barsTop = barsTop;
+    _targetInChrome = _isInChrome(page, resolution);
+    _barsBottom = barsBottom;
     _legible = legible;
     _route = route;
     _yielding = page == null;
     _publish();
     if (changed) setState(() {});
+  }
+
+  /// The controls of the PREVIOUS and NEXT steps' targets that this page shows, with the buttons
+  /// beside them (the other controls of the same row): they stay real, readable and tappable,
+  /// dimmed at most, even inside a placeholder card (owner, round 5 item 7: after Discard the
+  /// staged row's Keep / Discard / Edit became grey bars). CLAIM(neighbour-targets-real)
+  /// [guide_r5_scenes_test R5-7].
+  Set<Element> _neighbourControls(Element page, GuideStep step, AppLocalizations l) {
+    final steps = widget.run.variant.steps;
+    final at = steps.indexOf(step);
+    final out = <Element>{};
+    for (final i in [at - 1, at + 1]) {
+      if (at < 0 || i < 0 || i >= steps.length) continue;
+      final other = steps[i];
+      final found = <TargetFound>[];
+      for (final target in [other.target, ...other.alsoKeep]) {
+        if (target.resolve(page, l) case final TargetFound f) found.add(f);
+      }
+      for (final content in other.alsoTap) {
+        // "Every pressable row" names no particular control.
+        if (content is PressableRows) continue;
+        found.addAll(content.resolve(page, l));
+      }
+      for (final f in found) {
+        final controls = _controlsAround(page, f.renderObject);
+        out.addAll(controls);
+        out.addAll(_buttonsBeside(controls));
+      }
+    }
+    return out;
+  }
+
+  /// Every control element of [page] whose box holds [object] and is about its size (the control
+  /// itself and the wrappers drawn tight around it: a page-wide gesture detector is no part of it).
+  static List<Element> _controlsAround(Element page, RenderBox object) {
+    final found = <Element>[];
+    for (final e in onstageElements(page)) {
+      if (!isGuideControl(e.widget)) continue;
+      final box = laidOutBox(e);
+      if (box == null || !box.hasSize || !object.hasSize) continue;
+      if (box.size.width > object.size.width + 24 || box.size.height > object.size.height + 24) continue;
+      for (RenderObject? o = object; o != null; o = o.parent) {
+        if (identical(o, box)) { found.add(e); break; }
+      }
+    }
+    return found;
+  }
+
+  /// The other controls of the row [controls] sit in: the nearest Flex around the outermost one,
+  /// when it holds no card (a row of buttons, not a page column).
+  static Set<Element> _buttonsBeside(List<Element> controls) {
+    if (controls.isEmpty) return const {};
+    Element? row;
+    controls.first.visitAncestorElements((a) {
+      if (a.widget is Flex) { row = a; return false; }
+      return true;
+    });
+    final flex = row;
+    if (flex == null) return const {};
+    final inside = onstageElements(flex).toList();
+    if (inside.any((e) => isGuideCard(e.widget))) return const {};
+    return {for (final e in inside) if (isGuideControl(e.widget)) e};
   }
 
   /// True for a component that wraps itself in a [GuideUnitMark].
@@ -1095,7 +1204,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
       _unpublish();
       return;
     }
-    final next = GuidePlan.from(_page, plan, keep: _keepBoxes, skeletonAll: _collapsed);
+    final next = GuidePlan.from(_page, plan, keep: _keepBoxes, keepControls: _keptControls, skeletonAll: _collapsed);
     _published = next;
     dim.setLooks(next);
     // CLAIM(dim-fade-linear): the placeholders are there at once; the dim ramps 0 -> 1
@@ -1171,7 +1280,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
       final target = markers.target, outline = markers.outline, routeOutline = markers.routeOutline;
       final marked = markers.marked, routeMarked = markers.routeMarked, hidden = markers.hidden, up = markers.up;
       final screen = Offset.zero & constraints.biggest;
-      final bounds = _boundsOf(screen.size, MediaQuery.paddingOf(context), MediaQuery.viewInsetsOf(context).bottom, _chrome);
+      final bounds = _boundsOf(screen.size, MediaQuery.paddingOf(context), MediaQuery.viewInsetsOf(context).bottom, _barsTop, _barsBottom);
       return Stack(children: [
         // CLAIM(lazy-skeleton-input): a published P6 plan needs input even before
         // its target exists, including newly built rows [guide_r2_review_test R4].
@@ -1236,18 +1345,26 @@ class _GuideMarkers {
 
 /// The area the card, the pill and the auto-scroll may use: the screen between the top chrome
 /// (title, NavBar, sub-tabs) and the bottom chrome (tab bar), above the keyboard.
-Rect _boundsOf(Size screen, EdgeInsets padding, double bottomInset, List<Rect> chrome) {
+///
+/// [top] and [bottom] are the BARS ([guideBars]): chrome is told by what it is, not by where it
+/// lies. Alarm's Mon-Sun row is a SubTabs inside the scrolling content below mid-screen; the old
+/// geometric rule took it for the tab bar and cut the room above it [guide_r5_test R5-1b].
+Rect _boundsOf(Size screen, EdgeInsets padding, double bottomInset, List<Rect> top, List<Rect> bottom) {
   var bounds = Rect.fromLTRB(0, padding.top, screen.width, screen.height - math.max(padding.bottom, bottomInset));
-  for (final r in chrome) {
-    if (r.top > screen.height / 2 && r.width > screen.width / 2) bounds = Rect.fromLTRB(bounds.left, bounds.top, bounds.right, math.min(bounds.bottom, r.top));
+  for (final r in bottom) {
+    if (r.width > screen.width / 2) bounds = Rect.fromLTRB(bounds.left, bounds.top, bounds.right, math.min(bounds.bottom, r.top));
+  }
+  for (final r in top) {
     if (r.top < screen.height / 4 && r.width > screen.width / 2) bounds = Rect.fromLTRB(bounds.left, math.max(bounds.top, r.bottom), bounds.right, bounds.bottom);
   }
   return bounds;
 }
 
-/// True when [target] is not fully on screen vertically (a horizontal overhang is a row's
-/// own side scroll; a vertical indicator would say nothing about it).
-bool _outOfView(Rect target, Rect screen) => target.top < screen.top - .5 || target.bottom > screen.bottom + .5;
+/// True when [target] lies fully inside [area] vertically (a horizontal overhang is a row's own
+/// side scroll; a vertical indicator would say nothing about it). A target that is itself a bar
+/// (a tab, a sub-tab) lives outside the area by design and counts as in view.
+bool _verticallyIn(Rect target, Rect area, bool targetIsBar) =>
+    targetIsBar || target.top >= area.top - .5 && target.bottom <= area.bottom + .5;
 
 /// A drag the overlay handed to the page's scrollable. It knows when the position
 /// itself ended or cancelled it (a disposed position resets the drag), so a late cancel
@@ -1422,8 +1539,16 @@ class _GuidePainter extends CustomPainter implements GuideDecoration {
   void paint(Canvas canvas, Size size) {
     final painted = source.layerStatic;
     if (painted.isEmpty) return;
+    // Nothing the overlay paints reaches into a hole: chrome, the target, the route back and the kept
+    // controls are never covered, whatever extent a scrolled-away unit reports (the owner's dimmed NavBar:
+    // a shape from a unit above the list ran down into it) [guide_r5_scenes_test R5-4g].
+    canvas.save();
+    for (final hole in source.layerHoles) {
+      canvas.clipRect(hole, clipOp: ClipOp.difference);
+    }
     paintSkeletonShapes(canvas, [for (final s in source.layerShapes) if (painted.contains(s.section)) s], palette,
         fade: source.layerFade, pulse: source.layerPulse);
+    canvas.restore();
   }
 
   @override

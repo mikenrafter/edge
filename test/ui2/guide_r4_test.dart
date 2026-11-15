@@ -25,6 +25,7 @@ final _en = lookupAppLocalizations(const Locale('en'));
 
 const _handKey = ValueKey('guide-live-tap-hand');
 const _chevronKey = ValueKey('guide-live-scroll-chevron');
+const _scrollHandKey = ValueKey('guide-live-scroll-hand');
 const _secondKey = ValueKey('r4-second-target');
 const _secondTitle = ValueKey('r4-second-title');
 const _probeKey = ValueKey('r4-probe');
@@ -435,9 +436,9 @@ void main() {
       expect(stage.run.state, isA<GuideAtStep>());
     });
 
-    // WHY: item 2 "chevron animating in the direction to scroll"; the user can scroll the
-    // target off the TOP too, and then the way is up.
-    testWidgets('R4-2c: the chevron points up when the target is above, and slides in that direction', (t) async {
+    // WHY: item 2; the user can scroll the target off the TOP too, and then the way is up. Round 5
+    // item 2 moved the motion from the chevron (now static) to the hand, in the same direction.
+    testWidgets('R4-2c: the chevron points up when the target is above, the hand nudges up', (t) async {
       await _arrive(t);
       final position = await _awaitPage(t);
       await _trace(t, position, frames: 60);
@@ -454,19 +455,17 @@ void main() {
       expect(find.descendant(of: marker, matching: find.byIcon(LucideIcons.chevronUp)), findsOneWidget);
       expect(find.descendant(of: marker, matching: find.byIcon(LucideIcons.chevronDown)), findsNothing);
       expect(find.byKey(_chevronKey), findsOneWidget);
-      final ys = <double>[];
+      // Round 5 item 2: the HAND nudges (up, toward the target) and the chevron stands still.
+      final hand = find.descendant(of: marker, matching: find.byKey(_scrollHandKey));
+      final chevron = <double>{}, hands = <double>[];
       for (var i = 0; i < 100; i++) {
         await t.pump(const Duration(milliseconds: 16));
-        ys.add(t.getRect(find.byKey(_chevronKey)).center.dy);
+        chevron.add(t.getRect(find.byKey(_chevronKey)).center.dy);
+        hands.add(t.getRect(hand).center.dy);
       }
-      final spread = ys.reduce((a, b) => a > b ? a : b) - ys.reduce((a, b) => a < b ? a : b);
-      expect(spread, greaterThan(2), reason: 'the chevron travels');
-      var towards = 0, back = 0;
-      for (var i = 1; i < ys.length; i++) {
-        if (ys[i] < ys[i - 1]) towards++;
-        if (ys[i] > ys[i - 1]) back++;
-      }
-      expect(towards, greaterThan(back * 3), reason: 'it travels up (toward the target) and snaps back');
+      expect(chevron, hasLength(1), reason: 'the chevron is static: $chevron');
+      final rest = hands.reduce((a, b) => a > b ? a : b);
+      expect(rest - hands.reduce((a, b) => a < b ? a : b), greaterThan(2), reason: 'the hand travels up, toward the target');
     });
   });
 
@@ -554,9 +553,10 @@ void main() {
     final indicatorBoundary = find.ancestor(of: indicator, matching: find.byType(RepaintBoundary)).first;
     expect(find.descendant(of: indicatorBoundary, matching: find.byKey(GuideStepCard.cardKey)), findsNothing);
     expect(find.descendant(of: indicatorBoundary, matching: find.byKey(LiveGuideOverlay.skeletonKey)), findsNothing);
-    final chevronBoundary = find.ancestor(of: find.byKey(_chevronKey), matching: find.byType(RepaintBoundary)).first;
-    expect(find.descendant(of: chevronBoundary, matching: find.text(_en.guideScrollMarker)), findsNothing,
-      reason: 'the chevron tick must not repaint its static label or hand');
+    final handBoundary = find.ancestor(of: find.byKey(_scrollHandKey), matching: find.byType(RepaintBoundary)).first;
+    expect(find.descendant(of: handBoundary, matching: find.text(_en.guideScrollMarker)), findsNothing,
+      reason: 'the hand tick must not repaint its static label or chevron');
+    expect(find.descendant(of: handBoundary, matching: find.byKey(_chevronKey)), findsNothing);
   });
 
   // WHY: P1 / CLAIM(hand-clock-rest): two 200 ms nudge peaks, then 800 ms of
@@ -750,7 +750,7 @@ void main() {
       await t.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
     });
 
-    testWidgets('R4-5c: the chevron is still', (t) async {
+    testWidgets('R4-5c: the indicator\'s hand and chevron are still', (t) async {
       reduce(t);
       await _arrive(t);
       final position = await _awaitPage(t);
@@ -764,8 +764,9 @@ void main() {
       for (var i = 0; i < 120; i++) {
         await t.pump(const Duration(milliseconds: 16));
         ys.add(t.getRect(find.byKey(_chevronKey)).center.dy);
+        ys.add(t.getRect(find.byKey(_scrollHandKey)).center.dy + 1000);
       }
-      expect(ys.length, 1, reason: 'static: $ys');
+      expect(ys.length, 2, reason: 'static: $ys');
     });
   });
 }

@@ -183,7 +183,11 @@ void main() {
           expect(card.overlaps(target), isFalse);
           expect(card.overlaps(t.getRect(find.byKey(LiveGuideOverlay.tapPillKey))), isFalse);
         }
-        expect(moved, isTrue, reason: 'T7: at least one pointer drag really moved the card');
+        // Round 5 item 1b: the Alarm page's Mon-Sun row no longer cuts the card's room, so on set-wake-time
+        // (the target's card is kept legible from the title to the buttons) the bottom edge is the ONLY
+        // place that covers nothing legible: the card correctly stays there under every drag. Before, the
+        // bogus bounds left it a strip to slide in.
+        if (scene.id != 'alarm-schedule/set-wake-time') expect(moved, isTrue, reason: 'T7: at least one pointer drag really moved the card');
         expect(changes, 0, reason: 'T7: no transient underlying page scrolling');
       } finally { await disposeR2(t, m); }
     });

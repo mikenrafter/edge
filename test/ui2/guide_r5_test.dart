@@ -11,13 +11,15 @@
 //    on Alarm the day row shrinks the card bounds to end above itself, and the pill (clamped
 //    into the bounds) lands at the bottom of them, far from the Wake time outline.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/guides/guide.dart';
+import 'package:openstrap_edge/ui2/guides/guide_dim.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
-import 'package:openstrap_edge/ui2/theme.dart';
+import 'package:openstrap_edge/ui2/skeleton/skeleton.dart' show surfaceBeneath;
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 import '../support/guide_text.dart';
@@ -26,7 +28,6 @@ import '../support/skeleton_fixture.dart';
 
 final _en = lookupAppLocalizations(const Locale('en'));
 
-const _handKey = ValueKey('guide-live-tap-hand');
 const _chevronKey = ValueKey('guide-live-scroll-chevron');
 const _navKey = stageDetailsTitle; // the anchor of the stage guide's second step
 
@@ -97,6 +98,27 @@ class _AlarmShapedPage extends StatelessWidget {
     ])),
   );
 }
+
+/// A page whose NavBar is re-keyed when [keyed] flips: a new element subtree under the same page.
+class _RekeyPage extends StatelessWidget {
+  final StageTaps taps;
+  final ValueNotifier<bool> keyed;
+  const _RekeyPage(this.taps, this.keyed);
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(valueListenable: keyed, builder: (_, k, _) => Scaffold(
+    body: SafeArea(child: Column(children: [
+      NavBar('Review activities', key: k ? const ValueKey('r5-rekeyed') : _navKeyStable),
+      Expanded(child: ListView(padding: const EdgeInsets.all(16), children: [
+        for (var i = 0; i < 4; i++) const SizedBox(height: 90, child: Surface(child: Text('Row'))),
+        Pressable(key: stageFinish, onTap: () => taps.finish++, child: const Surface(child: Text('Discard'))),
+      ])),
+    ])),
+  ));
+}
+
+// The stage guide anchors on this key until the NavBar is re-keyed (the anchor then resolves by the run's memory).
+const _navKeyStable = stageDetailsTitle;
 
 /// A page with the target [gap] pixels down a scrolling body (for the scroll indicator).
 class _FarPage extends StatelessWidget {
@@ -219,6 +241,27 @@ void main() {
       });
     }
 
+    // WHY: spec Round 5 item 4 / the owner's shot 1: with the first Discard scrolled up under the NavBar, the
+    // NavBar's title and back arrow were dimmed. Chrome is never dimmed (P4), whatever is scrolled under it.
+    // catches: a unit whose visible box reaches into the bar, or a plan that dims what the bar holds.
+    testWidgets('R5-4f: with the target scrolled under the NavBar, the NavBar is not dimmed', (t) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      await _arrive(t, (taps) => _ListPage(taps, controller));
+      final bar = t.getRect(find.byType(NavBar));
+      controller.position.jumpTo(controller.position.pixels + t.getRect(find.byKey(stageFinish)).bottom - (bar.bottom - 2));
+      await t.pump();
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 100));
+      final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+      expect(overlay.paintedShapes.where((s) => s.rect.overlaps(bar.deflate(1))), isEmpty, reason: 'a dim or placeholder shape reaches into the NavBar');
+      final looks = GuideDimScope.controllerOf(t.element(find.byType(NavBar)))!.looks!;
+      final back = t.element(find.descendant(of: find.byType(NavBar), matching: find.byType(Pressable)).first);
+      expect(looks.lookOf(back), isNull);
+      final title = t.renderObject<RenderParagraph>(find.text('Review activities · 3'));
+      expect((looks as GuideLooseLooks).looseLookOf(title), isNull, reason: 'the title is dimmed');
+    });
+
     // WHY: a fix that treats "under chrome" by hiding every marker would pass the tests above.
     // This pins that scrolling the target back to the visible area brings the marker back.
     testWidgets('R5-1a: scrolled back into the visible area, the outline and the label return', (t) async {
@@ -274,6 +317,52 @@ void main() {
       expect(violations, isEmpty, reason: 'the label left its outline in ${violations.length} frames');
     });
   });
+
+  group('R5-4 chrome built after the plan', () {
+    // WHY: spec Round 5 item 4 (owner screen unknown, so fixed by design). A NavBar that a rebuild
+    // re-keys (the review page does it when reviewing starts) is a NEW element the plan has never seen,
+    // and an unseen component fell back to the dim / placeholder look until the next plan. The OLD plan
+    // must say nothing about it: chrome is never covered, however new. CLAIM(chrome-never-covered).
+    // catches: GuidePlan._unseen without a chrome exemption.
+    testWidgets('R5-4e: the old plan leaves a re-keyed NavBar and its back arrow lit', (t) async {
+      final keyed = ValueNotifier(false);
+      addTearDown(keyed.dispose);
+      await _arrive(t, (taps) => _RekeyPage(taps, keyed));
+      final ctl = GuideDimScope.controllerOf(t.element(find.byType(NavBar)))!;
+      final old = ctl.looks;
+      expect(old, isNotNull, reason: 'fixture: a plan is in force');
+      final before = t.element(find.byType(NavBar));
+      keyed.value = true;
+      await t.pump();
+      final bar = t.element(find.byType(NavBar));
+      expect(identical(bar, before), isFalse, reason: 'fixture: the NavBar is a new element');
+      final back = find.descendant(of: find.byType(NavBar), matching: find.byType(Pressable)).first;
+      expect(old!.lookOf(t.element(back)), isNull, reason: 'the old plan covers a NavBar it has not seen');
+    });
+  });
+
+
+  group('R5-7 the veil over loose text', () {
+    // WHY: owner round 5 item 7: a dark box behind "1 staged". A dim over loose text must be the colour
+    // of what is drawn beneath the text, with the Opacity above each box (a disabled button is drawn at
+    // 40%), or the veil shows as a box. CLAIM(dim-has-no-box).
+    // catches: a scaffold-coloured veil; ignoring Opacity; ignoring the box order.
+    testWidgets('R5-7: surfaceBeneath blends the boxes around a text, outermost first, under each Opacity', (t) async {
+      const card = Color(0xFF102030), wash = Color(0xFF804020);
+      await t.pumpWidget(skHost(Container(decoration: const BoxDecoration(color: card), child: Opacity(opacity: .5,
+        child: Container(decoration: const BoxDecoration(color: wash), child: const Text('Cancel'))))));
+      final paragraph = t.renderObject<RenderParagraph>(find.text('Cancel'));
+      const scaffold = Color(0xFFF8FAFC);
+      final got = surfaceBeneath(paragraph, scaffold);
+      // card over the scaffold (opaque), then the wash at 50% over that.
+      final want = Color.alphaBlend(wash.withValues(alpha: .5), Color.alphaBlend(card, scaffold));
+      expect([got.r, got.g, got.b].map((x) => (x * 255).round()), [want.r, want.g, want.b].map((x) => (x * 255).round()));
+      // and a text on nothing at all is on the scaffold itself.
+      await t.pumpWidget(skHost(const Text('Loose')));
+      expect(surfaceBeneath(t.renderObject<RenderParagraph>(find.text('Loose')), scaffold), isNot(const Color(0x00000000)));
+    });
+  });
+
 
   group('R5-2 the scroll indicator\'s hand nudges, the chevron stands still', () {
     // WHY: spec Round 5 item 2. The HAND moves, on the tap hand's clock and curve (two nudges per

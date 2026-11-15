@@ -11,12 +11,11 @@
 //      neighbouring card too.
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/gestures.dart' show HitTestResult;
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart' show AppShell, ShellDomain, ShellNavigationController;
-import 'package:openstrap_edge/ui2/grammar.dart' show NavBar, Pressable;
+import 'package:openstrap_edge/ui2/grammar.dart' show NavBar, Pressable, Section, Surface;
+import 'package:openstrap_edge/ui2/theme.dart' show P;
 import 'package:openstrap_edge/ui2/screens/day_review.dart' show DayReviewEntry;
 import 'package:openstrap_edge/ui2/guides/guide.dart';
 import 'package:openstrap_edge/ui2/guides/guide_content.dart' show PressableRows;
@@ -106,7 +105,7 @@ void main() {
             final ro = e is RenderObjectElement ? e.renderObject : null;
             final all = GuideDimScope.controllerOf(e)!.looks;
             if (ro is RenderParagraph && all is GuideLooseLooks) {
-              final look = (all as GuideLooseLooks).looseLookOf(ro);
+              final look = all.looseLookOf(ro);
               if (look != null) looks.add('text "${ro.text.toPlainText()}": $look');
             }
           }
@@ -266,12 +265,16 @@ void main() {
         final first = steps[1].target.resolve(page0, r2Locale) as TargetFound;
         await t.tapAt(first.rect.center);
         final bad = <String>[];
-        var checked = 0;
+        var checked = 0, saveFrames = 0;
         for (var i = 0; i < 60; i++) {
           await t.pump(const Duration(milliseconds: 16));
           final page = m.app.runner.routes.page;
           if (page == null) continue;
+          if (m.run.currentStep?.id == 'save') saveFrames++;
           for (final step in [steps[1], steps[2]]) {
+            // Save is step 3's target: real once the run is there (the frame the bar appears in, the
+            // guide card may still sit over it for a frame while the run moves on).
+            if (step == steps[2] && saveFrames < 3) continue;
             final controls = [
               for (final c in step.alsoTap) if (c is! PressableRows) ...c.resolve(page, r2Locale),
               if (step.target.resolve(page, r2Locale) case final TargetFound f) f,
@@ -294,6 +297,91 @@ void main() {
         await disposeR2(t, m);
       }
     });
+
+    // WHY: owner round 5 item 7, REAL DATA (two screenshots): after Discard on remove-detected, step 3 turned
+    // the WHOLE list into placeholders, including the staged row's Keep / Discard (red) / Edit, so the user
+    // could not read or change the choice just made. Fixture: a real review with two items waiting and the
+    // first Discard staged, as in the owner's shot. Requirements: (a) the previous step's target AND its
+    // sibling choice buttons on that row are kept real (never a placeholder, take taps); (b) the card nearest
+    // above the Save bar is dimmed, not a placeholder; (c) nothing draws a box behind "1 staged": a dim over
+    // loose text uses the colour of the surface it sits on. CLAIM(neighbour-targets-real).
+    // catches: a card-window rule that orders a pinned bar by layout instead of position; placeholders that
+    // replace the labels of the buttons beside the previous target; a scaffold-coloured veil over a bar.
+    group('R5-7 staged row (owner repro)', () {
+      Future<R2Mounted> pump(WidgetTester t) async {
+        final m = await pumpR2Scene(t, r2Scenes.firstWhere((s) => s.id == 'remove-detected/save'), singlePending: false);
+        await settleLiveGuide(t, frames: 18);
+        expect(m.run.currentStep?.id, 'save', reason: 'fixture: step 3 with the first Discard staged');
+        return m;
+      }
+
+      testWidgets('R5-7 staged: Keep, Discard and Edit of the staged row stay real and take taps', (t) async {
+        final m = await pump(t);
+        try {
+          final page = m.app.runner.routes.page!;
+          final keys = ['activity:n1', 'activity:w1'];
+          final discard = m.run.variant.steps[1].target.resolve(page, r2Locale) as TargetFound;
+          final row = onstageElements(page).where((e) => e.widget is Flex && onstageElements(e).where((c) => isGuideControl(c.widget)).length >= 3 &&
+            onstageElements(e).any((c) => identical(laidOutBox(c), discard.renderObject))).lastOrNull; // the smallest: the button line
+          expect(row, isNotNull, reason: 'fixture: the staged row has a button line ($keys)');
+          final buttons = [for (final c in onstageElements(row!)) if (c.widget is Pressable) c];
+          expect(buttons.length, greaterThanOrEqualTo(3), reason: 'Keep, Discard, Edit');
+          final looks = GuideDimScope.controllerOf(page)!.looks! as GuideKeepsControls;
+          for (final b in buttons) {
+            expect((looks as GuideUnitLooks).lookOf(b), isNot(GuideUnitLook.skeleton), reason: 'a choice button beside the previous target is a placeholder');
+            var kept = looks.keepsControl(b);
+            b.visitAncestorElements((a) {
+              kept |= looks.keepsControl(a);
+              return !identical(a, row);
+            });
+            expect(kept, isTrue, reason: 'it is kept real inside a placeholder card: ${b.widget.runtimeType} ${b.depth} of ${buttons.length}; row ${row.widget.runtimeType} ${row.depth}; discard ${discard.renderObject.runtimeType}');
+            expect(_takesTaps(t, laidOutBox(b)!), isTrue, reason: 'a tap on it is absorbed');
+          }
+        } finally {
+          await disposeR2(t, m);
+        }
+      });
+
+      testWidgets('R5-7 staged: the card nearest above the Save bar is dimmed, not a placeholder', (t) async {
+        final m = await pump(t);
+        try {
+          final page = m.app.runner.routes.page!;
+          final save = m.run.variant.steps[2].target.resolve(page, r2Locale) as TargetFound;
+          final root = laidOutBox(page)!;
+          final bar = rectInRoot(save.renderObject, root);
+          final cards = [for (final u in r2Units(page)) if (u.element.widget is Section || u.element.widget is Surface) u]
+            ..removeWhere((u) => u.rect.isEmpty || u.rect.top >= bar.top);
+          cards.sort((a, b) => b.rect.bottom.compareTo(a.rect.bottom));
+          expect(cards, isNotEmpty, reason: 'fixture: a card lies above the bar');
+          expect(_look(cards.first.element), GuideUnitLook.dim, reason: 'the card nearest above the bar: ${cards.first.text}');
+        } finally {
+          await disposeR2(t, m);
+        }
+      });
+
+      testWidgets('R5-7 staged: no box behind "1 staged" (the veil is the bar\'s own colour)', (t) async {
+        final m = await pump(t);
+        try {
+          final staged = find.byKey(const ValueKey('apk2-review-staged'));
+          expect(staged, findsOneWidget, reason: 'fixture: the Save bar shows its count');
+          final rect = t.getRect(staged);
+          final overlay = t.state<LiveGuideOverlayState>(find.byType(LiveGuideOverlay));
+          final veils = [for (final s in overlay.paintedShapes) if (s.kind.name == 'dim' && s.rect.overlaps(rect) && s.rect.height < 60) s];
+          final ctx = t.element(staged);
+          final bar = P.of(ctx).card;
+          debugPrint('VEILS ${[for (final v in veils) '${v.rect} ${v.color}'].join(' | ')} bar=$bar all=${[for (final s in overlay.paintedShapes) '${s.kind.name}@${s.rect}'].join(' ')}');
+          for (final v in veils) {
+            final c = v.color!;
+            expect([c.r, c.g, c.b].map((x) => (x * 255).round()).toList(), [bar.r, bar.g, bar.b].map((x) => (x * 255).round()).toList(),
+              reason: 'the veil over "1 staged" is not the colour of the bar behind it: a dark box');
+          }
+          expect(veils, isNotEmpty, reason: 'positive control: the loose text is dimmed (by a shape the overlay paints)');
+        } finally {
+          await disposeR2(t, m);
+        }
+      });
+    });
+
 
     // WHY: the generic sweep passes vacuously where no neighbouring target is on the page; this
     // pins that it reaches real controls at least on the owner's case (remove-detected, step 3, with
