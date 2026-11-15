@@ -160,9 +160,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 300));
       expect(repo.reads, greaterThan(before),
           reason: 'a pull from the gutter must trigger a repository read');
-      if (d == ShellDomain.sleep) {
-        expect(find.byType(RefreshProgressIndicator), findsNothing);
-      }
+      expect(find.byType(RefreshProgressIndicator), findsNothing);
       await t.pump(const Duration(seconds: 5));
     });
   }

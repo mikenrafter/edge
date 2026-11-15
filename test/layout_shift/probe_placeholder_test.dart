@@ -39,7 +39,7 @@ void main() {
     Widget page(bool pending) => _app([SizedBox(height: 200,
       child: PendingContent(pending: pending, child: Padding(
         padding: EdgeInsets.only(top: pending ? 0 : 40),
-        child: const Text('Result'))))]);
+        child: const Align(alignment: Alignment.topLeft, child: Text('Result')))))]);
     await t.pumpWidget(page(true));
     final a = probe.capture(t, atMs: 0);
     await t.pumpWidget(page(false));

@@ -274,7 +274,8 @@ ShiftReport score(Scenario s, ShiftPolicy p) {
       final o = before[e.id];
       if (o != null && e.rect.area <= o.rect.area) continue;
       for (final f in frame.elements) {
-        if (!f.focusable || f.id == e.id || f.rect.area <= 0) continue;
+        if (!f.focusable || f.id == e.id || f.rect.area <= 0 ||
+            f.ancestorIds.contains(e.id)) { continue; }
         double frac(ShiftRect r) => (r.intersect(f.rect)?.area ?? 0) / f.rect.area;
         final fraction = frac(e.rect);
         if (fraction < p.coverMinFraction ||

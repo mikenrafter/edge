@@ -30,13 +30,13 @@ class ShiftProbe {
   ///    `card`, so a loading indicator and the card that replaces it match).
   ///    Sibling INDEX is deliberately left out: a card inserted above would
   ///    renumber every later sibling and the shift would vanish;
-  ///  * ordinal: n-th element with the same prefix in tree order.
+  ///  * ordinal: assigned on first observation, retained by element identity.
   /// Content is NOT in the id: "—" replaced by "72" is the same element (a
   /// resize if the box changed, nothing if not), not disappear + appear. The
   /// content hash is kept in [contentOf] for diagnostics. A progress indicator
   /// is tracked as a `card` slot sized by its outermost sizing wrapper
   /// (SizedBox/Container/Padding/...), so loading box -> chart is one resize.
-  /// Deterministic: same tree gives the same ids.
+  /// Deterministic: the same initial tree gives the same ids.
   final bool trackUnkeyed;
 
   /// When set, elements whose rect does not intersect it are dropped (a
@@ -73,6 +73,8 @@ class ShiftProbe {
     return found;
   }
 
+  final _elementIds = <Element, String>{};
+  final _elementCounts = <String, int>{};
   final List<Frame> frames = [];
   final List<Interaction> interactions = [];
   final List<FocusEvent> focus = [];
@@ -104,12 +106,10 @@ class ShiftProbe {
       final seen0 = _clip(box, ShiftRect(o.dx, o.dy, box.size.width, box.size.height));
       if (seen0 == null) continue;
       final sub = _subtree(e);
-      if (k is! ValueKey<String> && _insidePendingPaint(e)) {
-        id = 'skeleton:$id';
-      }
       final focusEl = sub.where((x) => x.widget is Focus).firstOrNull;
       final node = focusEl == null ? null : _nodeOf(focusEl);
-      final canFocus = node?.canRequestFocus ?? false;
+      final ownsControl = _ownsControl(e);
+      final canFocus = ownsControl && (node?.canRequestFocus ?? false);
       final vis = visibleOnly;
       if (vis != null &&
           vis.intersect(seen0) == null) {
@@ -142,10 +142,11 @@ class ShiftProbe {
             ? ElementRole.control
             : _isPlaceholder(e, sub)
                 ? ElementRole.placeholder
-                : _role(e.widget, sub, canFocus),
+                : _role(e.widget, sub, ownsControl),
         colorArgb: _color(sub),
         focusable: canFocus,
-        focused: node?.hasFocus ?? false,
+        focused: ownsControl && (node?.hasFocus ?? false),
+        ancestorIds: [for (final a in _ancestors(e)) if (ids[a] != null) ids[a]!],
       ));
     }
     _ids = ids;
@@ -199,7 +200,7 @@ class ShiftProbe {
     return null;
   }
 
-  static String? _synthId(Element e, Map<String, int> seen) {
+  String? _synthId(Element e, Map<String, int> seen) {
     final kind = _synthKind(e.widget);
     if (kind == null) return null;
     // A control wrapped by another control within 16 levels (Semantics and
@@ -250,8 +251,17 @@ class ShiftProbe {
       return true;
     });
     final base = '~$kind|$scope|${kind == 'card' ? '' : types.join('<')}';
-    final n = seen[base] = (seen[base] ?? -1) + 1;
-    return '$base#$n';
+    // Flutter preserves an unkeyed element when rows are inserted around it.
+    // Re-numbering the whole tree each frame incorrectly pairs unrelated rows.
+    // Loading indicators/card replacements keep their explicit slot contract.
+    if (kind == 'card') {
+      final n = seen[base] = (seen[base] ?? -1) + 1;
+      return '$base#$n';
+    }
+    return _elementIds.putIfAbsent(e, () {
+      final n = _elementCounts[base] = (_elementCounts[base] ?? -1) + 1;
+      return '$base#$n';
+    });
   }
 
   static ShiftRect? _clip(RenderBox box, ShiftRect r) {
@@ -357,16 +367,6 @@ class ShiftProbe {
     return n;
   }
 
-  static bool _insidePendingPaint(Element e) {
-    var pending = false;
-    e.visitAncestorElements((a) {
-      final w = a.widget;
-      pending = w is PendingContent && w.pending;
-      return !pending;
-    });
-    return pending;
-  }
-
   /// A loading stand-in: a 'skeleton:' key, or an InlineLoading in its
   /// subtree or within a few levels above it (the spinner and status text an
   /// unkeyed probe tracks inside one are part of the placeholder).
@@ -384,13 +384,31 @@ class ShiftProbe {
     return inside;
   }
 
+  static bool _ownsControl(Element e) {
+    var current = e;
+    for (var depth = 0; depth < 30; depth++) {
+      final w = current.widget;
+      if (w is Focus || _synthKind(w) == 'ctl' ||
+          w is Semantics && ((w.properties.button ?? false) || (w.properties.slider ?? false))) { return true; }
+      // A layout containing controls does not itself become a control.
+      if (w is Flex || w is Stack || w is ScrollView) return false;
+      final children = <Element>[]; current.visitChildren(children.add);
+      if (children.length != 1) return false;
+      current = children.single;
+    }
+    return false;
+  }
+
+  static Iterable<Element> _ancestors(Element e) {
+    final parents = <Element>[];
+    e.visitAncestorElements((a) { parents.add(a); return true; });
+    return parents;
+  }
+
   static ElementRole _role(Widget w, List<Element> sub, bool canFocus) {
     if (w is Text || w is RichText) return ElementRole.paragraph;
     if (sub.any((x) => x.widget is EditableText)) return ElementRole.input;
-    if (sub.any((x) {
-      final y = x.widget;
-      return y is Semantics && (y.properties.button ?? false);
-    })) {
+    if (_synthKind(w) == 'ctl' || w is Semantics && (w.properties.button ?? false)) {
       return ElementRole.control;
     }
     if (canFocus) return ElementRole.control;

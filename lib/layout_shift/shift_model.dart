@@ -76,6 +76,9 @@ class ElementSnapshot {
   final bool focusable;
   final bool focused;
   final bool enabled;
+
+  /// Tracked ancestors contain this element; they cannot occlude their own child.
+  final List<String> ancestorIds;
   const ElementSnapshot({
     required this.id,
     required this.rect,
@@ -84,6 +87,7 @@ class ElementSnapshot {
     this.focusable = false,
     this.focused = false,
     this.enabled = true,
+    this.ancestorIds = const [],
   });
 }
 
