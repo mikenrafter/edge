@@ -27,7 +27,7 @@ IconData _icon(Finding f) => switch (f.kind) {
   FindingKind.tempElevated => LucideIcons.thermometer,
   FindingKind.irregularRhythm => LucideIcons.heartPulse,
   FindingKind.lowReadiness => LucideIcons.batteryLow,
-  FindingKind.rhrShift => LucideIcons.trendingUp,
+  FindingKind.rhrShift => f.risen == null ? LucideIcons.chartLine : f.risen! ? LucideIcons.trendingUp : LucideIcons.trendingDown,
 };
 
 List<String> observationWeek(String end, int week) => [
@@ -64,7 +64,7 @@ class _FindingsLogState extends State<FindingsLog> {
     return detailScaffold(c, l.findingsLogTitle, [
       Padding(key: const ValueKey('observations-latest-week'), padding: const EdgeInsets.symmetric(vertical: S.x3),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(l.observationsLatestWeek(prettyDay(latest.first), prettyDay(latest.last)), style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+          Text(l.observationsLatestWeek(prettyDay(latest.first, l), prettyDay(latest.last, l)), style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
           const SizedBox(height: S.x2),
           if (weekEvents.isEmpty) Text(l.observationsNoWeek, style: F.cap.copyWith(color: p.ink2)),
           Wrap(spacing: S.x3, runSpacing: S.x2, children: [for (final k in kinds)
@@ -74,16 +74,16 @@ class _FindingsLogState extends State<FindingsLog> {
       Surface(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           IconButton(tooltip: l.observationsEarlierWeek, onPressed: earliest.compareTo(days.first) < 0 ? () => move(1) : null, icon: const Icon(LucideIcons.chevronLeft)),
-          Expanded(child: Text('${prettyDay(days.first)} – ${prettyDay(days.last)}', textAlign: TextAlign.center, style: F.cap.copyWith(color: p.ink2))),
+          Expanded(child: Text('${prettyDay(days.first, l)} – ${prettyDay(days.last, l)}', textAlign: TextAlign.center, style: F.cap.copyWith(color: p.ink2))),
           IconButton(tooltip: l.observationsLaterWeek, onPressed: _week > 0 ? () => move(-1) : null, icon: const Icon(LucideIcons.chevronRight)),
         ]),
         ChartFrame(title: l.findingsLogTitle, unit: l.observationsEventsUnit, height: 130,
           yAxis: AxisSpec.of([0, maximum], floor: 0, ticks: 3, format: (v) => '${v.round()}'),
-          panel: ChartKeyReadout(time: prettyDay(focus), timeSpan: days.map((d) => prettyDay(d)).toList(), scrubbed: true,
+          panel: ChartKeyReadout(time: prettyDay(focus, l), timeSpan: days.map((d) => prettyDay(d, l)).toList(), scrubbed: true,
             cells: [for (final k in kinds) ChartCell(findingTitle(l, Finding(k, focus)), p.on(findingColor(k)), value: '${on(focus).where((f) => f.kind == k).length}')]),
           child: Scrubber(hold: true, label: l.findingsLogTitle, step: 1 / 7,
             value: (days.indexOf(focus) + .5) / 7,
-            describe: (v) => l.observationsDayCount(prettyDay(days[ChartScrub.slotAt(7, v, bars: true)]), counts[ChartScrub.slotAt(7, v, bars: true)].round()),
+            describe: (v) => l.observationsDayCount(prettyDay(days[ChartScrub.slotAt(7, v, bars: true)], l), counts[ChartScrub.slotAt(7, v, bars: true)].round()),
             onChanged: (v) => setState(() => _focus = days[ChartScrub.slotAt(7, v, bars: true)]),
             onEnd: () {}, child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               for (final day in days) Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: S.x2),
@@ -96,7 +96,7 @@ class _FindingsLogState extends State<FindingsLog> {
       const SizedBox(height: S.x3),
       if (on(focus).isEmpty) Padding(padding: const EdgeInsets.all(S.x3), child: Text(l.observationsNoDay, style: F.body.copyWith(color: p.ink2))),
       for (final f in on(focus)) Padding(padding: const EdgeInsets.only(bottom: S.x2),
-        child: WhyRow(id: 'finding:${f.kind.name}:${f.date}', title: findingTitle(l, f), body: findingDetail(l, f),
+        child: WhyRow(id: 'finding:${f.kind.name}:${f.date}', title: '${prettyDay(f.date, l)} · ${findingTitle(l, f)}', body: findingDetail(l, f),
           color: findingColor(f.kind), icon: _icon(f), fullText: true,
           onTap: f.kind == FindingKind.rhrShift ? () => Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => RhrChangesScreen(findings: widget.findings, points: widget.rhr))) : null)),
       if (widget.findings.any((f) => f.kind == FindingKind.rhrShift)) TextButton.icon(
@@ -129,16 +129,16 @@ class RhrChangesScreen extends StatelessWidget {
     final marks = dailyAnnotations(rhrChangeAnnotations(findings, l: l), days);
     return detailScaffold(c, l.rhrChangesTitle, [
       Surface(child: ChartFrame(title: l.healthRowRestingHr, unit: 'bpm', height: 180, yAxis: axis, series: values,
-        xLabels: [prettyDay(days.first), prettyDay(days.last)],
+        xLabels: [prettyDay(days.first, l), prettyDay(days.last, l)],
         annotations: marks.isEmpty ? null : AnnotationSet(items: marks, domainStart: 0, domainEnd: (days.length - 1).toDouble()),
         panel: byDay.isEmpty ? ChartKeyReadout(cells: [ChartCell(l.healthRowRestingHr, p.on(C.red))]) : null,
         footnote: byDay.isEmpty ? l.rhrNoReadings : null,
         child: ChartScrub(label: l.healthRowRestingHr, keys: [ChartKey.slots(l.healthRowRestingHr, p.on(C.red), values, (i, v) => '${v.round()} bpm')],
-          slots: days.length, gaps: true, time: (v) => prettyDay(days[ChartScrub.slotAt(days.length, v)]),
+          slots: days.length, gaps: true, time: (v) => prettyDay(days[ChartScrub.slotAt(days.length, v)], l),
           child: CustomPaint(size: Size.infinite, painter: LineChart(values, p.on(C.red), axis: axis, fill: false))))),
       const SizedBox(height: S.x3),
       for (final f in findings.where((f) => f.kind == FindingKind.rhrShift)) Padding(padding: const EdgeInsets.only(bottom: S.x2),
-        child: WhyRow(id: 'rhr:${f.date}', title: '${prettyDay(f.date)} · ${findingTitle(l, f)}', body: findingDetail(l, f), color: C.blue, icon: _icon(f), fullText: true)),
+        child: WhyRow(id: 'rhr:${f.date}', title: '${prettyDay(f.date, l)} · ${findingTitle(l, f)}', body: findingDetail(l, f), color: C.blue, icon: _icon(f), fullText: true)),
     ]);
   }
 }

@@ -3906,5 +3906,34 @@
   "reviewReadTime": "दिन की गणना का समय पढ़ा जा रहा है",
   "reviewReadWake": "जागने के समय पढ़े जा रहे हैं",
   "reviewReadWater": "पानी की प्रविष्टियाँ पढ़ी जा रही हैं",
-  "reviewReadProfile": "आपकी प्रोफ़ाइल पढ़ी जा रही है"
+  "reviewReadProfile": "आपकी प्रोफ़ाइल पढ़ी जा रही है",
+  "observationsLatestWeek": "पिछला सप्ताह · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "इस सप्ताह कोई संकेत चिह्नित नहीं हुआ।",
+  "observationsNoDay": "इस दिन कोई संकेत चिह्नित नहीं हुआ।",
+  "observationsEarlierWeek": "पिछला सप्ताह",
+  "observationsLaterWeek": "अगला सप्ताह",
+  "observationsEventsUnit": "घटनाएँ",
+  "observationsDayCount": "{day}: {count, plural, =1{1 घटना} other{{count} घटनाएँ}}",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "आराम के समय हृदय गति में बदलाव",
+  "rhrNoReadings": "आराम के समय हृदय गति की कोई रीडिंग सेव नहीं है।"
 }

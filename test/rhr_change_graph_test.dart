@@ -1,6 +1,15 @@
 // CLAIM rhr-marks: the dedicated graph and other charts project the same flags
 // onto actual calendar days, while absent RHR remains absent.
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/ui2/screens/driver_breakdown.dart';
+import 'package:openstrap_edge/ui2/screens/day_steps.dart';
+import 'package:openstrap_edge/ui2/screens/beats.dart';
+import 'package:openstrap_edge/ui2/screens/health_screen.dart';
+import 'package:openstrap_edge/ui2/activity/day_strain.dart';
+import 'support/as_of_recalc_fakes.dart';
 import 'package:openstrap_edge/compute/findings.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/models/chart_point.dart';
@@ -42,4 +51,43 @@ void main() {
     expect(frame.annotations!.items, hasLength(1));
     expect(find.text('No resting heart rate readings stored.'), findsOneWidget);
   });
+  testWidgets('the same flag reaches driver, steps, strain and Trends graphs', (t) async {
+    skTallView(t, w: 390, h: 4000);
+    final app = AppState.forTesting(); addTearDown(app.dispose);
+    final day = todayLabel(), stamp = localDayStartSec(todayLabel())!;
+    final flag = Finding(FindingKind.rhrShift, day, risen: true);
+    final marks = rhrChangeAnnotations([flag]);
+    final points = [for (var i = 2; i >= 0; i--) ChartPoint(t: localDayStartSec(dayLabelBefore(day, i)!)!, v: 55.0-i)];
+    final facts = driverFacts(breakdown: const [{'label':'rhr','used':true,'weight':1.0,'weighted_contribution':3.0,'past_mdc':true}],
+      baselines: const {'resting_hr': {'value':55.0,'baseline':52.0,'spread':1.0}}, annotations: marks,
+      charts: {'resting_hr': {'points': [for (final p in points) {'t':p.t,'v':p.v}]}});
+    final screens = [
+      Scaffold(body: DriverBreakdown(facts)),
+      DayStepsDetail(data: DayStepsData(day: day, rhrMarks: marks, total: 500, strap: 500,
+        spans: [DayStepSpan(startTs: stamp+3600, endTs: stamp+7200, steps: 500, fromBand: true)])),
+      DayStrainDetail(data: DayStrainData(day: DateTime.fromMillisecondsSinceEpoch(stamp*1000), rhrMarks: marks, curve: List.filled(1440, 2.0))),
+      Beats(data: BeatsData(day: day, rhrMarks: marks, dcPoints: points, rhythmPoints: points)),
+      HealthScreen(tab: 2, data: HealthData(findings: [flag], charts: {for (final key in ['resting_hr','hrv','sleep']) key: points})),
+    ];
+    for (final screen in screens) {
+      await t.pumpWidget(perfApp(app, screen)); await t.pump();
+      final marked = t.widgetList<ChartFrame>(find.byType(ChartFrame)).where((f) => f.annotations?.items.any((a) => a.id == 'rhr-shift:$day') == true);
+      expect(marked, isNotEmpty, reason: screen.runtimeType.toString());
+      expect(t.takeException(), isNull);
+      await t.pumpWidget(const SizedBox());
+    }
+    await t.pumpWidget(perfApp(app, Scaffold(body: DriverBreakdown(facts))));
+    final frame = t.widget<ChartFrame>(find.byType(ChartFrame));
+    expect(frame.annotations!.items.single.at, 2, reason: 'trimmed three-day history must not use the 30-day index');
+  });
+  testWidgets('retained daily flags translate in the visible annotation lane', (t) async {
+    final projected = dailyAnnotations(rhrChangeAnnotations(flags), ['2026-11-01','2026-11-02']);
+    final l = lookupAppLocalizations(const Locale('fr'));
+    await t.pumpWidget(skHost(Scaffold(body: ChartAnnotationLane(
+      set: AnnotationSet(items: projected, domainStart: 0, domainEnd: 1), cursor: null, plotHeight: 130)), locale: const Locale('fr')));
+    await t.tap(find.byKey(ChartAnnotationLane.iconKey('rhr-shift:2026-11-01'))); await t.pump();
+    expect(find.textContaining(findingTitle(l, flags.first)), findsOneWidget);
+    expect(projected.single.finding, flags.first);
+  });
+
 }

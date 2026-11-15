@@ -19392,7 +19392,7 @@
   "observationsEarlierWeek": "Earlier week",
   "observationsLaterWeek": "Later week",
   "observationsEventsUnit": "events",
-  "observationsDayCount": "{day}: {count} events",
+  "observationsDayCount": "{day}: {count, plural, =1{1 event} other{{count} events}}",
   "@observationsDayCount": {
     "placeholders": {
       "day": {

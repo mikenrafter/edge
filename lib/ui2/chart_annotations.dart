@@ -118,6 +118,7 @@ class ChartAnnotation {
     this.icon,
     this.groupId,
     this.wakeKind,
+    this.finding,
   });
   final String id;
   final AnnotationKind kind;
@@ -130,6 +131,15 @@ class ChartAnnotation {
   /// Wake epoch, retained when the chart projection becomes a list row.
   final int? groupId;
   final WakeNightEventKind? wakeKind;
+  final Finding? finding;
+
+  ChartAnnotation localized(AppLocalizations? l) {
+    final f = finding;
+    if (f == null || l == null) return this;
+    return ChartAnnotation(id: id, kind: kind, at: at, until: until,
+      icon: icon, groupId: groupId, wakeKind: wakeKind, finding: f,
+      label: '${f.date} · ${findingTitle(l, f)}. ${findingDetail(l, f)}');
+  }
 }
 
 /// One glyph per observed wake kind, shared by chart and list projections.
@@ -183,7 +193,8 @@ List<ChartAnnotation> rhrChangeAnnotations(Iterable<Finding> findings, {AppLocal
   return [for (final f in findings)
     if (f.kind == FindingKind.rhrShift && localDayStartSec(f.date) != null)
       ChartAnnotation(id: 'rhr-shift:${f.date}', kind: AnnotationKind.rhrShift,
-        at: localDayStartSec(f.date)!.toDouble(),
+        at: localDayStartSec(f.date)!.toDouble(), finding: f,
+        icon: f.risen == null ? LucideIcons.chartLine : f.risen! ? LucideIcons.trendingUp : LucideIcons.trendingDown,
         label: '${f.date} · ${findingTitle(locale, f)}. ${findingDetail(locale, f)}')];
 }
 
@@ -700,6 +711,7 @@ List<ChartAnnotation> dailyAnnotations(
       icon: a.icon,
       groupId: a.groupId,
       wakeKind: a.wakeKind,
+      finding: a.finding,
       at: s.toDouble(),
       until: e != null && e > s ? e.toDouble() : null,
       label: a.label,
@@ -914,7 +926,11 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
   @override
   Widget build(BuildContext context) {
     final p = P.of(context);
-    final set = widget.set;
+    final source = widget.set;
+    final l = AppLocalizations.of(context);
+    final set = AnnotationSet(items: [for (final a in source.items) a.localized(l)],
+      domainStart: source.domainStart, domainEnd: source.domainEnd,
+      reach: source.reach, listener: source.listener);
     final labelH = ChartAnnotationLane.labelRowHeight(
         MediaQuery.textScalerOf(context), Directionality.of(context));
     final header = labelH + ChartAnnotationLane.iconSize;

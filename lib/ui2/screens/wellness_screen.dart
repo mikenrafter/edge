@@ -25,6 +25,7 @@ import 'package:openstrap_analytics/onehz.dart' show journalFieldLagDays;
 import 'package:provider/provider.dart';
 
 import '../../data/db.dart';
+import '../../compute/findings.dart';
 import '../../data/local_repository.dart';
 import '../../data/read_paused.dart';
 import '../../data/day_label.dart';
@@ -221,6 +222,7 @@ class _WellnessScreenState extends State<WellnessScreen>
             ? (heart['baselines'] as Map).cast<String, dynamic>()
             : null,
         charts: charts,
+        annotations: rhrChangeAnnotations(findingsHistory(insights)),
       );
   }
 

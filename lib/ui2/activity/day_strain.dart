@@ -26,6 +26,7 @@ import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/date_text.dart';
 import '../../models/metric.dart' show whyFromNote;
+import '../screens/rhr_annotations.dart';
 import '../screens/home_screen.dart' show repoOf;
 import '../screens/metric_detail.dart' show detailScaffold;
 import '../ui2.dart';
@@ -78,8 +79,11 @@ class DayStrainData {
   /// the screen then says exactly that.
   final String? note;
 
+  final List<ChartAnnotation> rhrMarks;
+
   const DayStrainData({
     this.day,
+    this.rhrMarks = const [],
     this.curve = const [],
     this.strain,
     this.olderVersion,
@@ -146,6 +150,7 @@ class DayStrainData {
 
     final hr = s['hr'];
     return DayStrainData(
+      rhrMarks: await loadRhrAnnotations(repo),
       day: day,
       curve: grid,
       strain: (s['strain'] as num?)?.toDouble(),
@@ -291,6 +296,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
       Surface(
         child: Column(children: [
           ChartFrame(
+            annotations: d.day == null ? null : rhrAnnotationsForDay(d.rhrMarks, dayLabelOf(d.day!), 1439),
             title: l?.dayStrainChartTitle ?? 'Strain through the day',
             unit: '0–21',
             height: 170,

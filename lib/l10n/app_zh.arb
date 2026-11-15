@@ -3906,5 +3906,34 @@
   "reviewReadTime": "正在读取当天的计算时间",
   "reviewReadWake": "正在读取醒来时间",
   "reviewReadWater": "正在读取饮水记录",
-  "reviewReadProfile": "正在读取个人资料"
+  "reviewReadProfile": "正在读取个人资料",
+  "observationsLatestWeek": "最近一周 · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "本周没有标记。",
+  "observationsNoDay": "当天没有标记。",
+  "observationsEarlierWeek": "前一周",
+  "observationsLaterWeek": "后一周",
+  "observationsEventsUnit": "事件",
+  "observationsDayCount": "{day}：{count} 个事件",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "静息心率变化",
+  "rhrNoReadings": "没有已保存的静息心率读数。"
 }

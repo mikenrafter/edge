@@ -4012,5 +4012,34 @@
   "reviewReadTime": "Berechnungszeitpunkt des Tages wird gelesen",
   "reviewReadWake": "Aufwachzeiten werden gelesen",
   "reviewReadWater": "Wassereinträge werden gelesen",
-  "reviewReadProfile": "Dein Profil wird gelesen"
+  "reviewReadProfile": "Dein Profil wird gelesen",
+  "observationsLatestWeek": "Letzte Woche · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "Diese Woche wurde nichts markiert.",
+  "observationsNoDay": "An diesem Tag wurde nichts markiert.",
+  "observationsEarlierWeek": "Frühere Woche",
+  "observationsLaterWeek": "Spätere Woche",
+  "observationsEventsUnit": "Ereignisse",
+  "observationsDayCount": "{day}: {count, plural, =1{1 Ereignis} other{{count} Ereignisse}}",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "Änderungen des Ruhepulses",
+  "rhrNoReadings": "Keine Ruhepulswerte gespeichert."
 }

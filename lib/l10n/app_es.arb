@@ -3924,5 +3924,34 @@
   "reviewReadTime": "Leyendo cuándo se calculó el día",
   "reviewReadWake": "Leyendo horas de despertar",
   "reviewReadWater": "Leyendo registros de agua",
-  "reviewReadProfile": "Leyendo tu perfil"
+  "reviewReadProfile": "Leyendo tu perfil",
+  "observationsLatestWeek": "Última semana · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "No se marcó nada esta semana.",
+  "observationsNoDay": "No se marcó nada este día.",
+  "observationsEarlierWeek": "Semana anterior",
+  "observationsLaterWeek": "Semana siguiente",
+  "observationsEventsUnit": "eventos",
+  "observationsDayCount": "{day}: {count, plural, =1{1 evento} other{{count} eventos}}",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "Cambios en la frecuencia cardíaca en reposo",
+  "rhrNoReadings": "No hay mediciones guardadas de frecuencia cardíaca en reposo."
 }

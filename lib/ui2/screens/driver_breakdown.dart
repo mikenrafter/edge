@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../data/day_label.dart';
 import '../../models/metric.dart' show whyFromNote;
 import '../ui2.dart';
 import 'home_screen.dart'
@@ -108,6 +109,8 @@ class DriverFacts {
   /// DENSE — one slot per calendar day, `null` where nothing was measured.
   final List<double?> series;
 
+  final List<ChartAnnotation> annotations;
+
   const DriverFacts({
     required this.key,
     required this.spec,
@@ -122,6 +125,7 @@ class DriverFacts {
     required this.delta,
     required this.mdcMultiples,
     required this.series,
+    this.annotations = const [],
   });
 
   /// The plain name. `driverLabel`, not `spec.title` — this row says "Breathing
@@ -153,6 +157,7 @@ List<DriverFacts> driverFacts({
   required List<Map<String, dynamic>> breakdown,
   Map<String, dynamic>? baselines,
   Map<String, Object?> charts = const {},
+  List<ChartAnnotation> annotations = const [],
 }) {
   // The weight ACTUALLY carried, over the usable inputs only — the same sum
   // `ReadinessDetail` takes. With skin temperature missing, HRV's catalogue
@@ -190,6 +195,7 @@ List<DriverFacts> driverFacts({
       delta: (base['delta'] as num?)?.toDouble(),
       mdcMultiples: (base['mdc_multiples'] as num?)?.toDouble(),
       series: denseDays(pointsOf(charts[spec.chartKey]), kDriverChartDays),
+      annotations: annotations,
     ));
   }
   return out;
@@ -463,7 +469,11 @@ Widget _chart(BuildContext c, P p, DriverFacts f) {
   );
   final unit = unitBeside(f.spec.unit);
 
+  final n = DateTime.now();
+  final flags = dailyAnnotations(f.annotations, [for (var i = win.length - 1; i >= 0; i--)
+    dayLabelOf(DateTime(n.year, n.month, n.day - i))]);
   return ChartFrame(
+    annotations: flags.isEmpty ? null : AnnotationSet(items: flags, domainStart: 0, domainEnd: (win.length - 1).toDouble()),
     title: f.label,
     unit: f.spec.unit,
     height: 110,

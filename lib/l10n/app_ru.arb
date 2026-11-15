@@ -9810,5 +9810,34 @@
   "reviewReadTime": "Чтение времени расчёта дня",
   "reviewReadWake": "Чтение времени пробуждений",
   "reviewReadWater": "Чтение записей о воде",
-  "reviewReadProfile": "Чтение профиля"
+  "reviewReadProfile": "Чтение профиля",
+  "observationsLatestWeek": "Последняя неделя · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "На этой неделе ничего не отмечено.",
+  "observationsNoDay": "В этот день ничего не отмечено.",
+  "observationsEarlierWeek": "Предыдущая неделя",
+  "observationsLaterWeek": "Следующая неделя",
+  "observationsEventsUnit": "события",
+  "observationsDayCount": "{day}: событий — {count}",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "Изменения пульса в покое",
+  "rhrNoReadings": "Сохранённых измерений пульса в покое нет."
 }

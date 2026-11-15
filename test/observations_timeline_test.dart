@@ -27,6 +27,7 @@ void main() {
     final row = t.widget<WhyRow>(find.byType(WhyRow).first);
     expect(row.body, findingDetail(l, events.first), reason: 'the pulse wording stays owned by findings.dart');
     expect(row.fullText, isTrue);
+    expect(row.title, contains('14 November'), reason: 'each historical row keeps its own date');
     await t.tap(find.byTooltip('Earlier week')); await t.pump();
     expect(find.byKey(const ValueKey('home-why:finding:rhrShift:2026-11-05')), findsOneWidget);
     expect(t.widgetList<Text>(find.descendant(of: summary, matching: find.byType(Text))).map((w) => w.data), original);

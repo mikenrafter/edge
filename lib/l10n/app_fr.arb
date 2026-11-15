@@ -3906,5 +3906,34 @@
   "reviewReadTime": "Lecture de l’heure de calcul de la journée",
   "reviewReadWake": "Lecture des heures de réveil",
   "reviewReadWater": "Lecture des prises d’eau",
-  "reviewReadProfile": "Lecture de votre profil"
+  "reviewReadProfile": "Lecture de votre profil",
+  "observationsLatestWeek": "Dernière semaine · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "Rien n’a été signalé cette semaine.",
+  "observationsNoDay": "Rien n’a été signalé ce jour-là.",
+  "observationsEarlierWeek": "Semaine précédente",
+  "observationsLaterWeek": "Semaine suivante",
+  "observationsEventsUnit": "événements",
+  "observationsDayCount": "{day} : {count, plural, =1{1 événement} other{{count} événements}}",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "Variations de la fréquence cardiaque au repos",
+  "rhrNoReadings": "Aucune mesure de fréquence cardiaque au repos enregistrée."
 }
