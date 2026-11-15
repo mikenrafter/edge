@@ -408,7 +408,7 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      AppLocalizations.of(c)?.ecgWhatResultsMean ?? 'What the results mean',
+                      'What the results mean', // drawn words stay as before the pilot (pixels bar); the spoken label is localized
                       style: F.body.copyWith(color: p.on(C.blue)),
                     ),
                   ),
@@ -890,6 +890,8 @@ class EcgCaptureBody extends StatelessWidget {
       case EcgCapturePhase.cleaningUp:
         return Center(
           child: InlineLoading(
+            // Saving follows the user's Stop; cleaning up can be automatic.
+            announce: s.phase == EcgCapturePhase.saving,
             status: s.phase == EcgCapturePhase.saving
                 ? (l?.loadingEcgSaving ?? 'Saving the recording')
                 : (l?.ecgCleaningUp ?? 'Stopping the band…'),
@@ -1769,7 +1771,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
                   child: Padding(
                     padding: const EdgeInsets.only(top: S.x3),
                     child: Text(
-                      AppLocalizations.of(c)?.ecgWhatResultsMean ?? 'What the results mean',
+                      'What the results mean', // drawn words stay as before the pilot (pixels bar); the spoken label is localized
                       style: F.cap.copyWith(
                         color: p.on(C.blue),
                         fontWeight: FontWeight.w700,

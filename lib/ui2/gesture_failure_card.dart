@@ -212,7 +212,7 @@ class _GestureFailureCardState extends State<GestureFailureCard> {
               key: const ValueKey('gesture-failure-dismiss'),
               onTap: () => widget.store.dismiss(f.gestureId),
               semanticLabel: AppLocalizations.of(c)?.gestureFailureDismiss ?? 'Dismiss',
-              child: Text(AppLocalizations.of(c)?.gestureFailureDismiss ?? 'Dismiss',
+              child: Text('Dismiss', // drawn word unchanged; the spoken label is localized
                   style: F.over.copyWith(
                       color: p.ink3, decoration: TextDecoration.underline)),
             ),

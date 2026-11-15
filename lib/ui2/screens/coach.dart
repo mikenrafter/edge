@@ -203,7 +203,9 @@ class _CoachScreenState extends State<CoachScreen> {
       await engine.send(
         t,
         onItem: (it) {
-          if (it.kind == CoachItemKind.assistant) reply ??= it.text;
+          // The LAST assistant message is the answer: the engine also emits
+          // text beside tool calls ("I will check your sleep") before it.
+          if (it.kind == CoachItemKind.assistant) reply = it.text;
           if (!mounted) return;
           setState(() => _items.add(it));
           _scrollDown();
@@ -229,11 +231,13 @@ class _CoachScreenState extends State<CoachScreen> {
     } finally {
       // The user sent this, so its result is spoken when it lands (A11Y-ANNOUNCE):
       // the reply arrives seconds later, far from where the focus is.
-      final r = reply == null ? null : coachSpokenFirstSentence(reply!);
-      if (r != null && r.isNotEmpty) {
-        say(l?.a11yCoachReplied(r) ?? 'Coach replied: $r');
-      } else if (failure != null) {
+      // A failed turn says the failure, whatever the coach said before it.
+      final answer = reply;
+      if (failure != null) {
         say(failure);
+      } else if (answer != null) {
+        final r = coachSpokenFirstSentence(answer);
+        if (r.isNotEmpty) say(l?.a11yCoachReplied(r) ?? 'Coach replied: $r');
       }
       if (mounted) {
         setState(() {

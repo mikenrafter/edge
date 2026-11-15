@@ -436,7 +436,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                   onTap: canGo ? _save : null,
                   semanticLabel: AppLocalizations.of(c)?.actionSave ?? 'Save',
                   child: Text(
-                    AppLocalizations.of(c)?.actionSave ?? 'Save',
+                    'Save', // drawn word unchanged; the spoken label is localized
                     style: F.body.copyWith(
                       color: canGo ? p.on(C.blue) : p.ink3,
                       fontWeight: FontWeight.w700,
@@ -582,7 +582,8 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                       Expanded(
                         child: _PriorityOption(
                           key: const ValueKey('pattern-editor-mode-follow'),
-                          label: AppLocalizations.of(c)?.patternEditorFollowRhythm ?? 'Follow rhythm',
+                          label: 'Follow rhythm',
+                          semanticLabel: AppLocalizations.of(c)?.patternEditorFollowRhythm ?? 'Follow rhythm',
                           selected: _follow,
                           onTap: () => _setMode(follow: true),
                         ),
@@ -591,7 +592,8 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                       Expanded(
                         child: _PriorityOption(
                           key: const ValueKey('pattern-editor-mode-dynamics'),
-                          label: AppLocalizations.of(c)?.patternEditorAllowDynamics ?? 'Allow dynamics',
+                          label: 'Allow dynamics',
+                          semanticLabel: AppLocalizations.of(c)?.patternEditorAllowDynamics ?? 'Allow dynamics',
                           selected: !_follow,
                           onTap: () => _setMode(follow: false),
                         ),
@@ -711,10 +713,14 @@ class _PriorityOption extends StatelessWidget {
   const _PriorityOption({
     super.key,
     required this.label,
+    required this.semanticLabel,
     required this.selected,
     required this.onTap,
   });
+  /// The drawn words, as before the pilot (pixels bar).
   final String label;
+  /// What a screen reader says: the same words in the phone's language.
+  final String semanticLabel;
   final bool selected;
   final VoidCallback onTap;
 
@@ -724,7 +730,7 @@ class _PriorityOption extends StatelessWidget {
     return Pressable(
         selected: selected,
         onTap: onTap,
-        semanticLabel: label,
+        semanticLabel: semanticLabel,
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: S.x1),

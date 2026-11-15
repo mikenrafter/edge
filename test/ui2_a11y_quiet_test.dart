@@ -78,6 +78,9 @@ void main() {
 
   testWidgets('Your data: an action the user started (busy) says what it is doing', (t) async {
     final h = t.ensureSemantics();
+    t.view.physicalSize = const Size(1170, 12000); // the busy line is far down the list
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
     await t.pumpWidget(MaterialApp(
         theme: buildTheme(Brightness.light),
         localizationsDelegates: AppLocalizations.localizationsDelegates,

@@ -1298,6 +1298,8 @@ class _JournalAiSheetState extends State<_JournalAiSheet> {
                               padding:
                                   const EdgeInsets.symmetric(vertical: S.x1),
                               child: InlineLoading(
+                                  // The user sent the message it answers.
+                                  announce: true,
                                   status: AppLocalizations.of(c)
                                           ?.loadingAiReply ??
                                       'Waiting for the reply'),

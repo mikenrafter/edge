@@ -33,7 +33,11 @@ class InlineLoading extends StatelessWidget {
   /// would be taller than the line it stands in for.
   final bool compact;
 
-  /// RED-PHASE STUB: not read yet.
+  /// True when the USER started the work this status describes (a backup they
+  /// asked for, a reply they are waiting on): a screen reader then says the
+  /// status when it changes. Default false: an automatic calculation or reload
+  /// is readable but never speaks on its own (owner rule, 2026-11-15; the
+  /// loud default broke it on Home's "Calculating today" strip). [A11Y-QUIET]
   final bool announce;
 
   const InlineLoading({
@@ -59,11 +63,11 @@ class InlineLoading extends StatelessWidget {
         ),
         const SizedBox(width: S.x2),
         Expanded(
-          // The status alone is spoken, as a live region (see below); the
-          // day count would make it chatter.
+          // The status alone is spoken (a live region only when [announce]);
+          // the day count would make it chatter.
           child: Semantics(
             container: true,
-            liveRegion: true,
+            liveRegion: announce,
             label: status,
             excludeSemantics: true,
             child: Text(
@@ -83,13 +87,13 @@ class InlineLoading extends StatelessWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
         const SizedBox(height: S.x2),
-        // A live region (A11Y-LIVE): a screen reader says the status when it
-        // changes ("Reading last night" -> "Calculating"). The spinner is
-        // silent. The detail line stays a plain node: a day count that ticks
-        // would be announced on every tick.
+        // A live region ONLY for user-started work ([announce]): a screen
+        // reader then says the status when it changes. The spinner is silent.
+        // The detail line stays a plain node: a day count that ticks would be
+        // announced on every tick.
         Semantics(
           container: true,
-          liveRegion: true,
+          liveRegion: announce,
           child: Text(status,
               textAlign: TextAlign.center,
               style: F.cap.copyWith(color: p.ink2)),
