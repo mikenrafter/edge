@@ -85,6 +85,23 @@ void main() {
     expect(find.byType(PendingRows), findsNothing);
   });
 
+  // CLAIM remembered-list: an unknown list reuses its settled size instead
+  // of reserving the generic three-row template on every revisit.
+  testWidgets('async list remembers short content and empty content stays natural', (t) async {
+    Widget page(List<String>? items) => MaterialApp(home: Scaffold(body:
+      SingleChildScrollView(child: SizedBox(width:200,child: AsyncListSection<String>(
+        key:const ValueKey('short-list'), items:items,
+        itemBuilder:(_, value)=>SizedBox(height:42,child:Text(value)),
+        emptyBuilder:(_)=>const SizedBox(height:14))))));
+    await t.pumpWidget(page(['One']));await t.pump();
+    expect(t.getSize(find.byType(AsyncListSection<String>)).height,42);
+    await t.pumpWidget(page(null));
+    expect(t.getSize(find.byType(AsyncListSection<String>)).height,42);
+    await t.pumpWidget(page([]));await t.pump();
+    expect(t.getSize(find.byType(AsyncListSection<String>)).height,14);
+    await t.pumpWidget(const SizedBox());
+  });
+
   // WHY: bounded parents (Track editor/startup) must not stretch row skeletons
   // into an empty full-screen card. The known rows determine their own height.
   testWidgets('pending rows fit their contents inside a bounded centre', (t) async {
