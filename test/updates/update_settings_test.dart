@@ -27,7 +27,11 @@ void main() {
       enabled: true,
       phase: UpdatePhase.checking,
     ),
-    'current': const UpdateSnapshot(enabled: true, phase: UpdatePhase.current),
+    'current': const UpdateSnapshot(enabled: true, phase: UpdatePhase.current,
+      sources: {
+        ReleaseSource.official: SourceUpdate(current: true, candidate: ReleaseCandidate(source: ReleaseSource.official, id: 1, tag: 'v0.11.3', asset: 'openstrap-edge-v0.11.3.apk', prerelease: false)),
+        ReleaseSource.fork: SourceUpdate(current: true, candidate: ReleaseCandidate(source: ReleaseSource.fork, id: 2, tag: 'next-2026.11.15', build: 78, asset: 'openstrap-edge-next-2026.11.15-dev-profile.apk', prerelease: true)),
+      }),
     'available': const UpdateSnapshot(
       enabled: true,
       phase: UpdatePhase.available,
