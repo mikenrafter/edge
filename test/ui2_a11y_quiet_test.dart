@@ -17,6 +17,8 @@ import 'package:openstrap_edge/ui2/screens/home_screen.dart';
 import 'package:openstrap_edge/ui2/sync_control.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
+import 'support/a11y_tree.dart';
+
 Widget _app(Widget child) => MaterialApp(
       theme: buildTheme(Brightness.light),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -24,9 +26,9 @@ Widget _app(Widget child) => MaterialApp(
       home: Scaffold(body: SingleChildScrollView(child: child)),
     );
 
-/// The node that carries [text], as the platform sees it.
+/// The one node whose spoken label holds [text], as the platform sees it.
 SemanticsData _of(WidgetTester t, String text) =>
-    t.getSemantics(find.text(text)).getSemanticsData();
+    semanticsNodes(t).singleWhere((n) => n.label.contains(text)).getSemanticsData();
 
 void main() {
   for (final compact in [false, true]) {
@@ -76,7 +78,11 @@ void main() {
 
   testWidgets('Your data: an action the user started (busy) says what it is doing', (t) async {
     final h = t.ensureSemantics();
-    await t.pumpWidget(_app(const DataScreenView(busy: true, busyStatus: 'Writing the backup')));
+    await t.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: const DataScreenView(busy: true, busyStatus: 'Writing the backup')));
     await t.pump();
     final d = _of(t, 'Writing the backup');
     expect(d.hasFlag(SemanticsFlag.isLiveRegion), isTrue,
