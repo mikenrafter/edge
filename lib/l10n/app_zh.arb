@@ -2794,7 +2794,7 @@
   "findingTitleRhrShift": "静息心率发生了变化",
   "findingDetailAnomaly": "你的夜间读数超出了平时的范围。",
   "findingDetailTemp": "你的皮肤温度持续高于平常。",
-  "findingDetailIrregularRhythm": "{day}，腕部传感器测得的脉搏间隔符合我们的不规则判定规则。我们尚未测量这条规则有多大比例是正确的，也未测量它漏掉心律问题的频率。运动、传感器佩戴松紧和额外心搏都可能产生类似模式。它无法识别心房颤动（房颤），未被标记的记录也无法排除心律问题。医生可以通过心电图评估您的心律。如果反复出现标记，即使没有症状，也可考虑就医咨询。",
+  "findingDetailIrregularRhythm": "{day}，腕部传感器测得的脉搏间隔符合我们的不规则判定规则。我们尚未测量这条规则有多大比例是正确的，也未测量它漏掉心律问题的频率。运动、传感器佩戴松紧和额外心搏都可能产生类似模式。它无法识别心房颤动（房颤），未被标记的记录也无法排除心律问题。医生可以通过心电图评估您的心律。如果反复出现标记，即使没有症状，也可考虑就医咨询。如果您出现胸痛、昏厥或严重呼吸困难等症状，请立即就医。",
   "findingDetailRhrShiftRisen": "你的静息心率高于平常。",
   "findingDetailRhrShiftFallen": "你的静息心率低于平常。",
   "findingsAggregateTitle": "{count, plural, other{有 {count} 项值得留意}}",

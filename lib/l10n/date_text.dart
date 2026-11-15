@@ -13,6 +13,7 @@ String localizedDate(
   DateTime date,
   String code, {
   bool weekday = false,
+  bool withDayOfWeek = false,
   String? pattern,
 }) {
   if (!_dateDataLoaded) {
@@ -23,6 +24,8 @@ String localizedDate(
   }
   final locale = DateFormat.localeExists(code) ? code : 'en';
   if (pattern != null) return DateFormat(pattern, locale).format(date);
+  // The locale's own order and punctuation for weekday, day, month and year.
+  if (withDayOfWeek) return DateFormat.yMMMEd(locale).format(date);
   if (weekday) {
     final result = DateFormat('EEEE, d MMMM', locale).format(date);
     return '${result[0].toUpperCase()}${result.substring(1)}';

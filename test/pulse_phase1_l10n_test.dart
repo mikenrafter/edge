@@ -18,8 +18,8 @@ void main() {
         .widgetList<Text>(find.byType(Text))
         .map((w) => w.data ?? '')
         .join('\n');
-    expect(text, contains('on Thu 12 Nov 2026'));
-    expect(text, contains('On Thu 12 Nov 2026'));
+    expect(text, contains('on Thu, Nov 12, 2026'));
+    expect(text, contains('On Thu, Nov 12, 2026'));
     expect(text.toLowerCase(), isNot(contains('today')));
     final detail = findingDetail(AppLocalizationsEn(), f);
     for (final phrase in [
@@ -32,6 +32,84 @@ void main() {
       'even without symptoms',
     ]) {
       expect(detail, contains(phrase));
+    }
+  });
+
+  // Thursday 2026-11-12 in each locale's own full-date pattern (CLDR yMMMEd),
+  // written out by hand. The order and punctuation are the point: a fixed
+  // English-order pattern put zh as "周四 12 11月 2026" and de without its dots.
+  const dateOf = <String, String>{
+    'en': 'Thu, Nov 12, 2026',
+    'de': 'Do., 12. Nov. 2026',
+    'es': 'jue, 12 nov 2026',
+    'fr': 'jeu. 12 nov. 2026',
+    'hi': 'गुरु, 12 नव॰ 2026',
+    'ru': 'чт, 12 нояб. 2026 г.',
+    'zh': '2026年11月12日周四',
+  };
+
+  // The Material delegates register their own date symbols, so a no-break space
+  // (U+00A0 or U+202F) can differ between a bare lookup and a running app. The
+  // order, abbreviations and punctuation are what this test pins.
+  String norm(String s) => s.replaceAll(RegExp('[\u00A0\u202F]'), ' ');
+
+  // why: W1/T4. The flagged day must read as a date in the reader's own
+  // language and order, in the title, the detail and the notification body.
+  // proves: CLAIM(pulse-dated); catches: a fixed pattern such as 'EEE d MMM y'.
+  test('every locale renders the flagged day in its own date format', () {
+    const f = Finding(FindingKind.irregularRhythm, '2026-11-12');
+    expect(dateOf.keys.toSet(), {
+      for (final l in AppLocalizations.supportedLocales) l.languageCode,
+    });
+    for (final locale in AppLocalizations.supportedLocales) {
+      final l = lookupAppLocalizations(locale);
+      final date = dateOf[locale.languageCode]!;
+      expect(
+        norm(findingTitle(l, f)),
+        l.findingTitleIrregularRhythm(date),
+        reason: '${locale.languageCode} title',
+      );
+      expect(
+        norm(findingDetail(l, f)),
+        l.findingDetailIrregularRhythm(date),
+        reason: '${locale.languageCode} detail',
+      );
+      expect(
+        norm(ExceptionNotice('2026-11-12', const [f]).body(l)),
+        l.findingNotificationIrregularRhythm(date),
+        reason: '${locale.languageCode} notification body',
+      );
+    }
+    // The garble this replaces, spelled out for the one that broke worst.
+    expect(
+      norm(findingTitle(lookupAppLocalizations(const Locale('zh')), f)),
+      contains('2026年11月12日'),
+    );
+  });
+
+  // why: T4. FindingRow is the shared Health/Observations surface; it must
+  // render the locale's date from the ambient locale, not only in English.
+  testWidgets('FindingRow shows the date in the app locale', (t) async {
+    const f = Finding(FindingKind.irregularRhythm, '2026-11-12');
+    for (final locale in AppLocalizations.supportedLocales) {
+      await t.pumpWidget(
+        MaterialApp(
+          locale: locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(body: FindingRow(f)),
+        ),
+      );
+      await t.pumpAndSettle();
+      final text = t
+          .widgetList<Text>(find.byType(Text))
+          .map((w) => w.data ?? '')
+          .join('\n');
+      expect(
+        norm(text),
+        contains(dateOf[locale.languageCode]!),
+        reason: locale.languageCode,
+      );
     }
   });
 

@@ -389,5 +389,5 @@ String findingDetail(AppLocalizations l, Finding f) => switch (f.kind) {
         : l.findingDetailRhrShiftRisen,
 };
 
-String _findingDay(AppLocalizations l, Finding f) => localizedDate(
-    DateTime.parse(f.date), l.localeName, pattern: 'EEE d MMM y');
+String _findingDay(AppLocalizations l, Finding f) =>
+    localizedDate(DateTime.parse(f.date), l.localeName, withDayOfWeek: true);

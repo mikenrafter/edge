@@ -13416,7 +13416,7 @@
   "@supplementYourBandHasnTSynced0a4dfd": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "supplementYourBeatToBeatPatternfed8f0": "We have not measured how often this rule is right or how often it misses a rhythm problem. Movement, sensor fit, and extra beats can produce a similar pattern. It cannot identify atrial fibrillation (AF), and an unflagged recording cannot rule out a rhythm problem. A clinician can use an ECG to assess your heart rhythm. If flags repeat, consider clinician follow-up even without symptoms.",
+  "supplementYourBeatToBeatPatternfed8f0": "This flag means the timing between the wrist sensor's pulse readings matched our irregularity rule. We have not measured how often this rule is right or how often it misses a rhythm problem. Movement, sensor fit, and extra beats can produce a similar pattern. It cannot identify atrial fibrillation (AF), and an unflagged recording cannot rule out a rhythm problem. A clinician can use an ECG to assess your heart rhythm. If flags repeat, consider clinician follow-up even without symptoms. If you have symptoms such as chest pain, fainting or severe breathlessness, get medical help now.",
   "@supplementYourBeatToBeatPatternfed8f0": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -16668,7 +16668,7 @@
     "placeholders": {
       "day": {
         "type": "String",
-        "example": "Thu 12 Nov 2026"
+        "example": "Thu, Nov 12, 2026"
       }
     }
   },
@@ -16684,13 +16684,13 @@
   "@findingDetailTemp": {
     "description": "Design 04 cardio transparency: Sustained rise above your baseline, which can be a sign of illness."
   },
-  "findingDetailIrregularRhythm": "On {day}, the timing between the wrist sensor's pulse readings matched our irregularity rule. We have not measured how often this rule is right or how often it misses a rhythm problem. Movement, sensor fit, and extra beats can produce a similar pattern. It cannot identify atrial fibrillation (AF), and an unflagged recording cannot rule out a rhythm problem. A clinician can use an ECG to assess your heart rhythm. If flags repeat, consider clinician follow-up even without symptoms.",
+  "findingDetailIrregularRhythm": "On {day}, the timing between the wrist sensor's pulse readings matched our irregularity rule. We have not measured how often this rule is right or how often it misses a rhythm problem. Movement, sensor fit, and extra beats can produce a similar pattern. It cannot identify atrial fibrillation (AF), and an unflagged recording cannot rule out a rhythm problem. A clinician can use an ECG to assess your heart rhythm. If flags repeat, consider clinician follow-up even without symptoms. If you have symptoms such as chest pain, fainting or severe breathlessness, get medical help now.",
   "@findingDetailIrregularRhythm": {
     "description": "Daily pulse flag wording. day is the recorded local calendar date, never the processing date.",
     "placeholders": {
       "day": {
         "type": "String",
-        "example": "Thu 12 Nov 2026"
+        "example": "Thu, Nov 12, 2026"
       }
     }
   },
@@ -19366,7 +19366,7 @@
     "placeholders": {
       "day": {
         "type": "String",
-        "example": "Thu 12 Nov 2026"
+        "example": "Thu, Nov 12, 2026"
       }
     }
   }
