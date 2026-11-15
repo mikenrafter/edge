@@ -117,11 +117,12 @@ class DayStepsData {
     String bandLabel = _defaultBand,
     String? want,
   }) async {
+    final flagsRead = loadRhrAnnotations(repo);
     final days = await repo.availableDays();
     final day = pickDay(days, want, todayLabel()) ?? todayLabel();
     final d = await repo.getDaySteps(day);
     return DayStepsData(
-      rhrMarks: await loadRhrAnnotations(repo),
+      rhrMarks: await flagsRead,
       day: day,
       days: days,
       spans: [
@@ -361,7 +362,6 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
     return Surface(
       child: Column(
         children: [
-          DayRhrNotice(d.rhrMarks, d.day),
           ChartFrame(
             nerdStats: this,
             title: l?.dayStepsChartTitle ?? 'When they were counted',
@@ -431,6 +431,7 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
               ),
             ),
           ),
+          DayRhrNotice(d.rhrMarks, d.day),
           const SizedBox(height: S.x4),
           InlineMetrics(
             d.mixed

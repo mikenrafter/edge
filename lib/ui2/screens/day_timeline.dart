@@ -26,6 +26,8 @@ import '../../l10n/display_text.dart';
 
 import 'dart:convert' show jsonDecode;
 import 'rhr_annotations.dart';
+import '../read_prefetch.dart';
+import '../../sync/import_focus.dart';
 import '../../data/day_label.dart' show dayLabelOf;
 import 'dart:async';
 
@@ -1383,6 +1385,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
       return;
     }
     final l = AppLocalizations.of(context);
+    final releasePrefetch = ReadPrefetch.shared.visibleRead('review-day');
     try {
       final reviewRead = _day != null && _review?.day != _day ? _readReview(_day!) : Future<void>.value();
       final d = await TimelineData.load(repo, want: _day, l: l, onPending: (reads) {
@@ -1410,6 +1413,23 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           _deviceBounded = false,
           _loading = false,
         ));
+        if (d.day != null) {
+          unawaited(
+            ReadPrefetch.shared.warm(
+              'review-day',
+              [
+                () => repo.getDayTimeline(d.day!),
+                () => repo.getDayWear(d.day!),
+              ],
+              busy: () =>
+                  !mounted ||
+                  ModalRoute.of(context)?.isCurrent == false ||
+                  ImportFocus.active.value ||
+                  context.read<AppState>().deriving ||
+                  context.read<AppState>().derivePending,
+            ),
+          );
+        }
       }
     } on ReadPaused {
       if (mounted && token == _loadToken) {
@@ -1424,6 +1444,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
         if (_review?.hasSettled == true) _review!.markReloadFailed(true);
         setState(() => _loading = false);
       }
+    } finally {
+      releasePrefetch();
     }
   }
 
@@ -1611,7 +1633,21 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                       ? reviewReadLabel('saved activity reviews', l)
                       : _pendingReads.isEmpty ? (widget.resolvingLabel ?? reviewReadLabel('saved activity reviews', l))
                       : reviewReadLabel(_pendingReads.first, l), maxLines: 1,
-                      overflow: TextOverflow.ellipsis, style: F.cap.copyWith(color: p.ink3)) : d.computedAtMs == null ? null : Text((l ?? lookupAppLocalizations(const Locale('en'))).asOfTime(clockOfTs(d.computedAtMs! ~/ 1000)), style: F.cap.copyWith(color: p.ink3))),
+                      overflow: TextOverflow.ellipsis, style: F.cap.copyWith(color: p.ink3)) : d.computedAtMs == null
+                                      ? null
+                                      : Text(
+                                          (l ??
+                                                  lookupAppLocalizations(
+                                                    const Locale('en'),
+                                                  ))
+                                              .asOfTime(
+                                                clockOfTs(
+                                                  d.computedAtMs! ~/ 1000,
+                                                ),
+                                              ),
+                                          style: F.cap.copyWith(color: p.ink3),
+                                        ),
+                                ),
                 if (_loading) ...[
                   if (_d == null || d.graph.hasCurve) PendingContent(pending: true,
                     child: KeyedSubtree(key: const ValueKey('apk2-day-chart'),
@@ -2051,14 +2087,33 @@ class _ZoomState extends State<_DayGraphZoom> {
           '1-minute averages. Zoom in to two hours or less for per-second '
               'data, where kept.';
     }
-    final plot = dayGraphCard(c, g,
-        zoomed: zoomed,
-        fine: _fine,
-        footnote: note,
-        annotations: widget.annotations.where((a) => a.kind != AnnotationKind.rhrShift).toList(),
-        listener: widget.listener,
-        nerdStats: widget.nerdStats);
-    final card = plot == null ? null : Column(children: [plot, DayRhrNotice(widget.annotations, g.dayStart == null ? null : dayLabelOf(DateTime.fromMillisecondsSinceEpoch(g.dayStart! * 1000)))]);
+    final plot = dayGraphCard(
+      c,
+      g,
+      zoomed: zoomed,
+      fine: _fine,
+      footnote: note,
+      annotations: widget.annotations
+          .where((a) => a.kind != AnnotationKind.rhrShift)
+          .toList(),
+      listener: widget.listener,
+      nerdStats: widget.nerdStats,
+    );
+    final card = plot == null
+        ? null
+        : Column(
+            children: [
+              plot,
+              DayRhrNotice(
+                widget.annotations,
+                g.dayStart == null
+                    ? null
+                    : dayLabelOf(
+                        DateTime.fromMillisecondsSinceEpoch(g.dayStart! * 1000),
+                      ),
+              ),
+            ],
+          );
     if (card == null || n < 2) return card ?? const SizedBox.shrink();
     // Smaller thumbs and the theme's own colour: the same control as the app's
     // other sliders, not a red bar.

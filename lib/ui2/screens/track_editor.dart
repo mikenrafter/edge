@@ -310,9 +310,15 @@ class _TrackEditorState extends State<TrackEditor> {
                   ),
                 ]),
                 _section('Subactivities', [
+                  // Owner 2026-10-26: subactivities are temporary disclosures,
+                  // collapsed without a persistent identity.
                   for (final sub in _sub)
-                    SettingsAccordion(sub.name.isEmpty ? text('Subactivity') : sub.name,
-                      id: 'track-sub:${_initial.id}:${sub.id}',
+                    ExpansionTile(
+                      title: Text(
+                        sub.name.isEmpty ? text('Subactivity') : sub.name,
+                      ),
+                      initiallyExpanded: false,
+                      childrenPadding: const EdgeInsets.all(S.x3),
                       key: ValueKey('sub-${sub.id}'),
                       children: [
                         TextFormField(

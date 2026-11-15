@@ -9,7 +9,8 @@ import 'profile/profile.dart' show accordionPrefKey;
 
 const customAccordionIds = {
   'cycle_shape', 'circadian_strength', 'circadian_nights', 'food_details',
-  'guide_missing_help', 'ecg_details', 'ecg_timeline', 'driver:', 'moment-group:', 'sync-details',
+  'guide_missing_help', 'ecg_details', 'ecg_timeline', 'driver:',
+  'sync-details',
 };
 
 mixin RememberedExpansion<T extends StatefulWidget> on State<T> {

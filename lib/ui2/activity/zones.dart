@@ -27,7 +27,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
-import '../../compute/hr_max.dart' show validManualZoneBounds;
+import '../../compute/hr_max.dart' show validManualZoneBounds, manualZoneBoundsFromProfile;
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart' show whyFromNote;
@@ -307,14 +307,33 @@ class _ZonesDetailState extends State<ZonesDetail> {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final d = _d ?? const ZonesData();
+    final profile = context.read<AppState>().user;
+    final manual = manualZoneBoundsFromProfile(profile);
+    final d =
+        _d ??
+        ZonesData(
+          source: manual != null
+              ? 'manual'
+              : profile?['age'] is num
+              ? 'tanaka'
+              : null,
+          zones: [
+            for (var i = 0; i < 5; i++)
+              (
+                zone: i + 1,
+                name: 'Z${i + 1}',
+                lo: manual?[i] ?? 0,
+                hi: i < 4 ? (manual?[i + 1] ?? 0) : 0,
+              ),
+          ],
+        );
     return detailScaffold(c, l?.activityZonesTitle ?? 'Heart-rate zones', [
-      PendingContent(pending: _loading && _d == null,
+      PendingContent(
+        memoryKey: 'hr-zones:body',
+        pending: _loading && _d == null,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Section(l?.activityZonesYourZonesSection ?? 'Your zones',
-_zones(p, l, _loading && _d == null ? ZonesData(zones: [
-          for (var z = 1; z <= 5; z++) (zone: z, name: 'Z$z', lo: 0, hi: 0),
-        ]) : d)),
+_zones(p, l, d)),
         const SizedBox(height: S.x2),
         Pressable(
           onTap: () => _editManualZones(context, d),
@@ -453,18 +472,25 @@ _zones(p, l, _loading && _d == null ? ZonesData(zones: [
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Z${z.zone} · ${z.name}',
-                        style: F.body.copyWith(color: p.ink),
+                          SizedBox(
+                            width: double.infinity,
+                            child: Text(
+                              'Z${z.zone} · ${z.name}',
+                              style: F.body.copyWith(color: p.ink),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                Text(
-                  // One beat below the next edge, as [ZoneRows.range] prints
+                    ),
+                    SizedBox(
+                      width: MediaQuery.textScalerOf(context).scale(76),
+                      child: Text(
+                        textAlign: TextAlign.right,
+                        // One beat below the next edge, as [ZoneRows.range] prints
                   // it, so no bpm sits in two zones.
                   z.zone == 5 ? '${z.lo}+' : '${z.lo}–${z.hi > z.lo ? z.hi - 1 : z.hi}',
                   style: F.n17.copyWith(color: p.ink2),
+                      ),
                 ),
                 const SizedBox(width: S.x2),
                 Text(l?.activityZonesBpmUnit ?? 'bpm',

@@ -18,5 +18,10 @@ IconData findingIcon(Finding f) => switch (f.kind) {
   FindingKind.tempElevated => LucideIcons.thermometer,
   FindingKind.irregularRhythm => LucideIcons.heartPulse,
   FindingKind.lowReadiness => LucideIcons.batteryLow,
-  FindingKind.rhrShift => f.risen == null ? LucideIcons.chartLine : f.risen! ? LucideIcons.trendingUp : LucideIcons.trendingDown,
+  FindingKind.rhrShift =>
+    f.risen == null
+        ? LucideIcons.chartLine
+        : f.risen!
+        ? LucideIcons.trendingUp
+        : LucideIcons.trendingDown,
 };

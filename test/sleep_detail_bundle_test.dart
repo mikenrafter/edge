@@ -99,6 +99,44 @@ void main() {
       }
     });
 
+    test(
+      'primary reads the stored shape and count before history, without changing chart data',
+      () async {
+        final primary = (await repo.getSleepDetailPrimary('2026-08-05'))!;
+        expect(
+          primary.historyCount,
+          4,
+          reason: 'four non-null tst_min rows precede the selected night',
+        );
+        expect(primary.bundle.windows, isEmpty);
+        expect(
+          primary.bundle.charts.keys,
+          containsAll([
+            'unobserved_min',
+            'awakenings',
+            'longest_sleep_min',
+            'sol_min',
+          ]),
+        );
+        expect(primary.bundle.charts['unobserved_min']!['points'], [
+          {
+            't': DateTime(2026, 8, 5, 12).millisecondsSinceEpoch ~/ 1000,
+            'v': 25.0,
+          },
+        ]);
+        final history = await repo.getSleepDetailHistory(
+          '2026-08-05',
+          primary,
+          chartKeys: _keys,
+          windowDays: 28,
+          before: '2026-08-05',
+        );
+        expect(history.night, same(primary.bundle.night));
+        expect(history.timeline, same(primary.bundle.timeline));
+        expect(history.charts['sleep']!['points'], hasLength(5));
+      },
+    );
+
     test('bundle charts equal what getChart returns, key for key', () async {
       final expected = {for (final k in _keys) k: await repo.getChart(k)};
       final b = await repo.getSleepDetailBundle('2026-08-05',

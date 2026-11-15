@@ -2786,6 +2786,76 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
+  Future<SleepPrimaryRead?> getSleepDetailPrimary(String day) async {
+    _focusCheck('getSleepDetailPrimary');
+    final (night, timeline, insights, devices, wake, rows) = await (
+      getDaySleepV2(day),
+      getDayTimeline(day),
+      getInsights(),
+      getDeviceNights(day),
+      getWakeTimeline(day),
+      LocalDb.readerRun(
+        (db) => db.rawQuery(
+          'SELECT key, value, date FROM metric_series WHERE date = ? '
+          "AND key IN ('unobserved_min','awakenings','longest_sleep_min','sol_min') "
+          "UNION ALL SELECT 'history_count', COUNT(*), ? FROM metric_series "
+          "WHERE key = 'tst_min' AND value IS NOT NULL AND date < ?",
+          [day, day, day],
+        ),
+      ),
+    ).wait;
+    final date = DateTime.parse(day);
+    final noon =
+        DateTime(date.year, date.month, date.day, 12).millisecondsSinceEpoch ~/
+        1000;
+    return SleepPrimaryRead(
+      bundle: SleepDetailBundle(
+        night: night,
+        timeline: timeline,
+        insights: insights,
+        windows: const [],
+        charts: {
+          for (final row in rows)
+            if (row['key'] != 'history_count')
+              row['key'] as String: {
+                'points': [
+                  {'t': noon, 'v': row['value']},
+                ],
+              },
+        },
+      ),
+      devices: devices,
+      wake: wake,
+      historyCount:
+          rows.where((r) => r['key'] == 'history_count').firstOrNull?['value']
+              as int? ??
+          0,
+    );
+  }
+
+  @override
+  Future<SleepDetailBundle> getSleepDetailHistory(
+    String day,
+    SleepPrimaryRead primary, {
+    required List<String> chartKeys,
+    required int windowDays,
+    String? before,
+  }) async {
+    _focusCheck('getSleepDetailHistory');
+    final (charts, windows) = await (
+      _getCharts(chartKeys),
+      sleepWindows(days: windowDays, before: before),
+    ).wait;
+    return SleepDetailBundle(
+      night: primary.bundle.night,
+      timeline: primary.bundle.timeline,
+      insights: primary.bundle.insights,
+      charts: charts,
+      windows: windows,
+    );
+  }
+
+  @override
   Future<SleepDetailBundle> getSleepDetailBundle(
     String day, {
     required List<String> chartKeys,

@@ -140,7 +140,9 @@ class ChartAnnotation {
     if (f == null || l == null) return this;
     return ChartAnnotation(id: id, kind: kind, at: at, until: until,
       icon: icon, groupId: groupId, wakeKind: wakeKind, finding: f,
-      label: '${prettyDay(f.date, l)} · ${findingTitle(l, f)}. ${findingDetail(l, f)}');
+      label:
+          '${prettyDay(f.date, l)} · ${findingTitle(l, f)}. ${findingDetail(l, f)}',
+    );
   }
 }
 
@@ -197,7 +199,9 @@ List<ChartAnnotation> rhrChangeAnnotations(Iterable<Finding> findings, {AppLocal
       ChartAnnotation(id: 'rhr-shift:${f.date}', kind: AnnotationKind.rhrShift,
         at: localDayStartSec(f.date)!.toDouble(), finding: f,
         icon: findingIcon(f),
-        label: '${prettyDay(f.date, locale)} · ${findingTitle(locale, f)}. ${findingDetail(locale, f)}')];
+          label:
+              '${prettyDay(f.date, locale)} · ${findingTitle(locale, f)}. ${findingDetail(locale, f)}',
+        )];
 }
 
 /// Domain-to-pixel scale of one chart plus the footprint of one icon.

@@ -322,9 +322,12 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(widget.a.title,
+                            PendingStatic(
+                              child: Text(widget.a.title,
                             style: F.body.copyWith(
-                                color: p.ink, fontWeight: FontWeight.w600)),
+                                color: p.ink, fontWeight: FontWeight.w600,
+                                ),
+                              )),
                         if (!_open && summary != null && summary.isNotEmpty)
                           Text(summary,
                               maxLines: 1,

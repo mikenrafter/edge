@@ -6,6 +6,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'placeholder_paint.dart';
+import 'load_memory.dart';
+export 'pending_scope.dart';
 import '../grammar.dart' show Surface, ChartFrame;
 import '../theme.dart';
 import 'guide_plot.dart';
@@ -44,7 +46,10 @@ class AsyncSection<T> extends StatelessWidget {
 /// overlay, this preserves decorations, icons and images without filling the
 /// background. Pending values cannot be announced, focused or activated.
 class PendingContent extends StatefulWidget {
-  const PendingContent({super.key, required this.pending, required this.child});
+  const PendingContent({super.key, required this.pending, required this.child,
+    this.memoryKey,
+  });
+  final String? memoryKey;
   final bool pending;
   final Widget child;
   @override
@@ -77,11 +82,20 @@ class _PendingContentState extends State<PendingContent>
   late final AnimationController _fade = AnimationController(vsync: this,
     duration: const Duration(milliseconds: 250));
   Timer? _delay;
+  final _elapsed = Stopwatch();
   bool _visible = false;
   @override
-  void initState() { super.initState(); _start(); }
+  void initState() {
+    super.initState();
+    if (!widget.pending) _fade.value = 1;
+    _start();
+  }
+
   void _start() {
     if (!widget.pending) return;
+    _elapsed
+      ..reset()
+      ..start();
     _delay = Timer(const Duration(milliseconds: 200), () {
       if (!mounted || !widget.pending) return;
       setState(() => _visible = true);
@@ -92,7 +106,21 @@ class _PendingContentState extends State<PendingContent>
   void didUpdateWidget(PendingContent old) {
     super.didUpdateWidget(old);
     if (old.pending == widget.pending) return;
-    _delay?.cancel(); _fade.reset(); _visible = false; _start();
+    if (!widget.pending && widget.memoryKey != null && _elapsed.isRunning) {
+      _elapsed.stop();
+      LoadMemory.local.record(
+        '${widget.memoryKey}:milliseconds',
+        _elapsed.elapsedMilliseconds.toDouble(),
+      );
+    }
+    _delay?.cancel();
+    _fade.reset();
+    _visible = false;
+    if (widget.pending) {
+      _start();
+    } else {
+      _fade.forward();
+    }
   }
   @override
   void dispose() { _delay?.cancel(); _fade.dispose(); super.dispose(); }
@@ -103,7 +131,13 @@ class _PendingContentState extends State<PendingContent>
     descendantsAreTraversable: !widget.pending,
     child: ExcludeSemantics(excluding: widget.pending,
       child: IgnorePointer(ignoring: widget.pending,
-        child: AnimatedBuilder(animation: _fade, child: widget.child,
+        child: AnimatedBuilder(animation: _fade, child: widget.memoryKey == null
+              ? widget.child
+              : RememberedLayout(
+                  id: widget.memoryKey!,
+                  pending: widget.pending,
+                  child: widget.child,
+                ),
           builder: (_, child) => PendingTone(pulse: _PendingPulse.shared.value,
             fade: _fade.value, child: _PendingPaint(pending: widget.pending,
               visible: _visible, fade: _fade.value, child: child!))))));
@@ -115,19 +149,34 @@ class _PendingPaint extends SingleChildRenderObjectWidget {
   final double fade;
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderPending(context as Element, pending, visible, fade);
+      _RenderPending(context as Element, pending, visible, fade, child);
   @override
   void updateRenderObject(BuildContext context, _RenderPending renderObject) {
     renderObject..pending = pending..visible = visible..fade = fade;
+    renderObject.updateChildIdentity(child);
   }
 }
 
 class _RenderPending extends RenderProxyBox {
-  _RenderPending(this.element, this._pending, this._visible, this._fade);
+  _RenderPending(
+    this.element,
+    this._pending,
+    this._visible,
+    this._fade,
+    this._widgetChild,
+  );
   final Element element;
   bool _pending, _visible, _listening = false;
   double _fade;
   GuidePlaceholderPaint? _plan;
+  Widget? _widgetChild;
+  void updateChildIdentity(Widget? child) {
+    if (identical(_widgetChild, child)) return;
+    _widgetChild = child;
+    _plan = null;
+    markNeedsPaint();
+  }
+
   @override
   bool get isRepaintBoundary => true;
   set fade(double value) { if (_fade == value) return; _fade = value; markNeedsPaint(); }
@@ -152,16 +201,24 @@ class _RenderPending extends RenderProxyBox {
   @override
   void paint(PaintingContext context, Offset offset) {
     final content = child;
-    if (!_pending || content == null) { super.paint(context, offset); return; }
-    if (!_visible || _fade <= 0) return;
-    final plan = _plan ??= GuidePlaceholderPaint.of(element,
-      fade: 1, pulse: 1, includeChartReadout: true);
+    if (content == null || !_pending && _fade >= 1) {
+      super.paint(context, offset);
+      return;
+    }
+    if (_plan?.stale ?? false) _plan = null;
+    final plan = _plan ??= GuidePlaceholderPaint.of(
+      element,
+      fade: 1,
+      pulse: 1,
+      includeChartReadout: true,
+      preserveChrome: true,
+    );
     plan.pulse = _PendingPulse.shared.value;
-    // Fade the entire placeholder, including backgrounds, dividers and icons.
-    // Guide dimming remains separate and its placeholder ink never fades.
-    context.pushOpacity(offset, (255 * _fade).round(), (context, offset) {
-      plan.paint(context, content, offset, size);
-    });
+    // Card chrome and known labels always paint. Only data leaves share the
+    // debounced fade; guides retain their separate immediate-ink policy.
+    plan.substitute = _pending;
+    plan.inkFade = !_pending || _visible ? _fade : 0;
+    plan.paint(context, content, offset, size);
   }
 }
 

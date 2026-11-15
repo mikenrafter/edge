@@ -20,8 +20,16 @@ class DayRhrNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     final flag = marks.where((a) => a.id == 'rhr-shift:$day').firstOrNull;
     if (flag == null) return const SizedBox.shrink();
-    final l = AppLocalizations.of(context) ?? lookupAppLocalizations(const Locale('en'));
-    return Padding(key: ValueKey('day-rhr-flag:$day'), padding: const EdgeInsets.only(top: S.x3),
-      child: Text(flag.localized(l).label, style: F.cap.copyWith(color: P.of(context).ink2)));
+    final l =
+        AppLocalizations.of(context) ??
+        lookupAppLocalizations(const Locale('en'));
+    return Padding(
+      key: ValueKey('day-rhr-flag:$day'),
+      padding: const EdgeInsets.only(top: S.x3),
+      child: Text(
+        flag.localized(l).label,
+        style: F.cap.copyWith(color: P.of(context).ink2),
+      ),
+    );
   }
 }

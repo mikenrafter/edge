@@ -166,13 +166,14 @@ class BeatsData {
     final (:day, :days) = night ?? await pickNight(repo, want: want);
     if (day == null) return BeatsData(days: days);
 
+    final flagsRead = loadRhrAnnotations(repo);
     final hrv = await repo.getDayHrv(day);
     final heart = await repo.getDayHeart(day);
     final dcEnv = hrv['prsa_dc'];
     final shapeEnv = hrv['night_shape'];
 
     return BeatsData(
-      rhrMarks: await loadRhrAnnotations(repo),
+      rhrMarks: await flagsRead,
       day: day,
       days: days,
       poincare: hrv['irregular'] is Map
@@ -548,15 +549,13 @@ class _BeatsState extends State<Beats>
           // them survives — which is why SD1 and SD2 can still be printed on
           // Nerd stats for a night whose cloud can no longer be drawn.
           '${l?.beatsBeatsGoneBody ?? 'Individual beat intervals are kept '
-              'for a few days after the night is scored, then deleted. The '
-              'numbers taken from them are kept for good'}'
-              // NEVER `sd2 ?? 0`: a missing long-term axis printed as "SD2
-              // 0 ms" is a fabricated measurement, and 0 is the one value that
-              // reads as a finding.
-              '${sd1 == null || sd2 == null ? '' : (l?.beatsBeatsGoneMeasured(
-                      metricValue('ms', sd1), metricValue('ms', sd2)) ??
-                  '. Spread: ${metricValue('ms', sd1)} ms short-term, '
-                      '${metricValue('ms', sd2)} ms long-term')}.',
+                  'for a few days after the night is scored, then deleted. The '
+                  'numbers taken from them are kept for good'}'
+          // NEVER `sd2 ?? 0`: a missing long-term axis printed as "SD2
+          // 0 ms" is a fabricated measurement, and 0 is the one value that
+          // reads as a finding.
+          '${sd1 == null || sd2 == null ? '' : (l?.beatsBeatsGoneMeasured(metricValue('ms', sd1), metricValue('ms', sd2)) ?? '. Spread: ${metricValue('ms', sd1)} ms short-term, '
+                        '${metricValue('ms', sd2)} ms long-term')}.',
           icon: LucideIcons.scatterChart,
         ),
       );

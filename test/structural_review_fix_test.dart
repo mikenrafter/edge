@@ -40,7 +40,7 @@ void main() {
     picture.dispose();
     expect(alpha, 255);
   });
-  testWidgets('F6 all placeholder chrome fades under one opacity layer', (t) async {
+  testWidgets('F6 pending value ink fades under an opacity layer', (t) async {
     await t.pumpWidget(skHost(const PendingContent(pending: true,
       child: Surface(child: Text('Stored answer')))));
     await t.pump(const Duration(milliseconds: 199));

@@ -59,6 +59,20 @@ class SleepDetailBundle {
   });
 }
 
+/// Fast Sleep shape; history values remain absent until their separate read.
+class SleepPrimaryRead {
+  const SleepPrimaryRead({
+    required this.bundle,
+    required this.wake,
+    this.devices = const [],
+    this.historyCount = 0,
+  });
+  final SleepDetailBundle bundle;
+  final WakeNightTimeline wake;
+  final List<Map<String, Object?>> devices;
+  final int historyCount;
+}
+
 /// The local data contract for every insights screen + the AI Coach.
 /// Return types mirror the cloud ApiClient exactly (defensive Map/List blobs).
 /// Whether a stored `rmssd` came from the sleep-session estimator: its
@@ -172,6 +186,24 @@ abstract class LocalRepository {
   /// insights, every named chart and the sleep windows ([windowDays] newest,
   /// or with [before] the newest strictly before that day — see
   /// [sleepWindows]).
+  /// Cheap shape read. Null retains compatibility for repositories that only
+  /// supply an atomic bundle. Production overrides this with bounded reads.
+  Future<SleepPrimaryRead?> getSleepDetailPrimary(String day) async => null;
+
+  /// Complete the history without re-reading the already published shape.
+  Future<SleepDetailBundle> getSleepDetailHistory(
+    String day,
+    SleepPrimaryRead primary, {
+    required List<String> chartKeys,
+    required int windowDays,
+    String? before,
+  }) => getSleepDetailBundle(
+    day,
+    chartKeys: chartKeys,
+    windowDays: windowDays,
+    before: before,
+  );
+
   Future<SleepDetailBundle> getSleepDetailBundle(
     String day, {
     required List<String> chartKeys,

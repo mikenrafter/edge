@@ -1046,7 +1046,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
     if (_journalRead.containsKey(key) || !_journalReading.add(key)) return;
     final gen = _journalGen;
     final load = widget.annotationLoader ??
-        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context)));
+        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context),
+          repo: repoOf(context)));
     Future<List<ChartAnnotation>> read() async {
       try {
         return await load(from, to);
@@ -2531,7 +2532,8 @@ class DayNav extends StatelessWidget {
           ),
         );
 
-    return GuideBox(child: Container(
+    return PendingStatic(
+      child: GuideBox(child: Container(
       decoration: BoxDecoration(color: p.card2, borderRadius: R.rMd),
       child: Row(children: [
         arrow(LucideIcons.chevronLeft, l?.metricDetailPreviousDay ?? 'Previous day',
@@ -2556,7 +2558,9 @@ class DayNav extends StatelessWidget {
             ),
           ),
         arrow(LucideIcons.chevronRight, l?.metricDetailNextDay ?? 'Next day', newer),
-      ]),
+      ],
+          ),
+        ),
     ));
   }
 }

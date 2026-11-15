@@ -16,6 +16,7 @@ import '../../data/assumed_water.dart' show AssumedGlass;
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/local_repository_impl.dart';
+import '../../data/local_repository.dart';
 import '../../compute/findings.dart';
 import '../../data/journal_fields.dart';
 import '../../data/moment_label.dart';
@@ -123,7 +124,9 @@ List<ChartAnnotation> napAnnotations(
 /// The real reader. Never throws: a store that cannot be read leaves the chart
 /// without annotations, which is a smaller claim, not a wrong one.
 Future<List<ChartAnnotation>> loadAnnotations(String from, String to,
-    {AppLocalizations? l}) async {
+    {AppLocalizations? l,
+  LocalRepository? repo,
+}) async {
   try {
     final lo = localDayStartSec(from), hi = localDayEndSec(to);
     if (lo == null || hi == null) return const [];
@@ -134,7 +137,9 @@ Future<List<ChartAnnotation>> loadAnnotations(String from, String to,
       LocalDb.assumedWater(sinceDate: from),
       LocalDb.journalMetricsByDay(sinceDaysEpoch: from),
       LocalDb.journalFieldDefs(),
-      LocalRepositoryImpl(getProfileMap: () => null).getInsights(),
+      (repo ?? LocalRepositoryImpl(getProfileMap: () => null))
+          .getInsights()
+          .catchError((_) => <String, dynamic>{}),
     ]);
     return rangeAnnotations(
       from: from,

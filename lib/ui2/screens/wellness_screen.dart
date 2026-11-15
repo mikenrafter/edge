@@ -305,7 +305,9 @@ class _WellnessScreenState extends State<WellnessScreen>
       return _paused ? const PausedToday() : _planFailed
         ? StatusCard(l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',
             fix: l?.homeTryAgain ?? 'Try again', onFix: _load)
-        : PendingContent(pending: _loading, child: _recovery(c));
+        : PendingContent(
+              memoryKey: 'sleep-plan:body',
+              pending: _loading, child: _recovery(c));
     }
     final last = _breathing.isEmpty ? null : _breathing.first;
     // `select`, not `watch`: AppState ticks at ~1 Hz during a live session and
@@ -1769,7 +1771,9 @@ class _JournalFindingsState extends State<JournalFindings> {
       SettingsAccordion('Your log patterns', id: 'journal_comparisons',
         key: const ValueKey('journal-comparisons'), initiallyExpanded: true,
         children: [
-        PendingContent(pending: !_rowsReady, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        PendingContent(
+            memoryKey: 'journal-findings:rows',
+            pending: !_rowsReady, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (_rows.isEmpty)
               StatusCard(l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
                 l?.wellnessNothingSeparatedBody ?? 'No clear links found yet.', icon: LucideIcons.scatterChart)
@@ -1783,7 +1787,9 @@ class _JournalFindingsState extends State<JournalFindings> {
       SettingsAccordion(
         l?.wellnessWhichDayOfWeek ?? 'Which day of the week',
         id: 'journal_weekday', initiallyExpanded: true, children: [
-        KeyedSubtree(key: const ValueKey('journal-weekday'), child: PendingContent(pending: !_weekdayReady, child: _weekdayCard(c))),
+        KeyedSubtree(key: const ValueKey('journal-weekday'), child: PendingContent(
+              memoryKey: 'journal-findings:weekday',
+              pending: !_weekdayReady, child: _weekdayCard(c))),
       ]),
       if (_cachedAt case final at?)
         Padding(

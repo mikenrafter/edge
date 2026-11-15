@@ -28,6 +28,8 @@ import '../../l10n/date_text.dart';
 // only three of them and they are read together.
 
 import 'dart:async';
+import '../read_prefetch.dart';
+import '../skeleton/load_memory.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui show TextDirection;
 
@@ -1893,8 +1895,11 @@ class _RingText extends StatelessWidget {
         ? CrossAxisAlignment.center
         : CrossAxisAlignment.start;
     return Column(crossAxisAlignment: cross, children: [
-      Text(r.label.toUpperCase(),
-          style: F.over.copyWith(color: p.ink3), textAlign: align),
+        PendingStatic(
+          child: Text(r.label.toUpperCase(),
+          style: F.over.copyWith(color: p.ink3), textAlign: align,
+          ),
+        ),
         const SizedBox(height: S.x1),
         // An absence is a dash in the numeral slot (never a zero, never a
         // number): the slot is the same height as a reading's, so the rings
@@ -2685,6 +2690,7 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
     final t = beginRead(#home);
+    final releasePrefetch = ReadPrefetch.shared.visibleRead('home');
     try {
       final day = _day;
       final l = AppLocalizations.of(context);
@@ -2714,6 +2720,32 @@ class _HomeScreenState extends State<HomeScreen>
         setState(() => (_d = d, _days = days, _loading = false, _failed = false,
             _paused = false));
         _recordRender();
+        final target = day ?? todayLabel();
+        final details =
+            <String, Future<Object?> Function()>{
+              'sleep': () => repo.getDaySleepV2(target),
+              'recovery': () => repo.getDayHrv(target),
+              'strain': () => repo.getDayStrain(target),
+            }.entries.toList()..sort(
+              (a, b) =>
+                  (LoadMemory.local.estimate('${b.key}:milliseconds') ?? 0)
+                      .compareTo(
+                        LoadMemory.local.estimate('${a.key}:milliseconds') ?? 0,
+                      ),
+            );
+        unawaited(
+          ReadPrefetch.shared.warm(
+            'home',
+            details.map((e) => e.value).toList(),
+            busy: () =>
+                !mounted ||
+                !TickerMode.valuesOf(context).enabled ||
+                ModalRoute.of(context)?.isCurrent == false ||
+                ImportFocus.active.value ||
+                context.read<AppState>().deriving ||
+                context.read<AppState>().derivePending,
+          ),
+        );
         _loadSince();
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
           if (!mounted) return;
@@ -2738,6 +2770,8 @@ class _HomeScreenState extends State<HomeScreen>
         // than time a later retry from this bump.
         _latency.committed();
       }
+    } finally {
+      releasePrefetch();
     }
   }
 
@@ -3132,14 +3166,8 @@ class _HomeScreenState extends State<HomeScreen>
                 ? (l?.homeIllnessAmberSameNight ?? 'Last night sat outside your normal range')
                 : (l?.homeIllnessAmberOtherNight(prettyDay(d.illnessDay, l)) ??
                     '${prettyDay(d.illnessDay, l)} sat outside your normal range'),
-        body: '${z == null
-            ? (l?.homeIllnessBodyNoZ ??
-                'Your resting heart rate has been above your usual over recent nights. A pattern, not a cause.')
-            : (z >= 0
-                ? (l?.homeIllnessBodyAbove ??
-                    'Recent nights put your resting heart rate above your usual. That night was above it too. A pattern, not a cause.')
-                : (l?.homeIllnessBodyBelow ??
-                    'Recent nights together put your resting heart rate above your usual, though that night alone was below it. A pattern, not a cause.'))} ${l?.homeIllnessAdvice ?? 'Worth noting if it continues past a couple of days.'}',
+        body:
+          '${z == null ? (l?.homeIllnessBodyNoZ ?? 'Your resting heart rate has been above your usual over recent nights. A pattern, not a cause.') : (z >= 0 ? (l?.homeIllnessBodyAbove ?? 'Recent nights put your resting heart rate above your usual. That night was above it too. A pattern, not a cause.') : (l?.homeIllnessBodyBelow ?? 'Recent nights together put your resting heart rate above your usual, though that night alone was below it. A pattern, not a cause.'))} ${l?.homeIllnessAdvice ?? 'Worth noting if it continues past a couple of days.'}',
         onTap: () => go(c, const MetricDetail('resting_hr')),
       );
   }

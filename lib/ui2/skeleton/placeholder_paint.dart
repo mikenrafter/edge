@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import '../grammar.dart' show ChartFrame, ChartKeyReadout;
 import '../theme.dart';
 import 'guide_plot.dart';
+import 'pending_scope.dart';
 import 'skeleton.dart';
 
 class GuidePlaceholderPaint {
@@ -20,8 +21,18 @@ class GuidePlaceholderPaint {
   final P palette;
   final double fade;
   double pulse;
+  bool preserveChrome = false;
+  double inkFade = 1;
+  bool substitute = true;
   final paragraphShapes = <RenderParagraph, List<SkeletonShape>>{};
   final blocks = <RenderDecoratedBox>{};
+  final _texts = <RenderParagraph, InlineSpan>{};
+  bool get stale =>
+      _texts.entries.any(
+        (e) => !e.key.attached || !identical(e.key.text, e.value),
+      ) ||
+      plots.any((r) => !r.attached) ||
+      blocks.any((r) => !r.attached);
   GuidePlaceholderPaint._(
     this.paragraphs,
     this.inks,
@@ -39,6 +50,7 @@ class GuidePlaceholderPaint {
     required double fade,
     required double pulse,
     bool includeChartReadout = false,
+    bool preserveChrome = false,
   }) {
     planBuilds++;
     final paragraphs = <RenderParagraph>{};
@@ -50,6 +62,7 @@ class GuidePlaceholderPaint {
     var card = isGuideCard(unit.widget);
     void visit(Element e) {
       final w = e.widget;
+      if (preserveChrome && w is PendingStatic) return;
       if (w is Icon || w is ImageIcon || w is Image || w is RawImage) return;
       if (isGuideCard(w)) card = true;
       final ro = e is RenderObjectElement ? e.renderObject : null;
@@ -72,6 +85,10 @@ class GuidePlaceholderPaint {
       }
       if (ro is RenderParagraph) {
         final frame = e.findAncestorWidgetOfExactType<ChartFrame>();
+        if (preserveChrome &&
+            frame != null &&
+            e.findAncestorWidgetOfExactType<ChartKeyReadout>() == null)
+          return;
         if (frame != null && ro.text.toPlainText() != frame.title &&
             (!includeChartReadout || e.findAncestorWidgetOfExactType<ChartKeyReadout>() == null)) {
           hidden.add(ro);
@@ -91,11 +108,15 @@ class GuidePlaceholderPaint {
       hidden,
       plots,
       framePaint,
-      card ? paragraphs.firstOrNull : null,
+      card && !preserveChrome ? paragraphs.firstOrNull : null,
       paletteOf(unit),
       fade,
       pulse,
     );
+    for (final paragraph in [...paragraphs, ...hidden]) {
+      plan._texts[paragraph] = paragraph.text;
+    }
+    plan.preserveChrome = preserveChrome;
     plan.blocks.addAll(blocks);
     return plan;
   }
@@ -155,8 +176,40 @@ class _PlaceholderContext extends PaintingContext {
       _PlaceholderContext(childLayer, bounds, treatment);
 
   @override
-  void paintChild(RenderObject child, Offset offset) {
+  void paintChild(RenderObject child, Offset offset, {bool fadeValue = true}) {
     final t = treatment;
+    if (t.preserveChrome && child is PendingFillRender) {
+      child.paint(this, offset);
+      if (t.inkFade > 0) {
+        pushOpacity(offset, (255 * t.inkFade).round(), (context, at) {
+          (child as PendingFillRender).paintPendingFill(context, at, t.pulse);
+        });
+      }
+      return;
+    }
+    final value =
+        child is RenderParagraph && t.paragraphs.contains(child) ||
+        child is RenderCustomPaint && t.plots.contains(child) ||
+        child is RenderDecoratedBox && t.blocks.contains(child);
+    if (t.preserveChrome && fadeValue && value) {
+      if (t.inkFade <= 0) return;
+      pushOpacity(offset, (255 * t.inkFade).round(), (context, at) {
+        (context as _PlaceholderContext).paintChild(
+          child,
+          at,
+          fadeValue: false,
+        );
+      });
+      return;
+    }
+    if (t.preserveChrome && !t.substitute) {
+      if (child.isRepaintBoundary) {
+        child.paint(this, offset);
+      } else {
+        super.paintChild(child, offset);
+      }
+      return;
+    }
     if (child is RenderDecoratedBox && t.blocks.contains(child)) {
       final decoration = child.decoration as BoxDecoration;
       final radius = decoration.borderRadius?.resolve(TextDirection.ltr) ?? BorderRadius.zero;
@@ -218,7 +271,8 @@ class _PlaceholderContext extends PaintingContext {
       );
       return;
     }
-    if (child is RenderCustomPaint && t.framePaint.contains(child)) {
+    if (!t.preserveChrome &&
+        child is RenderCustomPaint && t.framePaint.contains(child)) {
       final content = child.child;
       if (content != null) paintChild(content, offset);
       return;

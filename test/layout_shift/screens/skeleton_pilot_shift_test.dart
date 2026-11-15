@@ -39,11 +39,73 @@ import '../../support/as_of_recalc_fakes.dart';
 import '../../support/live_guide_harness.dart';
 import '../../support/scripted_artifact_source.dart';
 import '../../support/shift_run.dart';
+import '../../support/tail_shift.dart';
+import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/wake/wake_timeline.dart';
 import '../../support/skeleton_fixture.dart' show skLoadAppFonts;
 
 class _LateRepo extends GuideFakeRepo {
   _LateRepo({this.rich = false});
   final bool rich;
+  @override
+  Future<SleepPrimaryRead?> getSleepDetailPrimary(String day) async {
+    if (!rich) return null;
+    final cd = await getInsights();
+    final timeline = {
+            for (final key in ['hr', 'hrv', 'resp', 'skin_temp'])
+              key: [
+                for (var i = 0; i < 98; i++)
+                  {
+                    't':
+                        DateTime.now().millisecondsSinceEpoch ~/ 1000 -
+                        36000 +
+                        i * 300,
+                    'v':
+                        (key == 'hr'
+                            ? 55
+                            : key == 'hrv'
+                            ? 45
+                            : key == 'resp'
+                            ? 14
+                            : 33) +
+                        i % 3 * .1,
+                  },
+              ],
+          };
+    final noon =
+        DateTime(
+          DateTime.now().year,
+          DateTime.now().month,
+          DateTime.now().day,
+          12,
+        ).millisecondsSinceEpoch ~/
+        1000;
+    return SleepPrimaryRead(
+      bundle: SleepDetailBundle(
+        night: await SleepRepo().getDaySleepV2(day),
+        timeline: timeline,
+        insights: cd,
+        windows: const [],
+        charts: {
+          for (final key in [
+            'unobserved_min',
+            'awakenings',
+            'longest_sleep_min',
+            'sol_min',
+          ])
+            key: {
+              'points': [
+                {'t': noon, 'v': key == 'unobserved_min' ? 60 : 5},
+              ],
+            },
+        },
+      ),
+      wake: const WakeNightTimeline(),
+      historyCount: 28,
+      devices: await getDeviceNights(day),
+    );
+  }
+
   final gate = Completer<void>();
   int reads = 0;
   Future<T> late<T>(Future<T> Function() read) async {
@@ -53,11 +115,16 @@ class _LateRepo extends GuideFakeRepo {
   }
 
   @override
-  Future<Map<String, dynamic>> getToday() => late(super.getToday);
+  Future<Map<String, dynamic>> getToday() =>
+      rich ? super.getToday() : late(super.getToday);
   @override
-  Future<List<String>> availableDays() => late(
-    () async => [for (var i = 0; i < 28; i++) dayLabelBefore(todayId, i)!],
-  );
+  Future<List<String>> availableDays() => rich
+      ? Future.value([for (var i = 0; i < 28; i++) dayLabelBefore(todayId, i)!])
+      : late(
+          () async => [
+            for (var i = 0; i < 28; i++) dayLabelBefore(todayId, i)!,
+          ],
+        );
   @override
   Future<Map<String, dynamic>> getDaySleepV2(String day) => late(
     () => rich ? SleepRepo().getDaySleepV2(day) : super.getDaySleepV2(day),
@@ -157,10 +224,47 @@ class _LateRepo extends GuideFakeRepo {
         }
       : {};
   @override
+  Future<List<Map<String, dynamic>>> sleepWindows({
+    int days = 60,
+    String? before,
+  }) async => rich
+      ? [
+          for (var i = 1; i <= 28; i++)
+            {
+              'date': dayLabelBefore(todayId, i)!,
+              'onset_ts':
+                  DateTime(
+                    DateTime.now().year,
+                    DateTime.now().month,
+                    DateTime.now().day - i - 1,
+                    23,
+                  ).millisecondsSinceEpoch ~/
+                  1000,
+            },
+        ]
+      : [];
+  @override
   Future<Map<String, dynamic>> getZones() => late(super.getZones);
   @override
-  Future<Map<String, dynamic>> getDayStrain(String day) =>
-      late(() => super.getDayStrain(day));
+  Future<Map<String, dynamic>> getDayStrain(String day) => late(
+    () async => {
+      ...await super.getDayStrain(day),
+      'curve': [
+        for (var m = 0; m < 1440; m += 30)
+          {
+            't':
+                DateTime(
+                      DateTime.now().year,
+                      DateTime.now().month,
+                      DateTime.now().day,
+                    ).millisecondsSinceEpoch ~/
+                    1000 +
+                m * 60,
+            'v': m / 1440 * 9.4,
+          },
+      ],
+    },
+  );
   @override
   Future<List<ActivitySuggestion>> pendingActivities() =>
       late(super.pendingActivities);
@@ -368,10 +472,15 @@ void main() {
             'typical-day' => 'typical-primary-plot',
             'naps' => 'naps-primary-action',
             'heart-rate-zones' => 'zones-primary-rows',
-            _ => null,
+          'day-strain' => 'day-strain-primary',
+          'rich-sleep-card:versus' => 'sleep-versus-primary',
+          'rich-sleep-card:unusual' => 'card:unusual',
+          'rich-sleep-card:overnight' => 'card:overnight',
+          'rich-sleep-card:tonight' => 'card:tonight',
+          _ => null,
           };
           final prefix = prefixKey == null ? null : find.byKey(ValueKey(prefixKey));
-          final beforePrefix = prefix == null ? null : t.getSize(prefix);
+          final beforePrefix = prefix == null ? null : t.getRect(prefix);
           run.opened();
           // Sample through debounce/fade rather than jumping directly to its first
           // animation frame at 2.5 s; screenshots must show the painted pending state.
@@ -387,7 +496,16 @@ void main() {
             greaterThan(0),
             reason: 'the real screen must reach its repository',
           );
-          repo.gate.complete();
+        final pendingFrame = run.probe.frames.last;
+        final verdict = find.byKey(const ValueKey('sleep-unusual-pending'));
+        final tailTop =
+            entry.key == 'rich-sleep-card:unusual' &&
+                verdict.evaluate().isNotEmpty
+            ? t.getRect(verdict).top
+            : prefix == null
+            ? null
+            : t.getRect(prefix).bottom;
+        repo.gate.complete();
           await run.frames([0, 16, 50, 100, 300, 1000]);
           // Drain SQLite and independent reads too, capturing every publication.
           for (var i = 0; i < 30; i++) {
@@ -425,12 +543,30 @@ void main() {
             0,
             reason: '${entry.key} uses a spinner while reading',
           );
-          final hasUnknownTail = rich || ['heart-rate-zones', 'typical-day', 'day-strain'].contains(entry.key);
-          if (prefix != null) {
-            expect(t.getSize(prefix), beforePrefix, reason: '${entry.key} primary shape');
-          }
-          if (hasUnknownTail) {
-            // Cold SQL does not expose a count/size before the read. Tails fit
+          final hasUnknownTail = rich || ['heart-rate-zones', 'day-strain'].contains(entry.key);
+        if (prefix != null) {
+          expect(
+            t.getRect(prefix),
+            beforePrefix,
+            reason: '${entry.key} primary rect',
+          );
+        }
+        if (hasUnknownTail) {
+          expect(
+            tailTop,
+            isNotNull,
+            reason: '${entry.key} needs a measured tail boundary',
+          );
+          final measured = checkGrowingTail(
+            scenario: run.probe.scenario(shiftViewport),
+            pending: pendingFrame,
+            tailTop: tailTop!,
+            route: entry.key,
+          );
+          debugPrint(
+            'TAIL ${entry.key}: prefix=${measured.prefix.total.toStringAsFixed(4)} tail=${measured.tail.total.toStringAsFixed(4)}',
+          );
+          // Cold SQL does not expose a count/size before the read. Tails fit
             // their contents after the primary shape/header. Report their FULL
             // cost above; do not pretend this is a near-zero global score.
             expect(find.descendant(of: find.byType(SettingsAccordion), matching: find.byWidgetPredicate((w) => w is Scrollable && (w.axisDirection == AxisDirection.down || w.axisDirection == AxisDirection.up))), findsNothing);

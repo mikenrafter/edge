@@ -434,7 +434,9 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload, Paused
     if (!force && _ann.containsKey(key)) return;
     final t = beginRead(#exploreAnnotations);
     final load = widget.annotationLoader ??
-        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context)));
+        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context),
+          repo: repoOf(context),
+        ));
     Future.sync(() => load(from, to)).then((items) {
       if (!stillNewest(#exploreAnnotations, t)) return;
       setState(() => _ann[key] = items);

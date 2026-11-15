@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'ui2/read_prefetch.dart';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -224,7 +225,8 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
           child: ThemeSwitchOverlay(key: themeSwitchKey, child: child!),
         ),
       ),
-      navigatorObservers: [TelemetryNavigatorObserver(), _guideRunner.routes],
+      navigatorObservers: [TelemetryNavigatorObserver(), _guideRunner.routes,
+            ReadPrefetch.routes],
       home: const _Gate(),
     )));
   }

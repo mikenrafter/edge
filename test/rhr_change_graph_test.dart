@@ -75,7 +75,11 @@ void main() {
       await t.pumpWidget(perfApp(app, screen)); await t.pump();
       final marked = t.widgetList<ChartFrame>(find.byType(ChartFrame)).where((f) => f.annotations?.items.any((a) => a.id == 'rhr-shift:$day') == true);
       if (screen is DayStepsDetail || screen is DayStrainDetail) {
-        expect(marked, isEmpty, reason: 'daily flags cannot claim an intraday time');
+        expect(
+          marked,
+          isEmpty,
+          reason: 'daily flags cannot claim an intraday time',
+        );
         expect(find.byKey(ValueKey('day-rhr-flag:$day')), findsOneWidget);
       } else {
         expect(marked, isNotEmpty, reason: screen.runtimeType.toString());
@@ -87,26 +91,63 @@ void main() {
     final frame = t.widget<ChartFrame>(find.byType(ChartFrame));
     expect(frame.annotations!.items.single.at, 2, reason: 'trimmed three-day history must not use the 30-day index');
   });
-  testWidgets('Sleep across midnight and the timeline never plot a daily RHR flag as a time', (t) async {
-    skTallView(t, w: 390, h: 6000);
-    final app = AppState.forTesting(); addTearDown(app.dispose);
-    final day = todayLabel(), midnight = localDayStartSec(todayLabel())!;
-    final marks = rhrChangeAnnotations([Finding(FindingKind.rhrShift, day, risen: true)]);
-    for (final screen in [
-      SleepDetail(data: SleepData(day: day, rhrMarks: marks,
-        night: {'duration_min': 480, 'onset_ts': midnight - 3600, 'wake_ts': midnight + 7*3600,
-          'hypnogram': [{'t':midnight-3600,'stage':'light'},{'t':midnight+7*3600,'stage':'awake'}]},
-        timeline: {'hr':[{'t':midnight-3600,'v':55},{'t':midnight+7*3600,'v':56}]})),
-      DayTimelineScreen(data: TimelineData(day: day, rhrMarks: marks,
-        graph: DayGraph(hr: const [55,56], dayStart: midnight))),
-    ]) {
-      await t.pumpWidget(perfApp(app, screen)); await t.pump();
-      final flagsInPlot = t.widgetList<ChartFrame>(find.byType(ChartFrame)).expand((f) => f.annotations?.items ?? <ChartAnnotation>[]).where((a) => a.kind == AnnotationKind.rhrShift);
-      expect(flagsInPlot, isEmpty, reason: '${screen.runtimeType}: a day-level finding has no midnight episode');
-      expect(find.byKey(ValueKey('day-rhr-flag:$day')), findsOneWidget);
-      await t.pumpWidget(const SizedBox());
-    }
-  });
+  testWidgets(
+    'Sleep across midnight and the timeline never plot a daily RHR flag as a time',
+    (t) async {
+      skTallView(t, w: 390, h: 6000);
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      final day = todayLabel(), midnight = localDayStartSec(todayLabel())!;
+      final marks = rhrChangeAnnotations([
+        Finding(FindingKind.rhrShift, day, risen: true),
+      ]);
+      for (final screen in [
+        SleepDetail(
+          data: SleepData(
+            day: day,
+            rhrMarks: marks,
+            night: {
+              'duration_min': 480,
+              'onset_ts': midnight - 3600,
+              'wake_ts': midnight + 7 * 3600,
+              'hypnogram': [
+                {'t': midnight - 3600, 'stage': 'light'},
+                {'t': midnight + 7 * 3600, 'stage': 'awake'},
+              ],
+            },
+            timeline: {
+              'hr': [
+                {'t': midnight - 3600, 'v': 55},
+                {'t': midnight + 7 * 3600, 'v': 56},
+              ],
+            },
+          ),
+        ),
+        DayTimelineScreen(
+          data: TimelineData(
+            day: day,
+            rhrMarks: marks,
+            graph: DayGraph(hr: const [55, 56], dayStart: midnight),
+          ),
+        ),
+      ]) {
+        await t.pumpWidget(perfApp(app, screen));
+        await t.pump();
+        final flagsInPlot = t
+            .widgetList<ChartFrame>(find.byType(ChartFrame))
+            .expand((f) => f.annotations?.items ?? <ChartAnnotation>[])
+            .where((a) => a.kind == AnnotationKind.rhrShift);
+        expect(
+          flagsInPlot,
+          isEmpty,
+          reason:
+              '${screen.runtimeType}: a day-level finding has no midnight episode',
+        );
+        expect(find.byKey(ValueKey('day-rhr-flag:$day')), findsOneWidget);
+        await t.pumpWidget(const SizedBox());
+      }
+    },
+  );
   testWidgets('retained daily flags translate in the visible annotation lane', (t) async {
     final projected = dailyAnnotations(rhrChangeAnnotations(flags), ['2026-11-01','2026-11-02']);
     final l = lookupAppLocalizations(const Locale('fr'));

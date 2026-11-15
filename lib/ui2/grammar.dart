@@ -1008,9 +1008,12 @@ class NerdStatsLink extends StatelessWidget {
             Icon(LucideIcons.chartNoAxesColumn, size: 14, color: p.ink2),
             const SizedBox(width: S.x1),
             // Flexible: at accessibility text sizes the label wraps, not overflows.
-            Flexible(child: Text(label, textAlign: TextAlign.end,
+            Flexible(child: PendingStatic(
+                    child: Text(label, textAlign: TextAlign.end,
                 style: F.cap.copyWith(
-                    color: p.ink2, fontWeight: FontWeight.w600))),
+                    color: p.ink2, fontWeight: FontWeight.w600,
+                      ),
+                    ))),
           ]),
         )),
       ),
@@ -1269,11 +1272,11 @@ class ChartKeyReadout extends StatelessWidget {
     final valueHeight = tp.height;
     tp.dispose();
     final value = ConstrainedBox(
-      constraints: BoxConstraints(minHeight: valueHeight),
+      constraints: BoxConstraints.tightFor(height: valueHeight),
       child: Row(
         key: big ? valueKey : null,
         children: [
-          Flexible(child: FittedBox(
+          Expanded(child: FittedBox(
             key: ValueKey('chart-key-value:${cell.label}'),
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
@@ -1319,11 +1322,14 @@ class ChartKeyReadout extends StatelessWidget {
             Expanded(
               // Never truncated: a label is a constant, so letting it wrap
               // costs nothing in stability and a clipped key names nothing.
-              child: Text(cell.label,
+              child: PendingStatic(
+                child: Text(cell.label,
                   style: F.over.copyWith(
                       color: cell.active ? p.ink : p.ink3,
                       fontWeight:
-                          cell.active ? FontWeight.w700 : FontWeight.w600)),
+                          cell.active ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                )),
             ),
           ],
         ),
@@ -1573,13 +1579,15 @@ class Section extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Flexible(
-                child: Text(
+                child: PendingStatic(
+                  child: Text(
                   title,
                   style: F.head.copyWith(color: p.ink),
                   maxLines: wrapTitle ? null : 2,
                   overflow: wrapTitle
                       ? TextOverflow.visible
                       : TextOverflow.ellipsis,
+                  ),
                 ),
               ),
               if (action != null)
@@ -1675,11 +1683,13 @@ class SignalCard extends StatelessWidget {
               Icon(icon, size: 16, color: p.on(color)),
               const SizedBox(width: S.x2),
               Expanded(
-                child: Text(
+                child: PendingStatic(
+                  child: Text(
                   label,
                   style: F.cap.copyWith(color: p.ink2),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
               ?trailing,
@@ -1701,7 +1711,11 @@ class SignalCard extends StatelessWidget {
               if (olderVersion != null) OlderVersionMark(id: olderId ?? 'strain', version: olderVersion, reason: olderReason, speak: false),
               if (unit.isNotEmpty) ...[
                 const SizedBox(width: S.x1),
-                Text(uiText(c, unit), style: F.cap.copyWith(color: p.ink3)),
+                PendingStatic(
+                  child: Text(
+                    uiText(c, unit),
+                    style: F.cap.copyWith(color: p.ink3),
+                  )),
               ] else if (reserveUnit.isNotEmpty) ...[
                 const SizedBox(width: S.x1),
                 ExcludeSemantics(
@@ -1783,7 +1797,9 @@ class ProgressCard extends StatelessWidget {
                     const SizedBox(width: S.x2),
                   ],
                   Expanded(
-                    child: Text(label, style: F.cap.copyWith(color: p.ink2)),
+                    child: PendingStatic(
+                      child: Text(label, style: F.cap.copyWith(color: p.ink2)),
+                    ),
                   ),
                 ],
               ),
@@ -1799,7 +1815,8 @@ class ProgressCard extends StatelessWidget {
                 const SizedBox(width: S.x2),
               ],
               Expanded(
-                child: Text(label, style: F.cap.copyWith(color: p.ink2)),
+                child: PendingStatic(
+                  child: Text(label, style: F.cap.copyWith(color: p.ink2))),
               ),
               amount,
             ],
@@ -2060,7 +2077,8 @@ class _TrendCardState extends State<TrendCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(w.label, style: F.cap.copyWith(color: p.ink2)),
+          PendingStatic(
+            child: Text(w.label, style: F.cap.copyWith(color: p.ink2))),
           const SizedBox(height: S.x2),
           // A realistic value — `7h 42m`, not the two characters the golden used
           // to pass on — pushed the delta and its arrow clean off the card: 202 px
@@ -2074,7 +2092,11 @@ class _TrendCardState extends State<TrendCard> {
               runSpacing: S.x1,
               children: [
                 Text(w.value, style: F.n34.copyWith(color: p.ink)),
-                Text(displayUnit, style: F.cap.copyWith(color: p.ink3)),
+                      PendingStatic(
+                        child: Text(
+                          displayUnit,
+                          style: F.cap.copyWith(color: p.ink3),
+                        )),
                 if (band == null) change,
               ],
             )
@@ -2099,12 +2121,14 @@ class _TrendCardState extends State<TrendCard> {
                 // flexible unit split the row 50/50 and shortened a long
                 // reading with empty space beside it).
                 Expanded(
-                  child: Text(
+                  child: PendingStatic(
+                          child: Text(
                     displayUnit,
                     style: F.cap.copyWith(color: p.ink3),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                  ),
+                          ),
+                        ),
                 ),
                 if (band == null) ...[
                   const SizedBox(width: S.x2),
@@ -2248,9 +2272,11 @@ class _Cta extends StatelessWidget {
     mainAxisSize: MainAxisSize.min,
     children: [
       Flexible(
-        child: Text(
-          label,
-          style: F.cap.copyWith(color: color, fontWeight: FontWeight.w600),
+        child: PendingStatic(
+          child: Text(
+            label,
+            style: F.cap.copyWith(color: color, fontWeight: FontWeight.w600),
+          ),
         ),
       ),
       if (arrow) ...[
@@ -2308,11 +2334,13 @@ class ActionCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: F.body.copyWith(
-                  color: p.ink,
-                  fontWeight: FontWeight.w600,
+              PendingStatic(
+                child: Text(
+                  title,
+                  style: F.body.copyWith(
+                    color: p.ink,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               Text(meta, style: F.cap.copyWith(color: p.ink3)),
@@ -2585,14 +2613,20 @@ class DeepDiveCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: F.cap.copyWith(color: p.ink2)),
-                const SizedBox(height: S.x1),
+              PendingStatic(
+                child: Text(label, style: F.cap.copyWith(color: p.ink2)),
+              ),
+              const SizedBox(height: S.x1),
                 Wrap(
                   crossAxisAlignment: WrapCrossAlignment.end,
                   spacing: S.x1,
                   children: [
                     Text(value, style: F.n24.copyWith(color: p.ink)),
-                    Text(uiText(c, unit), style: F.cap.copyWith(color: p.ink3)),
+                  PendingStatic(
+                    child: Text(
+                      uiText(c, unit),
+                      style: F.cap.copyWith(color: p.ink3),
+                    )),
                   ],
                 ),
               ],
@@ -2607,6 +2641,7 @@ class DeepDiveCard extends StatelessWidget {
                 // flex: 1, so the reading started at the midpoint. Both
                 // shrinkable with spaceBetween owning the gap anchors it.
                 Flexible(
+                  child: PendingStatic(
                   child: Text(
                     label,
                     style: F.cap.copyWith(color: p.ink2),
@@ -2614,7 +2649,8 @@ class DeepDiveCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(width: S.x2),
+              ),
+              const SizedBox(width: S.x2),
                 Flexible(
                   child: Text(
                     value,
@@ -2624,7 +2660,11 @@ class DeepDiveCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: S.x1),
-                Text(uiText(c, unit), style: F.cap.copyWith(color: p.ink3)),
+              PendingStatic(
+                child: Text(
+                  uiText(c, unit),
+                  style: F.cap.copyWith(color: p.ink3),
+                )),
               ],
             ),
         ]);
@@ -2762,11 +2802,13 @@ class MetricRow extends StatelessWidget {
     final title = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        PendingStatic(
+          child: Text(
           name,
           style: F.body.copyWith(color: p.ink),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          ),
         ),
         if (sub.isNotEmpty)
           Text(sub,
@@ -2792,7 +2834,8 @@ class MetricRow extends StatelessWidget {
         ),
         if (unit.isNotEmpty) ...[
           const SizedBox(width: 2),
-          Text(displayUnit, style: F.over.copyWith(color: p.ink3)),
+          PendingStatic(
+            child: Text(displayUnit, style: F.over.copyWith(color: p.ink3))),
         ],
       ],
     );
@@ -2905,9 +2948,12 @@ class InlineMetrics extends StatelessWidget {
     Widget cell(String label, String value, Color color) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (labelLines == null) Text(label, style: F.over.copyWith(color: p.ink3))
+            if (labelLines == null)
+          PendingStatic(
+            child: Text(label, style: F.over.copyWith(color: p.ink3)))
             else ConstrainedBox(constraints: BoxConstraints(minHeight: scaler.scale(F.over.fontSize!) * F.over.height! * labelLines!),
-              child: Text(label, style: F.over.copyWith(color: p.ink3))),
+              child: PendingStatic(
+              child: Text(label, style: F.over.copyWith(color: p.ink3)))),
             const SizedBox(height: S.x1),
             // scaleDown, NOT ellipsis. These are measurements sharing
             // one row, so the slot is a third of a card and a two-digit
@@ -3059,7 +3105,8 @@ class GoalTrajectory extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: F.cap.copyWith(color: p.ink2)),
+          PendingStatic(
+            child: Text(label, style: F.cap.copyWith(color: p.ink2))),
           const SizedBox(height: S.x3),
           // Wrap, not Row: at large text scales the goal label drops to its own
           // line rather than pushing the number off the card. A truncated
@@ -3230,7 +3277,8 @@ class Consistency extends StatelessWidget {
             ],
           ),
           const SizedBox(height: S.x2),
-          Text(label, style: F.cap.copyWith(color: p.ink3)),
+          PendingStatic(
+            child: Text(label, style: F.cap.copyWith(color: p.ink3))),
         ],
       ),
     );
@@ -3320,7 +3368,8 @@ Future<bool> confirmRemove(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: F.head.copyWith(color: P.of(s).ink)),
+            PendingStatic(
+              child: Text(title, style: F.head.copyWith(color: P.of(s).ink))),
             const SizedBox(height: S.x2),
             Text(body, style: F.cap.copyWith(color: P.of(s).ink2, height: 1.5)),
             const SizedBox(height: S.x5),
@@ -3756,12 +3805,14 @@ class BigButton extends StatelessWidget {
               const SizedBox(width: S.x2),
             ],
             Flexible(
-              child: Text(
+              child: PendingStatic(
+                child: Text(
                 label,
                 style: (dense ? F.body.copyWith(fontWeight: FontWeight.w600) : F.head)
                     .copyWith(color: ink),
                 textAlign: TextAlign.center,
                 maxLines: 2,
+                ),
               ),
             ),
           ],
@@ -4012,15 +4063,16 @@ class ChartFrame extends StatelessWidget {
   }
 
   Widget _header(BuildContext c, P p, bool stacked) {
-    final name = Text(
+    final name = PendingStatic(
+      child: Text(
       title,
       style: F.cap.copyWith(color: p.ink, fontWeight: FontWeight.w600),
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
+    ),
     );
-    final measure = Text(
-      uiText(c, unit),
-      style: F.over.copyWith(color: p.ink3),
+    final measure = PendingStatic(
+      child: Text(uiText(c, unit), style: F.over.copyWith(color: p.ink3)),
     );
     if (!stacked) {
       // Title left, unit right, one line: as it always was. It only stacks
@@ -4247,9 +4299,13 @@ class ChartFrame extends StatelessWidget {
               ),
             ),
               c,
-            ),
+              ),
 
-          if (axisFooter != null) Padding(padding: EdgeInsets.only(left: inset), child: axisFooter!),
+            if (axisFooter != null)
+              Padding(
+                padding: EdgeInsets.only(left: inset),
+                child: axisFooter!,
+              ),
 
           // ── x axis ──
           if (empty == null && xLabels.isNotEmpty)
@@ -4373,8 +4429,12 @@ class _FrameKeys extends StatelessWidget {
           if (panel != null) {
             return Padding(
               padding: const EdgeInsets.only(top: S.x3),
-              child: panel!,
-            );
+              child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [panel!],
+          ),
+        );
           }
           final r = hub.read();
           hub.rendered = r?.signature ?? '';
@@ -4461,7 +4521,7 @@ class _FrameKeys extends StatelessWidget {
                   // width and no more: a key like "Breathing (br/min)" is wider
                   // than a 390 pt card at 2× text and overflowed the item
                   // rather than wrapping inside it.
-                  Flexible(child: Text(label, style: tick)),
+                  Flexible(child: PendingStatic(child: Text(label, style: tick))),
                 ],
               ),
             ?extra,
@@ -4633,13 +4693,15 @@ class NavBar extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
+                      PendingStatic(
+                        child: Text(
                       title,
                       style: F.head.copyWith(color: p.ink),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (sub.isNotEmpty)
+                      ),
+                      if (sub.isNotEmpty)
                       Text(
                         sub,
                         style: F.over.copyWith(color: p.ink3),

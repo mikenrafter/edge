@@ -43,20 +43,37 @@ void main() {
     expect(FindingKind.values.map(findingColor).toSet().length, FindingKind.values.length);
     final readout = t.widget<ChartKeyReadout>(find.byType(ChartKeyReadout));
     expect(readout.cells.map((c) => c.value), ['2', '1', '1']);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-  });
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    },
+  );
   // CLAIM obs-axis: event counts have whole-number ticks, and dates belong
   // between the bars and the readout, never below its explanation.
   for (final count in [1, 3]) {
-    testWidgets('count $count uses integer ticks and plot-adjacent dates', (t) async {
+    testWidgets('count $count uses integer ticks and plot-adjacent dates', (
+      t,
+    ) async {
       skTallView(t);
-      await t.pumpWidget(skHost(FindingsLog([
-        for (var i = 0; i < count; i++) const Finding(FindingKind.illness, '2026-11-14'),
-      ], today: '2026-11-15')));
+      await t.pumpWidget(
+        skHost(
+          FindingsLog([
+            for (var i = 0; i < count; i++)
+              const Finding(FindingKind.illness, '2026-11-14'),
+          ], today: '2026-11-15'),
+        ),
+      );
       final frame = t.widget<ChartFrame>(find.byType(ChartFrame));
-      expect(frame.yAxis!.tickValues.reversed, count == 1 ? [0.0, 1.0] : [0.0, 1.0, 2.0, 3.0]);
-      expect(t.getBottomLeft(find.byKey(const ValueKey('observation-day:2026-11-14'))).dy,
-        lessThanOrEqualTo(t.getTopLeft(find.byType(ChartKeyReadout)).dy));
+      expect(
+        frame.yAxis!.tickValues.reversed,
+        count == 1 ? [0.0, 1.0] : [0.0, 1.0, 2.0, 3.0],
+      );
+      expect(
+        t
+            .getBottomLeft(
+              find.byKey(const ValueKey('observation-day:2026-11-14')),
+            )
+            .dy,
+        lessThanOrEqualTo(t.getTopLeft(find.byType(ChartKeyReadout)).dy),
+      );
     });
   }
   testWidgets('empty history has a week graph and an honest empty day', (t) async {
