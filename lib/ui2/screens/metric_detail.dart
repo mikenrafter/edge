@@ -1376,7 +1376,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                 all.isEmpty ? null : all.last.t)),
         if (_outcome != null)
           SettingsAccordion(l?.metricDetailWhatMovesItSection ?? 'What moves it',
-            id: 'metric_movers', initiallyExpanded: true, children: [AsyncListSection<Widget>(
+            id: 'metric_movers', initiallyExpanded: true, children: [AsyncListSection<Widget>(memoryKey: 'metric-movers:${spec.chartKey}',
               items: _moversPending ? null : d.movers.isEmpty ? [] : [_movers(c, d.movers)],
               emptyBuilder: (_) => _journalFailed
                 ? StatusCard(l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',

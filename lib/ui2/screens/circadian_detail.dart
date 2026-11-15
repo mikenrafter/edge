@@ -484,6 +484,7 @@ class _CircadianDetailState extends State<CircadianDetail>
         Section(
           l?.circadianDetailYourRhythm ?? 'Your rhythm',
           AsyncListSection<Widget>(
+            memoryKey: 'circadian:rhythm',
             items: _loading && _d == null ? null : [_rhythm(c, p, d)],
             visibleRows: 6, rowHeight: 56,
             itemBuilder: (_, child) => child,

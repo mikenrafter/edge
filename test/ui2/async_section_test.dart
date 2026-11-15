@@ -73,7 +73,7 @@ void main() {
   // and accordion content must not acquire another scrollable.
   testWidgets('settled lists fit their content and never scroll internally', (t) async {
     Widget page(List<String>? items) => MaterialApp(home: Scaffold(body:
-      SingleChildScrollView(child: AsyncListSection<String>(items: items,
+      SingleChildScrollView(child: AsyncListSection<String>(memoryKey: 'test-settled-list', items: items,
         itemBuilder: (_, value) => Text(value),
         emptyBuilder: (_) => const Text('No entries')))));
     await t.pumpWidget(page(['One', 'Two', 'Three', 'Four']));
@@ -90,7 +90,7 @@ void main() {
   testWidgets('async list remembers short content and empty content stays natural', (t) async {
     Widget page(List<String>? items) => MaterialApp(home: Scaffold(body:
       SingleChildScrollView(child: SizedBox(width:200,child: AsyncListSection<String>(
-        key:const ValueKey('short-list'), items:items,
+        memoryKey:'short-list',key:const ValueKey('short-list'), items:items,
         itemBuilder:(_, value)=>SizedBox(height:42,child:Text(value)),
         emptyBuilder:(_)=>const SizedBox(height:14))))));
     await t.pumpWidget(page(['One']));await t.pump();

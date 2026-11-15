@@ -48,7 +48,9 @@ class AsyncSection<T> extends StatelessWidget {
 class PendingContent extends StatefulWidget {
   const PendingContent({super.key, required this.pending, required this.child,
     this.memoryKey,
+    this.knownShape = true,
   });
+  final bool knownShape;
   final String? memoryKey;
   final bool pending;
   final Widget child;
@@ -135,6 +137,7 @@ class _PendingContentState extends State<PendingContent>
               ? widget.child
               : RememberedLayout(
                   id: widget.memoryKey!,
+                  knownShape: widget.knownShape,
                   pending: widget.pending,
                   child: widget.child,
                 ),
@@ -326,12 +329,14 @@ class _PendingRing extends _PendingWave implements GuideRing { const _PendingRin
 class _PendingDots extends _PendingWave implements GuideScatter { const _PendingDots(super.guideLineColor); }
 class _PendingBand extends _PendingWave implements GuideBand { const _PendingBand(super.guideLineColor); }
 
-/// Content-sized rows. Put secondary asynchronous lists inside a collapsed
-/// accordion; an unknown result count must never create an empty viewport.
+/// Content-sized asynchronous rows. The stable storage id owns remembered
+/// geometry; unknown row templates may fit that estimate, while loaded content
+/// always keeps its natural height and never gets another scrollable.
 class AsyncListSection<T> extends StatelessWidget {
-  const AsyncListSection({super.key, required this.items,
+  const AsyncListSection({super.key, required this.memoryKey, required this.items,
     required this.itemBuilder, required this.emptyBuilder,
     this.visibleRows = 3, this.rowHeight = 72});
+  final String memoryKey;
   final List<T>? items;
   final Widget Function(BuildContext, T) itemBuilder;
   final WidgetBuilder emptyBuilder;
@@ -340,13 +345,17 @@ class AsyncListSection<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rows = items;
-    if (rows == null) {
-      return PendingContent(pending: true,
-        child: PendingRows(count: visibleRows, rowHeight: rowHeight));
-    }
-    if (rows.isEmpty) return emptyBuilder(context);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [for (final row in rows) itemBuilder(context, row)]);
+    return PendingContent(
+      memoryKey: 'async-list:$memoryKey',
+      knownShape: false,
+      pending: rows == null,
+      child: rows == null
+        ? PendingRows(count: visibleRows, rowHeight: rowHeight)
+        : rows.isEmpty ? emptyBuilder(context)
+        : Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [for (final row in rows) itemBuilder(context, row)]),
+    );
   }
 }
 

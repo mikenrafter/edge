@@ -20,13 +20,6 @@ import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/sync/import_focus.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
-import 'package:openstrap_edge/ui2/screens/beats.dart';
-import 'package:openstrap_edge/ui2/screens/circadian_detail.dart';
-import 'package:openstrap_edge/ui2/screens/explorer.dart';
-import 'package:openstrap_edge/ui2/screens/explorer_annotations.dart';
-import 'package:openstrap_edge/ui2/screens/journal_compose.dart';
-import 'package:openstrap_edge/ui2/screens/naps.dart';
-import 'package:openstrap_edge/ui2/last_result_cache.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -454,8 +447,9 @@ void main() {
       await _pump(t, repo, const CircadianDetail());
       await _real(t);
       expect(find.text(kPausedLine), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget,
-          reason: 'still waiting for the warm: a pending state');
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byWidgetPredicate((w) => w is PendingContent && w.pending), findsWidgets,
+          reason: 'still waiting for the warm: a debounced placeholder');
     });
 
     testWidgets('Beats: beats accepted on a retry of the same night clear '
