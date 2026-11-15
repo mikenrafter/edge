@@ -3894,5 +3894,5 @@
   "pulseAlertNotPermitted": "कोई अलर्ट नहीं: सूचनाओं की अनुमति नहीं थी",
   "pulseAlertUnknown": "अलर्ट शायद भेजा गया था {when}",
   "pulseAlertQuiet": "कोई अलर्ट नहीं: शांत घंटों के कारण रोका गया",
-  "pulseAlertEarlier": "इस अपडेट से पहले अलर्ट किया गया {when}"
+  "pulseAlertEarlier": "ऐप के पुराने संस्करण द्वारा अलर्ट किया गया {when}"
 }

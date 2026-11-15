@@ -19454,7 +19454,7 @@
   "@pulseAlertQuiet": {
     "description": "Small text under a flagged day: no notification was shown because quiet hours held it back."
   },
-  "pulseAlertEarlier": "Alerted by the previous version {when}",
+  "pulseAlertEarlier": "Alerted by an earlier version of the app {when}",
   "@pulseAlertEarlier": {
     "description": "Small text under a flagged day: the build before this update already alerted for it.",
     "placeholders": {

@@ -4000,5 +4000,5 @@
   "pulseAlertNotPermitted": "Kein Hinweis: Benachrichtigungen waren nicht erlaubt",
   "pulseAlertUnknown": "Hinweis wurde möglicherweise gesendet {when}",
   "pulseAlertQuiet": "Kein Hinweis: wegen Ruhezeiten zurückgehalten",
-  "pulseAlertEarlier": "Vor diesem Update gemeldet {when}"
+  "pulseAlertEarlier": "Von einer früheren Version der App gemeldet {when}"
 }

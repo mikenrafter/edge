@@ -175,9 +175,10 @@ void main() {
       return hung.future; // the process never gets past the present
     };
     final dying = PulseAlertDelivery.run(individualDays: {d});
+    int? claimedAt;
     try {
       await reached.future;
-      final claimedAt = await LocalDb.notifFiredAt('$d:irregular-pulse');
+      claimedAt = await LocalDb.notifFiredAt('$d:irregular-pulse');
       expect(claimedAt, isNotNull);
       expect((await record(d))!.state, PulseAlertState.pending);
 
@@ -190,9 +191,48 @@ void main() {
       expect(r.state, PulseAlertState.unknown);
       expect(r.atMs, claimedAt, reason: 'the claim time, not this pass');
     } finally {
-      hung.complete(false); // let the abandoned future finish
+      hung.complete(true); // the pass was slow, not dead: it shows and finishes
       await dying;
     }
+    // The truth wins: the guess is overwritten with what really happened, at the
+    // time the pass itself finished.
+    final truth = (await record(d))!;
+    expect(shown, hasLength(1));
+    expect(truth.state, PulseAlertState.sent);
+    expect(truth.atMs, greaterThan(claimedAt!));
+  });
+
+  // why: R3-T1, the other half. A slow pass whose present finally reports that
+  // nothing was shown overwrites `unknown` with `not_sent`, so the day is owed
+  // again and the next pass announces it.
+  // proves: CLAIM(pulse-claim); catches: dropping 'unknown' from the finish's IN list.
+  test('a slow pass that shows nothing turns unknown into not sent, then a summary',
+      () async {
+    final d = daysAgo(1);
+    await flag(d);
+    final hung = Completer<bool>();
+    final reached = Completer<void>();
+    onPresent = (e) {
+      if (!reached.isCompleted) reached.complete();
+      return hung.future;
+    };
+    final slow = PulseAlertDelivery.run(individualDays: {d});
+    try {
+      await reached.future;
+      await PulseAlertDelivery.run(pendingGrace: Duration.zero);
+      expect((await record(d))!.state, PulseAlertState.unknown);
+    } finally {
+      hung.complete(false);
+      await slow;
+    }
+    expect(shown, isEmpty);
+    final r = (await record(d))!;
+    expect(r.state, PulseAlertState.notSent);
+    onPresent = (e) async => true;
+    await PulseAlertDelivery.run();
+    expect(shown, hasLength(1));
+    expect(shown.single.dedupeKey, startsWith('pulse-summary:'));
+    expect((await record(d))!.state, PulseAlertState.summary);
   });
 
   // why: R2-DS1(b), the exact window. The foreground reads the owed days, then

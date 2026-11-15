@@ -9798,5 +9798,5 @@
   "pulseAlertNotPermitted": "Оповещения нет: уведомления не были разрешены",
   "pulseAlertUnknown": "Оповещение, возможно, было отправлено {when}",
   "pulseAlertQuiet": "Оповещения нет: отложено из-за тихих часов",
-  "pulseAlertEarlier": "Оповещено до этого обновления {when}"
+  "pulseAlertEarlier": "Оповещено более ранней версией приложения {when}"
 }

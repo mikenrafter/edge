@@ -121,7 +121,7 @@ void main() {
     );
     expect(
       await textOf(PulseAlertRecord(PulseAlertState.earlier, at)),
-      contains('Alerted by the previous version Sat, Nov 14 08:14'),
+      contains('Alerted by an earlier version of the app Sat, Nov 14 08:14'),
     );
     // A claim still in flight is not shown at all.
     expect(await textOf(PulseAlertRecord(PulseAlertState.pending, at)), isNot(contains('lert')));

@@ -3894,5 +3894,5 @@
   "pulseAlertNotPermitted": "Pas d’alerte : les notifications n’étaient pas autorisées",
   "pulseAlertUnknown": "L’alerte a peut-être été envoyée {when}",
   "pulseAlertQuiet": "Pas d’alerte : retenue pendant les heures calmes",
-  "pulseAlertEarlier": "Signalé avant cette mise à jour {when}"
+  "pulseAlertEarlier": "Signalé par une version antérieure de l’application {when}"
 }
