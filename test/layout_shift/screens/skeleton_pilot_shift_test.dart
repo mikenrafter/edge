@@ -33,8 +33,11 @@ import 'package:openstrap_edge/ui2/theme.dart';
 import '../../support/as_of_recalc_fakes.dart';
 import '../../support/live_guide_harness.dart';
 import '../../support/shift_run.dart';
+import '../../support/skeleton_fixture.dart' show skLoadAppFonts;
 
 class _LateRepo extends GuideFakeRepo {
+  _LateRepo({this.rich = false});
+  final bool rich;
   final gate = Completer<void>();
   int reads = 0;
   Future<T> late<T>(Future<T> Function() read) async {
@@ -48,13 +51,20 @@ class _LateRepo extends GuideFakeRepo {
   Future<List<String>> availableDays() => late(super.availableDays);
   @override
   Future<Map<String, dynamic>> getDaySleepV2(String day) =>
-      late(() => super.getDaySleepV2(day));
+      late(() => rich ? SleepRepo().getDaySleepV2(day) : super.getDaySleepV2(day));
   @override
   Future<Map<String, dynamic>> getDayTimeline(String day) =>
-      late(() => super.getDayTimeline(day));
+      late(() async => rich ? {for (final key in ['hr', 'hrv', 'resp', 'skin_temp']) key: [
+      for (var i = 0; i < 98; i++) {'t': DateTime.now().millisecondsSinceEpoch ~/ 1000 - 36000 + i * 300,
+        'v': (key == 'hr' ? 55 : key == 'hrv' ? 45 : key == 'resp' ? 14 : 33) + i % 3 * .1},
+    ]} : await super.getDayTimeline(day));
   @override
   Future<Map<String, dynamic>> getChart(String metric,
       {int? from, int? to, Set<String> signals = const {}}) => late(() async {
+    if (rich) return {'points': [for (var i = 28; i >= 0; i--) {
+      't': DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day - i, 12).millisecondsSinceEpoch ~/ 1000,
+      'v': metric == 'sleep' ? 440 + i % 5 : metric == 'deep' ? 80 + i % 5 : metric == 'efficiency' ? 90 + i % 5 : metric == 'unobserved_min' ? 60 : 5,
+    }]};
     final chart = await MetricRepo().getChart(metric, from: from, to: to, signals: signals);
     return (metric == 'resting_hr' || metric == 'steps') ? chart : const {'points': []};
   });
@@ -85,6 +95,8 @@ class _LateRepo extends GuideFakeRepo {
 
 }
 
+const _sleepSections = ['card:answer', 'section:night', 'card:stages', 'card:versus',
+  'card:unusual', 'card:overnight', 'card:tonight'];
 final _captureKey = GlobalKey();
 
 Future<void> shot(WidgetTester t, String name) async {
@@ -104,6 +116,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late BackupEnv env;
   setUpAll(() async {
+    await skLoadAppFonts();
     env = await BackupEnv.create('skeleton_pilot.db');
     await LocalDb.instance;
   });
@@ -127,12 +140,14 @@ void main() {
     'what-changed': () => const WhatChangedScreen(),
     'typical-day': () => const TypicalDayScreen(),
     'journal-findings': () => const JournalFindings(),
+    for (final section in _sleepSections) 'rich-sleep-$section': () => const SleepDetail(),
   };
   for (final entry in screens.entries) {
-    for (final delay in [150, 2500]) {
+    for (final delay in entry.key.startsWith('rich-') ? [2500] : [150, 2500]) {
       testWidgets('${entry.key}: ${delay}ms pending has no spinner and stays still', (t) async {
         phoneSurface(t);
-        final repo = _LateRepo();
+        final rich = entry.key.startsWith('rich-');
+        final repo = _LateRepo(rich: rich);
         final app = AppState.forTesting()..repo = repo;
         addTearDown(app.dispose);
         final run = ShiftRun(t);
@@ -142,6 +157,11 @@ void main() {
         await t.pump();
         await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
         await t.pump();
+        if (rich) {
+          final anchor = find.byKey(ValueKey(entry.key.substring('rich-sleep-'.length)));
+          await t.scrollUntilVisible(anchor, 300, scrollable: find.byType(Scrollable).first);
+          await t.pumpAndSettle();
+        }
         run.opened();
         await run.frames([0, 16, delay]);
         final spinners = find.byType(CircularProgressIndicator).evaluate().length;
