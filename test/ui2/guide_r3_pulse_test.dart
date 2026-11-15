@@ -111,14 +111,15 @@ void main() {
     }
   });
 
-  testWidgets('R1: off path and the Done card schedule no frames', (t) async {
+  testWidgets('R1: off path without a route-back pill, and the Done card, schedule no frames', (t) async {
     final stage = await pumpLiveStage(t);
     await _settle(t);
     final overlay = _overlay(t);
     await pushStagePage(t, stage, StagePages(stage.taps).other());
     await _settle(t);
     expect(stage.run.state, isA<GuideOffPath>());
-    expect(overlay.isPulsing, isFalse, reason: 'off path: dim only, no placeholders');
+    expect(find.byKey(LiveGuideOverlay.tapHandKey), findsNothing, reason: 'this stage has no route-back control');
+    expect(overlay.isPulsing, isFalse, reason: 'no hand and no placeholders');
     await _idle(t);
     // Back to the step, then to the Done card: finishing the last step.
     stage.navigator.pop();
