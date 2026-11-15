@@ -156,5 +156,7 @@ in the same change that introduces it (AGENTS.md §6).
 ## Interactive calculation
 
 - **Sleep edit receipt**: the committed sleep assertion, its revision and its dirty job, stored atomically by `SleepEditStore`. It acknowledges saved times, not finished measurements.
-- **Sleep edit job**: durable remaining work for one edited night. The latest revision replaces queued intent; the edited night publishes before dependent days. Failed work retains the assertion and can be retried.
-- **Load timing**: a bounded local diagnostic sample identifying a stored read, reader acquisition, writer queue, transaction or decode span. Elapsed parallel reads overlap and are never summed into load time.
+- **Sleep edit job**: durable remaining work for one edited night. The latest revision replaces queued intent; the edited night publishes before dependent days. A run refused because an earlier night changed is requeued; failed work retains the assertion and is retried with a backoff or by the user's Retry.
+- **Sleep edit fence**: the sum of the revisions of one night and every earlier night. A write prepared at an older fence is refused; an edit to a later night does not move it.
+- **Withheld night**: while a night's own edit is unapplied, only its sleep-derived numbers are withheld. Its other measurements, and every later day, keep their values; later days carry a `sleep_edit` mark.
+- **Load timing**: an opt-in (Developer, off by default), bounded local diagnostic sample identifying a stored read, reader acquisition, writer queue, transaction or decode span. Elapsed parallel reads overlap and are never summed into load time.

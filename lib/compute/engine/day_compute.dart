@@ -294,6 +294,12 @@ extension _EngineDayCompute on DerivationEngine {
     // and the old night keeps being served, scored and baselined — the reported
     // "it keeps the data it had before". A blanked night is written, in full,
     // and its sleep rows are removed from `metric_series`.
+    // The edit fence for every write of this night: the older of what the day
+    // was prepared at and what the shared history was read at.
+    final fence = day.sleepEditGeneration == null
+        ? null
+        : math.min(day.sleepEditGeneration!,
+            history.sleepEditGenerationUpTo(day.date));
     final blankSource = await _userBlankedNight(day.date, scMap);
     if (blankSource != null) {
       bundle['sleep_source'] = blankSource;
@@ -313,7 +319,7 @@ extension _EngineDayCompute on DerivationEngine {
       }
       if (producedNothing) {
         if (batchReference) return DayDerive.committed;
-        final committed = await _blankStoredNight(day, bundle, blankSource, reason);
+        final committed = await _blankStoredNight(day, bundle, blankSource, reason, fence);
         if (committed) await _dropFrozenHeadline(day.date);
         return committed ? DayDerive.committed : DayDerive.refused;
       }
@@ -967,7 +973,7 @@ extension _EngineDayCompute on DerivationEngine {
     final persistWatch = Stopwatch()..start();
     final committed = await LocalDb.putDayResult(
       dayId: day.date,
-      sleepEditGeneration: day.sleepEditGeneration == null ? null : math.min(day.sleepEditGeneration!, history.sleepEditGeneration),
+      sleepEditGeneration: fence,
       algoVersion: kAlgoVersion,
       // Held to the revisions the shared baseline history was loaded at.
       inputStamp: stampNotLaterThan(day.inputStamp, history.metricSeriesRevs),

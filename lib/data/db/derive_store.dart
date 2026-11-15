@@ -176,7 +176,7 @@ Future<bool> _ldbPutDayResult({required String dayId, required int algoVersion, 
     final accepted = await LocalDb.timedTransaction(db, 'day result', (txn) async {
       // CLAIM(sleep-edit-fence): pre-edit workers cannot replace a new
       // assertion's measurements [responsiveness_sleep_jobs_test].
-      if (sleepEditGeneration != null && sleepEditGeneration != await SleepEditStore.generationOn(txn)) return false;
+      if (sleepEditGeneration != null && sleepEditGeneration != await SleepEditStore.generationOn(txn, upTo: dayId)) return false;
       final expected = inputStamp?['sleep_override']?[dayId];
       if (expected != null) {
         final actual = Sqflite.firstIntValue(await txn.rawQuery(

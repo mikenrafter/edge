@@ -51,6 +51,8 @@ const String _ecgRawNotGesture =
 /// test/issue_report_test.dart fails when one is missing, so add it here.
 const Map<String, (SliceKeep, String?, String)> kSliceTables = {
   // Raw and per-second series: the size of the file.
+  'sleep_edit_job': (SliceKeep.all, null, 'pending sleep recalculation intent, a few rows'),
+  'water_moment': (SliceKeep.recentDay, 'date', 'water drunk, one row per moment'),
   'decoded_onehz': (SliceKeep.highRate, 'rec_ts', '1 Hz samples, the bulk of the database'),
   'decoded_rr': (SliceKeep.highRate, 'rec_ts', 'beat-to-beat intervals'),
   'samples': (SliceKeep.highRate, 'ts', 'per-second heart rate'),

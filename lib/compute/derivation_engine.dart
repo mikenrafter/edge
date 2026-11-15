@@ -5109,6 +5109,7 @@ class DerivationEngine {
     Map<String, dynamic> absent,
     String source,
     DayResultWrite reason,
+    int? sleepEditGeneration,
   ) async {
     final existing = await LocalDb.dayResult(day.date);
     final prev = _isRealDayResult(existing)
@@ -5122,6 +5123,11 @@ class DerivationEngine {
     if (stored != null &&
         (existing!['algo_version'] as num?)?.toInt() == kAlgoVersion &&
         jsonEncode(stored) == jsonEncode(payload)) {
+      // Nothing to write, but this is still the edit's outcome: advance the
+      // applied marker (fenced), or the night would stay withheld for good.
+      if (sleepEditGeneration != null) {
+        await SleepEditStore.markAppliedIfCurrent(day.date, sleepEditGeneration);
+      }
       return true;
     }
     final window = (absent['sleep'] as Map?)?['window'];
@@ -5134,6 +5140,7 @@ class DerivationEngine {
       source: 'band',
       blankKeys: kSleepDerivedMetricKeys,
       reason: reason,
+      sleepEditGeneration: sleepEditGeneration,
     );
     if (committed) {
       _log('derive ${day.date}: night blanked by the user ($source), no raw '

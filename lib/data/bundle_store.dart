@@ -40,7 +40,6 @@ import '../util/worker_init.dart';
 import '../compute/derive_perf.dart' show payloadNodeCount, utf8Length;
 import 'db.dart';
 import 'load_timings.dart';
-import 'sleep_edit_store.dart';
 import 'day_payload_read.dart';
 import 'series_codec.dart';
 
@@ -1021,8 +1020,6 @@ class BundleStore {
   int get debugCacheBytes => _fullBytes;
 
   Future<_Prepared?> _prepare(BundleSource source, ProjectionId projection) async {
-    if (source.kind == 'day_result' && await SleepEditStore.dirty(source.k1)) return null;
-
     Map<String, dynamic>? meta;
     if (source.kind == 'day_result') {
       meta = await LocalDb.dayResultMeta(source.k1, onReader: true);

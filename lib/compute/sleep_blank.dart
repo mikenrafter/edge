@@ -167,3 +167,37 @@ Map<String, dynamic> blankNightInBundle(
   out['flags'] = [source == 'rejected' ? 'SLEEP_REJECTED' : 'NO_SLEEP_DETECTED'];
   return out;
 }
+
+/// [bundle] with the night's own numbers taken out, IN PLACE: what a screen
+/// shows while an edit of this night's times is not applied yet. The night's
+/// blocks go and its sleep-derived scalars become null; strain, steps,
+/// calories, naps and curves stay (they are not the night's, see
+/// [kSleepDerivedMetricKeys]). [bundle] must be the reader's own map.
+void withholdNightInBundle(Map<String, dynamic> bundle) {
+  for (final k in _nightBlocks) {
+    bundle.remove(k);
+  }
+  final clinical = bundle['clinical'];
+  if (clinical is Map) {
+    for (final k in _nightClinical) {
+      clinical.remove(k);
+    }
+  }
+  final series = bundle['series'];
+  if (series is Map) series['hypnogram'] = const [];
+  final periods = bundle['sleep_periods'];
+  if (periods is Map && periods['periods'] is List) {
+    periods['periods'] = [
+      for (final e in periods['periods'] as List)
+        if (e is Map && e['is_main'] != true) e,
+    ];
+    periods['total_asleep_min'] = null;
+  }
+  final scalars = bundle['scalars'];
+  if (scalars is Map) {
+    for (final k in kSleepDerivedMetricKeys) {
+      if (scalars.containsKey(k)) scalars[k] = null;
+    }
+  }
+}
+

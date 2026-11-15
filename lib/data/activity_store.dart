@@ -12,6 +12,7 @@ import '../models/activity_suggestion.dart';
 import 'day_label.dart';
 import 'db.dart' show LocalDb;
 import 'nap_resolution.dart';
+import 'sleep_edit_store.dart';
 import 'track_activity.dart';
 import 'db/input_read_tracker.dart';
 
@@ -611,12 +612,15 @@ class ActivityStore {
         'source': 'manual',
         'created_at': now,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-      // A window edit reopens the night, as putSleepOverride does.
+      // A window edit reopens the night, as putSleepOverride does, and owes
+      // it a recalculation: the job commits with the assertion or not at all
+      // (a crash between the two once left new times under old numbers).
       await tx.delete(
         'wake_confirmation',
         where: 'day_id = ?',
         whereArgs: [main.day],
       );
+      await SleepEditStore.enqueue(tx, main.day);
       await _changed(tx, main.day);
       return (res: res, handled: true, day: main.day);
     }

@@ -3930,32 +3930,66 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
 
   Future<void> _runSleepEdit(SleepEditJob job) async {
     final day = job.day;
-    if ((await SleepEditStore.status(day))?['revision'] != job.revision) return;
-    await _deriveSleepDay(day, isCurrent: () async =>
-      (await SleepEditStore.status(day))?['revision'] == job.revision, onEdited: () async {
-      if (await SleepEditStore.advance(job, SleepEditPhase.dependents) != SleepEditAdvance.applied) return false;
-      await _deriveCoordinator.publishNow();
-      return true;
-    });
-    final status = await SleepEditStore.status(day);
-    if (status?['revision'] == job.revision && status?['applied_revision'] != job.revision &&
-        (await LocalDb.decodedRecTsMaxByDay()).containsKey(day)) {
-      throw StateError('The edited night is incomplete. Your times are saved. Retry.');
+    Future<bool> current() async =>
+        (await SleepEditStore.status(day))?['revision'] == job.revision;
+    if (!await current()) return;
+    // The edit fence as this pass starts. If it has moved by the end, an
+    // earlier night was edited meanwhile and this night's write was refused.
+    int? fence;
+    try {
+      await _deriveSleepDay(day,
+          isCurrent: current,
+          onPassStart: () async =>
+              fence = await SleepEditStore.generation(upTo: day),
+          onEdited: () async {
+            if (await SleepEditStore.advance(job, SleepEditPhase.dependents) !=
+                SleepEditAdvance.applied) {
+              return false;
+            }
+            await _deriveCoordinator.publishNow();
+            return true;
+          });
+    } on SyncFailureError catch (e) {
+      // Waiting out a long pass is not a fault of the edit.
+      if (e.code == SyncFailure.calculationStuck) {
+        throw const SleepEditRequeue(
+            'another calculation is still running', counts: false);
+      }
+      rethrow;
     }
-    if (await SleepEditStore.advance(job, SleepEditPhase.done) == SleepEditAdvance.applied) await _deriveCoordinator.publishNow();
+    final status = await SleepEditStore.status(day);
+    if (status?['revision'] != job.revision) return; // a newer edit owns it
+    if (status?['applied_revision'] != job.revision) {
+      if (fence != null && await SleepEditStore.generation(upTo: day) != fence) {
+        throw const SleepEditRequeue('an earlier night was edited meanwhile');
+      }
+      // The pass finished and nothing refused it, yet it stored nothing for
+      // the night: no live inputs left, a skipped or blanked night, a partial
+      // result. That is the outcome. Without this the night stays withheld.
+      await SleepEditStore.markApplied(job);
+    }
+    if (await SleepEditStore.advance(job, SleepEditPhase.done) == SleepEditAdvance.applied) {
+      await _deriveCoordinator.publishNow();
+    }
   }
 
-  Future<Map<String, Object?>> _deriveSleepDay(String day, {Future<bool> Function()? onEdited, Future<bool> Function()? isCurrent}) async {
+  /// How long a sleep edit waits for a calculation already running before it
+  /// requeues (not fails).
+  @visibleForTesting
+  Duration sleepEditWaitLimit = const Duration(minutes: 10);
+
+  Future<Map<String, Object?>> _deriveSleepDay(String day, {Future<bool> Function()? onEdited, Future<bool> Function()? isCurrent, Future<void> Function()? onPassStart}) async {
     // A pass that was already running prepared the edited day from the old
     // window and re-pins that night's readiness when it lands, after the
     // edit's own release. Release again once it is done, right before this
     // derive takes over (no await between the last check and the latch).
     do {
-      await _waitForDerivation();
+      await _waitForDerivation(limit: sleepEditWaitLimit);
       if (_disposed) throw StateError('Sleep worker closed');
       if (isCurrent != null && !await isCurrent()) return {};
       await LocalDb.releaseFrozenHeadline(day);
     } while (_derive.running || reanalyzing);
+    await onPassStart?.call();
     reanalyzing = true;
     final recalcOwner = _deriveCoordinator.beginSleepEdit(day);
     notifyListeners();
@@ -4011,8 +4045,8 @@ class AppState extends ChangeNotifier implements ReminderSleepRefresher {
     }
   }
 
-  Future<void> _waitForDerivation() async {
-    final deadline = DateTime.now().add(const Duration(minutes: 10));
+  Future<void> _waitForDerivation({Duration limit = const Duration(minutes: 10)}) async {
+    final deadline = DateTime.now().add(limit);
     while (_derive.running || reanalyzing) {
       if (DateTime.now().isAfter(deadline)) throw SyncFailureError(SyncFailure.calculationStuck);
       await Future<void>.delayed(const Duration(milliseconds: 100));

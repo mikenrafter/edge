@@ -115,8 +115,13 @@ void main() {
       expect(await SleepEditStore.dirty(day), false);
       expect(
         await SleepEditStore.dirty('2026-11-14'),
+        false,
+        reason: 'a later day keeps its values; it is only marked while its pass runs',
+      );
+      expect(
+        (await SleepEditStore.view('2026-11-14')).recalculating,
         true,
-        reason: 'dependent days stay masked until their pass completes',
+        reason: 'and the mark says it depends on the edit still running',
       );
       expect(
         await SleepEditStore.advance(jobs.single, SleepEditPhase.done),

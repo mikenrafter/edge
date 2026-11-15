@@ -9,6 +9,7 @@ import 'package:openstrap_edge/data/activity_store.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/load_timings.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'backup/backup_support.dart';
 
@@ -24,6 +25,9 @@ void main() {
   late BackupEnv env;
   setUp(() async {
     env = await BackupEnv.create('responsiveness_review.db');
+    // Timings are opt-in; this file asserts what they record.
+    await Prefs.ensureLoaded();
+    Prefs.setBool(LoadTimings.enabledKey, true);
     await LocalDb.setForeground(true);
     await LocalDb.instance;
   });

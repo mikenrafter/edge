@@ -13,7 +13,7 @@ extension _EnginePrepare on DerivationEngine {
     // diagnostics (never a correctness issue for the derived VALUES — this
     // is telemetry-only). Each day now gets its own local accumulator,
     // merged into the shared running max exactly once, below.
-    final sleepEditGeneration = await SleepEditStore.generation();
+    final sleepEditGeneration = await SleepEditStore.generation(upTo: dayId);
     final stats = _PrepareStats();
     // The day's raw as it stands BEFORE anything below reads it: the input
     // signature of the calorie artifact this derive stores.

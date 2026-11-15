@@ -655,6 +655,18 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// Why the last correction did not take. Null when it did.
   String? _overrideFailed;
 
+  /// A save that failed after the user had already acted again, by night. It
+  /// stays until that night is edited again: a failed save is never dropped.
+  final _saveFailed = <String, String>{};
+  String? _failureFor(String? day) =>
+      _overrideFailed ?? (day == null ? null : _saveFailed[day]);
+
+  void _surfaceStaleFailure(String day, String message) {
+    setState(() => _saveFailed[day] = message);
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+        content: Text('Couldn’t save your change for $day: $message')));
+  }
+
   /// Last night's state against the user's own nights, when it was rough enough
   /// to say so and has not been dismissed. See `rough_night.dart` — it REPLACES
   /// the elevated-sleeping-HR card rather than joining it, so one night can
@@ -1070,7 +1082,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             ),
           ],
         ]),
-        if (_overrideFailed case final error?)
+        if (_failureFor(day) case final error?)
           StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
       ]), height: 240),
     );
@@ -1150,22 +1162,44 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// the recalculating and failure states the pushed screen shows.
   Widget _answerSlot(
       BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
+    final failed = n['calculation_error'] as String?;
+    final running = n['recalculating'] == true && failed == null;
+    final day = _day ?? d.day ?? todayLabel();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (n['calculation_error'] case final String error)
-          StatusCard('Sleep calculation', error),
-        if (n['recalculating'] == true)
-          const PendingContent(
-              pending: true,
-              child: StatusCard('Recalculating this night',
-                  'Your times are saved. Measurements will appear when ready.'))
+        // Not running: say it failed, readably, and offer the way out. No pulse
+        // for work that is not happening.
+        if (failed != null) ...[
+          StatusCard('Sleep calculation', failed, icon: LucideIcons.triangleAlert),
+          Align(alignment: Alignment.centerLeft, child: _retryButton(day)),
+        ],
+        // Running: the explanation stays readable and is announced; only the
+        // numbers it is about pulse.
+        if (running)
+          Semantics(
+            liveRegion: true,
+            container: true,
+            child: const StatusCard('Recalculating this night',
+                'Your times are saved. Measurements will appear when ready.'),
+          ),
+        if (running)
+          PendingContent(pending: true, child: _answer(c, p, d, n))
         else
           _answer(c, p, d, n),
         if (_saving)
           Text('Saving times…', style: F.cap.copyWith(color: p.ink3)),
       ],
     );
+  }
+
+  Widget _retryButton(String day) {
+    AppState? app;
+    try { app = context.read<AppState>(); } on ProviderNotFoundException { /* pure view */ }
+    return TextButton(
+        onPressed: app == null ? null : () =>
+            _runOverride(day, () => app!.recalculateSleep(day), timesSaved: false),
+        child: const Text('Retry'));
   }
 
   /// Total sleep, when it ran, and the two ratios that qualify it. Everything
@@ -1353,7 +1387,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             ),
           ]),
 
-        if (_overrideFailed case final error?)
+        if (_failureFor(day) case final error?)
           StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
         ]), height: 240),
       ),
@@ -1482,6 +1516,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     setState(() {
       _saving = true;
       _overrideFailed = null;
+      _saveFailed.remove(day);
     });
     String? failed, note;
     try {
@@ -1501,10 +1536,20 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     } finally {
       if (mounted && edit == _editSeq) setState(() => _saving = false);
     }
-    if (!mounted || edit != _editSeq) return;
+    if (!mounted) return;
+    if (edit != _editSeq) {
+      // A newer action replaced this one on screen; this one's failure is
+      // still the user's to know.
+      if (failed != null) _surfaceStaleFailure(day, failed);
+      return;
+    }
     if (_d?.day == day) _day = day;
     await _load();
-    if (!mounted || edit != _editSeq) return;
+    if (!mounted) return;
+    if (edit != _editSeq) {
+      if (failed != null) _surfaceStaleFailure(day, failed);
+      return;
+    }
     // A write can report success and still leave the night on screen
     // unchanged, indistinguishable from a correction that worked, so the
     // reloaded night is checked against what the edit asked for.

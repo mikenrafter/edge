@@ -5,6 +5,8 @@ export TZ=UTC
 python3 - <<'PY'
 from pathlib import Path
 names = '''responsiveness_review responsiveness_sleep_jobs responsiveness_sleep_controls responsiveness_timings
+responsiveness_sleep_fix responsiveness_sleep_retry issue_report sleep_detail_disclaimer sleep_accordions
+sleep_window_blank ui2_bug_batch_1022_sleep health_tabs calc_as_of_screens
 structural_review_reads structural_review_measure structural_review_fix
 sleep_override_rederive sleep_assertion_storage sleep_edit_window sleep_staged_read
 sleep_recalculate_in_window_card ui2_sleep_detail sleep_detail_bundle
@@ -14,7 +16,8 @@ app_state_derive_activity_review derive_recalc_state app_state_derive_scheduler
 substrate_archive_db substrate_archive_import_txn'''.split()
 files = [f'test/{n}_test.dart' for n in names]
 files += [str(p) for p in Path('test/layout_shift').rglob('*test.dart')]
-files += ['test/step2/p22_bundle_store_read_test.dart','test/step2/p22_bundle_store_fencing_test.dart',
+files += ['test/backup/settings_audit_guard_test.dart', 'test/backup/prefs_roundtrip_test.dart',
+          'test/step2/p22_bundle_store_read_test.dart','test/step2/p22_bundle_store_fencing_test.dart',
           'test/step2/p23_publish_gate_test.dart','test/wake_journal/wake_persistence_test.dart',
           'test/wake_journal/wake_timeline_test.dart']
 assert all(Path(p).exists() for p in files)

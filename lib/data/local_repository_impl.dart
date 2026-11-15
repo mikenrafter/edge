@@ -24,6 +24,7 @@ import '../compute/inputs/canonical.dart'
         withoutWearableEstimates;
 import '../ble/adapters/_registry.dart' show kBandRegistry;
 import '../compute/quiet_level.dart';
+import '../compute/sleep_blank.dart' show withholdNightInBundle;
 import '../compute/vendor_sleep.dart' show vendorHypnogram;
 import '../compute/staging_provenance.dart';
 import '../models/activity_suggestion.dart';
@@ -403,7 +404,8 @@ class LocalRepositoryImpl extends LocalRepository {
       for (var j = 0; j < chunk.length; j++) {
         final read = reads[j];
         if (read is! BundleOk) continue;
-        final b = _dayMap(read);
+        final b = await _withSleepEdit(
+            chunk[j]['date'] as String, _dayMap(read));
         final at = _BundleAt(b, read.asOfMs);
         newest ??= at;
         if (b['skipped'] == true) continue;
@@ -512,10 +514,11 @@ class LocalRepositoryImpl extends LocalRepository {
   /// own. Screens print it as "As of" while a newer result is being calculated,
   /// so it is never "now" and never another row's time.
   Future<_BundleAt> _bundleAtForDate(String date) async {
-    if (await SleepEditStore.dirty(date)) return const _BundleAt(null, null);
     final exact = await BundleStore.shared.read(BundleSource.day(date));
     if (exact is BundleOk) {
-      return _BundleAt(await _withOlderValues(date, _dayMap(exact)), exact.asOfMs);
+      return _BundleAt(
+          await _withSleepEdit(date, await _withOlderValues(date, _dayMap(exact))),
+          exact.asOfMs);
     }
     return _isTodayLabel(date)
         ? await _latestBundleAt()
@@ -524,7 +527,30 @@ class LocalRepositoryImpl extends LocalRepository {
 
   Future<Map<String, dynamic>?> _readBundle(String date) async {
     final read = await BundleStore.shared.read(BundleSource.day(date));
-    return read is BundleOk ? await _withOlderValues(date, _dayMap(read)) : null;
+    return read is BundleOk
+        ? await _withSleepEdit(date, await _withOlderValues(date, _dayMap(read)))
+        : null;
+  }
+
+  /// [b], the stored day [day], as a screen may show it while sleep edits are
+  /// outstanding. CLAIM(sleep-edit-masking) [responsiveness_sleep_fix_test].
+  ///
+  /// Only the edited night's OWN sleep numbers are withheld: its strain,
+  /// steps, calories and curves are not the night's. Later days keep every
+  /// value; they carry `sleep_edit: {from, phase}` so a screen can say the
+  /// number predates an edit that is still running (or gave up). Nothing about
+  /// a day is ever hidden wholesale (RULES A.15, B.3).
+  Future<Map<String, dynamic>> _withSleepEdit(
+      String day, Map<String, dynamic> b) async {
+    final view = await SleepEditStore.view(day);
+    if (view.isNone) return b;
+    if (view.withholdNight) withholdNightInBundle(b);
+    b['sleep_edit'] = {
+      'phase': view.phase,
+      if (view.ownPhase == null) 'from': view.dependsOn,
+      'own': view.withholdNight,
+    };
+    return b;
   }
 
   /// Headline scalars the labelled older-version fallback covers. One list, so
@@ -1597,12 +1623,21 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   Future<Map<String, dynamic>> _daySleep(String date) async {
-    final result = await _daySleepStored(date);
-    if (!await SleepEditStore.dirty(date)) return result;
+    final view = await SleepEditStore.view(date);
+    if (!view.withholdNight) {
+      final result = await _daySleepStored(date);
+      // A night scored against an edit that has not finished: its numbers stay
+      // and say so. Never hidden (RULES A.15).
+      return view.dependsOn == null
+          ? result
+          : {...result, 'sleep_edit': {'from': view.dependsOn, 'phase': view.dependsPhase}};
+    }
     final assertion = await LocalDb.getSleepOverride(date);
     final job = await SleepEditStore.status(date);
     return {
-      'has_sleep': false, 'recalculating': job?['phase'] != 'done',
+      'has_sleep': false,
+      // Running or waiting is "recalculating"; failed is not, it is a failure.
+      'recalculating': job?['phase'] == 'queued' || job?['phase'] == 'dependents',
       if (job?['phase'] == 'failed') 'calculation_error': 'Recalculation failed. Your times are saved. Retry.',
       'sleep_source': assertion?['source'] ?? 'auto',
       if (assertion != null && assertion['source'] != 'rejected') ...{
@@ -2805,7 +2840,7 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<SleepPrimaryRead?> getSleepDetailPrimary(String day) async {
     _focusCheck('getSleepDetailPrimary');
-    if (await SleepEditStore.dirty(day)) {
+    if ((await SleepEditStore.view(day)).withholdNight) {
       return SleepPrimaryRead(bundle: SleepDetailBundle(
         night: await getDaySleepV2(day), timeline: const {}, insights: const {},
         charts: const {}, windows: const []), devices: const [],
@@ -2925,14 +2960,14 @@ class LocalRepositoryImpl extends LocalRepository {
   /// left alone. One SQL read for the whole series, no payload decode.
   Future<(List<Map<String, dynamic>>, Map<String, int>)> _withOlderSeries(
       String key, List<Map<String, dynamic>> rows) async {
-    if (!_olderFallbackKeys.contains(key)) return (await SleepEditStore.visibleRows(rows), const <String, int>{});
+    if (!_olderFallbackKeys.contains(key)) return (await SleepEditStore.visibleRows(rows, key: key), const <String, int>{});
     final have = {for (final r in rows) r['date'] as String};
     final olderAll = await LocalDb.olderScalarByDay(key);
     final missing = [
       for (final d in olderAll.keys)
         if (!have.contains(d)) d,
     ];
-    if (missing.isEmpty) return (await SleepEditStore.visibleRows(rows), const <String, int>{});
+    if (missing.isEmpty) return (await SleepEditStore.visibleRows(rows, key: key), const <String, int>{});
     final imported = await LocalDb.importedDates();
     final notes = await LocalDb.servedAbsentNotes(key);
     final older = <String, int>{};
@@ -2947,7 +2982,7 @@ class LocalRepositoryImpl extends LocalRepository {
           'older_reason': notes[d] ?? 'unknown_cause'});
     }
     merged.sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
-    return (await SleepEditStore.visibleRows(merged), older);
+    return (await SleepEditStore.visibleRows(merged, key: key), older);
   }
 
   Map<String, dynamic> _seriesChart({
@@ -2971,6 +3006,11 @@ class LocalRepositoryImpl extends LocalRepository {
     final olderReasons = {
       for (final r in rows)
         if (r['older_reason'] is String) r['date'] as String: r['older_reason'] as String,
+    };
+    // A point scored against a sleep edit that has not finished (or gave up).
+    final sleepEdits = {
+      for (final r in rows)
+        if (r['sleep_edit'] is String) r['date'] as String: r['sleep_edit'] as String,
     };
     final dates = [
       ...stored.keys,
@@ -3001,6 +3041,7 @@ class LocalRepositoryImpl extends LocalRepository {
                       pin: pin, stored: (stored[d] as num?)?.toDouble())
                   : stored[d],
               // The point is an older algo version's stored value.
+              'sleep_edit': ?sleepEdits[d],
               'from_older_version': ?older[d],
               'older_version_reason': ?(older.containsKey(d) ? olderReasons[d] : null),
             },
@@ -5301,6 +5342,7 @@ class LocalRepositoryImpl extends LocalRepository {
       );
       final dates = <String>[];
       final temps = <double?>[];
+      final staleNights = await SleepEditStore.staleNights();
       for (var i = 0; i < ordered.length; i++) {
         final read = reads[i];
         final Map<String, dynamic> b;
@@ -5315,7 +5357,10 @@ class LocalRepositoryImpl extends LocalRepository {
         }
         final dt = ordered[i]['date'] as String;
         dates.add(dt);
-        final z = _scalar(b, 'skin_temp_z')?.toDouble();
+        // The night's own temperature belongs to times that are being changed.
+        final z = staleNights.contains(dt)
+            ? null
+            : _scalar(b, 'skin_temp_z')?.toDouble();
         temps.add(z);
         // (cycle index, cycle day) for this row — see WH-02 above.
         int? cd, ci;
