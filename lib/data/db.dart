@@ -1273,6 +1273,39 @@ class LocalDb {
 
   static Future<Map<String, PulseAlertRecord>> pulseAlertRecords() => _ldbPulseAlertRecords();
 
+  /// THE CLAIM. In one transaction, move each of [days] from "no row" or
+  /// `not_sent` to `pending`, stamped with [token] (unique per call), and return
+  /// the days this call now owns. A day another pass already holds, or has
+  /// finished, is not returned: that pass shows it, this one must not.
+  static Future<List<String>> claimPulseDays(
+    List<String> days, {
+    required String token,
+    required int atMs,
+  }) => _ldbClaimPulseDays(days, token: token, atMs: atMs);
+
+  /// End a claim taken with [token]: the final [state] (and [reason] for
+  /// `not_sent`). Applies to the claimer's own `pending` row, and to one a later
+  /// pass already relabelled `unknown`, so the truth wins when it arrives.
+  static Future<void> finishPulseDays(
+    List<String> days, {
+    required String token,
+    required PulseAlertState state,
+    required int atMs,
+    PulseAlertReason? reason,
+    String? summaryKey,
+  }) => _ldbFinishPulseDays(days, token: token, state: state, reason: reason, atMs: atMs, summaryKey: summaryKey);
+
+  /// `pending` rows claimed at or before [claimedBeforeMs] were left behind by a
+  /// pass that never finished: they become `unknown` and are never owed again.
+  static Future<int> markStalePulseUnknown(int claimedBeforeMs) => _ldbMarkStalePulseUnknown(claimedBeforeMs);
+
+  /// When [key] was claimed (epoch ms), or null.
+  static Future<int?> notifFiredAt(String key) async {
+    final db = await instance;
+    final rows = await db.query('notif_fired', columns: ['fired_at'], where: 'key = ?', whereArgs: [key], limit: 1);
+    return rows.isEmpty ? null : (rows.single['fired_at'] as num).toInt();
+  }
+
   /// The cross-isolate OS-notification-id slot allocator (see
   /// [claimNotifSlot] and lib/notify/notification_ids.dart).
   ///

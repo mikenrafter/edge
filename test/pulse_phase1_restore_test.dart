@@ -1,7 +1,10 @@
 // A restore carries the old install's alert records, so flagged days that were
 // already announced stay announced; flags with no record (an older backup) come
 // back as one summary. Real export and import, no hand-built context.
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/compute/pulse_alert_delivery.dart';
 import 'package:openstrap_edge/compute/pulse_alert_record.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -89,7 +92,7 @@ void main() {
     await PulseAlertDelivery.run(individualDays: {_sentDay, _summarisedDay});
     expect(shown, hasLength(1));
     expect(shown.single.dedupeKey, startsWith('pulse-summary:'));
-    expect(shown.single.title, contains('1 earlier day'));
+    expect(shown.single.title, contains('1 day'));
     await PulseAlertDelivery.run();
     expect(shown, hasLength(1));
   });
@@ -106,8 +109,28 @@ void main() {
     expect(await LocalDb.pulseDaysToAlert(), [_newDay, _summarisedDay, _sentDay]);
     await PulseAlertDelivery.run();
     expect(shown, hasLength(1));
-    expect(shown.single.title, contains('3 earlier days'));
+    expect(shown.single.title, contains('3 days'));
     await PulseAlertDelivery.run();
     expect(shown, hasLength(1));
+  });
+
+  // why: R2-DS2 (PERSISTENCE-CHECKLIST, selected-day export). The days travel
+  // with their flags, so they must travel with what became of their alerts, or
+  // the other phone announces days this one already announced.
+  test('a selected-day export carries the alert records of those days', () async {
+    await oldInstall(withRecords: true);
+    final out = await LocalDb.exportDaysDb({_sentDay, _summarisedDay});
+    final db = await databaseFactory.openDatabase(out);
+    try {
+      final rows = await db.rawQuery('SELECT day, state FROM pulse_alert ORDER BY day');
+      expect(rows.map((r) => (r['day'], r['state'])), [
+        (_summarisedDay, 'summary'),
+        (_sentDay, 'sent'),
+      ], reason: 'the two selected days only; the third day is not claimed');
+    } finally {
+      await db.close();
+      await databaseFactory.deleteDatabase(out);
+    }
+    expect(File(out).existsSync(), isFalse);
   });
 }

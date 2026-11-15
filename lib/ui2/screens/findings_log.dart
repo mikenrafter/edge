@@ -31,6 +31,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../compute/findings.dart';
 import '../../l10n/app_localizations.dart';
+import '../../state/clock_format.dart' show formatClockOf;
 import '../ui2.dart';
 import 'home_screen.dart' show prettyDay;
 import 'metric_detail.dart' show detailScaffold;
@@ -133,10 +134,12 @@ class FindingRow extends StatelessWidget {
     final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
     final title = findingTitle(l, f);
     final detail = findingDetail(l, f);
+    final note = switch (f.alert) {
+      final a? => a.note(l, time: formatClockOf(a.at)),
+      _ => null,
+    };
     return Semantics(
-      label: f.alert == null
-          ? '$title. $detail'
-          : '$title. $detail. ${f.alert!.note(l)}',
+      label: note == null ? '$title. $detail' : '$title. $detail. $note',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -158,9 +161,9 @@ class FindingRow extends StatelessWidget {
           ),
           const SizedBox(height: S.x2),
           Text(detail, style: F.cap.copyWith(color: p.ink2, height: 1.5)),
-          if (f.alert != null) ...[
+          if (note != null) ...[
             const SizedBox(height: S.x2),
-            Text(f.alert!.note(l), style: F.cap.copyWith(color: p.ink3)),
+            Text(note, style: F.cap.copyWith(color: p.ink3)),
           ],
         ],
       ),

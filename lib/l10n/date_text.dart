@@ -33,12 +33,15 @@ String localizedDate(
   return DateFormat.yMMMd(locale).format(date);
 }
 
-/// Weekday, day, month and time in the locale's own order, e.g. "Thu 12 Nov,
+/// Weekday, day, month and time in the locale's own order, e.g. "Thu 12 Nov
 /// 08:14". No year: it is the moment something happened, not a record's date.
-String localizedDateTime(DateTime moment, String code) {
+/// [time] is the time of day already formatted (the app passes its 12/24 h
+/// formatter's text); the default is the locale's own 24-hour time.
+String localizedDateTime(DateTime moment, String code, {String? time}) {
   localizedDate(moment, code); // makes sure the date symbols are loaded
   final locale = DateFormat.localeExists(code) ? code : 'en';
-  return DateFormat.MMMEd(locale).add_Hm().format(moment);
+  if (time == null) return DateFormat.MMMEd(locale).add_Hm().format(moment);
+  return '${DateFormat.MMMEd(locale).format(moment)} $time';
 }
 
 String displayDate(BuildContext context, DateTime date) => localizedDate(

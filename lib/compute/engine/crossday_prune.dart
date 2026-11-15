@@ -378,13 +378,17 @@ extension _EngineCrossDayPrune on DerivationEngine {
           await const FiredKeyStore().recordFired('${notice.date}:exception');
         }
       }
-      // Irregular-pulse days have their own keys, record and summary; they
-      // neither claim nor wait on the shared medical slot above.
+    } catch (e) {
+      _log('notifications FAILED/skipped: $e');
+    }
+    // Irregular-pulse days have their own record and summary. Their own try:
+    // a failure in the cross-day notices above must not skip them.
+    try {
       await PulseAlertDelivery.run(
         individualDays: processingContext.individualDays,
       );
     } catch (e) {
-      _log('notifications FAILED/skipped: $e');
+      _log('pulse alerts FAILED/skipped: $e');
     }
   }
 

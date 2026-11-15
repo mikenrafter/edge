@@ -3903,11 +3903,14 @@
   "guideTapsBack": "{count, plural, one{1 toque atrás} other{{count} toques atrás}}",
   "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
   "findingNotificationIrregularRhythm": "Los intervalos de pulso registrados el {day} coincidieron con nuestra regla de irregularidad. No hemos medido su precisión ni con qué frecuencia pasa por alto un problema del ritmo cardíaco. Toca para leer sus limitaciones.",
-  "pulseSummaryTitle": "{count, plural, =1{Patrón de pulso irregular marcado en 1 día anterior} other{Patrones de pulso irregular marcados en {count} días anteriores}}",
-  "pulseSummaryBody": "{days}. Los intervalos de pulso de estos días coincidieron con nuestra regla de irregularidad. No hemos medido su precisión ni con qué frecuencia pasa por alto un problema del ritmo cardíaco. Toca para leer los límites.",
+  "pulseSummaryTitle": "{count, plural, =1{Patrón de pulso irregular marcado en 1 día} other{Patrones de pulso irregular marcados en {count} días}}",
+  "pulseSummaryBody": "{count, plural, =1{{days}. Los intervalos de pulso de este día coincidieron con nuestra regla de irregularidad. No hemos medido su precisión ni con qué frecuencia pasa por alto un problema del ritmo cardíaco. Toca para leer los límites.} other{{days}. Los intervalos de pulso de estos días coincidieron con nuestra regla de irregularidad. No hemos medido su precisión ni con qué frecuencia pasa por alto un problema del ritmo cardíaco. Toca para leer los límites.}}",
   "pulseSummaryDaysMore": "{days} y {more} más",
   "pulseAlertSent": "Aviso enviado {when}",
   "pulseAlertInSummary": "Incluido en un aviso resumen {when}",
   "pulseAlertOff": "Sin aviso: las notificaciones estaban desactivadas",
-  "pulseAlertNotPermitted": "Sin aviso: las notificaciones no estaban permitidas"
+  "pulseAlertNotPermitted": "Sin aviso: las notificaciones no estaban permitidas",
+  "pulseAlertUnknown": "Es posible que el aviso se enviara {when}",
+  "pulseAlertQuiet": "Sin aviso: retenido por las horas de silencio",
+  "pulseAlertEarlier": "Avisado antes de esta actualización {when}"
 }

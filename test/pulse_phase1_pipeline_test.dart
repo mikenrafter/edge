@@ -255,7 +255,7 @@ void main() {
     expect(await LocalDb.metricValueOn(yesterday, _flag), 1.0);
     expect(shown, hasLength(1));
     expect(isSummary(shown.single), isTrue);
-    expect(shown.single.title, contains('1 earlier day'));
+    expect(shown.single.title, contains('1 day'));
     expect(await alertState(yesterday), PulseAlertState.summary);
     await drainScheduler();
     expect(shown, hasLength(1));
@@ -278,7 +278,7 @@ void main() {
     expect(await LocalDb.metricValueOn(b, _flag), 1.0);
     expect(shown, hasLength(1));
     expect(isSummary(shown.single), isTrue);
-    expect(shown.single.title, contains('2 earlier days'));
+    expect(shown.single.title, contains('2 days'));
     expect(await alertState(a), PulseAlertState.summary);
     expect(await alertState(b), PulseAlertState.summary);
   });

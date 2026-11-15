@@ -1084,7 +1084,7 @@ Future<Database> _ldbPrivOpen() async {
           )).isNotEmpty;
           if (hasSeries) {
             await db.execute("INSERT OR IGNORE INTO pulse_alert(day, state, at_ms) "
-                "SELECT s.date, 'sent', f.fired_at "
+                "SELECT s.date, 'earlier', f.fired_at "
                 "FROM metric_series s JOIN notif_fired f "
                 "ON f.key = s.date || ':exception:medical' "
                 "WHERE s.key = 'irregular_rhythm_flag' AND s.value = 1");

@@ -3885,11 +3885,14 @@
   "guideTapsBack": "返回需点按 {count} 次",
   "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
   "findingNotificationIrregularRhythm": "{day} 记录的脉搏间隔符合我们的不规则判定规则。我们尚未测量其准确性或漏掉心律问题的频率。点按了解局限。",
-  "pulseSummaryTitle": "{count, plural, other{在之前的 {count} 天发现不规则脉搏标记}}",
-  "pulseSummaryBody": "{days}。这些天的脉搏间隔符合我们的不规则判定规则。我们尚未测量它的准确度，也未测量它漏掉心律问题的频率。点按查看局限。",
+  "pulseSummaryTitle": "{count, plural, =1{在 1 天发现不规则脉搏标记} other{在 {count} 天发现不规则脉搏标记}}",
+  "pulseSummaryBody": "{count, plural, =1{{days}。这一天的脉搏间隔符合我们的不规则判定规则。我们尚未测量它的准确度，也未测量它漏掉心律问题的频率。点按查看局限。} other{{days}。这些天的脉搏间隔符合我们的不规则判定规则。我们尚未测量它的准确度，也未测量它漏掉心律问题的频率。点按查看局限。}}",
   "pulseSummaryDaysMore": "{days} 以及另外 {more} 天",
   "pulseAlertSent": "已发送提醒 {when}",
   "pulseAlertInSummary": "已包含在汇总提醒中 {when}",
   "pulseAlertOff": "未提醒：通知已关闭",
-  "pulseAlertNotPermitted": "未提醒：未允许通知"
+  "pulseAlertNotPermitted": "未提醒：未允许通知",
+  "pulseAlertUnknown": "提醒可能已发送 {when}",
+  "pulseAlertQuiet": "未提醒：因免打扰时段而暂缓",
+  "pulseAlertEarlier": "此次更新前已提醒 {when}"
 }

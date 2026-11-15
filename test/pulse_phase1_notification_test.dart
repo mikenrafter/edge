@@ -173,8 +173,8 @@ void main() {
     expect(shown, hasLength(1));
     final e = shown.single;
     expect(isSummary(e), isTrue);
-    expect(e.title, 'Irregular pulse flags found on 2 earlier days');
-    expect(e.body, contains('${niceDay(a)}, ${niceDay(b)}'));
+    expect(e.title, 'Irregular pulse flags found on 2 days');
+    expect(e.body, contains('${niceDay(a)}; ${niceDay(b)}'));
     expect(e.route, '/heart');
     for (final day in [a, b]) {
       final r = (await record(day))!;
@@ -203,10 +203,10 @@ void main() {
     }
     await notify(ProcessingContext.historical);
     expect(shown, hasLength(1));
-    expect(shown.single.title, 'Irregular pulse flags found on 3 earlier days');
+    expect(shown.single.title, 'Irregular pulse flags found on 3 days');
     expect(
       shown.single.body,
-      contains(days.map(niceDay).join(', ')),
+      contains(days.map(niceDay).join('; ')),
     );
   });
 
@@ -218,10 +218,10 @@ void main() {
     }
     await notify(ProcessingContext.reanalysis);
     expect(shown, hasLength(1));
-    expect(shown.single.title, 'Irregular pulse flags found on 7 earlier days');
+    expect(shown.single.title, 'Irregular pulse flags found on 7 days');
     expect(
       shown.single.body,
-      contains('${days.skip(2).map(niceDay).join(', ')} and 2 more'),
+      contains('${days.skip(2).map(niceDay).join('; ')} and 2 more'),
     );
     for (final d in days) {
       expect((await record(d))!.state, PulseAlertState.summary);
@@ -243,7 +243,7 @@ void main() {
     await notify(context);
     expect(shown, hasLength(1));
     expect(isSummary(shown.single), isTrue);
-    expect(shown.single.title, contains('4 earlier days'));
+    expect(shown.single.title, contains('4 days'));
   });
 
   // why: rule 3. Notifications that are off must not lose the day: it is
@@ -267,7 +267,7 @@ void main() {
       await notify(ProcessingContext.reanalysis);
       expect(shown, hasLength(1));
       expect(isSummary(shown.single), isTrue);
-      expect(shown.single.title, 'Irregular pulse flag found on 1 earlier day');
+      expect(shown.single.title, 'Irregular pulse flag found on 1 day');
       expect(shown.single.body, contains(niceDay(day)));
       r = (await record(day))!;
       expect(r.state, PulseAlertState.summary);
@@ -296,7 +296,7 @@ void main() {
 
   // why: rule 5. A key that was claimed by an earlier pass that stopped before
   // writing its record is the one alert the day gets; it must not send again.
-  test('a day whose key was already claimed is recorded, not re-sent', () async {
+  test('a day whose key was already claimed is unknown, not re-sent', () async {
     final day = daysAgo(2);
     await flag(day);
     await LocalDb.claimNotifFired('$day:irregular-pulse');
@@ -306,7 +306,9 @@ void main() {
       }),
     );
     expect(shown, isEmpty);
-    expect((await record(day))!.state, PulseAlertState.sent);
+    // Nothing says whether that claim ever reached the screen: unknown, with the
+    // claim's time, and never sent again.
+    expect((await record(day))!.state, PulseAlertState.unknown);
   });
 
   // why: rule 4 and the policy for non-sync passes that carried records too.
@@ -440,7 +442,7 @@ void main() {
     await LocalDb.close();
     await notify(ProcessingContext.reanalysis);
     expect(await LocalDb.notifFiredExists('$old:irregular-pulse'), isTrue);
-    expect((await record(old))!.state, PulseAlertState.sent);
+    expect((await record(old))!.state, PulseAlertState.earlier);
     expect(shown, hasLength(1));
     expect(isSummary(shown.single), isTrue);
     expect(shown.single.body, contains(niceDay(unalerted)));

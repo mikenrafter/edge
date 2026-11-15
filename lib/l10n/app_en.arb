@@ -18158,7 +18158,7 @@
       }
     }
   },
-  "tracksDailyRange": "Daily {from} \u2013 {to}",
+  "tracksDailyRange": "Daily {from} – {to}",
   "@tracksDailyRange": {
     "placeholders": {
       "from": {
@@ -18169,7 +18169,7 @@
       }
     }
   },
-  "tracksNotTaken": "Not taken {from} \u2013 {to}",
+  "tracksNotTaken": "Not taken {from} – {to}",
   "@tracksNotTaken": {
     "placeholders": {
       "from": {
@@ -19359,7 +19359,14 @@
     }
   },
   "guideTapsBack": "{count, plural, one{1 tap back} other{{count} taps back}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "@guideTapsBack": {
+    "description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "findingNotificationIrregularRhythm": "Pulse timing recorded on {day} matched our irregularity rule. We have not measured its accuracy or how often it misses a rhythm problem. Tap to read the limits.",
   "@findingNotificationIrregularRhythm": {
     "description": "Daily pulse flag wording. day is the recorded local calendar date, never the processing date.",
@@ -19370,22 +19377,25 @@
       }
     }
   },
-  "pulseSummaryTitle": "{count, plural, =1{Irregular pulse flag found on 1 earlier day} other{Irregular pulse flags found on {count} earlier days}}",
+  "pulseSummaryTitle": "{count, plural, =1{Irregular pulse flag found on 1 day} other{Irregular pulse flags found on {count} days}}",
   "@pulseSummaryTitle": {
-    "description": "One notification for several earlier flagged days found by an import, backfill, restore, reanalysis or algorithm update, or held back while notifications were off. count is how many days.",
+    "description": "One notification for several flagged days found by an import, backfill, restore, reanalysis or algorithm update, or held back while notifications were off. The days can include today. count is how many days.",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
   },
-  "pulseSummaryBody": "{days}. Pulse timing on these days matched our irregularity rule. We have not measured its accuracy or how often it misses a rhythm problem. Tap to read the limits.",
+  "pulseSummaryBody": "{count, plural, =1{{days}. Pulse timing on this day matched our irregularity rule. We have not measured its accuracy or how often it misses a rhythm problem. Tap to read the limits.} other{{days}. Pulse timing on these days matched our irregularity rule. We have not measured its accuracy or how often it misses a rhythm problem. Tap to read the limits.}}",
   "@pulseSummaryBody": {
-    "description": "Body of that summary. days is the list of recorded local dates, e.g. Thu, Nov 12, 2026, Sat, Nov 14, 2026.",
+    "description": "Body of that summary. days is the list of recorded local dates; count is how many, so one day reads in the singular.",
     "placeholders": {
+      "count": {
+        "type": "int"
+      },
       "days": {
         "type": "String",
-        "example": "Thu, Nov 12, 2026, Sat, Nov 14, 2026"
+        "example": "Thu, Nov 12, 2026; Sat, Nov 14, 2026"
       }
     }
   },
@@ -19429,5 +19439,29 @@
   "pulseAlertNotPermitted": "No alert: notifications were not permitted",
   "@pulseAlertNotPermitted": {
     "description": "Small text under a flagged day: no notification was shown because the phone did not permit it."
+  },
+  "pulseAlertUnknown": "Alert may have been sent {when}",
+  "@pulseAlertUnknown": {
+    "description": "Small text under a flagged day: a pass claimed the alert and stopped before recording whether it was shown. It is never sent again.",
+    "placeholders": {
+      "when": {
+        "type": "String",
+        "example": "Thu, Nov 12 08:14"
+      }
+    }
+  },
+  "pulseAlertQuiet": "No alert: held for quiet hours",
+  "@pulseAlertQuiet": {
+    "description": "Small text under a flagged day: no notification was shown because quiet hours held it back."
+  },
+  "pulseAlertEarlier": "Alerted by the previous version {when}",
+  "@pulseAlertEarlier": {
+    "description": "Small text under a flagged day: the build before this update already alerted for it.",
+    "placeholders": {
+      "when": {
+        "type": "String",
+        "example": "Thu, Nov 12 08:14"
+      }
+    }
   }
 }

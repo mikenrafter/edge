@@ -3991,11 +3991,14 @@
   "guideTapsBack": "{count, plural, one{1 Tipp zurück} other{{count} Tipps zurück}}",
   "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
   "findingNotificationIrregularRhythm": "Die am {day} aufgezeichneten Pulsabstände entsprachen unserer Unregelmäßigkeitsregel. Ihre Genauigkeit und wie oft sie Herzrhythmusstörungen übersieht, wurden nicht gemessen. Tippen Sie, um die Grenzen zu lesen.",
-  "pulseSummaryTitle": "{count, plural, =1{Unregelmäßiges Pulsmuster an 1 früheren Tag markiert} other{Unregelmäßige Pulsmuster an {count} früheren Tagen markiert}}",
-  "pulseSummaryBody": "{days}. Die Pulsabstände an diesen Tagen entsprachen unserer Unregelmäßigkeitsregel. Ihre Genauigkeit und wie oft sie Herzrhythmusstörungen übersieht, wurden nicht gemessen. Tippen Sie, um die Grenzen zu lesen.",
+  "pulseSummaryTitle": "{count, plural, =1{Unregelmäßiges Pulsmuster an 1 Tag markiert} other{Unregelmäßige Pulsmuster an {count} Tagen markiert}}",
+  "pulseSummaryBody": "{count, plural, =1{{days}. Die Pulsabstände an diesem Tag entsprachen unserer Unregelmäßigkeitsregel. Ihre Genauigkeit und wie oft sie Herzrhythmusstörungen übersieht, wurden nicht gemessen. Tippen Sie, um die Grenzen zu lesen.} other{{days}. Die Pulsabstände an diesen Tagen entsprachen unserer Unregelmäßigkeitsregel. Ihre Genauigkeit und wie oft sie Herzrhythmusstörungen übersieht, wurden nicht gemessen. Tippen Sie, um die Grenzen zu lesen.}}",
   "pulseSummaryDaysMore": "{days} und {more} weitere",
   "pulseAlertSent": "Hinweis gesendet {when}",
   "pulseAlertInSummary": "In einem Sammelhinweis enthalten {when}",
   "pulseAlertOff": "Kein Hinweis: Benachrichtigungen waren aus",
-  "pulseAlertNotPermitted": "Kein Hinweis: Benachrichtigungen waren nicht erlaubt"
+  "pulseAlertNotPermitted": "Kein Hinweis: Benachrichtigungen waren nicht erlaubt",
+  "pulseAlertUnknown": "Hinweis wurde möglicherweise gesendet {when}",
+  "pulseAlertQuiet": "Kein Hinweis: wegen Ruhezeiten zurückgehalten",
+  "pulseAlertEarlier": "Vor diesem Update gemeldet {when}"
 }
