@@ -47,6 +47,7 @@ void main() {
                             const InlineMetrics([('RESTING HR', '57', C.red)]),
                             detailLinkRow(c, Icons.schedule, 'Body clock',
                                 'Your schedule', () {}),
+                            const StatusCard('History', '', fix:'3 of 7 nights so far'),
                           ],
                         ),
                       ),
@@ -90,12 +91,13 @@ void main() {
         t.getRect(find.byKey(const ValueKey('chrome-icon'))),
         // A strip of the Surface's own background, beside all its content.
         Rect.fromLTWH(
-          t.getRect(find.byType(Surface)).left + 2,
-          t.getRect(find.byType(Surface)).top + 25,
+          t.getRect(find.byType(Surface).first).left + 2,
+          t.getRect(find.byType(Surface).first).top + 25,
           3,
           40,
         ),
       ];
+      final dependentCount = t.getRect(find.text('3 of 7 nights so far'));
       final settled = await pixels();
       change(() {
         day = '2026-11-14';
@@ -109,6 +111,8 @@ void main() {
       for (final ms in [0, 100, 100, 125, 125, 200]) {
         await t.pump(Duration(milliseconds: ms));
         final current = await pixels();
+        expect(crop(current, dependentCount), isNot(equals(crop(settled, dependentCount))),
+            reason: 'history count depends on the new read and must be a placeholder');
         for (final region in regions) {
           final actual=crop(current,region), expected=crop(settled,region);
           expect(
