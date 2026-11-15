@@ -30,6 +30,7 @@ import 'package:openstrap_edge/ui2/screens/what_changed.dart';
 import 'package:openstrap_edge/ui2/screens/typical_day.dart';
 import 'package:openstrap_edge/ui2/screens/wellness_screen.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
+import 'package:openstrap_edge/ui2/profile/devices.dart' show DeviceFilter;
 import '../../support/as_of_recalc_fakes.dart';
 import '../../support/live_guide_harness.dart';
 import '../../support/shift_run.dart';
@@ -61,10 +62,10 @@ class _LateRepo extends GuideFakeRepo {
   @override
   Future<Map<String, dynamic>> getChart(String metric,
       {int? from, int? to, Set<String> signals = const {}}) => late(() async {
-    if (rich) return {'points': [for (var i = 28; i >= 0; i--) {
+    if (rich) { return {'points': [for (var i = 28; i >= 0; i--) {
       't': DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day - i, 12).millisecondsSinceEpoch ~/ 1000,
       'v': metric == 'sleep' ? 440 + i % 5 : metric == 'deep' ? 80 + i % 5 : metric == 'efficiency' ? 90 + i % 5 : metric == 'unobserved_min' ? 60 : 5,
-    }]};
+    }]}; }
     final chart = await MetricRepo().getChart(metric, from: from, to: to, signals: signals);
     return (metric == 'resting_hr' || metric == 'steps') ? chart : const {'points': []};
   });
@@ -96,7 +97,11 @@ class _LateRepo extends GuideFakeRepo {
   @override
   Future<Map<String, dynamic>> getDaySteps(String day) => late(() async => const {});
   @override
-  Future<Map<String, dynamic>> getDayNaps(String day) => late(() => super.getDayNaps(day));
+  Future<Map<String, dynamic>> getDayNaps(String day) => late(() async => {'naps': [for (var i = 0; i < 2; i++) {
+      'start': DateTime.now().millisecondsSinceEpoch ~/ 1000 - 7200 + i * 3600,
+      'end': DateTime.now().millisecondsSinceEpoch ~/ 1000 - 4500 + i * 3600,
+      'duration_min': 45, 'source': 'auto',
+    }], 'nap_min': 90});
   @override
   Future<({List<double> nn, int rawBeats, double cleanFraction})> getNightBeats(String day) =>
     late(() async => (nn: [for (var i = 0; i < 400; i++) 880 + (i % 37) * 3.0],
@@ -125,7 +130,7 @@ Future<void> shot(WidgetTester t, String name) async {
     final image = await boundary.toImage(pixelRatio: 2);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     await Directory(dir).create(recursive: true);
-    await File('$dir/$name.png').writeAsBytes(data!.buffer.asUint8List());
+    await File('$dir/${name.replaceAll(':', '-')}.png').writeAsBytes(data!.buffer.asUint8List());
     image.dispose();
   });
 }
@@ -162,6 +167,9 @@ void main() {
     for (final section in _sleepSections) 'rich-sleep-$section': () => const SleepDetail(),
   };
   for (final entry in screens.entries) {
+    // The old loading page has no lower sections to scroll to. Its first
+    // viewport is captured once for each route; rich cases measure the fix.
+    if (Platform.environment['CLS_BASELINE'] == '1' && entry.key.startsWith('rich-')) { continue; }
     for (final delay in entry.key.startsWith('rich-') ? [2500] : [150, 2500]) {
       testWidgets('${entry.key}: ${delay}ms pending has no spinner and stays still', (t) async {
         phoneSurface(t);
@@ -184,6 +192,7 @@ void main() {
         run.opened();
         await run.frames([0, 16, delay]);
         final spinners = find.byType(CircularProgressIndicator).evaluate().length;
+        final filters = find.byType(DeviceFilter).evaluate().length;
         if (delay == 2500) await shot(t, entry.key);
         expect(repo.reads, greaterThan(0), reason: 'the real screen must reach its repository');
         repo.gate.complete();
@@ -199,6 +208,10 @@ void main() {
         debugPrint(formatShiftReport(entry.key, result, run.probe.frames.length));
         // Existing metric-detail bounds. Keep slow arrivals outside the free
         // interaction window, so moving content cannot hide behind latency.
+        if (entry.key == 'metric-sources') {
+          expect(filters, greaterThan(0), reason: 'known paired sources reserve controls before data');
+          expect(find.byType(DeviceFilter), findsOneWidget);
+        }
         expect(spinners, 0, reason: '${entry.key} uses a spinner while reading');
         for (final finding in result.findings.where((f) => f.rule == 'shift')) {
           expect(finding.score, lessThan(0.002), reason: '${entry.key}: ${finding.elementId}');
