@@ -15,8 +15,10 @@ import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import 'package:openstrap_edge/ui2/skeleton/unit_paint.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 
+import '../support/bundled_fonts.dart';
 import '../support/guide_r2_scenes.dart';
 import '../support/guide_r7_scenes.dart';
+import '../support/skeleton_fixture.dart' show skLoadAppFonts;
 
 LiveGuideOverlayState _overlay(WidgetTester t) => t.state(find.byType(LiveGuideOverlay));
 
@@ -344,6 +346,24 @@ void main() {
           for (final text in overlay.legibleTextRects) {
             expect(pill.overlaps(text.deflate(1)), isFalse, reason: '${scene.id}: label $pill covers $text');
           }
+        } finally { await disposeR2(t, m); }
+      });
+    }
+  });
+  group('N1 text never moves a label to the other side', () {
+    // WHY: review r7-2 N1: the text-avoiding search flipped both Fix-sleep-times "tap" labels below their
+    // target, under the hand. Owner rule: always above unless above is off screen or under chrome.
+    // catches: a search that tries the other side to dodge text.
+    // Real fonts, dark, the phone's ratio: the capture conditions the flip was seen under (test fonts don't show it).
+    setUpAll(() async { await loadFonts(); await skLoadAppFonts(); });
+    for (final scene in r2Scenes.where((s) => s.guide == 'fix-sleep-times')) {
+      testWidgets('R7-fix2 N1: the label of ${scene.id} stays above its target', (t) async {
+        final m = await pumpR2Scene(t, scene, brightness: Brightness.dark, devicePixelRatio: 2.625);
+        try {
+          await settleMovingGuide(t);
+          final target = _overlay(t).targetRect!;
+          final pill = t.getRect(find.byKey(LiveGuideOverlay.tapPillKey));
+          expect(pill.bottom, lessThanOrEqualTo(target.top), reason: '${scene.id}: label $pill, target $target');
         } finally { await disposeR2(t, m); }
       });
     }

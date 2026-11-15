@@ -1879,33 +1879,29 @@ class _GuideLayout extends MultiChildLayoutDelegate {
             !(aboveFits && above - bounds.top >= GuidePillLayout.kGuidePillBand);
         final preferred = keepBelow || !aboveFits && belowFits ? GuidePillSide.below : GuidePillSide.above;
         // Centred over the choices; if that covers legible text, slide along them to the nearest clear
-        // spot; failing that, stand a little further off, then try the other side.
-        // CLAIM(label-clear-of-text) [guide_r7_fix1_test F6].
+        // spot; failing that, stand a little further off. Text never changes the side: only the
+        // off-screen/chrome rule above does (owner: always above). Failing all, the centred spot.
+        // CLAIM(label-clear-of-text) [guide_r7_fix1_test F6]. CLAIM(label-side-kept) [guide_r7_fix1_test N1].
         final h = pillSize.height;
         Rect at(GuidePillSide side, double x, double away) => Rect.fromLTWH(x,
             (side == GuidePillSide.above ? above - away : below + away).clamp(bounds.top, math.max(bounds.top, bounds.bottom - h)).toDouble(),
             pillSize.width, h);
         bool clear(Rect r) => !avoidText.any((a) => a.overlaps(r.deflate(1)));
         bool fits(GuidePillSide side, double away) => side == GuidePillSide.above ? above - away >= bounds.top : below + away + h <= bounds.bottom;
-        final other = preferred == GuidePillSide.above ? GuidePillSide.below : GuidePillSide.above;
         Rect? found;
-        var side = preferred;
         for (var away = 0.0; away <= 48 && found == null; away += 4) {
-          for (final candidate in [preferred, other]) {
-            if (found != null || !fits(candidate, away)) continue;
-            for (var step = 0; step <= 150 && found == null; step++) {
-              for (final x in [centred + 4.0 * step, centred - 4.0 * step]) {
-                if (x < math.min(lo, centred) || x > math.max(hi, centred) || !clear(at(candidate, x, away))) continue;
-                found = at(candidate, x, away);
-                side = candidate;
-                break;
-              }
+          if (!fits(preferred, away)) continue;
+          for (var step = 0; step <= 150 && found == null; step++) {
+            for (final x in [centred + 4.0 * step, centred - 4.0 * step]) {
+              if (x < math.min(lo, centred) || x > math.max(hi, centred) || !clear(at(preferred, x, away))) continue;
+              found = at(preferred, x, away);
+              break;
             }
           }
         }
         pill = found ?? at(preferred, centred, 0);
         positionChild('pill', pill.topLeft);
-        pillSide.afterLayout(pillVisible ? (found != null ? side : preferred) : null);
+        pillSide.afterLayout(pillVisible ? preferred : null);
       } else {
         final layout = GuidePillLayout(target!, bounds, pillVisible ? pillSide.remembered : null);
         pill = layout.place(pillSize);
