@@ -23,6 +23,7 @@ import '../../support/as_of_recalc_fakes.dart';
 import '../../support/fake_alarm_engine.dart';
 import '../../support/live_guide_harness.dart';
 import '../../support/shift_run.dart';
+import '../../support/pilot_shots.dart';
 import '../../support/skeleton_fixture.dart' show skLoadAppFonts;
 import 'pilot_secondary_shift_test.dart' show check, landed;
 
@@ -30,11 +31,14 @@ class _PrivateRepo extends GuideFakeRepo {
   final workout = Completer<Map<String, dynamic>>();
   int workoutReads = 0;
   @override
-  Future<Map<String, dynamic>> getRecords() async => const {'workouts_tracked': 1};
+  Future<Map<String, dynamic>> getRecords() async => const {
+    'workouts_tracked': 1,
+  };
   @override
   Future<List<JournalFieldSpec>> getJournalFields() async => kJournalFields;
   @override
-  Future<List<Map<String, dynamic>>> getJournal({String range = '30d'}) async => const [];
+  Future<List<Map<String, dynamic>>> getJournal({String range = '30d'}) async =>
+      const [];
   @override
   Future<Map<String, dynamic>> getWorkout(String id) {
     workoutReads++;
@@ -42,11 +46,19 @@ class _PrivateRepo extends GuideFakeRepo {
   }
 }
 
-Widget _app(AppState app, Widget child) => ChangeNotifierProvider<UnitsController>(
-  create: (_) => UnitsController.seed(UnitSystem.metric), child: perfApp(app, child));
+Widget _app(AppState app, Widget child) => pilotShot(
+  ChangeNotifierProvider<UnitsController>(
+    create: (_) => UnitsController.seed(UnitSystem.metric),
+    child: perfApp(app, child, brightness: Brightness.dark),
+  ),
+);
 
-Finder _scroll() => find.descendant(of: find.byType(ListView).first,
-  matching: find.byType(Scrollable)).first;
+Finder _scroll() => find
+    .descendant(
+      of: find.byType(ListView).first,
+      matching: find.byType(Scrollable),
+    )
+    .first;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -56,84 +68,125 @@ void main() {
     env = await BackupEnv.create('pilot_private_routes.db');
     await LocalDb.instance;
   });
-  setUp(() async { await Prefs.ensureLoaded(); });
+  setUp(() async {
+    await Prefs.ensureLoaded();
+  });
   tearDownAll(() => env.dispose());
 
-  testWidgets('historical summary reserves its archetype while its bundle waits', (t) async {
-    phoneSurface(t);
-    final repo = _PrivateRepo();
-    final app = AppState.forTesting()..repo = repo;
-    addTearDown(app.dispose);
-    await t.pumpWidget(_app(app, const WorkoutScreen()));
-    final setup = ShiftRun(t);
-    await landed(setup);
-    await t.tap(find.text('History'));
-    await landed(setup);
-    final running = find.text('Running').last;
-    expect(running, findsOneWidget);
-    await t.ensureVisible(running);
-    await t.tap(running);
-    await t.pump(const Duration(milliseconds: 350));
-    final run = ShiftRun(t)..opened();
-    await run.frames([0, 150, 2500]);
-    final spinners = find.byType(CircularProgressIndicator).evaluate().length;
-    expect(repo.workoutReads, 1);
-    repo.workout.complete({});
-    await landed(run);
-    expect(spinners, 0);
-    check(run, 'historical summary');
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 3));
-  });
+  testWidgets(
+    'historical summary reserves its archetype while its bundle waits',
+    (t) async {
+      phoneSurface(t);
+      final repo = _PrivateRepo();
+      final app = AppState.forTesting()..repo = repo;
+      addTearDown(app.dispose);
+      await t.pumpWidget(_app(app, const WorkoutScreen()));
+      final setup = ShiftRun(t);
+      await landed(setup);
+      await t.tap(find.text('History'));
+      await landed(setup);
+      final running = find.text('Running').last;
+      expect(running, findsOneWidget);
+      await t.ensureVisible(running);
+      await t.tap(running);
+      await t.pump(const Duration(milliseconds: 350));
+      await settle(
+        t,
+        until: () => repo.workoutReads == 1,
+        what: 'the historical bundle query has started',
+      );
+      final run = ShiftRun(t, skipCoveredRoutes: true)..opened();
+      await run.frames([0, 150, 2500]);
+      final spinners = find.byType(CircularProgressIndicator).evaluate().length;
+      expect(repo.workoutReads, 1);
+      await takePilotShot(t, 'historical-workout');
+      repo.workout.complete({});
+      await landed(run);
+      expect(spinners, 0);
+      check(run, 'historical summary');
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 3));
+    },
+  );
 
   testWidgets('weight trend opens with a full chart placeholder', (t) async {
     phoneSurface(t);
     final app = AppState.forTesting()..repo = _PrivateRepo();
     addTearDown(app.dispose);
+    await t.runAsync(() async {
+      await LocalDb.putJournalMetrics(yesterdayId, {
+        'weight_kg': const JournalMetricValue(71),
+      });
+      await LocalDb.putJournalMetrics(todayId, {
+        'weight_kg': const JournalMetricValue(72),
+      });
+    });
     await t.pumpWidget(_app(app, const JournalCompose()));
     final setup = ShiftRun(t);
     await landed(setup);
-    final trend = find.byWidgetPredicate((w) =>
-      w is Pressable && w.semanticLabel == 'See the weight trend');
+    final trend = find.byWidgetPredicate(
+      (w) => w is Pressable && w.semanticLabel == 'See the weight trend',
+    );
     expect(trend, findsOneWidget);
     await t.ensureVisible(trend);
     await t.tap(trend);
     await t.pump(const Duration(milliseconds: 350));
-    final run = ShiftRun(t)..opened();
+    final run = ShiftRun(t, skipCoveredRoutes: true)..opened();
     await run.frames([0, 150, 2500]);
     final spinners = find.byType(CircularProgressIndicator).evaluate().length;
+    await takePilotShot(t, 'weight-trend');
     await landed(run);
-    expect(spinners, 0);
     check(run, 'weight trend');
+    expect(spinners, 0);
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 3));
   });
 
-  testWidgets('alarm exact-timing reply keeps the snooze rows in place', (t) async {
+  testWidgets('alarm exact-timing reply keeps the snooze rows in place', (
+    t,
+  ) async {
     phoneSurface(t);
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    final answer = Completer<bool>();
-    const channel = MethodChannel('dexterous.com/flutter/local_notifications');
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-      .setMockMethodCallHandler(channel, (call) async =>
-        call.method == 'canScheduleExactNotifications' ? answer.future : null);
-    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-      .setMockMethodCallHandler(channel, null));
-    final app = AppState.forTesting(engine: FakeAlarmEngine());
-    addTearDown(app.dispose);
-    await t.runAsync(() => app.setSnoozeSettings(const SnoozeSettings(enabled: true)));
-    await t.pumpWidget(_app(app, const AlarmScreen()));
-    await t.scrollUntilVisible(find.byType(SnoozeSettingsRows), 300, scrollable: _scroll());
-    final run = ShiftRun(t)..opened();
-    await run.frames([0, 150, 2500]);
-    answer.complete(false);
-    await landed(run);
-    expect(find.byKey(const ValueKey('snooze-exact-note')), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-    check(run, 'alarm exact timing');
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 3));
+    try {
+      final answer = Completer<bool>();
+      const channel = MethodChannel(
+        'dexterous.com/flutter/local_notifications',
+      );
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            channel,
+            (call) async => call.method == 'canScheduleExactNotifications'
+                ? answer.future
+                : null,
+          );
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null),
+      );
+      final app = AppState.forTesting(engine: FakeAlarmEngine());
+      addTearDown(app.dispose);
+      await t.runAsync(
+        () => app.setSnoozeSettings(const SnoozeSettings(enabled: true)),
+      );
+      await t.pumpWidget(_app(app, const AlarmScreen()));
+      await t.scrollUntilVisible(
+        find.byType(SnoozeSettingsRows),
+        300,
+        scrollable: _scroll(),
+      );
+      final run = ShiftRun(t, skipCoveredRoutes: true)..opened();
+      await run.frames([0, 150, 2500]);
+      await takePilotShot(t, 'alarm-capability');
+      answer.complete(false);
+      await landed(run);
+      expect(find.byKey(const ValueKey('snooze-exact-note')), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      check(run, 'alarm exact timing');
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 3));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('alarm trace read reserves several decision lines', (t) async {
@@ -153,12 +206,25 @@ void main() {
       await landed(setup);
     }
     await t.scrollUntilVisible(decision, 200, scrollable: _scroll());
-    final run = ShiftRun(t)..opened();
+    // The bounded trace scrolls internally as prose grows. Track its keyed
+    // viewport and the surrounding page, rather than the scrolling paragraph.
+    await landed(setup);
+    await t.pumpAndSettle(); // finish the setup scroll and initial trace read
+    final run = ShiftRun(t, trackUnkeyed: false)..opened();
     await run.frames([0, 150, 2500]);
+    await takePilotShot(t, 'alarm-trace');
     await t.runAsync(() async {
       for (var i = 0; i < 5; i++) {
-        await LocalDb.appendWakeTrace(wakeEpochSec: epoch, atMs: i,
-          kind: 'fallback', dataJson: jsonEncode({'armed': true, 'confirmed': true, 'rearmed': false}));
+        await LocalDb.appendWakeTrace(
+          wakeEpochSec: epoch,
+          atMs: i,
+          kind: 'fallback',
+          dataJson: jsonEncode({
+            'armed': true,
+            'confirmed': true,
+            'rearmed': false,
+          }),
+        );
       }
       app.wake.noteTraceChanged();
     });
