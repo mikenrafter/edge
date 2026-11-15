@@ -40,7 +40,6 @@ import '../../util/log_file.dart' show LogSaveFailed;
 import '../ui2.dart';
 import 'day_timeline.dart';
 import 'home_screen.dart';
-import '../older_version.dart';
 import 'metric_detail.dart';
 
 class InvestigateData {
@@ -304,11 +303,7 @@ class _InvestigateState extends State<Investigate> {
       sub: l?.investigateNerdStatsLabel ?? 'NERD STATS',
       [
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
-        if (_loading) ...[
-        const SizedBox(height: S.x4),
-        InlineLoading(
-            status: l?.loadingInvestigateDay ?? "Reading this day's numbers"),
-      ] else ...[
+        ...[
           if (hrvish) ..._hrvPanels(c, d) else ..._genericPanels(c, spec, d),
           if (widget.metricKey == 'resp_rate') ..._restingBreathPanels(d),
           if (widget.metricKey == 'resp_rate') ..._cvhrPanels(d),
@@ -352,7 +347,8 @@ class _InvestigateState extends State<Investigate> {
           const SizedBox(height: S.x5),
           _method(c, spec),
         ],
-      ],
+      ].map((child) => PendingContent(pending: _loading && _d == null,
+        child: child)).toList(),
     );
   }
 

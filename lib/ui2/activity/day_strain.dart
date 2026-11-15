@@ -18,6 +18,8 @@
 //     a line on a day screen whose subject is the curve. Naming the input in a
 //     sentence is enough.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -26,10 +28,10 @@ import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/date_text.dart';
 import '../../models/metric.dart' show whyFromNote;
+import '../screens/rhr_annotations.dart';
 import '../screens/home_screen.dart' show repoOf;
 import '../screens/metric_detail.dart' show detailScaffold;
 import '../ui2.dart';
-import '../older_version.dart';
 import 'catalogue.dart' show zonesWhy;
 import 'zones.dart' show ZonesDetail;
 
@@ -79,8 +81,11 @@ class DayStrainData {
   /// the screen then says exactly that.
   final String? note;
 
+  final List<ChartAnnotation> rhrMarks;
+
   const DayStrainData({
     this.day,
+    this.rhrMarks = const [],
     this.curve = const [],
     this.strain,
     this.olderVersion,
@@ -99,6 +104,7 @@ class DayStrainData {
   bool get hasCurve => curve.any((v) => v != null);
 
   static Future<DayStrainData> load(LocalRepository repo) async {
+    final flagsRead = loadRhrAnnotations(repo);
     final asked = todayLabel();
     final s = await repo.getDayStrain(asked);
     if (s.isEmpty) return const DayStrainData();
@@ -147,6 +153,7 @@ class DayStrainData {
 
     final hr = s['hr'];
     return DayStrainData(
+      rhrMarks: await flagsRead,
       day: day,
       curve: grid,
       strain: (s['strain'] as num?)?.toDouble(),
@@ -184,6 +191,7 @@ class DayStrainDetail extends StatefulWidget {
 class _DayStrainDetailState extends State<DayStrainDetail> {
   DayStrainData? _d;
   bool _loading = true;
+  bool _hasWear = false;
 
   @override
   void initState() {
@@ -203,7 +211,12 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
       return;
     }
     try {
-      final d = await DayStrainData.load(repo);
+      final wearRead = repo.getDayWear(todayLabel()).then((wear) {
+        if (mounted) {
+          setState(() => _hasWear = (wear['worn_min'] as num? ?? 0) > 0);
+        }
+      });
+      final (_, d) = await (wearRead, DayStrainData.load(repo)).wait;
       if (mounted) setState(() => (_d = d, _loading = false));
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -215,7 +228,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final d = _d ?? const DayStrainData();
-    final day = d.day;
+    final day = d.day ?? (_loading ? DateTime.now() : null);
     // The date the drawn day IS. `getDayStrain` serves the last settled bundle
     // while today is still deriving, and a screen headed "Today" over
     // yesterday's trace is the whole reason this is read off the curve.
@@ -229,16 +242,15 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
       c,
       l?.dayStrainTitle ?? 'Day strain',
       [
-        if (_loading && _d == null) ...[
-          const SizedBox(height: S.x4),
-          InlineLoading(
-              status: l?.loadingDayStrain ?? "Reading today's strain"),
-        ] else ...[
+        PendingContent(
+        memoryKey: 'day-strain:body',
+        pending: _loading && _d == null,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ..._trace(p, l, d),
-          ..._zones(p, l, d),
           Section(l?.dayStrainInputsSection ?? 'What this is made of',
               _inputs(p, l, d)),
-        ],
+          ..._zones(p, l, d),
+        ])),
       ],
       sub: sub,
     );
@@ -246,7 +258,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
 
   // ── the curve, and only then the number ────────────────────────────────────
   List<Widget> _trace(P p, AppLocalizations? l, DayStrainData d) {
-    if (!d.hasCurve) {
+    if (!d.hasCurve && !_loading) {
       // THE BUNDLE'S REASON, or none. This card used to state one — "it needs a
       // resting heart rate from a scored night and a day the band was on your
       // wrist" — and it printed that on a day with a scored night (RHR 56.8)
@@ -295,7 +307,21 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
       Surface(
         child: Column(children: [
           ChartFrame(
-            title: l?.dayStrainChartTitle ?? 'Strain through the day',
+              key: const ValueKey('day-strain-primary'),
+              panel: _loading && _d == null
+                  ? ChartKeyReadout(
+                      time: '—',
+                      cells: [
+                        ChartCell('Strain (0–21)', p.on(C.purple)),
+                        const ChartCell(
+                          ChartKeyReadout.notRecorded,
+                          null,
+                          hasValue: false,
+                        ),
+                      ],
+                    )
+                  : null,
+              title: l?.dayStrainChartTitle ?? 'Strain through the day',
             unit: '0–21',
             height: 170,
             yAxis: axis,
@@ -336,7 +362,10 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
               OlderVersionNote(id: 'strain', version: d.olderVersion, reason: d.olderReason),
             ],
           ],
-        ]),
+        ],
+        ),
+      ),
+      DayRhrNotice(d.rhrMarks, d.day == null ? null : dayLabelOf(d.day!),
       ),
       if (d.coveragePct != null && d.coveragePct! < _lowCoveragePct)
         Padding(
@@ -355,6 +384,19 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
   // ── where the effort sat ───────────────────────────────────────────────────
   List<Widget> _zones(P p, AppLocalizations? l, DayStrainData d) {
     final z = d.zoneMin;
+    if (z == null && _loading && _hasWear) {
+      return [
+        Section(
+          l?.dayStrainTimeInZonesSection ?? 'Time in zones',
+          Surface(
+            child: ZoneRows(
+              List.filled(5, 0.0),
+              title: l?.dayStrainZonesChartTitle ?? 'Time in zones',
+            ),
+          ),
+        ),
+      ];
+    }
     if (z == null) return const [];
     final total = z.fold<int>(0, (a, b) => a + b);
     if (total <= 0) return const [];
@@ -391,7 +433,9 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
     return Surface(
       elevation: 0,
       color: p.card2,
-      child: Text(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: double.infinity),
+        child: Text(
         [
           l?.dayStrainInputsBase ??
               'How hard your heart worked while awake, by minutes in each heart-rate zone, on a 0–21 scale.',
@@ -400,7 +444,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
                 'Based on an estimated maximum of ${max.round()} bpm.',
         ].join(' '),
         style: F.cap.copyWith(color: p.ink3, height: 1.5),
-      ),
+      )),
     );
   }
 }

@@ -50,6 +50,7 @@
 //   carry the null era, which is most of this database.
 
 import 'package:flutter/material.dart';
+import '../../data/day_label.dart' show todayLabel, dayLabelBefore;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../data/journal_fields.dart' show formatMinuteOfDay;
@@ -60,6 +61,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
 import '../../state/recalc_state.dart';
 import '../ui2.dart';
+import 'rhr_annotations.dart';
 import 'home_screen.dart';
 import 'metric_detail.dart';
 
@@ -117,8 +119,11 @@ class BeatsData {
   /// "As of" says while a pass recalculates the night. Null with no row.
   final DateTime? computedAt;
 
+  final List<ChartAnnotation> rhrMarks;
+
   const BeatsData({
     this.day,
+    this.rhrMarks = const [],
     this.days = const [],
     this.nn = const [],
     this.rawBeats = 0,
@@ -161,12 +166,14 @@ class BeatsData {
     final (:day, :days) = night ?? await pickNight(repo, want: want);
     if (day == null) return BeatsData(days: days);
 
+    final flagsRead = loadRhrAnnotations(repo);
     final hrv = await repo.getDayHrv(day);
     final heart = await repo.getDayHeart(day);
     final dcEnv = hrv['prsa_dc'];
     final shapeEnv = hrv['night_shape'];
 
     return BeatsData(
+      rhrMarks: await flagsRead,
       day: day,
       days: days,
       poincare: hrv['irregular'] is Map
@@ -208,6 +215,7 @@ class BeatsData {
         if (v is num) v.toDouble(),
     ];
     return BeatsData(
+      rhrMarks: rhrMarks,
       day: day,
       days: days,
       nn: nn,
@@ -464,17 +472,24 @@ class _BeatsState extends State<Beats>
       l?.beatsTitle ?? 'Beats',
       [
         _asOf(d),
-        ...dayNavRow(_day ?? d.day, d.days, _goDay),
+        PendingContent(pending: _loading || _beatsPending,
+          child: DayNav(day: _day ?? d.day ?? todayLabel(), days: d.days,
+            onDay: _goDay, alwaysShow: true)),
+        const SizedBox(height: S.x3),
         if (_paused)
           const Padding(
             padding: EdgeInsets.only(top: S.x4),
             child: PausedOlderDays(),
           )
-        else if (_loading)
+        else if (_loading || _beatsPending)
           Padding(
             padding: const EdgeInsets.only(top: S.x4),
-            child: InlineLoading(
-                status: l?.loadingSleepNight ?? 'Reading the night'),
+            child: Column(children: [
+              PendingChart(shape: PendingChartShape.scatter, title: l?.beatsPoincareSection ?? 'Every beat against the one before it', height: 260),
+              const SizedBox(height: S.x5),
+              PendingChart(title: l?.beatsNightOf(prettyDay(_day, l)) ?? 'Through the night'),
+              const PendingContent(pending: true, child: PendingRows(count: 3)),
+            ]),
           )
         else if (d.day == null)
           StatusCard(
@@ -488,8 +503,8 @@ class _BeatsState extends State<Beats>
           if (_beatsPending)
             Section(
               l?.beatsPoincareSection ?? 'Every beat against the one before it',
-              InlineLoading(
-                  status: l?.loadingBeats ?? "Reading the night's beats"),
+              PendingChart(shape: PendingChartShape.scatter, title: l?.beatsScatterTitle ??
+                'Each interval, plotted against the previous one', height: 260, unit: 'ms'),
             )
           else if (!_beatsFailed)
             _poincare(c, d),
@@ -505,7 +520,7 @@ class _BeatsState extends State<Beats>
       // this one night; saying so once at the top is what lets them sit
       // together without each having to date itself.
       sub: d.day == null
-          ? ''
+          ? '\u00a0'
           : (l?.beatsNightOf(prettyDay(d.day, l)) ??
               'Night of ${prettyDay(d.day, l)}'),
     );
@@ -534,15 +549,13 @@ class _BeatsState extends State<Beats>
           // them survives — which is why SD1 and SD2 can still be printed on
           // Nerd stats for a night whose cloud can no longer be drawn.
           '${l?.beatsBeatsGoneBody ?? 'Individual beat intervals are kept '
-              'for a few days after the night is scored, then deleted. The '
-              'numbers taken from them are kept for good'}'
-              // NEVER `sd2 ?? 0`: a missing long-term axis printed as "SD2
-              // 0 ms" is a fabricated measurement, and 0 is the one value that
-              // reads as a finding.
-              '${sd1 == null || sd2 == null ? '' : (l?.beatsBeatsGoneMeasured(
-                      metricValue('ms', sd1), metricValue('ms', sd2)) ??
-                  '. Spread: ${metricValue('ms', sd1)} ms short-term, '
-                      '${metricValue('ms', sd2)} ms long-term')}.',
+                  'for a few days after the night is scored, then deleted. The '
+                  'numbers taken from them are kept for good'}'
+          // NEVER `sd2 ?? 0`: a missing long-term axis printed as "SD2
+          // 0 ms" is a fabricated measurement, and 0 is the one value that
+          // reads as a finding.
+          '${sd1 == null || sd2 == null ? '' : (l?.beatsBeatsGoneMeasured(metricValue('ms', sd1), metricValue('ms', sd2)) ?? '. Spread: ${metricValue('ms', sd1)} ms short-term, '
+                        '${metricValue('ms', sd2)} ms long-term')}.',
           icon: LucideIcons.scatterChart,
         ),
       );
@@ -722,6 +735,12 @@ class _BeatsState extends State<Beats>
   // quality — so a rising line can be a cleaner-signal line. The artifact gate
   // and the anchor count go beside it, always, and the ink is neutral: an
   // accent colour on this series would be a verdict.
+  AnnotationSet? _historyAnnotations(BeatsData d, int length) {
+    final day = todayLabel();
+    final flags = dailyAnnotations(d.rhrMarks, [for (var i = length - 1; i >= 0; i--) dayLabelBefore(day, i)!]);
+    return flags.isEmpty ? null : AnnotationSet(items: flags, domainStart: 0, domainEnd: (length - 1).toDouble());
+  }
+
   Widget _dc(BuildContext c, BeatsData d) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
@@ -748,6 +767,7 @@ class _BeatsState extends State<Beats>
       Surface(
         child: Column(children: [
           ChartFrame(
+            annotations: _historyAnnotations(d, win),
             title: l?.beatsDcChartTitle ?? 'Your own nights, in order',
             unit: 'ms',
             height: 130,
@@ -834,6 +854,7 @@ class _BeatsState extends State<Beats>
       Surface(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ChartFrame(
+            annotations: _historyAnnotations(d, win),
             title: l?.beatsRhythmChartTitle ?? 'One cell per day',
             unit: l?.beatsUnitScreenedNotScreened ?? 'screened / not screened',
             height: 44,

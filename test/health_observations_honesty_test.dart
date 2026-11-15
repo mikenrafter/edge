@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/compute/pulse_alert_record.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -102,6 +103,26 @@ void main() {
     await f.catchError((_) => const HealthData());
   });
 
+  // CLAIM health-alert-read: alert metadata is part of the repository snapshot,
+  // starts with the primary read, and returns with the same snapshot.
+  // catches: a screen-level SQLite read that bypasses the repository seam.
+  test('alert records start with primary and reach the matching finding', () async {
+    final gate = Completer<Map<String, dynamic>>();
+    final repo = _AlertRepo(gate);
+    final loaded = HealthData.load(repo);
+    try {
+      await Future<void>.delayed(Duration.zero);
+      expect(repo.alertsAsked, isTrue,
+          reason: 'alert metadata must start before the primary read finishes');
+    } finally {
+      gate.complete(const {});
+    }
+    final d = await loaded;
+    expect(d.findings, hasLength(1));
+    expect(d.findings.single.date, _AlertRepo.day);
+    expect(d.findings.single.alert, same(repo.record));
+  });
+
   test('a failed wearable read is still null, not a failed load', () async {
     final repo = _Gated(Completer()..complete(const {}), wearableThrows: true);
     final d = await HealthData.load(repo);
@@ -154,4 +175,26 @@ class _Gated extends LocalRepository {
     if (wearableThrows) throw StateError('x');
     return null;
   }
+}
+
+class _AlertRepo extends _Gated {
+  _AlertRepo(super.gate);
+  static const day = '2026-11-12';
+  final record = PulseAlertRecord(PulseAlertState.sent, 1794499200000);
+  bool alertsAsked = false;
+  @override
+  Future<Map<String, dynamic>> getInsights() async => const {
+    'recent': [{'date': day}],
+  };
+  @override
+  Future<Map<String, PulseAlertRecord>> getPulseAlertRecords() async {
+    alertsAsked = true;
+    return {day: record};
+  }
+  @override
+  Future<Map<String, dynamic>> getChart(String metric, {
+    int? from, int? to, Set<String> signals = const {},
+  }) async => metric == 'irregular_rhythm_flag'
+      ? {'points': [{'t': DateTime(2026, 11, 12, 12).millisecondsSinceEpoch ~/ 1000, 'v': 1}]}
+      : const {};
 }

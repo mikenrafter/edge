@@ -28,6 +28,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../ai/briefing_engine.dart' show collectSweepSeries;
 import '../../ai/nightly_sweep.dart';
 import '../../data/local_repository.dart';
+import '../../data/day_label.dart' show todayLabel;
 import '../../data/read_paused.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/sweep_text.dart';
@@ -184,13 +185,10 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> with PausedReadRe
       if (_paused) ...[
         const SizedBox(height: S.x4),
         const PausedOlderDays(),
-      ] else if (_loading) ...[
-        const SizedBox(height: S.x4),
-        InlineLoading(
-            status: l?.loadingWhatChanged ??
-                'Comparing this day with your history'),
       ] else
-        ...whatChangedBody(c, d),
+        AsyncListSection<Widget>(memoryKey: 'what-changed:${(_day ?? d.day ?? todayLabel()) == todayLabel() ? 'today' : 'past'}', items: _loading && _d == null ? null : whatChangedBody(c, d),
+          visibleRows: 5, rowHeight: 100,
+          itemBuilder: (_, child) => child, emptyBuilder: (_) => const SizedBox.shrink()),
     ]);
   }
 }

@@ -167,7 +167,7 @@ class _ExperimentScreenState extends State<ExperimentScreen> {
         Text(text('Failed')),
         TextButton(onPressed: _load, child: Text(text('Retry'))),
       ] else if (report == null || experiment == null)
-        const Center(child: CircularProgressIndicator())
+        const PendingContent(pending: true, child: Surface(child: PendingRows(count: 5)))
       else ...[
         Text(
           '${running ? text('ExperimentRunning') : stopped ? text('ExperimentStopped') : text('ExperimentCompleted')}'

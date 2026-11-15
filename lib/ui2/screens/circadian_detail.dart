@@ -247,18 +247,18 @@ class CircadianDetail extends StatefulWidget {
 }
 
 class _CircadianDetailState extends State<CircadianDetail>
-    with RevisionReload, PausedReadReload<CircadianDetail> {
+    with RevisionReload, PausedReadReload<CircadianDetail>, RememberedExpansion<CircadianDetail> {
   CircadianData? _d;
   bool _loading = true;
   bool _paused = false;
 
   /// Whether the non-parametric battery is unfolded. Off by default.
-  bool _showStrength = false;
+  bool get _showStrength => expandedSection('circadian_strength');
 
   /// SLP-08 — whether the two rows naming the least-alike pair of nights are
   /// unfolded. Off by default: the regularity index is one row today, and the
   /// decomposition of it is two more that nobody asked for until they did.
-  bool _showNights = false;
+  bool get _showNights => expandedSection('circadian_nights');
 
   @override
   void initState() {
@@ -376,13 +376,11 @@ class _CircadianDetailState extends State<CircadianDetail>
       if (_paused && _d == null) ...[
         const SizedBox(height: S.x4),
         const PausedOlderDays(),
-      ] else if (_loading && _d == null) ...[
-        const SizedBox(height: S.x4),
-        InlineLoading(
-            status: l?.loadingCircadian ?? 'Reading your daily rhythm'),
       ] else ...[
         // Chronotype, jet lag, regularity and the rhythm battery all come off
         // the cross-day rollup, so the label follows that step, not a day.
+        Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (_cachedAt case final at?)
           Padding(
               padding: const EdgeInsets.only(bottom: S.x2),
@@ -399,6 +397,7 @@ class _CircadianDetailState extends State<CircadianDetail>
                 padding: const EdgeInsets.only(bottom: S.x2),
                 child: AsOfLabel(at: at)),
           ),
+          ]),
         if (advanced) ...[
         if (drawn == 0)
           StatusCard(
@@ -484,7 +483,12 @@ class _CircadianDetailState extends State<CircadianDetail>
         // rather than two permanent rows.
         Section(
           l?.circadianDetailYourRhythm ?? 'Your rhythm',
-          _rhythm(c, p, d),
+          AsyncListSection<Widget>(
+            memoryKey: 'circadian:rhythm',
+            items: _loading && _d == null ? null : [_rhythm(c, p, d)],
+            visibleRows: 6, rowHeight: 56,
+            itemBuilder: (_, child) => child,
+            emptyBuilder: (_) => const SizedBox.shrink()),
           action: d.sriPairs.isEmpty || d.regularity.value == null
               ? null
               : (_showNights
@@ -492,7 +496,7 @@ class _CircadianDetailState extends State<CircadianDetail>
                   : (l?.circadianDetailWhichNights ?? 'Which nights')),
           onAction: d.sriPairs.isEmpty || d.regularity.value == null
               ? null
-              : () => setState(() => _showNights = !_showNights),
+              : () => toggleSection('circadian_nights'),
         ),
 
         // COLLAPSED BY DEFAULT, and that is how the screen paid for the card
@@ -507,12 +511,13 @@ class _CircadianDetailState extends State<CircadianDetail>
           action: _showStrength
               ? (l?.circadianDetailHide ?? 'Hide')
               : (l?.circadianDetailShow ?? 'Show'),
-          onAction: () => setState(() => _showStrength = !_showStrength),
+          onAction: () => toggleSection('circadian_strength'),
         ),
 
         ],
       ],
-    ]);
+    ].map((child) => PendingContent(pending: _loading && _d == null,
+      child: child)).toList());
   }
 
   String _hm(num hours) {
@@ -726,7 +731,8 @@ class _CircadianDetailState extends State<CircadianDetail>
               l?.circadianDetailRhythmNotEstablished ??
                   'Your rhythm is not established yet',
               d.regularity) ??
-          const SizedBox.shrink();
+          StatusCard(l?.circadianDetailRhythmNotEstablished ?? 'Your rhythm is not established yet',
+            l?.metricDetailNoRecordLabel ?? 'No record', icon: LucideIcons.moon);
     }
 
     if (!showNights) return _table(p, rows);

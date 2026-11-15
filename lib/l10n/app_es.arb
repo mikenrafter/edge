@@ -3901,7 +3901,74 @@
   "guideAddNapMissingTitle": "¿No ves «{naps}»?",
   "guideAddNapMissingBody": "**{naps}** está bajo tu noche. Si esa parte, **{night}**, está plegada, toca su título para abrirla.",
   "guideTapsBack": "{count, plural, one{1 toque atrás} other{{count} toques atrás}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "@guideTapsBack": {
+    "description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deriveDailyLabel": "Calculando sueño, recuperación y esfuerzo",
+  "deriveDailyProgress": "Calculando sueño, recuperación y esfuerzo · día {index} de {total}",
+  "deriveDailyProgressOn": "Calculando sueño, recuperación y esfuerzo · día {index} de {total} · {day}",
+  "deriveWaitingDailyLabel": "Esperando para calcular sueño, recuperación y esfuerzo",
+  "deriveTrendsLabel": "Recalculando tendencias",
+  "reviewWaitingImportTitle": "Esperando la importación",
+  "reviewWaitingImportBody": "La importación está copiando los datos guardados. Tus actividades se podrán leer cuando termine.",
+  "reviewTryAgain": "Reintentar",
+  "reviewReadActivities": "Leyendo siestas y entrenamientos pendientes",
+  "reviewReadMoments": "Leyendo momentos marcados y registros de agua",
+  "reviewReadDays": "Leyendo la lista de días disponibles",
+  "reviewReadSaved": "Leyendo revisiones de actividades guardadas",
+  "metricSourcesUsed": "Fuentes utilizadas",
+  "reviewReadHeart": "Leyendo frecuencia cardíaca, movimiento y sueño",
+  "reviewReadWear": "Leyendo tiempo de uso",
+  "reviewReadJournal": "Leyendo tu diario",
+  "reviewReadMeals": "Leyendo comidas",
+  "reviewReadMedicines": "Leyendo medicamentos y dosis",
+  "reviewReadDevices": "Leyendo mediciones de dispositivos",
+  "reviewReadTime": "Leyendo cuándo se calculó el día",
+  "reviewReadWake": "Leyendo horas de despertar",
+  "reviewReadWater": "Leyendo registros de agua",
+  "reviewReadProfile": "Leyendo tu perfil",
+  "observationsLatestWeek": "Última semana · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "No se marcó nada esta semana.",
+  "observationsNoDay": "No se marcó nada este día.",
+  "observationsEarlierWeek": "Semana anterior",
+  "observationsLaterWeek": "Semana siguiente",
+  "observationsEventsUnit": "eventos",
+  "observationsDayCount": "{day}: {count, plural, =1{1 evento} other{{count} eventos}}",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "Cambios en la frecuencia cardíaca en reposo",
+  "rhrNoReadings": "No hay mediciones guardadas de frecuencia cardíaca en reposo.",
+  "sleepTabTimelineCardTitle": "Cronología del sueño",
+  "sleepTabStoodOutCardTitle": "Lo que destacó",
+  "sleepTabUsualCardTitle": "Frente a lo habitual",
+  "sleepTabSignalsCardTitle": "Señales nocturnas",
+  "sleepTabThePlanCardTitle": "El plan",
+  "pendingSectionLoading": "Cargando, {name}",
+  "pendingSectionLoaded": "Cargado, {name}",
+  "pendingSectionContent": "contenido",
   "findingNotificationIrregularRhythm": "Los intervalos de pulso registrados el {day} coincidieron con nuestra regla de irregularidad. No hemos medido su precisión ni con qué frecuencia pasa por alto un problema del ritmo cardíaco. Toca para leer sus limitaciones.",
   "pulseSummaryTitle": "{count, plural, =1{Patrón de pulso irregular marcado en 1 día} other{Patrones de pulso irregular marcados en {count} días}}",
   "pulseSummaryBody": "{count, plural, =1{{days}. Los intervalos de pulso de este día coincidieron con nuestra regla de irregularidad. No hemos medido su precisión ni con qué frecuencia pasa por alto un problema del ritmo cardíaco. Toca para leer los límites.} other{{days}. Los intervalos de pulso de estos días coincidieron con nuestra regla de irregularidad. No hemos medido su precisión ni con qué frecuencia pasa por alto un problema del ritmo cardíaco. Toca para leer los límites.}}",

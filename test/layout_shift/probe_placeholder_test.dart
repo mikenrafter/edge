@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 import 'package:openstrap_edge/ui2/inline_loading.dart';
+import 'package:openstrap_edge/ui2/skeleton/async_section.dart';
 
 import '../support/layout_shift_probe.dart';
 
@@ -33,6 +34,57 @@ ElementRole _roleOf(Frame f, String id) =>
     f.elements.singleWhere((e) => e.id == id).role;
 
 void main() {
+  testWidgets('F4 pending text keeps its identity when it moves inside a large placeholder', (t) async {
+    final probe = ShiftProbe(trackUnkeyed: true);
+    Widget page(bool pending) => _app([SizedBox(height: 200,
+      child: PendingContent(pending: pending, child: Padding(
+        padding: EdgeInsets.only(top: pending ? 0 : 40),
+        child: const Align(alignment: Alignment.topLeft, child: Text('Result')))))]);
+    await t.pumpWidget(page(true));
+    final a = probe.capture(t, atMs: 0);
+    await t.pumpWidget(page(false));
+    final b = probe.capture(t, atMs: 2500);
+    final before = a.elements.singleWhere((e) => e.id.contains('~text|'));
+    final after = b.elements.singleWhere((e) => e.id.contains('~text|'));
+    expect(before.id, after.id);
+    expect(before.rect.top, isNot(after.rect.top));
+  });
+
+  // WHY: the stable keyed envelope survives a read, but its painted placeholder
+  // disappears. Dropping the coincident placeholder box falsely charges a fill.
+  testWidgets('paint placeholder fills a persistent keyed envelope', (t) async {
+    final probe = ShiftProbe(trackUnkeyed: true);
+    Widget slot(bool pending) => SizedBox(key: const ValueKey('envelope'),
+      height: 200, child: PendingContent(pending: pending,
+        child: const Align(alignment: Alignment.topLeft, child: Text('Recorded result'))));
+    await t.pumpWidget(_app([slot(true)]));
+    probe.capture(t, atMs: 0);
+    probe.interactions.add(const Interaction(0, 'open'));
+    await t.pumpWidget(_app([slot(false)]));
+    probe.capture(t, atMs: 2500);
+    final report = score(probe.scenario(const ShiftRect(0, 0, 800, 600)),
+      ShiftPolicy.standard.copyWith(loadWeight: 0, colorWeight: 0));
+    expect(report.findings.where((f) => f.rule == 'appear'), isEmpty);
+  });
+
+  // WHY: recognizing paint placeholders must not forgive an undersized slot.
+  // Catches: charging every arrival as a free fill regardless of geometry.
+  testWidgets('an undersized paint placeholder still moves the footer', (t) async {
+    final probe = ShiftProbe(trackUnkeyed: true);
+    Widget slot(bool pending) => PendingContent(pending: pending,
+      child: SizedBox(height: pending ? 40 : 200, child: const Text('Result')));
+    const footer = SizedBox(key: ValueKey('footer'), height: 60);
+    await t.pumpWidget(_app([slot(true), footer]));
+    probe.capture(t, atMs: 0);
+    probe.interactions.add(const Interaction(0, 'open'));
+    await t.pumpWidget(_app([slot(false), footer]));
+    probe.capture(t, atMs: 2500);
+    final report = score(probe.scenario(const ShiftRect(0, 0, 800, 600)),
+      ShiftPolicy.standard.copyWith(loadWeight: 0, colorWeight: 0));
+    expect(report.findings.where((f) => f.elementId == 'footer' && f.rule == 'shift'), isNotEmpty);
+    expect(report.total, greaterThan(0.016));
+  });
+
   testWidgets('a keyed element whose subtree is an InlineLoading', (t) async {
     await t.pumpWidget(_app(const [
       SizedBox(

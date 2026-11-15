@@ -1,3 +1,4 @@
+import '../profile/profile.dart' show SettingsAccordion;
 // The shared metric drill-down — density 2 of 3.
 //
 // Glance (a row on Health) → MetricDetail (your normal range, what moves it,
@@ -8,6 +9,7 @@
 //
 // Every metric goes through THIS screen. Forty bespoke detail screens is how
 // the old UI ended up with forty different opinions about what a chart is.
+
 
 import 'package:clock/clock.dart' as pkg_clock;
 import 'package:collection/collection.dart';
@@ -26,10 +28,10 @@ import '../../state/app_state.dart';
 import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'advanced.dart';
+import '../../compute/findings.dart';
 import 'explorer_annotations.dart' show AnnotationLoader, loadAnnotations;
 import 'day_steps.dart';
 import 'home_screen.dart';
-import '../older_version.dart';
 import 'investigate.dart';
 import 'journal_compose.dart' show OsTextField;
 import '../profile/devices.dart'
@@ -481,6 +483,7 @@ class MetricData {
   /// wearing a physiology label: it cannot make a sparse month comparable, only
   /// refuse to pretend one is.
   final List<ChartPoint> wear;
+  final List<ChartAnnotation> rhrMarks;
   final Map<String, dynamic>? percentile;
   final List<Map<String, dynamic>> movers;
 
@@ -552,6 +555,7 @@ class MetricData {
   const MetricData({
     this.series = const [],
     this.wear = const [],
+    this.rhrMarks = const [],
     this.percentile,
     this.movers = const [],
     this.daysAvailable = 0,
@@ -580,6 +584,7 @@ class MetricData {
   MetricData withMovers(List<Map<String, dynamic>> movers) => MetricData(
         series: series,
         wear: wear,
+        rhrMarks: rhrMarks,
         percentile: percentile,
         movers: movers,
         daysAvailable: daysAvailable,
@@ -612,6 +617,9 @@ class MetricData {
       spec.chartKey,
       signals: {for (final s in spec.requires) s.name},
     );
+    final flagsRead = () async {
+      try { return await repo.getInsights(); } catch (_) { return <String, dynamic>{}; }
+    }();
     final days = await repo.availableDays();
     final outcome = _outcomeOf[key];
     final stepGoal = key == 'steps'
@@ -622,7 +630,7 @@ class MetricData {
     Map<String, dynamic>? pct;
     var movers = const <Map<String, dynamic>>[];
     if (outcome != null) {
-      final cd = await repo.getInsights();
+      final cd = await flagsRead;
       final all = cd['percentiles'];
       final one = all is Map ? all[outcome] : null;
       pct = envValue(one);
@@ -649,6 +657,7 @@ class MetricData {
           : dayLabelOf(
               DateTime.fromMillisecondsSinceEpoch(points.last.t * 1000)),
       series: points,
+      rhrMarks: rhrChangeAnnotations(findingsHistory(await flagsRead)),
       wear: wearPoints,
       percentile: pct,
       movers: movers,
@@ -814,7 +823,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
   /// panel is on (the newest when there is no series).
   @override
   void openNerdStats() {
-    final d = _d ?? const MetricData();
+    final d = _d ?? MetricData(sources: widget.data == null
+      ? signalCandidates(context, context.read<AppState>(), requires: specOf(widget.metricKey).requires)
+      : const []);
     final series = denseDays(d.series, _windows[_range.clamp(0, _offered(d) - 1)]);
     final latest = series.lastIndexWhere((v) => v != null && v.isFinite);
     final at = _pick?.clamp(0, series.length - 1) ?? latest;
@@ -1035,7 +1046,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
     if (_journalRead.containsKey(key) || !_journalReading.add(key)) return;
     final gen = _journalGen;
     final load = widget.annotationLoader ??
-        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context)));
+        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context),
+          repo: repoOf(context)));
     Future<List<ChartAnnotation>> read() async {
       try {
         return await load(from, to);
@@ -1205,6 +1217,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
       if (!mounted) return;
       setState(() {
         if (j != null) {
+          _journalFailed = false;
           _journal = j;
           _cachedAt = null;
         } else {
@@ -1260,7 +1273,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     final spec = specOf(widget.metricKey);
-    final d = _d ?? const MetricData();
+    final d = _d ?? MetricData(sources: widget.data == null
+      ? signalCandidates(context, context.read<AppState>(), requires: specOf(widget.metricKey).requires)
+      : const []);
 
     final all = d.series;
     final win = _windows[_range.clamp(0, _offered(d) - 1)];
@@ -1271,7 +1286,6 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
     final vals = [for (final v in series) ?v];
 
     return detailScaffold(c, uiText(context, spec.title), [
-      _asOf(d),
       // Resting heart rate is the NIGHT's number; this is what the chest is
       // doing this second. Two different quantities, so the live one gets its
       // own card above the trend rather than a second figure on the same card,
@@ -1298,16 +1312,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
         const PausedOlderDays(),
-      ] else if (vals.isEmpty) ...[
+      ] else if (vals.isEmpty && !_loading) ...[
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
-        if (_loading)
-          InlineLoading(
-              status: l?.loadingMetricHistory(
-                      nounInSentence(l, uiText(context, spec.title))) ??
-                  'Reading your ${nounInSentence(l, uiText(context, spec.title))} history')
-        else
-          StatusCard(
+        StatusCard(
             win == 1
                 ? (l?.metricDetailNothingRecordedToday ??
                     'Nothing recorded today')
@@ -1353,7 +1361,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
         if (widget.metricKey == 'steps' && win == 1) ...[
           const SizedBox(height: S.x5),
           _StepGoalGauge(
-              steps: vals.last,
+              steps: vals.isEmpty ? null : vals.last,
               goal: d.stepGoal,
               color: spec.color,
               onSaved: _load),
@@ -1366,18 +1374,16 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
             l?.metricDetailNormalRangeSection ?? 'Your normal range',
             _range3(c, spec, win == 1 ? valuesOf(all) : vals, d.percentile,
                 all.isEmpty ? null : all.last.t)),
-        if (d.movers.isNotEmpty)
-          Section(l?.metricDetailWhatMovesItSection ?? 'What moves it',
-              _movers(c, d.movers))
-        else if (_moversPending)
-          Section(
-              l?.metricDetailWhatMovesItSection ?? 'What moves it',
-              // Keyed: it is not the first-read loader moving down the page
-              // when that read lands above it, it is a second, later one.
-              InlineLoading(
-                  key: const ValueKey('metric-movers-loading'),
-                  status: l?.loadingJournalComparison ??
-                      'Comparing 90 days of journal entries')),
+        if (_outcome != null)
+          SettingsAccordion(l?.metricDetailWhatMovesItSection ?? 'What moves it',
+            id: 'metric_movers', initiallyExpanded: true, children: [AsyncListSection<Widget>(memoryKey: 'metric-movers:${spec.chartKey}',
+              items: _moversPending ? null : d.movers.isEmpty ? [] : [_movers(c, d.movers)],
+              emptyBuilder: (_) => _journalFailed
+                ? StatusCard(l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',
+                    fix: l?.homeTryAgain ?? 'Try again', onFix: _load)
+                : StatusCard(l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
+                    l?.wellnessNothingSeparatedBody ?? 'No clear links found yet.'),
+              itemBuilder: (_, child) => child)]),
         const SizedBox(height: S.x5),
         // Steps are the one metric assembled from SPANS of the day, each
         // counted by a different sensor. That breakdown is a day's worth of
@@ -1417,7 +1423,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
           const SizedBox(height: S.x3),
         ],
       ],
-    ]);
+      _asOf(d),
+    ].map((child) => PendingContent(
+      pending: _loading && _d == null, child: child)).toList());
   }
 
   // ── value → context → trend ──
@@ -1581,8 +1589,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
       List<ChartPoint> wear, List<int> algoBreaks, MetricData d) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final mean = vals.reduce((a, b) => a + b) / vals.length;
-    final latest = vals.last;
+    final mean = vals.isEmpty ? null : vals.reduce((a, b) => a + b) / vals.length;
+    final latest = vals.isEmpty ? null : vals.last;
     // The points behind the window's slots, flag and value as one object. The
     // average spans every one of them, so it is marked when any is an older
     // calculation's (citing the oldest version); "latest" is the LAST REAL
@@ -1610,7 +1618,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
     final band = usualRangeFor(widget.metricKey, stored, d.baselines);
     final ub = unitBeside(spec.unit);
     final u = ub.isEmpty ? '' : ' ${uiText(context, ub)}';
-    final diff = band == null ? 0.0 : latest - band.usual;
+    final diff = band == null || latest == null ? 0.0 : latest - band.usual;
 
     return Surface(
       child: Column(children: [
@@ -1619,7 +1627,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
         Wrap(
             crossAxisAlignment: WrapCrossAlignment.end,
             children: [
-              Text(_fmt(spec, mean), style: F.n48.copyWith(color: p.ink)),
+              Text(mean == null ? '—' : _fmt(spec, mean), style: F.n48.copyWith(color: p.ink)),
               if (headlineVersion != null) OlderVersionMark(id: 'headline', version: headlineVersion, reason: headlineReason, speak: false),
               const SizedBox(width: S.x2),
               // NOT `spec.unit`. `metricValue('min', 443)` is already "7h 23m",
@@ -1645,7 +1653,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
         // On a multi-day window the average is the headline, so the newest
         // reading needs its own line. On Today they are the same number, and
         // printing it twice would read as two different facts.
-        if (win > 1 && asOf.isNotEmpty) ...[
+        if (win > 1 && asOf.isNotEmpty && latest != null) ...[
           const SizedBox(height: S.x2),
           Align(
             alignment: Alignment.centerLeft,
@@ -1657,7 +1665,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                 style: F.cap.copyWith(color: p.ink3)), if (latestVersion != null) OlderVersionMark(id: 'latest', version: latestVersion, reason: latestReason, speak: false)]),
           ),
         ],
-        if (band != null) ...[
+        if (band != null && latest != null) ...[
           const SizedBox(height: S.x2),
           Align(
             alignment: Alignment.centerLeft,
@@ -1690,30 +1698,16 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
             color: spec.color,
           ),
           const SizedBox(height: S.x2),
-          Row(children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final s in _usingLines(c, l, spec, d))
-                    Text(s, style: F.over.copyWith(color: p.ink3)),
-                ],
-              ),
-            ),
-            // Only offered for a SELECTED, SELECTABLE device that is not
-            // already winning. A button whose effect is already true is a
-            // button that teaches the control does nothing.
-            if (_preferCandidate(d) case final o?)
-              Pressable(
-                onTap: () => _prefer(o),
-                semanticLabel: _preferLabel(l, o),
-                child: Text(
-                  _preferLabel(l, o),
-                  style: F.cap.copyWith(
-                      color: p.on(spec.color), fontWeight: FontWeight.w600),
-                ),
-              ),
-          ]),
+          SettingsAccordion(l?.metricSourcesUsed ?? 'Sources used', id: 'metric_source_notes', initiallyExpanded: true,
+            children: [Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+              children: [for (final s in _usingLines(c, l, spec, d))
+                Text(s, style: F.over.copyWith(color: p.ink3))])),
+            if (_preferCandidate(d) case final o?) Pressable(
+              onTap: () => _prefer(o), semanticLabel: _preferLabel(l, o),
+              child: Text(_preferLabel(l, o), style: F.cap.copyWith(
+                color: p.on(spec.color), fontWeight: FontWeight.w600))),
+          ])]),
           const SizedBox(height: S.x1),
           Text(
             l?.metricDetailHistoryKeepsSource ??
@@ -1770,7 +1764,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
               WidgetsBinding.instance
                   .addPostFrameCallback((_) => _readJournal(from, to));
             } else {
-              journal = dailyAnnotations(read, dayLabels);
+              journal = dailyAnnotations(read.where((a) => a.kind != AnnotationKind.rhrShift).toList(), dayLabels);
             }
           }
           // One range per run of older days (a slot is the point i, so a run
@@ -1798,7 +1792,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                     r.older.reason),
             ],
           );
-          final shown = [...marks, ...journal, ...older];
+          final flags = dailyAnnotations(d.rhrMarks, dayLabels);
+          final shown = [...marks, ...journal, ...older, ...flags];
           final dim = _dimMask(d, series.length);
           return ChartFrame(
             title: uiText(context, spec.title),
@@ -1817,7 +1812,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                     domainEnd: (series.length - 1).toDouble(),
                     // Only older runs on the chart: the label shows while the
                     // finger is ON a run, not for the nearest one anywhere.
-                    reach: marks.isEmpty && journal.isEmpty ? 0 : null),
+                    reach: marks.isEmpty && journal.isEmpty && flags.isEmpty ? 0 : null),
             annotationCursor:
                 _pick == null ? null : _slotAt01(_pick!, series.length),
             // The mark's only screen-reader form, and the only thing that can
@@ -1856,8 +1851,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
               String? fmtValue(double? n) => n == null ? null : '${_fmt(spec, n)} $u'.trimRight();
               final diff = v == null || avg == null ? null : v - avg;
               final allPoints = denseChartPoints(d.series, series.length);
-              final latestPoint = allPoints[latest];
-              final selectedPoint = allPoints[selected];
+              final latestPoint = latest < 0 ? null : allPoints[latest];
+              final selectedPoint = selected < 0 ? null : allPoints[selected];
               final statCells = <ChartCell>[
                 ChartCell(AppLocalizations.of(panelContext)?.chartPanelSevenDayAvg ?? '7-day avg', p.ink3, value: fmtValue(avg)),
                 ChartCell(AppLocalizations.of(panelContext)?.chartPanelVsAvg ?? 'vs avg', p.ink3,
@@ -2147,8 +2142,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final sorted = [...win]..sort();
-    final lo = sorted.first, hi = sorted.last;
-    final mid = sorted[sorted.length ~/ 2];
+    final lo = sorted.isEmpty ? null : sorted.first, hi = sorted.isEmpty ? null : sorted.last;
+    final mid = sorted.isEmpty ? null : sorted[sorted.length ~/ 2];
     final band = pct?['label']?.toString();
     final rank = (pct?['percentile_of_you'] as num?);
     final isToday = (daysBehind(latestTs) ?? 0) <= 0;
@@ -2158,13 +2153,13 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
       child: Column(children: [
         Row(children: [
           Expanded(
-              child: _stat(p, _fmt(spec, lo), l?.metricDetailLowest ?? 'Lowest')),
+              child: _stat(p, lo == null ? '—' : _fmt(spec, lo), l?.metricDetailLowest ?? 'Lowest')),
           Expanded(
               child:
-                  _stat(p, _fmt(spec, mid), l?.metricDetailTypical ?? 'Typical')),
+                  _stat(p, mid == null ? '—' : _fmt(spec, mid), l?.metricDetailTypical ?? 'Typical')),
           Expanded(
               child: _stat(
-                  p, _fmt(spec, hi), l?.metricDetailHighest ?? 'Highest')),
+                  p, hi == null ? '—' : _fmt(spec, hi), l?.metricDetailHighest ?? 'Highest')),
         ]),
         const SizedBox(height: S.x4),
         Text(
@@ -2431,9 +2426,9 @@ Widget detailScaffold(BuildContext c, String title, List<Widget> body,
               trailing: trailing,
               onBack: () => Navigator.of(c).maybePop()),
         Expanded(
-          child: ListView(
+          child: PendingSectionScope(pendingSectionName: title, child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x12),
-              children: body),
+              children: body)),
         ),
       ]),
     ),
@@ -2528,6 +2523,7 @@ class DayNav extends StatelessWidget {
     final newer = i > 0 ? days[i - 1] : null;
 
     Widget arrow(IconData icon, String label, String? to) => Opacity(
+          key: ValueKey(icon == LucideIcons.chevronLeft ? 'day-nav-previous' : 'day-nav-next'),
           opacity: to == null ? .35 : 1,
           child: Pressable(
             onTap: to == null ? null : () => onDay(to),
@@ -2536,31 +2532,37 @@ class DayNav extends StatelessWidget {
           ),
         );
 
-    return GuideBox(child: Container(
+    return PendingStatic(
+      child: GuideBox(child: Container(
       decoration: BoxDecoration(color: p.card2, borderRadius: R.rMd),
       child: Row(children: [
         arrow(LucideIcons.chevronLeft, l?.metricDetailPreviousDay ?? 'Previous day',
             older),
         Expanded(
           child: Pressable(
+            key: const ValueKey('day-nav-choose'),
             onTap: () async {
               final picked = await chooseDay(c, days, day);
-              if (picked != null && picked != day) onDay(picked);
+              if (picked != null && picked != day) {
+                PendingUserAction.run(() => onDay(picked));
+              }
             },
               semanticLabel:
                   l?.metricDetailChooseDayShowing(dayNavLabel(day, l)) ??
                   'Choose a day. Showing ${dayNavLabel(day, l)}',
-              child: Text(
+              child: SizedBox(width: double.infinity, child: Text(
                 dayNavLabel(day, l),
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
-              ),
+              )),
             ),
           ),
         arrow(LucideIcons.chevronRight, l?.metricDetailNextDay ?? 'Next day', newer),
-      ]),
+      ],
+          ),
+        ),
     ));
   }
 }
@@ -2569,12 +2571,10 @@ class DayNav extends StatelessWidget {
 /// nothing at all when there is only one day to look at.
 List<Widget> dayNavRow(
         String? day, List<String> days, ValueChanged<String> onDay) =>
-    days.length < 2
-        ? const []
-        : [
-            DayNav(day: day, days: days, onDay: onDay),
-            const SizedBox(height: S.x3),
-          ];
+    [
+      DayNav(day: day, days: days, onDay: onDay, alwaysShow: true),
+      const SizedBox(height: S.x3),
+    ];
 
 /// A plain door onto another screen. Deliberately quiet: a doorway is not a
 /// card, and a metric screen that grows a second loud card stops having a
@@ -2592,11 +2592,11 @@ Widget detailLinkRow(BuildContext c, IconData icon, String title, String sub,
         Icon(icon, size: 17, color: p.ink3),
         const SizedBox(width: S.x3),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: PendingStatic(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title,
                 style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
             Text(sub, style: F.over.copyWith(color: p.ink3)),
-          ]),
+          ])),
         ),
         Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
       ]),

@@ -1,77 +1,72 @@
-// Every spinner says what is happening. `InlineLoading` (lib/ui2/
-// inline_loading.dart) is the one loading primitive: a required status line,
-// an optional detail line, and a reserved height. A bare
-// `CircularProgressIndicator(` anywhere else in lib/ui2 is a spinner with no
-// status, unless it is a busy mark inside a control whose own text already
-// states the action; those are listed below, one reason each.
-
-import 'dart:io';
-
+// WHY: every app route must use debounced placeholders. Whole-tree scan is
+// a dependency guard; the positive control proves a spinner is recognised.
 import 'package:flutter_test/flutter_test.dart';
-
 import 'support/dart_source_lexical.dart';
 
-const _primitive = 'lib/ui2/inline_loading.dart';
-
-/// In-control busy spinners. Each one sits inside a control or row whose own
-/// visible text says what is happening. A page or section loading spinner
-/// never belongs here: it becomes `InlineLoading(status: ...)`.
-const _allowed = <String, String>{
-  'lib/ui2/grammar.dart':
-      'BigButton busy state: the spinner sits beside the button label',
-  'lib/ui2/sync_control.dart':
-      'leads the sync status sentence ("Calculating · day 3 of 12"); '
-          'syncBusyMark is the profile button beside that sentence',
-  'lib/ui2/screens/coach.dart':
-      'leads the coach status row, whose text names the current step',
-  'lib/ui2/profile/wearable_numbers.dart':
-      'replaces the switch while the row subtitle reads deviceUseWorking',
-  'lib/ui2/pairing/device_picker.dart':
-      'ends the "Scanning for devices nearby…" row',
-  'lib/ui2/profile/import_progress_view.dart':
-      'sits above the import stage status and its done/total line',
-};
-
-String _rel(File f) => f.path.replaceAll('\\', '/');
+// Only a top-level value argument makes a linear indicator determinate.
+// A nested constructor's value must not accidentally satisfy this guard.
+bool _indeterminateLinear(String args) {
+  var depth = 0, start = 0;
+  String? value;
+  for (var i = 0; i <= args.length; i++) {
+    if (i == args.length || depth == 0 && args[i] == ',') {
+      final match = RegExp(r'^\s*value\s*:\s*([\s\S]*)$').firstMatch(args.substring(start, i));
+      if (match != null) value = match.group(1)!.trim();
+      start = i + 1;
+    } else if ('([{'.contains(args[i])) {
+      depth++;
+    } else if (')]}'.contains(args[i])) {
+      depth--;
+    }
+  }
+  if (value == null) return true;
+  var expression = value;
+  while (expression.startsWith('(') && closingOf(expression, 0) == expression.length - 1) {
+    expression = expression.substring(1, expression.length - 1).trim();
+  }
+  return expression == 'null';
+}
 
 void main() {
-  test('no bare CircularProgressIndicator in lib/ui2', () {
+  final spinner = RegExp(r'\b(?:CircularProgressIndicator|RefreshProgressIndicator|CupertinoActivityIndicator|CupertinoSliverRefreshControl)\b|\bRefreshIndicator(?:\.adaptive)?\s*\(|\bRefreshIndicator\.(?:new|adaptive)\b|\bLinearProgressIndicator\.new\b');
+  test('spinner detector recognises Material and Cupertino spinners', () {
+    for (final sample in ['CircularProgressIndicator()', 'CupertinoActivityIndicator()', 'CircularProgressIndicator.adaptive()', 'RefreshProgressIndicator()', 'CupertinoSliverRefreshControl()', 'RefreshIndicator.adaptive()', 'CircularProgressIndicator.new', 'RefreshIndicator.new', 'LinearProgressIndicator.new']) {
+      expect(spinner.hasMatch(sample), isTrue, reason: sample);
+    }
+    for (final args in ['', 'backgroundColor: Color(value: 1)', 'value: null', 'value: ((null))']) {
+      expect(_indeterminateLinear(args), isTrue, reason: args);
+    }
+    for (final args in ['value: .5', 'value: progress.fraction, color: pigment']) {
+      expect(_indeterminateLinear(args), isFalse, reason: args);
+    }
+  });
+  test('no spinners anywhere in lib', () {
     final offenders = <String>[];
-    final spinner = RegExp(r'\bCircularProgressIndicator\(');
-    for (final f in dartFilesIn('lib/ui2')) {
-      final path = _rel(f);
-      if (path == _primitive || _allowed.containsKey(path)) continue;
+    for (final f in dartFilesIn('lib')) {
       final code = codeOnly(f.readAsStringSync());
       for (final m in spinner.allMatches(code)) {
-        offenders.add('$path:${lineOf(code, m.start)}');
+        offenders.add('${f.path}:${lineOf(code, m.start)}');
+      }
+      final linear = RegExp(r'\bLinearProgressIndicator\s*\(');
+      for (final m in linear.allMatches(code)) {
+        final end = closingOf(code, m.end - 1);
+        final args = code.substring(m.end, end);
+        if (_indeterminateLinear(args)) {
+          offenders.add('${f.path}:${lineOf(code, m.start)}');
+        }
       }
     }
-    expect(offenders, isEmpty,
-        reason: 'Spinners with no status. Use InlineLoading(status: ...) or, '
-            'for a busy mark inside a control whose text states the action, '
-            'add the file to _allowed with a reason:\n${offenders.join('\n')}');
+    expect(offenders, isEmpty, reason: 'Use PendingContent or PendingMark:\n${offenders.join('\n')}');
   });
-
-  test('every allow-listed file still has a spinner (no stale entries)', () {
-    for (final path in _allowed.keys) {
-      expect(File(path).existsSync(), isTrue, reason: path);
-      final code = codeOnly(File(path).readAsStringSync());
-      expect(code.contains('CircularProgressIndicator('), isTrue,
-          reason: '$path is allow-listed but has no spinner; drop the entry');
-      expect(_allowed[path]!.trim(), isNotEmpty, reason: path);
-    }
-  });
-
-  test('no InlineLoading() without a status in lib/ui2', () {
+  test('pull to refresh does not introduce a spinner', () {
     final offenders = <String>[];
-    final empty = RegExp(r'\bInlineLoading\(\s*\)');
-    for (final f in dartFilesIn('lib/ui2')) {
+    final refresh = RegExp(r'\bRefreshIndicator\s*\(');
+    for (final f in dartFilesIn('lib')) {
       final code = codeOnly(f.readAsStringSync());
-      for (final m in empty.allMatches(code)) {
-        offenders.add('${_rel(f)}:${lineOf(code, m.start)}');
+      for (final m in refresh.allMatches(code)) {
+        offenders.add('${f.path}:${lineOf(code, m.start)}');
       }
     }
-    expect(offenders, isEmpty,
-        reason: 'InlineLoading needs a status:\n${offenders.join('\n')}');
+    expect(offenders, isEmpty, reason: offenders.join('\n'));
   });
 }

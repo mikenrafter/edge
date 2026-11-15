@@ -38,7 +38,7 @@ import '../../models/metric.dart' show whyFromNote;
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import 'home_screen.dart' show clockOfTs, hm, repoOf;
-import 'metric_detail.dart' show dayNavRow, detailScaffold, pickDay;
+import 'metric_detail.dart' show DayNav, detailScaffold, pickDay;
 
 class NapsData {
   const NapsData({
@@ -183,7 +183,7 @@ class _NapsScreenState extends State<NapsScreen>
       await write();
       await app.reanalyzeForNapEdit();
     } on ReadPaused {
-      failed = pausedSavingText(context);
+      if (mounted) failed = pausedSavingText(context);
     } catch (e) {
       failed = '$e';
     } finally {
@@ -267,21 +267,12 @@ class _NapsScreenState extends State<NapsScreen>
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final d = _d;
+    final d = _d ?? NapsData(day: _day ?? todayLabel());
     if (_paused) {
       return detailScaffold(c, l?.napsTitle ?? 'Naps', [
         const Padding(
           padding: EdgeInsets.only(top: S.x4),
           child: PausedOlderDays(),
-        ),
-      ]);
-    }
-    if (d == null) {
-      return detailScaffold(c, l?.napsTitle ?? 'Naps', [
-        Padding(
-          padding: const EdgeInsets.only(top: S.x4),
-          child: InlineLoading(
-              status: l?.loadingNaps ?? "Reading this day's naps"),
         ),
       ]);
     }
@@ -291,7 +282,19 @@ class _NapsScreenState extends State<NapsScreen>
       c,
       l?.napsTitle ?? 'Naps',
       [
-        ...dayNavRow(day, d.days, _goDay),
+        DayNav(day: day, days: d.days, onDay: _goDay, alwaysShow: true),
+        const SizedBox(height: S.x3),
+        const SizedBox(height: S.x4),
+        BigButton(
+          key: const ValueKey('naps-primary-action'),
+          _busy
+              ? (l?.napsWorking ?? 'Working…')
+              : (l?.napsLogANap ?? 'Log a nap'),
+          icon: LucideIcons.plus,
+          color: C.domHealth,
+          onTap: _busy || day == null ? null : () => _log(day),
+        ),
+        AsyncListSection<Widget>(memoryKey: 'naps:${day == todayLabel() ? 'today' : 'past'}', items: _d == null ? null : [
         if (!d.judged)
           // THE DETECTOR'S OWN REASON when it left one — 'too little 1 Hz data
           // to assess naps', 'nap detection failed for this day'. The sentence
@@ -344,15 +347,6 @@ class _NapsScreenState extends State<NapsScreen>
               _failed!,
               icon: LucideIcons.triangleAlert),
         ],
-        const SizedBox(height: S.x4),
-        BigButton(
-          _busy
-              ? (l?.napsWorking ?? 'Working…')
-              : (l?.napsLogANap ?? 'Log a nap'),
-          icon: LucideIcons.plus,
-          color: C.domHealth,
-          onTap: _busy || day == null ? null : () => _log(day),
-        ),
         if (d.rejected.isNotEmpty) ...[
           Section(
             l?.napsRemovedSection ?? 'Removed',
@@ -388,7 +382,12 @@ class _NapsScreenState extends State<NapsScreen>
             ),
           ),
         ],
-      ],
+        ], visibleRows: 3, rowHeight: 96,
+          itemBuilder: (_, child) => child,
+          emptyBuilder: (_) => const SizedBox.shrink()),
+
+      ].map((child) => PendingContent(pending: _d == null,
+        child: child)).toList(),
     );
   }
 

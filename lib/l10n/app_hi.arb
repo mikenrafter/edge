@@ -3883,7 +3883,74 @@
   "guideAddNapMissingTitle": "\"{naps}\" नहीं दिख रहा?",
   "guideAddNapMissingBody": "**{naps}** आपकी रात के नीचे है। अगर वह भाग, **{night}**, बंद है, तो उसका शीर्षक टैप करके खोलें।",
   "guideTapsBack": "{count, plural, one{1 टैप पीछे} other{{count} टैप पीछे}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "@guideTapsBack": {
+    "description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deriveDailyLabel": "नींद, रिकवरी और मेहनत की गणना हो रही है",
+  "deriveDailyProgress": "नींद, रिकवरी और मेहनत की गणना हो रही है · दिन {index} / {total}",
+  "deriveDailyProgressOn": "नींद, रिकवरी और मेहनत की गणना हो रही है · दिन {index} / {total} · {day}",
+  "deriveWaitingDailyLabel": "नींद, रिकवरी और मेहनत की गणना की प्रतीक्षा है",
+  "deriveTrendsLabel": "रुझानों की दोबारा गणना हो रही है",
+  "reviewWaitingImportTitle": "आयात की प्रतीक्षा है",
+  "reviewWaitingImportBody": "आयात सहेजा गया डेटा कॉपी कर रहा है। पूरा होने पर आपकी गतिविधियाँ पढ़ी जा सकेंगी।",
+  "reviewTryAgain": "फिर कोशिश करें",
+  "reviewReadActivities": "लंबित झपकियाँ और व्यायाम पढ़े जा रहे हैं",
+  "reviewReadMoments": "चिह्नित पल और पानी की प्रविष्टियाँ पढ़ी जा रही हैं",
+  "reviewReadDays": "उपलब्ध दिनों की सूची पढ़ी जा रही है",
+  "reviewReadSaved": "सहेजी गई गतिविधि समीक्षाएँ पढ़ी जा रही हैं",
+  "metricSourcesUsed": "इस्तेमाल किए गए स्रोत",
+  "reviewReadHeart": "हृदय गति, गतिविधि और नींद पढ़ी जा रही है",
+  "reviewReadWear": "पहनने का समय पढ़ा जा रहा है",
+  "reviewReadJournal": "आपकी डायरी पढ़ी जा रही है",
+  "reviewReadMeals": "भोजन पढ़े जा रहे हैं",
+  "reviewReadMedicines": "दवाएँ और खुराक पढ़ी जा रही हैं",
+  "reviewReadDevices": "डिवाइस के माप पढ़े जा रहे हैं",
+  "reviewReadTime": "दिन की गणना का समय पढ़ा जा रहा है",
+  "reviewReadWake": "जागने के समय पढ़े जा रहे हैं",
+  "reviewReadWater": "पानी की प्रविष्टियाँ पढ़ी जा रही हैं",
+  "reviewReadProfile": "आपकी प्रोफ़ाइल पढ़ी जा रही है",
+  "observationsLatestWeek": "पिछला सप्ताह · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "इस सप्ताह कोई संकेत चिह्नित नहीं हुआ।",
+  "observationsNoDay": "इस दिन कोई संकेत चिह्नित नहीं हुआ।",
+  "observationsEarlierWeek": "पिछला सप्ताह",
+  "observationsLaterWeek": "अगला सप्ताह",
+  "observationsEventsUnit": "घटनाएँ",
+  "observationsDayCount": "{day}: {count, plural, =1{1 घटना} other{{count} घटनाएँ}}",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "आराम के समय हृदय गति में बदलाव",
+  "rhrNoReadings": "आराम के समय हृदय गति की कोई रीडिंग सेव नहीं है।",
+  "sleepTabTimelineCardTitle": "नींद की समयरेखा",
+  "sleepTabStoodOutCardTitle": "क्या अलग रहा",
+  "sleepTabUsualCardTitle": "आपकी सामान्य नींद से तुलना",
+  "sleepTabSignalsCardTitle": "रात के संकेत",
+  "sleepTabThePlanCardTitle": "योजना",
+  "pendingSectionLoading": "लोड हो रहा है, {name}",
+  "pendingSectionLoaded": "लोड हो गया, {name}",
+  "pendingSectionContent": "सामग्री",
   "findingNotificationIrregularRhythm": "{day} को रिकॉर्ड किए गए पल्स अंतराल हमारे अनियमितता नियम से मेल खाते थे। हमने इसकी सटीकता या लय की समस्या छूटने की दर नहीं मापी है। सीमाएँ पढ़ने के लिए टैप करें।",
   "pulseSummaryTitle": "{count, plural, =1{1 दिन में अनियमित पल्स पैटर्न चिह्नित हुआ} other{{count} दिनों में अनियमित पल्स पैटर्न चिह्नित हुए}}",
   "pulseSummaryBody": "{count, plural, =1{{days}। इस दिन के पल्स अंतराल हमारे अनियमितता नियम से मेल खाते थे। हमने इसकी सटीकता या यह कितनी बार हृदय की लय की समस्या को नहीं पकड़ पाता, यह नहीं मापा है। सीमाएँ पढ़ने के लिए टैप करें।} other{{days}। इन दिनों के पल्स अंतराल हमारे अनियमितता नियम से मेल खाते थे। हमने इसकी सटीकता या यह कितनी बार हृदय की लय की समस्या को नहीं पकड़ पाता, यह नहीं मापा है। सीमाएँ पढ़ने के लिए टैप करें।}}",

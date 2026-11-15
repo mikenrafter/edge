@@ -1,3 +1,4 @@
+import 'support/sleep_disclosures.dart';
 // The shared trend reading on the screens that use it: the verdict header,
 // the usual-range band and its abstention, press-and-hold on a card, recovery
 // bars in their ring colour, and the overnight chart's cursor linked to the
@@ -25,6 +26,7 @@ Future<void> _host(WidgetTester t, Widget w,
     home: screen ? w : Scaffold(body: SingleChildScrollView(child: w)),
   ));
   await t.pumpAndSettle();
+  if (w is SleepDetail) await openSleepDisclosures(t);
 }
 
 void main() {
@@ -254,6 +256,7 @@ void main() {
       ),
     ));
     await t.pumpAndSettle();
+    await openSleepDisclosures(t);
     // The night's own numbers are on the card.
     expect(find.textContaining('Heart rate 47–57'), findsOneWidget);
     final stack = find.byWidgetPredicate(

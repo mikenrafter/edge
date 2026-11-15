@@ -3883,7 +3883,74 @@
   "guideAddNapMissingTitle": "没有看到“{naps}”？",
   "guideAddNapMissingBody": "**{naps}**位于你的夜间睡眠下方。如果该部分**{night}**已折叠，请点按其标题展开。",
   "guideTapsBack": "返回需点按 {count} 次",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "@guideTapsBack": {
+    "description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deriveDailyLabel": "正在计算睡眠、恢复和负荷",
+  "deriveDailyProgress": "正在计算睡眠、恢复和负荷 · 第 {index} 天，共 {total} 天",
+  "deriveDailyProgressOn": "正在计算睡眠、恢复和负荷 · 第 {index} 天，共 {total} 天 · {day}",
+  "deriveWaitingDailyLabel": "正在等待计算睡眠、恢复和负荷",
+  "deriveTrendsLabel": "正在重新计算趋势",
+  "reviewWaitingImportTitle": "等待导入",
+  "reviewWaitingImportBody": "导入正在复制已保存的数据。完成后即可读取你的活动。",
+  "reviewTryAgain": "重试",
+  "reviewReadActivities": "正在读取待确认的小睡和锻炼",
+  "reviewReadMoments": "正在读取标记的时刻和饮水记录",
+  "reviewReadDays": "正在读取可用日期",
+  "reviewReadSaved": "正在读取已保存的活动确认",
+  "metricSourcesUsed": "使用的数据来源",
+  "reviewReadHeart": "正在读取心率、活动和睡眠",
+  "reviewReadWear": "正在读取佩戴时间",
+  "reviewReadJournal": "正在读取日记",
+  "reviewReadMeals": "正在读取饮食记录",
+  "reviewReadMedicines": "正在读取药物和服用记录",
+  "reviewReadDevices": "正在读取设备测量值",
+  "reviewReadTime": "正在读取当天的计算时间",
+  "reviewReadWake": "正在读取醒来时间",
+  "reviewReadWater": "正在读取饮水记录",
+  "reviewReadProfile": "正在读取个人资料",
+  "observationsLatestWeek": "最近一周 · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "本周没有标记。",
+  "observationsNoDay": "当天没有标记。",
+  "observationsEarlierWeek": "前一周",
+  "observationsLaterWeek": "后一周",
+  "observationsEventsUnit": "事件",
+  "observationsDayCount": "{day}：{count} 个事件",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "静息心率变化",
+  "rhrNoReadings": "没有已保存的静息心率读数。",
+  "sleepTabTimelineCardTitle": "睡眠时间线",
+  "sleepTabStoodOutCardTitle": "值得注意的变化",
+  "sleepTabUsualCardTitle": "与你的平时相比",
+  "sleepTabSignalsCardTitle": "夜间信号",
+  "sleepTabThePlanCardTitle": "睡眠计划",
+  "pendingSectionLoading": "正在加载，{name}",
+  "pendingSectionLoaded": "已加载，{name}",
+  "pendingSectionContent": "内容",
   "findingNotificationIrregularRhythm": "{day} 记录的脉搏间隔符合我们的不规则判定规则。我们尚未测量其准确性或漏掉心律问题的频率。点按了解局限。",
   "pulseSummaryTitle": "{count, plural, =1{在 1 天发现不规则脉搏标记} other{在 {count} 天发现不规则脉搏标记}}",
   "pulseSummaryBody": "{count, plural, =1{{days}。这一天的脉搏间隔符合我们的不规则判定规则。我们尚未测量它的准确度，也未测量它漏掉心律问题的频率。点按查看局限。} other{{days}。这些天的脉搏间隔符合我们的不规则判定规则。我们尚未测量它的准确度，也未测量它漏掉心律问题的频率。点按查看局限。}}",

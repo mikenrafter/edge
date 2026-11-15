@@ -147,12 +147,15 @@ void main() {
         await _pump(t, flag, c);
         for (final id in c.expectIds) {
           final before = openStates(t);
+          final parent = find.byWidgetPredicate((w) => w is SettingsAccordion && w.id == id);
+          final nested = t.widgetList<SettingsAccordion>(find.descendant(of: parent, matching: find.byType(SettingsAccordion))).map((w) => w.id).toSet();
           await toggleAccordion(t, id);
           final after = openStates(t);
           expect(after[id], isNot(before[id]), reason: '$id flipped');
-          expect({...after}..remove(id), {...before}..remove(id),
+          expect({...after}..remove(id)..removeWhere((k, _) => nested.contains(k)), {...before}..remove(id)..removeWhere((k, _) => nested.contains(k)),
               reason: 'toggling $id changed another section');
           await toggleAccordion(t, id); // put it back
+          expect(openStates(t), before, reason: 'nested choices survive the parent fold');
         }
       });
     }

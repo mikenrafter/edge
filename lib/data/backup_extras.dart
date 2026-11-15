@@ -66,7 +66,9 @@ const Map<String, String> kPrefsNotBackedUp = {
 /// Key prefixes that stay on the device, each with the reason. Empty on
 /// purpose: a prefix once swept up `backup.cadence`, a setting the owner chose
 /// (daily/weekly), so the device-only `backup.*` keys are listed by name above.
-const Map<String, String> kPrefsNotBackedUpPrefixes = {};
+const Map<String, String> kPrefsNotBackedUpPrefixes = {
+  'ui.load_memory.': 'Local presentation estimates, not portable health data',
+};
 
 /// Secrets that stay in the platform keystore, keyed by the lib file that owns
 /// them, each with why and what the owner does after a restore. A plain

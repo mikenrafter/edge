@@ -4,6 +4,7 @@
 // the test asked for, never a clock read. A tap records an Interaction (so the
 // scorer applies the latency curve); a background refresh records none.
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/layout_shift/layout_shift.dart';
 
@@ -22,9 +23,9 @@ void phoneSurface(WidgetTester t) {
 }
 
 class ShiftRun {
-  ShiftRun(this.t, {bool skipCoveredRoutes = false})
+  ShiftRun(this.t, {bool skipCoveredRoutes = false, bool trackUnkeyed = true})
       : probe = ShiftProbe(
-            trackUnkeyed: true,
+            trackUnkeyed: trackUnkeyed,
             visibleOnly: shiftViewport,
             skipCoveredRoutes: skipCoveredRoutes);
   final WidgetTester t;
@@ -32,7 +33,10 @@ class ShiftRun {
   int now = 0;
 
   /// Captures the current tree at [now] without pumping.
-  void snap() => probe.capture(t, atMs: now);
+  void snap() {
+    expectNoIndeterminateProgress();
+    probe.capture(t, atMs: now);
+  }
 
   /// The user opened this screen at [now] (launch or navigation): the open is
   /// the action the loading sequence answers, so its shifts are in-window,
@@ -94,3 +98,8 @@ String formatShiftReport(String name, ShiftReport r, int frames) {
   }
   return b.toString();
 }
+
+// Runtime coverage catches spinners introduced inside package widgets too.
+void expectNoIndeterminateProgress() => expect(find.byWidgetPredicate((w) =>
+  w is ProgressIndicator && w.value == null ||
+  w is CupertinoActivityIndicator || w is CupertinoSliverRefreshControl), findsNothing);

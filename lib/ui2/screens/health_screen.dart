@@ -1,3 +1,4 @@
+import '../profile/profile.dart' show SettingsAccordion;
 import '../../l10n/display_text.dart';
 // HEALTH — observation-oriented. "What is happening, what is changing, is
 // anything unusual?"
@@ -178,6 +179,11 @@ class HealthData {
     // Started first and awaited last: first paint waits for the slowest read,
     // not the sum. A failed read is null (no card), never a failed load.
     final wearableRead = _wearableOrNull(repo);
+    // Alert notes belong to the same published snapshot. Start their stored
+    // read alongside the overview, through its repository seam.
+    final alertsRead = repo
+        .getPulseAlertRecords()
+        .catchError((_) => const <String, PulseAlertRecord>{});
     final today = await repo.getTodayStored();
     final cd = await repo.getInsights();
     final profile = await repo.getProfile();
@@ -278,12 +284,12 @@ class HealthData {
       napMin: (naps['nap_min'] as num?)?.round(),
       napCount: (naps['naps'] as List?)?.length,
       napDay: napDay,
-      findings:
-          findingsHistory(cd,
-              readiness: ready,
-              irregularDays: irregular,
-              alerts: await LocalDb.pulseAlertRecords()
-                  .catchError((_) => const <String, PulseAlertRecord>{})),
+      findings: findingsHistory(
+        cd,
+        readiness: ready,
+        irregularDays: irregular,
+        alerts: await alertsRead,
+      ),
       baselines: heart['baselines'] is Map
           ? (heart['baselines'] as Map).cast<String, dynamic>()
           : null,
@@ -713,8 +719,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
       SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
       const SizedBox(height: S.x5),
       if (_loading && _d == null)
-        InlineLoading(
-            status: l?.loadingHealthOverview ?? 'Reading today and your trends')
+        PendingContent(pending: true, child: _tab == 2 ? _trends(c, d) : _overview(c, d))
       else
         switch (_tab) {
           0 || 2 when _dFailed && _d == null =>
@@ -826,6 +831,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
           unit: unit,
           series: series,
           rising: rising,
+          subMaxLines: 1,
           onTap: open));
     }
 
@@ -985,16 +991,6 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
     final status = d.today['status'];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       // The rows below come off the overnight row, whichever night it is.
-      _asOf(
-          d,
-          (recalc) => asOfFor(
-              shownDay: status is Map ? status['overnight_day']?.toString() : null,
-              computedAt: computedAtOf(
-                  status is Map ? status['overnight_computed_at'] : null),
-              recalc: recalc),
-          day: status is Map ? status['overnight_day']?.toString() : null,
-          computedAt: computedAtOf(
-              status is Map ? status['overnight_computed_at'] : null)),
       // WHOOP MG only: the ECG door appears once the paired band has
       // positively identified itself as an MG, and stays while it is away. It
       // depends on the paired device, not on whether data has arrived, so it is
@@ -1024,6 +1020,16 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
                 d.wearable == null ? null : wearableName(d.wearable!.adapterId),
             initialCells: d.wearable?.cells ?? const {}),
 
+      _asOf(
+          d,
+          (recalc) => asOfFor(
+              shownDay: status is Map ? status['overnight_day']?.toString() : null,
+              computedAt: computedAtOf(
+                  status is Map ? status['overnight_computed_at'] : null),
+              recalc: recalc),
+          day: status is Map ? status['overnight_day']?.toString() : null,
+          computedAt: computedAtOf(
+              status is Map ? status['overnight_computed_at'] : null)),
       // OBSERVATIONS — the illness watch, wrapped, plus a door to the other
       // three detectors.
       //
@@ -1049,7 +1055,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
             // on the tab you land on is the feed this is not.
             (d.findings.isNotEmpty
                 ? Surface(
-                    onTap: () => go(c, FindingsLog(d.findings)),
+                    onTap: () => go(c, FindingsLog(d.findings, rhr: d.points('resting_hr'))),
                     child: FindingRow(d.findings.first),
                   )
                 : Surface(
@@ -1082,7 +1088,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
                   )),
         action: d.findings.isEmpty ? null : (l?.healthSeeAll ?? 'See all'),
         onAction:
-            d.findings.isEmpty ? null : () => go(c, FindingsLog(d.findings)),
+            d.findings.isEmpty ? null : () => go(c, FindingsLog(d.findings, rhr: d.points('resting_hr'))),
       ),
 
       // Naps moved to the Sleep tab, beside the night (the Naps door there).
@@ -1177,6 +1183,11 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
     Widget trend(String key, String label, String unit, Color col,
         {bool higherBetter = true, double? against, String? againstLabel}) {
       final pts = d.points(key);
+      final n0 = DateTime.now();
+      final labels = [for (var i = 29; i >= 0; i--) dayLabelOf(DateTime(n0.year, n0.month, n0.day - i))];
+      final flags = dailyAnnotations(rhrChangeAnnotations(d.findings, l: l), labels);
+      final annotations = flags.isEmpty ? null : AnnotationSet(items: flags, domainStart: 0, domainEnd: 29);
+
       // Statistics off the STORED values; the painter gets the dense window.
       final s = valuesOf(pts);
       if (s.isEmpty) {
@@ -1184,14 +1195,20 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
         // window line and no line. A StatusCard here was a different card in
         // a different height, so the first stored day moved everything below.
         return TrendCard(
+          detailReadout: true,
+          annotations: annotations,
           label,
           '—',
-          '',
+          unit,
           '',
           l?.healthZeroDaysStored ?? '0 days stored.',
-          const [],
+          List<double?>.filled(30, null),
           col,
+          dayOf: (i) => prettyDay(dayLabelOf(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day - (29 - i))), l),
           good: null,
+          detailFooter: SettingsAccordion(l?.sleepDetailVersusUsualSection ?? 'Against your usual',
+            id: 'health_trend_$key', initiallyExpanded: true,
+            children: [Text(l?.healthZeroDaysStored ?? '0 days stored.')]),
           reserveVerdict: true,
           key: ValueKey('card:trend-$key'),
         );
@@ -1225,6 +1242,18 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
           : '$small$asOf';
       final n = DateTime.now();
       return TrendCard(
+          detailReadout: true,
+          annotations: annotations,
+          detailFooter: SettingsAccordion(l?.sleepDetailVersusUsualSection ?? 'Against your usual',
+            id: 'health_trend_$key', initiallyExpanded: true, children: [
+              if (band != null) Text(usualRangeText(l, fmt(band.lo), fmt(band.hi), unit)),
+              if (band != null) ReadingVerdict(side: band.side(s.last),
+                detail: vsUsualText(l,
+                  '${signed(s.last - band.usual, fmt((s.last - band.usual).abs()))}${key == 'sleep' ? '' : ' $unit'}',
+                  '${fmt(band.usual)}${key == 'sleep' ? '' : ' $unit'}'),
+                higherBetter: higherBetter),
+              if (window.isNotEmpty) Text(window),
+            ]),
         key: ValueKey('card:trend-$key'),
         reserveVerdict: true,
         label,
@@ -1530,39 +1559,38 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
     final axis = AxisSpec.of(have, ticks: 2);
     final p = P.of(c);
     final l = AppLocalizations.of(c);
+    final now = DateTime.now();
+    final flags = dailyAnnotations(rhrChangeAnnotations(d.findings, l: l), [for (var i = days - 1; i >= 0; i--) dayLabelOf(DateTime(now.year, now.month, now.day - i))]);
     return ChartFrame(
+      annotations: flags.isEmpty ? null : AnnotationSet(items: flags, domainStart: 0, domainEnd: days - 1),
       nerdStats: this,
       title: l?.healthRmssdOfLastNights(have.length, days) ??
           'HRV, ${have.length} of the last $days nights',
       unit: 'ms',
       height: 48,
       yAxis: axis,
-      xLabels: have.length < 2
-          ? const []
-          : [
+      xLabels: [
               l?.healthNightsAgo(days - 1) ?? '${days - 1} nights ago',
               l?.healthSubLastNight ?? 'Last night',
             ],
-      empty: have.length < 2
-          ? NoData(
-              message: l?.healthOneNightNotTrend ?? 'One night is not a trend yet')
-          : null,
+
       series: win,
       child: ChartScrub(
         label: l?.healthHeartRateVariability ?? 'Heart rate variability',
         // Thirty calendar nights ending last night; a night with no record is
         // a hole.
-        gaps: hasChartGaps([win], trailing: true),
+        gaps: true,
         time: (at) =>
             ChartScrub.dayBack(win.length - 1 - ChartScrub.slotAt(win.length, at)),
         keys: [
           ChartKey.slots('RMSSD (ms)', p.on(C.green), win,
               (i, v) => '${v.round()} ms'),
         ],
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: LineChart(win, p.on(C.green), t: animate(c, 1), axis: axis),
-        ),
+        child: Stack(fit: StackFit.expand, children: [
+          CustomPaint(painter: LineChart(win, p.on(C.green), t: animate(c, 1), axis: axis)),
+          if (have.length < 2) Center(child: NoData(
+            message: l?.healthOneNightNotTrend ?? 'One night is not a trend yet')),
+        ]),
       ),
     );
   }

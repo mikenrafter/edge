@@ -1,5 +1,5 @@
 // The Sleep screen's sections are the app's own remembered accordions: every
-// one open by default, folded only by a tap on its header, and the answer kept
+// one expanded by default, opened only by a tap on its header, and the answer kept
 // per section id across a remount. The headline (total sleep) stays outside.
 
 import 'package:flutter/material.dart';
@@ -73,12 +73,12 @@ void main() {
     'Tonight',
   ];
 
-  testWidgets('each section is an accordion with its existing title, all open',
+  testWidgets('each section starts expanded, leaving the headline visible',
       (t) async {
     await _open(t);
     for (final title in titles) {
       expect(_acc(title), findsOneWidget, reason: title);
-      expect(_body(title), findsWidgets, reason: '$title is open by default');
+      expect(_body(title), findsWidgets, reason: '$title starts expanded');
     }
     // The headline is not inside any accordion.
     expect(

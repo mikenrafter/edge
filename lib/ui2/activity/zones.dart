@@ -27,7 +27,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
-import '../../compute/hr_max.dart' show validManualZoneBounds;
+import '../../compute/hr_max.dart' show validManualZoneBounds, manualZoneBoundsFromProfile;
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart' show whyFromNote;
@@ -307,15 +307,37 @@ class _ZonesDetailState extends State<ZonesDetail> {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final d = _d ?? const ZonesData();
+    Map<String,dynamic>? profile;
+    if (_d == null) {
+      try { profile = context.read<AppState>().user; }
+      on ProviderNotFoundException { /* Fixture or gallery without a profile. */ }
+    }
+    final manual = manualZoneBoundsFromProfile(profile);
+    final d =
+        _d ??
+        ZonesData(
+          source: manual != null
+              ? 'manual'
+              : profile?['age'] is num
+              ? 'tanaka'
+              : null,
+          zones: [
+            for (var i = 0; i < 5; i++)
+              (
+                zone: i + 1,
+                name: 'Z${i + 1}',
+                lo: manual?[i] ?? 0,
+                hi: i < 4 ? (manual?[i + 1] ?? 0) : 0,
+              ),
+          ],
+        );
     return detailScaffold(c, l?.activityZonesTitle ?? 'Heart-rate zones', [
-      if (_loading && _d == null) ...[
-        const SizedBox(height: S.x4),
-        InlineLoading(
-            status: l?.loadingZones ?? 'Reading your heart-rate zones'),
-      ] else ...[
-        _ceiling(p, l, d),
-        Section(l?.activityZonesYourZonesSection ?? 'Your zones', _zones(p, l, d)),
+      PendingContent(
+        memoryKey: 'hr-zones:body',
+        pending: _loading && _d == null,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Section(l?.activityZonesYourZonesSection ?? 'Your zones',
+_zones(p, l, d)),
         const SizedBox(height: S.x2),
         Pressable(
           onTap: () => _editManualZones(context, d),
@@ -330,8 +352,9 @@ class _ZonesDetailState extends State<ZonesDetail> {
             ),
           ),
         ),
+        _ceiling(p, l, d),
         ..._distribution(p, l, d),
-      ],
+      ])),
     ]);
   }
 
@@ -435,6 +458,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
     return Surface(
       child: Column(
         children: [
+          Column(key: const ValueKey('zones-primary-rows'), children: [
           for (final z in d.zones) ...[
             if (z.zone > 1) Divider(height: S.x5, color: p.line),
             Row(
@@ -452,18 +476,25 @@ class _ZonesDetailState extends State<ZonesDetail> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Z${z.zone} · ${z.name}',
-                        style: F.body.copyWith(color: p.ink),
+                          SizedBox(
+                            width: double.infinity,
+                            child: Text(
+                              'Z${z.zone} · ${z.name}',
+                              style: F.body.copyWith(color: p.ink),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                Text(
-                  // One beat below the next edge, as [ZoneRows.range] prints
+                    ),
+                    SizedBox(
+                      width: MediaQuery.textScalerOf(context).scale(76),
+                      child: Text(
+                        textAlign: TextAlign.right,
+                        // One beat below the next edge, as [ZoneRows.range] prints
                   // it, so no bpm sits in two zones.
                   z.zone == 5 ? '${z.lo}+' : '${z.lo}–${z.hi > z.lo ? z.hi - 1 : z.hi}',
                   style: F.n17.copyWith(color: p.ink2),
+                      ),
                 ),
                 const SizedBox(width: S.x2),
                 Text(l?.activityZonesBpmUnit ?? 'bpm',
@@ -471,6 +502,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
               ],
             ),
           ],
+          ]),
           if (_anchorCopy(l, d) case final anchor?) ...[
             const SizedBox(height: S.x4),
             Text(

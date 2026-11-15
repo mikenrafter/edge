@@ -19367,6 +19367,103 @@
       }
     }
   },
+  "deriveDailyLabel": "Calculating sleep, recovery and strain",
+  "deriveDailyProgress": "Calculating sleep, recovery and strain · day {index} of {total}",
+  "deriveDailyProgressOn": "Calculating sleep, recovery and strain · day {index} of {total} · {day}",
+  "deriveWaitingDailyLabel": "Waiting to calculate sleep, recovery and strain",
+  "deriveTrendsLabel": "Rebuilding trends",
+  "@deriveDailyProgress": {
+    "placeholders": {
+      "index": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "@deriveDailyProgressOn": {
+    "placeholders": {
+      "index": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsLatestWeek": "Latest week · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "Nothing flagged this week.",
+  "observationsNoDay": "Nothing flagged on this day.",
+  "observationsEarlierWeek": "Earlier week",
+  "observationsLaterWeek": "Later week",
+  "observationsEventsUnit": "events",
+  "observationsDayCount": "{day}: {count, plural, =1{1 event} other{{count} events}}",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "Resting heart rate changes",
+  "rhrNoReadings": "No resting heart rate readings stored.",
+  "reviewWaitingImportTitle": "Waiting for import",
+  "reviewWaitingImportBody": "The import is copying stored data. Your activities can be read when it finishes.",
+  "reviewTryAgain": "Try again",
+  "reviewReadActivities": "Reading pending naps and workouts",
+  "reviewReadMoments": "Reading marked moments and water entries",
+  "reviewReadDays": "Reading the available day list",
+  "reviewReadSaved": "Reading saved activity reviews",
+  "metricSourcesUsed": "Sources used",
+  "reviewReadHeart": "Reading heart rate, movement and sleep",
+  "reviewReadWear": "Reading wear time",
+  "reviewReadJournal": "Reading your journal",
+  "reviewReadMeals": "Reading meals",
+  "reviewReadMedicines": "Reading medicines and doses",
+  "reviewReadDevices": "Reading device measurements",
+  "reviewReadTime": "Reading when the day was calculated",
+  "reviewReadWake": "Reading wake times",
+  "reviewReadWater": "Reading water entries",
+  "reviewReadProfile": "Reading your profile",
+  "sleepTabTimelineCardTitle": "Sleep timeline",
+  "sleepTabStoodOutCardTitle": "What stood out",
+  "sleepTabUsualCardTitle": "Against your usual",
+  "sleepTabSignalsCardTitle": "Overnight signals",
+  "sleepTabThePlanCardTitle": "The Plan",
+  "pendingSectionLoading": "Loading, {name}",
+  "@pendingSectionLoading": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingSectionLoaded": "Loaded, {name}",
+  "@pendingSectionLoaded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingSectionContent": "content",
   "findingNotificationIrregularRhythm": "Pulse timing recorded on {day} matched our irregularity rule. We have not measured its accuracy or how often it misses a rhythm problem. Tap to read the limits.",
   "@findingNotificationIrregularRhythm": {
     "description": "Daily pulse flag wording. day is the recorded local calendar date, never the processing date.",

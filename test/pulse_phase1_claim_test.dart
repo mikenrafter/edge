@@ -11,6 +11,7 @@ import 'package:openstrap_edge/compute/pulse_alert_delivery.dart';
 import 'package:openstrap_edge/compute/pulse_alert_record.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
 import 'package:openstrap_edge/notify/notification_ids.dart';
@@ -81,6 +82,23 @@ void main() {
   Future<void> flag(String d) => LocalDb.putMetricSeriesValue(d, _flag, 1);
   Future<PulseAlertRecord?> record(String d) async =>
       (await LocalDb.pulseAlertRecords())[d];
+
+  // CLAIM health-alert-read: the production repository must serve the actual
+  // durable ledger, rather than inheriting the optional empty implementation.
+  // catches: forgetting the LocalRepositoryImpl override after moving the read.
+  test('Health repository preserves stored alert outcomes', () async {
+    await LocalDb.recordPulseAlert([today],
+        state: PulseAlertState.notSent, atMs: 1794499200000,
+        reason: PulseAlertReason.quiet);
+    final repo = LocalRepositoryImpl(getProfileMap: () => const {});
+    final records = await repo.getPulseAlertRecords();
+    expect(records.keys, [today]);
+    expect(records[today]!.state, PulseAlertState.notSent);
+    expect(records[today]!.reason, PulseAlertReason.quiet);
+    expect(records[today]!.atMs, 1794499200000);
+    expect((await record(today))!.state, PulseAlertState.notSent,
+        reason: 'reading presentation metadata cannot change delivery state');
+  });
 
   // why: R2-DS1(a). A summary is on screen and the process dies before its
   // record is written. A later pass finds another flagged day: the new summary

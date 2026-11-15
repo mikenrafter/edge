@@ -28,6 +28,8 @@ import '../../l10n/date_text.dart';
 // only three of them and they are read together.
 
 import 'dart:async';
+import '../read_prefetch.dart';
+import '../skeleton/load_memory.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui show TextDirection;
 
@@ -36,7 +38,6 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import '../../models/chart_point.dart';
-import '../older_version.dart';
 
 export '../../models/chart_point.dart' show ChartPoint;
 
@@ -72,7 +73,6 @@ import '../../gestures/gesture_failures.dart';
 import '../../state/app_state.dart';
 import '../../state/clock_format.dart' show formatClockOf;
 import '../../state/prefs.dart';
-import '../../state/recalc_state.dart';
 import '../../state/units_controller.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
 import '../activity/day_strain.dart' show DayStrainDetail;
@@ -84,6 +84,7 @@ import '../profile/settings.dart' show MoreSettings;
 import '../profile/wearable_numbers.dart'
     show WearableCells, kHomeWearableRows, wearableName;
 import '../ui2.dart';
+import '../why_row.dart';
 import 'ai_briefing.dart' show AiBriefingScreen;
 import 'coach.dart';
 import 'detected_activities.dart';
@@ -1107,7 +1108,7 @@ class RingTrio extends StatelessWidget {
             onTap: _open(HomeRingKind.strain)),
     ];
     if (onlyStatus) {
-      rows.add(_HomeNoteRow(id: 'status', text: status!.text,
+      rows.add(_HomeNoteRow(id: 'status', text: status.text,
           busy: status.busy, onTap: status.onTap));
     }
     final slot = [
@@ -1120,7 +1121,7 @@ class RingTrio extends StatelessWidget {
     return Surface(
       elevation: 2,
       child: LayoutBuilder(builder: (c, box) => Column(children: [
-        // The "since" line: its own slim right-aligned row above the rings,
+        // The "since" line: centred above the rings,
         // its height reserved whether or not the time is known.
         _sinceLine(c, l),
         // Rows replace columns by locale, text scale and width only, never by
@@ -1158,34 +1159,19 @@ class RingTrio extends StatelessWidget {
   Widget _sinceLine(BuildContext c, AppLocalizations? l) {
     final h = sinceRowHeight(c);
     final t = since;
-    if (t == null) {
-      return SizedBox(
-          key: const ValueKey('home-since-line'),
-          width: double.infinity,
-          height: h);
-    }
     final p = P.of(c);
-    final text = l?.homeSinceTime(DateFormat('HH:mm').format(t)) ??
-        'since ${DateFormat('HH:mm').format(t)}';
+    final clock = t == null ? '—' : DateFormat('HH:mm').format(t);
+    final text = l?.homeSinceTime(clock) ?? 'since $clock';
     return SizedBox(
         key: const ValueKey('home-since-line'),
         width: double.infinity,
-        height: h,
+        height: h + S.x2,
         child: Align(
-            alignment: Alignment.centerRight,
+            alignment: Alignment.center,
             child: Row(
                 key: const ValueKey('home-since'),
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (holdText != null) ...[
-                    SizedBox(
-                        key: const ValueKey('home-since-progress'),
-                        width: 10,
-                        height: 10,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 1.5, color: p.ink3)),
-                    const SizedBox(width: 4),
-                  ],
                   Text(text, style: F.over.copyWith(color: p.ink3)),
                 ])));
   }
@@ -1242,38 +1228,8 @@ class _HomeWhyPanel extends StatelessWidget {
       HomeRingKind.sleep => _sleepWhy(data, l),
       HomeRingKind.strain => _strainWhy(data, l),
     };
-    return _HomeWhyRow(id: kind.name, title: title, body: body,
+    return WhyRow(id: kind.name, title: title, body: body,
         color: state.color, icon: state.icon, onTap: onTap);
-  }
-}
-
-class _HomeWhyRow extends StatelessWidget {
-  final String id, title, body;
-  final Color color;
-  final IconData icon;
-  final VoidCallback? onTap;
-  const _HomeWhyRow({required this.id, required this.title, required this.body,
-      required this.color, required this.icon, this.onTap});
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    return _HomeInsetRow(key: ValueKey('home-why:$id'), onTap: onTap,
-      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        Container(key: ValueKey('home-why-icon:$id'), width: 32, height: 32,
-          decoration: BoxDecoration(color: p.on(color).withValues(alpha: .14), shape: BoxShape.circle),
-          child: Icon(icon, size: 17, color: p.on(color))),
-        const SizedBox(width: S.x2),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text(title, key: ValueKey('home-why-title:$id'), maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: F.body.copyWith(fontWeight: FontWeight.w600, color: p.ink)),
-          const SizedBox(height: 2),
-          Text(body, key: ValueKey('home-why-body:$id'), maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: F.cap.copyWith(color: p.ink2)),
-        ])),
-        const SizedBox(width: S.x1),
-        Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
-      ]));
   }
 }
 
@@ -1438,8 +1394,11 @@ List<HomeRingKind> pressingRings(HomeData d, {DateTime? now}) {
   final recovery = d.readiness.value;
   if (recovery != null && d.readiness.fromOlderVersion == null && d.recoveryState != 'provisional' &&
       d.recoveryState != 'night_in_progress') {
-    if (recovery < 26) ranked.add((HomeRingKind.recovery, 3));
-    else if (recovery <= 36) ranked.add((HomeRingKind.recovery, 2));
+    if (recovery < 26) {
+      ranked.add((HomeRingKind.recovery, 3));
+    } else if (recovery <= 36) {
+      ranked.add((HomeRingKind.recovery, 2));
+    }
   }
   final sleep = d.sleepMin.value, need = d.sleepNeedMin.value;
   if (sleep != null && d.sleepMin.fromOlderVersion == null && need != null && need > 0 && sleep / need < .85) {
@@ -1936,8 +1895,11 @@ class _RingText extends StatelessWidget {
         ? CrossAxisAlignment.center
         : CrossAxisAlignment.start;
     return Column(crossAxisAlignment: cross, children: [
-      Text(r.label.toUpperCase(),
-          style: F.over.copyWith(color: p.ink3), textAlign: align),
+        PendingStatic(
+          child: Text(r.label.toUpperCase(),
+          style: F.over.copyWith(color: p.ink3), textAlign: align,
+          ),
+        ),
         const SizedBox(height: S.x1),
         // An absence is a dash in the numeral slot (never a zero, never a
         // number): the slot is the same height as a reading's, so the rings
@@ -2624,14 +2586,14 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _loadSince() async {
     final repo = repoOf(context);
     final day = widget.data?.dayId ?? _day ?? todayLabel();
-    if (repo == null || day != todayLabel()) return;
+    if (repo == null) return;
     DateTime? through;
     try {
       through = (await pausedRead(repo.dayRecordingsThrough(day))).value;
     } catch (_) {
       return; // unreadable: leave what is shown
     }
-    if (mounted && through != _recordingsThrough) {
+    if (mounted && day == (widget.data?.dayId ?? _day ?? todayLabel()) && through != _recordingsThrough) {
       setState(() => _recordingsThrough = through);
     }
   }
@@ -2728,6 +2690,7 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
     final t = beginRead(#home);
+    final releasePrefetch = ReadPrefetch.shared.visibleRead('home');
     try {
       final day = _day;
       final l = AppLocalizations.of(context);
@@ -2757,6 +2720,32 @@ class _HomeScreenState extends State<HomeScreen>
         setState(() => (_d = d, _days = days, _loading = false, _failed = false,
             _paused = false));
         _recordRender();
+        final target = day ?? todayLabel();
+        final details =
+            <String, Future<Object?> Function()>{
+              'sleep': () => repo.getDaySleepV2(target),
+              'recovery': () => repo.getDayHrv(target),
+              'strain': () => repo.getDayStrain(target),
+            }.entries.toList()..sort(
+              (a, b) =>
+                  (LoadMemory.local.estimate('${b.key}:milliseconds') ?? 0)
+                      .compareTo(
+                        LoadMemory.local.estimate('${a.key}:milliseconds') ?? 0,
+                      ),
+            );
+        unawaited(
+          ReadPrefetch.shared.warm(
+            'home',
+            details.map((e) => e.value).toList(),
+            busy: () =>
+                !mounted ||
+                !TickerMode.valuesOf(context).enabled ||
+                ModalRoute.of(context)?.isCurrent == false ||
+                ImportFocus.active.value ||
+                context.read<AppState>().deriving ||
+                context.read<AppState>().derivePending,
+          ),
+        );
         _loadSince();
         _refresh.afterPaint(repo, d.refreshPending).then((landed) {
           if (!mounted) return;
@@ -2781,6 +2770,8 @@ class _HomeScreenState extends State<HomeScreen>
         // than time a later retry from this bump.
         _latency.committed();
       }
+    } finally {
+      releasePrefetch();
     }
   }
 
@@ -2801,6 +2792,8 @@ class _HomeScreenState extends State<HomeScreen>
   void _goDay(String day) {
     setState(() {
       _day = day;
+      _d = null;
+      _recordingsThrough = null;
       _loading = true;
     });
     _load();
@@ -2967,7 +2960,11 @@ class _HomeScreenState extends State<HomeScreen>
             ringData.overnightAt ?? ringData.activityAt)
         : null;
 
-    return _refreshable(tabRootList(padding: pad, children: [
+    const pillHeight = S.tap;
+    const pillGap = S.x3;
+    return Stack(fit: StackFit.expand, children: [
+      _refreshable(tabRootList(padding: pad.copyWith(
+        bottom: pad.bottom + pillHeight + pillGap), children: [
       // ── greeting ──
       //
       // The same header every tab has: the greeting is the title, the profile
@@ -3010,16 +3007,6 @@ class _HomeScreenState extends State<HomeScreen>
       // (Held: the gap is inside the rings wrapper below, so the caption's tap
       // target can start at the day bar's edge.)
       if (held == null) const SizedBox(height: S.x3),
-      // Stepped back through the record: one tap home.
-      if (!isToday)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton(
-            onPressed: () => _goDay(todayLabel()),
-            child: Text(l?.homeBackToToday ?? 'Back to today'),
-          ),
-        ),
-
       // ── the three rings ──
       //
       // Recovery, strain and sleep, each a door into its own screen, ALWAYS
@@ -3034,10 +3021,10 @@ class _HomeScreenState extends State<HomeScreen>
         since: _recordingsThrough,
         card(
         'rings',
-        RingTrio(
+        PendingContent(pending: _loading && loaded == null, child: RingTrio(
           d: ringData,
           now: widget.now,
-          since: isToday ? _recordingsThrough : null,
+          since: _recordingsThrough,
           holdText: held,
           help: help,
           onOpen: (k) => go(
@@ -3051,7 +3038,7 @@ class _HomeScreenState extends State<HomeScreen>
                 // pick resolves to that one.
                 HomeRingKind.sleep => SleepDetail(day: isToday ? null : _day),
               }),
-        ),
+        )),
       ),
       ),
       if (!bare) ...[
@@ -3112,7 +3099,23 @@ class _HomeScreenState extends State<HomeScreen>
                   : wearableName(d.wearable!.adapterId),
               initialCells: d.wearable?.cells ?? const {}),
         ),
-    ]));
+    ])),
+      if (!isToday) Positioned(left: S.x4, right: S.x4, bottom: pillGap,
+        child: Align(alignment: Alignment.bottomCenter, child: Pressable(
+          key: const ValueKey('home-back-to-today'),
+          onTap: () => _goDay(todayLabel()),
+          child: Container(height: pillHeight,
+            padding: const EdgeInsets.symmetric(horizontal: S.x4),
+            decoration: ShapeDecoration(color: p.card2,
+              shape: StadiumBorder(side: BorderSide(color: p.line))),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(LucideIcons.calendarDays, size: 16, color: p.on(C.blue)),
+              const SizedBox(width: S.x2),
+              Text(l?.homeBackToToday ?? 'Back to today',
+                style: F.cap.copyWith(color: p.on(C.blue))),
+            ])),
+        ))),
+    ]);
   }
 
   /// "Review activities" / "Breakdown of your day", handed the count read with
@@ -3155,7 +3158,7 @@ class _HomeScreenState extends State<HomeScreen>
     final sameNight = day == today;
     final z = d.illnessZ;
 
-    return _HomeWhyRow(
+    return WhyRow(
         id: 'observation', color: state == 'red' ? C.red : C.orange, icon: LucideIcons.heartPulse,
         title: state == 'red'
             ? (l?.homeIllnessRedTitle ?? 'Recent nights add up to a raised resting heart rate')
@@ -3163,15 +3166,8 @@ class _HomeScreenState extends State<HomeScreen>
                 ? (l?.homeIllnessAmberSameNight ?? 'Last night sat outside your normal range')
                 : (l?.homeIllnessAmberOtherNight(prettyDay(d.illnessDay, l)) ??
                     '${prettyDay(d.illnessDay, l)} sat outside your normal range'),
-        body: (z == null
-            ? (l?.homeIllnessBodyNoZ ??
-                'Your resting heart rate has been above your usual over recent nights. A pattern, not a cause.')
-            : (z >= 0
-                ? (l?.homeIllnessBodyAbove ??
-                    'Recent nights put your resting heart rate above your usual. That night was above it too. A pattern, not a cause.')
-                : (l?.homeIllnessBodyBelow ??
-                    'Recent nights together put your resting heart rate above your usual, though that night alone was below it. A pattern, not a cause.'))) +
-            ' ${l?.homeIllnessAdvice ?? 'Worth noting if it continues past a couple of days.'}',
+        body:
+          '${z == null ? (l?.homeIllnessBodyNoZ ?? 'Your resting heart rate has been above your usual over recent nights. A pattern, not a cause.') : (z >= 0 ? (l?.homeIllnessBodyAbove ?? 'Recent nights put your resting heart rate above your usual. That night was above it too. A pattern, not a cause.') : (l?.homeIllnessBodyBelow ?? 'Recent nights together put your resting heart rate above your usual, though that night alone was below it. A pattern, not a cause.'))} ${l?.homeIllnessAdvice ?? 'Worth noting if it continues past a couple of days.'}',
         onTap: () => go(c, const MetricDetail('resting_hr')),
       );
   }
@@ -3185,10 +3181,10 @@ class _HomeScreenState extends State<HomeScreen>
   // overscroll does nothing; the status line's Sync now is the way to sync.
   Widget _refreshable(Widget list) => !Prefs.pullToSyncOn
       ? list
-      : RefreshIndicator(onRefresh: () async {
+      : RefreshIndicator.noSpinner(onRefresh: () async {
         try { await context.read<AppState>().refreshData(); }
         on ProviderNotFoundException { /* Standalone fixture has local data only. */ }
-        if (mounted) await _load();
+        if (mounted) await PendingUserAction.run(_load);
       }, child: list);
 
   /// The rings card, wrapped when the results are held: a Stack of (the gap

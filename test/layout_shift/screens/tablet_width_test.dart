@@ -105,7 +105,7 @@ void main() {
   // The scroll viewport is full width; only the content is capped. A drag that
   // starts in the empty gutter still scrolls, and Home and Sleep still pull to
   // refresh from it. 700 pt tall so every root has scroll extent.
-  Future<void> shell(WidgetTester t) async {
+  Future<TabsRepo> shell(WidgetTester t) async {
     t.view.physicalSize = const Size(820, 700);
     t.view.devicePixelRatio = 1;
     addTearDown(t.view.reset);
@@ -115,6 +115,7 @@ void main() {
     addTearDown(app.dispose);
     await t.pumpWidget(shellApp(app));
     await settleShell(t);
+    return app.repo as TabsRepo;
   }
 
   ScrollableState rootScroll(WidgetTester t) {
@@ -149,14 +150,17 @@ void main() {
   for (final d in [ShellDomain.today, ShellDomain.sleep]) {
     testWidgets('820 pt: a pull starting in the gutter refreshes ${d.label}',
         (t) async {
-      await shell(t);
+      final repo = await shell(t);
       await goTab(t, d);
       expect(find.byType(RefreshIndicator).hitTestable(), findsOneWidget,
           reason: '${d.label} has a pull-to-refresh');
+      final before = repo.reads;
       await t.dragFrom(const Offset(60, 200), const Offset(0, 400));
       await t.pump(const Duration(milliseconds: 100));
-      expect(find.byType(RefreshProgressIndicator), findsOneWidget,
-          reason: 'a pull from the gutter must trigger the refresh');
+      await t.pump(const Duration(milliseconds: 300));
+      expect(repo.reads, greaterThan(before),
+          reason: 'a pull from the gutter must trigger a repository read');
+      expect(find.byType(RefreshProgressIndicator), findsNothing);
       await t.pump(const Duration(seconds: 5));
     });
   }

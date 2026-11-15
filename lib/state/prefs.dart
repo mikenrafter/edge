@@ -52,7 +52,16 @@ class Prefs {
   /// Idempotent and best-effort — failures leave reads on their defaults.
   static Future<void> ensureLoaded() async {
     try {
-      _sp ??= await SharedPreferences.getInstance();
+      if (_sp != null) return;
+      _sp = await SharedPreferences.getInstance();
+      // These temporary event/subactivity disclosures are intentionally not
+      // persisted. Remove the unbounded identities written by the first pilot.
+      for (final key in _sp!.getKeys().toList()) {
+        if (key.startsWith('accordion_moment-group:') ||
+            key.startsWith('accordion_track-sub:')) {
+          await _sp!.remove(key);
+        }
+      }
     } catch (_) {/* reads fall back to defaults */}
   }
 

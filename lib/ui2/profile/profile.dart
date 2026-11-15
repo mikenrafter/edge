@@ -29,6 +29,7 @@ class SetRow extends StatelessWidget {
   final Color color;
   final String title, sub, value;
   final bool danger, chevron;
+  final CrossAxisAlignment crossAxisAlignment;
 
   /// A row that does not apply right now stays in the list, dimmed and
   /// inert, rather than appearing and disappearing with another setting. Say
@@ -52,6 +53,7 @@ class SetRow extends StatelessWidget {
       this.value = '',
       this.danger = false,
       this.chevron = true,
+      this.crossAxisAlignment = CrossAxisAlignment.center,
       this.trailing,
       this.replacement,
       this.enabled = true,
@@ -64,6 +66,7 @@ class SetRow extends StatelessWidget {
       this.value = '',
       this.danger = false,
       this.chevron = true,
+      this.crossAxisAlignment = CrossAxisAlignment.center,
       this.enabled = true,
       this.onTap})
       : icon = null,
@@ -92,7 +95,7 @@ class SetRow extends StatelessWidget {
       semanticLabel: sub.isEmpty ? title : '$title. $sub',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Row(children: [
+        child: Row(crossAxisAlignment: crossAxisAlignment, children: [
           Container(
             width: 32,
             height: 32,
@@ -194,7 +197,9 @@ String accordionPrefKey(String id) => 'accordion_$id';
 /// neighbour would inherit the folded section's State and fold or open with it.
 /// So this widget is a thin const description and the State sits in a card
 /// keyed by [id]: an accordion that moves gets the State for its own id.
-class SettingsAccordion extends StatelessWidget {
+class SettingsAccordion extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String get pendingSectionName => title;
   const SettingsAccordion(this.title,
       {super.key,
       required this.children,
@@ -319,9 +324,12 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(widget.a.title,
+                            PendingStatic(
+                              child: Text(widget.a.title,
                             style: F.body.copyWith(
-                                color: p.ink, fontWeight: FontWeight.w600)),
+                                color: p.ink, fontWeight: FontWeight.w600,
+                                ),
+                              )),
                         if (!_open && summary != null && summary.isNotEmpty)
                           Text(summary,
                               maxLines: 1,
@@ -337,7 +345,7 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
           if (_open)
             for (final row in widget.a.children) ...[
               Divider(color: p.line, height: 1),
-              row,
+              Padding(padding: const EdgeInsets.symmetric(vertical: S.x3), child: row),
             ],
         ]),
       )),

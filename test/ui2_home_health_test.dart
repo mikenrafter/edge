@@ -541,8 +541,7 @@ void main() {
 
   // ── WH-06 ────────────────────────────────────────────────────────────────
   testWidgets(
-    'the symptom look-back counts against the days she LOGGED, is folded away '
-    'until asked for, and stays absent under two cycles',
+    'the symptom look-back counts logged days, starts open and stays absent under two cycles',
     (tester) async {
       tester.view.physicalSize = const Size(390 * 3, 2400 * 3);
       tester.view.devicePixelRatio = 3;
@@ -552,10 +551,13 @@ void main() {
         _frame(_scroll(CycleTab(data: _cycle)), Brightness.light, 1),
       );
       await tester.pumpAndSettle();
-      // Folded: the chips are the thing, the history is behind a tap.
+      // Owner accordion policy: open first; folding is a saved user choice.
       expect(find.text('What you usually notice'), findsOneWidget);
-      expect(find.textContaining('per week of the cycle'), findsNothing);
+      expect(find.textContaining('per week of the cycle'), findsOneWidget);
 
+      await tester.tap(find.text('What you usually notice'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('per week of the cycle'), findsNothing);
       await tester.tap(find.text('What you usually notice'));
       await tester.pumpAndSettle();
       // cramps on 5 of the 7 logged days; the denominator sentence names the

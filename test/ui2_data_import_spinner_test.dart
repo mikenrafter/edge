@@ -17,7 +17,7 @@ import 'package:openstrap_edge/ui2/profile/data.dart';
 import 'package:openstrap_edge/ui2/profile/import_progress_view.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SetRow;
 import 'package:openstrap_edge/ui2/status_line.dart';
-import 'package:openstrap_edge/ui2/ui2.dart' show buildTheme;
+import 'package:openstrap_edge/ui2/ui2.dart' show buildTheme, PendingMark;
 
 const _copying = ImportCopying(ImportStage.heartRate, 500, 2000, 2, 9);
 const _copying2 = ImportCopying(ImportStage.sleep, 10, 40, 3, 9);
@@ -109,7 +109,7 @@ void main() {
     testWidgets('no second spinner at the foot of the page', (t) async {
       await _pumpView(t, _view(busy: true, progress: _copying));
       expect(find.byType(ImportProgressView), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(PendingMark), findsWidgets);
     });
 
     testWidgets('other rows are inert while the import runs', (t) async {

@@ -13,6 +13,7 @@ import 'package:openstrap_analytics/onehz.dart' show readinessCompositeMinBaseli
 import '../../compute/onehz_pipeline.dart'
     show readinessInputShortfallNote, readinessUnstableBaselineNote;
 import '../../data/day_label.dart';
+import '../../compute/findings.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
@@ -25,6 +26,7 @@ import 'metric_detail.dart';
 
 class ReadinessData {
   final Metric readiness;
+  final List<ChartAnnotation> rhrMarks;
   final List<Map<String, dynamic>> breakdown;
   final int inputsUsed;
 
@@ -80,6 +82,7 @@ class ReadinessData {
   final bool refreshPending;
 
   const ReadinessData({
+    this.rhrMarks = const [],
     this.head = const {},
     this.readiness = Metric.empty,
     this.breakdown = const [],
@@ -140,6 +143,7 @@ class ReadinessData {
     final scored = readiness.value != null;
 
     return ReadinessData(
+      rhrMarks: rhrChangeAnnotations(findingsHistory(cd)),
       head: head,
       refreshPending: (status is Map) && status['refresh_pending'] == true,
       readiness: readiness,
@@ -263,10 +267,8 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
     // can no longer BE that night — a date up here now would be labelling
     // today's number with somebody else's day.
     return detailScaffold(c, l?.readinessDetailTitle ?? 'Recovery', [
-      if (_loading && _d == null) ...[
-        const SizedBox(height: S.x4),
-        InlineLoading(status: l?.loadingRecovery ?? 'Reading your recovery'),
-      ] else ...[
+      PendingContent(pending: _loading && _d == null,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         AsOfHold(
           shown: d,
           day: d.asOfDay,
@@ -277,14 +279,14 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
               padding: const EdgeInsets.only(bottom: S.x2),
               child: AsOfLabel(at: at)),
         ),
-        if (d.day != null) ...[
+        ...[
           Text(
-              l?.healthNightOf(prettyDay(d.day, l)) ??
-                  'Night of ${prettyDay(d.day, l)}',
+              d.day == null ? '\u00a0' : (l?.healthNightOf(prettyDay(d.day, l)) ??
+                  'Night of ${prettyDay(d.day, l)}'),
               style: F.cap.copyWith(color: p.ink2)),
           const SizedBox(height: S.x3),
         ],
-        if (v == null && d.refreshPending)
+        if (v == null && (d.refreshPending || _loading && _d == null))
           // The stored row is another day's and today's score is still being
           // worked out, so this is not yet an absence to explain. It holds the
           // landed ring's exact box (an empty track and a dash, never another
@@ -396,7 +398,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
               ),
             ]),
           ),
-        ] else if (v != null || d.refreshPending)
+        ] else if (v != null || d.refreshPending || _loading && _d == null)
           // Pending too: the breakdown comes from the cross-day insights, not
           // from today's score, so "none yet" is true before the refresh lands
           // and the section is already in place when it does.
@@ -424,7 +426,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
                 )
               : Surface(child: _history(c, d)),
         ),
-      ],
+      ])),
     ]);
   }
 
@@ -489,7 +491,9 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
     String dayOf(int i) => prettyDay(
         dayLabelOf(DateTime(n.year, n.month, n.day - (win.length - 1 - i))), l);
 
+    final flags = dailyAnnotations(d.rhrMarks, [for (var i = win.length - 1; i >= 0; i--) dayLabelOf(DateTime(n.year, n.month, n.day - i))]);
     return ChartFrame(
+      annotations: flags.isEmpty ? null : AnnotationSet(items: flags, domainStart: 0, domainEnd: (win.length - 1).toDouble()),
       nerdStats: this,
       title: l?.readinessDetailTitle ?? 'Recovery',
       unit: l?.readinessDetailUnit ?? '/100',

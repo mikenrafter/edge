@@ -676,7 +676,8 @@ class _MomentReviewEditorState extends State<MomentReviewEditor> {
                     onFix: _load,
                   )
                 else if (items == null)
-                  const NoData(message: '…')
+                  const PendingContent(pending: true,
+                    child: Surface(child: PendingRows(count: 6, rowHeight: 96)))
                 else if (nothingLeft)
                   KeyedSubtree(
                     key: const ValueKey('moment-follow-up-empty'),
@@ -745,8 +746,7 @@ class _MomentReviewEditorState extends State<MomentReviewEditor> {
               ],
             ),
           ),
-          if (showSave)
-            Padding(
+          if (showSave) Padding(
               padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x4),
               child: BigButton(
                   l?.momentReviewSaveCount(n) ??

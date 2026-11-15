@@ -16,6 +16,7 @@
 import '../wake/wake_journal.dart';
 import '../wake/wake_timeline.dart';
 import '../compute/findings.dart' show servedReadiness;
+import '../compute/pulse_alert_record.dart';
 import '../compute/inputs/canonical.dart'
     show
         activeWearable,
@@ -1297,6 +1298,10 @@ class LocalRepositoryImpl extends LocalRepository {
     if (a == null || b == null) return null;
     return calendarDaysBetween(a, b);
   }
+
+  @override
+  Future<Map<String, PulseAlertRecord>> getPulseAlertRecords() =>
+      LocalDb.pulseAlertRecords();
 
   @override
   Future<Map<String, dynamic>> getInsights() => ReadPerf.reading('getInsights', () async {
@@ -2834,6 +2839,71 @@ class LocalRepositoryImpl extends LocalRepository {
           coverageRecording: const <String, List<String>>{},
         ),
     };
+  }
+
+  @override
+  Future<SleepPrimaryRead?> getSleepDetailPrimary(String day) async {
+    _focusCheck('getSleepDetailPrimary');
+    final (night, timeline, insights, devices, wake, rows) = await (
+      getDaySleepV2(day),
+      getDayTimeline(day),
+      getInsights(),
+      getDeviceNights(day),
+      getWakeTimeline(day),
+      LocalDb.ownMetricSeriesDayWithHistoryCount(
+        day, const ['unobserved_min', 'awakenings', 'longest_sleep_min', 'sol_min', 'irregular_rhythm_flag'],
+        historyKey: 'tst_min',
+      ),
+    ).wait;
+    final date = DateTime.parse(day);
+    final noon =
+        DateTime(date.year, date.month, date.day, 12).millisecondsSinceEpoch ~/
+        1000;
+    return SleepPrimaryRead(
+      bundle: SleepDetailBundle(
+        night: night,
+        timeline: timeline,
+        insights: insights,
+        windows: const [],
+        charts: {
+          for (final row in rows)
+            if (row['key'] != 'history_count')
+              row['key'] as String: {
+                'points': [
+                  {'t': noon, 'v': row['value']},
+                ],
+              },
+        },
+      ),
+      devices: devices,
+      wake: wake,
+      historyCount:
+          rows.where((r) => r['key'] == 'history_count').firstOrNull?['value']
+              as int? ??
+          0,
+    );
+  }
+
+  @override
+  Future<SleepDetailBundle> getSleepDetailHistory(
+    String day,
+    SleepPrimaryRead primary, {
+    required List<String> chartKeys,
+    required int windowDays,
+    String? before,
+  }) async {
+    _focusCheck('getSleepDetailHistory');
+    final (charts, windows) = await (
+      _getCharts(chartKeys),
+      sleepWindows(days: windowDays, before: before),
+    ).wait;
+    return SleepDetailBundle(
+      night: primary.bundle.night,
+      timeline: primary.bundle.timeline,
+      insights: primary.bundle.insights,
+      charts: charts,
+      windows: windows,
+    );
   }
 
   @override

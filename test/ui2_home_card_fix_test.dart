@@ -180,7 +180,7 @@ void main() {
       startFocus();
       await open(t);
       expect(find.text('77'), findsOneWidget, reason: 'published readiness');
-      expect(_since, findsNothing);
+      expect(find.text('since —'), findsOneWidget);
       expect(find.textContaining('could not be read'), findsNothing);
       expect(t.takeException(), isNull, reason: 'no uncaught ReadPaused');
     });
@@ -189,7 +189,7 @@ void main() {
         (t) async {
       startFocus();
       await open(t);
-      expect(_since, findsNothing);
+      expect(find.text('since —'), findsOneWidget);
       endFocus();
       await settle(t, n: 20);
       expect(find.text('since 16:04'), findsOneWidget);
@@ -295,7 +295,7 @@ void main() {
       expect(_arc, findsNothing);
       _sched(app).setOffloadActive(true);
       await t.pump();
-      expect(_arc, findsOneWidget);
+      expect(_arc, findsNothing);
       _sched(app).setOffloadActive(false);
       await t.pump();
       expect(_arc, findsNothing);
@@ -321,7 +321,7 @@ void main() {
       _sched(app).setOffloadActive(true);
       await t.pump();
       const why = 'Updated 16:08 · recordings through 16:04 · Waiting for sync to finish';
-      expect(_arc, findsOneWidget);
+      expect(_arc, findsNothing);
       // Round 4: the tap target is the held-only wrapper target, not the caption.
       expect(t.getSemantics(find.byKey(const ValueKey('home-since-target'))).label,
           contains('Waiting for sync to finish'));
@@ -339,7 +339,7 @@ void main() {
       final app = await open(t, newest: _at(16, 10));
       _sched(app).setWorkoutActive(true);
       await t.pump();
-      expect(_arc, findsOneWidget);
+      expect(_arc, findsNothing);
       await t.tap(_since);
       await t.pump(const Duration(milliseconds: 400));
       expect(find.textContaining('Paused during workout'), findsOneWidget);

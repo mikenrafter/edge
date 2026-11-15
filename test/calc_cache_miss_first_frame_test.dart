@@ -1,27 +1,15 @@
 // A cache-miss open never awaits a compute in a build path.
 //
 // With nothing stored for the screen and its read still pending (a
-// Completer-gated repository), the FIRST frame is the page shell plus an
-// InlineLoading in the section that waits. Never a bare spinner, never a blank
+// Completer-gated repository), the FIRST frame is the page shell plus a
+// skeleton in the section that waits. Never a bare spinner, never a blank
 // page, and never a made-up "Updated" time: with no stored result there is no
 // staleness line (§3.3; the line itself is pinned in staleness_text_test.dart
 // and staleness_screen_test.dart).
 //
-// ASSUMED (all new behaviour is on the screens; no new API beyond
-// AppState.requestWarm, see warm_request_test.dart):
-//   * Home's loading state is an InlineLoading (it is a bare
-//     `Center(CircularProgressIndicator())` today), under the sync line.
-//     Health and Sleep detail already show one; they are pinned here so the
-//     cache-first work cannot regress them.
-//   * Every ProgressIndicator on a loading first frame is inside an
-//     InlineLoading.
-//   * Beats (an artifact screen: 'beats|<night>') on a cache MISS shows the
-//     shell (title, the night header) and the section's InlineLoading, does
-//     NOT run the corrected-RR read itself (repo.getNightBeats is not called by
-//     the screen) and ENQUEUES the warm: AppState.requestWarm('beats|<night>'),
-//     observed through app.debugArtifactSource. When the warm lands the screen
-//     re-reads (revision bump), finds the stored result fresh and drops the
-//     loading state; the screen still never calls getNightBeats.
+// CLAIM cache-miss-shell: first-frame pending content is a shared skeleton,
+// with zero progress indicators. Beats still enqueues its artifact warmer;
+// it never computes corrected RR through the screen's repository read.
 
 import 'dart:async';
 
@@ -49,20 +37,15 @@ const _db = 'cache_miss_first_frame_test.db';
 final _bars = find.byWidgetPredicate((w) => w is ProgressIndicator,
     description: 'a ProgressIndicator');
 
-/// Every spinner on screen sits inside an InlineLoading.
-void _expectOnlyInlineLoading(String screen) {
-  expect(find.byType(InlineLoading), findsWidgets,
-      reason: '$screen: the section that waits says so');
-  for (final e in _bars.evaluate()) {
-    final inline = find
-        .ancestor(
-            of: find.byElementPredicate((x) => identical(x, e)),
-            matching: find.byType(InlineLoading))
-        .evaluate()
-        .isNotEmpty;
-    expect(inline, isTrue,
-        reason: '$screen: a spinner outside InlineLoading is a bare spinner');
-  }
+final _pending = find.byWidgetPredicate(
+    (w) => w is PendingContent && w.pending,
+    description: 'an active pending section');
+
+void _expectPendingSection(String screen) {
+  expect(_pending, findsWidgets,
+      reason: '$screen: the section that waits reserves its loading layout');
+  expect(_bars, findsNothing,
+      reason: '$screen: loading uses placeholders without progress indicators');
 }
 
 AppState _app(LocalRepository repo) {
@@ -154,7 +137,7 @@ void main() {
   }
 
   group('first frame, read pending', () {
-    testWidgets('Home: the page and an InlineLoading, no bare spinner, no '
+    testWidgets('Home: the page and pending placeholders, no bare spinner, no '
         'staleness text', (t) async {
       _tall(t);
       await fresh(t);
@@ -163,7 +146,7 @@ void main() {
       await t.pump(); // post-frame: the load starts and stays pending
       expect(repo.reads, 1, reason: 'the read is in flight');
 
-      _expectOnlyInlineLoading('Home');
+      _expectPendingSection('Home');
       expect(find.textContaining('Updated '), findsNothing,
           reason: 'nothing stored, so no time is shown');
       expect(find.byKey(const ValueKey('as-of-label')), findsNothing);
@@ -176,8 +159,8 @@ void main() {
       expect(find.text('70'), findsOneWidget);
     });
 
-    testWidgets('Health: the title and tabs stay, the body is an '
-        'InlineLoading', (t) async {
+    testWidgets('Health: the title and tabs stay, the body has '
+        'pending placeholders', (t) async {
       _tall(t);
       await fresh(t);
       final repo = _SlowHealth();
@@ -186,13 +169,12 @@ void main() {
       expect(repo.reads, 1);
 
       expect(find.text('Health'), findsWidgets);
-      _expectOnlyInlineLoading('Health');
-      expect(find.byType(InlineLoading), findsOneWidget);
+      _expectPendingSection('Health');
       expect(find.textContaining('Updated '), findsNothing);
       expect(t.takeException(), isNull);
     });
 
-    testWidgets('Sleep detail: the title and an InlineLoading, no staleness '
+    testWidgets('Sleep detail: the title and pending placeholders, no staleness '
         'text', (t) async {
       _tall(t);
       await fresh(t);
@@ -203,19 +185,18 @@ void main() {
       expect(repo.reads, greaterThanOrEqualTo(1));
 
       expect(find.text('Sleep'), findsWidgets);
-      _expectOnlyInlineLoading('Sleep detail');
-      expect(find.byType(InlineLoading), findsOneWidget);
+      _expectPendingSection('Sleep detail');
       expect(find.textContaining('Updated '), findsNothing);
       expect(t.takeException(), isNull);
 
       repo.gate.complete();
       await settle(t);
-      expect(find.byType(InlineLoading), findsNothing);
+      expect(_pending, findsNothing);
     });
   });
 
   group('Beats: a miss enqueues the warm', () {
-    testWidgets('shell + inline loading, no inline compute, the warm is '
+    testWidgets('shell + placeholders, no inline compute, the warm is '
         'requested, and its result lands fresh', (t) async {
       _tall(t);
       await fresh(t);
@@ -254,7 +235,7 @@ void main() {
       expect(find.textContaining('Night of'), findsOneWidget,
           reason: 'the night header does not wait for the read');
       expect(find.text('Every beat against the one before it'), findsOneWidget);
-      _expectOnlyInlineLoading('Beats');
+      _expectPendingSection('Beats');
       expect(repo.beatsCalls, 0,
           reason: 'the screen does not run the corrected-RR compute itself');
       expect(src.computeStarted.where((k) => k.startsWith('beats|')), hasLength(1),
@@ -263,7 +244,7 @@ void main() {
 
       warmGate.complete();
       await settle(t, n: 30);
-      expect(find.byType(InlineLoading), findsNothing,
+      expect(_pending, findsNothing,
           reason: 'the warmed result was found fresh and drawn');
       expect(repo.beatsCalls, 0);
       expect(t.takeException(), isNull);

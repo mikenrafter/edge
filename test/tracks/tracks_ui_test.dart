@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/med_store.dart';
 import 'package:openstrap_edge/data/tracks_store.dart';
@@ -14,10 +15,15 @@ import '../support/bundled_fonts.dart';
 import 'ui_support.dart';
 
 Future<void> _expand(WidgetTester t, String label) async {
-  await t.ensureVisible(find.text(label));
+  final accordion = find.byWidgetPredicate((w) => w is SettingsAccordion && w.title == label || w is ExpansionTile && w.title is Text && (w.title as Text).data == label);
+  await t.scrollUntilVisible(accordion, 300, scrollable: find.byType(Scrollable).first);
+  final header = find.descendant(of: accordion, matching: find.text(label)).first;
+  await t.ensureVisible(header);
   await t.pumpAndSettle();
-  await t.tap(find.text(label));
-  await t.pumpAndSettle();
+  if (t.widget(accordion) is ExpansionTile || find.descendant(of: accordion, matching: find.byType(Divider)).evaluate().isEmpty) {
+    await t.tap(header);
+    await t.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -129,7 +135,10 @@ void main() {
     await t.enterText(find.byKey(const ValueKey('track-detection-max')), '2');
     await t.tap(find.byKey(const ValueKey('track-save')));
     await t.pumpAndSettle();
-    expect(find.byKey(const ValueKey('track-form-error')), findsOneWidget);
+    final error = find.byKey(const ValueKey('track-form-error'));
+    expect(error, findsOneWidget);
+    expect(t.getRect(error).top, greaterThanOrEqualTo(0));
+    expect(t.getRect(error).bottom, lessThan(t.view.physicalSize.height / t.view.devicePixelRatio));
     expect(find.byType(TrackEditor), findsOneWidget);
     final saved = (await t.runAsync(
       () => store.definitions(),

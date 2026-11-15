@@ -1,3 +1,4 @@
+import 'review_read_label.dart';
 // The open breakdown owns staged decisions. Durable writes go
 // through the repository batch, serialized with the existing moment service.
 import 'dart:async';
@@ -48,6 +49,8 @@ class DayReviewEntry extends StatefulWidget {
 class _DayReviewEntryState extends State<DayReviewEntry> {
   String? _day;
   List<PendingMoment>? _moments;
+  String _waitingFor = 'moments';
+  ReviewReadSnapshot? _snapshot;
   @override
   void initState() {
     super.initState();
@@ -56,6 +59,7 @@ class _DayReviewEntryState extends State<DayReviewEntry> {
   Future<void> _open() async {
     final repo = repoOf(context);
     var marks = widget.moments;
+    MomentFollowUps? followUps;
     var day = marks?.isNotEmpty == true ? marks!.first.date :
         widget.editor?.preloadedAssumed?.firstOrNull?.date;
     try {
@@ -63,15 +67,19 @@ class _DayReviewEntryState extends State<DayReviewEntry> {
         final g = context.read<AppState>().gestureSettings;
         final f = await MomentFollowUps.load(enabledSince:
             g.followUpMoments ? g.followUpMomentsSince : null);
+        followUps = f;
         marks = f.pending(widget.editor?.now ?? DateTime.now());
         if (marks.isNotEmpty) day = marks.first.date;
         day ??= f.pendingAssumed(widget.editor?.now ?? DateTime.now()).firstOrNull?.date;
       }
+      if (mounted) setState(() => _waitingFor = 'activities');
       final activities = widget.activities ?? await repo?.pendingActivities() ?? [];
+      _snapshot = (activities: activities, followUps: followUps);
       final focus = activities.where((s) => s.id == widget.focusId).firstOrNull;
       day = focus == null ? day ?? (activities.isEmpty ? null : _activityDay(activities.first)) : _activityDay(focus);
       day ??= (widget.service ?? MomentReviewService.shared).queue.ranges
           .where((r) => r.inProgress).firstOrNull?.startKey.split(' ').first;
+      if (day == null && mounted) setState(() => _waitingFor = 'days');
       day ??= (await repo?.availableDays())?.firstOrNull;
     } catch (_) {
       // The breakdown's queue read owns the visible retry state.
@@ -84,17 +92,17 @@ class _DayReviewEntryState extends State<DayReviewEntry> {
     }
   }
   @override
-  Widget build(BuildContext c) => _day == null
-      ? Scaffold(body: Center(child: Text(AppLocalizations.of(c)?.loadingActivitiesToReview ??
-          'Reading activities to review')))
-      : DayTimelineScreen(day: _day, focusId: widget.focusId, reviewActivities: widget.activities, reviewMoments: _moments,
-          reviewService: widget.service, reviewEditor: widget.editor);
+  Widget build(BuildContext c) => DayTimelineScreen(
+      reviewEntry: true, resolving: _day == null, resolvingLabel: reviewReadLabel(_waitingFor, AppLocalizations.of(c)), day: _day, focusId: widget.focusId,
+      reviewActivities: widget.activities, reviewMoments: _moments,
+      reviewService: widget.service, reviewEditor: widget.editor, reviewSnapshot: _snapshot);
 }
+
+typedef ReviewReadSnapshot = ({List<ActivitySuggestion> activities, MomentFollowUps? followUps});
 
 class DayReviewController extends ChangeNotifier {
   DayReviewController(this.repo, this.day, {MomentReviewService? service,
-      this.moments, this.editor, this.enabledSince, this.activities,
-      this.pilot = false}) : service = service ?? MomentReviewService.shared {
+      this.moments, this.editor, this.enabledSince, this.activities, this.pilot = false, ReviewReadSnapshot? snapshot}) : _snapshot = snapshot, service = service ?? MomentReviewService.shared {
     _drafts.addAll(this.service.queue.decisions);
     _ranges.addAll(this.service.queue.ranges.where((r) =>
         r.startKey.startsWith('$day ')));
@@ -234,6 +242,7 @@ class DayReviewController extends ChangeNotifier {
     });
     _restores.clear();
   }
+  ReviewReadSnapshot? _snapshot;
   final List<ActivitySuggestion>? activities;
   final LocalRepository repo;
   final String day;
@@ -345,12 +354,14 @@ class DayReviewController extends ChangeNotifier {
     loadFailed = false;
     _changed();
     try {
-      final activities = this.activities ?? await repo.pendingActivities();
+      final snapshot = _snapshot;
+      _snapshot = null;
+      final activities = this.activities ?? snapshot?.activities ?? await repo.pendingActivities();
       // Supplied marks passed the setting/window policy, but their answered
       // state may have changed since the entry opened.
       final now = editor?.now ?? DateTime.now();
-      final f = moments == null || editor?.preloadedAssumed == null
-          ? await MomentFollowUps.load(enabledSince: enabledSince, now: now) : null;
+      final f = snapshot?.followUps ?? (moments == null || editor?.preloadedAssumed == null
+          ? await MomentFollowUps.load(enabledSince: enabledSince, now: now) : null);
       final dates = [for (final m in moments ?? const <PendingMoment>[]) m.date]..sort();
       // An empty snapshot has no answered state to refresh. Activity-only
       // review must not depend on a separate moment-label read.
@@ -915,7 +926,7 @@ class DayReviewActions extends StatelessWidget {
   }
 }
 
-/// Load, save and follow-up problems, at the top of the list.
+/// Load, save and follow-up problems, inside the reserved footer.
 class DayReviewNotices extends StatelessWidget {
   const DayReviewNotices({super.key, required this.controller, this.reloader});
   final DayReviewController? controller;
@@ -952,7 +963,6 @@ class DayReviewSaveBar extends StatelessWidget {
     }
     final n = r.stagedCount;
     return Container(
-      key: const ValueKey('apk2-review-savebar'),
       decoration: BoxDecoration(color: p.card,
           border: Border(top: BorderSide(color: p.line)),
           boxShadow: [for (final s in p.el(3)) BoxShadow(color: s.color,

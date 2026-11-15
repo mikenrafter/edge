@@ -10,6 +10,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:clock/clock.dart' as pc;
 import 'package:provider/provider.dart';
 
@@ -170,12 +171,17 @@ class StatusLine extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: Padding(
             padding: _pad,
-            child: Text(text,
+            child: Row(children: [
+              if (der != null || app.syncPresentation.phase == 'deriving') ...[
+                Icon(der?.crossDay == true ? LucideIcons.chartNoAxesColumn : LucideIcons.activity,
+                  size: 14, color: p.ink3),
+                const SizedBox(width: S.x1),
+              ],
+              Expanded(child: Text(text,
                 style: F.cap.copyWith(color: p.ink3),
-                strutStyle:
-                    StrutStyle.fromTextStyle(F.cap, forceStrutHeight: true),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
+                strutStyle: StrutStyle.fromTextStyle(F.cap, forceStrutHeight: true),
+                maxLines: 1, overflow: TextOverflow.ellipsis)),
+            ]),
           ),
         ),
       ),
