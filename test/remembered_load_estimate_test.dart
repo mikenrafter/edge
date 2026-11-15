@@ -20,7 +20,7 @@ void main() {
     memory.record('third',400);memory.record('fourth',500);
     expect(memory.estimate('section'),isNull,reason:'the oldest key must be evicted');
     await Future<void>.value();
-    await SettingsRepository.instance.appString(LoadMemory.prefKey);
+    await SettingsRepository.instance.update((_) {}, sections: const {});
     final restored=LoadMemory(userKey:()=>user,limit:4);
     expect(restored.estimate('third'),400);
     expect(prefsKeyBackedUp(LoadMemory.prefKey),isFalse);

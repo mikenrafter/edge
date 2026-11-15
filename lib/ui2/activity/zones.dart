@@ -307,7 +307,11 @@ class _ZonesDetailState extends State<ZonesDetail> {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final profile = context.read<AppState>().user;
+    Map<String,dynamic>? profile;
+    if (_d == null) {
+      try { profile = context.read<AppState>().user; }
+      on ProviderNotFoundException { /* Fixture or gallery without a profile. */ }
+    }
     final manual = manualZoneBoundsFromProfile(profile);
     final d =
         _d ??

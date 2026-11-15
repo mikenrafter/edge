@@ -85,10 +85,6 @@ class GuidePlaceholderPaint {
       }
       if (ro is RenderParagraph) {
         final frame = e.findAncestorWidgetOfExactType<ChartFrame>();
-        if (preserveChrome &&
-            frame != null &&
-            e.findAncestorWidgetOfExactType<ChartKeyReadout>() == null)
-          return;
         if (frame != null && ro.text.toPlainText() != frame.title &&
             (!includeChartReadout || e.findAncestorWidgetOfExactType<ChartKeyReadout>() == null)) {
           hidden.add(ro);

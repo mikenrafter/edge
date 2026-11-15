@@ -132,12 +132,7 @@ void main() {
         (t) async {
       await _pumpBody(t, _moments([for (var i = 0; i < 5; i++) _ev(14, i)]));
       expect(find.text('$_tapTitle · 5 times'), findsOneWidget);
-      // First launch expands the group; the person's folded choice persists.
-      for (var i = 0; i < 5; i++) {
-        expect(find.text(clockOfTs(_ts(i))), findsWidgets);
-      }
-      await t.tap(find.text('$_tapTitle · 5 times'));
-      await t.pumpAndSettle();
+      // Owner R2-7: repeated-event groups start collapsed and are not saved.
       for (var i = 1; i < 5; i++) {
         expect(find.text(clockOfTs(_ts(i))), findsNothing);
       }

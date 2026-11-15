@@ -769,11 +769,10 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           ),
         );
         if (readRough) unawaited(_loadRough(repo, d.day!, gen));
-        final dates = [
-          if (d.day != null) d.day!,
-          if (d.day != null) dayLabelBefore(d.day!, 1)!,
-          if (d.day != null) dayLabelBefore(d.day!, -1)!,
-        ];
+        final index=d.days.indexOf(d.day ?? '');
+        final dates = [if(d.day != null) d.day!,
+          if(index >= 0 && index+1 < d.days.length) d.days[index+1],
+          if(index > 0) d.days[index-1]];
         unawaited(
           ReadPrefetch.shared.warm(
             'sleep',
@@ -810,11 +809,12 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     final release = ReadPrefetch.shared.visibleRead('sleep-rough');
     try {
       final rough = await _roughOrNull(repo, day);
-      if (mounted && gen == _loadGen)
+      if (mounted && gen == _loadGen) {
         setState(() {
           _rough = rough;
           _roughPending = false;
         });
+      }
     } finally {
       release();
     }
@@ -897,10 +897,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       return _frame(c, title, [
         ..._dayNav(d),
         ..._nightControls(d, recalc: false),
-        if (d.night['calculation_error'] case final String error) StatusCard('Sleep calculation', error),
-        if (recalculating) const PendingContent(pending: true, child: StatusCard(
-          'Recalculating this night', 'Your times are saved. Measurements will appear when ready.'))
-        else _answer(c, p, d, d.night),
+        _answerSlot(c, p, d, d.night),
         const SizedBox(height: S.x3),
         _nightAccordion(c, [
         _night(c, p, d, d.night,
@@ -940,9 +937,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
                     'No stretch of band recordings long enough to score.'),
             icon: LucideIcons.moon,
           ),
-        if (_saving)
-          Text('Saving times…',
-              style: F.cap.copyWith(color: P.of(c).ink3)),
         // A day with no main-sleep window can still have naps — worn all
         // day, off overnight, or a rejected night — so this door to the naps
         // screen does not live inside the window card.
@@ -964,7 +958,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       ..._nightControls(d),
 
       // ── 1 · THE ANSWER ──
-      _answer(c, p, d, n),
+      _answerSlot(c, p, d, n),
 
       // ── 2 · THE NIGHT ITSELF ──
       const SizedBox(height: S.x3),
@@ -1149,6 +1143,31 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   // All variable content lives under a disclosure. Let it fit its contents.
   Widget _sectionViewport(BuildContext c, Widget child, {required double height}) => child;
 
+  /// The answer's place on the page, for the pushed screen and the Sleep tab
+  /// alike: a failed calculation says so, a night still being recalculated
+  /// shows a pending card instead of numbers, otherwise the answer; a write in
+  /// flight adds its line underneath. One builder so the tab can never lose
+  /// the recalculating and failure states the pushed screen shows.
+  Widget _answerSlot(
+      BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (n['calculation_error'] case final String error)
+          StatusCard('Sleep calculation', error),
+        if (n['recalculating'] == true)
+          const PendingContent(
+              pending: true,
+              child: StatusCard('Recalculating this night',
+                  'Your times are saved. Measurements will appear when ready.'))
+        else
+          _answer(c, p, d, n),
+        if (_saving)
+          Text('Saving times…', style: F.cap.copyWith(color: p.ink3)),
+      ],
+    );
+  }
+
   /// Total sleep, when it ran, and the two ratios that qualify it. Everything
   /// here is measured; nothing is a judgement.
   Widget _answer(BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
@@ -1166,8 +1185,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         SizedBox(width: double.infinity, child: Text(tst == null ? '—' : hm(tst), style: F.n48.copyWith(color: p.ink))),
         const SizedBox(height: S.x1),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: Text(l?.sleepDetailTotalSleep ?? 'Total sleep',
-            style: F.cap.copyWith(color: p.ink3))),
+          Expanded(child: PendingStatic(child: Text(l?.sleepDetailTotalSleep ?? 'Total sleep',
+            style: F.cap.copyWith(color: p.ink3)))),
           Flexible(child: _asOf(d)),
         ]),
         // Both rows are always here: with no night they read "—", so the card
@@ -2112,7 +2131,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         width: 10,
         height: 10,
         decoration: BoxDecoration(color: s.$3, shape: BoxShape.circle));
-    final name = Text(s.$1, style: F.body.copyWith(color: p.ink));
+    final name = PendingStatic(child: Text(s.$1, style: F.body.copyWith(color: p.ink)));
     final value = Text(s.$2,
         textAlign: TextAlign.right,
         style: F.cap.copyWith(color: p.ink, fontWeight: FontWeight.w600));

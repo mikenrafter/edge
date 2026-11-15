@@ -181,6 +181,24 @@ class _FindingsLogState extends State<FindingsLog> {
                     ),
                 ],
               ),
+              // Slot-centred dates share the plot cells and precede its readout.
+              axisFooter: Row(
+                children: [
+                  for (final day in days)
+                    Expanded(
+                      child: TextButton(
+                        key: ValueKey('observation-day:$day'),
+                        onPressed: () => setState(() => _focus = day),
+                        child: Text(
+                          day.substring(8),
+                          style: F.cap.copyWith(
+                            color: day == focus ? p.ink : p.ink3,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
               child: Scrubber(
                 hold: true,
                 label: l.findingsLogTitle,
@@ -200,24 +218,6 @@ class _FindingsLogState extends State<FindingsLog> {
                   top: axisTop,
                   p: p,
                 ),
-              ),
-              // Slot-centred dates share the plot cells and precede its readout.
-              axisFooter: Row(
-                children: [
-                  for (final day in days)
-                    Expanded(
-                      child: TextButton(
-                        key: ValueKey('observation-day:$day'),
-                        onPressed: () => setState(() => _focus = day),
-                        child: Text(
-                          day.substring(8),
-                          style: F.cap.copyWith(
-                            color: day == focus ? p.ink : p.ink3,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
               ),
             ),
           ],

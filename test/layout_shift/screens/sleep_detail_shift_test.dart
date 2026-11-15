@@ -70,7 +70,8 @@ void main() {
     await settle(t, until: () => find.byWidgetPredicate(
       (w) => w is PendingContent && w.pending).evaluate().isEmpty,
       what: 'the initial night has settled');
-    expect(repo.daysRead.last, todayId);
+    expect(repo.daysRead, contains(todayId));
+    expect(t.widget<DayNav>(find.byType(DayNav)).day, todayId);
     run.probe.frames.clear(); // the tap phase starts after the cold read
     run.now = 0;
     final prev = find.descendant(of: find.byType(DayNav),
@@ -78,11 +79,14 @@ void main() {
     expect(prev, findsOneWidget, reason: 'the day stepper must be on screen');
     await run.tap(prev);
     await t.pump(const Duration(seconds: 3));
-    await settle(t, until: () => repo.daysRead.last == yesterdayId,
+    await settle(t, until: () => repo.daysRead.contains(yesterdayId) &&
+      t.widget<DayNav>(find.byType(DayNav)).day == yesterdayId &&
+      find.byWidgetPredicate((w)=>w is PendingContent && w.pending).evaluate().isEmpty,
       what: 'previous night was read');
     run.now += 16;
     run.snap();
-    expect(repo.daysRead.last, yesterdayId);
+    expect(repo.daysRead, contains(yesterdayId));
+    expect(t.widget<DayNav>(find.byType(DayNav)).day, yesterdayId);
     run.expectNoErrors('sleep detail step to previous day');
   });
 }

@@ -123,7 +123,7 @@ void main() {
     await t.pump(const Duration(milliseconds: 100));
     await t.pumpWidget(page(false));
     await t.pump(const Duration(milliseconds: 500));
-    expect(tone().fade, 0, reason: 'completed fast reads cancel delayed paint');
+    expect(tone().fade, 1, reason: 'a completed fast read cancels placeholder paint and reveals the new data');
     await t.pumpWidget(const SizedBox());
   });
 }
