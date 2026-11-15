@@ -3817,7 +3817,7 @@
   "helpEmpty": "Il n’existe pas encore de guide pour votre bracelet.",
   "guideAnotherWayInTitle": "Un autre chemin",
   "guideAlarmTitle": "Où régler une alarme, ou une heure différente chaque jour",
-  "guideAlarmStep1": "Dans l’onglet **{tab}**, faites défiler jusqu’à **{section}** et touchez **{row}**.",
+  "guideAlarmStep1": "Dans l’onglet **{tab}**, touchez **{row}**.",
   "guideAlarmStep2": "Touchez l’onglet du jour voulu, par exemple **{day}**, puis la première ligne en dessous pour activer ce jour.",
   "guideAlarmStep3": "Touchez ensuite **{wake}** sous ce jour et choisissez l’heure. Chaque jour peut avoir sa propre heure.",
   "guideAlarmAltBody": "Ouvrez **{settings}**, puis touchez **{alarm}**.",

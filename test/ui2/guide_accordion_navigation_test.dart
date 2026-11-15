@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/grammar.dart';
+import 'package:openstrap_edge/ui2/app_shell.dart';
+import 'package:openstrap_edge/ui2/guides/guide_runner.dart';
 import 'package:openstrap_edge/ui2/activity/picker.dart';
 import 'package:openstrap_edge/ui2/activity/catalogue.dart';
 import 'package:openstrap_edge/ui2/guides/guide.dart';
@@ -35,15 +37,15 @@ Guide _guide() => Guide(id: 'accordion-test', title: fnText((_) => 'Accordion te
     target: GuideTarget.key(_target), anchor: GuideTarget.key(_target),
     action: GuideAction.tap, caption: fnText((_) => 'Tap the action.'))])]);
 
-Future<LiveGuideApp> _fixture(WidgetTester t, {bool nested = false, bool lazy = false, bool collapsed = true, Locale locale = const Locale('en')}) async {
+Future<LiveGuideApp> _fixture(WidgetTester t, {bool nested = false, bool lazy = false, bool collapsed = true, String title = 'Outer', double textScale = 1, Locale locale = const Locale('en')}) async {
   _unrelatedTaps = 0;
   Widget body = Pressable(key: _target, onTap: () {}, child: const Text('The action'));
   if (lazy) { final child = body; body = Builder(builder: (_) => child); }
   if (nested) body = SettingsAccordion('Inner', initiallyExpanded: false, children: [body]);
-  final app = await pumpLiveGuideApp(t, locale: locale, size: r2Size,
+  final app = await pumpLiveGuideApp(t, locale: locale, size: r2Size, textScale: textScale,
     home: GuideLocation(node: GuideNode.sleep, child: Scaffold(body: SafeArea(child: SingleChildScrollView(
       child: Column(children: [const SizedBox(height: 80),
-        SettingsAccordion('Outer', initiallyExpanded: !collapsed, children: [body]),
+        SettingsAccordion(title, initiallyExpanded: !collapsed, children: [body]),
         for (var i = 0; i < 5; i++) Surface(child: Pressable(onTap: () => _unrelatedTaps++, child: Text('Unrelated $i'))),
         SettingsAccordion('Elsewhere', initiallyExpanded: false, children: const [Text('Other content')]),
       ]))))));
@@ -120,6 +122,10 @@ void main() {
     scroll.position.jumpTo(scroll.position.maxScrollExtent);
     await settleLiveGuide(t, frames: 15);
     final header = find.ancestor(of: find.text('Elsewhere'), matching: find.byType(Pressable)).first;
+    final headerRect = t.getRect(header);
+    final cardRect = t.getRect(find.ancestor(of: header, matching: find.byType(GuideBox)).first);
+    expect(headerRect.left, cardRect.left, reason: 'navigation reaches the card edge without a dim seam');
+    expect(headerRect.right, cardRect.right);
     final plan = app.runner.dim.looks!;
     expect(plan.lookOf(t.element(header)), isNull, reason: 'headers are navigation, including off focus');
     final ink = _overlay(t).layerInk;
@@ -131,7 +137,7 @@ void main() {
     await t.tapAt(unrelated);
     await settleLiveGuide(t);
     expect(_unrelatedTaps, 0, reason: 'placeholder consumes the actual pointer');
-    await t.tap(header);
+    await t.tapAt(Offset(headerRect.left + 2, headerRect.center.dy));
     await settleLiveGuide(t);
     expect(find.text('Other content'), findsOneWidget);
     expect(_run(t).state, isA<GuideAtStep>());
@@ -177,35 +183,109 @@ void main() {
     });
   }
 
+  // WHY: runtime section names can be much longer than the old one-word tap
+  // label, particularly with larger text. catches: an unconstrained pill Row.
+  testWidgets('long expansion labels wrap inside the available width', (t) async {
+    const title = 'Alarm settings and your natural sleep and wake schedule';
+    await _fixture(t, title: title, textScale: 1.5);
+    final pill = t.getRect(find.byKey(LiveGuideOverlay.tapPillKey));
+    expect(pill.left, greaterThanOrEqualTo(0));
+    expect(pill.right, lessThanOrEqualTo(r2Size.width));
+    expect(find.text('Expand $title'), findsWidgets);
+    await _expand(t, title);
+    expect(_overlay(t).targetRect, t.getRect(find.byKey(_target)));
+  });
+
   // WHY: real Sleep wiring must survive the five-card reorganisation; identify
   // the containing accordion structurally, never by its title or remembered id.
   for (final guideId in ['alarm-schedule', 'fix-sleep-times']) {
     testWidgets('$guideId reaches its action with all Sleep accordions collapsed', (t) async {
-      final scene = r2Scenes.firstWhere((s) => s.guide == guideId);
-      final m = await pumpR2Scene(t, scene, brightness: Brightness.dark);
+      final app = await pumpLiveGuideApp(t, brightness: Brightness.dark, size: r2Size);
+      final shell = t.state(find.byType(AppShell)) as ShellNavigationController;
+      shell.selectDomain(ShellDomain.sleep);
+      await settleLiveGuide(t, frames: 15);
+      // Discover the real lazy page before collecting section identities. The
+      // first viewport of the five-card Sleep layout may contain no accordion.
+      final ids = <String>{};
+      final titles = <String, String>{};
+      final target = r2Guide(guideId).variants.single.steps.first.target;
+      List<String>? targetOwners;
+      final scroll = find.byType(Scrollable).evaluate().whereType<StatefulElement>()
+          .map((e) => e.state).whereType<ScrollableState>()
+          .firstWhere((s) => s.position.axis == Axis.vertical).position;
+      for (var frame = 0; frame < 40; frame++) {
+        final sections = t.widgetList<SettingsAccordion>(find.byType(SettingsAccordion)).toList();
+        for (final section in sections) {
+          titles[section.id!] = section.title;
+          if (!ids.add(section.id!)) continue;
+          final accordion = find.byWidgetPredicate((w) => w is SettingsAccordion && w.id == section.id);
+          final header = find.descendant(of: accordion, matching: find.byType(Pressable)).first;
+          await Scrollable.ensureVisible(t.element(header), duration: Duration.zero, alignment: .5);
+          await t.pump();
+          final collapsed = find.descendant(of: header, matching: find.byWidgetPredicate((w) =>
+            w is Semantics && (w.properties.label?.endsWith(', collapsed') ?? false)));
+          if (collapsed.evaluate().isNotEmpty) {
+            await t.tap(header);
+            await settleLiveGuide(t, frames: 3);
+          }
+        }
+        final resolution = target.resolve(app.runner.routes.page!, r2Locale);
+        if (resolution is TargetFound) {
+          final control = find.byElementPredicate((e) => e is RenderObjectElement && identical(e.renderObject, resolution.renderObject), skipOffstage: false);
+          expect(control, findsOneWidget, reason: 'fixture observes the actual target before folding');
+          final owners = <String>[];
+          t.element(control).visitAncestorElements((e) {
+            if (e.widget case SettingsAccordion(:final id)) owners.add(id!);
+            return true;
+          });
+          targetOwners = owners.reversed.toList();
+        }
+        if (scroll.extentAfter <= .5) break;
+        scroll.jumpTo((scroll.pixels + scroll.viewportDimension * .7).clamp(scroll.minScrollExtent, scroll.maxScrollExtent));
+        await settleLiveGuide(t, frames: 2);
+      }
+      expect(ids, isNotEmpty, reason: 'positive control: the real Sleep page has sections to collapse');
+      expect(targetOwners, isNotNull, reason: 'positive control: the unfolded page really contains the target');
+      if (guideId == 'alarm-schedule') expect(targetOwners, isNotEmpty);
+      debugPrint('Collapsed guide fixture: $guideId sections $ids; target ancestors $targetOwners');
+      for (final id in ids.toList().reversed) {
+        await pumpGuideSearch(t, revealTarget(app.runner.routes.page!, GuideTarget.key(ValueKey('accordion_$id')), r2Locale));
+        final accordion = find.byWidgetPredicate((w) => w is SettingsAccordion && w.id == id);
+        expect(accordion, findsOneWidget, reason: 'fixture can reveal section $id');
+        final header = find.descendant(of: accordion, matching: find.byType(Pressable)).first;
+        await Scrollable.ensureVisible(t.element(header), duration: Duration.zero, alignment: .5);
+        await t.pump();
+        final labels = find.descendant(of: header, matching: find.byType(Semantics)).evaluate()
+            .map((e) => (e.widget as Semantics).properties.label ?? '');
+        if (labels.any((s) => s.endsWith(', expanded'))) await t.tap(header);
+        await settleLiveGuide(t, frames: 3);
+        expect(find.descendant(of: header, matching: find.byWidgetPredicate((w) =>
+          w is Semantics && (w.properties.label?.endsWith(', collapsed') ?? false))), findsOneWidget,
+          reason: 'fixture really collapsed $id through its header');
+      }
+      final started = await app.runner.start(r2Guide(guideId), band: null);
+      expect(started, isA<GuideStarted>());
+      final run = (started as GuideStarted).run;
+      final m = R2Mounted(app, run, null);
+      addTearDown(() { m.removeOverlay(); run.dispose(); });
       try {
         await settleMovingGuide(t);
-        final ids = t.widgetList<SettingsAccordion>(find.byType(SettingsAccordion)).map((w) => w.id!).toList().reversed;
-        for (final id in ids) {
-          await pumpGuideSearch(t, revealTarget(m.app.runner.routes.page!, GuideTarget.key(ValueKey('accordion_$id')), r2Locale));
-          final accordion = find.byWidgetPredicate((w) => w is SettingsAccordion && w.id == id);
-          expect(accordion, findsOneWidget, reason: 'fixture can reveal section $id');
-          final header = find.descendant(of: accordion, matching: find.byType(Pressable)).first;
-          await Scrollable.ensureVisible(t.element(header), duration: Duration.zero);
-          await t.pump();
-          final labels = find.descendant(of: header, matching: find.byType(Semantics)).evaluate()
-              .map((e) => (e.widget as Semantics).properties.label ?? '');
-          if (labels.any((s) => s.endsWith(', expanded'))) await t.tap(header, warnIfMissed: false);
-          await settleLiveGuide(t, frames: 3);
-        }
-        await settleMovingGuide(t);
         expect(find.byKey(LiveGuideOverlay.tapPillKey), findsOneWidget);
-        expect(t.widget<Text>(find.descendant(of: find.byKey(LiveGuideOverlay.tapPillKey), matching: find.byType(Text)).first).data, startsWith('Expand '));
-        await t.tapAt(_overlay(t).targetRect!.center);
-        await settleMovingGuide(t);
+        // The reorganised Sleep page puts the time correction in its always-open
+        // timeline card. Its empty ancestor list means zero expansion hops.
+        for (final owner in targetOwners!) {
+          expect(t.widget<Text>(find.descendant(of: find.byKey(LiveGuideOverlay.tapPillKey), matching: find.byType(Text)).first).data,
+              'Expand ${titles[owner]}');
+          await t.tapAt(_overlay(t).targetRect!.center);
+          await settleMovingGuide(t);
+        }
+        expect(t.widget<Text>(find.descendant(of: find.byKey(LiveGuideOverlay.tapPillKey), matching: find.byType(Text)).first).data, 'tap');
         expect(_overlay(t).targetRect, isNotNull);
         final found = m.run.currentStep!.target.resolve(m.app.runner.routes.page!, r2Locale);
         expect(found, isA<TargetFound>());
+        if (guideId == 'alarm-schedule') {
+          expect(m.run.currentStep!.caption.of(r2Locale), 'On the **Sleep** tab, tap **Alarm**.');
+        }
       } finally { await disposeR2(t, m); }
     });
   }

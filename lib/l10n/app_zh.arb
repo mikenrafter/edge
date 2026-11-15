@@ -3817,7 +3817,7 @@
   "helpEmpty": "你的手环暂时还没有指南。",
   "guideAnotherWayInTitle": "另一条路径",
   "guideAlarmTitle": "在哪里设置闹钟，或每天不同的时间",
-  "guideAlarmStep1": "在**{tab}**标签页向下滚动到**{section}**，点按**{row}**。",
+  "guideAlarmStep1": "在**{tab}**标签页点按**{row}**。",
   "guideAlarmStep2": "点按所需日期的标签，例如**{day}**，然后点按标签下方的第一行，开启该日。",
   "guideAlarmStep3": "然后点按该日下方的**{wake}**并选择时间。每天都可以有不同的时间。",
   "guideAlarmAltBody": "打开**{settings}**，然后点按**{alarm}**。",

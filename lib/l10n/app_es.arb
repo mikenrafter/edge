@@ -3835,7 +3835,7 @@
   "helpEmpty": "Todavía no hay guías para tu banda.",
   "guideAnotherWayInTitle": "Otra forma de llegar",
   "guideAlarmTitle": "Dónde poner una alarma, o una hora distinta cada día",
-  "guideAlarmStep1": "En la pestaña **{tab}**, desplázate hasta **{section}** y toca **{row}**.",
+  "guideAlarmStep1": "En la pestaña **{tab}**, toca **{row}**.",
   "guideAlarmStep2": "Toca la pestaña del día que quieras, por ejemplo **{day}**, y luego la primera fila de debajo para activar ese día.",
   "guideAlarmStep3": "Después toca **{wake}** bajo ese día y elige la hora. Cada día puede tener su propia hora.",
   "guideAlarmAltBody": "Abre **{settings}** y toca **{alarm}**.",

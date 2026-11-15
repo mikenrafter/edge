@@ -28,6 +28,7 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import '../skeleton/skeleton.dart';
 import '../skeleton/unit_paint.dart' show isIconParagraph;
 import 'tree_geometry.dart';
+import 'guide_accordion.dart';
 
 /// How a guide run wants one component drawn. A component absent from the plan
 /// (the target, caption-named content, chrome, the route-back control) is drawn
@@ -317,7 +318,7 @@ class GuidePlan implements GuideLooseLooks, GuideKeepsControls {
   GuideUnitLook? _unseen(Element unit) {
     final page = this.page;
     if (page == null) return null;
-    if (isGuideChromeWidget(unit.widget) || _keepControls.contains(unit)) return null;
+    if (unit.widget is GuideNavigationHeader || isGuideChromeWidget(unit.widget) || _keepControls.contains(unit)) return null;
     var onPage = false, outermost = true;
     unit.visitAncestorElements((a) {
       if (identical(a, page)) {
@@ -326,7 +327,7 @@ class GuidePlan implements GuideLooseLooks, GuideKeepsControls {
       }
       // Chrome built after the plan (a NavBar re-keyed by a rebuild) is no content: it is
       // never covered while it waits for the next plan [guide_r5_scenes_test R5-4].
-      if (isGuideChromeWidget(a.widget) || _keepControls.contains(a)) {
+      if (a.widget is GuideNavigationHeader || isGuideChromeWidget(a.widget) || _keepControls.contains(a)) {
         outermost = false;
         return false;
       }

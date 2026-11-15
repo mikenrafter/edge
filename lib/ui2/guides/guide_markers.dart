@@ -45,7 +45,7 @@ class GuideMarkerPill extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (leading != null) ...[leading!, const SizedBox(width: S.x1)],
-              Text(text, style: F.cap.copyWith(color: C.n900, fontWeight: FontWeight.w700)),
+              Flexible(child: Text(text, style: F.cap.copyWith(color: C.n900, fontWeight: FontWeight.w700))),
               if (arrow) ...[
                 const SizedBox(width: S.x1),
                 const Icon(LucideIcons.arrowRight, size: 14, color: C.n900),

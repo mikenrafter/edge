@@ -92,7 +92,7 @@ enum GuideCopy implements GuideText {
         GuideCopy.hrZonesFooter1Title => l.guideHrZonesMissingTitle(l.dayStrainTimeInZonesSection),
         GuideCopy.hrZonesFooter1Body => l.guideHrZonesMissingBody,
         GuideCopy.alarmTitle => l.guideAlarmTitle,
-        GuideCopy.alarmCaptionOpenAlarm => l.guideAlarmStep1(l.tabSleep, l.sleepTabMoreTitle, l.settingsAlarmRowTitle),
+        GuideCopy.alarmCaptionOpenAlarm => l.guideAlarmStep1(l.tabSleep, l.settingsAlarmRowTitle),
         GuideCopy.alarmCaptionPickDay => l.guideAlarmStep2(l.wellnessTue),
         GuideCopy.alarmCaptionSetWakeTime => l.guideAlarmStep3(l.alarmWakeTimeRowTitle),
         GuideCopy.alarmFooter0Title => l.guideAnotherWayInTitle,

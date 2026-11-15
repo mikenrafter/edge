@@ -570,7 +570,7 @@ class LiveGuideOverlayState extends State<LiveGuideOverlay> with TickerProviderS
     final page = _page;
     if (layer is! RenderBox || page == null) return const [];
     return [for (final e in onstageElements(page))
-      if (isGuideChromeWidget(e.widget))
+      if (e.widget is GuideNavigationHeader || isGuideChromeWidget(e.widget))
         if (laidOutBox(e) case final RenderBox box)
           rectInRoot(box, layer).intersect(visibleBoundsInRoot(box, layer))];
   }
@@ -1895,7 +1895,9 @@ class _GuideLayout extends MultiChildLayoutDelegate {
   void performLayout(Size size) {
     Rect? pill;
     if (hasChild('pill')) {
-      final pillSize = layoutChild('pill', BoxConstraints.loose(bounds.size));
+      // Runtime accordion titles can wrap. Keep the same six-pixel edge margin
+      // even when the wrapped label consumes all available width.
+      final pillSize = layoutChild('pill', BoxConstraints.loose(Size(math.max(0, bounds.width - 12), bounds.height)));
       if (centerPill) {
         final anchor = labelTarget ?? target!;
         final lo = (anchor.left + 6).clamp(bounds.left + 6, bounds.right).toDouble();

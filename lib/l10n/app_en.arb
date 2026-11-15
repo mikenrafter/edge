@@ -18770,21 +18770,15 @@
   "@guideAlarmTitle": {
     "description": "Title of the navigation guide for the weekly alarm schedule."
   },
-  "guideAlarmStep1": "On the **{tab}** tab, scroll down to **{section}** and tap **{row}**.",
+  "guideAlarmStep1": "On the **{tab}** tab, tap **{row}**.",
   "@guideAlarmStep1": {
-    "description": "Step 1 caption. Words between ** ** are bold and must be the in-app labels, passed in: {tab} is the Sleep tab name, {section} the \"Alarm and body clock\" heading, {row} the Alarm row.",
+    "description": "Step 1 caption. The Sleep tab and Alarm row names come from the screen labels. Accordion expansion is a separate runtime hop.",
     "placeholders": {
       "tab": {
-        "type": "String",
-        "description": "Sleep tab name"
-      },
-      "section": {
-        "type": "String",
-        "description": "Heading of the section with the alarm row"
+        "type": "String"
       },
       "row": {
-        "type": "String",
-        "description": "Name of the Alarm row"
+        "type": "String"
       }
     }
   },

@@ -967,7 +967,7 @@ List<Rect> defaultSkeletonChrome(Element root) {
 /// Chrome is never dimmed, never a placeholder and never absorbs a tap, whenever it was
 /// built [guide_r5_scenes_test R5-4]. CLAIM(chrome-never-covered).
 bool isGuideChromeWidget(Widget w) =>
-    w is GuideNavigationHeader || w is ScreenTitle || w is NavBar || w is SubTabs || w.runtimeType.toString() == '_TabBar';
+    w is ScreenTitle || w is NavBar || w is SubTabs || w.runtimeType.toString() == '_TabBar';
 
 /// The bars that bound the area the guide may use (the card, the pill, the glide): the top bars
 /// (a title, a NavBar, a sub-tab row) and the bottom bar, which is AppShell's tab bar and nothing

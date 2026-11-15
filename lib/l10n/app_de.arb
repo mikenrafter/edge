@@ -3923,7 +3923,7 @@
   "helpEmpty": "Für dein Band gibt es noch keine Anleitungen.",
   "guideAnotherWayInTitle": "Ein anderer Weg",
   "guideAlarmTitle": "Hier stellst du einen Wecker oder jeden Tag eine andere Zeit ein",
-  "guideAlarmStep1": "Scrolle im Tab **{tab}** nach unten zu **{section}** und tippe auf **{row}**.",
+  "guideAlarmStep1": "Tippe im Tab **{tab}** auf **{row}**.",
   "guideAlarmStep2": "Tippe auf den Tab des gewünschten Tages, zum Beispiel **{day}**, und dann auf die erste Zeile darunter, um diesen Tag einzuschalten.",
   "guideAlarmStep3": "Tippe dann unter diesem Tag auf **{wake}** und wähle die Uhrzeit. Jeder Tag kann seine eigene Zeit haben.",
   "guideAlarmAltBody": "Öffne **{settings}** und tippe dann auf **{alarm}**.",

@@ -1,6 +1,6 @@
 // GUIDE #2: set an alarm, or a different time each day.
 //
-//   Sleep tab, scroll to "Alarm and body clock"  ->  "Alarm"  ->  Alarm screen:
+//   Sleep tab, expand the containing section if folded  ->  "Alarm"  ->  Alarm screen:
 //   pick a day tab, turn that day on (the first row under the tabs)  ->  its
 //   "Wake time".
 //

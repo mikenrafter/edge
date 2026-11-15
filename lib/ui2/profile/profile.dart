@@ -312,7 +312,6 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
       // header, the only control a tap or a screen reader should find first.
       child: GuideBox(card: true, child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: S.x4),
         decoration: BoxDecoration(
           color: p.card,
           borderRadius: R.rLg,
@@ -323,7 +322,7 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
             onTap: _toggle,
             semanticLabel: '${widget.a.title}, ${_open ? 'expanded' : 'collapsed'}',
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: S.x3),
+              padding: const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3),
               child: Row(children: [
                 Expanded(
                   child: Column(
@@ -346,13 +345,14 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
           )),
           GuideAccordionBody(title: widget.a.title, headerKey: _headerKey,
             offstage: !_open,
-            child: TickerMode(enabled: _open, child: Column(children: [
+            child: TickerMode(enabled: _open, child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: S.x4), child: Column(children: [
               if (_open || discovering)
                 for (final row in widget.a.children) ...[
                   Divider(color: p.line, height: 1),
                   row,
                 ],
-            ]))),
+            ])))),
         ]),
       )),
     );
