@@ -1,0 +1,332 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moving guide hand v7</title>
+<style>
+  :root {
+    --app-bg: #0c1018;
+    --app-card: #182030;
+    --app-row: #1e2738;
+    --app-text: #e8ecf3;
+    --app-muted: #8a93a6;
+    --keep-bg: #1d4a33; --keep-fg: #4ade80;
+    --discard-bg: #4a2228; --discard-fg: #f87171;
+    --edit-bg: #1f3358; --edit-fg: #7aa7ff;
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; font-family: var(--font-sans); }
+  .cell { min-width: 0; }
+  .name { font-size: 13px; font-weight: 600; color: var(--foreground); margin: 6px 0 2px; }
+  .note { font-size: 12px; color: var(--muted-foreground); line-height: 1.4; }
+  .frag { position: relative; background: var(--app-bg); color: var(--app-text); border-radius: var(--radius);
+          border: 1px solid var(--border); padding: 40px 10px 46px; overflow: hidden; }
+  .frag.picker { height: 360px; padding-bottom: 14px; }
+  .item { background: var(--app-row); border-radius: 12px; padding: 10px; }
+  .item .top { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+  .item .time { color: var(--app-muted); }
+  .item .sub { color: var(--app-muted); font-size: 12px; margin: 2px 0 8px 46px; }
+  .btns { display: flex; gap: 6px; }
+  .btn { flex: 1; border-radius: 10px; padding: 9px 0; text-align: center; font-size: 12px; font-weight: 600; }
+  .keep { background: var(--keep-bg); color: var(--keep-fg); }
+  .discard { background: var(--discard-bg); color: var(--discard-fg); }
+  .edit { background: var(--edit-bg); color: var(--edit-fg); }
+  .item.next { margin-top: 8px; opacity: .4; }
+  .rowline { display: flex; justify-content: space-between; background: var(--app-row); border-radius: 12px; padding: 12px; font-size: 14px; }
+  .rowline .v { color: var(--app-muted); }
+  .rowline.dim { opacity: .4; margin-top: 8px; }
+  .search { background: var(--app-row); border-radius: 12px; padding: 10px 12px; color: var(--app-muted); font-size: 13px; }
+  .recent { display: flex; gap: 6px; margin: 8px 0; }
+  .chip { background: #24304a; border-radius: 999px; padding: 6px 10px; font-size: 12px; }
+  .groups { background: var(--app-card); border-radius: 14px; padding: 2px 8px; }
+  .grp { display: flex; justify-content: space-between; align-items: center; padding: 9px 4px; font-size: 13px; border-bottom: 1px solid #263044; border-radius: 8px; }
+  .grp .chev { color: var(--app-muted); transition: transform .25s; }
+  .grp.open .chev { transform: rotate(90deg); }
+  .rows { overflow: hidden; height: 0; transition: height .32s cubic-bezier(.4,0,.2,1); }
+  .rows div { padding: 8px 4px 8px 22px; font-size: 12px; border-bottom: 1px solid #1f2839; border-radius: 6px; }
+
+  .glow { position: absolute; z-index: 4; pointer-events: none; opacity: 0; mix-blend-mode: screen;
+          background: rgba(var(--crgb), .26); box-shadow: 0 0 14px rgba(var(--crgb), .55), inset 0 0 0 1px rgba(var(--crgb), .55); }
+  .pill { position: absolute; z-index: 4; white-space: nowrap; background: var(--c); color: var(--ink); font-weight: 700; font-size: 12px;
+          padding: 3px 10px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+  .hand { position: absolute; left: 0; top: 0; z-index: 5; width: 24px; height: 28px; pointer-events: none; will-change: transform; }
+  .hand svg { width: 100%; height: 100%; overflow: visible; display: block; }
+  .ripple { position: absolute; z-index: 4; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+            border: 2px solid var(--c); pointer-events: none; animation: rip .6s ease-out forwards; }
+  @keyframes rip { from { transform: scale(.2); opacity: .9; } to { transform: scale(1.6); opacity: 0; } }
+  .block { position: absolute; inset: 0; z-index: 3; cursor: wait; }
+  .replay { margin-top: 6px; font: inherit; font-size: 12px; color: var(--foreground); background: var(--secondary);
+            border: 1px solid var(--border); border-radius: var(--radius); padding: 3px 10px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="grid">
+  <div class="cell">
+    <div class="frag" id="one" style="--c:#eab308;--crgb:234,179,8;--ink:#1a1300">
+      <div class="rowline" data-t><span>Wake time</span><span class="v">13:45</span></div>
+      <div class="rowline dim"><span>Natural Wake</span><span class="v">30 min</span></div>
+    </div>
+    <div class="name">One target</div>
+    <div class="note">Pulls back along the finger and taps again.</div>
+  </div>
+  <div class="cell">
+    <div class="frag" id="row" style="--c:#7aa7ff;--crgb:122,167,255;--ink:#0b1a38">
+      <div class="item"><div class="top"><span class="time">16:23</span><span>Possible nap</span></div><div class="sub">22 min</div>
+        <div class="btns"><div class="btn keep" data-t>✓ Keep</div><div class="btn discard" data-t>✕ Discard</div><div class="btn edit" data-t>✎ Edit</div></div></div>
+      <div class="item next"><div class="top"><span class="time">17:40</span><span>Possible walk</span></div></div>
+    </div>
+    <div class="name">Several targets in a row</div>
+    <div class="note">One continuous wave: up between Keep and Discard, down between Discard and Edit, and back. A slight lean, no big turns.</div>
+  </div>
+  <div class="cell">
+    <div class="frag picker" id="listA" style="--c:#7aa7ff;--crgb:122,167,255;--ink:#0b1a38">
+      <div class="search" data-t>⌕ Search activities</div>
+      <div class="recent"><span class="chip">Running</span><span class="chip">Strength</span></div>
+      <div class="groups"></div>
+    </div>
+    <div class="name">List A: no rotation</div>
+    <div class="note">The hand stays upright and weaves down the list and back up.</div>
+    <button class="replay" type="button" data-replay="listA">Replay arrival</button>
+  </div>
+  <div class="cell">
+    <div class="frag picker" id="listB" style="--c:#7aa7ff;--crgb:122,167,255;--ink:#0b1a38">
+      <div class="search" data-t>⌕ Search activities</div>
+      <div class="recent"><span class="chip">Running</span><span class="chip">Strength</span></div>
+      <div class="groups"></div>
+    </div>
+    <div class="name">List B: bottom up</div>
+    <div class="note">It weaves upward from the last row to the search bar, finger first, leaning with the wave, then drifts back down beside the list.</div>
+    <button class="replay" type="button" data-replay="listB">Replay arrival</button>
+  </div>
+</div>
+
+<script>
+  const SHAPES = [
+    'x="6.6" y="0.8" width="4.6" height="15" rx="2.3"',
+    'x="10.6" y="8.2" width="4" height="8.6" rx="2"',
+    'x="14.2" y="9.4" width="3.8" height="7.8" rx="1.9"',
+    'x="17.6" y="11" width="3.4" height="7" rx="1.7"',
+    'x="1.4" y="12.6" width="4.4" height="8.6" rx="2.2" transform="rotate(-40 3.6 16.9)"',
+    'x="5" y="12.4" width="16" height="13.4" rx="5.4"',
+  ];
+  const svg = (color) => '<svg viewBox="0 0 22 27">' +
+    '<g fill="#0b1222" stroke="#0b1222" stroke-width="2.4" stroke-linejoin="round">' + SHAPES.map(a => '<rect ' + a + '/>').join('') + '</g>' +
+    '<g fill="' + color + '">' + SHAPES.map(a => '<rect ' + a + '/>').join('') + '</g>' +
+    '<g stroke="#0b1222" stroke-width=".9" stroke-linecap="round" opacity=".55">' +
+    '<path d="M10.8 12.6v3.4"/><path d="M14.4 13.2v3.4"/><path d="M17.8 14.2v3"/></g></svg>';
+  const TIP = { x: 8.9 * 24 / 22, y: 0.8 * 28 / 27 };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const RATE = 240;                       // degrees per second, at most
+  const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  function rel(el, frag) {
+    const r = el.getBoundingClientRect(), p = frag.getBoundingClientRect();
+    return { l: r.left - p.left, t: r.top - p.top, r: r.right - p.left, b: r.bottom - p.top,
+             cx: (r.left + r.right) / 2 - p.left, cy: (r.top + r.bottom) / 2 - p.top };
+  }
+
+  function scene(frag, label) {
+    const color = getComputedStyle(frag).getPropertyValue('--c').trim();
+    const pill = document.createElement('div');
+    pill.className = 'pill';
+    pill.textContent = label;
+    const hand = document.createElement('div');
+    hand.className = 'hand';
+    hand.innerHTML = svg(color);
+    frag.append(pill, hand);
+    const st = { x: 0, y: 0, a: 0 };
+    let glows = [], lastT = null;
+
+    const put = (x, y, a, s = 1) => {
+      const now = performance.now();
+      if (lastT !== null) {
+        const step = RATE * Math.min((now - lastT) / 1000, .1);
+        a = st.a + Math.max(-step, Math.min(step, a - st.a));
+      }
+      lastT = now;
+      st.x = x; st.y = y; st.a = a;
+      hand.style.transformOrigin = TIP.x + 'px ' + TIP.y + 'px';
+      hand.style.transform = 'translate(' + (x - TIP.x) + 'px,' + (y - TIP.y) + 'px) rotate(' + a + 'deg) scale(' + s + ')';
+      // The highlight sits exactly on each target, with its own corners, and fades with the fingertip's distance.
+      glows.forEach(({ g, el }) => {
+        const r = rel(el, frag);
+        const rad = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+        Object.assign(g.style, { left: r.l + 'px', top: r.t + 'px', width: (r.r - r.l) + 'px', height: (r.b - r.t) + 'px',
+                                 borderRadius: Math.min(rad, (r.b - r.t) / 2) + 'px' });
+        const o = Math.max(0, 1 - Math.hypot(r.cx - x, r.cy - y) / 150);
+        g.style.opacity = (o * o).toFixed(3);
+      });
+    };
+    const track = (els) => {
+      glows.forEach(({ g }) => g.remove());
+      glows = els.map(el => { const g = document.createElement('div'); g.className = 'glow'; frag.appendChild(g); return { g, el }; });
+    };
+    const ripple = (x, y) => {
+      const r = document.createElement('div');
+      r.className = 'ripple';
+      r.style.left = x + 'px';
+      r.style.top = y + 'px';
+      frag.appendChild(r);
+      setTimeout(() => r.remove(), 650);
+    };
+    const placePill = (els) => {
+      const rs = [].concat(els).map(e => rel(e, frag)), w = pill.offsetWidth, h = pill.offsetHeight;
+      const l = Math.min(...rs.map(r => r.l)), rr = Math.max(...rs.map(r => r.r)), t = Math.min(...rs.map(r => r.t));
+      pill.style.left = Math.max(6, Math.min((l + rr) / 2 - w / 2, frag.clientWidth - w - 6)) + 'px';
+      pill.style.top = Math.max(4, t - h - 8) + 'px';
+    };
+    const anim = (ms, f) => new Promise(res => {
+      const t0 = performance.now();
+      const frame = (now) => { const p = Math.min((now - t0) / ms, 1); f(p); if (p < 1) requestAnimationFrame(frame); else res(); };
+      requestAnimationFrame(frame);
+    });
+    const tap = async () => {
+      const { x, y, a } = st;
+      await anim(150, p => put(x, y, a, 1 - .14 * p));
+      ripple(x, y);
+      await anim(170, p => put(x, y, a, .86 + .14 * p));
+    };
+    // One half-wave from the current point to el: a sine displacement across the segment, sign alternating per
+    // segment, so consecutive segments join with the same slope (one continuous wave). The hand leans with its
+    // sideways speed (lean = degrees at full sideways speed; 0 = always upright).
+    let sign = 1;
+    const sweep = async (el, { lean = 12, amp = 26, flip = true, ms } = {}) => {
+      const r = rel(el, frag);
+      const A = { x: st.x, y: st.y }, B = { x: r.cx, y: r.cy };
+      const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1;
+      const n = { x: -dy / L, y: dx / L };                // perpendicular
+      const k = Math.min(amp, L * .35) * sign;
+      if (flip) sign = -sign;
+      const at = (s) => ({ x: A.x + dx * s + n.x * k * Math.sin(Math.PI * s), y: A.y + dy * s + n.y * k * Math.sin(Math.PI * s) });
+      let prev = at(0);
+      await anim(ms || Math.min(1000, 420 + L * 1.8), p => {
+        const q = at(ease(p));
+        const vx = q.x - prev.x, vy = q.y - prev.y, sp = Math.hypot(vx, vy);
+        const want = sp > .05 ? Math.max(-lean, Math.min(lean, (vx / sp) * lean)) : st.a;
+        put(q.x, q.y, lean ? want : 0);
+        prev = q;
+      });
+    };
+    return { put, tap, sweep, track, placePill, st };
+  }
+
+  // One target.
+  (async () => {
+    const f = document.getElementById('one'), t = f.querySelector('[data-t]');
+    const s = scene(f, 'tap');
+    s.placePill(t);
+    s.track([t]);
+    const r = rel(t, f), a = 14, rad = a * Math.PI / 180;
+    const back = (d) => ({ x: r.cx - Math.sin(rad) * d, y: r.cy + Math.cos(rad) * d });
+    s.put(back(26).x, back(26).y, a);
+    if (reduce) { s.put(r.cx, r.cy, a); return; }
+    for (;;) {
+      for (let i = 0; i <= 20; i++) { const q = back(26 * (1 - ease(i / 20))); s.put(q.x, q.y, a); await wait(16); }
+      await s.tap();
+      await wait(300);
+      for (let i = 0; i <= 20; i++) { const q = back(26 * ease(i / 20)); s.put(q.x, q.y, a); await wait(16); }
+      await wait(250);
+    }
+  })();
+
+  // Several targets in a row: Keep, Discard, Edit, Discard, Keep, ... as one continuous wave.
+  (async () => {
+    const f = document.getElementById('row'), ts = [...f.querySelectorAll('[data-t]')];
+    const s = scene(f, 'tap one of');
+    s.placePill(ts);
+    s.track(ts);
+    const r = rel(ts[0], f);
+    s.put(r.cx - 34, r.cy + 26, 0);
+    if (reduce) { s.put(r.cx, r.cy, 0); return; }
+    await s.sweep(ts[0], { amp: 14 });
+    const order = [0, 1, 2, 1];
+    for (let i = 0; ; i = (i + 1) % order.length) {
+      await s.tap();
+      await wait(140);
+      await s.sweep(ts[order[(i + 1) % order.length]]);
+    }
+  })();
+
+  // Lists.
+  const GROUPS = [
+    ['Cardio', ['Running', 'Trail running', 'Walking', 'Hiking', 'Cycling']], ['Strength', ['Weights']], ['Sports', ['Tennis']],
+    ['Athletics', ['Sprints']], ['Outdoor', ['Climbing']], ['Mind & body', ['Yoga']], ['Everyday', ['Housework']], ['Other', ['Something else']],
+  ];
+  const runs = {};
+  async function arrive(id) {
+    const f = document.getElementById(id);
+    const me = runs[id] = (runs[id] || 0) + 1, live = () => runs[id] === me;
+    f.querySelectorAll('.hand,.pill,.block,.ripple,.glow').forEach(e => e.remove());
+    const g = f.querySelector('.groups');
+    g.innerHTML = '';
+    GROUPS.forEach(([name, acts]) => {
+      g.insertAdjacentHTML('beforeend', '<div class="grp"><span>' + name + '</span><span class="chev">›</span></div>' +
+        '<div class="rows">' + acts.map(a => '<div>' + a + '</div>').join('') + '</div>');
+    });
+    const search = f.querySelector('.search'), cardio = f.querySelector('.grp');
+    const s = scene(f, 'search or pick');
+    s.placePill(search);
+    s.track([search, cardio]);
+    const r = rel(cardio, f);
+    s.put(r.cx + 40, r.cy + 70, 0);
+    await wait(400);
+    if (!live()) return;
+    const block = document.createElement('div');
+    block.className = 'block';
+    f.appendChild(block);
+    await s.sweep(cardio, { lean: id === 'listA' ? 0 : 12 });
+    await s.tap();
+    if (!live()) return;
+    cardio.classList.add('open');
+    const rows = cardio.nextElementSibling;
+    rows.style.height = rows.scrollHeight + 'px';
+    await wait(380);
+    block.remove();
+    if (reduce || !live()) return;
+    const items = [search, ...[...rows.children].slice(0, 3)];
+    s.track(items);
+    if (id === 'listA') {
+      // Upright the whole time; weave down the list and back up.
+      const order = [0, 1, 2, 3, 2, 1];
+      let i = 0;
+      await s.sweep(items[0], { lean: 0, amp: 22 });
+      while (live()) {
+        await s.tap();
+        await wait(140);
+        i = (i + 1) % order.length;
+        await s.sweep(items[order[i]], { lean: 0, amp: 22 });
+      }
+    } else {
+      // Bottom up, finger first, leaning with the wave; then drift back down beside the list.
+      const up = [3, 2, 1, 0];
+      await s.sweep(items[3], { lean: 0, amp: 10 });
+      while (live()) {
+        for (let j = 0; j < up.length && live(); j++) {
+          await s.tap();
+          await wait(140);
+          if (j + 1 < up.length) await s.sweep(items[up[j + 1]], { lean: 16, amp: 24 });
+        }
+        if (!live()) return;
+        // Return: a slow, upright drift down the right-hand side, no taps.
+        const a = { x: s.st.x, y: s.st.y }, b = rel(items[3], f);
+        const side = Math.min(f.clientWidth - 22, b.r - 18);
+        const t0 = { x: side, y: (a.y + b.cy) / 2 };
+        const path = (p) => {
+          const m = 1 - p;
+          return { x: m * m * a.x + 2 * m * p * t0.x + p * p * b.cx, y: m * m * a.y + 2 * m * p * t0.y + p * p * b.cy };
+        };
+        await new Promise(res => {
+          const T = 1100, start = performance.now();
+          const fr = (now) => { const p = Math.min((now - start) / T, 1), q = path(ease(p)); s.put(q.x, q.y, 0); if (p < 1 && live()) requestAnimationFrame(fr); else res(); };
+          requestAnimationFrame(fr);
+        });
+      }
+    }
+  }
+  arrive('listA');
+  arrive('listB');
+  document.querySelectorAll('[data-replay]').forEach(b => b.addEventListener('click', () => arrive(b.dataset.replay)));
+</script>
+</body>
+</html>

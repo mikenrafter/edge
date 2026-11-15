@@ -1,0 +1,294 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moving guide hand v5</title>
+<style>
+  :root {
+    --app-bg: #0c1018;
+    --app-card: #182030;
+    --app-row: #1e2738;
+    --app-text: #e8ecf3;
+    --app-muted: #8a93a6;
+    --keep-bg: #1d4a33; --keep-fg: #4ade80;
+    --discard-bg: #4a2228; --discard-fg: #f87171;
+    --edit-bg: #1f3358; --edit-fg: #7aa7ff;
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; font-family: var(--font-sans); }
+  .cell { min-width: 0; }
+  .name { font-size: 13px; font-weight: 600; color: var(--foreground); margin: 6px 0 2px; }
+  .note { font-size: 12px; color: var(--muted-foreground); line-height: 1.4; }
+  .frag { position: relative; background: var(--app-bg); color: var(--app-text); border-radius: var(--radius);
+          border: 1px solid var(--border); padding: 40px 10px 40px; overflow: hidden; }
+  .frag.picker { height: 360px; padding-bottom: 14px; }
+  .item { background: var(--app-row); border-radius: 12px; padding: 10px; }
+  .item .top { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+  .item .time { color: var(--app-muted); }
+  .item .sub { color: var(--app-muted); font-size: 12px; margin: 2px 0 8px 46px; }
+  .btns { display: flex; gap: 6px; }
+  .btn { flex: 1; border-radius: 10px; padding: 9px 0; text-align: center; font-size: 12px; font-weight: 600; }
+  .keep { background: var(--keep-bg); color: var(--keep-fg); }
+  .discard { background: var(--discard-bg); color: var(--discard-fg); }
+  .edit { background: var(--edit-bg); color: var(--edit-fg); }
+  .item.next { margin-top: 8px; opacity: .4; }
+  .rowline { display: flex; justify-content: space-between; background: var(--app-row); border-radius: 12px; padding: 12px; font-size: 14px; }
+  .rowline .v { color: var(--app-muted); }
+  .rowline.dim { opacity: .4; margin-top: 8px; }
+  .search { background: var(--app-row); border-radius: 12px; padding: 10px 12px; color: var(--app-muted); font-size: 13px; }
+  .recent { display: flex; gap: 6px; margin: 8px 0; }
+  .chip { background: #24304a; border-radius: 999px; padding: 6px 10px; font-size: 12px; }
+  .groups { background: var(--app-card); border-radius: 14px; padding: 2px 8px; }
+  .grp { display: flex; justify-content: space-between; align-items: center; padding: 9px 4px; font-size: 13px; border-bottom: 1px solid #263044; border-radius: 8px; }
+  .grp .chev { color: var(--app-muted); transition: transform .25s; }
+  .grp.open .chev { transform: rotate(90deg); }
+  .rows { overflow: hidden; height: 0; transition: height .32s cubic-bezier(.4,0,.2,1); }
+  .rows div { padding: 8px 4px 8px 22px; font-size: 12px; border-bottom: 1px solid #1f2839; border-radius: 6px; }
+
+  /* Outlines live at the scene's top level; their opacity follows the hand's distance. */
+  .ring { position: absolute; z-index: 4; border: 2px solid var(--c); border-radius: 12px; pointer-events: none; opacity: 0; }
+  .pill { position: absolute; z-index: 4; white-space: nowrap; background: var(--c); color: var(--ink); font-weight: 700; font-size: 12px;
+          padding: 3px 10px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+  .hand { position: absolute; left: 0; top: 0; z-index: 5; width: 24px; height: 28px; pointer-events: none; will-change: transform; }
+  .hand svg { width: 100%; height: 100%; overflow: visible; display: block; }
+  .ripple { position: absolute; z-index: 4; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+            border: 2px solid var(--c); pointer-events: none; animation: rip .6s ease-out forwards; }
+  @keyframes rip { from { transform: scale(.2); opacity: .9; } to { transform: scale(1.6); opacity: 0; } }
+  .block { position: absolute; inset: 0; z-index: 3; cursor: wait; }
+  .replay { margin-top: 6px; font: inherit; font-size: 12px; color: var(--foreground); background: var(--secondary);
+            border: 1px solid var(--border); border-radius: var(--radius); padding: 3px 10px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="grid">
+  <div class="cell">
+    <div class="frag" id="s1" style="--c:#eab308;--ink:#1a1300">
+      <div class="rowline" data-t><span>Wake time</span><span class="v">13:45</span></div>
+      <div class="rowline dim"><span>Natural Wake</span><span class="v">30 min</span></div>
+    </div>
+    <div class="name">One target</div>
+    <div class="note">The hand pulls back along its finger and taps again.</div>
+  </div>
+  <div class="cell">
+    <div class="frag" id="s2" style="--c:#7aa7ff;--ink:#0b1a38">
+      <div class="item"><div class="top"><span class="time">16:23</span><span>Possible nap</span></div><div class="sub">22 min</div>
+        <div class="btns"><div class="btn keep" data-t>✓ Keep</div><div class="btn discard" data-t>✕ Discard</div><div class="btn edit" data-t>✎ Edit</div></div></div>
+      <div class="item next"><div class="top"><span class="time">17:40</span><span>Possible walk</span></div></div>
+    </div>
+    <div class="name">Several targets</div>
+    <div class="note">The fingertip traces the arc and comes into each button; outlines fade with distance from the hand.</div>
+  </div>
+  <div class="cell">
+    <div class="frag picker" id="s3" style="--c:#7aa7ff;--ink:#0b1a38">
+      <div class="search" data-t>⌕ Search activities</div>
+      <div class="recent"><span class="chip">Running</span><span class="chip">Strength</span></div>
+      <div class="groups"></div>
+    </div>
+    <div class="name">Picker, on arrival</div>
+    <div class="note">Opens Cardio once (no taps meanwhile), then loops over the search bar and the first rows.</div>
+    <button class="replay" type="button" id="replay">Replay arrival</button>
+  </div>
+</div>
+
+<script>
+  // A pointing-hand cursor: index finger up, three folded fingers, a thumb, and a palm that ends without a wrist.
+  // Drawn as shapes (a dark outline layer, then the fill), with thin creases between the folded fingers.
+  const SHAPES = [
+    'x="6.6" y="0.8" width="4.6" height="15" rx="2.3"',                                   // index
+    'x="10.6" y="8.2" width="4" height="8.6" rx="2"',                                     // middle
+    'x="14.2" y="9.4" width="3.8" height="7.8" rx="1.9"',                                 // ring
+    'x="17.6" y="11" width="3.4" height="7" rx="1.7"',                                    // little
+    'x="1.4" y="12.6" width="4.4" height="8.6" rx="2.2" transform="rotate(-40 3.6 16.9)"', // thumb
+    'x="5" y="12.4" width="16" height="13.4" rx="5.4"',                                   // palm, rounded off
+  ];
+  const svg = (color) => '<svg viewBox="0 0 22 27">' +
+    '<g fill="#0b1222" stroke="#0b1222" stroke-width="2.4" stroke-linejoin="round">' + SHAPES.map(a => '<rect ' + a + '/>').join('') + '</g>' +
+    '<g fill="' + color + '">' + SHAPES.map(a => '<rect ' + a + '/>').join('') + '</g>' +
+    '<g stroke="#0b1222" stroke-width=".9" stroke-linecap="round" opacity=".55">' +
+    '<path d="M10.8 12.6v3.4"/><path d="M14.4 13.2v3.4"/><path d="M17.8 14.2v3"/></g></svg>';
+  // The fingertip (8.9, 0.8) of 22x27, drawn at 24x28. The hand turns about its fingertip.
+  const TIP = { x: 8.9 * 24 / 22, y: 0.8 * 28 / 27 };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+  const deg = (vx, vy) => Math.atan2(vx, -vy) * 180 / Math.PI;      // 0 = finger up
+  const clampA = a => Math.max(-115, Math.min(115, a));             // never upside down
+  const lerpA = (a, b, t) => a + (b - a) * t;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  function rel(el, frag) {
+    const r = el.getBoundingClientRect(), p = frag.getBoundingClientRect();
+    return { l: r.left - p.left, t: r.top - p.top, r: r.right - p.left, b: r.bottom - p.top,
+             cx: (r.left + r.right) / 2 - p.left, cy: (r.top + r.bottom) / 2 - p.top };
+  }
+
+  function scene(frag, label) {
+    const color = getComputedStyle(frag).getPropertyValue('--c').trim();
+    const pill = document.createElement('div');
+    pill.className = 'pill';
+    pill.textContent = label;
+    const hand = document.createElement('div');
+    hand.className = 'hand';
+    hand.innerHTML = svg(color);
+    frag.append(pill, hand);
+    const st = { x: 0, y: 0, a: 15 };
+    let rings = [];
+
+    const put = (x, y, a, s = 1) => {
+      st.x = x; st.y = y; st.a = a;
+      hand.style.transformOrigin = TIP.x + 'px ' + TIP.y + 'px';
+      hand.style.transform = 'translate(' + (x - TIP.x) + 'px,' + (y - TIP.y) + 'px) rotate(' + a + 'deg) scale(' + s + ')';
+      // Outlines fade in as the fingertip nears them, out as it leaves.
+      rings.forEach(({ ring, el }) => {
+        const r = rel(el, frag);
+        const d = Math.hypot(r.cx - x, r.cy - y);
+        const o = Math.max(0, 1 - d / 150);
+        ring.style.opacity = (o * o).toFixed(3);
+      });
+    };
+    const track = (els) => {
+      rings.forEach(({ ring }) => ring.remove());
+      rings = els.map(el => {
+        const ring = document.createElement('div');
+        ring.className = 'ring';
+        const r = rel(el, frag), pad = 4;
+        Object.assign(ring.style, { left: (r.l - pad) + 'px', top: (r.t - pad) + 'px',
+                                    width: (r.r - r.l + 2 * pad) + 'px', height: (r.b - r.t + 2 * pad) + 'px' });
+        frag.appendChild(ring);
+        return { ring, el };
+      });
+    };
+    const ripple = (x, y) => {
+      const r = document.createElement('div');
+      r.className = 'ripple';
+      r.style.left = x + 'px';
+      r.style.top = y + 'px';
+      frag.appendChild(r);
+      setTimeout(() => r.remove(), 650);
+    };
+    const placePill = (els) => {
+      const rs = [].concat(els).map(e => rel(e, frag)), w = pill.offsetWidth, h = pill.offsetHeight;
+      const l = Math.min(...rs.map(r => r.l)), rr = Math.max(...rs.map(r => r.r)), t = Math.min(...rs.map(r => r.t));
+      pill.style.left = Math.max(6, Math.min((l + rr) / 2 - w / 2, frag.clientWidth - w - 6)) + 'px';
+      pill.style.top = Math.max(4, t - h - 8) + 'px';
+    };
+    const anim = (ms, f) => new Promise(res => {
+      const t0 = performance.now();
+      const frame = (now) => { const p = Math.min((now - t0) / ms, 1); f(p); if (p < 1) requestAnimationFrame(frame); else res(); };
+      requestAnimationFrame(frame);
+    });
+    // Press in and release; the pulse leaves the fingertip at the bottom of the press.
+    const tap = async () => {
+      const { x, y, a } = st;
+      await anim(150, p => put(x, y, a, 1 - .14 * p));
+      ripple(x, y);
+      await anim(170, p => put(x, y, a, .86 + .14 * p));
+    };
+    // Travel to el along a curve whose last stretch comes INTO the target, finger first.
+    const go = async (el) => {
+      const r = rel(el, frag);
+      const A = { x: st.x, y: st.y }, B = { x: r.cx, y: r.cy };
+      const dx = B.x - A.x, dist = Math.hypot(dx, B.y - A.y);
+      const side = Math.abs(dx) < 8 ? 1 : Math.sign(dx);
+      const norm = (x, y) => { const m = Math.hypot(x, y); return { x: x / m, y: y / m }; };
+      const u = norm(side, .25);                 // leave mostly sideways
+      const v = norm(side * .55, -1);            // arrive moving up into the target, tilted toward travel
+      const k = Math.max(28, dist * .45);
+      const C1 = { x: A.x + u.x * k, y: A.y + u.y * k }, C2 = { x: B.x - v.x * k, y: B.y - v.y * k };
+      const at = (t) => {
+        const m = 1 - t;
+        return {
+          x: m * m * m * A.x + 3 * m * m * t * C1.x + 3 * m * t * t * C2.x + t * t * t * B.x,
+          y: m * m * m * A.y + 3 * m * m * t * C1.y + 3 * m * t * t * C2.y + t * t * t * B.y,
+          vx: 3 * m * m * (C1.x - A.x) + 6 * m * t * (C2.x - C1.x) + 3 * t * t * (B.x - C2.x),
+          vy: 3 * m * m * (C1.y - A.y) + 6 * m * t * (C2.y - C1.y) + 3 * t * t * (B.y - C2.y),
+        };
+      };
+      // Turn to the departure heading first, so the finger leads from the start.
+      const a0 = st.a, aDep = clampA(deg(u.x, u.y));
+      await anim(180, p => put(A.x, A.y, lerpA(a0, aDep, ease(p))));
+      await anim(Math.min(900, 420 + dist * 1.6), p => {
+        const e = ease(p), q = at(e);
+        put(q.x, q.y, clampA(deg(q.vx, q.vy)));
+      });
+      put(B.x, B.y, clampA(deg(v.x, v.y)));
+    };
+    return { put, go, tap, track, placePill, st };
+  }
+
+  // 1. Single target: pull back along the finger, come in again, tap.
+  (async () => {
+    const f = document.getElementById('s1'), t = f.querySelector('[data-t]');
+    const s = scene(f, 'tap');
+    s.placePill(t);
+    s.track([t]);
+    const r = rel(t, f), a = 18, rad = a * Math.PI / 180;
+    const back = (d) => ({ x: r.cx - Math.sin(rad) * d, y: r.cy + Math.cos(rad) * d });
+    let p0 = back(26);
+    s.put(p0.x, p0.y, a);
+    if (reduce) { s.put(r.cx, r.cy, a); return; }
+    for (;;) {
+      for (let i = 0; i <= 20; i++) { const q = back(26 * (1 - ease(i / 20))); s.put(q.x, q.y, a); await wait(16); }
+      await s.tap();
+      await wait(300);
+      for (let i = 0; i <= 20; i++) { const q = back(26 * ease(i / 20)); s.put(q.x, q.y, a); await wait(16); }
+      await wait(250);
+    }
+  })();
+
+  // 2. Several targets on one row.
+  (async () => {
+    const f = document.getElementById('s2'), ts = [...f.querySelectorAll('[data-t]')];
+    const s = scene(f, 'tap one of');
+    s.placePill(ts);
+    s.track(ts);
+    const r = rel(ts[0], f);
+    s.put(r.cx - 10, r.cy + 40, 15);
+    if (reduce) { s.put(r.cx, r.cy, 15); return; }
+    for (let i = 0; ; i = (i + 1) % ts.length) { await s.go(ts[i]); await s.tap(); await wait(260); }
+  })();
+
+  // 3. Picker: open the first group once per arrival, then loop over the search bar and the first rows.
+  const GROUPS = [
+    ['Cardio', ['Running', 'Trail running', 'Walking', 'Hiking', 'Cycling']], ['Strength', ['Weights']], ['Sports', ['Tennis']],
+    ['Athletics', ['Sprints']], ['Outdoor', ['Climbing']], ['Mind & body', ['Yoga']], ['Everyday', ['Housework']], ['Other', ['Something else']],
+  ];
+  const f3 = document.getElementById('s3');
+  let run = 0;
+  async function arrive() {
+    const me = ++run;
+    f3.querySelectorAll('.hand,.pill,.block,.ripple,.ring').forEach(e => e.remove());
+    const g = f3.querySelector('.groups');
+    g.innerHTML = '';
+    GROUPS.forEach(([name, acts]) => {
+      g.insertAdjacentHTML('beforeend', '<div class="grp"><span>' + name + '</span><span class="chev">›</span></div>' +
+        '<div class="rows">' + acts.map(a => '<div>' + a + '</div>').join('') + '</div>');
+    });
+    const search = f3.querySelector('.search'), cardio = f3.querySelector('.grp');
+    const s = scene(f3, 'search or pick');
+    s.placePill(search);
+    s.track([search, cardio]);
+    const r = rel(cardio, f3);
+    s.put(r.cx - 30, r.cy + 70, 15);
+    await wait(400);
+    if (me !== run) return;
+    const block = document.createElement('div');
+    block.className = 'block';
+    f3.appendChild(block);
+    await s.go(cardio);
+    await s.tap();
+    if (me !== run) return;
+    cardio.classList.add('open');
+    const rows = cardio.nextElementSibling;
+    rows.style.height = rows.scrollHeight + 'px';
+    await wait(380);
+    block.remove();
+    if (reduce || me !== run) return;
+    const loop = [search, ...[...rows.children].slice(0, 3)];
+    s.track(loop);
+    for (let i = 0; me === run; i = (i + 1) % loop.length) { await s.go(loop[i]); if (me !== run) return; await s.tap(); await wait(240); }
+  }
+  arrive();
+  document.getElementById('replay').addEventListener('click', arrive);
+</script>
+</body>
+</html>

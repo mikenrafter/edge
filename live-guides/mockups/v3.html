@@ -1,0 +1,427 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-target guide options</title>
+<style>
+  :root {
+    --app-bg: #0c1018;
+    --app-card: #182030;
+    --app-row: #1e2738;
+    --app-text: #e8ecf3;
+    --app-muted: #8a93a6;
+    --keep-bg: #1d4a33; --keep-fg: #4ade80;
+    --discard-bg: #4a2228; --discard-fg: #f87171;
+    --edit-bg: #1f3358; --edit-fg: #7aa7ff;
+    --multi: 122, 167, 255;          /* app accent, as r,g,b */
+    --multi-ink: #0b1a38;
+  }
+  section { margin: 0 0 22px; font-family: var(--font-sans); }
+  h3 { font-size: 15px; margin: 0 0 4px; color: var(--foreground); }
+  .lede { font-size: 13px; color: var(--muted-foreground); margin: 0 0 10px; line-height: 1.4; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .cell { min-width: 0; }
+  .name { font-size: 13px; font-weight: 600; color: var(--foreground); margin: 6px 0 2px; }
+  .note { font-size: 12px; color: var(--muted-foreground); line-height: 1.4; }
+  .frag { position: relative; background: var(--app-bg); color: var(--app-text); border-radius: var(--radius);
+          border: 1px solid var(--border); padding: 40px 10px 12px; overflow: hidden; }
+
+  /* Activity review row */
+  .item { background: var(--app-row); border-radius: 12px; padding: 10px; }
+  .item .top { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+  .item .time { color: var(--app-muted); font-variant-numeric: tabular-nums; }
+  .item .sub { color: var(--app-muted); font-size: 12px; margin: 2px 0 8px 46px; }
+  .btns { display: flex; gap: 6px; }
+  .btn { flex: 1; border-radius: 10px; padding: 9px 0; text-align: center; font-size: 12px; font-weight: 600; }
+  .keep { background: var(--keep-bg); color: var(--keep-fg); }
+  .discard { background: var(--discard-bg); color: var(--discard-fg); }
+  .edit { background: var(--edit-bg); color: var(--edit-fg); }
+  .item.next { margin-top: 8px; opacity: .4; }
+
+  /* Activity picker */
+  .search { background: var(--app-row); border-radius: 12px; padding: 10px 12px; color: var(--app-muted); font-size: 13px; }
+  .recent { display: flex; gap: 6px; margin: 8px 0; }
+  .chip { background: #24304a; border-radius: 999px; padding: 6px 10px; font-size: 12px; }
+  .groups { background: var(--app-card); border-radius: 14px; padding: 2px 8px; }
+  .grp { display: flex; justify-content: space-between; align-items: center; padding: 9px 4px; font-size: 13px;
+         border-bottom: 1px solid #263044; border-radius: 8px; cursor: pointer; user-select: none; }
+  .grp:last-child { border-bottom: 0; }
+  .grp .chev { color: var(--app-muted); transition: transform .25s; }
+  .grp.open .chev { transform: rotate(90deg); }
+  .rows { overflow: hidden; height: 0; transition: height .32s cubic-bezier(.4,0,.2,1); }
+  .rows div { padding: 7px 4px 7px 22px; font-size: 12px; color: var(--app-text); border-bottom: 1px solid #1f2839; }
+
+  /* Target outlines (variant A, C), box and band (B), label, hand */
+  .mt { outline: 2px solid rgba(var(--multi), .35); outline-offset: 2px; transition: outline-color .25s, outline-width .25s; }
+  .mt.focus { outline: 3px solid rgba(var(--multi), 1); }
+  .box { position: absolute; z-index: 2; border: 2px solid rgba(var(--multi), .9); border-radius: 12px; overflow: hidden; pointer-events: none; }
+  .band { position: absolute; left: 0; top: 0; }
+  .box.h .band { height: 100%; width: 30px; background: linear-gradient(to right, rgba(var(--multi),0), rgba(var(--multi),.16) 30%, rgba(var(--multi),.5) 50%, rgba(var(--multi),.16) 70%, rgba(var(--multi),0)); }
+  .box.v .band { width: 100%; height: 30px; background: linear-gradient(to bottom, rgba(var(--multi),0), rgba(var(--multi),.16) 30%, rgba(var(--multi),.5) 50%, rgba(var(--multi),.16) 70%, rgba(var(--multi),0)); }
+  .pill { position: absolute; z-index: 4; display: flex; align-items: center; gap: 4px; white-space: nowrap;
+          background: rgb(var(--multi)); color: var(--multi-ink); font-weight: 700; font-size: 12px;
+          padding: 3px 9px 3px 5px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,0,0,.5); pointer-events: none; }
+  .pill.nohand { padding-left: 9px; }
+  .pill .hand { width: 16px; height: 16px; display: block; transform-origin: 33.3% 58%;
+                transition: transform .38s cubic-bezier(.6,0,.2,1); }
+  .free { position: absolute; z-index: 5; width: 30px; height: 30px; color: #fff; pointer-events: none;
+          filter: drop-shadow(0 2px 3px rgba(0,0,0,.7)); }
+  .free svg { width: 100%; height: 100%; fill: rgba(var(--multi), .95); stroke: #0b1222; stroke-width: 1.4; }
+  .ripple { position: absolute; z-index: 4; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+            border: 2px solid rgba(var(--multi), .9); pointer-events: none; animation: rip .65s ease-out forwards; }
+  @keyframes rip { from { transform: scale(.2); opacity: .9; } to { transform: scale(1.6); opacity: 0; } }
+  .toast { position: absolute; z-index: 6; background: rgba(12,16,24,.92); color: #fff; border: 1px solid rgba(var(--multi), .9);
+           font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; pointer-events: none;
+           animation: toast 1.6s ease-in-out forwards; }
+  @keyframes toast { 0% { opacity: 0; transform: translateY(4px); } 20%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+
+  /* Colour section */
+  .swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+  .sw { background: var(--app-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; color: var(--app-text); }
+  .sw .tgt { border-radius: 10px; padding: 9px 0; text-align: center; font-size: 12px; background: var(--app-row); margin-top: 12px; }
+  .sw .tp { display: inline-flex; gap: 4px; align-items: center; font-weight: 700; font-size: 12px; padding: 3px 9px 3px 5px; border-radius: 999px; }
+  .sw .tp svg { width: 15px; height: 15px; }
+  .sw .meta { font-size: 11px; color: var(--app-muted); margin-top: 8px; }
+  .questions { font-size: 13px; color: var(--foreground); line-height: 1.5; padding-left: 20px; margin: 6px 0 0; }
+  .questions li { margin-bottom: 6px; }
+  .questions span { color: var(--muted-foreground); }
+</style>
+</head>
+<body>
+
+<section>
+  <h3>1. Activity review: Keep, Discard or Edit on one row</h3>
+  <p class="lede">Step text: "Choose what to do with it: <b>Discard</b> if it didn't happen, <b>Edit</b> if the times are off, <b>Keep</b> if it's right." The next row stays dimmed.</p>
+  <div class="grid">
+    <div class="cell">
+      <div class="frag" data-mode="A" data-label="tap one of" data-dir="h">
+        <div class="item"><div class="top"><span class="time">16:23</span><span>Possible nap</span></div><div class="sub">22 min</div>
+          <div class="btns"><div class="btn keep" data-t>✓ Keep</div><div class="btn discard" data-t>✕ Discard</div><div class="btn edit" data-t>✎ Edit</div></div></div>
+        <div class="item next"><div class="top"><span class="time">17:40</span><span>Possible walk</span></div></div>
+      </div>
+      <div class="name">A. Focus cycle</div>
+      <div class="note">Each button outlined; the one the hand points at lights up. The hand steps from centre to centre.</div>
+    </div>
+    <div class="cell">
+      <div class="frag" data-mode="B" data-label="tap one of" data-dir="h">
+        <div class="item"><div class="top"><span class="time">16:23</span><span>Possible nap</span></div><div class="sub">22 min</div>
+          <div class="btns"><div class="btn keep" data-t>✓ Keep</div><div class="btn discard" data-t>✕ Discard</div><div class="btn edit" data-t>✎ Edit</div></div></div>
+        <div class="item next"><div class="top"><span class="time">17:40</span><span>Possible walk</span></div></div>
+      </div>
+      <div class="name">B. Scan line</div>
+      <div class="note">One box; the line sweeps left to right. The hand snaps to each button as the line reaches it.</div>
+    </div>
+    <div class="cell">
+      <div class="frag" data-mode="C" data-label="tap one of" data-dir="h">
+        <div class="item"><div class="top"><span class="time">16:23</span><span>Possible nap</span></div><div class="sub">22 min</div>
+          <div class="btns"><div class="btn keep" data-t>✓ Keep</div><div class="btn discard" data-t>✕ Discard</div><div class="btn edit" data-t>✎ Edit</div></div></div>
+        <div class="item next"><div class="top"><span class="time">17:40</span><span>Possible walk</span></div></div>
+      </div>
+      <div class="name">C. Tapping hand</div>
+      <div class="note">A bigger hand arcs from button to button and taps each, with a ripple. The label has no hand.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h3>2. Activity picker: the search bar and every row count</h3>
+  <p class="lede">Real layout: search, a recent row, then eight collapsed groups. Ten targets, so the hand takes about nine seconds to visit them all.</p>
+  <div class="grid">
+    <div class="cell">
+      <div class="frag picker" data-mode="A" data-label="search or select from the list" data-dir="v">
+        <div class="search" data-t>⌕ Search activities</div>
+        <div class="recent"><span class="chip" data-t>Running</span><span class="chip" data-t>Strength</span></div>
+        <div class="groups"></div>
+      </div>
+      <div class="name">A. Focus cycle</div>
+      <div class="note">The label sits on the right edge, beside the targets, since the list is vertical.</div>
+    </div>
+    <div class="cell">
+      <div class="frag picker" data-mode="B" data-label="search or pick" data-dir="v">
+        <div class="search" data-t>⌕ Search activities</div>
+        <div class="recent"><span class="chip" data-t>Running</span><span class="chip" data-t>Strength</span></div>
+        <div class="groups"></div>
+      </div>
+      <div class="name">B. Scan line</div>
+      <div class="note">Top to bottom. A shorter label ("search or pick") fits on the edge without covering row text.</div>
+    </div>
+    <div class="cell">
+      <div class="frag picker" data-mode="D" data-label="search or select from the list" data-dir="v">
+        <div class="search" data-t>⌕ Search activities</div>
+        <div class="recent"><span class="chip" data-t>Running</span><span class="chip" data-t>Strength</span></div>
+        <div class="groups"></div>
+      </div>
+      <div class="name">D. Expand demo</div>
+      <div class="note">The hand taps Cardio, it opens, then closes again. Click any group: it stays open, the demo stops, and "tap again" fades in and out over 1.6 s.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h3>3. The single-target colour</h3>
+  <p class="lede">Contrast is against the app's dark background; today's yellow is the bar to match. Multi-target uses the app accent (last swatch), so the single-target colour should differ from it.</p>
+  <div class="swatches" id="swatches"></div>
+</section>
+
+<section>
+  <h3>Questions</h3>
+  <ol class="questions">
+    <li>The expand demo moves the seven groups below Cardio down and back up on every loop: a layout shift, the very thing the no-spinners work removes. <span>Play it once per step, not on a loop? Or draw the opened group as a floating preview over the list, so nothing real moves and no "tap again" is needed?</span></li>
+    <li>Should a guide ever change the app's state by itself, even something as harmless as opening a group? <span>So far the overlay only points; it never acts.</span></li>
+    <li>With ten targets, visiting each takes about nine seconds. <span>Should the hand visit only the search bar and the first few rows, then rest?</span></li>
+    <li>If the tapping hand (C) wins, does it replace today's single-target nudge too, so there is one hand language?</li>
+    <li>Activity review: keep the guide's title, "Where to remove a nap or workout that wasn't real", with the broader step text? Or retitle it "Review a nap or workout we detected"?</li>
+    <li>Vertical lists: put the label on the right edge, or keep it above and short? <span>The right edge covers values on rows that show them, like "13:45" or "30 min".</span></li>
+  </ol>
+</section>
+
+<script>
+  const PATHS = '<path d="M22 14a8 8 0 0 1-8 8"/><path d="M18 11v-1a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v1"/>' +
+    '<path d="M10 9.5V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v10"/><path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>';
+  const HAND = '<svg class="hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' + PATHS + '</svg>';
+  const FREE = '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">' + PATHS + '</svg>';
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const GROUPS = [
+    ['Cardio', ['Running', 'Trail running', 'Walking', 'Hiking', 'Cycling']], ['Strength', ['Weights', 'Calisthenics']],
+    ['Sports', ['Tennis', 'Football']], ['Athletics', ['Sprints']], ['Outdoor', ['Climbing', 'Kayaking']],
+    ['Mind & body', ['Yoga', 'Pilates']], ['Everyday', ['Housework']], ['Other', ['Something else']],
+  ];
+
+  function rel(el, frag) {
+    const r = el.getBoundingClientRect(), p = frag.getBoundingClientRect();
+    return { l: r.left - p.left, t: r.top - p.top, r: r.right - p.left, b: r.bottom - p.top,
+             cx: (r.left + r.right) / 2 - p.left, cy: (r.top + r.bottom) / 2 - p.top };
+  }
+
+  function buildGroups(frag) {
+    const g = frag.querySelector('.groups');
+    if (!g) return;
+    GROUPS.forEach(([name, acts]) => {
+      const head = document.createElement('div');
+      head.className = 'grp';
+      head.dataset.t = '';
+      head.innerHTML = '<span>' + name + '</span><span class="chev">›</span>';
+      const rows = document.createElement('div');
+      rows.className = 'rows';
+      rows.innerHTML = acts.map(a => '<div>' + a + '</div>').join('');
+      g.append(head, rows);
+    });
+  }
+
+  function makePill(frag, label, withHand) {
+    const pill = document.createElement('div');
+    pill.className = 'pill' + (withHand ? '' : ' nohand');
+    pill.innerHTML = (withHand ? HAND : '') + '<span></span>';
+    pill.querySelector('span').textContent = label;
+    frag.appendChild(pill);
+    return pill;
+  }
+
+  function placePill(frag, pill, rs, dir) {
+    const w = pill.offsetWidth, h = pill.offsetHeight, fw = frag.clientWidth;
+    const top = Math.min(...rs.map(r => r.t)), bot = Math.max(...rs.map(r => r.b));
+    if (dir === 'h') {
+      const l = Math.min(...rs.map(r => r.l)), r = Math.max(...rs.map(r => r.r));
+      pill.style.left = Math.max(6, Math.min((l + r) / 2 - w / 2, fw - w - 6)) + 'px';
+      pill.style.top = Math.max(4, top - h - 8) + 'px';
+    } else {
+      // Vertical flow: on the right edge, level with the middle of the visible targets.
+      pill.style.left = (fw - w - 4) + 'px';
+      pill.style.top = Math.max(4, (top + Math.min(bot, frag.clientHeight)) / 2 - h / 2) + 'px';
+    }
+  }
+
+  // Angle from the hand's finger pivot to a point; 0deg = finger straight up.
+  function aim(frag, hand, x, y) {
+    const r = rel(hand, frag);
+    const w = r.r - r.l, h = r.b - r.t;
+    const px = r.l + w * 0.333, py = r.t + h * 0.58;
+    return Math.atan2(x - px, -(y - py)) * 180 / Math.PI;
+  }
+
+  function modeA(frag) {
+    const ts = [...frag.querySelectorAll('[data-t]')];
+    ts.forEach(t => t.classList.add('mt'));
+    const pill = makePill(frag, frag.dataset.label, true);
+    const hand = pill.querySelector('.hand');
+    placePill(frag, pill, ts.map(t => rel(t, frag)), frag.dataset.dir);
+    let i = 0;
+    const step = () => {
+      const r = rel(ts[i], frag);
+      hand.style.transform = 'rotate(0deg)';
+      const a = aim(frag, hand, r.cx, r.cy);
+      hand.style.transform = 'rotate(' + a + 'deg)';
+      ts.forEach((t, k) => t.classList.toggle('focus', k === i));
+      i = (i + 1) % ts.length;
+    };
+    step();
+    if (!reduce) setInterval(step, 900);
+  }
+
+  function modeB(frag) {
+    const ts = [...frag.querySelectorAll('[data-t]')];
+    const dir = frag.dataset.dir;
+    const rs = ts.map(t => rel(t, frag));
+    const pad = 5;
+    const u = { l: Math.min(...rs.map(r => r.l)) - pad, t: Math.min(...rs.map(r => r.t)) - pad,
+                r: Math.max(...rs.map(r => r.r)) + pad, b: Math.max(...rs.map(r => r.b)) + pad };
+    const box = document.createElement('div');
+    box.className = 'box ' + dir;
+    Object.assign(box.style, { left: u.l + 'px', top: u.t + 'px', width: (u.r - u.l) + 'px', height: (u.b - u.t) + 'px' });
+    const band = document.createElement('div');
+    band.className = 'band';
+    box.appendChild(band);
+    frag.appendChild(box);
+    const pill = makePill(frag, frag.dataset.label, true);
+    const hand = pill.querySelector('.hand');
+    placePill(frag, pill, rs, dir);
+    hand.style.transform = 'rotate(0deg)';
+    const angles = rs.map(r => aim(frag, hand, r.cx, r.cy));
+    const vis = { l: Math.max(u.l, 0), t: Math.max(u.t, 0), r: Math.min(u.r, frag.clientWidth), b: Math.min(u.b, frag.clientHeight) };
+    const SWEEP = dir === 'h' ? 1800 : 3200, REST = 400;
+    let last = -1;
+    const frame = (now) => {
+      const c = reduce ? SWEEP / 2 : now % (SWEEP + REST);
+      const p = Math.min(c / SWEEP, 1);
+      const pos = dir === 'h' ? vis.l + (vis.r - vis.l) * p : vis.t + (vis.b - vis.t) * p;
+      band.style.transform = dir === 'h' ? 'translateX(' + (pos - u.l - 15) + 'px)' : 'translateY(' + (pos - u.t - 15) + 'px)';
+      band.style.opacity = c > SWEEP ? 0 : Math.sin(Math.PI * p);
+      // Stepped: the hand points at the nearest target to the line and snaps between them.
+      let k = 0, best = 1e9;
+      rs.forEach((r, j) => { const d = Math.abs((dir === 'h' ? r.cx : r.cy) - pos); if (d < best) { best = d; k = j; } });
+      if (k !== last) { hand.style.transform = 'rotate(' + angles[k] + 'deg)'; last = k; }
+      if (!reduce) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }
+
+  function ripple(frag, x, y) {
+    const r = document.createElement('div');
+    r.className = 'ripple';
+    r.style.left = x + 'px';
+    r.style.top = y + 'px';
+    frag.appendChild(r);
+    setTimeout(() => r.remove(), 700);
+  }
+
+  function freeHand(frag) {
+    const h = document.createElement('div');
+    h.className = 'free';
+    h.innerHTML = FREE;
+    frag.appendChild(h);
+    // Fingertip is at (8, 2) of the 24-unit icon.
+    const put = (x, y, s) => { h.style.left = (x - 10) + 'px'; h.style.top = (y - 2.5) + 'px'; h.style.transform = 'scale(' + s + ')'; h.style.transformOrigin = '33% 8%'; };
+    return { el: h, put };
+  }
+
+  function modeC(frag) {
+    const ts = [...frag.querySelectorAll('[data-t]')];
+    ts.forEach(t => t.classList.add('mt'));
+    const pill = makePill(frag, frag.dataset.label, false);
+    const rs = ts.map(t => rel(t, frag));
+    placePill(frag, pill, rs, frag.dataset.dir);
+    const hand = freeHand(frag);
+    const MOVE = 650, DWELL = 550, per = MOVE + DWELL;
+    let lastTap = -1;
+    const frame = (now) => {
+      const n = rs.length, t = now % (per * n), i = Math.floor(t / per), local = t - i * per;
+      const a = rs[i], b = rs[(i + 1) % n];
+      if (local < DWELL) {
+        // Tap: press in, then release, with a ripple at the fingertip.
+        const press = local < 160 ? 1 - .15 * (local / 160) : local < 320 ? .85 + .15 * ((local - 160) / 160) : 1;
+        hand.put(a.cx, a.cy, press);
+        if (lastTap !== i && local < 160) { ripple(frag, a.cx, a.cy); lastTap = i; }
+        ts.forEach((el, k) => el.classList.toggle('focus', k === i));
+      } else {
+        const p = (local - DWELL) / MOVE, e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        const arc = Math.sin(Math.PI * e) * 22;   // lift between buttons
+        hand.put(a.cx + (b.cx - a.cx) * e, a.cy + (b.cy - a.cy) * e - arc, 1);
+      }
+      if (!reduce) requestAnimationFrame(frame);
+    };
+    if (reduce) hand.put(rs[0].cx, rs[0].cy, 1); else requestAnimationFrame(frame);
+  }
+
+  function setOpen(head, open) {
+    const rows = head.nextElementSibling;
+    head.classList.toggle('open', open);
+    rows.style.height = open ? rows.scrollHeight + 'px' : '0px';
+  }
+
+  function toast(frag, x, y, text) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.textContent = text;
+    frag.appendChild(t);
+    t.style.left = Math.max(6, Math.min(x - t.offsetWidth / 2, frag.clientWidth - t.offsetWidth - 6)) + 'px';
+    t.style.top = (y - 30) + 'px';
+    setTimeout(() => t.remove(), 1650);
+  }
+
+  function modeD(frag) {
+    const heads = [...frag.querySelectorAll('.grp')];
+    const ts = [...frag.querySelectorAll('[data-t]')];
+    ts.forEach(t => t.classList.add('mt'));
+    const pill = makePill(frag, frag.dataset.label, false);
+    pill.style.left = '6px';
+    pill.style.top = '8px';
+    const hand = freeHand(frag);
+    const cardio = heads[0];
+    let locked = false, timers = [];
+    const later = (ms, f) => timers.push(setTimeout(f, ms));
+    const park = () => { const r = rel(frag.querySelector('.search'), frag); hand.put(r.r - 24, r.b + 6, 1); };
+    const loop = () => {
+      if (locked) return;
+      const r = rel(cardio, frag);
+      hand.put(r.cx, r.cy, 1);
+      ts.forEach(t => t.classList.toggle('focus', t === cardio));
+      later(300, () => { if (locked) return; hand.put(r.cx, r.cy, .85); ripple(frag, r.cx, r.cy); setOpen(cardio, true); });
+      later(460, () => { if (!locked) hand.put(r.cx, r.cy, 1); });
+      later(2000, () => { if (locked) return; setOpen(cardio, false); park(); ts.forEach(t => t.classList.remove('focus')); });
+      later(4200, loop);
+    };
+    heads.forEach(hd => hd.addEventListener('click', () => {
+      locked = true;
+      timers.forEach(clearTimeout);
+      timers = [];
+      heads.forEach(o => { if (o !== hd) setOpen(o, false); });
+      setOpen(hd, true);
+      hand.el.style.display = 'none';
+      ts.forEach(t => t.classList.remove('focus'));
+      const r = rel(hd, frag);
+      toast(frag, r.cx, r.t, 'tap again');
+    }));
+    park();
+    if (!reduce) later(600, loop);
+  }
+
+  document.querySelectorAll('.frag').forEach(frag => {
+    buildGroups(frag);
+    if (frag.classList.contains('picker')) frag.style.height = '330px';
+    ({ A: modeA, B: modeB, C: modeC, D: modeD })[frag.dataset.mode](frag);
+  });
+
+  // Colour candidates for the single-target outline and "tap" pill.
+  function lum(hex) {
+    const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4));
+    return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+  }
+  const BG = '#0c1018';
+  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+  const CANDIDATES = [
+    ['#eab308', '#1a1300', 'Yellow (today)'], ['#fbbf24', '#1a1300', 'Warm amber'], ['#5eead4', '#032420', 'Mint'],
+    ['#c4b5fd', '#1b1238', 'Light violet'], ['#fdba74', '#2a1404', 'Peach'], ['#7aa7ff', '#0b1a38', 'App accent (multi)'],
+  ];
+  const sw = document.getElementById('swatches');
+  CANDIDATES.forEach(([c, ink, name]) => {
+    const d = document.createElement('div');
+    d.className = 'sw';
+    d.innerHTML = '<span class="tp" style="background:' + c + ';color:' + ink + '">' + HAND.replace('class="hand"', '') + 'tap</span>' +
+      '<div class="tgt" style="outline:2px solid ' + c + ';outline-offset:2px">Wake time</div>' +
+      '<div class="meta">' + name + ' · ' + ratio(c, BG).toFixed(1) + ':1</div>';
+    sw.appendChild(d);
+  });
+</script>
+</body>
+</html>

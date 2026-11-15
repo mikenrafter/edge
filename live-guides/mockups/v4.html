@@ -1,0 +1,254 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moving guide hand</title>
+<style>
+  :root {
+    --app-bg: #0c1018;
+    --app-card: #182030;
+    --app-row: #1e2738;
+    --app-text: #e8ecf3;
+    --app-muted: #8a93a6;
+    --keep-bg: #1d4a33; --keep-fg: #4ade80;
+    --discard-bg: #4a2228; --discard-fg: #f87171;
+    --edit-bg: #1f3358; --edit-fg: #7aa7ff;
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; font-family: var(--font-sans); }
+  .cell { min-width: 0; }
+  .name { font-size: 13px; font-weight: 600; color: var(--foreground); margin: 6px 0 2px; }
+  .note { font-size: 12px; color: var(--muted-foreground); line-height: 1.4; }
+  .frag { position: relative; background: var(--app-bg); color: var(--app-text); border-radius: var(--radius);
+          border: 1px solid var(--border); padding: 40px 10px 14px; overflow: hidden; }
+  .frag.picker { height: 360px; }
+  .item { background: var(--app-row); border-radius: 12px; padding: 10px; }
+  .item .top { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+  .item .time { color: var(--app-muted); }
+  .item .sub { color: var(--app-muted); font-size: 12px; margin: 2px 0 8px 46px; }
+  .btns { display: flex; gap: 6px; }
+  .btn { flex: 1; border-radius: 10px; padding: 9px 0; text-align: center; font-size: 12px; font-weight: 600; }
+  .keep { background: var(--keep-bg); color: var(--keep-fg); }
+  .discard { background: var(--discard-bg); color: var(--discard-fg); }
+  .edit { background: var(--edit-bg); color: var(--edit-fg); }
+  .item.next { margin-top: 8px; opacity: .4; }
+  .rowline { display: flex; justify-content: space-between; background: var(--app-row); border-radius: 12px; padding: 12px; font-size: 14px; }
+  .rowline .v { color: var(--app-muted); }
+  .rowline.dim { opacity: .4; margin-top: 8px; }
+  .search { background: var(--app-row); border-radius: 12px; padding: 10px 12px; color: var(--app-muted); font-size: 13px; }
+  .recent { display: flex; gap: 6px; margin: 8px 0; }
+  .chip { background: #24304a; border-radius: 999px; padding: 6px 10px; font-size: 12px; }
+  .groups { background: var(--app-card); border-radius: 14px; padding: 2px 8px; }
+  .grp { display: flex; justify-content: space-between; align-items: center; padding: 9px 4px; font-size: 13px; border-bottom: 1px solid #263044; border-radius: 8px; }
+  .grp .chev { color: var(--app-muted); transition: transform .25s; }
+  .grp.open .chev { transform: rotate(90deg); }
+  .rows { overflow: hidden; height: 0; transition: height .32s cubic-bezier(.4,0,.2,1); }
+  .rows div { padding: 8px 4px 8px 22px; font-size: 12px; border-bottom: 1px solid #1f2839; border-radius: 6px; }
+
+  /* Only the target the hand is heading for is outlined. */
+  .focus-box { position: absolute; z-index: 4; border: 2px solid var(--c); border-radius: 12px; pointer-events: none;
+                transition: left .5s cubic-bezier(.4,0,.2,1), top .5s cubic-bezier(.4,0,.2,1), width .5s, height .5s; }
+  .pill { position: absolute; z-index: 4; white-space: nowrap; background: var(--c); color: var(--ink); font-weight: 700; font-size: 12px;
+          padding: 3px 10px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+  .hand { position: absolute; left: 0; top: 0; z-index: 5; width: 26px; height: 30px; pointer-events: none; will-change: transform; }
+  .hand svg { width: 100%; height: 100%; overflow: visible; display: block; }
+  .ripple { position: absolute; z-index: 4; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+            border: 2px solid var(--c); pointer-events: none; animation: rip .6s ease-out forwards; }
+  @keyframes rip { from { transform: scale(.2); opacity: .9; } to { transform: scale(1.6); opacity: 0; } }
+  .block { position: absolute; inset: 0; z-index: 3; cursor: wait; }
+  .replay { margin-top: 6px; font: inherit; font-size: 12px; color: var(--foreground); background: var(--secondary);
+            border: 1px solid var(--border); border-radius: var(--radius); padding: 3px 10px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="grid">
+  <div class="cell">
+    <div class="frag" id="s1" style="--c:#eab308;--ink:#1a1300">
+      <div class="rowline" data-t><span>Wake time</span><span class="v">13:45</span></div>
+      <div class="rowline dim"><span>Natural Wake</span><span class="v">30 min</span></div>
+    </div>
+    <div class="name">One target</div>
+    <div class="note">Yellow hand, "tap" label. It taps, lifts, and taps again.</div>
+  </div>
+  <div class="cell">
+    <div class="frag" id="s2" style="--c:#7aa7ff;--ink:#0b1a38">
+      <div class="item"><div class="top"><span class="time">16:23</span><span>Possible nap</span></div><div class="sub">22 min</div>
+        <div class="btns"><div class="btn keep" data-t>✓ Keep</div><div class="btn discard" data-t>✕ Discard</div><div class="btn edit" data-t>✎ Edit</div></div></div>
+      <div class="item next"><div class="top"><span class="time">17:40</span><span>Possible walk</span></div></div>
+    </div>
+    <div class="name">Several targets</div>
+    <div class="note">Accent hand, "tap one of". Only the button it is heading for is outlined.</div>
+  </div>
+  <div class="cell">
+    <div class="frag picker" id="s3" style="--c:#7aa7ff;--ink:#0b1a38">
+      <div class="search" data-t>⌕ Search activities</div>
+      <div class="recent"><span class="chip">Running</span><span class="chip">Strength</span></div>
+      <div class="groups"></div>
+    </div>
+    <div class="name">Picker, on arrival</div>
+    <div class="note">Once per arrival: the hand opens Cardio (no taps during the expansion), it stays open, then the hand loops over the search bar and the first rows.</div>
+    <button class="replay" type="button" id="replay">Replay arrival</button>
+  </div>
+</div>
+
+<script>
+  // A solid hand, drawn as shapes (an outline layer, then a fill layer), so nothing is a filled stroke icon.
+  const SHAPES = [
+    ['rect', 'x="7" y="1" width="4.6" height="15" rx="2.3"'],             // index finger
+    ['rect', 'x="11.2" y="9" width="3.8" height="8" rx="1.9"'],            // middle
+    ['rect', 'x="14.6" y="10" width="3.6" height="7.5" rx="1.8"'],         // ring
+    ['rect', 'x="17.8" y="11.6" width="3.2" height="6.6" rx="1.6"'],       // little
+    ['rect', 'x="2" y="13.5" width="4.2" height="8.5" rx="2.1" transform="rotate(-38 4.1 17.75)"'],  // thumb
+    ['rect', 'x="5.4" y="12.5" width="15.6" height="12" rx="4.5"'],        // palm
+    ['rect', 'x="7.4" y="23" width="11" height="5" rx="1.6"'],             // cuff
+  ];
+  const svg = (color) => '<svg viewBox="0 0 24 28">' +
+    '<g fill="#0b1222" stroke="#0b1222" stroke-width="2.6" stroke-linejoin="round">' + SHAPES.map(([t, a]) => '<' + t + ' ' + a + '/>').join('') + '</g>' +
+    '<g fill="' + color + '">' + SHAPES.map(([t, a]) => '<' + t + ' ' + a + '/>').join('') + '</g>' +
+    '<rect x="7.4" y="23" width="11" height="5" rx="1.6" fill="#0b1222" opacity=".25"/></svg>';
+  // Fingertip at (9.3, 1) of 24x28, drawn at 26x30.
+  const TIP = { x: 9.3 * 26 / 24, y: 1 * 30 / 28 };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+
+  function rel(el, frag) {
+    const r = el.getBoundingClientRect(), p = frag.getBoundingClientRect();
+    return { l: r.left - p.left, t: r.top - p.top, r: r.right - p.left, b: r.bottom - p.top,
+             cx: (r.left + r.right) / 2 - p.left, cy: (r.top + r.bottom) / 2 - p.top };
+  }
+
+  function scene(frag, label) {
+    const color = getComputedStyle(frag).getPropertyValue('--c').trim();
+    const pill = document.createElement('div');
+    pill.className = 'pill';
+    pill.textContent = label;
+    const hand = document.createElement('div');
+    hand.className = 'hand';
+    hand.innerHTML = svg(color);
+    frag.append(pill, hand);
+    let x = 0, y = 0;
+    const put = (px, py, s) => {
+      x = px; y = py;
+      hand.style.transform = 'translate(' + (px - TIP.x) + 'px,' + (py - TIP.y) + 'px) scale(' + s + ')';
+      hand.style.transformOrigin = TIP.x + 'px ' + TIP.y + 'px';
+    };
+    const ripple = (px, py) => {
+      const r = document.createElement('div');
+      r.className = 'ripple';
+      r.style.left = px + 'px';
+      r.style.top = py + 'px';
+      frag.appendChild(r);
+      setTimeout(() => r.remove(), 650);
+    };
+    const placePill = (els) => {
+      const rs = [].concat(els).map(e => rel(e, frag)), w = pill.offsetWidth, h = pill.offsetHeight;
+      const l = Math.min(...rs.map(r => r.l)), rr = Math.max(...rs.map(r => r.r)), t = Math.min(...rs.map(r => r.t));
+      pill.style.left = Math.max(6, Math.min((l + rr) / 2 - w / 2, frag.clientWidth - w - 6)) + 'px';
+      pill.style.top = Math.max(4, t - h - 8) + 'px';
+    };
+    // The outline of the target the hand is heading for: one box at the top level of the scene.
+    const box = document.createElement('div');
+    box.className = 'focus-box';
+    box.style.display = 'none';
+    frag.appendChild(box);
+    const aimAt = (el) => {
+      if (!el) { box.style.display = 'none'; return; }
+      const r = rel(el, frag), pad = 4;
+      Object.assign(box.style, { display: 'block', left: (r.l - pad) + 'px', top: (r.t - pad) + 'px',
+                                 width: (r.r - r.l + 2 * pad) + 'px', height: (r.b - r.t + 2 * pad) + 'px' });
+    };
+    // Move from the current spot to (tx, ty) along an arc, then tap. Resolves when done.
+    const go = (el, lift = 22) => new Promise(res => {
+      aimAt(el);
+      const r = rel(el, frag), sx = x, sy = y, tx = r.cx, ty = r.cy, MOVE = 620, TAP = 520;
+      const dist = Math.hypot(tx - sx, ty - sy);
+      lift = Math.max(lift, Math.min(60, dist * 0.35));
+      const t0 = performance.now();
+      const frame = (now) => {
+        const t = now - t0;
+        if (t < MOVE) {
+          const e = ease(t / MOVE);
+          put(sx + (tx - sx) * e, sy + (ty - sy) * e - Math.sin(Math.PI * e) * lift, 1);
+        } else if (t < MOVE + TAP) {
+          const k = t - MOVE;
+          if (k < 150) put(tx, ty, 1 - .14 * k / 150);
+          else if (k < 300) put(tx, ty, .86 + .14 * (k - 150) / 150);
+          else put(tx, ty, 1);
+          // The pulse leaves the fingertip at the bottom of the press.
+          if (k >= 150 && !go.rippled) { ripple(tx, ty); go.rippled = true; }
+        } else { go.rippled = false; res(); return; }
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    return { put, go, placePill, aimAt, ripple, hand };
+  }
+
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  // 1. Single target: tap, lift, tap again.
+  (async () => {
+    const f = document.getElementById('s1'), t = f.querySelector('[data-t]');
+    const s = scene(f, 'tap');
+    s.placePill(t);
+    const r = rel(t, f);
+    s.put(r.cx + 30, r.cy + 34, 1);
+    if (reduce) { s.aimAt(t); s.put(r.cx, r.cy, 1); return; }
+    s.aimAt(t);
+    for (;;) { await s.go(t, 26); await wait(450); }
+  })();
+
+  // 2. Several targets on one row.
+  (async () => {
+    const f = document.getElementById('s2'), ts = [...f.querySelectorAll('[data-t]')];
+    const s = scene(f, 'tap one of');
+    s.placePill(ts);
+    const r = rel(ts[0], f);
+    s.put(r.cx, r.cy + 40, 1);
+    if (reduce) { s.aimAt(ts[0]); s.put(r.cx, r.cy, 1); return; }
+    for (let i = 0; ; i = (i + 1) % ts.length) { await s.go(ts[i]); await wait(250); }
+  })();
+
+  // 3. Picker: expand the first group once per arrival, then loop over the search bar and the first rows.
+  const GROUPS = [
+    ['Cardio', ['Running', 'Trail running', 'Walking', 'Hiking', 'Cycling']], ['Strength', ['Weights']], ['Sports', ['Tennis']],
+    ['Athletics', ['Sprints']], ['Outdoor', ['Climbing']], ['Mind & body', ['Yoga']], ['Everyday', ['Housework']], ['Other', ['Something else']],
+  ];
+  const f3 = document.getElementById('s3');
+  let run = 0;
+  async function arrive() {
+    const me = ++run;
+    f3.querySelectorAll('.hand,.pill,.block,.ripple').forEach(e => e.remove());
+    const g = f3.querySelector('.groups');
+    g.innerHTML = '';
+    GROUPS.forEach(([name, acts]) => {
+      g.insertAdjacentHTML('beforeend', '<div class="grp"><span>' + name + '</span><span class="chev">›</span></div>' +
+        '<div class="rows">' + acts.map(a => '<div>' + a + '</div>').join('') + '</div>');
+    });
+    const search = f3.querySelector('.search'), cardio = f3.querySelector('.grp');
+    const s = scene(f3, 'search or pick');
+    s.placePill(search);
+    const r = rel(search, f3);
+    s.put(r.cx, r.cy + 60, 1);
+    await wait(400);
+    if (me !== run) return;
+    // The screen takes no taps while the group opens.
+    const block = document.createElement('div');
+    block.className = 'block';
+    f3.appendChild(block);
+    await s.go(cardio, 14);
+    if (me !== run) return;
+    cardio.classList.add('open');
+    const rows = cardio.nextElementSibling;
+    rows.style.height = rows.scrollHeight + 'px';
+    await wait(380);
+    block.remove();
+    if (reduce || me !== run) return;
+    const loop = [search, ...[...rows.children].slice(0, 3)];
+    for (let i = 0; me === run; i = (i + 1) % loop.length) { await s.go(loop[i], 16); await wait(250); }
+  }
+  arrive();
+  document.getElementById('replay').addEventListener('click', arrive);
+</script>
+</body>
+</html>

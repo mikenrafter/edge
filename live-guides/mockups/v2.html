@@ -1,0 +1,261 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-target guide step</title>
+<style>
+  :root {
+    /* App palette (dark theme), mocked from the phone screenshots. */
+    --app-bg: #0c1018;
+    --app-card: #182030;
+    --app-row: #1e2738;
+    --app-text: #e8ecf3;
+    --app-muted: #8a93a6;
+    --keep-bg: #1d4a33; --keep-fg: #4ade80;
+    --discard-bg: #4a2228; --discard-fg: #f87171;
+    --edit-bg: #1f3358; --edit-fg: #7aa7ff;
+    --app-accent: #7aa7ff;
+    --scan: 34, 211, 238;   /* multi-target colour as r,g,b (cyan); the toggle swaps it */
+    --multi-ink: #052a33;
+  }
+  .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; font-family: var(--font-sans); }
+  .col { flex: 1 1 320px; max-width: 350px; min-width: 0; }
+  .col.wide { flex-basis: 100%; max-width: 716px; }
+  .phone {
+    position: relative; background: var(--app-bg); border-radius: var(--radius); padding: 14px 12px 0;
+    color: var(--app-text); overflow: hidden; border: 1px solid var(--border); height: 540px;
+  }
+  .phone.short { height: auto; padding-bottom: 14px; }
+  .bar { display: flex; align-items: center; gap: 10px; color: var(--app-muted); font-size: 15px; margin-bottom: 10px; }
+  .bar .back { font-size: 20px; color: var(--app-text); }
+  .list { background: var(--app-card); border-radius: 14px; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .item { background: var(--app-row); border-radius: 12px; padding: 10px; }
+  .item .top { display: flex; gap: 10px; align-items: baseline; font-size: 15px; }
+  .item .time { color: var(--app-muted); font-variant-numeric: tabular-nums; }
+  .item .sub { color: var(--app-muted); font-size: 12px; margin: 2px 0 8px 52px; }
+  .btns { display: flex; gap: 6px; }
+  .btn { flex: 1; border-radius: 10px; padding: 8px 0; text-align: center; font-size: 13px; font-weight: 600; }
+  .keep { background: var(--keep-bg); color: var(--keep-fg); }
+  .discard { background: var(--discard-bg); color: var(--discard-fg); }
+  .edit { background: var(--edit-bg); color: var(--edit-fg); }
+  [data-t] { transition: box-shadow .2s; }
+  [data-t].lit { box-shadow: 0 0 0 2px rgba(var(--scan), .55); }
+  .card {
+    background: #151b27; border: 1px solid #2a3344; border-radius: 16px; padding: 12px; margin-bottom: 12px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.6);
+  }
+  .card .row { display: flex; gap: 10px; font-size: 14px; line-height: 1.35; }
+  .num { flex: none; width: 24px; height: 24px; border-radius: 50%; background: #dc2626; color: #fff; font-weight: 700;
+         display: grid; place-items: center; font-size: 13px; }
+  .card .foot { display: flex; justify-content: space-between; margin-top: 10px; font-size: 13px; }
+  .card .foot .help, .card .foot .exit { color: var(--app-accent); }
+  .card .foot .exit { font-weight: 600; }
+  .search { display: flex; align-items: center; gap: 8px; background: var(--app-row); border-radius: 12px; padding: 11px 12px;
+            color: var(--app-muted); font-size: 14px; }
+  .acts { margin-top: 10px; background: var(--app-card); border-radius: 14px; padding: 4px 8px; }
+  .act { display: flex; align-items: center; gap: 10px; padding: 10px 4px; font-size: 14px; border-bottom: 1px solid #263044; border-radius: 8px; }
+  .act:last-child { border-bottom: 0; }
+  .ico { width: 26px; height: 26px; border-radius: 8px; background: #2b2550; display: grid; place-items: center; font-size: 13px; }
+  .days { display: flex; justify-content: space-between; gap: 4px; margin-top: 46px; }
+  .day { flex: 1; text-align: center; padding: 10px 0; border-radius: 999px; font-size: 14px; color: var(--app-muted); }
+  .day.sel { background: #1d2c55; color: var(--app-accent); }
+  .rowline { display: flex; justify-content: space-between; background: var(--app-card); border-radius: 12px; padding: 12px; margin-top: 12px; font-size: 14px; color: var(--app-muted); }
+
+  /* The multi-target box, its scan line and the label. */
+  .box { position: absolute; z-index: 2; border: 2px solid rgba(var(--scan), .9); border-radius: 14px; overflow: hidden; pointer-events: none; }
+  .band { position: absolute; left: 0; top: 0; will-change: transform, opacity; }
+  .box.v .band { width: 100%; height: 34px;
+    background: linear-gradient(to bottom, rgba(var(--scan),0) 0%, rgba(var(--scan),.16) 30%, rgba(var(--scan),.5) 50%, rgba(var(--scan),.16) 70%, rgba(var(--scan),0) 100%); }
+  .box.h .band { height: 100%; width: 34px;
+    background: linear-gradient(to right, rgba(var(--scan),0) 0%, rgba(var(--scan),.16) 30%, rgba(var(--scan),.5) 50%, rgba(var(--scan),.16) 70%, rgba(var(--scan),0) 100%); }
+  .pill {
+    position: absolute; z-index: 3; display: flex; align-items: center; gap: 5px; white-space: nowrap;
+    background: rgb(var(--scan)); color: var(--multi-ink); font-weight: 700; font-size: 13px;
+    padding: 4px 10px 4px 6px; border-radius: 999px; box-shadow: 0 2px 6px rgba(0,0,0,.45);
+  }
+  .hand { width: 18px; height: 18px; display: block; }
+
+  .cap { font-size: 13px; color: var(--muted-foreground); margin-top: 8px; line-height: 1.4; }
+  .cap b { color: var(--foreground); }
+  .controls { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 14px; font-size: 13px; color: var(--muted-foreground); }
+  .controls button { font: inherit; color: var(--foreground); background: var(--secondary); border: 1px solid var(--border);
+                     border-radius: var(--radius); padding: 4px 10px; cursor: pointer; }
+  .controls button[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="col">
+    <div class="phone" id="p1" data-dir="v" data-label="tap one of">
+      <div class="card">
+        <div class="row"><span class="num">2</span><span>Tap <b>Discard</b> on the nap or workout that didn't happen.</span></div>
+        <div class="foot"><span class="help">Don't see it?</span><span class="exit">Exit</span></div>
+      </div>
+      <div class="bar"><span class="back">‹</span> Review activities · 4</div>
+      <div class="list">
+        <div class="item">
+          <div class="top"><span class="time">16:23</span><span>Possible nap</span></div>
+          <div class="sub">22 min</div>
+          <div class="btns"><div class="btn keep">✓ Keep</div><div class="btn discard" data-t>✕ Discard</div><div class="btn edit">✎ Edit</div></div>
+        </div>
+        <div class="item">
+          <div class="top"><span class="time">17:40</span><span>Possible walk</span></div>
+          <div class="sub">14 min</div>
+          <div class="btns"><div class="btn keep">✓ Keep</div><div class="btn discard" data-t>✕ Discard</div><div class="btn edit">✎ Edit</div></div>
+        </div>
+        <div class="item">
+          <div class="top"><span class="time">19:05</span><span>Possible strength</span></div>
+          <div class="sub">31 min</div>
+          <div class="btns"><div class="btn keep">✓ Keep</div><div class="btn discard" data-t>✕ Discard</div><div class="btn edit">✎ Edit</div></div>
+        </div>
+        <div class="item">
+          <div class="top"><span class="time">21:12</span><span>Possible nap</span></div>
+          <div class="sub">9 min</div>
+          <div class="btns"><div class="btn keep">✓ Keep</div><div class="btn discard" data-t>✕ Discard</div><div class="btn edit">✎ Edit</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><b>Remove a nap or workout.</b> One box around every Discard; the fourth is below the screen, so the box runs off the bottom. The line scans top to bottom over the visible part; the hand follows it.</div>
+  </div>
+
+  <div class="col">
+    <div class="phone" id="p2" data-dir="v" data-label="search or select from the list">
+      <div class="bar"><span class="back">‹</span> Start an activity</div>
+      <div class="search" data-t>⌕ Search activities</div>
+      <div class="acts" data-t>
+        <div class="act"><span class="ico">🏃</span>Run</div>
+        <div class="act"><span class="ico">🚶</span>Walk</div>
+        <div class="act"><span class="ico">🚴</span>Cycle</div>
+        <div class="act"><span class="ico">🏋</span>Strength</div>
+        <div class="act"><span class="ico">🧘</span>Yoga</div>
+        <div class="act"><span class="ico">🏊</span>Swim</div>
+        <div class="act"><span class="ico">⛰</span>Hike</div>
+        <div class="act"><span class="ico">🚣</span>Row</div>
+        <div class="act"><span class="ico">🎾</span>Tennis</div>
+      </div>
+    </div>
+    <div class="cap"><b>Start a workout.</b> A custom label: "search or select from the list". The box spans the search bar and the list, which continues below the screen.</div>
+  </div>
+
+  <div class="col wide">
+    <div class="phone short" id="p3" data-dir="h" data-label="tap one of">
+      <div class="bar"><span class="back">‹</span> Alarm</div>
+      <div class="days">
+        <div class="day sel" data-t>Mon</div><div class="day" data-t>Tue</div><div class="day" data-t>Wed</div><div class="day" data-t>Thu</div>
+        <div class="day" data-t>Fri</div><div class="day" data-t>Sat</div><div class="day" data-t>Sun</div>
+      </div>
+      <div class="rowline"><span>Wake time</span><span>13:45</span></div>
+    </div>
+    <div class="cap"><b>Set an alarm, pick the day.</b> Targets in a row, so the line scans left to right, with the default label.</div>
+  </div>
+
+</div>
+<div class="controls">
+  <span>Scan colour:</span>
+  <button type="button" data-scan="34, 211, 238" data-ink="#052a33" aria-pressed="true">Cyan (multi-target)</button>
+  <button type="button" data-scan="122, 167, 255" data-ink="#0b1a38" aria-pressed="false">App accent</button>
+</div>
+
+<script>
+  const HAND = '<svg class="hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M22 14a8 8 0 0 1-8 8"/><path d="M18 11v-1a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v1"/>' +
+    '<path d="M10 9.5V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v10"/><path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>';
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const SWEEP = 1600, REST = 400, BAND = 34;
+  const scenes = [];
+
+  function rel(el, phone) {
+    const r = el.getBoundingClientRect(), p = phone.getBoundingClientRect();
+    return { l: r.left - p.left, t: r.top - p.top, r: r.right - p.left, b: r.bottom - p.top };
+  }
+
+  function setup(phone) {
+    const dir = phone.dataset.dir;
+    const targets = [...phone.querySelectorAll('[data-t]')];
+    const box = document.createElement('div');
+    box.className = 'box ' + dir;
+    const band = document.createElement('div');
+    band.className = 'band';
+    box.appendChild(band);
+    const pill = document.createElement('div');
+    pill.className = 'pill';
+    pill.innerHTML = HAND + '<span></span>';
+    pill.querySelector('span').textContent = phone.dataset.label;
+    phone.append(box, pill);
+    const hand = pill.querySelector('.hand');
+    const s = { phone, dir, targets, box, band, pill, hand };
+
+    s.layout = () => {
+      const rs = targets.map(t => rel(t, phone));
+      const pad = 6;
+      const u = { l: Math.min(...rs.map(r => r.l)) - pad, t: Math.min(...rs.map(r => r.t)) - pad,
+                  r: Math.max(...rs.map(r => r.r)) + pad, b: Math.max(...rs.map(r => r.b)) + pad };
+      Object.assign(box.style, { left: u.l + 'px', top: u.t + 'px', width: (u.r - u.l) + 'px', height: (u.b - u.t) + 'px' });
+      s.u = u;
+      s.rs = rs;
+      // The scan covers only the part of the box that is on screen.
+      const ph = phone.clientHeight, pw = phone.clientWidth;
+      s.vis = { l: Math.max(u.l, 0), t: Math.max(u.t, 0), r: Math.min(u.r, pw), b: Math.min(u.b, ph) };
+      // Label above the box if there is room, else below; centred, kept inside the screen.
+      const w = pill.offsetWidth, h = pill.offsetHeight;
+      let x = (s.vis.l + s.vis.r) / 2 - w / 2;
+      x = Math.max(6, Math.min(x, pw - w - 6));
+      let y = u.t - h - 8;
+      if (y < 4) y = Math.min(u.b + 8, ph - h - 4);
+      pill.style.left = x + 'px';
+      pill.style.top = y + 'px';
+      const hr = rel(hand, phone);
+      s.hx = (hr.l + hr.r) / 2;
+      s.hy = (hr.t + hr.b) / 2;
+    };
+
+    s.frame = (now) => {
+      const v = s.vis, u = s.u;
+      const cycle = reduce ? SWEEP / 2 : now % (SWEEP + REST);
+      const p = Math.min(cycle / SWEEP, 1);
+      const ease = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      let cx, cy;
+      if (dir === 'v') {
+        cy = v.t + (v.b - v.t) * ease;
+        cx = (v.l + v.r) / 2;
+        band.style.transform = 'translateY(' + (cy - u.t - BAND / 2) + 'px)';
+      } else {
+        cx = v.l + (v.r - v.l) * ease;
+        cy = (v.t + v.b) / 2;
+        band.style.transform = 'translateX(' + (cx - u.l - BAND / 2) + 'px)';
+      }
+      // Fade in and out at the ends of the sweep; never fully opaque (peak alpha lives in the gradient).
+      band.style.opacity = reduce ? 1 : (cycle > SWEEP ? 0 : Math.sin(Math.PI * p));
+      // The hand stays put and turns to point at where the line is.
+      const ang = Math.atan2(cx - s.hx, -(cy - s.hy)) * 180 / Math.PI;
+      hand.style.transform = 'rotate(' + ang + 'deg)';
+      s.rs.forEach((r, k) => {
+        const on = dir === 'v' ? (cy >= r.t && cy <= r.b) : (cx >= r.l && cx <= r.r);
+        targets[k].classList.toggle('lit', on && cycle <= SWEEP);
+      });
+    };
+
+    s.layout();
+    scenes.push(s);
+  }
+
+  ['p1', 'p2', 'p3'].forEach(id => setup(document.getElementById(id)));
+
+  function tick(now) {
+    scenes.forEach(s => s.frame(now));
+    if (!reduce) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  addEventListener('resize', () => scenes.forEach(s => s.layout()));
+
+  document.querySelectorAll('.controls button').forEach(b => b.addEventListener('click', () => {
+    document.documentElement.style.setProperty('--scan', b.dataset.scan);
+    document.documentElement.style.setProperty('--multi-ink', b.dataset.ink);
+    document.querySelectorAll('.controls button').forEach(o => o.setAttribute('aria-pressed', String(o === b)));
+    scenes.forEach(s => s.layout());
+  }));
+</script>
+</body>
+</html>
