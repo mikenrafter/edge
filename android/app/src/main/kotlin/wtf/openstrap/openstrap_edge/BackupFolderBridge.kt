@@ -30,7 +30,7 @@ object BackupFolderBridge {
             .setMethodCallHandler { call, result ->
                 if (call.method == "pick") {
                     pick(result)
-                } else if (call.method in setOf("list", "write", "rename", "delete", "release")) {
+                } else if (call.method in setOf("list", "write", "read", "rename", "delete", "release")) {
                     run(result) { dispatch(app, call) }
                 } else {
                     result.notImplemented()
@@ -212,6 +212,21 @@ object BackupFolderBridge {
                     throw e
                 }
             }
+            "read" -> {
+                val info = child(context, root, call.argument<String>("uri") ?: "")
+                val destination = requirePrivateBackupDestination(context.cacheDir,
+                    File(call.argument<String>("destination")
+                        ?: throw IllegalArgumentException("Missing private destination")))
+                val input = context.contentResolver.openInputStream(info.uri)
+                    ?: throw IOException("Could not read the saved export.")
+                try {
+                    input.use { source -> destination.outputStream().use { source.copyTo(it) } }
+                } catch (e: Exception) {
+                    destination.delete()
+                    throw e
+                }
+                null
+            }
             "rename" -> {
                 val name = call.argument<String>("name") ?: throw IllegalArgumentException("Missing filename")
                 requireBackupFileName(name)
@@ -250,4 +265,14 @@ internal fun canPublishBackup(flags: Int): Boolean {
 internal fun requireBackupFileName(name: String) {
     require(name.isNotEmpty() && name != "." && name != ".." &&
         !name.contains('/') && !name.contains('\\') && !name.contains('\u0000'))
+}
+
+/** Canonical paths reject sibling prefixes, traversal and symlink escapes. */
+internal fun requirePrivateBackupDestination(cache: File, destination: File): File {
+    val privateRoot = cache.canonicalFile
+    val checked = destination.canonicalFile
+    require(checked.path.startsWith(privateRoot.path + File.separator)) {
+        "Read-back destination must be in private cache"
+    }
+    return checked
 }

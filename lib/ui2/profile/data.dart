@@ -46,6 +46,7 @@ import '../ui2.dart';
 import '../../data/import_progress.dart';
 import 'import_progress_view.dart';
 import 'phone_import.dart';
+import 'official_export.dart';
 import 'profile.dart';
 import 'settings.dart' show backToRoot;
 
@@ -388,6 +389,7 @@ class _DataScreenState extends State<DataScreen> {
       onExportEncrypted: () => _run(
           l?.loadingExportEncrypted ?? 'Writing the encrypted backup',
           _exportEncrypted),
+      onExportOfficial: () => goto(c, const OfficialExportScreen()),
       onCycleCadence: () => app.setBackupCadence(_nextCadence(app.backupCadence)),
       onChooseBackupFolder: () => _run(
           l?.loadingBackupFolder ?? 'Setting the backup folder',
@@ -435,6 +437,7 @@ class DataScreenView extends StatelessWidget {
     this.onExportHeartRate,
     this.onExportDb,
     this.onExportEncrypted,
+    this.onExportOfficial,
     this.onCycleCadence,
     this.onChooseBackupFolder,
     this.onUseDefaultBackupFolder,
@@ -480,6 +483,7 @@ class DataScreenView extends StatelessWidget {
       onExportHeartRate,
       onExportDb,
       onExportEncrypted,
+      onExportOfficial,
       onCycleCadence,
       onChooseBackupFolder,
       onUseDefaultBackupFolder,
@@ -557,6 +561,10 @@ class DataScreenView extends StatelessWidget {
                       sub: l?.dataExportEncryptedSub ??
                           'The same full copy, locked with a passphrase, for somewhere like iCloud. Forget the passphrase and no one can open the file',
                       onTap: busy ? null : onExportEncrypted),
+                  SetRow(LucideIcons.arrowUpRight, C.blue,
+                      'Export for the official app',
+                      sub: 'For official v0.11.3. Optional encrypted fork recovery file.',
+                      onTap: busy ? null : onExportOfficial),
                 ]),
                 SettingsAccordion(l?.dataAutoBackupGroup ?? 'Automatic backup',
                     id: 'data_auto_backup',

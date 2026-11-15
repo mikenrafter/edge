@@ -13,6 +13,14 @@ import 'package:openstrap_edge/util/worker_entries.dart';
 
 /// Substring of `Symbol.toString()` -> expected dispatcher.
 const kExpected = <String, Dispatcher>{
+  'decodeOfficialWindowsHeavy': Dispatcher.run,
+  'sanitizeOfficialActivityHeavy': Dispatcher.run,
+  'officialCoveredDaysHeavy': Dispatcher.run,
+  'hashOfficialRowsHeavy': Dispatcher.run,
+  'officialFileHashHeavy': Dispatcher.run,
+  'sealOfficialFileHeavy': Dispatcher.run,
+  'openOfficialFileHeavy': Dispatcher.run,
+  'expandOfficialBucketHeavy': Dispatcher.run,
   'trackLearningHeavy': Dispatcher.run,
   'typicalCaffeineHeavy': Dispatcher.run,
   'legacyWakeHeavy': Dispatcher.run,

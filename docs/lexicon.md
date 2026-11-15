@@ -169,3 +169,11 @@ in the same change that introduces it (AGENTS.md §6).
   metadata is excluded from restore, and does not version analytics output.
   Schema 87 also carries legacy medical claims for already flagged pulse days
   into their dedicated daily delivery keys.
+
+- **Official export**: a release-specific encrypted import file for a fresh
+  official OpenStrap install. It carries supported evidence and user records,
+  clears fork computations, and reports every unsupported item. Owned by
+  `OfficialExportCoordinator` in `data/official_export`.
+- **Fork recovery file**: the optional encrypted full fork snapshot, including
+  portable preferences and approved saved files. The official importer cannot
+  restore its fork-only contents. Credentials remain on the source device.
