@@ -3936,5 +3936,7 @@
   "updatesOpenFailed": "रिलीज़ पेज नहीं खुल सका।",
   "updatesReleaseLabel": "{source} · {version} · {channel}",
   "updatesOfficialPrereleases": "आधिकारिक पूर्व-रिलीज़",
-  "updatesErrorScheduling": "अपने आप जाँचने का समय तय नहीं हो सका। फिर कोशिश करने के लिए ऐप अपडेट खोलें।"
+  "updatesErrorScheduling": "अपने आप जाँचने का समय तय नहीं हो सका। फिर कोशिश करने के लिए ऐप अपडेट खोलें।",
+  "updatesOfficialNew": "आधिकारिक ऐप का नया संस्करण",
+  "updatesSeparateApp": "अलग ऐप। आपका डेटा यहीं रहता है।"
 }

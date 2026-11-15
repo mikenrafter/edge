@@ -2,11 +2,14 @@
 // CLAIM(update-release-page): navigation accepts only canonical GitHub release
 // pages for the two sources [test/updates/update_checker_test.dart].
 enum ReleaseSource {
-  official('OpenStrap/edge'),
-  fork('mikenrafter/edge');
+  // Repository ids verified against GET /repos/{repository} on 2026-11-15.
+  // Numeric Link paths must belong to the source being checked.
+  official('OpenStrap/edge', 1196502414),
+  fork('mikenrafter/edge', 1403688012);
 
-  const ReleaseSource(this.repository);
+  const ReleaseSource(this.repository, this.repositoryId);
   final String repository;
+  final int repositoryId;
 }
 
 enum UpdatePhase { off, notChecked, checking, current, available, error }
@@ -109,12 +112,25 @@ class ReleaseCandidate {
     required this.asset,
     required this.prerelease,
     this.build,
+    this.separateApp = false,
   });
   final ReleaseSource source;
   final int id;
   final String tag, asset;
-  final bool prerelease;
+  final bool prerelease, separateApp;
   final int? build;
+
+  // The relationship is local presentation state, recalculated even for old
+  // cached candidates after an app upgrade. It never comes from GitHub.
+  ReleaseCandidate forInstall(InstalledRelease installed) => ReleaseCandidate(
+    source: source,
+    id: id,
+    tag: tag,
+    asset: asset,
+    prerelease: prerelease,
+    build: build,
+    separateApp: source == ReleaseSource.official && installed.fork == true,
+  );
   ReleasePage get page => ReleasePage.forRelease(source, tag);
   String get identity => 'release:${source.name}:$id';
   Map<String, Object?> toJson() => {

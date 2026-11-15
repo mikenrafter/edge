@@ -82,7 +82,8 @@ Future<void> main() async {
   // pulled due to isolate collisions/deadlocks with the main UI's database access.
   // We must explicitly cancel them here otherwise they survive app updates and
   // cause the app to hang on the loading screen (buffering circle) when they fire
-  // concurrently with AppState._init().
+  // concurrently with AppState._init(). The current release-metadata worker
+  // uses its own UpdateStore database and never runs band sync or derivation.
   //
   // IMPORTANT: this MUST be scoped by unique name, never Workmanager().cancelAll().
   // AndroidX WorkManager is a single OS-wide instance shared by every caller —

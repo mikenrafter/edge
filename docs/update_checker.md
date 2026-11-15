@@ -8,7 +8,10 @@ Settings shows the last result for each source independently. Official releases
 use semantic version order; official prereleases require a separate choice.
 Fork prereleases are included, ordered by their manifest's `versionCode`.
 An official release shown in the fork is a release of a separate application;
-the fork's build counter is never compared with an official counter.
+the fork's build counter is never compared with an official counter. On a fork
+install, official releases at or below the fork's own semantic version are
+informational. Only a higher official version drives an announcement, explicitly
+labelled as a separate app whose data stays in this app.
 
 `UpdateService` owns checks and observable state. `UpdateStore` owns consent,
 cache, deadlines, generation-checked leases and permanent notification claims in
@@ -35,7 +38,9 @@ are refused. Manifest redirects are restricted to HTTPS
 `release-assets.githubusercontent.com`, at most three hops; their URLs are not
 cached. No APK URL is ever requested. A bound that prevents a complete result
 produces an error, never an up-to-date claim. Rate limits persist a per-source
-retry deadline that Check now also respects.
+retry deadline that Check now also respects. An ordinary forbidden response
+is a network error, not a rate limit. Server retry dates are capped at seven
+days; Check now can retry once that deadline passes.
 
 Release bodies and `html_url` are ignored. Navigation is reconstructed from a
 supported tag and one of the two fixed repositories. Notification taps pass
@@ -77,7 +82,9 @@ existing API asset exactly once. Mode is `profile` or `release`. ABI names are
 list the ABIs they contain. Package is always `wtf.openstrap.openstrap_edge.dev`.
 Names are `openstrap-edge-{tag}-dev-{mode}[-{abi}].apk`. Only the current compiled
 mode is matched; there is no mode-switch control. Unknown formats, duplicate
-entries and inconsistent names or package identities are refused.
+entries and inconsistent names or package identities are refused. Older releases
+with missing or malformed manifests do not hide a newer valid candidate. An
+unrecognized release with a newer date tag blocks fallback to an older one.
 
 Official names are `openstrap-edge-{tag}[-{abi}].apk`, release mode only.
 Architecture preference follows Android's ordered supported ABI list, then a

@@ -31,11 +31,34 @@ void main() {
       enabled: true,
       phase: UpdatePhase.checking,
     ),
-    'current': const UpdateSnapshot(enabled: true, phase: UpdatePhase.current,
+    'current': const UpdateSnapshot(
+      enabled: true,
+      phase: UpdatePhase.current,
       sources: {
-        ReleaseSource.official: SourceUpdate(current: true, candidate: ReleaseCandidate(source: ReleaseSource.official, id: 1, tag: 'v0.11.3', asset: 'openstrap-edge-v0.11.3.apk', prerelease: false)),
-        ReleaseSource.fork: SourceUpdate(current: true, candidate: ReleaseCandidate(source: ReleaseSource.fork, id: 2, tag: 'next-2026.11.15', build: 78, asset: 'openstrap-edge-next-2026.11.15-dev-profile.apk', prerelease: true)),
-      }),
+        ReleaseSource.official: SourceUpdate(
+          current: true,
+          candidate: ReleaseCandidate(
+            source: ReleaseSource.official,
+            separateApp: true,
+            id: 1,
+            tag: 'v0.11.3',
+            asset: 'openstrap-edge-v0.11.3.apk',
+            prerelease: false,
+          ),
+        ),
+        ReleaseSource.fork: SourceUpdate(
+          current: true,
+          candidate: ReleaseCandidate(
+            source: ReleaseSource.fork,
+            id: 2,
+            tag: 'next-2026.11.15',
+            build: 78,
+            asset: 'openstrap-edge-next-2026.11.15-dev-profile.apk',
+            prerelease: true,
+          ),
+        ),
+      },
+    ),
     'available': const UpdateSnapshot(
       enabled: true,
       phase: UpdatePhase.available,
@@ -48,6 +71,22 @@ void main() {
             prerelease: true,
             build: 79,
             asset: 'openstrap-edge-next-2026.11.15-dev-profile.apk',
+          ),
+        ),
+      },
+    ),
+    'official-news': const UpdateSnapshot(
+      enabled: true,
+      phase: UpdatePhase.available,
+      sources: {
+        ReleaseSource.official: SourceUpdate(
+          candidate: ReleaseCandidate(
+            source: ReleaseSource.official,
+            separateApp: true,
+            id: 3,
+            tag: 'v0.11.4',
+            asset: 'openstrap-edge-v0.11.4.apk',
+            prerelease: false,
           ),
         ),
       },
@@ -69,14 +108,39 @@ void main() {
   // compact Settings entry. The production selector supplies the relationship.
   // catches: reusing the in-place Update available title for official news.
   test('official news summary identifies the separate app', () async {
-    final candidate = selectRelease(ReleaseSource.official, [{
-      'id': 1, 'tag_name': 'v0.11.4', 'draft': false, 'prerelease': false,
-      'assets': [{'id': 10, 'name': 'openstrap-edge-v0.11.4.apk'}],
-    }], const InstalledRelease(version: '0.11.3', build: 78, fork: true, mode: 'profile'))!;
+    final candidate = selectRelease(
+      ReleaseSource.official,
+      [
+        {
+          'id': 1,
+          'tag_name': 'v0.11.4',
+          'draft': false,
+          'prerelease': false,
+          'assets': [
+            {'id': 10, 'name': 'openstrap-edge-v0.11.4.apk'},
+          ],
+        },
+      ],
+      const InstalledRelease(
+        version: '0.11.3',
+        build: 78,
+        fork: true,
+        mode: 'profile',
+      ),
+    )!;
     final l = await AppLocalizations.delegate.load(const Locale('en'));
-    expect(updateSummary(l, UpdateSnapshot(enabled: true, phase: UpdatePhase.available,
-      sources: {ReleaseSource.official: SourceUpdate(candidate: candidate)})),
-      'New official app release · Official · v0.11.4 · Release · Separate app. Your data stays here.');
+    expect(updateSummary(l, states['current']!), 'Up to date');
+    expect(
+      updateSummary(
+        l,
+        UpdateSnapshot(
+          enabled: true,
+          phase: UpdatePhase.available,
+          sources: {ReleaseSource.official: SourceUpdate(candidate: candidate)},
+        ),
+      ),
+      'New official app release · Official · v0.11.4 · Release · Separate app. Your data stays here.',
+    );
   });
 
   // WHY: the first pilot only captured the Settings entry. Exercise the real
@@ -90,39 +154,108 @@ void main() {
     final out = Platform.environment['UPDATE_SHOTS'];
     for (final scale in [1.0, 2.0]) {
       for (final name in ['off', 'current', 'official-news']) {
-        final snapshot = name == 'official-news' ? UpdateSnapshot(
-          enabled: true, phase: UpdatePhase.available, sources: {
-            ...states['current']!.sources,
-            ReleaseSource.official: SourceUpdate(candidate: selectRelease(ReleaseSource.official, [{
-              'id': 3, 'tag_name': 'v0.11.4', 'draft': false, 'prerelease': false,
-              'assets': [{'id': 11, 'name': 'openstrap-edge-v0.11.4.apk'}],
-            }], const InstalledRelease(version: '0.11.3', build: 78, fork: true, mode: 'profile'))),
-          }) : states[name]!;
+        final snapshot = name == 'official-news'
+            ? UpdateSnapshot(
+                enabled: true,
+                phase: UpdatePhase.available,
+                sources: {
+                  ...states['current']!.sources,
+                  ReleaseSource.official: SourceUpdate(
+                    candidate: selectRelease(
+                      ReleaseSource.official,
+                      [
+                        {
+                          'id': 3,
+                          'tag_name': 'v0.11.4',
+                          'draft': false,
+                          'prerelease': false,
+                          'assets': [
+                            {'id': 11, 'name': 'openstrap-edge-v0.11.4.apk'},
+                          ],
+                        },
+                      ],
+                      const InstalledRelease(
+                        version: '0.11.3',
+                        build: 78,
+                        fork: true,
+                        mode: 'profile',
+                      ),
+                    ),
+                  ),
+                },
+              )
+            : states[name]!;
         final service = _CaptureService(snapshot);
         final key = GlobalKey();
-        await t.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(
-          debugShowCheckedModeBanner: false,
-          theme: buildTheme(Brightness.dark), locale: const Locale('en'),
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)), child: child!),
-          home: AppUpdatesScreen(service: service),
-        )));
+        await t.pumpWidget(
+          RepaintBoundary(
+            key: key,
+            child: MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: buildTheme(Brightness.dark),
+              locale: const Locale('en'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: AppUpdatesScreen(service: service),
+            ),
+          ),
+        );
         await t.pumpAndSettle();
         final suffix = scale == 1 ? 'normal' : 'large';
         await capture(t, key, out, 'screen-$name-top-$suffix');
-        await t.scrollUntilVisible(find.text('mikenrafter/edge'), 300, scrollable: find.byType(Scrollable).first);
-        await t.ensureVisible(find.text('mikenrafter/edge'));
+        await t.scrollUntilVisible(
+          find.text('mikenrafter/edge'),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await Scrollable.ensureVisible(
+          t.element(
+            find.ancestor(
+              of: find.text('mikenrafter/edge'),
+              matching: find.byType(Card),
+            ),
+          ),
+          alignment: 0.5,
+        );
         await t.pumpAndSettle();
         await capture(t, key, out, 'screen-$name-fork-$suffix');
-        await t.scrollUntilVisible(find.text('OpenStrap/edge'), 300, scrollable: find.byType(Scrollable).first);
-        await t.ensureVisible(find.text('OpenStrap/edge'));
+        await t.scrollUntilVisible(
+          find.text('OpenStrap/edge'),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await Scrollable.ensureVisible(
+          t.element(
+            find.ancestor(
+              of: find.text('OpenStrap/edge'),
+              matching: find.byType(Card),
+            ),
+          ),
+          alignment: 0.5,
+        );
         await t.pumpAndSettle();
-        expect(find.text('Open release page'), name == 'off' ? findsNothing : findsWidgets);
+        expect(
+          find.text('Open release page'),
+          name == 'off' ? findsNothing : findsWidgets,
+        );
         await capture(t, key, out, 'screen-$name-official-$suffix');
         if (name == 'current') {
-          await t.scrollUntilVisible(find.text('Check now'), -300, scrollable: find.byType(Scrollable).first);
-          await t.ensureVisible(find.text('Check now'));
+          await t.scrollUntilVisible(
+            find.text('Check now'),
+            -300,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await Scrollable.ensureVisible(
+            t.element(find.text('Check now')),
+            alignment: 0.5,
+          );
+          await t.pumpAndSettle();
           await t.tap(find.text('Check now'));
           await t.pumpAndSettle();
           expect(find.byType(AlertDialog), findsOneWidget);
@@ -225,7 +358,12 @@ void main() {
   });
 }
 
-Future<void> capture(WidgetTester t, GlobalKey key, String? out, String name) async {
+Future<void> capture(
+  WidgetTester t,
+  GlobalKey key,
+  String? out,
+  String name,
+) async {
   expect(t.takeException(), isNull, reason: name);
   if (out == null) return;
   await t.runAsync(() async {
@@ -237,14 +375,26 @@ Future<void> capture(WidgetTester t, GlobalKey key, String? out, String name) as
     image.dispose();
   });
 }
+
 class _CaptureService extends UpdateService {
-  _CaptureService(UpdateSnapshot state) : super(
-    store: UpdateStore(_NoDatabase()), client: MockClient((_) async => http.Response('[]', 200)),
-    installed: const InstalledRelease(version: '0.11.3', build: 78, fork: true, mode: 'profile'),
-    now: () => DateTime.utc(2026, 11, 15, 12), unmetered: () async => false,
-    schedule: (_) async {},
-  ) { snapshot = state; }
+  _CaptureService(UpdateSnapshot state)
+    : super(
+        store: UpdateStore(_NoDatabase()),
+        client: MockClient((_) async => http.Response('[]', 200)),
+        installed: const InstalledRelease(
+          version: '0.11.3',
+          build: 78,
+          fork: true,
+          mode: 'profile',
+        ),
+        now: () => DateTime.utc(2026, 11, 15, 12),
+        unmetered: () async => false,
+        schedule: (_) async {},
+      ) {
+    snapshot = state;
+  }
 }
+
 class _NoDatabase implements Database {
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();

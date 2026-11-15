@@ -178,3 +178,7 @@ in the same change that introduces it (AGENTS.md §6).
   an APK or invokes an installer.
 - **Release claim**: an install-local, permanent atomic record that a release
   notification was attempted. It has no daily expiry and is excluded from backup.
+
+## App updates
+
+- **Separate app**: an official release viewed from a fork install. It uses a different Android package; the checker opens its release page and carries no data over. Official versions at or below the installed fork's version are informational and do not announce an update.

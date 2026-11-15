@@ -3936,5 +3936,7 @@
   "updatesOpenFailed": "Impossible d’ouvrir la page de version.",
   "updatesReleaseLabel": "{source} · {version} · {channel}",
   "updatesOfficialPrereleases": "Préversions officielles",
-  "updatesErrorScheduling": "Impossible de planifier les vérifications. Ouvrez les mises à jour de l’app pour réessayer."
+  "updatesErrorScheduling": "Impossible de planifier les vérifications. Ouvrez les mises à jour de l’app pour réessayer.",
+  "updatesOfficialNew": "Nouvelle version de l’application officielle",
+  "updatesSeparateApp": "Application distincte. Vos données restent ici."
 }

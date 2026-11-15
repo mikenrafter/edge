@@ -19525,5 +19525,7 @@
     }
   },
   "updatesOfficialPrereleases": "Official prereleases",
-  "updatesErrorScheduling": "Couldn’t schedule automatic checks. Open App updates to retry."
+  "updatesErrorScheduling": "Couldn’t schedule automatic checks. Open App updates to retry.",
+  "updatesOfficialNew": "New official app release",
+  "updatesSeparateApp": "Separate app. Your data stays here."
 }

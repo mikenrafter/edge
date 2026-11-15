@@ -110,7 +110,7 @@ class UpdateService extends ChangeNotifier {
           ? installed.fork == true &&
                 candidate.build != null &&
                 candidate.build! <= installed.build
-          : installed.fork == false &&
+          : installed.fork != null &&
                 _compareSemver(candidate.tag.substring(1), installed.version) <=
                     0;
     } catch (_) {
@@ -123,7 +123,7 @@ class UpdateService extends ChangeNotifier {
     final sources = {
       for (final entry in saved.sources.entries)
         entry.key: SourceUpdate(
-          candidate: entry.value.candidate,
+          candidate: entry.value.candidate?.forInstall(installed),
           releasePage: entry.value.releasePage,
           checkedAt: entry.value.checkedAt,
           error: entry.value.error,
@@ -349,7 +349,7 @@ class UpdateService extends ChangeNotifier {
             error: previous.candidate == null ? previous.error : null,
           );
         }
-        if (response.status == 403 || response.status == 429) {
+        if (_isRateLimit(response)) {
           return _rateLimit(response, previous);
         }
         if (response.status >= 300 && response.status < 400) {
@@ -375,9 +375,16 @@ class UpdateService extends ChangeNotifier {
           '/repos/${source.repository}/releases',
           {'per_page': '100', 'page': '${page + 1}'},
         );
-        // Never fetch a URL from a Link header; validate it, then construct it.
+        final numericExpected = Uri.https(
+          'api.github.com',
+          '/repositories/${source.repositoryId}/releases',
+          {'per_page': '100', 'page': '${page + 1}'},
+        );
+        // Never fetch a Link URL. Both accepted forms identify this exact
+        // repository; the next request still uses our fixed /repos path.
         final supplied = Uri.tryParse(next.group(1)!);
-        if (page == 3 || supplied != expected) {
+        if (page == 3 ||
+            (supplied != expected && supplied != numericExpected)) {
           throw const _UpdateFailure(UpdateError.incomplete);
         }
       }
@@ -411,75 +418,89 @@ class UpdateService extends ChangeNotifier {
               !supportedTag(source, release['tag_name'] as String)) {
             continue;
           }
-          final assets = _assets(release);
-          final manifest = assets
-              .where((a) => a['name'] == 'edge-release.json')
-              .toList();
-          if (manifest.length > 1) throw const FormatException();
-          if (manifest.isEmpty) continue;
-          final id = manifest.single['id'];
-          final releaseId = release['id'];
-          if (id is! int || id <= 0 || releaseId is! int || releaseId <= 0) {
-            throw const FormatException();
-          }
-          final updatedAt = manifest.single['updated_at'];
-          final stamp = updatedAt == null
-              ? null
-              : DateTime.tryParse(updatedAt as String);
-          if (updatedAt != null && stamp == null) throw const FormatException();
-          final key = jsonEncode([
-            source.name,
-            releaseId,
-            release['tag_name'],
-            id,
-            stamp?.toUtc().toIso8601String(),
-          ]);
-          var content = await store.manifest(key);
-          if (content != null) {
-            try {
+          // A historical pre-contract or malformed release cannot poison a
+          // newer valid candidate. Selection below still refuses a newer
+          // unrecognized date, rather than silently falling back.
+          try {
+            final assets = _assets(release);
+            final manifest = assets
+                .where((a) => a['name'] == 'edge-release.json')
+                .toList();
+            if (manifest.length > 1) throw const FormatException();
+            if (manifest.isEmpty) continue;
+            final id = manifest.single['id'];
+            final releaseId = release['id'];
+            if (id is! int || id <= 0 || releaseId is! int || releaseId <= 0) {
+              throw const FormatException();
+            }
+            final updatedAt = manifest.single['updated_at'];
+            final stamp = updatedAt == null
+                ? null
+                : DateTime.tryParse(updatedAt as String);
+            if (updatedAt != null && stamp == null) {
+              throw const FormatException();
+            }
+            final key = jsonEncode([
+              source.name,
+              releaseId,
+              release['tag_name'],
+              id,
+              stamp?.toUtc().toIso8601String(),
+            ]);
+            var content = await store.manifest(key);
+            if (content != null) {
+              try {
+                selectRelease(
+                  source,
+                  [release],
+                  installed,
+                  manifests: {releaseId: content},
+                );
+              } catch (_) {
+                content = null;
+              }
+            }
+            if (content == null) {
+              if (fetchedManifests >= 8) {
+                throw const _UpdateFailure(UpdateError.incomplete);
+              }
+              fetchedManifests++;
+              final response = await request(
+                Uri.https(
+                  'api.github.com',
+                  '/repos/${source.repository}/releases/assets/$id',
+                ),
+                manifest: true,
+              );
+              if (_isRateLimit(response)) {
+                return _rateLimit(response, previous);
+              }
+              if (response.status == 404) {
+                throw const FormatException('Missing manifest');
+              }
+              if (response.status != 200) {
+                throw const _UpdateFailure(UpdateError.network);
+              }
+              final decoded = Map<String, dynamic>.from(
+                jsonDecode(response.body) as Map,
+              );
               selectRelease(
                 source,
                 [release],
                 installed,
-                manifests: {releaseId: content},
+                manifests: {releaseId: decoded},
               );
-            } catch (_) {
-              content = null;
+              content = _manifestMetadata(decoded);
+              if (!await store.saveManifest(lease, key, content)) {
+                throw const _UpdateFailure(UpdateError.network);
+              }
             }
+            manifests[releaseId] = content;
+          } on FormatException {
+            continue;
+          } on TypeError {
+            continue;
           }
-          if (content == null) {
-            if (fetchedManifests >= 8) {
-              throw const _UpdateFailure(UpdateError.incomplete);
-            }
-            fetchedManifests++;
-            final response = await request(
-              Uri.https(
-                'api.github.com',
-                '/repos/${source.repository}/releases/assets/$id',
-              ),
-              manifest: true,
-            );
-            if (response.status == 403 || response.status == 429) {
-              return _rateLimit(response, previous);
-            }
-            if (response.status != 200) {
-              throw const _UpdateFailure(UpdateError.badMetadata);
-            }
-            final decoded = Map<String, dynamic>.from(
-              jsonDecode(response.body) as Map,
-            );
-            selectRelease(
-              source,
-              [release],
-              installed,
-              manifests: {releaseId: decoded},
-            );
-            content = _manifestMetadata(decoded);
-            if (!await store.saveManifest(lease, key, content)) {
-              throw const _UpdateFailure(UpdateError.network);
-            }
-          }
-          manifests[releaseId] = content;
         }
       }
       final selected = selectRelease(
@@ -537,23 +558,34 @@ class UpdateService extends ChangeNotifier {
     }
   }
 
+  bool _isRateLimit(_MetadataResponse response) =>
+      response.status == 429 ||
+      (response.status == 403 &&
+          (response.headers['x-ratelimit-remaining'] == '0' ||
+              (response.headers['retry-after']?.isNotEmpty ?? false)));
+
   SourceUpdate _rateLimit(_MetadataResponse response, SourceUpdate? previous) {
-    var retry = now().add(const Duration(days: 1));
+    final instant = now();
+    final latest = instant.add(const Duration(days: 7));
+    DateTime? retry;
     final after = int.tryParse(response.headers['retry-after'] ?? '');
-    DateTime? retryDate;
     if (after != null && after >= 0 && after <= 31536000) {
-      retryDate = now().add(Duration(seconds: after));
+      retry = instant.add(Duration(seconds: after));
     } else {
       try {
-        retryDate = HttpDate.parse(response.headers['retry-after'] ?? '');
+        retry = HttpDate.parse(response.headers['retry-after'] ?? '');
       } catch (_) {}
     }
     final reset = int.tryParse(response.headers['x-ratelimit-reset'] ?? '');
     if (reset != null && reset >= 0 && reset <= 4102444800) {
       final resetDate = DateTime.fromMillisecondsSinceEpoch(reset * 1000);
-      if (resetDate.isAfter(retry)) retry = resetDate;
+      if (retry == null || resetDate.isAfter(retry)) retry = resetDate;
     }
-    if (retryDate != null && retryDate.isAfter(retry)) retry = retryDate;
+    // Respect a real server deadline without adding a daily floor. A manual
+    // check may retry once it passes; even date-form headers are week-bounded.
+    retry ??= instant.add(const Duration(days: 1));
+    if (retry.isBefore(instant)) retry = instant;
+    if (retry.isAfter(latest)) retry = latest;
     return SourceUpdate(
       candidate: previous?.candidate,
       releasePage: previous?.releasePage,
@@ -749,6 +781,7 @@ ReleaseCandidate? selectRelease(
 }) {
   final candidates = <ReleaseCandidate>[];
   int? newestUnmatchedBuild;
+  final unrecognizedTags = <String>[];
   final forkCodes = <int>{};
   final tags = <String>{};
   final ids = <int>{};
@@ -800,7 +833,10 @@ ReleaseCandidate? selectRelease(
     int? build;
     if (source == ReleaseSource.fork) {
       final manifest = manifests[id];
-      if (manifest == null) return null;
+      if (manifest == null) {
+        unrecognizedTags.add(tag);
+        continue;
+      }
 
       if (manifest['formatVersion'] != 1 ||
           manifest['repository'] != source.repository ||
@@ -865,7 +901,7 @@ ReleaseCandidate? selectRelease(
             release['prerelease'] == true ||
             (source == ReleaseSource.official && tag.contains('-')),
         build: build,
-      ),
+      ).forInstall(installed),
     );
   }
   candidates.sort(
@@ -881,6 +917,12 @@ ReleaseCandidate? selectRelease(
   if (source == ReleaseSource.fork &&
       newestUnmatchedBuild != null &&
       (candidates.isEmpty || newestUnmatchedBuild >= candidates.first.build!)) {
+    return null;
+  }
+  if (source == ReleaseSource.fork &&
+      unrecognizedTags.any(
+        (tag) => candidates.isEmpty || tag.compareTo(candidates.first.tag) > 0,
+      )) {
     return null;
   }
   return candidates.firstOrNull;

@@ -4042,5 +4042,7 @@
   "updatesOpenFailed": "Die Release-Seite konnte nicht geöffnet werden.",
   "updatesReleaseLabel": "{source} · {version} · {channel}",
   "updatesOfficialPrereleases": "Offizielle Vorabversionen",
-  "updatesErrorScheduling": "Die automatische Suche konnte nicht geplant werden. Öffne App-Updates, um es erneut zu versuchen."
+  "updatesErrorScheduling": "Die automatische Suche konnte nicht geplant werden. Öffne App-Updates, um es erneut zu versuchen.",
+  "updatesOfficialNew": "Neue offizielle App-Version",
+  "updatesSeparateApp": "Separate App. Deine Daten bleiben hier."
 }

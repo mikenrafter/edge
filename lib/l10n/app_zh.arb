@@ -3936,5 +3936,7 @@
   "updatesOpenFailed": "无法打开发布页面。",
   "updatesReleaseLabel": "{source} · {version} · {channel}",
   "updatesOfficialPrereleases": "官方预发布版",
-  "updatesErrorScheduling": "无法安排自动检查。请打开应用更新后重试。"
+  "updatesErrorScheduling": "无法安排自动检查。请打开应用更新后重试。",
+  "updatesOfficialNew": "官方应用发布新版本",
+  "updatesSeparateApp": "这是独立应用。您的数据仍保留在此应用中。"
 }

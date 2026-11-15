@@ -13,14 +13,9 @@ Future<void> notifyRelease(ReleaseCandidate candidate) async {
     NotificationEvent(
       dedupeKey: candidate.identity,
       category: NotifCategory.updates,
-      title: l.updatesAvailable,
-      body: l.updatesReleaseLabel(
-        candidate.source == ReleaseSource.fork
-            ? l.updatesFork
-            : l.updatesOfficial,
-        candidate.tag,
-        candidate.prerelease ? l.updatesPrerelease : l.updatesStable,
-      ),
+      title: candidate.separateApp ? l.updatesOfficialNew : l.updatesAvailable,
+      body:
+          '${l.updatesReleaseLabel(candidate.source == ReleaseSource.fork ? l.updatesFork : l.updatesOfficial, candidate.tag, candidate.prerelease ? l.updatesPrerelease : l.updatesStable)}${candidate.separateApp ? ' · ${l.updatesSeparateApp}' : ''}',
       date: todayLabel(),
       route: candidate.page.toString(),
     ),

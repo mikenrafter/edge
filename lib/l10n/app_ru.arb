@@ -9840,5 +9840,7 @@
   "updatesOpenFailed": "Не удалось открыть страницу релиза.",
   "updatesReleaseLabel": "{source} · {version} · {channel}",
   "updatesOfficialPrereleases": "Официальные предварительные релизы",
-  "updatesErrorScheduling": "Не удалось запланировать проверки. Откройте обновления приложения и повторите попытку."
+  "updatesErrorScheduling": "Не удалось запланировать проверки. Откройте обновления приложения и повторите попытку.",
+  "updatesOfficialNew": "Новая версия официального приложения",
+  "updatesSeparateApp": "Отдельное приложение. Ваши данные остаются здесь."
 }

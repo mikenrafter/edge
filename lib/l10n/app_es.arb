@@ -3954,5 +3954,7 @@
   "updatesOpenFailed": "No se pudo abrir la página de la versión.",
   "updatesReleaseLabel": "{source} · {version} · {channel}",
   "updatesOfficialPrereleases": "Versiones preliminares oficiales",
-  "updatesErrorScheduling": "No se pudieron programar las búsquedas. Abre Actualizaciones de la app para reintentar."
+  "updatesErrorScheduling": "No se pudieron programar las búsquedas. Abre Actualizaciones de la app para reintentar.",
+  "updatesOfficialNew": "Nueva versión de la app oficial",
+  "updatesSeparateApp": "App independiente. Tus datos se quedan aquí."
 }

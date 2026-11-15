@@ -27,7 +27,7 @@ String updateSummary(AppLocalizations l, UpdateSnapshot snapshot) {
     final result = snapshot.sources[source];
     if (result?.candidate != null && result!.error == null && !result.current) {
       final candidate = result.candidate!;
-      return '${l.updatesAvailable} · ${l.updatesReleaseLabel(source == ReleaseSource.fork ? l.updatesFork : l.updatesOfficial, candidate.tag, candidate.prerelease ? l.updatesPrerelease : l.updatesStable)}';
+      return '${candidate.separateApp ? l.updatesOfficialNew : l.updatesAvailable} · ${l.updatesReleaseLabel(source == ReleaseSource.fork ? l.updatesFork : l.updatesOfficial, candidate.tag, candidate.prerelease ? l.updatesPrerelease : l.updatesStable)}${candidate.separateApp ? ' · ${l.updatesSeparateApp}' : ''}';
     }
   }
   for (final result in snapshot.sources.values) {
@@ -246,6 +246,7 @@ class _AppUpdatesScreenState extends State<AppUpdatesScreen> {
                   candidate.prerelease ? l.updatesPrerelease : l.updatesStable,
                 ),
               ),
+              if (candidate.separateApp) Text(l.updatesSeparateApp),
               if (result.current) Text(l.updatesCurrent),
               TextButton(
                 onPressed: () async {

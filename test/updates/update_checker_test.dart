@@ -271,62 +271,123 @@ void main() {
 
   // WHY: GitHub returns numeric repository URLs, including after 100 releases.
   // catches: rejecting the real Link form or trusting another repository's id.
-  test('real numeric pagination stays scoped to both allowed repositories', () async {
-    for (final source in ReleaseSource.values) {
-      final repositoryId = source == ReleaseSource.official ? 1196502414 : 1403688012;
-      final tag = source == ReleaseSource.official ? 'v0.11.4' : 'next-2026.11.15';
-      respond = (r) async {
-        if (!r.url.path.contains(source.repository)) return http.Response('[]', 200);
-        if (r.url.queryParameters['page'] == '2') {
-          return http.Response(jsonEncode([release(tag, id: 101)]), 200);
-        }
-        return http.Response(jsonEncode(List.generate(100, (i) =>
-          release('unrecognized-$i', id: i + 1))), 200, headers: {
-          'link': '<https://api.github.com/repositories/$repositoryId/releases?per_page=100&page=2>; rel="next", <https://api.github.com/repositories/$repositoryId/releases?per_page=100&page=2>; rel="last"',
-        });
-      };
-      await service.check(manual: true);
-      expect(requests.where((r) => r.url.path == '/repos/${source.repository}/releases' && r.url.queryParameters['page'] == '2'), hasLength(1));
-      expect(service.snapshot.sources[source]!.error, isNot(UpdateError.incomplete));
-      now = now.add(const Duration(minutes: 2));
-      requests.clear();
-      // The other allowed repository's id is still wrong for this source.
-      final wrongId = source == ReleaseSource.official ? 1403688012 : 1196502414;
-      respond = (r) async => http.Response('[]', 200, headers: r.url.path.contains(source.repository) ? {
-        'link': '<https://api.github.com/repositories/$wrongId/releases?per_page=100&page=2>; rel="next"',
-      } : {});
-      await service.check(manual: true);
-      expect(service.snapshot.sources[source]!.error, UpdateError.incomplete);
-      expect(requests.where((r) => r.url.queryParameters.containsKey('page')), isEmpty);
-      now = now.add(const Duration(minutes: 2));
-      requests.clear();
-    }
-  });
+  test(
+    'real numeric pagination stays scoped to both allowed repositories',
+    () async {
+      for (final source in ReleaseSource.values) {
+        final repositoryId = source == ReleaseSource.official
+            ? 1196502414
+            : 1403688012;
+        final tag = source == ReleaseSource.official
+            ? 'v0.11.4'
+            : 'next-2026.11.15';
+        respond = (r) async {
+          if (!r.url.path.contains(source.repository)) {
+            return http.Response('[]', 200);
+          }
+          if (r.url.queryParameters['page'] == '2') {
+            return http.Response(jsonEncode([release(tag, id: 101)]), 200);
+          }
+          return http.Response(
+            jsonEncode(
+              List.generate(100, (i) => release('unrecognized-$i', id: i + 1)),
+            ),
+            200,
+            headers: {
+              'link':
+                  '<https://api.github.com/repositories/$repositoryId/releases?per_page=100&page=2>; rel="next", <https://api.github.com/repositories/$repositoryId/releases?per_page=100&page=2>; rel="last"',
+            },
+          );
+        };
+        await service.check(manual: true);
+        expect(
+          requests.where(
+            (r) =>
+                r.url.path == '/repos/${source.repository}/releases' &&
+                r.url.queryParameters['page'] == '2',
+          ),
+          hasLength(1),
+        );
+        expect(
+          service.snapshot.sources[source]!.error,
+          isNot(UpdateError.incomplete),
+        );
+        now = now.add(const Duration(minutes: 2));
+        requests.clear();
+        // The other allowed repository's id is still wrong for this source.
+        final wrongId = source == ReleaseSource.official
+            ? 1403688012
+            : 1196502414;
+        respond = (r) async => http.Response(
+          '[]',
+          200,
+          headers: r.url.path.contains(source.repository)
+              ? {
+                  'link':
+                      '<https://api.github.com/repositories/$wrongId/releases?per_page=100&page=2>; rel="next"',
+                }
+              : {},
+        );
+        await service.check(manual: true);
+        expect(service.snapshot.sources[source]!.error, UpdateError.incomplete);
+        expect(
+          requests.where((r) => r.url.queryParameters.containsKey('page')),
+          isEmpty,
+        );
+        now = now.add(const Duration(minutes: 2));
+        requests.clear();
+      }
+    },
+  );
 
   // WHY: a permission error must not silence checks for a day; server deadlines
   // apply only to rate limits and cannot postpone a check for more than a week.
   // catches: every 403 treated as rateLimited; unbounded HTTP-date Retry-After.
-  test('ordinary 403 is retryable and real rate limits have bounded deadlines', () async {
-    respond = (_) async => http.Response('', 403);
-    await service.check(manual: true);
-    expect(service.snapshot.sources[ReleaseSource.official]!.error, UpdateError.network);
-    expect(service.snapshot.sources[ReleaseSource.official]!.retryAt, isNull);
-    now = now.add(const Duration(minutes: 2));
-    respond = (_) async => http.Response('', 403, headers: {
-      'retry-after': HttpDate.format(now.add(const Duration(days: 365))),
-    });
-    await service.check(manual: true);
-    expect(service.snapshot.sources[ReleaseSource.official]!.error, UpdateError.rateLimited);
-    expect(service.snapshot.sources[ReleaseSource.official]!.retryAt, now.add(const Duration(days: 7)));
-    now = now.add(const Duration(days: 7, minutes: 1));
-    respond = (_) async => http.Response('', 403, headers: {'x-ratelimit-remaining': '0', 'retry-after': '120'});
-    await service.check(manual: true);
-    expect(service.snapshot.sources[ReleaseSource.official]!.retryAt, now.add(const Duration(minutes: 2)));
-    now = now.add(const Duration(minutes: 3));
-    respond = (_) async => http.Response(jsonEncode([release('v0.11.4')]), 200);
-    await service.check(manual: true);
-    expect(service.snapshot.sources[ReleaseSource.official]!.error, isNull);
-  });
+  test(
+    'ordinary 403 is retryable and real rate limits have bounded deadlines',
+    () async {
+      respond = (_) async => http.Response('', 403);
+      await service.check(manual: true);
+      expect(
+        service.snapshot.sources[ReleaseSource.official]!.error,
+        UpdateError.network,
+      );
+      expect(service.snapshot.sources[ReleaseSource.official]!.retryAt, isNull);
+      now = now.add(const Duration(minutes: 2));
+      respond = (_) async => http.Response(
+        '',
+        403,
+        headers: {
+          'retry-after': HttpDate.format(now.add(const Duration(days: 365))),
+        },
+      );
+      await service.check(manual: true);
+      expect(
+        service.snapshot.sources[ReleaseSource.official]!.error,
+        UpdateError.rateLimited,
+      );
+      expect(
+        service.snapshot.sources[ReleaseSource.official]!.retryAt,
+        now.add(const Duration(days: 7)),
+      );
+      now = now.add(const Duration(days: 7, minutes: 1));
+      respond = (_) async => http.Response(
+        '',
+        403,
+        headers: {'x-ratelimit-remaining': '0', 'retry-after': '120'},
+      );
+      await service.check(manual: true);
+      expect(
+        service.snapshot.sources[ReleaseSource.official]!.retryAt,
+        now.add(const Duration(minutes: 2)),
+      );
+      now = now.add(const Duration(minutes: 3));
+      respond = (_) async =>
+          http.Response(jsonEncode([release('v0.11.4')]), 200);
+      await service.check(manual: true);
+      expect(service.snapshot.sources[ReleaseSource.official]!.error, isNull);
+    },
+  );
 
   // catches: API order, lexicographic semver, cross-repo build comparisons, drafts.
   test('official stable semver order is independent of fork build codes', () {
@@ -391,8 +452,12 @@ void main() {
       await service.load();
       expect(service.snapshot.sources[ReleaseSource.official]!.current, isTrue);
       now = now.add(const Duration(minutes: 2));
-      respond = (r) async => http.Response(jsonEncode(
-        r.url.path.contains('OpenStrap') ? [release('v0.11.2')] : []), 200);
+      respond = (r) async => http.Response(
+        jsonEncode(
+          r.url.path.contains('OpenStrap') ? [release('v0.11.2')] : [],
+        ),
+        200,
+      );
       await service.check(manual: true);
       expect(service.snapshot.sources[ReleaseSource.official]!.current, isTrue);
       expect(announcements, isEmpty);
