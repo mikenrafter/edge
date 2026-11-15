@@ -96,4 +96,13 @@ void main() {
     expect(t.getRect(find.byKey(const ValueKey('next'))), before);
     expect(find.text('No entries'), findsOneWidget);
   });
+  testWidgets('pending rows fit a constrained viewport', (t) async {
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: Center(
+      child: SizedBox(height: 80, child: AsyncListSection<String>(items: null,
+        itemBuilder: (_, value) => Text(value),
+        emptyBuilder: (_) => const SizedBox.shrink())),
+    ))));
+    expect(t.takeException(), isNull);
+  });
+
 }
