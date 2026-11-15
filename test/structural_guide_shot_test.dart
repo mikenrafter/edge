@@ -2,12 +2,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/ui2/screens/home_screen.dart';
 import 'package:openstrap_edge/ui2/guides/guide_catalogue.dart';
 import 'backup/backup_support.dart';
 import 'support/live_guide_harness.dart';
 import 'support/pilot_shots.dart';
 import 'support/skeleton_fixture.dart' show skLoadAppFonts;
 class _SinceRepo extends GuideFakeRepo {
+  @override
+  Future<List<String>> availableDays() async => [todayLabel(), dayLabelBefore(todayLabel(), 1)!];
   @override
   Future<DateTime?> dayRecordingsThrough(String day) async => DateTime(2026, 11, 13, 21, 22);
 }
@@ -27,6 +31,17 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
     await takePilotShot(t, 'home-since-under-guide', captureKey: capture);
     app.runner.exit();
+    await t.pump();
+    await t.tap(find.bySemanticsLabel('Previous day'));
+    await settleLiveGuide(t);
+    await takePilotShot(t, 'home-past-day-with-tabs', captureKey: capture);
+    final scroll = find.descendant(of: find.byType(HomeScreen), matching: find.byType(Scrollable)).first;
+    for (var i = 0; i < 3; i++) {
+      final position = t.state<ScrollableState>(scroll).position;
+      position.jumpTo(position.maxScrollExtent);
+      await t.pump();
+    }
+    await takePilotShot(t, 'home-last-content-with-pill', captureKey: capture);
     await t.pumpWidget(const SizedBox());
     app.dispose();
   });

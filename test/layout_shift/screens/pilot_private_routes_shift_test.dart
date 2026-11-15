@@ -168,7 +168,11 @@ void main() {
       await t.runAsync(
         () => app.setSnoozeSettings(const SnoozeSettings(enabled: true)),
       );
-      await t.pumpWidget(_app(app, const AlarmScreen()));
+      // Android's elastic drag is a user gesture, outside the OS-reply phase.
+      await t.pumpWidget(_app(app, ScrollConfiguration(
+        behavior: const MaterialScrollBehavior().copyWith(overscroll: false,
+          physics: const ClampingScrollPhysics()),
+        child: const AlarmScreen())));
       // Drain unrelated preference/trace reads; the OS permission reply above
       // remains held, so this phase measures that reply alone.
       await landed(ShiftRun(t));
@@ -179,15 +183,11 @@ void main() {
       );
       // Stop the setup scroll before measuring the delayed OS reply.
       final position = t.state<ScrollableState>(_scroll()).position;
-      position.jumpTo(position.pixels);
+      position.jumpTo(position.pixels.clamp(position.minScrollExtent, position.maxScrollExtent));
       await t.pump();
+      await t.pump(const Duration(seconds: 1));
       final run = ShiftRun(t, skipCoveredRoutes: true)..opened();
       await run.frames([0, 150, 2500]);
-      for (final frame in run.probe.frames) {
-        for (final e in frame.elements.where((e) => e.id.contains('alarm_timeline') || e.id == 'snooze-exact-note')) {
-          debugPrint('CAP ${frame.atMs}: ${e.id} ${e.rect.top}+${e.rect.height}, scroll=${position.pixels}');
-        }
-      }
       await takePilotShot(t, 'alarm-capability');
       answer.complete(false);
       await landed(run);

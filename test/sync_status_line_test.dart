@@ -13,7 +13,7 @@
 //    Calculate, Done) is in the tree; collapsed means none of them is.
 //  - The elapsed readout is the m:ss text the panel always drew ("1:15"); it
 //    sits LEFT of the status sentence on the same row.
-//  - Spinner = a CircularProgressIndicator; the action is a text button whose
+//  - Busy state = a debounced PendingMark; the action is a text button whose
 //    label is exactly 'Sync now' or 'Retry'.
 //  - Time wording: "Synced 12 min ago", "synced 3 h ago", band time as
 //    "2 h 10 min".
@@ -293,7 +293,8 @@ void main() {
               (w.data ?? '').startsWith('Calculating') &&
               !(w.data ?? '').contains('day')),
           findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(PendingMark), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text('Sync now'), findsNothing);
     });
 

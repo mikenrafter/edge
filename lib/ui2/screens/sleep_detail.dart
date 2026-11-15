@@ -884,7 +884,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   }
 
   /// One remembered accordion for a section: the app's own [SettingsAccordion]
-  /// (open by default, state kept per [id]) around the section's existing
+  /// (closed by default, state kept per [id]) around the section's existing
   /// content. Only the person's tap on its header changes its height.
   Widget _accordion(String title, String id, Widget child, {Key? key}) =>
       SettingsAccordion(title, id: 'sleep_$id', key: key, initiallyExpanded: false, children: [InsideCard(child: child)]);
@@ -1389,16 +1389,9 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     return null;
   }
 
-  /// A two-line note slot: under the night chart (the cycle hint, or the
-  /// reason there is none) and under the stage rows (what the figures are, or
-  /// why there are none). Two lines in every state, so the card is one height
-  /// empty and loaded.
-  Widget _hintSlot(BuildContext c, P p, String text) => ConstrainedBox(
-        constraints: BoxConstraints(
-            minHeight:
-                MediaQuery.textScalerOf(c).scale(F.over.fontSize!) * 1.5 * 2),
-        child: Text(text, style: F.over.copyWith(color: p.ink3, height: 1.5)),
-      );
+  // Notes are inside disclosures and fit their actual text.
+  Widget _hintSlot(BuildContext c, P p, String text) =>
+      Text(text, style: F.over.copyWith(color: p.ink3, height: 1.5));
 
   /// [reason] says why there is no night when the window card below has no
   /// times to show; it takes the hint's slot so the window card keeps the

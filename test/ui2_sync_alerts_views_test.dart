@@ -458,7 +458,7 @@ void main() {
     syncStepsCollapsed();
   });
   screenStructure('sync_waiting', fixtures['sync_waiting']!.$2, () {
-    expect(find.text('Waiting to calculate sleep, recovery and strain…'), findsOneWidget);
+    expect(find.text('Waiting to calculate sleep, recovery and strain'), findsOneWidget);
     expect(find.text('Waiting to calculate sleep, recovery and strain…'), findsNothing);
     expectNoAction();
     syncStepsCollapsed();

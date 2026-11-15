@@ -238,7 +238,7 @@ class BreathRing extends CustomPainter implements GuideRing {
 ///
 /// One entry per round: the work and rest fractions of the round's peak, both
 /// 0…1.
-class IntervalLadder extends CustomPainter implements GuidePlot {
+class IntervalLadder extends CustomPainter implements GuideBars {
   @override
   Color get guideLineColor => work;
   final List<({double work, double rest})> rounds;

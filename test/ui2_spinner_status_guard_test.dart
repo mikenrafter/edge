@@ -1,6 +1,5 @@
 // WHY: every app route must use debounced placeholders. Whole-tree scan is
 // a dependency guard; the positive control proves a spinner is recognised.
-import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/dart_source_lexical.dart';
 

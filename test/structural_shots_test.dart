@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/compute/findings.dart';
-import 'package:openstrap_edge/ui2/screens/findings_log.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/import_progress.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
@@ -24,7 +23,6 @@ import 'package:openstrap_edge/ui2/profile/data.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/import_progress_view.dart';
-import 'package:openstrap_edge/ui2/ui2.dart';
 import 'backup/backup_support.dart';
 import 'support/as_of_recalc_fakes.dart';
 import 'support/live_guide_harness.dart';
@@ -97,7 +95,7 @@ void main() {
         v: (key == 'sleep' ? 400 : key == 'hrv' ? 70 : 52) + (i % 5).toDouble())]});
     final app = AppState.forTesting(engine: FakeAlarmEngine())..repo = _HeldRepo();
     addTearDown(app.dispose);
-    Future<void> show(String name, Widget screen, {String? reveal, Future<void> Function()? navigate}) async {
+    Future<void> show(String name, Widget screen, {String? reveal, String? focus, Future<void> Function()? navigate}) async {
       await t.pumpWidget(pilotShot(perfApp(app, screen, brightness: Brightness.dark)));
       await t.pump();
       await t.pump(const Duration(milliseconds: 250));
@@ -116,6 +114,10 @@ void main() {
         await Scrollable.ensureVisible(t.element(header), alignment: 0);
         await t.pump();
       }
+      if (focus != null) {
+        await Scrollable.ensureVisible(t.element(find.text(focus).first), alignment: .2);
+        await t.pump();
+      }
       await takePilotShot(t, name);
       expect(t.takeException(), isNull, reason: name);
       await t.pumpWidget(const SizedBox());
@@ -131,8 +133,10 @@ void main() {
       Finding(FindingKind.lowReadiness, '2026-11-08', score: 22),
     ]));
     await show('S1-sleep-night', SleepDetail(data: night), reveal: 'Through the night');
+    await show('S1-night-actions', SleepDetail(data: night), reveal: 'Through the night', focus: 'Recalculate this night');
     app.repo = _FullRepo(night.night);
     await show('S3-sleep-tab', const SleepTab(), reveal: 'Alarm and body clock');
+    await show('S3-sleep-footer', const SleepTab(), reveal: 'Through the night', focus: 'Naps');
     await show('home-past-day', const HomeScreen(hour: 9), navigate: () async {
       await settle(t, n: 8);
       await t.tap(find.bySemanticsLabel('Previous day'));
@@ -154,6 +158,6 @@ void main() {
     await show('pairing-scanning', DevicePickerView(query: query, title: 'Add a device', subtitle: 'Choose your device', scanning: true));
     await show('import-preparing', const Scaffold(body: ImportProgressView(ImportPreparing(null))));
     await show('settings-import-busy', const DataScreenView(busy: true, busyStatus: 'Reading the import'));
-    await show('S7-alarm-trace', const AlarmScreen(), reveal: 'Timeline and status');
+    await show('S7-alarm-trace', const AlarmScreen(), reveal: 'Timeline and status', focus: 'Last wake decision');
   });
 }

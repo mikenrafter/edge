@@ -80,7 +80,7 @@ enum SkeletonKind {
 }
 
 /// What a plot becomes inside a placeholder: a dial is an empty ring track, every other
-/// plot one wave. The one mapping the plan and the paint share.
+/// plot its own chart family. The plan and paint share this mapping.
 SkeletonKind skeletonKindOfPlot(GuidePlot plot) => switch (plot) {
   GuideRing() => SkeletonKind.ring,
   GuideBars() => SkeletonKind.columns,
@@ -765,7 +765,7 @@ const kPlaceholderStrength = .14;
 /// the review overlay ([Skeletonize]) and the components that paint themselves.
 /// A heading is the REAL text: the surface fills leave a hole at its line and a
 /// veil dims it. An icon is a hole in every fill. [fade] (0..1) scales the dim
-/// layers' alpha (the dim fades in; placeholders never fade).
+/// layers' alpha and placeholder ink as the pending state fades in.
 void paintSkeletonShapes(Canvas canvas, Iterable<SkeletonShape> shapes, P palette, {double fade = 1, double pulse = 1}) {
   Color pulsed(Color color) {
     return Color.from(alpha: color.a * fade, red: color.r * pulse,

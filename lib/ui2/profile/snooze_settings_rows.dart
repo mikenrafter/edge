@@ -117,7 +117,7 @@ class SnoozeSettingsRows extends StatelessWidget {
             child: PendingContent(pending: exactTimingPending,
               child: Text(exactTimingUnavailable || exactTimingPending
                 ? (l?.snoozeExactNote ?? 'Exact timing needs the alarm permission')
-                : 'Exact timing is enabled for this alarm',
+                : 'Phone timing follows the alarm permission',
                 key: ValueKey(exactTimingUnavailable || exactTimingPending
                   ? 'snooze-exact-note' : 'snooze-exact-ready'),
                 style: F.cap.copyWith(color: p.ink2)))),
