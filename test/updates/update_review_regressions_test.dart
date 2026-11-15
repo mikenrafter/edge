@@ -127,17 +127,18 @@ void main() {
     }
   });
 
-  for (final malformed in [false, true]) {
+  for (final kind in ['missing', 'json', 'schema']) {
+    final malformed = kind != 'missing';
     for (final newer in [false, true]) {
       // WHY: old pre-contract or broken releases must not poison new good ones;
       // an unrecognized newer date cannot justify falling back to an old build.
       // catches: early return/whole-source throw for any missing/bad manifest.
-      test('${malformed ? 'malformed' : 'missing'} ${newer ? 'newer' : 'older'} manifest ${newer ? 'blocks fallback' : 'does not hide good release'}', () async {
+      test('$kind ${newer ? 'newer' : 'older'} manifest ${newer ? 'blocks fallback' : 'does not hide good release'}', () async {
         final badTag = newer ? 'next-2026.11.16' : 'next-2026.11.14';
         final bad = forkRelease(badTag, id: 3, metadata: malformed);
         if (malformed) ((bad['assets'] as List).first as Map)['id'] = 43;
         respond = (r) async {
-          if (r.url.path.endsWith('/assets/43')) return http.Response('{malformed', 200);
+          if (r.url.path.endsWith('/assets/43')) return http.Response(kind == 'json' ? '{malformed' : jsonEncode({...manifest(badTag), 'repository': 'evil/edge'}), 200);
           if (r.url.path.endsWith('/assets/42')) return http.Response(jsonEncode(manifest('next-2026.11.15', code: 79)), 200);
           return http.Response(jsonEncode(r.url.path.contains('mikenrafter') ? [bad, forkRelease('next-2026.11.15')] : []), 200);
         };

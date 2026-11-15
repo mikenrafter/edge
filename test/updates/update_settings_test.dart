@@ -76,7 +76,7 @@ void main() {
     final l = await AppLocalizations.delegate.load(const Locale('en'));
     expect(updateSummary(l, UpdateSnapshot(enabled: true, phase: UpdatePhase.available,
       sources: {ReleaseSource.official: SourceUpdate(candidate: candidate)})),
-      'New official app release · Official · v0.11.4 · Release');
+      'New official app release · Official · v0.11.4 · Release · Separate app. Your data stays here.');
   });
 
   // WHY: the first pilot only captured the Settings entry. Exercise the real
