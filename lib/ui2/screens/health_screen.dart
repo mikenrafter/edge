@@ -1045,7 +1045,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
             // on the tab you land on is the feed this is not.
             (d.findings.isNotEmpty
                 ? Surface(
-                    onTap: () => go(c, FindingsLog(d.findings)),
+                    onTap: () => go(c, FindingsLog(d.findings, rhr: d.points('resting_hr'))),
                     child: FindingRow(d.findings.first),
                   )
                 : Surface(
@@ -1078,7 +1078,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
                   )),
         action: d.findings.isEmpty ? null : (l?.healthSeeAll ?? 'See all'),
         onAction:
-            d.findings.isEmpty ? null : () => go(c, FindingsLog(d.findings)),
+            d.findings.isEmpty ? null : () => go(c, FindingsLog(d.findings, rhr: d.points('resting_hr'))),
       ),
 
       // Naps moved to the Sleep tab, beside the night (the Naps door there).
@@ -1173,6 +1173,11 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
     Widget trend(String key, String label, String unit, Color col,
         {bool higherBetter = true, double? against, String? againstLabel}) {
       final pts = d.points(key);
+      final n0 = DateTime.now();
+      final labels = [for (var i = 29; i >= 0; i--) dayLabelOf(DateTime(n0.year, n0.month, n0.day - i))];
+      final flags = dailyAnnotations(rhrChangeAnnotations(d.findings, l: l), labels);
+      final annotations = flags.isEmpty ? null : AnnotationSet(items: flags, domainStart: 0, domainEnd: 29);
+
       // Statistics off the STORED values; the painter gets the dense window.
       final s = valuesOf(pts);
       if (s.isEmpty) {
@@ -1181,6 +1186,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
         // a different height, so the first stored day moved everything below.
         return TrendCard(
           detailReadout: true,
+          annotations: annotations,
           label,
           '—',
           unit,
@@ -1227,6 +1233,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
       final n = DateTime.now();
       return TrendCard(
           detailReadout: true,
+          annotations: annotations,
           detailFooter: SettingsAccordion(l?.sleepDetailVersusUsualSection ?? 'Against your usual',
             id: 'health_trend_$key', initiallyExpanded: false, children: [
               if (band != null) Text(usualRangeText(l, fmt(band.lo), fmt(band.hi), unit)),
@@ -1542,7 +1549,10 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload impleme
     final axis = AxisSpec.of(have, ticks: 2);
     final p = P.of(c);
     final l = AppLocalizations.of(c);
+    final now = DateTime.now();
+    final flags = dailyAnnotations(rhrChangeAnnotations(d.findings, l: l), [for (var i = days - 1; i >= 0; i--) dayLabelOf(DateTime(now.year, now.month, now.day - i))]);
     return ChartFrame(
+      annotations: flags.isEmpty ? null : AnnotationSet(items: flags, domainStart: 0, domainEnd: days - 1),
       nerdStats: this,
       title: l?.healthRmssdOfLastNights(have.length, days) ??
           'HRV, ${have.length} of the last $days nights',

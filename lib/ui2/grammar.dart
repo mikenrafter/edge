@@ -1879,6 +1879,7 @@ class TrendCard extends StatefulWidget {
   final bool reserveVerdict;
   final bool detailReadout;
   final Widget? detailFooter;
+  final AnnotationSet? annotations;
 
   const TrendCard(
     this.label,
@@ -1900,6 +1901,7 @@ class TrendCard extends StatefulWidget {
     this.reserveVerdict = false,
     this.detailReadout = false,
     this.detailFooter,
+    this.annotations,
   });
 
   @override
@@ -2014,6 +2016,7 @@ class _TrendCardState extends State<TrendCard> {
       return Surface(onTap: w.onTap, child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ChartFrame(title: w.label, unit: displayUnit, height: 100,
+            annotations: w.annotations,
             yAxis: axis,
             panel: vals.isEmpty ? ChartKeyReadout(cells: [ChartCell(w.label, ink)],
               time: w.dayOf?.call(math.max(0, w.series.length - 1)),

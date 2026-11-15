@@ -28,6 +28,7 @@ import '../../state/app_state.dart';
 import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'advanced.dart';
+import '../../compute/findings.dart';
 import 'explorer_annotations.dart' show AnnotationLoader, loadAnnotations;
 import 'day_steps.dart';
 import 'home_screen.dart';
@@ -482,6 +483,7 @@ class MetricData {
   /// wearing a physiology label: it cannot make a sparse month comparable, only
   /// refuse to pretend one is.
   final List<ChartPoint> wear;
+  final List<ChartAnnotation> rhrMarks;
   final Map<String, dynamic>? percentile;
   final List<Map<String, dynamic>> movers;
 
@@ -553,6 +555,7 @@ class MetricData {
   const MetricData({
     this.series = const [],
     this.wear = const [],
+    this.rhrMarks = const [],
     this.percentile,
     this.movers = const [],
     this.daysAvailable = 0,
@@ -581,6 +584,7 @@ class MetricData {
   MetricData withMovers(List<Map<String, dynamic>> movers) => MetricData(
         series: series,
         wear: wear,
+        rhrMarks: rhrMarks,
         percentile: percentile,
         movers: movers,
         daysAvailable: daysAvailable,
@@ -613,6 +617,9 @@ class MetricData {
       spec.chartKey,
       signals: {for (final s in spec.requires) s.name},
     );
+    final flagsRead = () async {
+      try { return await repo.getInsights(); } catch (_) { return <String, dynamic>{}; }
+    }();
     final days = await repo.availableDays();
     final outcome = _outcomeOf[key];
     final stepGoal = key == 'steps'
@@ -623,7 +630,7 @@ class MetricData {
     Map<String, dynamic>? pct;
     var movers = const <Map<String, dynamic>>[];
     if (outcome != null) {
-      final cd = await repo.getInsights();
+      final cd = await flagsRead;
       final all = cd['percentiles'];
       final one = all is Map ? all[outcome] : null;
       pct = envValue(one);
@@ -650,6 +657,7 @@ class MetricData {
           : dayLabelOf(
               DateTime.fromMillisecondsSinceEpoch(points.last.t * 1000)),
       series: points,
+      rhrMarks: rhrChangeAnnotations(findingsHistory(await flagsRead)),
       wear: wearPoints,
       percentile: pct,
       movers: movers,
@@ -1755,7 +1763,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
               WidgetsBinding.instance
                   .addPostFrameCallback((_) => _readJournal(from, to));
             } else {
-              journal = dailyAnnotations(read, dayLabels);
+              journal = dailyAnnotations(read.where((a) => a.kind != AnnotationKind.rhrShift).toList(), dayLabels);
             }
           }
           // One range per run of older days (a slot is the point i, so a run
@@ -1783,7 +1791,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                     r.older.reason),
             ],
           );
-          final shown = [...marks, ...journal, ...older];
+          final flags = dailyAnnotations(d.rhrMarks, dayLabels);
+          final shown = [...marks, ...journal, ...older, ...flags];
           final dim = _dimMask(d, series.length);
           return ChartFrame(
             title: uiText(context, spec.title),
@@ -1802,7 +1811,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                     domainEnd: (series.length - 1).toDouble(),
                     // Only older runs on the chart: the label shows while the
                     // finger is ON a run, not for the nearest one anywhere.
-                    reach: marks.isEmpty && journal.isEmpty ? 0 : null),
+                    reach: marks.isEmpty && journal.isEmpty && flags.isEmpty ? 0 : null),
             annotationCursor:
                 _pick == null ? null : _slotAt01(_pick!, series.length),
             // The mark's only screen-reader form, and the only thing that can

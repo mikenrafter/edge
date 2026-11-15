@@ -25,6 +25,7 @@ import 'package:provider/provider.dart';
 import '../../compute/staging_provenance.dart' show kStagingFallbackDegenerate;
 import '../../compute/vendor_sleep.dart' show vendorStagesReported;
 import '../../data/day_label.dart';
+import '../../compute/findings.dart';
 import '../../data/local_repository.dart';
 import '../../data/read_paused.dart';
 import '../../sync/import_focus.dart';
@@ -248,6 +249,7 @@ String _capitalise(String s) =>
 
 class SleepData {
   final WakeNightTimeline wakeTimeline;
+  final List<ChartAnnotation> rhrMarks;
   final String? day;
 
   /// Every day this install has derived, newest first — what [DayNav] steers
@@ -281,6 +283,7 @@ class SleepData {
   final bool refreshPending;
 
   const SleepData({
+    this.rhrMarks = const [],
     this.wakeTimeline = const WakeNightTimeline(),
     this.day,
     this.days = const [],
@@ -452,6 +455,7 @@ class SleepData {
     ];
 
     return SleepData(
+      rhrMarks: rhrChangeAnnotations(findingsHistory(cd)),
       day: day,
       days: days,
       night: night,
@@ -1399,7 +1403,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   Widget _night(BuildContext c, P p, SleepData d, Map<String, dynamic> n,
       {Map<String, dynamic>? device, String? reason}) {
     final l = AppLocalizations.of(c);
-    final marks = wakeAnnotations(d.wakeTimeline, l: l);
+    final marks = [...wakeAnnotations(d.wakeTimeline, l: l), ...d.rhrMarks];
     final onset = (n['onset_ts'] as num?)?.toInt();
     final recordedEnd = (n['wake_ts'] as num?)?.toInt();
     var end = recordedEnd;
@@ -2582,6 +2586,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         ],
         ChartFrame(
           nerdStats: this,
+          annotations: d.rhrMarks.isEmpty ? null : AnnotationSet(items: d.rhrMarks, domainStart: t0.toDouble(), domainEnd: t1.toDouble()),
           title: loc?.sleepDetailThroughTheNight ?? 'Through the night',
           unit: units.join(' · '),
           height: 44.0 * series.length + 20,

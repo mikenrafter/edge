@@ -32,6 +32,8 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../l10n/app_localizations.dart';
+import '../compute/findings.dart';
+import '../data/day_label.dart' show localDayStartSec;
 import '../wake/wake_timeline.dart';
 import '../data/day_label.dart' show dayLabelOf;
 import '../models/chart_point.dart' show ChartOlder;
@@ -62,10 +64,12 @@ enum AnnotationKind {
   review,
   journal,
   algoVersion,
+  rhrShift,
 }
 
 /// The glyph for [k]. Unique per kind.
 IconData annotationIcon(AnnotationKind k) => switch (k) {
+      AnnotationKind.rhrShift => LucideIcons.trendingUp,
       AnnotationKind.wake => LucideIcons.sunrise,
       AnnotationKind.water => LucideIcons.glassWater,
       AnnotationKind.assumedWater => LucideIcons.droplet,
@@ -81,6 +85,7 @@ IconData annotationIcon(AnnotationKind k) => switch (k) {
 
 /// The pigment for [k]. Unique per kind; a range's shade is this at low alpha.
 Color annotationColor(AnnotationKind k) => switch (k) {
+      AnnotationKind.rhrShift => C.blue,
       AnnotationKind.wake => C.green,
       AnnotationKind.water => C.sky,
       AnnotationKind.assumedWater => C.blueSoft,
@@ -170,6 +175,17 @@ List<ChartAnnotation> wakeAnnotations(
       label: wakeEventLabel(e, l),
     ),
 ];
+
+/// Daily findings have no episode time. Their marker is the local day's start,
+/// not an invented intraday measurement. The same projection serves every plot.
+List<ChartAnnotation> rhrChangeAnnotations(Iterable<Finding> findings, {AppLocalizations? l}) {
+  final locale = l ?? lookupAppLocalizations(const Locale('en'));
+  return [for (final f in findings)
+    if (f.kind == FindingKind.rhrShift && localDayStartSec(f.date) != null)
+      ChartAnnotation(id: 'rhr-shift:${f.date}', kind: AnnotationKind.rhrShift,
+        at: localDayStartSec(f.date)!.toDouble(),
+        label: '${f.date} · ${findingTitle(locale, f)}. ${findingDetail(locale, f)}')];
+}
 
 /// Domain-to-pixel scale of one chart plus the footprint of one icon.
 @immutable

@@ -13,6 +13,7 @@ import 'package:openstrap_analytics/onehz.dart' show readinessCompositeMinBaseli
 import '../../compute/onehz_pipeline.dart'
     show readinessInputShortfallNote, readinessUnstableBaselineNote;
 import '../../data/day_label.dart';
+import '../../compute/findings.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
@@ -25,6 +26,7 @@ import 'metric_detail.dart';
 
 class ReadinessData {
   final Metric readiness;
+  final List<ChartAnnotation> rhrMarks;
   final List<Map<String, dynamic>> breakdown;
   final int inputsUsed;
 
@@ -80,6 +82,7 @@ class ReadinessData {
   final bool refreshPending;
 
   const ReadinessData({
+    this.rhrMarks = const [],
     this.head = const {},
     this.readiness = Metric.empty,
     this.breakdown = const [],
@@ -140,6 +143,7 @@ class ReadinessData {
     final scored = readiness.value != null;
 
     return ReadinessData(
+      rhrMarks: rhrChangeAnnotations(findingsHistory(cd)),
       head: head,
       refreshPending: (status is Map) && status['refresh_pending'] == true,
       readiness: readiness,
@@ -487,7 +491,9 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload i
     String dayOf(int i) => prettyDay(
         dayLabelOf(DateTime(n.year, n.month, n.day - (win.length - 1 - i))), l);
 
+    final flags = dailyAnnotations(d.rhrMarks, [for (var i = win.length - 1; i >= 0; i--) dayLabelOf(DateTime(n.year, n.month, n.day - i))]);
     return ChartFrame(
+      annotations: flags.isEmpty ? null : AnnotationSet(items: flags, domainStart: 0, domainEnd: (win.length - 1).toDouble()),
       nerdStats: this,
       title: l?.readinessDetailTitle ?? 'Recovery',
       unit: l?.readinessDetailUnit ?? '/100',

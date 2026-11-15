@@ -19375,5 +19375,34 @@
         "type": "String"
       }
     }
-  }
+  },
+  "observationsLatestWeek": "Latest week · {from} – {to}",
+  "@observationsLatestWeek": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "observationsNoWeek": "Nothing flagged this week.",
+  "observationsNoDay": "Nothing flagged on this day.",
+  "observationsEarlierWeek": "Earlier week",
+  "observationsLaterWeek": "Later week",
+  "observationsEventsUnit": "events",
+  "observationsDayCount": "{day}: {count} events",
+  "@observationsDayCount": {
+    "placeholders": {
+      "day": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rhrChangesTitle": "Resting heart rate changes",
+  "rhrNoReadings": "No resting heart rate readings stored."
 }

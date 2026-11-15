@@ -41,6 +41,7 @@ import '../../data/day_label.dart' show localDayEndSec, todayLabel;
 import '../../data/water_moment.dart';
 import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
 import '../../data/db.dart';
+import '../../compute/findings.dart';
 import '../../data/read_paused.dart';
 import '../../wake/wake_timeline.dart';
 import '../../data/journal_fields.dart';
@@ -877,12 +878,14 @@ class TimelineData {
     this.computedAtMs,
     this.readMillis = const {},
     this.loadMillis = 0,
+    this.rhrMarks = const [],
   });
 
   /// When the day's result was calculated (epoch ms), or null when unknown.
   final int? computedAtMs;
   final Map<String, int> readMillis;
   final int loadMillis;
+  final List<ChartAnnotation> rhrMarks;
 
   final String? day;
 
@@ -931,6 +934,11 @@ class TimelineData {
 
     // These are independent stored reads. Start them together so one slow
     // bundle does not delay every other source [structural review read test].
+    final flagsRead = read('resting heart rate flags', () async {
+      try { return rhrChangeAnnotations(findingsHistory(await repo.getInsights()), l: l)
+        .where((a) => a.id == 'rhr-shift:$day').toList(); }
+      catch (_) { return <ChartAnnotation>[]; }
+    });
     final db = LocalDb.reader;
     final ((timeline, wear, fields, journal, meals, notes, momentLabels),
       (symptoms, definitions, doseRows, rawObservations, hrv, wake, assumed, water)) = await (
@@ -982,6 +990,7 @@ class TimelineData {
       day: day,
       days: days,
       computedAtMs: computedAtMs,
+      rhrMarks: await flagsRead,
       readMillis: Map.unmodifiable(costs),
       loadMillis: elapsed.elapsedMilliseconds,
       graph: dayGraph(timeline),
@@ -1420,6 +1429,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
           days: d.days,
           graph: dayGraph(d.raw!),
           moments: d.moments,
+          rhrMarks: d.rhrMarks,
           notes: d.notes,
           raw: d.raw,
           computedAtMs: d.computedAtMs,
@@ -1453,6 +1463,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
             ? const DayGraph()
             : dayGraph(d.raw!, hrOverride: c['points'] as List?),
         moments: d.moments,
+        rhrMarks: d.rhrMarks,
         notes: d.notes,
         raw: d.raw,
         computedAtMs: d.computedAtMs,
@@ -1598,7 +1609,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                       child: _DayGraphZoom(d.graph,
                           fineDetail: _device == null,
                           owners: coverageFromJson(d.raw?['hr_owner']),
-                          annotations: dayAnnotations(d.moments),
+                          annotations: [...dayAnnotations(d.moments), ...d.rhrMarks],
                           listener: this,
                           nerdStats: this,
                           key: ValueKey(d.day)))
@@ -2073,7 +2084,7 @@ List<Widget> timelineBody(BuildContext c, TimelineData d,
       ? _DayGraphZoom(d.graph,
           fineDetail: fineDetail,
           owners: coverageFromJson(d.raw?['hr_owner']),
-          annotations: dayAnnotations(d.moments),
+          annotations: [...dayAnnotations(d.moments), ...d.rhrMarks],
           key: ValueKey(d.day))
       : null;
   return [

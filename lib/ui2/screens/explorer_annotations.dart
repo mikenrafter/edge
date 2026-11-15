@@ -15,6 +15,8 @@ import 'package:flutter/foundation.dart';
 import '../../data/assumed_water.dart' show AssumedGlass;
 import '../../data/day_label.dart';
 import '../../data/db.dart';
+import '../../data/local_repository_impl.dart';
+import '../../compute/findings.dart';
 import '../../data/journal_fields.dart';
 import '../../data/moment_label.dart';
 import '../../gestures/symptom_description.dart' show StoredSymptom;
@@ -43,6 +45,7 @@ List<ChartAnnotation> rangeAnnotations({
   List<AssumedGlass> assumedWater = const [],
   Map<String, Map<String, JournalMetricValue>> journalByDay = const {},
   List<JournalFieldSpec> fields = kJournalFields,
+  List<Finding> findings = const [],
   AppLocalizations? l,
 }) {
   bool inRange(String d) => d.compareTo(from) >= 0 && d.compareTo(to) <= 0;
@@ -90,6 +93,7 @@ List<ChartAnnotation> rangeAnnotations({
       ));
     }
   }
+  out.addAll(rhrChangeAnnotations(findings.where((f) => inRange(f.date)), l: l));
   return out;
 }
 
@@ -130,10 +134,12 @@ Future<List<ChartAnnotation>> loadAnnotations(String from, String to,
       LocalDb.assumedWater(sinceDate: from),
       LocalDb.journalMetricsByDay(sinceDaysEpoch: from),
       LocalDb.journalFieldDefs(),
+      LocalRepositoryImpl(getProfileMap: () => null).getInsights(),
     ]);
     return rangeAnnotations(
       from: from,
       to: to,
+      findings: findingsHistory((results[6] as Map).cast<String, dynamic>()),
       sessions: (results[0] as List).cast<Map<String, dynamic>>(),
       momentLabels: (results[1] as List).cast<MomentLabel>(),
       symptoms: (results[2] as List).cast<StoredSymptom>(),

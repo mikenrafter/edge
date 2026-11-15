@@ -82,6 +82,7 @@ import '../profile/settings.dart' show MoreSettings;
 import '../profile/wearable_numbers.dart'
     show WearableCells, kHomeWearableRows, wearableName;
 import '../ui2.dart';
+import '../why_row.dart';
 import 'ai_briefing.dart' show AiBriefingScreen;
 import 'coach.dart';
 import 'detected_activities.dart';
@@ -1225,38 +1226,8 @@ class _HomeWhyPanel extends StatelessWidget {
       HomeRingKind.sleep => _sleepWhy(data, l),
       HomeRingKind.strain => _strainWhy(data, l),
     };
-    return _HomeWhyRow(id: kind.name, title: title, body: body,
+    return WhyRow(id: kind.name, title: title, body: body,
         color: state.color, icon: state.icon, onTap: onTap);
-  }
-}
-
-class _HomeWhyRow extends StatelessWidget {
-  final String id, title, body;
-  final Color color;
-  final IconData icon;
-  final VoidCallback? onTap;
-  const _HomeWhyRow({required this.id, required this.title, required this.body,
-      required this.color, required this.icon, this.onTap});
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    return _HomeInsetRow(key: ValueKey('home-why:$id'), onTap: onTap,
-      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        Container(key: ValueKey('home-why-icon:$id'), width: 32, height: 32,
-          decoration: BoxDecoration(color: p.on(color).withValues(alpha: .14), shape: BoxShape.circle),
-          child: Icon(icon, size: 17, color: p.on(color))),
-        const SizedBox(width: S.x2),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text(title, key: ValueKey('home-why-title:$id'), maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: F.body.copyWith(fontWeight: FontWeight.w600, color: p.ink)),
-          const SizedBox(height: 2),
-          Text(body, key: ValueKey('home-why-body:$id'), maxLines: 2, overflow: TextOverflow.ellipsis,
-            style: F.cap.copyWith(color: p.ink2)),
-        ])),
-        const SizedBox(width: S.x1),
-        Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
-      ]));
   }
 }
 
@@ -3153,7 +3124,7 @@ class _HomeScreenState extends State<HomeScreen>
     final sameNight = day == today;
     final z = d.illnessZ;
 
-    return _HomeWhyRow(
+    return WhyRow(
         id: 'observation', color: state == 'red' ? C.red : C.orange, icon: LucideIcons.heartPulse,
         title: state == 'red'
             ? (l?.homeIllnessRedTitle ?? 'Recent nights add up to a raised resting heart rate')
