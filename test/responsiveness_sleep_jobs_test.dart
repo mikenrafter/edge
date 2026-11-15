@@ -225,25 +225,84 @@ void main() {
       final returning = await repo.getDaySleep(day);
       expect(returning['onset_ts'], 3000);
       expect(returning['recalculating'], true);
-      final order = <String>[];
+      final started = <String>[];
       final runner = SleepEditRunner(
         hold: (_) {},
         publish: () async {},
         run: (job) async {
-          order.add('edited');
+          started.add(job.day);
           await result(await SleepEditStore.generation(), 20);
           await SleepEditStore.advance(job, SleepEditPhase.dependents);
-          order.add('publish');
           expect(await SleepEditStore.dirty(day), false);
-          order.add('later');
           await SleepEditStore.advance(job, SleepEditPhase.done);
         },
       );
       await runner.start(restart: true);
-      expect(order, ['edited', 'publish', 'later']);
+      expect(started, [day]);
       expect(await SleepEditStore.pending(), isEmpty);
       expect((await repo.getDaySleep(day))['duration_min'], 20);
       runner.dispose();
+    },
+  );
+
+  // WHY: the engine must finish the edited night and await publication before
+  // a later retained day's calculation can become visible. This uses runDays,
+  // real decoded rows and the production rederiveAfterSleepEdit boundary.
+  // Proves CLAIM(sleep-edit-publication).
+  test(
+    'the engine awaits edited-night publication before deriving later days',
+    () async {
+      const later = '2026-11-14';
+      final onset = DateTime(2026, 11, 12, 23).millisecondsSinceEpoch ~/ 1000;
+      final wake = DateTime(2026, 11, 13, 7).millisecondsSinceEpoch ~/ 1000;
+      await LocalDb.putSleepOverride(
+        dayId: day,
+        onsetTs: onset,
+        offsetTs: wake,
+        source: 'manual',
+      );
+      final db = await LocalDb.instance;
+      for (final t in [
+        wake + 3600,
+        DateTime(2026, 11, 14, 12).millisecondsSinceEpoch ~/ 1000,
+      ]) {
+        await db.insert('decoded_onehz', {
+          'device_id': '',
+          'ts_ms': t * 1000,
+          'rec_ts': t,
+          'counter': t,
+          'hr': 60,
+          'device_family': 'gen4',
+        });
+      }
+      final entered = Completer<void>(), publish = Completer<void>();
+      final run = DerivationEngine().rederiveAfterSleepEdit(
+        const Profile(ageYears: 30, weightKg: 70, heightCm: 175, sex: 'm'),
+        day,
+        onEdited: () async {
+          entered.complete();
+          await publish.future;
+          return true;
+        },
+      );
+      try {
+        await entered.future.timeout(const Duration(seconds: 20));
+        expect((await LocalDb.dayResult(day))!['day_id'], day);
+        expect(
+          await LocalDb.dayResult(later),
+          isNull,
+          reason: 'publication of the edited night is still held',
+        );
+      } finally {
+        publish.complete();
+        await run;
+      }
+      expect(
+        (await LocalDb.dayResult(later))!['day_id'],
+        later,
+        reason:
+            'the dependent pass runs after the publication boundary releases',
+      );
     },
   );
 

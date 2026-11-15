@@ -2,6 +2,7 @@
 """Focused red probes. Restores every source file, including on failures."""
 from pathlib import Path
 import subprocess
+import sys
 
 cases = [
     ('pending uses writer', 'lib/data/local_repository_impl.dart',
@@ -18,8 +19,26 @@ cases = [
      "        LoadTimings.shared.record(name, 'writer queue', queued.elapsedMicroseconds);",
      '', 'test/responsiveness_timings_test.dart', 'a real writer records'),
 ]
+cases.append((
+    'dependent days precede edited-night publication', 'lib/compute/derivation_engine.dart',
+    """    if (onEdited != null && !await onEdited()) return done;
+    final later = {
+      for (final d in (await LocalDb.decodedRecTsMaxByDay()).keys)
+        if (d.compareTo(day) > 0) d,
+    };
+    if (later.isNotEmpty) done += await runDays(profile, later, force: true);""",
+    """    final later = {
+      for (final d in (await LocalDb.decodedRecTsMaxByDay()).keys)
+        if (d.compareTo(day) > 0) d,
+    };
+    if (later.isNotEmpty) done += await runDays(profile, later, force: true);
+    if (onEdited != null && !await onEdited()) return done;""",
+    'test/responsiveness_sleep_jobs_test.dart', 'the engine awaits edited-night publication'))
+selected = set(sys.argv[1:])
 failures = []
 for index, (name, filename, old, new, test, match) in enumerate(cases):
+    if selected and str(index) not in selected:
+        continue
     path = Path(filename)
     original = path.read_text()
     assert old in original, (name, 'mutation site missing')

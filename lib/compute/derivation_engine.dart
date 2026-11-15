@@ -3452,6 +3452,8 @@ class DerivationEngine {
   /// score tomorrow against a window that still holds the night just edited.
   /// Days past raw retention cannot be recomputed and keep what they have.
   /// Returns the days derived; stops after the first pass if it failed.
+  /// CLAIM(sleep-edit-publication): edited-night publication finishes before
+  /// dependent days start [responsiveness_sleep_jobs_test].
   Future<int> rederiveAfterSleepEdit(Profile profile, String day, {Future<bool> Function()? onEdited}) async {
     // The profile first: the passes below stage with it.
     await _forgetBlankedNightsInSleepProfile();
