@@ -155,7 +155,7 @@ Future<void> _validateSleepEdit(DatabaseExecutor tx, SleepEditPlan plan) async {
   if (replacements.isEmpty) return;
   final start = replacements.map((w) => w.$1).reduce((a, b) => a < b ? a : b);
   final end = replacements.map((w) => w.$2).reduce((a, b) => a > b ? a : b);
-  final stored = await NapResolver.blocks(tx, start, end, includeDetectedNaps: true);
+  final stored = await NapResolver.blocks(tx, start, end, includeDetectedNaps: true, includeBareWindows: true);
   final spans = [
     for (final b in stored)
       if (!(b.kind == 'main_sleep' && b.day == plan.day && plan.window != null) &&

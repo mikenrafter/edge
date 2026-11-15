@@ -89,7 +89,7 @@ class NapResolver {
   static Future<List<NapBlock>> blocks(
     DatabaseExecutor tx,
     int s,
-    int e, {bool includeDetectedNaps = false}
+    int e, {bool includeDetectedNaps = false, bool includeBareWindows = false}
   ) async {
     final out = <NapBlock>[];
     final naps = await tx.rawQuery(
@@ -124,14 +124,20 @@ class NapResolver {
         endTs: (r['offset_ts'] as num).toInt(),
       ));
     }
+    // Bare windows ({onset_ms, offset_ms}, what the engine stores) are read only by
+    // the pilot's sleep-edit validator. The nap paths (grow) keep reading the
+    // enveloped form alone, so a flag-off nap write never extends a detected
+    // night (day-timeline review r2 B1).
+    final onPath = includeBareWindows
+        ? "COALESCE(json_extract(d.window_json, '\$.value.onset_ms'), json_extract(d.window_json, '\$.onset_ms'))"
+        : "json_extract(d.window_json, '\$.value.onset_ms')";
+    final offPath = includeBareWindows
+        ? "COALESCE(json_extract(d.window_json, '\$.value.offset_ms'), json_extract(d.window_json, '\$.offset_ms'))"
+        : "json_extract(d.window_json, '\$.value.offset_ms')";
     final detected = await tx.rawQuery(
       '''SELECT d.day_id,
-        CASE WHEN json_valid(d.window_json)
-          THEN COALESCE(json_extract(d.window_json, '\$.value.onset_ms'),
-            json_extract(d.window_json, '\$.onset_ms')) END AS on_ms,
-        CASE WHEN json_valid(d.window_json)
-          THEN COALESCE(json_extract(d.window_json, '\$.value.offset_ms'),
-            json_extract(d.window_json, '\$.offset_ms')) END AS off_ms
+        CASE WHEN json_valid(d.window_json) THEN $onPath END AS on_ms,
+        CASE WHEN json_valid(d.window_json) THEN $offPath END AS off_ms
       FROM day_result d
       WHERE d.skipped = 0 AND d.day_id BETWEEN ? AND ? AND d.algo_version =
         (SELECT MAX(r.algo_version) FROM day_result r WHERE r.day_id = d.day_id AND r.algo_version <= ?)''',
