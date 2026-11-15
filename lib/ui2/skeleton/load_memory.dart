@@ -145,10 +145,12 @@ class RememberedLayout extends StatelessWidget {
     super.key,
     required this.id,
     required this.pending,
+    this.knownShape = true,
     required this.child,
   });
   final String id;
   final bool pending;
+  final bool knownShape;
   final Widget child;
   @override
   Widget build(BuildContext c) => LayoutBuilder(
@@ -158,6 +160,7 @@ class RememberedLayout extends StatelessWidget {
       return _RememberSize(
         id: scope,
         pending: pending,
+        knownShape: knownShape,
         height: LoadMemory.local.estimate('$scope:height'),
         lineWidth: LoadMemory.local.estimate('$scope:line-width') ?? .7,
         lines: LoadMemory.local.estimate('$scope:lines'),
@@ -172,6 +175,7 @@ class _RememberSize extends SingleChildRenderObjectWidget {
   const _RememberSize({
     required this.id,
     required this.pending,
+    required this.knownShape,
     required this.height,
     required this.lineWidth,
     required this.lines,
@@ -179,7 +183,7 @@ class _RememberSize extends SingleChildRenderObjectWidget {
     required super.child,
   });
   final String id;
-  final bool pending;
+  final bool pending, knownShape;
   final double? height;
   final double lineWidth;
   final double? lines;
@@ -205,7 +209,10 @@ class _SizeMemory extends RenderProxyBox implements PendingFillRender {
     final actual = size;
     if (config.pending) {
       if (config.height case final height?) {
-        size = constraints.constrain(Size(size.width, height));
+        // A remembered tail cannot clip rows or labels already known now.
+        size = constraints.constrain(
+          Size(size.width, config.knownShape ? math.max(size.height, height) : height),
+        );
       }
     } else if (_last != actual || _lastId != config.id) {
       _last = actual;

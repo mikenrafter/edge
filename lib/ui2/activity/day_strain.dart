@@ -18,6 +18,8 @@
 //     a line on a day screen whose subject is the curve. Naming the input in a
 //     sentence is enough.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -209,11 +211,12 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
       return;
     }
     try {
-      final wear = await repo.getDayWear(todayLabel());
-      if (mounted) {
-        setState(() => _hasWear = (wear['worn_min'] as num? ?? 0) > 0);
-      }
-      final d = await DayStrainData.load(repo);
+      final wearRead = repo.getDayWear(todayLabel()).then((wear) {
+        if (mounted) {
+          setState(() => _hasWear = (wear['worn_min'] as num? ?? 0) > 0);
+        }
+      });
+      final (_, d) = await (wearRead, DayStrainData.load(repo)).wait;
       if (mounted) setState(() => (_d = d, _loading = false));
     } catch (_) {
       if (mounted) setState(() => _loading = false);

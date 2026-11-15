@@ -20,11 +20,11 @@ Future<void> mountTypical(WidgetTester t, TypicalDayData data) async {
   await t.pumpAndSettle();
 }
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets('daytime sleep remains 08–16 and wrapped quiet hours remain 23–07', (t) async {
     await mountTypical(t,const TypicalDayData(sleep:ClockWindow(480,960),quiet:ClockWindow(1380,420)));
     expect(find.text('Expected sleep: 08:00–16:00'),findsOneWidget);
     expect(find.text('Quiet hours: 23:00–07:00'),findsOneWidget);
-    expect(find.text('Not enough recent sleep data for a curve.'),findsOneWidget);
     expect(find.text('Your pattern so far, 0 days'),findsOneWidget);
     expect(t.takeException(),isNull);
     final boundary = t.renderObject<RenderRepaintBoundary>(find.descendant(
@@ -44,6 +44,13 @@ void main() {
       expect(alpha(12, 114), 0);
       image.dispose();
     });
+    // R2-3 places variable forecast prose after every known plot/control. Read
+    // that growing tail after the independent plot-paint assertions above.
+    final reason = find.text('Not enough recent sleep data for a curve.');
+    await t.scrollUntilVisible(reason, 300, scrollable: find.byType(Scrollable).first);
+    expect(reason, findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+    await t.pump();
   });
   testWidgets('meal editing persists removal and a new picked clock time', (t) async {
     SharedPreferences.setMockInitialValues({});

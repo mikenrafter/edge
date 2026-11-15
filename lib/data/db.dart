@@ -25,6 +25,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../compute/processing_context.dart';
+import '../compute/pulse_alert_record.dart';
 import '../compute/substrate.dart' show beatTimesMs;
 import '../compute/groups/input_catalogue.dart' show InputKind, kInputCatalogue;
 import 'db/input_read_tracker.dart';
@@ -433,6 +435,7 @@ class LocalDb {
     'assumed_water',
     'water_moment',
     'notif_fired',
+    'pulse_alert',
     'notif_slots',
     // The wearer's confirmed nights and wake settings, and the per-night
     // candidate a finalized day re-stages from once its raw is gone.
@@ -731,7 +734,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 87;
+  static const int schemaVersion = 88;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1255,6 +1258,70 @@ class LocalDb {
         fired_at INTEGER NOT NULL
       )
     ''');
+  }
+
+  /// One row per irregular-pulse flagged day: whether its alert was sent on its
+  /// own, named in a summary, or not sent (and why). A row in `sent` or
+  /// `summary` is final, which is what keeps a day from alerting twice; a
+  /// `not_sent` row is announced in the next summary that gets through.
+  static Future<void> _createPulseAlert(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS pulse_alert (
+        day TEXT PRIMARY KEY,
+        state TEXT NOT NULL,
+        reason TEXT,
+        at_ms INTEGER NOT NULL,
+        summary_key TEXT
+      )
+    ''');
+  }
+
+  /// Flagged days still owed an alert, oldest first: no record yet, or a
+  /// `not_sent` one.
+  static Future<List<String>> pulseDaysToAlert() => _ldbPulseDaysToAlert();
+
+  /// Record [days]' alert outcome. A `sent` or `summary` row is never replaced.
+  static Future<void> recordPulseAlert(
+    Iterable<String> days, {
+    required PulseAlertState state,
+    required int atMs,
+    PulseAlertReason? reason,
+    String? summaryKey,
+  }) => _ldbRecordPulseAlert(days.toList(), state: state, reason: reason, atMs: atMs, summaryKey: summaryKey);
+
+  static Future<Map<String, PulseAlertRecord>> pulseAlertRecords() => _ldbPulseAlertRecords();
+
+  /// THE CLAIM. In one transaction, move each of [days] from "no row" or
+  /// `not_sent` to `pending`, stamped with [token] (unique per call), and return
+  /// the days this call now owns. A day another pass already holds, or has
+  /// finished, is not returned: that pass shows it, this one must not.
+  static Future<List<String>> claimPulseDays(
+    List<String> days, {
+    required String token,
+    required int atMs,
+  }) => _ldbClaimPulseDays(days, token: token, atMs: atMs);
+
+  /// End a claim taken with [token]: the final [state] (and [reason] for
+  /// `not_sent`). Applies to the claimer's own `pending` row, and to one a later
+  /// pass already relabelled `unknown`, so the truth wins when it arrives.
+  static Future<void> finishPulseDays(
+    List<String> days, {
+    required String token,
+    required PulseAlertState state,
+    required int atMs,
+    PulseAlertReason? reason,
+    String? summaryKey,
+  }) => _ldbFinishPulseDays(days, token: token, state: state, reason: reason, atMs: atMs, summaryKey: summaryKey);
+
+  /// `pending` rows claimed at or before [claimedBeforeMs] were left behind by a
+  /// pass that never finished: they become `unknown` and are never owed again.
+  static Future<int> markStalePulseUnknown(int claimedBeforeMs) => _ldbMarkStalePulseUnknown(claimedBeforeMs);
+
+  /// When [key] was claimed (epoch ms), or null.
+  static Future<int?> notifFiredAt(String key) async {
+    final db = await instance;
+    final rows = await db.query('notif_fired', columns: ['fired_at'], where: 'key = ?', whereArgs: [key], limit: 1);
+    return rows.isEmpty ? null : (rows.single['fired_at'] as num).toInt();
   }
 
   /// The cross-isolate OS-notification-id slot allocator (see
@@ -2007,12 +2074,6 @@ class LocalDb {
       dose: (rows.single['dose'] as num?)?.toDouble() ?? 0,
       minute: (rows.single['minute'] as num?)?.toInt(),
     );
-  }
-
-  static double _trackDoseAmount(Map<String, Object?> event) {
-    final standard = event['track_id'] == 'caffeine' ? 'mg' : 'units';
-    if (event['unit'] != null && event['unit'] != standard) return 0;
-    return (event['amount'] as num?)?.toDouble() ?? 0;
   }
 
   /// Track dose rows are canonical; the journal total is their compatibility
@@ -3347,7 +3408,8 @@ class LocalDb {
     // the host supplies it; a signal absent from the map defaults to
     // 2*kBucket (120s) inside [_extendCoverageVia].
     Map<String, int>? coverageToleranceSec,
-  }) => _ldbCommitSyncBatch(raws, samples, trimToken: trimToken, extraCursors: extraCursors, archives: archives, neutrals: neutrals, ecgRawPackets: ecgRawPackets, onCheckpoint: onCheckpoint, deviceFamily: deviceFamily, deviceId: deviceId, coverageToleranceSec: coverageToleranceSec);
+    ProcessingOrigin processingOrigin = ProcessingOrigin.historical,
+  }) => _ldbCommitSyncBatch(raws, samples, trimToken: trimToken, extraCursors: extraCursors, archives: archives, neutrals: neutrals, ecgRawPackets: ecgRawPackets, onCheckpoint: onCheckpoint, deviceFamily: deviceFamily, deviceId: deviceId, coverageToleranceSec: coverageToleranceSec, processingOrigin: processingOrigin);
 
   static Future<void> _commitSyncBatchLocked(
     List<RawRecord> raws,
@@ -3367,7 +3429,8 @@ class LocalDb {
     // WHICH PHYSICAL DEVICE these rows belong to (see [kPrimaryDeviceId]).
     String deviceId = kPrimaryDeviceId,
     Map<String, int>? coverageToleranceSec,
-  }) => _ldbPrivCommitSyncBatchLocked(raws, samples, trimToken: trimToken, extraCursors: extraCursors, archives: archives, neutrals: neutrals, ecgRawPackets: ecgRawPackets, onCheckpoint: onCheckpoint, deviceFamily: deviceFamily, deviceId: deviceId, coverageToleranceSec: coverageToleranceSec);
+    ProcessingOrigin processingOrigin = ProcessingOrigin.historical,
+  }) => _ldbPrivCommitSyncBatchLocked(raws, samples, trimToken: trimToken, extraCursors: extraCursors, archives: archives, neutrals: neutrals, ecgRawPackets: ecgRawPackets, onCheckpoint: onCheckpoint, deviceFamily: deviceFamily, deviceId: deviceId, coverageToleranceSec: coverageToleranceSec, processingOrigin: processingOrigin);
 
   // ── DERIVED STORE (permanent, rich) ────────────────────────────────────────
   // The on-device analytics output, keyed by physiological day (wake-to-wake;
@@ -4693,15 +4756,22 @@ class LocalDb {
     return decodeRecTs(raw.hex, fallbackSec: raw.capturedAt ~/ 1000);
   }
 
-  static Future<bool> insertRecord(RawRecord raw, Sample? sample) async {
+  static Future<bool> insertRecord(RawRecord raw, Sample? sample, {
+    ProcessingOrigin processingOrigin = ProcessingOrigin.historical,
+  }) async {
     final db = await instance;
     var inserted = false;
+    var pulseContext = ProcessingContext.reanalysis;
     await db.transaction((txn) async {
+      if (processingOrigin == ProcessingOrigin.recentSync) {
+        try { pulseContext = await _ldbPrivPulseArrivalContext(txn, [raw], [sample]); } catch (_) {}
+      }
       final batch = txn.batch();
       _queueDecodedOneHz(batch, raw, sample);
       await batch.commit(noResult: true);
       inserted = true;
     });
+    await _ldbPrivQueuePulseArrival(pulseContext);
     return inserted;
   }
 
@@ -4712,8 +4782,9 @@ class LocalDb {
   /// table. Raw-first is preserved — callers flush this before ACKing a sync batch.
   static Future<void> insertRecordsBatch(
     List<RawRecord> raws,
-    List<Sample?> samples,
-  ) => _ldbInsertRecordsBatch(raws, samples);
+    List<Sample?> samples, {
+    ProcessingOrigin processingOrigin = ProcessingOrigin.historical,
+  }) => _ldbInsertRecordsBatch(raws, samples, processingOrigin: processingOrigin);
 
   static Future<void> putSyncLedger(Map<String, dynamic> row) async {
     final db = await instance;
@@ -5262,6 +5333,12 @@ class LocalDb {
     return rows.isEmpty ? null : _withDate(rows.first);
     });
   }
+
+  /// The served day result's version and whether it is an import snapshot; null
+  /// when the day has none. Reads no payload.
+  static Future<({int version, bool imported})?> pulseDayProvenance(
+    String dayId,
+  ) => _ldbPulseDayProvenance(dayId);
 
   /// An older row the fallback may serve from: not another vendor's. The
   /// CANDIDATE row is judged (payload `imported`, or a payload `source` other
@@ -5973,6 +6050,7 @@ class LocalDb {
       'assumed_water',
       'water_moment',
       'notif_fired',
+      'pulse_alert',
       'notif_slots',
       // Vendor-computed, typed-in and imported scalars. In the hand-entered
       // block because a third of it IS hand-entered and nothing regenerates
@@ -6100,6 +6178,7 @@ class LocalDb {
     'assumed_water',
     'water_moment',
     'notif_fired',
+    'pulse_alert',
     // Local wins: a new phone's own settings, confirmations, ledger rows and
     // notification slots are not replaced by a backup's.
     'wake_confirmation',
@@ -6346,6 +6425,20 @@ class LocalDb {
     })
   >
   metricSeriesBundle(List<String> keys, {bool ownOnly = false}) => _ldbMetricSeriesBundle(keys, ownOnly: ownOnly);
+
+  /// Fast primary shape: current own scalars plus the number of preceding
+  /// non-null own history values, without reading historical payloads. Reuses
+  /// the same provenance predicate as metricSeriesBundle(ownOnly: true).
+  static Future<List<Map<String, Object?>>> ownMetricSeriesDayWithHistoryCount(
+    String day, List<String> keys, {required String historyKey}
+  ) => readerRun((db) => db.rawQuery(
+    'SELECT key, value, date FROM metric_series WHERE date = ? '
+    'AND key IN (${List.filled(keys.length, '?').join(',')}) '
+    'AND value IS NOT NULL$_ownOnlySql '
+    "UNION ALL SELECT 'history_count', COUNT(*), ? FROM metric_series "
+    'WHERE key = ? AND date < ? AND value IS NOT NULL$_ownOnlySql',
+    [day, ...keys, day, historyKey, day],
+  ));
 
   /// Drops stored `spo2` rows that are not a blood oxygen percentage: WHOOP export
   /// cells outside 70-100 banked before the importer dropped them, and the old
@@ -6918,7 +7011,8 @@ class LocalDb {
   static Future<void> enqueueDeriveJob({
     required String type,
     required String reason,
-  }) => _ldbEnqueueDeriveJob(type: type, reason: reason);
+    ProcessingContext processingContext = ProcessingContext.reanalysis,
+  }) => _ldbEnqueueDeriveJob(type: type, reason: reason, processingContext: processingContext);
 
   static Future<Map<String, dynamic>?> takeNextComputeJob() => _ldbTakeNextComputeJob();
 
@@ -6947,16 +7041,19 @@ class LocalDb {
     );
   }
 
-  /// Drop every QUEUED light derive job; returns how many. A running job and
-  /// any heavy job are left alone (a heavy one carries the finalize extras).
-  /// Used by a manual sync that has just derived the very data those jobs were
-  /// queued for.
+  /// Drop the QUEUED light derive jobs a manual sync has just derived; returns
+  /// how many. A running job and any heavy job are left alone (a heavy one
+  /// carries the finalize extras), and so is a recent-sync job: it is the one
+  /// that authorizes the pulse alert for data that arrived, so a pass that did
+  /// not carry its context must never delete it. If the manual pass did derive
+  /// those days the job finds them unchanged and ends quickly.
   static Future<int> cancelQueuedLightDerive() async {
     final db = await instance;
     return db.delete(
       'compute_jobs',
-      where: 'scope = ? AND state = ? AND type = ?',
-      whereArgs: ['derive', 'queued', 'derive_light'],
+      where: 'scope = ? AND state = ? AND type = ? AND '
+          "COALESCE(json_extract(processing_context, '\$.origin'), 'reanalysis') != ?",
+      whereArgs: ['derive', 'queued', 'derive_light', ProcessingOrigin.recentSync.name],
     );
   }
 

@@ -16,6 +16,7 @@
 import '../wake/wake_journal.dart';
 import '../wake/wake_timeline.dart';
 import '../compute/findings.dart' show servedReadiness;
+import '../compute/pulse_alert_record.dart';
 import '../compute/inputs/canonical.dart'
     show
         activeWearable,
@@ -1271,6 +1272,10 @@ class LocalRepositoryImpl extends LocalRepository {
     if (a == null || b == null) return null;
     return calendarDaysBetween(a, b);
   }
+
+  @override
+  Future<Map<String, PulseAlertRecord>> getPulseAlertRecords() =>
+      LocalDb.pulseAlertRecords();
 
   @override
   Future<Map<String, dynamic>> getInsights() => ReadPerf.reading('getInsights', () async {
@@ -2862,14 +2867,9 @@ class LocalRepositoryImpl extends LocalRepository {
       getInsights(),
       getDeviceNights(day),
       getWakeTimeline(day),
-      LocalDb.readerRun(
-        (db) => db.rawQuery(
-          'SELECT key, value, date FROM metric_series WHERE date = ? '
-          "AND key IN ('unobserved_min','awakenings','longest_sleep_min','sol_min') "
-          "UNION ALL SELECT 'history_count', COUNT(*), ? FROM metric_series "
-          "WHERE key = 'tst_min' AND value IS NOT NULL AND date < ?",
-          [day, day, day],
-        ),
+      LocalDb.ownMetricSeriesDayWithHistoryCount(
+        day, const ['unobserved_min', 'awakenings', 'longest_sleep_min', 'sol_min', 'irregular_rhythm_flag'],
+        historyKey: 'tst_min',
       ),
     ).wait;
     final date = DateTime.parse(day);

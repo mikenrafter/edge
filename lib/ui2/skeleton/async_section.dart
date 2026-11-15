@@ -10,6 +10,8 @@ import 'load_memory.dart';
 export 'pending_scope.dart';
 import '../grammar.dart' show Surface, ChartFrame;
 import '../theme.dart';
+import '../../l10n/app_localizations.dart';
+import 'pending_scope.dart';
 import 'guide_plot.dart';
 import 'skeleton.dart' show SkeletonBar, paintSkeletonShapes, SkeletonShape, skeletonKindOfPlot;
 
@@ -38,10 +40,18 @@ class AsyncSection<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = value;
-    if (shown != null) return content.loaded(context, shown);
     if (failed) return content.failed(context);
-    if (!pending) return content.empty(context);
-    return PendingContent(pending: true, child: content.pending(context));
+    final Widget child;
+    if (shown != null) {
+      child = content.loaded(context, shown);
+    } else if (pending) {
+      child = content.pending(context);
+    } else {
+      child = content.empty(context);
+    }
+    // Keep the pending owner mounted across settlement, so it can announce a
+    // user-started completion. Failed/cancelled sections never announce loaded.
+    return PendingContent(pending: pending && shown == null, child: child);
   }
 }
 
@@ -51,7 +61,9 @@ class AsyncSection<T> extends StatelessWidget {
 class PendingContent extends StatefulWidget {
   const PendingContent({super.key, required this.pending, required this.child,
     this.memoryKey,
+    this.knownShape = true,
   });
+  final bool knownShape;
   final String? memoryKey;
   final bool pending;
   final Widget child;
@@ -87,6 +99,20 @@ class _PendingContentState extends State<PendingContent>
   Timer? _delay;
   final _elapsed = Stopwatch();
   bool _visible = false;
+  bool _userStarted = false, _announceComplete = false;
+
+  String _sectionName(BuildContext context, AppLocalizations l) {
+    final child = widget.child;
+    String? name = child is PendingSectionLabel ? (child as PendingSectionLabel).pendingSectionName : null;
+    if (name == null) {
+      context.visitAncestorElements((ancestor) {
+        final section = ancestor.widget;
+        if (section is PendingSectionLabel) name = (section as PendingSectionLabel).pendingSectionName;
+        return name == null;
+      });
+    }
+    return name ?? l.pendingSectionContent;
+  }
   @override
   void initState() {
     super.initState();
@@ -96,6 +122,7 @@ class _PendingContentState extends State<PendingContent>
 
   void _start() {
     if (!widget.pending) return;
+    _userStarted = PendingUserAction.active;
     _elapsed
       ..reset()
       ..start();
@@ -120,30 +147,62 @@ class _PendingContentState extends State<PendingContent>
     _fade.reset();
     _visible = false;
     if (widget.pending) {
+      _announceComplete = false;
       _start();
     } else {
+      _announceComplete = _userStarted;
+      _userStarted = false;
+      if (_announceComplete) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _announceComplete) setState(() => _announceComplete = false);
+        });
+      }
       _fade.forward();
     }
   }
   @override
   void dispose() { _delay?.cancel(); _fade.dispose(); super.dispose(); }
   @override
-  Widget build(BuildContext context) => Focus(
-    canRequestFocus: false, skipTraversal: true,
-    descendantsAreFocusable: !widget.pending,
-    descendantsAreTraversable: !widget.pending,
-    child: ExcludeSemantics(excluding: widget.pending,
-      child: IgnorePointer(ignoring: widget.pending,
-        child: AnimatedBuilder(animation: _fade, child: widget.memoryKey == null
-              ? widget.child
-              : RememberedLayout(
-                  id: widget.memoryKey!,
-                  pending: widget.pending,
-                  child: widget.child,
-                ),
-          builder: (_, child) => PendingTone(pulse: _PendingPulse.shared.value,
-            fade: _fade.value, child: _PendingPaint(pending: widget.pending,
-              visible: _visible, fade: _fade.value, child: child!))))));
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context) ?? lookupAppLocalizations(const Locale('en'));
+    final name = _sectionName(context, l);
+    final parentOwns = context.dependOnInheritedWidgetOfExactType<_PendingSemanticsOwner>()?.active ?? false;
+    final announce = _announceComplete && !parentOwns;
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      label: widget.pending ? l.pendingSectionLoading(name)
+          : announce ? l.pendingSectionLoaded(name) : null,
+      // Flutter's live-region flag uses polite announcements. A completion is
+      // exposed for one build only, so later data/pulse changes stay quiet.
+      liveRegion: announce,
+      child: _PendingSemanticsOwner(active: widget.pending || announce,
+        child: Focus(
+          canRequestFocus: false, skipTraversal: true,
+          descendantsAreFocusable: !widget.pending,
+          descendantsAreTraversable: !widget.pending,
+          child: ExcludeSemantics(excluding: widget.pending,
+            child: IgnorePointer(ignoring: widget.pending,
+              child: AnimatedBuilder(animation: _fade, child: widget.memoryKey == null
+                    ? widget.child
+                    : RememberedLayout(
+                        id: widget.memoryKey!,
+                        knownShape: widget.knownShape,
+                        pending: widget.pending,
+                        child: widget.child,
+                      ),
+                builder: (_, child) => PendingTone(pulse: _PendingPulse.shared.value,
+                  fade: _fade.value, child: _PendingPaint(pending: widget.pending,
+                    visible: _visible, fade: _fade.value, child: child!))))))));
+  }
+}
+
+class _PendingSemanticsOwner extends InheritedWidget {
+  const _PendingSemanticsOwner({required this.active, required super.child});
+  final bool active;
+  @override
+  bool updateShouldNotify(_PendingSemanticsOwner old) => active != old.active;
+
 }
 
 class _PendingPaint extends SingleChildRenderObjectWidget {
@@ -329,12 +388,14 @@ class _PendingRing extends _PendingWave implements GuideRing { const _PendingRin
 class _PendingDots extends _PendingWave implements GuideScatter { const _PendingDots(super.guideLineColor); }
 class _PendingBand extends _PendingWave implements GuideBand { const _PendingBand(super.guideLineColor); }
 
-/// Content-sized rows. Put secondary asynchronous lists inside a collapsed
-/// accordion; an unknown result count must never create an empty viewport.
+/// Content-sized asynchronous rows. The stable storage id owns remembered
+/// geometry; unknown row templates may fit that estimate, while loaded content
+/// always keeps its natural height and never gets another scrollable.
 class AsyncListSection<T> extends StatelessWidget {
-  const AsyncListSection({super.key, required this.items,
+  const AsyncListSection({super.key, required this.memoryKey, required this.items,
     required this.itemBuilder, required this.emptyBuilder,
     this.visibleRows = 3, this.rowHeight = 72});
+  final String memoryKey;
   final List<T>? items;
   final Widget Function(BuildContext, T) itemBuilder;
   final WidgetBuilder emptyBuilder;
@@ -343,13 +404,17 @@ class AsyncListSection<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rows = items;
-    if (rows == null) {
-      return PendingContent(pending: true,
-        child: PendingRows(count: visibleRows, rowHeight: rowHeight));
-    }
-    if (rows.isEmpty) return emptyBuilder(context);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [for (final row in rows) itemBuilder(context, row)]);
+    return PendingContent(
+      memoryKey: 'async-list:$memoryKey',
+      knownShape: false,
+      pending: rows == null,
+      child: rows == null
+        ? PendingRows(count: visibleRows, rowHeight: rowHeight)
+        : rows.isEmpty ? emptyBuilder(context)
+        : Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [for (final row in rows) itemBuilder(context, row)]),
+    );
   }
 }
 

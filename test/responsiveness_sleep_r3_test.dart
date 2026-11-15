@@ -282,4 +282,34 @@ void main() {
       }
     },
   );
+  // WHY: the target already owns schema 87. Its upgrades must still run, while
+  // the next rung creates edit jobs and same-version opens repair the table.
+  test(
+    'R3 merge migration and open repair create sleep jobs idempotently',
+    () async {
+      var db = await LocalDb.instance;
+      await db.execute('DROP TABLE sleep_edit_job');
+      await db.execute('PRAGMA user_version = ${LocalDb.schemaVersion - 1}');
+      await LocalDb.close();
+      db = await LocalDb.instance;
+      expect(
+        (await db.rawQuery('PRAGMA user_version')).single['user_version'],
+        LocalDb.schemaVersion,
+      );
+      expect(await SleepEditStore.pending(), isEmpty);
+      await edit(a);
+      await LocalDb.close();
+      db = await LocalDb.instance;
+      expect((await SleepEditStore.pending()).map((j) => j.day), [a]);
+      expect((await SleepEditStore.status(a))!['revision'], 1);
+      await db.execute('DROP TABLE sleep_edit_job');
+      await LocalDb.close();
+      db = await LocalDb.instance;
+      expect(await SleepEditStore.pending(), isEmpty);
+      final tables = (await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table'",
+      )).map((row) => row['name']);
+      expect(tables, containsAll(['sleep_edit_job', 'water_moment']));
+    },
+  );
 }

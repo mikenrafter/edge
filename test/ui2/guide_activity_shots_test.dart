@@ -1,5 +1,6 @@
 // Opt-in review artifacts, not pixel goldens. Run on Boat with GUIDE_SHOTS_DIR
 // set to an output directory. No app code or stored wearer data is changed.
+import '../support/live_guide_focus.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -240,7 +241,7 @@ Map<String, Object?> _measure(WidgetTester t, LiveGuideOverlayState overlay) {
         .length,
     'dimCount': counts['dim'],
     'outlinePresent':
-        find.byKey(LiveGuideOverlay.outlineKey).evaluate().length == 1,
+        liveGuideFocus.evaluate().length == 1,
     'coverageFraction': area / (screen.width * screen.height),
     'targetRect': _rect(target),
     'cardRect': _rect(card),
@@ -553,7 +554,7 @@ void main() {
             expect(overlay.isYielding, isFalse);
             expect(overlay.revealProgress, 1);
             expect(overlay.targetRect, isNotNull);
-            expect(find.byKey(LiveGuideOverlay.outlineKey), findsOneWidget);
+            expect(liveGuideFocus, findsOneWidget);
             expect(t.takeException(), isNull);
             final name = '${(i + 1).toString().padLeft(2, '0')}-${step.id}';
             final guided = dark ? 'dark/$name.png' : '$name.png';

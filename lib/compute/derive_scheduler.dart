@@ -4,6 +4,7 @@ import 'dart:io';
 import '../data/db.dart';
 import '../sync/import_focus.dart';
 import 'derive_outcome.dart';
+import 'processing_context.dart';
 
 enum DeriveJobKind { light, heavy }
 
@@ -124,6 +125,25 @@ class DeriveScheduler {
   int _storedSeq = 0;
   bool get _manualHeld => _manualHolds.isNotEmpty;
   bool _running = false;
+  ProcessingContext _runningContext = ProcessingContext.reanalysis;
+  ProcessingContext get runningContext => _runningContext;
+
+  /// Manual sync reads the same durable provenance the scheduled job would:
+  /// the recent-sync contexts, merged. A queued import or reanalysis job says
+  /// nothing about whether the band's new data is fresh, so it neither joins
+  /// the merge nor silences it. Each day's own eligibility is still decided in
+  /// the engine ([ProcessingContext.forDerivation]), so an imported day stays
+  /// silent either way. With no recent-sync job queued the result is silent.
+  Future<ProcessingContext> pendingProcessingContext() async {
+    final jobs = await LocalDb.computeJobs(state: 'queued', limit: 1000);
+    ProcessingContext? merged;
+    for (final job in jobs) {
+      final next = ProcessingContext.decode(job['processing_context']);
+      if (next.origin != ProcessingOrigin.recentSync) continue;
+      merged = merged?.merge(next) ?? next;
+    }
+    return merged ?? ProcessingContext.reanalysis;
+  }
 
   /// [_storedSeq] when the heavy pass now running began; null when none runs.
   /// Owner: this scheduler. [requestHeavy] reads it to tell "asked again about
@@ -349,7 +369,9 @@ class DeriveScheduler {
     // async error. The intent is lost only if the write itself failed, and the
     // next stored-data tick enqueues again.
     try {
-      await LocalDb.enqueueDeriveJob(type: type, reason: reason);
+      await LocalDb.enqueueDeriveJob(type: type, reason: reason,
+          processingContext: reason == 'import'
+              ? ProcessingContext.historical : ProcessingContext.reanalysis);
     } catch (e) {
       log('[derive-scheduler] could not queue $type: $e');
       return;
@@ -408,6 +430,7 @@ class DeriveScheduler {
     }
     final kind = _parseKind(job['type']?.toString());
     _running = true;
+    _runningContext = ProcessingContext.decode(job['processing_context']);
     _heavyStartSeq = kind == DeriveJobKind.heavy ? _storedSeq : null;
     final importPass = kind == DeriveJobKind.heavy && _importPassOwed;
     await _refreshSnapshot();
@@ -433,6 +456,7 @@ class DeriveScheduler {
       }
     } finally {
       _running = false;
+      _runningContext = ProcessingContext.reanalysis;
       _heavyStartSeq = null;
       await _refreshSnapshot();
       if (_pendingHeavy || _pendingLight) _arm();

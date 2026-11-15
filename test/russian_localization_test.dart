@@ -275,7 +275,10 @@ void main() {
     expect(findingDetail(l, scored), contains('21'));
     expect(findingDetail(l, scored), isNot(findingDetail(en, scored)));
     final rhythm = Finding(FindingKind.irregularRhythm, '2026-10-05');
-    expect(findingDetail(l, rhythm), contains('не диагноз'));
+    // Pulse phase 1 replaced "not a diagnosis" with the measured limits: the
+    // rule's accuracy is unmeasured, it cannot identify AF, an ECG is the check.
+    expect(findingDetail(l, rhythm), contains('не измеряли'));
+    expect(findingDetail(l, rhythm), contains('ЭКГ'));
     expect(findingDetail(l, rhythm), contains('врач'));
     const pair =
         'steps 12000 and strain 15.2 — both outside your usual range on the same day, which is worth noticing but is not a measured relationship between them';

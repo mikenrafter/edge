@@ -294,7 +294,7 @@ class _NapsScreenState extends State<NapsScreen>
           color: C.domHealth,
           onTap: _busy || day == null ? null : () => _log(day),
         ),
-        AsyncListSection<Widget>(items: _d == null ? null : [
+        AsyncListSection<Widget>(memoryKey: 'naps:${day == todayLabel() ? 'today' : 'past'}', items: _d == null ? null : [
         if (!d.judged)
           // THE DETECTOR'S OWN REASON when it left one — 'too little 1 Hz data
           // to assess naps', 'nap detection failed for this day'. The sentence

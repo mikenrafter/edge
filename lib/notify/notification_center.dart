@@ -65,6 +65,25 @@ class NotificationCenter {
     bool historical = false,
     String? ruleId,
     bool phoneOnly = false,
+  }) async => (await emitReaching(
+    e,
+    allowPermissionPrompt: allowPermissionPrompt,
+    sourceTime: sourceTime,
+    historical: historical,
+    ruleId: ruleId,
+    phoneOnly: phoneOnly,
+  )).contains('phone');
+
+  /// [emit], reporting every target the event reached ('phone', 'band') rather
+  /// than only whether the phone showed it. A rule that selects only the band
+  /// delivers an alert without the phone ever presenting it.
+  Future<Set<String>> emitReaching(
+    NotificationEvent e, {
+    bool allowPermissionPrompt = true,
+    DateTime? sourceTime,
+    bool historical = false,
+    String? ruleId,
+    bool phoneOnly = false,
   }) async {
     final prefs = await NotificationPrefs.load();
     final id =
@@ -82,7 +101,7 @@ class NotificationCenter {
     final now = DateTime.now();
     if (const {'water', 'movement', 'windDown', 'checkIn'}.contains(id) &&
         (await ReminderSleepGate.load(now: now)).reasonAt(prefs, now) != null) {
-      return false;
+      return const {};
     }
     final minuteOfDay = now.hour * 60 + now.minute;
     final explicitAction = ruleId != null &&
@@ -94,12 +113,14 @@ class NotificationCenter {
     await FeatureFlags.ensureLoaded();
     if (!FeatureFlags.isOn(FeatureFlag.alertDispatcher)) {
       final rule = prefs.alertRule(id);
-      if (!rule.enabled || !rule.phoneSelected) return false;
-      return _emitPhone(
+      if (!rule.enabled || !rule.phoneSelected) return const {};
+      return await _emitPhone(
         e,
         allowPermissionPrompt: allowPermissionPrompt,
         explicitAction: explicitAction,
-      );
+      )
+          ? const {'phone'}
+          : const {};
     }
     final out = await dispatcher.dispatch(
       prefs.alertRule(id),
@@ -119,7 +140,7 @@ class NotificationCenter {
         explicitAction: explicitAction,
       ),
     );
-    return out.targets.contains('phone');
+    return out.targets.toSet();
   }
 
   /// The persistent "already fired this dedupeKey" guard. See [FiredKeyStore].

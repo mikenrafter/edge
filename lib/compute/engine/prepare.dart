@@ -1227,6 +1227,10 @@ extension _EnginePrepare on DerivationEngine {
   Future<_DeriveScope> _deriveScope({
     required bool heavy,
     required bool force,
+    // Days a recent-sync arrival touched. A light pass adds those that are
+    // pending to its one-day scope, so a catch-up that carries yesterday's
+    // evening derives yesterday inside the authorized pass.
+    Set<String> arrivalDays = const {},
   }) async {
     final rawByDay = await LocalDb.decodedRecTsMaxByDay();
     // Days only the active wearable saw (inputs/canonical.dart) are up for
@@ -1315,6 +1319,10 @@ extension _EnginePrepare on DerivationEngine {
       pendingDays: pending,
       today: LocalDb.localDayLabelNow(),
     );
-    return _scopeForDays(light.days, reason: light.reason, rawDays: rawDays);
+    return _scopeForDays(
+      [...light.days, ...arrivalDays.where(pending.contains)],
+      reason: light.reason,
+      rawDays: rawDays,
+    );
   }
 }

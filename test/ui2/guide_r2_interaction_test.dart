@@ -1,3 +1,4 @@
+import '../support/live_guide_focus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/app.dart' show AppMainShell;
@@ -13,7 +14,6 @@ import '../support/guide_r2_scroll_fixture.dart';
 import 'package:openstrap_edge/ui2/guides/guide_step_card.dart';
 import 'package:openstrap_edge/ui2/guides/live_guide_overlay.dart';
 import '../support/guide_r2_fixture.dart';
-import '../support/guide_r2_manifest.dart';
 import '../support/guide_r2_scenes.dart';
 import '../support/live_guide_harness.dart';
 
@@ -147,7 +147,7 @@ void main() {
     await t.pump(const Duration(milliseconds: 400));
     expect(find.byType(AlertDialog), findsOneWidget);
     expect(find.byKey(GuideStepCard.cardKey), findsNothing, reason: 'overlay yields to modal');
-    expect(find.byKey(LiveGuideOverlay.outlineKey), findsNothing);
+    expect(liveGuideFocus, findsNothing);
     expect(stage.run.state, isA<GuideAtStep>().having((s) => s.index, 'index', 0));
     await t.tap(find.text('Confirm'));
     await t.pump(const Duration(milliseconds: 400));

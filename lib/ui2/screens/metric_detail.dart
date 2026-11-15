@@ -1382,7 +1382,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload, Paused
                 all.isEmpty ? null : all.last.t)),
         if (_outcome != null)
           SettingsAccordion(l?.metricDetailWhatMovesItSection ?? 'What moves it',
-            id: 'metric_movers', initiallyExpanded: true, children: [AsyncListSection<Widget>(
+            id: 'metric_movers', initiallyExpanded: true, children: [AsyncListSection<Widget>(memoryKey: 'metric-movers:${spec.chartKey}',
               items: _moversPending ? null : d.movers.isEmpty ? [] : [_movers(c, d.movers)],
               emptyBuilder: (_) => _journalFailed
                 ? StatusCard(l?.healthReadFailedBody ?? 'Could not load your data. Nothing was deleted.', '',
@@ -2432,9 +2432,9 @@ Widget detailScaffold(BuildContext c, String title, List<Widget> body,
               trailing: trailing,
               onBack: () => Navigator.of(c).maybePop()),
         Expanded(
-          child: ListView(
+          child: PendingSectionScope(pendingSectionName: title, child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x12),
-              children: body),
+              children: body)),
         ),
       ]),
     ),
@@ -2549,7 +2549,9 @@ class DayNav extends StatelessWidget {
             key: const ValueKey('day-nav-choose'),
             onTap: () async {
               final picked = await chooseDay(c, days, day);
-              if (picked != null && picked != day) onDay(picked);
+              if (picked != null && picked != day) {
+                PendingUserAction.run(() => onDay(picked));
+              }
             },
               semanticLabel:
                   l?.metricDetailChooseDayShowing(dayNavLabel(day, l)) ??
@@ -2596,11 +2598,11 @@ Widget detailLinkRow(BuildContext c, IconData icon, String title, String sub,
         Icon(icon, size: 17, color: p.ink3),
         const SizedBox(width: S.x3),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: PendingStatic(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title,
                 style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
             Text(sub, style: F.over.copyWith(color: p.ink3)),
-          ]),
+          ])),
         ),
         Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
       ]),

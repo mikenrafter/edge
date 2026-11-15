@@ -13,6 +13,7 @@
 // store (lib/data/db.dart), the system of record. A missed run is harmless;
 // the next reconnect catches up from the non-destructive cursor.
 
+import '../compute/processing_context.dart';
 import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
@@ -162,7 +163,7 @@ BleEngine createHeadlessSyncEngine({
     // none of it has been ACKed, so it is all still on the band.
     onRecord: (sample, raw) async {
       if (ResetGate.active) return;
-      await LocalDb.insertRecord(raw, sample);
+      await LocalDb.insertRecord(raw, sample, processingOrigin: ProcessingOrigin.recentSync);
     },
     onState: (_) {},
     // This path drains exactly the one paired band (PairedDevice.load()),
@@ -184,7 +185,7 @@ BleEngine createHeadlessSyncEngine({
     log: (l) => _bgLog('[bgsync] $l', always: _mentionsAlarm(l)),
     onRecordsBatch: (raws, samples) async {
       if (ResetGate.active) return;
-      await LocalDb.insertRecordsBatch(raws, samples);
+      await LocalDb.insertRecordsBatch(raws, samples, processingOrigin: ProcessingOrigin.recentSync);
     },
     // Routed through BandHost (M1a) rather than calling
     // LocalDb.commitSyncBatch directly — same durable commit, same

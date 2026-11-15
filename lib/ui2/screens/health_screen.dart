@@ -14,6 +14,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../compute/findings.dart';
+import '../../compute/pulse_alert_record.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/lab_catalogue.dart';
@@ -178,6 +179,11 @@ class HealthData {
     // Started first and awaited last: first paint waits for the slowest read,
     // not the sum. A failed read is null (no card), never a failed load.
     final wearableRead = _wearableOrNull(repo);
+    // Alert notes belong to the same published snapshot. Start their stored
+    // read alongside the overview, through its repository seam.
+    final alertsRead = repo
+        .getPulseAlertRecords()
+        .catchError((_) => const <String, PulseAlertRecord>{});
     final today = await repo.getTodayStored();
     final cd = await repo.getInsights();
     final profile = await repo.getProfile();
@@ -278,8 +284,12 @@ class HealthData {
       napMin: (naps['nap_min'] as num?)?.round(),
       napCount: (naps['naps'] as List?)?.length,
       napDay: napDay,
-      findings:
-          findingsHistory(cd, readiness: ready, irregularDays: irregular),
+      findings: findingsHistory(
+        cd,
+        readiness: ready,
+        irregularDays: irregular,
+        alerts: await alertsRead,
+      ),
       baselines: heart['baselines'] is Map
           ? (heart['baselines'] as Map).cast<String, dynamic>()
           : null,

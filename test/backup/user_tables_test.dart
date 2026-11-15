@@ -22,6 +22,7 @@ const _tables = [
   'moment_label',
   'assumed_water',
   'notif_fired',
+  'pulse_alert',
 ];
 
 void main() {
@@ -52,6 +53,10 @@ void main() {
     });
     await db.insert('notif_fired',
         {'key': '2026-09-21:low_read', 'fired_at': 1790000400});
+    await db.insert('pulse_alert', {
+      'day': '2026-09-21', 'state': 'sent', 'reason': null,
+      'at_ms': 1790000500000, 'summary_key': null,
+    });
   }
 
   Future<Map<String, List<Map<String, Object?>>>> dumpUser() async {

@@ -315,13 +315,15 @@ extension _EngineCrossDayPrune on DerivationEngine {
     return days;
   }
 
-  Future<void> _runNotificationsUntimed({String? today}) async {
+  Future<void> _runNotificationsUntimed({String? today,
+    ProcessingContext processingContext = ProcessingContext.reanalysis}) async {
     try {
       final cdRow = await LocalDb.baseline('crossday');
-      final cd = DerivationEngine._decodeBundle(cdRow?['payload_json']);
-      if (cd == null) return;
-      // The whole decision is `planExceptionNotices` (findings.dart), pure
-      // and tested; this only reads its inputs and emits what it returns.
+      // No cross-day rollup yet (a first day or two of data) is an empty one:
+      // the pulse days below do not depend on it.
+      final cd = DerivationEngine._decodeBundle(cdRow?['payload_json']) ??
+          const <String, dynamic>{};
+      // The cross-day decision is `planExceptionNotices` (findings.dart).
       today ??= LocalDb.localDayLabelNow();
       final anchor = exceptionAnchor(cd);
       // Only a pin taken on the anchor day's own night (LocalDb.headlinePinFor).
@@ -330,9 +332,6 @@ extension _EngineCrossDayPrune on DerivationEngine {
       final notices = planExceptionNotices(
         cd,
         today: today,
-        irregularFlag: anchor == null
-            ? null
-            : await LocalDb.metricValueOn(anchor.date, 'irregular_rhythm_flag'),
         pin: pinValue == null ? null : (day: anchor!.date, value: pinValue),
         storedReadiness: anchor == null
             ? null
@@ -381,6 +380,15 @@ extension _EngineCrossDayPrune on DerivationEngine {
       }
     } catch (e) {
       _log('notifications FAILED/skipped: $e');
+    }
+    // Irregular-pulse days have their own record and summary. Their own try:
+    // a failure in the cross-day notices above must not skip them.
+    try {
+      await PulseAlertDelivery.run(
+        individualDays: processingContext.individualDays,
+      );
+    } catch (e) {
+      _log('pulse alerts FAILED/skipped: $e');
     }
   }
 

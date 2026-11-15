@@ -67,7 +67,9 @@ void main() {
         );
     await t.pumpWidget(page(pending: true, value: 'Stored result'));
     expect(find.text('Stored result'), findsOneWidget);
-    expect(find.byType(PendingContent), findsNothing);
+    // The shared owner stays mounted to announce user-started settlement;
+    // retained data must still be readable and interactive, never pending.
+    expect(find.byWidgetPredicate((w) => w is PendingContent && w.pending), findsNothing);
     await t.pumpWidget(page(pending: false));
     expect(find.text('No recorded data'), findsOneWidget);
     await t.pumpWidget(page(pending: false, failed: true));
@@ -78,7 +80,7 @@ void main() {
   // and accordion content must not acquire another scrollable.
   testWidgets('settled lists fit their content and never scroll internally', (t) async {
     Widget page(List<String>? items) => MaterialApp(home: Scaffold(body:
-      SingleChildScrollView(child: AsyncListSection<String>(items: items,
+      SingleChildScrollView(child: AsyncListSection<String>(memoryKey: 'test-settled-list', items: items,
         itemBuilder: (_, value) => Text(value),
         emptyBuilder: (_) => const Text('No entries')))));
     await t.pumpWidget(page(['One', 'Two', 'Three', 'Four']));
@@ -88,6 +90,23 @@ void main() {
     expect(find.byType(Scrollable), findsOneWidget);
     expect(find.text('No entries'), findsOneWidget);
     expect(find.byType(PendingRows), findsNothing);
+  });
+
+  // CLAIM remembered-list: an unknown list reuses its settled size instead
+  // of reserving the generic three-row template on every revisit.
+  testWidgets('async list remembers short content and empty content stays natural', (t) async {
+    Widget page(List<String>? items) => MaterialApp(home: Scaffold(body:
+      SingleChildScrollView(child: SizedBox(width:200,child: AsyncListSection<String>(
+        memoryKey:'short-list',key:const ValueKey('short-list'), items:items,
+        itemBuilder:(_, value)=>SizedBox(height:42,child:Text(value)),
+        emptyBuilder:(_)=>const SizedBox(height:14))))));
+    await t.pumpWidget(page(['One']));await t.pump();
+    expect(t.getSize(find.byType(AsyncListSection<String>)).height,42);
+    await t.pumpWidget(page(null));
+    expect(t.getSize(find.byType(AsyncListSection<String>)).height,42);
+    await t.pumpWidget(page([]));await t.pump();
+    expect(t.getSize(find.byType(AsyncListSection<String>)).height,14);
+    await t.pumpWidget(const SizedBox());
   });
 
   // WHY: bounded parents (Track editor/startup) must not stretch row skeletons

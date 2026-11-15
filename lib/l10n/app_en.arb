@@ -13416,7 +13416,7 @@
   "@supplementYourBandHasnTSynced0a4dfd": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
-  "supplementYourBeatToBeatPatternfed8f0": "Your beat-to-beat pattern looked irregular today. This is a screen, not a diagnosis — see a clinician if you have symptoms.",
+  "supplementYourBeatToBeatPatternfed8f0": "This flag means the timing between the wrist sensor's pulse readings matched our irregularity rule. We have not measured how often this rule is right or how often it misses a rhythm problem. Movement, sensor fit, and extra beats can produce a similar pattern. It cannot identify atrial fibrillation (AF), and an unflagged recording cannot rule out a rhythm problem. A clinician can use an ECG to assess your heart rhythm. If flags repeat, consider clinician follow-up even without symptoms. If you have symptoms such as chest pain, fainting or severe breathlessness, get medical help now.",
   "@supplementYourBeatToBeatPatternfed8f0": {
     "description": "Presentation-only text for existing interface, exports or notifications."
   },
@@ -16662,9 +16662,15 @@
   "@findingTitleTemp": {
     "description": "Design 04 cardio transparency: Skin temperature elevated"
   },
-  "findingTitleIrregularRhythm": "Irregular pulse pattern flagged",
+  "findingTitleIrregularRhythm": "Irregular pulse pattern flagged on {day}",
   "@findingTitleIrregularRhythm": {
-    "description": "Design 04 cardio transparency: Irregular pulse pattern flagged"
+    "description": "Daily pulse flag wording. day is the recorded local calendar date, never the processing date.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Thu, Nov 12, 2026"
+      }
+    }
   },
   "findingTitleRhrShift": "Resting heart rate changed",
   "@findingTitleRhrShift": {
@@ -16678,9 +16684,15 @@
   "@findingDetailTemp": {
     "description": "Design 04 cardio transparency: Sustained rise above your baseline, which can be a sign of illness."
   },
-  "findingDetailIrregularRhythm": "Your beat-to-beat pulse timing looked irregular today. This screen uses the wrist pulse, which can't show the heart's electrical activity, and is not a diagnosis. See a clinician if you have symptoms.",
+  "findingDetailIrregularRhythm": "On {day}, the timing between the wrist sensor's pulse readings matched our irregularity rule. We have not measured how often this rule is right or how often it misses a rhythm problem. Movement, sensor fit, and extra beats can produce a similar pattern. It cannot identify atrial fibrillation (AF), and an unflagged recording cannot rule out a rhythm problem. A clinician can use an ECG to assess your heart rhythm. If flags repeat, consider clinician follow-up even without symptoms. If you have symptoms such as chest pain, fainting or severe breathlessness, get medical help now.",
   "@findingDetailIrregularRhythm": {
-    "description": "Design 04 cardio transparency: Your beat-to-beat pulse timing looked irregular today. This screen uses the wrist pulse, which can't show the "
+    "description": "Daily pulse flag wording. day is the recorded local calendar date, never the processing date.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Thu, Nov 12, 2026"
+      }
+    }
   },
   "findingDetailRhrShiftRisen": "Your resting heart rate is above your usual.",
   "@findingDetailRhrShiftRisen": {
@@ -16703,11 +16715,11 @@
   "@investigateFlagNotScreened": {
     "description": "Design 04 cardio transparency: not screened"
   },
-  "investigateConfidence24h": "Confidence, 24 h",
+  "investigateConfidence24h": "Data sufficiency, 24 h",
   "@investigateConfidence24h": {
     "description": "Design 04 cardio transparency: Confidence, 24 h"
   },
-  "investigateConfidenceSleep": "Confidence, sleep",
+  "investigateConfidenceSleep": "Data sufficiency, sleep",
   "@investigateConfidenceSleep": {
     "description": "Design 04 cardio transparency: Confidence, sleep"
   },
@@ -16763,7 +16775,7 @@
       }
     }
   },
-  "investigatePrvArtifactShare": "Beats the band misread (fixed or dropped), {scope}",
+  "investigatePrvArtifactShare": "Beats corrected or dropped by cleaning, {scope}",
   "@investigatePrvArtifactShare": {
     "description": "Design 04 PRV diagnostics: Share of beats classified as artifacts (corrected or dropped), {scope}",
     "placeholders": {
@@ -16869,7 +16881,7 @@
       }
     }
   },
-  "investigatePrvWhyArtifact": "Too many misread beats: {seen}, limit {allowed}",
+  "investigatePrvWhyArtifact": "Too many beats needed correction or removal to screen this recording. {seen} / {allowed}",
   "@investigatePrvWhyArtifact": {
     "description": "Design 04 PRV diagnostics: Too much artifact: {seen} of beats classified as artifacts (corrected or dropped), {allowed} allowed",
     "placeholders": {
@@ -18146,7 +18158,7 @@
       }
     }
   },
-  "tracksDailyRange": "Daily {from} \u2013 {to}",
+  "tracksDailyRange": "Daily {from} – {to}",
   "@tracksDailyRange": {
     "placeholders": {
       "from": {
@@ -18157,7 +18169,7 @@
       }
     }
   },
-  "tracksNotTaken": "Not taken {from} \u2013 {to}",
+  "tracksNotTaken": "Not taken {from} – {to}",
   "@tracksNotTaken": {
     "placeholders": {
       "from": {
@@ -18637,6 +18649,14 @@
   "@guideScrollMarker": {
     "description": "Short vertical marker in a navigation guide picture: the screen needs scrolling to reach the highlighted control."
   },
+  "guideTapOneOf": "tap one of",
+  "@guideTapOneOf": {
+    "description": "Short label above several highlighted controls in a live guide step: any one of them does the step."
+  },
+  "guideSearchOrPick": "search or pick",
+  "@guideSearchOrPick": {
+    "description": "Short label above the search bar and the activity groups in the live guide step that picks an activity."
+  },
   "guideStepUnavailable": "This step can't be shown right now.",
   "@guideStepUnavailable": {
     "description": "Shown in place of a guide step's picture when the control it points at cannot be found on the demo screen."
@@ -18762,21 +18782,15 @@
   "@guideAlarmTitle": {
     "description": "Title of the navigation guide for the weekly alarm schedule."
   },
-  "guideAlarmStep1": "On the **{tab}** tab, scroll down to **{section}** and tap **{row}**.",
+  "guideAlarmStep1": "On the **{tab}** tab, tap **{row}**.",
   "@guideAlarmStep1": {
-    "description": "Step 1 caption. Words between ** ** are bold and must be the in-app labels, passed in: {tab} is the Sleep tab name, {section} the \"Alarm and body clock\" heading, {row} the Alarm row.",
+    "description": "Step 1 caption. The Sleep tab and Alarm row names come from the screen labels. Accordion expansion is a separate runtime hop.",
     "placeholders": {
       "tab": {
-        "type": "String",
-        "description": "Sleep tab name"
-      },
-      "section": {
-        "type": "String",
-        "description": "Heading of the section with the alarm row"
+        "type": "String"
       },
       "row": {
-        "type": "String",
-        "description": "Name of the Alarm row"
+        "type": "String"
       }
     }
   },
@@ -18914,9 +18928,19 @@
       }
     }
   },
-  "guideRemoveStep2": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the outline marks the first one.",
+  "guideRemoveStep2": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the highlight shows the choices.",
   "@guideRemoveStep2": {
-    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the outline marks the first.",
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
+    "placeholders": {
+      "discard": {
+        "type": "String",
+        "description": "Name of the Discard button"
+      }
+    }
+  },
+  "guideRemoveStep2Still": "Every item has its own **{discard}**. Tap it on the nap or workout that didn't happen; the outline marks the first one.",
+  "@guideRemoveStep2Still": {
+    "description": "Step 2 caption under reduced motion, where the outline (not the moving highlight) marks the first item. {discard} is the in-app name of the Discard button.",
     "placeholders": {
       "discard": {
         "type": "String",
@@ -19347,7 +19371,23 @@
     }
   },
   "guideTapsBack": "{count, plural, one{1 tap back} other{{count} taps back}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "@guideTapsBack": {
+    "description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "guideExpandAccordion": "Expand {title}",
+  "@guideExpandAccordion": {
+    "description": "Guide hop asking the wearer to open a collapsed section",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "deriveDailyLabel": "Calculating sleep, recovery and strain",
   "deriveDailyProgress": "Calculating sleep, recovery and strain · day {index} of {total}",
   "deriveDailyProgressOn": "Calculating sleep, recovery and strain · day {index} of {total} · {day}",
@@ -19422,5 +19462,124 @@
   "reviewReadTime": "Reading when the day was calculated",
   "reviewReadWake": "Reading wake times",
   "reviewReadWater": "Reading water entries",
-  "reviewReadProfile": "Reading your profile"
+  "reviewReadProfile": "Reading your profile",
+  "sleepTabTimelineCardTitle": "Sleep timeline",
+  "sleepTabStoodOutCardTitle": "What stood out",
+  "sleepTabUsualCardTitle": "Against your usual",
+  "sleepTabSignalsCardTitle": "Overnight signals",
+  "sleepTabThePlanCardTitle": "The Plan",
+  "pendingSectionLoading": "Loading, {name}",
+  "@pendingSectionLoading": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingSectionLoaded": "Loaded, {name}",
+  "@pendingSectionLoaded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pendingSectionContent": "content",
+  "findingNotificationIrregularRhythm": "Pulse timing recorded on {day} matched our irregularity rule. We have not measured its accuracy or how often it misses a rhythm problem. Tap to read the limits.",
+  "@findingNotificationIrregularRhythm": {
+    "description": "Daily pulse flag wording. day is the recorded local calendar date, never the processing date.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Thu, Nov 12, 2026"
+      }
+    }
+  },
+  "pulseSummaryTitle": "{count, plural, =1{Irregular pulse flag found on 1 day} other{Irregular pulse flags found on {count} days}}",
+  "@pulseSummaryTitle": {
+    "description": "One notification for several flagged days found by an import, backfill, restore, reanalysis or algorithm update, or held back while notifications were off. The days can include today. count is how many days.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pulseSummaryBody": "{count, plural, =1{{days}. Pulse timing on this day matched our irregularity rule. We have not measured its accuracy or how often it misses a rhythm problem. Tap to read the limits.} other{{days}. Pulse timing on these days matched our irregularity rule. We have not measured its accuracy or how often it misses a rhythm problem. Tap to read the limits.}}",
+  "@pulseSummaryBody": {
+    "description": "Body of that summary. days is the list of recorded local dates; count is how many, so one day reads in the singular.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "days": {
+        "type": "String",
+        "example": "Thu, Nov 12, 2026; Sat, Nov 14, 2026"
+      }
+    }
+  },
+  "pulseSummaryDaysMore": "{days} and {more} more",
+  "@pulseSummaryDaysMore": {
+    "description": "The summary's date list when there are too many to show. days is the shown dates, more how many are left out.",
+    "placeholders": {
+      "days": {
+        "type": "String",
+        "example": "Thu, Nov 12, 2026"
+      },
+      "more": {
+        "type": "int"
+      }
+    }
+  },
+  "pulseAlertSent": "Alert sent {when}",
+  "@pulseAlertSent": {
+    "description": "Small text under a flagged day: its own notification was shown. when is a short local date and time.",
+    "placeholders": {
+      "when": {
+        "type": "String",
+        "example": "Thu, Nov 12 08:14"
+      }
+    }
+  },
+  "pulseAlertInSummary": "Included in a summary alert {when}",
+  "@pulseAlertInSummary": {
+    "description": "Small text under a flagged day: it was named in a summary notification.",
+    "placeholders": {
+      "when": {
+        "type": "String",
+        "example": "Thu, Nov 12 08:14"
+      }
+    }
+  },
+  "pulseAlertOff": "No alert: notifications were off",
+  "@pulseAlertOff": {
+    "description": "Small text under a flagged day: no notification was shown because notifications were off."
+  },
+  "pulseAlertNotPermitted": "No alert: notifications were not permitted",
+  "@pulseAlertNotPermitted": {
+    "description": "Small text under a flagged day: no notification was shown because the phone did not permit it."
+  },
+  "pulseAlertUnknown": "Alert may have been sent {when}",
+  "@pulseAlertUnknown": {
+    "description": "Small text under a flagged day: a pass claimed the alert and stopped before recording whether it was shown. It is never sent again.",
+    "placeholders": {
+      "when": {
+        "type": "String",
+        "example": "Thu, Nov 12 08:14"
+      }
+    }
+  },
+  "pulseAlertQuiet": "No alert: held for quiet hours",
+  "@pulseAlertQuiet": {
+    "description": "Small text under a flagged day: no notification was shown because quiet hours held it back."
+  },
+  "pulseAlertEarlier": "Alerted by an earlier version of the app {when}",
+  "@pulseAlertEarlier": {
+    "description": "Small text under a flagged day: the build before this update already alerted for it.",
+    "placeholders": {
+      "when": {
+        "type": "String",
+        "example": "Thu, Nov 12 08:14"
+      }
+    }
+  }
 }

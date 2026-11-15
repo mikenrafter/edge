@@ -152,6 +152,31 @@ in the same change that introduces it (AGENTS.md §6).
 - **Hop** — one real navigation action towards a step: Back, a shell tab, a sub-tab, or a page entry. Virtual grouping nodes do not add a hop.
 - **Layout sibling** — the previous or next unit in the target's enclosing vertical layout; transforms and viewport clipping do not change this relation.
 - **Placeholder** — replacement text bars or a muted plot sine, painted without replacing its existing surface. Icons, images and card titles keep their source paint.
+- **Hover highlight** — a translucent tint and glow painted by a guide target's own component layer. Its opacity follows the moving fingertip's distance; scrolling and stretch carry it with the target.
+- **Moving hand** — the guide's pointing cursor, which taps a single target repeatedly or travels through a multi-target step's choices. Reduced motion uses the static label hand.
+
+## Pulse flag delivery
+
+- **Processing origin**: immutable provenance on a derive job: recent band sync,
+  historical import/backfill, or reanalysis. It controls pulse alert eligibility
+  and never changes the analytics result.
+- **Pulse arrival budget**: at most 36 hours between a pulse record's timestamp
+  and its first arrival. A new daily flag can interrupt only for a newly inserted
+  pulse record within this budget. Eligibility expires 36 hours after arrival;
+  independent of when a delayed derive job runs.
+- **Daily pulse flag**: a stored day-level irregularity-rule result. It supplies
+  no episode start, end, or diagnosis. Its data-sufficiency value is a heuristic,
+  not the probability of atrial fibrillation.
+- **Pulse history revision**: install-local delivery metadata in
+  `compute_freshness`, incremented before imports or restores change history.
+  A queued or running context from an earlier revision cannot interrupt. This
+  metadata is excluded from restore, and does not version analytics output.
+  Schema 87 also carries legacy medical claims for already flagged pulse days
+  into their dedicated daily delivery keys.
+
+## Guides
+- **Accordion hop**: a user tap that expands the outermost closed section containing the pending guide target. Nested closed sections each add one hop.
+
 
 ## Interactive calculation
 

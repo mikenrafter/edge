@@ -18,6 +18,8 @@ import '../../state/app_state.dart';
 import '../../state/locale_controller.dart';
 import '../../state/prefs.dart';
 import '../ui2.dart';
+import '../guides/guide_accordion.dart';
+import '../guides/guide_dim.dart';
 import '../screens/home_screen.dart' show selectShellDestination;
 import 'settings.dart';
 
@@ -197,7 +199,9 @@ String accordionPrefKey(String id) => 'accordion_$id';
 /// neighbour would inherit the folded section's State and fold or open with it.
 /// So this widget is a thin const description and the State sits in a card
 /// keyed by [id]: an accordion that moves gets the State for its own id.
-class SettingsAccordion extends StatelessWidget {
+class SettingsAccordion extends StatelessWidget implements PendingSectionLabel {
+  @override
+  String get pendingSectionName => title;
   const SettingsAccordion(this.title,
       {super.key,
       required this.children,
@@ -227,6 +231,7 @@ class _SettingsAccordionCard extends StatefulWidget {
 
 class _SettingsAccordionState extends State<_SettingsAccordionCard> {
   late bool _open = _remembered();
+  final _headerKey = GlobalKey();
 
   /// Set once the person has toggled it: a stored answer that arrives after
   /// that must not undo what they just did.
@@ -298,6 +303,13 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final summary = widget.a.summary;
+    final discovery = GuideDimScope.controllerOf(c)?.discovery;
+    if (discovery == null) return _card(c, p, summary, false);
+    return ValueListenableBuilder<bool>(valueListenable: discovery,
+      builder: (c, discovering, _) => _card(c, p, summary, discovering));
+  }
+
+  Widget _card(BuildContext c, P p, String? summary, bool discovering) {
     return Padding(
       padding: const EdgeInsets.only(top: S.x3),
       // The card is drawn here rather than by Surface, which wraps its child in
@@ -305,18 +317,17 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
       // header, the only control a tap or a screen reader should find first.
       child: GuideBox(card: true, child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: S.x4),
         decoration: BoxDecoration(
           color: p.card,
           borderRadius: R.rLg,
           boxShadow: p.el(1),
         ),
         child: Column(children: [
-          Pressable(
+          GuideNavigationHeader(key: _headerKey, child: Pressable(
             onTap: _toggle,
             semanticLabel: '${widget.a.title}, ${_open ? 'expanded' : 'collapsed'}',
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: S.x3),
+              padding: const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3),
               child: Row(children: [
                 Expanded(
                   child: Column(
@@ -339,12 +350,17 @@ class _SettingsAccordionState extends State<_SettingsAccordionCard> {
                     size: 17, color: p.ink3),
               ]),
             ),
-          ),
-          if (_open)
-            for (final row in widget.a.children) ...[
-              Divider(color: p.line, height: 1),
-              Padding(padding: const EdgeInsets.symmetric(vertical: S.x3), child: row),
-            ],
+          )),
+          GuideAccordionBody(title: widget.a.title, headerKey: _headerKey,
+            offstage: !_open,
+            child: TickerMode(enabled: _open, child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: S.x4), child: Column(children: [
+              if (_open || discovering)
+                for (final row in widget.a.children) ...[
+                  Divider(color: p.line, height: 1),
+                  Padding(padding: const EdgeInsets.symmetric(vertical: S.x3), child: row),
+                ],
+            ])))),
         ]),
       )),
     );

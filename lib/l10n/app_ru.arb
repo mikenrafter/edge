@@ -6702,7 +6702,7 @@
   "supplementYouVeBeenStillForbb79a9": "Вы почти не двигались около двух часов.",
   "supplementYourAgeIsNotOn9fe209": "Возраст не указан, а он нужен для расчёта.",
   "supplementYourBandHasnTSynced0a4dfd": "Браслет давно не синхронизировался",
-  "supplementYourBeatToBeatPatternfed8f0": "Сегодня межударные интервалы выглядели нерегулярными. Это предварительная проверка, а не диагноз: при симптомах обратитесь к врачу.",
+  "supplementYourBeatToBeatPatternfed8f0": "Эта отметка означает, что интервалы между измерениями пульса датчиком на запястье соответствовали нашему правилу нерегулярности. Мы не измеряли, как часто это правило даёт верный результат и как часто пропускает нарушения сердечного ритма. Движение, прилегание датчика и дополнительные сокращения сердца могут создавать похожий рисунок. Правило не может определить фибрилляцию предсердий (ФП), а запись без отметки не исключает нарушение ритма. Врач может оценить сердечный ритм с помощью ЭКГ. При повторных отметках стоит обсудить их с врачом даже без симптомов. Если у вас есть такие симптомы, как боль в груди, обморок или сильная одышка, немедленно обратитесь за медицинской помощью.",
   "supplementYourHeightIsNotOn733908": "Рост не указан, а он нужен для расчёта.",
   "supplementYourMorningBriefingIsReadydd0ae8": "Утренняя сводка готова",
   "supplementYourNightlySignalsDeviateFromc8d20a": "Ночные показатели отличаются от обычных.",
@@ -7959,11 +7959,11 @@
   "ecgScreenerIntro": "Это скрининг, а не медицинское обследование.\n\nЕсли ничего не отмечено, это не значит, что всё в порядке: скрининг ничего не может исключить. Если скрининг не проводился, результат ни о чём не говорит.\n\nРезультат выдаёт сам браслет. Приложение не анализирует кривую и не проверяло качество записи; оно лишь не показывает оценку ритма, когда браслет сообщает о проблеме. Браслет на запястье записывает одно отведение.\n\nПри симптомах обратитесь к врачу для полноценного обследования.",
   "findingTitleAnomaly": "Необычные ночные показатели",
   "findingTitleTemp": "Температура кожи повышена",
-  "findingTitleIrregularRhythm": "Отмечен нерегулярный пульс",
+  "findingTitleIrregularRhythm": "Нерегулярный пульс отмечен за {day}",
   "findingTitleRhrShift": "Пульс в покое изменился",
   "findingDetailAnomaly": "Ночные показатели вне вашего обычного диапазона.",
   "findingDetailTemp": "Температура вашей кожи остаётся выше обычной.",
-  "findingDetailIrregularRhythm": "Сегодня интервалы между ударами пульса выглядели нерегулярными. Этот скрининг использует пульс на запястье, который не показывает электрическую активность сердца, и это не диагноз. Если есть симптомы, обратитесь к врачу.",
+  "findingDetailIrregularRhythm": "За {day} интервалы между измерениями пульса датчиком на запястье соответствовали нашему правилу нерегулярности. Мы не измеряли, как часто это правило даёт верный результат и как часто пропускает нарушения сердечного ритма. Движение, прилегание датчика и дополнительные сокращения сердца могут создавать похожий рисунок. Правило не может определить фибрилляцию предсердий (ФП), а запись без отметки не исключает нарушение ритма. Врач может оценить сердечный ритм с помощью ЭКГ. При повторных отметках стоит обсудить их с врачом даже без симптомов. Если у вас есть такие симптомы, как боль в груди, обморок или сильная одышка, немедленно обратитесь за медицинской помощью.",
   "findingDetailRhrShiftRisen": "Ваш пульс в покое выше обычного.",
   "findingDetailRhrShiftFallen": "Ваш пульс в покое ниже обычного.",
   "findingsAggregateTitle": "{count, plural, one{{count} пункт, на который стоит взглянуть} few{{count} пункта, на которые стоит взглянуть} many{{count} пунктов, на которые стоит взглянуть} other{{count} пункта, на которые стоит взглянуть}}",
@@ -7975,8 +7975,8 @@
     }
   },
   "investigateFlagNotScreened": "не проверено",
-  "investigateConfidence24h": "Достоверность, 24 ч",
-  "investigateConfidenceSleep": "Достоверность, сон",
+  "investigateConfidence24h": "Достаточность данных, 24 ч",
+  "investigateConfidenceSleep": "Достаточность данных, сон",
   "investigateCleanFractionSleep": "Доля ударов после очистки, сон",
   "investigatePrvEvidenceTitle": "Данные скрининга нерегулярного ритма",
   "investigatePrvScopeSleep": "сон",
@@ -8013,7 +8013,7 @@
       }
     }
   },
-  "investigatePrvArtifactShare": "Удары, которые браслет прочитал неверно (исправлены или отброшены), {scope}",
+  "investigatePrvArtifactShare": "Удары, исправленные или удалённые при очистке, {scope}",
   "@investigatePrvArtifactShare": {
     "placeholders": {
       "scope": {
@@ -8105,7 +8105,7 @@
       }
     }
   },
-  "investigatePrvWhyArtifact": "Слишком много неверно прочитанных ударов: {seen}, предел {allowed}",
+  "investigatePrvWhyArtifact": "Для проверки этой записи пришлось бы исправить или удалить слишком много ударов. {seen} / {allowed}",
   "@investigatePrvWhyArtifact": {
     "placeholders": {
       "seen": {
@@ -9246,6 +9246,8 @@
   },
   "guideTapMarker": "нажать",
   "guideScrollMarker": "листать",
+  "guideTapOneOf": "коснитесь одного",
+  "guideSearchOrPick": "поиск или выбор",
   "guideStepUnavailable": "Этот шаг сейчас нельзя показать.",
   "guideNoVariantBody": "Эта инструкция пока не подходит для вашего браслета. Подходит для: {bands}.",
   "guideHrZonesTitle": "Где найти зоны пульса",
@@ -9324,7 +9326,7 @@
   "helpEmpty": "Для вашего браслета пока нет инструкций.",
   "guideAnotherWayInTitle": "Другой путь",
   "guideAlarmTitle": "Где поставить будильник или задать своё время на каждый день",
-  "guideAlarmStep1": "На вкладке **{tab}** прокрутите вниз до **{section}** и нажмите **{row}**.",
+  "guideAlarmStep1": "На вкладке **{tab}** нажмите **{row}**.",
   "guideAlarmStep2": "Нажмите на вкладку нужного дня, например **{day}**, затем на первую строку под вкладками, чтобы включить этот день.",
   "guideAlarmStep3": "Затем нажмите **{wake}** под этим днём и выберите время. У каждого дня может быть своё время.",
   "guideAlarmAltBody": "Откройте **{settings}**, затем нажмите **{alarm}**.",
@@ -9339,7 +9341,8 @@
   "guideAddNapRulesBody": "Дневной сон длится от 5 минут до 6 часов, должен уже закончиться и не может пересекаться с другим дневным сном или с основным сном.",
   "guideRemoveTitle": "Где убрать дневной сон или тренировку, которых не было",
   "guideRemoveStep1": "На вкладке **{tab}** нажмите на карточку **{card}**. Она есть, только пока что-то ждёт вашего ответа.",
-  "guideRemoveStep2": "У каждого пункта своя кнопка **{discard}**. Нажмите её у дневного сна или тренировки, которых не было; рамка отмечает первый пункт.",
+  "guideRemoveStep2": "У каждого пункта своя кнопка **{discard}**. Нажмите её у дневного сна или тренировки, которых не было; подсветка показывает варианты.",
+  "guideRemoveStep2Still": "У каждого пункта своя кнопка **{discard}**. Нажмите её у дневного сна или тренировки, которых не было; рамка отмечает первый пункт.",
   "guideRemoveSavedTitle": "Уже сохранено?",
   "guideRemoveSavedBody": "Откройте вкладку **{sleep}** и нажмите **{naps}**. Нажмите **{notNap}** у сна, найденного браслетом, или **{delete}** у записанного вами.",
   "guideRemoveMissingTitle": "Не видите «{card}»?",
@@ -9504,7 +9507,7 @@
     }
   },
   "@guideRemoveStep2": {
-    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the outline marks the first.",
+    "description": "Step 2 caption. {discard} is the in-app name of the Discard button; every pending item has its own and the highlight shows the choices.",
     "placeholders": {
       "discard": {
         "type": "String",
@@ -9787,7 +9790,15 @@
   "guideAddNapMissingTitle": "Не видите «{naps}»?",
   "guideAddNapMissingBody": "**{naps}** находится под вашей ночью. Если этот раздел, **{night}**, свёрнут, нажмите на его заголовок, чтобы открыть.",
   "guideTapsBack": "{count, plural, one{{count} касание назад} few{{count} касания назад} many{{count} касаний назад} other{{count} касания назад}}",
-  "@guideTapsBack": {"description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.", "placeholders": {"count": {"type": "int"}}},
+  "@guideTapsBack": {
+    "description": "Number of taps (navigation hops) back to the active guide step, shown beside the off-path text.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "guideExpandAccordion": "Развернуть {title}",
   "deriveDailyLabel": "Расчёт сна, восстановления и нагрузки",
   "deriveDailyProgress": "Расчёт сна, восстановления и нагрузки · день {index} из {total}",
   "deriveDailyProgressOn": "Расчёт сна, восстановления и нагрузки · день {index} из {total} · {day}",
@@ -9839,5 +9850,24 @@
     }
   },
   "rhrChangesTitle": "Изменения пульса в покое",
-  "rhrNoReadings": "Сохранённых измерений пульса в покое нет."
+  "rhrNoReadings": "Сохранённых измерений пульса в покое нет.",
+  "sleepTabTimelineCardTitle": "Хронология сна",
+  "sleepTabStoodOutCardTitle": "Что выделилось",
+  "sleepTabUsualCardTitle": "В сравнении с обычным",
+  "sleepTabSignalsCardTitle": "Ночные показатели",
+  "sleepTabThePlanCardTitle": "План",
+  "pendingSectionLoading": "Загрузка, {name}",
+  "pendingSectionLoaded": "Загружено, {name}",
+  "pendingSectionContent": "содержимое",
+  "findingNotificationIrregularRhythm": "Интервалы пульса, записанные за {day}, соответствовали нашему правилу нерегулярности. Мы не измеряли его точность и частоту пропущенных нарушений ритма. Нажмите, чтобы прочитать об ограничениях.",
+  "pulseSummaryTitle": "{count, plural, one{Нерегулярный пульс отмечен за {count} день} few{Нерегулярный пульс отмечен за {count} дня} many{Нерегулярный пульс отмечен за {count} дней} other{Нерегулярный пульс отмечен за {count} дня}}",
+  "pulseSummaryBody": "{count, plural, one{{days}. Интервалы пульса в этот день соответствовали нашему правилу нерегулярности. Мы не измеряли его точность и то, как часто оно пропускает нарушения сердечного ритма. Нажмите, чтобы прочитать об ограничениях.} other{{days}. Интервалы пульса в эти дни соответствовали нашему правилу нерегулярности. Мы не измеряли его точность и то, как часто оно пропускает нарушения сердечного ритма. Нажмите, чтобы прочитать об ограничениях.}}",
+  "pulseSummaryDaysMore": "{days} и ещё {more}",
+  "pulseAlertSent": "Оповещение отправлено {when}",
+  "pulseAlertInSummary": "Включено в сводное оповещение {when}",
+  "pulseAlertOff": "Оповещения нет: уведомления были выключены",
+  "pulseAlertNotPermitted": "Оповещения нет: уведомления не были разрешены",
+  "pulseAlertUnknown": "Оповещение, возможно, было отправлено {when}",
+  "pulseAlertQuiet": "Оповещения нет: отложено из-за тихих часов",
+  "pulseAlertEarlier": "Оповещено более ранней версией приложения {when}"
 }

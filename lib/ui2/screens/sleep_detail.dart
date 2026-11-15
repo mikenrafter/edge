@@ -15,6 +15,12 @@ import '../../l10n/display_text.dart';
 // somebody it was never fitted to.
 
 import 'rhr_annotations.dart';
+import 'beats.dart' show Beats;
+import '../../data/journal_fields.dart' show formatMinuteOfDay;
+import 'circadian_detail.dart' show CircadianDetail;
+import '../profile/alarm.dart' show AlarmScreen;
+import '../why_row.dart';
+import '../finding_presentation.dart';
 import '../read_prefetch.dart';
 import '../skeleton/skeleton.dart' show SkeletonBar;
 import 'dart:async';
@@ -99,6 +105,7 @@ const _chartKeys = [
   'sleep',
   'deep',
   'efficiency',
+  'irregular_rhythm_flag',
   'unobserved_min',
   'awakenings',
   'longest_sleep_min',
@@ -262,6 +269,8 @@ class SleepData {
 
   final Map<String, dynamic> night;
   final Map<String, dynamic> timeline;
+  final Map<String, dynamic> insights;
+  final List<Finding> pulseFlags;
   final Metric need, debt, bedtime;
 
   /// The user's own recent nights, LAST NIGHT EXCLUDED, oldest→newest. Minutes
@@ -297,6 +306,8 @@ class SleepData {
     this.days = const [],
     this.night = const {},
     this.timeline = const {},
+    this.insights = const {},
+    this.pulseFlags = const [],
     this.need = Metric.empty,
     this.debt = Metric.empty,
     this.bedtime = Metric.empty,
@@ -521,6 +532,9 @@ class SleepData {
       historyPending: historyPending,
       historyCount: historyCount,
       timeline: timeline,
+      insights: cd,
+      pulseFlags: _on(b.charts['irregular_rhythm_flag'], cut) == 1
+          ? [Finding(FindingKind.irregularRhythm, day)] : const [],
       need: envMetric(needEnv, needSec == null ? null : needSec / 60, unit: 'min'),
       debt: envMetric(debtEnv, debtH == null ? null : debtH * 60, unit: 'min'),
       bedtime:
@@ -569,6 +583,11 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   @override
   void openNerdStats() => go(context, Investigate('sleep', day: _day));
 
+  String get _memoryKind =>
+      (_day ?? _d?.day ?? widget.day ?? todayLabel()) == todayLabel()
+          ? 'today'
+          : 'past';
+
   /// The pushed screen's scaffold, or the tab's own header and footer.
   Widget _frame(BuildContext c, String title, List<Widget> body,
       {String sub = ''}) {
@@ -579,7 +598,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       PendingContent(pending: _loading && _d == null,
           memoryKey: child.key == null
               ? null
-              : 'sleep:${child.key}:${(_day ?? _d?.day ?? widget.day ?? todayLabel()) == todayLabel() ? 'today' : 'past'}',
+              : 'sleep:${child.key}:$_memoryKind',
           child: child)];
     body = [
       Padding(
@@ -596,7 +615,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     if (!widget.embedded) return detailScaffold(c, title, body, sub: sub);
     final p = P.of(c);
     return RefreshIndicator.noSpinner(
-      onRefresh: _load,
+      onRefresh: () => PendingUserAction.run(_load),
       child: tabRootList(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: kTabRootPad,
@@ -752,36 +771,37 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       return;
     }
     final releasePrefetch = ReadPrefetch.shared.visibleRead('sleep');
+    var primaryPublished = false;
+    void publishPrimary(SleepData primary) {
+      if (!mounted || gen != _loadGen) return;
+      primaryPublished = true;
+      // Last night only: the cycle read knows today's phase, not a past day's.
+      final readRough = primary.day == todayLabel() &&
+          Prefs.getString(kRoughNightDismissed, '') != primary.day;
+      setState(() {
+        _d = primary;
+        _rough = null;
+        _roughPending = readRough;
+      });
+      // Start alongside history, retaining the same day/generation guard.
+      if (readRough) unawaited(_loadRough(repo, primary.day!, gen));
+    }
+
     try {
       final d = await SleepData.load(
         repo,
         want: _day,
-        onPrimary: (primary) {
-          if (!mounted || gen != _loadGen) return;
-          setState(() {
-            _d = primary;
-            _rough = null;
-            _roughPending = true;
-          });
-        },
+        onPrimary: publishPrimary,
       );
-      // LAST NIGHT ONLY. The card names the luteal phase, and `getCycle` knows
-      // today's phase and no other day's — so a card offered while stepping
-      // back through the record would either drop that half or invent it.
-      // Stepping back is also not the moment to ask about a night, which is the
-      // stronger half of the reason.
-      final readRough = d.day == todayLabel() &&
-          Prefs.getString(kRoughNightDismissed, '') != d.day;
       if (mounted && gen == _loadGen) {
-        // The night is usable now. The optional insight gets its own slot,
-        // so a separate SQL read cannot hold the entire Sleep tab hostage.
-        setState(() => (_d = d, _rough = null,
-            _roughPending = readRough,
-            _loading = false,
-            _paused = false,
-          ),
-        );
-        if (readRough) unawaited(_loadRough(repo, d.day!, gen));
+        // Repositories without staged reads publish here. A staged history
+        // completion must preserve any rough-night result already received.
+        if (!primaryPublished) publishPrimary(d);
+        setState(() {
+          _d = d;
+          _loading = false;
+          _paused = false;
+        });
         final index=d.days.indexOf(d.day ?? '');
         final dates = [if(d.day != null) d.day!,
           if(index >= 0 && index+1 < d.days.length) d.days[index+1],
@@ -890,6 +910,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       ]);
     }
 
+    if (widget.embedded) return _frame(c, title, _tabBody(c, P.of(c), d));
+
     if (!d.hasNight) {
       // "No night" also covers a night the user REJECTED outright (edge#248):
       // staging was skipped on purpose, so this day has no window at all — but
@@ -985,7 +1007,17 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
 
       // ── 2b · WHOSE WINDOW IS THIS ──
       ...?_windowCard(c, p, d, n),
-      if (d.deviceNights.isNotEmpty) DeviceFilter(
+      ?_stagingFilter(d),
+      ..._napsButton(c, l, d.day),
+      ]),
+
+      ..._sections(c, p, d, n),
+    ]);
+  }
+
+  Widget? _stagingFilter(SleepData d) => d.deviceNights.isEmpty
+      ? null
+      : DeviceFilter(
           allLabel: 'OpenStrap',
           showWithOne: true,
           options: [
@@ -1002,29 +1034,247 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             _staging = id;
             _scrub = null;
           }),
-        ),
-      ..._napsButton(c, l, d.day),
-      ]),
+        );
 
-      ..._sections(c, p, d, n),
-    ]);
+  // Embedded tab composition owns the five cards. The pushed night detail keeps
+  // its own navigation; no extra plan/driver read can block the tab's primary.
+  List<Widget> _tabBody(BuildContext c, P p, SleepData d) {
+    final l =
+        AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    final n = d.night;
+    final window = _windowCard(c, p, d, n);
+    final extra =
+        d.pulseFlags.isNotEmpty ||
+        d.rhrMarks.any((a) => a.id == 'rhr-shift:${d.day}');
+    final unusual = _unusual(c, p, d, n, suppressQuiet: extra);
+    final coach = d.insights['sleep_coach'];
+    final coachMap = coach is Map ? coach : const {};
+    num? number(Object? value) => value is num
+        ? value
+        : value is Map && value['value'] is num
+        ? value['value'] as num
+        : null;
+    final wake = envValue(coachMap['wake'])?['wake_min_of_day'] as num?;
+    final strain = number(coachMap['strain_bonus_min']);
+    final naps = number(coachMap['nap_credit_min']);
+    Widget title(String text) => PendingStatic(
+      child: Text(
+        text,
+        style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600),
+      ),
+    );
+    Widget section(String name, Widget body) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        title(name),
+        const SizedBox(height: S.x3),
+        body,
+      ],
+    );
+    Widget link(IconData icon, String name, String sub, Widget target) =>
+        detailLinkRow(c, icon, name, sub, () => go(c, target));
+    return [
+      Surface(
+        key: const ValueKey('sleep-tab:timeline'),
+        semanticLabel: l.sleepTabTimelineCardTitle,
+        child: InsideCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              title(l.sleepTabTimelineCardTitle),
+              const SizedBox(height: S.x3),
+              ..._dayNav(d),
+              _answerSlot(c, p, d, n),
+              if (_deviceNight(d) case final dn?)
+                _night(c, p, d, dn, device: dn)
+              else
+                _night(c, p, d, n),
+              ...?window,
+              if (window == null)
+                _emptyWindowCard(
+                  c,
+                  p,
+                  d,
+                  rejected: n['sleep_source'] == 'rejected',
+                ),
+              ..._napsButton(c, l, d.day),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: S.x3),
+      _accordion(
+        l.sleepTabStoodOutCardTitle,
+        'unusual',
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            link(
+              LucideIcons.sparkles,
+              l.wellnessWhatChargedAndDrained,
+              l.wellnessSeeWhatLastNightCost,
+              Investigate('readiness', day: d.day),
+            ),
+            if (unusual != null)
+              unusual
+            else if (!extra)
+              StatusCard(
+                l.sleepDetailNotEnoughNightsTitle,
+                '',
+                fix: l.sleepDetailNightsSoFar(
+                  d.tstHistory.length,
+                  _recordNights,
+                ),
+                icon: LucideIcons.chartNoAxesColumn,
+              ),
+            for (final flag in d.pulseFlags)
+              Padding(
+                padding: const EdgeInsets.only(top: S.x3),
+                child: WhyRow(
+                  id: 'sleep-pulse:${flag.date}',
+                  title:
+                      '${prettyDay(flag.date, l)} · ${findingTitle(l, flag)}',
+                  body: findingDetail(l, flag),
+                  color: findingColor(flag.kind),
+                  icon: findingIcon(flag),
+                  fullText: true,
+                  onTap: () => go(c, Beats(day: flag.date)),
+                ),
+              ),
+            DayRhrNotice(d.rhrMarks, d.day),
+          ],
+        ),
+        key: const ValueKey('sleep-tab:stood-out'),
+      ),
+      const SizedBox(height: S.x3),
+      _accordion(
+        l.sleepTabUsualCardTitle,
+        'versus',
+        _versusUsual(c, p, d, n) ??
+            StatusCard(
+              l.sleepDetailNotEnoughNightsTitle,
+              '',
+              fix: l.sleepDetailNightsSoFar(d.tstHistory.length, _minNights),
+              icon: LucideIcons.chartNoAxesColumn,
+            ),
+        key: const ValueKey('sleep-tab:usual'),
+      ),
+      const SizedBox(height: S.x3),
+      _accordion(
+        l.sleepTabSignalsCardTitle,
+        'overnight',
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _overnight(c, p, d),
+            const SizedBox(height: S.x3),
+            section(l.sleepDetailStagesSection, _stages(c, p, n)),
+            ?_stagingFilter(d),
+          ],
+        ),
+        key: const ValueKey('sleep-tab:signals'),
+      ),
+      const SizedBox(height: S.x3),
+      _accordion(
+        l.sleepTabThePlanCardTitle,
+        'plan',
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            link(
+              LucideIcons.sunMoon,
+              l.healthBodyClockTitle,
+              l.healthChronotypeJetlagRegularity,
+              const CircadianDetail(),
+            ),
+            section(
+              l.wellnessSleepNeedTonight,
+              Column(
+                key: const ValueKey('sleep-plan-metrics'),
+                children: [
+                  MetricRow(
+                    LucideIcons.bedDouble,
+                    C.blue,
+                    l.wellnessTonightsNeed,
+                    d.need.value == null ? '—' : hm(d.need.value!),
+                  ),
+                  MetricRow(
+                    LucideIcons.trendingDown,
+                    C.orange,
+                    l.wellnessSleepDebt,
+                    d.debt.value == null ? '—' : hm(d.debt.value!),
+                  ),
+                  MetricRow(
+                    LucideIcons.flame,
+                    C.purple,
+                    l.wellnessAddedForStrain,
+                    strain == null ? '—' : '${strain.round()}',
+                    unit: 'min',
+                  ),
+                  MetricRow(
+                    LucideIcons.sun,
+                    C.yellow,
+                    l.wellnessCreditedFromNaps,
+                    naps == null ? '—' : '${naps.round()}',
+                    unit: 'min',
+                  ),
+                  MetricRow(
+                    LucideIcons.moon,
+                    C.indigo,
+                    l.wellnessTargetBedtime,
+                    d.bedtime.value == null
+                        ? '—'
+                        : formatMinuteOfDay(d.bedtime.value!.round()),
+                    sub: l.sleepDetailLightsOut,
+                  ),
+                  MetricRow(
+                    LucideIcons.sunrise,
+                    C.orange,
+                    l.wellnessTargetWake,
+                    wake == null ? '—' : formatMinuteOfDay(wake.round()),
+                  ),
+                ],
+              ),
+            ),
+            link(
+              LucideIcons.alarmClock,
+              l.settingsAlarmRowTitle,
+              l.settingsAlarmRowSub,
+              const AlarmScreen(),
+            ),
+            if (d.need.value == null && !_loading)
+              StatusCard.forMetric(l.wellnessNoSleepNeedTitle, d.need) ??
+                  const SizedBox.shrink(),
+          ],
+        ),
+        key: const ValueKey('sleep-tab:plan'),
+      ),
+    ];
   }
 
   /// One remembered accordion for a section: the app's own [SettingsAccordion]
   /// (expanded by default, state kept per [id]) around the section's existing
   /// content. Only the person's tap on its header changes its height.
   Widget _accordion(String title, String id, Widget child, {Key? key}) =>
-      SettingsAccordion(title, id: 'sleep_$id', key: key, initiallyExpanded: true, children: [InsideCard(child: PendingContent(
-          memoryKey:
-              'sleep:$id:${(_day ?? _d?.day ?? widget.day ?? todayLabel()) == todayLabel() ? 'today' : 'past'}',
-          pending:
-              _loading && _d == null ||
-              id == 'versus' && (_d?.historyPending ?? false) ||
-              id == 'unusual' &&
-                  ((_d?.historyPending ?? false) || _roughPending),
-          child: child,
-        ),
-      )]);
+      SettingsAccordion(
+        title,
+        id: 'sleep_$id',
+        key: key,
+        initiallyExpanded: true,
+        children: [
+          InsideCard(
+            child: PendingContent(
+              memoryKey: 'sleep:$id:$_memoryKind',
+              pending:
+                  _loading && _d == null ||
+                  id == 'versus' && (_d?.historyPending ?? false) ||
+                  id == 'unusual' &&
+                      ((_d?.historyPending ?? false) || _roughPending),
+              child: child,
+            ),
+          ),
+        ],
+      );
 
   /// The night, its device staging, the window card and the naps door, as one
   /// section under the night's own title.
@@ -1056,13 +1306,15 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             child: Text(
               rejected
                   ? (l?.sleepDetailRejectedTitle ?? 'Marked as not sleep')
-                  : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
+                  : d.hasNight
+                      ? (l?.investigateSleepWindowLabel ?? 'Sleep window')
+                      : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
               style: F.body.copyWith(color: p.ink),
             ),
           ),
         ]),
         const SizedBox(height: S.x2),
-        Wrap(spacing: S.x2, children: [
+        PendingStatic(child: Wrap(spacing: S.x2, children: [
           _recalculateButton(_day ?? day ?? todayLabel()),
           // A rejected night's way back takes the place of "I was asleep" and
           // "Not sleep": one more answer would contradict the reason above.
@@ -1075,14 +1327,16 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
           else ...[
             TextButton(
               onPressed: day == null ? null : () => _addWindow(day),
-              child: Text(l?.sleepDetailIWasAsleep ?? 'I was asleep'),
+              child: Text(_loading && _d == null
+                  ? (l?.sleepDetailSetTimesMyself ?? 'Set the times myself')
+                  : (l?.sleepDetailIWasAsleep ?? 'I was asleep')),
             ),
             TextButton(
               onPressed: day == null ? null : () => _rejectWindow(day),
               child: Text(l?.sleepDetailNotSleep ?? 'Not sleep'),
             ),
           ],
-        ]),
+        ])),
         if (_failureFor(day) case final error?)
           StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
       ]), height: 240),
@@ -1279,8 +1533,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       TextButton(
         // Keep the naps action inert while a different night is being read.
         onPressed:
-            () => go(c, NapsScreen(day: day)),
-        child: Text(l?.sleepDetailEditNaps ?? 'Naps'),
+            _loading ? null : () => go(c, NapsScreen(day: day)),
+        child: PendingStatic(child: Text(l?.sleepDetailEditNaps ?? 'Naps')),
       ),
     ];
   }
@@ -1361,7 +1615,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
             ),
           ],
           const SizedBox(height: S.x2),
-          Wrap(spacing: S.x2, children: [
+          PendingStatic(child: Wrap(spacing: S.x2, children: [
             // The one recalculation control on this screen: it lives in the
             // card that says where the window came from, not in a strip of
             // its own above it.
@@ -1390,7 +1644,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
               onPressed: () => _rejectWindow(day),
               child: Text(l?.sleepDetailNotSleep ?? 'Not sleep'),
             ),
-          ]),
+          ])),
 
         if (_failureFor(day) case final error?)
           StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
@@ -1489,7 +1743,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
     try { app = context.read<AppState>(); } on ProviderNotFoundException { /* pure view */ }
     return TextButton(onPressed: app == null ? null : () =>
       _runOverride(day, () => app!.recalculateSleep(day), timesSaved: false),
-      child: const Text('Recalculate this night'));
+      child: const PendingStatic(child: Text('Recalculate this night')));
   }
 
   /// Whether [_windowCard] will draw for [d]: it needs a day and a window.
@@ -2496,7 +2750,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
   /// threshold, no population norm and no model. Everything softer than an
   /// extreme is already visible one section up, where it belongs. When nothing
   /// qualifies, that is the answer and it is shown.
-  Widget? _unusual(BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
+  Widget? _unusual(BuildContext c, P p, SleepData d, Map<String, dynamic> n, {bool suppressQuiet = false}) {
     final l = AppLocalizations.of(c);
     final items = <Widget>[];
 
@@ -2588,15 +2842,22 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         PendingContent(
           key: const ValueKey('sleep-unusual-pending'),
           pending: true,
-          child: InsightCard(
-            l?.sleepDetailUnusualLastNight ?? 'Unusual last night',
-            '—',
-            icon: LucideIcons.moon,
+          // The heading is already the accordion's. Match the one-row empty
+          // verdict here; any real findings follow at the section's tail.
+          child: Surface(
+            color: p.card2,
+            elevation: 0,
+            child: Row(children: [
+              Icon(LucideIcons.moon, size: 16, color: p.ink2),
+              const SizedBox(width: S.x3),
+              Expanded(child: Text('—', style: F.cap.copyWith(color: p.ink2, height: 1.5))),
+            ]),
           ),
         ));
     }
 
     if (items.isEmpty) {
+      if (suppressQuiet) return null;
       // Only claim "nothing unusual" once there is enough history to have
       // looked. Before that the section is absent rather than reassuring from
       // no evidence — and the section above has already said why.

@@ -1,9 +1,8 @@
 // The health-exception push, decided end to end without the database.
 //
-// `planExceptionNotices` is the whole decision `_runNotifications` makes: the
-// engine only reads its three inputs (the anchor day's irregular-rhythm flag
-// and stored readiness, and the frozen morning headline) and emits what this
-// returns. So these cases pin the production rule, not a helper beside it.
+// `planExceptionNotices` plans cross-day findings using stored readiness and
+// the frozen morning headline. Daily pulse notices use their own origin gate,
+// covered through the native commit owner in pulse_phase1_notification_test.
 //
 // Low readiness is the ring's number in the ring's lowest band, on a SETTLED
 // anchor only, and never the deprecated glass-box score.
@@ -91,28 +90,10 @@ void main() {
         isEmpty);
   });
 
-  test('irregular rhythm is dated on the anchor and is medical', () {
-    final n = planExceptionNotices(_cd(), today: _today, irregularFlag: 1.0)
-        .single;
-    expect(n.findings, const [Finding(FindingKind.irregularRhythm, _today)]);
-    expect(n.dedupeKey, '$_today:exception:medical');
-  });
-
-  // Irregular rhythm is a 24/7 screen, not a night's verdict: a day with no
-  // detected sleep never settles, and waiting for it would lose the screen.
-  // Low readiness does wait — the morning number is not final until then.
-  test('irregular rhythm does not wait for the night; low readiness does', () {
-    final n = planExceptionNotices(_cd(unsettled: true),
-            today: _today, irregularFlag: 1.0, storedReadiness: 20)
-        .single;
-    expect(n.findings, const [Finding(FindingKind.irregularRhythm, _today)]);
-    expect(n.dedupeKey, '$_today:exception:medical');
-  });
-
   test('a stale anchor raises nothing dated on it', () {
     expect(
         planExceptionNotices(_cd(),
-            today: '2026-10-05', storedReadiness: 10, irregularFlag: 1.0),
+            today: '2026-10-05', storedReadiness: 10),
         isEmpty);
   });
 

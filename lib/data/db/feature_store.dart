@@ -18,6 +18,105 @@ Future<bool> _ldbClaimNotifFired(String key, {required int? firedAtMs}) async {
     return won;
   }
 
+Future<List<String>> _ldbPulseDaysToAlert() async {
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery(
+      'SELECT s.date AS day FROM metric_series s '
+      'LEFT JOIN pulse_alert a ON a.day = s.date '
+      "WHERE s.key = 'irregular_rhythm_flag' AND s.value = 1 "
+      "AND (a.day IS NULL OR a.state = 'not_sent') ORDER BY s.date",
+    );
+    return [for (final r in rows) r['day'] as String];
+  }
+
+Future<void> _ldbRecordPulseAlert(List<String> days, {required PulseAlertState state, required PulseAlertReason? reason, required int atMs, required String? summaryKey}) async {
+    if (days.isEmpty) return;
+    await LocalDb._guardedWrite<void>((db) async {
+      await db.transaction((txn) async {
+        for (final day in days) {
+          final args = [PulseAlertRecord.stateName(state), PulseAlertRecord.reasonName(reason), atMs, summaryKey];
+          await txn.rawInsert(
+            'INSERT OR IGNORE INTO pulse_alert(state, reason, at_ms, summary_key, day) VALUES(?, ?, ?, ?, ?)',
+            [...args, day],
+          );
+          // Only a not_sent row may be replaced; sent and summary are final.
+          await txn.rawUpdate(
+            'UPDATE pulse_alert SET state = ?, reason = ?, at_ms = ?, summary_key = ? '
+            "WHERE day = ? AND state = 'not_sent'",
+            [...args, day],
+          );
+        }
+      });
+    });
+  }
+
+Future<List<String>> _ldbClaimPulseDays(List<String> days, {required String token, required int atMs}) async {
+    if (days.isEmpty) return const [];
+    final owned = await LocalDb._guardedWrite<List<String>>((db) async {
+      return db.transaction<List<String>>((txn) async {
+        final won = <String>[];
+        for (final day in days) {
+          await txn.rawInsert(
+            'INSERT OR IGNORE INTO pulse_alert(day, state, reason, at_ms, summary_key) '
+            "VALUES(?, 'pending', NULL, ?, ?)",
+            [day, atMs, token],
+          );
+          // Only a not_sent row may be taken over; every other state is final
+          // or held by another pass.
+          await txn.rawUpdate(
+            "UPDATE pulse_alert SET state = 'pending', reason = NULL, at_ms = ?, summary_key = ? "
+            "WHERE day = ? AND state = 'not_sent'",
+            [atMs, token, day],
+          );
+          final held = await txn.rawQuery(
+            "SELECT 1 FROM pulse_alert WHERE day = ? AND state = 'pending' AND summary_key = ?",
+            [day, token],
+          );
+          if (held.isNotEmpty) won.add(day);
+        }
+        return won;
+      });
+    });
+    if (owned == null) throw StateError('pulse_alert: claim undecided');
+    return owned;
+  }
+
+Future<void> _ldbFinishPulseDays(List<String> days, {required String token, required PulseAlertState state, required PulseAlertReason? reason, required int atMs, required String? summaryKey}) async {
+    if (days.isEmpty) return;
+    await LocalDb._guardedWrite<void>((db) async {
+      await db.transaction((txn) async {
+        for (final day in days) {
+          await txn.rawUpdate(
+            'UPDATE pulse_alert SET state = ?, reason = ?, at_ms = ?, summary_key = ? '
+            "WHERE day = ? AND summary_key = ? AND state IN ('pending', 'unknown')",
+            [PulseAlertRecord.stateName(state), PulseAlertRecord.reasonName(reason), atMs, summaryKey, day, token],
+          );
+        }
+      });
+    });
+  }
+
+Future<int> _ldbMarkStalePulseUnknown(int claimedBeforeMs) async {
+    final n = await LocalDb._guardedWrite<int>((db) => db.rawUpdate(
+          // The claim time of the notification key when it was claimed (the
+          // claimer's token is "<key>#<nonce>"), else the day's own claim time.
+          "UPDATE pulse_alert SET state = 'unknown', at_ms = COALESCE("
+          "(SELECT fired_at FROM notif_fired "
+          "WHERE key = substr(pulse_alert.summary_key, 1, instr(pulse_alert.summary_key, '#') - 1)), "
+          "at_ms) WHERE state = 'pending' AND at_ms <= ?",
+          [claimedBeforeMs],
+        ));
+    return n ?? 0;
+  }
+
+Future<Map<String, PulseAlertRecord>> _ldbPulseAlertRecords() async {
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery('SELECT day, state, reason, at_ms FROM pulse_alert');
+    return {
+      for (final r in rows) r['day'] as String: ?PulseAlertRecord.fromRow(r),
+    };
+  }
+
 Future<int> _ldbClaimNotifSlot(String category, String dedupeKey, {required int startAt, required int bandSize, required int maxProbes}) async {
     if (bandSize <= 0) throw ArgumentError('bandSize must be > 0');
     // maxProbes beyond bandSize can only re-probe candidates already tried

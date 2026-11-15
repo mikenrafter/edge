@@ -347,6 +347,8 @@ Future<String> _ldbExportDaysDb(Set<String> dayIds) async {
           whereArgs: [dayId],
         );
         await copyRows('metric_method', where: 'date = ?', whereArgs: [dayId]);
+        // What became of each flagged day's alert travels with the day.
+        await copyRows('pulse_alert', where: 'day = ?', whereArgs: [dayId]);
         await copyRows('journal', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('journal_metric', where: 'date = ?', whereArgs: [dayId]);
         await copyRows('cycle_log', where: 'date = ?', whereArgs: [dayId]);
