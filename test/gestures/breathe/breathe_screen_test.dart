@@ -187,6 +187,33 @@ void main() {
     });
   });
 
+  group('a screen reader hears each phase (A11Y-BREATH)', () {
+    // why: the ring and its word are silent to TalkBack, and with no band the
+    // buzz cue does nothing, so a blind user had no pacing at all (inventory 3.03).
+    testWidgets('TalkBack on: each phase is spoken once at its boundary', (t) async {
+      t.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(t.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      await _pump(t);
+      await t.tap(_begin);
+      await t.pump(const Duration(milliseconds: 100));
+      await t.pump(const Duration(milliseconds: 100));
+      expect(t.takeAnnouncements().map((a) => a.message), ['Inhale']);
+      await t.pump(const Duration(seconds: 6)); // past 5.45 s
+      expect(t.takeAnnouncements().map((a) => a.message), ['Exhale']);
+      await t.pump(const Duration(seconds: 1));
+      expect(t.takeAnnouncements(), isEmpty, reason: 'not again inside the phase');
+    });
+
+    testWidgets('TalkBack off: nothing is spoken', (t) async {
+      await _pump(t);
+      await t.tap(_begin);
+      await t.pump(const Duration(milliseconds: 200));
+      await t.pump(const Duration(seconds: 6));
+      expect(t.takeAnnouncements(), isEmpty);
+    });
+  });
+
   group('while the band paces the session, the screen stays quiet', () {
     testWidgets('mounted on a gesture-started session: the running view, no '
         'setup page, and not one cue over a minute of ticks', (t) async {

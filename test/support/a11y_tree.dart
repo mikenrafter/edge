@@ -29,11 +29,13 @@ List<String> repeatedLines(WidgetTester t) => [
         if (_hasRepeat(l)) l.replaceAll('\n', ' | '),
     ];
 
+/// Only lines of three letters or more count: weekday initials ("T", "S")
+/// and dashes repeat legitimately and are no doubled label.
 bool _hasRepeat(String label) {
   final seen = <String>{};
   for (final line in label.split('\n')) {
     final x = line.trim();
-    if (x.isEmpty) continue;
+    if (!RegExp(r'\p{L}.*\p{L}.*\p{L}', unicode: true).hasMatch(x)) continue;
     if (!seen.add(x)) return true;
   }
   return false;
