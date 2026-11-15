@@ -361,8 +361,8 @@ class _DayStepsDetailState extends State<DayStepsDetail> implements NerdStatsLis
     return Surface(
       child: Column(
         children: [
+          DayRhrNotice(d.rhrMarks, d.day),
           ChartFrame(
-            annotations: d.day == null ? null : rhrAnnotationsForDay(d.rhrMarks, d.day!, 24),
             nerdStats: this,
             title: l?.dayStepsChartTitle ?? 'When they were counted',
             unit: l?.dayStepsUnit ?? 'steps',

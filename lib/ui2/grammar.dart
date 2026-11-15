@@ -3816,6 +3816,7 @@ class ChartFrame extends StatelessWidget {
 
   final AxisSpec? yAxis;
   final List<String> xLabels;
+  final Widget? axisFooter;
   final List<(String, Color)> legend;
   final String? footnote;
 
@@ -3879,6 +3880,7 @@ class ChartFrame extends StatelessWidget {
     required this.child,
     this.height = 120,
     this.yAxis,
+    this.axisFooter,
     this.xLabels = const [],
     this.legend = const [],
     this.footnote,
@@ -4246,6 +4248,8 @@ class ChartFrame extends StatelessWidget {
             ),
               c,
             ),
+
+          if (axisFooter != null) Padding(padding: EdgeInsets.only(left: inset), child: axisFooter!),
 
           // ── x axis ──
           if (empty == null && xLabels.isNotEmpty)

@@ -38,6 +38,8 @@ import '../wake/wake_timeline.dart';
 import '../data/day_label.dart' show dayLabelOf;
 import '../models/chart_point.dart' show ChartOlder;
 import 'grammar.dart' show Pressable;
+import 'finding_presentation.dart';
+import 'screens/home_screen.dart' show prettyDay;
 import 'theme.dart';
 import './skeleton/guide_plot.dart';
 
@@ -138,7 +140,7 @@ class ChartAnnotation {
     if (f == null || l == null) return this;
     return ChartAnnotation(id: id, kind: kind, at: at, until: until,
       icon: icon, groupId: groupId, wakeKind: wakeKind, finding: f,
-      label: '${f.date} · ${findingTitle(l, f)}. ${findingDetail(l, f)}');
+      label: '${prettyDay(f.date, l)} · ${findingTitle(l, f)}. ${findingDetail(l, f)}');
   }
 }
 
@@ -186,16 +188,16 @@ List<ChartAnnotation> wakeAnnotations(
     ),
 ];
 
-/// Daily findings have no episode time. Their marker is the local day's start,
-/// not an invented intraday measurement. The same projection serves every plot.
+/// Date-axis transport for daily findings. Never attach these points to an
+/// intraday plot: use DayRhrNotice outside its time axis instead.
 List<ChartAnnotation> rhrChangeAnnotations(Iterable<Finding> findings, {AppLocalizations? l}) {
   final locale = l ?? lookupAppLocalizations(const Locale('en'));
   return [for (final f in findings)
     if (f.kind == FindingKind.rhrShift && localDayStartSec(f.date) != null)
       ChartAnnotation(id: 'rhr-shift:${f.date}', kind: AnnotationKind.rhrShift,
         at: localDayStartSec(f.date)!.toDouble(), finding: f,
-        icon: f.risen == null ? LucideIcons.chartLine : f.risen! ? LucideIcons.trendingUp : LucideIcons.trendingDown,
-        label: '${f.date} · ${findingTitle(locale, f)}. ${findingDetail(locale, f)}')];
+        icon: findingIcon(f),
+        label: '${prettyDay(f.date, locale)} · ${findingTitle(locale, f)}. ${findingDetail(locale, f)}')];
 }
 
 /// Domain-to-pixel scale of one chart plus the footprint of one icon.

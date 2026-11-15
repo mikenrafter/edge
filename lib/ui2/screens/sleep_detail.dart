@@ -14,6 +14,7 @@ import '../../l10n/display_text.dart';
 // constants — it is the user's own distribution, so it cannot be wrong about
 // somebody it was never fitted to.
 
+import 'rhr_annotations.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -1010,6 +1011,7 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       _accordion(l?.sleepDetailTonightSection ?? 'Tonight', 'tonight',
           _sectionViewport(c, _tonight(c, p, d), height: 180),
           key: const ValueKey('card:tonight')),
+      DayRhrNotice(d.rhrMarks, d.day),
     ];
   }
 
@@ -1424,7 +1426,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
       if (dense) start = math.max(onset, ordered.first.at.floor() - 600);
     }
     if (start != onset) n = {...n, 'onset_ts': start};
-    marks.addAll(d.rhrMarks.where((m) => start != null && end != null && m.at >= start && m.at <= end));
     final annotations = start != null && end != null && end > start
         ? AnnotationSet(items: marks, domainStart: start.toDouble(),
             domainEnd: end.toDouble()) : null;
@@ -2579,7 +2580,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload, PausedRe
         ],
         ChartFrame(
           nerdStats: this,
-          annotations: d.rhrMarks.isEmpty ? null : AnnotationSet(items: d.rhrMarks, domainStart: t0.toDouble(), domainEnd: t1.toDouble()),
           title: loc?.sleepDetailThroughTheNight ?? 'Through the night',
           unit: units.join(' · '),
           height: 44.0 * series.length + 20,

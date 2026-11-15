@@ -25,6 +25,8 @@ import '../../l10n/display_text.dart';
 // says what it is.
 
 import 'dart:convert' show jsonDecode;
+import 'rhr_annotations.dart';
+import '../../data/day_label.dart' show dayLabelOf;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -1609,7 +1611,7 @@ class _DayTimelineScreenState extends State<DayTimelineScreen>
                       ? reviewReadLabel('saved activity reviews', l)
                       : _pendingReads.isEmpty ? (widget.resolvingLabel ?? reviewReadLabel('saved activity reviews', l))
                       : reviewReadLabel(_pendingReads.first, l), maxLines: 1,
-                      overflow: TextOverflow.ellipsis, style: F.cap.copyWith(color: p.ink3)) : null),
+                      overflow: TextOverflow.ellipsis, style: F.cap.copyWith(color: p.ink3)) : d.computedAtMs == null ? null : Text((l ?? lookupAppLocalizations(const Locale('en'))).asOfTime(clockOfTs(d.computedAtMs! ~/ 1000)), style: F.cap.copyWith(color: p.ink3))),
                 if (_loading) ...[
                   if (_d == null || d.graph.hasCurve) PendingContent(pending: true,
                     child: KeyedSubtree(key: const ValueKey('apk2-day-chart'),
@@ -2049,13 +2051,14 @@ class _ZoomState extends State<_DayGraphZoom> {
           '1-minute averages. Zoom in to two hours or less for per-second '
               'data, where kept.';
     }
-    final card = dayGraphCard(c, g,
+    final plot = dayGraphCard(c, g,
         zoomed: zoomed,
         fine: _fine,
         footnote: note,
-        annotations: widget.annotations,
+        annotations: widget.annotations.where((a) => a.kind != AnnotationKind.rhrShift).toList(),
         listener: widget.listener,
         nerdStats: widget.nerdStats);
+    final card = plot == null ? null : Column(children: [plot, DayRhrNotice(widget.annotations, g.dayStart == null ? null : dayLabelOf(DateTime.fromMillisecondsSinceEpoch(g.dayStart! * 1000)))]);
     if (card == null || n < 2) return card ?? const SizedBox.shrink();
     // Smaller thumbs and the theme's own colour: the same control as the app's
     // other sliders, not a red bar.
@@ -2288,11 +2291,11 @@ class MomentGroupRow extends StatefulWidget {
   State<MomentGroupRow> createState() => _MomentGroupRowState();
 }
 
-class _MomentGroupRowState extends State<MomentGroupRow> with RememberedExpansion<MomentGroupRow> {
-  String get _expansionId => 'moment-group:${widget.group.first.at}:${widget.group.first.identity ?? widget.group.first.icon.codePoint}';
-  bool get _open => expandedSection(_expansionId);
+class _MomentGroupRowState extends State<MomentGroupRow> {
+  // Same-event groups are temporary disclosures, not saved section accordions.
+  bool _open = false;
   void expand() {
-    if (!_open) setSectionExpanded(_expansionId, true);
+    if (!_open) setState(() => _open = true);
   }
 
   @override
@@ -2333,7 +2336,7 @@ class _MomentGroupRowState extends State<MomentGroupRow> with RememberedExpansio
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Pressable(
-          onTap: () => toggleSection(_expansionId),
+          onTap: () => setState(() => _open = !_open),
           semanticLabel:
               '${f.title}, ${g.count} times, ${_open ? 'expanded' : 'collapsed'}',
           child: Row(

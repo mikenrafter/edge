@@ -293,10 +293,11 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
     const axis = AxisSpec(min: 0, max: 21, ticks: 4, format: axisInt);
     final drawn = d.curve.where((v) => v != null).length;
     return [
+      DayRhrNotice(d.rhrMarks, d.day == null ? null : dayLabelOf(d.day!)),
       Surface(
+        key: const ValueKey('day-strain-primary'),
         child: Column(children: [
           ChartFrame(
-            annotations: d.day == null ? null : rhrAnnotationsForDay(d.rhrMarks, dayLabelOf(d.day!), 1439),
             title: l?.dayStrainChartTitle ?? 'Strain through the day',
             unit: '0–21',
             height: 170,
