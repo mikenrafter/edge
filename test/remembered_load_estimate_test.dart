@@ -1,6 +1,7 @@
 // CLAIM load-estimate: one settled size establishes a baseline; recurrence
 // wins over noise, while a lone unusual size cannot jerk the next reservation.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/settings/settings_repository.dart';
@@ -24,6 +25,23 @@ void main() {
     final restored=LoadMemory(userKey:()=>user,limit:4);
     expect(restored.estimate('third'),400);
     expect(prefsKeyBackedUp(LoadMemory.prefKey),isFalse);
+  });
+  // CLAIM known-shape-first: an estimate must not clip labels/rows whose new
+  // size is already known. Memory only fills the genuinely unknown tail.
+  testWidgets('remembered height never clips a larger known loading shape', (t) async {
+    SharedPreferences.setMockInitialValues({});
+    await Prefs.ensureLoaded();
+    Widget show(bool pending,double height) => MaterialApp(home: Align(
+      alignment: Alignment.topLeft, child: SizedBox(width:200,
+        child: RememberedLayout(id:'known-loading-shape',pending:pending,
+          child:SizedBox(height:height,child:const Text('Known label'))))));
+    await t.pumpWidget(show(false,40));await t.pump();
+    await t.pumpWidget(show(true,100));
+    expect(t.getSize(find.byType(RememberedLayout)).height,100);
+    await t.pumpWidget(show(false,55));await t.pump();
+    expect(t.getSize(find.byType(RememberedLayout)).height,55,
+      reason:'settled content always fits naturally');
+    await t.pumpWidget(const SizedBox());
   });
   test(
     'estimate converges, rejects one outlier and remembers the recurring shape',
