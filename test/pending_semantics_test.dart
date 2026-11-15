@@ -92,6 +92,12 @@ void main() {
               locale: Locale(locale.key),
             ),
           );
+          // A semantic/control action that starts no load must still expire
+          // its intent; otherwise a later background read inherits it.
+          await t.pumpAndSettle();
+          PendingUserAction.run(() {});
+          expect(t.binding.hasScheduledFrame, isTrue);
+          await t.pump();
           pending.value = true;
           await t.pump();
           expect(find.bySemanticsLabel(locale.value.$1), findsOneWidget);
