@@ -228,13 +228,14 @@ void main() {
         reason: 'timeline and review queue publish together, in reserved geometry');
       expect(apk2Key(apk2Save), findsNothing);
       final beforeList = t.getRect(apk2Key(apk2List));
+      final beforeChart = t.getRect(apk2Key(apk2Chart));
       gate.complete([]);
       await settle(t);
       expect(find.text('Breakdown of your day'), findsOneWidget);
       expect(apk2Key(apk2Save), findsNothing);
       expect(apk2PageIds(), isEmpty);
       expect(t.getRect(apk2Key(apk2List)), beforeList);
-      expect(apk2Key(apk2Chart), findsOneWidget);
+      expect(t.getRect(apk2Key(apk2Chart)), beforeChart);
       expect(apk2Row(apk2Meal), findsOneWidget);
       expect(errors, isEmpty);
       expect(t.takeException(), isNull);

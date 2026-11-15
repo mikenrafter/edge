@@ -2,6 +2,10 @@
 // sources must start while the first one is blocked, and their costs are named.
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/models/activity_suggestion.dart';
+import 'support/as_of_recalc_fakes.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'backup/backup_support.dart';
@@ -23,7 +27,30 @@ class _Reads extends GuideFakeRepo {
   Future<Map<String, dynamic>> getDayHrv(String day) => read('hrv');
 }
 
+class _Concurrent extends _Reads {
+  @override
+  Future<List<ActivitySuggestion>> pendingActivities() async {
+    started.add('reviews'); await gate.future; return [];
+  }
+}
 void main() {
+  testWidgets('F9 saved review reads start alongside the day reads', (t) async {
+    final env = await BackupEnv.create('review_parallel_stage.db');
+    final repo = _Concurrent();
+    final app = AppState.forTesting()..repo = repo;
+    try {
+      await LocalDb.instance;
+      await t.pumpWidget(perfApp(app, const DayTimelineScreen(day: '2026-11-13', reviewEntry: true)));
+      for (var i = 0; i < 10; i++) { await t.pump(const Duration(milliseconds: 20)); }
+      expect(repo.started, containsAll(['timeline', 'reviews']));
+    } finally {
+      repo.gate.complete();
+      for (var i = 0; i < 10; i++) { await t.pump(const Duration(milliseconds: 50)); }
+      await t.pumpWidget(const SizedBox());
+      app.dispose(); await env.dispose();
+    }
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
   test('review starts independent reads together and reports costs', () async {
     final env = await BackupEnv.create('structural_review_reads.db');

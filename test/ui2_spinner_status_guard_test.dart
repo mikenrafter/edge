@@ -6,7 +6,9 @@ import 'support/dart_source_lexical.dart';
 void main() {
   final spinner = RegExp(r'\b(?:CircularProgressIndicator|CupertinoActivityIndicator)\s*\(');
   test('spinner detector recognises Material and Cupertino spinners', () {
-    expect(spinner.allMatches('CircularProgressIndicator() CupertinoActivityIndicator()').length, 2);
+    for (final sample in ['CircularProgressIndicator()', 'CupertinoActivityIndicator()', 'CircularProgressIndicator.adaptive()', 'RefreshProgressIndicator()', 'CupertinoSliverRefreshControl()', 'RefreshIndicator.adaptive()', 'CircularProgressIndicator.new']) {
+      expect(spinner.hasMatch(sample), isTrue, reason: sample);
+    }
   });
   test('no spinners anywhere in lib', () {
     final offenders = <String>[];

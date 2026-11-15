@@ -34,6 +34,22 @@ ElementRole _roleOf(Frame f, String id) =>
     f.elements.singleWhere((e) => e.id == id).role;
 
 void main() {
+  testWidgets('F4 pending text keeps its identity when it moves inside a large placeholder', (t) async {
+    final probe = ShiftProbe(trackUnkeyed: true);
+    Widget page(bool pending) => _app([SizedBox(height: 200,
+      child: PendingContent(pending: pending, child: Padding(
+        padding: EdgeInsets.only(top: pending ? 0 : 40),
+        child: const Text('Result'))))]);
+    await t.pumpWidget(page(true));
+    final a = probe.capture(t, atMs: 0);
+    await t.pumpWidget(page(false));
+    final b = probe.capture(t, atMs: 2500);
+    final before = a.elements.singleWhere((e) => e.id.contains('~text|'));
+    final after = b.elements.singleWhere((e) => e.id.contains('~text|'));
+    expect(before.id, after.id);
+    expect(before.rect.top, isNot(after.rect.top));
+  });
+
   // WHY: the stable keyed envelope survives a read, but its painted placeholder
   // disappears. Dropping the coincident placeholder box falsely charges a fill.
   testWidgets('paint placeholder fills a persistent keyed envelope', (t) async {

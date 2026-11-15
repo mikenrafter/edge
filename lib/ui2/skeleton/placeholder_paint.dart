@@ -9,6 +9,8 @@ import 'guide_plot.dart';
 import 'skeleton.dart';
 
 class GuidePlaceholderPaint {
+  @visibleForTesting
+  static int planBuilds = 0;
   final Set<RenderParagraph> paragraphs;
   final Map<RenderParagraph, Color> inks;
   final Set<RenderParagraph> hidden;
@@ -35,6 +37,7 @@ class GuidePlaceholderPaint {
     required double pulse,
     bool includeChartReadout = false,
   }) {
+    planBuilds++;
     final paragraphs = <RenderParagraph>{};
     final inks = <RenderParagraph, Color>{};
     final hidden = <RenderParagraph>{};
